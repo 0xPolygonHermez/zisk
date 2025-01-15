@@ -11,7 +11,6 @@ use log::info;
 use p3_field::PrimeField;
 use sm_common::InstanceCtx;
 
-use std::sync::Arc;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ENTRY};
 
 use proofman_common::{AirInstance, FromTrace, ProofCtx};
@@ -65,7 +64,7 @@ impl MainSM {
     ///
     /// The computed trace is added to the proof context's air instance repository.
     pub fn prove_main<F: PrimeField>(
-        pctx: Arc<ProofCtx<F>>,
+        pctx: &ProofCtx<F>,
         zisk_rom: &ZiskRom,
         vec_traces: &[EmuTrace],
         main_instance: &mut MainInstance,

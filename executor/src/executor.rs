@@ -20,6 +20,8 @@ use std::{fs, path::PathBuf, sync::Arc};
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, EmuTrace, ZiskEmulator};
 
+use rayon::iter::Either;
+
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
 pub struct ZiskExecutor<F: PrimeField> {
@@ -104,31 +106,6 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .collect()
     }
 
-    /// Expands and computes witnesses for main state machines in parallel.
-    ///
-    /// # Arguments
-    /// * `pctx` - Proof context.
-    /// * `min_traces` - Minimal traces obtained from the ROM execution.
-    /// * `main_layouts` - Main instances to compute witnesses for.
-    ///
-    /// # Returns
-    /// A thread handle for the witness computation task.
-    fn expand_and_witness_main(
-        &self,
-        pctx: Arc<ProofCtx<F>>,
-        min_traces: Arc<Vec<EmuTrace>>,
-        mut main_layouts: Vec<MainInstance>,
-    ) -> std::thread::JoinHandle<Vec<MainInstance>> {
-        let zisk_rom = self.zisk_rom.clone();
-        std::thread::spawn(move || {
-            main_layouts.par_iter_mut().for_each(|main_instance| {
-                MainSM::prove_main(pctx.clone(), &zisk_rom, &min_traces, main_instance);
-            });
-
-            main_layouts
-        })
-    }
-
     /// Counts metrics for secondary state machines based on minimal traces.
     ///
     /// # Arguments
@@ -182,15 +159,17 @@ impl<F: PrimeField> ZiskExecutor<F> {
         self.secondary_sm.iter().map(|sm| sm.build_planner().plan(vec_counters.remove(0))).collect()
     }
 
-    /// Prepares and configures the secondary instances using the provided plans before their creation.
+    /// Prepares and configures the secondary instances using the provided plans before their
+    /// creation.
     ///
     /// # Arguments
     /// * `pctx` - A reference to the proof context, providing shared resources for configuration.
     /// * `plannings` - A vector of vectors containing plans for each secondary state machine.
     ///
     /// # Panics
-    /// This function will panic if the length of `plannings` does not match the length of `self.secondary_sm`.
-    fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &Vec<Vec<Plan>>) {
+    /// This function will panic if the length of `plannings` does not match the length of
+    /// `self.secondary_sm`.
+    fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Vec<Plan>]) {
         self.secondary_sm
             .iter()
             .enumerate()
@@ -204,69 +183,87 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// * `plans` - A vector of plans for each secondary state machine.
     ///
     /// # Returns
-    /// A vector of collected instances paired with their global indices.
+    /// A tuple containing two vectors:
+    /// * A vector of table instances.
+    /// * A vector of non-table instances.
+    #[allow(clippy::type_complexity)]
     fn create_sec_instances(
         &self,
         pctx: &ProofCtx<F>,
         plans: Vec<Vec<Plan>>,
-    ) -> Vec<(usize, Box<dyn BusDeviceInstance<F>>)> {
-        plans
-            .into_iter()
-            .enumerate()
-            .flat_map(|(i, plans_by_sm)| {
-                plans_by_sm.into_iter().filter_map(move |plan| {
-                    let (is_mine, global_idx) =
-                        pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1);
+    ) -> (
+        Vec<(usize, Box<dyn BusDeviceInstance<F>>)>, // Table instances
+        Vec<(usize, Box<dyn BusDeviceInstance<F>>)>, // Non-table instances
+    ) {
+        let mut table_instances = Vec::new();
+        let mut other_instances = Vec::new();
 
-                    if is_mine || plan.instance_type == InstanceType::Table {
-                        let ictx = InstanceCtx::new(global_idx, plan);
-                        Some((global_idx, self.secondary_sm[i].build_inputs_collector(ictx)))
+        plans.into_iter().enumerate().for_each(|(i, plans_by_sm)| {
+            plans_by_sm.into_iter().for_each(|plan| {
+                let (is_mine, global_idx) =
+                    pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1);
+
+                if is_mine || plan.instance_type == InstanceType::Table {
+                    let ictx = InstanceCtx::new(global_idx, plan);
+                    let instance = (global_idx, self.secondary_sm[i].build_inputs_collector(ictx));
+                    if instance.1.instance_type() == InstanceType::Table {
+                        table_instances.push(instance);
                     } else {
-                        None
+                        other_instances.push(instance);
                     }
-                })
-            })
-            .collect()
+                }
+            });
+        });
+
+        (table_instances, other_instances)
     }
 
-    /// Expands and computes witnesses for secondary state machines.
+    /// Expands and computes witnesses for main and secondary state machines.
     ///
     /// # Arguments
     /// * `pctx` - Proof context for managing air instances.
     /// * `min_traces` - Minimal traces obtained from the ROM execution.
-    /// * `sec_instances` - Secondary state machine instances to compute witnesses for.
-    ///
-    /// # Returns
-    /// A vector of expanded secondary instances paired with their global indices.
-    fn collect_and_witness_sec(
+    /// * `main_instances` - Main state machine instances to compute witnesses for
+    /// * `secn_instances` - Secondary state machine instances to compute witnesses for
+    fn witness_instances(
         &self,
         pctx: &ProofCtx<F>,
-        min_traces: Arc<Vec<EmuTrace>>,
-        sec_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
-    ) -> Vec<(usize, Box<dyn BusDeviceInstance<F>>)> {
-        sec_instances
-            .into_par_iter()
-            .map(|(global_idx, mut sec_instance)| {
-                if sec_instance.instance_type() == InstanceType::Instance {
-                    match sec_instance.check_point() {
-                        CheckPoint::None => {}
-                        CheckPoint::Single(chunk_id) => {
-                            sec_instance =
-                                self.process_checkpoint(&min_traces, sec_instance, &[chunk_id]);
-                        }
-                        CheckPoint::Multiple(chunk_ids) => {
-                            sec_instance =
-                                self.process_checkpoint(&min_traces, sec_instance, &chunk_ids);
-                        }
-                    }
+        min_traces: &[EmuTrace],
+        main_instances: Vec<MainInstance>,
+        secn_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
+    ) {
+        // Combine main_instances and secn_instances into a single parallel iterator
+        let main_iter = main_instances.into_par_iter().map(|mut main_instance| {
+            Either::Left(move || {
+                MainSM::prove_main(pctx, &self.zisk_rom, min_traces, &mut main_instance);
+            })
+        });
 
-                    if let Some(air_instance) = sec_instance.compute_witness(pctx) {
-                        pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
+        let secn_iter = secn_instances.into_par_iter().map(|(global_idx, mut secn_instance)| {
+            Either::Right(move || {
+                match secn_instance.check_point() {
+                    CheckPoint::None => {}
+                    CheckPoint::Single(chunk_id) => {
+                        secn_instance =
+                            self.process_checkpoint(min_traces, secn_instance, &[chunk_id]);
+                    }
+                    CheckPoint::Multiple(chunk_ids) => {
+                        secn_instance =
+                            self.process_checkpoint(min_traces, secn_instance, &chunk_ids);
                     }
                 }
-                (global_idx, sec_instance)
+
+                if let Some(air_instance) = secn_instance.compute_witness(pctx) {
+                    pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
+                }
             })
-            .collect()
+        });
+
+        // Chain the two iterators and process them concurrently
+        main_iter.chain(secn_iter).for_each(|task| match task {
+            Either::Left(mut main_task) => main_task(),
+            Either::Right(sec_task) => sec_task(),
+        });
     }
 
     /// Computes and generates witnesses for secondary state machine instances of type `Table`.
@@ -274,16 +271,14 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// # Arguments
     /// * `pctx` - Proof context for managing air instances.
     /// * `collected_instances` - A vector of collected secondary state machine instances.
-    fn witness_sec_tables(
+    fn witness_tables(
         &self,
         pctx: &ProofCtx<F>,
-        mut collected_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
+        mut table_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
     ) {
-        collected_instances.par_iter_mut().for_each(|(global_idx, sec_instance)| {
-            if sec_instance.instance_type() == InstanceType::Table {
-                if let Some(air_instance) = sec_instance.compute_witness(pctx) {
-                    pctx.air_instance_repo.add_air_instance(air_instance, Some(*global_idx));
-                }
+        table_instances.par_iter_mut().for_each(|(global_idx, table_instance)| {
+            if let Some(air_instance) = table_instance.compute_witness(pctx) {
+                pctx.air_instance_repo.add_air_instance(air_instance, Some(*global_idx));
             }
         });
     }
@@ -413,29 +408,24 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         };
 
         // PHASE 1. MINIMAL TRACES. Process the ROM super fast to collect the Minimal Traces
-        // --------------------------------------------------------------------------------------------------
         let min_traces = self.compute_minimal_traces(public_inputs, Self::NUM_THREADS);
-        let min_traces = Arc::new(min_traces);
 
-        // --- PATH A Main SM instances
-        // Count, Plan and create the Main SM instances + Compute the Main Witnesses
-        // --------------------------------------------------------------------------------------------------
-        let main_planning = MainPlanner::plan(&min_traces);
-        let main_instances = self.create_main_instances(&pctx, main_planning);
-        let main_task =
-            self.expand_and_witness_main(pctx.clone(), min_traces.clone(), main_instances);
-
-        // --- PATH B Secondary SM instances
-        // Count, Plan and create the Secondary SM instances + Expand and Compute the Witnesses
-        // --------------------------------------------------------------------------------------------------
+        // PHASE 2. COUNTING. Count the metrics for the Secondary SM instances
         let sec_count = self.count_sec(&min_traces);
-        let sec_planning = self.plan_sec(sec_count);
-        self.configure_instances(&pctx, &sec_planning);
-        let sec_instances = self.create_sec_instances(&pctx, sec_planning);
-        let sec_expanded = self.collect_and_witness_sec(&pctx, min_traces, sec_instances);
-        self.witness_sec_tables(&pctx, sec_expanded);
 
-        // Wait for the main task to finish
-        main_task.join().unwrap();
+        // PHASE 3. PLANNING. Plan the instances
+        let main_planning = MainPlanner::plan(&min_traces);
+        let sec_planning = self.plan_sec(sec_count);
+
+        // PHASE 4. PLANNING. Plan the instances
+        self.configure_instances(&pctx, &sec_planning);
+
+        // PHASE 5. INSTANCES. Create the instances
+        let main_instances = self.create_main_instances(&pctx, main_planning);
+        let (table_instances, secn_instances) = self.create_sec_instances(&pctx, sec_planning);
+
+        // PHASE 6. WITNESS. Compute the witnesses
+        self.witness_instances(&pctx, &min_traces, main_instances, secn_instances);
+        self.witness_tables(&pctx, table_instances);
     }
 }
