@@ -17,7 +17,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     airval main_last_segment;
     airval main_segment;
     airval segment_initial_pc;
-    airval segment_initial_c[RC];
+    airval segment_previous_c[RC];
     airval segment_next_pc;
     airval segment_last_c[RC];
 
@@ -197,7 +197,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
 
     for (int index = 0; index < RC; ++index) {
-        const expr previous_c = SEGMENT_L1 * (segment_initial_c[index] - 'c[index]) + 'c[index];
+        const expr previous_c = SEGMENT_L1 * (segment_previous_c[index] - 'c[index]) + 'c[index];
 
         if (stack_enabled) {
             // a_src_sp ===> set a = sp (only less significant index, rest must be 0)
@@ -251,10 +251,10 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     }
 
     if (stack_enabled) {
-        direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_initial_c, segment_initial_sp]);
+        direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_previous_c, segment_initial_sp]);
         direct_update_proves(MAIN_CONTINUATION_ID, [main_segment + 1, main_last_segment, segment_next_pc, ...segment_last_c, segment_next_sp], sel: 1 - main_last_segment);
     } else {
-        direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_initial_c]);
+        direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_previous_c]);
         direct_update_proves(MAIN_CONTINUATION_ID, [main_segment + 1, main_last_segment, segment_next_pc, ...segment_last_c], sel: 1 - main_last_segment);
     }
 
