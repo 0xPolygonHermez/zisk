@@ -915,21 +915,21 @@ impl ZiskRom {
         *s += ".section .rodata\n";
         *s += ".align 64\n";
         for key in &keys {
+            // Skip internal pc addresses
+            if (key & 0x03) != 0 {
+                continue;
+            }
             // Map fixed-length pc labels to real variable-length instruction labels
             // This is used to implement dynamic jumps, i.e. to jump to an address that is not
             // a constant in the instruction, but dynamically built as part of the emulation
-            //*s += "\t.align 64\n";
-            match *key {
-                0x1000 | 0x10000000 | 0x80000000 => {
-                    *s += &format!("\nmap_pc_{:x}: \t.quad pc_{:x}", key, key)
-                }
-                _ => *s += &format!(", pc_{:x}", key),
-            }
-            //*s += &format!("map_pc_{:x}: \t.quad pc_{:x}\n", key, key);
+            // match *key {
+            //     0x1000 | 0x10000000 | 0x80000000 => {
+            //         *s += &format!("\nmap_pc_{:x}: \t.quad pc_{:x}", key, key)
+            //     }
+            //     _ => *s += &format!(", pc_{:x}", key),
+            // }
 
-            // *s += &format!("map_pc_{:x}:\n", key);
-            // *s += &format!("\tmov {}, pc_{:x}\n", REG_VALUE, key);
-            // *s += &format!("\tjmp {}\n", REG_VALUE);
+            *s += &format!("map_pc_{:x}: \t.quad pc_{:x}\n", key, key);
         }
         *s += "\n";
 
