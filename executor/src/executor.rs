@@ -97,9 +97,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
         main_planning
             .into_iter()
             .filter_map(|plan| {
-                if let (true, global_idx) = pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1)
+                if let (true, global_id) = pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1)
                 {
-                    Some(MainInstance::new(InstanceCtx::new(global_idx, plan)))
+                    Some(MainInstance::new(InstanceCtx::new(global_id, plan)))
                 } else {
                     None
                 }
@@ -201,12 +201,11 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         plans.into_iter().enumerate().for_each(|(i, plans_by_sm)| {
             plans_by_sm.into_iter().for_each(|plan| {
-                let (is_mine, global_idx) =
-                    pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1);
+                let (is_mine, global_id) = pctx.dctx_add_instance(plan.airgroup_id, plan.air_id, 1);
 
                 if is_mine || plan.instance_type == InstanceType::Table {
-                    let ictx = InstanceCtx::new(global_idx, plan);
-                    let instance = (global_idx, self.secondary_sm[i].build_inputs_collector(ictx));
+                    let ictx = InstanceCtx::new(global_id, plan);
+                    let instance = (global_id, self.secondary_sm[i].build_inputs_collector(ictx));
                     if instance.1.instance_type() == InstanceType::Table {
                         table_instances.push(instance);
                     } else {
@@ -246,7 +245,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
             })
         });
 
-        let secn_iter = secn_instances.into_par_iter().map(|(global_idx, mut secn_instance)| {
+        let secn_iter = secn_instances.into_par_iter().map(|(global_id, mut secn_instance)| {
             Either::Right(move || {
                 match secn_instance.check_point() {
                     CheckPoint::None => {}
@@ -261,7 +260,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 }
 
                 if let Some(air_instance) = secn_instance.compute_witness(pctx) {
-                    pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
+                    pctx.air_instance_repo.add_air_instance(air_instance, Some(global_id));
                 }
             })
         });
@@ -283,9 +282,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
         pctx: &ProofCtx<F>,
         mut table_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
     ) {
-        table_instances.par_iter_mut().for_each(|(global_idx, table_instance)| {
+        table_instances.par_iter_mut().for_each(|(global_id, table_instance)| {
             if let Some(air_instance) = table_instance.compute_witness(pctx) {
-                pctx.air_instance_repo.add_air_instance(air_instance, Some(*global_idx));
+                pctx.air_instance_repo.add_air_instance(air_instance, Some(*global_id));
             }
         });
     }

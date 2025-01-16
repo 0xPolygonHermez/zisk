@@ -100,7 +100,7 @@ macro_rules! table_instance {
             fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
                 let mut multiplicity = self.table_sm.detach_multiplicity();
 
-                pctx.dctx_distribute_multiplicity(&mut multiplicity, self.ictx.global_idx);
+                pctx.dctx_distribute_multiplicity(&mut multiplicity, self.ictx.global_id);
 
                 let mut trace = $Trace::new();
 

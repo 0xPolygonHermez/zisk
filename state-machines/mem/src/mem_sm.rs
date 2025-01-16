@@ -67,12 +67,12 @@ impl<F: PrimeField> MemSM<F> {
         #[allow(clippy::needless_range_loop)]
         for i in 0..num_segments {
             // TODO: Review
-            if let (true, global_idx) = self.std.pctx.dctx.write().unwrap().add_instance(
+            if let (true, global_id) = self.std.pctx.dctx.write().unwrap().add_instance(
                 ZISK_AIRGROUP_ID,
                 MEM_AIR_IDS[0],
                 1,
             ) {
-                global_idxs[i] = global_idx;
+                global_idxs[i] = global_id;
             }
         }
 

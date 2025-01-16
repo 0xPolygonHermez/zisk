@@ -8,27 +8,27 @@ use crate::Plan;
 ///
 /// # Fields
 /// * `plan` - The `Plan` associated with this instance, defining its execution strategy.
-/// * `global_idx` - A unique global identifier for the instance, useful for tracking its position
+/// * `global_id` - A unique global identifier for the instance, useful for tracking its position
 ///   within the execution pipeline.
 pub struct InstanceCtx {
     /// Plan for the current instance.
     pub plan: Plan,
 
     /// Global ID of the current instance.
-    pub global_idx: usize,
+    pub global_id: usize,
 }
 
 impl InstanceCtx {
     /// Creates a new `InstanceCtx`.
     ///
     /// # Arguments
-    /// * `global_idx` - A unique global identifier for the instance.
+    /// * `global_id` - A unique global identifier for the instance.
     /// * `plan` - The execution `Plan` for this instance.
     ///
     /// # Returns
     /// A new instance of `InstanceCtx` initialized with the given plan and global ID.
-    pub fn new(global_idx: usize, plan: Plan) -> Self {
-        Self { plan, global_idx }
+    pub fn new(global_id: usize, plan: Plan) -> Self {
+        Self { plan, global_id }
     }
 }
 

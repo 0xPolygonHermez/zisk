@@ -59,10 +59,10 @@ impl<F: PrimeField> InputDataSM<F> {
         #[allow(clippy::needless_range_loop)]
         for i in 0..num_segments {
             // TODO: Review
-            if let (true, global_idx) =
+            if let (true, global_id) =
                 self.std.pctx.dctx.write().unwrap().add_instance(airgroup_id, air_id, 1)
             {
-                global_idxs[i] = global_idx;
+                global_idxs[i] = global_id;
             }
         }
 
