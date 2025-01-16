@@ -16,6 +16,8 @@ sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev 
 ```
 
 ### macOs
+Follow these steps to install all the necessary packages and dependencies for ZisK:
+
 1. Install `brew`:
     ```bash
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -80,11 +82,11 @@ You can also use a custom shell:
     ziskup
     ```
 
-3. Verify the installation of the ZisK Rust toolchain (which includes support for the `riscv64ima-polygon-ziskos-elf` compilation target):
+3. Verify the installation of the ZisK Rust toolchain (which includes support for the `riscv64ima-polygon-ziskos` compilation target):
     ```bash
     rustup toolchain list
     ```
-    The output should include an entry for zisk, similar to this:
+    The output should include an entry for `zisk`, similar to this:
     ```
     stable-x86_64-unknown-linux-gnu (default)
     nightly-x86_64-unknown-linux-gnu
@@ -116,14 +118,14 @@ You can also use a custom shell:
     ```
     Ensure `zisk` appears in the list of installed toolchains.
 
-## Uninstall Zisk toolchain
-To uninstall the ZisK toolchain run:
-```bash
-rustup toolchain remove zisk
-```
-
 ## Update ZisK toolchain
 To update the ZisK toolchain to the latest version, simply run:
 ```bash
 ziskup
+```
+
+## Uninstall Zisk toolchain
+To uninstall the ZisK toolchain run:
+```bash
+rustup toolchain remove zisk
 ```

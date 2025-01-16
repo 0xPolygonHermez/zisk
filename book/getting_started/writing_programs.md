@@ -24,12 +24,11 @@ Writing a Rust program for ZisK is similar to writing a standard Rust program, w
     ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
     ```
 
-Let's demonstrate these changes using the example program from the [Quickstart](./quickstart.md) section.
+Let's show these changes using the example program from the [Quickstart](./quickstart.md) section.
 
 ### Example program    
 
 `main.rs`:
-This program takes a number `n` as input and computes the SHA-256 hash sequentially `n` times.
 ```rust
 // This example program takes a number `n` as input and computes the SHA-256 hash `n` times sequentially.
 
@@ -129,7 +128,7 @@ Alternatively, you can build and execute the program in the ZisK emulator with a
 cargo-zisk run
 ```
 
-This command builds the ELF file and executes it using `ziskemu`, along with the `input.bin` file that must be located in the `.build` directory at the root of your Rust project:
+This command builds the ELF file and executes it using `ziskemu` along with the `input.bin` file that must be located in the `.build` directory at the root of your Rust project:
 
 ```
 .

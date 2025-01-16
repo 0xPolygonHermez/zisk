@@ -22,7 +22,9 @@ This will create a project with the following structure:
     └── main.rs
 ```
 
-The example program takes a number `n` as input and computes the SHA-256 hash `n` times. The `build.rs` file generates an `input.bin` file containing the value of `n` (e.g., 20). This file is used in `main.rs` as input to calculate the hash.
+The example program takes a number `n` as input and computes the SHA-256 hash `n` times. 
+
+The `build.rs` file generates an `input.bin` file containing the value of `n` (e.g., 20). This file is used in `main.rs` as input to calculate the hash.
 
 You can run the program on your native architecture with the following command:
 ```bash
@@ -43,7 +45,7 @@ public 7: 0x233f1280
 ## Execute on ZisK Emulator
 Before generating a proof, you can test the program using the ZisK emulator to ensure correctness:
 ```bash
-cargo-zisk run --release
+cargo-zisk run
 ```
 The output will be:
 ```
@@ -60,8 +62,8 @@ abf6352a
 Alternatively, you can compile the program to generate an ELF file (RISC-V) and then use `ziskemu` tool to execute the ELF file (`-e`, `--elf` flag) with `input.bin` file as the ZisK input (`-i`, `--inputs` flag):
 
 ```bash
-cargo-zisk build --release
-ziskemu -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin
+cargo-zisk build
+ziskemu -e target/riscv64ima-polygon-ziskos-elf/debug/sha_hasher -i build/input.bin
 ```
 
 ## Prove (WIP)
