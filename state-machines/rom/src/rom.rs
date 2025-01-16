@@ -82,8 +82,7 @@ impl RomSM {
                 if counter.is_some() {
                     multiplicity = *counter.unwrap();
                     if inst.paddr == metadata.rom.end_pc {
-                        multiplicity +=
-                            main_trace_len - 1 - (metadata.rom.steps % (main_trace_len - 1));
+                        multiplicity += main_trace_len - metadata.rom.steps % main_trace_len;
                     }
                 } else {
                     continue; // We skip those pc's that are not used in this execution

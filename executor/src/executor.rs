@@ -38,6 +38,7 @@ pub struct ZiskExecutor<F: PrimeField> {
 impl<F: PrimeField> ZiskExecutor<F> {
     /// The number of threads to use for parallel processing.
     const NUM_THREADS: usize = 8;
+    const MIN_TRACE_SIZE: u64 = 1 << 21;
 
     /// Creates a new instance of the `ZiskExecutor`.
     ///
@@ -65,11 +66,11 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
     fn compute_minimal_traces(&self, public_inputs: Vec<u8>, num_threads: usize) -> Vec<EmuTrace> {
+        assert!(Self::MIN_TRACE_SIZE.is_power_of_two());
+
         // Settings for the emulator
-        let emu_options = EmuOptions {
-            trace_steps: Some(MainSM::non_continuation_rows::<F>()),
-            ..EmuOptions::default()
-        };
+        let emu_options =
+            EmuOptions { trace_steps: Some(Self::MIN_TRACE_SIZE), ..EmuOptions::default() };
 
         ZiskEmulator::process_rom_min_trace::<F>(
             &self.zisk_rom,
@@ -235,7 +236,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
         // Combine main_instances and secn_instances into a single parallel iterator
         let main_iter = main_instances.into_par_iter().map(|mut main_instance| {
             Either::Left(move || {
-                MainSM::prove_main(pctx, &self.zisk_rom, min_traces, &mut main_instance);
+                MainSM::prove_main(
+                    pctx,
+                    &self.zisk_rom,
+                    min_traces,
+                    Self::MIN_TRACE_SIZE,
+                    &mut main_instance,
+                );
             })
         });
 
@@ -414,7 +421,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         let sec_count = self.count_sec(&min_traces);
 
         // PHASE 3. PLANNING. Plan the instances
-        let main_planning = MainPlanner::plan(&min_traces);
+        let main_planning = MainPlanner::plan::<F>(&min_traces, Self::MIN_TRACE_SIZE);
         let sec_planning = self.plan_sec(sec_count);
 
         // PHASE 4. PLANNING. Plan the instances

@@ -9,7 +9,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
+pub const PILOUT_HASH: &[u8] = b"ZiskCont-hash";
 
 //AIRGROUP CONSTANTS
 
@@ -22,16 +22,6 @@ pub const MAIN_AIR_IDS: &[usize] = &[0];
 pub const ROM_AIR_IDS: &[usize] = &[1];
 
 pub const ARITH_AIR_IDS: &[usize] = &[2];
-
-pub const MEM_AIR_IDS: &[usize] = &[2];
-
-pub const ROM_DATA_AIR_IDS: &[usize] = &[3];
-
-pub const INPUT_DATA_AIR_IDS: &[usize] = &[4];
-
-pub const MEM_ALIGN_AIR_IDS: &[usize] = &[5];
-
-pub const MEM_ALIGN_ROM_AIR_IDS: &[usize] = &[6];
 
 pub const ARITH_TABLE_AIR_IDS: &[usize] = &[3];
 
@@ -52,17 +42,17 @@ pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[9];
 use serde::Deserialize;
 use serde::Serialize;
 #[derive(Default, Debug, Serialize, Deserialize)]
-pub struct ZiskPublics {
+pub struct ZiskContPublics {
     #[serde(default)] 
     pub rom_root: [u64; 4],
     
 }
 
-values!(ZiskPublicValues<F> {
+values!(ZiskContPublicValues<F> {
  rom_root: [F; 4],
 });
  
-values!(ZiskProofValues<F> {
+values!(ZiskContProofValues<F> {
  enable_input_data: F,
 });
  
@@ -73,26 +63,6 @@ trace!(MainTrace<F> {
 trace!(RomTrace<F> {
  multiplicity: F,
 },  0, 1, 4194304 );
-
-trace!(MemTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: F,
-},  0, 2, 2097152 );
-
-trace!(RomDataTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, value: [F; 2],
-},  0, 3, 2097152 );
-
-trace!(InputDataTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, value_word: [F; 4],
-},  0, 4, 2097152 );
-
-trace!(MemAlignTrace<F> {
- addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], step: F, delta_addr: F, sel_prove: F, value: [F; 2],
-},  0, 5, 2097152 );
-
-trace!(MemAlignRomTrace<F> {
- multiplicity: F,
-},  0, 6, 256 );
 
 trace!(ArithTrace<F> {
  carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, debug_main_step: F, main_div: F, main_mul: F, signed: F, div_by_zero: F, div_overflow: F, inv_sum_all_bs: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
@@ -131,8 +101,77 @@ trace!(RomRomTrace<F> {
 }, 0, 1, 4194304, 0 );
 
 values!(MainAirValues<F> {
- main_last_segment: F, main_segment: F,
+ main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2],
 });
+
+values!(MainAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(RomAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(ArithAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(ArithTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(ArithRangeTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(BinaryAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(BinaryTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(BinaryExtensionAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(BinaryExtensionTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(SpecifiedRangesAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+
+///////////////////////////
+
+pub const MEM_AIR_IDS: &[usize] = &[2];
+
+values!(ZiskProofValues<F> {
+ enable_input_data: F,
+});
+
+trace!(MemTrace<F> {
+ addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: F,
+},  0, 2, 2097152 );
+
+trace!(RomDataTrace<F> {
+ addr: F, step: F, sel: F, addr_changes: F, value: [F; 2],
+},  0, 3, 2097152 );
+
+trace!(InputDataTrace<F> {
+ addr: F, step: F, sel: F, addr_changes: F, value_word: [F; 4],
+},  0, 4, 2097152 );
+
+trace!(MemAlignTrace<F> {
+ addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], step: F, delta_addr: F, sel_prove: F, value: [F; 2],
+},  0, 5, 2097152 );
+
+trace!(MemAlignRomTrace<F> {
+ multiplicity: F,
+},  0, 6, 256 );
 
 values!(MemAirValues<F> {
  segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F,

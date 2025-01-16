@@ -11,11 +11,11 @@ use log::info;
 use p3_field::PrimeField;
 use sm_common::InstanceCtx;
 
-use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ENTRY};
+use zisk_core::ZiskRom;
 
 use proofman_common::{AirInstance, FromTrace, ProofCtx};
 
-use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
+use zisk_pil::{MainAirValues, MainTrace};
 use ziskemu::{Emu, EmuTrace};
 
 /// Represents an instance of the main state machine,
@@ -44,14 +44,7 @@ pub struct MainSM {}
 
 impl MainSM {
     const MY_NAME: &'static str = "MainSM  ";
-
-    /// Returns the number of rows in the main trace excluding the continuation row.
-    ///
-    /// # Returns
-    /// The number of rows used for main trace execution
-    pub fn non_continuation_rows<F: PrimeField>() -> u64 {
-        MainTrace::<F>::NUM_ROWS as u64 - 1
-    }
+    const BATCH_SIZE: usize = 1 << 12; // 2^12 rows per batch
 
     /// Computes the main witness trace for a given segment based on the provided proof context,
     /// ROM, and emulation traces.
@@ -66,127 +59,120 @@ impl MainSM {
     pub fn prove_main<F: PrimeField>(
         pctx: &ProofCtx<F>,
         zisk_rom: &ZiskRom,
-        vec_traces: &[EmuTrace],
+        min_traces: &[EmuTrace],
+        min_traces_size: u64,
         main_instance: &mut MainInstance,
     ) {
+        // Initialize the main trace buffer
         let mut main_trace = MainTrace::new();
 
-        let ictx = &main_instance.ictx;
-        let current_segment = ictx.plan.segment_id.unwrap();
+        // Extract segment information
+        let current_segment = main_instance.ictx.plan.segment_id.unwrap();
         let num_rows = MainTrace::<F>::NUM_ROWS;
+        let traces_per_segment = (num_rows as u64 / min_traces_size) as usize;
 
-        let filled_rows = vec_traces[current_segment].steps.steps as usize;
+        // Determine trace slice for the current segment
+        let start_idx = current_segment * traces_per_segment;
+        let end_idx = (start_idx + traces_per_segment).min(min_traces.len());
+        let segment_min_traces = &min_traces[start_idx..end_idx];
+
+        // Calculate total filled rows
+        let filled_rows: usize =
+            segment_min_traces.iter().map(|min_trace| min_trace.steps.steps as usize).sum();
 
         info!(
             "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
             current_segment,
-            filled_rows + 1,
+            filled_rows,
             num_rows,
-            (filled_rows + 1) as f64 / num_rows as f64 * 100.0
+            filled_rows as f64 / num_rows as f64 * 100.0
         );
 
-        // Set Row 0 of the current segment
-        let row0 = if current_segment == 0 {
-            MainTraceRow::<F> {
-                pc: F::from_canonical_u64(ROM_ENTRY),
-                op: F::from_canonical_u8(ZiskOp::CopyB.code()),
-                a_src_imm: F::one(),
-                b_src_imm: F::one(),
-                ..MainTraceRow::default()
-            }
-        } else {
-            let mut emu =
-                Emu::from_emu_trace_start(zisk_rom, &vec_traces[current_segment - 1].last_state);
-            let mut mem_reads_index: usize =
-                vec_traces[current_segment - 1].last_state.mem_reads_index;
-            let row_previous = emu.step_slice_full_trace(
-                &vec_traces[current_segment - 1].steps,
-                &mut mem_reads_index,
-            );
+        // Compute witness for the current segment
+        let mut row_idx = 0;
+        let mut next_pc: u64 = 0;
 
-            MainTraceRow::<F> {
-                set_pc: row_previous.set_pc,
-                jmp_offset1: row_previous.jmp_offset1,
-                jmp_offset2: if row_previous.flag == F::one() {
-                    row_previous.jmp_offset1
-                } else {
-                    row_previous.jmp_offset2
-                },
-                a: row_previous.a,
-                b: row_previous.c,
-                c: row_previous.c,
-                a_offset_imm0: row_previous.a[0],
-                b_offset_imm0: row_previous.c[0],
-                addr1: row_previous.c[0],
-                a_imm1: row_previous.a[1],
-                b_imm1: row_previous.c[1],
-                op: F::from_canonical_u8(ZiskOp::CopyB.code()),
-                pc: row_previous.pc,
-                a_src_imm: F::one(),
-                b_src_imm: F::one(),
-                ..MainTraceRow::default()
-            }
+        // Preallocate a shared batch buffer to avoid multiple reallocations
+        let mut preallocated_batch_buffer = MainTrace::with_capacity(1 << 12);
+
+        segment_min_traces.iter().for_each(|trace| {
+            Self::fill_partial_trace(
+                zisk_rom,
+                &mut preallocated_batch_buffer,
+                &mut main_trace,
+                &mut row_idx,
+                &mut next_pc,
+                trace,
+            );
+        });
+
+        // Pad remaining rows with the last valid row
+        let last_row = main_trace.buffer[filled_rows - 1];
+        main_trace.buffer[filled_rows..num_rows].fill(last_row);
+
+        // Determine the last row of the previous segment
+        let prev_segment_last_c = if start_idx > 0 {
+            let prev_trace = &min_traces[start_idx - 1];
+            let mut emu = Emu::from_emu_trace_start(zisk_rom, &prev_trace.last_state);
+            let mut mem_reads_index = prev_trace.last_state.mem_reads_index;
+            emu.step_slice_full_trace(&prev_trace.steps, &mut mem_reads_index).c
+        } else {
+            [F::zero(), F::zero()]
         };
 
-        let mut emu = Emu::from_emu_trace_start(zisk_rom, &vec_traces[current_segment].start_state);
+        // Prepare main AIR values
+        let is_last_segment = end_idx == min_traces.len();
+        let mut air_values = MainAirValues::<F>::new();
 
-        main_trace.buffer[0] = row0;
+        air_values.main_segment = F::from_canonical_usize(current_segment);
+        air_values.main_last_segment = F::from_bool(is_last_segment);
+        air_values.segment_initial_pc = main_trace.buffer[0].pc;
+        air_values.segment_next_pc = F::from_canonical_u64(next_pc);
+        air_values.segment_previous_c = prev_segment_last_c;
+        air_values.segment_last_c = last_row.c;
 
-        // Set Rows 1 to N of the current segment (N = maximum number of air rows)
-        let emu_trace_step = &vec_traces[current_segment].steps;
+        // Generate and add the AIR instance
+        let air_instance = AirInstance::new_from_trace(
+            FromTrace::new(&mut main_trace).with_air_values(&mut air_values),
+        );
+        pctx.air_instance_repo.add_air_instance(air_instance, Some(main_instance.ictx.global_idx));
+    }
+
+    fn fill_partial_trace<F: PrimeField>(
+        zisk_rom: &ZiskRom,
+        batch_buffer: &mut MainTrace<F>,
+        main_trace: &mut MainTrace<F>,
+        main_trace_idx: &mut usize,
+        next_pc: &mut u64,
+        min_trace: &EmuTrace,
+    ) {
+        // Initialize the emulator with the start state of the emu trace
+        let mut emu = Emu::from_emu_trace_start(zisk_rom, &min_trace.start_state);
+        let emu_trace_step = &min_trace.steps;
         let mut mem_reads_index: usize = 0;
 
-        // main_trace.buffer.iter_mut().skip(1).take(filled_rows).for_each(|value| {
-        //     *value = emu.step_slice_full_trace(emu_trace_step, &mut mem_reads_index);
-        // });
+        // Total number of rows to fill from the emu trace
+        let total_rows = min_trace.steps.steps as usize;
 
-        const BATCH_SIZE: usize = 4096;
-        let mut partial_buffer = MainTrace::with_capacity(BATCH_SIZE);
+        // Process rows in batches
+        for batch_start in (0..total_rows).step_by(Self::BATCH_SIZE) {
+            // Determine the size of the current batch
+            let batch_size = (batch_start + Self::BATCH_SIZE).min(total_rows) - batch_start;
 
-        // Calculate the number of full batches and the remaining steps
-        let num_batches = filled_rows / BATCH_SIZE;
-        let last_batch_steps = filled_rows % BATCH_SIZE;
-
-        for batch_idx in 0..num_batches {
-            // Accumulate rows for this batch buffer using iterators to avoid bounds checking
-            partial_buffer.buffer.iter_mut().for_each(|value| {
-                *value = emu.step_slice_full_trace(emu_trace_step, &mut mem_reads_index);
+            // Fill the batch buffer
+            batch_buffer.buffer.iter_mut().take(batch_size).for_each(|row| {
+                *row = emu.step_slice_full_trace(emu_trace_step, &mut mem_reads_index);
             });
 
-            // Copy the accumulated batch to the main buffer
-            let start_idx = batch_idx * BATCH_SIZE + 1;
-            let end_idx = start_idx + BATCH_SIZE;
-            main_trace.buffer[start_idx..end_idx].copy_from_slice(&partial_buffer.buffer);
+            // Copy the processed batch into the main trace buffer
+            let trace_start = batch_start + *main_trace_idx;
+            let trace_end = trace_start + batch_size;
+            main_trace.buffer[trace_start..trace_end]
+                .copy_from_slice(&batch_buffer.buffer[..batch_size]);
         }
 
-        if last_batch_steps > 0 {
-            // Accumulate rows for this batch buffer using iterators to avoid bounds checking
-            partial_buffer.buffer.iter_mut().take(last_batch_steps).for_each(|value| {
-                *value = emu.step_slice_full_trace(emu_trace_step, &mut mem_reads_index);
-            });
-
-            // Copy the remaining steps to the main buffer
-            let start_idx = num_batches * BATCH_SIZE + 1;
-            let end_idx = start_idx + last_batch_steps;
-            main_trace.buffer[start_idx..end_idx]
-                .copy_from_slice(&partial_buffer.buffer[..last_batch_steps]);
-        }
-
-        let last_row = main_trace.buffer[filled_rows];
-        // Fill the rest of the buffer with the last row
-        for i in (filled_rows + 1)..num_rows {
-            main_trace.buffer[i] = last_row;
-        }
-
-        let mut main_air_values = MainAirValues::<F>::new();
-        main_air_values.main_last_segment = F::from_bool(current_segment == vec_traces.len() - 1);
-        main_air_values.main_segment = F::from_canonical_usize(current_segment);
-
-        let air_instance = AirInstance::new_from_trace(
-            FromTrace::new(&mut main_trace).with_air_values(&mut main_air_values),
-        );
-
-        pctx.air_instance_repo.add_air_instance(air_instance, Some(main_instance.ictx.global_idx));
+        *main_trace_idx += total_rows;
+        *next_pc = emu.ctx.inst_ctx.pc;
     }
 }

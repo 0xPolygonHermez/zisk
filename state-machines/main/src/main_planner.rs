@@ -3,8 +3,9 @@
 //! It generates execution plans for segments of the main trace, mapping each segment
 //! to a specific `Plan` instance.
 
+use p3_field::PrimeField;
 use sm_common::{CheckPoint, CollectSkipper, InstanceType, Plan};
-use zisk_pil::{MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::EmuTrace;
 
 /// The `MainPlanner` struct generates execution plans for the Main State Machine.
@@ -24,8 +25,18 @@ impl MainPlanner {
     ///
     /// # Returns
     /// A vector of `Plan` instances, each corresponding to a segment of the main trace.
-    pub fn plan(min_traces: &[EmuTrace]) -> Vec<Plan> {
-        (0..min_traces.len())
+    pub fn plan<F: PrimeField>(min_traces: &[EmuTrace], min_traces_size: u64) -> Vec<Plan> {
+        let num_rows = MainTrace::<F>::NUM_ROWS as u64;
+
+        assert!(num_rows.is_power_of_two());
+        assert!(min_traces_size.is_power_of_two());
+        assert!(num_rows >= min_traces_size);
+
+        // This is the number of minimal traces wrapped in a main trace
+        let num_within = num_rows / min_traces_size;
+        let num_instances = (min_traces.len() as f64 / num_within as f64).ceil() as usize;
+
+        (0..num_instances)
             .map(|segment_id| {
                 Plan::new(
                     ZISK_AIRGROUP_ID,
