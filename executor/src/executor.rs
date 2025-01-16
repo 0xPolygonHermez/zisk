@@ -72,7 +72,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let emu_options =
             EmuOptions { trace_steps: Some(Self::MIN_TRACE_SIZE), ..EmuOptions::default() };
 
-        ZiskEmulator::process_rom_min_trace::<F>(
+        ZiskEmulator::compute_minimal_traces::<F>(
             &self.zisk_rom,
             &public_inputs,
             &emu_options,
@@ -124,7 +124,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .map(|minimal_trace| {
                 let mut data_bus = self.get_data_bus_counters();
 
-                ZiskEmulator::process_rom_slice_counters::<F, BusDeviceMetricsWrapper>(
+                ZiskEmulator::process_emu_trace::<F, BusDeviceMetricsWrapper>(
                     &self.zisk_rom,
                     minimal_trace,
                     &mut data_bus,
@@ -308,7 +308,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let mut data_bus = self.get_data_bus_collectors(sec_instance);
 
         chunk_ids.iter().for_each(|&chunk_id| {
-            ZiskEmulator::process_rom_slice_plan::<F, BusDeviceInstanceWrapper<F>>(
+            ZiskEmulator::process_emu_traces::<F, BusDeviceInstanceWrapper<F>>(
                 &self.zisk_rom,
                 min_traces,
                 chunk_id,

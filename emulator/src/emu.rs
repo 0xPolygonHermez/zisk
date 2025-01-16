@@ -799,7 +799,7 @@ impl<'a> Emu<'a> {
                 block_idx % par_options.num_threads as u64 == par_options.thread_id as u64;
 
             if !is_my_block {
-                self.par_step_2();
+                self.par_step();
             } else {
                 // Check if is the first step of a new block
                 if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
@@ -820,7 +820,7 @@ impl<'a> Emu<'a> {
                         end: EmuTraceEnd { end: false },
                     });
                 }
-                self.par_step::<F>(emu_traces.last_mut().unwrap());
+                self.par_step_my_block::<F>(emu_traces.last_mut().unwrap());
             }
         }
 
@@ -928,7 +928,7 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn par_step<F: PrimeField>(&mut self, emu_full_trace_vec: &mut EmuTrace) {
+    pub fn par_step_my_block<F: PrimeField>(&mut self, emu_full_trace_vec: &mut EmuTrace) {
         let mut mem_reads_index = emu_full_trace_vec.steps.mem_reads.len();
         emu_full_trace_vec.last_state = EmuTraceStart {
             pc: self.ctx.inst_ctx.pc,
@@ -978,7 +978,7 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn par_step_2(&mut self) {
+    pub fn par_step(&mut self) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         // Build the 'a' register value  based on the source specified by the current instruction
@@ -1009,7 +1009,7 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn step_observer3<F: PrimeField, BD: BusDevice<u64>>(
+    pub fn step_emu_trace<F: PrimeField, BD: BusDevice<u64>>(
         &mut self,
         trace_step: &EmuTraceSteps,
         mem_reads_index: &mut usize,
@@ -1042,7 +1042,7 @@ impl<'a> Emu<'a> {
 
     /// Run a slice of the program to generate full traces
     #[inline(always)]
-    pub fn run_slice_observer2<F: PrimeField, BD: BusDevice<u64>>(
+    pub fn process_emu_trace<F: PrimeField, BD: BusDevice<u64>>(
         &mut self,
         emu_trace: &EmuTrace,
         data_bus: &mut DataBus<u64, BD>,
@@ -1056,14 +1056,14 @@ impl<'a> Emu<'a> {
 
         let mut mem_reads_index: usize = 0;
         let emu_trace_steps = &emu_trace.steps;
-        for _step in 0..emu_trace.steps.steps {
-            self.step_observer3::<F, BD>(emu_trace_steps, &mut mem_reads_index, data_bus);
+        for _ in 0..emu_trace.steps.steps {
+            self.step_emu_trace::<F, BD>(emu_trace_steps, &mut mem_reads_index, data_bus);
         }
     }
 
     /// Run a slice of the program to generate full traces
     #[inline(always)]
-    pub fn run_slice_plan<BD: BusDevice<u64>>(
+    pub fn process_emu_traces<BD: BusDevice<u64>>(
         &mut self,
         vec_traces: &[EmuTrace],
         chunk_id: usize,
@@ -1083,7 +1083,7 @@ impl<'a> Emu<'a> {
         let mut emu_trace_steps = &vec_traces[current_chunk].steps;
         let mut mem_reads_index: usize = 0;
         loop {
-            if self.step_slice_plan(emu_trace_steps, &mut mem_reads_index, data_bus) {
+            if self.step_emu_traces(emu_trace_steps, &mut mem_reads_index, data_bus) {
                 break;
             }
             if self.ctx.inst_ctx.end {
@@ -1102,7 +1102,7 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn step_slice_plan<BD: BusDevice<u64>>(
+    pub fn step_emu_traces<BD: BusDevice<u64>>(
         &mut self,
         trace_step: &EmuTraceSteps,
         mem_reads_index: &mut usize,
