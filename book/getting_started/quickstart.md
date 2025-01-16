@@ -22,11 +22,11 @@ This will create a project with the following structure:
     └── main.rs
 ```
 
-The example program takes a number `n` as input and computes the SHA-256 hash `n` times. The `build.rs` file generates an `input.bin` file containing the value of `n` (e.g., 20). This file is used in `main.rs` as input for ZisK to calculate the hash.
+The example program takes a number `n` as input and computes the SHA-256 hash `n` times. The `build.rs` file generates an `input.bin` file containing the value of `n` (e.g., 20). This file is used in `main.rs` as input to calculate the hash.
 
 You can run the program on your native architecture with the following command:
 ```bash
-$ cargo run
+cargo run
 ```
 The output will be:
 ```
@@ -40,7 +40,7 @@ public 6: 0x1f142cac
 public 7: 0x233f1280
 ```
 
-## Run on ZisK Emulator
+## Execute on ZisK Emulator
 Before generating a proof, you can test the program using the ZisK emulator to ensure correctness:
 ```bash
 cargo-zisk run --release
@@ -57,7 +57,7 @@ abf6352a
 233f1280
 ```
 
-Alternatively, you can build the program to generate an ELF file (RISC-V) and then use `ziskemu` tool to execute the ELF file (`-e`, `--elf` flag) with `input.bin` as the ZisK input (`-i`, `--inputs` flag):
+Alternatively, you can compile the program to generate an ELF file (RISC-V) and then use `ziskemu` tool to execute the ELF file (`-e`, `--elf` flag) with `input.bin` file as the ZisK input (`-i`, `--inputs` flag):
 
 ```bash
 cargo-zisk build --release

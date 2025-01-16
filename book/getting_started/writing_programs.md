@@ -1,5 +1,7 @@
 # Writing Programs
 
+In this document we will explain how to write/modify a Rust program to be executed in ZisK
+
 ## Setup
 
 ### Code changes
@@ -7,6 +9,7 @@
 Writing a Rust program for ZisK is similar to writing a standard Rust program, with a few minor modifications. Follow these steps:
 
 1. Modify `main.rs` file:
+
     Add the following code to your `main.rs` file to mark the main function as the entry point for ZisK:
     ```rust
     #![no_main]
@@ -14,6 +17,7 @@ Writing a Rust program for ZisK is similar to writing a standard Rust program, w
     ```
 
 2. Modify `Cargo.toml` file:
+
     Add the `ziskos` crate as a dependency in your `Cargo.toml` file:
     ```toml
     [dependencies]
@@ -78,17 +82,7 @@ ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
 ```
 
 ### Input/Output Data
-To provide input data for ZisK, you need to write that data in a binary file (e.g., `input.bin`) and store it in a `./build` directory at the root of your Rust project:
-
-```
-.
-├── build
-|   └── input.bin
-├── src
-|   └── main.rs
-├── Cargo.lock
-├── Cargo.toml
-```
+To provide input data for ZisK, you need to write that data in a binary file (e.g., `input.bin`).
 
 If your program requires complex input data, consider using a serialization mechanism (like [`bincode`](https://crates.io/crates/bincode) crate) to store it in `input.bin` file.
 
@@ -135,7 +129,17 @@ Alternatively, you can build and execute the program in the ZisK emulator with a
 cargo-zisk run
 ```
 
-This command builds the ELF file and executes it using `ziskemu`, along with the `input.bin` file located in the `.build` directory.
+This command builds the ELF file and executes it using `ziskemu`, along with the `input.bin` file that must be located in the `.build` directory at the root of your Rust project:
+
+```
+.
+├── build
+|   └── input.bin
+├── src
+|   └── main.rs
+├── Cargo.lock
+├── Cargo.toml
+```
 
 For production use, compile the ELF file with the `--release` flag, similar to how you compile Rust projects:
 
@@ -144,34 +148,6 @@ cargo-zisk build --release
 ```
 
 In this case, the `sha_hasher` ELF file will be generated in the `./target/riscv64ima-polygon-ziskos-elf/release` directory.
-
-You can get a list of supported flags in ZisK emulator executing `ziskemu --help` command:
-
-```
-ZisK emulator options structure
-
-Usage: ziskemu [OPTIONS] [TRACE_STEPS]
-
-Arguments:
-  [TRACE_STEPS]  Trace every this number of steps
-
-Options:
-  -r, --rom <ROM_FILE>           Sets the Zisk ROM data file path
-  -e, --elf <ELF_FILE>           Sets the ELF data file path, to be converted to ZisK ROM data
-  -i, --inputs <INPUT_FILE>      Sets the input data file path
-  -o, --output <OUTPUT_FILE>     Sets the output data file path
-  -n, --max-steps <MAX_STEPS>    Sets the maximum number of steps to execute.  Default value is 1000000000.  Configured with `-n` [default: 1000000000]
-  -p, --print-step <PRINT_STEP>  Sets the print step period in number of steps [default: 0]
-  -t, --trace <TRACE_FILE>       Sets the trace output file
-  -v, --verbose                  Sets the verbose mode
-  -l, --log-step                 Sets the log step mode
-  -c, --log-output               Log the output to console. This option is set by default to true as a requirement to pass the riscof GHA tests.  Enabled with `-c`
-  -m, --log-metrics              Log performance metrics.  Enabled with `-m`
-  -a, --tracerv                  Tracer v.  Enabled with `-a`
-  -x, --stats                    Generates statistics about opcodes and memory usage.  Enabled with `-x`
-  -h, --help                     Print help
-  -V, --version                  Print version
-```
 
 ## Metrics and Statistics
 
