@@ -21,9 +21,11 @@ struct MemBusHelpers {}
 
 const MEMORY_LOAD_OP: u64 = 1;
 const MEMORY_STORE_OP: u64 = 2;
-const MEM_STEP_BASE: u64 = 3;
-const MAX_MEM_OPS_BY_MAIN_STEP: u64 = 4;
-const MAX_MEM_OPS_BY_STEP_OFFSET: u64 = 5;
+
+const MEM_STEP_BASE: u64 = 1;
+const MAX_MEM_STEP_OFFSET: u64 = 2;
+const MAX_MEM_OPS_BY_STEP_OFFSET: u64 = 2;
+const MAX_MEM_OPS_BY_MAIN_STEP: u64 = (MAX_MEM_STEP_OFFSET + 1) * MAX_MEM_OPS_BY_STEP_OFFSET;
 
 impl MemBusHelpers {
     // function mem_load(expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[]) {
@@ -302,6 +304,14 @@ impl<'a> Emu<'a> {
                 // If the operation is a register operation, get it from the context registers
                 if Mem::address_is_register(address) {
                     self.ctx.inst_ctx.a = self.get_reg(Mem::address_to_register_index(address));
+                    let payload = MemBusHelpers::mem_load(
+                        address as u32,
+                        self.ctx.inst_ctx.step,
+                        0,
+                        8,
+                        [self.ctx.inst_ctx.a, 0],
+                    );
+                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
                 }
                 // Otherwise, get it from memory
                 else if Mem::is_full_aligned(address, 8) {
@@ -680,7 +690,7 @@ impl<'a> Emu<'a> {
                             self.ctx.inst_ctx.step,
                             1,
                             8,
-                            [self.ctx.inst_ctx.b, 0],
+                            [raw_data, 0],
                         );
                         data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
                     } else {
@@ -1095,9 +1105,19 @@ impl<'a> Emu<'a> {
                         [value, 0],
                     );
                     data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                } else if Mem::is_full_aligned(address, 8) {
+                    let payload = MemBusHelpers::mem_write(
+                        address as u32,
+                        self.ctx.inst_ctx.step,
+                        2,
+                        8,
+                        value,
+                        [value, 0],
+                    );
+                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
                 }
                 // Otherwise, if not aligned, get old raw data from memory, then write it
-                else if !Mem::is_full_aligned(address, 8) {
+                else {
                     let (required_address_1, required_address_2) =
                         Mem::required_addresses(address, 8);
                     if required_address_1 == required_address_2 {
@@ -1167,8 +1187,20 @@ impl<'a> Emu<'a> {
                     );
                     data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
                 }
+                // Otherwise, if aligned
+                else if Mem::is_full_aligned(address, instruction.ind_width) {
+                    let payload = MemBusHelpers::mem_write(
+                        address as u32,
+                        self.ctx.inst_ctx.step,
+                        2,
+                        instruction.ind_width as u8,
+                        value,
+                        [value, 0],
+                    );
+                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                }
                 // Otherwise, if not aligned, get old raw data from memory, then write it
-                else if !Mem::is_full_aligned(address, instruction.ind_width) {
+                else {
                     let (required_address_1, required_address_2) =
                         Mem::required_addresses(address, instruction.ind_width);
                     if required_address_1 == required_address_2 {
@@ -1670,6 +1702,7 @@ impl<'a> Emu<'a> {
         vec_traces: &[EmuTrace],
         chunk_id: usize,
         data_bus: &mut DataBus<u64, BD>,
+        is_multiple: bool,
     ) {
         let emu_trace_start = &vec_traces[chunk_id].start_state;
         // Set initial state
@@ -1694,6 +1727,9 @@ impl<'a> Emu<'a> {
 
             current_step_idx += 1;
             if current_step_idx == vec_traces[current_chunk].steps.steps {
+                if is_multiple {
+                    break;
+                }
                 current_chunk += 1;
                 current_step_idx = 0;
                 emu_trace_steps = &vec_traces[current_chunk].steps;

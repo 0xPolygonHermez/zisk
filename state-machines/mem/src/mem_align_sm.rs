@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+#[cfg(feature = "debug_mem_align")]
+use std::sync::Mutex;
+
 use log::info;
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
@@ -181,14 +184,12 @@ impl<F: PrimeField> MemAlignSM<F> {
                     "\nOne Word Read\n\
                      Num Rows: {:?}\n\
                      Input: {:?}\n\
-                     Phase: {:?}\n\
                      Value Read: {:?}\n\
                      Value: {:?}\n\
                      Flags Read: {:?}\n\
                      Flags Value: {:?}",
                     [*num_rows, *num_rows + 1],
                     input,
-                    phase,
                     value_read.to_le_bytes(),
                     value.to_le_bytes(),
                     [
@@ -334,7 +335,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                     "\nOne Word Write\n\
                      Num Rows: {:?}\n\
                      Input: {:?}\n\
-                     Phase: {:?}\n\
                      Value Read: {:?}\n\
                      Value Write: {:?}\n\
                      Value: {:?}\n\
@@ -343,7 +343,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                      Flags Value: {:?}",
                     [*num_rows, *num_rows + 2],
                     input,
-                    phase,
                     value_read.to_le_bytes(),
                     value_write.to_le_bytes(),
                     value.to_le_bytes(),
@@ -484,7 +483,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                             "\nTwo Words Read\n\
                              Num Rows: {:?}\n\
                              Input: {:?}\n\
-                             Phase: {:?}\n\
                              Value First Read: {:?}\n\
                              Value: {:?}\n\
                              Value Second Read: {:?}\n\
@@ -493,7 +491,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                              Flags Second Read: {:?}",
                             [*num_rows, *num_rows + 2],
                             input,
-                            phase,
                             value_first_read.to_le_bytes(),
                             value.to_le_bytes(),
                             value_second_read.to_le_bytes(),
@@ -727,7 +724,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                             "\nTwo Words Write\n\
                              Num Rows: {:?}\n\
                              Input: {:?}\n\
-                             Phase: {:?}\n\
                              Value First Read: {:?}\n\
                              Value First Write: {:?}\n\
                              Value: {:?}\n\
@@ -740,7 +736,6 @@ impl<F: PrimeField> MemAlignSM<F> {
                              Flags Second Read: {:?}",
                             [*num_rows, *num_rows + 4],
                             input,
-                            phase,
                             value_first_read.to_le_bytes(),
                             value_first_write.to_le_bytes(),
                             value.to_le_bytes(),
@@ -808,6 +803,7 @@ impl<F: PrimeField> MemAlignSM<F> {
         let mut index = 0;
         for input in mem_ops.iter() {
             let count = self.prove_mem_align_op(input, &mut trace, index);
+            // println!("[MemAlignSM] count:{} index:{} input:{:?}", count, index, input);
             for i in 0..count {
                 for j in 0..CHUNK_NUM {
                     let element = trace[index + i].reg[j]
@@ -819,6 +815,9 @@ impl<F: PrimeField> MemAlignSM<F> {
             }
             index += count;
         }
+        // for i in 0..16 {
+        //     println!("[MemAlignSM] ROW[{}]: {:?} ", i, trace[i]);
+        // }
         let padding_size = num_rows - index;
         let padding_row = MemAlignTraceRow::<F> { reset: F::from_bool(true), ..Default::default() };
 

@@ -1,6 +1,7 @@
 use p3_field::PrimeField;
 use proofman_common::ProofCtx;
 use witness::WitnessComponent;
+use zisk_pil::ZiskProofValues;
 
 use rayon::prelude::*;
 
@@ -131,6 +132,11 @@ impl<F: PrimeField> ZiskExecutor<F> {
         pctx: &ProofCtx<F>,
         plans: Vec<Vec<Plan>>,
     ) -> Vec<(usize, Box<dyn BusDeviceInstance<F>>)> {
+        // TODO: REMOVE, ONLY FOR TEST *******
+        let mut proof_values = ZiskProofValues::from_vec_guard(pctx.get_proof_values());
+        proof_values.enable_input_data = F::one();
+        // TODO: REMOVE, ONLY FOR TEST ******* ^^^^
+
         plans
             .into_iter()
             .enumerate()
@@ -163,12 +169,20 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     match sec_instance.check_point() {
                         CheckPoint::None => {}
                         CheckPoint::Single(chunk_id) => {
-                            sec_instance =
-                                self.process_checkpoint(&min_traces, sec_instance, &[chunk_id]);
+                            sec_instance = self.process_checkpoint(
+                                &min_traces,
+                                sec_instance,
+                                &[chunk_id],
+                                false,
+                            );
                         }
                         CheckPoint::Multiple(chunk_ids) => {
-                            sec_instance =
-                                self.process_checkpoint(&min_traces, sec_instance, &chunk_ids);
+                            sec_instance = self.process_checkpoint(
+                                &min_traces,
+                                sec_instance,
+                                &chunk_ids,
+                                true,
+                            );
                         }
                     }
 
@@ -200,15 +214,16 @@ impl<F: PrimeField> ZiskExecutor<F> {
         min_traces: &[EmuTrace],
         sec_instance: Box<dyn BusDeviceInstance<F>>,
         chunk_ids: &[usize],
+        is_multiple: bool,
     ) -> Box<dyn BusDeviceInstance<F>> {
         let mut data_bus = self.get_data_bus_collectors(sec_instance);
-
         chunk_ids.iter().for_each(|&chunk_id| {
             ZiskEmulator::process_rom_slice_plan::<F, BusDeviceInstanceWrapper<F>>(
                 &self.zisk_rom,
                 min_traces,
                 chunk_id,
                 &mut data_bus,
+                is_multiple,
             );
         });
 

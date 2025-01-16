@@ -1,6 +1,6 @@
 use crate::{
     MemAlignResponse, MAX_MEM_OPS_BY_MAIN_STEP, MAX_MEM_OPS_BY_STEP_OFFSET, MEMORY_MAX_DIFF,
-    MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS, MEM_STEP_BASE,
+    MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS, MEM_STEP_BASE, RAM_W_ADDR_INIT,
 };
 use std::fmt;
 use zisk_core::{ZiskRequiredMemory, RAM_ADDR};
@@ -73,7 +73,7 @@ impl MemHelpers {
             MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64
     }
     pub fn is_aligned(addr: u32, width: u8) -> bool {
-        addr & MEM_ADDR_ALIGN_MASK == 0 && width == 8
+        (addr & MEM_ADDR_ALIGN_MASK) == 0 && width == 8
     }
     pub fn get_addr_w(addr: u32) -> u32 {
         addr >> MEM_BYTES_BITS
@@ -124,7 +124,7 @@ impl MemHelpers {
     compile_error!("This code requires a little-endian machine.");
     pub fn get_write_values(addr: u32, bytes: u8, value: u64, read_values: [u64; 2]) -> [u64; 2] {
         let is_double = Self::is_double(addr, bytes);
-        let offset = Self::get_byte_offset(addr);
+        let offset = Self::get_byte_offset(addr) * 8;
         let value = match bytes {
             1 => value & 0xFF,
             2 => value & 0xFFFF,
@@ -146,10 +146,33 @@ impl MemHelpers {
             return [lo_write, read_values[1]]
         }
 
-        let hi_mask = !(byte_mask >> (8 - offset));
-        let hi_write = (hi_mask & read_values[1]) | (value >> (8 - offset));
+        let hi_mask = !(byte_mask >> (64 - offset));
+        let hi_write = (hi_mask & read_values[1]) | (value >> (64 - offset));
 
         [lo_write, hi_write]
+    }
+    #[cfg(target_endian = "big")]
+    compile_error!("This code requires a little-endian machine.");
+    pub fn get_read_value(addr: u32, bytes: u8, read_values: [u64; 2]) -> u64 {
+        let is_double = Self::is_double(addr, bytes);
+        let offset = Self::get_byte_offset(addr) * 8;
+        let mut value = read_values[0] >> offset;
+        if is_double {
+            value |= (read_values[1] >> offset) << (64 - offset);
+        }
+        match bytes {
+            1 => value & 0xFF,
+            2 => value & 0xFFFF,
+            4 => value & 0xFFFF_FFFF,
+            8 => value,
+            _ => panic!("Invalid bytes value"),
+        }
+    }
+    pub fn register_to_addr(register: u8) -> u32 {
+        ((RAM_ADDR + register as u64) * 8) as u32
+    }
+    pub fn register_to_addr_w(register: u8) -> u32 {
+        RAM_W_ADDR_INIT + register as u32
     }
 }
 impl fmt::Debug for MemAlignResponse {

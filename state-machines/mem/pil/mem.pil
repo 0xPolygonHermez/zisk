@@ -205,10 +205,6 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
             // if address not change value must be equal to previous value
             (1 - addr_changes) * (value[index] - previous_value)  ===  0;
 
-            if (!free_input_mem) {
-                // if address changes => write, and it must be inserted on bus
-                addr_changes * (1 - sel)  ===  0;
-            }
         } else {
             // if address not change and it isn't write, value must be equal to previous value
             // TODO: boundary constraints

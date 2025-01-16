@@ -13,7 +13,6 @@ pub const RAM_W_ADDR_INIT: u32 = RAM_ADDR as u32 >> MEM_BYTES_BITS;
 pub const RAM_W_ADDR_END: u32 = (RAM_ADDR + RAM_SIZE - 1) as u32 >> MEM_BYTES_BITS;
 
 const _: () = {
-    // assert!((RAM_SIZE - 1) >> MEM_BYTES_BITS <= MEMORY_MAX_DIFF, "RAM is too large");
     assert!(
         (RAM_ADDR + RAM_SIZE - 1) <= 0xFFFF_FFFF,
         "RAM memory exceeds the 32-bit addressable range"
@@ -23,19 +22,6 @@ const _: () = {
 pub struct MemSM<F: PrimeField> {
     /// PIL2 standard library
     std: Arc<Std<F>>,
-}
-
-#[derive(Default)]
-pub struct MemoryAirValues {
-    pub segment_id: u32,
-    pub is_first_segment: bool,
-    pub is_last_segment: bool,
-    pub previous_segment_addr: u32,
-    pub previous_segment_step: u64,
-    pub previous_segment_value: [u32; 2],
-    pub segment_last_addr: u32,
-    pub segment_last_step: u64,
-    pub segment_last_value: [u32; 2],
 }
 #[derive(Debug, Default)]
 pub struct MemPreviousSegment {
@@ -76,34 +62,25 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
 
         assert!(
             !mem_ops.is_empty() && mem_ops.len() <= trace.num_rows,
-            "MemSM: mem_ops.len()={} out of range {}",
+            "MemSM OUT-OF-RANGE segment_id:{} mem_ops:{} rows:{}  [0]{:?} [last]:{:?}",
+            segment_id,
             mem_ops.len(),
             trace.num_rows,
+            mem_ops[0],
+            mem_ops[mem_ops.len() - 1],
         );
 
         let std = self.std.clone();
+
         let range_id = std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
-        let mut range_check_data = Box::new([0u16; MEMORY_MAX_DIFF as usize]);
+        let mut range_check_data: Vec<u16> = vec![0; MEMORY_MAX_DIFF as usize];
         let f_range_check_max_value = F::from_canonical_u64(0xFFFF + 1);
 
         // use special counter for internal reads
         let mut range_check_data_max = 0u64;
 
-        let mut air_values_mem = MemoryAirValues {
-            segment_id: segment_id as u32,
-            is_first_segment: segment_id == 0,
-            is_last_segment,
-            previous_segment_addr: previous_segment.addr,
-            previous_segment_step: previous_segment.step,
-            previous_segment_value: [
-                previous_segment.value as u32,
-                (previous_segment.value >> 32) as u32,
-            ],
-            ..MemoryAirValues::default()
-        };
-
         // index it's value - 1, for this reason no add +1
-        range_check_data[(previous_segment.addr - RAM_W_ADDR_INIT) as usize] += 1; // TODO
+        range_check_data[(previous_segment.addr - RAM_W_ADDR_INIT) as usize] += 1;
 
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
@@ -112,8 +89,16 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
         let mut i = 0;
         let mut increment;
         let f_max_increment = F::from_canonical_u64(MEMORY_MAX_DIFF);
-        for mem_op in mem_ops.iter() {
+        for (mem_op_index, mem_op) in mem_ops.iter().enumerate() {
+            let debug = false;
             let mut step = mem_op.step;
+            if debug {
+                println!("[MemSm]: {:?}", mem_op);
+            }
+
+            if i >= trace.num_rows {
+                break;
+            }
 
             // set the common values of trace between internal reads and regular memory operation
             trace[i].addr = F::from_canonical_u32(mem_op.addr);
@@ -125,12 +110,32 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
             } else {
                 increment = step - last_step;
                 if increment > MEMORY_MAX_DIFF {
+                    let debug = true;
                     // calculate the number of internal reads
                     let mut internal_reads = (increment - 1) / MEMORY_MAX_DIFF;
+                    println!(
+                        "INCREMENT:{} = {} - {} i:{} internal_reads:{}",
+                        increment, step, last_step, i, internal_reads
+                    );
+                    assert!(
+                        internal_reads < 1024,
+                        "Internal reads out of range: {} i:{} increment:{} last_step:{} {:?} {:?}",
+                        internal_reads,
+                        i,
+                        increment,
+                        last_step,
+                        mem_op,
+                        mem_ops[mem_op_index - 1]
+                    );
+                    println!("INTERNAL READS:{} i:{}", internal_reads, i);
 
                     // check if has enough rows to complete the internal reads + regular memory
                     let incomplete = (i + internal_reads as usize) >= trace.num_rows;
                     if incomplete {
+                        println!(
+                            "INCOMPLETE i:{} internal_reads:{} trace.num_rows:{}",
+                            i, internal_reads, trace.num_rows
+                        );
                         internal_reads = (trace.num_rows - i) as u64;
                     }
 
@@ -149,20 +154,36 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
                     // internal reads always must be read
                     trace[i].wr = F::zero();
 
-                    // setting step
+                    // set step as max increment from last_step
+                    step = last_step + MEMORY_MAX_DIFF;
+
+                    // setting step on trace
                     trace[i].step = F::from_canonical_u64(step);
+
+                    // update last_step and increment step
                     last_step = step;
-                    step += MEMORY_MAX_DIFF;
+
+                    if debug {
+                        println!("[MemSm] IR0 ROW[{}]: {:?}", i, trace[i]);
+                    }
 
                     i += 1;
+
+                    if internal_reads > 1 || !incomplete {
+                        // set the address changes for the next row{}
+                        trace[i].addr_changes = F::zero();
+                    }
 
                     // the trace values of the rest of internal reads are equal to previous, only
                     // change the value of step
                     for _j in 1..internal_reads {
                         trace[i] = trace[i - 1];
+                        step += MEMORY_MAX_DIFF;
                         trace[i].step = F::from_canonical_u64(step);
                         last_step = step;
-                        step += MEMORY_MAX_DIFF;
+                        if debug {
+                            println!("[MemSm] IR1 ROW[{}]: {:?}", i, trace[i]);
+                        }
                         i += 1;
                     }
 
@@ -174,22 +195,33 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
                         last_addr = mem_op.addr;
                         break;
                     }
+                    step = mem_op.step;
+                    increment = step - last_step;
+
                     // copy last trace for the regular memory operation (addr, addr_changes)
                     trace[i] = trace[i - 1];
-                    increment -= internal_reads * MEMORY_MAX_DIFF;
                 }
             }
 
+            if i >= trace.num_rows {
+                break;
+            }
             // set specific values of trace for regular memory operation
             let (low_val, high_val) = (mem_op.value as u32, (mem_op.value >> 32) as u32);
             trace[i].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
 
             trace[i].step = F::from_canonical_u64(step);
             trace[i].sel = F::one();
+
             trace[i].increment = F::from_canonical_u64(increment);
             trace[i].wr = F::from_bool(mem_op.is_write);
-            i += 1;
 
+            if increment == 0 {
+                if i > 0 {
+                    println!("TRACE[{}] {:?}", i - 1, trace[i - 1])
+                }
+                println!("TRACE[{}] {:?}", i, trace[i]);
+            }
             // Store the value of incremenet so it can be range checked
             let range_index = increment as usize - 1;
             if range_index < MEMORY_MAX_DIFF as usize {
@@ -206,6 +238,10 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
             } else {
                 panic!("MemSM: increment's out of range: {} i:{} addr_changes:{} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{}",
                     increment, i, addr_changes as u8, mem_op.addr, last_addr, mem_op.step, last_step);
+            }
+
+            if debug {
+                println!("[MemSm] ROW[{}]: {:?}", i, trace[i]);
             }
 
             last_addr = mem_op.addr;
@@ -236,14 +272,9 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
             trace[i].increment = F::one();
         }
 
-        air_values_mem.segment_last_addr = last_addr;
-        air_values_mem.segment_last_step = last_step;
-        air_values_mem.segment_last_value[0] = last_value as u32;
-        air_values_mem.segment_last_value[1] = (last_value >> 32) as u32;
-
         // Store the value of trivial increment so that they can be range checked
         // value = 1 => index = 0
-        self.std.range_check(F::zero(), F::from_canonical_usize(padding_size), range_id);
+        self.std.range_check(F::one(), F::from_canonical_usize(padding_size), range_id);
 
         // no add extra +1 because index = value - 1
         // RAM_W_ADDR_END - last_addr + 1 - 1 = RAM_W_ADDR_END - last_addr
@@ -262,28 +293,35 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
             );
         }
         self.std.range_check(
-            f_range_check_max_value,
+            F::from_canonical_u64(MEMORY_MAX_DIFF),
             F::from_canonical_u64(range_check_data_max),
             range_id,
         );
 
         let mut air_values = MemAirValues::<F>::new();
-        air_values.segment_id = F::from_canonical_u32(air_values_mem.segment_id);
-        air_values.is_first_segment = F::from_bool(air_values_mem.is_first_segment);
-        air_values.is_last_segment = F::from_bool(air_values_mem.is_last_segment);
-        air_values.previous_segment_step =
-            F::from_canonical_u64(air_values_mem.previous_segment_step);
-        air_values.previous_segment_addr =
-            F::from_canonical_u32(air_values_mem.previous_segment_addr);
-        air_values.segment_last_addr = F::from_canonical_u32(air_values_mem.segment_last_addr);
-        air_values.segment_last_step = F::from_canonical_u64(air_values_mem.segment_last_step);
-        let count = air_values_mem.previous_segment_value.len();
-        for i in 0..count {
-            air_values.previous_segment_value[i] =
-                F::from_canonical_u32(air_values_mem.previous_segment_value[i]);
-            air_values.segment_last_value[i] =
-                F::from_canonical_u32(air_values_mem.segment_last_value[i]);
-        }
+        air_values.segment_id = F::from_canonical_usize(segment_id);
+        air_values.is_first_segment = F::from_bool(segment_id == 0);
+        air_values.is_last_segment = F::from_bool(is_last_segment);
+        air_values.previous_segment_step = F::from_canonical_u64(previous_segment.step);
+        air_values.previous_segment_addr = F::from_canonical_u32(previous_segment.addr);
+        air_values.segment_last_addr = F::from_canonical_u32(last_addr);
+        air_values.segment_last_step = F::from_canonical_u64(last_step);
+
+        air_values.previous_segment_value[0] = F::from_canonical_u32(previous_segment.value as u32);
+        air_values.previous_segment_value[1] =
+            F::from_canonical_u32((previous_segment.value >> 32) as u32);
+
+        air_values.segment_last_value[0] = F::from_canonical_u32(last_value as u32);
+        air_values.segment_last_value[1] = F::from_canonical_u32((last_value >> 32) as u32);
+
+        // println!(
+        //     "[Mem:{}] ## rows:{} padding:{} last_row:{}",
+        //     segment_id, num_rows, padding_size, last_row
+        // );
+        // println!("[Mem:{}] ## 0: {:?}", segment_id, trace[0]);
+        // println!("[Mem:{}] ## {}: {:?}", segment_id, last_row, trace[last_row]);
+        // println!("[Mem:{}] ## n-1: {:?}", segment_id, trace[trace.num_rows() - 1]);
+        // println!("[Mem:{}] ## {:?}", segment_id, air_values);
 
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
     }

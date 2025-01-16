@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use crate::{
-    MemInput, MemModule, MemPreviousSegment, MemoryAirValues, MEMORY_MAX_DIFF, MEM_BYTES_BITS,
-};
+use crate::{MemInput, MemModule, MemPreviousSegment, MEMORY_MAX_DIFF, MEM_BYTES_BITS};
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
@@ -15,11 +13,6 @@ pub const INPUT_DATA_W_ADDR_END: u32 = (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32 
 
 #[allow(clippy::assertions_on_constants)]
 const _: () = {
-    // REVIEW! Commented to compile
-    // assert!(
-    //     (MAX_INPUT_SIZE - 1) >> MEM_BYTES_BITS as u64 <= MEMORY_MAX_DIFF,
-    //     "INPUT_DATA is too large"
-    // );
     assert!(
         INPUT_ADDR + MAX_INPUT_SIZE - 1 <= 0xFFFF_FFFF,
         "INPUT_DATA memory exceeds the 32-bit addressable range"
@@ -77,19 +70,6 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
 
         let mut range_check_data = Box::new([0u64; 1 << 16]);
 
-        let mut air_values_mem = MemoryAirValues {
-            segment_id: segment_id as u32,
-            is_first_segment: segment_id == 0,
-            is_last_segment,
-            previous_segment_addr: previous_segment.addr,
-            previous_segment_step: previous_segment.step,
-            previous_segment_value: [
-                previous_segment.value as u32,
-                (previous_segment.value >> 32) as u32,
-            ],
-            ..MemoryAirValues::default()
-        };
-
         // range of instance
         let range_id = self.std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
         self.std.range_check(
@@ -103,10 +83,13 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
         let mut last_value: u64 = previous_segment.value;
 
         let mut i = 0;
+
         for mem_op in mem_ops.iter() {
-            let mut internal_reads = (mem_op.addr - last_addr) - 1;
-            if internal_reads > 1 {
+            let distance = mem_op.addr - last_addr;
+            let debug = false;
+            if distance > 1 {
                 // check if has enough rows to complete the internal reads + regular memory
+                let mut internal_reads = distance - 1;
                 let incomplete = (i + internal_reads as usize) >= trace.num_rows;
                 if incomplete {
                     internal_reads = (trace.num_rows - i) as u32;
@@ -126,12 +109,19 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
                 for j in 0..4 {
                     trace[i].value_word[j] = F::zero();
                 }
+                if debug {
+                    println!("[InputData] IR1 ROW[{}]: {:?}", i, trace[i]);
+                }
                 i += 1;
 
                 for _j in 1..internal_reads {
                     trace[i] = trace[i - 1];
                     last_addr += 1;
                     trace[i].addr = F::from_canonical_u32(last_addr);
+                    if debug {
+                        println!("[InputData] IR2 ROW[{}]: {:?}", i, trace[i]);
+                    }
+
                     i += 1;
                 }
                 range_check_data[0] += 4 * internal_reads as u64;
@@ -139,6 +129,7 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
                     break;
                 }
             }
+
             trace[i].addr = F::from_canonical_u32(mem_op.addr);
             trace[i].step = F::from_canonical_u64(mem_op.step);
             trace[i].sel = F::one();
@@ -153,6 +144,10 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
             let addr_changes = last_addr != mem_op.addr;
             trace[i].addr_changes =
                 if addr_changes || (i == 0 && segment_id == 0) { F::one() } else { F::zero() };
+
+            if debug {
+                println!("[InputData] ROW[{}]: {:?}", i, trace[i]);
+            }
 
             last_addr = mem_op.addr;
             last_step = mem_op.step;
@@ -184,11 +179,6 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
             trace[i].addr_changes = F::zero();
         }
 
-        air_values_mem.segment_last_addr = last_addr;
-        air_values_mem.segment_last_step = last_step;
-        air_values_mem.segment_last_value[0] = last_value as u32;
-        air_values_mem.segment_last_value[1] = (last_value >> 32) as u32;
-
         self.std.range_check(
             F::from_canonical_u32(INPUT_DATA_W_ADDR_END - last_addr + 1),
             F::one(),
@@ -213,22 +203,24 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
         }
 
         let mut air_values = InputDataAirValues::<F>::new();
-        air_values.segment_id = F::from_canonical_u32(air_values_mem.segment_id);
-        air_values.is_first_segment = F::from_bool(air_values_mem.is_first_segment);
-        air_values.is_last_segment = F::from_bool(air_values_mem.is_last_segment);
-        air_values.previous_segment_step =
-            F::from_canonical_u64(air_values_mem.previous_segment_step);
-        air_values.previous_segment_addr =
-            F::from_canonical_u32(air_values_mem.previous_segment_addr);
-        air_values.segment_last_addr = F::from_canonical_u32(air_values_mem.segment_last_addr);
-        air_values.segment_last_step = F::from_canonical_u64(air_values_mem.segment_last_step);
-        let count = air_values_mem.previous_segment_value.len();
-        for i in 0..count {
-            air_values.previous_segment_value[i] =
-                F::from_canonical_u32(air_values_mem.previous_segment_value[i]);
-            air_values.segment_last_value[i] =
-                F::from_canonical_u32(air_values_mem.segment_last_value[i]);
-        }
+        air_values.segment_id = F::from_canonical_usize(segment_id);
+        air_values.is_first_segment = F::from_bool(segment_id == 0);
+        air_values.is_last_segment = F::from_bool(is_last_segment);
+        air_values.previous_segment_step = F::from_canonical_u64(previous_segment.step);
+        air_values.previous_segment_addr = F::from_canonical_u32(previous_segment.addr);
+        air_values.segment_last_addr = F::from_canonical_u32(last_addr);
+        air_values.segment_last_step = F::from_canonical_u64(last_step);
+
+        air_values.previous_segment_value[0] = F::from_canonical_u32(previous_segment.value as u32);
+        air_values.previous_segment_value[1] =
+            F::from_canonical_u32((previous_segment.value >> 32) as u32);
+
+        air_values.segment_last_value[0] = F::from_canonical_u32(last_value as u32);
+        air_values.segment_last_value[1] = F::from_canonical_u32((last_value >> 32) as u32);
+
+        // println!("[InputData] #:{} ROW[0]: {:?}", trace.num_rows(), trace[0]);
+        // println!("[InputData] #:{} ROW[n-1]: {:?}", trace.num_rows(), trace[trace.num_rows() -
+        // 1]); println!("[InputData] {:?}", air_values);
 
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
     }

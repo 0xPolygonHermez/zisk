@@ -4,7 +4,6 @@ use crate::{
     InputDataSM, MemAlignInstance, MemAlignRomSM, MemAlignSM, MemCounters, MemModuleInstance,
     MemPlanner, MemSM, RomDataSM,
 };
-use log::info;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use sm_common::{
@@ -36,9 +35,7 @@ impl<F: PrimeField> MemProxy<F> {
 
 impl<F: PrimeField> ComponentBuilder<F> for MemProxy<F> {
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        info!("[Mem]   MemProxy::build_counter");
         Box::new(MemCounters::new())
-        // Box::new(MemCounters::new(OPERATION_BUS_ID, vec![zisk_core::ZiskOperationType::Arith]))
     }
 
     fn build_planner(&self) -> Box<dyn Planner> {

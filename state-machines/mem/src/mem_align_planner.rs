@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use crate::{MemCounters, MemPlanCalculator};
-use log::info;
 use sm_common::{CheckPoint, ChunkId, InstanceType, Plan};
-use zisk_pil::{MEM_ALIGN_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{MEM_ALIGN_AIR_IDS, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 pub struct MemAlignPlanner<'a> {
     instances: Vec<Plan>,
     num_rows: u32,
     current_skip: u32,
+    current_count: u32,
     current_chunk_id: Option<ChunkId>,
     current_chunks: Vec<ChunkId>,
     current_rows_available: u32,
@@ -31,6 +31,7 @@ impl<'a> MemAlignPlanner<'a> {
             instances: Vec::new(),
             num_rows: MEM_ALIGN_ROWS as u32,
             current_skip: 0,
+            current_count: 0,
             current_chunk_id: None,
             current_chunks: Vec::new(),
             current_rows_available: MEM_ALIGN_ROWS as u32,
@@ -43,18 +44,13 @@ impl<'a> MemAlignPlanner<'a> {
         }
 
         let count = self.counters.len();
-        info!("[Mem]   MemAlignPlan {}", count);
 
         for index in 0..count {
             let chunk_id = self.counters[index].0;
             let counter = self.counters[index].1;
-            info!("[Mem]   MemAlignPlan 2A index:{}", index);
             self.set_current_chunk_id(chunk_id);
-            info!("[Mem]   MemAlignPlan 2B index:{}", index);
             self.add_to_current_instance(counter.mem_align_rows, &counter.mem_align);
         }
-        let count = self.counters.len();
-        info!("[Mem]   MemAlignPlan 3 {}", count);
         self.close_current_instance();
         vec![]
     }
@@ -74,17 +70,19 @@ impl<'a> MemAlignPlanner<'a> {
             // check if has available rows to add all inside this chunks.
             let (count, rows_fit) = if self.current_rows_available >= pending_rows {
                 // self.current_rows_available -= pending_rows;
-                (0, pending_rows)
+                (operations_rows.len() as u32 - operations_rows_offset, pending_rows)
             } else {
                 self.calculate_how_many_operations_fit(operations_rows_offset, operations_rows)
             };
             self.current_rows_available -= rows_fit;
+            self.current_count += count;
+
             pending_rows -= rows_fit;
+            operations_rows_offset += count;
             if self.current_rows_available == 0 {
                 self.close_current_instance();
+                self.open_new_instance(operations_rows_offset, pending_rows > 0);
             }
-            operations_rows_offset += count;
-            self.open_new_instance(operations_rows_offset, pending_rows > 0);
             if pending_rows == 0 {
                 break;
             }
@@ -106,7 +104,7 @@ impl<'a> MemAlignPlanner<'a> {
             None,
             Some(Box::new(MemAlignCheckPoint {
                 skip: self.current_skip,
-                count: 0,
+                count: self.current_count,
                 rows: self.num_rows - self.current_rows_available,
             })),
         );
@@ -142,6 +140,15 @@ impl MemPlanCalculator for MemAlignPlanner<'_> {
         self.align_plan();
     }
     fn collect_plans(&mut self) -> Vec<Plan> {
+        self.instances.push(Plan::new(
+            ZISK_AIRGROUP_ID,
+            MEM_ALIGN_ROM_AIR_IDS[0],
+            None,
+            InstanceType::Table,
+            CheckPoint::None,
+            None,
+            None,
+        ));
         std::mem::take(&mut self.instances)
     }
 }
