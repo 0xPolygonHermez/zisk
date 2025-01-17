@@ -1,3 +1,3 @@
-use zisk_pil::MainRow;
+use zisk_pil::MainTraceRow;
 
-pub type EmuFullTraceStep<F> = MainRow<F>;
+pub type EmuFullTraceStep<F> = MainTraceRow<F>;

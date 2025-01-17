@@ -1,0 +1,23 @@
+[package]
+name = "sm-std"
+version = "0.2.0"
+edition = "2021"
+
+[dependencies]
+zisk-core = { path = "../../core" }
+data-bus = { path = "../../data-bus" }
+sm-common = { path = "../common" }
+
+p3-field = { workspace=true }
+proofman-common = { workspace = true }
+proofman-macros = { workspace = true }
+proofman-util = { workspace = true }
+pil-std-lib = { workspace = true }
+
+log = { workspace = true }
+rayon = { workspace = true }
+itertools = { workspace = true }
+
+[features]
+default = []
+no_lib_link = ["proofman-common/no_lib_link"]

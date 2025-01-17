@@ -1,25 +1,22 @@
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicU32, Ordering},
-        Arc, Mutex,
-    },
-};
+//! The `BinaryExtensionSM` module defines the Binary Extension State Machine.
+//!
+//! This state machine handles binary extension-related operations, computes traces, and manages
+//! range checks and multiplicities for table rows based on the operations provided.
+
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM};
+use data_bus::{OperationBusData, OperationData};
 use log::info;
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::AirInstance;
+use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
-use zisk_pil::{
-    BinaryExtensionRow, BinaryExtensionTrace, BINARY_EXTENSION_AIR_IDS,
-    BINARY_EXTENSION_TABLE_AIR_IDS, ZISK_AIRGROUP_ID,
-};
+use zisk_core::zisk_ops::ZiskOp;
+use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryExtensionTraceRow};
 
+// Constants for bit masks and operations.
 const MASK_32: u64 = 0xFFFFFFFF;
 const MASK_64: u64 = 0xFFFFFFFFFFFFFFFF;
 
@@ -35,89 +32,38 @@ const LS_6_BITS: u64 = 0x3F;
 
 const SE_W_OP: u8 = 0x39;
 
+/// The `BinaryExtensionSM` struct defines the Binary Extension State Machine.
+///
+/// It processes binary extension-related operations and generates necessary traces and multiplicity
+/// tables for the operations. It also manages range checks through the PIL2 standard library.
 pub struct BinaryExtensionSM<F: PrimeField> {
-    // Witness computation manager
-    wcm: Arc<WitnessManager<F>>,
-
-    // STD
+    /// Reference to the PIL2 standard library.
     std: Arc<Std<F>>,
 
-    // Count of registered predecessors
-    registered_predecessors: AtomicU32,
-
-    // Inputs
-    inputs: Mutex<Vec<ZiskRequiredOperation>>,
-
-    // Secondary State machines
-    binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
-}
-
-#[derive(Debug)]
-pub enum BinaryExtensionSMErr {
-    InvalidOpcode,
+    /// Reference to the Binary Extension Table State Machine.
+    binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
 }
 
 impl<F: PrimeField> BinaryExtensionSM<F> {
     const MY_NAME: &'static str = "BinaryE ";
 
+    /// Creates a new instance of the `BinaryExtensionSM`.
+    ///
+    /// # Arguments
+    /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
+    /// * `binary_extension_table_sm` - An `Arc`-wrapped reference to the Binary Extension Table
+    ///   State Machine.
+    ///
+    /// # Returns
+    /// An `Arc`-wrapped instance of `BinaryExtensionSM`.
     pub fn new(
-        wcm: Arc<WitnessManager<F>>,
         std: Arc<Std<F>>,
-        binary_extension_table_sm: Arc<BinaryExtensionTableSM<F>>,
-        airgroup_id: usize,
-        air_ids: &[usize],
+        binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
     ) -> Arc<Self> {
-        let binary_extension_sm = Self {
-            wcm: wcm.clone(),
-            std: std.clone(),
-            registered_predecessors: AtomicU32::new(0),
-            inputs: Mutex::new(Vec::new()),
-            binary_extension_table_sm,
-        };
-        let binary_extension_sm = Arc::new(binary_extension_sm);
-
-        wcm.register_component(binary_extension_sm.clone(), Some(airgroup_id), Some(air_ids));
-
-        std.register_predecessor();
-
-        binary_extension_sm.binary_extension_table_sm.register_predecessor();
-
-        binary_extension_sm
+        Arc::new(Self { std, binary_extension_table_sm })
     }
 
-    pub fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    pub fn unregister_predecessor(&self) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            /*<BinaryExtensionSM<F> as Provable<ZiskRequiredOperation, OpResult>>::prove(
-                self,
-                &[],
-                true,
-                scope,
-            );*/
-
-            self.binary_extension_table_sm.unregister_predecessor();
-
-            self.std.unregister_predecessor(self.wcm.get_pctx(), None);
-        }
-    }
-
-    pub fn operations() -> Vec<u8> {
-        vec![
-            ZiskOp::Sll.code(),
-            ZiskOp::Srl.code(),
-            ZiskOp::Sra.code(),
-            ZiskOp::SllW.code(),
-            ZiskOp::SrlW.code(),
-            ZiskOp::SraW.code(),
-            ZiskOp::SignExtendB.code(),
-            ZiskOp::SignExtendH.code(),
-            ZiskOp::SignExtendW.code(),
-        ]
-    }
-
+    /// Determines if the given opcode represents a shift operation.
     fn opcode_is_shift(opcode: ZiskOp) -> bool {
         match opcode {
             ZiskOp::Sll |
@@ -133,6 +79,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         }
     }
 
+    /// Determines if the given opcode represents a shift word operation.
     fn opcode_is_shift_word(opcode: ZiskOp) -> bool {
         match opcode {
             ZiskOp::SllW | ZiskOp::SrlW | ZiskOp::SraW => true,
@@ -148,20 +95,32 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         }
     }
 
+    /// Processes a single operation and generates the corresponding trace row.
+    ///
+    /// # Arguments
+    /// * `operation` - The operation to process.
+    /// * `multiplicity` - A mutable reference to the multiplicity table to update.
+    /// * `range_check` - A mutable reference to the range check table to update.
+    ///
+    /// # Returns
+    /// A `BinaryExtensionTraceRow` representing the processed trace.
     pub fn process_slice(
-        operation: &ZiskRequiredOperation,
+        operation: &OperationData<u64>,
         multiplicity: &mut [u64],
         range_check: &mut HashMap<u64, u64>,
-    ) -> BinaryExtensionRow<F> {
+    ) -> BinaryExtensionTraceRow<F> {
         // Get the opcode
-        let op = operation.opcode;
+        let op = OperationBusData::get_op(operation);
+        let a = OperationBusData::get_a(operation);
+        let b = OperationBusData::get_b(operation);
+        let step = OperationBusData::get_step(operation);
 
         // Get a ZiskOp from the code
-        let opcode = ZiskOp::try_from_code(operation.opcode).expect("Invalid ZiskOp opcode");
+        let opcode = ZiskOp::try_from_code(op).expect("Invalid ZiskOp opcode");
 
         // Create an empty trace
         let mut row =
-            BinaryExtensionRow::<F> { op: F::from_canonical_u8(op), ..Default::default() };
+            BinaryExtensionTraceRow::<F> { op: F::from_canonical_u8(op), ..Default::default() };
 
         // Set if the opcode is a shift operation
         let op_is_shift = Self::opcode_is_shift(opcode);
@@ -171,30 +130,30 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         let op_is_shift_word = Self::opcode_is_shift_word(opcode);
 
         // Detect if this is a sign extend operation
-        let a = if op_is_shift { operation.a } else { operation.b };
-        let b = if op_is_shift { operation.b } else { operation.a };
+        let a_val = if op_is_shift { a } else { b };
+        let b_val = if op_is_shift { b } else { a };
 
         // Split a in bytes and store them in in1
-        let a_bytes: [u8; 8] = a.to_le_bytes();
+        let a_bytes: [u8; 8] = a_val.to_le_bytes();
         for (i, value) in a_bytes.iter().enumerate() {
             row.in1[i] = F::from_canonical_u8(*value);
         }
 
         // Store b low part into in2_low
-        let in2_low: u64 = if op_is_shift { b & 0xFF } else { 0 };
+        let in2_low: u64 = if op_is_shift { b_val & 0xFF } else { 0 };
         row.in2_low = F::from_canonical_u64(in2_low);
 
         // Store b lower bits when shifting, depending on operation size
-        let b_low = if op_is_shift_word { b & LS_5_BITS } else { b & LS_6_BITS };
+        let b_low = if op_is_shift_word { b_val & LS_5_BITS } else { b_val & LS_6_BITS };
 
         // Store b into in2
-        let in2_0: u64 = if op_is_shift { (b >> 8) & 0xFFFFFF } else { b & 0xFFFFFFFF };
-        let in2_1: u64 = (b >> 32) & 0xFFFFFFFF;
+        let in2_0: u64 = if op_is_shift { (b_val >> 8) & 0xFFFFFF } else { b_val & 0xFFFFFFFF };
+        let in2_1: u64 = (b_val >> 32) & 0xFFFFFFFF;
         row.in2[0] = F::from_canonical_u64(in2_0);
         row.in2[1] = F::from_canonical_u64(in2_1);
 
         // Set main SM step
-        row.debug_main_step = F::from_canonical_u64(operation.step);
+        row.debug_main_step = F::from_canonical_u64(step);
 
         // Calculate the trace output
         let mut t_out: [[u64; 2]; 8] = [[0; 2]; 8];
@@ -331,10 +290,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                     t_out[j][1] = (out >> 32) & 0xffffffff;
                 }
             }
-            _ => panic!(
-                "BinaryExtensionSM::process_slice() found invalid opcode={}",
-                operation.opcode
-            ),
+            _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", op),
         }
 
         // Convert the trace output to field elements
@@ -347,7 +303,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         row.multiplicity = F::one();
 
         for (i, a_byte) in a_bytes.iter().enumerate() {
-            let row = BinaryExtensionTableSM::<F>::calculate_table_row(
+            let row = BinaryExtensionTableSM::calculate_table_row(
                 binary_extension_table_op,
                 i as u64,
                 *a_byte as u64,
@@ -365,64 +321,53 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         row
     }
 
-    pub fn prove_instance(&self, operations: Vec<ZiskRequiredOperation>, prover_buffer: &mut [F]) {
-        Self::prove_internal(
-            &self.wcm,
-            &self.binary_extension_table_sm,
-            &self.std,
-            operations,
-            prover_buffer,
-        );
-    }
-
-    fn prove_internal(
-        wcm: &WitnessManager<F>,
-        binary_extension_table_sm: &BinaryExtensionTableSM<F>,
-        std: &Std<F>,
-        operations: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-    ) {
+    /// Computes the witness for the given set of operations.
+    ///
+    /// # Arguments
+    /// * `operations` - The list of operations to process.
+    ///
+    /// # Returns
+    /// An `AirInstance` representing the computed witness.
+    pub fn compute_witness(&self, operations: &[OperationData<u64>]) -> AirInstance<F> {
         timer_start_debug!(BINARY_EXTENSION_TRACE);
-        let pctx = wcm.get_pctx();
+        let mut binary_e_trace = BinaryExtensionTrace::new();
 
-        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
-        let air_binary_extension_table =
-            pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_TABLE_AIR_IDS[0]);
-        assert!(operations.len() <= air.num_rows());
+        let num_rows = binary_e_trace.num_rows();
+        assert!(operations.len() <= num_rows);
 
         info!(
             "{}: ··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
             operations.len(),
-            air.num_rows(),
-            operations.len() as f64 / air.num_rows() as f64 * 100.0
+            num_rows,
+            operations.len() as f64 / num_rows as f64 * 100.0
         );
 
-        let mut multiplicity_table = vec![0u64; air_binary_extension_table.num_rows()];
+        let mut multiplicity_table = vec![0u64; BinaryExtensionTableTrace::<F>::NUM_ROWS];
         let mut range_check: HashMap<u64, u64> = HashMap::new();
-        let mut trace_buffer =
-            BinaryExtensionTrace::<F>::map_buffer(prover_buffer, air.num_rows(), 0).unwrap();
 
         for (i, operation) in operations.iter().enumerate() {
             let row = Self::process_slice(operation, &mut multiplicity_table, &mut range_check);
-            trace_buffer[i] = row;
+            binary_e_trace[i] = row;
         }
         timer_stop_and_log_debug!(BINARY_EXTENSION_TRACE);
 
         timer_start_debug!(BINARY_EXTENSION_PADDING);
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
-        let padding_row =
-            BinaryExtensionRow::<F> { op: F::from_canonical_u8(SE_W_OP), ..Default::default() };
+        let padding_row = BinaryExtensionTraceRow::<F> {
+            op: F::from_canonical_u8(SE_W_OP),
+            ..Default::default()
+        };
 
-        for i in operations.len()..air.num_rows() {
-            trace_buffer[i] = padding_row;
+        for i in operations.len()..num_rows {
+            binary_e_trace[i] = padding_row;
         }
 
-        let padding_size = air.num_rows() - operations.len();
+        let padding_size = num_rows - operations.len();
         for i in 0..8 {
             let multiplicity = padding_size as u64;
-            let row = BinaryExtensionTableSM::<F>::calculate_table_row(
+            let row = BinaryExtensionTableSM::calculate_table_row(
                 BinaryExtensionTableOp::SignExtendW,
                 i,
                 0,
@@ -433,13 +378,13 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         timer_stop_and_log_debug!(BINARY_EXTENSION_PADDING);
 
         timer_start_debug!(BINARY_EXTENSION_TABLE);
-        binary_extension_table_sm.process_slice(&multiplicity_table);
+        self.binary_extension_table_sm.process_slice(&multiplicity_table);
         timer_stop_and_log_debug!(BINARY_EXTENSION_TABLE);
 
-        let range_id = std.get_range(BigInt::from(0), BigInt::from(0xFFFFFF), None);
+        let range_id = self.std.get_range(BigInt::from(0), BigInt::from(0xFFFFFF), None);
         timer_start_debug!(BINARY_EXTENSION_RANGE);
         for (value, multiplicity) in &range_check {
-            std.range_check(
+            self.std.range_check(
                 F::from_canonical_u64(*value),
                 F::from_canonical_u64(*multiplicity),
                 range_id,
@@ -447,53 +392,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         }
         timer_stop_and_log_debug!(BINARY_EXTENSION_RANGE);
 
-        std::thread::spawn(move || {
-            drop(operations);
-            drop(multiplicity_table);
-            drop(range_check);
-        });
-    }
-
-    pub fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool) {
-        if let Ok(mut inputs) = self.inputs.lock() {
-            inputs.extend_from_slice(operations);
-
-            let pctx = self.wcm.get_pctx();
-            let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]);
-
-            while inputs.len() >= air.num_rows() || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(air.num_rows(), inputs.len());
-                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
-
-                let binary_extension_table_sm = self.binary_extension_table_sm.clone();
-                let wcm = self.wcm.clone();
-
-                let std = self.std.clone();
-
-                let sctx = self.wcm.get_sctx().clone();
-
-                let trace: BinaryExtensionTrace<'_, _> = BinaryExtensionTrace::new(air.num_rows());
-                let mut prover_buffer = trace.buffer.unwrap();
-
-                Self::prove_internal(
-                    &wcm,
-                    &binary_extension_table_sm,
-                    &std,
-                    drained_inputs,
-                    &mut prover_buffer,
-                );
-
-                let air_instance = AirInstance::new(
-                    sctx,
-                    ZISK_AIRGROUP_ID,
-                    BINARY_EXTENSION_AIR_IDS[0],
-                    None,
-                    prover_buffer,
-                );
-                wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, None);
-            }
-        }
+        AirInstance::new_from_trace(FromTrace::new(&mut binary_e_trace))
     }
 }
-
-impl<F: PrimeField> WitnessComponent<F> for BinaryExtensionSM<F> {}
