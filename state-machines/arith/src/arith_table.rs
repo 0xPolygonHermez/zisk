@@ -15,7 +15,6 @@ use zisk_pil::ArithTableTrace;
 pub struct ArithTableSM {
     /// Multiplicity table shared across threads.
     multiplicity: Mutex<Vec<u64>>,
-    used: AtomicBool,
 }
 
 impl ArithTableSM {

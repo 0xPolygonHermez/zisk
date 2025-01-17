@@ -87,8 +87,8 @@ pub struct Emu<'a> {
 /// - run -> step -> source_a, source_b, store_c (full functionality, called by main state machine,
 ///   calls callback with trace)
 /// - run -> run_fast -> step_fast -> source_a, source_b, store_c (maximum speed, for benchmarking)
-/// - run_slice -> step_slice -> source_a_slice, source_b_slice (generates full trace and required
-///   input data for secondary state machines)
+/// - run_slice -> step_slice -> source_a_slice, source_b_slice, store_c_slice (generates full trace
+///   and required input data for secondary state machines)
 impl<'a> Emu<'a> {
     pub fn new(rom: &ZiskRom) -> Emu {
         Emu { rom, ctx: EmuContext::default() }
@@ -888,7 +888,8 @@ impl<'a> Emu<'a> {
         }
     }
 
-    /// Store the 'c' register value based on the storage specified by the current instruction
+    /// Store the 'c' register value based on the storage specified by the current instruction and
+    /// log memory access if required
     #[inline(always)]
     pub fn store_c_mem_reads_generate(&mut self, instruction: &ZiskInst, mem_reads: &mut Vec<u64>) {
         match instruction.store {
@@ -1454,22 +1455,6 @@ impl<'a> Emu<'a> {
         emu_traces
     }
 
-    pub fn par_run_memory<F: PrimeField>(&mut self, inputs: Vec<u8>) -> Vec<ZiskRequiredMemory> {
-        // Context, where the state of the execution is stored and modified at every execution step
-        self.ctx = self.create_emu_context(inputs);
-
-        // Init pc to the rom entry address
-        self.ctx.trace.start_state.pc = ROM_ENTRY;
-
-        let mut emu_mem = Vec::new();
-
-        while !self.ctx.inst_ctx.end {
-            self.par_step_memory::<F>(&mut emu_mem);
-        }
-
-        emu_mem
-    }
-
     /// Performs one single step of the emulation
     #[inline(always)]
     #[allow(unused_variables)]
@@ -1477,13 +1462,8 @@ impl<'a> Emu<'a> {
         let pc = self.ctx.inst_ctx.pc;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
-        /*println!(
-            "Emu::step() executing step={} pc={:x} inst={}",
-            self.ctx.inst_ctx.step,
-            self.ctx.inst_ctx.pc,
-            instruction.to_text()
-        );*/
-        //println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
+        //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
+        // inst.i.to_string()); println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
 
         // Build the 'a' register value  based on the source specified by the current instruction
         self.source_a(instruction);

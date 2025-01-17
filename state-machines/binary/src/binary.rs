@@ -62,6 +62,7 @@ impl<F: PrimeField> BinarySM<F> {
             binary_extension_table_sm,
         })
     }
+}
 
 impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
     /// Builds and returns a new counter for monitoring binary operations.
@@ -155,5 +156,3 @@ impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
         }
     }
 }
-
-impl<F: PrimeField> WitnessComponent<F> for BinarySM<F> {}

@@ -945,5 +945,3 @@ impl BinaryBasicSM {
         AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))
     }
 }
-
-impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicSM<F> {}

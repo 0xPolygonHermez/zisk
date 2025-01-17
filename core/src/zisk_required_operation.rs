@@ -2,7 +2,7 @@
 
 use core::fmt;
 
-/// Required data to make an operation.
+/// Required data to make an operation.  
 ///
 /// Stores the minimum information to reproduce an operation execution:
 /// * The opcode and the a and b registers values (regardless of their sources)

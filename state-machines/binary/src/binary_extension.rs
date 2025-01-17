@@ -395,5 +395,3 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         AirInstance::new_from_trace(FromTrace::new(&mut binary_e_trace))
     }
 }
-
-impl<F: PrimeField> WitnessComponent<F> for BinaryExtensionSM<F> {}
