@@ -182,6 +182,9 @@ impl<F: PrimeField> MemModuleInstance<F> {
 
 impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
+        if self.inputs.is_empty() {
+            return None;
+        }
         self.prepare_inputs();
         let prev_segment = self.fit_inputs_and_get_prev_segment();
 

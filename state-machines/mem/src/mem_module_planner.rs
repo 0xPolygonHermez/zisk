@@ -409,11 +409,12 @@ impl MemPlanCalculator for MemModulePlanner<'_> {
     }
     fn collect_plans(&mut self) -> Vec<Plan> {
         let mut plans: Vec<Plan> = Vec::new();
-        if self.segments.is_empty() {
+        if self.segments.is_empty() || self.segments.last().unwrap().rows == 0 {
+            // no data => no plans
             return plans;
         }
 
-        let last_segment_id = if self.segments[self.segments.len() - 1].rows > 0 {
+        let last_segment_id = if self.segments.last().unwrap().rows > 0 {
             self.segments.len() - 1
         } else {
             self.segments.len() - 2
