@@ -18,7 +18,6 @@ pub struct MemModuleInstance<F: PrimeField> {
     /// Collected inputs
     inputs: Vec<MemInput>,
     module: Arc<dyn MemModule<F>>,
-    debug: bool,
 }
 
 impl<F: PrimeField> MemModuleInstance<F> {
@@ -31,7 +30,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
             .downcast_ref::<MemModuleSegmentCheckPoint>()
             .unwrap()
             .clone();
-        Self { ictx, inputs: Vec::new(), mem_check_point, module: module.clone(), debug: false }
+        Self { ictx, inputs: Vec::new(), mem_check_point, module: module.clone() }
     }
 
     fn process_unaligned_data(&mut self, data: &[u64]) {
@@ -86,16 +85,6 @@ impl<F: PrimeField> MemModuleInstance<F> {
             MemBusData::get_value(data),
             read_values,
         );
-        // println!(
-        //     "FILTER DW ADDR:0x:{:X} R:[0x{:X} 0x{:X}] W:[0x{:X} 0x{:X}] bytes:{} value:0x{:X}",
-        //     MemBusData::get_addr(data),
-        //     read_values[0],
-        //     read_values[1],
-        //     write_values[0],
-        //     write_values[1],
-        //     bytes,
-        //     MemBusData::get_value(data)
-        // );
         let step = MemBusData::get_step(data);
         let read_step = MemHelpers::get_read_step(step);
         let write_step = MemHelpers::get_write_step(step);
@@ -125,26 +114,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
     }
     fn filtered_inputs_push(&mut self, addr_w: u32, step: u64, is_write: bool, value: u64) {
         if !self.discart_addr_step(addr_w, step) {
-            // println!(
-            //     "FILTER OK ({:X}-{:X}) addr_w: 0x{:x} step: {} is_write:{} value: 0x{:X}",
-            //     self.mem_check_point.prev_addr * 8,
-            //     self.mem_check_point.last_addr * 8,
-            //     addr_w * 8,
-            //     step,
-            //     is_write,
-            //     value,
-            // );
             self.inputs.push(MemInput::new(addr_w, is_write, step, value));
-        } else {
-            // println!(
-            //     "FILTER DISCARTED ({:X}-{:X}) addr_w: 0x{:x} step: {} is_write:{} value: 0x{:X}",
-            //     self.mem_check_point.prev_addr * 8,
-            //     self.mem_check_point.last_addr * 8,
-            //     addr_w * 8,
-            //     step,
-            //     is_write,
-            //     value,
-            // );
         }
     }
     fn prepare_inputs(&mut self) {
@@ -159,6 +129,8 @@ impl<F: PrimeField> MemModuleInstance<F> {
             step: self.mem_check_point.prev_step,
             value: self.mem_check_point.prev_value,
         };
+        #[cfg(feature = "debug_mem")]
+        let initial = (self.inputs[0].addr, self.inputs[0].step, self.inputs.len());
 
         if self.mem_check_point.skip_rows > 0 {
             let mut input_index = 0;
@@ -182,7 +154,28 @@ impl<F: PrimeField> MemModuleInstance<F> {
             }
             self.inputs.drain(0..input_index);
         }
+        #[cfg(feature = "debug_mem")]
+        let original_inputs_len = self.inputs.len();
+
         self.inputs.truncate(self.mem_check_point.rows as usize);
+
+        #[cfg(feature = "debug_mem")]
+        println!(
+            "[Mem:{}] #1 INPUT [0x{:X},{}] {} => [0x{:X},{}] {} => {} F [0x{:X},{},skip:{}]-[0x{:X},{}]",
+            self.ictx.plan.segment_id.unwrap(),
+            initial.0,
+            initial.1,
+            initial.2,
+            self.inputs[0].addr,
+            self.inputs[0].step,
+            original_inputs_len,
+            self.inputs.len(),
+            self.mem_check_point.prev_addr,
+            self.mem_check_point.prev_step,
+            self.mem_check_point.skip_rows,
+            self.mem_check_point.last_addr,
+            self.mem_check_point.last_step,
+        );
         prev_segment
     }
 }
@@ -193,7 +186,7 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         let prev_segment = self.fit_inputs_and_get_prev_segment();
 
         let segment_id = self.ictx.plan.segment_id.unwrap();
-        Some(self.module.prove_instance(
+        Some(self.module.compute_witness(
             &self.inputs,
             segment_id,
             self.mem_check_point.is_last_segment,
@@ -222,28 +215,9 @@ impl<F: PrimeField> BusDevice<u64> for MemModuleInstance<F> {
         // );
         assert!(*_bus_id == MEM_BUS_ID);
 
-        self.debug = false;
-
         let addr = MemBusData::get_addr(data);
         let step = MemBusData::get_step(data);
         let bytes = MemBusData::get_bytes(data);
-        // self.debug = step <= 220880 &&
-        //     (addr & 0xFFFF_FFF8 == 0xA0008300 ||
-        //         (addr + bytes as u32 - 1) & 0xFFFF_FFF8 == 0xA0008300) &&
-        //     self.mem_check_point.prev_addr >= 0x14000000;
-        // self.debug = step >= 12582900 &&
-        //     step <= 12583000 &&
-        //     addr == 0xA0000088 &&
-        //     self.mem_check_point.prev_addr >= 0x14000000;
-        if self.debug {
-            println!(
-                "MEM BUS DATA 0x{:X} I:{:?} addr: 0x{:X} {:?}",
-                self.mem_check_point.prev_addr * 8,
-                self.ictx.plan.segment_id,
-                addr,
-                data
-            );
-        }
         if !MemHelpers::is_aligned(addr, bytes) {
             self.process_unaligned_data(data);
             return (false, vec![])
@@ -252,14 +226,8 @@ impl<F: PrimeField> BusDevice<u64> for MemModuleInstance<F> {
         let addr_w = MemHelpers::get_addr_w(addr);
         let is_write = MemHelpers::is_write(MemBusData::get_op(data));
         if is_write {
-            if self.debug {
-                println!("MEM BUS IS_WRITE");
-            }
             self.filtered_inputs_push(addr_w, step, true, MemBusData::get_value(data));
         } else {
-            if self.debug {
-                println!("MEM BUS IS_READ");
-            }
             self.filtered_inputs_push(addr_w, step, false, MemBusData::get_mem_values(data)[0]);
         }
 

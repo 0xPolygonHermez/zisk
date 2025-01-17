@@ -15,6 +15,7 @@ mod mem_proxy;
 // mod mem_proxy_engine;
 mod mem_sm;
 // mod mem_unmapped;
+mod mem_debug;
 mod rom_data;
 
 pub use input_data_sm::*;
@@ -34,4 +35,5 @@ pub use mem_proxy::*;
 // pub use mem_proxy_engine::*;
 pub use mem_sm::*;
 //pub use mem_unmapped::*;
+pub use mem_debug::*;
 pub use rom_data::*;

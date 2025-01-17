@@ -52,7 +52,7 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
     /// # Parameters
     ///
     /// - `mem_inputs`: A slice of all `ZiskRequiredMemory` inputs
-    fn prove_instance(
+    fn compute_witness(
         &self,
         mem_ops: &[MemInput],
         segment_id: usize,
@@ -61,7 +61,7 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
     ) -> AirInstance<F> {
         let mut trace = InputDataTrace::<F>::new();
 
-        assert!(
+        debug_assert!(
             !mem_ops.is_empty() && mem_ops.len() <= trace.num_rows(),
             "InputDataSM: mem_ops.len()={} out of range {}",
             mem_ops.len(),
@@ -86,7 +86,6 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
 
         for mem_op in mem_ops.iter() {
             let distance = mem_op.addr - last_addr;
-            let debug = false;
             if distance > 1 {
                 // check if has enough rows to complete the internal reads + regular memory
                 let mut internal_reads = distance - 1;
@@ -109,18 +108,12 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
                 for j in 0..4 {
                     trace[i].value_word[j] = F::zero();
                 }
-                if debug {
-                    println!("[InputData] IR1 ROW[{}]: {:?}", i, trace[i]);
-                }
                 i += 1;
 
                 for _j in 1..internal_reads {
                     trace[i] = trace[i - 1];
                     last_addr += 1;
                     trace[i].addr = F::from_canonical_u32(last_addr);
-                    if debug {
-                        println!("[InputData] IR2 ROW[{}]: {:?}", i, trace[i]);
-                    }
 
                     i += 1;
                 }
@@ -144,10 +137,6 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
             let addr_changes = last_addr != mem_op.addr;
             trace[i].addr_changes =
                 if addr_changes || (i == 0 && segment_id == 0) { F::one() } else { F::zero() };
-
-            if debug {
-                println!("[InputData] ROW[{}]: {:?}", i, trace[i]);
-            }
 
             last_addr = mem_op.addr;
             last_step = mem_op.step;
@@ -217,10 +206,6 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
 
         air_values.segment_last_value[0] = F::from_canonical_u32(last_value as u32);
         air_values.segment_last_value[1] = F::from_canonical_u32((last_value >> 32) as u32);
-
-        // println!("[InputData] #:{} ROW[0]: {:?}", trace.num_rows(), trace[0]);
-        // println!("[InputData] #:{} ROW[n-1]: {:?}", trace.num_rows(), trace[trace.num_rows() -
-        // 1]); println!("[InputData] {:?}", air_values);
 
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
     }

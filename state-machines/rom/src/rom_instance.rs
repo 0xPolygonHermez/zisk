@@ -23,7 +23,7 @@ impl RomInstance {
 
 impl<F: PrimeField> Instance<F> for RomInstance {
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        Some(RomSM::prove_instance(&self.zisk_rom, &self.ictx.plan))
+        Some(RomSM::compute_witness(&self.zisk_rom, &self.ictx.plan))
     }
 
     fn check_point(&self) -> CheckPoint {

@@ -1,7 +1,15 @@
+use num_bigint::BigInt;
 use std::sync::Arc;
 
+#[cfg(feature = "debug_mem")]
+use num_bigint::ToBigInt;
+#[cfg(feature = "debug_mem")]
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+};
+
 use crate::{MemInput, MemModule, MEMORY_MAX_DIFF, MEM_BYTES_BITS};
-use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
@@ -41,6 +49,20 @@ impl<F: PrimeField> MemSM<F> {
     pub fn get_to_addr() -> u32 {
         (RAM_ADDR + RAM_SIZE - 1) as u32
     }
+    #[cfg(feature = "debug_mem")]
+    pub fn save_to_file(&self, trace: &MemTrace<F>, file_name: &str) {
+        println!("[MemDebug] writing information {} .....", file_name);
+        let file = File::create(file_name).unwrap();
+        let mut writer = BufWriter::new(file);
+        let num_rows = MemTrace::<usize>::NUM_ROWS;
+
+        for i in 0..num_rows {
+            let addr = trace[i].addr.as_canonical_biguint().to_bigint().unwrap() * 8;
+            let step = trace[i].step.as_canonical_biguint().to_bigint().unwrap();
+            writeln!(writer, "{:#010X} {:#12}", addr, step).unwrap();
+        }
+        println!("[MemDebug] done");
+    }
 }
 
 impl<F: PrimeField> MemModule<F> for MemSM<F> {
@@ -51,7 +73,7 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
     /// # Parameters
     ///
     /// - `mem_inputs`: A slice of all `MemoryInput` inputs
-    fn prove_instance(
+    fn compute_witness(
         &self,
         mem_ops: &[MemInput],
         segment_id: usize,
@@ -60,9 +82,9 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
     ) -> AirInstance<F> {
         let mut trace = MemTrace::<F>::new();
 
-        assert!(
+        debug_assert!(
             !mem_ops.is_empty() && mem_ops.len() <= trace.num_rows,
-            "MemSM OUT-OF-RANGE segment_id:{} mem_ops:{} rows:{}  [0]{:?} [last]:{:?}",
+            "MemSM Inputs too large segment_id:{} mem_ops:{} rows:{}  [0]{:?} [last]:{:?}",
             segment_id,
             mem_ops.len(),
             trace.num_rows,
@@ -89,12 +111,8 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
         let mut i = 0;
         let mut increment;
         let f_max_increment = F::from_canonical_u64(MEMORY_MAX_DIFF);
-        for (mem_op_index, mem_op) in mem_ops.iter().enumerate() {
-            let debug = false;
+        for mem_op in mem_ops {
             let mut step = mem_op.step;
-            if debug {
-                println!("[MemSm]: {:?}", mem_op);
-            }
 
             if i >= trace.num_rows {
                 break;
@@ -110,32 +128,12 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
             } else {
                 increment = step - last_step;
                 if increment > MEMORY_MAX_DIFF {
-                    let debug = true;
                     // calculate the number of internal reads
                     let mut internal_reads = (increment - 1) / MEMORY_MAX_DIFF;
-                    println!(
-                        "INCREMENT:{} = {} - {} i:{} internal_reads:{}",
-                        increment, step, last_step, i, internal_reads
-                    );
-                    assert!(
-                        internal_reads < 1024,
-                        "Internal reads out of range: {} i:{} increment:{} last_step:{} {:?} {:?}",
-                        internal_reads,
-                        i,
-                        increment,
-                        last_step,
-                        mem_op,
-                        mem_ops[mem_op_index - 1]
-                    );
-                    println!("INTERNAL READS:{} i:{}", internal_reads, i);
 
                     // check if has enough rows to complete the internal reads + regular memory
                     let incomplete = (i + internal_reads as usize) >= trace.num_rows;
                     if incomplete {
-                        println!(
-                            "INCOMPLETE i:{} internal_reads:{} trace.num_rows:{}",
-                            i, internal_reads, trace.num_rows
-                        );
                         internal_reads = (trace.num_rows - i) as u64;
                     }
 
@@ -163,10 +161,6 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
                     // update last_step and increment step
                     last_step = step;
 
-                    if debug {
-                        println!("[MemSm] IR0 ROW[{}]: {:?}", i, trace[i]);
-                    }
-
                     i += 1;
 
                     if internal_reads > 1 || !incomplete {
@@ -181,9 +175,6 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
                         step += MEMORY_MAX_DIFF;
                         trace[i].step = F::from_canonical_u64(step);
                         last_step = step;
-                        if debug {
-                            println!("[MemSm] IR1 ROW[{}]: {:?}", i, trace[i]);
-                        }
                         i += 1;
                     }
 
@@ -216,12 +207,6 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
             trace[i].increment = F::from_canonical_u64(increment);
             trace[i].wr = F::from_bool(mem_op.is_write);
 
-            if increment == 0 {
-                if i > 0 {
-                    println!("TRACE[{}] {:?}", i - 1, trace[i - 1])
-                }
-                println!("TRACE[{}] {:?}", i, trace[i]);
-            }
             // Store the value of incremenet so it can be range checked
             let range_index = increment as usize - 1;
             if range_index < MEMORY_MAX_DIFF as usize {
@@ -238,10 +223,6 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
             } else {
                 panic!("MemSM: increment's out of range: {} i:{} addr_changes:{} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{}",
                     increment, i, addr_changes as u8, mem_op.addr, last_addr, mem_op.step, last_step);
-            }
-
-            if debug {
-                println!("[MemSm] ROW[{}]: {:?}", i, trace[i]);
             }
 
             last_addr = mem_op.addr;
@@ -314,14 +295,8 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
         air_values.segment_last_value[0] = F::from_canonical_u32(last_value as u32);
         air_values.segment_last_value[1] = F::from_canonical_u32((last_value >> 32) as u32);
 
-        // println!(
-        //     "[Mem:{}] ## rows:{} padding:{} last_row:{}",
-        //     segment_id, num_rows, padding_size, last_row
-        // );
-        // println!("[Mem:{}] ## 0: {:?}", segment_id, trace[0]);
-        // println!("[Mem:{}] ## {}: {:?}", segment_id, last_row, trace[last_row]);
-        // println!("[Mem:{}] ## n-1: {:?}", segment_id, trace[trace.num_rows() - 1]);
-        // println!("[Mem:{}] ## {:?}", segment_id, air_values);
+        #[cfg(feature = "debug_mem")]
+        self.save_to_file(&trace, &format!("/tmp/mem_trace_{}.txt", segment_id));
 
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
     }

@@ -35,7 +35,7 @@ impl<F: PrimeField> MemAlignInstance<F> {
 
 impl<F: PrimeField> Instance<F> for MemAlignInstance<F> {
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        Some(self.mem_align_sm.prove_instance(&self.inputs, self.checkpoint.rows))
+        Some(self.mem_align_sm.compute_witness(&self.inputs, self.checkpoint.rows))
     }
 
     fn check_point(&self) -> CheckPoint {
@@ -54,10 +54,6 @@ impl<F: PrimeField> BusDevice<u64> for MemAlignInstance<F> {
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         let addr = MemBusData::get_addr(data);
         let bytes = MemBusData::get_bytes(data);
-        // println!(
-        //     "[MemAlignSM] process_data addr:0x{:X} bytes:{} skip:{} pending:{}",
-        //     addr, bytes, self.skip_pending, self.pending_count
-        // );
         if MemHelpers::is_aligned(addr, bytes) {
             return (false, vec![])
         }

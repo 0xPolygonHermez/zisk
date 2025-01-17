@@ -25,7 +25,7 @@ impl MemInput {
 }
 
 pub trait MemModule<F>: Send + Sync {
-    fn prove_instance(
+    fn compute_witness(
         &self,
         mem_ops: &[MemInput],
         segment_id: usize,

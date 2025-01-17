@@ -26,6 +26,9 @@ pub struct MemModulePlanner<'a> {
     segments: Vec<MemModuleSegment>,
     current_chunk_id: Option<ChunkId>,
     counters: Arc<Vec<(ChunkId, &'a MemCounters)>>,
+    consume_addr: u32,
+    consume_from_step: u64,
+    consume_to_step: u64,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -65,13 +68,15 @@ impl<'a> MemModulePlanner<'a> {
             segments: Vec::new(),
             counters,
             current_chunk_id: None,
+            consume_addr: 0,
+            consume_from_step: 0,
+            consume_to_step: 0,
         }
     }
     pub fn module_plan(&mut self) {
         if self.counters.is_empty() {
             panic!("MemPlanner::plan() No metrics found");
         }
-
         self.open_initial_segment();
         // create a list of cursors, this list has the non-empty indexs of metric (couters) and his
         // cursor init to first position
@@ -79,7 +84,6 @@ impl<'a> MemModulePlanner<'a> {
         while !self.cursors.is_empty() {
             // searches for the first smallest element in the vector and returns its index.
             let (cursor_index, cursor_pos) = self.get_next_cursor_index_and_pos();
-            // println!("cursor_index: {}, cursor_pos: {}", cursor_index, cursor_pos);
 
             let chunk_id = self.get_cursor_chunk_id(cursor_index);
             let (addr, addr_uses) = self.get_cursor_data(cursor_index, cursor_pos);
@@ -90,7 +94,7 @@ impl<'a> MemModulePlanner<'a> {
         self.counters[cursor_index].0
     }
     fn get_cursor_data(&self, cursor_index: usize, cursor_pos: usize) -> (u32, UsesCounter) {
-        if cursor_pos < REGISTERS_COUNT {
+        let result = if cursor_pos < REGISTERS_COUNT {
             (
                 MemHelpers::register_to_addr_w(cursor_pos as u8),
                 self.counters[cursor_index].1.registers[cursor_pos],
@@ -100,7 +104,17 @@ impl<'a> MemModulePlanner<'a> {
             let addr_uses =
                 self.counters[cursor_index].1.addr_sorted[cursor_pos - REGISTERS_COUNT].1;
             (addr, addr_uses)
-        }
+        };
+        debug_assert!(
+            result.0 >= self.config.from_addr && result.0 <= self.config.to_addr,
+            "INVALID_CURSOR addr:{:#010X} from_addr:{:#010X} to_addr:{:#010X} cursor:[{},{}]",
+            result.0 * 8,
+            self.config.from_addr * 8,
+            self.config.to_addr * 8,
+            cursor_index,
+            cursor_pos,
+        );
+        result
     }
     fn init_cursors(&mut self) {
         // for each chunk-counter that has addr_sorted element add a cursor to the first element
@@ -132,6 +146,11 @@ impl<'a> MemModulePlanner<'a> {
                 }
             }
         }
+
+        #[cfg(debug_assertions)]
+        for (cursor_index, cursor_pos) in self.cursors.iter() {
+            let (_, _) = self.get_cursor_data(*cursor_index, *cursor_pos);
+        }
     }
     fn get_next_cursor_index_and_pos(&mut self) -> (usize, usize) {
         let (min_index, _) = self
@@ -149,7 +168,8 @@ impl<'a> MemModulePlanner<'a> {
         let cursor_index = self.cursors[min_index].0;
         let cursor_pos = self.cursors[min_index].1;
 
-        let cursor_next_pos = if cursor_pos < REGISTERS_COUNT {
+        let cursor_on_registers = cursor_pos < REGISTERS_COUNT;
+        let mut cursor_next_pos = if cursor_on_registers {
             for ireg in cursor_pos + 1..REGISTERS_COUNT {
                 if self.counters[cursor_index].1.registers[ireg].count > 0 {
                     self.cursors[min_index].1 = ireg;
@@ -161,7 +181,20 @@ impl<'a> MemModulePlanner<'a> {
             cursor_pos + 1
         };
 
-        let cursor_next_addr_pos = cursor_next_pos - REGISTERS_COUNT;
+        let mut cursor_next_addr_pos = cursor_next_pos - REGISTERS_COUNT;
+        if cursor_on_registers &&
+            cursor_next_addr_pos < self.counters[cursor_index].1.addr_sorted.len()
+        {
+            // filter addr out of [from_addr, to_addr]
+            while cursor_next_addr_pos < self.counters[cursor_index].1.addr_sorted.len() &&
+                self.counters[cursor_index].1.addr_sorted[cursor_next_addr_pos].0 <
+                    self.config.from_addr
+            {
+                cursor_next_addr_pos += 1;
+                cursor_next_pos += 1;
+            }
+        }
+
         // if it's last position, we must remove for list of open_cursors, if not we increment
         if cursor_next_addr_pos >= self.counters[cursor_index].1.addr_sorted.len() ||
             self.counters[cursor_index].1.addr_sorted[cursor_next_addr_pos].0 >
@@ -185,14 +218,15 @@ impl<'a> MemModulePlanner<'a> {
     fn add_block_of_addr_uses(&mut self, addr: u32, addr_uses: &UsesCounter) {
         let mut skip_rows = 0;
         let mut pending_rows = addr_uses.count;
+        self.set_consume_info(addr, addr_uses.first_step, addr_uses.last_step);
         while pending_rows > 0 {
             match (self.rows_available as u64).cmp(&pending_rows) {
                 std::cmp::Ordering::Greater => {
-                    self.consume_rows(pending_rows as u32);
+                    self.consume_rows(pending_rows as u32, 1);
                     break;
                 }
                 std::cmp::Ordering::Equal => {
-                    self.consume_rows(pending_rows as u32);
+                    self.consume_rows(pending_rows as u32, 2);
                     self.close_and_open_segment(
                         addr,
                         addr_uses.first_step,
@@ -205,7 +239,7 @@ impl<'a> MemModulePlanner<'a> {
                 }
                 std::cmp::Ordering::Less => {
                     let rows_applied = self.rows_available;
-                    self.consume_rows(rows_applied);
+                    self.consume_rows(rows_applied, 3);
                     pending_rows -= rows_applied as u64;
                     skip_rows += rows_applied;
                     self.close_and_open_segment(
@@ -214,7 +248,7 @@ impl<'a> MemModulePlanner<'a> {
                         addr,
                         addr_uses.last_step,
                         0,
-                        if skip_rows > 0 { skip_rows - 1 } else { 0 },
+                        skip_rows - 1,
                     );
                 }
             }
@@ -231,15 +265,31 @@ impl<'a> MemModulePlanner<'a> {
             return;
         }
         self.current_chunk_id = Some(chunk_id);
-        if let Err(pos) = self.segments[lindex].chunks.binary_search(&chunk_id) {
-            self.segments[lindex].chunks.insert(pos, chunk_id);
+        self.insert_current_chunk_id_to_segment();
+    }
+    fn insert_current_chunk_id_to_segment(&mut self) {
+        let lindex = self.segments.len() - 1;
+        if let Some(chunk_id) = self.current_chunk_id {
+            if let Err(pos) = self.segments[lindex].chunks.binary_search(&chunk_id) {
+                self.segments[lindex].chunks.insert(pos, chunk_id);
+            }
         }
     }
-    fn consume_rows(&mut self, rows: u32) {
+    fn set_consume_info(&mut self, addr: u32, from_step: u64, to_step: u64) {
+        self.consume_addr = addr;
+        self.consume_from_step = from_step;
+        self.consume_to_step = to_step;
+    }
+    fn consume_rows(&mut self, rows: u32, _label: u32) {
         let lindex = self.segments.len() - 1;
+
+        if self.segments[lindex].rows == 0 {
+            self.insert_current_chunk_id_to_segment();
+        }
+
         self.segments[lindex].rows += rows;
         self.rows_available -= rows;
-        assert!(
+        debug_assert!(
             self.rows_available + self.segments[lindex].rows == self.config.rows,
             "rows_available:{} rows:{} config.rows:{}",
             self.rows_available,
@@ -250,13 +300,15 @@ impl<'a> MemModulePlanner<'a> {
     fn add_internal_rows(&mut self, addr: u32, count: u32, addr_inc: u32, step_inc: u32) {
         // check if all internal reads fit in the current instance
         let mut pending = count;
+        self.set_consume_info(addr, self.last_step, self.last_step + (step_inc * count) as u64);
         loop {
-            if pending <= self.rows_available {
-                self.consume_rows(pending);
+            // if pending <= self.rows_available {
+            if pending < self.rows_available {
+                self.consume_rows(pending, 4);
                 pending = 0;
             } else {
                 let rows_applied = self.rows_available;
-                self.consume_rows(rows_applied);
+                self.consume_rows(rows_applied, 5);
                 pending -= rows_applied;
                 self.close_and_open_segment(
                     addr + (count - pending - 1) * addr_inc,
@@ -287,10 +339,6 @@ impl<'a> MemModulePlanner<'a> {
         }
 
         if !self.config.intermediate_step_reads {
-            return;
-        }
-
-        if !MemHelpers::step_extra_reads_enabled(addr) {
             return;
         }
 

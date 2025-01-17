@@ -12,6 +12,9 @@ use crate::{
     ROM_DATA_W_ADDR_INIT,
 };
 
+#[cfg(feature = "debug_mem")]
+use crate::{MemDebug, MEM_BYTES};
+
 pub trait MemPlanCalculator {
     fn plan(&mut self);
     fn collect_plans(&mut self) -> Vec<Plan>;
@@ -24,6 +27,63 @@ impl MemPlanner {
     pub fn new() -> Self {
         Self {}
     }
+
+    #[cfg(feature = "debug_mem")]
+    fn collect_debug_data(&self, counters: Arc<Vec<(ChunkId, &MemCounters)>>) {
+        let mut debug = MemDebug::new();
+        let mut i = 0;
+        while i < counters.len() {
+            debug.add(&counters[i].1.debug);
+            i += 1;
+        }
+        if !debug.is_empty() {
+            debug.save_to_file("/tmp/mem_debug.txt");
+        }
+    }
+
+    #[cfg(feature = "debug_mem")]
+    fn debug_plans(&self, plans: &Vec<Plan>) {
+        use log::info;
+
+        use crate::MemModuleSegmentCheckPoint;
+
+        for (index, plan) in plans.iter().enumerate() {
+            if plan.air_id == MEM_AIR_IDS[0] ||
+                plan.air_id == INPUT_DATA_AIR_IDS[0] ||
+                plan.air_id == ROM_DATA_AIR_IDS[0]
+            {
+                let meta = plan
+                    .meta
+                    .as_ref()
+                    .unwrap()
+                    .downcast_ref::<MemModuleSegmentCheckPoint>()
+                    .unwrap();
+                info!(
+                    "[Mem] PLAN #{} [{}:{}:{}] {:?} [0x{:X},{}] => [0x{:X},{}] skip:{} last:{}",
+                    index,
+                    plan.airgroup_id,
+                    plan.air_id,
+                    plan.segment_id.unwrap_or(0),
+                    plan.check_point,
+                    meta.prev_addr * MEM_BYTES,
+                    meta.prev_step,
+                    meta.last_addr * MEM_BYTES,
+                    meta.last_step,
+                    meta.skip_rows,
+                    meta.is_last_segment,
+                );
+            } else {
+                info!(
+                    "[Mem] PLAN #{} [{}:{}:{}] {:?}",
+                    index,
+                    plan.airgroup_id,
+                    plan.air_id,
+                    plan.segment_id.unwrap_or(0),
+                    plan.check_point,
+                );
+            }
+        }
+    }
 }
 
 impl Planner for MemPlanner {
@@ -35,7 +95,12 @@ impl Planner for MemPlanner {
                 (*chunk_id, metric.as_any().downcast_ref::<MemCounters>().unwrap())
             })
             .collect();
+
         let counters = Arc::new(_counters);
+
+        #[cfg(feature = "debug_mem")]
+        self.collect_debug_data(counters.clone());
+
         let mut planners: Vec<Box<dyn MemPlanCalculator>> = vec![
             Box::new(MemModulePlanner::new(
                 MemModulePlannerConfig {
@@ -78,6 +143,7 @@ impl Planner for MemPlanner {
             )),
             Box::new(MemAlignPlanner::new(counters.clone())),
         ];
+
         for item in &mut planners {
             item.plan();
         }
@@ -85,42 +151,8 @@ impl Planner for MemPlanner {
         for item in &mut planners {
             plans.append(&mut item.collect_plans());
         }
-        // for (index, plan) in plans.iter().enumerate() {
-        //     if plan.air_id == MEM_AIR_IDS[0] ||
-        //         plan.air_id == INPUT_DATA_AIR_IDS[0] ||
-        //         plan.air_id == ROM_DATA_AIR_IDS[0]
-        //     {
-        //         let meta = plan
-        //             .meta
-        //             .as_ref()
-        //             .unwrap()
-        //             .downcast_ref::<MemModuleSegmentCheckPoint>()
-        //             .unwrap();
-        //         info!(
-        //             "[Mem] PLAN #{} [{}:{}:{}] {:?} [0x{:X},{}] => [0x{:X},{}] skip:{} last:{}",
-        //             index,
-        //             plan.airgroup_id,
-        //             plan.air_id,
-        //             plan.segment_id.unwrap_or(0),
-        //             plan.check_point,
-        //             meta.prev_addr * MEM_BYTES,
-        //             meta.prev_step,
-        //             meta.last_addr * MEM_BYTES,
-        //             meta.last_step,
-        //             meta.skip_rows,
-        //             meta.is_last_segment,
-        //         );
-        //     } else {
-        //         info!(
-        //             "[Mem] PLAN #{} [{}:{}:{}] {:?}",
-        //             index,
-        //             plan.airgroup_id,
-        //             plan.air_id,
-        //             plan.segment_id.unwrap_or(0),
-        //             plan.check_point,
-        //         );
-        //     }
-        // }
+        #[cfg(feature = "debug_mem")]
+        self.debug_plans(plans.as_ref());
         plans
     }
 }

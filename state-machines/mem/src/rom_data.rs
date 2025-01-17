@@ -45,7 +45,7 @@ impl<F: PrimeField> MemModule<F> for RomDataSM<F> {
     /// # Parameters
     ///
     /// - `mem_inputs`: A slice of all `MemoryInput` inputs
-    fn prove_instance(
+    fn compute_witness(
         &self,
         mem_ops: &[MemInput],
         segment_id: usize,
@@ -157,10 +157,6 @@ impl<F: PrimeField> MemModule<F> for RomDataSM<F> {
 
         air_values.segment_last_value[0] = F::from_canonical_u32(last_value as u32);
         air_values.segment_last_value[1] = F::from_canonical_u32((last_value >> 32) as u32);
-
-        // println!("[RomData] #:{} ROW[0]: {:?}", trace.num_rows(), trace[0]);
-        // println!("[RomData] #:{} ROW[n-1]: {:?}", trace.num_rows(), trace[trace.num_rows() - 1]);
-        // println!("[RomData] {:?}", air_values);
 
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
     }

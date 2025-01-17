@@ -787,7 +787,7 @@ impl<F: PrimeField> MemAlignSM<F> {
         (value >> (chunk * CHUNK_BITS)) & CHUNK_BITS_MASK
     }
 
-    pub fn prove_instance(&self, mem_ops: &[MemAlignInput], used_rows: u32) -> AirInstance<F> {
+    pub fn compute_witness(&self, mem_ops: &[MemAlignInput], used_rows: u32) -> AirInstance<F> {
         let mut trace = MemAlignTrace::<F>::new();
         let mut reg_range_check = [0u64; 1 << CHUNK_BITS];
 
@@ -803,7 +803,6 @@ impl<F: PrimeField> MemAlignSM<F> {
         let mut index = 0;
         for input in mem_ops.iter() {
             let count = self.prove_mem_align_op(input, &mut trace, index);
-            // println!("[MemAlignSM] count:{} index:{} input:{:?}", count, index, input);
             for i in 0..count {
                 for j in 0..CHUNK_NUM {
                     let element = trace[index + i].reg[j]
@@ -815,9 +814,6 @@ impl<F: PrimeField> MemAlignSM<F> {
             }
             index += count;
         }
-        // for i in 0..16 {
-        //     println!("[MemAlignSM] ROW[{}]: {:?} ", i, trace[i]);
-        // }
         let padding_size = num_rows - index;
         let padding_row = MemAlignTraceRow::<F> { reset: F::from_bool(true), ..Default::default() };
 

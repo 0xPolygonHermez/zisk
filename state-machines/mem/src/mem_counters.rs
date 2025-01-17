@@ -5,6 +5,9 @@ use zisk_common::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
 
 use crate::{MemHelpers, MEM_REGS_ADDR, MEM_REGS_MASK};
 
+#[cfg(feature = "debug_mem")]
+use crate::MemDebug;
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct UsesCounter {
     pub first_step: u64,
@@ -20,6 +23,8 @@ pub struct MemCounters {
     pub addr_sorted: Vec<(u32, UsesCounter)>,
     pub mem_align: Vec<u8>,
     pub mem_align_rows: u32,
+    #[cfg(feature = "debug_mem")]
+    pub debug: MemDebug,
 }
 
 impl MemCounters {
@@ -31,6 +36,8 @@ impl MemCounters {
             addr_sorted: Vec::new(),
             mem_align: Vec::new(),
             mem_align_rows: 0,
+            #[cfg(feature = "debug_mem")]
+            debug: MemDebug::new(),
         }
     }
 }
@@ -43,6 +50,8 @@ impl Metrics for MemCounters {
         let addr_w = MemHelpers::get_addr_w(addr);
         let step = MemBusData::get_step(data);
         let bytes = MemBusData::get_bytes(data);
+
+        // self.debug.log(addr, step, bytes, is_write, false);
 
         if (addr & MEM_REGS_MASK) == MEM_REGS_ADDR {
             let reg_index = ((addr >> 3) & 0x1F) as usize;
@@ -57,11 +66,9 @@ impl Metrics for MemCounters {
                 self.registers[reg_index] =
                     UsesCounter { first_step: step, last_step: step, count: 1, last_value };
             } else {
-                // TODO: this only applies to non-imputable memories (mem)
-                self.registers[reg_index].count += 1 + MemHelpers::get_extra_internal_reads(
-                    self.registers[reg_index].last_step,
-                    step,
-                );
+                let internal_reads =
+                    MemHelpers::get_extra_internal_reads(self.registers[reg_index].last_step, step);
+                self.registers[reg_index].count += 1 + internal_reads;
                 self.registers[reg_index].last_step = step;
                 self.registers[reg_index].last_value = last_value;
             }
@@ -74,11 +81,9 @@ impl Metrics for MemCounters {
             self.addr
                 .entry(addr_w)
                 .and_modify(|value| {
-                    value.count += 1 + MemHelpers::get_extra_internal_reads_by_addr(
-                        addr_w,
-                        value.last_step,
-                        step,
-                    );
+                    let internal_reads =
+                        MemHelpers::get_extra_internal_reads_by_addr(addr_w, value.last_step, step);
+                    value.count += 1 + internal_reads;
                     value.last_step = step;
                     value.last_value = last_value;
                 })
@@ -105,12 +110,12 @@ impl Metrics for MemCounters {
                 self.addr
                     .entry(_addr_w)
                     .and_modify(|value| {
-                        value.count += ops_by_addr +
-                            MemHelpers::get_extra_internal_reads_by_addr(
-                                _addr_w,
-                                value.last_step,
-                                step,
-                            );
+                        let internal_reads = MemHelpers::get_extra_internal_reads_by_addr(
+                            _addr_w,
+                            value.last_step,
+                            step,
+                        );
+                        value.count += ops_by_addr + internal_reads;
                         value.last_step = last_step;
                         value.last_value = last_values[index as usize];
                     })
