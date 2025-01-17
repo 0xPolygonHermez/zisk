@@ -42,7 +42,7 @@ impl MemPlanner {
     }
 
     #[cfg(feature = "debug_mem")]
-    fn debug_plans(&self, plans: &Vec<Plan>) {
+    fn debug_plans(&self, plans: &[Plan]) {
         use log::info;
 
         use crate::MemModuleSegmentCheckPoint;
