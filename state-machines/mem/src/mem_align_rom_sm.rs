@@ -121,6 +121,16 @@ impl MemAlignRomSM {
         }
     }
 
+    pub fn detach_multiplicity(&self) -> Vec<u64> {
+        let multiplicity = self.multiplicity.lock().unwrap();
+        let mut multiplicity_vec = vec![0; MemAlignRomTrace::<usize>::NUM_ROWS];
+        for (row_idx, multiplicity) in multiplicity.iter() {
+            assert!(*row_idx < MemAlignRomTrace::<usize>::NUM_ROWS as u64);
+            multiplicity_vec[*row_idx as usize] = *multiplicity;
+        }
+        multiplicity_vec
+    }
+
     pub fn update_padding_row(&self, padding_len: u64) {
         // Update entry at the padding row (pos = 0) with the given padding length
         self.update_multiplicity_by_row_idx(0, padding_len);
@@ -129,42 +139,5 @@ impl MemAlignRomSM {
     pub fn update_multiplicity_by_row_idx(&self, row_idx: u64, mul: u64) {
         let mut multiplicity = self.multiplicity.lock().unwrap();
         *multiplicity.entry(row_idx).or_insert(0) += mul;
-    }
-
-    pub fn create_air_instance(&self) {
-        // Get the contexts
-        // let wcm = self.wcm.clone();
-        // let pctx = wcm.get_pctx();
-        // let sctx = wcm.get_sctx();
-
-        // Get the Mem Align ROM AIR
-        // let air_mem_align_rom = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_ROM_AIR_IDS[0]);
-        // let air_mem_align_rom_rows = air_mem_align_rom.num_rows();
-
-        // let mut trace_buffer: MemAlignRomTrace<'_, _> = MemAlignRomTrace::new();
-
-        // // Initialize the trace buffer to zero
-        // for i in 0..air_mem_align_rom_rows {
-        //     trace_buffer[i] = MemAlignRomTraceRow { multiplicity: F::zero() };
-        // }
-
-        // // Fill the trace buffer with the multiplicity values
-        // if let Ok(multiplicity) = self.multiplicity.lock() {
-        //     for (row_idx, multiplicity) in multiplicity.iter() {
-        //         trace_buffer[*row_idx as usize] =
-        //             MemAlignRomTraceRow { multiplicity: F::from_canonical_u64(*multiplicity) };
-        //     }
-        // }
-
-        // info!("{}: ··· Creating Mem Align Rom instance", Self::MY_NAME,);
-
-        // let air_instance = AirInstance::new(
-        //     sctx,
-        //     ZISK_AIRGROUP_ID,
-        //     MEM_ALIGN_ROM_AIR_IDS[0],
-        //     None,
-        //     trace_buffer.buffer.unwrap(),
-        // );
-        // pctx.air_instance_repo.add_air_instance(air_instance, None);
     }
 }

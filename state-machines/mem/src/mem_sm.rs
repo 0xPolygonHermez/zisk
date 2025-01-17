@@ -1,19 +1,26 @@
+use num_bigint::BigInt;
 use std::sync::Arc;
 
+#[cfg(feature = "debug_mem")]
+use num_bigint::ToBigInt;
+#[cfg(feature = "debug_mem")]
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+};
+
 use crate::{MemInput, MemModule, MEMORY_MAX_DIFF, MEM_BYTES_BITS};
-use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 
 use zisk_core::{RAM_ADDR, RAM_SIZE};
-use zisk_pil::{MemAirValues, MemTrace, MEM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{MemAirValues, MemTrace};
 
-const RAM_W_ADDR_INIT: u32 = RAM_ADDR as u32 >> MEM_BYTES_BITS;
-const RAM_W_ADDR_END: u32 = (RAM_ADDR + RAM_SIZE - 1) as u32 >> MEM_BYTES_BITS;
+pub const RAM_W_ADDR_INIT: u32 = RAM_ADDR as u32 >> MEM_BYTES_BITS;
+pub const RAM_W_ADDR_END: u32 = (RAM_ADDR + RAM_SIZE - 1) as u32 >> MEM_BYTES_BITS;
 
 const _: () = {
-    // assert!((RAM_SIZE - 1) >> MEM_BYTES_BITS <= MEMORY_MAX_DIFF, "RAM is too large");
     assert!(
         (RAM_ADDR + RAM_SIZE - 1) <= 0xFFFF_FFFF,
         "RAM memory exceeds the 32-bit addressable range"
@@ -24,20 +31,7 @@ pub struct MemSM<F: PrimeField> {
     /// PIL2 standard library
     std: Arc<Std<F>>,
 }
-
-#[derive(Default)]
-pub struct MemoryAirValues {
-    pub segment_id: u32,
-    pub is_first_segment: bool,
-    pub is_last_segment: bool,
-    pub previous_segment_addr: u32,
-    pub previous_segment_step: u64,
-    pub previous_segment_value: [u32; 2],
-    pub segment_last_addr: u32,
-    pub segment_last_step: u64,
-    pub segment_last_value: [u32; 2],
-}
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MemPreviousSegment {
     pub addr: u32,
     pub step: u64,
@@ -50,59 +44,26 @@ impl<F: PrimeField> MemSM<F> {
         Arc::new(Self { std: std.clone() })
     }
 
-    pub fn prove(&self, inputs: &[MemInput]) {
-        // PRE: proxy calculate if exists jmp on step out-of-range, adding internal inputs
-        // memory only need to process these special inputs, but inputs no change. At end of
-        // inputs proxy add an extra internal input to jump to last address
-
-        let air_rows = MemTrace::<F>::NUM_ROWS;
-
-        // at least one row to go
-        let count = inputs.len();
-        let count_rem = count % air_rows;
-        let num_segments = (count / air_rows) + if count_rem > 0 { 1 } else { 0 };
-
-        let mut global_idxs = vec![0; num_segments];
-
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..num_segments {
-            // TODO: Review
-            if let (true, global_id) = self.std.pctx.dctx.write().unwrap().add_instance(
-                ZISK_AIRGROUP_ID,
-                MEM_AIR_IDS[0],
-                1,
-            ) {
-                global_idxs[i] = global_id;
-            }
-        }
-
-        #[allow(clippy::needless_range_loop)]
-        for segment_id in 0..num_segments {
-            let is_last_segment = segment_id == num_segments - 1;
-            let input_offset = segment_id * air_rows;
-            let previous_segment = if (segment_id == 0) {
-                MemPreviousSegment { addr: RAM_W_ADDR_INIT, step: 0, value: 0 }
-            } else {
-                MemPreviousSegment {
-                    addr: inputs[input_offset - 1].addr,
-                    step: inputs[input_offset - 1].step,
-                    value: inputs[input_offset - 1].value,
-                }
-            };
-            let input_end =
-                if (input_offset + air_rows) > count { count } else { input_offset + air_rows };
-            let mem_ops = &inputs[input_offset..input_end];
-
-            let air_instance =
-                self.prove_instance(mem_ops, segment_id, is_last_segment, &previous_segment);
-
-            self.std
-                .pctx
-                .air_instance_repo
-                .add_air_instance(air_instance, Some(global_idxs[segment_id]));
-        }
+    pub fn get_to_addr() -> u32 {
+        (RAM_ADDR + RAM_SIZE - 1) as u32
     }
+    #[cfg(feature = "debug_mem")]
+    pub fn save_to_file(&self, trace: &MemTrace<F>, file_name: &str) {
+        println!("[MemDebug] writing information {} .....", file_name);
+        let file = File::create(file_name).unwrap();
+        let mut writer = BufWriter::new(file);
+        let num_rows = MemTrace::<usize>::NUM_ROWS;
 
+        for i in 0..num_rows {
+            let addr = trace[i].addr.as_canonical_biguint().to_bigint().unwrap() * 8;
+            let step = trace[i].step.as_canonical_biguint().to_bigint().unwrap();
+            writeln!(writer, "{:#010X} {:#12}", addr, step).unwrap();
+        }
+        println!("[MemDebug] done");
+    }
+}
+
+impl<F: PrimeField> MemModule<F> for MemSM<F> {
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///
     /// This method is invoked by the executor when no further witness data remains to be added.
@@ -110,7 +71,7 @@ impl<F: PrimeField> MemSM<F> {
     /// # Parameters
     ///
     /// - `mem_inputs`: A slice of all `MemoryInput` inputs
-    pub fn prove_instance(
+    fn compute_witness(
         &self,
         mem_ops: &[MemInput],
         segment_id: usize,
@@ -119,91 +80,165 @@ impl<F: PrimeField> MemSM<F> {
     ) -> AirInstance<F> {
         let mut trace = MemTrace::<F>::new();
 
-        assert!(
+        debug_assert!(
             !mem_ops.is_empty() && mem_ops.len() <= trace.num_rows,
-            "MemSM: mem_ops.len()={} out of range {}",
+            "MemSM Inputs too large segment_id:{} mem_ops:{} rows:{}  [0]{:?} [last]:{:?}",
+            segment_id,
             mem_ops.len(),
             trace.num_rows,
+            mem_ops[0],
+            mem_ops[mem_ops.len() - 1],
         );
 
-        // In a Mem AIR instance the first row is a dummy row used for the continuations between AIR
-        // segments In a Memory AIR instance, the first row is reserved as a dummy row.
-        // This dummy row is used to facilitate the continuation state between different AIR
-        // segments. It ensures seamless transitions when multiple AIR segments are
-        // processed consecutively. This design avoids discontinuities in memory access
-        // patterns and ensures that the memory trace is continuous, For this reason we use
-        // AIR num_rows - 1 as the number of rows in each memory AIR instance
+        let std = self.std.clone();
 
-        // Create a vector of Mem0Row instances, one for each memory operation
-        // Recall that first row is a dummy row used for the continuations between AIR segments
-        // The length of the vector is the number of input memory operations plus one because
-        // in the prove_witnesses method we drain the memory operations in chunks of n - 1 rows
+        let range_id = std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
+        let mut range_check_data: Vec<u16> = vec![0; MEMORY_MAX_DIFF as usize];
+        let f_range_check_max_value = F::from_canonical_u64(0xFFFF + 1);
 
-        let mut range_check_data: Vec<u64> = vec![0; MEMORY_MAX_DIFF as usize];
-
-        let mut air_values_mem = MemoryAirValues {
-            segment_id: segment_id as u32,
-            is_first_segment: segment_id == 0,
-            is_last_segment,
-            previous_segment_addr: previous_segment.addr,
-            previous_segment_step: previous_segment.step,
-            previous_segment_value: [
-                previous_segment.value as u32,
-                (previous_segment.value >> 32) as u32,
-            ],
-            ..MemoryAirValues::default()
-        };
+        // use special counter for internal reads
+        let mut range_check_data_max = 0u64;
 
         // index it's value - 1, for this reason no add +1
-        range_check_data[(previous_segment.addr - RAM_W_ADDR_INIT) as usize] += 1; // TODO
+        range_check_data[(previous_segment.addr - RAM_W_ADDR_INIT) as usize] += 1;
 
-        // Fill the remaining rows
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
         let mut last_value: u64 = previous_segment.value;
 
-        for (i, mem_op) in mem_ops.iter().enumerate() {
+        let mut i = 0;
+        let mut increment;
+        let f_max_increment = F::from_canonical_u64(MEMORY_MAX_DIFF);
+        for mem_op in mem_ops {
+            let mut step = mem_op.step;
+
+            if i >= trace.num_rows {
+                break;
+            }
+
+            // set the common values of trace between internal reads and regular memory operation
             trace[i].addr = F::from_canonical_u32(mem_op.addr);
-            trace[i].step = F::from_canonical_u64(mem_op.step);
-            trace[i].sel = F::from_bool(!mem_op.is_internal);
-            trace[i].wr = F::from_bool(mem_op.is_write);
-
-            let (low_val, high_val) = (mem_op.value as u32, (mem_op.value >> 32) as u32);
-            trace[i].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
-
             let addr_changes = last_addr != mem_op.addr;
             trace[i].addr_changes = if addr_changes { F::one() } else { F::zero() };
 
-            let increment = if addr_changes {
-                // (mem_op.addr - last_addr + if i == 0 && segment_id == 0 { 1 } else { 0 }) as u64
-                (mem_op.addr - last_addr) as u64
+            if addr_changes {
+                increment = (mem_op.addr - last_addr) as u64;
             } else {
-                mem_op.step - last_step
-            };
+                increment = step - last_step;
+                if increment > MEMORY_MAX_DIFF {
+                    // calculate the number of internal reads
+                    let mut internal_reads = (increment - 1) / MEMORY_MAX_DIFF;
+
+                    // check if has enough rows to complete the internal reads + regular memory
+                    let incomplete = (i + internal_reads as usize) >= trace.num_rows;
+                    if incomplete {
+                        internal_reads = (trace.num_rows - i) as u64;
+                    }
+
+                    // without address changes, the internal reads before write must use the last
+                    // value, in the case of reads value and the last value are the same
+                    let (low_val, high_val) = (last_value as u32, (last_value >> 32) as u32);
+                    trace[i].value =
+                        [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
+
+                    // it's intenal
+                    trace[i].sel = F::zero();
+
+                    // in internal reads the increment is always the max increment
+                    trace[i].increment = f_max_increment;
+
+                    // internal reads always must be read
+                    trace[i].wr = F::zero();
+
+                    // set step as max increment from last_step
+                    step = last_step + MEMORY_MAX_DIFF;
+
+                    // setting step on trace
+                    trace[i].step = F::from_canonical_u64(step);
+
+                    // update last_step and increment step
+                    last_step = step;
+
+                    i += 1;
+
+                    if internal_reads > 1 || !incomplete {
+                        // set the address changes for the next row{}
+                        trace[i].addr_changes = F::zero();
+                    }
+
+                    // the trace values of the rest of internal reads are equal to previous, only
+                    // change the value of step
+                    for _j in 1..internal_reads {
+                        trace[i] = trace[i - 1];
+                        step += MEMORY_MAX_DIFF;
+                        trace[i].step = F::from_canonical_u64(step);
+                        last_step = step;
+                        i += 1;
+                    }
+
+                    range_check_data_max += internal_reads;
+
+                    // control the edge case when there aren't enough rows to complete the internal
+                    // reads or regular memory operation
+                    if incomplete {
+                        last_addr = mem_op.addr;
+                        break;
+                    }
+                    step = mem_op.step;
+                    increment = step - last_step;
+
+                    // copy last trace for the regular memory operation (addr, addr_changes)
+                    trace[i] = trace[i - 1];
+                }
+            }
+
+            if i >= trace.num_rows {
+                break;
+            }
+            // set specific values of trace for regular memory operation
+            let (low_val, high_val) = (mem_op.value as u32, (mem_op.value >> 32) as u32);
+            trace[i].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
+
+            trace[i].step = F::from_canonical_u64(step);
+            trace[i].sel = F::one();
+
             trace[i].increment = F::from_canonical_u64(increment);
+            trace[i].wr = F::from_bool(mem_op.is_write);
 
             // Store the value of incremenet so it can be range checked
-            if increment <= MEMORY_MAX_DIFF || increment == 0 {
-                range_check_data[(increment - 1) as usize] += 1;
+            let range_index = increment as usize - 1;
+            if range_index < MEMORY_MAX_DIFF as usize {
+                if range_check_data[range_index] == 0xFFFF {
+                    range_check_data[range_index] = 0;
+                    std.range_check(
+                        F::from_canonical_u64(increment),
+                        f_range_check_max_value,
+                        range_id,
+                    );
+                } else {
+                    range_check_data[range_index] += 1;
+                }
             } else {
                 panic!("MemSM: increment's out of range: {} i:{} addr_changes:{} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{}",
                     increment, i, addr_changes as u8, mem_op.addr, last_addr, mem_op.step, last_step);
             }
 
             last_addr = mem_op.addr;
-            last_step = mem_op.step;
+            last_step = step;
             last_value = mem_op.value;
+            i += 1;
         }
+        let count = i;
 
         // STEP3. Add dummy rows to the output vector to fill the remaining rows
         // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd
         // = 1, wr = 0
-        let last_row_idx = mem_ops.len() - 1;
+        let last_row_idx = count - 1;
         let addr = trace[last_row_idx].addr;
         let value = trace[last_row_idx].value;
 
-        let padding_size = trace.num_rows - mem_ops.len();
-        for i in mem_ops.len()..trace.num_rows {
+        let padding_size = trace.num_rows - count;
+        for i in count..trace.num_rows {
             last_step += 1;
             trace[i].addr = addr;
             trace[i].step = F::from_canonical_u64(last_step);
@@ -216,14 +251,9 @@ impl<F: PrimeField> MemSM<F> {
             trace[i].increment = F::one();
         }
 
-        air_values_mem.segment_last_addr = last_addr;
-        air_values_mem.segment_last_step = last_step;
-        air_values_mem.segment_last_value[0] = last_value as u32;
-        air_values_mem.segment_last_value[1] = (last_value >> 32) as u32;
-
         // Store the value of trivial increment so that they can be range checked
         // value = 1 => index = 0
-        range_check_data[0] += padding_size as u64;
+        self.std.range_check(F::one(), F::from_canonical_usize(padding_size), range_id);
 
         // no add extra +1 because index = value - 1
         // RAM_W_ADDR_END - last_addr + 1 - 1 = RAM_W_ADDR_END - last_addr
@@ -232,46 +262,43 @@ impl<F: PrimeField> MemSM<F> {
         // TODO: Perform the range checks
         let range_id = self.std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
         for (value, &multiplicity) in range_check_data.iter().enumerate() {
-            if (multiplicity == 0) {
+            if multiplicity == 0 {
                 continue;
             }
             self.std.range_check(
                 F::from_canonical_usize(value + 1),
-                F::from_canonical_u64(multiplicity),
+                F::from_canonical_u16(multiplicity),
                 range_id,
             );
         }
+        self.std.range_check(
+            F::from_canonical_u64(MEMORY_MAX_DIFF),
+            F::from_canonical_u64(range_check_data_max),
+            range_id,
+        );
 
         let mut air_values = MemAirValues::<F>::new();
-        air_values.segment_id = F::from_canonical_u32(air_values_mem.segment_id);
-        air_values.is_first_segment = F::from_bool(air_values_mem.is_first_segment);
-        air_values.is_last_segment = F::from_bool(air_values_mem.is_last_segment);
-        air_values.previous_segment_step =
-            F::from_canonical_u64(air_values_mem.previous_segment_step);
-        air_values.previous_segment_addr =
-            F::from_canonical_u32(air_values_mem.previous_segment_addr);
-        air_values.segment_last_addr = F::from_canonical_u32(air_values_mem.segment_last_addr);
-        air_values.segment_last_step = F::from_canonical_u64(air_values_mem.segment_last_step);
-        let count = air_values_mem.previous_segment_value.len();
-        for i in 0..count {
-            air_values.previous_segment_value[i] =
-                F::from_canonical_u32(air_values_mem.previous_segment_value[i]);
-            air_values.segment_last_value[i] =
-                F::from_canonical_u32(air_values_mem.segment_last_value[i]);
-        }
+        air_values.segment_id = F::from_canonical_usize(segment_id);
+        air_values.is_first_segment = F::from_bool(segment_id == 0);
+        air_values.is_last_segment = F::from_bool(is_last_segment);
+        air_values.previous_segment_step = F::from_canonical_u64(previous_segment.step);
+        air_values.previous_segment_addr = F::from_canonical_u32(previous_segment.addr);
+        air_values.segment_last_addr = F::from_canonical_u32(last_addr);
+        air_values.segment_last_step = F::from_canonical_u64(last_step);
+
+        air_values.previous_segment_value[0] = F::from_canonical_u32(previous_segment.value as u32);
+        air_values.previous_segment_value[1] =
+            F::from_canonical_u32((previous_segment.value >> 32) as u32);
+
+        air_values.segment_last_value[0] = F::from_canonical_u32(last_value as u32);
+        air_values.segment_last_value[1] = F::from_canonical_u32((last_value >> 32) as u32);
+
+        #[cfg(feature = "debug_mem")]
+        self.save_to_file(&trace, &format!("/tmp/mem_trace_{}.txt", segment_id));
 
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
     }
-}
-
-impl<F: PrimeField> MemModule<F> for MemSM<F> {
-    fn send_inputs(&self, mem_op: &[MemInput]) {
-        self.prove(mem_op);
-    }
     fn get_addr_ranges(&self) -> Vec<(u32, u32)> {
         vec![(RAM_ADDR as u32, (RAM_ADDR + RAM_SIZE - 1) as u32)]
-    }
-    fn get_flush_input_size(&self) -> u32 {
-        0
     }
 }

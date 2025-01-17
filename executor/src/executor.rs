@@ -251,11 +251,11 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     CheckPoint::None => {}
                     CheckPoint::Single(chunk_id) => {
                         secn_instance =
-                            self.process_checkpoint(min_traces, secn_instance, &[chunk_id]);
+                            self.process_checkpoint(min_traces, secn_instance, &[chunk_id], false);
                     }
                     CheckPoint::Multiple(chunk_ids) => {
                         secn_instance =
-                            self.process_checkpoint(min_traces, secn_instance, &chunk_ids);
+                            self.process_checkpoint(min_traces, secn_instance, &chunk_ids, true);
                     }
                 }
 
@@ -303,15 +303,16 @@ impl<F: PrimeField> ZiskExecutor<F> {
         min_traces: &[EmuTrace],
         sec_instance: Box<dyn BusDeviceInstance<F>>,
         chunk_ids: &[usize],
+        is_multiple: bool,
     ) -> Box<dyn BusDeviceInstance<F>> {
         let mut data_bus = self.get_data_bus_collectors(sec_instance);
-
         chunk_ids.iter().for_each(|&chunk_id| {
             ZiskEmulator::process_emu_traces::<F, BusDeviceInstanceWrapper<F>>(
                 &self.zisk_rom,
                 min_traces,
                 chunk_id,
                 &mut data_bus,
+                is_multiple,
             );
         });
 

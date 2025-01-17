@@ -1,9 +1,10 @@
-use crate::{MemHelpers, MemInput, MEM_BYTES};
+use crate::{MemHelpers, MemInput, MemPreviousSegment, MEM_BYTES};
+use proofman_common::AirInstance;
 use zisk_core::ZiskRequiredMemory;
 
 impl MemInput {
-    pub fn new(addr: u32, is_write: bool, step: u64, value: u64, is_internal: bool) -> Self {
-        MemInput { addr, is_write, step, value, is_internal }
+    pub fn new(addr: u32, is_write: bool, step: u64, value: u64) -> Self {
+        MemInput { addr, is_write, step, value }
     }
     pub fn from(mem_op: &ZiskRequiredMemory) -> Self {
         match mem_op {
@@ -12,7 +13,6 @@ impl MemInput {
                 MemInput {
                     addr: address >> 3,
                     is_write: *is_write,
-                    is_internal: false,
                     step: MemHelpers::main_step_to_address_step(*step, *step_offset),
                     value: *value,
                 }
@@ -25,7 +25,12 @@ impl MemInput {
 }
 
 pub trait MemModule<F>: Send + Sync {
-    fn send_inputs(&self, mem_op: &[MemInput]);
+    fn compute_witness(
+        &self,
+        mem_ops: &[MemInput],
+        segment_id: usize,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+    ) -> AirInstance<F>;
     fn get_addr_ranges(&self) -> Vec<(u32, u32)>;
-    fn get_flush_input_size(&self) -> u32;
 }
