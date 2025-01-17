@@ -204,7 +204,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .into_iter()
             .enumerate()
             .flat_map(|(i, plans_by_sm)| {
-                plans_by_sm.into_iter().filter_map(move |plan| {
+                plans_by_sm.into_iter().map(move |plan| {
                     Some((
                         pctx.dctx_add_instance_no_assign(
                             plan.airgroup_id,
@@ -224,15 +224,17 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let mut table_instances = Vec::new();
         let mut other_instances = Vec::new();
 
-        gids.into_iter().for_each(|(global_idx, is_table, plan, i)| {
-            let is_mine = pctx.dctx_is_my_instance(global_idx);
-            if is_mine || is_table {
-                let ictx = InstanceCtx::new(global_idx, plan);
-                let instance = (global_idx, self.secondary_sm[i].build_inputs_collector(ictx));
-                if is_table {
-                    table_instances.push(instance);
-                } else {
-                    other_instances.push(instance);
+        gids.into_iter().for_each(|item| {
+            if let Some((global_idx, is_table, plan, i)) = item {
+                let is_mine = pctx.dctx_is_my_instance(global_idx);
+                if is_mine || is_table {
+                    let ictx = InstanceCtx::new(global_idx, plan);
+                    let instance = (global_idx, self.secondary_sm[i].build_inputs_collector(ictx));
+                    if is_table {
+                        table_instances.push(instance);
+                    } else {
+                        other_instances.push(instance);
+                    }
                 }
             }
         });
