@@ -134,8 +134,6 @@ impl Metrics for MemCounters {
         vec![]
     }
 
-    fn add(&mut self, _other: &dyn Metrics) {}
-
     fn bus_id(&self) -> Vec<BusId> {
         vec![MEM_BUS_ID]
     }

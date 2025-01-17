@@ -6,13 +6,17 @@ use crate::{
 };
 use p3_field::PrimeField;
 use pil_std_lib::Std;
+use proofman_common::ProofCtx;
 use sm_common::{
-    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx, Planner,
+    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan,
+    Planner,
 };
 use zisk_common::MEM_BUS_ID;
-use zisk_pil::{InputDataTrace, MemAlignRomTrace, MemAlignTrace, MemTrace, RomDataTrace};
+use zisk_pil::{
+    InputDataTrace, MemAlignRomTrace, MemAlignTrace, MemTrace, RomDataTrace, ZiskProofValues,
+};
 
-pub struct MemProxy<F: PrimeField> {
+pub struct Mem<F: PrimeField> {
     // Secondary State machines
     mem_sm: Arc<MemSM<F>>,
     mem_align_sm: Arc<MemAlignSM<F>>,
@@ -21,7 +25,7 @@ pub struct MemProxy<F: PrimeField> {
     rom_data_sm: Arc<RomDataSM<F>>,
 }
 
-impl<F: PrimeField> MemProxy<F> {
+impl<F: PrimeField> Mem<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         let mem_align_rom_sm = MemAlignRomSM::new();
         let mem_align_sm = MemAlignSM::new(std.clone(), mem_align_rom_sm.clone());
@@ -33,13 +37,20 @@ impl<F: PrimeField> MemProxy<F> {
     }
 }
 
-impl<F: PrimeField> ComponentBuilder<F> for MemProxy<F> {
+impl<F: PrimeField> ComponentBuilder<F> for Mem<F> {
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
         Box::new(MemCounters::new())
     }
 
     fn build_planner(&self) -> Box<dyn Planner> {
         Box::new(MemPlanner::new())
+    }
+
+    fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Plan]) {
+        let enable_input_data =
+            plannings.iter().any(|p| p.air_id == InputDataTrace::<usize>::AIR_ID);
+        let mut proof_values = ZiskProofValues::from_vec_guard(pctx.get_proof_values());
+        proof_values.enable_input_data = F::from_bool(enable_input_data);
     }
 
     fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {

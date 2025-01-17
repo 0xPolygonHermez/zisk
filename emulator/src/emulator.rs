@@ -176,7 +176,7 @@ impl ZiskEmulator {
     /// First phase of the witness computation
     /// 8 threads in waterfall (# threads to be re-calibrated after memory reads refactor)
     /// Must be fast
-    pub fn process_rom_min_trace<F: PrimeField>(
+    pub fn compute_minimal_traces<F: PrimeField>(
         rom: &ZiskRom,
         inputs: &[u8],
         options: &EmuOptions,
@@ -218,7 +218,7 @@ impl ZiskEmulator {
     /// Executes in parallel the different blocks of wc
     /// Good to be fast
     #[inline]
-    pub fn process_rom_slice_counters<F: PrimeField, BD: BusDevice<u64>>(
+    pub fn process_emu_trace<F: PrimeField, BD: BusDevice<u64>>(
         rom: &ZiskRom,
         emu_trace: &EmuTrace,
         data_bus: &mut DataBus<u64, BD>,
@@ -227,14 +227,14 @@ impl ZiskEmulator {
         let mut emu = Emu::new(rom);
 
         // Run the emulation
-        emu.run_slice_observer2::<F, BD>(emu_trace, data_bus);
+        emu.process_emu_trace::<F, BD>(emu_trace, data_bus);
     }
 
     /// EXPAND phase
     /// Third phase of the witness computation
     /// I have a
     #[inline]
-    pub fn process_rom_slice_plan<F: PrimeField, BD: BusDevice<u64>>(
+    pub fn process_emu_traces<F: PrimeField, BD: BusDevice<u64>>(
         rom: &ZiskRom,
         min_traces: &[EmuTrace],
         chunk_id: usize,
@@ -245,7 +245,7 @@ impl ZiskEmulator {
         let mut emu = Emu::new(rom);
 
         // Run the emulation
-        emu.run_slice_plan(min_traces, chunk_id, data_bus, is_multiple);
+        emu.process_emu_traces(min_traces, chunk_id, data_bus, is_multiple);
     }
 
     /// Finds all files in a directory and returns a vector with their full paths

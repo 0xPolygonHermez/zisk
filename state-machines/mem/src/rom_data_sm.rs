@@ -25,12 +25,11 @@ impl<F: PrimeField> RomDataSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         Arc::new(Self { std: std.clone() })
     }
-
-    fn get_u32_values(&self, value: u64) -> (u32, u32) {
-        (value as u32, (value >> 32) as u32)
-    }
     pub fn get_from_addr() -> u32 {
         ROM_DATA_W_ADDR_INIT
+    }
+    fn get_u32_values(&self, value: u64) -> (u32, u32) {
+        (value as u32, (value >> 32) as u32)
     }
     pub fn get_to_addr() -> u32 {
         ROM_DATA_W_ADDR_END

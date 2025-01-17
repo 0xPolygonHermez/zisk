@@ -73,23 +73,6 @@ impl Metrics for RegularCounters {
         vec![]
     }
 
-    /// Merges metrics from another `RegularCounters`.
-    ///
-    /// # Arguments
-    /// * `other` - A reference to another `Metrics` instance that must be a `RegularCounters`.
-    ///
-    /// # Panics
-    /// Panics if the `other` is not of type `RegularCounters`.
-    fn add(&mut self, other: &dyn Metrics) {
-        let other = other
-            .as_any()
-            .downcast_ref::<RegularCounters>()
-            .expect("Regular Metrics: Failed to downcast");
-        for (counter, other_counter) in self.counter.iter_mut().zip(other.counter.iter()) {
-            *counter += other_counter;
-        }
-    }
-
     /// Returns the bus IDs associated with this counter.
     ///
     /// # Returns

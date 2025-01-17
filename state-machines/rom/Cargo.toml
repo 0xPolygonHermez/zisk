@@ -16,7 +16,7 @@ proofman-util = { workspace = true }
 
 log = { workspace = true }
 rayon = { workspace = true }
-itertools = "0.13.0"
+itertools = { workspace = true }
 
 [features]
 default = []

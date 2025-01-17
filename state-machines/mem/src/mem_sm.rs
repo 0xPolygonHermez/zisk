@@ -43,9 +43,7 @@ impl<F: PrimeField> MemSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         Arc::new(Self { std: std.clone() })
     }
-    pub fn get_from_addr() -> u32 {
-        RAM_ADDR as u32
-    }
+
     pub fn get_to_addr() -> u32 {
         (RAM_ADDR + RAM_SIZE - 1) as u32
     }

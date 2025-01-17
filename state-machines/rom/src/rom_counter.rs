@@ -2,7 +2,7 @@
 //! sent over the data bus. It collects statistics such as program counter (PC),
 //! executed instruction steps, and the PC of the last executed instruction.
 
-use std::any::Any;
+use std::{any::Any, ops::AddAssign};
 
 use sm_common::{CounterStats, Metrics};
 use zisk_common::{BusDevice, BusId, RomBusData, RomData};
@@ -33,6 +33,12 @@ impl RomCounter {
     }
 }
 
+impl AddAssign<&RomCounter> for RomCounter {
+    fn add_assign(&mut self, other: &Self) {
+        self.rom += &other.rom; // Directly add `other.rom` to `self.rom`
+    }
+}
+
 impl Metrics for RomCounter {
     /// Tracks activity on the connected bus and updates ROM execution metrics.
     ///
@@ -53,19 +59,6 @@ impl Metrics for RomCounter {
         );
 
         vec![]
-    }
-
-    /// Merges metrics from another `RomCounter`.
-    ///
-    /// # Arguments
-    /// * `other` - A reference to another `Metrics` instance that must be a `RomCounter`.
-    ///
-    /// # Panics
-    /// Panics if the `other` is not of type `RomCounter`.
-    fn add(&mut self, other: &dyn Metrics) {
-        let other =
-            other.as_any().downcast_ref::<RomCounter>().expect("Rom Metrics: Failed to downcast");
-        self.rom += &other.rom;
     }
 
     /// Returns the bus IDs associated with this counter.

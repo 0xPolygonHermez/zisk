@@ -1,3 +1,7 @@
+//! The `Metrics` and `Counter` modules define traits and structures for tracking and aggregating
+//! performance metrics. These modules provide flexible mechanisms to count and analyze
+//! bus operations and instruction execution in a fine-grained manner.
+
 use std::{
     any::Any,
     collections::HashMap,
@@ -6,31 +10,63 @@ use std::{
 };
 use zisk_common::BusId;
 
+/// Enumeration representing different types of counters for metrics collection.
 #[derive(Debug)]
 pub enum CounterType {
+    /// A simple counter for counting instructions.
     Counter(Counter),
+
+    /// A detailed counter that tracks instructions by program counter (PC) and execution steps.
     CounterStats(CounterStats),
 }
 
+/// The `Metrics` trait provides an interface for tracking and managing metrics in a
+/// flexible and extensible manner.
+///
+/// Implementers of this trait can measure data associated with bus IDs, merge metrics
+/// from other sources, and retrieve associated bus IDs.
 pub trait Metrics: Send + Sync {
+    /// Measures and processes data associated with a specific bus ID.
+    ///
+    /// # Arguments
+    /// * `bus_id` - The ID of the bus sending the data.
+    /// * `data` - The payload data associated with the bus ID.
+    ///
+    /// # Returns
+    /// A vector of tuples containing:
+    /// - The bus ID for derived data.
+    /// - The derived data payload.
     fn measure(&mut self, bus_id: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)>;
 
-    fn add(&mut self, other: &dyn Metrics);
-
+    /// Retrieves the bus IDs associated with the current metrics instance.
+    ///
+    /// # Returns
+    /// A vector of `BusId` objects.
     fn bus_id(&self) -> Vec<BusId>;
 
+    /// Performs any necessary cleanup or finalization when the metrics instance is closed.
     fn on_close(&mut self) {}
 
+    /// Provides a dynamic reference for type casting purposes.
+    ///
+    /// # Returns
+    /// A reference to `self` as `dyn Any`.
     fn as_any(&self) -> &dyn Any;
 }
 
+/// The `Counter` struct represents a simple counter for tracking the number of instructions
+/// executed.
 #[derive(Default, Debug, Clone)]
 pub struct Counter {
-    /// Counted instructions
+    /// The total number of counted instructions.
     pub inst_count: u64,
 }
 
 impl Counter {
+    /// Updates the counter by incrementing it with a given value.
+    ///
+    /// # Arguments
+    /// * `num` - The number of instructions to add to the counter.
     #[inline(always)]
     pub fn update(&mut self, num: u64) {
         self.inst_count += num;
@@ -40,30 +76,51 @@ impl Counter {
 impl Add for &Counter {
     type Output = Counter;
 
+    /// Adds two counters and returns a new `Counter` instance with the combined count.
+    ///
+    /// # Arguments
+    /// * `self` - The first counter.
+    /// * `other` - The second counter to be added.
+    ///
+    /// # Returns
+    /// A new `Counter` instance with the combined instruction count.
     fn add(self, other: Self) -> Counter {
         Counter { inst_count: self.inst_count + other.inst_count }
     }
 }
 
 impl AddAssign<&Counter> for Counter {
+    /// Adds the count of another counter to the current counter.
+    ///
+    /// # Arguments
+    /// * `other` - The counter to add.
     fn add_assign(&mut self, other: &Counter) {
         self.inst_count += other.inst_count;
     }
 }
 
+/// The `CounterStats` struct provides detailed metrics for instruction execution,
+/// tracking counts by program counter (PC) and execution steps.
 #[derive(Default, Debug, Clone)]
 pub struct CounterStats {
-    /// Hash map of counted instructions by PC (key: PC, value: number of counted instructions)
+    /// A hash map of instruction counts by PC (key: PC, value: count).
     pub inst_count: HashMap<u64, u64>,
 
-    /// PC of the last executed instruction
+    /// The PC of the last executed instruction.
     pub end_pc: u64,
 
-    /// Number of executed instructions
+    /// The total number of executed instructions (steps).
     pub steps: u64,
 }
 
 impl CounterStats {
+    /// Updates the counter statistics with information about the current instruction execution.
+    ///
+    /// # Arguments
+    /// * `pc` - The program counter (PC) of the executed instruction.
+    /// * `step` - The current execution step.
+    /// * `num` - The number of instructions executed at the given PC.
+    /// * `end` - A flag indicating if this is the final instruction in the execution.
     #[inline(always)]
     pub fn update(&mut self, pc: u64, step: u64, num: usize, end: bool) {
         let count = self.inst_count.entry(pc).or_default();
@@ -79,6 +136,14 @@ impl CounterStats {
 impl Add for &CounterStats {
     type Output = CounterStats;
 
+    /// Merges two `CounterStats` instances into a new instance with combined metrics.
+    ///
+    /// # Arguments
+    /// * `self` - The first `CounterStats` instance.
+    /// * `other` - The second `CounterStats` instance to merge.
+    ///
+    /// # Returns
+    /// A new `CounterStats` instance with merged metrics.
     fn add(self, other: Self) -> CounterStats {
         let mut inst_count = self.inst_count.clone();
         for (k, v) in &other.inst_count {
@@ -94,6 +159,10 @@ impl Add for &CounterStats {
 }
 
 impl AddAssign<&CounterStats> for CounterStats {
+    /// Merges the metrics of another `CounterStats` instance into the current instance.
+    ///
+    /// # Arguments
+    /// * `other` - The `CounterStats` instance to merge.
     fn add_assign(&mut self, other: &CounterStats) {
         for (k, v) in &other.inst_count {
             let count = self.inst_count.entry(*k).or_default();

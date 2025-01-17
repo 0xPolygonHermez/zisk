@@ -1,3 +1,7 @@
+//! The `BinaryBasicSM` module implements the logic for the Binary Basic State Machine.
+//!
+//! This state machine processes binary-related operations.
+
 use std::sync::Arc;
 
 use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM};
@@ -14,19 +18,34 @@ const BYTES: usize = 8;
 const HALF_BYTES: usize = BYTES / 2;
 const MASK_U64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
 
+/// The `BinaryBasicSM` struct encapsulates the logic of the Binary Basic State Machine.
 pub struct BinaryBasicSM {
-    /// Binary Basic Table
+    /// Reference to the Binary Basic Table State Machine.
     binary_basic_table_sm: Arc<BinaryBasicTableSM>,
 }
 
 impl BinaryBasicSM {
     const MY_NAME: &'static str = "Binary  ";
 
-    /// Creates a new Binary Basic state machine instance
+    /// Creates a new Binary Basic State Machine instance.
+    ///
+    /// # Arguments
+    /// * `binary_basic_table_sm` - An `Arc`-wrapped reference to the Binary Basic Table State
+    ///   Machine.
+    ///
+    /// # Returns
+    /// A new `BinaryBasicSM` instance.
     pub fn new(binary_basic_table_sm: Arc<BinaryBasicTableSM>) -> Arc<Self> {
         Arc::new(Self { binary_basic_table_sm })
     }
 
+    /// Determines if an opcode corresponds to a 32-bit operation.
+    ///
+    /// # Arguments
+    /// * `opcode` - The opcode to evaluate.
+    ///
+    /// # Returns
+    /// `true` if the opcode is 32-bit; `false` otherwise.
     fn opcode_is_32_bits(opcode: u8) -> bool {
         const OPCODES_32_BITS: [u8; 11] = [
             MINUW_OP, MINW_OP, MAXUW_OP, MAXW_OP, LTUW_OP, LTW_OP, EQW_OP, ADDW_OP, SUBW_OP,
@@ -36,6 +55,7 @@ impl BinaryBasicSM {
         OPCODES_32_BITS.contains(&opcode)
     }
 
+    /// Helper function for LT_ABS_NP operation execution.
     fn lt_abs_np_execute(a: u64, b: u64) -> (u64, bool) {
         let a_pos = (a ^ MASK_U64).wrapping_add(1);
         if a_pos < b {
@@ -45,6 +65,7 @@ impl BinaryBasicSM {
         }
     }
 
+    /// Helper function for LT_ABS_PN operation execution.
     fn lt_abs_pn_execute(a: u64, b: u64) -> (u64, bool) {
         let b_pos = (b ^ MASK_U64).wrapping_add(1);
         if a < b_pos {
@@ -54,6 +75,7 @@ impl BinaryBasicSM {
         }
     }
 
+    /// Helper function for GT operation execution.
     fn gt_execute(a: u64, b: u64) -> (u64, bool) {
         if (a as i64) > (b as i64) {
             (1, true)
@@ -62,6 +84,17 @@ impl BinaryBasicSM {
         }
     }
 
+    /// Executes a binary operation based on the opcode and inputs `a` and `b`.
+    ///
+    /// # Arguments
+    /// * `opcode` - The operation code to execute.
+    /// * `a` - The first operand.
+    /// * `b` - The second operand.
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// * The result of the operation (`u64`).
+    /// * A boolean indicating whether the operation generated a carry/flag.
     fn execute(opcode: u8, a: u64, b: u64) -> (u64, bool) {
         let is_zisk_op = ZiskOp::try_from_code(opcode).is_ok();
         if is_zisk_op {
@@ -76,6 +109,13 @@ impl BinaryBasicSM {
         }
     }
 
+    /// Returns the initial carry value for a given opcode.
+    ///
+    /// # Arguments
+    /// * `opcode` - The opcode to evaluate.
+    ///
+    /// # Returns
+    /// The initial carry value (`u64`).
     fn get_inital_carry(opcode: u8) -> u64 {
         let is_zisk_op = ZiskOp::try_from_code(opcode).is_ok();
         if is_zisk_op {
@@ -89,19 +129,27 @@ impl BinaryBasicSM {
         }
     }
 
+    /// Processes a slice of operation data, generating a trace row and updating multiplicities.
+    ///
+    /// # Arguments
+    /// * `operation` - The operation data to process.
+    /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
+    ///
+    /// # Returns
+    /// A `BinaryTraceRow` representing the operation's result.
     #[inline(always)]
     pub fn process_slice<F: PrimeField>(
-        operation: &OperationData<u64>,
+        input: &OperationData<u64>,
         multiplicity: &mut [u64],
     ) -> BinaryTraceRow<F> {
         // Create an empty trace
         let mut row: BinaryTraceRow<F> = Default::default();
 
         // Execute the opcode
-        let opcode = OperationBusData::get_op(operation);
-        let a = OperationBusData::get_a(operation);
-        let b = OperationBusData::get_b(operation);
-        let step = OperationBusData::get_step(operation);
+        let opcode = OperationBusData::get_op(input);
+        let a = OperationBusData::get_a(input);
+        let b = OperationBusData::get_b(input);
+        let step = OperationBusData::get_step(input);
 
         let (c, _) = Self::execute(opcode, a, b);
 
@@ -832,27 +880,31 @@ impl BinaryBasicSM {
         row
     }
 
-    pub fn prove_instance<F: PrimeField>(
-        &self,
-        operations: &[OperationData<u64>],
-    ) -> AirInstance<F> {
+    /// Computes the witness for a series of inputs and produces an `AirInstance`.
+    ///
+    /// # Arguments
+    /// * `operations` - A slice of operations to process.
+    ///
+    /// # Returns
+    /// An `AirInstance` containing the computed witness data.
+    pub fn compute_witness<F: PrimeField>(&self, inputs: &[OperationData<u64>]) -> AirInstance<F> {
         let mut binary_trace = BinaryTrace::new();
 
         timer_start_trace!(BINARY_TRACE);
         let num_rows = binary_trace.num_rows();
-        assert!(operations.len() <= num_rows);
+        assert!(inputs.len() <= num_rows);
 
         info!(
             "{}: ··· Creating Binary instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
-            operations.len(),
+            inputs.len(),
             num_rows,
-            operations.len() as f64 / num_rows as f64 * 100.0
+            inputs.len() as f64 / num_rows as f64 * 100.0
         );
 
         let mut multiplicity_table = vec![0u64; BinaryTableTrace::<F>::NUM_ROWS];
 
-        for (i, operation) in operations.iter().enumerate() {
+        for (i, operation) in inputs.iter().enumerate() {
             let row = Self::process_slice(operation, &mut multiplicity_table);
             binary_trace[i] = row;
         }
@@ -867,11 +919,11 @@ impl BinaryBasicSM {
             ..Default::default()
         };
 
-        for i in operations.len()..num_rows {
+        for i in inputs.len()..num_rows {
             binary_trace[i] = padding_row;
         }
 
-        let padding_size = num_rows - operations.len();
+        let padding_size = num_rows - inputs.len();
         for last in 0..2 {
             let multiplicity = (7 - 6 * last as u64) * padding_size as u64;
             let row = BinaryBasicTableSM::calculate_table_row(
