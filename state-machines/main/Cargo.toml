@@ -4,22 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sm-arith = { path = "../arith" }
-sm-binary = { path = "../binary" }
-sm-mem = { path = "../mem" }
 sm-common = { path = "../common" }
-sm-rom = { path = "../rom" }
 ziskemu = { path = "../../emulator" }
 zisk-core = { path = "../../core" }
 zisk-pil = { path = "../../pil" }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
-proofman = { workspace = true }
 p3-field = { workspace = true }
 log = { workspace = true }
 rayon = { workspace = true }
 
 [features]
 default = []
-no_lib_link = ["proofman-common/no_lib_link", "proofman/no_lib_link"]
+no_lib_link = ["proofman-common/no_lib_link"]

@@ -15,22 +15,17 @@
 //!             Emu::run()
 //! ```
 
-use crate::{
-    Emu, EmuOptions, EmuStartingPoints, EmuTrace, EmuTraceStart, ErrWrongArguments, ParEmuOptions,
-    ZiskEmulatorErr,
-};
+use crate::{Emu, EmuOptions, EmuTrace, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr};
+
 use p3_field::PrimeField;
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::Mutex,
     time::Instant,
 };
 use sysinfo::System;
-use zisk_core::{
-    Riscv2zisk, ZiskOperationType, ZiskPcHistogram, ZiskRequiredMemory, ZiskRequiredOperation,
-    ZiskRom, ZISK_OPERATION_TYPE_VARIANTS,
-};
+use zisk_common::{BusDevice, DataBus};
+use zisk_core::{Riscv2zisk, ZiskRom};
 
 pub trait Emulator {
     fn emulate(
@@ -177,45 +172,21 @@ impl ZiskEmulator {
         Ok(output)
     }
 
-    /// Process a Zisk rom with the provided input data, according to the configured options, in
-    /// order to generate a histogram of the program counters used during the emulation.
-    pub fn process_rom_pc_histogram(
-        rom: &ZiskRom,
-        inputs: &[u8],
-        options: &EmuOptions,
-    ) -> Result<ZiskPcHistogram, ZiskEmulatorErr> {
-        // Create a emulator instance with the rom
-        let mut emu = Emu::new(rom);
-
-        // Run the emulation and get the pc histogram
-        let pc_histogram = emu.run_pc_histogram(inputs.to_owned(), options);
-
-        // Check that the emulation completed, either successfully or not, but it must reach the end
-        // of the program
-        if !emu.terminated() {
-            return Err(ZiskEmulatorErr::EmulationNoCompleted);
-        }
-
-        Ok(pc_histogram)
-    }
-
-    pub fn par_process_rom<F: PrimeField>(
+    /// EXECUTE phase
+    /// First phase of the witness computation
+    /// 8 threads in waterfall (# threads to be re-calibrated after memory reads refactor)
+    /// Must be fast
+    pub fn compute_minimal_traces<F: PrimeField>(
         rom: &ZiskRom,
         inputs: &[u8],
         options: &EmuOptions,
         num_threads: usize,
-        op_sizes: [u64; ZISK_OPERATION_TYPE_VARIANTS],
-    ) -> Result<(Vec<EmuTrace>, EmuStartingPoints), ZiskEmulatorErr> {
-        let mut emu_traces = vec![Vec::new(); num_threads];
-        let emu_slices = Mutex::new(EmuStartingPoints::default());
+    ) -> Result<Vec<EmuTrace>, ZiskEmulatorErr> {
+        let mut minimal_traces = vec![Vec::new(); num_threads];
 
-        emu_traces.par_iter_mut().enumerate().for_each(|(thread_id, emu_trace)| {
-            let par_emu_options = ParEmuOptions::new(
-                num_threads,
-                thread_id,
-                options.trace_steps.unwrap() as usize,
-                op_sizes,
-            );
+        minimal_traces.par_iter_mut().enumerate().for_each(|(thread_id, emu_trace)| {
+            let par_emu_options =
+                ParEmuOptions::new(num_threads, thread_id, options.trace_steps.unwrap() as usize);
 
             // Run the emulation
             let mut emu = Emu::new(rom);
@@ -227,71 +198,54 @@ impl ZiskEmulator {
                 // return Err(ZiskEmulatorErr::EmulationNoCompleted);
             }
 
-            *emu_trace = result.0;
-
-            if thread_id == 0 {
-                *emu_slices.lock().unwrap() = result.1;
-            }
+            *emu_trace = result;
         });
 
-        let capacity = emu_traces.iter().map(|trace| trace.len()).sum::<usize>();
+        let capacity = minimal_traces.iter().map(|trace| trace.len()).sum::<usize>();
         let mut vec_traces = Vec::with_capacity(capacity);
         for i in 0..capacity {
             let x = i % num_threads;
             let y = i / num_threads;
 
-            vec_traces.push(std::mem::take(&mut emu_traces[x][y]));
+            vec_traces.push(std::mem::take(&mut minimal_traces[x][y]));
         }
 
-        // For performance reasons we didn't collect main operation starting points because we
-        // can generate them from the execution trace.
-        let mut emu_slices = emu_slices.into_inner().unwrap();
-        emu_slices.total_steps[ZiskOperationType::None as usize] =
-            vec_traces.iter().map(|trace| trace.steps.len()).sum::<usize>() as u64;
-        for vec_trace in &vec_traces {
-            emu_slices.add(
-                ZiskOperationType::None,
-                vec_trace.start_state.pc,
-                vec_trace.start_state.sp,
-                vec_trace.start_state.c,
-                vec_trace.start_state.step,
-            );
-        }
-
-        Ok((vec_traces, emu_slices))
+        Ok(vec_traces)
     }
 
-    pub fn par_process_rom_memory<F: PrimeField>(
-        rom: &ZiskRom,
-        inputs: &[u8],
-    ) -> Result<Vec<ZiskRequiredMemory>, ZiskEmulatorErr> {
-        let mut emu = Emu::new(rom);
-        let result = emu.par_run_memory::<F>(inputs.to_owned());
-
-        if !emu.terminated() {
-            panic!("Emulation did not complete");
-            // TODO!
-            // return Err(ZiskEmulatorErr::EmulationNoCompleted);
-        }
-
-        Ok(result)
-    }
-
-    /// Process a Zisk rom with the provided input data, according to the configured options, in
-    /// order to generate a set of required operation data.
+    /// COUNT phase
+    /// Second phase of the witness computation
+    /// Executes in parallel the different blocks of wc
+    /// Good to be fast
     #[inline]
-    pub fn process_slice_required<F: PrimeField>(
+    pub fn process_emu_trace<F: PrimeField, BD: BusDevice<u64>>(
         rom: &ZiskRom,
-        vec_traces: &[EmuTrace],
-        op_type: ZiskOperationType,
-        emu_trace_start: &EmuTraceStart,
-        num_rows: usize,
-    ) -> Vec<ZiskRequiredOperation> {
-        // Create a emulator instance with the rom
+        emu_trace: &EmuTrace,
+        data_bus: &mut DataBus<u64, BD>,
+    ) {
+        // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);
 
         // Run the emulation
-        emu.run_slice_required::<F>(vec_traces, op_type, emu_trace_start, num_rows)
+        emu.process_emu_trace::<F, BD>(emu_trace, data_bus);
+    }
+
+    /// EXPAND phase
+    /// Third phase of the witness computation
+    /// I have a
+    #[inline]
+    pub fn process_emu_traces<F: PrimeField, BD: BusDevice<u64>>(
+        rom: &ZiskRom,
+        min_traces: &[EmuTrace],
+        chunk_id: usize,
+        data_bus: &mut DataBus<u64, BD>,
+        is_multiple: bool,
+    ) {
+        // Create a emulator instance with this rom
+        let mut emu = Emu::new(rom);
+
+        // Run the emulation
+        emu.process_emu_traces(min_traces, chunk_id, data_bus, is_multiple);
     }
 
     /// Finds all files in a directory and returns a vector with their full paths

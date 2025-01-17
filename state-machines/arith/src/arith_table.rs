@@ -1,117 +1,51 @@
-use std::sync::{
-    atomic::{AtomicBool, AtomicU32, Ordering},
-    Arc, Mutex,
-};
+//! The `ArithTableSM` module defines the Arithmetic Table State Machine.
+//!
+//! This state machine manages the multiplicity table for arithmetic table traces and provides
+//! functionality to process inputs and manage multiplicity data.
+
+use std::sync::{Arc, Mutex};
 
 use crate::ArithTableInputs;
-use log::info;
-use p3_field::Field;
-use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
-use rayon::prelude::*;
-use zisk_pil::{ArithTableTrace, ARITH_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::ArithTableTrace;
 
-pub struct ArithTableSM<F> {
-    wcm: Arc<WitnessManager<F>>,
-
-    // Count of registered predecessors
-    registered_predecessors: AtomicU32,
-
-    // Inputs
-    num_rows: usize,
+/// The `ArithTableSM` struct represents the Arithmetic Table State Machine.
+///
+/// It handles the multiplicity table for arithmetic operations and provides methods to process
+/// inputs and retrieve the accumulated data.
+pub struct ArithTableSM {
+    /// Multiplicity table shared across threads.
     multiplicity: Mutex<Vec<u64>>,
     used: AtomicBool,
 }
 
-impl<F: Field> ArithTableSM<F> {
-    const MY_NAME: &'static str = "ArithT  ";
-
-    pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
-        let pctx = wcm.get_pctx();
-        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, ARITH_TABLE_AIR_IDS[0]);
-        let _arith_table_sm = Self {
-            wcm: wcm.clone(),
-            registered_predecessors: AtomicU32::new(0),
-            num_rows: air.num_rows(),
-            multiplicity: Mutex::new(vec![0; air.num_rows()]),
-            used: AtomicBool::new(false),
-        };
-        let arith_table_sm = Arc::new(_arith_table_sm);
-
-        wcm.register_component(arith_table_sm.clone(), Some(airgroup_id), Some(air_ids));
-
-        arith_table_sm
+impl ArithTableSM {
+    /// Creates a new `ArithTableSM` instance.
+    ///
+    /// # Returns
+    /// An `Arc`-wrapped instance of `ArithTableSM`.
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { multiplicity: Mutex::new(vec![0; ArithTableTrace::<usize>::NUM_ROWS]) })
     }
 
-    pub fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    pub fn unregister_predecessor(&self) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 &&
-            self.used.load(Ordering::SeqCst)
-        {
-            self.create_air_instance();
-        }
-    }
+    /// Processes a slice of input data and updates the multiplicity table.
+    ///
+    /// # Arguments
+    /// * `inputs` - A reference to `ArithTableInputs`, containing rows and their corresponding
+    ///   values.
     pub fn process_slice(&self, inputs: &ArithTableInputs) {
-        // Create the trace vector
-        let mut _multiplicity = self.multiplicity.lock().unwrap();
-
-        for (row, value) in inputs {
-            _multiplicity[row] += value;
-        }
-        self.used.store(true, Ordering::Relaxed);
-    }
-    pub fn create_air_instance(&self) {
-        let ectx = self.wcm.get_ectx();
-        let mut dctx: std::sync::RwLockWriteGuard<'_, proofman_common::DistributionCtx> =
-            ectx.dctx.write().unwrap();
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
-        let (is_myne, instance_global_idx) =
-            dctx.add_instance(ZISK_AIRGROUP_ID, ARITH_TABLE_AIR_IDS[0], 1);
-        let owner: usize = dctx.owner(instance_global_idx);
-
-        let mut multiplicity_ = std::mem::take(&mut *multiplicity);
-        dctx.distribute_multiplicity(&mut multiplicity_, owner);
-
-        if is_myne {
-            let trace: ArithTableTrace<'_, _> = ArithTableTrace::new(self.num_rows);
-            let mut prover_buffer = trace.buffer.unwrap();
-            prover_buffer[0..self.num_rows]
-                .par_iter_mut()
-                .enumerate()
-                .for_each(|(i, input)| *input = F::from_canonical_u64(multiplicity_[i]));
-
-            info!(
-                "{}: ··· Creating Arith basic table instance [{} rows filled 100%]",
-                Self::MY_NAME,
-                self.num_rows,
-            );
-            let air_instance = AirInstance::new(
-                self.wcm.get_sctx(),
-                ZISK_AIRGROUP_ID,
-                ARITH_TABLE_AIR_IDS[0],
-                None,
-                prover_buffer,
-            );
-            self.wcm
-                .get_pctx()
-                .air_instance_repo
-                .add_air_instance(air_instance, Some(instance_global_idx));
+        for (row, value) in inputs {
+            multiplicity[row] += value;
         }
     }
-}
 
-impl<F: Field> WitnessComponent<F> for ArithTableSM<F> {
-    fn calculate_witness(
-        &self,
-        _stage: u32,
-        _air_instance: Option<usize>,
-        _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
-    ) {
+    /// Detaches and returns the current multiplicity table.
+    ///
+    /// # Returns
+    /// A vector containing the multiplicity table.
+    pub fn detach_multiplicity(&self) -> Vec<u64> {
+        let mut multiplicity = self.multiplicity.lock().unwrap();
+        std::mem::take(&mut *multiplicity)
     }
 }

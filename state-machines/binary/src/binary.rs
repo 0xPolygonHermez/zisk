@@ -1,146 +1,157 @@
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc, Mutex,
-};
+//! The `BinarySM` module implements the Binary State Machine,
+//! coordinating sub-state machines to handle various binary operations seamlessly.
+//!
+//! Key components of this module include:
+//! - The `BinarySM` struct, encapsulating the basic and extension state machines along with their
+//!   table counterparts.
+//! - `ComponentBuilder` trait implementations for creating counters, planners, and input collectors
+//!   specific to binary operations.
 
-use crate::{BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionSM, BinaryExtensionTableSM};
+use std::sync::Arc;
+
+use crate::{
+    BinaryBasicInstance, BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionInstance,
+    BinaryExtensionSM, BinaryExtensionTableSM,
+};
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use proofman::{WitnessComponent, WitnessManager};
-use zisk_core::ZiskRequiredOperation;
-use zisk_pil::{
-    BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_TABLE_AIR_IDS, BINARY_TABLE_AIR_IDS,
-    ZISK_AIRGROUP_ID,
+use sm_common::{
+    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx,
+    InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
+use zisk_common::OPERATION_BUS_ID;
+use zisk_core::ZiskOperationType;
+use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace};
 
-const PROVE_CHUNK_SIZE: usize = 1 << 16;
-
+/// The `BinarySM` struct represents the Binary State Machine,
+/// managing both basic and extension binary operations.
 #[allow(dead_code)]
 pub struct BinarySM<F: PrimeField> {
-    // Count of registered predecessors
-    registered_predecessors: AtomicU32,
+    /// Binary Basic state machine
+    binary_basic_sm: Arc<BinaryBasicSM>,
 
-    // Inputs
-    inputs_basic: Mutex<Vec<ZiskRequiredOperation>>,
-    inputs_extension: Mutex<Vec<ZiskRequiredOperation>>,
+    /// Binary Basic Table state machine
+    binary_basic_table_sm: Arc<BinaryBasicTableSM>,
 
-    // Secondary State machines
-    binary_basic_sm: Arc<BinaryBasicSM<F>>,
+    /// Binary Extension state machine
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
+
+    /// Binary Extension Table state machine
+    binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
 }
 
 impl<F: PrimeField> BinarySM<F> {
-    pub fn new(wcm: Arc<WitnessManager<F>>, std: Arc<Std<F>>) -> Arc<Self> {
-        let binary_basic_table_sm =
-            BinaryBasicTableSM::new(wcm.clone(), ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS);
-        let binary_basic_sm = BinaryBasicSM::new(
-            wcm.clone(),
-            binary_basic_table_sm,
-            ZISK_AIRGROUP_ID,
-            BINARY_AIR_IDS,
-        );
+    /// Creates a new instance of the `BinarySM` state machine.
+    ///
+    /// # Arguments
+    /// * `std` - PIL2 standard library utilities.
+    ///
+    /// # Returns
+    /// An `Arc`-wrapped instance of `BinarySM`.
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+        let binary_basic_table_sm = BinaryBasicTableSM::new::<F>();
+        let binary_basic_sm = BinaryBasicSM::new(binary_basic_table_sm.clone());
 
-        let binary_extension_table_sm = BinaryExtensionTableSM::new(
-            wcm.clone(),
-            ZISK_AIRGROUP_ID,
-            BINARY_EXTENSION_TABLE_AIR_IDS,
-        );
-        let binary_extension_sm = BinaryExtensionSM::new(
-            wcm.clone(),
-            std,
-            binary_extension_table_sm,
-            ZISK_AIRGROUP_ID,
-            BINARY_EXTENSION_AIR_IDS,
-        );
+        let binary_extension_table_sm = BinaryExtensionTableSM::new::<F>();
+        let binary_extension_sm = BinaryExtensionSM::new(std, binary_extension_table_sm.clone());
 
-        let binary_sm = Self {
-            registered_predecessors: AtomicU32::new(0),
-            inputs_basic: Mutex::new(Vec::new()),
-            inputs_extension: Mutex::new(Vec::new()),
+        Arc::new(Self {
             binary_basic_sm,
+            binary_basic_table_sm,
             binary_extension_sm,
-        };
-        let binary_sm = Arc::new(binary_sm);
-
-        wcm.register_component(binary_sm.clone(), None, None);
-
-        binary_sm.binary_basic_sm.register_predecessor();
-        binary_sm.binary_extension_sm.register_predecessor();
-
-        binary_sm
+            binary_extension_table_sm,
+        })
     }
 
-    pub fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
+impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
+    /// Builds and returns a new counter for monitoring binary operations.
+    ///
+    /// # Returns
+    /// A boxed implementation of `RegularCounters` configured for binary and extension binary
+    /// operations.
+    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
+        Box::new(RegularCounters::new(
+            OPERATION_BUS_ID,
+            vec![ZiskOperationType::Binary, ZiskOperationType::BinaryE],
+        ))
     }
 
-    pub fn unregister_predecessor(&self) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            // If there are remaining binary inputs, prove them
-            self.prove(&[], true);
-
-            self.binary_basic_sm.unregister_predecessor();
-            self.binary_extension_sm.unregister_predecessor();
-        }
+    /// Builds a planner to plan binary-related instances.
+    ///
+    /// # Returns
+    /// A boxed implementation of `RegularPlanner`.
+    fn build_planner(&self) -> Box<dyn Planner> {
+        Box::new(
+            RegularPlanner::new()
+                .add_instance(InstanceInfo::new(
+                    BinaryTrace::<usize>::AIR_ID,
+                    BinaryTrace::<usize>::AIRGROUP_ID,
+                    BinaryTrace::<usize>::NUM_ROWS,
+                    ZiskOperationType::Binary,
+                ))
+                .add_instance(InstanceInfo::new(
+                    BinaryExtensionTrace::<usize>::AIR_ID,
+                    BinaryExtensionTrace::<usize>::AIRGROUP_ID,
+                    BinaryExtensionTrace::<usize>::NUM_ROWS,
+                    ZiskOperationType::BinaryE,
+                ))
+                .add_table_instance(TableInfo::new(
+                    BinaryTableTrace::<usize>::AIR_ID,
+                    BinaryTableTrace::<usize>::AIRGROUP_ID,
+                ))
+                .add_table_instance(TableInfo::new(
+                    BinaryExtensionTableTrace::<usize>::AIR_ID,
+                    BinaryExtensionTableTrace::<usize>::AIRGROUP_ID,
+                )),
+        )
     }
 
-    pub fn prove_instance(
-        &self,
-        operations: Vec<ZiskRequiredOperation>,
-        is_extension: bool,
-        prover_buffer: &mut [F],
-    ) {
-        if !is_extension {
-            self.binary_basic_sm.prove_instance(operations, prover_buffer);
-        } else {
-            self.binary_extension_sm.prove_instance(operations, prover_buffer);
-        }
-    }
-
-    pub fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool) {
-        // Split the operations into basic and extended operations
-        let mut _inputs_basic = Vec::new();
-        let mut _inputs_extension = Vec::new();
-
-        let basic_operations = BinaryBasicSM::<F>::operations();
-        let extension_operations = BinaryExtensionSM::<F>::operations();
-
-        for operation in operations {
-            if basic_operations.contains(&operation.opcode) {
-                _inputs_basic.push(operation.clone());
-            } else if extension_operations.contains(&operation.opcode) {
-                _inputs_extension.push(operation.clone());
-            } else {
-                panic!("BinarySM: Operator {:#04x} not found", operation.opcode);
+    /// Builds an inputs data collector for binary operations.
+    ///
+    /// # Arguments
+    /// * `ictx` - The context of the instance, containing the plan and its associated
+    ///   configurations.
+    ///
+    /// # Returns
+    /// A boxed implementation of `BusDeviceInstance` specific to the requested `air_id` instance.
+    ///
+    /// # Panics
+    /// Panics if the provided `air_id` is not supported.
+    fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
+        match ictx.plan.air_id {
+            id if id == BinaryTrace::<usize>::AIR_ID => Box::new(BinaryBasicInstance::new(
+                self.binary_basic_sm.clone(),
+                ictx,
+                OPERATION_BUS_ID,
+            )),
+            id if id == BinaryExtensionTrace::<usize>::AIR_ID => {
+                Box::new(BinaryExtensionInstance::new(
+                    self.binary_extension_sm.clone(),
+                    ictx,
+                    OPERATION_BUS_ID,
+                ))
             }
-        }
-
-        // Accumulate the basic operations, proving them once there are enough
-        if let Ok(mut inputs_basic) = self.inputs_basic.lock() {
-            inputs_basic.extend(_inputs_basic);
-
-            while inputs_basic.len() >= PROVE_CHUNK_SIZE || (drain && !inputs_basic.is_empty()) {
-                let num_drained_basic = std::cmp::min(PROVE_CHUNK_SIZE, inputs_basic.len());
-                let drained_inputs_basic =
-                    inputs_basic.drain(..num_drained_basic).collect::<Vec<_>>();
-
-                self.binary_basic_sm.prove(&drained_inputs_basic, false);
+            id if id == BinaryTableTrace::<usize>::AIR_ID => {
+                table_instance!(BinaryBasicTableInstance, BinaryBasicTableSM, BinaryTableTrace);
+                Box::new(BinaryBasicTableInstance::new(
+                    self.binary_basic_table_sm.clone(),
+                    ictx,
+                    OPERATION_BUS_ID,
+                ))
             }
-        }
-
-        // Accumulate the extension operations, proving them once there are enough
-        if let Ok(mut inputs_extension) = self.inputs_extension.lock() {
-            inputs_extension.extend(_inputs_extension);
-
-            while inputs_extension.len() >= PROVE_CHUNK_SIZE ||
-                (drain && !inputs_extension.is_empty())
-            {
-                let num_drained_extension = std::cmp::min(PROVE_CHUNK_SIZE, inputs_extension.len());
-                let drained_inputs_extension =
-                    inputs_extension.drain(..num_drained_extension).collect::<Vec<_>>();
-
-                self.binary_extension_sm.prove(&drained_inputs_extension, false);
+            id if id == BinaryExtensionTableTrace::<usize>::AIR_ID => {
+                table_instance!(
+                    BinaryExtensionTableInstance,
+                    BinaryExtensionTableSM,
+                    BinaryExtensionTableTrace
+                );
+                Box::new(BinaryExtensionTableInstance::new(
+                    self.binary_extension_table_sm.clone(),
+                    ictx,
+                    OPERATION_BUS_ID,
+                ))
             }
+            _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
         }
     }
 }
