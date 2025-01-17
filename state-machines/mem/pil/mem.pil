@@ -160,10 +160,10 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     direct_global_update_proves(MEMORY_CONT_ID, [ base_address, 0, internal_base_address, 0, ...zeros], sel: enable_flag);
 
     // for security check that first address has correct value, to avoid add huge quantity of instances to "overflow" prime field.
-    range_check(colu: previous_segment_addr - internal_base_address + 1, min: 1, max: MEMORY_MAX_DIFF);
+    range_check(expression: previous_segment_addr - internal_base_address + 1, min: 1, max: MEMORY_MAX_DIFF);
 
     // control final of memory
-    range_check(colu: internal_end_address - segment_last_addr + 1, min: 1, max: MEMORY_MAX_DIFF);
+    range_check(expression: internal_end_address - segment_last_addr + 1, min: 1, max: MEMORY_MAX_DIFF);
 
 
     // check increment of memory
@@ -188,7 +188,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
         is_first_segment * SEGMENT_L1 * (1 - addr_changes) === 0;
 
-        range_check(colu: increment, min: 1, max: MEMORY_MAX_DIFF);
+        range_check(expression: increment, min: 1, max: MEMORY_MAX_DIFF);
     }
 
     (1 - addr_changes) * (addr - previous_addr) === 0;
@@ -221,7 +221,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // These are handled with the Memory Align component
 
     const expr mem_op = wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
-    permutation_proves(MEMORY_ID, cols: [mem_op, addr * mem_bytes, step, mem_bytes, ...value], sel: sel);
+    permutation_proves(MEMORY_ID, expressions: [mem_op, addr * mem_bytes, step, mem_bytes, ...value], sel: sel);
 }
 
 function mem_load(int id = MEMORY_ID, expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[], expr sel = 1) {

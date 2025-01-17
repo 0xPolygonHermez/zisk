@@ -1,6 +1,6 @@
 require "std_lookup.pil"
 require "std_permutation.pil"
-require "std_common.pil"
+require "std_direct.pil"
 
 const int BOOT_ADDR = 0x1000;
 const int END_PC_ADDR = 0x1000_0000;
@@ -278,10 +278,10 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     }
 
     if (stack_enabled) {
-        direct_global_update_proves(MAIN_CONTINUATION_ID, cols: [0, 0, BOOT_ADDR, ...zeros, INITIAL_SP]);
-        direct_global_update_assumes(MAIN_CONTINUATION_ID, cols: [0, 1, END_PC_ADDR, ...zeros, END_SP]);
+        direct_global_update_proves(MAIN_CONTINUATION_ID, expressions: [0, 0, BOOT_ADDR, ...zeros, INITIAL_SP]);
+        direct_global_update_assumes(MAIN_CONTINUATION_ID, expressions: [0, 1, END_PC_ADDR, ...zeros, END_SP]);
     } else {
-        direct_global_update_proves(MAIN_CONTINUATION_ID, cols: [0, 0, BOOT_ADDR, ...zeros]);
-        direct_global_update_assumes(MAIN_CONTINUATION_ID, cols: [0, 1, END_PC_ADDR, ...zeros]);
+        direct_global_update_proves(MAIN_CONTINUATION_ID, expressions: [0, 0, BOOT_ADDR, ...zeros]);
+        direct_global_update_assumes(MAIN_CONTINUATION_ID, expressions: [0, 1, END_PC_ADDR, ...zeros]);
     }
 }

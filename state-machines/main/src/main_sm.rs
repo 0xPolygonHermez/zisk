@@ -136,7 +136,7 @@ impl MainSM {
         let air_instance = AirInstance::new_from_trace(
             FromTrace::new(&mut main_trace).with_air_values(&mut air_values),
         );
-        pctx.air_instance_repo.add_air_instance(air_instance, Some(main_instance.ictx.global_id));
+        pctx.air_instance_repo.add_air_instance(air_instance, main_instance.ictx.global_id);
     }
 
     fn fill_partial_trace<F: PrimeField>(
