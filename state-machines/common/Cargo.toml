@@ -1,13 +1,14 @@
 [package]
 name = "sm-common"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-ziskemu = { path = "../../emulator" }
 zisk-core = { path = "../../core" }
+data-bus = { path = "../../data-bus" }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
+p3-field = { workspace = true }
 
 rayon = "1.10.0"

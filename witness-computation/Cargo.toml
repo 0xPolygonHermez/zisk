@@ -1,19 +1,19 @@
 [package]
 name = "zisk-witness"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [lib]
 crate-type = ["dylib"]
 
 [dependencies]
+executor = { path = "../executor" }
+sm-std = { path = "../state-machines/std" }
 sm-arith = { path = "../state-machines/arith" }
 sm-binary = { path = "../state-machines/binary" }
 sm-common = { path = "../state-machines/common" }
-sm-freq-ops = { path = "../state-machines/freq-ops" }
 sm-main = { path = "../state-machines/main" }
 sm-mem = { path = "../state-machines/mem" }
-sm-quick-ops = { path = "../state-machines/quick-ops" }
 sm-rom = { path = "../state-machines/rom" }
 zisk-pil = { path = "../pil" }
 ziskemu = { path = "../emulator" }
@@ -22,7 +22,7 @@ zisk-core = { path = "../core" }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
-proofman = { workspace = true }
+witness = { workspace = true }
 p3-field = { workspace=true }
 pil-std-lib = { workspace = true }
 log = { workspace = true }
@@ -33,4 +33,4 @@ rayon = { workspace = true }
 
 [features]
 default = []
-no_lib_link = ["proofman-common/no_lib_link", "proofman/no_lib_link"]
+no_lib_link = ["proofman-common/no_lib_link"]

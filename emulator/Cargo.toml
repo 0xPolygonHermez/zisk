@@ -1,6 +1,6 @@
 [package]
 name = "ziskemu"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [lib]
@@ -13,13 +13,14 @@ path = "src/bin/ziskemu.rs"
 
 [dependencies]
 zisk-core = { path = "../core" }
-riscv = { path="../riscv" }
-zisk-pil = { path="../pil" }
+riscv = { path = "../riscv" }
+zisk-pil = { path = "../pil" }
+data-bus = { path = "../data-bus" }
 rayon = { workspace = true }
 
 p3-field = { workspace=true }
 clap = { version = "4.5.9", features = ["derive", "env"] }
-sysinfo = "0.31.2"
+sysinfo = "0.33"
 
 [build-dependencies]
 vergen = { version = "8", default-features = false, features = [

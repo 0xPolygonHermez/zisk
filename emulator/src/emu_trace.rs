@@ -11,6 +11,8 @@ pub struct EmuTraceStart {
     pub c: u64,
     /// Initial value of the step
     pub step: u64,
+    pub regs: [u64; 32],
+    pub mem_reads_index: usize,
 }
 
 /// Trace data at every step.
@@ -20,11 +22,9 @@ pub struct EmuTraceStart {
 /// The value of c and flag can be obtained by executing the ROM instruction corresponding to the
 /// current value of pc and taking a and b as the input.
 #[derive(Default, Debug, Clone)]
-pub struct EmuTraceStep {
-    /// Value of register a, built from the source specified by the Zisk instruction
-    pub a: u64,
-    /// Value of register b, built from the source specified by the Zisk instruction
-    pub b: u64,
+pub struct EmuTraceSteps {
+    pub mem_reads: Vec<u64>,
+    pub steps: u64,
 }
 
 /// Trace data at the end of the program execution, including only the `end` flag.
@@ -54,8 +54,6 @@ pub struct EmuTrace {
     pub start_state: EmuTraceStart,
     /// State at the end of the execution
     pub last_state: EmuTraceStart,
-    /// Trace data at every step of the execution
-    pub steps: Vec<EmuTraceStep>,
-    /// End trace
+    pub steps: EmuTraceSteps,
     pub end: EmuTraceEnd,
 }

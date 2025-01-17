@@ -104,5 +104,5 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id) {
         multiplicity
     );
 
-    range_check(colu: in2[0], min: 0, max: 2**24-1, sel: op_is_shift);
+    range_check(expression: in2[0], min: 0, max: 2**24-1, sel: op_is_shift);
 }
