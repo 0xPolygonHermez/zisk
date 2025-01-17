@@ -51,8 +51,8 @@ use crate::{
 
 const REG_A: &str = "rbx";
 const REG_A_W: &str = "ebx";
-const REG_A_H: &str = "bx";
-const REG_A_B: &str = "bl";
+//const REG_A_H: &str = "bx";
+//const REG_A_B: &str = "bl";
 
 const REG_B: &str = "rax";
 const REG_B_W: &str = "eax";
@@ -61,8 +61,8 @@ const REG_B_B: &str = "al";
 
 const REG_C: &str = "rcx";
 const REG_C_W: &str = "ecx";
-const REG_C_H: &str = "cx";
-const REG_C_B: &str = "cl";
+//const REG_C_H: &str = "cx";
+//const REG_C_B: &str = "cl";
 
 const REG_FLAG: &str = "rdx";
 
@@ -1291,7 +1291,7 @@ impl ZiskRom {
             }
             ZiskOp::Ltu => {
                 // Make sure a is in REG_A to compare it against b (constant, expression or reg)
-                if ctx.b.is_constant {
+                if ctx.a.is_constant {
                     s += &format!("\tmov {}, {} /* Ltu: a = value */\n", REG_A, ctx.a.string_value);
                 }
                 s += &format!("\tcmp {}, {} /* Ltu: a == b ? */\n", REG_A, ctx.b.string_value);
@@ -1486,103 +1486,175 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Mulu => {
-                // mulq
-                // Unsigned full multiply of %rax by S
-                // Result stored in %rdx:%rax
-                s += &format!("\t/*mulq {}*/ /* Mulu */\n", REG_A);
-                s += &format!("\tmov {}, {} /* Mulu */\n", REG_C, REG_B);
-                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                // RDX:RAX := RAX ∗ r/m64
+                // Make sure b is in REG_B
+                if ctx.b.is_constant {
+                    s += &format!(
+                        "\tmov {}, {} /* Mulu: b = b_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
+                }
+                s += &format!("\tmul {} /* Mulu: rax*reg -> rdx:rax */\n", REG_A);
+                s += &format!("\tmov {}, rax /* Mulu: c = result(rax) */\n", REG_C);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Muluh => {
-                s += &format!("\t/*mulq {}*/ /* Muluh */\n", REG_A);
-                s += &format!("\tmov {}, {} /* Muluh */\n", REG_C, REG_FLAG);
-                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                // RDX:RAX := RAX ∗ r/m64
+                // Make sure b is in REG_B
+                if ctx.b.is_constant {
+                    s += &format!(
+                        "\tmov {}, {} /* Muluh: b = b_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
+                }
+                s += &format!("\tmul {} /* Muluh: rax*reg -> rdx:rax */\n", REG_A);
+                s += &format!("\tmov {}, rdx /* Muluh: c = high result(rdx) */\n", REG_C);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Mulsuh => {
-                s += &format!("\t/*imulq {}*/ /* Mulsuh */\n", REG_A);
-                s += &format!("\tmov {}, {} /* Mulsuh */\n", REG_C, REG_FLAG);
-                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                // RDX:RAX := RAX ∗ r/m64
+                // Make sure b is in REG_B
+                if ctx.b.is_constant {
+                    s += &format!(
+                        "\tmov {}, {} /* Mulsuh: b = b_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
+                }
+                s += &format!("\timul {} /* Mulsuh: rax*reg -> rdx:rax */\n", REG_A);
+                s += &format!("\tmov {}, rdx /* Mulsuh: c = high result(rdx) */\n", REG_C);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Mul => {
-                s += &format!("\t/*imulq {}*/ /* Mul */\n", REG_A);
-                s += &format!("\tmov {}, {} /* Mul */\n", REG_C, REG_B);
-                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                // RDX:RAX := RAX ∗ r/m64
+                // Make sure b is in REG_B
+                if ctx.b.is_constant {
+                    s += &format!(
+                        "\tmov {}, {} /* Mul: b = b_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
+                }
+                s += &format!("\tmul {} /* Mul: rax*reg -> rdx:rax */\n", REG_A);
+                s += &format!("\tmov {}, rax /* Mul: c = result(rax) */\n", REG_C);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Mulh => {
-                s += &format!("\t/*imulq {}*/ /* Mulh */\n", REG_A);
-                s += &format!("\tmov {}, {} /* Mulh */\n", REG_C, REG_FLAG);
-                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                // RDX:RAX := RAX ∗ r/m64
+                // Make sure b is in REG_B
+                if ctx.b.is_constant {
+                    s += &format!(
+                        "\tmov {}, {} /* Mulh: b = b_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
+                }
+                s += &format!("\timul {} /* Mulh: rax*reg -> rdx:rax */\n", REG_A);
+                s += &format!("\tmov {}, rax /* Mulh: c = high result(rdx) */\n", REG_C);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::MulW => {
-                s += &format!("\tmov {}, {} /* MulW */\n", REG_B_W, REG_B);
-                s += &format!("\t/*imulq {}*/ /* MulW */\n", REG_A_W);
-                s += &format!("\tmov {}, {} /* MulW */\n", REG_C, REG_B);
-                //s += &format!("\tmov {}, 0\n", REG_FLAG);
+                // RDX:RAX := RAX ∗ r/m64
+                // Make sure b is in REG_B
+                if ctx.b.is_constant {
+                    s += &format!(
+                        "\tmov {}, {} /* MulW: b = b_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
+                }
+                s += &format!("\tmul {} /* MulW: rax*reg -> rdx:rax */\n", REG_A_W);
+                //s += &format!("\tmov {}, rax /* MulW: c = result(rax) */\n", REG_C);
+
+                s += &format!("\tmovsxd {}, {} /* MulW: sign extend to quad */\n", REG_C, REG_B_W);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Divu => {
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX := Remainder.
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s +=
                         &format!("\tmov {}, {} /* Divu: b = value */\n", REG_B, ctx.b.string_value);
                 }
-                s += &format!("\tcmp {}, 0 /* Divu: b == 0 ? */\n", REG_B);
-                s += &format!("\tje pc_{:x}_divu_b_is_zero\n", ctx.pc);
-                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
-                s += &format!("\tmov {}, 0\n", REG_FLAG);
-                s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
-                s += &format!("\tdivq {}\n", REG_C);
-                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
-                s += &format!("\tmov {}, 0\n", REG_FLAG);
+                // If b==0 return 0xffffffffffffffff
+                s += &format!("\tcmp {}, 0 /* Divu: if b == 0 return f's */\n", REG_B);
+                s += &format!(
+                    "\tjne pc_{:x}_divu_b_is_not_zero /* Divu: if b is not zero, divide */\n",
+                    ctx.pc
+                );
+                s +=
+                    &format!("\tmov {}, 0xffffffffffffffff /* Divu: set result to f's */\n", REG_C);
                 s += &format!("\tje pc_{:x}_divu_done\n", ctx.pc);
-                s += &format!("pc_{:x}_divu_b_is_zero:\n", ctx.pc);
-                s += &format!("\tmov {}, 0xffffffffffffffff\n", REG_C);
-                s += &format!("\tmov {}, 1\n", REG_FLAG);
+                s += &format!("pc_{:x}_divu_b_is_not_zero:\n", ctx.pc);
+
+                s += &format!("\tmov {}, {} /* Divu: value = b backup */\n", REG_VALUE, REG_B);
+                s += &format!("\tmov rdx, 0 /* Divu: rdx = 0 */\n");
+                s += &format!("\tmov rax, {} /* Divu: rax = a */\n", ctx.a.string_value);
+                s += &format!(
+                    "\tdiv {} /* Divu: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
+                    REG_VALUE
+                );
+                s += &format!("\tmov {}, rax /* Divu: c = quotient(rax) */\n", REG_C);
                 s += &format!("pc_{:x}_divu_done:\n", ctx.pc);
+                ctx.flag_is_always_zero = true;
             }
             ZiskOp::Remu => {
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX := Remainder.
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s +=
                         &format!("\tmov {}, {} /* Remu: b = value */\n", REG_B, ctx.b.string_value);
                 }
-                s += &format!("\tcmp {}, 0 /* Remu: b == 0 ? *\n", REG_B);
-                s += &format!("\tje pc_{:x}_remu_b_is_zero\n", ctx.pc);
-                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
-                s += &format!("\tmov {}, 0\n", REG_FLAG);
-                s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
-                s += &format!("\tdivq {}\n", REG_C);
-                s += &format!("\tmov {}, {}\n", REG_C, REG_FLAG);
-                s += &format!("\tmov {}, 0\n", REG_FLAG);
+                // If b==0 return 0xffffffffffffffff
+                s += &format!("\tcmp {}, 0 /* Remu: if b == 0 return f's */\n", REG_B);
+                s += &format!(
+                    "\tjne pc_{:x}_remu_b_is_not_zero /* Remu: if b is not zero, divide */\n",
+                    ctx.pc
+                );
+                s +=
+                    &format!("\tmov {}, 0xffffffffffffffff /* Remu: set result to f's */\n", REG_C);
                 s += &format!("\tje pc_{:x}_remu_done\n", ctx.pc);
-                s += &format!("pc_{:x}_remu_b_is_zero:\n", ctx.pc);
-                s += &format!("\tmov {}, {}\n", REG_C, ctx.a.string_value);
-                s += &format!("\tmov {}, 1\n", REG_FLAG);
+                s += &format!("pc_{:x}_remu_b_is_not_zero:\n", ctx.pc);
+
+                s += &format!("\tmov {}, {} /* Remu: value = b backup */\n", REG_VALUE, REG_B);
+                s += &format!("\tmov rdx, 0 /* Remu: rdx = 0 */\n");
+                s += &format!("\tmov rax, {} /* Remu: rax = a */\n", ctx.a.string_value);
+                s += &format!(
+                    "\tdiv {} /* Remu: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
+                    REG_VALUE
+                );
+                s += &format!("\tmov {}, rdx /* Remu: c = remainder(rdx) */\n", REG_C);
                 s += &format!("pc_{:x}_remu_done:\n", ctx.pc);
+
+                // s += &format!("\tmov {}, 0 /* Remu: c = remainder(rdx) */\n", REG_ADDRESS);
+                // s += &format!(
+                //     "\tmov {}, [{}] /* Remu: c = remainder(rdx) */\n",
+                //     REG_ADDRESS, REG_ADDRESS
+                // );
+                ctx.flag_is_always_zero = true;
             }
             ZiskOp::Div => {
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX := Remainder.
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!("\tmov {}, {} /* Div: b = value */\n", REG_B, ctx.b.string_value);
                 }
-                s += &format!("\tcmp {}, 0 /* Div: b == 0 ? */\n", REG_B);
-                s += &format!("\tje pc_{:x}_div_b_is_zero\n", ctx.pc);
-                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
-                s += &format!("\tmov {}, 0\n", REG_FLAG);
-                s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
-                s += &format!("\tidivq {}\n", REG_C);
-                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
-                s += &format!("\tmov {}, 0\n", REG_FLAG);
+                // If b==0 return 0xffffffffffffffff
+                s += &format!("\tcmp {}, 0 /* Div: if b == 0 return f's */\n", REG_B);
+                s += &format!(
+                    "\tjne pc_{:x}_div_b_is_not_zero /* Div: if b is not zero, divide */\n",
+                    ctx.pc
+                );
+                s += &format!("\tmov {}, 0xffffffffffffffff /* Div: set result to f's */\n", REG_C);
                 s += &format!("\tje pc_{:x}_div_done\n", ctx.pc);
-                s += &format!("pc_{:x}_div_b_is_zero:\n", ctx.pc);
-                s += &format!("\tmov {}, 0xffffffffffffffff\n", REG_C);
-                s += &format!("\tmov {}, 1\n", REG_FLAG);
+                s += &format!("pc_{:x}_div_b_is_not_zero:\n", ctx.pc);
+
+                s += &format!("\tmov {}, {} /* Div: value = b backup */\n", REG_VALUE, REG_B);
+                s += &format!("\tmov rdx, 0 /* Div: rdx = 0 */\n");
+                s += &format!("\tmov rax, {} /* Div: rax = a */\n", ctx.a.string_value);
+                s += &format!(
+                    "\tidiv {} /* Div: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
+                    REG_VALUE
+                );
+                s += &format!("\tmov {}, rax /* Div: c = quotient(rax) */\n", REG_C);
                 s += &format!("pc_{:x}_div_done:\n", ctx.pc);
+                ctx.flag_is_always_zero = true;
             }
             ZiskOp::Rem => {
                 // Make sure b is in REG_B
@@ -1608,52 +1680,52 @@ impl ZiskRom {
                 if ctx.a.is_constant {
                     s += &format!(
                         "\tmov {}, {} /* DivuW: a = value */\n",
-                        REG_A_W, ctx.a.string_value
+                        REG_A, ctx.a.string_value
                     );
                 } else {
-                    s += &format!("\tmov {}, {} /* DivuW: a = a */\n", REG_A_W, REG_A);
+                    //s += &format!("\tmov {}, {} /* DivuW: a = a */\n", REG_A_W, REG_A);
                 }
                 // Make sure b is in REG_B_W
                 if ctx.b.is_constant {
                     s += &format!(
                         "\tmov {}, {} /* DivuW: b = value */\n",
-                        REG_B_W, ctx.b.string_value
+                        REG_B, ctx.b.string_value
                     );
                 } else {
-                    s += &format!("\tmov {}, {} /* DivuW: b = b */\n", REG_B_W, REG_B);
+                    //s += &format!("\tmov {}, {} /* DivuW: b = b */\n", REG_B_W, REG_B);
                 }
                 s += &format!("\tcmp {}, 0 /* DivuW: b == 0 ? */\n", REG_B);
-                s += &format!("\tje pc_{:x}_div_b_is_zero\n", ctx.pc);
+                s += &format!("\tje pc_{:x}_divuw_b_is_zero\n", ctx.pc);
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
                 s += &format!("\tdivq {}\n", REG_C);
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
-                s += &format!("\tje pc_{:x}_div_done\n", ctx.pc);
-                s += &format!("pc_{:x}_div_b_is_zero:\n", ctx.pc);
+                s += &format!("\tje pc_{:x}_divuw_done\n", ctx.pc);
+                s += &format!("pc_{:x}_divuw_b_is_zero:\n", ctx.pc);
                 s += &format!("\tmov {}, 0xffffffffffffffff\n", REG_C);
                 s += &format!("\tmov {}, 1\n", REG_FLAG);
-                s += &format!("pc_{:x}_div_done:\n", ctx.pc);
+                s += &format!("pc_{:x}_divuw_done:\n", ctx.pc);
             }
             ZiskOp::RemuW => {
                 // Make sure a is in REG_A_W
                 if ctx.a.is_constant {
                     s += &format!(
                         "\tmov {}, {} /* RemuW: a = value */\n",
-                        REG_A_W, ctx.a.string_value
+                        REG_A, ctx.a.string_value
                     );
                 } else {
-                    s += &format!("\tmov {}, {} /* RemuW: a = a */\n", REG_A_W, REG_A);
+                    //s += &format!("\tmov {}, {} /* RemuW: a = a */\n", REG_A_W, REG_A);
                 }
                 // Make sure b is in REG_B_W
                 if ctx.b.is_constant {
                     s += &format!(
                         "\tmov {}, {} /* RemuW: b = value */\n",
-                        REG_B_W, ctx.b.string_value
+                        REG_B, ctx.b.string_value
                     );
                 } else {
-                    s += &format!("\tmov {}, {} /* RemuW: b = b */\n", REG_B_W, REG_B);
+                    //s += &format!("\tmov {}, {} /* RemuW: b = b */\n", REG_B_W, REG_B);
                 }
                 s += &format!("\tcmp {}, 0 /* RemuW: b == 0 ? *\n", REG_B);
                 s += &format!("\tje pc_{:x}_remu_b_is_zero\n", ctx.pc);
@@ -1672,54 +1744,46 @@ impl ZiskRom {
             ZiskOp::DivW => {
                 // Make sure a is in REG_A_W
                 if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* DivW: a = value */\n",
-                        REG_A_W, ctx.a.string_value
-                    );
+                    s +=
+                        &format!("\tmov {}, {} /* DivW: a = value */\n", REG_A, ctx.a.string_value);
                 } else {
-                    s += &format!("\tmov {}, {} /* DivW: a = a */\n", REG_A_W, REG_A);
+                    //s += &format!("\tmov {}, {} /* DivW: a = a */\n", REG_A_W, REG_A);
                 }
                 // Make sure b is in REG_B_W
                 if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* DivW: b = value */\n",
-                        REG_B_W, ctx.b.string_value
-                    );
+                    s +=
+                        &format!("\tmov {}, {} /* DivW: b = value */\n", REG_B, ctx.b.string_value);
                 } else {
-                    s += &format!("\tmov {}, {} /* DivW: b = b */\n", REG_B_W, REG_B);
+                    //s += &format!("\tmov {}, {} /* DivW: b = b */\n", REG_B_W, REG_B);
                 }
                 s += &format!("\tcmp {}, 0 /* DivW: b == 0 ? */\n", REG_B);
-                s += &format!("\tje pc_{:x}_div_b_is_zero\n", ctx.pc);
+                s += &format!("\tje pc_{:x}_divw_b_is_zero\n", ctx.pc);
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
                 s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
                 s += &format!("\tidivq {}\n", REG_C);
                 s += &format!("\tmov {}, {}\n", REG_C, REG_B);
                 s += &format!("\tmov {}, 0\n", REG_FLAG);
-                s += &format!("\tje pc_{:x}_div_done:\n", ctx.pc);
-                s += &format!("pc_{:x}_div_b_is_zero\n", ctx.pc);
+                s += &format!("\tjmp pc_{:x}_divw_done\n", ctx.pc);
+                s += &format!("pc_{:x}_divw_b_is_zero:\n", ctx.pc);
                 s += &format!("\tmov {}, 0xffffffffffffffff\n", REG_C);
                 s += &format!("\tmov {}, 1\n", REG_FLAG);
-                s += &format!("pc_{:x}_div_done:\n", ctx.pc);
+                s += &format!("pc_{:x}_divw_done:\n", ctx.pc);
             }
             ZiskOp::RemW => {
                 // Make sure a is in REG_A_W
                 if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* RemW: a = value */\n",
-                        REG_A_W, ctx.a.string_value
-                    );
+                    s +=
+                        &format!("\tmov {}, {} /* RemW: a = value */\n", REG_A, ctx.a.string_value);
                 } else {
-                    s += &format!("\tmov {}, {} /* RemW: a = a */\n", REG_A_W, REG_A);
+                    //s += &format!("\tmov {}, {} /* RemW: a = a */\n", REG_A_W, REG_A);
                 }
                 // Make sure b is in REG_B_W
                 if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* RemW: b = value */\n",
-                        REG_B_W, ctx.b.string_value
-                    );
+                    s +=
+                        &format!("\tmov {}, {} /* RemW: b = value */\n", REG_B, ctx.b.string_value);
                 } else {
-                    s += &format!("\tmov {}, {} /* RemW: b = b */\n", REG_B_W, REG_B);
+                    //s += &format!("\tmov {}, {} /* RemW: b = b */\n", REG_B_W, REG_B);
                 }
                 s += &format!("\tcmp {}, 0 /* RemW: b == 0 ? */\n", REG_B);
                 s += &format!("\tje pc_{:x}_rem_b_is_zero\n", ctx.pc);
@@ -1747,7 +1811,7 @@ impl ZiskRom {
                 );
                 s += &format!("\tjb pc_{:x}_minu_a_is_below_b\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* c = b */\n", REG_C, ctx.b.string_value);
-                s += &format!("\tjmp pc_{:x}_minu_a_is_not_below\n", ctx.pc);
+                s += &format!("\tjmp pc_{:x}_minu_a_is_not_below_b\n", ctx.pc);
                 s += &format!("pc_{:x}_minu_a_is_below_b:\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* c = a */\n", REG_C, REG_A);
                 s += &format!("pc_{:x}_minu_a_is_not_below_b:\n", ctx.pc);
@@ -1762,9 +1826,9 @@ impl ZiskRom {
                     "\tcmp {}, {} /* Min: compare a and b */\n",
                     REG_A, ctx.b.string_value
                 );
-                s += &format!("\tjl pc_{:x}_min_a_is_below_bf\n", ctx.pc);
+                s += &format!("\tjl pc_{:x}_min_a_is_below_b\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* c = b */\n", REG_C, ctx.b.string_value);
-                s += &format!("\tpc_{:x}_jmp min_a_is_not_belowf\n", ctx.pc);
+                s += &format!("\tjmp pc_{:x}_min_a_is_not_below_b\n", ctx.pc);
                 s += &format!("pc_{:x}_min_a_is_below_b:\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* c = a */\n", REG_C, REG_A);
                 s += &format!("pc_{:x}_min_a_is_not_below_b:\n", ctx.pc);
@@ -1885,7 +1949,7 @@ impl ZiskRom {
                         &format!("\tmov {}, {} /* MaxW: b = value */\n", REG_B, ctx.b.string_value);
                 }
                 s += &format!("\tcmp {}, {} /* MaxW: compare a and b */\n", REG_A_W, REG_B_W);
-                s += &format!("\tjg pc_{:x}_maxw_a_is_below\n", ctx.pc);
+                s += &format!("\tjg pc_{:x}_maxw_a_is_below_b\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* c = b */\n", REG_C, REG_B);
                 s += &format!("\tjmp pc_{:x}_maxw_a_is_not_below_b\n", ctx.pc);
                 s += &format!("pc_{:x}_maxw_a_is_below_b:\n", ctx.pc);
