@@ -1,9 +1,9 @@
 use crate::{MemAlignCheckPoint, MemAlignInput, MemAlignSM, MemHelpers};
+use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
-use zisk_common::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
 
 pub struct MemAlignInstance<F: PrimeField> {
     checkpoint: MemAlignCheckPoint,

@@ -4,10 +4,10 @@
 //! It implements the `Instance` and `BusDevice` traits, facilitating input generation
 //! for the `ArithFullSM` state machine based on data received over the bus.
 
+use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, Instance};
-use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::ZiskOperationType;
 
 use crate::ArithFullSM;

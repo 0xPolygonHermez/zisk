@@ -10,12 +10,12 @@ use witness::WitnessComponent;
 
 use rayon::prelude::*;
 
+use data_bus::{DataBus, PayloadType};
 use sm_common::{
     BusDeviceInstance, BusDeviceInstanceWrapper, BusDeviceMetrics, BusDeviceMetricsWrapper,
     CheckPoint, ComponentBuilder, InstanceCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
-use zisk_common::{DataBus, PayloadType};
 
 use std::{fs, path::PathBuf, sync::Arc};
 use zisk_core::ZiskRom;

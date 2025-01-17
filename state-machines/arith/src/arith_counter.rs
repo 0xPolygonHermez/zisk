@@ -4,8 +4,8 @@
 
 use std::ops::Add;
 
+use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
 use sm_common::{Counter, Metrics};
-use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::ZiskOperationType;
 
 use crate::ArithFullSM;

@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 sm-common = { path = "../common" }
 zisk-core = { path = "../../core" }
-zisk-common = { path = "../../common" }
+data-bus = { path = "../../data-bus" }
 zisk-pil = { path = "../../pil" }
 num-traits = "0.2"
 

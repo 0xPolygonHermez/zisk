@@ -398,6 +398,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
+name = "data-bus"
+version = "0.2.0"
+dependencies = [
+ "zisk-core",
+]
+
+[[package]]
 name = "debugid"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -508,6 +515,7 @@ dependencies = [
 name = "executor"
 version = "0.2.0"
 dependencies = [
+ "data-bus",
  "itertools 0.14.0",
  "log",
  "p3-field",
@@ -517,7 +525,6 @@ dependencies = [
  "sm-common",
  "sm-main",
  "witness",
- "zisk-common",
  "zisk-core",
  "zisk-pil",
  "ziskemu",
@@ -2059,6 +2066,7 @@ dependencies = [
 name = "sm-arith"
 version = "0.2.0"
 dependencies = [
+ "data-bus",
  "log",
  "num-bigint",
  "p3-field",
@@ -2069,7 +2077,6 @@ dependencies = [
  "rayon",
  "sm-binary",
  "sm-common",
- "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -2078,6 +2085,7 @@ dependencies = [
 name = "sm-binary"
 version = "0.2.0"
 dependencies = [
+ "data-bus",
  "log",
  "num-bigint",
  "p3-field",
@@ -2087,7 +2095,6 @@ dependencies = [
  "proofman-util",
  "rayon",
  "sm-common",
- "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -2096,11 +2103,11 @@ dependencies = [
 name = "sm-common"
 version = "0.2.0"
 dependencies = [
+ "data-bus",
  "p3-field",
  "proofman-common",
  "proofman-util",
  "rayon",
- "zisk-common",
  "zisk-core",
 ]
 
@@ -2123,6 +2130,7 @@ dependencies = [
 name = "sm-mem"
 version = "0.2.0"
 dependencies = [
+ "data-bus",
  "log",
  "num-bigint",
  "num-traits",
@@ -2134,7 +2142,6 @@ dependencies = [
  "rayon",
  "sm-common",
  "witness",
- "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -2143,6 +2150,7 @@ dependencies = [
 name = "sm-rom"
 version = "0.2.0"
 dependencies = [
+ "data-bus",
  "itertools 0.14.0",
  "log",
  "p3-field",
@@ -2151,7 +2159,6 @@ dependencies = [
  "proofman-util",
  "rayon",
  "sm-common",
- "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -2160,6 +2167,7 @@ dependencies = [
 name = "sm-std"
 version = "0.2.0"
 dependencies = [
+ "data-bus",
  "itertools 0.14.0",
  "log",
  "p3-field",
@@ -2169,7 +2177,6 @@ dependencies = [
  "proofman-util",
  "rayon",
  "sm-common",
- "zisk-common",
  "zisk-core",
 ]
 
@@ -3170,13 +3177,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zisk-common"
-version = "0.2.0"
-dependencies = [
- "zisk-core",
-]
-
-[[package]]
 name = "zisk-core"
 version = "0.2.0"
 dependencies = [
@@ -3231,13 +3231,13 @@ version = "0.2.0"
 dependencies = [
  "clap",
  "criterion",
+ "data-bus",
  "p3-field",
  "pprof",
  "rayon",
  "riscv",
  "sysinfo",
  "vergen",
- "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]

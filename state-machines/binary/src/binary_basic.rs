@@ -5,12 +5,12 @@
 use std::sync::Arc;
 
 use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM};
+use data_bus::{OperationBusData, OperationData};
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use std::cmp::Ordering as CmpOrdering;
-use zisk_common::{OperationBusData, OperationData};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryTableTrace, BinaryTrace, BinaryTraceRow};
 

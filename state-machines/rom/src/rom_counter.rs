@@ -4,8 +4,8 @@
 
 use std::{any::Any, ops::AddAssign};
 
+use data_bus::{BusDevice, BusId, RomBusData, RomData};
 use sm_common::{CounterStats, Metrics};
-use zisk_common::{BusDevice, BusId, RomBusData, RomData};
 
 /// The `RomCounter` struct represents a counter that monitors ROM-related metrics
 /// on the data bus.

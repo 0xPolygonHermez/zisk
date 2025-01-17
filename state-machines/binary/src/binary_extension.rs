@@ -6,13 +6,13 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM};
+use data_bus::{OperationBusData, OperationData};
 use log::info;
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use zisk_common::{OperationBusData, OperationData};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryExtensionTraceRow};
 

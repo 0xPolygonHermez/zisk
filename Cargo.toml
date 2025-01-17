@@ -1,8 +1,10 @@
 [workspace]
 members = [
-    "cli", "common",
+    "cli",
     "core",
-    "emulator", "executor",
+    "data-bus",
+    "emulator",
+    "executor",
     "pil",
     "riscv",
     "rom-merkle",

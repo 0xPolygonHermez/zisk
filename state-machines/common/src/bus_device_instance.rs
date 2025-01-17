@@ -5,8 +5,8 @@
 //! These abstractions are particularly useful for scenarios that require encapsulating the
 //! functionalities of a bus device and an instance while maintaining type safety and extensibility.
 
+use data_bus::{BusDevice, BusId, PayloadType};
 use p3_field::PrimeField;
-use zisk_common::{BusDevice, BusId, PayloadType};
 
 use crate::Instance;
 

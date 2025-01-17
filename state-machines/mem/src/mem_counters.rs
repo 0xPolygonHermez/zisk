@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
 use sm_common::Metrics;
-use zisk_common::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
 
 use crate::{MemHelpers, MEM_REGS_ADDR, MEM_REGS_MASK};
 

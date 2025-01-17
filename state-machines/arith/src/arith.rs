@@ -8,12 +8,12 @@
 
 use std::sync::Arc;
 
+use data_bus::OPERATION_BUS_ID;
 use p3_field::PrimeField;
 use sm_common::{
     table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx,
     InstanceInfo, Planner, TableInfo,
 };
-use zisk_common::OPERATION_BUS_ID;
 use zisk_core::ZiskOperationType;
 use zisk_pil::{ArithRangeTableTrace, ArithTableTrace, ArithTrace};
 

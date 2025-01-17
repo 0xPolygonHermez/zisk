@@ -2,13 +2,13 @@
 //! performance metrics. These modules provide flexible mechanisms to count and analyze
 //! bus operations and instruction execution in a fine-grained manner.
 
+use data_bus::BusId;
 use std::{
     any::Any,
     collections::HashMap,
     fmt::Debug,
     ops::{Add, AddAssign},
 };
-use zisk_common::BusId;
 
 /// Enumeration representing different types of counters for metrics collection.
 #[derive(Debug)]

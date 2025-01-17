@@ -3,8 +3,8 @@
 //! and collects metrics for specified `ZiskOperationType` instructions.
 
 use crate::{Counter, Metrics};
+use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
 use std::ops::Add;
-use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::ZiskOperationType;
 
 /// The `RegularCounters` struct represents a generic counter that monitors and measures

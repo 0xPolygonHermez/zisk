@@ -2,12 +2,12 @@ use crate::{
     MemHelpers, MemInput, MemModule, MemModuleSegmentCheckPoint, MemPreviousSegment,
     MEMORY_MAX_DIFF,
 };
+use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
-use zisk_common::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
 
 pub struct MemModuleInstance<F: PrimeField> {
     /// Binary Basic state machine

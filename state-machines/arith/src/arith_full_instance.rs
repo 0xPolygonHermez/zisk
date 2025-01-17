@@ -5,11 +5,11 @@
 //! execution plans.
 
 use crate::ArithFullSM;
+use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
-use zisk_common::{BusDevice, BusId, OperationBusData, OperationData};
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
 

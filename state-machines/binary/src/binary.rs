@@ -13,13 +13,13 @@ use crate::{
     BinaryBasicInstance, BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionInstance,
     BinaryExtensionSM, BinaryExtensionTableSM,
 };
+use data_bus::OPERATION_BUS_ID;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use sm_common::{
     table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx,
     InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
-use zisk_common::OPERATION_BUS_ID;
 use zisk_core::ZiskOperationType;
 use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace};
 

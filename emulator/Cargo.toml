@@ -13,9 +13,9 @@ path = "src/bin/ziskemu.rs"
 
 [dependencies]
 zisk-core = { path = "../core" }
-riscv = { path="../riscv" }
-zisk-pil = { path="../pil" }
-zisk-common = { path="../common" }
+riscv = { path = "../riscv" }
+zisk-pil = { path = "../pil" }
+data-bus = { path = "../data-bus" }
 rayon = { workspace = true }
 
 p3-field = { workspace=true }

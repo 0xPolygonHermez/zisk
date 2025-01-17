@@ -10,6 +10,7 @@
 
 use std::{path::PathBuf, sync::Arc};
 
+use data_bus::ROM_BUS_ID;
 use itertools::Itertools;
 use log::info;
 use p3_field::PrimeField;
@@ -17,7 +18,6 @@ use proofman_common::{AirInstance, FromTrace};
 use sm_common::{
     BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan, Planner,
 };
-use zisk_common::ROM_BUS_ID;
 
 use crate::{RomCounter, RomInstance, RomPlanner};
 use zisk_core::{Riscv2zisk, ZiskRom, SRC_IMM};

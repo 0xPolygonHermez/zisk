@@ -1,5 +1,5 @@
 [package]
-name = "zisk-common"
+name = "data-bus"
 version = "0.2.0"
 edition = "2021"
 

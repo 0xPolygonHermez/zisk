@@ -4,14 +4,12 @@ use crate::{
     EmuContext, EmuFullTraceStep, EmuOptions, EmuTrace, EmuTraceEnd, EmuTraceStart, EmuTraceSteps,
     ParEmuOptions,
 };
+use data_bus::{BusDevice, OperationBusData, RomBusData, MEM_BUS_ID, OPERATION_BUS_ID, ROM_BUS_ID};
 use p3_field::{AbstractField, PrimeField};
 use riscv::RiscVRegisters;
-use zisk_common::{
-    BusDevice, OperationBusData, RomBusData, MEM_BUS_ID, OPERATION_BUS_ID, ROM_BUS_ID,
-};
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
-use zisk_common::DataBus;
+use data_bus::DataBus;
 use zisk_core::{
     InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
     SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,

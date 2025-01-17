@@ -2,9 +2,9 @@
 //! in the context of proof systems. It includes traits and macros for defining instances
 //! and integrating them with state machines and proofs.
 
+use data_bus::BusId;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use zisk_common::BusId;
 
 use crate::CheckPoint;
 
@@ -66,9 +66,9 @@ macro_rules! table_instance {
 
         use p3_field::PrimeField;
 
+        use data_bus::BusId;
         use proofman_common::{AirInstance, FromTrace, ProofCtx};
         use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
-        use zisk_common::BusId;
         use zisk_pil::$Trace;
 
         use rayon::prelude::*;
@@ -124,7 +124,7 @@ macro_rules! table_instance {
             }
         }
 
-        impl zisk_common::BusDevice<u64> for $InstanceName {}
+        impl data_bus::BusDevice<u64> for $InstanceName {}
     };
 }
 
@@ -141,9 +141,9 @@ macro_rules! table_instance {
 #[macro_export]
 macro_rules! instance {
     ($name:ident, $sm:ty, $num_rows:path, $operation:path) => {
+        use data_bus::BusId;
         use proofman_common::{AirInstance, ProofCtx};
         use sm_common::{CheckPointSkip, Instance, InstanceType};
-        use zisk_common::BusId;
 
         /// Represents a standalone computation instance.
         pub struct $name {
@@ -182,6 +182,6 @@ macro_rules! instance {
             }
         }
 
-        impl<F: PrimeField> zisk_common::BusDevice<u64> for $name {}
+        impl<F: PrimeField> data_bus::BusDevice<u64> for $name {}
     };
 }

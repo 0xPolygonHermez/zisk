@@ -9,13 +9,13 @@ use std::sync::Arc;
 use crate::{
     ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
 };
+use data_bus::{OperationBusData, OperationData, PayloadType};
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 use sm_common::i64_to_u64_field;
-use zisk_common::{OperationBusData, OperationData, PayloadType};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 use zisk_pil::*;
 
