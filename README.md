@@ -1,8 +1,6 @@
 ⚠️ **Work in Progress (WIP)**
 
-This repository is under active development and should be considered experimental.
-
-Features, APIs, and functionality may change frequently as the project evolves.
+This repository is under active development and should be considered experimental. Features, APIs, and functionality may change frequently as the project evolves.
 
 # Polygon ZisK
 
