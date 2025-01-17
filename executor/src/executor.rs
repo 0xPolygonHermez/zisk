@@ -282,7 +282,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 }
 
                 if let Some(air_instance) = secn_instance.compute_witness(pctx) {
-                    pctx.air_instance_repo.add_air_instance(air_instance, global_idx);
+                    pctx.air_instance_repo.add_air_instance(air_instance, global_id);
                 }
             })
         });
