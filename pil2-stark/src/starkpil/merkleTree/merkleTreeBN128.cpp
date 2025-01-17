@@ -3,20 +3,12 @@
 #include <algorithm> // std::max
 #include <cassert>
 
-MerkleTreeBN128::MerkleTreeBN128(uint64_t _arity, bool _custom, uint64_t _height, uint64_t _width, Goldilocks::Element *_source, bool allocate) : height(_height), width(_width), source(_source)
+MerkleTreeBN128::MerkleTreeBN128(uint64_t _arity, bool _custom, uint64_t _height, uint64_t _width) : height(_height), width(_width)
 {
 
-    if (source == NULL && allocate)
-    {
-        source = (Goldilocks::Element *)calloc(height * width, sizeof(Goldilocks::Element));
-        isSourceAllocated = true;
-    }
-
+    numNodes = getNumNodes(height);
     arity = _arity;
     custom = _custom;
-    numNodes = getNumNodes(height);
-    nodes = (RawFr::Element *)calloc(numNodes, sizeof(RawFr::Element));
-    isNodesAllocated = true;
 }
 
 MerkleTreeBN128::MerkleTreeBN128(uint64_t _arity, bool _custom, Goldilocks::Element *tree)
@@ -29,18 +21,6 @@ MerkleTreeBN128::MerkleTreeBN128(uint64_t _arity, bool _custom, Goldilocks::Elem
     numNodes = getNumNodes(height);
     
     nodes = (RawFr::Element *)&source[width * height];
-}
-
-MerkleTreeBN128::~MerkleTreeBN128()
-{
-    if (isNodesAllocated)
-    {
-        free(nodes);
-    }
-    if (isSourceAllocated)
-    {
-        free(source);
-    }
 }
 
 uint64_t MerkleTreeBN128::getNumSiblings() 
@@ -93,14 +73,15 @@ void MerkleTreeBN128::getRoot(RawFr::Element *root)
     std::memcpy(root, &nodes[numNodes - 1], sizeof(RawFr::Element));
 }
 
-void MerkleTreeBN128::copySource(Goldilocks::Element *_source)
-{
-    std::memcpy(source, _source, height * width * sizeof(Goldilocks::Element));
-}
 
 void MerkleTreeBN128::setSource(Goldilocks::Element *_source)
 {
     source = _source;
+}
+
+void MerkleTreeBN128::setNodes(RawFr::Element *_nodes)
+{
+    nodes = _nodes;
 }
 
 Goldilocks::Element MerkleTreeBN128::getElement(uint64_t idx, uint64_t subIdx)
@@ -121,11 +102,7 @@ void MerkleTreeBN128::getGroupProof(RawFr::Element *proof, uint64_t idx)
     std::memcpy(proof, &v[0], width * sizeof(Goldilocks::Element));
     void *proofCursor = (uint8_t *)proof + width * sizeof(Goldilocks::Element);
 
-    RawFr::Element *mp = (RawFr::Element *)calloc(getMerkleProofSize(), 1);
-    genMerkleProof(mp, idx, 0, height);
-
-    std::memcpy(proofCursor, &mp[0], getMerkleProofSize());
-    free(mp);
+    genMerkleProof((RawFr::Element *)proofCursor, idx, 0, height);
 }
 
 void MerkleTreeBN128::genMerkleProof(RawFr::Element *proof, uint64_t idx, uint64_t offset, uint64_t n)
@@ -140,6 +117,64 @@ void MerkleTreeBN128::genMerkleProof(RawFr::Element *proof, uint64_t idx, uint64
     std::memcpy(proof, &nodes[offset + si], arity * sizeof(RawFr::Element));
     uint64_t nextN = (std::floor((n - 1) / arity) + 1);
     genMerkleProof(&proof[arity], nextIdx, offset + nextN * arity, nextN);
+}
+
+void MerkleTreeBN128::linearHash(RawFr::Element* result, Goldilocks::Element* values)
+{
+    if (width > 4)
+    {
+        uint64_t widthRawFrElements = ceil((double)width / FIELD_EXTENSION);
+        RawFr::Element buff[widthRawFrElements]; 
+
+        uint64_t nElementsGL = (width > FIELD_EXTENSION + 1) ? ceil((double)width / FIELD_EXTENSION) : 0;
+        for (uint64_t j = 0; j < nElementsGL; j++)
+        {
+            uint64_t pending = width - j * FIELD_EXTENSION;
+            uint64_t batch;
+            (pending >= FIELD_EXTENSION) ? batch = FIELD_EXTENSION : batch = pending;
+            for (uint64_t k = 0; k < batch; k++)
+            {
+                buff[j].v[k] = Goldilocks::toU64(values[j * FIELD_EXTENSION + k]);
+            }
+            RawFr::field.toMontgomery(buff[j], buff[j]);
+        }
+
+        uint pending = nElementsGL;
+        Poseidon_opt p;
+        std::vector<RawFr::Element> elements(arity + 1);
+        while (pending > 0)
+        {
+            std::memset(&elements[0], 0, (arity + 1) * sizeof(RawFr::Element));
+            if (pending >= arity)
+            {
+                std::memcpy(&elements[1], &buff[nElementsGL - pending], arity * sizeof(RawFr::Element));
+                std::memcpy(&elements[0], &result[0], sizeof(RawFr::Element));
+                p.hash(elements, &result[0]);
+                pending = pending - arity;
+            }
+            else if(custom) 
+            {
+                std::memcpy(&elements[1], &buff[nElementsGL - pending], pending * sizeof(RawFr::Element));
+                std::memcpy(&elements[0], &result[0], sizeof(RawFr::Element));
+                p.hash(elements, &result[0]);
+                pending = 0;
+            }
+            else
+            {
+                std::vector<RawFr::Element> elements_last(pending + 1);
+                std::memcpy(&elements_last[1], &buff[nElementsGL - pending], pending * sizeof(RawFr::Element));
+                std::memcpy(&elements_last[0], &result[0], sizeof(RawFr::Element));
+                p.hash(elements_last, &result[0]);
+                pending = 0;
+            }
+        } 
+    } else {
+        for (uint64_t k = 0; k < width; k++)
+        {
+            result[0].v[k] = Goldilocks::toU64(values[k]);
+        }
+        RawFr::field.toMontgomery(result[0], result[0]);
+    }
 }
 
 /*
@@ -217,6 +252,45 @@ void MerkleTreeBN128::linearHash()
         }
     }
 }
+
+void MerkleTreeBN128::calculateRootFromProof(RawFr::Element *value, std::vector<std::vector<RawFr::Element>> &mp, uint64_t idx, uint64_t offset) {
+    if(offset == mp.size()) return;
+
+    uint64_t nBitsArity = std::ceil(std::log2(arity));
+
+    uint64_t currIdx = idx & (arity - 1);
+    uint64_t nextIdx = idx >> nBitsArity;
+
+    Poseidon_opt p;
+    std::vector<RawFr::Element> elements(arity + 1);
+    std::memset(&elements[0], 0, (arity + 1) * sizeof(RawFr::Element));
+
+    for(uint64_t i = 0; i < arity; ++i) {
+        std::memcpy(&elements[i], &mp[offset][i], sizeof(RawFr::Element));
+    }
+
+    std::memcpy(&elements[currIdx], &value[0], sizeof(RawFr::Element));
+    p.hash(elements, &value[0]);
+
+    calculateRootFromProof(value, mp, nextIdx, offset + 1);
+
+}
+
+
+bool MerkleTreeBN128::verifyGroupProof(RawFr::Element* root, std::vector<std::vector<RawFr::Element>> &mp, uint64_t idx, std::vector<Goldilocks::Element> &v) {
+    RawFr::Element value[1];
+    value[0] = RawFr::field.zero();
+
+    linearHash(value, v.data());
+
+    calculateRootFromProof(&value[0], mp, idx, 0);
+
+    if (RawFr::field.eq(root[0], value[0])) {
+        return false;
+    }
+    return true;
+}
+
 
 void MerkleTreeBN128::merkelize()
 {

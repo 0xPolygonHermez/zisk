@@ -7,12 +7,12 @@ airtemplate RangeCheckDynamic1(const int N = 2**8) {
 
     int id_range_7 = range_check_id(0, 2**7-1);
     int id_range_8 = range_check_id(0, 2**8-1);
-    assert(id_range_8 != OPIDS[0]);
+    assert(id_range_8 != U8AIR_OPID);
     int id_range_8_2 = range_check_id(0, 2**8-1);
     assert(id_range_8_2 == id_range_8);
     int id_range_17 = range_check_id(0, 2**17-1);
     int id_range_16 = range_check_id(0, 2**16-1);
-    assert(id_range_16 != OPIDS[1]);
+    assert(id_range_16 != U16AIR_OPID);
     int id_range_7_2 = range_check_id(0, 2**7-1);
     assert(id_range_7_2 == id_range_7);
 
@@ -28,7 +28,7 @@ airtemplate RangeCheckDynamic2(const int N = 2**6) {
     int id_range_2 = range_check_id(-8719, -7269);
     int id_range_3 = range_check_id(-10, 10);
     int id_range_4 = range_check_id(0, 2**8-1);
-    assert(id_range_4 != OPIDS[0]);
+    assert(id_range_4 != U8AIR_OPID);
     int id_range_5 = range_check_id(0, 2**7-1);
 
     range_check_dynamic(colu, id_range_1 * sel_1 + id_range_2 * sel_2 + id_range_3 * sel_3 + id_range_4 * sel_4 + id_range_5 * sel_5);

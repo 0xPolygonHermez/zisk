@@ -3,19 +3,11 @@
 #include <algorithm> // std::max
 
 
-MerkleTreeGL::MerkleTreeGL(uint64_t _arity, bool _custom, uint64_t _height, uint64_t _width, Goldilocks::Element *_source, bool allocate) : height(_height), width(_width), source(_source)
+MerkleTreeGL::MerkleTreeGL(uint64_t _arity, bool _custom, uint64_t _height, uint64_t _width) : height(_height), width(_width)
 {
-
-    if (source == NULL && allocate)
-    {
-        source = (Goldilocks::Element *)calloc(height * width, sizeof(Goldilocks::Element));
-        isSourceAllocated = true;
-    }
+    numNodes = getNumNodes(height);
     arity = _arity;
     custom = _custom;
-    numNodes = getNumNodes(height);
-    nodes = (Goldilocks::Element *)calloc(numNodes, sizeof(Goldilocks::Element));
-    isNodesAllocated = true;
 };
 
 MerkleTreeGL::MerkleTreeGL(uint64_t _arity, bool _custom, Goldilocks::Element *tree)
@@ -27,21 +19,7 @@ MerkleTreeGL::MerkleTreeGL(uint64_t _arity, bool _custom, Goldilocks::Element *t
     custom = _custom;
     numNodes = getNumNodes(height);
     nodes = &tree[2 + height * width];
-    isNodesAllocated = false;
-    isSourceAllocated = false;
 };
-
-MerkleTreeGL::~MerkleTreeGL()
-{
-    if (isSourceAllocated)
-    {
-        free(source);
-    }
-    if (isNodesAllocated)
-    {
-        free(nodes);
-    }
-}
 
 uint64_t MerkleTreeGL::getNumSiblings() 
 {
@@ -74,20 +52,17 @@ void MerkleTreeGL::getRoot(Goldilocks::Element *root)
     std::memcpy(root, &nodes[numNodes - nFieldElements], nFieldElements * sizeof(Goldilocks::Element));
 }
 
-void MerkleTreeGL::copySource(Goldilocks::Element *_source)
-{
-    std::memcpy(source, _source, height * width * sizeof(Goldilocks::Element));
-}
 
 void MerkleTreeGL::setSource(Goldilocks::Element *_source)
 {
     source = _source;
 }
 
-void MerkleTreeGL::copyNodes(Goldilocks::Element *_nodes)
+void MerkleTreeGL::setNodes(Goldilocks::Element *_nodes)
 {
-    std::memcpy(nodes, _nodes, numNodes * sizeof(Goldilocks::Element));
+    nodes = _nodes;
 }
+
 
 Goldilocks::Element MerkleTreeGL::getElement(uint64_t idx, uint64_t subIdx)
 {
@@ -119,26 +94,15 @@ void MerkleTreeGL::genMerkleProof(Goldilocks::Element *proof, uint64_t idx, uint
     genMerkleProof(&proof[nFieldElements], nextIdx, offset + nextN * 2, nextN);
 }
 
-bool MerkleTreeGL::verifyGroupProof(Goldilocks::Element* root, std::vector<std::vector<Goldilocks::Element>> &mp, uint64_t idx, std::vector<std::vector<Goldilocks::Element>> &v) {
-    Goldilocks::Element value[4];
-    for(uint64_t i = 0; i < nFieldElements; ++i) {
-        value[i] = Goldilocks::zero();
-    }
-
-
-    std::vector<Goldilocks::Element> linearValues;
-
-    for(uint64_t i = 0; i < v.size(); ++i) {
-        for(uint64_t j = 0; j < v[i].size(); ++j) {
-            linearValues.push_back(v[i][j]);
-        }
-    }
-
-    PoseidonGoldilocks::linear_hash_seq(value, linearValues.data(), linearValues.size());
+bool MerkleTreeGL::verifyGroupProof(Goldilocks::Element* root, std::vector<std::vector<Goldilocks::Element>> &mp, uint64_t idx, std::vector<Goldilocks::Element> &v) {
+    Goldilocks::Element value[4] = { Goldilocks::zero(), Goldilocks::zero(), Goldilocks::zero(), Goldilocks::zero() };
+    
+    PoseidonGoldilocks::linear_hash_seq(value, v.data(), v.size());
 
     calculateRootFromProof(value, mp, idx, 0);
     for(uint64_t i = 0; i < 4; ++i) {
         if(Goldilocks::toU64(value[i]) != Goldilocks::toU64(root[i])) {
+            cout << Goldilocks::toU64(value[0]) << " " << Goldilocks::toU64(value[1]) << " " << Goldilocks::toU64(value[2]) << " " << Goldilocks::toU64(value[3]) << endl;
             return false;
         }
     }

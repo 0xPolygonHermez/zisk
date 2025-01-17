@@ -1,29 +1,96 @@
 require "std_constants.pil";
-require "std_sum.pil"
+require "std_sum.pil";
+
+/*
+ * Module for performing selected vector lookup checks using a sum check via the logup protocol https://eprint.iacr.org/2022/1530.
+ * This module provides three user interfaces:
+ *
+ * 1. **Assumes-Proves Paradigm**:
+ *    Performs a lookup check between a vector of expressions, the vector that is "assumed" and a second vector that is "proven".
+ *    The assumed vector is (optionally) assumed to receive a selector `sel` that should be either equal to 0 or 1.
+ *    The proven vector is (optionally) proven to receive a multiplicity `mul` that should be equal to some non-negative integer.
+ *    Example:
+ *        // Assume the values in `expressions_assume` under selector `sel` and prove the values in `expressions_prove` with multiplicity `mul`.
+ *        lookup_assumes(opid, expressions_assume, sel);
+ *        lookup_proves(opid, expressions_prove, mul);
+ *
+ * 2. **Free Lookup**:
+ *    Syntax where the responsibility of assuming or proving is left to the user-specified selector:
+ *      - In rows where `mul` is negative, the lookup behaves as an assume.
+ *      - In rows where `mul` is positive, the lookup behaves as a prove.
+ *    Example:
+ *        // Perform a lookup where responsibility alternates based on the value of `mul`.
+ *        lookup(opid, expressions, mul);
+ *
+ * 3. **Dynamic Lookup**:
+ *    Given a vector of operation ids, a "assumed" vector and a  expression `sum_id`, it performs a lookup where
+ *    the vector has an operation id that is dynamically selected by the `sum_id` expression.
+ *    Example:
+ *        // Dynamically perform a lookup using a sum ID expression.
+ *        lookup_assumes_dynamic(opids, busid, expressions, sel);
+ */
 
 const int DEFAULT_LOOKUP_NAME = PIOP_NAME_LOOKUP;
 
-function lookup_assumes(const int opid, const expr cols[], const expr sel = 1, int name = PIOP_NAME_DEFAULT) {
+/**
+ * Performs the "assumes" part of a lookup check.
+ *
+ * @param opid        The operation ID that uniquely identifies this lookup operation.
+ * @param expressions The vector of expressions to be assumed in the lookup check.
+ * @param sel         A selector specifying which rows are subject to the lookup check.
+ *                    Defaults to `1`, meaning all rows are included.
+ * @param name        An optional name for the PIOP consuming the lookup check. 
+ *                    This is useful for debugging and tracing operations.
+ */
+function lookup_assumes(const int opid, const expr expressions[], const expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     if (name == PIOP_NAME_DEFAULT) name = DEFAULT_LOOKUP_NAME;
 
-    sum_assumes(name, opid, cols, sel);
+    sum_assumes(name, [opid], opid, expressions, sel);
 }
 
-function lookup_proves(const int opid, const expr cols[], const expr mul = 1, int name = PIOP_NAME_DEFAULT) {
+/**
+ * Performs the "proves" part of a lookup check.
+ *
+ * @param opid The operation ID that uniquely identifies this lookup operation.
+ * @param expressions The vector of expressions to be proven in the lookup check.
+ * @param mul  A multiplicity specifying how many times rows have been looked up.
+ * @param name An optional name for the PIOP consuming the lookup check. 
+ *             This is useful for debugging and tracing operations.
+ */
+function lookup_proves(const int opid, const expr expressions[], const expr mul = 1, int name = PIOP_NAME_DEFAULT) {
     if (name == PIOP_NAME_DEFAULT) name = DEFAULT_LOOKUP_NAME;
 
-    sum_proves(name, opid, cols, mul);
+    sum_proves(name, [opid], opid, expressions, mul);
 }
 
-// Lookup with freedom in whether to assume or prove based on the provided selector
-function lookup(const int opid, const expr cols[], const expr sel = 1, int name = PIOP_NAME_DEFAULT) {
+/**
+ * Performs a raw lookup check.
+ *
+ * @param opid        The operation ID that uniquely identifies this lookup operation.
+ * @param expressions The vector of expressions.
+ * @param mul         A multiplicity specifying how many times rows are part of the lookup.
+ * @param name        An optional name for the PIOP consuming the lookup check. 
+ *                    This is useful for debugging and tracing operations.
+ */
+function lookup(const int opid, const expr expressions[], const expr mul = 1, int name = PIOP_NAME_DEFAULT) {
     if (name == PIOP_NAME_DEFAULT) name = DEFAULT_LOOKUP_NAME;
 
-    sum(name, opid, cols, sel);
+    sum(name, 2, [opid], opid, expressions, mul);
 }
 
-function lookup_assumes_dynamic(const int opid[], const expr sumid, const expr cols[], const expr sel = 1, int name = PIOP_NAME_DEFAULT) {
+/**
+ * Performs a dynamic lookup check.
+ *
+ * @param opids       The vector of operation IDs that uniquely identify this lookup operation.
+ * @param busid       The expression that dynamically selects the operation ID from `opids`.
+ * @param expressions The vector of expressions.
+ * @param sel         A selector specifying which rows are subject to the lookup check.
+ *                    Defaults to `1`, meaning all rows are included.
+ * @param name        An optional name for the PIOP consuming the lookup check. 
+ *                    This is useful for debugging and tracing operations.
+ */
+function lookup_assumes_dynamic(const int opids[], const expr busid, const expr expressions[], const expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     if (name == PIOP_NAME_DEFAULT) name = DEFAULT_LOOKUP_NAME;
 
-    sum_assumes_dynamic(name, opid, sumid, cols, sel);
+    sum_assumes(name, opids, busid, expressions, sel);
 }

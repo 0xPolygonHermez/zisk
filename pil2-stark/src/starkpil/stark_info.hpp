@@ -10,6 +10,7 @@
 #include "merklehash_goldilocks.hpp"
 #include "zklog.hpp"
 #include "exit_process.hpp"
+#include "fr.hpp"
 
 using json = nlohmann::json;
 using namespace std;
@@ -38,6 +39,7 @@ class CustomCommits
 public:
     std::string name;
     vector<uint32_t> stageWidths;
+    vector<uint32_t> publicValues;
 };
 
 class Boundary
@@ -154,17 +156,21 @@ public:
     // Precomputed
     std::map<std::pair<std::string, bool>, uint64_t> mapOffsets;
     
-    uint64_t mapTotalN;
+    bool verify = false;
 
-    std::map<std::string, uint64_t> mapTotalNcustomCommits;
+    uint64_t mapTotalN;
     
     /* Constructor */
-    StarkInfo(string file);
+    StarkInfo(string file, bool verify = false);
 
     /* Loads data from a json object */
-    void load (json j);
+    void load (json j, bool verify = false);
 
     void setMapOffsets();
+
+    uint64_t getNumNodesMT(uint64_t height);
+
+    void addMemoryRecursive();
 
     /* Returns a polynomial specified by its ID */
     void getPolynomial(Polinomial &pol, Goldilocks::Element *pAddress, string type, PolMap& polInfo, bool domainExtended);

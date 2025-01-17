@@ -11,6 +11,7 @@ proofman.workspace = true
 proofman-common.workspace = true
 proofman-macros.workspace = true
 proofman-cli.workspace = true
+witness.workspace = true
 pil-std-lib = { path = "../../../../lib/std/rs" }
 
 env_logger.workspace = true

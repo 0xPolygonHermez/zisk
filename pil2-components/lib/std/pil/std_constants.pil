@@ -1,3 +1,4 @@
+require "baby_bear.pil";
 require "goldilocks.pil";
 
 /*
@@ -5,7 +6,7 @@ Available PIOPs:
 
     name     | code | note
 -------------|------|----------------------------------------------------------------------------
- Default     |  0   | default name set by the library
+ Default     |  0   | Default name set by the library
  Permutation |  1   | name as "Permutation"
  Lookup      |  2   | name as "Lookup"
  Range Check |  3   | name as "Range Check"
@@ -55,6 +56,25 @@ const int PIOP_BUS_DEFAULT = 0;
 const int PIOP_BUS_SUM = 1;
 const int PIOP_BUS_PROD = 2;
 
+private function valide_bus_type(const int bus_type) {
+    if (bus_type != PIOP_BUS_SUM && bus_type != PIOP_BUS_PROD) {
+        error(`Unknown bus type: ${bus_type}`);
+    }
+}
+
+function set_std_bus_type(const int bus_type) {
+    valide_bus_type(bus_type);
+
+    // Set the bus type for the std components that allow for different bus types
+    set_permutation_bus_type(bus_type);
+}
+
+function set_permutation_bus_type(const int bus_type) {
+    valide_bus_type(bus_type);
+
+    DEFAULT_PERMUTATION_BUS_TYPE = bus_type;
+}
+
 /*
 Available direct types:
 
@@ -70,34 +90,46 @@ const int PIOP_DIRECT_TYPE_AIR = 1;
 const int PIOP_DIRECT_TYPE_GLOBAL = 2;
 
 /*
-    name    | code
-------------|-----
- Goldilocks |  0
- Mersenne31 |  1
- BN254      |  2
+    name    | code | note
+------------|------|-------------------------------------------------------------------------- 
+ Goldilocks |  0   | 2^64 - 2^32 + 1
+ BabyBear   |  1   | 2^31 - 2^27 + 1
 */
 
-const int FIELDS[3] = [0,1,2];
+const int FIELD_GOLDILOCKS = 0;
+const int FIELD_BABY_BEAR = 1;
 
-const int ACTIVE_FIELD = 0;
+int ACTIVE_FIELD = FIELD_GOLDILOCKS;
 
-const int GEN[256];
-switch (FIELDS[ACTIVE_FIELD]) {
-    // Goldilocks
-    case 0:
+int GEN[256];
+for (int i = 0; i < length(GEN); i++) {
+    GEN[i] = 0;
+}
+
+int k_coset = 0;
+
+switch (ACTIVE_FIELD) {
+    case FIELD_GOLDILOCKS:
+        assert(length(Goldilocks_Gen) <= length(GEN));
+
         for (int i = 0; i < length(Goldilocks_Gen); i++) {
             GEN[i] = Goldilocks_Gen[i];
         }
 
-        for (int i = length(Goldilocks_Gen); i < length(GEN); i++) {
-            GEN[i] = 0;
+        k_coset = Goldilocks_k;
+
+    case FIELD_BABY_BEAR:
+        assert(length(BabyBear_Gen) <= length(GEN));
+
+        for (int i = 0; i < length(BabyBear_Gen); i++) {
+            GEN[i] = BabyBear_Gen[i];
         }
+
+        k_coset = BabyBear_k;
 
     default:
         error("Unknown field");
 }
-
-const int k_coset = Goldilocks_k;
 
 // Powers of 2
 const int P2_1 = 2**1;

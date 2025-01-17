@@ -26,7 +26,7 @@ pub struct PilHelpersCmd {
     pub verbose: u8, // Using u8 to hold the number of `-v`
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct ProofCtx {
     project_name: String,
     num_stages: u32,
@@ -38,7 +38,7 @@ struct ProofCtx {
     publics: Vec<ValuesCtx>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct AirGroupsCtx {
     airgroup_id: usize,
     name: String,
@@ -46,31 +46,40 @@ struct AirGroupsCtx {
     airs: Vec<AirCtx>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct AirCtx {
     id: usize,
     name: String,
     num_rows: u32,
     columns: Vec<ColumnCtx>,
+    stages_columns: Vec<StageColumnCtx>,
     custom_columns: Vec<CustomCommitsCtx>,
     air_values: Vec<ValuesCtx>,
     airgroup_values: Vec<ValuesCtx>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct ValuesCtx {
     values: Vec<ColumnCtx>,
+    values_u64: Vec<ColumnCtx>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct CustomCommitsCtx {
     name: String,
+    commit_id: usize,
     custom_columns: Vec<ColumnCtx>,
 }
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct ColumnCtx {
     name: String,
     r#type: String,
+}
+
+#[derive(Default, Clone, Debug, Serialize)]
+struct StageColumnCtx {
+    stage_id: usize,
+    columns: Vec<ColumnCtx>,
 }
 
 impl PilHelpersCmd {
@@ -115,17 +124,18 @@ impl PilHelpersCmd {
         for (airgroup_id, airgroup) in pilout.air_groups.iter().enumerate() {
             wcctxs.push(AirGroupsCtx {
                 airgroup_id,
-                name: airgroup.name.as_ref().unwrap().clone().to_case(Case::Pascal),
-                snake_name: airgroup.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase(),
+                name: airgroup.name.as_ref().unwrap().to_case(Case::Pascal),
+                snake_name: airgroup.name.as_ref().unwrap().to_case(Case::Snake).to_uppercase(),
                 airs: airgroup
                     .airs
                     .iter()
                     .enumerate()
                     .map(|(air_id, air)| AirCtx {
                         id: air_id,
-                        name: air.name.as_ref().unwrap().clone(),
+                        name: air.name.as_ref().unwrap().to_string(),
                         num_rows: air.num_rows.unwrap(),
                         columns: Vec::new(),
+                        stages_columns: vec![StageColumnCtx::default(); pilout.num_challenges.len() - 1],
                         custom_columns: Vec::new(),
                         air_values: Vec::new(),
                         airgroup_values: Vec::new(),
@@ -134,15 +144,14 @@ impl PilHelpersCmd {
             });
 
             // Prepare constants
-            constant_airgroups
-                .push((airgroup.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase(), airgroup_id));
+            constant_airgroups.push((airgroup.name.as_ref().unwrap().to_case(Case::Snake).to_uppercase(), airgroup_id));
 
             for (air_idx, air) in airgroup.airs.iter().enumerate() {
-                let air_name = air.name.as_ref().unwrap().clone().to_case(Case::Snake).to_uppercase();
+                let air_name = air.name.as_ref().unwrap().to_case(Case::Snake).to_uppercase();
                 let contains_key = constant_airs.iter().position(|(name, _, _, _)| name == &air_name);
 
                 let idx = contains_key.unwrap_or_else(|| {
-                    constant_airs.push((air_name.clone(), airgroup_id, Vec::new(), "".to_owned()));
+                    constant_airs.push((air_name, airgroup_id, Vec::new(), "".to_owned()));
                     constant_airs.len() - 1
                 });
 
@@ -171,16 +180,41 @@ impl PilHelpersCmd {
                     // Start with "F" and apply each length in reverse order
                     symbol.lengths.iter().rev().fold("F".to_string(), |acc, &length| format!("[{}; {}]", acc, length))
                 };
+                let ext_type = if symbol.lengths.is_empty() {
+                    "FieldExtension<F>".to_string() // Case when lengths.len() == 0
+                } else {
+                    // Start with "F" and apply each length in reverse order
+                    symbol
+                        .lengths
+                        .iter()
+                        .rev()
+                        .fold("FieldExtension<F>".to_string(), |acc, &length| format!("[{}; {}]", acc, length))
+                };
                 if symbol.r#type == SymbolType::ProofValue as i32 {
                     if proof_values.is_empty() {
-                        proof_values.push(ValuesCtx { values: Vec::new() });
+                        proof_values.push(ValuesCtx { values: Vec::new(), values_u64: Vec::new() });
                     }
-                    proof_values[0].values.push(ColumnCtx { name: name.to_owned(), r#type });
+                    if symbol.stage == Some(1) {
+                        proof_values[0].values.push(ColumnCtx { name: name.to_owned(), r#type });
+                    } else {
+                        proof_values[0].values.push(ColumnCtx { name: name.to_owned(), r#type: ext_type });
+                    }
                 } else {
                     if publics.is_empty() {
-                        publics.push(ValuesCtx { values: Vec::new() });
+                        publics.push(ValuesCtx { values: Vec::new(), values_u64: Vec::new() });
                     }
                     publics[0].values.push(ColumnCtx { name: name.to_owned(), r#type });
+                    let r#type_64 = if symbol.lengths.is_empty() {
+                        "u64".to_string() // Case when lengths.len() == 0
+                    } else {
+                        // Start with "u64" and apply each length in reverse order
+                        symbol
+                            .lengths
+                            .iter()
+                            .rev()
+                            .fold("u64".to_string(), |acc, &length| format!("[{}; {}]", acc, length))
+                    };
+                    publics[0].values_u64.push(ColumnCtx { name: name.to_owned(), r#type: r#type_64 });
                 }
             });
 
@@ -191,8 +225,10 @@ impl PilHelpersCmd {
                 air.custom_columns = pilout.air_groups[airgroup_id].airs[air_id]
                     .custom_commits
                     .iter()
-                    .map(|commit| CustomCommitsCtx {
-                        name: commit.name.clone().unwrap().to_case(Case::Pascal),
+                    .enumerate()
+                    .map(|(index, commit)| CustomCommitsCtx {
+                        name: commit.name.as_ref().unwrap().to_case(Case::Pascal),
+                        commit_id: index,
                         custom_columns: Vec::new(),
                     })
                     .collect();
@@ -207,7 +243,7 @@ impl PilHelpersCmd {
                             && ((symbol.air_id.is_some() && symbol.air_id.unwrap() == air_id as u32)
                                 || symbol.r#type == SymbolType::AirGroupValue as i32)
                             && symbol.stage.is_some()
-                            && ((symbol.r#type == SymbolType::WitnessCol as i32 && symbol.stage.unwrap() == 1)
+                            && ((symbol.r#type == SymbolType::WitnessCol as i32)
                                 || (symbol.r#type == SymbolType::AirValue as i32)
                                 || (symbol.r#type == SymbolType::AirGroupValue as i32)
                                 || (symbol.r#type == SymbolType::CustomCol as i32 && symbol.stage.unwrap() == 0))
@@ -225,18 +261,39 @@ impl PilHelpersCmd {
                                 .rev()
                                 .fold("F".to_string(), |acc, &length| format!("[{}; {}]", acc, length))
                         };
+                        let ext_type =
+                            if symbol.lengths.is_empty() {
+                                "FieldExtension<F>".to_string() // Case when lengths.len() == 0
+                            } else {
+                                // Start with "F" and apply each length in reverse order
+                                symbol.lengths.iter().rev().fold("FieldExtension<F>".to_string(), |acc, &length| {
+                                    format!("[{}; {}]", acc, length)
+                                })
+                            };
                         if symbol.r#type == SymbolType::WitnessCol as i32 {
-                            air.columns.push(ColumnCtx { name: name.to_owned(), r#type });
+                            if symbol.stage.unwrap() == 1 {
+                                air.columns.push(ColumnCtx { name: name.to_owned(), r#type });
+                            } else {
+                                air.stages_columns[symbol.stage.unwrap() as usize - 2].stage_id =
+                                    symbol.stage.unwrap() as usize;
+                                air.stages_columns[symbol.stage.unwrap() as usize - 2]
+                                    .columns
+                                    .push(ColumnCtx { name: name.to_owned(), r#type: ext_type });
+                            }
                         } else if symbol.r#type == SymbolType::AirValue as i32 {
                             if air.air_values.is_empty() {
-                                air.air_values.push(ValuesCtx { values: Vec::new() });
+                                air.air_values.push(ValuesCtx { values: Vec::new(), values_u64: Vec::new() });
                             }
-                            air.air_values[0].values.push(ColumnCtx { name: name.to_owned(), r#type });
+                            if symbol.stage == Some(1) {
+                                air.air_values[0].values.push(ColumnCtx { name: name.to_owned(), r#type });
+                            } else {
+                                air.air_values[0].values.push(ColumnCtx { name: name.to_owned(), r#type: ext_type });
+                            }
                         } else if symbol.r#type == SymbolType::AirGroupValue as i32 {
                             if air.airgroup_values.is_empty() {
-                                air.airgroup_values.push(ValuesCtx { values: Vec::new() });
+                                air.airgroup_values.push(ValuesCtx { values: Vec::new(), values_u64: Vec::new() });
                             }
-                            air.airgroup_values[0].values.push(ColumnCtx { name: name.to_owned(), r#type });
+                            air.airgroup_values[0].values.push(ColumnCtx { name: name.to_owned(), r#type: ext_type });
                         } else {
                             air.custom_columns[symbol.commit_id.unwrap() as usize]
                                 .custom_columns
@@ -247,7 +304,7 @@ impl PilHelpersCmd {
         }
 
         let context = ProofCtx {
-            project_name: pilout.name.clone().unwrap().to_case(Case::Pascal),
+            project_name: pilout.name.as_ref().unwrap().to_case(Case::Pascal),
             num_stages: pilout.num_stages(),
             pilout_filename: self.pilout.file_name().unwrap().to_str().unwrap().to_string(),
             air_groups: wcctxs,
@@ -261,7 +318,6 @@ impl PilHelpersCmd {
 
         let mut tt = TinyTemplate::new();
         tt.add_template("mod.rs", MOD_RS)?;
-        tt.add_template("pilout.rs", include_str!("../../assets/templates/pil_helpers_pilout.rs.tt"))?;
         tt.add_template("traces.rs", include_str!("../../assets/templates/pil_helpers_trace.rs.tt"))?;
 
         // Write the files
@@ -269,11 +325,11 @@ impl PilHelpersCmd {
         // Write mod.rs
         fs::write(pil_helpers_path.join("mod.rs"), MOD_RS)?;
 
-        // Write pilout.rs
-        fs::write(pil_helpers_path.join("pilout.rs"), tt.render("pilout.rs", &context)?)?;
-
         // Write traces.rs
-        fs::write(pil_helpers_path.join("traces.rs"), tt.render("traces.rs", &context)?)?;
+        fs::write(
+            pil_helpers_path.join("traces.rs"),
+            tt.render("traces.rs", &context)?.replace("&lt;", "<").replace("&gt;", ">"),
+        )?;
 
         Ok(())
     }

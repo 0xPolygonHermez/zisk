@@ -4,10 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-serde = { version = "1.0.130", features = ["derive"] }
-serde_json = "1.0.68"
-serde_derive = "1.0.196"
-pilout = { path = "../pilout" }
+serde.workspace = true
+serde_json.workspace = true
+serde_derive.workspace = true
 log.workspace = true
 transcript = { path = "../transcript" }
 p3-field.workspace = true
@@ -17,7 +16,7 @@ env_logger.workspace = true
 proofman-util = { path = "../util" }
 proofman-starks-lib-c = { path = "../provers/starks-lib-c" }
 mpi = { version = "0.8.0", optional = true }
-
+rayon.workspace = true
 
 [features]
 default = []

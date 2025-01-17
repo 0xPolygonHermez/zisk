@@ -42,42 +42,6 @@ public:
             std::memcpy(&mp[j][0], &mpCursor[j * numSiblings], numSiblings * sizeof(ElementType));
         }
     }
-
-    json merkleProof2json()
-    {
-        json j = json::array();
-        json json_v = json::array();
-        for (uint i = 0; i < v.size(); i++)
-        {
-            if (v[i].size() > 1)
-            {
-                json element = json::array();
-                for (uint j = 0; j < v[i].size(); j++)
-                {
-                    element.push_back(Goldilocks::toString(v[i][j]));
-                }
-                json_v.push_back(element);
-            }
-            else
-            {
-                json_v.push_back(Goldilocks::toString(v[i][0]));
-            }
-        }
-        j.push_back(json_v);
-
-        json json_mp = json::array();
-        for (uint i = 0; i < mp.size(); i++)
-        {
-            json element = json::array();
-            for (uint j = 0; j < mp[i].size(); j++)
-            {
-                element.push_back(toString(mp[i][j]));
-            }
-            json_mp.push_back(element);
-        }
-        j.push_back(json_mp);
-        return j;
-    }
 };
 
 template <typename ElementType>
@@ -95,46 +59,6 @@ public:
     {
         std::memcpy(&root[0], &_root[0], nFieldElements * sizeof(ElementType));
     };
-
-    json ProofTree2json(bool friQueries = true)
-    {
-        json j_ProofTree2json = json::object();
-
-        if(friQueries) {
-             json json_root = json::array();
-            if(root.size() == 1) {
-                j_ProofTree2json["root"] = toString(root[0]);
-            } else {
-                for (uint i = 0; i < root.size(); i++)
-                {
-                    json_root.push_back(toString(root[i]));
-                }
-                j_ProofTree2json["root"] = json_root;
-            }
-        }
-
-        json json_polQueries = json::array();
-        for (uint i = 0; i < polQueries.size(); i++)
-        {
-            json element = json::array();
-            if (polQueries[i].size() != 1)
-            {
-                for (uint j = 0; j < polQueries[i].size(); j++)
-                {
-                    element.push_back(polQueries[i][j].merkleProof2json());
-                }
-                json_polQueries.push_back(element);
-            }
-            else
-            {
-                json_polQueries.push_back(polQueries[i][0].merkleProof2json());
-            }
-        }
-
-        j_ProofTree2json["polQueries"] = json_polQueries;
-
-        return j_ProofTree2json;
-    }
 };
 
 template <typename ElementType>
@@ -165,39 +89,13 @@ public:
             std::memcpy(&pol[i][0], &pPol[i * FIELD_EXTENSION], FIELD_EXTENSION * sizeof(Goldilocks::Element));
         }
     }
-    json QueriesP2json()
-    {
-        return trees.ProofTree2json(false);
-    }
-
-    json FriQueriesP2json()
-    {
-        json j = json::array();
-
-        for (uint i = 0; i < treesFRI.size(); i++)
-        {
-            j.push_back((treesFRI[i].ProofTree2json()));
-        }
-
-        json json_pol = json::array();
-        for (uint i = 0; i < pol.size(); i++)
-        {
-            json element = json::array();
-            for (uint j = 0; j < pol[i].size(); j++)
-            {
-                element.push_back(Goldilocks::toString(pol[i][j]));
-            }
-            json_pol.push_back(element);
-        }
-        j.push_back(json_pol);
-        return j;
-    }
 };
 
 template <typename ElementType>
 class Proofs
 {
 public:
+    StarkInfo &starkInfo;
     uint64_t nStages;
     uint64_t nCustomCommits;
     uint64_t nFieldElements;
@@ -209,19 +107,20 @@ public:
     std::vector<std::vector<Goldilocks::Element>> airgroupValues;
     std::vector<std::vector<Goldilocks::Element>> airValues;
     std::vector<std::string> customCommits;
-    Proofs(StarkInfo &starkInfo) :
-        fri(starkInfo),
-        evals(starkInfo.evMap.size(), std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero())),
-        airgroupValues(starkInfo.airgroupValuesMap.size(), std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero())),
-        airValues(starkInfo.airValuesMap.size(), std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero())),
-        customCommits(starkInfo.customCommits.size())
+    Proofs(StarkInfo &starkInfo_) :
+        starkInfo(starkInfo_),
+        fri(starkInfo_),
+        evals(starkInfo_.evMap.size(), std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero())),
+        airgroupValues(starkInfo_.airgroupValuesMap.size(), std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero())),
+        airValues(starkInfo_.airValuesMap.size(), std::vector<Goldilocks::Element>(FIELD_EXTENSION, Goldilocks::zero())),
+        customCommits(starkInfo_.customCommits.size())
         {
-            nStages = starkInfo.nStages + 1;
-            nCustomCommits = starkInfo.customCommits.size();
+            nStages = starkInfo_.nStages + 1;
+            nCustomCommits = starkInfo_.customCommits.size();
             roots = new ElementType*[nStages + nCustomCommits];
-            nFieldElements = starkInfo.starkStruct.verificationHashType == "GL" ? HASH_SIZE : 1;
-            airId = starkInfo.airId;
-            airgroupId = starkInfo.airgroupId;
+            nFieldElements = starkInfo_.starkStruct.verificationHashType == "GL" ? HASH_SIZE : 1;
+            airId = starkInfo_.airId;
+            airgroupId = starkInfo_.airgroupId;
             for(uint64_t i = 0; i < nStages + nCustomCommits; i++)
             {
                 roots[i] = new ElementType[nFieldElements];
@@ -247,81 +146,183 @@ public:
     }
 
     void setAirgroupValues(Goldilocks::Element *_airgroupValues) {
-        for (uint64_t i = 0; i < airgroupValues.size(); i++)
+        uint64_t p = 0;
+        for (uint64_t i = 0; i < starkInfo.airgroupValuesMap.size(); i++)
         {
-            std::memcpy(&airgroupValues[i][0], &_airgroupValues[i * FIELD_EXTENSION], FIELD_EXTENSION * sizeof(Goldilocks::Element));
+            if(starkInfo.airgroupValuesMap[i].stage == 1) {
+                airgroupValues[i][0] = _airgroupValues[p++];
+                airgroupValues[i][1] = Goldilocks::zero();
+                airgroupValues[i][2] = Goldilocks::zero();
+            } else {
+                std::memcpy(&airgroupValues[i][0], &_airgroupValues[p], FIELD_EXTENSION * sizeof(Goldilocks::Element));
+                p += 3;
+            }
         }
     }
 
     void setAirValues(Goldilocks::Element *_airValues) {
-        for (uint64_t i = 0; i < airValues.size(); i++)
+        uint64_t p = 0;
+        for (uint64_t i = 0; i < starkInfo.airValuesMap.size(); i++)
         {
-            std::memcpy(&airValues[i][0], &_airValues[i * FIELD_EXTENSION], FIELD_EXTENSION * sizeof(Goldilocks::Element));
+            if(starkInfo.airValuesMap[i].stage == 1) {
+                airValues[i][0] = _airValues[p++];
+                airValues[i][1] = Goldilocks::zero();
+                airValues[i][2] = Goldilocks::zero();
+            } else {
+                std::memcpy(&airValues[i][0], &_airValues[p], FIELD_EXTENSION * sizeof(Goldilocks::Element));
+                p += 3;
+            }
         }
     }
 
     json proof2json()
     {
         json j = json::object();
-
-        j["airId"] = airId;
-        j["airgroupId"] = airgroupId;
         
         for(uint64_t i = 0; i < nStages; i++) {
-            json json_root = json::array();
             if(nFieldElements == 1) {
                 j["root" + to_string(i + 1)] = toString(roots[i][0]);
             } else {
+                j["root" + to_string(i + 1)] = json::array();
                 for (uint k = 0; k < nFieldElements; k++)
                 {
-                    json_root.push_back(toString(roots[i][k]));
+                    j["root" + to_string(i + 1)][k] = toString(roots[i][k]);
                 }
-                j["root" + to_string(i + 1)] = json_root;
             }
         }
 
-        json json_evals = json::array();
+        j["evals"] = json::array();
         for (uint i = 0; i < evals.size(); i++)
         {
-            json element = json::array();
-            for (uint j = 0; j < evals[i].size(); j++)
+            j["evals"][i] = json::array();
+            for (uint k = 0; k < FIELD_EXTENSION; k++)
             {
-                element.push_back(Goldilocks::toString(evals[i][j]));
+                j["evals"][i][k] = Goldilocks::toString(evals[i][k]);
             }
-            json_evals.push_back(element);
-        }
-        j["evals"] = json_evals;
-
-        json json_airgroupValues = json::array();
-        for (uint i = 0; i < airgroupValues.size(); i++)
-        {
-            json element = json::array();
-            for (uint j = 0; j < airgroupValues[i].size(); j++)
-            {
-                element.push_back(Goldilocks::toString(airgroupValues[i][j]));
-            }
-            json_airgroupValues.push_back(element);
         }
 
-        j["airgroupValues"] = json_airgroupValues;
-
-        json json_airValues = json::array();
-        for (uint i = 0; i < airValues.size(); i++)
-        {
-            json element = json::array();
-            for (uint j = 0; j < airValues[i].size(); j++)
+        if(airgroupValues.size() > 0) {
+            j["airgroupvalues"] = json::array();
+            for (uint i = 0; i < airgroupValues.size(); i++)
             {
-                element.push_back(Goldilocks::toString(airValues[i][j]));
+                j["airgroupvalues"][i] = json::array();
+                for (uint k = 0; k < FIELD_EXTENSION; k++)
+                {
+                    j["airgroupvalues"][i][k] = Goldilocks::toString(airgroupValues[i][k]);
+                }
             }
-            json_airValues.push_back(element);
         }
 
-        j["airValues"] = json_airValues;
+        if(airValues.size() > 0) {
+            j["airvalues"] = json::array();
+            for (uint i = 0; i < airValues.size(); i++)
+            {
+                j["airvalues"][i] = json::array();
+                for (uint k = 0; k < airValues[i].size(); k++)
+                {
+                    j["airvalues"][i][k] = Goldilocks::toString(airValues[i][k]);
+                }
+            }
+        }
+
         
-        j["queries"] = fri.QueriesP2json();
+        j["s0_valsC"] = json::array();
+        j["s0_siblingsC"] = json::array();
 
-        j["fri"] = fri.FriQueriesP2json();
+        for(uint64_t i = 0; i < starkInfo.nStages + 1; ++i) {
+            uint64_t stage = i + 1;
+            j["s0_siblings" + to_string(stage)] = json::array();
+            j["s0_vals" + to_string(stage)] = json::array();
+        }
 
+        for(uint64_t i = 0; i < starkInfo.customCommits.size(); ++i) {
+            j["s0_siblings_" + starkInfo.customCommits[i].name + "_0"] = json::array();
+            j["s0_vals_" + starkInfo.customCommits[i].name + "_0"] = json::array();
+        }
+
+        for (uint64_t i = 0; i < starkInfo.starkStruct.nQueries; i++) {
+            uint64_t nSiblings = starkInfo.starkStruct.verificationHashType == std::string("BN128") ? std::floor((starkInfo.starkStruct.steps[0].nBits - 1) / std::ceil(std::log2(starkInfo.starkStruct.merkleTreeArity))) + 1 : starkInfo.starkStruct.steps[0].nBits;
+            uint64_t nSiblingsPerLevel = starkInfo.starkStruct.verificationHashType == std::string("BN128") ? starkInfo.starkStruct.merkleTreeArity : nFieldElements;
+
+            j["s0_valsC"][i] = json::array();
+            j["s0_siblingsC"][i] = json::array();
+            for(uint64_t l = 0; l < starkInfo.nConstants; l++) {
+                j["s0_valsC"][i][l] = Goldilocks::toString(fri.trees.polQueries[i][starkInfo.nStages + 1].v[l][0]);
+            }
+            for(uint64_t l = 0; l < nSiblings; ++l) {
+                for(uint64_t k = 0; k < nSiblingsPerLevel; ++k) {
+                    j["s0_siblingsC"][i][l][k] = toString(fri.trees.polQueries[i][starkInfo.nStages + 1].mp[l][k]);
+                }
+            }
+
+            for (uint64_t s = 0; s < nStages; ++s) {
+                uint64_t stage = s + 1;
+                j["s0_vals" + to_string(stage)][i] = json::array();
+                for(uint64_t l = 0; l < starkInfo.mapSectionsN["cm" + to_string(stage)]; l++) {
+                    j["s0_vals" + to_string(stage)][i][l] = Goldilocks::toString(fri.trees.polQueries[i][s].v[l][0]);
+                }
+
+                j["s0_siblings" + to_string(stage)][i] = json::array();
+                for(uint64_t l = 0; l < nSiblings; ++l) {
+                    for(uint64_t k = 0; k < nSiblingsPerLevel; ++k) {
+                        j["s0_siblings" + to_string(stage)][i][l][k] = toString(fri.trees.polQueries[i][s].mp[l][k]);
+                    }
+                }
+            }
+
+            for(uint64_t c = 0; c < starkInfo.customCommits.size(); ++c) {
+                j["s0_siblings_" + starkInfo.customCommits[c].name + "_0"][i] = json::array();
+                j["s0_vals_" + starkInfo.customCommits[c].name + "_0"][i] = json::array();
+
+                for(uint64_t l = 0; l < starkInfo.mapSectionsN[starkInfo.customCommits[c].name + "0"]; l++) {
+                    j["s0_vals_" + starkInfo.customCommits[c].name + "_0"][i][l] = Goldilocks::toString(fri.trees.polQueries[i][starkInfo.nStages + 2 + c].v[l][0]);
+                }
+                for(uint64_t l = 0; l < nSiblings; ++l) {
+                    for(uint64_t k = 0; k < nSiblingsPerLevel; ++k) {
+                        j["s0_siblings_" + starkInfo.customCommits[c].name + "_0"][i][l][k] = toString(fri.trees.polQueries[i][starkInfo.nStages + 2 + c].mp[l][k]);
+                    }
+                }
+            }
+        }
+
+        for(uint64_t step = 1; step < starkInfo.starkStruct.steps.size(); ++step) {
+            j["s" + std::to_string(step) + "_root"] = json::array();
+            for(uint64_t i = 0; i < nFieldElements; i++) {
+                j["s" + std::to_string(step) + "_root"][i] = toString(fri.treesFRI[step - 1].root[i]);
+            }
+            j["s" + std::to_string(step) + "_vals"] = json::array();
+            j["s" + std::to_string(step) + "_siblings"] = json::array();
+        }
+
+        for(uint64_t i = 0; i < starkInfo.starkStruct.nQueries; i++) {
+            for(uint64_t step = 1; step < starkInfo.starkStruct.steps.size(); ++step) {
+                j["s" + std::to_string(step) + "_vals"][i] = json::array();
+                j["s" + std::to_string(step) + "_siblings"][i] = json::array();
+
+                for(uint64_t l = 0; l < uint64_t(1 << (starkInfo.starkStruct.steps[step - 1].nBits - starkInfo.starkStruct.steps[step].nBits)) * FIELD_EXTENSION; l++) {
+                    j["s" + std::to_string(step) + "_vals"][i][l] = Goldilocks::toString(fri.treesFRI[step - 1].polQueries[i][0].v[l][0]);
+                }
+
+                uint64_t nSiblings = starkInfo.starkStruct.verificationHashType == std::string("BN128") ? std::floor((starkInfo.starkStruct.steps[step].nBits - 1) / std::ceil(std::log2(starkInfo.starkStruct.merkleTreeArity))) + 1 : starkInfo.starkStruct.steps[step].nBits;
+                uint64_t nSiblingsPerLevel = starkInfo.starkStruct.verificationHashType == std::string("BN128") ? starkInfo.starkStruct.merkleTreeArity : nFieldElements;
+
+                for(uint64_t l = 0; l < nSiblings; ++l) {
+                    for(uint64_t k = 0; k < nSiblingsPerLevel; ++k) {
+                        j["s" + std::to_string(step) + "_siblings"][i][l][k] = toString(fri.treesFRI[step - 1].polQueries[i][0].mp[l][k]);
+                    }
+                }
+            }
+        }
+        
+
+        j["finalPol"] = json::array();
+        for (uint64_t i = 0; i < uint64_t (1 << (starkInfo.starkStruct.steps[starkInfo.starkStruct.steps.size() - 1].nBits)); i++)
+        {
+            j["finalPol"][i] = json::array();
+            for(uint64_t l = 0; l < FIELD_EXTENSION; l++) {
+                j["finalPol"][i][l] = Goldilocks::toString(fri.pol[i][l]);
+            }
+        }
         return j;
     }
 };
@@ -335,10 +336,12 @@ public:
     
     uint64_t airId;
     uint64_t airgroupId;
+    uint64_t instanceId;
 
-    FRIProof(StarkInfo &starkInfo) : proof(starkInfo), publics(starkInfo.nPublics) {
+    FRIProof(StarkInfo &starkInfo, uint64_t _instanceId) : proof(starkInfo), publics(starkInfo.nPublics) {
         airId = starkInfo.airId;
         airgroupId = starkInfo.airgroupId;
+        instanceId = _instanceId;
     };
 };
 

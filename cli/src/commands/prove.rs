@@ -1,8 +1,7 @@
 // extern crate env_logger;
 use clap::Parser;
-use proofman_common::{initialize_logger, parse_cached_buffers, StdMode, DEFAULT_PRINT_VALS};
+use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo};
 use std::path::PathBuf;
-use std::collections::HashMap;
 use colored::Colorize;
 use crate::commands::field::Field;
 
@@ -31,10 +30,6 @@ pub struct ProveCmd {
     #[clap(short = 'i', long)]
     pub public_inputs: Option<PathBuf>,
 
-    /// Cached buffer path
-    #[clap(short = 'c', long, value_parser = parse_cached_buffers)]
-    pub cached_buffers: Option<HashMap<String, PathBuf>>,
-
     /// Setup folder path
     #[clap(long)]
     pub proving_key: PathBuf,
@@ -56,17 +51,8 @@ pub struct ProveCmd {
     #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
-    #[clap(short = 'd', long, action = clap::ArgAction::Count)]
-    pub debug: u8,
-
-    #[clap(long)]
-    pub print: Option<usize>,
-
-    #[clap(long, action = clap::ArgAction::SetTrue)]
-    pub print_to_file: bool,
-
-    #[clap(long, action = clap::ArgAction::Append)]
-    pub opids: Option<Vec<String>>,
+    #[clap(short = 'd', long)]
+    pub debug: Option<Option<String>>,
 }
 
 impl ProveCmd {
@@ -77,28 +63,25 @@ impl ProveCmd {
         initialize_logger(self.verbose.into());
 
         if Path::new(&self.output_dir.join("proofs")).exists() {
-            fs::remove_dir_all(self.output_dir.join("proofs")).expect("Failed to remove the proofs directory");
+            // In distributed mode two different processes may enter here at the same time and try to remove the same directory
+            if let Err(e) = fs::remove_dir_all(self.output_dir.join("proofs")) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    panic!("Failed to remove the proofs directory: {:?}", e);
+                }
+            }
         }
 
-        fs::create_dir_all(self.output_dir.join("proofs")).expect("Failed to create the proofs directory");
+        if let Err(e) = fs::create_dir_all(self.output_dir.join("proofs")) {
+            if e.kind() != std::io::ErrorKind::AlreadyExists {
+                // prevent collision in distributed mode
+                panic!("Failed to create the proofs directory: {:?}", e);
+            }
+        }
 
-        let std_mode: StdMode = if self.debug == 1 {
-            let op_ids = self.opids.as_ref().map(|ids| {
-                ids.iter()
-                    .flat_map(|id| {
-                        id.split(',')
-                            .map(|s| s.trim()) // Trim any surrounding whitespace
-                            .filter_map(|s| s.parse::<u64>().ok()) // Try parsing as u64
-                            .collect::<Vec<u64>>() // Collect into a Vec<u64>
-                    })
-                    .collect::<Vec<u64>>() // Collect the entire iterator into a Vec<u64>
-            });
-
-            let n_values = self.print.unwrap_or(DEFAULT_PRINT_VALS);
-            let print_to_file = self.print_to_file;
-            StdMode::new(proofman_common::ModeName::Debug, op_ids, n_values, print_to_file)
-        } else {
-            self.debug.into()
+        let debug_info = match &self.debug {
+            None => DebugInfo::default(),
+            Some(None) => DebugInfo::new_debug(),
+            Some(Some(debug_value)) => json_to_debug_instances_map(self.proving_key.clone(), debug_value.clone()),
         };
 
         match self.field {
@@ -106,10 +89,9 @@ impl ProveCmd {
                 self.witness_lib.clone(),
                 self.rom.clone(),
                 self.public_inputs.clone(),
-                self.cached_buffers.clone(),
                 self.proving_key.clone(),
                 self.output_dir.clone(),
-                ProofOptions::new(false, self.verbose.into(), std_mode, self.aggregation, self.final_snark),
+                ProofOptions::new(false, self.verbose.into(), self.aggregation, self.final_snark, debug_info),
             )?,
         };
 

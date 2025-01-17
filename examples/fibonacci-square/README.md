@@ -117,11 +117,6 @@ cargo run --bin proofman-cli prove \
      --output-dir examples/fibonacci-square/build/proofs
 ```
 
-### 2.7 Verify the Proof
-
-```bash
-node ../pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build/provingKey/ -p examples/fibonacci-square/build/proofs
-```
 
 ### 2.6 Generate VadcopFinal Proof
 
@@ -137,13 +132,9 @@ cargo run --bin proofman-cli prove \
      -a
 ```
 
-### 2.8 Verify final proof
-
-```bash
-node ../pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build/provingKey/ -p examples/fibonacci-square/build/proofs -t vadcop_final
-```
-
 ### 2.9 All at once
+
+Without recursion:
 
 ```bash
 node ../pil2-compiler/src/pil.js ./examples/fibonacci-square/pil/build.pil \
@@ -165,6 +156,31 @@ node ../pil2-compiler/src/pil.js ./examples/fibonacci-square/pil/build.pil \
      --witness-lib ./target/debug/libfibonacci_square.so \
      --proving-key examples/fibonacci-square/build/provingKey/ \
      --public-inputs examples/fibonacci-square/src/inputs.json \
-     --output-dir examples/fibonacci-square/build/proofs\
-&& node ../pil2-proofman-js/src/main_verify -k examples/fibonacci-square/build/provingKey/ -p examples/fibonacci-square/build/proofs
+     --output-dir examples/fibonacci-square/build/proofs
+```
+
+With recursion:
+
+```bash
+node ../pil2-compiler/src/pil.js ./examples/fibonacci-square/pil/build.pil \
+     -I ./pil2-components/lib/std/pil \
+     -o ./examples/fibonacci-square/pil/build.pilout \
+&& node ../pil2-proofman-js/src/main_setup.js \
+     -a ./examples/fibonacci-square/pil/build.pilout \
+     -b ./examples/fibonacci-square/build \
+     -t ./pil2-stark/build/bctree \
+     -r \
+&& cargo run --bin proofman-cli pil-helpers \
+     --pilout ./examples/fibonacci-square/pil/build.pilout \
+     --path ./examples/fibonacci-square/src -o \
+&& cargo build \
+&& cargo run --bin proofman-cli verify-constraints \
+     --witness-lib ./target/debug/libfibonacci_square.so \
+     --proving-key examples/fibonacci-square/build/provingKey/ \
+     --public-inputs examples/fibonacci-square/src/inputs.json \
+&& cargo run --bin proofman-cli prove \
+     --witness-lib ./target/debug/libfibonacci_square.so \
+     --proving-key examples/fibonacci-square/build/provingKey/ \
+     --public-inputs examples/fibonacci-square/src/inputs.json \
+     --output-dir examples/fibonacci-square/build/proofs -a \
 ```

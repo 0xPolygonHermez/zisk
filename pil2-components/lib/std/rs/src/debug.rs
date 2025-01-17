@@ -7,26 +7,38 @@ use std::{
 };
 
 use p3_field::PrimeField;
+use proofman_common::ProofCtx;
 use proofman_hints::{format_vec, HintFieldOutput};
 
 pub type DebugData<F> = Mutex<HashMap<F, HashMap<Vec<HintFieldOutput<F>>, BusValue<F>>>>; // opid -> val -> BusValue
 
+#[derive(Debug)]
 pub struct BusValue<F> {
     shared_data: SharedData<F>, // Data shared across all airgroups, airs, and instances
-    grouped_data: AirGroupMap,  // Data grouped by: airgroup_id -> air_id -> instance_id -> MetaData
+    grouped_data: AirGroupMap,  // Data grouped by: airgroup_id -> air_id -> instance_id -> InstanceData
 }
 
+#[derive(Debug)]
 struct SharedData<F> {
     direct_was_called: bool,
     num_proves: F,
     num_assumes: F,
 }
 
-type AirGroupMap = HashMap<usize, AirIdMap>;
-type AirIdMap = HashMap<usize, InstanceMap>;
-type InstanceMap = HashMap<usize, MetaData>;
+type AirGroupMap = HashMap<usize, AirMap>;
+type AirMap = HashMap<usize, AirData>;
 
-struct MetaData {
+#[derive(Debug)]
+struct AirData {
+    name_piop: String,
+    name_expr: Vec<String>,
+    instances: InstanceMap,
+}
+
+type InstanceMap = HashMap<usize, InstanceData>;
+
+#[derive(Debug)]
+struct InstanceData {
     row_proves: Vec<usize>,
     row_assumes: Vec<usize>,
 }
@@ -34,6 +46,8 @@ struct MetaData {
 #[allow(clippy::too_many_arguments)]
 pub fn update_debug_data<F: PrimeField>(
     debug_data: &DebugData<F>,
+    name_piop: &str,
+    name_expr: &[String],
     opid: F,
     val: Vec<HintFieldOutput<F>>,
     airgroup_id: usize,
@@ -58,9 +72,14 @@ pub fn update_debug_data<F: PrimeField>(
         .entry(airgroup_id)
         .or_default()
         .entry(air_id)
-        .or_default()
+        .or_insert_with(|| AirData {
+            name_piop: name_piop.to_owned(),
+            name_expr: name_expr.to_owned(),
+            instances: InstanceMap::new(),
+        })
+        .instances
         .entry(instance_id)
-        .or_insert_with(|| MetaData { row_proves: Vec::new(), row_assumes: Vec::new() });
+        .or_insert_with(|| InstanceData { row_proves: Vec::new(), row_assumes: Vec::new() });
 
     // If the value is global but it was already processed, skip it
     if is_global {
@@ -81,6 +100,7 @@ pub fn update_debug_data<F: PrimeField>(
 }
 
 pub fn print_debug_info<F: PrimeField>(
+    pctx: &ProofCtx<F>,
     name: &str,
     max_values_to_print: usize,
     print_to_file: bool,
@@ -151,7 +171,7 @@ pub fn print_debug_info<F: PrimeField>(
             }
             let shared_data = &data.shared_data;
             let grouped_data = &mut data.grouped_data;
-            print_diffs(val, max_values_to_print, shared_data, grouped_data, false, &mut output);
+            print_diffs(pctx, val, max_values_to_print, shared_data, grouped_data, false, &mut output);
         }
 
         if len_overassumed > 0 {
@@ -176,7 +196,7 @@ pub fn print_debug_info<F: PrimeField>(
 
             let shared_data = &data.shared_data;
             let grouped_data = &mut data.grouped_data;
-            print_diffs(val, max_values_to_print, shared_data, grouped_data, true, &mut output);
+            print_diffs(pctx, val, max_values_to_print, shared_data, grouped_data, true, &mut output);
         }
 
         if len_overproven > 0 {
@@ -185,6 +205,7 @@ pub fn print_debug_info<F: PrimeField>(
     }
 
     fn print_diffs<F: PrimeField>(
+        pctx: &ProofCtx<F>,
         val: &[HintFieldOutput<F>],
         max_values_to_print: usize,
         shared_data: &SharedData<F>,
@@ -211,8 +232,8 @@ pub fn print_debug_info<F: PrimeField>(
         // Collect and organize rows
         let mut organized_rows = Vec::new();
         for (airgroup_id, air_id_map) in grouped_data.iter_mut() {
-            for (air_id, instance_map) in air_id_map.iter_mut() {
-                for (instance_id, meta_data) in instance_map.iter_mut() {
+            for (air_id, air_data) in air_id_map.iter_mut() {
+                for (instance_id, meta_data) in air_data.instances.iter_mut() {
                     let rows = {
                         let rows = if proves { &meta_data.row_proves } else { &meta_data.row_assumes };
                         if rows.is_empty() {
@@ -230,20 +251,29 @@ pub fn print_debug_info<F: PrimeField>(
 
         // Print grouped rows
         for (airgroup_id, air_id, instance_id, mut rows) in organized_rows {
+            let airgroup_name = pctx.global_info.get_air_group_name(airgroup_id);
+            let air_name = pctx.global_info.get_air_name(airgroup_id, air_id);
+            let piop_name = &grouped_data.get(&airgroup_id).unwrap().get(&air_id).unwrap().name_piop;
+            let expr_name = &grouped_data.get(&airgroup_id).unwrap().get(&air_id).unwrap().name_expr;
+
             rows.sort();
             let rows_display =
                 rows.iter().map(|x| x.to_string()).take(max_values_to_print).collect::<Vec<_>>().join(",");
 
             let truncated = rows.len() > max_values_to_print;
+            writeln!(output, "\t        - Airgroup: {} (id: {})", airgroup_name, airgroup_id).expect("Write error");
+            writeln!(output, "\t          Air: {} (id: {})", air_name, air_id).expect("Write error");
+
+            writeln!(output, "\t          PIOP: {}", piop_name).expect("Write error");
+            writeln!(output, "\t          Expression: {:?}", expr_name).expect("Write error");
+
             writeln!(
                 output,
-                "\t        Airgroup: {:<3} | Air: {:<3} | Instance: {:<3} | Num: {:<9} | Rows: [{}{}]",
-                airgroup_id,
-                air_id,
+                "\t          Instance ID: {} | Num: {} | Rows: [{}{}]",
                 instance_id,
                 rows.len(),
                 rows_display,
-                if truncated { ",..." } else { "" },
+                if truncated { ",..." } else { "" }
             )
             .expect("Write error");
         }

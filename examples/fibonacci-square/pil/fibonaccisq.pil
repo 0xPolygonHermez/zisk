@@ -6,12 +6,12 @@ public in2;
 public out;
 public rom_root[4];
 
-proofval value1;
-proofval value2;
+proofval stage(1) value1;
+proofval stage(1) value2;
 
 private function checkProofValues()
 {
-    mod * value1 - value2 === 0;
+    module * value1 - value2 === 0;
     std_alpha - std_alpha === 0;
 }
 
@@ -36,7 +36,7 @@ airtemplate FibonacciSquare(const int N = 2**8) {
 
     (a' - b) * (1 - L1') === 0;
 
-    mod * value1 - value2 === 0;
+    module * value1 - value2 === 0;
     2*fibo1[0] - fibo1[1] === 0;
 
     line - (flags + 1) === 0;

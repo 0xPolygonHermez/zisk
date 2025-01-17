@@ -1,7 +1,7 @@
 {
     "nPublics": 8,
     "definitions": [
-        { "name": "mod", "initialPos": 0, "chunks": [1, 64] },
+        { "name": "module", "initialPos": 0, "chunks": [1, 64] },
         { "name": "in1", "initialPos": 1, "chunks": [1, 64] },
         { "name": "in2", "initialPos": 2, "chunks": [1, 64] },
         { "name": "out", "initialPos": 3, "chunks": [1, 64] },

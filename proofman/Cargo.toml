@@ -7,10 +7,10 @@ edition = "2021"
 proofman-common = { path = "../common" }
 proofman-hints = { path = "../hints" }
 proofman-util = { path = "../util" }
-pilout = { path = "../pilout" }
 stark = { path = "../provers/stark" }
 proofman-starks-lib-c = { path = "../provers/starks-lib-c" }
 transcript = { path = "../transcript" }
+witness = { path = "../witness" }
 
 log.workspace = true
 env_logger.workspace = true
@@ -18,10 +18,10 @@ p3-goldilocks.workspace = true
 p3-field.workspace = true
 
 libloading = "0.8.4"
-colored = "2"
+colored.workspace = true
 mpi = { version = "0.8.0", optional = true }
-serde_json = "1.0.68"
-
+serde_json.workspace = true
+rayon = "1.7"
 
 [features]
 default = []

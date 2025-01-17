@@ -13,5 +13,9 @@
         "./transcript/Cargo.toml",
         "./util/Cargo.toml",
         // "examples/fibonacci-square/Cargo.toml",
-    ]
+    ],
+    "files.associations": {
+        "*.ejs": "html",
+        "new": "cpp"
+    }
 }

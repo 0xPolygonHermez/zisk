@@ -2,51 +2,158 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common as common;
 pub use proofman_macros::trace;
+pub use proofman_macros::values;
 
-trace!(RangeCheck3Row, RangeCheck3Trace<F> {
+use std::fmt;
+
+#[allow(dead_code)]
+type FieldExtension<F> = [F; 3];
+
+pub const PILOUT_HASH: &[u8] = b"Build-hash";
+
+//AIRGROUP CONSTANTS
+
+pub const RANGE_CHECK_3_AIRGROUP_ID: usize = 0;
+
+pub const RANGE_CHECK_2_AIRGROUP_ID: usize = 1;
+
+pub const RANGE_CHECK_1_AIRGROUP_ID: usize = 2;
+
+pub const RANGE_CHECK_4_AIRGROUP_ID: usize = 3;
+
+pub const MULTI_RANGE_CHECK_1_AIRGROUP_ID: usize = 4;
+
+pub const MULTI_RANGE_CHECK_2_AIRGROUP_ID: usize = 5;
+
+pub const RANGE_CHECK_DYNAMIC_1_AIRGROUP_ID: usize = 6;
+
+pub const RANGE_CHECK_DYNAMIC_2_AIRGROUP_ID: usize = 7;
+
+pub const RANGE_CHECK_MIX_AIRGROUP_ID: usize = 8;
+
+pub const U_8_AIR_AIRGROUP_ID: usize = 9;
+
+pub const SPECIFIED_RANGES_AIRGROUP_ID: usize = 10;
+
+//AIR CONSTANTS
+
+pub const RANGE_CHECK_3_AIR_IDS: &[usize] = &[0];
+
+pub const RANGE_CHECK_2_AIR_IDS: &[usize] = &[0];
+
+pub const RANGE_CHECK_1_AIR_IDS: &[usize] = &[0];
+
+pub const RANGE_CHECK_4_AIR_IDS: &[usize] = &[0];
+
+pub const U_16_AIR_AIR_IDS: &[usize] = &[1];
+
+pub const MULTI_RANGE_CHECK_1_AIR_IDS: &[usize] = &[0];
+
+pub const MULTI_RANGE_CHECK_2_AIR_IDS: &[usize] = &[0];
+
+pub const RANGE_CHECK_DYNAMIC_1_AIR_IDS: &[usize] = &[0];
+
+pub const RANGE_CHECK_DYNAMIC_2_AIR_IDS: &[usize] = &[0];
+
+pub const RANGE_CHECK_MIX_AIR_IDS: &[usize] = &[0];
+
+pub const U_8_AIR_AIR_IDS: &[usize] = &[0];
+
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[0];
+
+  
+trace!(RangeCheck3Trace<F> {
  c1: F, c2: F,
-});
+},  0, 0, 32 );
 
-trace!(RangeCheck2Row, RangeCheck2Trace<F> {
+trace!(RangeCheck2Trace<F> {
  b1: F, b2: F, b3: F,
-});
+},  1, 0, 16 );
 
-trace!(RangeCheck1Row, RangeCheck1Trace<F> {
+trace!(RangeCheck1Trace<F> {
  a1: F, a2: F, a3: F, a4: F, a5: F, sel1: F, sel2: F, sel3: F,
-});
+},  2, 0, 8 );
 
-trace!(RangeCheck4Row, RangeCheck4Trace<F> {
+trace!(RangeCheck4Trace<F> {
  a1: F, a2: F, a3: F, a4: F, a5: F, a6: F, a7: F, a8: F, sel1: F, sel2: F,
-});
+},  3, 0, 64 );
 
-trace!(U16AirRow, U16AirTrace<F> {
+trace!(U16AirTrace<F> {
  mul: F,
-});
+},  3, 1, 65536 );
 
-trace!(MultiRangeCheck1Row, MultiRangeCheck1Trace<F> {
+trace!(MultiRangeCheck1Trace<F> {
  a: [F; 3], sel: [F; 3], range_sel: [F; 3],
-});
+},  4, 0, 8 );
 
-trace!(MultiRangeCheck2Row, MultiRangeCheck2Trace<F> {
+trace!(MultiRangeCheck2Trace<F> {
  a: [F; 2], sel: [F; 2], range_sel: [F; 2],
-});
+},  5, 0, 16 );
 
-trace!(RangeCheckDynamic1Row, RangeCheckDynamic1Trace<F> {
+trace!(RangeCheckDynamic1Trace<F> {
  colu: F, sel_7: F, sel_8: F, sel_16: F, sel_17: F,
-});
+},  6, 0, 256 );
 
-trace!(RangeCheckDynamic2Row, RangeCheckDynamic2Trace<F> {
+trace!(RangeCheckDynamic2Trace<F> {
  colu: F, sel_1: F, sel_2: F, sel_3: F, sel_4: F, sel_5: F,
-});
+},  7, 0, 64 );
 
-trace!(RangeCheckMixRow, RangeCheckMixTrace<F> {
+trace!(RangeCheckMixTrace<F> {
  a: [F; 4], b: [F; 2], c: [F; 1], range_sel: [F; 5],
-});
+},  8, 0, 64 );
 
-trace!(U8AirRow, U8AirTrace<F> {
+trace!(U8AirTrace<F> {
  mul: F,
+},  9, 0, 256 );
+
+trace!(SpecifiedRangesTrace<F> {
+ mul: [F; 20],
+},  10, 0, 131072 );
+
+values!(RangeCheck3AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
 });
 
-trace!(SpecifiedRangesRow, SpecifiedRangesTrace<F> {
- mul: [F; 20],
+values!(RangeCheck2AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(RangeCheck1AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(RangeCheck4AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(U16AirAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(MultiRangeCheck1AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(MultiRangeCheck2AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(RangeCheckDynamic1AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(RangeCheckDynamic2AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(RangeCheckMixAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(U8AirAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(SpecifiedRangesAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
 });

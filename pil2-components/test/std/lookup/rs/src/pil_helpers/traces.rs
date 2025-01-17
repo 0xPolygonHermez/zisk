@@ -2,27 +2,78 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common as common;
 pub use proofman_macros::trace;
+pub use proofman_macros::values;
 
-trace!(Lookup0Row, Lookup0Trace<F> {
+use std::fmt;
+
+#[allow(dead_code)]
+type FieldExtension<F> = [F; 3];
+
+pub const PILOUT_HASH: &[u8] = b"Build-hash";
+
+//AIRGROUP CONSTANTS
+
+pub const LOOKUP_AIRGROUP_ID: usize = 0;
+
+//AIR CONSTANTS
+
+pub const LOOKUP_0_AIR_IDS: &[usize] = &[0];
+
+pub const LOOKUP_1_AIR_IDS: &[usize] = &[1];
+
+pub const LOOKUP_2_12_AIR_IDS: &[usize] = &[2];
+
+pub const LOOKUP_2_13_AIR_IDS: &[usize] = &[3];
+
+pub const LOOKUP_2_15_AIR_IDS: &[usize] = &[4];
+
+pub const LOOKUP_3_AIR_IDS: &[usize] = &[5];
+
+  
+trace!(Lookup0Trace<F> {
  f: [F; 4], t: [F; 4], sel: [F; 2], mul: [F; 2],
-});
+},  0, 0, 1024 );
 
-trace!(Lookup1Row, Lookup1Trace<F> {
+trace!(Lookup1Trace<F> {
  f: [F; 2], t: F, sel: [F; 2], mul: F,
-});
+},  0, 1, 1024 );
 
-trace!(Lookup2_12Row, Lookup2_12Trace<F> {
+trace!(Lookup2_12Trace<F> {
  a1: F, b1: F, a2: F, b2: F, a3: F, b3: F, a4: F, b4: F, c1: F, d1: F, c2: F, d2: F, sel1: F, sel2: F, mul: F,
-});
+},  0, 2, 4096 );
 
-trace!(Lookup2_13Row, Lookup2_13Trace<F> {
+trace!(Lookup2_13Trace<F> {
  a1: F, b1: F, a2: F, b2: F, a3: F, b3: F, a4: F, b4: F, c1: F, d1: F, c2: F, d2: F, sel1: F, sel2: F, mul: F,
-});
+},  0, 3, 8192 );
 
-trace!(Lookup2_15Row, Lookup2_15Trace<F> {
+trace!(Lookup2_15Trace<F> {
  a1: F, b1: F, a2: F, b2: F, a3: F, b3: F, a4: F, b4: F, c1: F, d1: F, c2: F, d2: F, sel1: F, sel2: F, mul: F,
-});
+},  0, 4, 32768 );
 
-trace!(Lookup3Row, Lookup3Trace<F> {
+trace!(Lookup3Trace<F> {
  c1: F, d1: F, c2: F, d2: F, mul1: F, mul2: F,
+},  0, 5, 16384 );
+
+values!(Lookup0AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(Lookup1AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(Lookup2_12AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(Lookup2_13AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(Lookup2_15AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(Lookup3AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
 });

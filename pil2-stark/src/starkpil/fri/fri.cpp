@@ -76,17 +76,11 @@ void FRI<ElementType>::fold(uint64_t step, Goldilocks::Element* pol, Goldilocks:
 
 template <typename ElementType>
 void FRI<ElementType>::merkelize(uint64_t step, FRIProof<ElementType> &proof, Goldilocks::Element* pol, MerkleTreeType* treeFRI, uint64_t currentBits, uint64_t nextBits) {
-    uint64_t pol2N = 1 << currentBits;
-
     // Re-org in groups
-    Goldilocks::Element *aux = new Goldilocks::Element[pol2N * FIELD_EXTENSION];
-    getTransposed(aux, pol, pol2N, nextBits);
+    getTransposed(treeFRI->source, pol, 1 << currentBits, nextBits);
 
-    treeFRI->copySource(aux);
     treeFRI->merkelize();
     treeFRI->getRoot(&proof.proof.fri.treesFRI[step].root[0]);
-
-    delete aux;    
 }
 
 template <typename ElementType>
@@ -207,7 +201,7 @@ void FRI<ElementType>::getTransposed(Goldilocks::Element *aux, Goldilocks::Eleme
 
 
 template <typename ElementType>
-void FRI<ElementType>::verify_fold(Goldilocks::Element* value, uint64_t step, uint64_t nBitsExt, uint64_t currentBits, uint64_t prevBits, Goldilocks::Element *challenge, uint64_t idx, std::vector<std::vector<Goldilocks::Element>> &v) {
+void FRI<ElementType>::verify_fold(Goldilocks::Element* value, uint64_t step, uint64_t nBitsExt, uint64_t currentBits, uint64_t prevBits, Goldilocks::Element *challenge, uint64_t idx, std::vector<Goldilocks::Element> &v) {
     Goldilocks::Element shift = Goldilocks::shift();
     
     for (uint64_t j = 0; j < nBitsExt - prevBits; j++) {
@@ -220,9 +214,7 @@ void FRI<ElementType>::verify_fold(Goldilocks::Element* value, uint64_t step, ui
     
     uint64_t c = 0;
     for(uint64_t i = 0; i < v.size(); ++i) {
-        for(uint64_t j = 0; j < v[i].size(); ++j) {
-            ppar_c[c++] = v[i][j];
-        }
+        ppar_c[c++] = v[i];
     }
 
     assert(c == nX * FIELD_EXTENSION);

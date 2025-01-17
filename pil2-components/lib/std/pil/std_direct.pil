@@ -1,0 +1,112 @@
+require "std_constants.pil";
+require "std_sum.pil";
+require "std_prod.pil";
+
+/*
+ * Module for performing direct updates to the bus, either in sum or product form.
+ * This module is designed for **degree-0 expressions** that should enter the bus only once.
+ *
+ * **Direct Update Modes**:
+ * - **Local**: The degree-0 expression is added as part of the AIR bus.
+ * - **Global**: The degree-0 expression is added as part of the global bus.
+ */
+
+const int DEFAULT_DIRECT_NAME = PIOP_NAME_DIRECT;
+const int DEFAULT_DIRECT_BUS_TYPE = PIOP_BUS_SUM;
+
+/**
+ * Performs a local direct update to the bus.
+ *
+ * @param opid        The operation ID that uniquely identifies this direct update operation.
+ * @param expressions The vector of expressions to be updated in the direct update operation.
+ * @param sel         A selector to parameterize the direct update operation.
+ *                    Defaults to `1`, meaning the direct update is performed.
+ * @param proves      A flag specifying whether the direct update operation is a prove or an assume.
+ *                    Defaults to `1`, meaning the operation is a prove.
+ * @param bus_type    The bus type to use for the direct update operation.
+ * @param name        An optional name for the PIOP consuming the direct update operation. 
+ *                    This is useful for debugging and tracing operations.
+ */
+function direct_update(const int opid, const expr expressions[], const expr sel = 1, const int proves = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
+    direct_initial_checks(expressions, sel);
+
+    if (AIR_ID == -1) {
+        error("A direct update has to be performed inside an air");
+    }
+
+    direct_to_bus(opid, expressions, sel, proves, bus_type, name, PIOP_DIRECT_TYPE_AIR);
+}
+
+function direct_update_assumes(const int opid, const expr expressions[], const expr sel = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
+    direct_update(opid, expressions, sel, 0, bus_type, name);
+}
+
+function direct_update_proves(const int opid, const expr expressions[], const expr sel = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
+    direct_update(opid, expressions, sel, 1, bus_type, name);
+}
+
+/**
+ * Performs a global direct update to the bus.
+ *
+ * @param opid        The operation ID that uniquely identifies this direct update operation.
+ * @param expressions The vector of expressions to be updated in the direct update operation.
+ * @param sel         A selector to parameterize the direct update operation.
+ *                    Defaults to `1`, meaning the direct update is performed.
+ * @param proves      A flag specifying whether the direct update operation is a prove or an assume.
+ *                    Defaults to `1`, meaning the operation is a prove.
+ * @param bus_type    The bus type to use for the direct update operation.
+ * @param name        An optional name for the PIOP consuming the direct update operation. 
+ *                    This is useful for debugging and tracing operations.
+ */
+function direct_global_update(const int opid, const expr expressions[], const expr sel = 1, const int proves = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
+    direct_initial_checks(expressions, sel);
+
+    direct_to_bus(opid, expressions, sel, proves, bus_type, name, PIOP_DIRECT_TYPE_GLOBAL);
+}
+
+function direct_global_update_assumes(const int opid, const expr expressions[], const expr sel = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
+    direct_global_update(opid, expressions, sel, 0, bus_type, name);
+}
+
+function direct_global_update_proves(const int opid, const expr expressions[], const expr sel = 1, const int bus_type = PIOP_BUS_DEFAULT, const int name = PIOP_NAME_DEFAULT) {
+    direct_global_update(opid, expressions, sel, 1, bus_type, name);
+}
+
+private function direct_initial_checks(const expr expressions[], const expr sel) {
+    if (AIRGROUP_ID == -1) {
+        error("A direct update has to be performed inside an airgroup");
+    }
+
+    for (int i = 0; i < length(expressions); i++) {
+        if (degree(expressions[i]) > 0) {
+            error(`Only field elements can be used for a direct update. The expression[${i}] = ${expressions[i]} is not a field element`);
+        }
+    }
+
+    if (degree(sel) > 0) {
+        error(`Only field elements can be used for a direct update. The selector = ${sel} is not a field element`);
+    }
+}
+
+private function direct_to_bus(const int opid, const expr expressions[], const expr sel, const int proves, const int bus_type, const int name, const int direct_type) {
+    if (name == PIOP_NAME_DEFAULT) name = DEFAULT_DIRECT_NAME;
+
+    if (bus_type == PIOP_BUS_DEFAULT) bus_type = DEFAULT_DIRECT_BUS_TYPE;
+
+    switch (bus_type) {
+        case PIOP_BUS_SUM:
+            if (proves) {
+                sum_proves(name, [opid], opid, expressions, sel, direct_type);
+            } else {
+                sum_assumes(name, [opid], opid, expressions, sel, direct_type);
+            }
+        case PIOP_BUS_PROD:
+            if (proves) {
+                prod_proves(name, opid, expressions, sel, direct_type);
+            } else {
+                prod_assumes(name, opid, expressions, sel, direct_type);
+            }
+        default:
+            error(`Unknown bus type: ${bus_type} for opid: ${opid}`);
+    }
+}

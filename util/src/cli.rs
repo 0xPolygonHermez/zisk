@@ -1,10 +1,3 @@
-use std::{
-    error::Error,
-    fs::File,
-    io::{BufRead, BufReader},
-    path::PathBuf,
-};
-
 use colored::Colorize;
 use sysinfo::System;
 
@@ -55,36 +48,4 @@ pub fn print_extended_banner() {
         std::env::current_exe().unwrap().display().to_string().as_str()
     );
     println!("{} {}", format!("{: >12}", "Main PID").bright_green().bold(), std::process::id().to_string().as_str());
-}
-
-pub fn read_hex_values_from_file(filename: &PathBuf) -> Result<Vec<u8>, Box<dyn Error>> {
-    let file = File::open(filename)?;
-    let reader = BufReader::new(file);
-
-    let mut hex_values = Vec::new();
-
-    for line_result in reader.lines() {
-        let line = line_result?;
-
-        if let Some(hex_digits) = line.strip_prefix("0x") {
-            let mut chars = hex_digits.chars();
-
-            while let Some(char1) = chars.next() {
-                if let Some(char2) = chars.next() {
-                    let hex_str = format!("{}{}", char1, char2);
-                    if let Ok(hex_value) = u8::from_str_radix(&hex_str, 16) {
-                        hex_values.push(hex_value);
-                    } else {
-                        eprintln!("Error parsing hexadecimal value: {}", hex_str);
-                    }
-                } else {
-                    eprintln!("Odd number of hexadecimal digits: {}", hex_digits);
-                }
-            }
-        } else {
-            eprintln!("Invalid line format: {}", line);
-        }
-    }
-
-    Ok(hex_values)
 }

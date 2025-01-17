@@ -116,18 +116,18 @@ use log::debug;
 executor!(FibonacciExecutor);
 
 impl Executor<Goldilocks> for FibonacciExecutor {
-    fn witness_computation(&self, stage_id: u32, proof_ctx: &mut ProofCtx<Goldilocks>) {
+    fn witness_computation(&self, stage_id: u32, pctx: &mut ProofCtx<Goldilocks>) {
         if stage_id != 1 {
             debug!("Nothing to do for stage_id {}", stage_id);
             return;
         }
 
-        let airgroup_id = proof_ctx.pilout.find_airgroup_id_by_name("Fibonacci").expect("Airgroup not found");
+        let airgroup_id = pctx.pilout.find_airgroup_id_by_name("Fibonacci").expect("Airgroup not found");
         let air_id = 0;
-        let num_rows = proof_ctx.pilout.air_groups[airgroup_id].airs[air_id].num_rows.unwrap() as usize;
+        let num_rows = pctx.pilout.air_groups[airgroup_id].airs[air_id].num_rows.unwrap() as usize;
 
         trace!(Fibonacci { a: Goldilocks, b: Goldilocks });
-        let mut fib = Fibonacci::new(num_rows);
+        let mut fib = Fibonacci::new();
 
         fib.a[0] = Goldilocks::one();
         fib.b[0] = Goldilocks::one();
@@ -137,7 +137,7 @@ impl Executor<Goldilocks> for FibonacciExecutor {
             fib.b[i] = fib.a[i - 1] + fib.b[i - 1];
         }
 
-        proof_ctx.add_trace_to_air_instance(airgroup_id, air_id, fib).expect("Error adding trace to air instance");
+        pctx.add_trace_to_air_instance(airgroup_id, air_id, fib).expect("Error adding trace to air instance");
     }
 }
 

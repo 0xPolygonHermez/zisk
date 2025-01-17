@@ -1,17 +1,15 @@
 #include "starks.hpp"
 
 template <typename ElementType>
-void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupId, Goldilocks::Element *pAddress, Goldilocks::Element *pConstPols, Goldilocks::Element *pConstTree, Goldilocks::Element *publicInputs, std::string proofFile, bool vadcop) {
+void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupId, Goldilocks::Element *witness, Goldilocks::Element *aux_trace, Goldilocks::Element *pConstPols, Goldilocks::Element *pConstTree, Goldilocks::Element *publicInputs, std::string proofFile, bool vadcop) {
     TimerStart(STARK_PROOF);
 
-    FRIProof<ElementType> proof(setupCtx.starkInfo);
+    FRIProof<ElementType> proof(setupCtx.starkInfo, 0);
 
     using TranscriptType = std::conditional_t<std::is_same<ElementType, Goldilocks::Element>::value, TranscriptGL, TranscriptBN128>;
     
     Starks<ElementType> starks(setupCtx, pConstTree);
-
-    Goldilocks::Element *pols = new Goldilocks::Element[setupCtx.starkInfo.mapTotalN];
-
+    
 #ifdef __AVX512__
     ExpressionsAvx512 expressionsCtx(setupCtx);
 #elif defined(__AVX2__)
@@ -24,13 +22,12 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
 
     TranscriptType transcript(setupCtx.starkInfo.starkStruct.merkleTreeArity, setupCtx.starkInfo.starkStruct.merkleTreeCustom);
 
-    Goldilocks::Element* evals = new Goldilocks::Element[setupCtx.starkInfo.evMap.size() * FIELD_EXTENSION];
-    Goldilocks::Element* challenges = new Goldilocks::Element[setupCtx.starkInfo.challengesMap.size() * FIELD_EXTENSION];
+    Goldilocks::Element evals[setupCtx.starkInfo.evMap.size() * FIELD_EXTENSION];
+    Goldilocks::Element challenges[setupCtx.starkInfo.challengesMap.size() * FIELD_EXTENSION];
     
-    vector<bool> airgroupValuesCalculated(setupCtx.starkInfo.airgroupValuesMap.size(), false);
     StepsParams params = {
-        trace: pAddress,
-        pols : pols,
+        trace: witness,
+        aux_trace,
         publicInputs : publicInputs,
         proofValues: nullptr,
         challenges : challenges,
@@ -39,6 +36,8 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
         xDivXSub : nullptr,
         pConstPolsAddress: pConstPols,
         pConstPolsExtendedTreeAddress: pConstTree,
+        pCustomCommits:  {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
+        pCustomCommitsExtended:  {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
     };
 
     //--------------------------------
@@ -68,7 +67,7 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
         }
     }
     TimerStart(STARK_COMMIT_STAGE_1);
-    starks.commitStage(1, params.trace, params.pols, proof);
+    starks.commitStage(1, params.trace, params.aux_trace, proof);
     TimerStopAndLog(STARK_COMMIT_STAGE_1);
     starks.addTranscript(transcript, &proof.proof.roots[0][0], nFieldElements);
     
@@ -82,8 +81,8 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
     }
 
     uint64_t N = 1 << setupCtx.starkInfo.starkStruct.nBits;
-    Goldilocks::Element *res = new Goldilocks::Element[N*FIELD_EXTENSION];
-    Goldilocks::Element *gprod = new Goldilocks::Element[N*FIELD_EXTENSION];
+    Goldilocks::Element *res = &params.aux_trace[setupCtx.starkInfo.mapOffsets[std::make_pair("q", true)]];
+    Goldilocks::Element *gprod = &params.aux_trace[setupCtx.starkInfo.mapOffsets[make_pair("q", true)] + N*FIELD_EXTENSION];
 
     uint64_t gprodFieldId = setupCtx.expressionsBin.hints[0].fields[0].values[0].id;
     uint64_t numFieldId = setupCtx.expressionsBin.hints[0].fields[1].values[0].id;
@@ -102,21 +101,18 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
     }
 
     Polinomial gprodTransposedPol;
-    setupCtx.starkInfo.getPolynomial(gprodTransposedPol, params.pols, "cm", setupCtx.starkInfo.cmPolsMap[gprodFieldId], false);
+    setupCtx.starkInfo.getPolynomial(gprodTransposedPol, params.aux_trace, "cm", setupCtx.starkInfo.cmPolsMap[gprodFieldId], false);
 #pragma omp parallel for
     for(uint64_t j = 0; j < N; ++j) {
         std::memcpy(gprodTransposedPol[j], &gprod[j*FIELD_EXTENSION], FIELD_EXTENSION * sizeof(Goldilocks::Element));
     }
     
-    delete res;
-    delete gprod;
-
     TimerStart(CALCULATE_IM_POLS);
     starks.calculateImPolsExpressions(2, params);
     TimerStopAndLog(CALCULATE_IM_POLS);
 
     TimerStart(STARK_COMMIT_STAGE_2);
-    starks.commitStage(2, nullptr, params.pols, proof);
+    starks.commitStage(2, nullptr, params.aux_trace, proof);
     TimerStopAndLog(STARK_COMMIT_STAGE_2);
     starks.addTranscript(transcript, &proof.proof.roots[1][0], nFieldElements);
 
@@ -131,10 +127,10 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
         }
     }
     
-    expressionsCtx.calculateExpression(params, &params.pols[setupCtx.starkInfo.mapOffsets[std::make_pair("q", true)]], setupCtx.starkInfo.cExpId);
+    expressionsCtx.calculateExpression(params, &params.aux_trace[setupCtx.starkInfo.mapOffsets[std::make_pair("q", true)]], setupCtx.starkInfo.cExpId);
 
     TimerStart(STARK_COMMIT_QUOTIENT_POLYNOMIAL);
-    starks.commitStage(setupCtx.starkInfo.nStages + 1, nullptr, params.pols, proof);
+    starks.commitStage(setupCtx.starkInfo.nStages + 1, nullptr, params.aux_trace, proof);
     TimerStopAndLog(STARK_COMMIT_QUOTIENT_POLYNOMIAL);
     starks.addTranscript(transcript, &proof.proof.roots[setupCtx.starkInfo.nStages][0], nFieldElements);
     TimerStopAndLog(STARK_STEP_Q);
@@ -151,7 +147,7 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
     }
 
     Goldilocks::Element *xiChallenge = &challenges[xiChallengeIndex * FIELD_EXTENSION];
-    Goldilocks::Element* LEv = &params.pols[setupCtx.starkInfo.mapOffsets[make_pair("LEv", true)]];
+    Goldilocks::Element* LEv = &params.aux_trace[setupCtx.starkInfo.mapOffsets[make_pair("LEv", true)]];
 
     starks.computeLEv(xiChallenge, LEv);
     starks.computeEvals(params ,LEv, proof);
@@ -180,13 +176,13 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
     TimerStart(STARK_STEP_FRI);
 
     TimerStart(COMPUTE_FRI_POLYNOMIAL);
-    params.xDivXSub = &params.pols[setupCtx.starkInfo.mapOffsets[std::make_pair("xDivXSubXi", true)]];
+    params.xDivXSub = &params.aux_trace[setupCtx.starkInfo.mapOffsets[std::make_pair("xDivXSubXi", true)]];
     starks.calculateXDivXSub(xiChallenge, params.xDivXSub);
     starks.calculateFRIPolynomial(params);
     TimerStopAndLog(COMPUTE_FRI_POLYNOMIAL);
 
     Goldilocks::Element challenge[FIELD_EXTENSION];
-    Goldilocks::Element *friPol = &params.pols[setupCtx.starkInfo.mapOffsets[std::make_pair("f", true)]];
+    Goldilocks::Element *friPol = &params.aux_trace[setupCtx.starkInfo.mapOffsets[std::make_pair("f", true)]];
     
     TimerStart(STARK_FRI_FOLDING);
     uint64_t nBitsExt =  setupCtx.starkInfo.starkStruct.steps[0].nBits;
@@ -233,17 +229,9 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
 
     TimerStopAndLog(STARK_STEP_FRI);
 
-    delete challenges;
-    delete evals;
-
-    nlohmann::json jProof = proof.proof.proof2json();
-    nlohmann::json zkin = proof2zkinStark(jProof, setupCtx.starkInfo);
-
-    if(!proofFile.empty()) {
-        json2file(jProof, proofFile);
-    }
-
-    TimerStopAndLog(STARK_PROOF);
+    nlohmann::json zkin = proof.proof.proof2json();
+    
+TimerStopAndLog(STARK_PROOF);
 
     if(vadcop) {
         zkin = publics2zkin(zkin, publicInputs, globalInfo, airgroupId);
@@ -252,6 +240,11 @@ void *genRecursiveProof(SetupCtx& setupCtx, json& globalInfo, uint64_t airgroupI
         for(uint64_t i = 0; i < uint64_t(globalInfo["nPublics"]); ++i) {
             zkin["publics"][i] = Goldilocks::toString(publicInputs[i]);
         }
-    }        
+    }
+
+    if(!proofFile.empty()) {
+        json2file(zkin, proofFile);
+    }
+    
     return (void *) new nlohmann::json(zkin);
 }

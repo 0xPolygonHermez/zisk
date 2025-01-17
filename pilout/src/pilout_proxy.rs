@@ -120,7 +120,7 @@ impl PilOutProxy {
         trace!(
             "{}:     #Proof values: {}, #Public values: {}, #Global expressions: {}, #Global constraints: {}",
             Self::MY_NAME,
-            self.pilout.num_proof_values,
+            self.pilout.num_proof_values.len(),
             self.pilout.num_public_values,
             self.pilout.expressions.len(),
             self.pilout.constraints.len()

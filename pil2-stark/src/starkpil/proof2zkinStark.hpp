@@ -7,7 +7,6 @@
 using json = nlohmann::json;
 
 
-json proof2zkinStark(json &proof, StarkInfo &starkInfo);
 json challenges2proof(json& globalInfo, Goldilocks::Element* challenges);
 json challenges2zkin(json& globalInfo, Goldilocks::Element* challenges);
 json joinzkin(json &zkin1, json &zkin2, json &verKey, StarkInfo &starkInfo);

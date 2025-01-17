@@ -1,95 +1,29 @@
-use std::io::Read;
-use std::{fs::File, sync::Arc};
-
-use proofman_common::{initialize_logger, ExecutionCtx, ProofCtx, SetupCtx, VerboseMode, WitnessPilout};
-use proofman::{WitnessLibrary, WitnessManager};
+use std::sync::Arc;
+use proofman_common::load_from_json;
+use witness::{witness_library, WitnessLibrary, WitnessManager};
 use pil_std_lib::Std;
-use p3_field::PrimeField;
+use p3_field::PrimeField64;
 use p3_goldilocks::Goldilocks;
 
-use std::error::Error;
-use std::path::PathBuf;
-use crate::FibonacciSquarePublics;
+use crate::{BuildPublics, BuildPublicValues, FibonacciSquare, Module};
 
-use crate::{FibonacciSquare, Pilout, Module};
+witness_library!(WitnessLib, Goldilocks);
 
-pub struct FibonacciWitness<F: PrimeField> {
-    public_inputs_path: Option<PathBuf>,
-    wcm: Option<Arc<WitnessManager<F>>>,
-    fibonacci: Option<Arc<FibonacciSquare<F>>>,
-    module: Option<Arc<Module<F>>>,
-    std_lib: Option<Arc<Std<F>>>,
-}
-
-impl<F: PrimeField> FibonacciWitness<F> {
-    pub fn new(public_inputs_path: Option<PathBuf>) -> Self {
-        Self { public_inputs_path, wcm: None, fibonacci: None, module: None, std_lib: None }
-    }
-}
-
-impl<F: PrimeField> WitnessLibrary<F> for FibonacciWitness<F> {
-    fn start_proof(&mut self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        let wcm = Arc::new(WitnessManager::new(pctx.clone(), ectx.clone(), sctx.clone()));
-
+impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib {
+    fn register_witness(&mut self, wcm: Arc<WitnessManager<F>>) {
         let std_lib = Std::new(wcm.clone());
-        let module = Module::new(wcm.clone(), std_lib.clone());
-        let fibonacci = FibonacciSquare::new(wcm.clone(), module.clone());
+        let module = Module::new(std_lib.clone());
+        let fibonacci = FibonacciSquare::new(module.clone());
 
-        self.wcm = Some(wcm.clone());
-        self.fibonacci = Some(fibonacci);
-        self.module = Some(module);
-        self.std_lib = Some(std_lib);
+        wcm.register_component(fibonacci.clone());
+        wcm.register_component(module.clone());
 
-        let public_inputs: FibonacciSquarePublics = if let Some(path) = &self.public_inputs_path {
-            let mut file = File::open(path).unwrap();
+        let public_inputs: BuildPublics = load_from_json(&wcm.get_public_inputs_path());
 
-            if !file.metadata().unwrap().is_file() {
-                panic!("Public inputs file not found");
-            }
+        let mut publics = BuildPublicValues::from_vec_guard(wcm.get_pctx().get_publics());
 
-            let mut contents = String::new();
-
-            let _ =
-                file.read_to_string(&mut contents).map_err(|err| format!("Failed to read public inputs file: {}", err));
-
-            serde_json::from_str(&contents).unwrap()
-        } else {
-            FibonacciSquarePublics::default()
-        };
-
-        pctx.set_public_value_by_name(public_inputs.module, "mod", None);
-        pctx.set_public_value_by_name(public_inputs.a, "in1", None);
-        pctx.set_public_value_by_name(public_inputs.b, "in2", None);
-
-        wcm.start_proof(pctx, ectx, sctx);
+        publics.module = F::from_canonical_u64(public_inputs.module);
+        publics.in1 = F::from_canonical_u64(public_inputs.in1);
+        publics.in2 = F::from_canonical_u64(public_inputs.in2);
     }
-
-    fn end_proof(&mut self) {
-        self.wcm.as_ref().unwrap().end_proof();
-    }
-
-    fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        self.fibonacci.as_ref().unwrap().execute(pctx.clone(), ectx.clone(), sctx.clone());
-        self.module.as_ref().unwrap().execute(pctx, ectx, sctx);
-    }
-
-    fn calculate_witness(&mut self, stage: u32, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        self.wcm.as_ref().unwrap().calculate_witness(stage, pctx, ectx, sctx);
-    }
-
-    fn pilout(&self) -> WitnessPilout {
-        Pilout::pilout()
-    }
-}
-
-#[no_mangle]
-pub extern "Rust" fn init_library(
-    _: Option<PathBuf>,
-    public_inputs_path: Option<PathBuf>,
-    verbose_mode: VerboseMode,
-) -> Result<Box<dyn WitnessLibrary<Goldilocks>>, Box<dyn Error>> {
-    initialize_logger(verbose_mode);
-
-    let fibonacci_witness = FibonacciWitness::new(public_inputs_path);
-    Ok(Box::new(fibonacci_witness))
 }

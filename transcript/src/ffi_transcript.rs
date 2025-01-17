@@ -20,7 +20,7 @@ impl FFITranscript {
         Self { element_type, p_stark, p_transcript }
     }
 
-    pub fn add_elements(&self, input: *mut c_void, size: usize) {
+    pub fn add_elements(&self, input: *mut u8, size: usize) {
         transcript_add_c(self.p_transcript, input, size as u64);
     }
 

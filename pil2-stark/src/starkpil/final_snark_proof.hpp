@@ -4,10 +4,10 @@
 #include "utils.hpp"
 #include "alt_bn128.hpp"
 
-void genFinalSnarkProof(void *pWitnessFinal, std::string zkeyFile, std::string outputDir) {
+void genFinalSnarkProof(void *circomWitnessFinal, std::string zkeyFile, std::string outputDir) {
     TimerStart(PROVER_FINAL_SNARK_PROOF);
 
-    AltBn128::FrElement *witnessFinal = (AltBn128::FrElement *)pWitnessFinal;
+    AltBn128::FrElement *witnessFinal = (AltBn128::FrElement *)circomWitnessFinal;
     // Save public file
     json publicJson;
     AltBn128::FrElement aux;

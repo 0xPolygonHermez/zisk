@@ -16,18 +16,15 @@ private:
 public:
     MerkleTreeGL(){};
     MerkleTreeGL(uint64_t _arity, bool custom, Goldilocks::Element *tree);
-    MerkleTreeGL(uint64_t _arity, bool custom, uint64_t _height, uint64_t _width, Goldilocks::Element *_source, bool allocate = true);
-    ~MerkleTreeGL();
+    MerkleTreeGL(uint64_t _arity, bool custom, uint64_t _height, uint64_t _width);
+    ~MerkleTreeGL(){};
 
     uint64_t numNodes;
     uint64_t height;
     uint64_t width;
 
-    Goldilocks::Element *nodes;
     Goldilocks::Element *source;
-
-    bool isSourceAllocated = false;
-    bool isNodesAllocated = false;
+    Goldilocks::Element *nodes;
 
     uint64_t arity;
     bool custom;
@@ -41,13 +38,12 @@ public:
 
     uint64_t getNumNodes(uint64_t height);
     void getRoot(Goldilocks::Element *root);
-    void copySource(Goldilocks::Element *_source);
     void setSource(Goldilocks::Element *_source);
-    void copyNodes(Goldilocks::Element *_nodes);
+    void setNodes(Goldilocks::Element *_nodes);
 
     void getGroupProof(Goldilocks::Element *proof, uint64_t idx);
     
-    bool verifyGroupProof(Goldilocks::Element* root, std::vector<std::vector<Goldilocks::Element>> &mp, uint64_t idx, std::vector<std::vector<Goldilocks::Element>> &v);
+    bool verifyGroupProof(Goldilocks::Element* root, std::vector<std::vector<Goldilocks::Element>> &mp, uint64_t idx, std::vector<Goldilocks::Element> &v);
 
     void merkelize();
 

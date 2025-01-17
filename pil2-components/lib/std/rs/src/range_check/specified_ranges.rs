@@ -4,20 +4,18 @@ use std::sync::{Arc, Mutex};
 use num_traits::ToPrimitive;
 use p3_field::PrimeField;
 
-use proofman::{get_hint_field_gc, WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
+use witness::WitnessComponent;
+use proofman_common::{AirInstance, ProofCtx, SetupCtx, TraceInfo};
 use proofman_hints::{
     get_hint_field, get_hint_field_constant, get_hint_ids_by_name, set_hint_field, HintFieldOptions, HintFieldValue,
 };
 use proofman_util::create_buffer_fast;
 
-use crate::Range;
+use crate::{AirComponent, Range};
 
-const PROVE_CHUNK_SIZE: usize = 1 << 5;
+const PROVE_CHUNK_SIZE: usize = 1 << 12;
 
 pub struct SpecifiedRanges<F: PrimeField> {
-    wcm: Arc<WitnessManager<F>>,
-
     // Parameters
     hints: Mutex<Vec<u64>>,
     airgroup_id: usize,
@@ -30,40 +28,18 @@ pub struct SpecifiedRanges<F: PrimeField> {
     mul_columns: Mutex<Vec<HintFieldValue<F>>>,
 }
 
-impl<F: PrimeField> SpecifiedRanges<F> {
+impl<F: PrimeField> AirComponent<F> for SpecifiedRanges<F> {
     const MY_NAME: &'static str = "SpecRang";
 
-    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let pctx = wcm.get_pctx();
-        let sctx = wcm.get_sctx();
-
-        // Scan global hints to get the airgroup_id and air_id
-        let hint_global = get_hint_ids_by_name(sctx.get_global_bin(), "specified_ranges");
-        let airgroup_id = get_hint_field_gc::<F>(pctx.clone(), sctx.clone(), hint_global[0], "airgroup_id", false);
-        let air_id = get_hint_field_gc::<F>(pctx.clone(), sctx.clone(), hint_global[0], "air_id", false);
-        let airgroup_id = match airgroup_id {
-            HintFieldValue::Field(value) => value
-                .as_canonical_biguint()
-                .to_usize()
-                .unwrap_or_else(|| panic!("Aigroup_id cannot be converted to usize: {}", value)),
-            _ => {
-                log::error!("Aigroup_id hint must be a field element");
-                panic!();
-            }
-        };
-        let air_id = match air_id {
-            HintFieldValue::Field(value) => value
-                .as_canonical_biguint()
-                .to_usize()
-                .unwrap_or_else(|| panic!("Air_id cannot be converted to usize: {}", value)),
-            _ => {
-                log::error!("Air_id hint must be a field element");
-                panic!();
-            }
-        };
-
-        let specified_ranges = Arc::new(Self {
-            wcm: wcm.clone(),
+    fn new(
+        _pctx: Arc<ProofCtx<F>>,
+        _sctx: Arc<SetupCtx>,
+        airgroup_id: Option<usize>,
+        air_id: Option<usize>,
+    ) -> Arc<Self> {
+        let airgroup_id = airgroup_id.expect("Airgroup ID must be provided");
+        let air_id = air_id.expect("Air ID must be provided");
+        Arc::new(Self {
             hints: Mutex::new(Vec::new()),
             airgroup_id,
             air_id,
@@ -71,13 +47,11 @@ impl<F: PrimeField> SpecifiedRanges<F> {
             ranges: Mutex::new(Vec::new()),
             inputs: Mutex::new(Vec::new()),
             mul_columns: Mutex::new(Vec::new()),
-        });
-
-        wcm.register_component(specified_ranges.clone(), Some(airgroup_id), Some(&[air_id]));
-
-        specified_ranges
+        })
     }
+}
 
+impl<F: PrimeField> SpecifiedRanges<F> {
     pub fn update_inputs(&self, value: F, range: Range<F>, multiplicity: F) {
         let mut inputs = self.inputs.lock().unwrap();
         inputs.push((range, value, multiplicity));
@@ -91,19 +65,12 @@ impl<F: PrimeField> SpecifiedRanges<F> {
         }
     }
 
-    pub fn drain_inputs(&self) {
+    pub fn drain_inputs(&self, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx>) {
         let mut inputs = self.inputs.lock().unwrap();
         let drained_inputs = inputs.drain(..).collect();
-        let pctx = self.wcm.get_pctx();
-        let sctx = self.wcm.get_sctx();
-        let ectx = self.wcm.get_ectx();
 
         // Perform the last update
         self.update_multiplicity(drained_inputs);
-
-        let mut dctx: std::sync::RwLockWriteGuard<'_, proofman_common::DistributionCtx> = ectx.dctx.write().unwrap();
-
-        let (is_myne, global_idx) = dctx.add_instance(self.airgroup_id, self.air_id, 1);
 
         let mut multiplicities = self
             .mul_columns
@@ -117,28 +84,31 @@ impl<F: PrimeField> SpecifiedRanges<F> {
                 _ => panic!("Multiplicities must be columns"),
             })
             .collect::<Vec<Vec<u64>>>();
-        let owner = dctx.owner(global_idx);
 
-        dctx.distribute_multiplicities(&mut multiplicities, owner);
+        let (instance_found, global_idx) = pctx.dctx_find_instance(self.airgroup_id, self.air_id);
 
-        if is_myne {
+        let (is_mine, global_idx) = if instance_found {
+            (pctx.dctx_is_my_instance(global_idx), global_idx)
+        } else {
+            pctx.dctx_add_instance(self.airgroup_id, self.air_id, pctx.get_weight(self.airgroup_id, self.air_id))
+        };
+
+        pctx.dctx_distribute_multiplicities(&mut multiplicities, global_idx);
+
+        if is_mine {
             // Set the multiplicity columns as done
             let hints = self.hints.lock().unwrap();
 
-            let air_instance_repo = &self.wcm.get_pctx().air_instance_repo;
-            let instance: Vec<usize> = air_instance_repo.find_air_instances(self.airgroup_id, self.air_id);
-            let air_instance_id = if !instance.is_empty() {
-                air_instance_repo.find_air_instances(self.airgroup_id, self.air_id)[0]
-            } else {
+            let instance: Vec<usize> = pctx.air_instance_repo.find_air_instances(self.airgroup_id, self.air_id);
+            if instance.is_empty() {
                 let num_rows = pctx.global_info.airs[self.airgroup_id][self.air_id].num_rows;
                 let buffer_size = multiplicities.len() * num_rows;
                 let buffer: Vec<F> = create_buffer_fast(buffer_size);
-                let air_instance = AirInstance::new(sctx.clone(), self.airgroup_id, self.air_id, None, buffer);
-                pctx.air_instance_repo.add_air_instance(air_instance, Some(global_idx));
-                pctx.air_instance_repo.air_instances.read().unwrap().len() - 1
+                let air_instance = AirInstance::new(TraceInfo::new(self.airgroup_id, self.air_id, buffer));
+                pctx.add_air_instance(air_instance, global_idx);
             };
-            let mut air_instance_rw = air_instance_repo.air_instances.write().unwrap();
-            let air_instance = &mut air_instance_rw[air_instance_id];
+            let mut air_instances = pctx.air_instance_repo.air_instances.write().unwrap();
+            let air_instance = air_instances.get_mut(&global_idx).unwrap();
 
             let mul_columns_2 = multiplicities
                 .iter()
@@ -148,7 +118,7 @@ impl<F: PrimeField> SpecifiedRanges<F> {
                 .collect::<Vec<HintFieldValue<F>>>();
 
             for (index, hint) in hints[1..].iter().enumerate() {
-                set_hint_field(&self.wcm.get_sctx(), air_instance, *hint, "reference", &mul_columns_2[index]);
+                set_hint_field(&sctx, air_instance, *hint, "reference", &mul_columns_2[index]);
             }
 
             log::trace!("{}: ··· Drained inputs for AIR '{}'", Self::MY_NAME, "SpecifiedRanges");
@@ -178,10 +148,18 @@ impl<F: PrimeField> SpecifiedRanges<F> {
             mul_columns[range_index].add(index, *mul);
         }
     }
+
+    pub fn airgroup_id(&self) -> usize {
+        self.airgroup_id
+    }
+
+    pub fn air_id(&self) -> usize {
+        self.air_id
+    }
 }
 
 impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
-    fn start_proof(&self, pctx: Arc<ProofCtx<F>>, _ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
+    fn start_proof(&self, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx>) {
         // Obtain info from the mul hints
         let setup = sctx.get_setup(self.airgroup_id, self.air_id);
         let specified_hints = get_hint_ids_by_name(setup.p_setup.p_expressions_bin, "specified_ranges");
@@ -295,7 +273,7 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
         let buffer = create_buffer_fast(buffer_size as usize);
 
         // Add a new air instance. Since Specified Ranges is a table, only this air instance is needed
-        let mut air_instance = AirInstance::new(sctx.clone(), self.airgroup_id, self.air_id, None, buffer);
+        let mut air_instance = AirInstance::new(TraceInfo::new(self.airgroup_id, self.air_id, buffer));
         let mut mul_columns_guard = self.mul_columns.lock().unwrap();
         for hint in hints_guard[1..].iter() {
             mul_columns_guard.push(get_hint_field::<F>(
@@ -326,18 +304,11 @@ impl<F: PrimeField> WitnessComponent<F> for SpecifiedRanges<F> {
         };
 
         *self.num_rows.lock().unwrap() = num_rows.as_canonical_biguint().to_usize().unwrap();
-
-        //pctx.air_instance_repo.add_air_instance(air_instance);
-        // note: there is room for simplification here
     }
 
-    fn calculate_witness(
-        &self,
-        _stage: u32,
-        _air_instance: Option<usize>,
-        _pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
-    ) {
+    fn calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx>) {
+        if stage == 1 {
+            Self::drain_inputs(self, pctx, sctx);
+        }
     }
 }

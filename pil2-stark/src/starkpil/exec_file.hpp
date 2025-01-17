@@ -13,8 +13,8 @@
 #include "commit_pols_starks.hpp"
 
 
-void getCommitedPols(Goldilocks::Element *pWitness, std::string execFile, Goldilocks::Element *pAddress, Goldilocks::Element* publics, uint64_t sizeWitness, uint64_t N, uint64_t nPublics, uint64_t offsetCm1, uint64_t nCommitedPols)  {
-    CommitPolsStarks commitPols((uint8_t *)pAddress + offsetCm1 * sizeof(Goldilocks::Element), N, nCommitedPols);
+void getCommitedPols(Goldilocks::Element *circomWitness, std::string execFile, Goldilocks::Element *witness, Goldilocks::Element* publics, uint64_t sizeWitness, uint64_t N, uint64_t nPublics, uint64_t nCommitedPols)  {
+    CommitPolsStarks commitPols((uint8_t *)witness, N, nCommitedPols);
 
     uint64_t nAdds;
     uint64_t nSMap;
@@ -31,7 +31,7 @@ void getCommitedPols(Goldilocks::Element *pWitness, std::string execFile, Goldil
     uint64_t *p_sMap = &p_data[2 + nAdds * 4];
 
     for(uint64_t i = 0; i < nPublics; ++i) {
-        publics[i] = pWitness[1 + i];
+        publics[i] = circomWitness[1 + i];
     }
         
     // #pragma omp parallel for
@@ -39,16 +39,16 @@ void getCommitedPols(Goldilocks::Element *pWitness, std::string execFile, Goldil
         uint64_t idx_1 = p_adds[i * 4];
         uint64_t idx_2 = p_adds[i * 4 + 1];
 
-        Goldilocks::Element c = pWitness[idx_1] * Goldilocks::fromU64(p_adds[i * 4 + 2]);
-        Goldilocks::Element d = pWitness[idx_2] * Goldilocks::fromU64(p_adds[i * 4 + 3]);
-        pWitness[sizeWitness + i] = c + d;
+        Goldilocks::Element c = circomWitness[idx_1] * Goldilocks::fromU64(p_adds[i * 4 + 2]);
+        Goldilocks::Element d = circomWitness[idx_2] * Goldilocks::fromU64(p_adds[i * 4 + 3]);
+        circomWitness[sizeWitness + i] = c + d;
     }
 
     // #pragma omp parallel for
     for (uint i = 0; i < N; i++) {
         for (uint j = 0; j < nCommitedPols; j++) {
             if (i < nSMap && p_sMap[nCommitedPols * i + j] != 0) {
-                commitPols.Compressor.a[j][i] = pWitness[p_sMap[nCommitedPols * i + j]];
+                commitPols.Compressor.a[j][i] = circomWitness[p_sMap[nCommitedPols * i + j]];
             } else {
                 commitPols.Compressor.a[j][i] = Goldilocks::zero();
             }

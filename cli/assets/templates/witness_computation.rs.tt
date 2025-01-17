@@ -6,7 +6,7 @@ use log::debug;
 executor!({wc.name}WC);
 
 impl Executor<Goldilocks> for {wc.name}WC \{
-    fn witness_computation(&self, stage_id: u32, proof_ctx: &mut ProofCtx<Goldilocks>) \{
+    fn witness_computation(&self, stage_id: u32, pctx: &mut ProofCtx<Goldilocks>) \{
         // if stage_id != 1 \{
         //     debug!("Nothing to do for stage_id \{}", stage_id);
         //     return;
@@ -14,7 +14,7 @@ impl Executor<Goldilocks> for {wc.name}WC \{
 
         // add witness computation here...
 
-        // proof_ctx
+        // pctx
         //     .add_trace_to_air_instance(airgroup_id, air_id, trace)
         //     .expect("Error adding trace to air instance");
     }

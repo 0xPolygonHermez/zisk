@@ -5,93 +5,6 @@
 #include "proof2zkinStark.hpp"
 using namespace std;
 
-json proof2zkinStark(json &proof, StarkInfo &starkInfo)
-{
-    uint64_t friSteps = starkInfo.starkStruct.steps.size() - 1;
-    uint64_t nQueries = starkInfo.starkStruct.nQueries;
-    uint64_t nStages = starkInfo.nStages;
-    uint64_t nCustomCommits = starkInfo.customCommits.size();
-   
-    string valsQ = "s0_vals" + to_string(nStages + 1);
-    string siblingsQ = "s0_siblings" + to_string(nStages + 1);
-    string rootQ = "root" + to_string(nStages + 1);
-
-    json zkinOut = json::object();
-
-    for(uint64_t stage = 1; stage <= nStages; stage++) {
-        zkinOut["root" + to_string(stage)] = proof["root" + to_string(stage)];
-    }
-
-    zkinOut[rootQ] = proof["root" + to_string(nStages + 1)];
-    zkinOut["evals"] = proof["evals"];
-
-    for (uint64_t i = 0; i < friSteps; i++)
-    {
-        zkinOut["s" + std::to_string(i + 1) + "_root"] = proof["fri"][i]["root"];
-        zkinOut["s" + std::to_string(i + 1) + "_vals"] = json::array();
-        zkinOut["s" + std::to_string(i + 1) + "_siblings"] = json::array();
-        for (uint q = 0; q < nQueries; q++)
-        {
-            zkinOut["s" + std::to_string(i + 1) + "_vals"][q] = proof["fri"][i]["polQueries"][q][0];
-            zkinOut["s" + std::to_string(i + 1) + "_siblings"][q] = proof["fri"][i]["polQueries"][q][1];
-        }
-    }
-  
-    zkinOut["s0_valsC"] = json::array();
-    zkinOut["s0_siblingsC"] = json::array();
-    
-    zkinOut[valsQ] = json::array();
-    zkinOut[siblingsQ] = json::array();
-
-    for(uint64_t i = 0; i < nStages; ++i) {
-        uint64_t stage = i + 1;
-        if (proof["queries"]["polQueries"][0][i][0].size()) {
-            zkinOut["s0_siblings" + to_string(stage)] = json::array();
-            zkinOut["s0_vals" + to_string(stage)] = json::array();
-        }
-    }
-
-    for(uint64_t i = 0; i < nCustomCommits; ++i) {
-        if (proof["queries"]["polQueries"][0][i + nStages + 2][0].size()) {
-            zkinOut["s0_siblings_" + starkInfo.customCommits[i].name + "_0"] = json::array();
-            zkinOut["s0_vals_" + starkInfo.customCommits[i].name + "_0"] = json::array();
-        }
-    }
-
-    for (uint64_t i = 0; i < nQueries; i++) {
-        for (uint64_t j = 0; j < nStages; ++j) {
-            uint64_t stage = j + 1;
-            if (proof["queries"]["polQueries"][i][j][0].size()) {
-                zkinOut["s0_vals" + to_string(stage)][i] = proof["queries"]["polQueries"][i][j][0];
-                zkinOut["s0_siblings" + to_string(stage)][i] = proof["queries"]["polQueries"][i][j][1];
-            }
-        }
-
-        for (uint64_t j = 0; j < nCustomCommits; ++j) {
-            zkinOut["s0_vals_" + starkInfo.customCommits[j].name + "_0"][i] = proof["queries"]["polQueries"][i][j + nStages + 2][0];
-            zkinOut["s0_siblings_" + starkInfo.customCommits[j].name + "_0"][i] = proof["queries"]["polQueries"][i][j + nStages + 2][1];
-        }
-
-        zkinOut[valsQ][i] = proof["queries"]["polQueries"][i][nStages][0];
-        zkinOut[siblingsQ][i] = proof["queries"]["polQueries"][i][nStages][1];
-
-        zkinOut["s0_valsC"][i] = proof["queries"]["polQueries"][i][nStages + 1][0];
-        zkinOut["s0_siblingsC"][i] = proof["queries"]["polQueries"][i][nStages + 1][1];
-    }
-
-    zkinOut["finalPol"] = proof["fri"][friSteps];
-
-    if (starkInfo.airgroupValuesMap.size() > 0) {
-        zkinOut["airgroupvalues"] = proof["airgroupValues"];
-    }
-
-    if (starkInfo.airValuesMap.size() > 0) {
-        zkinOut["airvalues"] = proof["airValues"];
-    }
-    
-    return zkinOut;
-};
-
 json joinzkin(json &zkin1, json &zkin2, json &verKey, StarkInfo &starkInfo)
 {
 
@@ -387,13 +300,20 @@ json joinzkinfinal(json& globalInfo, Goldilocks::Element* publics, Goldilocks::E
         }
     }
 
-    if(globalInfo["numProofValues"] > 0) {
+    if(globalInfo["proofValuesMap"].size() > 0) {
+        uint64_t p = 0;
         zkinFinal["proofValues"] = json::array();
-        for (uint64_t i = 0; i < globalInfo["numProofValues"]; i++)
+        for (uint64_t i = 0; i < globalInfo["proofValuesMap"].size(); i++)
         {
             zkinFinal["proofValues"][i] = json::array();
-            for(uint64_t j = 0; j < FIELD_EXTENSION; ++j) {
-                zkinFinal["proofValues"][i][j] = Goldilocks::toString(proofValues[i*FIELD_EXTENSION + j]);
+            if(globalInfo["proofValuesMap"][i]["stage"] == 1) {
+                zkinFinal["proofValues"][i][0] = Goldilocks::toString(proofValues[p++]);
+                zkinFinal["proofValues"][i][1] = "0";
+                zkinFinal["proofValues"][i][2] = "0";
+            } else {
+                zkinFinal["proofValues"][i][0] = Goldilocks::toString(proofValues[p++]);
+                zkinFinal["proofValues"][i][1] = Goldilocks::toString(proofValues[p++]);
+                zkinFinal["proofValues"][i][2] = Goldilocks::toString(proofValues[p++]);
             }
         }
     }

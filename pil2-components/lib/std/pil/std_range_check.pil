@@ -1,16 +1,57 @@
+require "std_constants.pil";
 require "std_lookup.pil";
 
-// With the logup protocol, it is more performant to look up to the same range;
-// so we'll try to "absorb" all the introduced ranges into some of the default ranges.
-// Moreover, having a fewer ranges makes the preprocessing faster and the prvoing less memory consuming
+/*
+ * Module for performing selected range checks over expressions of any degree.
+ * This module provides three independent user interfaces:
+ *
+ * 1. **Direct Call**:
+ *    Perform a range check directly with specified parameters.
+ *    Example:
+ *        // Check if values in `expression` fall within the range [0, 255] (U8) using a predefined range.
+ *        range_check(expression, 0, 255, sel, true);
+ *
+ *        // Check if values in `expression` fall within the range [100, 500], without using a predefined range.
+ *        range_check(expression, 100, 500, sel, false);
+ *
+ * 2. **Multi-Range Check**:
+ *    Perform a range check across two ranges based on a range selector.
+ *    Example:
+ *        // Check if values in `expression` fall within [0, 255] when `range_sel = 1`,
+ *        // or within [256, 512] when `range_sel = 0`.
+ *        multi_range_check(expression, 0, 255, 256, 512, range_sel, sel, false);
+ *
+ * 3. **Dynamic Range Check**:
+ *    First, obtain an ID for the range, then perform the range check using a user-defined range selector.
+ *    Example:
+ *        // Step 1: Obtain IDs for the desired ranges.
+ *        int id_range_24 = range_check_id(0, 2**24-1);  // Range [0, 2^24-1]
+ *        int id_range_16 = range_check_id(0, 2**16-1);  // Range [0, 2^16-1]
+ *        int id_range_15 = range_check_id(0, 2**15-1);  // Range [0, 2^15-1]
+ *
+ *        // Step 2: Perform range checks dynamically using a user-defined range selector.
+ *        col witness sel_8, sel_16, sel_32;
+ *        range_check_dynamic(expression, id_range_24 * sel_8 + id_range_16 * sel_16 + id_range_15 * sel_32);
+ *
+ * **Parameter Details**:
+ * - `predefined`: A flag indicating whether predefined ranges should be used.
+ *   The predefined ranges currently supported are:
+ *      - U8: [0..255]
+ *      - U16: [0..65535]
+ *
+ * **Implementation Notes**:
+ * - All range checks are internally reduced to a lookup check, implemented using the logup protocol.
+ *   For more details, refer to: https://eprint.iacr.org/2022/1530.
+ * - This protocol is optimized for repeated lookups within the same range rather than across different ranges.
+ * - To improve performance, the module attempts to "absorb" custom ranges into predefined ranges whenever possible.
+ */
 
 const int MAX_RANGE_LEN = (PRIME - 1) / 2;
-const int BYTE = 2**8-1;
-const int TWOBYTES = 2**16-1;
 
-const int OPIDS[2] = [100, 101];
-int last_assigned_opid = OPIDS[length(OPIDS) - 1];
+const int U8AIR_OPID = 100;
+const int U16AIR_OPID = 101;
 
+int last_assigned_opid = 101;
 private function next_available_opid(): int {
     last_assigned_opid++;
     return last_assigned_opid;
@@ -18,10 +59,10 @@ private function next_available_opid(): int {
 
 private function get_opid(const int min, const int max, const int predefined): int {
     if (predefined && min >= 0) {
-        if (max <= BYTE) {
-            return OPIDS[0];
-        } else if (max <= TWOBYTES) {
-            return OPIDS[1];
+        if (max <= MASK_8) {
+            return U8AIR_OPID;
+        } else if (max <= MASK_16) {
+            return U16AIR_OPID;
         }
     }
 
@@ -41,8 +82,8 @@ airtemplate U8Air(const int N = 2**8) {
 
     @u8air{reference: mul};
 
-    col fixed U8 = [0..BYTE];
-    lookup_proves(OPIDS[0], [U8], mul, PIOP_NAME_RANGE_CHECK);
+    col fixed U8 = [0..MASK_8];
+    lookup_proves(U8AIR_OPID, [U8], mul, PIOP_NAME_RANGE_CHECK);
 }
 
 airtemplate U16Air(const int N = 2**16) {
@@ -58,8 +99,8 @@ airtemplate U16Air(const int N = 2**16) {
 
     @u16air{reference: mul};
 
-    col fixed U16 = [0..TWOBYTES];
-    lookup_proves(OPIDS[1], [U16], mul, PIOP_NAME_RANGE_CHECK);
+    col fixed U16 = [0..MASK_16];
+    lookup_proves(U16AIR_OPID, [U16], mul, PIOP_NAME_RANGE_CHECK);
 }
 
 airtemplate SpecifiedRanges(const int N, const int opids[], const int opids_count, const int predefineds[], const int mins[], const int maxs[]) {
@@ -88,62 +129,75 @@ airtemplate SpecifiedRanges(const int N, const int opids[], const int opids_coun
     }
 }
 
-// Three user interfaces
-
-// 1] Interface where the user directly calls the range check over a column and a range
-
 /**
- * TODO: Add description
+ * Performs a range check on a expression within a specified range.
+ *
+ * @param expression The expression to be range checked.
+ * @param min        The minimum value of the range (inclusive).
+ * @param max        The maximum value of the range (inclusive).
+ * @param sel        A selector specifying which rows are subject to the range check.
+ * @param predefined A flag indicating whether to use predefined ranges.
+ *
+ * @note If `predefined` is true, the provided range [min, max] may be overridden
+ *       by one of the predefined ranges, such as:
+ *       - U8: [0, 255]
+ *       - U16: [0, 65535]
  */
-function range_check(expr colu, int min, int max, expr sel = 1, int predefined = 1) {
+function range_check(const expr expression, const int min, const int max, const expr sel = 1, const int predefined = 1) {
     range_validator(min, max);
-
-    @range_def{predefined: predefined, min: min, max: max, min_neg: min < 0, max_neg: max < 0};
 
     if (min < 0) {
         println(`The provided min=${min} is negative. Falling back to specified range...`);
-    } else if (max > TWOBYTES) {
-        println(`The provided max=${max} is greater than the maximum predefined ${TWOBYTES}. Falling back to specified range...`);
+    } else if (max > MASK_16) {
+        println(`The provided max=${max} is greater than the maximum allowed: ${MASK_16}. Falling back to specified range...`);
     }
 
     const int opid = opid_process(min, max, predefined);
 
     // Check if the range can be absorbed into the predefined ranges
-    const int absorb = predefined && min >= 0 && max <= TWOBYTES;
+    const int absorb = predefined && min >= 0 && max <= MASK_16;
 
     // Define the assume
     if (absorb) {
-        if (min == 0 && (max == BYTE || max == TWOBYTES)) {
-            const int is_u8 = max == BYTE ? 1 : 0;
+        if (min == 0 && (max == MASK_8 || max == MASK_16)) {
+            const int is_u8 = max == MASK_8 ? 1 : 0;
+
+            @range_def{predefined: predefined, min: min, max: max, min_neg: min < 0, max_neg: max < 0, type: is_u8 ? "U8" : "U16"}; 
 
             airgroup.std.rc.u8_used = airgroup.std.rc.u8_used || is_u8;
             airgroup.std.rc.u16_used = airgroup.std.rc.u16_used || 1-is_u8;
-            lookup_assumes(opid, [colu], sel, PIOP_NAME_RANGE_CHECK);
+            lookup_assumes(opid, [expression], sel, PIOP_NAME_RANGE_CHECK);
         } else {
             // Here, we need to reuse to some of the default ranges depending
             // on the values of min and max
-            if (max <= BYTE) {
+            if (max <= MASK_8) {
+                // Here, the range is of the form [a,b], with a >= 0 and b <= MASK_8, except for the range [0,MASK_8]
+
+                @range_def{predefined: predefined, min: min, max: max, min_neg: min < 0, max_neg: max < 0, type: "U8Double"};
+
                 // reuse U8
                 airgroup.std.rc.u8_used = 1;
 
-                // first prove that colu - min is in U8
-                lookup_assumes(opid, [colu - min], sel, PIOP_NAME_RANGE_CHECK);
+                // expression is in [a,b] iff expression-min is in [0,MASK_8] and max-expression is in [0,MASK_8]
+                lookup_assumes(opid, [expression - min], sel, PIOP_NAME_RANGE_CHECK);
+                lookup_assumes(opid, [max - expression], sel, PIOP_NAME_RANGE_CHECK);
+            } else if (max <= MASK_16) {
+                // Here, the range is of the form [a,b], with a >= 0 and MASK_8 < b <= MASK_16, except for the range [0,MASK_16]
 
-                // then prove that max - colu is in U8
-                lookup_assumes(opid, [max - colu], sel, PIOP_NAME_RANGE_CHECK);
-            } else if (max <= TWOBYTES) {
+                @range_def{predefined: predefined, min: min, max: max, min_neg: min < 0, max_neg: max < 0, type: "U16Double"};
+
                 // reuse U16
                 airgroup.std.rc.u16_used = 1;
 
-                // first prove that colu - min is in U16
-                lookup_assumes(opid, [colu - min], sel, PIOP_NAME_RANGE_CHECK);
-
-                // second prove that max - colu is in U16
-                lookup_assumes(opid, [max - colu], sel, PIOP_NAME_RANGE_CHECK);
+                // expression is in [a,b] iff expression-min is in [0,MASK_16] and max-expression is in [0,MASK_16]
+                lookup_assumes(opid, [expression - min], sel, PIOP_NAME_RANGE_CHECK);
+                lookup_assumes(opid, [max - expression], sel, PIOP_NAME_RANGE_CHECK);
             }
         }
     } else {
-        lookup_assumes(opid, [colu], sel, PIOP_NAME_RANGE_CHECK);
+        @range_def{predefined: predefined, min: min, max: max, min_neg: min < 0, max_neg: max < 0, type: "Specified"};
+
+        lookup_assumes(opid, [expression], sel, PIOP_NAME_RANGE_CHECK);
     }
 
     // Define the prove
@@ -151,27 +205,54 @@ function range_check(expr colu, int min, int max, expr sel = 1, int predefined =
 }
 
 /**
- * TODO: Add description
+ * Performs a range check on a group of expressions within a specified range.
+ *
+ * @param expressions The expressions to be range checked.
+ * @param min         The minimum value of the range (inclusive).
+ * @param max         The maximum value of the range (inclusive).
+ * @param sel         The selectors specifying which rows are subject to the range check for each expression.
+ * @param predefined  A flag indicating whether to use predefined ranges.
+ *
+ * @note If `predefined` is true, the provided range [min, max] may be overridden
+ *       by one of the predefined ranges, such as:
+ *       - U8: [0, 255]
+ *       - U16: [0, 65535]
  */
-function range_check_group(const expr cols[], const int min, const int max, const expr sels[], const int predefined = 1) {
-    const int len = length(cols);
+function range_check_group(const expr expressions[], const int min, const int max, const expr sels[], const int predefined = 1) {
+    const int len = length(expressions);
     if (len != length(sels)) {
-        error(`The length of cols (${len}) and sels (${length(sels)}) should be the same`);
+        error(`The length of expressions (${len}) and sels (${length(sels)}) should be the same`);
     }
 
-    for (int i = 0; i < length(cols); i++) {
-        range_check(cols[i], min, max, sels[i], predefined);
+    for (int i = 0; i < len; i++) {
+        range_check(expressions[i], min, max, sels[i], predefined);
     }
 }
 
-// 2] Interface where the user can perform a range check over two ranges based on a selector
-
 /**
- * TODO: Add description
- * TODO: Generalize to more than 2 ranges
- * If range_sel = 1, then the range [min1,max1] is checked, otherwise [min2,max2]
+ * Performs a range check on an expression within one of two specified ranges, 
+ * determined by a range selector.
+ *
+ * - If `range_sel = 1`, the range [min1, max1] is checked.
+ * - Otherwise, the range [min2, max2] is checked.
+ *
+ * @param expression The expression to be range checked.
+ * @param min1       The minimum value of the first range (inclusive).
+ * @param max1       The maximum value of the first range (inclusive).
+ * @param min2       The minimum value of the second range (inclusive).
+ * @param max2       The maximum value of the second range (inclusive).
+ * @param range_sel  A selector that determines which range to apply for the check.
+ * @param sel        A selector specifying which rows are subject to the range check.
+ * @param predefined A flag indicating whether to use predefined ranges.
+ *
+ * @note If `predefined` is true, the provided range [min, max] may be overridden
+ *       by one of the predefined ranges, such as:
+ *       - U8: [0, 255]
+ *       - U16: [0, 65535]
  */
-function multi_range_check(expr colu, int min1, int max1, int min2, int max2, expr range_sel = 1, expr sel = 1, int predefined = 0): int {
+// TODO: Generalize to more than 2 ranges
+function multi_range_check(const expr expression, const int min1, const int max1, const int min2, const int max2, 
+                           const expr range_sel = 1, const expr sel = 1, const int predefined = 0): int {
     if (predefined) {
         error(`WIP: Multi range check cannot be predefined`);
     }
@@ -183,36 +264,37 @@ function multi_range_check(expr colu, int min1, int max1, int min2, int max2, ex
     range_validator(min1, max1);
     range_validator(min2, max2);
 
-    @range_def{predefined: predefined, min: min1, max: max1, min_neg: min1 < 0 , max_neg: max1 < 0};
-    @range_def{predefined: predefined, min: min2, max: max2, min_neg: min2 < 0 , max_neg: max2 < 0};
+    @range_def{predefined: predefined, min: min1, max: max1, min_neg: min1 < 0, max_neg: max1 < 0, type: "Specified"};
+    @range_def{predefined: predefined, min: min2, max: max2, min_neg: min2 < 0, max_neg: max2 < 0, type: "Specified"};
 
     const int opid1 = opid_process(min1, max1, predefined);
     const int opid2 = opid_process(min2, max2, predefined);
 
     // Define the assume
-    lookup_assumes_dynamic([opid1,opid2], range_sel*(opid1-opid2) + opid2, [colu], sel, PIOP_NAME_RANGE_CHECK);
+    lookup_assumes_dynamic([opid1, opid2], range_sel*(opid1-opid2) + opid2, [expression], sel, PIOP_NAME_RANGE_CHECK);
 
     // Define the prove
     define_proves(absorb: 0);
 
     // Note: This solution improves the naive solution:
-    //   · range_check(colu, min1, max1, 0, sel*range_sel).
-    //   · range_check(colu, min2, max2, 0, sel*(1-range_sel)).
+    //   · range_check(expression, min1, max1, 0, sel*range_sel).
+    //   · range_check(expression, min2, max2, 0, sel*(1-range_sel)).
     // by just performing 1 assume and 2 proves instead
     //
     // Q: Can I do it with 1 assume and 1 prove? E.g.:
-    // lookup_assumes_dynamic([opid1,opid2], range_sel*(opid1-opid2) - opid2, [colu], sel, PIOP_NAME_RANGE_CHECK);
+    // lookup_assumes_dynamic([opid1,opid2], range_sel*(opid1-opid2) - opid2, [expression], sel, PIOP_NAME_RANGE_CHECK);
     // lookup_proves(opid, [min1..max1-1,max1...]U[min2..max2-1,max2...], mul, PIOP_NAME_RANGE_CHECK);
 }
 
-// 3] Interface where the user can first get the range check id:
-//      int id_range_24 = range_check_id(0, 2**24-1);
-//      int id_range_16 = range_check_id(0, 2**16-1);
-//      int id_range_15 = range_check_id(0, 2**15-1);
-//    and then perform the range check using a user-defined range selector:
-//      col witness sel_8, sel_16, sel_32;
-//      range_check_dynamic(colu, id_range_24 * sel_8 + id_range_16 * sel_16 + id_range_15 * sel_32);
-
+/**
+ * Obtains an ID for a range, which can be used to perform a dynamic range check.
+ *
+ * @param min        The minimum value of the range (inclusive).
+ * @param max        The maximum value of the range (inclusive).
+ * @param predefined A flag indicating whether to use predefined ranges.
+ *
+ * @return The ID of the range check.
+ */
 function range_check_id(const int min, const int max, const int predefined = 0): int {
     if (predefined) {
         error(`WIP: Range check id cannot be predefined`);
@@ -220,7 +302,7 @@ function range_check_id(const int min, const int max, const int predefined = 0):
 
     range_validator(min, max);
 
-    @range_def{predefined: predefined, min: min, max: max, min_neg: min < 0, max_neg: max < 0};
+    @range_def{predefined: predefined, min: min, max: max, min_neg: min < 0, max_neg: max < 0, type: "Specified"};
 
     container air.std.rcid alias rcid {
         int opids_count_id = 0;
@@ -240,7 +322,14 @@ function range_check_id(const int min, const int max, const int predefined = 0):
     return opid;
 }
 
-function range_check_dynamic(const expr colu, const expr range_sel, const expr sel = 1) {
+/**
+ * Performs a dynamic range check on an expression using a user-defined range selector.
+ *
+ * @param expression The expression to be range checked.
+ * @param range_sel  The range selector that determines which range to apply for the check.
+ * @param sel        A selector specifying which rows are subject to the range check.
+ */
+function range_check_dynamic(const expr expression, const expr range_sel, const expr sel = 1) {
     use air.std.rcid;
 
     // Mark the dynamic range check as called
@@ -252,13 +341,12 @@ function range_check_dynamic(const expr colu, const expr range_sel, const expr s
     }
 
     // Define the assume
-    lookup_assumes_dynamic(opids, range_sel, [colu], sel, PIOP_NAME_RANGE_CHECK);
+    lookup_assumes_dynamic(opids, range_sel, [expression], sel, PIOP_NAME_RANGE_CHECK);
 
     // Define the prove
     define_proves(absorb: 0);
 }
 
-// Private functions
 private function check_dynamic_called() {
     use air.std.rcid;
     if (!called) {
@@ -270,13 +358,13 @@ private function range_validator(const int min, const int max) {
     if (min > max) {
         error(`min = ${min} cannot be greater than max = ${max}`);
     } else if (min == max) {
-        error(`Min and max are the same, you should use a single value check instead: colu === ${min}`);
+        error(`Min and max are the same, you should use a single value check instead: expression === ${min}`);
     } else if (max - min + 1 < 8) { // The 8 was chosen comparing the cost of logup vs the cost of a multiple value check
         const int diff = max - min + 1;
 
-        string diff_str = `(colu - ${min})`;
+        string diff_str = `(expression - ${min})`;
         for (int i = 1; i < diff; i++) {
-            diff_str = diff_str + `·(colu - ${min + i})`;
+            diff_str = diff_str + `·(expression - ${min + i})`;
         }
 
         println(`The range [${min}..${max}] is too small, consider using a multiple value check instead: ${diff_str} === 0`);
@@ -310,6 +398,11 @@ private function opid_process(const int min, const int max, const int predefined
         int predefineds[100];
         int mins[100];
         int maxs[100];
+
+        // For global hints
+        int air_count = 0;
+        int airgroup_ids[100];
+        int air_ids[100];
     }
 
     container airgroup.std.rc {
@@ -317,6 +410,24 @@ private function opid_process(const int min, const int max, const int predefined
         int u8_used = 0;
         int u16_used = 0;
     }
+
+    // Store the airgroup and air ids for global hints if it appears the first time
+    int found = 0;
+    for (int i = 0; i < rcproof.air_count; i++) {
+        if (rcproof.airgroup_ids[i] == AIRGROUP_ID && rcproof.air_ids[i] == AIR_ID) {
+            found = 1;
+            break;
+        }
+    }
+
+    if (!found) {
+        rcproof.airgroup_ids[rcproof.air_count] = AIRGROUP_ID;
+        rcproof.air_ids[rcproof.air_count] = AIR_ID;
+        rcproof.air_count++;
+    }
+
+    // Generate global hints
+    on final proof rc_issue_global_hints(); 
 
     // If the range has already been introduced, we reuse the same opid
     for (int i = 0; i < rcproof.opids_count; i++) {
@@ -329,7 +440,7 @@ private function opid_process(const int min, const int max, const int predefined
     const int opid = get_opid(min, max, predefined);
 
     // Exit if the range does not belong to the specified ranges air
-    if (opid <= OPIDS[1]) {
+    if (opid <= U16AIR_OPID) {
         return opid;
     }
 
@@ -341,7 +452,7 @@ private function opid_process(const int min, const int max, const int predefined
     rcproof.opids_count++;
 
     // if the opid is not predefined and the range is bigger than the current specified_N, we update it
-    if (opid > OPIDS[1] && max - min > rcproof.specified_N) {
+    if (opid > U16AIR_OPID && max - min > rcproof.specified_N) {
         rcproof.specified_N = max - min;
     }
 
@@ -474,4 +585,9 @@ private function createPreMetadata() {
 
 private function createMetadata() {
     @specified_ranges{airgroup_id: proof.std.specified.airgroup_id, air_id: proof.std.specified.air_id};
+}
+
+private function rc_issue_global_hints() {
+    use proof.std.rc;
+    @std_rc_users{num_users: air_count, airgroup_ids: airgroup_ids, air_ids: air_ids};
 }

@@ -1,42 +1,27 @@
-require "std_constants.pil";
-
-function set_bus_type(const int bus_type) {
-    if (bus_type != PIOP_BUS_SUM && bus_type != PIOP_BUS_PROD) {
-        error(`Unknown bus type: ${bus_type}`);
-    }
-
-    // Set the bus type for the std components
-    DEFAULT_PERMUTATION_BUS_TYPE = bus_type;
-}
-
-function init_challenges() {
+/**
+ * Given expressions E₁,...,Eₙ of any degree, reduces the vector PIOP to a single expression PIOP.
+ *
+ * @param busid       The ID that uniquely identifies the PIOP in the bus.
+ * @param expressions The vector of expressions of the PIOP.
+ * @return            busid + E₁·α + E₂·α² + ... + Eₙ·αⁿ
+ */
+function compress_exprs(const expr busid, const expr expressions[]): expr {
     if (!defined(std_alpha)) {
         challenge stage(2) std_alpha;
     }
-    if (!defined(std_gamma)) {
-        challenge stage(2) std_gamma;
+
+    expr exprs_compressed = 0;
+    for (int i = length(expressions) - 1; i >= 0; i--) {
+        exprs_compressed = (exprs_compressed + expressions[i]) * std_alpha;
     }
+    exprs_compressed = exprs_compressed + busid;
+
+    return exprs_compressed;
 }
 
-/**
- * Given columns C₁,...,Cₙ, reduces the vector PIOP to a single column PIOP.
- * @param busid (unique) identifier of the PIOP
- * @param cols columns of the PIOP
- * @return busid + C₁·α + C₂·α² + ... + Cₙ·αⁿ
- */
-function compress_cols(expr busid, expr cols[]): expr {
-    expr cols_compressed = 0;
-    for (int i = length(cols) - 1; i >= 0; i = i - 1) {
-        cols_compressed = (cols_compressed + cols[i]) * std_alpha;
+function get_L1(): expr {
+    if (!defined(air.__L1__)) {
+        col fixed air.__L1__ = [1,0...];
     }
-    cols_compressed = cols_compressed + busid;
-
-    return cols_compressed;
-}
-
-function get_L1 () : expr {
-    if (!defined(__L1__)) {
-        col fixed __L1__ = [1,0...];
-    }
-    return __L1__;
+    return air.__L1__;
 }

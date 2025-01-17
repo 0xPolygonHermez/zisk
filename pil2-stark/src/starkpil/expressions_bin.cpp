@@ -1,10 +1,12 @@
 #include "expressions_bin.hpp"
 
-ExpressionsBin::ExpressionsBin(string file, bool globalBin) {
+ExpressionsBin::ExpressionsBin(string file, bool globalBin, bool verifierBin) {
     std::unique_ptr<BinFileUtils::BinFile> binFile = BinFileUtils::openExisting(file, "chps", 1);
 
     if(globalBin) {
         loadGlobalBin(binFile.get());
+    } else if(verifierBin) {
+        loadVerifierBin(binFile.get());
     } else {
         loadExpressionsBin(binFile.get());
     }
@@ -306,6 +308,126 @@ void ExpressionsBin::loadExpressionsBin(BinFileUtils::BinFile *expressionsBin) {
     expressionsBin->endReadSection();
 }
 
+void ExpressionsBin::loadVerifierBin(BinFileUtils::BinFile *expressionsBin) {
+    expressionsBin->startReadSection(BINARY_EXPRESSIONS_SECTION);
+    
+    uint32_t nOpsExpressions = expressionsBin->readU32LE();
+    uint32_t nArgsExpressions = expressionsBin->readU32LE();
+    uint32_t nNumbersExpressions = expressionsBin->readU32LE();
+    uint32_t nConstPolsIdsExpressions = expressionsBin->readU32LE();
+    uint32_t nCmPolsIdsExpressions = expressionsBin->readU32LE();
+    uint32_t nChallengesIdsExpressions = expressionsBin->readU32LE();
+    uint32_t nPublicsIdsExpressions = expressionsBin->readU32LE();
+    uint32_t nAirgroupValuesIdsExpressions = expressionsBin->readU32LE();
+    uint32_t nAirValuesIdsExpressions = expressionsBin->readU32LE();
+    uint64_t nCustomCommitsPolsIdsExpressions = expressionsBin->readU32LE();
+
+    expressionsBinArgsExpressions.ops = new uint8_t[nOpsExpressions];
+    expressionsBinArgsExpressions.args = new uint16_t[nArgsExpressions];
+    expressionsBinArgsExpressions.numbers = new uint64_t[nNumbersExpressions];
+    expressionsBinArgsExpressions.constPolsIds = new uint16_t[nConstPolsIdsExpressions];
+    expressionsBinArgsExpressions.cmPolsIds = new uint16_t[nCmPolsIdsExpressions];
+    expressionsBinArgsExpressions.challengesIds = new uint16_t[nChallengesIdsExpressions];
+    expressionsBinArgsExpressions.publicsIds = new uint16_t[nPublicsIdsExpressions];
+    expressionsBinArgsExpressions.airgroupValuesIds = new uint16_t[nAirgroupValuesIdsExpressions];
+    expressionsBinArgsExpressions.airValuesIds = new uint16_t[nAirValuesIdsExpressions];
+    expressionsBinArgsExpressions.customCommitsPolsIds = new uint16_t[nCustomCommitsPolsIdsExpressions];
+    expressionsBinArgsExpressions.nNumbers = nNumbersExpressions;
+
+    uint64_t nCustomCommits = expressionsBin->readU32LE();
+    uint64_t nExpressions = expressionsBin->readU32LE();
+
+    for(uint64_t i = 0; i < nExpressions; ++i) {
+        ParserParams parserParamsExpression;
+
+        uint32_t expId = expressionsBin->readU32LE();
+        
+        parserParamsExpression.expId = expId;
+        parserParamsExpression.destDim = expressionsBin->readU32LE();
+        parserParamsExpression.destId = expressionsBin->readU32LE();
+        parserParamsExpression.stage = expressionsBin->readU32LE();
+
+        parserParamsExpression.nTemp1 = expressionsBin->readU32LE();
+        parserParamsExpression.nTemp3 = expressionsBin->readU32LE();
+
+        parserParamsExpression.nOps = expressionsBin->readU32LE();
+        parserParamsExpression.opsOffset = expressionsBin->readU32LE();
+
+        parserParamsExpression.nArgs = expressionsBin->readU32LE();
+        parserParamsExpression.argsOffset = expressionsBin->readU32LE();
+
+        parserParamsExpression.nConstPolsUsed = expressionsBin->readU32LE();
+        parserParamsExpression.constPolsOffset = expressionsBin->readU32LE();
+
+        parserParamsExpression.nCmPolsUsed = expressionsBin->readU32LE();
+        parserParamsExpression.cmPolsOffset = expressionsBin->readU32LE();
+
+        parserParamsExpression.nChallengesUsed = expressionsBin->readU32LE();
+        parserParamsExpression.challengesOffset = expressionsBin->readU32LE();
+
+        parserParamsExpression.nPublicsUsed = expressionsBin->readU32LE();
+        parserParamsExpression.publicsOffset = expressionsBin->readU32LE();
+
+        parserParamsExpression.nAirgroupValuesUsed = expressionsBin->readU32LE();
+        parserParamsExpression.airgroupValuesOffset = expressionsBin->readU32LE();
+
+        parserParamsExpression.nAirValuesUsed = expressionsBin->readU32LE();
+        parserParamsExpression.airValuesOffset = expressionsBin->readU32LE();
+        
+        std::vector<uint32_t> nCustomCommitsPolsUsed(nCustomCommits);
+        std::vector<uint32_t> customCommitsOffset(nCustomCommits);
+        for(uint64_t j = 0; j < nCustomCommits; ++j) {
+            nCustomCommitsPolsUsed[j] = expressionsBin->readU32LE();
+            customCommitsOffset[j] = expressionsBin->readU32LE();
+        }
+        parserParamsExpression.nCustomCommitsPolsUsed = nCustomCommitsPolsUsed;
+        parserParamsExpression.customCommitsOffset = customCommitsOffset;
+
+        parserParamsExpression.line = expressionsBin->readString();
+
+        expressionsInfo[expId] = parserParamsExpression;
+    }
+
+    for(uint64_t j = 0; j < nOpsExpressions; ++j) {
+        expressionsBinArgsExpressions.ops[j] = expressionsBin->readU8LE();
+    }
+    for(uint64_t j = 0; j < nArgsExpressions; ++j) {
+        expressionsBinArgsExpressions.args[j] = expressionsBin->readU16LE();
+    }
+    for(uint64_t j = 0; j < nNumbersExpressions; ++j) {
+        expressionsBinArgsExpressions.numbers[j] = expressionsBin->readU64LE();
+    }
+
+    for(uint64_t j = 0; j < nConstPolsIdsExpressions; ++j) {
+        expressionsBinArgsExpressions.constPolsIds[j] = expressionsBin->readU16LE();
+    }
+
+    for(uint64_t j = 0; j < nCmPolsIdsExpressions; ++j) {
+        expressionsBinArgsExpressions.cmPolsIds[j] = expressionsBin->readU16LE();
+    }
+
+    for(uint64_t j = 0; j < nChallengesIdsExpressions; ++j) {
+        expressionsBinArgsExpressions.challengesIds[j] = expressionsBin->readU16LE();
+    }
+
+    for(uint64_t j = 0; j < nPublicsIdsExpressions; ++j) {
+        expressionsBinArgsExpressions.publicsIds[j] = expressionsBin->readU16LE();
+    }
+
+    for(uint64_t j = 0; j < nAirgroupValuesIdsExpressions; ++j) {
+        expressionsBinArgsExpressions.airgroupValuesIds[j] = expressionsBin->readU16LE();
+    }
+
+    for(uint64_t j = 0; j < nAirValuesIdsExpressions; ++j) {
+        expressionsBinArgsExpressions.airValuesIds[j] = expressionsBin->readU16LE();
+    }
+
+    for(uint64_t j = 0; j < nCustomCommitsPolsIdsExpressions; ++j) {
+        expressionsBinArgsExpressions.customCommitsPolsIds[j] = expressionsBin->readU16LE();
+    }
+
+    expressionsBin->endReadSection();
+}
 
 void ExpressionsBin::loadGlobalBin(BinFileUtils::BinFile *globalBin) {
     
@@ -407,24 +529,24 @@ void ExpressionsBin::loadGlobalBin(BinFileUtils::BinFile *globalBin) {
 
 }
 
-
-VecU64Result ExpressionsBin::getHintIdsByName(std::string name) {
-    VecU64Result hintIds;
-
-    hintIds.nElements = 0;
-    for (uint64_t i = 0; i < hints.size(); ++i) {
-        if (hints[i].name == name) {
-            hintIds.nElements++;
-        }
-    }
-
+void ExpressionsBin::getHintIdsByName(uint64_t* hintIds, std::string name) {
     uint64_t c = 0;
-    hintIds.ids = new uint64_t[hintIds.nElements];
     for (uint64_t i = 0; i < hints.size(); ++i) {
         if (hints[i].name == name) {
-            hintIds.ids[c++] = i;
+            hintIds[c++] = i;
+        }
+    }
+}
+
+
+uint64_t ExpressionsBin::getNumberHintIdsByName(std::string name) {
+
+    uint64_t nHints = 0;
+    for (uint64_t i = 0; i < hints.size(); ++i) {
+        if (hints[i].name == name) {
+            nHints++;
         }
     }
 
-    return hintIds;
+    return nHints;
 }

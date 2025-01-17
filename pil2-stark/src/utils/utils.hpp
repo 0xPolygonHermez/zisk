@@ -44,13 +44,6 @@ bool fileExists (const std::string &fileName);
 // Returns file size
 uint64_t fileSize (const std::string &fileName);
 
-// Maps memory into a file
-void * mapFile (const std::string &fileName, uint64_t size, bool bOutput);
-void unmapFile (void * pAddress, uint64_t size);
-
-// Copies file content into memory; use free after use
-void * copyFile (const std::string &fileName, uint64_t size);
-
 // Load file in parallel
 void * loadFileParallel(const std::string &fileName, uint64_t size);
 

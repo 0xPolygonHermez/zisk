@@ -6,7 +6,7 @@ message PilOut {
     bytes baseField = 2;                        // base field characteristic
     repeated AirGroup airGroups = 3;
     repeated uint32 numChallenges = 4;          // number of challenges per stage
-    uint32 numProofValues = 5;
+    repeated uint32 numProofValues = 5;
     uint32 numPublicValues = 6;
     repeated PublicTable publicTables = 7;
     repeated GlobalExpression expressions = 8;
@@ -82,7 +82,8 @@ message GlobalOperand {
     }
 
     message ProofValue {
-        uint32 idx = 1;
+        uint32 stage = 1;
+        uint32 idx = 2;
     }
 
     message AirGroupValue {
@@ -192,7 +193,8 @@ message Operand {
     }
 
     message ProofValue {
-        uint32 idx = 1;
+        uint32 stage = 1;
+        uint32 idx = 2;
     }
 
     message AirGroupValue {

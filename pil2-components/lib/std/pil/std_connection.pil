@@ -1,22 +1,80 @@
 require "std_constants.pil";
 require "std_permutation.pil";
 
-// In order to prove correctness of a connection, we should compute the product:
-//       (f_0+𝛂·X+ɣ)   · (f_1+𝛂·k_1·X+ɣ)·...·(f_N+𝛂·k_N·X+ɣ)
-//    ---------------------------------------------------------------------------------
-//     (f_0+𝛂·PER_0+ɣ) · (f_1+𝛂·PER_1+ɣ)·...·(f_N+𝛂·PER_N+ɣ)
-// and PER_i(X) describe a permutation of the group_domain
-// as described in the PlonK paper https://eprint.iacr.org/2019/953.pdf
+/*
+ * Module for performing connection checks on columns,
+ * as described in https://eprint.iacr.org/2019/953.pdf.
+ *
+ * This module facilitates connection checks between vectors of expressions, reducing the problem
+ * to a permutation check. It provides two independent user interfaces: **Online** and **Offline**,
+ * depending on whether the connections are defined dynamically or known beforehand.
+ *
+ * 1. **Online**:
+ *    Allows dynamic construction and updating of connections. This is useful when the connections 
+ *    are not predefined and need to be built incrementally during computation.
+ *
+ *    Methods:
+ *    - `connection_init(opid, cols[])`:
+ *        Initializes the connection for a given operation ID (`opid`) with a set of columns (`cols`).
+ *
+ *    - `connection_update_one_cell(opid, conn[])`:
+ *        Connects a single cell in a column with another cell from the same or a different column.
+ *
+ *    - `connection_update_one_cell_batch(opid, conn[][])`:
+ *        Batch version of `connection_update_one_cell`, allowing multiple cell connections to be updated at once.
+ *
+ *    - `connection_update_multiple_cells(opid, conn[])`:
+ *        Updates connections for multiple cells in one operation.
+ *
+ *    - `connection_connect(opid)`:
+ *        Finalizes the connection for the specified operation ID.
+ *
+ *    **Example**:
+ *    connection_init(opid, [a, b, c, d]);
+ *    connection_update_one_cell(opid, [a, 1, b, 2]);
+ *    connection_update_one_cell_batch(opid, [[b, 3, c, 0], [a, 1, c, 0]]);
+ *    connection_update_multiple_cells(opid, [c, 10, b, 3, a, 65, c, 9, c, 8]);
+ *    connection_connect(opid);
+ *
+ * 2. **Offline**:
+ *    Designed for scenarios where the connections are already known and can be directly provided
+ *    to the connection check function.
+ *
+ *    **Example**:
+ *      col witness a,b,c;
+ *      col fixed S1,S2,S3;
+ *      // Logic to define the fixed columns (e.g., hardcoded values, computed logic, or imported from file).
+ *      connection(opid, [a, b, c], [S1, S2, S3]);
+ *
+ * **Implementation Notes**:
+ * - Connection checks are internally reduced to a **permutation check** of the form:
+ *         (f_0+𝛂·ID+ɣ)   · (f_1+𝛂·k_1·ID+ɣ)·...·(f_N+𝛂·k_N·ID+ɣ)
+ *      ----------------------------------------------------------
+ *       (f_0+𝛂·CONN_0+ɣ) · (f_1+𝛂·CONN_1+ɣ)·...·(f_N+𝛂·CONN_N+ɣ)
+ *
+ *   Where:
+ *   - `f_i`: Columns subject to the connection check.
+ *   - `𝛂, ɣ`: Uniformly and independently sampled field elements.
+ *   - `ID`: Identity column.
+ *   - `k_i`: Coset representatives.
+ *   - `CONN_i`: Fixed columns describing the connection for `f_i`.
+ */
+
 
 const int DEFAULT_CONNECTION_N = 0;
 
-// Two user interfaces
-
-// 1] Interface where the user uses either the update_one_cell() or the update_multiple_cells() method to define the permutation "on the fly"
-//    and when it is done, executes the connect() method to perform the connection argument.
-//    The user also needs to execute init() at the beginning.
-
-function connection_init(int opid, expr cols[], int default_frame_size = DEFAULT_CONNECTION_N, int bus_type = 0) {
+/**
+ * Initializes the connection for a given operation ID with a set of columns.
+ *
+ * @param opid               The (unique) identifier of the connection
+ * @param cols               Array of columns to be connected
+ * @param default_frame_size Frame at which the cells are swapped and gets repeated until the end
+ * @param bus_type           The bus type to use for the connection
+ * @example
+ * col witness a,b,c;
+ * connection_init(opid, [a, b, c]);
+ */
+function connection_init(const int opid, const expr cols[], int default_frame_size = DEFAULT_CONNECTION_N, const int bus_type = PIOP_BUS_DEFAULT) {
     if (default_frame_size == DEFAULT_CONNECTION_N) default_frame_size = N;
 
     if (default_frame_size < 1) {
@@ -109,17 +167,17 @@ function connection_init(int opid, expr cols[], int default_frame_size = DEFAULT
 }
 
 /**
- * It connects the cell of a column with a different cell of any other column (including itself). It can be used in batch.
+ * It connects a single cell in a column with another cell from the same or a different column.
  *
- * @param {int} opid - The (unique) identifier of the connection
- * @param {expr[][]} conn - Array of columns and rows of the cells to be swapped
- * @param {int} frame_size - Frame at which the cells are swapped and gets repeated until the end
+ * @param opid       The (unique) identifier of the connection
+ * @param conn       Array of columns and rows of the cells to be swapped
+ * @param frame_size Frame at which the cells are swapped and gets repeated until the end
  * @example
  * col witness a,b;
  * connection_init(opid, [a, b]);
  * connection_update_one_cell(opid, [a,1,b,2], N/2);
  */
-function connection_update_one_cell(int opid, expr conn[], int frame_size = DEFAULT_CONNECTION_N) {
+function connection_update_one_cell(const int opid, const expr conn[], int frame_size = DEFAULT_CONNECTION_N) {
     if (!defined(air.std.connect.`id${opid}`)) {
         error(`Connect #${opid} has not been initialized`);
     }
@@ -170,9 +228,17 @@ function connection_update_one_cell(int opid, expr conn[], int frame_size = DEFA
 }
 
 /**
+ * The same as `connection_update_one_cell`, but allows multiple cell connections to be updated at once.
+ *
+ * @param opid       The (unique) identifier of the connection
+ * @param conn       Array of columns and rows of the cells to be swapped
+ * @param frame_size Frame at which the cells are swapped and gets repeated until the end
+ * @example
+ * col witness b,c;
+ * connection_init(opid, [b, c]);
  * connection_update_one_cell_batch(opid, [[b,3,c,0],[a,1,c,0]], N/2);
  */
-function connection_update_one_cell_batch(int opid, expr conn[][], int frame_size = DEFAULT_CONNECTION_N) {
+function connection_update_one_cell_batch(const int opid, const expr conn[][], int frame_size = DEFAULT_CONNECTION_N) {
     if (!defined(air.std.connect.`id${opid}`)) {
         error(`Connect #${opid} has not been initialized`);
     }
@@ -203,16 +269,16 @@ function connection_update_one_cell_batch(int opid, expr conn[][], int frame_siz
  *
  * Check https://youtu.be/Crzw7ccuHd0?t=1276&si=M8sVdwvKhmIZQnJZ for a pictorial representation
  *
- * @param {int} opid - The (unique) identifier of the connection
- * @param {expr[]} conn - Array of columns and rows of the cells to be swapped
- * @param {int} frame_size - Frame at which the cells are swapped and gets repeated until the end
+ * @param opid       The (unique) identifier of the connection
+ * @param conn       Array of columns and rows of the cells to be swapped
+ * @param frame_size Frame at which the cells are swapped and gets repeated until the end
  * @example
- * col witness a,b;
+ * col witness a,b,c,d;
  * connection_init(opid, [a, b, c, d]);
  * connection_update_multiple_cells(opid, [d,2,d,3,b,0]);
  * connection_update_multiple_cells(opid, [c,10,b,3,a,65,c,9,c,8], N/2);
  */
-function connection_update_multiple_cells(int opid, expr conn[], int frame_size = DEFAULT_CONNECTION_N) {
+function connection_update_multiple_cells(const int opid, const expr conn[], int frame_size = DEFAULT_CONNECTION_N) {
     if (!defined(air.std.connect.`id${opid}`)) {
         error(`Connect #${opid} has not been initialized`);
     }
@@ -264,7 +330,7 @@ function connection_update_multiple_cells(int opid, expr conn[], int frame_size 
     }
 }
 
-private function define_connection(int opid, int col1_index, int row1_index, int col2_index, int row2_index) {
+private function define_connection(const int opid, const int col1_index, const int row1_index, const int col2_index, const int row2_index) {
     use air.std.connect.`id${opid}`;
 
     int alreay_connected = 0;
@@ -296,7 +362,14 @@ private function define_connection(int opid, int col1_index, int row1_index, int
     counter = counter + 1;
 }
 
-function connection_connect(int opid) {
+/**
+ * Finalizes the connection for the specified operation ID.
+ *
+ * @param opid The (unique) identifier of the connection
+ * @example
+ * connection_connect(opid);
+ */
+function connection_connect(const int opid) {
     if (!defined(air.std.connect.`id${opid}`)) {
         error(`Connect #${opid} has not been initialized`);
     }
@@ -389,7 +462,7 @@ function connection_connect(int opid) {
     closed = 1;
 }
 
-private function find_col_index(int opid, expr column): int {
+private function find_col_index(const int opid, const expr column): int {
     use air.std.connect.`id${opid}`;
 
     for (int i = 0; i < cols_num; i++) {
@@ -411,28 +484,31 @@ private function checkClosed() {
     }
 }
 
-// 2] Interface where the user knows both the inputs (placed in assumes) and the
-//    permutation (placed in proves) of the argument.
-
 /**
- * TODO
+ * Connects the columns `cols` with the fixed columns `CONN`.
  *
- * @param {int} opid - The (unique) identifier of the connection
- * @param {expr[]} cols - Array of columns to be connected
- * @param {expr[]} conn - Fixed columns indicating the connection
+ * @param opid     The (unique) identifier of the connection
+ * @param cols     Array of columns to be connected
+ * @param CONN     Fixed columns indicating the connection
+ * @param bus_type The bus type to use for the connection
  * @example
  * col witness a,b,c;
  * col fixed S1,S2,S3;
- * // Compute S1, S2, S3...
  * connection(opid, [a, b, c], [S1, S2, S3]);
- * connection(opid, [a, b, c], [S1, S2, S3], N/2);
  */
-function connection(int opid, expr cols[], expr CONN[], int bus_type = 0) {
+function connection(const int opid, const expr cols[], const expr CONN[], const int bus_type = PIOP_BUS_DEFAULT) {
     const int len = length(cols);
     if (len == 0) {
         error(`Connection #${opid} cannot be empty`);
     } else if (len != length(CONN)) {
         error(`The number of columns and permutations of connect #${opid} must be the same`);
+    }
+
+    // Check that the CONN are fixed columns
+    for (int i = 0; i < len; i++) {
+        if (degree(CONN[i]) != 1) {
+            error(`The expression ${CONN[i]} of connect #${opid} is not a fixed column`);
+        }
     }
 
     if (!defined(air.std.connect)) {

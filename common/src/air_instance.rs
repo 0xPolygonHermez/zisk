@@ -1,31 +1,29 @@
-use std::mem::MaybeUninit;
 use std::ptr;
-use std::{collections::HashMap, os::raw::c_void, sync::Arc};
-use std::path::PathBuf;
 use p3_field::Field;
-use proofman_starks_lib_c::{get_custom_commit_map_ids_c, get_map_totaln_custom_commits_c};
+use proofman_util::create_buffer_fast;
 
-use crate::{SetupCtx, StarkInfo};
+use crate::{trace::Trace, trace::Values};
 
 #[repr(C)]
 pub struct StepsParams {
-    pub trace: *mut c_void,
-    pub pols: *mut c_void,
-    pub public_inputs: *mut c_void,
-    pub proof_values: *mut c_void,
-    pub challenges: *mut c_void,
-    pub airgroup_values: *mut c_void,
-    pub airvalues: *mut c_void,
-    pub evals: *mut c_void,
-    pub xdivxsub: *mut c_void,
-    pub p_const_pols: *mut c_void,
-    pub p_const_tree: *mut c_void,
-    pub custom_commits: [*mut c_void; 10],
+    pub trace: *mut u8,
+    pub aux_trace: *mut u8,
+    pub public_inputs: *mut u8,
+    pub proof_values: *mut u8,
+    pub challenges: *mut u8,
+    pub airgroup_values: *mut u8,
+    pub airvalues: *mut u8,
+    pub evals: *mut u8,
+    pub xdivxsub: *mut u8,
+    pub p_const_pols: *mut u8,
+    pub p_const_tree: *mut u8,
+    pub custom_commits: [*mut u8; 10],
+    pub custom_commits_extended: [*mut u8; 10],
 }
 
-impl From<&StepsParams> for *mut c_void {
-    fn from(params: &StepsParams) -> *mut c_void {
-        params as *const StepsParams as *mut c_void
+impl From<&StepsParams> for *mut u8 {
+    fn from(params: &StepsParams) -> *mut u8 {
+        params as *const StepsParams as *mut u8
     }
 }
 
@@ -33,7 +31,7 @@ impl Default for StepsParams {
     fn default() -> Self {
         StepsParams {
             trace: ptr::null_mut(),
-            pols: ptr::null_mut(),
+            aux_trace: ptr::null_mut(),
             public_inputs: ptr::null_mut(),
             proof_values: ptr::null_mut(),
             challenges: ptr::null_mut(),
@@ -44,265 +42,242 @@ impl Default for StepsParams {
             p_const_pols: ptr::null_mut(),
             p_const_tree: ptr::null_mut(),
             custom_commits: [ptr::null_mut(); 10],
+            custom_commits_extended: [ptr::null_mut(); 10],
         }
     }
 }
 
-#[derive(Default)]
-pub struct CustomCommitsInfo<F> {
-    pub buffer: Vec<F>,
-    pub cached_file: PathBuf,
+pub struct CustomCommitInfo<F> {
+    pub trace: Vec<F>,
+    pub commit_id: usize,
 }
 
-impl<F> CustomCommitsInfo<F> {
-    pub fn new(buffer: Vec<F>, cached_file: PathBuf) -> Self {
-        Self { buffer, cached_file }
+pub struct TraceInfo<F> {
+    airgroup_id: usize,
+    air_id: usize,
+    trace: Vec<F>,
+    custom_traces: Option<Vec<CustomCommitInfo<F>>>,
+    air_values: Option<Vec<F>>,
+    airgroup_values: Option<Vec<F>>,
+}
+
+impl<F> TraceInfo<F> {
+    pub fn new(airgroup_id: usize, air_id: usize, trace: Vec<F>) -> Self {
+        Self { airgroup_id, air_id, trace, custom_traces: None, air_values: None, airgroup_values: None }
+    }
+
+    pub fn with_custom_traces(mut self, custom_traces: Vec<CustomCommitInfo<F>>) -> Self {
+        self.custom_traces = Some(custom_traces);
+        self
+    }
+
+    pub fn with_air_values(mut self, air_values: Vec<F>) -> Self {
+        self.air_values = Some(air_values);
+        self
+    }
+
+    pub fn with_airgroup_values(mut self, airgroup_values: Vec<F>) -> Self {
+        self.air_values = Some(airgroup_values);
+        self
+    }
+}
+
+pub struct FromTrace<'a, F> {
+    pub trace: &'a mut dyn Trace<F>,
+    pub custom_traces: Option<Vec<&'a mut dyn Trace<F>>>,
+    pub air_values: Option<&'a mut dyn Values<F>>,
+    pub airgroup_values: Option<&'a mut dyn Values<F>>,
+}
+
+impl<'a, F> FromTrace<'a, F> {
+    pub fn new(trace: &'a mut dyn Trace<F>) -> Self {
+        Self { trace, custom_traces: None, air_values: None, airgroup_values: None }
+    }
+
+    pub fn with_custom_traces(mut self, custom_traces: Vec<&'a mut dyn Trace<F>>) -> Self {
+        self.custom_traces = Some(custom_traces);
+        self
+    }
+
+    pub fn with_air_values(mut self, air_values: &'a mut dyn Values<F>) -> Self {
+        self.air_values = Some(air_values);
+        self
+    }
+
+    pub fn with_airgroup_values(mut self, airgroup_values: &'a mut dyn Values<F>) -> Self {
+        self.airgroup_values = Some(airgroup_values);
+        self
     }
 }
 
 /// Air instance context for managing air instances (traces)
 #[allow(dead_code)]
 #[repr(C)]
+#[derive(Debug, Clone)]
 pub struct AirInstance<F> {
     pub airgroup_id: usize,
     pub air_id: usize,
-    pub air_segment_id: Option<usize>,
-    pub air_instance_id: Option<usize>,
-    pub idx: Option<usize>,
-    pub global_idx: Option<usize>,
     pub trace: Vec<F>,
-    pub buffer: Option<Vec<MaybeUninit<F>>>,
-    pub custom_commits: Vec<CustomCommitsInfo<F>>,
+    pub aux_trace: Vec<F>,
+    pub custom_commits: Vec<Vec<F>>,
+    pub custom_commits_extended: Vec<Vec<F>>,
     pub airgroup_values: Vec<F>,
     pub airvalues: Vec<F>,
     pub evals: Vec<F>,
-    pub commits_calculated: HashMap<usize, bool>,
-    pub airgroupvalue_calculated: HashMap<usize, bool>,
-    pub airvalue_calculated: HashMap<usize, bool>,
-    pub custom_commits_calculated: Vec<HashMap<usize, bool>>,
-    pub stark_info: StarkInfo,
+    pub prover_initialized: bool,
 }
 
 impl<F: Field> AirInstance<F> {
-    pub fn new(
-        setup_ctx: Arc<SetupCtx>,
-        airgroup_id: usize,
-        air_id: usize,
-        air_segment_id: Option<usize>,
-        trace: Vec<F>,
-    ) -> Self {
-        let ps = setup_ctx.get_setup(airgroup_id, air_id);
+    pub fn new(trace_info: TraceInfo<F>) -> Self {
+        let airgroup_id = trace_info.airgroup_id;
+        let air_id = trace_info.air_id;
 
-        let n_custom_commits = ps.stark_info.custom_commits.len();
-        let custom_commits_calculated = vec![HashMap::new(); n_custom_commits];
+        let custom_commits = Self::init_custom_commits(trace_info.custom_traces);
 
-        let mut custom_commits = Vec::new();
+        let airvalues = trace_info.air_values.unwrap_or_default();
 
-        for _ in 0..n_custom_commits {
-            custom_commits.push(CustomCommitsInfo::default());
-        }
+        let airgroup_values = trace_info.airgroup_values.unwrap_or_default();
 
         AirInstance {
             airgroup_id,
             air_id,
-            air_segment_id,
-            air_instance_id: None,
-            idx: None,
-            global_idx: None,
-            trace,
-            buffer: None,
+            trace: trace_info.trace,
+            aux_trace: Vec::new(),
             custom_commits,
-            airgroup_values: vec![F::zero(); ps.stark_info.airgroupvalues_map.as_ref().unwrap().len() * 3],
-            airvalues: vec![F::zero(); ps.stark_info.airvalues_map.as_ref().unwrap().len() * 3],
-            evals: vec![F::zero(); ps.stark_info.ev_map.len() * 3],
-            commits_calculated: HashMap::new(),
-            airgroupvalue_calculated: HashMap::new(),
-            airvalue_calculated: HashMap::new(),
-            custom_commits_calculated,
-            stark_info: ps.stark_info.clone(),
+            custom_commits_extended: vec![Vec::new(); 10],
+            airgroup_values,
+            airvalues,
+            evals: Vec::new(),
+            prover_initialized: false,
         }
+    }
+
+    pub fn new_from_trace(mut traces: FromTrace<'_, F>) -> Self {
+        let mut trace_info =
+            TraceInfo::new(traces.trace.airgroup_id(), traces.trace.air_id(), traces.trace.get_buffer());
+
+        if let Some(custom_traces) = traces.custom_traces.as_mut() {
+            let mut traces = Vec::new();
+            for custom_trace in custom_traces.iter_mut() {
+                traces.push(CustomCommitInfo {
+                    trace: custom_trace.get_buffer(),
+                    commit_id: custom_trace.commit_id().unwrap(),
+                });
+            }
+            trace_info = trace_info.with_custom_traces(traces);
+        }
+
+        if let Some(air_values) = traces.air_values.as_mut() {
+            trace_info = trace_info.with_air_values(air_values.get_buffer());
+        }
+
+        AirInstance::new(trace_info)
+    }
+
+    pub fn init_custom_commits(traces_custom: Option<Vec<CustomCommitInfo<F>>>) -> Vec<Vec<F>> {
+        if let Some(traces_custom) = traces_custom {
+            let mut custom_commits = vec![Vec::new(); traces_custom.len()];
+            for trace in traces_custom {
+                custom_commits[trace.commit_id] = trace.trace;
+            }
+            custom_commits
+        } else {
+            vec![Vec::new(); 10]
+        }
+    }
+
+    pub fn get_trace(&self) -> Vec<F> {
+        self.trace.clone()
+    }
+
+    pub fn get_trace_stage(&self, stage: usize) -> Vec<F> {
+        if stage < 2 {
+            panic!("Stage must be 2 or higher");
+        }
+
+        Vec::new()
     }
 
     pub fn get_trace_ptr(&self) -> *mut u8 {
         self.trace.as_ptr() as *mut u8
     }
 
-    pub fn set_buffer(&mut self, buffer: Vec<MaybeUninit<F>>) {
-        self.buffer = Some(buffer);
+    pub fn get_evals_ptr(&self) -> *mut u8 {
+        self.evals.as_ptr() as *mut u8
     }
 
-    pub fn get_buffer_ptr(&self) -> *mut u8 {
-        match &self.buffer {
-            Some(buffer) => buffer.as_ptr() as *mut u8,
-            None => std::ptr::null_mut(), // Return null if `buffer` is `None`
+    pub fn get_airgroup_values_ptr(&self) -> *mut u8 {
+        self.airgroup_values.as_ptr() as *mut u8
+    }
+
+    pub fn get_air_values(&self) -> Vec<F> {
+        self.airvalues.clone()
+    }
+
+    pub fn get_airgroup_values(&self) -> Vec<F> {
+        self.airgroup_values.clone()
+    }
+
+    pub fn get_airvalues_ptr(&self) -> *mut u8 {
+        self.airvalues.as_ptr() as *mut u8
+    }
+
+    pub fn init_evals(&mut self, size: usize) {
+        self.evals = vec![F::zero(); size];
+    }
+
+    pub fn init_aux_trace(&mut self, size: usize) {
+        self.aux_trace = create_buffer_fast(size);
+    }
+
+    pub fn init_airvalues(&mut self, size: usize) {
+        self.airvalues = vec![F::zero(); size];
+    }
+
+    pub fn init_airgroup_values(&mut self, size: usize) {
+        self.airgroup_values = vec![F::zero(); size];
+    }
+
+    pub fn init_custom_commit(&mut self, commit_id: usize, size: usize) {
+        self.custom_commits[commit_id] = create_buffer_fast(size);
+    }
+
+    pub fn init_custom_commit_extended(&mut self, commit_id: usize, size: usize) {
+        self.custom_commits_extended[commit_id] = create_buffer_fast(size);
+    }
+
+    pub fn get_aux_trace_ptr(&self) -> *mut u8 {
+        match &self.aux_trace.is_empty() {
+            false => self.aux_trace.as_ptr() as *mut u8,
+            true => std::ptr::null_mut(), // Return null if `trace` is `None`
         }
     }
 
-    pub fn get_custom_commits_ptr(&self) -> [*mut c_void; 10] {
+    pub fn get_custom_commits_ptr(&self) -> [*mut u8; 10] {
         let mut ptrs = [std::ptr::null_mut(); 10];
         for (i, custom_commit) in self.custom_commits.iter().enumerate() {
-            ptrs[i] = custom_commit.buffer.as_ptr() as *mut c_void;
+            ptrs[i] = custom_commit.as_ptr() as *mut u8;
         }
         ptrs
     }
 
-    pub fn set_custom_commit_cached_file(&mut self, setup_ctx: &SetupCtx, commit_id: u64, cached_file: PathBuf) {
-        let ps = setup_ctx.get_setup(self.airgroup_id, self.air_id);
-
-        let buffer_size = get_map_totaln_custom_commits_c(ps.p_setup.p_stark_info, commit_id);
-        let buffer = vec![F::zero(); buffer_size as usize];
-
-        self.custom_commits[commit_id as usize] = CustomCommitsInfo::new(buffer, cached_file);
-
-        let ids = get_custom_commit_map_ids_c(ps.p_setup.p_stark_info, commit_id, 0);
-        for idx in ids {
-            self.set_custom_commit_calculated(commit_id as usize, idx as usize);
+    pub fn get_custom_commits_extended_ptr(&self) -> [*mut u8; 10] {
+        let mut ptrs = [std::ptr::null_mut(); 10];
+        for (i, custom_commit) in self.custom_commits_extended.iter().enumerate() {
+            ptrs[i] = custom_commit.as_ptr() as *mut u8;
         }
+        ptrs
     }
 
-    pub fn set_custom_commit_id_buffer(&mut self, setup_ctx: &SetupCtx, buffer: Vec<F>, commit_id: u64) {
-        self.custom_commits[commit_id as usize] = CustomCommitsInfo::new(buffer, PathBuf::new());
-
-        let ps = setup_ctx.get_setup(self.airgroup_id, self.air_id);
-
-        let ids = get_custom_commit_map_ids_c(ps.p_setup.p_stark_info, commit_id, 0);
-        for idx in ids {
-            self.set_custom_commit_calculated(commit_id as usize, idx as usize);
-        }
+    pub fn set_prover_initialized(&mut self) {
+        self.prover_initialized = true;
     }
 
-    pub fn set_airvalue(&mut self, name: &str, lengths: Option<Vec<u64>>, value: F) {
-        let airvalues_map = self.stark_info.airvalues_map.as_ref().unwrap();
-        let airvalue_id = (0..airvalues_map.len())
-            .find(|&i| {
-                let airvalue = airvalues_map.get(i).unwrap();
-
-                // Check if name matches
-                let name_matches = airvalues_map[i].name == name;
-
-                // If lengths is provided, check that it matches airvalue.lengths
-                let lengths_match = if let Some(ref provided_lengths) = lengths {
-                    Some(&airvalue.lengths) == Some(provided_lengths)
-                } else {
-                    true // If lengths is None, skip the lengths check
-                };
-
-                name_matches && lengths_match
-            })
-            .unwrap_or_else(|| panic!("Name {} with specified lengths {:?} not found in airvalues", name, lengths));
-
-        self.airvalues[airvalue_id * 3] = value;
-        self.set_airvalue_calculated(airvalue_id);
+    pub fn clear_trace(&mut self) {
+        self.trace.clear();
     }
 
-    pub fn set_airvalue_ext(&mut self, name: &str, lengths: Option<Vec<u64>>, value: Vec<F>) {
-        let airvalues_map = self.stark_info.airvalues_map.as_ref().unwrap();
-        let airvalue_id = (0..airvalues_map.len())
-            .find(|&i| {
-                let airvalue = airvalues_map.get(i).unwrap();
-
-                // Check if name matches
-                let name_matches = airvalues_map[i].name == name;
-
-                // If lengths is provided, check that it matches airvalue.lengths
-                let lengths_match = if let Some(ref provided_lengths) = lengths {
-                    Some(&airvalue.lengths) == Some(provided_lengths)
-                } else {
-                    true // If lengths is None, skip the lengths check
-                };
-
-                name_matches && lengths_match
-            })
-            .unwrap_or_else(|| panic!("Name {} with specified lengths {:?} not found in airvalues", name, lengths));
-
-        assert!(value.len() == 3, "Value vector must have exactly 3 elements");
-
-        let mut value_iter = value.into_iter();
-
-        self.airvalues[airvalue_id * 3] = value_iter.next().unwrap();
-        self.airvalues[airvalue_id * 3 + 1] = value_iter.next().unwrap();
-        self.airvalues[airvalue_id * 3 + 2] = value_iter.next().unwrap();
-
-        self.set_airvalue_calculated(airvalue_id);
-    }
-
-    pub fn set_airgroupvalue(&mut self, name: &str, lengths: Option<Vec<u64>>, value: F) {
-        let airgroupvalues_map = self.stark_info.airgroupvalues_map.as_ref().unwrap();
-        let airgroupvalue_id = (0..airgroupvalues_map.len())
-            .find(|&i| {
-                let airgroupvalue = airgroupvalues_map.get(i).unwrap();
-
-                // Check if name matches
-                let name_matches = airgroupvalues_map[i].name == name;
-
-                // If lengths is provided, check that it matches airgroupvalues.lengths
-                let lengths_match = if let Some(ref provided_lengths) = lengths {
-                    Some(&airgroupvalue.lengths) == Some(provided_lengths)
-                } else {
-                    true // If lengths is None, skip the lengths check
-                };
-
-                name_matches && lengths_match
-            })
-            .unwrap_or_else(|| {
-                panic!("Name {} with specified lengths {:?} not found in airgroupvalues", name, lengths)
-            });
-
-        self.airgroup_values[airgroupvalue_id * 3] = value;
-        self.set_airgroupvalue_calculated(airgroupvalue_id);
-    }
-
-    pub fn set_airgroupvalue_ext(&mut self, name: &str, lengths: Option<Vec<u64>>, value: Vec<F>) {
-        let airgroupvalues_map = self.stark_info.airgroupvalues_map.as_ref().unwrap();
-        let airgroupvalue_id = (0..airgroupvalues_map.len())
-            .find(|&i| {
-                let airgroupvalue = airgroupvalues_map.get(i).unwrap();
-
-                // Check if name matches
-                let name_matches = airgroupvalues_map[i].name == name;
-
-                // If lengths is provided, check that it matches airgroupvalues.lengths
-                let lengths_match = if let Some(ref provided_lengths) = lengths {
-                    Some(&airgroupvalue.lengths) == Some(provided_lengths)
-                } else {
-                    true // If lengths is None, skip the lengths check
-                };
-
-                name_matches && lengths_match
-            })
-            .unwrap_or_else(|| {
-                panic!("Name {} with specified lengths {:?} not found in airgroupvalues", name, lengths)
-            });
-
-        assert!(value.len() == 3, "Value vector must have exactly 3 elements");
-
-        let mut value_iter = value.into_iter();
-
-        self.airgroup_values[airgroupvalue_id * 3] = value_iter.next().unwrap();
-        self.airgroup_values[airgroupvalue_id * 3 + 1] = value_iter.next().unwrap();
-        self.airgroup_values[airgroupvalue_id * 3 + 2] = value_iter.next().unwrap();
-
-        self.set_airgroupvalue_calculated(airgroupvalue_id);
-    }
-
-    pub fn set_commit_calculated(&mut self, id: usize) {
-        self.commits_calculated.insert(id, true);
-    }
-
-    pub fn set_custom_commit_calculated(&mut self, commit_id: usize, id: usize) {
-        self.custom_commits_calculated[commit_id].insert(id, true);
-    }
-
-    pub fn set_air_instance_id(&mut self, air_instance_id: usize, idx: usize) {
-        self.air_instance_id = Some(air_instance_id);
-        self.idx = Some(idx);
-    }
-
-    pub fn set_airgroupvalue_calculated(&mut self, id: usize) {
-        self.airgroupvalue_calculated.insert(id, true);
-    }
-
-    pub fn set_airvalue_calculated(&mut self, id: usize) {
-        self.airvalue_calculated.insert(id, true);
+    pub fn clear_custom_commits_trace(&mut self) {
+        self.custom_commits.clear();
     }
 }

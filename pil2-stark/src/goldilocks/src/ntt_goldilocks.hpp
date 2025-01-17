@@ -165,11 +165,11 @@ public:
         }
         if (r != NULL)
         {
-            delete (r);
+            delete[] r;
         }
         if (r_ != NULL)
         {
-            delete (r_);
+            delete[] r_;
         }
     }
     

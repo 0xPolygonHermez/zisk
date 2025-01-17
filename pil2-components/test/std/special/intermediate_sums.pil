@@ -209,7 +209,7 @@ airtemplate ImCustom(const int N = 2**8, const int degNum = 1, const int degDen 
 }
 
 airgroup Intermediates {
-    init_challenges();
+    challenge stage(2) std_gamma; //TODO: Should this be allowed outside the air?
 
     ImDummy(degNum: 1, degDen: 1, M: 1) alias ImDummy_1;
     ImCustom(degNum: 1, degDen: 1, M: 1) alias ImCustom_1;

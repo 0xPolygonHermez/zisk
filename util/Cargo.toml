@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sysinfo = "0.31.2"
-colored = "2"
+colored.workspace = true
+p3-field.workspace = true
+
+sysinfo = "0.33"

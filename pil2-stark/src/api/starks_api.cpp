@@ -8,6 +8,7 @@
 #include "logger.hpp"
 #include <filesystem>
 #include "setup_ctx.hpp"
+#include "stark_verify.hpp"
 #include "exec_file.hpp"
 #include "final_snark_proof.hpp"
 
@@ -44,15 +45,26 @@ void save_publics(unsigned long numPublicInputs, void *pPublicInputs, char *file
     json2file(publicStarkJson, string(fileDir) + "/publics.json");
 }
 
-void save_proof_values(unsigned long numProofValues, void *pProofValues, char *fileDir) {
+void save_proof_values(void *pProofValues, char* globalInfoFile, char *fileDir) {
     Goldilocks::Element* proofValues = (Goldilocks::Element *)pProofValues;
 
+    json globalInfo;
+    file2json(globalInfoFile, globalInfo);
+
     json proofValuesJson;
-    for(uint64_t i = 0; i < numProofValues; i++) {
+    uint64_t p = 0;
+    for(uint64_t i = 0; i < globalInfo["proofValuesMap"].size(); i++) {
         proofValuesJson[i] = json::array();
-        for(uint64_t j = 0; j < FIELD_EXTENSION; ++j) {
-            proofValuesJson[i][j] = Goldilocks::toString(proofValues[i*FIELD_EXTENSION + j]);
+        if(globalInfo["proofValuesMap"][i]["stage"] == 1) {
+            proofValuesJson[i][0] = Goldilocks::toString(proofValues[p++]);
+            proofValuesJson[i][1] = "0";
+            proofValuesJson[i][2] = "0";
+        } else {
+            proofValuesJson[i][0] = Goldilocks::toString(proofValues[p++]);
+            proofValuesJson[i][1] = Goldilocks::toString(proofValues[p++]);
+            proofValuesJson[i][2] = Goldilocks::toString(proofValues[p++]);
         }
+        
     }
 
     json2file(proofValuesJson, string(fileDir) + "/proof_values.json");
@@ -60,10 +72,10 @@ void save_proof_values(unsigned long numProofValues, void *pProofValues, char *f
 
 
 
-void *fri_proof_new(void *pSetupCtx)
+void *fri_proof_new(void *pSetupCtx, uint64_t instanceId)
 {
     SetupCtx setupCtx = *(SetupCtx *)pSetupCtx;
-    FRIProof<Goldilocks::Element> *friProof = new FRIProof<Goldilocks::Element>(setupCtx.starkInfo);
+    FRIProof<Goldilocks::Element> *friProof = new FRIProof<Goldilocks::Element>(setupCtx.starkInfo, instanceId);
 
     return friProof;
 }
@@ -89,50 +101,114 @@ void fri_proof_set_airvalues(void *pFriProof, void *airValues)
     FRIProof<Goldilocks::Element> *friProof = (FRIProof<Goldilocks::Element> *)pFriProof;
     friProof->proof.setAirValues((Goldilocks::Element *)airValues);
 }
-void *fri_proof_get_zkinproof(void *pFriProof, void* pPublics, void* pChallenges, void *pProofValues, void *pStarkInfo, char* proof_name, char* globalInfoFile, char *fileDir)
+
+void fri_proof_get_zkinproofs(uint64_t nProofs, void **proofs, void **pFriProofs, void* pPublics, void *pProofValues, void* pChallenges, char* globalInfoFile, char *fileDir) {
+    json globalInfo;
+    file2json(globalInfoFile, globalInfo);
+
+    Goldilocks::Element *publics = (Goldilocks::Element *)pPublics;
+    Goldilocks::Element *challenges = (Goldilocks::Element *)pChallenges;
+    Goldilocks::Element *proofValues = (Goldilocks::Element *)pProofValues;
+    
+    json j;
+    for (uint64_t i = 0; i < globalInfo["nPublics"]; i++)
+    {
+        j["publics"][i] = Goldilocks::toString(publics[i]);
+    }
+
+    uint64_t p = 0;
+    for (uint64_t i = 0; i < globalInfo["proofValuesMap"].size(); i++)
+    {
+        if(globalInfo["proofValuesMap"][i]["stage"] == 1) {
+            j["proofvalues"][i][0] = Goldilocks::toString(proofValues[p++]);
+            j["proofvalues"][i][1] = "0";
+            j["proofvalues"][i][2] = "0";
+        } else {
+            j["proofvalues"][i][0] = Goldilocks::toString(proofValues[p++]);
+            j["proofvalues"][i][1] = Goldilocks::toString(proofValues[p++]);
+            j["proofvalues"][i][2] = Goldilocks::toString(proofValues[p++]);
+        }
+    }
+
+    j["challenges"] = challenges2zkin(globalInfo, challenges);
+
+    if(!string(fileDir).empty()) {
+        if (!std::filesystem::exists(string(fileDir) + "/proofs")) {
+            std::filesystem::create_directory(string(fileDir) + "/proofs");
+        }
+    }
+
+    #pragma omp parallel for
+    for(uint64_t i = 0; i < nProofs; ++i) {
+        FRIProof<Goldilocks::Element> *friProof = (FRIProof<Goldilocks::Element> *)pFriProofs[i];
+        nlohmann::json zkin = friProof->proof.proof2json();
+
+        zkin["publics"] = j["publics"];
+        zkin["proofvalues"] = j["proofvalues"];
+        zkin["challenges"] = j["challenges"]["challenges"];
+        zkin["challengesFRISteps"] = j["challenges"]["challengesFRISteps"];
+
+        std::string airName = globalInfo["airs"][friProof->airgroupId][friProof->airId]["name"];
+        std::string proofName = airName + "_" + std::to_string(friProof->instanceId);
+
+        if(!string(fileDir).empty()) {
+            json2file(zkin, string(fileDir) + "/zkin/proof_" + proofName + "_zkin.json");
+        }
+
+        proofs[i] = (void *) new nlohmann::json(zkin);
+    }
+}
+
+
+void *fri_proof_get_zkinproof(void *pFriProof, void* pPublics, void* pChallenges, void *pProofValues, char* globalInfoFile, char *fileDir)
 {
     json globalInfo;
     file2json(globalInfoFile, globalInfo);
     
-    auto starkInfo = *((StarkInfo *)pStarkInfo);
     FRIProof<Goldilocks::Element> *friProof = (FRIProof<Goldilocks::Element> *)pFriProof;
-    nlohmann::json jProof = friProof->proof.proof2json();
-    nlohmann::json zkin = proof2zkinStark(jProof, starkInfo);
+    nlohmann::json zkin = friProof->proof.proof2json();
 
     Goldilocks::Element *publics = (Goldilocks::Element *)pPublics;
     Goldilocks::Element *challenges = (Goldilocks::Element *)pChallenges;
     Goldilocks::Element *proofValues = (Goldilocks::Element *)pProofValues;
 
-    for (uint64_t i = 0; i < starkInfo.nPublics; i++)
+    for (uint64_t i = 0; i < globalInfo["nPublics"]; i++)
     {
         zkin["publics"][i] = Goldilocks::toString(publics[i]);
     }
 
-    for (uint64_t i = 0; i < starkInfo.proofValuesMap.size(); i++)
+    uint64_t p = 0;
+    for (uint64_t i = 0; i < globalInfo["proofValuesMap"].size(); i++)
     {
-        zkin["proofvalues"][i][0] = Goldilocks::toString(proofValues[i*FIELD_EXTENSION]);
-        zkin["proofvalues"][i][1] = Goldilocks::toString(proofValues[i*FIELD_EXTENSION + 1]);
-        zkin["proofvalues"][i][2] = Goldilocks::toString(proofValues[i*FIELD_EXTENSION + 2]);
+        if(globalInfo["proofValuesMap"][i]["stage"] == 1) {
+            zkin["proofvalues"][i][0] = Goldilocks::toString(proofValues[p++]);
+            zkin["proofvalues"][i][1] = "0";
+            zkin["proofvalues"][i][2] = "0";
+        } else {
+            zkin["proofvalues"][i][0] = Goldilocks::toString(proofValues[p++]);
+            zkin["proofvalues"][i][1] = Goldilocks::toString(proofValues[p++]);
+            zkin["proofvalues"][i][2] = Goldilocks::toString(proofValues[p++]);
+        }
     }
 
     json challengesJson = challenges2zkin(globalInfo, challenges);
     zkin["challenges"] = challengesJson["challenges"];
     zkin["challengesFRISteps"] = challengesJson["challengesFRISteps"];
 
+    std::string airName = globalInfo["airs"][friProof->airgroupId][friProof->airId]["name"];
+    std::string proofName = airName + "_" + std::to_string(friProof->instanceId);
+
     // Save output to file
     if(!string(fileDir).empty()) {
-        if (!std::filesystem::exists(string(fileDir) + "/zkin")) {
-            std::filesystem::create_directory(string(fileDir) + "/zkin");
-        }
         if (!std::filesystem::exists(string(fileDir) + "/proofs")) {
             std::filesystem::create_directory(string(fileDir) + "/proofs");
         }
-        json2file(jProof, string(fileDir) + "/proofs/proof_" + proof_name + ".json");
-        json2file(zkin, string(fileDir) + "/zkin/proof_" + proof_name + "_zkin.json");
+        json2file(zkin, string(fileDir) + "/proofs/proof_" + proofName + ".json");
     }
 
     return (void *) new nlohmann::json(zkin);    
 }
+
 void fri_proof_free_zkinproof(void *pZkinProof){
     nlohmann::json* zkin = (nlohmann::json*) pZkinProof;
     delete zkin;
@@ -144,54 +220,49 @@ void fri_proof_free(void *pFriProof)
     delete friProof;
 }
 
+void proofs_free(uint64_t nProofs, void **pStarks, void **pFriProofs, bool background) {
+
+#pragma omp parallel for
+    for (uint64_t i = 0; i < nProofs; ++i) {
+        FRIProof<Goldilocks::Element> *friProof = (FRIProof<Goldilocks::Element> *)pFriProofs[i];
+        Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks[i];
+
+        delete friProof;
+        delete starks;
+    }
+}
+
+
 // SetupCtx
 // ========================================================================================
 
-void* get_hint_ids_by_name(void *p_expression_bin, char* hintName)
+uint64_t n_hints_by_name(void *p_expression_bin, char* hintName) {
+    ExpressionsBin *expressionsBin = (ExpressionsBin*)p_expression_bin;
+    return expressionsBin->getNumberHintIdsByName(string(hintName));
+}
+
+void get_hint_ids_by_name(void *p_expression_bin, uint64_t* hintIds, char* hintName)
 {
     ExpressionsBin *expressionsBin = (ExpressionsBin*)p_expression_bin;
-
-    VecU64Result hintIds = expressionsBin->getHintIdsByName(string(hintName));
-    return new VecU64Result(hintIds);
+    expressionsBin->getHintIdsByName(hintIds, string(hintName));
 }
 
 // StarkInfo
 // ========================================================================================
-void *stark_info_new(char *filename)
+void *stark_info_new(char *filename, bool verify)
 {
-    auto starkInfo = new StarkInfo(filename);
+    auto starkInfo = new StarkInfo(filename, verify);
 
     return starkInfo;
 }
 
-uint64_t get_map_total_n(void *pStarkInfo)
+uint64_t get_map_total_n(void *pStarkInfo, bool recursive)
 {
-    return ((StarkInfo *)pStarkInfo)->mapTotalN;
-}
-
-uint64_t get_map_total_n_custom_commits(void *pStarkInfo, uint64_t commit_id) {
-    auto starkInfo = *(StarkInfo *)pStarkInfo;
-    return starkInfo.mapTotalNcustomCommits[starkInfo.customCommits[commit_id].name];
-}
-
-void *get_custom_commit_map_ids(void *pStarkInfo, uint64_t commit_id, uint64_t stage) {
-    auto starkInfo = *(StarkInfo *)pStarkInfo;
-    VecU64Result customCommitIds;
-    customCommitIds.nElements = starkInfo.customCommits[commit_id].stageWidths[stage];
-    customCommitIds.ids = new uint64_t[customCommitIds.nElements];
-    uint64_t c = 0;
-    for(uint64_t i = 0; i < starkInfo.customCommitsMap[commit_id].size(); ++i) {
-        if(starkInfo.customCommitsMap[commit_id][i].stage == stage) {
-            customCommitIds.ids[c++] = i;
-        }
+    StarkInfo *starkInfo = (StarkInfo *)pStarkInfo;
+    if(recursive) {
+        starkInfo->addMemoryRecursive();
     }
-    return new VecU64Result(customCommitIds);
-}
-
-uint64_t get_map_offsets(void *pStarkInfo, char *stage, bool flag)
-{
-    auto starkInfo = (StarkInfo *)pStarkInfo;
-    return starkInfo->mapOffsets[std::make_pair(stage, flag)];
+    return starkInfo->mapTotalN;
 }
 
 void stark_info_free(void *pStarkInfo)
@@ -202,8 +273,8 @@ void stark_info_free(void *pStarkInfo)
 
 // Prover Helpers
 // ========================================================================================
-void *prover_helpers_new(void *pStarkInfo) {
-    auto prover_helpers = new ProverHelpers(*(StarkInfo *)pStarkInfo);
+void *prover_helpers_new(void *pStarkInfo, bool pil1) {
+    auto prover_helpers = new ProverHelpers(*(StarkInfo *)pStarkInfo, pil1);
     return prover_helpers;
 }
 
@@ -254,9 +325,9 @@ void calculate_const_tree(void *pStarkInfo, void *pConstPolsAddress, void *pCons
 
 // Expressions Bin
 // ========================================================================================
-void *expressions_bin_new(char* filename, bool global)
+void *expressions_bin_new(char* filename, bool global, bool verifier)
 {
-    auto expressionsBin = new ExpressionsBin(filename, global);
+    auto expressionsBin = new ExpressionsBin(filename, global, verifier);
 
     return expressionsBin;
 };
@@ -268,10 +339,18 @@ void expressions_bin_free(void *pExpressionsBin)
 
 // Hints
 // ========================================================================================
-void *get_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char* hintFieldName, void* hintOptions) 
+void get_hint_field(void *pSetupCtx, void* stepsParams, void* hintFieldValues, uint64_t hintId, char* hintFieldName, void* hintOptions) 
 {
-    HintFieldValues hintFieldValues = getHintField(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldName), *(HintFieldOptions *) hintOptions);
-    return new HintFieldValues(hintFieldValues);
+    getHintField(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, (HintFieldInfo *) hintFieldValues, hintId, string(hintFieldName), *(HintFieldOptions *) hintOptions);
+}
+
+uint64_t get_hint_field_values(void *pSetupCtx, uint64_t hintId, char* hintFieldName) {
+    return getHintFieldValues(*(SetupCtx *)pSetupCtx, hintId, string(hintFieldName));
+}
+
+void get_hint_field_sizes(void *pSetupCtx, void* hintFieldValues, uint64_t hintId, char* hintFieldName, void* hintOptions)
+{
+    getHintFieldSizes(*(SetupCtx *)pSetupCtx, (HintFieldInfo *) hintFieldValues, hintId, string(hintFieldName), *(HintFieldOptions *) hintOptions);
 }
 
 uint64_t mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2) 
@@ -279,18 +358,21 @@ uint64_t mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, ch
     return multiplyHintFields(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldName1), string(hintFieldName2), *(HintFieldOptions *)hintOptions1,  *(HintFieldOptions *)hintOptions2);
 }
 
-void *acc_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName, bool add) {
-    return new VecU64Result(accHintField(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldNameAirgroupVal), string(hintFieldName), add));
+void acc_hint_field(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName, bool add) {
+    accHintField(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldNameAirgroupVal), string(hintFieldName), add);
 }
 
-void *acc_mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2, bool add) {
-    return new VecU64Result(accMulHintFields(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldNameAirgroupVal), string(hintFieldName1), string(hintFieldName2),*(HintFieldOptions *)hintOptions1,  *(HintFieldOptions *)hintOptions2, add));
+void acc_mul_hint_fields(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameDest, char *hintFieldNameAirgroupVal, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2, bool add) {
+    accMulHintFields(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameDest), string(hintFieldNameAirgroupVal), string(hintFieldName1), string(hintFieldName2),*(HintFieldOptions *)hintOptions1,  *(HintFieldOptions *)hintOptions2, add);
 }
 
-void *update_airgroupvalue(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameAirgroupVal, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2, bool add) {
-    return new VecU64Result(updateAirgroupValue(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameAirgroupVal), string(hintFieldName1), string(hintFieldName2),*(HintFieldOptions *)hintOptions1,  *(HintFieldOptions *)hintOptions2, add));
+uint64_t update_airgroupvalue(void *pSetupCtx, void* stepsParams, uint64_t hintId, char *hintFieldNameAirgroupVal, char *hintFieldName1, char *hintFieldName2, void* hintOptions1, void *hintOptions2, bool add) {
+    return updateAirgroupValue(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, hintId, string(hintFieldNameAirgroupVal), string(hintFieldName1), string(hintFieldName2),*(HintFieldOptions *)hintOptions1,  *(HintFieldOptions *)hintOptions2, add);
 }
 
+uint64_t get_hint_id(void *pSetupCtx, uint64_t hintId, char * hintFieldName) {
+    return getHintId(*(SetupCtx *)pSetupCtx, hintId, string(hintFieldName));
+}
 
 uint64_t set_hint_field(void *pSetupCtx, void* params, void *values, uint64_t hintId, char * hintFieldName) 
 {
@@ -345,16 +427,16 @@ void calculate_impols_expressions(void *pStarks, uint64_t step, void* stepsParam
     starks->calculateImPolsExpressions(step, *(StepsParams *)stepsParams);
 }
 
-void extend_and_merkelize_custom_commit(void *pStarks, uint64_t commitId, uint64_t step, void *buffer, void *pProof, void *pBuffHelper, char *bufferFile)
+void extend_and_merkelize_custom_commit(void *pStarks, uint64_t commitId, uint64_t step, void *buffer, void* bufferExt, void *pProof, void *pBuffHelper, char *bufferFile)
 {
     Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
-    starks->extendAndMerkelizeCustomCommit(commitId, step, (Goldilocks::Element *)buffer, *(FRIProof<Goldilocks::Element> *)pProof, (Goldilocks::Element *)pBuffHelper, string(bufferFile));
+    starks->extendAndMerkelizeCustomCommit(commitId, step, (Goldilocks::Element *)buffer, (Goldilocks::Element *)bufferExt, *(FRIProof<Goldilocks::Element> *)pProof, (Goldilocks::Element *)pBuffHelper, string(bufferFile));
 }
 
-void load_custom_commit(void *pStarks, uint64_t commitId, uint64_t step, void *buffer, void *pProof, char *bufferFile)
+void load_custom_commit(void *pStarks, uint64_t commitId, uint64_t step, void *buffer, void *bufferExt, void *pProof, char *bufferFile)
 {
     Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
-    starks->loadCustomCommit(commitId, step, (Goldilocks::Element *)buffer, *(FRIProof<Goldilocks::Element> *)pProof, string(bufferFile));
+    starks->loadCustomCommit(commitId, step, (Goldilocks::Element *)buffer, (Goldilocks::Element *)bufferExt, *(FRIProof<Goldilocks::Element> *)pProof, string(bufferFile));
 }
 
 void commit_stage(void *pStarks, uint32_t elementType, uint64_t step, void *trace, void *buffer, void *pProof, void *pBuffHelper) {
@@ -400,18 +482,6 @@ void calculate_hash(void *pStarks, void *pHhash, void *pBuffer, uint64_t nElemen
 {
     Starks<Goldilocks::Element> *starks = (Starks<Goldilocks::Element> *)pStarks;
     starks->calculateHash((Goldilocks::Element *)pHhash, (Goldilocks::Element *)pBuffer, nElements);
-}
-
-// MerkleTree
-// =================================================================================
-void *merkle_tree_new(uint64_t height, uint64_t width, uint64_t arity, bool custom) {
-    MerkleTreeGL * mt =  new MerkleTreeGL(arity, custom, height, width, NULL);
-    return mt;
-}
-
-void merkle_tree_free(void *pMerkleTree) {
-    MerkleTreeGL *merkleTree = (MerkleTreeGL *)pMerkleTree;
-    delete merkleTree;
 }
 
 // FRI
@@ -507,35 +577,88 @@ void get_permutations(void *pTranscript, uint64_t *res, uint64_t n, uint64_t nBi
 
 // Constraints
 // =================================================================================
-void *verify_constraints(void *pSetupCtx, void* stepsParams)
+uint64_t get_n_constraints(void *pSetupCtx)
 {
-    ConstraintsResults *constraintsInfo = verifyConstraints(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams);
-    return constraintsInfo;
+    auto setupCtx = *(SetupCtx *)pSetupCtx;
+    return setupCtx.expressionsBin.constraintsInfoDebug.size();
+}
+
+void get_constraints_lines_sizes(void* pSetupCtx, uint64_t *constraintsLinesSizes)
+{
+    auto setupCtx = *(SetupCtx *)pSetupCtx;
+    for(uint64_t i = 0; i < setupCtx.expressionsBin.constraintsInfoDebug.size(); ++i) {
+        constraintsLinesSizes[i] = setupCtx.expressionsBin.constraintsInfoDebug[i].line.size();
+    }
+}
+
+void get_constraints_lines(void* pSetupCtx, uint8_t **constraintsLines)
+{
+    auto setupCtx = *(SetupCtx *)pSetupCtx;
+    for(uint64_t i = 0; i < setupCtx.expressionsBin.constraintsInfoDebug.size(); ++i) {
+        std::memcpy(constraintsLines[i], setupCtx.expressionsBin.constraintsInfoDebug[i].line.data(), setupCtx.expressionsBin.constraintsInfoDebug[i].line.size());
+    }
+}
+
+void verify_constraints(void *pSetupCtx, void* stepsParams, void* constraintsInfo)
+{
+    verifyConstraints(*(SetupCtx *)pSetupCtx, *(StepsParams *)stepsParams, (ConstraintInfo *)constraintsInfo);
 }
 
 // Global Constraints
 // =================================================================================
-bool verify_global_constraints(void* p_globalinfo_bin, void *publics, void *challenges, void *proofValues, void **airgroupValues) {
-    return verifyGlobalConstraints(*(ExpressionsBin*)p_globalinfo_bin, (Goldilocks::Element *)publics, (Goldilocks::Element *)challenges, (Goldilocks::Element *)proofValues, (Goldilocks::Element **)airgroupValues);
+uint64_t get_n_global_constraints(void* p_globalinfo_bin)
+{
+    return getNumberGlobalConstraints(*(ExpressionsBin*)p_globalinfo_bin);
 }
 
-void *get_hint_field_global_constraints(void* p_globalinfo_bin, void *publics, void *challenges, void *proofValues, void **airgroupValues, uint64_t hintId, char *hintFieldName, bool print_expression) 
+void get_global_constraints_lines_sizes(void* p_globalinfo_bin, uint64_t *constraintsLinesSizes)
 {
-    HintFieldValues hintFieldValues = getHintFieldGlobalConstraint(*(ExpressionsBin*)p_globalinfo_bin, (Goldilocks::Element *)publics, (Goldilocks::Element *)challenges, (Goldilocks::Element *)proofValues, (Goldilocks::Element **)airgroupValues, hintId, string(hintFieldName), print_expression);
-    return new HintFieldValues(hintFieldValues);
+    return getGlobalConstraintsLinesSizes(*(ExpressionsBin*)p_globalinfo_bin, constraintsLinesSizes);
 }
 
-uint64_t set_hint_field_global_constraints(void* p_globalinfo_bin, void *proofValues, void *values, uint64_t hintId, char *hintFieldName) 
+void get_global_constraints_lines(void* p_globalinfo_bin, uint8_t **constraintsLines)
 {
-    return setHintFieldGlobalConstraint(*(ExpressionsBin*)p_globalinfo_bin, (Goldilocks::Element *)proofValues, (Goldilocks::Element *)values, hintId, string(hintFieldName));
+    return getGlobalConstraintsLines(*(ExpressionsBin*)p_globalinfo_bin, constraintsLines);
+}
+
+void verify_global_constraints(char* globalInfoFile, void* p_globalinfo_bin, void *publics, void *challenges, void *proofValues, void **airgroupValues, void *globalConstraintsInfo) {
+    json globalInfo;
+    file2json(globalInfoFile, globalInfo);
+
+    verifyGlobalConstraints(globalInfo, *(ExpressionsBin*)p_globalinfo_bin, (Goldilocks::Element *)publics, (Goldilocks::Element *)challenges, (Goldilocks::Element *)proofValues, (Goldilocks::Element **)airgroupValues, (GlobalConstraintInfo *)globalConstraintsInfo);
+}
+ 
+uint64_t get_hint_field_global_constraints_values(void* p_globalinfo_bin, uint64_t hintId, char* hintFieldName) {
+    return getHintFieldGlobalConstraintValues(*(ExpressionsBin*)p_globalinfo_bin, hintId, string(hintFieldName));
+}
+
+void get_hint_field_global_constraints_sizes(char* globalInfoFile, void* p_globalinfo_bin, void* hintFieldValues, uint64_t hintId, char *hintFieldName, bool print_expression)
+{
+    json globalInfo;
+    file2json(globalInfoFile, globalInfo);
+
+    getHintFieldGlobalConstraintSizes(globalInfo, *(ExpressionsBin*)p_globalinfo_bin, (HintFieldInfo *)hintFieldValues, hintId, string(hintFieldName), print_expression);
+}
+
+
+void get_hint_field_global_constraints(char* globalInfoFile, void* p_globalinfo_bin, void* hintFieldValues, void *publics, void *challenges, void *proofValues, void **airgroupValues, uint64_t hintId, char *hintFieldName, bool print_expression) 
+{
+    json globalInfo;
+    file2json(globalInfoFile, globalInfo);
+
+    getHintFieldGlobalConstraint(globalInfo, *(ExpressionsBin*)p_globalinfo_bin, (HintFieldInfo *)hintFieldValues, (Goldilocks::Element *)publics, (Goldilocks::Element *)challenges, (Goldilocks::Element *)proofValues, (Goldilocks::Element **)airgroupValues, hintId, string(hintFieldName), print_expression);
+}
+
+uint64_t set_hint_field_global_constraints(char* globalInfoFile, void* p_globalinfo_bin, void *proofValues, void *values, uint64_t hintId, char *hintFieldName) 
+{
+    json globalInfo;
+    file2json(globalInfoFile, globalInfo);
+
+    return setHintFieldGlobalConstraint(globalInfo, *(ExpressionsBin*)p_globalinfo_bin, (Goldilocks::Element *)proofValues, (Goldilocks::Element *)values, hintId, string(hintFieldName));
 }
 
 // Debug functions
 // =================================================================================  
-
-void print_expression(void *pSetupCtx, void* pol, uint64_t dim, uint64_t first_value, uint64_t last_value) {
-    printExpression((Goldilocks::Element *)pol, dim, first_value, last_value);
-}
 
 void print_row(void *pSetupCtx, void *buffer, uint64_t stage, uint64_t row) {
     printRow(*(SetupCtx *)pSetupCtx, (Goldilocks::Element *)buffer, stage, row);
@@ -543,21 +666,21 @@ void print_row(void *pSetupCtx, void *buffer, uint64_t stage, uint64_t row) {
 
 // Recursive proof
 // ================================================================================= 
-void *gen_recursive_proof(void *pSetupCtx, char* globalInfoFile, uint64_t airgroupId, void* pAddress, void *pConstPols, void *pConstTree, void* pPublicInputs, char* proof_file, bool vadcop) {
+void *gen_recursive_proof(void *pSetupCtx, char* globalInfoFile, uint64_t airgroupId, void* witness, void* aux_trace, void *pConstPols, void *pConstTree, void* pPublicInputs, char* proof_file, bool vadcop) {
     json globalInfo;
     file2json(globalInfoFile, globalInfo);
 
     auto setup = *(SetupCtx *)pSetupCtx;
     if(setup.starkInfo.starkStruct.verificationHashType == "GL") {
-        return genRecursiveProof<Goldilocks::Element>(*(SetupCtx *)pSetupCtx, globalInfo, airgroupId, (Goldilocks::Element *)pAddress, (Goldilocks::Element *)pConstPols, (Goldilocks::Element *)pConstTree, (Goldilocks::Element *)pPublicInputs, string(proof_file), vadcop);
+        return genRecursiveProof<Goldilocks::Element>(*(SetupCtx *)pSetupCtx, globalInfo, airgroupId, (Goldilocks::Element *)witness,  (Goldilocks::Element *)aux_trace, (Goldilocks::Element *)pConstPols, (Goldilocks::Element *)pConstTree, (Goldilocks::Element *)pPublicInputs, string(proof_file), vadcop);
     } else {
-        return genRecursiveProof<RawFr::Element>(*(SetupCtx *)pSetupCtx, globalInfo, airgroupId, (Goldilocks::Element *)pAddress, (Goldilocks::Element *)pConstPols, (Goldilocks::Element *)pConstTree, (Goldilocks::Element *)pPublicInputs, string(proof_file), false);
+        return genRecursiveProof<RawFr::Element>(*(SetupCtx *)pSetupCtx, globalInfo, airgroupId, (Goldilocks::Element *)witness, (Goldilocks::Element *)aux_trace, (Goldilocks::Element *)pConstPols, (Goldilocks::Element *)pConstTree, (Goldilocks::Element *)pPublicInputs, string(proof_file), false);
     }
 }
 
 void *get_zkin_ptr(char *zkin_file) {
     json zkin;
-    
+    file2json(zkin_file, zkin);
 
     return (void *) new nlohmann::json(zkin);
 }
@@ -637,12 +760,12 @@ void serialized_proof_free(char *zkinCStr) {
     delete[] zkinCStr;
 }
 
-void get_committed_pols(void *pWitness, char* execFile, void *pAddress, void* pPublics, uint64_t sizeWitness, uint64_t N, uint64_t nPublics, uint64_t offsetCm1, uint64_t nCommitedPols) {
-    getCommitedPols((Goldilocks::Element *)pWitness, string(execFile), (Goldilocks::Element *)pAddress, (Goldilocks::Element *)pPublics, sizeWitness, N, nPublics, offsetCm1, nCommitedPols);
+void get_committed_pols(void *circomWitness, char* execFile, void *witness, void* pPublics, uint64_t sizeWitness, uint64_t N, uint64_t nPublics, uint64_t nCommitedPols) {
+    getCommitedPols((Goldilocks::Element *)circomWitness, string(execFile), (Goldilocks::Element *)witness, (Goldilocks::Element *)pPublics, sizeWitness, N, nPublics, nCommitedPols);
 }
 
-void gen_final_snark_proof(void *pWitnessFinal, char* zkeyFile, char* outputDir) {
-    genFinalSnarkProof(pWitnessFinal, string(zkeyFile), string(outputDir));
+void gen_final_snark_proof(void *circomWitnessFinal, char* zkeyFile, char* outputDir) {
+    genFinalSnarkProof(circomWitnessFinal, string(zkeyFile), string(outputDir));
 }
 
 void setLogLevel(uint64_t level) {
@@ -668,4 +791,60 @@ void setLogLevel(uint64_t level) {
     }
 
     Logger::getInstance(LOG_TYPE::CONSOLE)->updateLogLevel((LOG_LEVEL)new_level);
+}
+
+
+// Stark Verify
+// =================================================================================
+bool stark_verify(void* jProof, void *pStarkInfo, void *pExpressionsBin, char *verkeyFile, void *pPublics, void *pProofValues, void *pChallenges) {
+    Goldilocks::Element *challenges = (Goldilocks::Element *)pChallenges;
+    bool vadcop = challenges == nullptr ? false : true;
+    StarkInfo starkInfo = *((StarkInfo *)pStarkInfo);
+    if (starkInfo.starkStruct.verificationHashType == "GL") {
+        return starkVerify<Goldilocks::Element>(*(nlohmann::json*) jProof, *(StarkInfo *)pStarkInfo, *(ExpressionsBin *)pExpressionsBin, string(verkeyFile), (Goldilocks::Element *)pPublics, (Goldilocks::Element *)pProofValues, vadcop, (Goldilocks::Element *)pChallenges);
+    } else {
+        return starkVerify<RawFr::Element>(*(nlohmann::json*) jProof, *(StarkInfo *)pStarkInfo, *(ExpressionsBin *)pExpressionsBin, string(verkeyFile), (Goldilocks::Element *)pPublics, (Goldilocks::Element *)pProofValues, vadcop, (Goldilocks::Element *)pChallenges);
+    }
+}
+
+// Debug circom
+// =================================================================================
+void save_to_file(void *buffer, uint64_t bufferSize, void* publics, uint64_t publicsSize, char* name) {
+    json j;
+    Goldilocks::Element *buff = (Goldilocks::Element *)buffer;
+    for(uint64_t i = 0; i < bufferSize; ++i) {
+        j["buffer"][i] = Goldilocks::toString(buff[i]);
+    }
+
+    Goldilocks::Element *pubs = (Goldilocks::Element *)publics;
+    for(uint64_t i = 0; i < publicsSize; ++i) {
+        j["publics"][i] = Goldilocks::toString(pubs[i]);
+    }
+
+    json2file(j, string(name));
+}
+
+void read_from_file(void* buffer, uint64_t bufferSize, void* publics, uint64_t publicsSize, char* name) {
+    json j;
+    file2json(string(name), j);
+    Goldilocks::Element *buff = (Goldilocks::Element *)buffer;
+    for(uint64_t i = 0; i < bufferSize; ++i) {
+        buff[i] = Goldilocks::fromString(j["buffer"][i]);
+    }
+
+    Goldilocks::Element *pubs = (Goldilocks::Element *)publics;
+    for(uint64_t i = 0; i < publicsSize; ++i) {
+        pubs[i] = Goldilocks::fromString(j["publics"][i]);
+    }
+}
+
+void *create_buffer(uint64_t size) {
+    Goldilocks::Element *buffer = new Goldilocks::Element[size];
+    cout << buffer << std::endl;
+    return (void *)buffer;
+}
+
+void free_buffer(void *buffer) {
+    cout <<  (Goldilocks::Element *)buffer << endl;
+    delete[] (Goldilocks::Element *)buffer;
 }

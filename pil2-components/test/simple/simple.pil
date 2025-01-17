@@ -11,7 +11,7 @@ airtemplate SimpleLeft(const int N = 2**2) {
 
     permutation_assumes(2, [e, f]);
 
-    lookup(3, [g, h], sel: -1);
+    lookup(3, [g, h], mul: -1);
 };
 
 airtemplate SimpleRight(const int N = 2**2) {

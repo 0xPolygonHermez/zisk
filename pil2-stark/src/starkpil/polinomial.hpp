@@ -259,6 +259,7 @@ public:
 
         double pow2thread = floor(log2(omp_get_max_threads()));
         uint64_t nThreads = (1 << (int)pow2thread) / 4;
+        if(nThreads == 0) nThreads = 1;
         uint64_t partitionSize = size / nThreads;
 
         if(partitionSize < 10) {

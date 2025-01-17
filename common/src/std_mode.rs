@@ -7,26 +7,30 @@ pub const DEFAULT_PRINT_VALS: usize = 10;
 #[derive(Clone)]
 pub struct StdMode {
     pub name: ModeName,
-    pub opids: Option<Vec<u64>>,
+    pub opids: Vec<u64>,
     pub n_vals: usize,
     pub print_to_file: bool,
 }
 
 impl StdMode {
-    pub const fn new(name: ModeName, opids: Option<Vec<u64>>, n_vals: usize, print_to_file: bool) -> Self {
-        if n_vals == 0 {
+    pub const fn new(name: ModeName, opids: Vec<u64>, n_vals: usize, print_to_file: bool) -> Self {
+        if name.as_usize() != ModeName::Standard.as_usize() && n_vals == 0 {
             panic!("n_vals must be greater than 0");
         }
 
         Self { name, opids, n_vals, print_to_file }
+    }
+
+    pub fn new_debug() -> Self {
+        Self::new(ModeName::Debug, Vec::new(), DEFAULT_PRINT_VALS, false)
     }
 }
 
 impl From<u8> for StdMode {
     fn from(v: u8) -> Self {
         match v {
-            0 => StdMode::new(ModeName::Standard, None, DEFAULT_PRINT_VALS, false),
-            1 => StdMode::new(ModeName::Debug, None, DEFAULT_PRINT_VALS, false),
+            0 => StdMode::new(ModeName::Standard, Vec::new(), DEFAULT_PRINT_VALS, false),
+            1 => StdMode::new(ModeName::Debug, Vec::new(), DEFAULT_PRINT_VALS, false),
             _ => panic!("Invalid mode"),
         }
     }
@@ -34,7 +38,7 @@ impl From<u8> for StdMode {
 
 impl Default for StdMode {
     fn default() -> Self {
-        StdMode::new(ModeName::Standard, None, DEFAULT_PRINT_VALS, false)
+        StdMode::new(ModeName::Standard, Vec::new(), DEFAULT_PRINT_VALS, false)
     }
 }
 
@@ -63,5 +67,11 @@ impl PartialEq for ModeName {
 impl PartialEq<ModeName> for usize {
     fn eq(&self, other: &ModeName) -> bool {
         *self == (*other as usize)
+    }
+}
+
+impl ModeName {
+    const fn as_usize(&self) -> usize {
+        *self as usize
     }
 }

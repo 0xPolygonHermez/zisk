@@ -1,0 +1,23 @@
+[package]
+name = "witness"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+proofman-common = { path = "../common" }
+proofman-util = { path = "../util" }
+
+log.workspace = true
+env_logger.workspace = true
+p3-goldilocks.workspace = true
+p3-field.workspace = true
+
+colored.workspace = true
+mpi = { version = "0.8.0", optional = true }
+serde_json.workspace = true
+
+
+[features]
+default = []
+no_lib_link = []
+distributed = []

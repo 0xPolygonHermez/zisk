@@ -1,104 +1,65 @@
 use std::sync::Arc;
 
-use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
+use witness::WitnessComponent;
+use proofman_common::{add_air_instance, FromTrace, AirInstance, ProofCtx};
 
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{Lookup2_12Trace, LOOKUP_2_12_AIR_IDS, LOOKUP_AIRGROUP_ID};
+use crate::Lookup2_12Trace;
 
-pub struct Lookup2_12<F> {
-    _phantom: std::marker::PhantomData<F>,
-}
+pub struct Lookup2_12;
 
-impl<F: PrimeField + Copy> Lookup2_12<F>
-where
-    Standard: Distribution<F>,
-{
+impl Lookup2_12 {
     const MY_NAME: &'static str = "Lkup2_12";
 
-    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let lookup2_12 = Arc::new(Self { _phantom: std::marker::PhantomData });
-
-        wcm.register_component(lookup2_12.clone(), Some(LOOKUP_AIRGROUP_ID), Some(LOOKUP_2_12_AIR_IDS));
-
-        lookup2_12
-    }
-
-    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        let num_rows = pctx.global_info.airs[LOOKUP_AIRGROUP_ID][LOOKUP_2_12_AIR_IDS[0]].num_rows;
-        let trace = Lookup2_12Trace::new(num_rows);
-
-        let air_instance =
-            AirInstance::new(sctx.clone(), LOOKUP_AIRGROUP_ID, LOOKUP_2_12_AIR_IDS[0], None, trace.buffer.unwrap());
-
-        let (is_myne, gid) = ectx.dctx.write().unwrap().add_instance(LOOKUP_AIRGROUP_ID, LOOKUP_2_12_AIR_IDS[0], 1);
-        if is_myne {
-            pctx.air_instance_repo.add_air_instance(air_instance, Some(gid));
-        }
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self)
     }
 }
 
-impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup2_12<F>
+impl<F: PrimeField + Copy> WitnessComponent<F> for Lookup2_12
 where
     Standard: Distribution<F>,
 {
-    fn calculate_witness(
-        &self,
-        stage: u32,
-        air_instance_id: Option<usize>,
-        pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
-    ) {
+    fn execute(&self, pctx: Arc<ProofCtx<F>>) {
         let mut rng = rand::thread_rng();
 
-        let air_instances_vec = &mut pctx.air_instance_repo.air_instances.write().unwrap();
-        let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
-        let air = pctx.pilout.get_air(air_instance.airgroup_id, air_instance.air_id);
+        let mut trace = Lookup2_12Trace::new();
+        let num_rows = trace.num_rows();
 
-        log::debug!(
-            "{}: ··· Witness computation for AIR '{}' at stage {}",
-            Self::MY_NAME,
-            air.name().unwrap_or("unknown"),
-            stage
-        );
+        log::debug!("{} ··· Starting witness computation stage {}", Self::MY_NAME, 1);
 
-        if stage == 1 {
-            let buffer = &mut air_instance.trace;
+        // TODO: Add the ability to send inputs to lookup3
+        //       and consequently add random selectors
 
-            let num_rows = pctx.pilout.get_air(LOOKUP_AIRGROUP_ID, LOOKUP_2_12_AIR_IDS[0]).num_rows();
-            let mut trace = Lookup2_12Trace::map_buffer(buffer.as_mut_slice(), num_rows, 0).unwrap();
+        for i in 0..num_rows {
+            // Inner lookups
+            trace[i].a1 = rng.gen();
+            trace[i].b1 = rng.gen();
+            trace[i].c1 = trace[i].a1;
+            trace[i].d1 = trace[i].b1;
 
-            // TODO: Add the ability to send inputs to lookup3
-            //       and consequently add random selectors
-
-            for i in 0..num_rows {
-                // Inner lookups
-                trace[i].a1 = rng.gen();
-                trace[i].b1 = rng.gen();
-                trace[i].c1 = trace[i].a1;
-                trace[i].d1 = trace[i].b1;
-
-                trace[i].a3 = rng.gen();
-                trace[i].b3 = rng.gen();
-                trace[i].c2 = trace[i].a3;
-                trace[i].d2 = trace[i].b3;
-                let selected = rng.gen_bool(0.5);
-                trace[i].sel1 = F::from_bool(selected);
-                if selected {
-                    trace[i].mul = trace[i].sel1;
-                }
-
-                // Outer lookups
-                trace[i].a2 = F::from_canonical_usize(i);
-                trace[i].b2 = F::from_canonical_usize(i);
-
-                trace[i].a4 = F::from_canonical_usize(i);
-                trace[i].b4 = F::from_canonical_usize(i);
-                trace[i].sel2 = F::from_bool(true);
+            trace[i].a3 = rng.gen();
+            trace[i].b3 = rng.gen();
+            trace[i].c2 = trace[i].a3;
+            trace[i].d2 = trace[i].b3;
+            let selected = rng.gen_bool(0.5);
+            trace[i].sel1 = F::from_bool(selected);
+            if selected {
+                trace[i].mul = trace[i].sel1;
             }
+
+            // Outer lookups
+            trace[i].a2 = F::from_canonical_usize(i);
+            trace[i].b2 = F::from_canonical_usize(i);
+
+            trace[i].a4 = F::from_canonical_usize(i);
+            trace[i].b4 = F::from_canonical_usize(i);
+            trace[i].sel2 = F::from_bool(true);
         }
+
+        let air_instance = AirInstance::new_from_trace(FromTrace::new(&mut trace));
+        add_air_instance::<F>(air_instance, pctx.clone());
     }
 }

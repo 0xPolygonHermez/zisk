@@ -34,7 +34,7 @@ void buildConstTree(const string constFile, const string starkInfoFile, const st
     
     TimerStart(LOADING_CONST_POLS);
     Goldilocks::Element *pConstPols = (Goldilocks::Element *)loadFileParallel(constFile, constPolsSize);
-    Goldilocks::Element *pConstPolsExt = (Goldilocks::Element *)malloc(NExtended * nPols * sizeof(Goldilocks::Element));
+    Goldilocks::Element *pConstPolsExt = new Goldilocks::Element[NExtended * nPols];
     TimerStopAndLog(LOADING_CONST_POLS);
 
     TimerStart(EXTEND_CONST_POLS);
@@ -45,7 +45,10 @@ void buildConstTree(const string constFile, const string starkInfoFile, const st
     if (verificationHashType == "GL") {
         TimerStart(MERKELIZE_CONST_TREE);
         Goldilocks::Element root[4];
-        MerkleTreeGL mt(2, true, NExtended, nPols, pConstPolsExt);
+        MerkleTreeGL mt(2, true, NExtended, nPols);
+        Goldilocks::Element *buffNodes = new Goldilocks::Element[mt.numNodes];
+        mt.setSource(pConstPolsExt);
+        mt.setNodes(buffNodes);
         mt.merkelize();
         mt.getRoot(root);
         TimerStopAndLog(MERKELIZE_CONST_TREE);
@@ -74,7 +77,10 @@ void buildConstTree(const string constFile, const string starkInfoFile, const st
         uint64_t merkleTreeArity = starkInfoJson["starkStruct"].contains("merkleTreeArity") ? starkInfoJson["starkStruct"]["merkleTreeArity"].get<uint64_t>() : 16;
         bool merkleTreeCustom = starkInfoJson["starkStruct"].contains("merkleTreeCustom") ? starkInfoJson["starkStruct"]["merkleTreeCustom"].get<bool>() : false;
 
-        MerkleTreeBN128 mt(merkleTreeArity, merkleTreeCustom, NExtended, nPols, pConstPolsExt);
+        MerkleTreeBN128 mt(merkleTreeArity, merkleTreeCustom, NExtended, nPols);
+        RawFr::Element *buffNodes = new RawFr::Element[mt.numNodes];
+        mt.setSource(pConstPolsExt);
+        mt.setNodes(buffNodes);
         mt.merkelize();
         mt.getRoot(&rootC);
         TimerStopAndLog(MERKELIZE_CONST_TREE);
@@ -98,6 +104,6 @@ void buildConstTree(const string constFile, const string starkInfoFile, const st
         exit(-1);
     }
 
-    free(pConstPolsExt);
+    delete[] pConstPolsExt;
     TimerStopAndLog(BUILD_CONST_TREE);
 }

@@ -2,11 +2,38 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common as common;
 pub use proofman_macros::trace;
+pub use proofman_macros::values;
 
-trace!(SimpleLeftRow, SimpleLeftTrace<F> {
+use std::fmt;
+
+#[allow(dead_code)]
+type FieldExtension<F> = [F; 3];
+
+pub const PILOUT_HASH: &[u8] = b"Build-hash";
+
+//AIRGROUP CONSTANTS
+
+pub const SIMPLE_AIRGROUP_ID: usize = 0;
+
+//AIR CONSTANTS
+
+pub const SIMPLE_LEFT_AIR_IDS: &[usize] = &[0];
+
+pub const SIMPLE_RIGHT_AIR_IDS: &[usize] = &[1];
+
+  
+trace!(SimpleLeftTrace<F> {
  a: F, b: F, c: F, d: F, e: F, f: F, g: F, h: F,
+},  0, 0, 4 );
+
+trace!(SimpleRightTrace<F> {
+ a: F, b: F, c: F, d: F, mul: F,
+},  0, 1, 4 );
+
+values!(SimpleLeftAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
 });
 
-trace!(SimpleRightRow, SimpleRightTrace<F> {
- a: F, b: F, c: F, d: F, mul: F,
+values!(SimpleRightAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
 });

@@ -1,14 +1,15 @@
 use std::sync::Arc;
 
 use pil_std_lib::Std;
-use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::{AirInstance, ExecutionCtx, ProofCtx, SetupCtx};
+use witness::WitnessComponent;
+
+use proofman_common::{add_air_instance, FromTrace, AirInstance, ProofCtx};
 
 use num_bigint::BigInt;
 use p3_field::PrimeField;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
-use crate::{RangeCheckDynamic1Trace, RANGE_CHECK_DYNAMIC_1_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_1_AIR_IDS};
+use crate::RangeCheckDynamic1Trace;
 
 pub struct RangeCheckDynamic1<F: PrimeField> {
     std_lib: Arc<Std<F>>,
@@ -20,41 +21,8 @@ where
 {
     const MY_NAME: &'static str = "RngChDy1";
 
-    pub fn new(wcm: Arc<WitnessManager<F>>, std_lib: Arc<Std<F>>) -> Arc<Self> {
-        let range_check_dynamic1 = Arc::new(Self { std_lib });
-
-        wcm.register_component(
-            range_check_dynamic1.clone(),
-            Some(RANGE_CHECK_DYNAMIC_1_AIRGROUP_ID),
-            Some(RANGE_CHECK_DYNAMIC_1_AIR_IDS),
-        );
-
-        // Register dependency relations
-        range_check_dynamic1.std_lib.register_predecessor();
-
-        range_check_dynamic1
-    }
-
-    pub fn execute(&self, pctx: Arc<ProofCtx<F>>, ectx: Arc<ExecutionCtx>, sctx: Arc<SetupCtx>) {
-        let num_rows =
-            pctx.global_info.airs[RANGE_CHECK_DYNAMIC_1_AIRGROUP_ID][RANGE_CHECK_DYNAMIC_1_AIR_IDS[0]].num_rows;
-        let trace = RangeCheckDynamic1Trace::new(num_rows);
-
-        let air_instance = AirInstance::new(
-            sctx.clone(),
-            RANGE_CHECK_DYNAMIC_1_AIRGROUP_ID,
-            RANGE_CHECK_DYNAMIC_1_AIR_IDS[0],
-            None,
-            trace.buffer.unwrap(),
-        );
-        let (is_myne, gid) = ectx.dctx.write().unwrap().add_instance(
-            RANGE_CHECK_DYNAMIC_1_AIRGROUP_ID,
-            RANGE_CHECK_DYNAMIC_1_AIR_IDS[0],
-            1,
-        );
-        if is_myne {
-            pctx.air_instance_repo.add_air_instance(air_instance, Some(gid));
-        }
+    pub fn new(std_lib: Arc<Std<F>>) -> Arc<Self> {
+        Arc::new(Self { std_lib })
     }
 }
 
@@ -62,66 +30,52 @@ impl<F: PrimeField> WitnessComponent<F> for RangeCheckDynamic1<F>
 where
     Standard: Distribution<F>,
 {
-    fn calculate_witness(
-        &self,
-        stage: u32,
-        air_instance_id: Option<usize>,
-        pctx: Arc<ProofCtx<F>>,
-        _ectx: Arc<ExecutionCtx>,
-        _sctx: Arc<SetupCtx>,
-    ) {
+    fn execute(&self, pctx: Arc<ProofCtx<F>>) {
         let mut rng = rand::thread_rng();
 
-        log::debug!("{}: ··· Witness computation for AIR '{}' at stage {}", Self::MY_NAME, "RangeCheckDynamic1", stage);
+        let mut trace = RangeCheckDynamic1Trace::new_zeroes();
+        let num_rows = trace.num_rows();
 
-        if stage == 1 {
-            let proof_ctx = pctx.clone();
-            let air_instances_vec = &mut proof_ctx.air_instance_repo.air_instances.write().unwrap();
-            let air_instance = &mut air_instances_vec[air_instance_id.unwrap()];
-            let buffer = &mut air_instance.trace;
+        log::debug!("{} ··· Starting witness computation stage {}", Self::MY_NAME, 1);
 
-            let num_rows =
-                pctx.pilout.get_air(RANGE_CHECK_DYNAMIC_1_AIRGROUP_ID, RANGE_CHECK_DYNAMIC_1_AIR_IDS[0]).num_rows();
-            let mut trace = RangeCheckDynamic1Trace::map_buffer(buffer.as_mut_slice(), num_rows, 0).unwrap();
+        let range7 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 7) - 1), Some(false));
+        let range8 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 8) - 1), Some(false));
+        let range16 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 16) - 1), Some(false));
+        let range17 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 17) - 1), Some(false));
 
-            let range7 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 7) - 1), Some(false));
-            let range8 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 8) - 1), Some(false));
-            let range16 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 16) - 1), Some(false));
-            let range17 = self.std_lib.get_range(BigInt::from(0), BigInt::from((1 << 17) - 1), Some(false));
+        for i in 0..num_rows {
+            let range = rng.gen_range(0..=3);
 
-            for i in 0..num_rows {
-                let range = rng.gen_range(0..=3);
+            match range {
+                0 => {
+                    trace[i].sel_7 = F::one();
+                    trace[i].colu = F::from_canonical_u16(rng.gen_range(0..=(1 << 7) - 1));
 
-                match range {
-                    0 => {
-                        trace[i].sel_7 = F::one();
-                        trace[i].colu = F::from_canonical_u16(rng.gen_range(0..=(1 << 7) - 1));
-
-                        self.std_lib.range_check(trace[i].colu, F::one(), range7);
-                    }
-                    1 => {
-                        trace[i].sel_8 = F::one();
-                        trace[i].colu = F::from_canonical_u16(rng.gen_range(0..=(1 << 8) - 1));
-
-                        self.std_lib.range_check(trace[i].colu, F::one(), range8);
-                    }
-                    2 => {
-                        trace[i].sel_16 = F::one();
-                        trace[i].colu = F::from_canonical_u32(rng.gen_range(0..=(1 << 16) - 1));
-
-                        self.std_lib.range_check(trace[i].colu, F::one(), range16);
-                    }
-                    3 => {
-                        trace[i].sel_17 = F::one();
-                        trace[i].colu = F::from_canonical_u32(rng.gen_range(0..=(1 << 17) - 1));
-
-                        self.std_lib.range_check(trace[i].colu, F::one(), range17);
-                    }
-                    _ => panic!("Invalid range"),
+                    self.std_lib.range_check(trace[i].colu, F::one(), range7);
                 }
+                1 => {
+                    trace[i].sel_8 = F::one();
+                    trace[i].colu = F::from_canonical_u16(rng.gen_range(0..=(1 << 8) - 1));
+
+                    self.std_lib.range_check(trace[i].colu, F::one(), range8);
+                }
+                2 => {
+                    trace[i].sel_16 = F::one();
+                    trace[i].colu = F::from_canonical_u32(rng.gen_range(0..=(1 << 16) - 1));
+
+                    self.std_lib.range_check(trace[i].colu, F::one(), range16);
+                }
+                3 => {
+                    trace[i].sel_17 = F::one();
+                    trace[i].colu = F::from_canonical_u32(rng.gen_range(0..=(1 << 17) - 1));
+
+                    self.std_lib.range_check(trace[i].colu, F::one(), range17);
+                }
+                _ => panic!("Invalid range"),
             }
         }
 
-        self.std_lib.unregister_predecessor(pctx, None);
+        let air_instance = AirInstance::new_from_trace(FromTrace::new(&mut trace));
+        add_air_instance::<F>(air_instance, pctx.clone());
     }
 }

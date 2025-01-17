@@ -67,15 +67,15 @@ namespace BinFileUtils
         if (fstat(fd, &sb) == -1) /* To obtain file size */
             throw std::system_error(errno, std::generic_category(), "fstat");
 
-        size = sb.st_size;
-        void *addrmm = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0);
-        addr = malloc(sb.st_size);
+        size = sb.st_size + sizeof(u_int32_t) + sizeof(u_int64_t);
+        void *addrmm = mmap(NULL, size, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0);
+        addr = malloc(size);
 
         int nThreads = omp_get_max_threads() / 2;
-        ThreadUtils::parcpy(addr, addrmm, sb.st_size, nThreads);
+        ThreadUtils::parcpy(addr, addrmm, size, nThreads);
         //    memcpy(addr, addrmm, sb.st_size);
 
-        munmap(addrmm, sb.st_size);
+        munmap(addrmm, size);
         close(fd);
 
         type.assign((const char *)addr, 4);
@@ -186,6 +186,9 @@ namespace BinFileUtils
 
     u_int8_t BinFile::readU8LE()
     {
+        if (pos + sizeof(u_int8_t) > size) {
+            throw std::out_of_range("Attempting to read beyond buffer bounds");
+        }
         u_int8_t res = *((u_int8_t *)((u_int64_t)addr + pos));
         pos += 1;
         return res;
@@ -194,6 +197,9 @@ namespace BinFileUtils
 
     u_int16_t BinFile::readU16LE()
     {
+        if (pos + sizeof(u_int16_t) > size) {
+            throw std::out_of_range("Attempting to read beyond buffer bounds");
+        }
         u_int16_t res = *((u_int16_t *)((u_int64_t)addr + pos));
         pos += 2;
         return res;
@@ -202,6 +208,9 @@ namespace BinFileUtils
 
     u_int32_t BinFile::readU32LE()
     {
+        if (pos + sizeof(u_int32_t) > size) {
+            throw std::out_of_range("Attempting to read beyond buffer bounds");
+        }
         u_int32_t res = *((u_int32_t *)((u_int64_t)addr + pos));
         pos += 4;
         return res;
@@ -209,6 +218,9 @@ namespace BinFileUtils
 
     u_int64_t BinFile::readU64LE()
     {
+        if (pos + sizeof(u_int64_t) > size) {
+            throw std::out_of_range("Attempting to read beyond buffer bounds u64");
+        }
         u_int64_t res = *((u_int64_t *)((u_int64_t)addr + pos));
         pos += 8;
         return res;

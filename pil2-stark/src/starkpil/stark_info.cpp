@@ -4,15 +4,15 @@
 #include "zklog.hpp"
 #include "exit_process.hpp"
 
-StarkInfo::StarkInfo(string file)
+StarkInfo::StarkInfo(string file, bool verify_)
 {
     // Load contents from json file
     json starkInfoJson;
     file2json(file, starkInfoJson);
-    load(starkInfoJson);
+    load(starkInfoJson, verify_);
 }
 
-void StarkInfo::load(json j)
+void StarkInfo::load(json j, bool verify_)
 {   
     starkStruct.nBits = j["starkStruct"]["nBits"];
     starkStruct.nBitsExt = j["starkStruct"]["nBitsExt"];
@@ -64,6 +64,9 @@ void StarkInfo::load(json j)
     for(uint64_t i = 0; i < j["customCommits"].size(); i++) {
         CustomCommits c;
         c.name = j["customCommits"][i]["name"];
+        for(uint64_t k = 0; k < j["customCommits"][i]["publicValues"].size(); k++) {
+            c.publicValues.push_back(j["customCommits"][i]["publicValues"][k]["idx"]);
+        }
         for(uint64_t k = 0; k < j["customCommits"][i]["stageWidths"].size(); k++) {
             c.stageWidths.push_back(j["customCommits"][i]["stageWidths"][k]);
         }
@@ -126,6 +129,7 @@ void StarkInfo::load(json j)
     {
         PolMap map;
         map.name = j["proofValuesMap"][i]["name"];
+        map.stage = j["proofValuesMap"][i]["stage"];
         proofValuesMap.push_back(map);
     }
 
@@ -223,8 +227,22 @@ void StarkInfo::load(json j)
         mapSectionsN[it.key()] = it.value();
     }
 
-    setMapOffsets();
-    
+    if(verify_) {
+        verify = verify_;
+        mapTotalN = 0;
+        mapOffsets[std::make_pair("const", false)] = 0;
+        for(uint64_t stage = 1; stage <= nStages + 1; ++stage) {
+            mapOffsets[std::make_pair("cm" + to_string(stage), false)] = mapTotalN;
+            mapTotalN += mapSectionsN["cm" + to_string(stage)] * starkStruct.nQueries;
+        }
+        // Set offsets for custom commits
+        for(uint64_t i = 0; i < customCommits.size(); ++i) {
+            mapOffsets[std::make_pair(customCommits[i].name + "0", false)] = 0;
+            mapOffsets[std::make_pair(customCommits[i].name + "0", true)] = 0;
+        }
+    } else {
+        setMapOffsets();
+    }
 }
 
 void StarkInfo::setMapOffsets() {
@@ -239,13 +257,12 @@ void StarkInfo::setMapOffsets() {
     // Set offsets for custom commits
     for(uint64_t i = 0; i < customCommits.size(); ++i) {
         mapOffsets[std::make_pair(customCommits[i].name + "0", false)] = 0;
-        mapOffsets[std::make_pair(customCommits[i].name + "0", true)] = N * mapSectionsN[customCommits[i].name + "0"];
-        mapTotalNcustomCommits[customCommits[i].name] = (N + NExtended) * mapSectionsN[customCommits[i].name + "0"];
+        mapOffsets[std::make_pair(customCommits[i].name + "0", true)] = 0;
     }
 
     mapTotalN = 0;
 
-    for(uint64_t stage = 2; stage <= nStages; stage++) {
+    for(uint64_t stage = nStages; stage >= 2; stage--) {
         mapOffsets[std::make_pair("cm" + to_string(stage), false)] = mapTotalN;
         mapTotalN += N * mapSectionsN["cm" + to_string(stage)];
     }
@@ -260,26 +277,40 @@ void StarkInfo::setMapOffsets() {
         mapTotalN += NExtended * mapSectionsN["cm" + to_string(stage)];
     }
 
-    mapOffsets[std::make_pair("q", true)] = mapTotalN;
-    mapTotalN += NExtended * qDim;
+    // This is never used, just set to avoid invalid read
+    mapOffsets[std::make_pair("cm" + to_string(nStages + 1), false)] = 0;
 
-    // Stage FRIPolynomial
-    uint64_t offsetPolsFRI = mapOffsets[std::make_pair("q", true)];
-    mapOffsets[std::make_pair("xDivXSubXi", true)] = offsetPolsFRI;
-    offsetPolsFRI += openingPoints.size() * NExtended * FIELD_EXTENSION;
+    mapOffsets[std::make_pair("f", true)] = mapTotalN;
+    mapTotalN += NExtended * FIELD_EXTENSION;
+
+    mapOffsets[std::make_pair("q", true)] = mapOffsets[std::make_pair("f", true)];
+
+    mapOffsets[std::make_pair("evals", true)] = mapTotalN;
+    mapTotalN += evMap.size() * omp_get_max_threads() * FIELD_EXTENSION;
+
+    // Merkle tree nodes sizes
+    for (uint64_t i = 0; i < nStages + 1; i++) {
+        uint64_t numNodes = getNumNodesMT(1 << starkStruct.nBitsExt);
+        mapOffsets[std::make_pair("mt" + to_string(i + 1), true)] = mapTotalN;
+        mapTotalN += numNodes;
+    }
     
-    mapOffsets[std::make_pair("f", true)] = offsetPolsFRI;
-    offsetPolsFRI += NExtended * FIELD_EXTENSION;
+    for(uint64_t step = 0; step < starkStruct.steps.size() - 1; ++step) {
+        uint64_t height = 1 << starkStruct.steps[step + 1].nBits;
+        uint64_t width = ((1 << starkStruct.steps[step].nBits) / height) * FIELD_EXTENSION;
+        uint64_t numNodes = getNumNodesMT(height);
+        mapOffsets[std::make_pair("fri_" + to_string(step + 1), true)] = mapTotalN;
+        mapTotalN += height * width;
+        mapOffsets[std::make_pair("mt_fri_" + to_string(step + 1), true)] = mapTotalN;
+        mapTotalN += numNodes;
+    }
+}
 
-    if(offsetPolsFRI > mapTotalN) mapTotalN = offsetPolsFRI;
-
-    uint64_t offsetPolsEvals = mapOffsets[std::make_pair("q", true)];
-    mapOffsets[std::make_pair("LEv", true)] = offsetPolsEvals;
-    offsetPolsEvals += N * openingPoints.size() * FIELD_EXTENSION;
-    
-    mapOffsets[std::make_pair("evals", true)] = offsetPolsEvals;
-    offsetPolsEvals += evMap.size() * omp_get_max_threads() * FIELD_EXTENSION;
-    if(offsetPolsEvals > mapTotalN) mapTotalN = offsetPolsEvals;
+void StarkInfo::addMemoryRecursive() {
+    uint64_t NExtended = (1 << starkStruct.nBitsExt);
+    mapOffsets[std::make_pair("xDivXSubXi", true)] = mapTotalN;
+    mapOffsets[std::make_pair("LEv", true)] = mapTotalN;
+    mapTotalN += openingPoints.size() * NExtended * FIELD_EXTENSION;
 }
 
 void StarkInfo::getPolynomial(Polinomial &pol, Goldilocks::Element *pAddress, string type, PolMap& polInfo, bool domainExtended) {
@@ -292,6 +323,30 @@ void StarkInfo::getPolynomial(Polinomial &pol, Goldilocks::Element *pAddress, st
     pol = Polinomial(&pAddress[offset], deg, dim, nCols);
 }
 
+uint64_t StarkInfo::getNumNodesMT(uint64_t height) {
+    if(starkStruct.verificationHashType == "BN128") {
+        uint n_tmp = height;
+        uint64_t nextN = floor(((double)(n_tmp - 1) / starkStruct.merkleTreeArity) + 1);
+        uint64_t acc = nextN * starkStruct.merkleTreeArity;
+        while (n_tmp > 1)
+        {
+            // FIll with zeros if n nodes in the leve is not even
+            n_tmp = nextN;
+            nextN = floor((n_tmp - 1) / starkStruct.merkleTreeArity) + 1;
+            if (n_tmp > 1)
+            {
+                acc += nextN * starkStruct.merkleTreeArity;
+            }
+            else
+            {
+                acc += 1;
+            }
+        }
+        return acc * sizeof(RawFr::Element) / sizeof(Goldilocks::Element);
+    } else {
+        return height * HASH_SIZE + (height - 1) * HASH_SIZE;
+    }
+}
 
 opType string2opType(const string s) 
 {

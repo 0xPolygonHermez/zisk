@@ -1,6 +1,15 @@
 // Constants for the Goldilocks prime p = 2⁶⁴ - 2³² + 1, where p-1 = 2³²·3·5·17·257·65537
 
-// List of generators of groups of size power of 2
+/*
+List of generators of groups of size power of 2
+p = 2^64 - 2^32 + 1
+F = GF(p)
+a = F.multiplicative_generator()
+for i in range(32):
+    g = a^((p-1)/2^i)
+    assert(g.multiplicative_order() == 2^i)
+    print(g, end=",")
+*/
 const int Goldilocks_Gen[33] = [
     1,18446744069414584320,281474976710656,18446744069397807105,17293822564807737345,70368744161280,
     549755813888,17870292113338400769,13797081185216407910,1803076106186727246,11353340290879379826,
