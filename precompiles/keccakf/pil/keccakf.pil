@@ -1,0 +1,62 @@
+require "std_lookup.pil"
+require "std_connection.pil"
+
+// Precompile in charge of performing the Keccak-f[1600] permutation. For reference: https://keccak.team/files/Keccak-reference-3.0.pdf
+
+airtemplate Keccakf(const int N = 2**18, const int chunks = 5, const int chunkBits = 12) {
+    // Keccak-f circuit size
+    const int CIRCUIT_XORS = 116886;
+    const int CIRCUIT_ANDPS = 38400;
+    const int CIRCUIT_SIZE = CIRCUIT_ANDPS + CIRCUIT_XORS;
+
+    // Ensure that the keccak-f circuit fits
+    assert(N >= CIRCUIT_SIZE);
+
+    const int P2_CHUNKBITS = 2**chunkBits;
+    const int MASK_CHUNKBITS = P2_CHUNKBITS - 1;
+
+    col fixed L1 = [1,0...];
+
+    // Column specifying the circuit gates
+    #pragma fixed_external
+    col fixed GATE_OP;
+
+    // Columns specifying the circuit connections
+    #pragma fixed_external
+    col fixed CONN_A;
+    #pragma fixed_external
+    col fixed CONN_B;
+    #pragma fixed_external
+    col fixed CONN_C;
+
+    col witness free_in_a[chunks], free_in_b[chunks], free_in_c[chunks];
+
+    // --> Circuit gates constraints
+    for (int i = 0; i < chunks; i++) {
+        lookup_assumes(KECCAKF_TABLE_ID, [GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i]]);
+    }
+
+    // --> Circuit connections constraints
+    expr a = 0;
+    expr b = 0;
+    expr c = 0;
+    for (int i = 0; i < chunks; i++) {
+        a += free_in_a[i] * P2_CHUNKBITS**i;
+        b += free_in_b[i] * P2_CHUNKBITS**i;
+        c += free_in_c[i] * P2_CHUNKBITS**i;
+    }
+
+    // Enforce constants 0b000.. and 0b111.. at the first row for direct access
+    // This reduces the circuit connections
+    L1 * a === 0;
+    L1 * (b - MASK_CHUNKBITS) === 0;
+
+    const int CIRCUIT_CONNECTIONS_OPID = 400;
+    connection(CIRCUIT_CONNECTIONS_OPID, [a, b, c], [CONN_A, CONN_B, CONN_C]);
+
+    // TODO: --> Constraints to make sure that this coprocessor is called from the main processor
+    col witness multiplicity;
+    col witness debug_main_step;
+
+    // TODO: --> Constraints to read inputs from memory and write outputs to memory
+}

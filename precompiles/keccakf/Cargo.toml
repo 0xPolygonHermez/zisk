@@ -1,0 +1,27 @@
+[package]
+name = "precomp-keccakf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+zisk-core = { path = "../../core" }
+data-bus = { path = "../../data-bus" }
+zisk-pil = { path = "../../pil" }
+
+p3-field = { workspace=true }
+proofman-common = { workspace = true }
+proofman-macros = { workspace = true }
+proofman-util = { workspace = true }
+pil-std-lib = { workspace = true }
+
+log = { workspace = true }
+rayon = { workspace = true }
+num-bigint = { workspace = true }
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+
+[features]
+default = []
+no_lib_link = ["proofman-common/no_lib_link"]
