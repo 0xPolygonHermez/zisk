@@ -71,4 +71,12 @@ impl BusDevice<u64> for BusDeviceMetricsWrapper {
     ) -> (bool, Vec<(BusId, Vec<u64>)>) {
         self.inner.process_data(bus_id, data)
     }
+
+    /// Returns the bus IDs associated with the inner `BusDeviceInstance`.
+    /// This method delegates the call to the inner `BusDeviceInstance`.
+    /// # Returns
+    /// A vector containing the connected bus ID.
+    fn bus_id(&self) -> Vec<BusId> {
+        self.inner.bus_id()
+    }
 }

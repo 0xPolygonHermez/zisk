@@ -134,9 +134,6 @@ impl Metrics for MemCounters {
         vec![]
     }
 
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![MEM_BUS_ID]
-    }
     fn on_close(&mut self) {
         // address must be ordered
         let addr_hashmap = std::mem::take(&mut self.addr);
@@ -154,5 +151,9 @@ impl BusDevice<u64> for MemCounters {
         self.measure(bus_id, data);
 
         (false, vec![])
+    }
+
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![MEM_BUS_ID]
     }
 }

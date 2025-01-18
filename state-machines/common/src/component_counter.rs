@@ -38,12 +38,6 @@ pub trait Metrics: Send + Sync {
     /// - The derived data payload.
     fn measure(&mut self, bus_id: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)>;
 
-    /// Retrieves the bus IDs associated with the current metrics instance.
-    ///
-    /// # Returns
-    /// A vector of `BusId` objects.
-    fn bus_id(&self) -> Vec<BusId>;
-
     /// Performs any necessary cleanup or finalization when the metrics instance is closed.
     fn on_close(&mut self) {}
 
