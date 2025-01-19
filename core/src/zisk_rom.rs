@@ -992,16 +992,16 @@ impl ZiskRom {
         ctx.c.string_value = REG_C.to_string();
         match zisk_op {
             ZiskOp::Flag => {
-                //s += &format!("\tmov {}, 0 /* Flag: c = 0 */\n", REG_C);
-                s += &format!("\t/* Flag: c = 0 */\n");
+                //s += &format!("\t/* Flag: c = 0 */\n");
+                s += &format!("\tmov {}, 0 /* Flag: c = 0 */\n", REG_C);
                 ctx.c.is_constant = true;
                 ctx.c.constant_value = 0;
                 ctx.c.string_value = "0".to_string();
                 ctx.flag_is_always_one = true;
             }
             ZiskOp::CopyB => {
-                s += &format!("\t/* CopyB: c = b = {} */\n", ctx.b.string_value);
-                //s += &format!("\tmov {}, {} /* CopyB: c = b */\n", REG_C, ctx.b.string_value);
+                //s += &format!("\t/* CopyB: c = b = {} */\n", ctx.b.string_value);
+                s += &format!("\tmov {}, {} /* CopyB: c = b */\n", REG_C, ctx.b.string_value);
                 ctx.c = ctx.b.clone();
                 ctx.flag_is_always_zero = true;
             }
@@ -1349,7 +1349,7 @@ impl ZiskRom {
             }
             ZiskOp::LtW => {
                 // Make sure a is in REG_A to compare it against b (constant or reg)
-                if ctx.b.is_constant {
+                if ctx.a.is_constant {
                     s += &format!(
                         "\tmov {}, 0x{:x} /* LtW: a = constant */\n",
                         REG_A,
@@ -1500,6 +1500,12 @@ impl ZiskRom {
             }
             ZiskOp::Muluh => {
                 // RDX:RAX := RAX ∗ r/m64
+                if ctx.a.is_constant {
+                    s += &format!(
+                        "\tmov {}, {} /* Muluh: a = constant value */\n",
+                        REG_A, ctx.a.string_value
+                    );
+                }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
@@ -1513,6 +1519,12 @@ impl ZiskRom {
             }
             ZiskOp::Mulsuh => {
                 // RDX:RAX := RAX ∗ r/m64
+                if ctx.a.is_constant {
+                    s += &format!(
+                        "\tmov {}, {} /* Mulsuh: a = constant value */\n",
+                        REG_A, ctx.a.string_value
+                    );
+                }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
@@ -1525,6 +1537,13 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Mul => {
+                if ctx.a.is_constant {
+                    s += &format!(
+                        "\tmov {}, {} /* Mul: a = constant value */\n",
+                        REG_A, ctx.a.string_value
+                    );
+                }
+
                 // RDX:RAX := RAX ∗ r/m64
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
@@ -1533,12 +1552,18 @@ impl ZiskRom {
                         REG_B, ctx.b.string_value
                     );
                 }
-                s += &format!("\tmul {} /* Mul: rax*reg -> rdx:rax */\n", REG_A);
+                s += &format!("\timul {} /* Mul: rax*reg -> rdx:rax */\n", REG_A);
                 s += &format!("\tmov {}, rax /* Mul: c = result(rax) */\n", REG_C);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Mulh => {
                 // RDX:RAX := RAX ∗ r/m64
+                if ctx.a.is_constant {
+                    s += &format!(
+                        "\tmov {}, {} /* Mulh: a = constant value */\n",
+                        REG_A, ctx.a.string_value
+                    );
+                }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
@@ -1547,11 +1572,17 @@ impl ZiskRom {
                     );
                 }
                 s += &format!("\timul {} /* Mulh: rax*reg -> rdx:rax */\n", REG_A);
-                s += &format!("\tmov {}, rax /* Mulh: c = high result(rdx) */\n", REG_C);
+                s += &format!("\tmov {}, rdx /* Mulh: c = high result(rdx) */\n", REG_C);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::MulW => {
                 // RDX:RAX := RAX ∗ r/m64
+                if ctx.a.is_constant {
+                    s += &format!(
+                        "\tmov {}, {} /* MulW: a = constant value */\n",
+                        REG_A, ctx.a.string_value
+                    );
+                }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
@@ -1601,14 +1632,16 @@ impl ZiskRom {
                     s +=
                         &format!("\tmov {}, {} /* Remu: b = value */\n", REG_B, ctx.b.string_value);
                 }
-                // If b==0 return 0xffffffffffffffff
-                s += &format!("\tcmp {}, 0 /* Remu: if b == 0 return f's */\n", REG_B);
+                // If b==0 return a
+                s += &format!("\tcmp {}, 0 /* Remu: if b == 0 return a */\n", REG_B);
                 s += &format!(
                     "\tjne pc_{:x}_remu_b_is_not_zero /* Remu: if b is not zero, divide */\n",
                     ctx.pc
                 );
-                s +=
-                    &format!("\tmov {}, 0xffffffffffffffff /* Remu: set result to f's */\n", REG_C);
+                s += &format!(
+                    "\tmov {}, {} /* Remu: set result to f's */\n",
+                    REG_C, ctx.a.string_value
+                );
                 s += &format!("\tje pc_{:x}_remu_done\n", ctx.pc);
                 s += &format!("pc_{:x}_remu_b_is_not_zero:\n", ctx.pc);
 
