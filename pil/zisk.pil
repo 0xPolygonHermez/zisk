@@ -10,26 +10,27 @@ require "binary/pil/binary_extension_table.pil"
 require "arith/pil/arith.pil"
 
 const int OPERATION_BUS_ID = 5000;
+const int DEFAULT_N = 2**23;
 
 proofval enable_input_data;
 enable_input_data * (1 - enable_input_data);
 
 airgroup Zisk {
-    Main(N: 2**21, RC: 2, operation_bus_id: OPERATION_BUS_ID);
+    Main(N: DEFAULT_N, RC: 2, operation_bus_id: OPERATION_BUS_ID);
     Rom(N: 2**22);
 
-    Mem(N: 2**21, RC: 2, base_address: 0xA000_0000);
+    Mem(N: DEFAULT_N, RC: 2, base_address: 0xA000_0000);
     Mem(N: 2**21, RC: 2, base_address: 0x8000_0000, immutable: 1) alias RomData;
     Mem(N: 2**21, RC: 2, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
 
-    MemAlign(N: 2**21);
+    MemAlign(N: DEFAULT_N);
     MemAlignRom(disable_fixed: 0);
 
-    Arith(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    Arith(N:  2**21, operation_bus_id: OPERATION_BUS_ID);
     ArithTable();
     ArithRangeTable();
-    Binary(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    Binary(N: DEFAULT_N, operation_bus_id: OPERATION_BUS_ID);
     BinaryTable(disable_fixed: 0);
-    BinaryExtension(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    BinaryExtension(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
     BinaryExtensionTable(disable_fixed: 0);
 }
