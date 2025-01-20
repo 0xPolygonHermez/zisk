@@ -83,14 +83,6 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
     }
-
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
-    }
 }
 
 impl BusDevice<u64> for BinaryBasicInstance {
@@ -120,5 +112,13 @@ impl BusDevice<u64> for BinaryBasicInstance {
         self.inputs.push(data);
 
         (self.inputs.len() == BinaryTrace::<usize>::NUM_ROWS, vec![])
+    }
+
+    /// Returns the bus IDs associated with this instance.
+    ///
+    /// # Returns
+    /// A vector containing the connected bus ID.
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![self.bus_id]
     }
 }

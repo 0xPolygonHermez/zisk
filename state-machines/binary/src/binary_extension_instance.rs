@@ -89,14 +89,6 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
     }
-
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
-    }
 }
 
 impl<F: PrimeField> BusDevice<u64> for BinaryExtensionInstance<F> {
@@ -126,5 +118,13 @@ impl<F: PrimeField> BusDevice<u64> for BinaryExtensionInstance<F> {
         self.inputs.push(data);
 
         (self.inputs.len() == BinaryExtensionTrace::<usize>::NUM_ROWS, vec![])
+    }
+
+    /// Returns the bus IDs associated with this instance.
+    ///
+    /// # Returns
+    /// A vector containing the connected bus ID.
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![self.bus_id]
     }
 }

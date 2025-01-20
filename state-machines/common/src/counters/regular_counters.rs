@@ -73,14 +73,6 @@ impl Metrics for RegularCounters {
         vec![]
     }
 
-    /// Returns the bus IDs associated with this counter.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
-    }
-
     /// Provides a dynamic reference for downcasting purposes.
     ///
     /// # Returns
@@ -129,5 +121,13 @@ impl BusDevice<u64> for RegularCounters {
         self.measure(bus_id, data);
 
         (true, vec![])
+    }
+
+    /// Returns the bus IDs associated with this counter.
+    ///
+    /// # Returns
+    /// A vector containing the connected bus ID.
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![self.bus_id]
     }
 }

@@ -29,14 +29,6 @@ impl Metrics for DummyCounter {
         vec![]
     }
 
-    /// Returns an empty vector as this counter is not associated with any bus IDs.
-    ///
-    /// # Returns
-    /// An empty vector of bus IDs.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![]
-    }
-
     /// Provides a dynamic reference for downcasting purposes.
     ///
     /// # Returns
@@ -46,4 +38,12 @@ impl Metrics for DummyCounter {
     }
 }
 
-impl BusDevice<u64> for DummyCounter {}
+impl BusDevice<u64> for DummyCounter {
+    /// Returns an empty vector as this counter is not associated with any bus IDs.
+    ///
+    /// # Returns
+    /// An empty vector of bus IDs.
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![]
+    }
+}

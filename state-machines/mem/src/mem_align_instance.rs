@@ -45,9 +45,6 @@ impl<F: PrimeField> Instance<F> for MemAlignInstance<F> {
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
     }
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![MEM_BUS_ID]
-    }
 }
 
 impl<F: PrimeField> BusDevice<u64> for MemAlignInstance<F> {
@@ -55,15 +52,15 @@ impl<F: PrimeField> BusDevice<u64> for MemAlignInstance<F> {
         let addr = MemBusData::get_addr(data);
         let bytes = MemBusData::get_bytes(data);
         if MemHelpers::is_aligned(addr, bytes) {
-            return (false, vec![])
+            return (false, vec![]);
         }
         if self.skip_pending > 0 {
             self.skip_pending -= 1;
-            return (false, vec![])
+            return (false, vec![]);
         }
 
         if self.pending_count == 0 {
-            return (true, vec![])
+            return (true, vec![]);
         }
         self.pending_count -= 1;
         let is_write = MemHelpers::is_write(MemBusData::get_op(data));
@@ -85,5 +82,9 @@ impl<F: PrimeField> BusDevice<u64> for MemAlignInstance<F> {
         });
 
         (false, vec![])
+    }
+
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![MEM_BUS_ID]
     }
 }

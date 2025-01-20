@@ -83,14 +83,6 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
     }
-
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
-    }
 }
 
 impl BusDevice<u64> for ArithFullInstance {
@@ -121,5 +113,13 @@ impl BusDevice<u64> for ArithFullInstance {
 
         // Check if the required number of rows has been collected for computation.
         (self.inputs.len() == ArithTrace::<usize>::NUM_ROWS, vec![])
+    }
+
+    /// Returns the bus IDs associated with this instance.
+    ///
+    /// # Returns
+    /// A vector containing the connected bus ID.
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![self.bus_id]
     }
 }
