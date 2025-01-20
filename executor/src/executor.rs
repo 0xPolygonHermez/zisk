@@ -283,7 +283,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     }
                 }
 
-                if let Some(air_instance) = secn_instance.compute_witness(pctx) {
+                if let Some(air_instance) = secn_instance.compute_witness(None) {
                     pctx.air_instance_repo.add_air_instance(air_instance, global_id);
                 }
             })
@@ -321,7 +321,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         instances.iter_mut().for_each(|(global_idx, sec_instance)| {
             if sec_instance.instance_type() == InstanceType::Table {
-                if let Some(air_instance) = sec_instance.compute_witness(pctx) {
+                if let Some(air_instance) = sec_instance.compute_witness(Some(pctx)) {
                     if pctx.dctx_is_my_instance(*global_idx) {
                         pctx.air_instance_repo.add_air_instance(air_instance, *global_idx);
                     }

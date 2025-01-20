@@ -34,7 +34,7 @@ impl<F: PrimeField> MemAlignInstance<F> {
 }
 
 impl<F: PrimeField> Instance<F> for MemAlignInstance<F> {
-    fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
+    fn compute_witness(&mut self, _pctx: Option<&ProofCtx<F>>) -> Option<AirInstance<F>> {
         Some(self.mem_align_sm.compute_witness(&self.inputs, self.checkpoint.rows))
     }
 

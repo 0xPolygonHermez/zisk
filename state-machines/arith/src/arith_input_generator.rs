@@ -54,7 +54,7 @@ impl<F: PrimeField> Instance<F> for ArithInputGenerator {
     ///
     /// # Returns
     /// Always returns `None`.
-    fn compute_witness(&mut self, _: &ProofCtx<F>) -> Option<AirInstance<F>> {
+    fn compute_witness(&mut self, _: Option<&ProofCtx<F>>) -> Option<AirInstance<F>> {
         None
     }
 }

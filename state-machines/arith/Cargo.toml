@@ -11,6 +11,7 @@ sm-common = { path = "../common" }
 sm-binary = { path = "../binary" }
 
 p3-field = { workspace=true }
+p3-goldilocks = { workspace=true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
