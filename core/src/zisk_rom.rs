@@ -1013,8 +1013,10 @@ impl ZiskRom {
                         REG_B, ctx.b.string_value
                     );
                 }
-                // Sign extend byte to quad
-                s += &format!("\tmovsx {}, {}\n", REG_C, REG_B_B);
+                s += &format!(
+                    "\tmovsx {}, {} /* SignExtendW: sign extend 8 to 64 bits */\n",
+                    REG_C, REG_B_B
+                );
 
                 ctx.flag_is_always_zero = true;
             }
@@ -1026,8 +1028,10 @@ impl ZiskRom {
                         REG_B, ctx.b.string_value
                     );
                 }
-                // Sign extend byte to quad
-                s += &format!("\tmovsx {}, {}\n", REG_C, REG_B_H);
+                s += &format!(
+                    "\tmovsx {}, {} /* SignExtendW: sign extend 16 to 64 bits */\n",
+                    REG_C, REG_B_H
+                );
 
                 ctx.flag_is_always_zero = true;
             }
@@ -1039,8 +1043,10 @@ impl ZiskRom {
                         REG_B, ctx.b.string_value
                     );
                 }
-                // Sign extend byte to quad
-                s += &format!("\tmovsxd {}, {}\n", REG_C, REG_B_W);
+                s += &format!(
+                    "\tmovsxd {}, {} /* SignExtendW: sign extend 32 to 64 bits */\n",
+                    REG_C, REG_B_W
+                );
 
                 ctx.flag_is_always_zero = true;
             }
@@ -1715,8 +1721,6 @@ impl ZiskRom {
                         "\tmov {}, {} /* DivuW: a = value */\n",
                         REG_A, ctx.a.string_value
                     );
-                } else {
-                    //s += &format!("\tmov {}, {} /* DivuW: a = a */\n", REG_A_W, REG_A);
                 }
                 // Make sure b is in REG_B_W
                 if ctx.b.is_constant {
@@ -1724,22 +1728,29 @@ impl ZiskRom {
                         "\tmov {}, {} /* DivuW: b = value */\n",
                         REG_B, ctx.b.string_value
                     );
-                } else {
-                    //s += &format!("\tmov {}, {} /* DivuW: b = b */\n", REG_B_W, REG_B);
                 }
-                s += &format!("\tcmp {}, 0 /* DivuW: b == 0 ? */\n", REG_B);
-                s += &format!("\tje pc_{:x}_divuw_b_is_zero\n", ctx.pc);
-                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
-                s += &format!("\tmov {}, 0\n", REG_FLAG);
-                s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
-                s += &format!("\tdivq {}\n", REG_C);
-                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
-                s += &format!("\tmov {}, 0\n", REG_FLAG);
-                s += &format!("\tje pc_{:x}_divuw_done\n", ctx.pc);
-                s += &format!("pc_{:x}_divuw_b_is_zero:\n", ctx.pc);
-                s += &format!("\tmov {}, 0xffffffffffffffff\n", REG_C);
-                s += &format!("\tmov {}, 1\n", REG_FLAG);
+                s += &format!("\tcmp {}, 0 /* DivuW: if b==0 then return all f's */\n", REG_B_W);
+                s += &format!(
+                    "\tjne pc_{:x}_divuw_b_is_not_zero /* DivuW: if b is not zero, divide */\n",
+                    ctx.pc
+                );
+                s += &format!(
+                    "\tmov {}, 0xffffffffffffffff /* DivuW: set result to f's */\n",
+                    REG_C
+                );
+                s += &format!("\tjmp pc_{:x}_divuw_done\n", ctx.pc);
+                s += &format!("pc_{:x}_divuw_b_is_not_zero:\n", ctx.pc);
+
+                s += &format!("\tmov {}, {} /* DivuW: value = b backup */\n", REG_VALUE_W, REG_B_W);
+                s += &format!("\tmov rdx, 0 /* DivuW: rdx = 0 */\n");
+                s += &format!("\tmov eax, {} /* DivuW: rax = a */\n", REG_A_W);
+                s += &format!(
+                    "\tdiv {} /* DivuW: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
+                    REG_VALUE_W
+                );
+                s += &format!("\tmovsxd {}, eax /* DivuW: sign extend 32 to 64 bits */\n", REG_C);
                 s += &format!("pc_{:x}_divuw_done:\n", ctx.pc);
+                ctx.flag_is_always_zero = true;
             }
             ZiskOp::RemuW => {
                 // Make sure a is in REG_A_W
@@ -1748,8 +1759,6 @@ impl ZiskRom {
                         "\tmov {}, {} /* RemuW: a = value */\n",
                         REG_A, ctx.a.string_value
                     );
-                } else {
-                    //s += &format!("\tmov {}, {} /* RemuW: a = a */\n", REG_A_W, REG_A);
                 }
                 // Make sure b is in REG_B_W
                 if ctx.b.is_constant {
@@ -1757,22 +1766,29 @@ impl ZiskRom {
                         "\tmov {}, {} /* RemuW: b = value */\n",
                         REG_B, ctx.b.string_value
                     );
-                } else {
-                    //s += &format!("\tmov {}, {} /* RemuW: b = b */\n", REG_B_W, REG_B);
                 }
-                s += &format!("\tcmp {}, 0 /* RemuW: b == 0 ? *\n", REG_B);
-                s += &format!("\tje pc_{:x}_remu_b_is_zero\n", ctx.pc);
-                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
-                s += &format!("\tmov {}, 0\n", REG_FLAG);
-                s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
-                s += &format!("\tdivq {}\n", REG_C);
-                s += &format!("\tmov {}, {}\n", REG_C, REG_FLAG);
-                s += &format!("\tmov {}, 0\n", REG_FLAG);
-                s += &format!("\tje pc_{:x}_remu_done\n", ctx.pc);
-                s += &format!("pc_{:x}_remu_b_is_zero:\n", ctx.pc);
-                s += &format!("\tmov {}, {}\n", REG_C, ctx.a.string_value);
-                s += &format!("\tmov {}, 1\n", REG_FLAG);
-                s += &format!("pc_{:x}_remu_done:\n", ctx.pc);
+                s += &format!("\tcmp {}, 0 /* RemuW: if b==0 then return a */\n", REG_B_W);
+                s += &format!(
+                    "\tjne pc_{:x}_remuw_b_is_not_zero /* RemuW: if b is not zero, divide */\n",
+                    ctx.pc
+                );
+                s += &format!(
+                    "\tmovsxd {}, {} /* RemuW: return a, sign extend 32 to 64 bits */\n",
+                    REG_C, REG_A_W
+                );
+                s += &format!("\tjmp pc_{:x}_remuw_done\n", ctx.pc);
+                s += &format!("pc_{:x}_remuw_b_is_not_zero:\n", ctx.pc);
+
+                s += &format!("\tmov {}, {} /* RemuW: value = b backup */\n", REG_VALUE_W, REG_B_W);
+                s += &format!("\tmov rdx, 0 /* RemuW: rdx = 0 */\n");
+                s += &format!("\tmov eax, {} /* RemuW: rax = a */\n", REG_A_W);
+                s += &format!(
+                    "\tdiv {} /* RemuW: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
+                    REG_VALUE_W
+                );
+                s += &format!("\tmovsxd {}, edx /* RemuW: sign extend 32 to 64 bits */\n", REG_C);
+                s += &format!("pc_{:x}_remuw_done:\n", ctx.pc);
+                ctx.flag_is_always_zero = true;
             }
             ZiskOp::DivW => {
                 // Make sure a is in REG_A_W
