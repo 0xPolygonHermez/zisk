@@ -39,8 +39,8 @@ impl InstanceInfo {
     /// # Returns
     /// A new `InstanceInfo` instance.
     pub fn new(
-        air_id: usize,
         airgroup_id: usize,
+        air_id: usize,
         num_rows: usize,
         op_type: ZiskOperationType,
     ) -> Self {
@@ -68,7 +68,7 @@ impl TableInfo {
     ///
     /// # Returns
     /// A new `TableInfo` instance.
-    pub fn new(air_id: usize, airgroup_id: usize) -> Self {
+    pub fn new(airgroup_id: usize, air_id: usize) -> Self {
         TableInfo { air_id, airgroup_id }
     }
 }
