@@ -67,18 +67,18 @@ impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
         Box::new(
             ArithPlanner::new()
                 .add_instance(InstanceInfo::new(
-                    ArithTrace::<usize>::AIR_ID,
                     ArithTrace::<usize>::AIRGROUP_ID,
+                    ArithTrace::<usize>::AIR_ID,
                     ArithTrace::<usize>::NUM_ROWS,
                     ZiskOperationType::Arith,
                 ))
                 .add_table_instance(TableInfo::new(
-                    ArithTableTrace::<usize>::AIR_ID,
                     ArithTableTrace::<usize>::AIRGROUP_ID,
+                    ArithTableTrace::<usize>::AIR_ID,
                 ))
                 .add_table_instance(TableInfo::new(
-                    ArithRangeTableTrace::<usize>::AIR_ID,
                     ArithRangeTableTrace::<usize>::AIRGROUP_ID,
+                    ArithRangeTableTrace::<usize>::AIR_ID,
                 )),
         )
     }

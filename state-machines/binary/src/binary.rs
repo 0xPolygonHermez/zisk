@@ -85,24 +85,24 @@ impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
         Box::new(
             RegularPlanner::new()
                 .add_instance(InstanceInfo::new(
-                    BinaryTrace::<usize>::AIR_ID,
                     BinaryTrace::<usize>::AIRGROUP_ID,
+                    BinaryTrace::<usize>::AIR_ID,
                     BinaryTrace::<usize>::NUM_ROWS,
                     ZiskOperationType::Binary,
                 ))
                 .add_instance(InstanceInfo::new(
-                    BinaryExtensionTrace::<usize>::AIR_ID,
                     BinaryExtensionTrace::<usize>::AIRGROUP_ID,
+                    BinaryExtensionTrace::<usize>::AIR_ID,
                     BinaryExtensionTrace::<usize>::NUM_ROWS,
                     ZiskOperationType::BinaryE,
                 ))
                 .add_table_instance(TableInfo::new(
-                    BinaryTableTrace::<usize>::AIR_ID,
                     BinaryTableTrace::<usize>::AIRGROUP_ID,
+                    BinaryTableTrace::<usize>::AIR_ID,
                 ))
                 .add_table_instance(TableInfo::new(
-                    BinaryExtensionTableTrace::<usize>::AIR_ID,
                     BinaryExtensionTableTrace::<usize>::AIRGROUP_ID,
+                    BinaryExtensionTableTrace::<usize>::AIR_ID,
                 )),
         )
     }
