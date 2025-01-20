@@ -204,9 +204,6 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
     }
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![MEM_BUS_ID]
-    }
 }
 
 impl<F: PrimeField> BusDevice<u64> for MemModuleInstance<F> {
@@ -223,7 +220,7 @@ impl<F: PrimeField> BusDevice<u64> for MemModuleInstance<F> {
         let bytes = MemBusData::get_bytes(data);
         if !MemHelpers::is_aligned(addr, bytes) {
             self.process_unaligned_data(data);
-            return (false, vec![])
+            return (false, vec![]);
         }
         // info!("MemModuleInstance process_data addr: {:x} bytes: {:x}", addr, bytes);
         let addr_w = MemHelpers::get_addr_w(addr);
@@ -235,5 +232,9 @@ impl<F: PrimeField> BusDevice<u64> for MemModuleInstance<F> {
         }
 
         (false, vec![])
+    }
+
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![MEM_BUS_ID]
     }
 }

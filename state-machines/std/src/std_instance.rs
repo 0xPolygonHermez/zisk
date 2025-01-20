@@ -73,7 +73,9 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
     fn instance_type(&self) -> InstanceType {
         InstanceType::Table
     }
+}
 
+impl<F: PrimeField> BusDevice<u64> for StdInstance<F> {
     /// Returns the bus IDs associated with this instance.
     ///
     /// # Returns
@@ -82,5 +84,3 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
         vec![]
     }
 }
-
-impl<F: PrimeField> BusDevice<u64> for StdInstance<F> {}

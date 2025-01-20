@@ -68,7 +68,9 @@ impl<F: PrimeField> Instance<F> for RomInstance {
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
     }
+}
 
+impl BusDevice<u64> for RomInstance {
     /// Returns the bus IDs associated with this instance.
     ///
     /// # Returns
@@ -77,5 +79,3 @@ impl<F: PrimeField> Instance<F> for RomInstance {
         vec![]
     }
 }
-
-impl BusDevice<u64> for RomInstance {}

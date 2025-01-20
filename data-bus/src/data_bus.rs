@@ -37,6 +37,12 @@ pub trait BusDevice<D>: Send {
         let _ = data;
         (true, vec![])
     }
+
+    /// Returns the bus IDs associated with this instance.
+    ///
+    /// # Returns
+    /// A vector containing the connected bus ID.
+    fn bus_id(&self) -> Vec<BusId>;
 }
 
 /// A bus system facilitating communication between multiple publishers and subscribers.

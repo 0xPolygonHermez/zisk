@@ -2,7 +2,6 @@
 //! in the context of proof systems. It includes traits and macros for defining instances
 //! and integrating them with state machines and proofs.
 
-use data_bus::BusId;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 
@@ -42,12 +41,6 @@ pub trait Instance<F: PrimeField>: Send {
     /// # Returns
     /// An `InstanceType` indicating whether the instance is standalone or table-based.
     fn instance_type(&self) -> InstanceType;
-
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId>;
 }
 
 /// Macro to define a table-backed instance.
@@ -118,13 +111,13 @@ macro_rules! table_instance {
             fn instance_type(&self) -> InstanceType {
                 InstanceType::Table
             }
+        }
 
+        impl data_bus::BusDevice<u64> for $InstanceName {
             fn bus_id(&self) -> Vec<BusId> {
                 vec![self.bus_id]
             }
         }
-
-        impl data_bus::BusDevice<u64> for $InstanceName {}
     };
 }
 
