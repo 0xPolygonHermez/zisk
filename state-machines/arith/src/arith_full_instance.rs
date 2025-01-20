@@ -174,6 +174,6 @@ mod tests {
 
         let mut device = data_bus.devices.remove(0).inner;
 
-        let air_instance = device.compute_witness(None).unwrap();
+        let _air_instance = device.compute_witness(None).unwrap();
     }
 }
