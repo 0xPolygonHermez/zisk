@@ -1,7 +1,6 @@
 //! A player for replaying data on the `DataBus`.
 
-use std::io;
-use std::str::FromStr;
+use std::{io, str::FromStr};
 
 use crate::{BusDevice, DataBus, DataBusFileReader};
 

@@ -1,11 +1,14 @@
 //! A module for reading and writing DataBus information to a file.
 //!
-//! The `DataBusFileReader` struct provides a utility for reading DataBus information from a plain text file.
-//! The `DataBusFileWriter` struct provides a utility for writing DataBus information to a file.
+//! The `DataBusFileReader` struct provides a utility for reading DataBus information from a plain
+//! text file. The `DataBusFileWriter` struct provides a utility for writing DataBus information to
+//! a file.
 
-use std::fs::File;
-use std::io::{self, Read, Write};
-use std::str::FromStr;
+use std::{
+    fs::File,
+    io::{self, Read, Write},
+    str::FromStr,
+};
 
 pub struct DataBusFileReader;
 
@@ -26,7 +29,8 @@ impl DataBusFileReader {
     /// * `file_path` - The path to the plain text file.
     ///
     /// # Returns
-    /// * `Result<Vec<(u16, Vec<u64>)>, io::Error>` - A vector of `(BusId, Payload)` tuples or an error.
+    /// * `Result<Vec<(u16, Vec<u64>)>, io::Error>` - A vector of `(BusId, Payload)` tuples or an
+    ///   error.
     pub fn read_from_file<D: FromStr>(file_path: &str) -> Result<Vec<(u16, Vec<D>)>, io::Error>
     where
         D::Err: std::fmt::Display,
