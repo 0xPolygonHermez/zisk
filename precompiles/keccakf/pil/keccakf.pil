@@ -1,9 +1,12 @@
+require "std_constants.pil"
 require "std_lookup.pil"
 require "std_connection.pil"
 
+const int KECCAKF_OP = 0xF1;
+
 // Precompile in charge of performing the Keccak-f[1600] permutation. For reference: https://keccak.team/files/Keccak-reference-3.0.pdf
 
-airtemplate Keccakf(const int N = 2**18, const int chunks = 5, const int chunkBits = 12) {
+airtemplate Keccakf(const int N = 2**21, int RC = 2, const int chunks = 5, const int chunk_bits = 12, const int operation_bus_id) {
     // Keccak-f circuit size
     const int CIRCUIT_XORS = 116886;
     const int CIRCUIT_ANDPS = 38400;
@@ -12,8 +15,8 @@ airtemplate Keccakf(const int N = 2**18, const int chunks = 5, const int chunkBi
     // Ensure that the keccak-f circuit fits
     assert(N >= CIRCUIT_SIZE);
 
-    const int P2_CHUNKBITS = 2**chunkBits;
-    const int MASK_CHUNKBITS = P2_CHUNKBITS - 1;
+    const int P2_CHUNK_BITS = 2**chunk_bits;
+    const int MASK_CHUNK_BITS = P2_CHUNK_BITS - 1;
 
     col fixed L1 = [1,0...];
 
@@ -40,23 +43,72 @@ airtemplate Keccakf(const int N = 2**18, const int chunks = 5, const int chunkBi
     expr a = 0;
     expr b = 0;
     expr c = 0;
+    expr a_mem[RC],b_mem[RC],c_mem[RC];
+    int rs = 0;
+    expr _accum_a = 0;
+    expr _accum_b = 0;
+    expr _accum_c = 0;
+    int _i = 0;
     for (int i = 0; i < chunks; i++) {
-        a += free_in_a[i] * P2_CHUNKBITS**i;
-        b += free_in_b[i] * P2_CHUNKBITS**i;
-        c += free_in_c[i] * P2_CHUNKBITS**i;
+        const int shift = P2_CHUNK_BITS**i;
+        const int _shift = P2_CHUNK_BITS**_i;
+
+        if (_shift * P2_CHUNK_BITS >= P2_32) {
+            a_mem[rs] = _accum_a;
+            b_mem[rs] = _accum_b;
+            c_mem[rs] = _accum_c;
+
+            _accum_a = 0;
+            _accum_b = 0;
+            _accum_c = 0;
+            _i = 0;
+            rs++;
+        }
+
+        a += free_in_a[i] * shift;
+        b += free_in_b[i] * shift;
+        c += free_in_c[i] * shift;
+
+        _accum_a += free_in_a[i] * _shift;
+        _accum_b += free_in_b[i] * _shift;
+        _accum_c += free_in_c[i] * _shift;
+        _i++;
     }
 
-    // Enforce constants 0b000.. and 0b111.. at the first row for direct access
+    // Store the remaining accumulated values
+    if (_accum_a != 0) {
+        a_mem[rs] = _accum_a;
+        b_mem[rs] = _accum_b;
+        c_mem[rs] = _accum_c;
+    }
+
+    // Enforce constants 0b00..000 and 0b11..111 at the first row for direct access
     // This reduces the circuit connections
     L1 * a === 0;
-    L1 * (b - MASK_CHUNKBITS) === 0;
+    L1 * (b - MASK_CHUNK_BITS) === 0;
 
-    const int CIRCUIT_CONNECTIONS_OPID = 400;
-    connection(CIRCUIT_CONNECTIONS_OPID, [a, b, c], [CONN_A, CONN_B, CONN_C]);
+    connection(opid: 400, cols: [a, b, c], CONN: [CONN_A, CONN_B, CONN_C]);
 
-    // TODO: --> Constraints to make sure that this coprocessor is called from the main processor
+    // --> Constraints to make sure that this coprocessor is called from the main processor
     col witness multiplicity;
     col witness debug_main_step;
+    col witness step_input;
+    col witness addr_input;
+    lookup_proves(OPERATION_BUS_ID, [debug_main_step, KECCAKF_OP, step_input, 0, addr_input, 0, 0, 0, 0], multiplicity);
 
-    // TODO: --> Constraints to read inputs from memory and write outputs to memory
+    // --> Constraints to read inputs from memory and write outputs to memory
+    col witness a_src_mem;
+    col witness mem_step;
+    mem_load(sel: a_src_mem,
+             step: mem_step,
+             addr: addr_input,
+             value: a_mem);
+
+    expr addr_output = addr_input;
+    col witness c_src_mem;
+    mem_store(sel: c_src_mem,
+              step: mem_step,
+              step_offset: 1, //??
+              addr: addr_output,
+              value: c_mem);
 }

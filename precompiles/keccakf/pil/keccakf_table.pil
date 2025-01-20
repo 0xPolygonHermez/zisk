@@ -3,47 +3,38 @@ require "std_lookup.pil"
 const int KECCAKF_TABLE_ID = 126;
 
 airtemplate KeccakfTable(const int N = 2**25, const int bits = 12) {
-    col witness multiplicity;
-
     // Ensure that the chosen size fits
     assert(N >= 2**(bits + bits + 1));
 
     const int P2_BITS = 2**bits;
+    const int P2_BITS_SQUARED = P2_BITS * P2_BITS;
     const int MASK_BITS = P2_BITS - 1;
 
     // Columns defining the circuit gates
-    col fixed GATE_OP, A, B, C;
+    col fixed A = [0..MASK_BITS]...;
+    col fixed B = [0:P2_BITS..MASK_BITS:P2_BITS]...;
+    col fixed GATE_OP = [0:P2_BITS_SQUARED, 1:P2_BITS_SQUARED]...;
 
     // Precompute a table with the two basic operations appearing in the Keccak-f permutation
-    // Note: This table can be outloaded to another component and avoid the size N restriction.
-    int row = 0;
-    for (int x = 0; x < P2_BITS; x++) {
-        for (int y = 0; y < P2_BITS; y++) {
-            // XOR operation (appearing, e.g., in the θ step)
-            GATE_OP[row] = 0;
-            A[row] = x;
-            B[row] = y;
-            C[row] = x ^ y;
-            row++;
-
-            // NOT and AND operation (appearing in the χ step)
-            GATE_OP[row] = 1;
-            A[row] = x;
-            B[row] = y;
-            C[row] = (x ^ MASK_BITS) & y;
-            row++;
+    col fixed C;
+    for (int i = 0; i < N; i++) {
+        const int [gate_op, a, b] = [GATE_OP[i], A[i], B[i]];
+        
+        int c = 0;
+        switch (gate_op) {
+            case 0:
+                // XOR operation (appearing, e.g., in the θ step)
+                c = a ^ b;
+            case 1:
+                // ANDP (appearing in the χ step)
+                c = (a ^ MASK_BITS) & b;
+            default:
+                error(`Invalid gate operation opcode: ${gate_op} at row ${i}`);
         }
-    }
-
-    // Fill the rest of the table with zeros
-    while (row < N) {
-        GATE_OP[row] = 0;
-        A[row] = 0;
-        B[row] = 0;
-        C[row] = 0;
-        row++;
+        C[i] = c;
     }
 
     // --> Prove that the circuit gates are satisfied
+    col witness multiplicity;
     lookup_proves(KECCAKF_TABLE_ID, [GATE_OP, A, B, C], multiplicity);
 }

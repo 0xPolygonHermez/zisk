@@ -1699,8 +1699,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     // :0044
     // Call the keccak precompiled opcode
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("reg", 11, false);
-    zib.src_b("imm", 0, false);
+    zib.src_a("step", 0, false);
+    zib.src_b("reg", 10, false);
     zib.op("keccak").unwrap();
     zib.j(4, 4);
     zib.verbose("keccak");
