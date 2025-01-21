@@ -27,8 +27,8 @@ impl DataBusFileReader {
     /// * `file_path` - The path to the plain text file.
     ///
     /// # Returns
-    /// * `Result<Vec<(u16, Vec<D>)>, io::Error>`: A vector of `(BusId, Payload)` tuples or an error if
-    ///   the file cannot be read or the data format is invalid.
+    /// * `Result<Vec<(u16, Vec<D>)>, io::Error>`: A vector of `(BusId, Payload)` tuples or an error
+    ///   if the file cannot be read or the data format is invalid.
     ///
     /// # Errors
     /// - Returns an error if the file cannot be opened or read.
