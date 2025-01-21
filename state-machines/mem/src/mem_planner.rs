@@ -1,6 +1,13 @@
 use std::sync::Arc;
 
 use sm_common::{BusDeviceMetrics, ChunkId, Plan, Planner};
+
+#[cfg(feature = "debug_mem")]
+use zisk_pil::MEM_ALIGN_AIR_IDS;
+
+#[cfg(feature = "debug_mem")]
+use crate::{MemAlignCheckPoint, MemHelpers};
+
 use zisk_pil::{
     InputDataTrace, MemTrace, RomDataTrace, INPUT_DATA_AIR_IDS, MEM_AIR_IDS, ROM_DATA_AIR_IDS,
     ZISK_AIRGROUP_ID,
@@ -11,9 +18,6 @@ use crate::{
     INPUT_DATA_W_ADDR_INIT, RAM_W_ADDR_END, RAM_W_ADDR_INIT, ROM_DATA_W_ADDR_END,
     ROM_DATA_W_ADDR_INIT,
 };
-
-#[cfg(feature = "debug_mem")]
-use crate::{MemDebug, MEM_BYTES};
 
 pub trait MemPlanCalculator {
     fn plan(&mut self);
@@ -48,40 +52,40 @@ impl MemPlanner {
         use crate::MemModuleSegmentCheckPoint;
 
         for (index, plan) in plans.iter().enumerate() {
-            if plan.air_id == MEM_AIR_IDS[0] ||
-                plan.air_id == INPUT_DATA_AIR_IDS[0] ||
-                plan.air_id == ROM_DATA_AIR_IDS[0]
-            {
-                let meta = plan
-                    .meta
-                    .as_ref()
-                    .unwrap()
-                    .downcast_ref::<MemModuleSegmentCheckPoint>()
-                    .unwrap();
-                info!(
-                    "[Mem] PLAN #{} [{}:{}:{}] {:?} [0x{:X},{}] => [0x{:X},{}] skip:{} last:{}",
-                    index,
-                    plan.airgroup_id,
-                    plan.air_id,
-                    plan.segment_id.unwrap_or(0),
-                    plan.check_point,
-                    meta.prev_addr * MEM_BYTES,
-                    meta.prev_step,
-                    meta.last_addr * MEM_BYTES,
-                    meta.last_step,
-                    meta.skip_rows,
-                    meta.is_last_segment,
-                );
-            } else {
-                info!(
-                    "[Mem] PLAN #{} [{}:{}:{}] {:?}",
-                    index,
-                    plan.airgroup_id,
-                    plan.air_id,
-                    plan.segment_id.unwrap_or(0),
-                    plan.check_point,
-                );
-            }
+            info!(
+                "[Mem] PLAN #{} [{}:{}:{}] {:?}{}",
+                index,
+                plan.airgroup_id,
+                plan.air_id,
+                plan.segment_id.unwrap_or(0),
+                plan.check_point,
+                if plan.air_id == MEM_AIR_IDS[0] ||
+                    plan.air_id == INPUT_DATA_AIR_IDS[0] ||
+                    plan.air_id == ROM_DATA_AIR_IDS[0]
+                {
+                    let meta = plan
+                        .meta
+                        .as_ref()
+                        .unwrap()
+                        .downcast_ref::<MemModuleSegmentCheckPoint>()
+                        .unwrap();
+                    format!(
+                        " [0x{:X},{}] => [0x{:X},{}] skip:{} last:{}",
+                        MemHelpers::get_addr(meta.prev_addr),
+                        meta.prev_step,
+                        MemHelpers::get_addr(meta.last_addr),
+                        meta.last_step,
+                        meta.skip_rows,
+                        meta.is_last_segment
+                    )
+                } else if plan.air_id == MEM_ALIGN_AIR_IDS[0] {
+                    let meta =
+                        plan.meta.as_ref().unwrap().downcast_ref::<MemAlignCheckPoint>().unwrap();
+                    format!(" skip:{} count:{} rows:{}", meta.skip, meta.count, meta.rows,)
+                } else {
+                    "".to_string()
+                }
+            );
         }
     }
 }

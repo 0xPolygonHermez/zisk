@@ -78,6 +78,9 @@ impl MemHelpers {
     pub fn get_addr_w(addr: u32) -> u32 {
         addr >> MEM_BYTES_BITS
     }
+    pub fn get_addr(addr_w: u32) -> u32 {
+        addr_w << MEM_BYTES_BITS
+    }
     #[inline(always)]
     pub fn get_read_step(step: u64) -> u64 {
         step

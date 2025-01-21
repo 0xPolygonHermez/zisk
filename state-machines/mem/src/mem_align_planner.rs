@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{MemCounters, MemPlanCalculator};
 use sm_common::{CheckPoint, ChunkId, InstanceType, Plan};
-use zisk_pil::{MEM_ALIGN_AIR_IDS, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{MemAlignTrace, MEM_ALIGN_AIR_IDS, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 pub struct MemAlignPlanner<'a> {
     instances: Vec<Plan>,
@@ -15,26 +15,24 @@ pub struct MemAlignPlanner<'a> {
     counters: Arc<Vec<(ChunkId, &'a MemCounters)>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MemAlignCheckPoint {
     pub skip: u32,
     pub count: u32,
     pub rows: u32,
 }
 
-// TODO: dynamic
-const MEM_ALIGN_ROWS: usize = 1 << 21;
-
 impl<'a> MemAlignPlanner<'a> {
     pub fn new(counters: Arc<Vec<(ChunkId, &'a MemCounters)>>) -> Self {
+        let num_rows = MemAlignTrace::<usize>::NUM_ROWS as u32;
         Self {
             instances: Vec::new(),
-            num_rows: MEM_ALIGN_ROWS as u32,
+            num_rows,
             current_skip: 0,
             current_count: 0,
             current_chunk_id: None,
             current_chunks: Vec::new(),
-            current_rows_available: MEM_ALIGN_ROWS as u32,
+            current_rows_available: num_rows,
             counters,
         }
     }
@@ -79,7 +77,7 @@ impl<'a> MemAlignPlanner<'a> {
 
             pending_rows -= rows_fit;
             operations_rows_offset += count;
-            if self.current_rows_available == 0 {
+            if self.current_rows_available == 0 || rows_fit == 0 {
                 self.close_current_instance();
                 self.open_new_instance(operations_rows_offset, pending_rows > 0);
             }
@@ -112,6 +110,7 @@ impl<'a> MemAlignPlanner<'a> {
     }
     fn open_new_instance(&mut self, next_instance_skip: u32, use_current_chunk_id: bool) {
         self.current_skip = next_instance_skip;
+        self.current_count = 0;
         self.current_rows_available = self.num_rows;
         if use_current_chunk_id {
             self.current_chunks.push(self.current_chunk_id.unwrap());
