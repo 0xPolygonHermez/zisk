@@ -1,0 +1,63 @@
+require "std_range_check.pil";
+
+airtemplate RangeCheck1(const int N = 2**3) {
+
+    col witness a1,a2,a3,a4,a5;
+    col witness sel1,sel2,sel3;
+
+    // Compilation Errors
+    // range_check(a1, 1, 0, sel1, 0);
+    // range_check(a1, 0, 0, sel1, 0);
+    // range_check(a1, 0, 6, sel1, 0);
+    // range_check(a1, 0, (PRIME - 1) / 2, sel1, 0);
+    // range_check(a1, PRIME - 1, PRIME, sel1, 0);
+    // range_check(a1, -PRIME, -PRIME + 1, sel1, 0);
+
+    range_check(a1, 0, 2**8-1, sel1, 0);
+    range_check(a2, 0, 2**4-1, sel2, 0);
+    range_check(a3, 60, 2**16-1, sel1, 0);
+    range_check(a4, 8228, 17400, sel2, 0);
+    range_check(a5, 0, 2**8-1, sel3, 0);
+};
+
+airtemplate RangeCheck2(const int N = 2**4) {
+
+    col witness b1,b2,b3;
+
+    range_check(b1, 0, 2**8-1, predefined: 0);
+    range_check(b2, 0, 2**9-1, predefined: 0);
+    range_check(b3, 0, 2**10-1, predefined: 0);
+};
+
+airtemplate RangeCheck3(const int N = 2**5) {
+
+    col witness c1,c2;
+
+    range_check(c1, 0, 2**4-1, predefined: 0);
+    range_check(c2, 0, 2**8-1, predefined: 0);
+};
+
+airtemplate RangeCheck4(const int N = 2**6) {
+
+    col witness a1,a2,a3,a4,a5,a6,a7,a8;
+    col witness sel1,sel2;
+
+    // Positive and predefined ranges
+    range_check(a1, 0, 2**8-1, sel2);
+    range_check(a1, 0, 2**16-1, sel1);
+
+    // Positive, non-predefined but absorbed ranges
+    range_check(a2, 50, 2**7-1, sel2); // absorbed to two U8
+    range_check(a3, 127, 2**8, sel2); // absorbed to two U16
+
+    // Positive, non-predefined and larger-than-predetermined ranges
+    range_check(a4, 1, 2**16+1, sel2);
+
+    // Edge cases
+    range_check(a5, 127, 2**16, sel1); // One greater than the maximum predefined
+    range_check(a6, -1, 2**3, sel1);  // One less than the minimum predefined
+
+    // Negative
+    range_check(a7, -2**7+1, -50);
+    range_check(a8, -2**8+1, -127);
+};

@@ -1,0 +1,192 @@
+require "baby_bear.pil";
+require "goldilocks.pil";
+
+/*
+Available PIOPs:
+
+    name     | code | note
+-------------|------|----------------------------------------------------------------------------
+ Default     |  0   | Default name set by the library
+ Permutation |  1   | name as "Permutation"
+ Lookup      |  2   | name as "Lookup"
+ Range Check |  3   | name as "Range Check"
+ Connection  |  4   | name as "Connection"
+ Direct      |  5   | name used for direct updates of the proof constraint
+ Isolated    |  6   | name used for isolated components which avoids checks with other components
+*/
+
+const int PIOP_NAME_DEFAULT = 0;
+const int PIOP_NAME_PERMUTATION = 1;
+const int PIOP_NAME_LOOKUP = 2;
+const int PIOP_NAME_RANGE_CHECK = 3;
+const int PIOP_NAME_CONNECTION = 4;
+const int PIOP_NAME_DIRECT = 5;
+const int PIOP_NAME_ISOLATED = 6;
+
+function get_piop_name(const int name): string {
+    switch (name) {
+        case PIOP_NAME_PERMUTATION:
+            return "Permutation";
+        case PIOP_NAME_LOOKUP:
+            return "Lookup";
+        case PIOP_NAME_RANGE_CHECK:
+            return "Range Check";
+        case PIOP_NAME_CONNECTION:
+            return "Connection";
+        case PIOP_NAME_DIRECT:
+            return "Direct";
+        case PIOP_NAME_ISOLATED:
+            return "Isolated";
+        default:
+            error(`Unknown name code: ${name}`);
+    }
+}
+
+/*
+Available bus types:
+
+    name    | code | note
+------------|------|----------------------------------------------------------------------------
+ Default    |  0   | default bus set by the library
+ Sum        |  1   | use the sum bus
+ Prod       |  2   | use the product bus
+*/
+
+const int PIOP_BUS_DEFAULT = 0;
+const int PIOP_BUS_SUM = 1;
+const int PIOP_BUS_PROD = 2;
+
+private function valide_bus_type(const int bus_type) {
+    if (bus_type != PIOP_BUS_SUM && bus_type != PIOP_BUS_PROD) {
+        error(`Unknown bus type: ${bus_type}`);
+    }
+}
+
+function set_std_bus_type(const int bus_type) {
+    valide_bus_type(bus_type);
+
+    // Set the bus type for the std components that allow for different bus types
+    set_permutation_bus_type(bus_type);
+}
+
+function set_permutation_bus_type(const int bus_type) {
+    valide_bus_type(bus_type);
+
+    DEFAULT_PERMUTATION_BUS_TYPE = bus_type;
+}
+
+/*
+Available direct types:
+
+    name    | code | note
+------------|------|----------------------------------------------------------------------------
+ Default    |  0   | default constraint behavior set by the library
+ AIR        |  1   | update the air constraint directly
+ Global     |  2   | update the global constraint directly
+*/
+
+const int PIOP_DIRECT_TYPE_DEFAULT = 0;
+const int PIOP_DIRECT_TYPE_AIR = 1;
+const int PIOP_DIRECT_TYPE_GLOBAL = 2;
+
+/*
+    name    | code | note
+------------|------|-------------------------------------------------------------------------- 
+ Goldilocks |  0   | 2^64 - 2^32 + 1
+ BabyBear   |  1   | 2^31 - 2^27 + 1
+*/
+
+const int FIELD_GOLDILOCKS = 0;
+const int FIELD_BABY_BEAR = 1;
+
+int ACTIVE_FIELD = FIELD_GOLDILOCKS;
+
+int GEN[256];
+for (int i = 0; i < length(GEN); i++) {
+    GEN[i] = 0;
+}
+
+int k_coset = 0;
+
+switch (ACTIVE_FIELD) {
+    case FIELD_GOLDILOCKS:
+        assert(length(Goldilocks_Gen) <= length(GEN));
+
+        for (int i = 0; i < length(Goldilocks_Gen); i++) {
+            GEN[i] = Goldilocks_Gen[i];
+        }
+
+        k_coset = Goldilocks_k;
+
+    case FIELD_BABY_BEAR:
+        assert(length(BabyBear_Gen) <= length(GEN));
+
+        for (int i = 0; i < length(BabyBear_Gen); i++) {
+            GEN[i] = BabyBear_Gen[i];
+        }
+
+        k_coset = BabyBear_k;
+
+    default:
+        error("Unknown field");
+}
+
+// Powers of 2
+const int P2_1 = 2**1;
+const int P2_2 = 2**2;
+const int P2_3 = 2**3;
+const int P2_4 = 2**4;
+const int P2_5 = 2**5;
+const int P2_6 = 2**6;
+const int P2_7 = 2**7;
+const int P2_8 = 2**8;
+const int P2_9 = 2**9;
+const int P2_10 = 2**10;
+const int P2_11 = 2**11;
+const int P2_12 = 2**12;
+const int P2_13 = 2**13;
+const int P2_14 = 2**14;
+const int P2_15 = 2**15;
+const int P2_16 = 2**16;
+const int P2_17 = 2**17;
+const int P2_18 = 2**18;
+const int P2_19 = 2**19;
+const int P2_20 = 2**20;
+const int P2_21 = 2**21;
+const int P2_22 = 2**22;
+const int P2_23 = 2**23;
+const int P2_24 = 2**24;
+const int P2_31 = 2**31;
+const int P2_32 = 2**32;
+const int P2_63 = 2**63;
+const int P2_64 = 2**64;
+
+// Masks
+const int MASK_1 = P2_1 - 1;
+const int MASK_2 = P2_2 - 1;
+const int MASK_3 = P2_3 - 1;
+const int MASK_4 = P2_4 - 1;
+const int MASK_5 = P2_5 - 1;
+const int MASK_6 = P2_6 - 1;
+const int MASK_7 = P2_7 - 1;
+const int MASK_8 = P2_8 - 1;
+const int MASK_9 = P2_9 - 1;
+const int MASK_10 = P2_10 - 1;
+const int MASK_11 = P2_11 - 1;
+const int MASK_12 = P2_12 - 1;
+const int MASK_13 = P2_13 - 1;
+const int MASK_14 = P2_14 - 1;
+const int MASK_15 = P2_15 - 1;
+const int MASK_16 = P2_16 - 1;
+const int MASK_17 = P2_17 - 1;
+const int MASK_18 = P2_18 - 1;
+const int MASK_19 = P2_19 - 1;
+const int MASK_20 = P2_20 - 1;
+const int MASK_21 = P2_21 - 1;
+const int MASK_22 = P2_22 - 1;
+const int MASK_23 = P2_23 - 1;
+const int MASK_24 = P2_24 - 1;
+const int MASK_31 = P2_31 - 1;
+const int MASK_32 = P2_32 - 1;
+const int MASK_63 = P2_63 - 1;
+const int MASK_64 = P2_64 - 1;

@@ -1,0 +1,23 @@
+// Constants for the Goldilocks prime p = 2³¹ - 2²⁷ + 1, where p-1 = 2²⁷·3·5
+
+/*
+List of generators of groups of size power of 2
+p = 2^31 - 2^27 + 1
+F = GF(p)
+a = F.multiplicative_generator()
+for i in range(32):
+    g = a^((p-1)/2^i)
+    assert(g.multiplicative_order() == 2^i)
+    print(g, end=",")
+*/
+const int BabyBear_Gen[27] = [
+    1,2013265920,1728404513,1592366214,196396260,760005850,1721589904,397765732,1732600167,1753498361,
+    341742893,1340477990,1282623253,298008106,1657000625,2009781145,1421947380,1286330022,1559589183,
+    1049899240,195061667,414040701,570250684,1267047229,1003846038,1149491290,975630072
+];
+
+// 31^(2^27) => Generator of the group of size m = 3·5
+// This element is used to generate distinct cosets of the subgroup of order N | 2^27
+//          H := <w>, k·H := k<w>, k²·H := k²<w>, ...
+// where w is of order N
+const int BabyBear_k = 1995471372;

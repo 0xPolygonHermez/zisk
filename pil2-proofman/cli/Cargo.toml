@@ -1,0 +1,26 @@
+[package]
+name = "proofman-cli"
+version = "0.1.0"
+authors = ["Polygon Labs"]
+edition = "2021"
+readme = "README.md"
+
+[dependencies]
+pilout = { path = "../pilout" }
+proofman-util = { path = "../util" }
+proofman = { path = "../proofman" }
+proofman-common = { path = "../common" }
+proofman-starks-lib-c = { path = "../provers/starks-lib-c" }
+
+p3-goldilocks.workspace = true
+p3-field.workspace = true
+log.workspace = true
+env_logger.workspace = true
+
+colored.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+clap = { version = "4.5.13", features = ["derive", "env"] }
+tinytemplate = "1.1"
+convert_case = "0.6"

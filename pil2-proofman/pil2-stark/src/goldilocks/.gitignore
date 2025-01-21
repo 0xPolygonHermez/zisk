@@ -1,0 +1,11 @@
+build
+*.log
+null.d
+test
+bench
+testsgpu
+testscpu
+benchcpu
+benchgpu
+deviceQuery
+*.o

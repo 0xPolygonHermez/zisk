@@ -1,0 +1,514 @@
+name: CI Checks
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+jobs:
+  cargo-test:
+    name: cargo test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Rust Toolchain
+        run: curl https://sh.rustup.rs -sSf | sh -s -- -y
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          sudo apt install -y build-essential libbenchmark-dev libomp-dev libgmp-dev nlohmann-json3-dev nasm libsodium-dev cmake
+
+      - name: Install pil2-stark
+        working-directory: pil2-stark
+        run: |
+          git submodule update --init --recursive
+          git submodule update
+          make clean
+          make starks_lib -j
+          make -j bctree
+      - name: cargo test
+        run: cargo test --workspace --features no_lib_link
+  cargo-check:
+    name: cargo check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Set up Rust Toolchain
+        run: curl https://sh.rustup.rs -sSf | sh -s -- -y
+  cargo-fmt:
+    name: cargo fmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Rust Toolchain
+        run: curl https://sh.rustup.rs -sSf | sh -s -- -y
+      - name: cargo fmt
+        run: cargo fmt -- --check
+  markdown-book:
+    name: markdown book
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Rust Toolchain
+        run: curl https://sh.rustup.rs -sSf | sh -s -- -y
+      - name: install mdbook
+        run: cargo install mdbook
+      - name: mdbook build
+        run: mdbook build
+  cargo-fix:
+    name: cargo fix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Set up Rust Toolchain
+        run: curl https://sh.rustup.rs -sSf | sh -s -- -y
+      - name: cargo fix --workspace
+        run: |
+          # Run cargo fix on the project
+          cargo fix --workspace --features no_lib_link --allow-dirty --allow-staged
+
+          # Check for local git changes
+          if ! git diff --exit-code; then
+              echo "There are local changes after running 'cargo fix --workspace' ❌"
+              exit 1
+          else
+              echo "No changes detected after running 'cargo fix --workspace' ✅"
+          fi
+  cargo-clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Set up Rust Toolchain
+        run: curl https://sh.rustup.rs -sSf | sh -s -- -y
+      - name: Modify stark-prover-lib
+        run: sed -i 's/default = \[\]/default = \["no_lib_link"\]/g' ./provers/starks-lib-c/Cargo.toml
+      - name: cargo clippy
+        run: cargo clippy --workspace --features no_lib_link -- -D warnings
+  cargo-audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Set up Rust Toolchain
+        run: curl https://sh.rustup.rs -sSf | sh -s -- -y
+      - name: install cargo-audit
+        run: cargo install cargo-audit
+      - name: cargo audit
+        run: cargo audit
+  test-fibo:
+    name: Test Fibonacci Square (with aggregation)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: "18"
+      - name: Install npm
+        run: npm install -g npm
+      - name: Check npm version
+        run: npm --version
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install z3-solver
+        run: |
+          python -m pip install z3-solver
+
+      - name: Check out circom
+        uses: actions/checkout@v4
+        with:
+          repository: iden3/circom
+          path: circom-repo
+
+
+      - name: Build and install Circom
+        working-directory: circom-repo
+        run: |
+          cargo build --release --workspace
+          cargo install --path circom
+
+      - name: Check out pil2-proofman-js
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygonHermez/pil2-proofman-js
+          ref: develop
+          path: pil2-proofman-js
+
+      - name: Install pil2-proofman-js dependencies
+        working-directory: pil2-proofman-js
+        run: npm install
+
+      - name: Check out pil2-compiler
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygonHermez/pil2-compiler
+          ref: feature/proofval-stage
+          path: pil2-compiler
+
+      - name: Install pil2-compiler dependencies
+        working-directory: pil2-compiler
+        run: npm install
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          sudo apt install -y build-essential libbenchmark-dev libomp-dev libgmp-dev nlohmann-json3-dev nasm libsodium-dev cmake
+          sudo apt-get install -y openmpi-bin openmpi-common libopenmpi-dev
+
+      - name: Install pil2-stark
+        working-directory: pil2-stark
+        run: |
+          git submodule update --init --recursive
+          make clean
+          make starks_lib -j
+          make -j bctree
+
+      - name: Modify Cargo.toml std
+        run: |
+          sed -i 's/# *"pil2-components\/lib\/std\/rs"/"pil2-components\/lib\/std\/rs"/' ./Cargo.toml
+          
+      - name: Modify Cargo.toml Fibonacci Square
+        run: |
+          sed -i 's/# *"examples\/fibonacci-square"/"examples\/fibonacci-square"/' ./Cargo.toml
+
+      - name: Compile PIL Fibonacci Square
+        run: |
+          node pil2-compiler/src/pil.js ./examples/fibonacci-square/pil/build.pil -I ./pil2-components/lib/std/pil -o ./examples/fibonacci-square/pil/build.pilout
+
+      - name: Generate setup Fibonacci Square
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./examples/fibonacci-square/pil/build.pilout -b ./examples/fibonacci-square/build -t pil2-stark/build/bctree -r
+
+      - name: Generate PIL Helpers Fibonacci Square
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./examples/fibonacci-square/pil/build.pilout --path ./examples/fibonacci-square/src -o
+
+      - name: Cargo build
+        run: RUST_BACKTRACE=1 cargo build -v
+
+      - name: Verify constraints Fibonacci Square
+        run: |
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/libfibonacci_square.so --proving-key examples/fibonacci-square/build/provingKey/ --public-inputs examples/fibonacci-square/src/inputs.json
+
+      - name: Generate proof Fibonacci Square
+        run: |
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libfibonacci_square.so --proving-key examples/fibonacci-square/build/provingKey/ --public-inputs examples/fibonacci-square/src/inputs.json --output-dir examples/fibonacci-square/build/proofs -a
+
+      - name: Clean proof dir
+        run: |
+          rm -rf examples/fibonacci-square/build/proofs
+        
+      - name: Cargo build distributed
+        run: RUST_BACKTRACE=1 cargo build --features distributed -v
+
+      # - name: Generate proof Fibonacci Square distributed
+      #   run: | 
+      #     mpirun --bind-to none -np 3 -x OMP_NUM_THREADS=80 target/debug/proofman-cli  prove --witness-lib ./target/debug/libfibonacci_square.so --public-inputs examples/fibonacci-square/src/inputs.json --proving-key examples/fibonacci-square/build/provingKey/ --output-dir examples/fibonacci-square/build/proofs -a
+
+  test-std:
+    name: Test STD
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: "18"
+      - name: Install npm
+        run: npm install -g npm
+      - name: Check npm version
+        run: npm --version
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install z3-solver
+        run: |
+          python -m pip install z3-solver
+
+      - name: Check out pil2-proofman-js
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygonHermez/pil2-proofman-js
+          ref: develop
+          path: pil2-proofman-js
+
+      - name: Install pil2-proofman-js dependencies
+        working-directory: pil2-proofman-js
+        run: npm install
+
+      - name: Check out pil2-compiler
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygonHermez/pil2-compiler
+          ref: feature/proofval-stage
+          path: pil2-compiler
+
+      - name: Install pil2-compiler dependencies
+        working-directory: pil2-compiler
+        run: npm install
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          sudo apt install -y build-essential libbenchmark-dev libomp-dev libgmp-dev nlohmann-json3-dev nasm libsodium-dev cmake
+
+      - name: Install pil2-stark
+        working-directory: pil2-stark
+        run: |
+          git submodule update --init --recursive
+          make clean
+          make starks_lib -j
+          make -j bctree
+
+      - name: Modify Cargo.toml std
+        run: |
+          sed -i 's/# *"pil2-components\/lib\/std\/rs"/"pil2-components\/lib\/std\/rs"/' ./Cargo.toml
+
+      - name: Modify Cargo.toml std lookup
+        run: |
+          sed -i 's/# *"pil2-components\/test\/std\/lookup\/rs"/"pil2-components\/test\/std\/lookup\/rs"/' ./Cargo.toml
+
+      - name: Modify Cargo.toml std permutation
+        run: |
+          sed -i 's/# *"pil2-components\/test\/std\/permutation\/rs"/"pil2-components\/test\/std\/permutation\/rs"/' ./Cargo.toml
+
+      - name: Modify Cargo.toml std connection
+        run: |
+          sed -i 's/# *"pil2-components\/test\/std\/connection\/rs"/"pil2-components\/test\/std\/connection\/rs"/' ./Cargo.toml
+
+      - name: Modify Cargo.toml std diff_buses
+        run: |
+          sed -i 's/# *"pil2-components\/test\/std\/diff_buses\/rs"/"pil2-components\/test\/std\/diff_buses\/rs"/' ./Cargo.toml
+
+      - name: Modify Cargo.toml std direct_update
+        run: |
+          sed -i 's/# *"pil2-components\/test\/std\/direct_update\/rs"/"pil2-components\/test\/std\/direct_update\/rs"/' ./Cargo.toml
+
+      - name: Modify Cargo.toml std range-check
+        run: |
+          sed -i 's/# *"pil2-components\/test\/std\/range_check\/rs"/"pil2-components\/test\/std\/range_check\/rs"/' ./Cargo.toml
+
+      - name: Modify Cargo.toml std simple
+        run: |
+          sed -i 's/# *"pil2-components\/test\/simple\/rs"/"pil2-components\/test\/simple\/rs"/' ./Cargo.toml
+
+      - name: Create dir build lookup
+        run: |
+          mkdir -p ./pil2-components/test/std/lookup/build/
+
+      - name: Compile PIL Lookup
+        run: |
+          node pil2-compiler/src/pil.js ./pil2-components/test/std/lookup/lookup.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/lookup/build/build.pilout
+
+      - name: Generate setup Lookup
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./pil2-components/test/std/lookup/build/build.pilout -b ./pil2-components/test/std/lookup/build -t pil2-stark/build/bctree
+
+      - name: Generate PIL Helpers Lookup
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/lookup/build/build.pilout --path ./pil2-components/test/std/lookup/rs/src -o
+
+      - name: Create dir build permutation
+        run: |
+          mkdir -p ./pil2-components/test/std/permutation/build/
+
+      - name: Compile PIL permutation
+        run: |
+          node pil2-compiler/src/pil.js ./pil2-components/test/std/permutation/permutation.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/permutation/build/build.pilout
+
+      - name: Generate setup permutation
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./pil2-components/test/std/permutation/build/build.pilout -b ./pil2-components/test/std/permutation/build -t pil2-stark/build/bctree
+
+      - name: Generate PIL Helpers permutation
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/permutation/build/build.pilout --path ./pil2-components/test/std/permutation/rs/src -o
+        
+      - name: Create dir build connection
+        run: |
+          mkdir -p ./pil2-components/test/std/connection/build/
+
+      - name: Compile PIL connection
+        run: |
+          node pil2-compiler/src/pil.js ./pil2-components/test/std/connection/connection.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/connection/build/build.pilout
+
+      - name: Generate setup connection
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./pil2-components/test/std/connection/build/build.pilout -b ./pil2-components/test/std/connection/build -t pil2-stark/build/bctree
+
+      - name: Generate PIL Helpers connection
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/connection/build/build.pilout --path ./pil2-components/test/std/connection/rs/src -o
+
+      - name: Create dir build diff_buses
+        run: |
+          mkdir -p ./pil2-components/test/std/diff_buses/build/
+
+      - name: Compile PIL diff_buses
+        run: |
+          node pil2-compiler/src/pil.js ./pil2-components/test/std/diff_buses/diff_buses.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/diff_buses/build/build.pilout
+
+      - name: Generate setup diff_buses
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./pil2-components/test/std/diff_buses/build/build.pilout -b ./pil2-components/test/std/diff_buses/build -t pil2-stark/build/bctree
+
+      - name: Generate PIL Helpers diff_buses
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/diff_buses/build/build.pilout --path ./pil2-components/test/std/diff_buses/rs/src -o
+
+      - name: Create dir build direct_update
+        run: |
+          mkdir -p ./pil2-components/test/std/direct_update/build/
+
+      - name: Compile PIL direct_update
+        run: |
+          node pil2-compiler/src/pil.js ./pil2-components/test/std/direct_update/direct_update.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/direct_update/build/direct_update.pilout
+
+      - name: Generate setup direct_update
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./pil2-components/test/std/direct_update/build/direct_update.pilout -b ./pil2-components/test/std/direct_update/build -t pil2-stark/build/bctree
+
+      - name: Generate PIL Helpers direct_update
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/direct_update/build/direct_update.pilout --path ./pil2-components/test/std/direct_update/rs/src -o
+
+      - name: Create dir build range-check
+        run: |
+          mkdir -p ./pil2-components/test/std/range_check/build/
+
+      - name: Compile PIL range-check
+        run: |
+          node pil2-compiler/src/pil.js ./pil2-components/test/std/range_check/build.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/std/range_check/build/build.pilout
+
+      - name: Generate setup range-check
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./pil2-components/test/std/range_check/build/build.pilout -b ./pil2-components/test/std/range_check/build -t pil2-stark/build/bctree
+
+      - name: Generate PIL Helpers range-check
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/range_check/build/build.pilout --path ./pil2-components/test/std/range_check/rs/src -o
+
+      - name: Create dir build simple
+        run: |
+          mkdir -p ./pil2-components/test/simple/build/
+
+      - name: Compile PIL simple
+        run: |
+          node pil2-compiler/src/pil.js ./pil2-components/test/simple/simple.pil  -I ./pil2-components/lib/std/pil -o ./pil2-components/test/simple/build/build.pilout
+
+      - name: Generate setup simple
+        run: |
+          node pil2-proofman-js/src/main_setup.js -a ./pil2-components/test/simple/build/build.pilout -b ./pil2-components/test/simple/build -t pil2-stark/build/bctree
+
+      - name: Generate PIL Helpers simple
+        run: |
+          cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/simple/build/build.pilout --path ./pil2-components/test/simple/rs/src -o
+
+      - name: Cargo build
+        run: RUST_BACKTRACE=1 cargo build -v
+
+      - name: Verify constraints Lookup
+        run: |
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/liblookup.so --proving-key ./pil2-components/test/std/lookup/build/provingKey
+
+      - name: Generate proof Lookup
+        run: |
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/liblookup.so --proving-key ./pil2-components/test/std/lookup/build/provingKey --output-dir ./pil2-components/test/std/lookup/build
+
+      - name: Verify constraints permutation
+        run: |
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/libpermutation.so --proving-key ./pil2-components/test/std/permutation/build/provingKey
+
+      - name: Generate proof permutation
+        run: |
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libpermutation.so --proving-key ./pil2-components/test/std/permutation/build/provingKey --output-dir ./pil2-components/test/std/permutation/build
+
+      - name: Verify constraints connection
+        run: |
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/libconnection.so --proving-key ./pil2-components/test/std/connection/build/provingKey
+
+      - name: Generate proof connection
+        run: |
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libconnection.so --proving-key ./pil2-components/test/std/connection/build/provingKey --output-dir ./pil2-components/test/std/connection/build
+
+      - name: Verify constraints direct_update
+        run: |
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/libdirect_update.so --proving-key ./pil2-components/test/std/direct_update/build/provingKey
+
+      - name: Generate proof direct_update
+        run: |
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libdirect_update.so --proving-key ./pil2-components/test/std/direct_update/build/provingKey --output-dir ./pil2-components/test/std/direct_update/build
+
+      - name: Verify constraints direct_update
+        run: |
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/libdirect_update.so --proving-key ./pil2-components/test/std/direct_update/build/provingKey
+
+      - name: Generate proof direct_update
+        run: |
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libdirect_update.so --proving-key ./pil2-components/test/std/direct_update/build/provingKey --output-dir ./pil2-components/test/std/direct_update/build
+
+      - name: Verify constraints range-check
+        run: |
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/librange_check.so --proving-key ./pil2-components/test/std/range_check/build/provingKey
+
+      - name: Generate proof range-check
+        run: |
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/librange_check.so --proving-key ./pil2-components/test/std/range_check/build/provingKey --output-dir ./pil2-components/test/std/range_check/build
+
+      - name: Verify constraints simple
+        run: |
+          cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/libsimple.so --proving-key ./pil2-components/test/simple/build/provingKey
+
+      - name: Generate proof simple
+        run: |
+          cargo run --bin proofman-cli prove --witness-lib ./target/debug/libsimple.so --proving-key ./pil2-components/test/simple/build/provingKey --output-dir ./pil2-components/test/simple/build
+
+      # - name: Verify constraints diff_buses
+      #   run: |
+      #     cargo run --bin proofman-cli verify-constraints --witness-lib ./target/debug/libdiff_buses.so --proving-key ./pil2-components/test/std/diff_buses/build/provingKey
+
+      # - name: Generate proof diff_buses
+      #   run: |
+      #     cargo run --bin proofman-cli prove --witness-lib ./target/debug/libdiff_buses.so --proving-key ./pil2-components/test/std/diff_buses/build/provingKey --output-dir ./pil2-components/test/std/diff_buses/build

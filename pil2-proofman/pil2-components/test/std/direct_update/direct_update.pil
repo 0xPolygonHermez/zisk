@@ -1,0 +1,100 @@
+require "std_permutation.pil";
+require "std_lookup.pil";
+require "std_range_check.pil";
+require "std_direct.pil";
+
+const int OP_BUS_ID1 = 100;
+const int OPID1 = 333;
+
+public a_public[2];
+proofval b_proofval_0; // FIX: Cannot set prooval defined as an array
+proofval b_proofval_1;
+
+airtemplate DirectUpdateProdLocal(const int N = 2**4) {
+    col witness a[2],b[2],c[2];
+    col witness perform_operation;
+
+    airval c_airval[2];
+    airval perform_direct_update[2];
+
+    direct_update_assumes(OP_BUS_ID1, [OPID1, ...a_public, b_proofval_0, b_proofval_1, ...c_airval], sel: perform_direct_update[0], bus_type: PIOP_BUS_PROD);
+    direct_update_assumes(OP_BUS_ID1, [OPID1, ...a_public, b_proofval_0, b_proofval_1, ...c_airval], sel: perform_direct_update[1], bus_type: PIOP_BUS_PROD);
+
+    permutation_proves(OP_BUS_ID1, [OPID1, ...a, ...b, ...c], sel: perform_operation, bus_type: PIOP_BUS_PROD);
+}
+
+const int OP_BUS_ID2 = 200;
+const int OPID2 = 444;
+
+airtemplate DirectUpdateProdGlobal(const int N = 2**4) {
+    col witness c[2],d[2];
+    col witness perform_operation;
+
+    permutation_assumes(OP_BUS_ID2, [OPID2, ...c, ...d], sel: perform_operation, bus_type: PIOP_BUS_PROD);
+}
+
+airgroup DirectUpdateProd {
+    DirectUpdateProdLocal();
+
+    public c_public[2];
+    proofval d_proofval_0;
+    proofval d_proofval_1;
+    proofval perform_global_update_0;
+    proofval perform_global_update_1;
+    direct_global_update_proves(OP_BUS_ID2, [OPID2, ...c_public, d_proofval_0, d_proofval_1], sel: perform_global_update_0, bus_type: PIOP_BUS_PROD);
+    direct_global_update_proves(OP_BUS_ID2, [OPID2, ...c_public, d_proofval_0, d_proofval_1], sel: perform_global_update_1, bus_type: PIOP_BUS_PROD);
+
+    DirectUpdateProdGlobal();
+
+    // TODO: Uncommented when compiler bug is fixed
+    // public c_public[2];
+    // proofval d_proofval_0;
+    // proofval d_proofval_1;
+    // proofval perform_global_update_0;
+    // proofval perform_global_update_1;
+    // direct_global_update_proves(OP_BUS_ID2, [OPID2, ...c_public, d_proofval_0, d_proofval_1], sel: perform_global_update_0, bus_type: PIOP_BUS_PROD);
+    // direct_global_update_proves(OP_BUS_ID2, [OPID2, ...c_public, d_proofval_0, d_proofval_1], sel: perform_global_update_1, bus_type: PIOP_BUS_PROD);
+}
+
+const int OP_BUS_ID3 = 300;
+const int OPID3 = 555;
+
+public a_public_s[2];
+proofval b_proofval_0_s;
+proofval b_proofval_1_s;
+
+airtemplate DirectUpdateSumLocal(const int N = 2**5) {
+    col witness a[2],b[2],c[2];
+    col witness perform_operation;
+
+    airval c_airval[2];
+    airval perform_direct_update[2];
+
+    lookup_assumes(OP_BUS_ID3, [OPID3, ...a, ...b, ...c], sel: perform_operation);
+
+    direct_update_proves(OP_BUS_ID3, [OPID3, ...a_public_s, b_proofval_0_s, b_proofval_1_s, ...c_airval], sel: perform_direct_update[0]);
+    direct_update_proves(OP_BUS_ID3, [OPID3, ...a_public_s, b_proofval_0_s, b_proofval_1_s, ...c_airval], sel: perform_direct_update[1]);
+}
+
+const int OP_BUS_ID4 = 400;
+const int OPID4 = 666;
+
+airtemplate DirectUpdateSumGlobal(const int N = 2**5) {
+    col witness c[2],d[2];
+    col witness perform_operation;
+    lookup_proves(OP_BUS_ID4, [OPID4, ...c, ...d], mul: perform_operation);
+}
+
+airgroup DirectUpdateSum {
+    DirectUpdateSumLocal();
+
+    public c_public_s[2];
+    proofval d_proofval_0_s;
+    proofval d_proofval_1_s;
+    proofval perform_global_update_0_s;
+    proofval perform_global_update_1_s;
+    direct_global_update_assumes(OP_BUS_ID4, [OPID4, ...c_public_s, d_proofval_0_s, d_proofval_1_s], sel: perform_global_update_0_s);
+    direct_global_update_assumes(OP_BUS_ID4, [OPID4, ...c_public_s, d_proofval_0_s, d_proofval_1_s], sel: perform_global_update_1_s);
+
+    DirectUpdateSumGlobal();
+}

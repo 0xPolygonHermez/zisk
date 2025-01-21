@@ -1,0 +1,10 @@
+[package]
+name = "proofman-util"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+colored.workspace = true
+p3-field.workspace = true
+
+sysinfo = "0.33"

@@ -1,0 +1,33 @@
+require "std_constants.pil";
+require "std_permutation.pil";
+require "std_lookup.pil";
+
+airtemplate ProdBus(const int N = 2**4) {
+    col witness a,b;
+
+    permutation_assumes(1, [a], bus_type: PIOP_BUS_PROD);
+    permutation_proves(1, [b], bus_type: PIOP_BUS_PROD);
+}
+
+airtemplate SumBus(const int N = 2**5) {
+    col witness a,b;
+
+    lookup_assumes(2, [a]);
+    lookup_proves(2, [b]);
+}
+
+airtemplate BothBuses(const int N = 2**4) {
+    col witness a,b,c,d;
+
+    permutation_assumes(3, [a], bus_type: PIOP_BUS_PROD);
+    permutation_proves(3, [b], bus_type: PIOP_BUS_PROD);
+
+    lookup_assumes(4, [c]);
+    lookup_proves(4, [d]);
+}
+
+airgroup Buses {
+    ProdBus();
+    SumBus();
+    BothBuses();
+}

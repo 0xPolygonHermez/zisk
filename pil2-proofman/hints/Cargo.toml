@@ -1,0 +1,11 @@
+[package]
+name = "proofman-hints"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+proofman-starks-lib-c = { path = "../provers/starks-lib-c" }
+proofman-common = { path = "../common" }
+proofman-util = { path = "../util" }
+p3-field.workspace = true
+log.workspace = true

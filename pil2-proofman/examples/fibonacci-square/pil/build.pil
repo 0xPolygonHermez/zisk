@@ -1,0 +1,9 @@
+require "fibonaccisq.pil"
+require "module.pil"
+
+// Notice that these two components have a one-to-one reationship
+// As they have a different trace length, we need to create multiple module instances
+airgroup FibonacciSquare {
+    FibonacciSquare(N: 2**18);
+    Module(N: 2**16);
+}

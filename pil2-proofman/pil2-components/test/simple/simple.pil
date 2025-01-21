@@ -1,0 +1,30 @@
+require "std_permutation.pil";
+require "std_lookup.pil";
+
+airtemplate SimpleLeft(const int N = 2**2) {
+
+    col witness a,b,c,d;
+    col witness e,f,g,h;
+
+    permutation_assumes(1, [a, b]);
+    permutation_proves(1, [c, d]);
+
+    permutation_assumes(2, [e, f]);
+
+    lookup(3, [g, h], mul: -1);
+};
+
+airtemplate SimpleRight(const int N = 2**2) {
+
+    col witness a,b,c,d;
+    col witness mul;
+
+    permutation(2, [a, b], sel: 1);
+
+    lookup_proves(3, [c, d], mul);
+};
+
+airgroup Simple {
+    SimpleLeft();
+    SimpleRight();
+}

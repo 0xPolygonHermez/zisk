@@ -1,0 +1,29 @@
+[package]
+name = "stark"
+version = "0.1.0"
+authors = ["Polygon Labs"]
+edition = "2021"
+readme = "README.md"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+proofman-util = { path = "../../util" }
+proofman-starks-lib-c = { path = "../starks-lib-c" }
+transcript = { path = "../../transcript" }
+proofman-common = { path = "../../common" }
+
+log.workspace = true
+p3-goldilocks.workspace = true
+p3-field.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+serde_derive.workspace = true
+
+[features]
+default = []
+no_lib_link = ["proofman-starks-lib-c/no_lib_link"]
+distributed = ["proofman-common/distributed"]
+

@@ -1,0 +1,27 @@
+/**
+ * Given expressions E₁,...,Eₙ of any degree, reduces the vector PIOP to a single expression PIOP.
+ *
+ * @param busid       The ID that uniquely identifies the PIOP in the bus.
+ * @param expressions The vector of expressions of the PIOP.
+ * @return            busid + E₁·α + E₂·α² + ... + Eₙ·αⁿ
+ */
+function compress_exprs(const expr busid, const expr expressions[]): expr {
+    if (!defined(std_alpha)) {
+        challenge stage(2) std_alpha;
+    }
+
+    expr exprs_compressed = 0;
+    for (int i = length(expressions) - 1; i >= 0; i--) {
+        exprs_compressed = (exprs_compressed + expressions[i]) * std_alpha;
+    }
+    exprs_compressed = exprs_compressed + busid;
+
+    return exprs_compressed;
+}
+
+function get_L1(): expr {
+    if (!defined(air.__L1__)) {
+        col fixed air.__L1__ = [1,0...];
+    }
+    return air.__L1__;
+}

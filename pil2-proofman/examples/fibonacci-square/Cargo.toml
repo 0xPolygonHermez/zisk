@@ -1,0 +1,22 @@
+[package]
+name = "fibonacci-square"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+proofman-common = { path = "../../common" }
+proofman-macros.workspace = true
+witness.workspace = true
+pil-std-lib.workspace = true
+env_logger.workspace = true
+log.workspace = true
+p3-goldilocks.workspace = true
+p3-field.workspace = true
+rayon = "1"
+
+serde.workspace = true
+serde_json.workspace = true
+num-bigint = "0.4"

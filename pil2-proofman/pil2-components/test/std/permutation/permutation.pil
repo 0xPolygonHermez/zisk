@@ -1,0 +1,37 @@
+require "std_permutation.pil";
+require "std_constants.pil";
+
+airtemplate Permutation1(const int N = 2**6) {
+
+    col witness a1,b1,a2,b2,a3,b3,a4,b4;
+    col witness c1,d1,c2,d2;
+    col witness sel1,sel2,sel3;
+
+    permutation_assumes(1, [a1, b1]);
+    permutation_proves(1, [c1, d1]);
+
+    permutation_assumes(2, [a2, b2]);
+
+    permutation_assumes(3, [a3, b3], sel1);
+    permutation_proves(3, [c2, d2], sel2);
+
+    permutation_assumes(4, [a4, b4], sel3, bus_type: PIOP_BUS_PROD);
+};
+
+airtemplate Permutation2(const int N = 2**9) {
+
+    col witness c1,d1,c2,d2;
+    col witness sel;
+
+    permutation_proves(2, [c1, d1]);
+
+    permutation_proves(4, [c2, d2], sel, bus_type: PIOP_BUS_PROD);
+};
+
+airgroup Permutation {
+    Permutation1() alias `Permutation1_6`;
+    Permutation1(N: 2**7) alias "Permutation1_7";
+    Permutation1(N: 2**8) alias "Permutation1_8";
+
+    Permutation2()  alias "Permutation2_6";
+}

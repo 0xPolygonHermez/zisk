@@ -1,0 +1,12 @@
+
+airtemplate Test(const int N = 2**2) {
+    col witness colu;
+    expr sel = 1;
+    sel * (colu - 1) + 1 === 0; // (1)
+    // Expression (1) should be simplified to `colu === 0`,
+    // but it is simplifed to `colu - 1 + 1 === 0` instead.
+}
+
+airgroup Test {
+    Test();
+}

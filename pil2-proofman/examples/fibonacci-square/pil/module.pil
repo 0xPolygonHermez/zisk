@@ -1,0 +1,23 @@
+require "std_range_check.pil";
+
+const int MODULE_ID = 1;
+
+public module;
+
+airtemplate Module(const int N = 2**8) {
+
+    col fixed SEGMENT_LN = [0...,1];
+    col witness x, q, x_mod;
+
+    airval last_segment;
+    last_segment * (1 - last_segment) === 0;
+
+    x === q * module + x_mod;
+
+    // Ensure that 0 <= x_mod < module < PRIME <--> 0 < module - x_mod <--> module - x_mod <= module
+    range_check(module - x_mod, 1, 2**8-1);
+    // NOTE: The 2**8-1 is used for simplicity. Moreover, for the shake of security, module should be limited to 2**8-1 by the verifier
+
+    // The permutation should not be applied on the last row of the last segment
+    permutation_proves(MODULE_ID, [x, x_mod], sel: 1 - SEGMENT_LN * last_segment);
+}

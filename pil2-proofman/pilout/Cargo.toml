@@ -1,0 +1,12 @@
+[package]
+name = "pilout"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes.workspace = true
+prost.workspace = true
+log.workspace = true
+
+[build-dependencies]
+prost-build.workspace = true

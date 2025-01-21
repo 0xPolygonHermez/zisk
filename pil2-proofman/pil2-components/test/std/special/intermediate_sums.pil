@@ -1,0 +1,228 @@
+require "std_tools.pil";
+
+/*
+Constraint to optimize:
+                               NUMi
+            GL === GR + ∑ᵢ ----------
+                             DENi + ɣ
+    · GR is an expression of degree 2 to be as close as possible to the actual expression.
+    · ɣ is a challenge added to make the denominator an extension-field expression.
+
+Table of generated numbers, which assume a blowup factor of 2:
+
+| M  | degNum | degDen |  Type  | maxConstDeg | #Cols1 | #Cols2 | #ColsQ |  Total | #Const | #Evals |
+┼────┼────────|────────|────────┼─────────────┼────────┼────────┼────────┼────────┼────────┼────────┼
+|    |        |        |  Dummy |      2      |   2    |   6    |   3    |   11   |   2    |   7    |
+|  1 |   1    |   1    |────────┼─────────────┼────────┼────────┼────────┼────────┼────────┼────────┼
+|    |        |        | Custom |      2      |   2    |   6    |   3    |   11   |   2    |   7    |
+┼────┼────────|────────|────────┼─────────────┼────────┼────────┼────────┼────────┼────────┼────────┼
+|    |        |        |  Dummy |      2      |   4    |   9    |   3    |   16   |   3    |   10   |
+|  2 |   1    |   1    |────────┼─────────────┼────────┼────────┼────────┼────────┼────────┼────────┼
+|    |        |        | Custom |      2      |   4    |   9    |   3    |   16   |   3    |   10   |
+┼────┼────────|────────|────────┼─────────────┼────────┼────────┼────────┼────────┼────────┼────────┼
+|    |        |        |  Dummy |      3      |   8    |   21   |   6    |   35   |   7    |   19   |
+|  4 |   1    |   1    |────────┼─────────────┼────────┼────────┼────────┼────────┼────────┼────────┼
+|    |        |        | Custom |      3      |   8    |   9    |   6    |   23   |   3    |   15   |
+┼────┼────────|────────|────────┼─────────────┼────────┼────────┼────────┼────────┼────────┼────────┼
+|    |        |        |  Dummy |      3      |   12   |   48   |   6    |   66   |   16   |   32   |
+|  6 |   1    |   1    |────────┼─────────────┼────────┼────────┼────────┼────────┼────────┼────────┼
+|    |        |        | Custom |      3      |   12   |   12   |   6    |   30   |   4    |   20   |
+┼────┼────────|────────|────────┼─────────────┼────────┼────────┼────────┼────────┼────────┼────────┼
+|    |        |        |  Dummy |      3      |   16   |   87   |   6    |   109  |   29   |   49   |
+|  8 |   1    |   1    |────────┼─────────────┼────────┼────────┼────────┼────────┼────────┼────────┼
+|    |        |        | Custom |      3      |   16   |   15   |   6    |   37   |   5    |   25   |
+┼────┼────────|────────|────────┼─────────────┼────────┼--------┼--------┼--------┼--------┼--------┼
+*/
+
+const int blowupFactor = 2; // Ratio between the size of the evaluation domain and the trace evaluation domain
+
+airtemplate ImDummy(const int N = 2**8, const int degNum = 1, const int degDen = 1, const int M = 6) {
+    col witness stage(2) GL;
+    col fixed L1 = [1,0...];
+    expr GR = 'GL * L1;     // Just to be realistic
+    assert(degree(GR) == 2);
+
+    col witness num[M];
+    expr NUM[M];
+    for (int i = 0; i < M; i++) {
+        NUM[i] = num[i];
+        // Enlarge the degree of the numerator
+        for (int j = 1; j < degNum; j++) {
+            col witness _num;
+            NUM[i] *= _num;
+        }
+        assert(degree(NUM[i]) == degNum);
+    }
+
+    col witness den[M];
+    expr DEN[M];
+    for (int i = 0; i < M; i++) {
+        DEN[i] = den[i];
+        // Enlarge the degree of the denominator
+        for (int j = 1; j < degDen; j++) {
+            col witness _den;
+            DEN[i] *= _den;
+        }
+        assert(degree(DEN[i]) == degDen);
+    }
+
+    /*
+      Transform the rational constraint to a polynomial one:
+            (GL - GR) · ∏i (DENi + ɣ) === ∑ᵢ NUMi · ∏j≠i (DENj + ɣ)     
+    */
+    expr LHS = 1;
+    expr RHS = 0;
+    for (int i = 0; i < M; i++) {
+        LHS *= (DEN[i] + std_gamma);
+
+        expr _RHS = NUM[i];
+        for (int j = 0; j < M; j++) {
+            if (j == i) continue;
+            _RHS *= (DEN[j] + std_gamma);
+        }
+        RHS += _RHS;
+    }
+
+    (GL - GR) * LHS === RHS;
+}
+
+airtemplate ImCustom(const int N = 2**8, const int degNum = 1, const int degDen = 1, const int M = 6) {
+    col witness stage(2) GL;
+    col fixed L1 = [1,0...];
+    expr GR = 'GL * L1;
+
+    col witness num[M];
+    expr NUM[M];
+    for (int i = 0; i < M; i++) {
+        NUM[i] = num[i];
+        // Enlarge the degree of the numerator
+        for (int j = 1; j < degNum; j++) {
+            col witness _num;
+            NUM[i] *= _num;
+        }
+        assert(degree(NUM[i]) == degNum);
+    }
+
+    col witness den[M];
+    expr DEN[M];
+    for (int i = 0; i < M; i++) {
+        DEN[i] = den[i];
+        // Enlarge the degree of the denominator
+        for (int j = 1; j < degDen; j++) {
+            col witness _den;
+            DEN[i] *= _den;
+        }
+        assert(degree(DEN[i]) == degDen);
+    }
+
+    /*
+      Transform the rational constraint to a polynomial one by substituting
+      all the rational terms by terms of degree 1:
+            GL === GR + ∑ᵢ imi 
+    */
+    int low_degree_term[M];
+    int high_degree_term[M];
+    int low_degree_len = 0;
+    int high_degree_len = 0;
+    for (int i = 0; i < M; i++) {
+        if (degree(NUM[i]) > 2 || degree(DEN[i]) > 1) { // TBD: Discriminator conditions
+            high_degree_term[high_degree_len] = i;
+            high_degree_len++;
+        } else {
+            low_degree_term[low_degree_len] = i;
+            low_degree_len++;
+        }
+    }
+
+    expr sumIms = 0;
+    if (low_degree_len > 0) {
+        // Group terms in clusters so that the degree of the constraint
+        // is lower than the maximum allowed
+        const int nIm = low_degree_len/blowupFactor;
+
+        col witness stage(2) im[nIm];
+
+        for (int i = 0; i < nIm; i++) {
+            /*
+                        NUM[3*i]          NUM[3*i+1]          NUM[3*i+2]
+            im[i] = --------------- + ----------------- + -----------------
+                        DEN[3*i] + ɣ      DEN[3*i+1] + ɣ      DEN[3*i+2] + ɣ
+            */
+            expr LHS = 1;
+            expr RHS = 0;
+            for (int j = 0; j < blowupFactor; j++) {
+                LHS *= (DEN[low_degree_term[blowupFactor * i + j]] + std_gamma);
+
+                expr _partial = NUM[low_degree_term[blowupFactor * i + j]];
+                for (int k = 0; k < blowupFactor; k++) {
+                    if (k == j) continue;
+                    _partial *= (DEN[low_degree_term[blowupFactor * i + k]] + std_gamma);
+                }
+                RHS += _partial;
+            }
+
+            im[i] * LHS === RHS;
+
+            sumIms += im[i];
+        }
+
+        const int nRemTerms = low_degree_len % blowupFactor;
+        if (nRemTerms != 0) {
+            // If there are remaining terms, add an extra cluster
+            col witness stage(2) im_extra;
+
+            expr LHS = 1;
+            expr RHS = 0;
+            for (int j = 0; j < nRemTerms; j++) {
+                LHS *= (DEN[low_degree_term[blowupFactor * nIm + j]] + std_gamma);
+
+                expr _partial = NUM[low_degree_term[blowupFactor * nIm + j]];
+                for (int k = 0; k < nRemTerms; k++) {
+                    if (k == j) continue;
+                    _partial *= (DEN[low_degree_term[blowupFactor * nIm + k]] + std_gamma);
+                }
+                RHS += _partial;
+            }
+
+            im_extra * LHS === RHS;
+
+            sumIms += im_extra;
+        }
+    }
+
+    if (high_degree_len > 0) {
+        // Create a single intermediate for all the high-degree terms
+        /*
+                       NUM[i]   
+           im[i] = ---------------
+                     DEN[i] + ɣ  
+        */
+        col witness stage(2) im_high_degree[high_degree_len];
+
+        for (int i = 0; i < high_degree_len; i++) {
+            im_high_degree[i] * (DEN[high_degree_term[i]] + std_gamma) === NUM[high_degree_term[i]];
+            sumIms += im_high_degree[i];
+        }
+    }
+
+    GL === GR + sumIms;
+}
+
+airgroup Intermediates {
+    challenge stage(2) std_gamma; //TODO: Should this be allowed outside the air?
+
+    ImDummy(degNum: 1, degDen: 1, M: 1) alias ImDummy_1;
+    ImCustom(degNum: 1, degDen: 1, M: 1) alias ImCustom_1;
+
+    ImDummy(degNum: 1, degDen: 1, M: 2) alias ImDummy_2;
+    ImCustom(degNum: 1, degDen: 1, M: 2) alias ImCustom_2;
+
+    ImDummy(degNum: 1, degDen: 1, M: 4) alias ImDummy_4;
+    ImCustom(degNum: 1, degDen: 1, M: 4) alias ImCustom_4;
+
+    ImDummy(degNum: 1, degDen: 1, M: 6) alias ImDummy_6;
+    ImCustom(degNum: 1, degDen: 1, M: 6) alias ImCustom_6;
+
+    ImDummy(degNum: 1, degDen: 1, M: 8) alias ImDummy_8;
+    ImCustom(degNum: 1, degDen: 1, M: 8) alias ImCustom_8;
+}

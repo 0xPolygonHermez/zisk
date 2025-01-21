@@ -1,0 +1,11 @@
+node_modules
+.vscode
+build
+tmp
+package-lock.json
+*.log
+logs*.txt
+test/**/*.pilout
+lib/std/rs/target
+
+target

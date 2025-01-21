@@ -1,0 +1,47 @@
+require "std_permutation.pil";
+require "module.pil";
+
+public in1;
+public in2;
+public out;
+public rom_root[4];
+
+proofval stage(1) value1;
+proofval stage(1) value2;
+
+private function checkProofValues()
+{
+    module * value1 - value2 === 0;
+    std_alpha - std_alpha === 0;
+}
+
+on final proof checkProofValues();
+
+airtemplate FibonacciSquare(const int N = 2**8) {
+    commit stage(0) public(rom_root) rom;
+
+    airval fibo1[2];
+    airval stage(2) fibo3;
+
+    col fixed L1 = [1,0...];
+    col witness a,b;
+
+    col rom stage(0) line;
+    col rom stage(0) flags;
+
+    // Inputs/Outputs
+    L1 * (a - in1) === 0;
+    L1 * (b - in2) === 0;
+    L1' * (b - out) === 0;
+
+    (a' - b) * (1 - L1') === 0;
+
+    module * value1 - value2 === 0;
+    2*fibo1[0] - fibo1[1] === 0;
+
+    line - (flags + 1) === 0;
+
+    @test_hint{ custom_col: line, proof_val: value1 };
+
+    permutation_assumes(MODULE_ID, [a*a + b*b, b'], 1 - L1');
+}

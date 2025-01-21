@@ -1,0 +1,21 @@
+use proofman::\{executor, executor::Executor, ProofCtx, trace};
+use goldilocks::\{Goldilocks, AbstractField};
+use super::{wc.snake_name}_traces::*;
+use log::debug;
+
+executor!({wc.name}WC);
+
+impl Executor<Goldilocks> for {wc.name}WC \{
+    fn witness_computation(&self, stage_id: u32, pctx: &mut ProofCtx<Goldilocks>) \{
+        // if stage_id != 1 \{
+        //     debug!("Nothing to do for stage_id \{}", stage_id);
+        //     return;
+        // }
+
+        // add witness computation here...
+
+        // pctx
+        //     .add_trace_to_air_instance(airgroup_id, air_id, trace)
+        //     .expect("Error adding trace to air instance");
+    }
+}
