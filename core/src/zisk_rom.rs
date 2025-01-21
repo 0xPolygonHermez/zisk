@@ -1669,24 +1669,76 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Div => {
+                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+                // If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should be -MIN_I64,
+                // which cannot be represented with 64 bits (overflow) and it returns c=a.
+
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX := Remainder.
+
+                // Make sure a is in REG_A
+                if ctx.a.is_constant {
+                    s += &format!("\tmov {}, {} /* Div: a = value */\n", REG_A, ctx.a.string_value);
+                }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!("\tmov {}, {} /* Div: b = value */\n", REG_B, ctx.b.string_value);
                 }
+
+                // Check divide by zero:
                 // If b==0 return 0xffffffffffffffff
                 s += &format!("\tcmp {}, 0 /* Div: if b == 0 return f's */\n", REG_B);
                 s += &format!(
-                    "\tjne pc_{:x}_div_b_is_not_zero /* Div: if b is not zero, divide */\n",
+                    "\tjne pc_{:x}_div_check_underflow /* Div: if b is not zero, divide */\n",
                     ctx.pc
                 );
                 s += &format!("\tmov {}, 0xffffffffffffffff /* Div: set result to f's */\n", REG_C);
-                s += &format!("\tje pc_{:x}_div_done\n", ctx.pc);
-                s += &format!("pc_{:x}_div_b_is_not_zero:\n", ctx.pc);
 
+                s += &format!("\tje pc_{:x}_div_done\n", ctx.pc);
+
+                // Check underflow:
+                // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a
+                s += &format!("pc_{:x}_div_check_underflow:\n", ctx.pc);
+                s += &format!(
+                    "\tmov {}, 0x8000000000000000 /* Div: value == 0x8000000000000000 */\n",
+                    REG_VALUE
+                );
+                s += &format!(
+                    "\tcmp {}, {} /* Div: if a == value(0x8000000000000000), then check b */\n",
+                    REG_A, REG_VALUE
+                );
+                s += &format!(
+                    "\tjne pc_{:x}_div_divide /* Div: if a is not 0x8000000000000000, then divide */\n",
+                    ctx.pc
+                );
+                s += &format!(
+                    "\tmov {}, 0xffffffffffffffff /* Div: value == 0xffffffffffffffff */\n",
+                    REG_VALUE
+                );
+                s += &format!(
+                    "\tcmp {}, {} /* Div: if b == 0xffffffffffffffff, then return a */\n",
+                    REG_B, REG_VALUE
+                );
+                s += &format!(
+                    "\tjne pc_{:x}_div_divide /* Div: if b is not 0xffffffffffffffff, divide */\n",
+                    ctx.pc
+                );
+                s += &format!("\tmov {}, {} /* Div: set result to a */\n", REG_C, REG_A);
+
+                s += &format!("\tje pc_{:x}_div_done\n", ctx.pc);
+
+                // Divide
+                s += &format!("pc_{:x}_div_divide:\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* Div: value = b backup */\n", REG_VALUE, REG_B);
-                s += &format!("\tmov rdx, 0 /* Div: rdx = 0 */\n");
-                s += &format!("\tmov rax, {} /* Div: rax = a */\n", ctx.a.string_value);
+                s += &format!("\tmov rax, {} /* Div: rax = a */\n", REG_A);
+                s += &format!("\tbt rax, 63 /* Div: is a negative? */\n");
+                s += &format!("\tjnc pc_{:x}_a_is_positive\n", ctx.pc);
+                s +=
+                    &format!("\tmov rdx, 0xffffffffffffffff /* Div: a is negative, rdx = f's */\n");
+                s += &format!("\tjmp pc_{:x}_a_done\n", ctx.pc);
+                s += &format!("pc_{:x}_a_is_positive:\n", ctx.pc);
+                s += &format!("\tmov rdx, 0 /* Div: a is positive, rdx = 0 */\n");
+                s += &format!("pc_{:x}_a_done:\n", ctx.pc);
+
                 s += &format!(
                     "\tidiv {} /* Div: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
                     REG_VALUE
@@ -1696,23 +1748,83 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Rem => {
+                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+                // If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should be -MIN_I64,
+                // which cannot be represented with 64 bits (overflow) and it returns c=a.
+
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX := Remainder.
+
+                // Make sure a is in REG_A
+                if ctx.a.is_constant {
+                    s += &format!("\tmov {}, {} /* Rem: a = value */\n", REG_A, ctx.a.string_value);
+                }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!("\tmov {}, {} /* Rem: b = value */\n", REG_B, ctx.b.string_value);
                 }
-                s += &format!("\tcmp {}, 0 /* Rem: b == 0 ? */\n", REG_B);
-                s += &format!("\tje pc_{:x}_rem_b_is_zero\n", ctx.pc);
-                s += &format!("\tmov {}, {}\n", REG_C, REG_B);
-                s += &format!("\tmov {}, 0\n", REG_FLAG);
-                s += &format!("\tmov {}, {}\n", REG_B, ctx.a.string_value);
-                s += &format!("\tidivq {}\n", REG_C);
-                s += &format!("\tmov {}, {}\n", REG_C, REG_FLAG);
-                s += &format!("\tmov {}, 0\n", REG_FLAG);
+
+                // Check divide by zero:
+                // If b==0 return 0xffffffffffffffff
+                s += &format!("\tcmp {}, 0 /* Rem: if b == 0 return f's */\n", REG_B);
+                s += &format!(
+                    "\tjne pc_{:x}_rem_check_underflow /* Rem: if b is not zero, divide */\n",
+                    ctx.pc
+                );
+                s += &format!("\tmov {}, {} /* Rem: set result to a */\n", REG_C, REG_A);
+
                 s += &format!("\tje pc_{:x}_rem_done\n", ctx.pc);
-                s += &format!("pc_{:x}_rem_b_is_zero:\n", ctx.pc);
-                s += &format!("\tmov {}, {}\n", REG_C, ctx.a.string_value);
-                s += &format!("\tmov {}, 1\n", REG_FLAG);
+
+                // Check underflow:
+                // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a
+                s += &format!("pc_{:x}_rem_check_underflow:\n", ctx.pc);
+                s += &format!(
+                    "\tmov {}, 0x8000000000000000 /* Rem: value == 0x8000000000000000 */\n",
+                    REG_VALUE
+                );
+                s += &format!(
+                    "\tcmp {}, {} /* Rem: if a == value(0x8000000000000000), then check b */\n",
+                    REG_A, REG_VALUE
+                );
+                s += &format!(
+                    "\tjne pc_{:x}_rem_divide /* Rem: if a is not 0x8000000000000000, then divide */\n",
+                    ctx.pc
+                );
+                s += &format!(
+                    "\tmov {}, 0xffffffffffffffff /* Rem: value == 0xffffffffffffffff */\n",
+                    REG_VALUE
+                );
+                s += &format!(
+                    "\tcmp {}, {} /* Rem: if b == 0xffffffffffffffff, then return a */\n",
+                    REG_B, REG_VALUE
+                );
+                s += &format!(
+                    "\tjne pc_{:x}_rem_divide /* Rem: if b is not 0xffffffffffffffff, divide */\n",
+                    ctx.pc
+                );
+                s += &format!("\tmov {}, 0 /* Rem: set result to 0 */\n", REG_C);
+
+                s += &format!("\tje pc_{:x}_rem_done\n", ctx.pc);
+
+                // Divide
+                s += &format!("pc_{:x}_rem_divide:\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* Rem: value = b backup */\n", REG_VALUE, REG_B);
+                s += &format!("\tmov rax, {} /* Rem: rax = a */\n", REG_A);
+                s += &format!("\tbt rax, 63 /* Rem: is a negative? */\n");
+                s += &format!("\tjnc pc_{:x}_a_is_positive\n", ctx.pc);
+                s +=
+                    &format!("\tmov rdx, 0xffffffffffffffff /* Rem: a is negative, rdx = f's */\n");
+                s += &format!("\tjmp pc_{:x}_a_done\n", ctx.pc);
+                s += &format!("pc_{:x}_a_is_positive:\n", ctx.pc);
+                s += &format!("\tmov rdx, 0 /* Rem: a is positive, rdx = 0 */\n");
+                s += &format!("pc_{:x}_a_done:\n", ctx.pc);
+
+                s += &format!(
+                    "\tidiv {} /* Rem: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
+                    REG_VALUE
+                );
+                s += &format!("\tmov {}, rdx /* Rem: c = remainder(rdx) */\n", REG_C);
                 s += &format!("pc_{:x}_rem_done:\n", ctx.pc);
+                ctx.flag_is_always_zero = true;
             }
             ZiskOp::DivuW => {
                 // Make sure a is in REG_A_W
