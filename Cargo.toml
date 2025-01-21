@@ -17,6 +17,26 @@ members = [
     "state-machines/std",
     "witness-computation",
     "ziskos/entrypoint",
+    "pil2-proofman/cli",
+    "pil2-proofman/common",
+    "pil2-proofman/hints",
+    "pil2-proofman/pilout",
+    "pil2-proofman/proofman",
+    "pil2-proofman/macros",
+    "pil2-proofman/provers/stark",
+    "pil2-proofman/provers/starks-lib-c",
+    "pil2-proofman/transcript",
+    "pil2-proofman/witness",
+    "pil2-proofman/util",
+    "pil2-proofman/pil2-components/lib/std/rs",
+    # "pil2-proofman/pil2-components/test/std/direct_update/rs",
+    # "pil2-proofman/pil2-components/test/std/diff_buses/rs",
+    # "pil2-proofman/pil2-components/test/std/range_check/rs",
+    # "pil2-proofman/pil2-components/test/std/lookup/rs",
+    # "pil2-proofman/pil2-components/test/std/connection/rs",
+    # "pil2-proofman/pil2-components/test/std/permutation/rs",
+    # "pil2-proofman/pil2-components/test/simple/rs",
+    "pil2-proofman/examples/fibonacci-square",
 ]
 
 resolver = "2"
@@ -28,11 +48,16 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+proofman-macros = { path = "pil2-proofman/macros", version = "0.1.0" }
+proofman = { path = "pil2-proofman/proofman", version = "0.1.0" }
+proofman-common = { path = "pil2-proofman/common", version = "0.1.0" }
+proofman-hints = { path = "pil2-proofman/hints", version = "0.1.0" }
+proofman-util = { path = "pil2-proofman/util", version = "0.1.0" }
+proofman-cli = { path = "pil2-proofman/cli", version = "0.1.0" }
+pil-std-lib = { path = "pil2-proofman/pil2-components/lib/std/rs", version = "0.1.0" }
+witness = { path = "pil2-proofman/witness", version = "0.1.0" }
+pilout = { path = "pil2-proofman/pilout", version = "0.1.0" }
+
 # Local development
 # proofman-common = { path = "../pil2-proofman/common" }
 # proofman-macros = { path = "../pil2-proofman/macros" }
@@ -40,8 +65,19 @@ witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch
 # pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
 # witness = { path = "../pil2-proofman/witness" }
 
-p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
-log = "0.4"
-rayon = "1.10"
-num-bigint = "0.4"
 itertools = "0.14"
+log = { version = "0.4", default-features = false }
+env_logger = "0.11"
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
+bytes = "1.7"
+prost = "0.13"
+rand = "0.8"
+num-bigint = "0.4"
+prost-build = "0.13"
+num-traits = "0.2"
+rayon = "1"
+serde = { version = "1.0.130", features = ["derive"] }
+serde_json = "1.0.68"
+serde_derive = "1.0.196"
+colored = "3"
