@@ -6,7 +6,7 @@
 
 use crate::KeccakfSM;
 use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
-use p3_field::PrimeField;
+use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
@@ -53,7 +53,7 @@ impl KeccakfInstance {
     }
 }
 
-impl<F: PrimeField> Instance<F> for KeccakfInstance {
+impl<F: PrimeField64> Instance<F> for KeccakfInstance {
     /// Computes the witness for the keccakf execution plan.
     ///
     /// This method leverages the `KeccakfSM` to generate an `AirInstance` using the collected

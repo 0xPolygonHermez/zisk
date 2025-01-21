@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use data_bus::OPERATION_BUS_ID;
-use p3_field::PrimeField;
+use p3_field::{PrimeField, PrimeField64};
 
 use sm_common::{
     table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx,
@@ -38,7 +38,7 @@ impl KeccakfBuilder {
     }
 }
 
-impl<F: PrimeField> ComponentBuilder<F> for KeccakfBuilder {
+impl<F: PrimeField64> ComponentBuilder<F> for KeccakfBuilder {
     /// Builds and returns a new counter for monitoring keccakf operations.
     ///
     /// # Returns

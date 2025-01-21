@@ -92,10 +92,10 @@ airtemplate Keccakf(const int N = 2**21, int RC = 2, const int chunks = 5, const
     connection(opid: 400, cols: [a, b, c], CONN: [CONN_A, CONN_B, CONN_C]);
 
     // --> Constraints to make sure that this coprocessor is called from the main processor
-    col witness multiplicity;
     col witness debug_main_step;
     col witness step_input;
     col witness addr_input;
+    col witness multiplicity;
     lookup_proves(OPERATION_BUS_ID, [debug_main_step, KECCAKF_OP, step_input, 0, addr_input, 0, 0, 0, 0], multiplicity);
 
     // --> Constraints to read inputs from memory and write outputs to memory

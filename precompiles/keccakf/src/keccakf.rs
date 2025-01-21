@@ -1,18 +1,15 @@
 use std::{fs, sync::Arc};
 
 use log::info;
-use p3_field::PrimeField;
-use precompiles_common::{PrecompileCall, PrecompileCode};
+use p3_field::PrimeField64;
 use serde::Deserialize;
 
-use data_bus::{OperationBusData, OperationData};
+use data_bus::{OperationBusData, OperationData, PayloadType};
 use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
 
 use crate::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM};
-
-pub const KECCAK_OPCODE: u16 = 0x010101;
 
 /// The `KeccakfSM` struct encapsulates the logic of the Keccakf State Machine.
 pub struct KeccakfSM {
@@ -52,19 +49,23 @@ enum ValueType {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct InputData {
-    bit: u32,
+    bit: usize,
     #[serde(rename = "type")]
     type_: String,
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct WiredData {
-    gate: u32,
+    gate: usize,
     pin: String,
     #[serde(rename = "type")]
     type_: String,
 }
+
+type KeccakfInput = [u64; CHUNKS * BITS];
 
 impl KeccakfSM {
     const MY_NAME: &'static str = "Keccakf ";
@@ -96,131 +97,167 @@ impl KeccakfSM {
     /// * `input` - The operation data to process.
     /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
     #[inline(always)]
-    pub fn process_slice<F: PrimeField>(
+    pub fn process_slice<F: PrimeField64>(
         &self,
         trace: &mut KeccakfTrace<F>,
         num_slots: usize,
         input: &OperationData<u64>,
         multiplicity: &mut [u64],
     ) {
+        // Create an empty row
+        let mut row: KeccakfTraceRow<F> = Default::default();
+
         // Get the basic data from the input
         let debug_main_step = OperationBusData::get_step(input);
         let step_input = OperationBusData::get_a(input);
         let addr_input = OperationBusData::get_b(input);
-
-        // TODO: Get the raw inputs from memory
-        // TODO: Compute the output of the keccakf
-        // TODO: Write the raw output to memory??
-
-        // TODO: Collect the inputs as an array of num_slots elements, each of size CHUNKS * BITS
-        let input = vec![0u64; CHUNKS * BITS];
-
-        // Read the keccakf script
-        let script = self.script.clone();
-
-        // Create an empty row
-        let mut row: KeccakfTraceRow<F> = Default::default();
-
-        let mut offset = 0;
-        // for i in 0..num_slots {
-        //     for j in 0..self.slot_size {
-        //         let line = &script.program[j];
-        //         let gate_ref = line.ref_ + i * self.slot_size;
-
-        //         let a = line.a;
-        //         match a {
-        //             ValueType::Input(input_data) => {
-        //                 set_col(&mut row.free_in_a, gate_ref, input[i][input_data.bit]);
-        //             }
-        //             ValueType::Wired(wired_data) => {
-        //                 let g = wired_data.gate;
-        //                 if g > 0 {
-        //                     g += offset;
-        //                 }
-
-        //                 match wired_data.pin {
-        //                     String::from("a") => {
-        //                         set_col(&mut row.free_in_a, gate_ref, get_col(row.free_in_a, g))
-        //                     }
-        //                     String::from("b") => {
-        //                         set_col(&mut row.free_in_a, gate_ref, get_col(row.free_in_b, g))
-        //                     }
-        //                     String::from("c") => {
-        //                         set_col(&mut row.free_in_a, gate_ref, get_col(row.free_in_c, g))
-        //                     }
-        //                     _ => panic!("Invalid pin"),
-        //                 }
-        //             }
-        //         }
-
-        //         let b = line.b;
-        //         match b {
-        //             ValueType::Input(input_data) => {
-        //                 set_col(&mut row.free_in_b, gate_ref, input[i][input_data.bit]);
-        //             }
-        //             ValueType::Wired(wired_data) => {
-        //                 let g = wired_data.gate;
-        //                 if g > 0 {
-        //                     g += offset;
-        //                 }
-
-        //                 match wired_data.pin {
-        //                     String::from("a") => {
-        //                         set_col(&mut row.free_in_b, gate_ref, get_col(row.free_in_a, g))
-        //                     }
-        //                     String::from("b") => {
-        //                         set_col(&mut row.free_in_b, gate_ref, get_col(row.free_in_b, g))
-        //                     }
-        //                     String::from("c") => {
-        //                         set_col(&mut row.free_in_b, gate_ref, get_col(row.free_in_c, g))
-        //                     }
-        //                     _ => panic!("Invalid pin"),
-        //                 }
-        //             }
-        //         }
-
-        //         let op = line.op;
-        //         match op {
-        //             String::from("xor") => set_col(
-        //                 &mut row.free_in_c,
-        //                 gate_ref,
-        //                 get_col(row.free_in_a, gate_ref) ^ get_col(row.free_in_b, gate_ref),
-        //             ),
-        //             String::from("andp") => set_col(
-        //                 &mut row.free_in_c,
-        //                 gate_ref,
-        //                 (get_col(row.free_in_a, gate_ref) ^ MASK_CHUNK_BITS) &
-        //                     (get_col(row.free_in_b, gate_ref)),
-        //             ),
-        //             _ => panic!("Invalid operation"),
-        //         }
-        //     }
-
-        //     offset += self.slot_size;
-        // }
 
         // Set main SM step
         row.debug_main_step = F::from_canonical_u64(debug_main_step);
         row.step_input = F::from_canonical_u64(step_input);
         row.addr_input = F::from_canonical_u64(addr_input);
 
-        // TODO
+        // The pair (step_input, addr_input) is unique each time, so its multiplicity is 1
         row.multiplicity = F::one();
 
-        // fn set_col<F: PrimeField>(col: &mut [F; CHUNKS], index: usize, value: F) {
-        //     for i in 0..CHUNKS {
-        //         col[i][index] = value & MASK_BITS;
-        //         value >>= BITS;
-        //     }
-        // }
+        // TODO: Get the raw inputs from memory
+        // TODO: Compute the output of the keccakf
+        // TODO: Write the raw output to memory??
 
-        // fn get_col(col: &[F; CHUNKS], index: usize) -> F {
-        //     let mut value = F::zero();
-        //     for i in 0..CHUNKS {
-        //         value += col[i][index] << (i * BITS);
-        //     }
-        //     value & MASK_CHUNK_BITS
-        // }
+        // TODO: The previous memory calls should give me a_src_mem, c_src_mem, mem_step
+        row.mem_step = F::zero();
+        row.a_src_mem = F::zero();
+        row.c_src_mem = F::zero();
+
+        // TODO: Collect the inputs as an array of num_slots elements, each of size CHUNKS * BITS
+        // Fill with zeroes the non-filled bits
+        let zero_input: KeccakfInput = [0u64; CHUNKS * BITS];
+        let input: Vec<KeccakfInput> = vec![zero_input; num_slots];
+
+        let script = self.script.clone();
+        let mut offset = 0;
+        for i in 0..num_slots {
+            for j in 0..self.slot_size {
+                let line = &script.program[j];
+                let gate_ref = line.ref_ + i * self.slot_size;
+
+                let a = &line.a;
+                match a {
+                    ValueType::Input(input_data) => {
+                        set_col(
+                            trace,
+                            |row| &mut row.free_in_a,
+                            gate_ref,
+                            input[i][input_data.bit],
+                        );
+                    }
+                    ValueType::Wired(wired_data) => {
+                        let mut gate = wired_data.gate;
+                        if gate > 0 {
+                            gate += offset;
+                        }
+
+                        let pin = &wired_data.pin;
+                        if pin == "a" {
+                            let pinned_value = get_col(trace, |row| &mut row.free_in_a, gate);
+                            set_col(trace, |row| &mut row.free_in_a, gate_ref, pinned_value);
+                        } else if pin == "b" {
+                            let pinned_value = get_col(trace, |row| &mut row.free_in_b, gate);
+                            set_col(trace, |row| &mut row.free_in_a, gate_ref, pinned_value);
+                        } else if pin == "c" {
+                            let pinned_value = get_col(trace, |row| &mut row.free_in_c, gate);
+                            set_col(trace, |row| &mut row.free_in_a, gate_ref, pinned_value);
+                        } else {
+                            panic!("Invalid pin");
+                        }
+                    }
+                }
+
+                let b = &line.b;
+                match b {
+                    ValueType::Input(input_data) => {
+                        set_col(
+                            trace,
+                            |row| &mut row.free_in_b,
+                            gate_ref,
+                            input[i][input_data.bit],
+                        );
+                    }
+                    ValueType::Wired(wired_data) => {
+                        let mut gate = wired_data.gate;
+                        if gate > 0 {
+                            gate += offset;
+                        }
+
+                        let pin = &wired_data.pin;
+                        if pin == "a" {
+                            let pinned_value = get_col(trace, |row| &mut row.free_in_a, gate);
+                            set_col(trace, |row| &mut row.free_in_b, gate_ref, pinned_value);
+                        } else if pin == "b" {
+                            let pinned_value = get_col(trace, |row| &mut row.free_in_b, gate);
+                            set_col(trace, |row| &mut row.free_in_b, gate_ref, pinned_value);
+                        } else if pin == "c" {
+                            let pinned_value = get_col(trace, |row| &mut row.free_in_c, gate);
+                            set_col(trace, |row| &mut row.free_in_b, gate_ref, pinned_value);
+                        } else {
+                            panic!("Invalid pin");
+                        }
+                    }
+                }
+
+                let op = &line.op;
+                if op == "xor" {
+                    let a_val = get_col(trace, |row| &mut row.free_in_a, gate_ref);
+                    let b_val = get_col(trace, |row| &mut row.free_in_b, gate_ref);
+                    set_col(trace, |row| &mut row.free_in_c, gate_ref, a_val ^ b_val);
+                } else if op == "andp" {
+                    let a_val = get_col(trace, |row| &mut row.free_in_a, gate_ref);
+                    let b_val = get_col(trace, |row| &mut row.free_in_b, gate_ref);
+                    set_col(
+                        trace,
+                        |row| &mut row.free_in_c,
+                        gate_ref,
+                        (a_val ^ MASK_CHUNK_BITS) & b_val,
+                    );
+                } else {
+                    panic!("Invalid operation");
+                }
+            }
+
+            offset += self.slot_size;
+        }
+
+        // TODO: Update multiplicity for both memory and the keccakf table!
+
+        fn set_col<F: PrimeField64>(
+            trace: &mut KeccakfTrace<F>,
+            cols: impl Fn(&mut KeccakfTraceRow<F>) -> &mut [F; CHUNKS],
+            index: usize,
+            value: u64,
+        ) {
+            let mut _value = value;
+            let row = &mut trace[index];
+            let cols = cols(row);
+            for i in 0..CHUNKS {
+                cols[i] = F::from_canonical_u64(_value & MASK_BITS);
+                _value >>= BITS;
+            }
+        }
+
+        fn get_col<F: PrimeField64>(
+            trace: &mut KeccakfTrace<F>,
+            cols: impl Fn(&mut KeccakfTraceRow<F>) -> &mut [F; CHUNKS],
+            index: usize,
+        ) -> u64 {
+            let mut value = 0;
+            let row = &mut trace[index];
+            let cols = cols(row);
+            for i in 0..CHUNKS {
+                let col_i_val = F::as_canonical_u64(&cols[i]);
+                value += col_i_val << ((i * BITS) as u64);
+            }
+            value & MASK_CHUNK_BITS
+        }
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
@@ -230,7 +267,10 @@ impl KeccakfSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<F: PrimeField>(&self, inputs: &[OperationData<u64>]) -> AirInstance<F> {
+    pub fn compute_witness<F: PrimeField64>(
+        &self,
+        inputs: &[OperationData<u64>],
+    ) -> AirInstance<F> {
         let mut keccakf_trace = KeccakfTrace::new();
 
         timer_start_trace!(KECCAKF_TRACE);
@@ -244,7 +284,8 @@ impl KeccakfSM {
         let num_inputs = inputs.len();
         assert!(num_inputs <= num_keccakfs);
 
-        let num_rows_needed = 1 + num_inputs.div_ceil(num_keccakf_per_slot) * self.slot_size;
+        let num_slots_needed = num_inputs.div_ceil(num_keccakf_per_slot);
+        let num_rows_needed = 1 + num_slots_needed * self.slot_size;
 
         info!(
             "{}: ··· Creating Keccakf instance [{} / {} rows filled {:.2}%]",
@@ -269,7 +310,7 @@ impl KeccakfSM {
         for operation in inputs.iter() {
             self.process_slice(
                 &mut keccakf_trace,
-                num_slots,
+                num_slots_needed,
                 operation,
                 &mut multiplicity_table,
             );
@@ -298,57 +339,35 @@ impl KeccakfSM {
         AirInstance::new_from_trace(FromTrace::new(&mut keccakf_trace))
     }
 
-    // Generates memory inputs.
-    // pub fn generate_inputs(input: &OperationData<u64>) -> Vec<Vec<PayloadType>> {
-    //     let mut aop = ArithOperation::new();
-    //     let opcode = OperationBusData::get_op(input);
-    //     let a = OperationBusData::get_a(input);
-    //     let b = OperationBusData::get_b(input);
-    //     let step = OperationBusData::get_step(input);
+    /// Generates memory inputs.
+    pub fn generate_inputs(input: &OperationData<u64>) -> Vec<Vec<PayloadType>> {
+        let debug_main_step = OperationBusData::get_step(input);
+        let step_input = OperationBusData::get_a(input);
+        let addr_input = OperationBusData::get_b(input);
 
-    //     aop.calculate(opcode, a, b);
+        // TODO: Get the raw inputs from memory
+        // TODO: Compute the output of the keccakf
+        // TODO: Write the raw output to memory??
 
-    //     // If the operation is a division, then use the binary component
-    //     // to check that the remainer is lower than the divisor
-    //     if aop.div && !aop.div_by_zero {
-    //         let opcode = match (aop.nr, aop.nb) {
-    //             (false, false) => LTU_OP,
-    //             (false, true) => LT_ABS_PN_OP,
-    //             (true, false) => LT_ABS_NP_OP,
-    //             (true, true) => GT_OP,
-    //         };
-
-    //         let extension = match (aop.m32, aop.nr, aop.nb) {
-    //             (false, _, _) => (0, 0),
-    //             (true, false, false) => (0, 0),
-    //             (true, false, true) => (0, EXTENSION),
-    //             (true, true, false) => (EXTENSION, 0),
-    //             (true, true, true) => (EXTENSION, EXTENSION),
-    //         };
-
-    //         // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do
-    // this!         vec![OperationBusData::from_values(
-    //             step,
-    //             opcode,
-    //             ZiskOperationType::Binary as u64,
-    //             aop.d[0] +
-    //                 CHUNK_SIZE * aop.d[1] +
-    //                 CHUNK_SIZE.pow(2) * (aop.d[2] + extension.0) +
-    //                 CHUNK_SIZE.pow(3) * aop.d[3],
-    //             aop.b[0] +
-    //                 CHUNK_SIZE * aop.b[1] +
-    //                 CHUNK_SIZE.pow(2) * (aop.b[2] + extension.1) +
-    //                 CHUNK_SIZE.pow(3) * aop.b[3],
-    //         )
-    //         .to_vec()]
-    //     } else {
-    //         vec![]
-    //     }
-    // }
-}
-
-impl PrecompileCall for KeccakfSM {
-    fn execute(&self, opcode: PrecompileCode, a: u64, b: u64) -> Option<(u64, bool)> {
-        unimplemented!();
+        if true {
+            // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do
+            // vec![OperationBusData::from_values(
+            //     step,
+            //     opcode,
+            //     ZiskOperationType::Binary as u64,
+            //     aop.d[0] +
+            //         CHUNK_SIZE * aop.d[1] +
+            //         CHUNK_SIZE.pow(2) * (aop.d[2] + extension.0) +
+            //         CHUNK_SIZE.pow(3) * aop.d[3],
+            //     aop.b[0] +
+            //         CHUNK_SIZE * aop.b[1] +
+            //         CHUNK_SIZE.pow(2) * (aop.b[2] + extension.1) +
+            //         CHUNK_SIZE.pow(3) * aop.b[3],
+            // )
+            // .to_vec()]
+            vec![]
+        } else {
+            vec![]
+        }
     }
 }
