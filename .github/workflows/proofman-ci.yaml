@@ -21,6 +21,7 @@ jobs:
       - name: Install pil2-stark
         working-directory: pil2-stark
         run: |
+          cd pil2-proofman
           git submodule update --init --recursive
           git submodule update
           make clean
@@ -59,7 +60,7 @@ jobs:
       - name: install mdbook
         run: cargo install mdbook
       - name: mdbook build
-        run: mdbook build
+        run: cd pil2-proofman && mdbook build
   cargo-fix:
     name: cargo fix
     runs-on: ubuntu-latest
@@ -148,7 +149,6 @@ jobs:
           repository: iden3/circom
           path: circom-repo
 
-
       - name: Build and install Circom
         working-directory: circom-repo
         run: |
@@ -195,7 +195,7 @@ jobs:
       - name: Modify Cargo.toml std
         run: |
           sed -i 's/# *"pil2-components\/lib\/std\/rs"/"pil2-components\/lib\/std\/rs"/' ./Cargo.toml
-          
+
       - name: Modify Cargo.toml Fibonacci Square
         run: |
           sed -i 's/# *"examples\/fibonacci-square"/"examples\/fibonacci-square"/' ./Cargo.toml
@@ -226,12 +226,12 @@ jobs:
       - name: Clean proof dir
         run: |
           rm -rf examples/fibonacci-square/build/proofs
-        
+
       - name: Cargo build distributed
         run: RUST_BACKTRACE=1 cargo build --features distributed -v
 
       # - name: Generate proof Fibonacci Square distributed
-      #   run: | 
+      #   run: |
       #     mpirun --bind-to none -np 3 -x OMP_NUM_THREADS=80 target/debug/proofman-cli  prove --witness-lib ./target/debug/libfibonacci_square.so --public-inputs examples/fibonacci-square/src/inputs.json --proving-key examples/fibonacci-square/build/provingKey/ --output-dir examples/fibonacci-square/build/proofs -a
 
   test-std:
@@ -365,7 +365,7 @@ jobs:
       - name: Generate PIL Helpers permutation
         run: |
           cargo run --bin proofman-cli pil-helpers --pilout ./pil2-components/test/std/permutation/build/build.pilout --path ./pil2-components/test/std/permutation/rs/src -o
-        
+
       - name: Create dir build connection
         run: |
           mkdir -p ./pil2-components/test/std/connection/build/
