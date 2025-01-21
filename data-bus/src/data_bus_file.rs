@@ -17,20 +17,22 @@ impl DataBusFileReader {
     ///
     /// # File Format
     /// Each line in the file should be formatted as:
-    /// `<BusId> <Payload1> <Payload2> ...`
-    ///
-    /// Example:
+    /// ```text
+    /// <BusId> <Payload1> <Payload2> ...
     /// ```
-    /// 1234 1 2 3 4
-    /// 5678 5 6 7 8
-    /// ```
+    /// - `<BusId>`: A 16-bit unsigned integer representing the bus ID.
+    /// - `<PayloadN>`: A list of payload values convertible to the type `D`.
     ///
     /// # Arguments
     /// * `file_path` - The path to the plain text file.
     ///
     /// # Returns
-    /// * `Result<Vec<(u16, Vec<u64>)>, io::Error>` - A vector of `(BusId, Payload)` tuples or an
-    ///   error.
+    /// * `Result<Vec<(u16, Vec<D>)>, io::Error>`: A vector of `(BusId, Payload)` tuples or an error if
+    ///   the file cannot be read or the data format is invalid.
+    ///
+    /// # Errors
+    /// - Returns an error if the file cannot be opened or read.
+    /// - Returns an error if any line is malformed (missing `BusId` or invalid payload values).
     pub fn read_from_file<D: FromStr>(file_path: &str) -> Result<Vec<(u16, Vec<D>)>, io::Error>
     where
         D::Err: std::fmt::Display,
