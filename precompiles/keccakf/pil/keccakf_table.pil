@@ -17,6 +17,7 @@ airtemplate KeccakfTable(const int N = 2**25, const int bits = 12) {
 
     // Precompute a table with the two basic operations appearing in the Keccak-f permutation
     col fixed C;
+    #pragma transpile
     for (int i = 0; i < N; i++) {
         const int [gate_op, a, b] = [GATE_OP[i], A[i], B[i]];
         

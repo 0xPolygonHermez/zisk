@@ -6,7 +6,7 @@ const int KECCAKF_OP = 0xF1;
 
 // Precompile in charge of performing the Keccak-f[1600] permutation. For reference: https://keccak.team/files/Keccak-reference-3.0.pdf
 
-airtemplate Keccakf(const int N = 2**21, int RC = 2, const int chunks = 5, const int chunk_bits = 12, const int operation_bus_id) {
+airtemplate Keccakf(const int N = 2**21, int RC = 2, const int chunks = 5, const int bits = 12, const int operation_bus_id) {
     // Keccak-f circuit size
     const int CIRCUIT_XORS = 116886;
     const int CIRCUIT_ANDPS = 38400;
@@ -15,7 +15,8 @@ airtemplate Keccakf(const int N = 2**21, int RC = 2, const int chunks = 5, const
     // Ensure that the keccak-f circuit fits
     assert(N >= CIRCUIT_SIZE);
 
-    const int P2_CHUNK_BITS = 2**chunk_bits;
+    const int P2_BITS = 2**bits;
+    const int P2_CHUNK_BITS = 2**(bits * chunks);
     const int MASK_CHUNK_BITS = P2_CHUNK_BITS - 1;
 
     col fixed L1 = [1,0...];
@@ -40,6 +41,7 @@ airtemplate Keccakf(const int N = 2**21, int RC = 2, const int chunks = 5, const
     }
 
     // --> Circuit connections constraints
+    // Start by reconstructing the input from the chunks
     expr a = 0;
     expr b = 0;
     expr c = 0;
@@ -50,10 +52,10 @@ airtemplate Keccakf(const int N = 2**21, int RC = 2, const int chunks = 5, const
     expr _accum_c = 0;
     int _i = 0;
     for (int i = 0; i < chunks; i++) {
-        const int shift = P2_CHUNK_BITS**i;
-        const int _shift = P2_CHUNK_BITS**_i;
+        const int shift = P2_BITS**i;
+        const int _shift = P2_BITS**_i;
 
-        if (_shift * P2_CHUNK_BITS >= P2_32) {
+        if (_shift * P2_BITS >= P2_32) {
             a_mem[rs] = _accum_a;
             b_mem[rs] = _accum_b;
             c_mem[rs] = _accum_c;

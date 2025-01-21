@@ -45,11 +45,15 @@ pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[12];
 
 pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[13];
 
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[14];
+pub const KECCAKF_AIR_IDS: &[usize] = &[14];
 
-pub const U_8_AIR_AIR_IDS: &[usize] = &[15];
+pub const KECCAKF_TABLE_AIR_IDS: &[usize] = &[15];
 
-pub const U_16_AIR_AIR_IDS: &[usize] = &[16];
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[16];
+
+pub const U_8_AIR_AIR_IDS: &[usize] = &[17];
+
+pub const U_16_AIR_AIR_IDS: &[usize] = &[18];
 
 
 //PUBLICS
@@ -126,17 +130,25 @@ trace!(BinaryExtensionTableTrace<F> {
  multiplicity: F,
 },  0, 13, 4194304 );
 
+trace!(KeccakfTrace<F> {
+ free_in_a: [F; 6], free_in_b: [F; 6], free_in_c: [F; 6], multiplicity: F, debug_main_step: F, step_input: F, addr_input: F, a_src_mem: F, mem_step: F, c_src_mem: F,
+},  0, 14, 2097152 );
+
+trace!(KeccakfTableTrace<F> {
+ multiplicity: F,
+},  0, 15, 2097152 );
+
 trace!(SpecifiedRangesTrace<F> {
  mul: [F; 2],
-},  0, 14, 16777216 );
+},  0, 16, 16777216 );
 
 trace!(U8AirTrace<F> {
  mul: F,
-},  0, 15, 256 );
+},  0, 17, 256 );
 
 trace!(U16AirTrace<F> {
  mul: F,
-},  0, 16, 65536 );
+},  0, 18, 65536 );
 
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
@@ -211,6 +223,14 @@ values!(BinaryExtensionAirGroupValues<F> {
 });
 
 values!(BinaryExtensionTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(KeccakfAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(KeccakfTableAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
