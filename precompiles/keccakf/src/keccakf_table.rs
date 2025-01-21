@@ -13,7 +13,10 @@ use crate::keccakf_constants::*;
 /// Represents operations supported by the Keccakf Table.
 #[repr(u8)]
 pub enum KeccakfTableGateOp {
+    /// XOR gate
     Xor = XOR_GATE_OP,
+
+    /// ANDP gate
     Andp = ANDP_GATE_OP,
 }
 
@@ -66,11 +69,7 @@ impl KeccakfTableSM {
     ///
     /// # Returns
     /// The calculated table row offset.
-    pub fn calculate_table_row(
-        gate_opcode: KeccakfTableGateOp,
-        a: u64,
-        b: u64,
-    ) -> u64 {
+    pub fn calculate_table_row(gate_opcode: KeccakfTableGateOp, a: u64, b: u64) -> u64 {
         debug_assert!(a <= MASK_BITS);
         debug_assert!(b <= MASK_BITS);
 

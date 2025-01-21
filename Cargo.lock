@@ -1590,10 +1590,13 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "precompiles-common"
 version = "0.1.0"
 
 [[package]]
+=======
+>>>>>>> bd22a41a (Working in the executor)
 name = "proc-macro2"
 version = "1.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
