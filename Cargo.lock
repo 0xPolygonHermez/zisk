@@ -2070,7 +2070,6 @@ dependencies = [
  "log",
  "num-bigint",
  "p3-field",
- "p3-goldilocks",
  "pil-std-lib",
  "proofman-common",
  "proofman-macros",
