@@ -9,22 +9,19 @@ use zisk_core::{InstContext, ZiskInst};
 pub const OPERATION_BUS_ID: u16 = 5000;
 
 /// The size of the operation data payload.
-pub const OPERATION_BUS_DATA_SIZE: usize = 5;
-
-/// Index of the step value in the operation data payload.
-const STEP: usize = 0;
+pub const OPERATION_BUS_DATA_SIZE: usize = 4;
 
 /// Index of the operation value in the operation data payload.
-const OP: usize = 1;
+const OP: usize = 0;
 
 /// Index of the operation type in the operation data payload.
-const OP_TYPE: usize = 2;
+const OP_TYPE: usize = 1;
 
 /// Index of the `a` value in the operation data payload.
-const A: usize = 3;
+const A: usize = 2;
 
 /// Index of the `b` value in the operation data payload.
-const B: usize = 4;
+const B: usize = 3;
 
 /// Type alias for operation data payload.
 pub type OperationData<D> = [D; OPERATION_BUS_DATA_SIZE];
@@ -48,14 +45,8 @@ impl OperationBusData<u64> {
     /// # Returns
     /// An array representing the operation data payload.
     #[inline(always)]
-    pub fn from_values(
-        step: u64,
-        op: u8,
-        op_type: PayloadType,
-        a: u64,
-        b: u64,
-    ) -> OperationData<u64> {
-        [step, op as u64, op_type, a, b]
+    pub fn from_values(op: u8, op_type: PayloadType, a: u64, b: u64) -> OperationData<u64> {
+        [op as u64, op_type, a, b]
     }
 
     /// Creates operation data from a `ZiskInst` instruction and its context.
@@ -72,24 +63,11 @@ impl OperationBusData<u64> {
         let b = if inst.m32 { inst_ctx.b & 0xffffffff } else { inst_ctx.b };
 
         [
-            inst_ctx.step,       // STEP
             inst.op as u64,      // OP
             inst.op_type as u64, // OP_TYPE
             a,                   // A
             b,                   // B
         ]
-    }
-
-    /// Retrieves the step value from operation data.
-    ///
-    /// # Arguments
-    /// * `data` - A reference to the operation data payload.
-    ///
-    /// # Returns
-    /// The step value as a `PayloadType`.
-    #[inline(always)]
-    pub fn get_step(data: &OperationData<u64>) -> PayloadType {
-        data[STEP]
     }
 
     /// Retrieves the operation code from operation data.

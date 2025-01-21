@@ -149,7 +149,6 @@ impl BinaryBasicSM {
         let opcode = OperationBusData::get_op(input);
         let a = OperationBusData::get_a(input);
         let b = OperationBusData::get_b(input);
-        let step = OperationBusData::get_step(input);
 
         let (c, _) = Self::execute(opcode, a, b);
 
@@ -178,9 +177,6 @@ impl BinaryBasicSM {
         for (i, value) in c_bytes.iter().enumerate() {
             row.free_in_c[i] = F::from_canonical_u8(*value);
         }
-
-        // Set main SM step
-        row.debug_main_step = F::from_canonical_u64(step);
 
         // Set use last carry and carry[], based on operation
         let mut cout: u64;

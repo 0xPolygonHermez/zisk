@@ -1,3 +1,4 @@
+require "std_direct.pil"
 require "rom/pil/rom.pil"
 require "main/pil/main.pil"
 require "mem/pil/mem.pil"
@@ -13,6 +14,11 @@ const int OPERATION_BUS_ID = 5000;
 
 proofval enable_input_data;
 enable_input_data * (1 - enable_input_data);
+
+const int PUBLIC_INPUTS_64_BITS = 16;  // 16 x 64 bits = 1024 bits
+public inputs[PUBLIC_INPUTS_64_BITS * 2]; // 2 x 32-bits = 64 bits
+
+const int PUBLIC_OP = 0x30;
 
 airgroup Zisk {
     Main(N: 2**21, RC: 2, operation_bus_id: OPERATION_BUS_ID);
@@ -32,4 +38,9 @@ airgroup Zisk {
     BinaryTable(disable_fixed: 0);
     BinaryExtension(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
     BinaryExtensionTable(disable_fixed: 0);
+
+    // public inputs
+    for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {
+        direct_global_update_proves(OPERATION_BUS_ID, [PUBLIC_OP, i, 0, inputs[i*2], inputs[i*2 + 1], inputs[i*2], inputs[i*2 + 1], 0]);
+    }
 }
