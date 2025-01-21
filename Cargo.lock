@@ -1568,6 +1568,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "precomp-keccakf"
+version = "0.1.0"
+dependencies = [
+ "data-bus",
+ "log",
+ "num-bigint",
+ "p3-field",
+ "pil-std-lib",
+ "precompiles-common",
+ "proofman-common",
+ "proofman-macros",
+ "proofman-util",
+ "rayon",
+ "serde",
+ "serde_json",
+ "sm-common",
+ "witness",
+ "zisk-core",
+ "zisk-pil",
+]
+
+[[package]]
+name = "precompiles-common"
+version = "0.1.0"
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3197,6 +3223,14 @@ dependencies = [
  "proofman-common",
  "proofman-macros",
  "serde",
+]
+
+[[package]]
+name = "zisk-precompiles"
+version = "0.1.0"
+dependencies = [
+ "precomp-keccakf",
+ "precompiles-common",
 ]
 
 [[package]]

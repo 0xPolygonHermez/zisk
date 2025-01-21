@@ -1,16 +1,19 @@
 
 use std::{fs, sync::Arc};
 
-use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM};
+// use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM};
 use log::info;
 use p3_field::PrimeField;
+use precompiles_common::{PrecompileCall, PrecompileCode};
 use serde::Deserialize;
 use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use std::cmp::Ordering as CmpOrdering;
-use zisk_common::{OperationBusData, OperationData};
+// use zisk_common::{OperationBusData, OperationData};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
+
+pub const KECCAK_OPCODE: u16 = 0x010101;
 
 // Parameters
 const CHUNKS: u64 = 5;
@@ -280,5 +283,11 @@ impl KeccakfSM {
         timer_stop_and_log_trace!(KECCAKF_TABLE);
 
         AirInstance::new_from_trace(FromTrace::new(&mut keccakf_trace))
+    }
+}
+
+impl PrecompileCall for KeccakfSM {
+    fn execute(&self, opcode: PrecompileCode, a: u64, b: u64) -> Option<(u64, bool)> {
+        unimplemented!();
     }
 }

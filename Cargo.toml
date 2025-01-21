@@ -15,9 +15,10 @@ members = [
     "state-machines/mem",
     "state-machines/rom",
     "state-machines/std",
-    "precompiles/keccakf",
     "witness-computation",
     "ziskos/entrypoint",
+    "precompiles/zisk_precompiles",
+    "precompiles/common",
 ]
 
 resolver = "2"

@@ -8,6 +8,7 @@ sm-common = { path = "../../state-machines/common" }
 zisk-core = { path = "../../core" }
 data-bus = { path = "../../data-bus" }
 zisk-pil = { path = "../../pil" }
+precompiles-common = { path = "../common" }
 
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
