@@ -22,4 +22,4 @@ pub const MAX_MEM_STEP: u64 = MEM_STEP_BASE +
 pub const MAX_MEM_ADDR: u64 = 0xFFFF_FFFF;
 
 pub const MEMORY_MAX_DIFF: u64 = 1 << 24;
-pub const STEP_MEMORY_MAX_DIFF: u64 = 1 << 20;
+pub const STEP_MEMORY_MAX_DIFF: u64 = MEMORY_MAX_DIFF;
