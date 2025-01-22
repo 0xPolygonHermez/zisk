@@ -1,6 +1,6 @@
 use crate::{
     MemHelpers, MemInput, MemModule, MemModuleSegmentCheckPoint, MemPreviousSegment,
-    MEMORY_MAX_DIFF,
+    STEP_MEMORY_MAX_DIFF,
 };
 use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
 use p3_field::PrimeField;
@@ -137,10 +137,10 @@ impl<F: PrimeField> MemModuleInstance<F> {
             let mut skip_rows = 0;
             loop {
                 while self.inputs[input_index].addr == prev_segment.addr &&
-                    (self.inputs[input_index].step - prev_segment.step) > MEMORY_MAX_DIFF &&
+                    (self.inputs[input_index].step - prev_segment.step) > STEP_MEMORY_MAX_DIFF &&
                     skip_rows < self.mem_check_point.skip_rows as usize
                 {
-                    prev_segment.step += MEMORY_MAX_DIFF;
+                    prev_segment.step += STEP_MEMORY_MAX_DIFF;
                     skip_rows += 1;
                 }
                 if skip_rows >= self.mem_check_point.skip_rows as usize {

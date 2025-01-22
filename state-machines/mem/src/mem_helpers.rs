@@ -1,5 +1,5 @@
 use crate::{
-    MemAlignResponse, MAX_MEM_OPS_BY_MAIN_STEP, MAX_MEM_OPS_BY_STEP_OFFSET, MEMORY_MAX_DIFF,
+    MemAlignResponse, MAX_MEM_OPS_BY_MAIN_STEP, MAX_MEM_OPS_BY_STEP_OFFSET, STEP_MEMORY_MAX_DIFF,
     MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS, MEM_STEP_BASE, RAM_W_ADDR_INIT,
 };
 use std::fmt;
@@ -108,8 +108,8 @@ impl MemHelpers {
     #[inline(always)]
     pub fn get_extra_internal_reads(previous_step: u64, step: u64) -> u64 {
         let diff = step - previous_step;
-        if diff > MEMORY_MAX_DIFF {
-            (diff - 1) / MEMORY_MAX_DIFF
+        if diff > STEP_MEMORY_MAX_DIFF {
+            (diff - 1) / STEP_MEMORY_MAX_DIFF
         } else {
             0
         }

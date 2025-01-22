@@ -5,7 +5,7 @@ use std::{
 
 use zisk_pil::MemTrace;
 
-use crate::{MemHelpers, MEMORY_MAX_DIFF};
+use crate::{MemHelpers, STEP_MEMORY_MAX_DIFF};
 
 #[derive(Default, Debug, Clone)]
 struct MemOp {
@@ -138,8 +138,8 @@ impl MemDebug {
             let step = self.ops[i].step;
             let flags = Self::flags_set_internal(self.ops[i].flags);
             if last_addr == addr {
-                while (step - last_step) > MEMORY_MAX_DIFF {
-                    last_step += MEMORY_MAX_DIFF;
+                while (step - last_step) > STEP_MEMORY_MAX_DIFF {
+                    last_step += STEP_MEMORY_MAX_DIFF;
                     self.ops.insert(i, MemOp { addr, step: last_step, flags });
                     i += 1;
                 }

@@ -8,12 +8,21 @@ use crate::{MemHelpers, MEM_REGS_ADDR, MEM_REGS_MASK};
 #[cfg(feature = "debug_mem")]
 use crate::MemDebug;
 
+#[cfg(feature = "debug_mem")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct UsesCounterDebug {
+    pub internal_reads: u32,
+    pub mem_align_extra_rows: u32,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct UsesCounter {
     pub first_step: u64,
     pub last_step: u64,
     pub count: u64,
     pub last_value: u64,
+    #[cfg(feature = "debug_mem")]
+    pub debug: UsesCounterDebug,
 }
 
 #[derive(Default, Debug)]
@@ -51,6 +60,7 @@ impl Metrics for MemCounters {
         let step = MemBusData::get_step(data);
         let bytes = MemBusData::get_bytes(data);
 
+        // #[cfg(feature = "debug_mem")]
         // self.debug.log(addr, step, bytes, is_write, false);
 
         if (addr & MEM_REGS_MASK) == MEM_REGS_ADDR {
@@ -63,12 +73,22 @@ impl Metrics for MemCounters {
             };
 
             if self.registers[reg_index].count == 0 {
-                self.registers[reg_index] =
-                    UsesCounter { first_step: step, last_step: step, count: 1, last_value };
+                self.registers[reg_index] = UsesCounter {
+                    first_step: step,
+                    last_step: step,
+                    count: 1,
+                    last_value,
+                    #[cfg(feature = "debug_mem")]
+                    debug: UsesCounterDebug { internal_reads: 0, mem_align_extra_rows: 0 },
+                };
             } else {
                 let internal_reads =
                     MemHelpers::get_extra_internal_reads(self.registers[reg_index].last_step, step);
                 self.registers[reg_index].count += 1 + internal_reads;
+                #[cfg(feature = "debug_mem")]
+                {
+                    self.registers[reg_index].debug.internal_reads += internal_reads as u32;
+                }
                 self.registers[reg_index].last_step = step;
                 self.registers[reg_index].last_value = last_value;
             }
@@ -84,10 +104,21 @@ impl Metrics for MemCounters {
                     let internal_reads =
                         MemHelpers::get_extra_internal_reads_by_addr(addr_w, value.last_step, step);
                     value.count += 1 + internal_reads;
+                    #[cfg(feature = "debug_mem")]
+                    {
+                        value.debug.internal_reads += internal_reads as u32;
+                    }
                     value.last_step = step;
                     value.last_value = last_value;
                 })
-                .or_insert(UsesCounter { first_step: step, last_step: step, count: 1, last_value });
+                .or_insert(UsesCounter {
+                    first_step: step,
+                    last_step: step,
+                    count: 1,
+                    last_value,
+                    #[cfg(feature = "debug_mem")]
+                    debug: UsesCounterDebug { internal_reads: 0, mem_align_extra_rows: 0 },
+                });
         } else {
             let addr_count = if MemHelpers::is_double(addr, bytes) { 2 } else { 1 };
             let (ops_by_addr, last_values) = if MemHelpers::is_write(op) {
@@ -118,12 +149,22 @@ impl Metrics for MemCounters {
                         value.count += ops_by_addr + internal_reads;
                         value.last_step = last_step;
                         value.last_value = last_values[index as usize];
+                        #[cfg(feature = "debug_mem")]
+                        {
+                            value.debug.internal_reads += internal_reads as u32;
+                            value.debug.mem_align_extra_rows += ops_by_addr as u32 - 1;
+                        }
                     })
                     .or_insert(UsesCounter {
                         first_step: step,
                         last_step,
                         count: ops_by_addr,
                         last_value: last_values[index as usize],
+                        #[cfg(feature = "debug_mem")]
+                        debug: UsesCounterDebug {
+                            internal_reads: 0,
+                            mem_align_extra_rows: ops_by_addr as u32 - 1,
+                        },
                     });
             }
             let mem_align_op_rows = 1 + addr_count * ops_by_addr as u32;

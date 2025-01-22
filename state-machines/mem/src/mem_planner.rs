@@ -6,7 +6,7 @@ use sm_common::{BusDeviceMetrics, ChunkId, Plan, Planner};
 use zisk_pil::MEM_ALIGN_AIR_IDS;
 
 #[cfg(feature = "debug_mem")]
-use crate::{MemAlignCheckPoint, MemHelpers};
+use crate::{MemAlignCheckPoint, MemDebug, MemHelpers};
 
 use zisk_pil::{
     InputDataTrace, MemTrace, RomDataTrace, INPUT_DATA_AIR_IDS, MEM_AIR_IDS, ROM_DATA_AIR_IDS,
