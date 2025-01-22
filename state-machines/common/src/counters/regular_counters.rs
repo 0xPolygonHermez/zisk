@@ -120,7 +120,7 @@ impl BusDevice<u64> for RegularCounters {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         self.measure(bus_id, data);
 
-        (true, vec![])
+        (false, vec![])
     }
 
     /// Returns the bus IDs associated with this counter.
