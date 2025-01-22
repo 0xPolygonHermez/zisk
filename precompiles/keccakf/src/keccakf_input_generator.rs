@@ -57,14 +57,6 @@ impl<F: PrimeField> Instance<F> for KeccakfInputGenerator {
     fn compute_witness(&mut self, _: &ProofCtx<F>) -> Option<AirInstance<F>> {
         None
     }
-
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
-    }
 }
 
 impl BusDevice<u64> for KeccakfInputGenerator {
@@ -93,5 +85,13 @@ impl BusDevice<u64> for KeccakfInputGenerator {
             .collect::<Vec<_>>();
 
         (false, inputs)
+    }
+
+    /// Returns the bus IDs associated with this instance.
+    ///
+    /// # Returns
+    /// A vector containing the connected bus ID.
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![self.bus_id]
     }
 }
