@@ -4,14 +4,13 @@ use tiny_keccak::keccakf;
 
 use crate::KeccakfSM;
 
-use zisk_core::{InstContext, ZiskOperationType};
+use zisk_core::{zisk_ops::ZiskOp, InstContext};
 
 impl PrecompileCall for KeccakfSM {
-    fn execute(&self, _opcode: PrecompileCode, ctx: &mut InstContext) -> Option<(u64, bool)> {
-        // TODO: Fix
-        // if opcode != ZiskOperationType::Keccak as {
-        //     panic!("Invalid opcode for Keccakf");
-        // }
+    fn execute(&self, opcode: PrecompileCode, ctx: &mut InstContext) -> Option<(u64, bool)> {
+        if opcode.value() != ZiskOp::Keccak as u16 {
+            panic!("Invalid opcode for Keccakf");
+        }
 
         let address = ctx.b;
 

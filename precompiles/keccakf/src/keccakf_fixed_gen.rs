@@ -4,11 +4,11 @@ use p3_field::{AbstractField, PrimeField64};
 use p3_goldilocks::Goldilocks;
 use serde::de::DeserializeOwned;
 
+mod goldilocks_constants;
 mod keccakf_types;
-mod goldilocks;
 
-use keccakf_types::{Script, Connections};
-use goldilocks::{GOLDILOCKS_GEN, GOLDILOCKS_K};
+use goldilocks_constants::{GOLDILOCKS_GEN, GOLDILOCKS_K};
+use keccakf_types::{Connections, Script};
 
 type F = Goldilocks;
 
@@ -26,28 +26,73 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Get the script and connections
     let script: Script = read_json("precompiles/keccakf/src/keccakf_script.json")?;
     let connections: Connections = read_json("precompiles/keccakf/src/keccakf_connections.json")?;
+
+    // Get the subgroup generator and coset generator
+    let subgroup_gen = GOLDILOCKS_GEN[bits];
+    let cosets_gen = GOLDILOCKS_K;
+
+    // Generate the columns
+    let (conn_a, conn_b, conn_c, gate_op) =
+        cols_gen(n, subgroup_gen, cosets_gen, connections, script);
+
+    // Serialize the columns
+    // TODO: N, Name, Pos (if array) and Values
+    let mut data = Vec::new();
+    data.extend(conn_a.iter().flat_map(|f| f.as_canonical_u64().to_le_bytes()));
+    data.extend(conn_b.iter().flat_map(|f| f.as_canonical_u64().to_le_bytes()));
+    data.extend(conn_c.iter().flat_map(|f| f.as_canonical_u64().to_le_bytes()));
+    data.extend(gate_op.iter().flat_map(|f| f.as_canonical_u64().to_le_bytes()));
+
+    // Write to binary
+    let output_file = "precompiles/keccakf/src/keccakf_fixed.bin";
+    write_binary(output_file, &data)?;
+    println!("Fixed columns written to {}", output_file);
+
+    Ok(())
+}
+
+fn write_binary(file_path: &str, data: &[u8]) -> Result<(), Box<dyn Error>> {
+    fs::write(file_path, data)?;
+    Ok(())
+}
+
+fn read_json<T: DeserializeOwned>(file_path: &str) -> Result<T, Box<dyn Error>> {
+    let json_content = fs::read_to_string(file_path)?;
+    let user: T = serde_json::from_str(&json_content)?;
+    Ok(user)
+}
+
+fn cols_gen(
+    subgroup_order: usize,
+    subgroup_gen: u64,
+    cosets_gen: u64,
+    connections: Connections,
+    script: Script,
+) -> (Vec<F>, Vec<F>, Vec<F>, Vec<F>) {
+    // Check the connections and the script are well-formed
     let connections = connections.0;
     assert!(script.program.len() + 1 == connections.len());
 
+    // Check that the subgroup order is sufficiently large
     let slot_size = script.maxref;
-    if slot_size >= n {
+    if slot_size >= subgroup_order {
         panic!("The provided number of bits is too small to fit the script");
     }
 
-    let num_slots = (n - 1) / slot_size;
-    println!("num_slots: {}", num_slots);
+    // Get the number of slots we can generate
+    let num_slots = (subgroup_order - 1) / slot_size;
 
     // Get the coset generators "ks" and the generator "w"
-    let k = F::from_canonical_u64(GOLDILOCKS_K);
+    let w = F::from_canonical_u64(subgroup_gen);
+    let k = F::from_canonical_u64(cosets_gen);
     let ks = get_ks(k, 2);
-    let w = F::from_canonical_u64(GOLDILOCKS_GEN[bits]);
 
     // Initialize the connections with the row identifiers
     let mut wi = F::one();
-    let mut conn_a = vec![F::one(); n];
-    let mut conn_b = vec![F::one(); n];
-    let mut conn_c = vec![F::one(); n];
-    for i in 0..n {
+    let mut conn_a = vec![F::one(); subgroup_order];
+    let mut conn_b = vec![F::one(); subgroup_order];
+    let mut conn_c = vec![F::one(); subgroup_order];
+    for i in 0..subgroup_order {
         conn_a[i] = wi;
         conn_b[i] = wi * ks[0];
         conn_c[i] = wi * ks[1];
@@ -55,7 +100,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // Initialize the gate_op
-    let mut gate_op = vec![F::zero(); n];
+    let mut gate_op = vec![F::zero(); subgroup_order];
 
     // Compute the connections and gate_op
     for i in 0..num_slots {
@@ -137,36 +182,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    // Serialize the data
-    let mut data = Vec::new();
-    data.extend(conn_a.iter().flat_map(|f| f.as_canonical_u64().to_le_bytes()));
-    data.extend(conn_b.iter().flat_map(|f| f.as_canonical_u64().to_le_bytes()));
-    data.extend(conn_c.iter().flat_map(|f| f.as_canonical_u64().to_le_bytes()));
-    data.extend(gate_op.iter().flat_map(|f| f.as_canonical_u64().to_le_bytes()));
-
-    // Write to binary
-    let output_file = "precompiles/keccakf/src/keccakf_fixed.bin";
-    write_binary(output_file, &data)?;
-    println!("Fixed columns written to {}", output_file);
-
-    Ok(())
-}
-
-fn write_binary(file_path: &str, data: &[u8]) -> Result<(), Box<dyn Error>> {
-    fs::write(file_path, data)?;
-    Ok(())
-}
-
-fn read_json<T: DeserializeOwned>(file_path: &str) -> Result<T, Box<dyn Error>> {
-    let json_content = fs::read_to_string(file_path)?;
-    let user: T = serde_json::from_str(&json_content)?;
-    Ok(user)
+    (conn_a, conn_b, conn_c, gate_op)
 }
 
 fn get_ks(k: F, n: usize) -> Vec<F> {
     let mut ks = vec![k];
     for i in 1..n {
-        ks.push(ks[i-1] * k);
+        ks.push(ks[i - 1] * k);
     }
     ks
 }
@@ -178,4 +200,3 @@ fn connect(p1: &mut Vec<F>, i1: usize, p2: Option<&mut Vec<F>>, i2: usize) {
         p1.swap(i1, i2);
     }
 }
-
