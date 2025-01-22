@@ -26,5 +26,5 @@ impl From<PrecompileCode> for u16 {
 pub struct PrecompileContext {}
 
 pub trait PrecompileCall: Send + Sync {
-    fn execute(&self, opcode: PrecompileCode, a: u64, b: u64) -> Option<(u64, bool)>;
+    fn execute(&self, opcode: PrecompileCode, ctx: &mut InstContext) -> Option<(u64, bool)>;
 }
