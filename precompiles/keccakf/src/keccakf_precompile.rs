@@ -4,25 +4,22 @@ use tiny_keccak::keccakf;
 
 use crate::KeccakfSM;
 
-use zisk_core::ZiskOp;
+use zisk_core::{InstContext, ZiskOperationType};
 
 impl PrecompileCall for KeccakfSM {
-    fn execute(&self, opcode: PrecompileCode, ctx: &mut InstContext) -> Option<(u64, bool)> {
-        if opcode != ZiskOp::Keccakf.into() {
-            panic!("Invalid opcode for Keccakf");
-        }
+    fn execute(&self, _opcode: PrecompileCode, ctx: &mut InstContext) -> Option<(u64, bool)> {
+        // TODO: Fix
+        // if opcode != ZiskOperationType::Keccak as {
+        //     panic!("Invalid opcode for Keccakf");
+        // }
 
-        let step = ctx.a;
         let address = ctx.b;
-    
-        // Get address from register a0 = x10
-        // let address = ctx.mem.read(REG_A0, 8);
 
         // Allocate room for 25 u64 = 128 bytes = 1600 bits
         const WORDS: usize = 25;
         let mut data = [0u64; WORDS];
 
-        // Read them from the address
+        // Read data from memory
         for (i, d) in data.iter_mut().enumerate() {
             *d = ctx.mem.read(address + (8 * i as u64), 8);
         }
@@ -30,10 +27,12 @@ impl PrecompileCall for KeccakfSM {
         // Call keccakf
         keccakf(&mut data);
 
-        // Write them from the address
+        // Write the modified data back to memory at the same address
         for (i, d) in data.iter().enumerate() {
             ctx.mem.write(address + (8 * i as u64), *d, 8);
         }
+
+        Some((0, false))
     }
 }
 

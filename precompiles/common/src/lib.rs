@@ -1,3 +1,5 @@
+use zisk_core::InstContext;
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct PrecompileCode(u16);
 

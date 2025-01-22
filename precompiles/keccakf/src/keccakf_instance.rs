@@ -64,7 +64,7 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance {
     ///
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
-    fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
+    fn compute_witness(&mut self, _pctx: Option<&ProofCtx<F>>) -> Option<AirInstance<F>> {
         Some(self.keccakf_sm.compute_witness(&self.inputs))
     }
 
@@ -82,14 +82,6 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance {
     /// An `InstanceType` representing the type of this instance (`InstanceType::Instance`).
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
-    }
-
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
     }
 }
 
@@ -120,5 +112,13 @@ impl BusDevice<u64> for KeccakfInstance {
         self.inputs.push(data);
 
         (self.inputs.len() == KeccakfTrace::<usize>::NUM_ROWS, vec![])
+    }
+
+    /// Returns the bus IDs associated with this instance.
+    ///
+    /// # Returns
+    /// A vector containing the connected bus ID.
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![self.bus_id]
     }
 }
