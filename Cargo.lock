@@ -1575,6 +1575,7 @@ dependencies = [
  "log",
  "num-bigint",
  "p3-field",
+ "p3-goldilocks",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -1584,19 +1585,17 @@ dependencies = [
  "serde",
  "serde_json",
  "sm-common",
+ "tiny-keccak",
  "witness",
  "zisk-core",
  "zisk-pil",
 ]
 
 [[package]]
-<<<<<<< HEAD
 name = "precompiles-common"
 version = "0.1.0"
 
 [[package]]
-=======
->>>>>>> bd22a41a (Working in the executor)
 name = "proc-macro2"
 version = "1.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"

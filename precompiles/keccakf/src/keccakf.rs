@@ -2,14 +2,13 @@ use std::{fs, sync::Arc};
 
 use log::info;
 use p3_field::PrimeField64;
-use serde::Deserialize;
 
 use data_bus::{OperationBusData, OperationData, PayloadType};
 use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
 
-use crate::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM};
+use crate::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM, Script, ValueType};
 
 /// The `KeccakfSM` struct encapsulates the logic of the Keccakf State Machine.
 pub struct KeccakfSM {
@@ -21,48 +20,6 @@ pub struct KeccakfSM {
 
     /// Size of a slot in the trace. It corresponds to the number of gates in the circuit.
     slot_size: usize,
-}
-
-#[derive(Deserialize, Debug)]
-struct Script {
-    xor: usize,
-    andp: usize,
-    #[serde(rename = "maxRef")]
-    maxref: usize,
-    program: Vec<ProgramLine>,
-}
-
-#[derive(Deserialize, Debug)]
-struct ProgramLine {
-    a: ValueType,
-    b: ValueType,
-    op: String,
-    #[serde(rename = "ref")]
-    ref_: usize,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-enum ValueType {
-    Input(InputData),
-    Wired(WiredData),
-}
-
-#[derive(Deserialize, Debug)]
-#[allow(dead_code)]
-struct InputData {
-    bit: usize,
-    #[serde(rename = "type")]
-    type_: String,
-}
-
-#[derive(Deserialize, Debug)]
-#[allow(dead_code)]
-struct WiredData {
-    gate: usize,
-    pin: String,
-    #[serde(rename = "type")]
-    type_: String,
 }
 
 type KeccakfInput = [u64; CHUNKS * BITS];
@@ -83,7 +40,7 @@ impl KeccakfSM {
         let script: Script = serde_json::from_str(&script).unwrap();
         let slot_size = script.maxref;
 
-        assert!(script.xor + script.andp == slot_size);
+        assert!(script.xors + script.andps == slot_size);
         assert!(script.program.len() == slot_size);
 
         Arc::new(Self { keccakf_table_sm, script: Arc::new(script), slot_size })
