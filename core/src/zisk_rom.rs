@@ -1538,8 +1538,17 @@ impl ZiskRom {
                         REG_B, ctx.b.string_value
                     );
                 }
-                s += &format!("\timul {} /* Mulsuh: rax*reg -> rdx:rax */\n", REG_A);
-                s += &format!("\tmov {}, rdx /* Mulsuh: c = high result(rdx) */\n", REG_C);
+                s += &format!("\tmov rsi, {} /* Mulsuh: rsi=b */\n", REG_B);
+                s += &format!("\tmov rax, {} /* Mulsuh: rax=a */\n", REG_A);
+                s += &format!("\tmov {}, rax /* Mulsuh: value=a */\n", REG_VALUE);
+                s += &format!("\tsar {}, 63 /* Mulsuh: value=a>>63=a_bit_63 */\n", REG_VALUE);
+                s += &format!("\tmov rdx, 0 /* Mulsuh: rdx=0, rdx:rax=a */\n");
+                s += &format!("\tmul rsi /* Mulsuh: rdx:rax=a*b (unsigned) */\n");
+                s += &format!("\tmov rcx, rax /* Mulsuh: rax=a */\n");
+                s += &format!("\tmov rax, {} /* Mulsuh: rax=a_bit_63 */\n", REG_VALUE);
+                s += &format!("\timul rax, rsi /* Mulsuh: rax=rax*b=a_bit_63*b */\n");
+                s += &format!("\tadd rdx, rax /* Mulsuh: rdx=rdx+a_bit_63*b */\n");
+                s += &format!("\tmov {}, rdx /* Mulsuh: c=high result(rdx) */\n", REG_C);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Mul => {
