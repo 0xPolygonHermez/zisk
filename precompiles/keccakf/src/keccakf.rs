@@ -19,13 +19,21 @@ pub struct KeccakfSM {
     script: Arc<Script>,
 
     /// Size of a slot in the trace. It corresponds to the number of gates in the circuit.
-    slot_size: usize,
+    pub slot_size: usize,
+
+    /// Number of available slots in the trace.
+    num_available_slots: usize,
+
+    /// Number of available keccakfs in the trace.
+    pub num_available_keccakfs: usize,
 }
 
 type KeccakfInput = [u64; CHUNKS * BITS];
 
 impl KeccakfSM {
     const MY_NAME: &'static str = "Keccakf ";
+
+    const NUM_KECCAKF_PER_SLOT: usize = CHUNKS * BITS;
 
     /// Creates a new Keccakf State Machine instance.
     ///
@@ -40,10 +48,20 @@ impl KeccakfSM {
         let script: Script = serde_json::from_str(&script).unwrap();
         let slot_size = script.maxref;
 
+        // Check that the script is valid
         assert!(script.xors + script.andps == slot_size);
         assert!(script.program.len() == slot_size);
 
-        Arc::new(Self { keccakf_table_sm, script: Arc::new(script), slot_size })
+        let num_available_slots = (KeccakfTrace::<usize>::NUM_ROWS - 1) / slot_size;
+        let num_available_keccakfs = Self::NUM_KECCAKF_PER_SLOT * num_available_slots;
+
+        Arc::new(Self {
+            keccakf_table_sm,
+            script: Arc::new(script),
+            slot_size,
+            num_available_slots,
+            num_available_keccakfs,
+        })
     }
 
     /// Processes a slice of operation data, updating the trace and multiplicities.
@@ -232,16 +250,14 @@ impl KeccakfSM {
 
         timer_start_trace!(KECCAKF_TRACE);
         let num_rows = keccakf_trace.num_rows();
-
-        let num_keccakf_per_slot = CHUNKS * BITS;
-        let num_slots = (num_rows - 1) / self.slot_size;
-        let num_keccakfs = num_keccakf_per_slot * num_slots;
-
+        
         // Check that we can fit all the keccakfs in the trace
         let num_inputs = inputs.len();
-        assert!(num_inputs <= num_keccakfs);
+        assert!(num_inputs <= self.num_available_keccakfs);
 
-        let num_slots_needed = num_inputs.div_ceil(num_keccakf_per_slot);
+        let num_slots_needed = num_inputs.div_ceil(Self::NUM_KECCAKF_PER_SLOT);
+        assert!(num_slots_needed <= self.num_available_slots); // Redundant, given the previous assert
+
         let num_rows_needed = 1 + num_slots_needed * self.slot_size;
 
         info!(

@@ -1,5 +1,5 @@
-//! The `KeccakfInstance` module defines an instance to perform witness computations
-//! for keccakf-related operations using the Keccakf State Machine.
+//! The `KeccakfInstance` module defines an instance to perform the witness computation
+//! for the Keccakf State Machine.
 //!
 //! It manages collected inputs and interacts with the `KeccakfSM` to compute witnesses for
 //! execution plans.
@@ -11,12 +11,11 @@ use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 use zisk_core::ZiskOperationType;
-use zisk_pil::KeccakfTrace;
 
-/// The `KeccakfInstance` struct represents an instance for keccakf-related witness computations.
+/// The `KeccakfInstance` struct represents an instance for the Keccakf State Machine.
 ///
 /// It encapsulates the `KeccakfSM` and its associated context, and it processes input data
-/// to compute witnesses for keccakf operations.
+/// to compute witnesses for the Keccakf State Machine.
 pub struct KeccakfInstance {
     /// Keccakf state machine.
     keccakf_sm: Arc<KeccakfSM>,
@@ -40,6 +39,7 @@ impl KeccakfInstance {
     /// # Arguments
     /// * `keccakf_sm` - An `Arc`-wrapped reference to the Keccakf State Machine.
     /// * `ictx` - The `InstanceCtx` associated with this instance, containing the execution plan.
+    /// * `bus_id` - The bus ID associated with this instance.
     ///
     /// # Returns
     /// A new `KeccakfInstance` instance initialized with the provided state machine and
@@ -111,7 +111,8 @@ impl BusDevice<u64> for KeccakfInstance {
 
         self.inputs.push(data);
 
-        (self.inputs.len() == KeccakfTrace::<usize>::NUM_ROWS, vec![])
+        // Check if the required number of inputs has been collected for computation.
+        (self.inputs.len() == self.keccakf_sm.num_available_keccakfs, vec![])
     }
 
     /// Returns the bus IDs associated with this instance.

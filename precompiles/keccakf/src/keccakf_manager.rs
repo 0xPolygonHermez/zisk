@@ -12,9 +12,10 @@ use zisk_pil::{KeccakfTableTrace, KeccakfTrace};
 
 use crate::{KeccakfInstance, KeccakfSM, KeccakfTableSM};
 
-/// The `KeccakfBuilder` struct represents the Keccakf State Machine builder.
+/// The `KeccakfManager` struct represents the Keccakf manager,
+/// which is responsible for managing the Keccakf state machine and its table state machine.
 #[allow(dead_code)]
-pub struct KeccakfBuilder {
+pub struct KeccakfManager {
     /// Keccakf state machine
     keccakf_sm: Arc<KeccakfSM>,
 
@@ -22,14 +23,11 @@ pub struct KeccakfBuilder {
     keccakf_table_sm: Arc<KeccakfTableSM>,
 }
 
-impl KeccakfBuilder {
-    /// Creates a new instance of the `KeccakfBuilder` state machine.
-    ///
-    /// # Arguments
-    /// * `std` - PIL2 standard library utilities.
+impl KeccakfManager {
+    /// Creates a new instance of `KeccakfManager`.
     ///
     /// # Returns
-    /// An `Arc`-wrapped instance of `KeccakfBuilder`.
+    /// An `Arc`-wrapped instance of `KeccakfManager`.
     pub fn new<F: PrimeField>() -> Arc<Self> {
         let keccakf_table_sm = KeccakfTableSM::new::<F>();
         let keccakf_sm = KeccakfSM::new(keccakf_table_sm.clone());
@@ -38,7 +36,7 @@ impl KeccakfBuilder {
     }
 }
 
-impl<F: PrimeField64> ComponentBuilder<F> for KeccakfBuilder {
+impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
     /// Builds and returns a new counter for monitoring keccakf operations.
     ///
     /// # Returns
