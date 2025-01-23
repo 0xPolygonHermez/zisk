@@ -283,7 +283,7 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
             );
         }
         self.std.range_check(
-            F::from_canonical_u64(STEP_MEMORY_MAX_DIFF),
+            f_max_increment,
             F::from_canonical_u64(range_check_data_max),
             range_id,
         );

@@ -248,8 +248,10 @@ impl<'a> MemModulePlanner<'a> {
                         addr_uses.last_step,
                         0,
                         // when we skipping inputs, the previous addr/step is naturally discarted
-                        // because it belongs to the previous instance, for this reason we skip 1
+                        // because it belongs to the previous segment, for this reason we skip 1
                         // row
+                        // rows_applied = 0 => never, because means no more space in current
+                        // segment but always open a new segment after close a segment.
                         skip_rows - 1,
                     );
                 }
@@ -399,7 +401,6 @@ impl<'a> MemModulePlanner<'a> {
         prev_value: u64,
         skip_rows: u32,
     ) {
-        assert!(skip_rows > 0);
         self.close_segment(last_addr, last_step);
 
         self.segments.push({
