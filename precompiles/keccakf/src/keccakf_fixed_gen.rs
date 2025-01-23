@@ -1,8 +1,10 @@
 use std::{env, error::Error, fs};
 
-use p3_field::{AbstractField, PrimeField64};
+use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
 use serde::de::DeserializeOwned;
+
+use proofman_common::{write_fixed_cols_bin, FixedColsInfo};
 
 mod goldilocks_constants;
 mod keccakf_types;
@@ -35,24 +37,22 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (conn_a, conn_b, conn_c, gate_op) =
         cols_gen(n, subgroup_gen, cosets_gen, connections, script);
 
-    // Serialize the columns
-    // TODO: N, Name, Pos (if array) and Values
-    let mut data = Vec::new();
-    data.extend(conn_a.iter().flat_map(|f| f.as_canonical_u64().to_le_bytes()));
-    data.extend(conn_b.iter().flat_map(|f| f.as_canonical_u64().to_le_bytes()));
-    data.extend(conn_c.iter().flat_map(|f| f.as_canonical_u64().to_le_bytes()));
-    data.extend(gate_op.iter().flat_map(|f| f.as_canonical_u64().to_le_bytes()));
+    // Serialize the columns and write them to a binary file
+    let conn_a = FixedColsInfo::new("Keccakf.CONN_A", None, conn_a);
+    let conn_b = FixedColsInfo::new("Keccakf.CONN_B", None, conn_b);
+    let conn_c = FixedColsInfo::new("Keccakf.CONN_C", None, conn_c);
+    let gate_op = FixedColsInfo::new("Keccakf.GATE_OP", None, gate_op);
 
-    // Write to binary
-    let output_file = "precompiles/keccakf/src/keccakf_fixed.bin";
-    write_binary(output_file, &data)?;
-    println!("Fixed columns written to {}", output_file);
+    let output_file = format!("precompiles/keccakf/src/keccakf_fixed_{}.bin", bits);
+    write_fixed_cols_bin(
+        &output_file,
+        "Zisk",
+        "Keccakf",
+        n as u64,
+        &mut [conn_a, conn_b, conn_c, gate_op],
+    );
+    println!("CONN_A, CONN_B, CONN_C and GATE_OP columns written to {}", output_file);
 
-    Ok(())
-}
-
-fn write_binary(file_path: &str, data: &[u8]) -> Result<(), Box<dyn Error>> {
-    fs::write(file_path, data)?;
     Ok(())
 }
 
