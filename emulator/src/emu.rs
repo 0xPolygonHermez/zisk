@@ -1926,12 +1926,21 @@ impl<'a> Emu<'a> {
 
     /// Get the output as a vector of u32
     pub fn get_output_32(&self) -> Vec<u32> {
-        let mut addr = OUTPUT_ADDR;
-        let mut output: Vec<u32> = Vec::with_capacity(32);
-        for _i in 0..32 {
+        let n = self.ctx.inst_ctx.mem.read(OUTPUT_ADDR, 4);
+        let mut addr = OUTPUT_ADDR + 4;
+        let mut output: Vec<u32> = Vec::with_capacity(n as usize);
+        for _i in 0..n {
             output.push(self.ctx.inst_ctx.mem.read(addr, 4) as u32);
             addr += 4;
         }
+
+        // let mut addr = OUTPUT_ADDR;
+        // let mut output: Vec<u32> = Vec::with_capacity(32);
+        // for _i in 0..32 {
+        //     output.push(self.ctx.inst_ctx.mem.read(addr, 4) as u32);
+        //     addr += 4;
+        // }
+
         output
     }
 
