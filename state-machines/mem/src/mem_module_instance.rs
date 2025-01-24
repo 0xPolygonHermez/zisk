@@ -6,6 +6,7 @@ use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
+use rayon::prelude::*;
 use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 
@@ -120,7 +121,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
     fn prepare_inputs(&mut self) {
         // sort all instance inputs
         timer_start_debug!(MEM_SORT);
-        self.inputs.sort_by_key(|input| (input.addr, input.step));
+        self.inputs.par_sort_by_key(|input| (input.addr, input.step));
         timer_stop_and_log_debug!(MEM_SORT);
     }
     fn fit_inputs_and_get_prev_segment(&mut self) -> MemPreviousSegment {
