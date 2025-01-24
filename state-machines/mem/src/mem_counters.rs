@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use std::collections::HashMap;
 
 use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
@@ -21,6 +22,7 @@ pub struct UsesCounter {
     pub last_step: u64,
     pub count: u64,
     pub last_value: u64,
+    pub addr: u32,
     #[cfg(feature = "debug_mem")]
     pub debug: UsesCounterDebug,
 }
@@ -29,7 +31,7 @@ pub struct UsesCounter {
 pub struct MemCounters {
     pub registers: [UsesCounter; 32],
     pub addr: HashMap<u32, UsesCounter>,
-    pub addr_sorted: Vec<(u32, UsesCounter)>,
+    pub addr_sorted: [Vec<(u32, UsesCounter)>; 3],
     pub mem_align: Vec<u8>,
     pub mem_align_rows: u32,
     #[cfg(feature = "debug_mem")]
@@ -42,7 +44,7 @@ impl MemCounters {
         Self {
             registers: [empty_counter; 32],
             addr: HashMap::new(),
-            addr_sorted: Vec::new(),
+            addr_sorted: [Vec::new(), Vec::new(), Vec::new()],
             mem_align: Vec::new(),
             mem_align_rows: 0,
             #[cfg(feature = "debug_mem")]
@@ -78,6 +80,7 @@ impl Metrics for MemCounters {
                     last_step: step,
                     count: 1,
                     last_value,
+                    addr: (0xA000_0000 / 8) + reg_index as u32,
                     #[cfg(feature = "debug_mem")]
                     debug: UsesCounterDebug { internal_reads: 0, mem_align_extra_rows: 0 },
                 };
@@ -116,6 +119,7 @@ impl Metrics for MemCounters {
                     last_step: step,
                     count: 1,
                     last_value,
+                    addr: addr_w,
                     #[cfg(feature = "debug_mem")]
                     debug: UsesCounterDebug { internal_reads: 0, mem_align_extra_rows: 0 },
                 });
@@ -160,6 +164,7 @@ impl Metrics for MemCounters {
                         last_step,
                         count: ops_by_addr,
                         last_value: last_values[index as usize],
+                        addr: _addr_w,
                         #[cfg(feature = "debug_mem")]
                         debug: UsesCounterDebug {
                             internal_reads: 0,
@@ -177,10 +182,20 @@ impl Metrics for MemCounters {
 
     fn on_close(&mut self) {
         // address must be ordered
-        let addr_hashmap = std::mem::take(&mut self.addr);
-        self.addr_sorted = addr_hashmap.into_iter().collect();
-        self.addr_sorted.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut addr_vector: Vec<(u32, UsesCounter)> =
+            std::mem::take(&mut self.addr).into_iter().collect();
+        addr_vector.par_sort_by_key(|(key, _)| *key);
+
+        // Divideix el vector original en tres parts
+        let point = addr_vector.partition_point(|x| x.0 < (0xA000_0000 / 8));
+        self.addr_sorted[2] = addr_vector.split_off(point);
+
+        let point = addr_vector.partition_point(|x| x.0 < (0x9000_0000 / 8));
+        self.addr_sorted[1] = addr_vector.split_off(point);
+
+        self.addr_sorted[0] = addr_vector;
     }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

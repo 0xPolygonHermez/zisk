@@ -29,6 +29,10 @@ pub struct MemModulePlanner<'a> {
     consume_addr: u32,
     consume_from_step: u64,
     consume_to_step: u64,
+    cursor_on_registers: bool,
+    cursor_register_index: usize,
+    cursor_register_count: usize,
+    counters_count: usize,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -46,6 +50,7 @@ pub struct MemModuleSegmentCheckPoint {
 pub struct MemModulePlannerConfig {
     pub airgroup_id: usize,
     pub air_id: usize,
+    pub addr_index: usize,
     pub from_addr: u32,
     pub to_addr: u32,
     pub rows: u32,
@@ -58,6 +63,7 @@ impl<'a> MemModulePlanner<'a> {
         config: MemModulePlannerConfig,
         counters: Arc<Vec<(ChunkId, &'a MemCounters)>>,
     ) -> Self {
+        let counters_count = counters.len();
         Self {
             config,
             last_addr: config.from_addr,
@@ -71,6 +77,10 @@ impl<'a> MemModulePlanner<'a> {
             consume_addr: 0,
             consume_from_step: 0,
             consume_to_step: 0,
+            cursor_on_registers: false,
+            cursor_register_index: 0,
+            cursor_register_count: counters_count * REGISTERS_COUNT,
+            counters_count,
         }
     }
     pub fn module_plan(&mut self) {
@@ -79,133 +89,92 @@ impl<'a> MemModulePlanner<'a> {
         }
         self.open_initial_segment();
         // create a list of cursors, this list has the non-empty indexs of metric (couters) and his
-        // cursor init to first position
         self.init_cursors();
-        while !self.cursors.is_empty() {
-            // searches for the first smallest element in the vector and returns its index.
-            let (cursor_index, cursor_pos) = self.get_next_cursor_index_and_pos();
-
-            let chunk_id = self.get_cursor_chunk_id(cursor_index);
-            let (addr, addr_uses) = self.get_cursor_data(cursor_index, cursor_pos);
+        while !self.cursors_end() {
+            // searches for the first smallest element in the vector
+            let (chunk_id, addr, addr_uses) = self.get_next_cursor();
             self.add_to_current_instance(chunk_id, addr, &addr_uses);
         }
     }
-    fn get_cursor_chunk_id(&self, cursor_index: usize) -> ChunkId {
-        self.counters[cursor_index].0
+    fn cursors_end(&self) -> bool {
+        !self.cursor_on_registers && self.cursors.is_empty()
     }
-    fn get_cursor_data(&self, cursor_index: usize, cursor_pos: usize) -> (u32, UsesCounter) {
-        let result = if cursor_pos < REGISTERS_COUNT {
-            (
-                MemHelpers::register_to_addr_w(cursor_pos as u8),
-                self.counters[cursor_index].1.registers[cursor_pos],
-            )
-        } else {
-            let addr = self.counters[cursor_index].1.addr_sorted[cursor_pos - REGISTERS_COUNT].0;
-            let addr_uses =
-                self.counters[cursor_index].1.addr_sorted[cursor_pos - REGISTERS_COUNT].1;
-            (addr, addr_uses)
-        };
-        debug_assert!(
-            result.0 >= self.config.from_addr && result.0 <= self.config.to_addr,
-            "INVALID_CURSOR addr:{:#010X} from_addr:{:#010X} to_addr:{:#010X} cursor:[{},{}]",
-            result.0 * 8,
-            self.config.from_addr * 8,
-            self.config.to_addr * 8,
-            cursor_index,
-            cursor_pos,
-        );
-        result
+    fn get_next_cursor_register(&mut self) -> bool {
+        while self.cursor_register_index + 1 < self.cursor_register_count {
+            self.cursor_register_index += 1;
+            let (counter_index, register_index) = self.get_cursor_register_data();
+            if self.counters[counter_index].1.registers[register_index].count > 0 {
+                return true;
+            }
+        }
+        self.cursor_on_registers = false;
+        return false;
     }
     fn init_cursors(&mut self) {
-        // for each chunk-counter that has addr_sorted element add a cursor to the first element
-        self.cursors = Vec::new();
-        for (index, counter) in self.counters.iter().enumerate() {
-            let mut jmp_to_next = false;
-            // first take registers if them are mapped on top of the current memory area
-            if self.config.map_registers {
-                for ireg in 0..counter.1.registers.len() {
-                    if counter.1.registers[ireg].count > 0 {
-                        self.cursors.push((index, ireg));
-                        jmp_to_next = true;
-                        break;
-                    }
-                }
-            }
-            if jmp_to_next || counter.1.addr_sorted.is_empty() {
-                continue;
-            }
-            match counter.1.addr_sorted.binary_search_by(|(key, _)| key.cmp(&self.config.from_addr))
-            {
-                Ok(pos) => self.cursors.push((index, pos + REGISTERS_COUNT)),
-                Err(pos) => {
-                    if pos < counter.1.addr_sorted.len() &&
-                        counter.1.addr_sorted[pos].0 <= self.config.to_addr
-                    {
-                        self.cursors.push((index, pos + REGISTERS_COUNT));
-                    }
-                }
+        // check if any register has data
+        if self.config.map_registers {
+            if self.counters[0].1.registers[0].count > 0 || self.get_next_cursor_register() {
+                self.cursor_on_registers = true;
             }
         }
 
-        #[cfg(debug_assertions)]
-        for (cursor_index, cursor_pos) in self.cursors.iter() {
-            let (_, _) = self.get_cursor_data(*cursor_index, *cursor_pos);
-        }
+        // prepare cursors
+        self.cursors = self
+            .counters
+            .iter()
+            .enumerate()
+            .filter_map(|(i, counter)| {
+                if counter.1.addr_sorted[self.config.addr_index].is_empty() {
+                    None
+                } else {
+                    Some((i, 0))
+                }
+            })
+            .collect();
     }
-    fn get_next_cursor_index_and_pos(&mut self) -> (usize, usize) {
+    fn get_cursor_register_data(&self) -> (usize, usize) {
+        (
+            self.cursor_register_index % self.counters_count,
+            self.cursor_register_index / self.counters_count,
+        )
+    }
+    fn get_next_cursor(&mut self) -> (ChunkId, u32, UsesCounter) {
+        if self.cursor_on_registers {
+            let (counter_index, register_index) = self.get_cursor_register_data();
+            let chunk_id = self.counters[counter_index].0;
+            let addr_w = MemHelpers::register_to_addr_w(register_index as u8);
+            let uses = self.counters[counter_index].1.registers[register_index].clone();
+            self.get_next_cursor_register();
+            return (chunk_id, addr_w, uses);
+        }
+        return self.get_next_addr_cursor();
+    }
+
+    fn get_next_addr_cursor(&mut self) -> (ChunkId, u32, UsesCounter) {
+        let aid = self.config.addr_index;
         let (min_index, _) = self
             .cursors
             .iter()
             .enumerate()
-            .min_by_key(|&(_, &(index, cursor))| {
-                if cursor < REGISTERS_COUNT {
-                    MemHelpers::register_to_addr_w(cursor as u8)
-                } else {
-                    self.counters[index].1.addr_sorted[cursor - REGISTERS_COUNT].0
-                }
-            })
+            .min_by_key(|&(_, &(index, cursor))| self.counters[index].1.addr_sorted[aid][cursor].0)
             .unwrap();
-        let cursor_index = self.cursors[min_index].0;
-        let cursor_pos = self.cursors[min_index].1;
 
-        let cursor_on_registers = cursor_pos < REGISTERS_COUNT;
-        let mut cursor_next_pos = if cursor_on_registers {
-            for ireg in cursor_pos + 1..REGISTERS_COUNT {
-                if self.counters[cursor_index].1.registers[ireg].count > 0 {
-                    self.cursors[min_index].1 = ireg;
-                    return (cursor_index, cursor_pos);
-                }
-            }
-            REGISTERS_COUNT
+        let counter_index = self.cursors[min_index].0;
+        let addr_index = self.cursors[min_index].1;
+
+        if addr_index + 1 < self.counters[counter_index].1.addr_sorted[aid].len() {
+            // increment addr_index of cursor
+            self.cursors[min_index].1 += 1;
         } else {
-            cursor_pos + 1
-        };
-
-        let mut cursor_next_addr_pos = cursor_next_pos - REGISTERS_COUNT;
-        if cursor_on_registers &&
-            cursor_next_addr_pos < self.counters[cursor_index].1.addr_sorted.len()
-        {
-            // filter addr out of [from_addr, to_addr]
-            while cursor_next_addr_pos < self.counters[cursor_index].1.addr_sorted.len() &&
-                self.counters[cursor_index].1.addr_sorted[cursor_next_addr_pos].0 <
-                    self.config.from_addr
-            {
-                cursor_next_addr_pos += 1;
-                cursor_next_pos += 1;
-            }
-        }
-
-        // if it's last position, we must remove for list of open_cursors, if not we increment
-        if cursor_next_addr_pos >= self.counters[cursor_index].1.addr_sorted.len() ||
-            self.counters[cursor_index].1.addr_sorted[cursor_next_addr_pos].0 >
-                self.config.to_addr
-        {
             self.cursors.remove(min_index);
-        } else {
-            self.cursors[min_index].1 = cursor_next_pos;
         }
-        (cursor_index, cursor_pos)
+        return (
+            self.counters[counter_index].0,
+            self.counters[counter_index].1.addr_sorted[aid][addr_index].0,
+            self.counters[counter_index].1.addr_sorted[aid][addr_index].1.clone(),
+        );
     }
+
     /// Add "counter-address" to the current instance
     /// If the chunk_id is not in the list, it will be added. This method need to verify the
     /// distance between the last addr-step and the current addr-step, if the distance is
@@ -348,7 +317,15 @@ impl<'a> MemModulePlanner<'a> {
 
         // at this point we need to add internal reads, we calculate how many internal reads we need
         let internal_rows = (step_diff - 1) / STEP_MEMORY_MAX_DIFF;
-        assert!(internal_rows < self.config.rows as u64);
+        assert!(
+            internal_rows < self.config.rows as u64,
+            "internal_rows:{} < config.rows:{} ===> addr: {:#010X} addr_uses.first_step:{} last_step:{}",
+            internal_rows,
+            self.config.rows,
+            addr * 8,
+            addr_uses.first_step,
+            self.last_step
+        );
         self.add_internal_rows(addr, internal_rows as u32, 0, STEP_MEMORY_MAX_DIFF as u32);
     }
     fn open_initial_segment(&mut self) {

@@ -1,6 +1,6 @@
-use std::sync::Arc;
-
+use rayon::prelude::*;
 use sm_common::{BusDeviceMetrics, ChunkId, Plan, Planner};
+use std::sync::Arc;
 
 #[cfg(feature = "debug_mem")]
 use zisk_pil::MEM_ALIGN_AIR_IDS;
@@ -93,14 +93,14 @@ impl MemPlanner {
 impl Planner for MemPlanner {
     fn plan(&self, metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
         // convert generic information to specific information
-        let _counters: Vec<(ChunkId, &MemCounters)> = metrics
+        let mut counters: Vec<(ChunkId, &MemCounters)> = metrics
             .iter()
             .map(|(chunk_id, metric)| {
                 (*chunk_id, metric.as_any().downcast_ref::<MemCounters>().unwrap())
             })
             .collect();
-
-        let counters = Arc::new(_counters);
+        counters.par_sort_by_key(|(chunk_id, _)| *chunk_id);
+        let counters = Arc::new(counters);
 
         #[cfg(feature = "debug_mem")]
         self.collect_debug_data(counters.clone());
@@ -110,6 +110,7 @@ impl Planner for MemPlanner {
                 MemModulePlannerConfig {
                     airgroup_id: ZISK_AIRGROUP_ID,
                     air_id: MEM_AIR_IDS[0],
+                    addr_index: 2,
                     from_addr: RAM_W_ADDR_INIT,
                     to_addr: RAM_W_ADDR_END,
                     rows: MemTrace::<usize>::NUM_ROWS as u32,
@@ -123,6 +124,7 @@ impl Planner for MemPlanner {
                 MemModulePlannerConfig {
                     airgroup_id: ZISK_AIRGROUP_ID,
                     air_id: ROM_DATA_AIR_IDS[0],
+                    addr_index: 0,
                     from_addr: ROM_DATA_W_ADDR_INIT,
                     to_addr: ROM_DATA_W_ADDR_END,
                     rows: RomDataTrace::<usize>::NUM_ROWS as u32,
@@ -136,6 +138,7 @@ impl Planner for MemPlanner {
                 MemModulePlannerConfig {
                     airgroup_id: ZISK_AIRGROUP_ID,
                     air_id: INPUT_DATA_AIR_IDS[0],
+                    addr_index: 1,
                     from_addr: INPUT_DATA_W_ADDR_INIT,
                     to_addr: INPUT_DATA_W_ADDR_END,
                     rows: InputDataTrace::<usize>::NUM_ROWS as u32,
