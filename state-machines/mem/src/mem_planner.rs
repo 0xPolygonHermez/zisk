@@ -105,7 +105,7 @@ impl Planner for MemPlanner {
         #[cfg(feature = "debug_mem")]
         self.collect_debug_data(counters.clone());
 
-        let mut mem_planner = Arc::new(Mutex::new(MemModulePlanner::new(
+        let mem_planner = Arc::new(Mutex::new(MemModulePlanner::new(
             MemModulePlannerConfig {
                 airgroup_id: ZISK_AIRGROUP_ID,
                 air_id: MEM_AIR_IDS[0],
@@ -120,7 +120,7 @@ impl Planner for MemPlanner {
             counters.clone(),
         )));
 
-        let mut rom_data_planner = Arc::new(Mutex::new(MemModulePlanner::new(
+        let rom_data_planner = Arc::new(Mutex::new(MemModulePlanner::new(
             MemModulePlannerConfig {
                 airgroup_id: ZISK_AIRGROUP_ID,
                 air_id: ROM_DATA_AIR_IDS[0],
@@ -135,7 +135,7 @@ impl Planner for MemPlanner {
             counters.clone(),
         )));
 
-        let mut input_data_planner = Arc::new(Mutex::new(MemModulePlanner::new(
+        let input_data_planner = Arc::new(Mutex::new(MemModulePlanner::new(
             MemModulePlannerConfig {
                 airgroup_id: ZISK_AIRGROUP_ID,
                 air_id: INPUT_DATA_AIR_IDS[0],
@@ -152,7 +152,7 @@ impl Planner for MemPlanner {
         // let mut mem_align_planner = Arc::new(Mutex::new(MemAlignPlanner::new(counters.clone())));
         let mut mem_align_planner = MemAlignPlanner::new(counters.clone());
 
-        let planners = vec![
+        let planners: Vec(MemPlanCalculator) = vec![
             Arc::clone(&mem_planner),
             Arc::clone(&rom_data_planner),
             Arc::clone(&input_data_planner),

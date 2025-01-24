@@ -120,7 +120,8 @@ impl<'a> MemModulePlanner<'a> {
         if !self.cursor_on_registers {
             self.init_sorted_boxes_cursor();
         }
-        // self.debug_sorted_boxes();
+        #[cfg(feature = "debug_mem")]
+        self.debug_sorted_boxes();
     }
     fn get_cursor_register_data(&self) -> (usize, usize) {
         (self.cursor_index % self.counters_count, self.cursor_index / self.counters_count)
@@ -164,6 +165,7 @@ impl<'a> MemModulePlanner<'a> {
         self.init_sorted_boxes_cursor();
         return false;
     }
+    #[cfg(feature = "debug_mem")]
     fn debug_sorted_boxes(&self) {
         let aid = self.config.addr_index;
         let mut prev_addr = 0;
