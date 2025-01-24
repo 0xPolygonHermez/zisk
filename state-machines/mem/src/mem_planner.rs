@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use crate::MemDebug;
 use sm_common::{BusDeviceMetrics, ChunkId, Plan, Planner};
-
 #[cfg(feature = "debug_mem")]
 use zisk_pil::MEM_ALIGN_AIR_IDS;
 
