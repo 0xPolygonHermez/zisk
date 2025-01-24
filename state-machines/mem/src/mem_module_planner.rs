@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use rayon::{prelude::*, ThreadPoolBuilder};
+use std::{sync::Arc, thread::Thread};
 
 use crate::{MemCounters, MemHelpers, MemPlanCalculator, UsesCounter, STEP_MEMORY_MAX_DIFF};
 use sm_common::{CheckPoint, ChunkId, InstanceType, Plan};
@@ -22,7 +23,7 @@ pub struct MemModulePlanner<'a> {
     last_step: u64,
     last_addr: u32,  // addr of last addr uses
     last_value: u64, // value of last addr uses
-    cursors: Vec<(usize, usize)>,
+
     segments: Vec<MemModuleSegment>,
     current_chunk_id: Option<ChunkId>,
     counters: Arc<Vec<(ChunkId, &'a MemCounters)>>,
@@ -30,9 +31,10 @@ pub struct MemModulePlanner<'a> {
     consume_from_step: u64,
     consume_to_step: u64,
     cursor_on_registers: bool,
-    cursor_register_index: usize,
-    cursor_register_count: usize,
+    cursor_index: usize,
+    cursor_count: usize,
     counters_count: usize,
+    sorted_boxes: Vec<SortedBox>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -45,6 +47,13 @@ pub struct MemModuleSegmentCheckPoint {
     pub prev_step: u64,
     pub last_step: u64,
     pub prev_value: u64,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SortedBox {
+    pub addr: u64,
+    pub i_counter: u32,
+    pub i_addr: u32,
 }
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MemModulePlannerConfig {
@@ -70,7 +79,6 @@ impl<'a> MemModulePlanner<'a> {
             last_step: 0,
             last_value: 0,
             rows_available: config.rows,
-            cursors: Vec::new(),
             segments: Vec::new(),
             counters,
             current_chunk_id: None,
@@ -78,9 +86,10 @@ impl<'a> MemModulePlanner<'a> {
             consume_from_step: 0,
             consume_to_step: 0,
             cursor_on_registers: false,
-            cursor_register_index: 0,
-            cursor_register_count: counters_count * REGISTERS_COUNT,
+            cursor_index: 0,
+            cursor_count: counters_count * REGISTERS_COUNT,
             counters_count,
+            sorted_boxes: Vec::new(),
         }
     }
     pub fn module_plan(&mut self) {
@@ -89,28 +98,16 @@ impl<'a> MemModulePlanner<'a> {
         }
         self.open_initial_segment();
         // create a list of cursors, this list has the non-empty indexs of metric (couters) and his
-        self.init_cursors();
+        self.init_cursor();
         while !self.cursors_end() {
             // searches for the first smallest element in the vector
             let (chunk_id, addr, addr_uses) = self.get_next_cursor();
+            // println!("chunk_id:{:?} addr:{:#010X} addr_uses:{:?}", chunk_id, addr * 8,
+            // addr_uses);
             self.add_to_current_instance(chunk_id, addr, &addr_uses);
         }
     }
-    fn cursors_end(&self) -> bool {
-        !self.cursor_on_registers && self.cursors.is_empty()
-    }
-    fn get_next_cursor_register(&mut self) -> bool {
-        while self.cursor_register_index + 1 < self.cursor_register_count {
-            self.cursor_register_index += 1;
-            let (counter_index, register_index) = self.get_cursor_register_data();
-            if self.counters[counter_index].1.registers[register_index].count > 0 {
-                return true;
-            }
-        }
-        self.cursor_on_registers = false;
-        return false;
-    }
-    fn init_cursors(&mut self) {
+    fn init_cursor(&mut self) {
         // check if any register has data
         if self.config.map_registers {
             if self.counters[0].1.registers[0].count > 0 || self.get_next_cursor_register() {
@@ -118,25 +115,19 @@ impl<'a> MemModulePlanner<'a> {
             }
         }
 
-        // prepare cursors
-        self.cursors = self
-            .counters
-            .iter()
-            .enumerate()
-            .filter_map(|(i, counter)| {
-                if counter.1.addr_sorted[self.config.addr_index].is_empty() {
-                    None
-                } else {
-                    Some((i, 0))
-                }
-            })
-            .collect();
+        let initial_sorted_boxes = self.prepare_sorted_boxes();
+        self.sorted_boxes = self.merge_sorted_boxes(&initial_sorted_boxes, 4);
+        if !self.cursor_on_registers {
+            self.init_sorted_boxes_cursor();
+        }
+        // self.debug_sorted_boxes();
     }
     fn get_cursor_register_data(&self) -> (usize, usize) {
-        (
-            self.cursor_register_index % self.counters_count,
-            self.cursor_register_index / self.counters_count,
-        )
+        (self.cursor_index % self.counters_count, self.cursor_index / self.counters_count)
+    }
+
+    fn cursors_end(&self) -> bool {
+        !self.cursor_on_registers && self.cursor_index >= self.cursor_count
     }
     fn get_next_cursor(&mut self) -> (ChunkId, u32, UsesCounter) {
         if self.cursor_on_registers {
@@ -152,29 +143,136 @@ impl<'a> MemModulePlanner<'a> {
 
     fn get_next_addr_cursor(&mut self) -> (ChunkId, u32, UsesCounter) {
         let aid = self.config.addr_index;
-        let (min_index, _) = self
-            .cursors
-            .iter()
-            .enumerate()
-            .min_by_key(|&(_, &(index, cursor))| self.counters[index].1.addr_sorted[aid][cursor].0)
-            .unwrap();
-
-        let counter_index = self.cursors[min_index].0;
-        let addr_index = self.cursors[min_index].1;
-
-        if addr_index + 1 < self.counters[counter_index].1.addr_sorted[aid].len() {
-            // increment addr_index of cursor
-            self.cursors[min_index].1 += 1;
-        } else {
-            self.cursors.remove(min_index);
-        }
-        return (
+        let counter_index = self.sorted_boxes[self.cursor_index].i_counter as usize;
+        let addr_index = self.sorted_boxes[self.cursor_index].i_addr as usize;
+        self.cursor_index += 1;
+        (
             self.counters[counter_index].0,
             self.counters[counter_index].1.addr_sorted[aid][addr_index].0,
             self.counters[counter_index].1.addr_sorted[aid][addr_index].1.clone(),
-        );
+        )
     }
 
+    fn get_next_cursor_register(&mut self) -> bool {
+        while self.cursor_index + 1 < self.cursor_count {
+            self.cursor_index += 1;
+            let (counter_index, register_index) = self.get_cursor_register_data();
+            if self.counters[counter_index].1.registers[register_index].count > 0 {
+                return true;
+            }
+        }
+        self.init_sorted_boxes_cursor();
+        return false;
+    }
+    fn debug_sorted_boxes(&self) {
+        let aid = self.config.addr_index;
+        let mut prev_addr = 0;
+        let mut prev_step = 0;
+        for (i, box_ref) in self.sorted_boxes.iter().enumerate() {
+            let addr = box_ref.addr;
+            let _addr = self.counters[box_ref.i_counter as usize].1.addr_sorted[aid]
+                [box_ref.i_addr as usize]
+                .0;
+            let step = self.counters[box_ref.i_counter as usize].1.addr_sorted[aid]
+                [box_ref.i_addr as usize]
+                .1
+                .first_step;
+            let order_ok = prev_addr < addr || (prev_addr == addr && prev_step < step);
+            println!(
+                "#{} addr:{:#10X}({:#10X}){} step:{}{}",
+                i,
+                addr * 8,
+                _addr * 8,
+                if addr == _addr as u64 { "" } else { "!!!" },
+                step,
+                if order_ok { "" } else { " order fail !!!" }
+            );
+            prev_addr = addr;
+            prev_step = step;
+        }
+    }
+    fn init_sorted_boxes_cursor(&mut self) {
+        self.cursor_on_registers = false;
+        self.cursor_index = 0;
+        self.cursor_count = self.sorted_boxes.len();
+        // println!("INIT SORTED BOXES CURSOR {}/{}", self.cursor_index, self.cursor_count);
+    }
+
+    fn prepare_sorted_boxes(&self) -> Vec<Vec<SortedBox>> {
+        let pool = ThreadPoolBuilder::new().num_threads(4).build().unwrap();
+        pool.install(|| {
+            self.counters
+                .par_iter()
+                .enumerate()
+                .map(|(i, counter)| {
+                    let addr_count = counter.1.addr_sorted[self.config.addr_index].len();
+                    let mut counter_boxes: Vec<SortedBox> = Vec::with_capacity(addr_count);
+                    for i_addr in 0..addr_count {
+                        let addr = counter.1.addr_sorted[self.config.addr_index][i_addr].0 as u64;
+                        counter_boxes.push(SortedBox {
+                            addr,
+                            i_counter: i as u32,
+                            i_addr: i_addr as u32,
+                        });
+                    }
+                    counter_boxes
+                })
+                .collect()
+        })
+    }
+    fn merge_sorted_boxes(&self, sorted_boxes: &[Vec<SortedBox>], arity: usize) -> Vec<SortedBox> {
+        if sorted_boxes.len() <= 1 {
+            return sorted_boxes.get(0).cloned().unwrap_or_default();
+        }
+        let total_size: usize = sorted_boxes.iter().map(|b| b.len()).sum();
+        let target_size: usize = arity * (total_size / sorted_boxes.len());
+
+        let mut groups: Vec<&[Vec<SortedBox>]> = Vec::new();
+        let mut group_weight = 0;
+        let mut start_index = 0;
+        let mut end_index = 1;
+        for sorted_box in sorted_boxes.iter() {
+            let box_weight = sorted_box.len();
+            if group_weight + box_weight <= target_size {
+                end_index += 1;
+                group_weight += box_weight;
+            } else {
+                groups.push(&sorted_boxes[start_index..end_index]);
+                group_weight = 0;
+                start_index = end_index;
+                end_index += 1;
+            }
+        }
+        if start_index < sorted_boxes.len() {
+            groups.push(&sorted_boxes[start_index..sorted_boxes.len()]);
+        }
+        let next_boxes: Vec<Vec<SortedBox>> =
+            groups.into_par_iter().map(|group| self.merge_k_sorted_boxes(&group)).collect();
+        self.merge_sorted_boxes(&next_boxes, arity)
+    }
+    fn merge_k_sorted_boxes(&self, boxes: &[Vec<SortedBox>]) -> Vec<SortedBox> {
+        if boxes.len() == 1 {
+            return boxes[0].clone();
+        }
+        let total_len: usize = boxes.iter().map(|b| b.len()).sum();
+        let mut merged: Vec<SortedBox> = Vec::with_capacity(total_len);
+        let mut cursors = vec![0; boxes.len()];
+        for _ in 0..total_len {
+            let mut min_addr = u64::MAX;
+            let mut min_index = 0;
+            for (i, box_ref) in boxes.iter().enumerate() {
+                // we take the new min_index only if addr is less than min_addr, because the
+                // boxes are sorted by step (time)
+                if cursors[i] < box_ref.len() && box_ref[cursors[i]].addr < min_addr {
+                    min_addr = box_ref[cursors[i]].addr;
+                    min_index = i;
+                }
+            }
+            merged.push(boxes[min_index][cursors[min_index]].clone());
+            cursors[min_index] += 1;
+        }
+        merged
+    }
     /// Add "counter-address" to the current instance
     /// If the chunk_id is not in the list, it will be added. This method need to verify the
     /// distance between the last addr-step and the current addr-step, if the distance is
