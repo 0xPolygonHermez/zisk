@@ -63,21 +63,21 @@ impl MainSM {
     pub fn compute_witness<F: PrimeField>(
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
+        min_trace_size: u64,
         main_instance: &mut MainInstance,
         is_last_segment: bool,
-        min_trace_size: u64,
     ) -> AirInstance<F> {
-        let num_within = MainTrace::<F>::NUM_ROWS / min_trace_size as usize;
-
-        // Initialize the main trace buffer
+        // Create the main trace buffer
         let mut main_trace = MainTrace::new();
 
-        // Extract segment information
-        let current_segment = main_instance.ictx.plan.segment_id.unwrap();
+        let segment_id = main_instance.ictx.plan.segment_id.unwrap();
+
+        // Determine the number of minimal traces per segment
+        let num_within = MainTrace::<F>::NUM_ROWS / min_trace_size as usize;
         let num_rows = MainTrace::<F>::NUM_ROWS;
 
         // Determine trace slice for the current segment
-        let start_idx = current_segment * num_within;
+        let start_idx = segment_id * num_within;
         let end_idx = (start_idx + num_within).min(min_traces.len());
         let segment_min_traces = &min_traces[start_idx..end_idx];
 
@@ -88,7 +88,7 @@ impl MainSM {
         info!(
             "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
-            current_segment,
+            segment_id,
             filled_rows,
             num_rows,
             filled_rows as f64 / num_rows as f64 * 100.0
@@ -122,7 +122,7 @@ impl MainSM {
         // Prepare main AIR values
         let mut air_values = MainAirValues::<F>::new();
 
-        air_values.main_segment = F::from_canonical_usize(current_segment);
+        air_values.main_segment = F::from_canonical_usize(segment_id);
         air_values.main_last_segment = F::from_bool(is_last_segment);
         air_values.segment_initial_pc = main_trace.buffer[0].pc;
         air_values.segment_next_pc = F::from_canonical_u64(*next_pc);

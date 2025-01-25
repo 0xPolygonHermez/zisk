@@ -258,9 +258,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
             let air_instance = MainSM::compute_witness(
                 &self.zisk_rom,
                 min_traces,
+                Self::MIN_TRACE_SIZE,
                 &mut main_instance,
                 segment_id == last_segment_id,
-                Self::MIN_TRACE_SIZE,
             );
 
             pctx.air_instance_repo.add_air_instance(air_instance, main_instance.ictx.global_id);
