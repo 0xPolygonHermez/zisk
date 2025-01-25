@@ -1610,6 +1610,7 @@ version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
+ "rayon",
  "syn",
 ]
 
@@ -3188,6 +3189,7 @@ version = "0.2.0"
 dependencies = [
  "proofman-common",
  "proofman-macros",
+ "rayon",
  "serde",
 ]
 

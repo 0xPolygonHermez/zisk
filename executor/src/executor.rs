@@ -6,6 +6,7 @@
 use itertools::Itertools;
 use p3_field::PrimeField;
 use proofman_common::ProofCtx;
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use witness::WitnessComponent;
 
 use rayon::prelude::*;
@@ -20,8 +21,6 @@ use sm_main::{MainInstance, MainPlanner, MainSM};
 use std::{fs, path::PathBuf, sync::Arc};
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, EmuTrace, ZiskEmulator};
-
-use rayon::iter::Either;
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
@@ -38,8 +37,8 @@ pub struct ZiskExecutor<F: PrimeField> {
 
 impl<F: PrimeField> ZiskExecutor<F> {
     /// The number of threads to use for parallel processing.
-    const NUM_THREADS: usize = 8;
-    const MIN_TRACE_SIZE: u64 = 1 << 21;
+    const NUM_THREADS: usize = 16;
+    const MIN_TRACE_SIZE: u64 = 1 << 18;
 
     /// Creates a new instance of the `ZiskExecutor`.
     ///
@@ -242,57 +241,60 @@ impl<F: PrimeField> ZiskExecutor<F> {
         (table_instances, other_instances)
     }
 
-    /// Expands and computes witnesses for main and secondary state machines.
+    /// Expands and computes witnesses for main state machines.
     ///
     /// # Arguments
     /// * `pctx` - Proof context for managing air instances.
     /// * `min_traces` - Minimal traces obtained from the ROM execution.
     /// * `main_instances` - Main state machine instances to compute witnesses for
-    /// * `secn_instances` - Secondary state machine instances to compute witnesses for
-    fn witness_instances(
+    fn witness_main_instances(
         &self,
         pctx: &ProofCtx<F>,
         min_traces: &[EmuTrace],
         main_instances: Vec<MainInstance>,
+    ) {
+        let last_segment_id = main_instances.len() - 1;
+        main_instances.into_par_iter().enumerate().for_each(|(segment_id, mut main_instance)| {
+            let air_instance = MainSM::compute_witness(
+                &self.zisk_rom,
+                min_traces,
+                &mut main_instance,
+                segment_id == last_segment_id,
+                Self::MIN_TRACE_SIZE,
+            );
+
+            pctx.air_instance_repo.add_air_instance(air_instance, main_instance.ictx.global_id);
+        });
+    }
+
+    /// Expands and computes witnesses for secondary state machines.
+    ///
+    /// # Arguments
+    /// * `pctx` - Proof context for managing air instances.
+    /// * `min_traces` - Minimal traces obtained from the ROM execution.
+    /// * `secn_instances` - Secondary state machine instances to compute witnesses for
+    fn witness_secn_instances(
+        &self,
+        pctx: &ProofCtx<F>,
+        min_traces: &[EmuTrace],
         secn_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
     ) {
-        // Combine main_instances and secn_instances into a single parallel iterator
-        let main_iter = main_instances.into_par_iter().map(|mut main_instance| {
-            Either::Left(move || {
-                MainSM::prove_main(
-                    pctx,
-                    &self.zisk_rom,
-                    min_traces,
-                    Self::MIN_TRACE_SIZE,
-                    &mut main_instance,
-                );
-            })
-        });
-
-        let secn_iter = secn_instances.into_par_iter().map(|(global_id, mut secn_instance)| {
-            Either::Right(move || {
-                match secn_instance.check_point() {
-                    CheckPoint::None => {}
-                    CheckPoint::Single(chunk_id) => {
-                        secn_instance =
-                            self.process_checkpoint(min_traces, secn_instance, &[chunk_id], false);
-                    }
-                    CheckPoint::Multiple(chunk_ids) => {
-                        secn_instance =
-                            self.process_checkpoint(min_traces, secn_instance, &chunk_ids, true);
-                    }
+        secn_instances.into_par_iter().for_each(|(global_id, mut secn_instance)| {
+            match secn_instance.check_point() {
+                CheckPoint::None => {}
+                CheckPoint::Single(chunk_id) => {
+                    secn_instance =
+                        self.process_checkpoint(min_traces, secn_instance, &[chunk_id], false);
                 }
-
-                if let Some(air_instance) = secn_instance.compute_witness(pctx) {
-                    pctx.air_instance_repo.add_air_instance(air_instance, global_id);
+                CheckPoint::Multiple(chunk_ids) => {
+                    secn_instance =
+                        self.process_checkpoint(min_traces, secn_instance, &chunk_ids, true);
                 }
-            })
-        });
+            }
 
-        // Chain the two iterators and process them concurrently
-        main_iter.chain(secn_iter).for_each(|task| match task {
-            Either::Left(mut main_task) => main_task(),
-            Either::Right(sec_task) => sec_task(),
+            if let Some(air_instance) = secn_instance.compute_witness(pctx) {
+                pctx.air_instance_repo.add_air_instance(air_instance, global_id);
+            }
         });
     }
 
@@ -473,7 +475,10 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         let (table_instances, secn_instances) = self.create_sec_instances(&pctx, sec_planning);
 
         // PHASE 6. WITNESS. Compute the witnesses
-        self.witness_instances(&pctx, &min_traces, main_instances, secn_instances);
+        timer_start_info!(WITNESS_MAIN);
+        self.witness_main_instances(&pctx, &min_traces, main_instances);
+        timer_stop_and_log_info!(WITNESS_MAIN);
+        self.witness_secn_instances(&pctx, &min_traces, secn_instances);
         self.witness_tables(&pctx, table_instances);
     }
 }
