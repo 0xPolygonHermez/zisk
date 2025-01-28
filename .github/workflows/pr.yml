@@ -48,17 +48,17 @@ jobs:
       - name: Setup CI
         uses: ./.github/actions/setup
 
-      - name: Install Rust Nightly
+      - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: stable
           profile: minimal
           components: rustfmt
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
         with:
-          toolchain: nightly
+          toolchain: stable
           command: fmt
           args: --all -- --check
         env:
