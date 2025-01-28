@@ -19,9 +19,9 @@ impl MemBusHelpers {
         [
             MEMORY_LOAD_OP as u64,
             addr as u64,
-            MEM_STEP_BASE +
-                MAX_MEM_OPS_BY_MAIN_STEP * step +
-                MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64,
+            MEM_STEP_BASE
+                + MAX_MEM_OPS_BY_MAIN_STEP * step
+                + MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64,
             bytes as u64,
             mem_values[0],
             mem_values[1],
@@ -39,9 +39,9 @@ impl MemBusHelpers {
         [
             MEMORY_STORE_OP as u64,
             addr as u64,
-            MEM_STEP_BASE +
-                MAX_MEM_OPS_BY_MAIN_STEP * step +
-                MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64,
+            MEM_STEP_BASE
+                + MAX_MEM_OPS_BY_MAIN_STEP * step
+                + MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64,
             bytes as u64,
             mem_values[0],
             mem_values[1],

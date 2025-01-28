@@ -48,9 +48,9 @@ impl MemPlanner {
         use crate::MemModuleSegmentCheckPoint;
 
         for (index, plan) in plans.iter().enumerate() {
-            if plan.air_id == MEM_AIR_IDS[0] ||
-                plan.air_id == INPUT_DATA_AIR_IDS[0] ||
-                plan.air_id == ROM_DATA_AIR_IDS[0]
+            if plan.air_id == MEM_AIR_IDS[0]
+                || plan.air_id == INPUT_DATA_AIR_IDS[0]
+                || plan.air_id == ROM_DATA_AIR_IDS[0]
             {
                 let meta = plan
                     .meta
