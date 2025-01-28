@@ -32,6 +32,7 @@ impl EmuContext {
                 pc: ROM_ENTRY,
                 step: 0,
                 end: false,
+                regs: [0; 32],
             },
             tracerv: Vec::new(),
             tracerv_step: 0,
@@ -64,28 +65,6 @@ impl EmuContext {
 
 impl Default for EmuContext {
     fn default() -> Self {
-        EmuContext {
-            inst_ctx: InstContext {
-                mem: Mem::new(),
-                a: 0,
-                b: 0,
-                c: 0,
-                flag: false,
-                sp: 0,
-                pc: ROM_ENTRY,
-                step: 0,
-                end: false,
-            },
-            tracerv: Vec::new(),
-            tracerv_step: 0,
-            tracerv_current_regs: [0; 32],
-            trace_pc: 0,
-            trace: EmuTrace::default(),
-            do_callback: false,
-            callback_steps: 0,
-            last_callback_step: 0,
-            do_stats: false,
-            stats: Stats::default(),
-        }
+        Self::new(Vec::new())
     }
 }

@@ -1,21 +1,30 @@
 require "std_lookup.pil"
 require "std_permutation.pil"
-require "std_common.pil"
+require "std_direct.pil"
 
 const int BOOT_ADDR = 0x1000;
-const int END_PC_ADDR = 0x2000;
-
-const int NOP_ROM_ADDR = 0x10000000;
+const int END_PC_ADDR = 0x1000_0000;
+const int INITIAL_SP = 0;
+const int END_SP = 0;
 
 airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int operation_bus_id, int MAIN_CONTINUATION_ID = 1000) {
 
     col fixed SEGMENT_L1 = [1,0...];
-    col fixed SEGMENT_STEP = [0,0..(N-2)];
+    col fixed SEGMENT_STEP = [0..(N-1)];
 
     const expr SEGMENT_LAST = SEGMENT_L1';
 
     airval main_last_segment;
     airval main_segment;
+    airval segment_initial_pc;
+    airval segment_previous_c[RC];
+    airval segment_next_pc;
+    airval segment_last_c[RC];
+
+    if (stack_enabled) {
+        airval segment_initial_sp;
+        airval segment_next_sp;
+    }
 
     // continuations
     //
@@ -42,7 +51,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     main_last_segment * (1 - main_last_segment) === 0;
 
-    const expr STEP = main_segment * (N - 1) + SEGMENT_STEP;
+    const expr STEP = main_segment * N + SEGMENT_STEP;
 
     // Registers
 
@@ -163,7 +172,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // Operation.assume => how organize software
     col witness __debug_operation_bus_enabled;
 
-    lookup_assumes(operation_bus_id, [STEP, op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op * __debug_operation_bus_enabled, name: PIOP_NAME_ISOLATED);
+    lookup_assumes(operation_bus_id, [STEP, op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op * __debug_operation_bus_enabled);
 
     const expr a_src_c;
     const expr b_src_c;
@@ -186,14 +195,17 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         b_imm[1] = b_imm1;
     }
 
+
     for (int index = 0; index < RC; ++index) {
+        const expr previous_c = SEGMENT_L1 * (segment_previous_c[index] - 'c[index]) + 'c[index];
+
         if (stack_enabled) {
             // a_src_sp ===> set a = sp (only less significant index, rest must be 0)
             a_src_sp * (a[index] - (index == 0 ? sp: 0 )) === 0;
         }
         a_src_step * (a[index] - (index == 0 ? STEP : 0)) === 0;
-        a_src_c * (a[index] - 'c[index]) === 0;
-        b_src_c * (b[index] - 'c[index]) === 0;
+        a_src_c * (a[index] - previous_c) === 0;
+        b_src_c * (b[index] - previous_c) === 0;
 
         a_src_imm * (a[index] - a_imm[index]) === 0;
         b_src_imm * (b[index] - b_imm[index]) === 0;
@@ -218,31 +230,35 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     flag * set_pc === 0;
     // TODO! The following constraint is correct but something is not working in the compiler
 
-    // const expr next_pc = set_pc * (c[0] + jmp_offset1) + (1 - set_pc) * (pc + jmp_offset2) + flag * (jmp_offset1 - jmp_offset2);
-    const expr next_pc = 'set_pc * ('c[0] + 'jmp_offset1) + (1 - 'set_pc) * ('pc + 'jmp_offset2) + 'flag * ('jmp_offset1 - 'jmp_offset2);
-    (1 - SEGMENT_L1) * (pc - next_pc) === 0;
+    const expr expected_current_pc = 'set_pc * ('c[0] + 'jmp_offset1) + (1 - 'set_pc) * ('pc + 'jmp_offset2) + 'flag * ('jmp_offset1 - 'jmp_offset2);
+    (1 - SEGMENT_L1) * (pc - expected_current_pc) === 0;
 
-    const expr is_last_continuation = SEGMENT_LAST * main_last_segment;
-    const expr specific_registers[stack_enabled ? 2:1];
-    specific_registers[0] = pc;
 
     if (stack_enabled) {
-        const expr next_sp = set_sp * (c[0] - sp) + sp + inc_sp;
+        const expr expected_current_sp = 'set_sp * ('c[0] - 'sp) + 'sp + 'inc_sp;
+        const expr next_sp = expected_current_sp';
 
-        (1 - SEGMENT_LAST) * (sp - 'next_sp) === 0;
-        specific_registers[1] = sp;
+        SEGMENT_L1 * (sp - segment_initial_sp) === 0;
+        (1 - SEGMENT_L1) * (sp - expected_current_sp) === 0;
+        SEGMENT_LAST * (next_sp - segment_next_sp) === 0;
     }
 
-    // main_last_segment = 0 => row = 0   => bus_main_segment = K      (assumes)
-    //                          row = N-1 => bus_main_segment = K + 1  (proves)
-    //
-    // main_last_segment = 1 => row = 0   => bus_main_segment = J      (assumes)
-    //                          row = N-1 => bus_main_segment = 0      (proves)
-    //
+    const expr next_pc = expected_current_pc';
+    SEGMENT_LAST * (segment_next_pc - next_pc) === 0;
 
-    const expr bus_main_segment = main_segment - SEGMENT_LAST * (main_segment * main_last_segment - 1 + main_last_segment);
-    permutation (MAIN_CONTINUATION_ID, cols: [bus_main_segment, is_last_continuation, pc, c[0], c[1], set_pc, jmp_offset1, flag * SEGMENT_LAST * (jmp_offset1 - jmp_offset2) + jmp_offset2],
-                                        sel: SEGMENT_LAST - SEGMENT_L1, name: PIOP_NAME_ISOLATED, bus_type: PIOP_BUS_SUM);
+    for (int index = 0; index < RC; ++index) {
+        SEGMENT_LAST * (segment_last_c[index] - c[index]) === 0;
+    }
+
+    const expr main_next_segment = (main_segment + 1) * (1 - main_last_segment);
+
+    if (stack_enabled) {
+        direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_previous_c, segment_initial_sp]);
+        direct_update_proves(MAIN_CONTINUATION_ID, [main_next_segment, main_last_segment, segment_next_pc, ...segment_last_c, segment_next_sp]);
+    } else {
+        direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_previous_c]);
+        direct_update_proves(MAIN_CONTINUATION_ID, [main_next_segment, main_last_segment, segment_next_pc, ...segment_last_c]);
+    }
 
     flag * (1 - flag) === 0;
 
@@ -253,24 +269,19 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
                            + 1024 * set_pc + 2048 * m32 + 4096 * b_src_ind;
 
 
-    // SETTINGS ROW 0
-    // -----------------------------------------------------
-    // b_offset_imm0 = b[0] = c[0] <== c[0] previous segment
-    // b_imm1 = b[1] = c[1] <== c[1] previous segment
-    // a_offset_imm0 = a[0] <== a[0] previous segment
-    // a_imm1 = a[1] <== a[1] previous segment
-    // op = 1 (copyb: c=b, flag=0)
-    // pc <== pc previous segment (start of program at first segment; it needs to be equal to pc of row 1)
-    // jmp_offset1 = jmp_offset2 = 0
-    // flag = 0
-    // a_src_imm = b_src_imm = 1 (rest flags to 0)
-
-    SEGMENT_L1 * (rom_flags - 19 - set_pc * 1024) === 0; // 19 = 1 + a_src_imm(2) + b_src_imm(16)
-    SEGMENT_L1 * (op - 1) === 0;
-
     lookup_assumes(ROM_BUS_ID, [pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
-                                op, store_offset, jmp_offset1, jmp_offset2, rom_flags], sel: 1 - SEGMENT_L1);
+                                op, store_offset, jmp_offset1, jmp_offset2, rom_flags]);
 
-    direct_global_update_proves(MAIN_CONTINUATION_ID, cols: [0, 0, 4096, 0, 0, 0, 0, 0], bus_type: PIOP_BUS_SUM);
-    direct_global_update_assumes(MAIN_CONTINUATION_ID, cols: [0, 1, 0x1000_0000, 0, 0, 0, 0, 0], bus_type: PIOP_BUS_SUM);
+    const int zeros[RC];
+    for (int index = 0; index < RC; ++index) {
+        zeros[index] = 0;
+    }
+
+    if (stack_enabled) {
+        direct_global_update_proves(MAIN_CONTINUATION_ID, expressions: [0, 0, BOOT_ADDR, ...zeros, INITIAL_SP]);
+        direct_global_update_assumes(MAIN_CONTINUATION_ID, expressions: [0, 1, END_PC_ADDR, ...zeros, END_SP]);
+    } else {
+        direct_global_update_proves(MAIN_CONTINUATION_ID, expressions: [0, 0, BOOT_ADDR, ...zeros]);
+        direct_global_update_assumes(MAIN_CONTINUATION_ID, expressions: [0, 1, END_PC_ADDR, ...zeros]);
+    }
 }

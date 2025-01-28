@@ -1,11 +1,12 @@
 [package]
 name = "sm-arith"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
 zisk-core = { path = "../../core" }
-zisk-pil = { path="../../pil" }
+data-bus = { path = "../../data-bus" }
+zisk-pil = { path = "../../pil" }
 sm-common = { path = "../common" }
 sm-binary = { path = "../binary" }
 
@@ -13,7 +14,6 @@ p3-field = { workspace=true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
-proofman = { workspace = true }
 pil-std-lib = { workspace = true }
 
 log = { workspace = true }
@@ -24,4 +24,4 @@ num-bigint = { workspace = true }
 [features]
 default = []
 generate_code_arith_range_table = []
-no_lib_link = ["proofman-common/no_lib_link", "proofman/no_lib_link"]
+no_lib_link = ["proofman-common/no_lib_link"]

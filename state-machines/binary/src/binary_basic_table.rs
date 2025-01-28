@@ -1,103 +1,62 @@
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc, Mutex,
-};
+//! The `BinaryBasicTableSM` module defines the Binary Basic Table State Machine.
+//!
+//! This state machine is responsible for handling basic binary operations, calculating table rows,
+//! and managing multiplicity tables for binary table traces.
+
+use std::sync::{Arc, Mutex};
 
 use p3_field::Field;
-use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::AirInstance;
-use rayon::prelude::*;
-use zisk_core::{zisk_ops::ZiskOp, P2_16, P2_17, P2_18, P2_19, P2_8, P2_9};
-use zisk_pil::{BinaryTableTrace, BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8, P2_9};
+use zisk_pil::BinaryTableTrace;
 
+use crate::binary_constants::*;
+
+/// Represents operations supported by the Binary Basic Table.
 #[derive(Debug, Clone, PartialEq, Copy)]
 #[repr(u8)]
 pub enum BinaryBasicTableOp {
-    Minu = 0x02,
-    Min = 0x03,
-    Maxu = 0x04,
-    Max = 0x05,
-    LtAbsNP = 0x06,
-    LtAbsPN = 0x07,
-    Ltu = 0x08,
-    Lt = 0x09,
-    Gt = 0x0a,
-    Eq = 0x0b,
-    Add = 0x0c,
-    Sub = 0x0d,
-    Leu = 0x0e,
-    Le = 0x0f,
-    And = 0x10,
-    Or = 0x11,
-    Xor = 0x12,
+    Minu = MINU_OP,
+    Min = MIN_OP,
+    Maxu = MAXU_OP,
+    Max = MAX_OP,
+    LtAbsNP = LT_ABS_NP_OP,
+    LtAbsPN = LT_ABS_PN_OP,
+    Ltu = LTU_OP,
+    Lt = LT_OP,
+    Gt = GT_OP,
+    Eq = EQ_OP,
+    Add = ADD_OP,
+    Sub = SUB_OP,
+    Leu = LEUW_OP,
+    Le = LE_OP,
+    And = AND_OP,
+    Or = OR_OP,
+    Xor = XOR_OP,
     Ext32 = 0x13,
 }
 
-pub struct BinaryBasicTableSM<F> {
-    wcm: Arc<WitnessManager<F>>,
-
-    // Count of registered predecessors
-    registered_predecessors: AtomicU32,
-
-    // Row multiplicity table
-    num_rows: usize,
+/// The `BinaryBasicTableSM` struct represents the Binary Basic Table State Machine.
+///
+/// It manages a multiplicity table and provides functionality to process slices and calculate table
+/// rows.
+pub struct BinaryBasicTableSM {
+    /// The multiplicity table, shared across threads.
     multiplicity: Mutex<Vec<u64>>,
 }
 
-#[derive(Debug)]
-pub enum BasicTableSMErr {
-    InvalidOpcode,
-}
-
-impl<F: Field> BinaryBasicTableSM<F> {
-    const MY_NAME: &'static str = "BinaryT ";
-
-    pub fn new(wcm: Arc<WitnessManager<F>>, airgroup_id: usize, air_ids: &[usize]) -> Arc<Self> {
-        let pctx = wcm.get_pctx();
-        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
-
-        let binary_basic_table = Self {
-            wcm: wcm.clone(),
-            registered_predecessors: AtomicU32::new(0),
-            num_rows: air.num_rows(),
-            multiplicity: Mutex::new(vec![0; air.num_rows()]),
-        };
-        let binary_basic_table = Arc::new(binary_basic_table);
-        wcm.register_component(binary_basic_table.clone(), Some(airgroup_id), Some(air_ids));
-
-        binary_basic_table
+impl BinaryBasicTableSM {
+    /// Creates a new `BinaryBasicTableSM` instance.
+    ///
+    /// # Returns
+    /// An `Arc`-wrapped instance of `BinaryBasicTableSM`.
+    pub fn new<F: Field>() -> Arc<Self> {
+        Arc::new(Self { multiplicity: Mutex::new(vec![0; BinaryTableTrace::<F>::NUM_ROWS]) })
     }
 
-    pub fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    pub fn unregister_predecessor(&self) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            self.create_air_instance();
-        }
-    }
-
-    // TODO: Add new ops?
-    pub fn operations() -> Vec<u8> {
-        vec![
-            ZiskOp::Minu.code(),
-            ZiskOp::Min.code(),
-            ZiskOp::Maxu.code(),
-            ZiskOp::Max.code(),
-            ZiskOp::Ltu.code(),
-            ZiskOp::Lt.code(),
-            ZiskOp::Eq.code(),
-            ZiskOp::Add.code(),
-            ZiskOp::Sub.code(),
-            ZiskOp::Leu.code(),
-            ZiskOp::Le.code(),
-            ZiskOp::And.code(),
-            ZiskOp::Or.code(),
-            ZiskOp::Xor.code(),
-        ]
-    }
-
+    /// Processes a slice of input data and updates the multiplicity table.
+    ///
+    /// # Arguments
+    /// * `input` - A slice of `u64` values representing the input data.
     pub fn process_slice(&self, input: &[u64]) {
         // Create the trace vector
         let mut multiplicity = self.multiplicity.lock().unwrap();
@@ -107,9 +66,30 @@ impl<F: Field> BinaryBasicTableSM<F> {
         }
     }
 
-    //lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
+    /// Detaches and returns the current multiplicity table.
+    ///
+    /// # Returns
+    /// A vector containing the multiplicity table.
+    pub fn detach_multiplicity(&self) -> Vec<u64> {
+        let mut multiplicity = self.multiplicity.lock().unwrap();
+        std::mem::take(&mut *multiplicity)
+    }
+
+    /// Calculates the table row offset based on the provided parameters.
+    ///
+    /// # Arguments
+    /// * `opcode` - The operation code (`BinaryBasicTableOp`).
+    /// * `a` - The first operand a.
+    /// * `b` - The second operand b.
+    /// * `cin` - The carry-in value.
+    /// * `last` - The "last" flag.
+    /// * `flags` - The flags value.
+    ///
+    /// # Returns
+    /// The calculated table row offset.
     #[allow(clippy::too_many_arguments)]
     pub fn calculate_table_row(
+        //lookup_proves(BINARY_TABLE_ID, [LAST, OP, A, B, CIN, C, FLAGS], multiplicity);
         opcode: BinaryBasicTableOp,
         a: u64,
         b: u64,
@@ -125,6 +105,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
 
         // Calculate the different row offset contributors, according to the PIL
         if opcode == BinaryBasicTableOp::Ext32 {
+            // Offset calculation for `Ext32` operation.
             let offset_a: u64 = a;
             let offset_cin: u64 = cin * P2_8;
             let offset_result_is_a: u64 = match flags {
@@ -132,13 +113,17 @@ impl<F: Field> BinaryBasicTableSM<F> {
                 2 => P2_9,
                 6 => 3 * P2_9,
                 _ => {
-                    panic!("BinaryBasicTableSM::calculate_table_row() unexpected flags={}", flags)
+                    panic!(
+                        "BinaryBasicTableSM::calculate_table_row() Unexpected flags for Ext32: {}",
+                        flags
+                    )
                 }
             };
             let offset_opcode: u64 = Self::offset_opcode(opcode);
 
             offset_a + offset_cin + offset_result_is_a + offset_opcode
         } else {
+            // Offset calculation for other operations.
             let offset_a: u64 = a;
             let offset_b: u64 = b * P2_8;
             let offset_last: u64 = if Self::opcode_has_last(opcode) { last * P2_16 } else { 0 };
@@ -151,6 +136,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
         }
     }
 
+    /// Determines if the given opcode requires a "last" flag.
     fn opcode_has_last(opcode: BinaryBasicTableOp) -> bool {
         match opcode {
             BinaryBasicTableOp::Minu |
@@ -174,6 +160,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
         }
     }
 
+    /// Determines if the given opcode requires a carry-in value.
     fn opcode_has_cin(opcode: BinaryBasicTableOp) -> bool {
         match opcode {
             BinaryBasicTableOp::Minu |
@@ -198,6 +185,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
         }
     }
 
+    /// Determines if the given opcode's result depends on the "a" operand.
     fn opcode_result_is_a(opcode: BinaryBasicTableOp) -> bool {
         match opcode {
             BinaryBasicTableOp::Minu |
@@ -222,6 +210,7 @@ impl<F: Field> BinaryBasicTableSM<F> {
         }
     }
 
+    /// Computes the opcode offset for the given operation.
     fn offset_opcode(opcode: BinaryBasicTableOp) -> u64 {
         match opcode {
             BinaryBasicTableOp::Minu => 0,
@@ -244,61 +233,4 @@ impl<F: Field> BinaryBasicTableSM<F> {
             BinaryBasicTableOp::Ext32 => 6 * P2_19 + 6 * P2_18 + 5 * P2_17,
         }
     }
-
-    pub fn create_air_instance(&self) {
-        let ectx = self.wcm.get_ectx();
-        let mut dctx: std::sync::RwLockWriteGuard<'_, proofman_common::DistributionCtx> =
-            ectx.dctx.write().unwrap();
-        let mut multiplicity = self.multiplicity.lock().unwrap();
-
-        let (is_myne, instance_global_idx) =
-            dctx.add_instance(ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0], 1);
-        let owner: usize = dctx.owner(instance_global_idx);
-
-        let mut multiplicity_ = std::mem::take(&mut *multiplicity);
-        dctx.distribute_multiplicity(&mut multiplicity_, owner);
-
-        if is_myne {
-            // Create the prover buffer
-            let num_rows = self.num_rows;
-            let trace: BinaryTableTrace<'_, _> = BinaryTableTrace::new(num_rows);
-            let mut prover_buffer = trace.buffer.unwrap();
-
-            let non_zero_multiplicities = prover_buffer[0..num_rows]
-                .par_iter_mut()
-                .enumerate()
-                .map(|(i, input)| {
-                    *input = F::from_canonical_u64(multiplicity_[i]);
-                    if multiplicity_[i] != 0 {
-                        Some(1)
-                    } else {
-                        None
-                    }
-                })
-                .filter_map(|x| x)
-                .sum::<usize>();
-
-            log::info!(
-                "{}: ··· Creating Binary Table instance [{} / {} rows used {:.2}%]",
-                Self::MY_NAME,
-                non_zero_multiplicities,
-                num_rows,
-                non_zero_multiplicities as f64 / num_rows as f64 * 100.0
-            );
-
-            let air_instance = AirInstance::new(
-                self.wcm.get_sctx(),
-                ZISK_AIRGROUP_ID,
-                BINARY_TABLE_AIR_IDS[0],
-                None,
-                prover_buffer,
-            );
-            self.wcm
-                .get_pctx()
-                .air_instance_repo
-                .add_air_instance(air_instance, Some(instance_global_idx));
-        }
-    }
 }
-
-impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicTableSM<F> {}

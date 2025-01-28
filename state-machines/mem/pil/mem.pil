@@ -90,17 +90,24 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         }
     }
 
-    if (!immutable) {
+
+    if (free_input_mem) {
+        // free input memory must be read-only
+        const int air.wr = 0;
+    } else if (immutable) {
+        // immutable memory in address change, must be write first or a read of zero.
+        const expr air.wr = addr_changes * sel;
+        for (int i = 0; i < RC; i++) {
+            // addr_changes * (1 - wr) * value[i] === 0;
+            addr_changes * (1 - sel) * value[i] === 0;
+        }
+    } else {
         col witness air.wr;
         const expr air.rd = 1 - wr;
         wr * (1 - wr) === 0;
-    } else {
-        // a free input memory must be read-only, an immutable memory must be write
-        // on first row of new address (addr_changes = 1)
-        const expr air.wr = free_input_mem ? 0 : addr_changes;
+        // if wr is 1, sel must be 1 (not allowed writes)
+        wr * (1 - sel) === 0;
     }
-    // if wr is 1, sel must be 1 (not allowed writes)
-    wr * (1 - sel) === 0;
 
     sel * (1 - sel) === 0;
 
@@ -153,10 +160,10 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     direct_global_update_proves(MEMORY_CONT_ID, [ base_address, 0, internal_base_address, 0, ...zeros], sel: enable_flag);
 
     // for security check that first address has correct value, to avoid add huge quantity of instances to "overflow" prime field.
-    range_check(colu: previous_segment_addr - internal_base_address + 1, min: 1, max: MEMORY_MAX_DIFF);
+    range_check(expression: previous_segment_addr - internal_base_address + 1, min: 1, max: MEMORY_MAX_DIFF);
 
     // control final of memory
-    range_check(colu: internal_end_address - segment_last_addr + 1, min: 1, max: MEMORY_MAX_DIFF);
+    range_check(expression: internal_end_address - segment_last_addr + 1, min: 1, max: MEMORY_MAX_DIFF);
 
 
     // check increment of memory
@@ -181,7 +188,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
         is_first_segment * SEGMENT_L1 * (1 - addr_changes) === 0;
 
-        range_check(colu: increment, min: 1, max: MEMORY_MAX_DIFF);
+        range_check(expression: increment, min: 1, max: MEMORY_MAX_DIFF);
     }
 
     (1 - addr_changes) * (addr - previous_addr) === 0;
@@ -198,10 +205,6 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
             // if address not change value must be equal to previous value
             (1 - addr_changes) * (value[index] - previous_value)  ===  0;
 
-            if (!free_input_mem) {
-                // if address changes => write, and it must be inserted on bus
-                addr_changes * (1 - sel)  ===  0;
-            }
         } else {
             // if address not change and it isn't write, value must be equal to previous value
             // TODO: boundary constraints
@@ -218,7 +221,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // These are handled with the Memory Align component
 
     const expr mem_op = wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
-    permutation_proves(MEMORY_ID, cols: [mem_op, addr * mem_bytes, step, mem_bytes, ...value], sel: sel);
+    permutation_proves(MEMORY_ID, expressions: [mem_op, addr * mem_bytes, step, mem_bytes, ...value], sel: sel);
 }
 
 function mem_load(int id = MEMORY_ID, expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[], expr sel = 1) {

@@ -9,13 +9,25 @@ use elf::{
     endian::AnyEndian,
     ElfBytes,
 };
+use rayon::prelude::*;
 use std::error::Error;
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
     // Get all data from the ELF file copied to a memory buffer
-    let elf_file_path = std::path::PathBuf::from(elf_file.clone());
+    let elf_file_path = std::path::PathBuf::from(elf_file);
     let file_data = std::fs::read(elf_file_path)?;
+
+    match is_elf_file(&file_data) {
+        Ok(is_file) => {
+            if !is_file {
+                panic!("ROM file is not a valid ELF file");
+            }
+        }
+        Err(_) => {
+            panic!("Error reading ROM file");
+        }
+    }
 
     // Parse the ELF data
     let elf_bytes = ElfBytes::<AnyEndian>::minimal_parse(file_data.as_slice())?;
@@ -144,9 +156,13 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
         max_rom_na_unstructions - min_rom_na_unstructions + 1
     };
 
-    rom.rom_entry_instructions = vec![ZiskInst::default(); num_rom_entry as usize];
-    rom.rom_instructions = vec![ZiskInst::default(); num_rom_instructions as usize];
-    rom.rom_na_instructions = vec![ZiskInst::default(); num_rom_na_instructions as usize];
+    // Initialize in parallel to increase performance
+    rom.rom_entry_instructions =
+        (0..num_rom_entry).into_par_iter().map(|_| ZiskInst::default()).collect();
+    rom.rom_instructions =
+        (0..num_rom_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
+    rom.rom_na_instructions =
+        (0..num_rom_na_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
     rom.offset_rom_na_unstructions = min_rom_na_unstructions;
 
     for instruction in &rom.insts {
@@ -185,4 +201,16 @@ pub fn elf2romfile(
         rom.save_to_bin_file(&bin_file);
     }
     Ok(())
+}
+
+fn is_elf_file(file_data: &[u8]) -> std::io::Result<bool> {
+    if file_data.len() < 4 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "File data is too short to be a valid ELF file",
+        ));
+    }
+
+    // Check if the first 4 bytes match the ELF magic number
+    Ok(file_data[0..4] == [0x7F, b'E', b'L', b'F'])
 }

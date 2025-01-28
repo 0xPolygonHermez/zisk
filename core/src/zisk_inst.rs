@@ -61,7 +61,7 @@ pub const STORE_IND: u64 = 2;
 /// Internal operations are proven as part of the main state machine itself, given their
 /// simplicity. External operations (rest of types) are proven in their corresponding secondary
 /// state machine.
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd)]
 #[repr(u32)]
 pub enum ZiskOperationType {
     None,
@@ -73,11 +73,9 @@ pub enum ZiskOperationType {
     PubOut,
 }
 
-/// Defines the length of the enumerated ZiskOperationType, required to build some structures to
-/// store data splitted by operation type.
-pub const ZISK_OPERATION_TYPE_VARIANTS: usize = 7;
+pub const ZISK_OP_TYPE_COUNT: usize = 7;
 
-/// Zisk instruction structure.   
+/// ZisK instruction definition
 ///
 /// ZisK instructions are defined as a binary operation with 2 results: op(a, b) -> (c, flag)
 /// a, b and c are u64 registers; flag is a boolean.  
@@ -157,7 +155,7 @@ impl ZiskInst {
     pub fn to_text(&self) -> String {
         let mut s = String::new();
         if self.paddr != 0 {
-            s += &(" paddr=".to_string() + &self.paddr.to_string());
+            s += &format!(" paddr=0x{:x}", self.paddr);
         }
         if self.store_ra {
             s += &(" store_ra=".to_string() + &self.store_ra.to_string());
@@ -169,7 +167,7 @@ impl ZiskInst {
             s += &format!(" store={}={}", self.store, store_to_str(self.store));
         }
         if self.store_offset != 0 {
-            s += &(" store_offset=".to_string() + &self.store_offset.to_string());
+            s += &format!(" store_offset=0x{:x}", self.store_offset);
         }
         if self.set_pc {
             s += &(" set_pc=".to_string() + &self.set_pc.to_string());
@@ -192,19 +190,19 @@ impl ZiskInst {
             s += &format!(" a_src={}={}", self.a_src, source_to_str(self.a_src));
         }
         if self.a_use_sp_imm1 != 0 {
-            s += &(" a_use_sp_imm1=".to_string() + &self.a_use_sp_imm1.to_string());
+            s += &format!(" a_use_sp_imm1=0x{:x}", self.a_use_sp_imm1);
         }
         if self.a_offset_imm0 != 0 {
-            s += &(" a_offset_imm0=".to_string() + &self.a_offset_imm0.to_string());
+            s += &format!(" a_offset_imm0=0x{:x}", self.a_offset_imm0);
         }
         if self.b_src != 0 {
             s += &format!(" b_src={}={}", self.b_src, source_to_str(self.b_src));
         }
         if self.b_use_sp_imm1 != 0 {
-            s += &(" b_use_sp_imm1=".to_string() + &self.b_use_sp_imm1.to_string());
+            s += &format!(" b_use_sp_imm1=0x{:x}", self.b_use_sp_imm1);
         }
         if self.b_offset_imm0 != 0 {
-            s += &(" b_offset_imm0=".to_string() + &self.b_offset_imm0.to_string());
+            s += &format!(" b_offset_imm0=0x{:x}", self.b_offset_imm0);
         }
         if self.jmp_offset1 != 0 {
             s += &(" jmp_offset1=".to_string() + &self.jmp_offset1.to_string());

@@ -6,6 +6,7 @@
 
 use crate::{Mem, ROM_ENTRY};
 
+#[derive(Debug)]
 /// ZisK instruction context data container, storing the state of the execution
 pub struct InstContext {
     /// Memory, including several read-only sections and one read-write section (input data)
@@ -34,6 +35,7 @@ pub struct InstContext {
 
     /// End flag, set to true only by the last instruction to execute
     pub end: bool,
+    pub regs: [u64; 32],
 }
 
 /// RisK instruction context implementation
@@ -50,6 +52,7 @@ impl InstContext {
             pc: ROM_ENTRY,
             step: 0,
             end: false,
+            regs: [0; 32],
         }
     }
 
