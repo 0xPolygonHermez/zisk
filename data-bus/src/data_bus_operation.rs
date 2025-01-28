@@ -3,7 +3,7 @@
 //! and managing the format of operation data.
 
 use crate::PayloadType;
-use zisk_core::{InstContext, ZiskInst};
+use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
 
 /// The unique bus ID for operation-related data communication.
 pub const OPERATION_BUS_ID: u16 = 5000;
@@ -28,6 +28,14 @@ const B: usize = 4;
 
 /// Type alias for operation data payload.
 pub type OperationData<D> = [D; OPERATION_BUS_DATA_SIZE];
+
+/// Type alias for Keccak operation data payload.
+pub type OperationKeccakData<D> = [D; OPERATION_BUS_DATA_SIZE + 25];
+
+pub enum ExtOperationData<D> {
+    OperationData(OperationData<D>),
+    OperationKeccakData(OperationKeccakData<D>),
+}
 
 /// Provides utility functions for creating and interacting with operation bus data.
 ///
@@ -67,17 +75,31 @@ impl OperationBusData<u64> {
     /// # Returns
     /// An array representing the operation data payload.
     #[inline(always)]
-    pub fn from_instruction(inst: &ZiskInst, inst_ctx: &InstContext) -> OperationData<u64> {
+    pub fn from_instruction(inst: &ZiskInst, inst_ctx: &InstContext) -> ExtOperationData<u64> {
         let a = if inst.m32 { inst_ctx.a & 0xffffffff } else { inst_ctx.a };
         let b = if inst.m32 { inst_ctx.b & 0xffffffff } else { inst_ctx.b };
 
-        [
-            inst_ctx.step,       // STEP
-            inst.op as u64,      // OP
-            inst.op_type as u64, // OP_TYPE
-            a,                   // A
-            b,                   // B
-        ]
+        if inst.op_type == ZiskOperationType::Keccak {
+            assert!(inst_ctx.precompiled.input_data.len() == 25);
+            let mut data: OperationKeccakData<u64> = [0; OPERATION_BUS_DATA_SIZE + 25];
+            data[0] = inst_ctx.step; // STEP
+            data[1] = inst.op as u64; // OP
+            data[2] = inst.op_type as u64; // OP_TYPE
+            data[3] = a; // A
+            data[4] = b; // B
+            for i in 0..25 {
+                data[4 + i] = inst_ctx.precompiled.input_data[i]; // Keccak input data
+            }
+            return ExtOperationData::OperationKeccakData(data);
+        } else {
+            return ExtOperationData::OperationData([
+                inst_ctx.step,       // STEP
+                inst.op as u64,      // OP
+                inst.op_type as u64, // OP_TYPE
+                a,                   // A
+                b,                   // B
+            ]);
+        }
     }
 
     /// Retrieves the step value from operation data.
