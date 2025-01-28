@@ -57,7 +57,6 @@ As an alternative, you can use the [Nix package manager](https://github.com/NixO
     nix develop
     ```
 3. To start a custom shell, use:
-You can also use a custom shell: 
     ```bash
     nix develop -c zsh
     ```
