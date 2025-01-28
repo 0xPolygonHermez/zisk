@@ -1,8 +1,10 @@
-use std::{env, error::Error, fs};
+use std::{error::Error, fs};
 
 use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
 use serde::de::DeserializeOwned;
+
+use zisk_pil::KeccakfTrace;
 
 use proofman_common::{write_fixed_cols_bin, FixedColsInfo};
 
@@ -15,15 +17,8 @@ use keccakf_types::{Connections, Script};
 type F = Goldilocks;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() != 2 {
-        eprintln!("Usage: keccakf_fixed_gen <bits>");
-        return Err("A number of bits is required".into());
-    }
-
-    let bits: usize = args[1].parse().map_err(|_| "Bits should be a byte")?;
-    let n: usize = 1 << bits;
+    let n: usize = KeccakfTrace::<usize>::NUM_ROWS;
+    let bits = log2(n);
 
     // Get the script and connections
     let script: Script = read_json("precompiles/keccakf/src/keccakf_script.json")?;
@@ -54,6 +49,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("CONN_A, CONN_B, CONN_C and GATE_OP columns written to {}", output_file);
 
     Ok(())
+}
+
+fn log2(n: usize) -> usize {
+    let mut res = 0;
+    let mut n = n;
+    while n > 1 {
+        n >>= 1;
+        res += 1;
+    }
+    res
 }
 
 fn read_json<T: DeserializeOwned>(file_path: &str) -> Result<T, Box<dyn Error>> {

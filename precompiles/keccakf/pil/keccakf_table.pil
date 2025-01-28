@@ -2,40 +2,60 @@ require "std_lookup.pil"
 
 const int KECCAKF_TABLE_ID = 126;
 
-airtemplate KeccakfTable(const int N = 2**25, const int bits = 12) {
-    // Ensure that the chosen size fits
-    assert(N >= 2**(bits + bits + 1));
+airtemplate KeccakfTable(const int N = 2**23, const int chunks = 1, const int bits = 11) {
+    assert(chunks >= 1);
 
-    const int P2_BITS = 2**bits;
+    // Ensure that the chosen size fits
+    const int TABLE_BIT_HEIGHT = bits - chunks + 1;
+    const int TABLE_BIT_SIZE = TABLE_BIT_HEIGHT + bits + 1;
+    if (N < 2**TABLE_BIT_SIZE) {
+        error(`With chunks=${chunks} and bits=${bits}, N must be at least 2**${TABLE_BIT_SIZE} to fit the table, but received 2**${log2(N)}`);
+    }
+
+    const int P2_BITS = 2**TABLE_BIT_HEIGHT;
     const int P2_BITS_SQUARED = P2_BITS * P2_BITS;
     const int MASK_BITS = P2_BITS - 1;
 
     // Columns defining the circuit gates
-    col fixed A = [0..MASK_BITS]...;
-    col fixed B = [0:P2_BITS..MASK_BITS:P2_BITS]...;
+    col fixed A[chunks];
+    int offset = 0;
+    for (int j = 0; j < chunks; j++) {
+        A[j] = [offset..(MASK_BITS + offset)]...;
+        offset += P2_BITS;
+    }
+
+    col fixed B;
+    B = [0:P2_BITS..MASK_BITS:P2_BITS]...;
+
     col fixed GATE_OP = [0:P2_BITS_SQUARED, 1:P2_BITS_SQUARED]...;
 
     // Precompute a table with the two basic operations appearing in the Keccak-f permutation
-    col fixed C;
+    col fixed C[chunks];
     #pragma transpile
     for (int i = 0; i < N; i++) {
-        const int [gate_op, a, b] = [GATE_OP[i], A[i], B[i]];
-        
-        int c = 0;
-        switch (gate_op) {
-            case 0:
-                // XOR operation (appearing, e.g., in the θ step)
-                c = a ^ b;
-            case 1:
-                // ANDP (appearing in the χ step)
-                c = (a ^ MASK_BITS) & b;
-            default:
-                error(`Invalid gate operation opcode: ${gate_op} at row ${i}`);
+        const int b = B[i];
+        const int gate_op = GATE_OP[i];
+        for (int j = 0; j < chunks; j++) {
+            const int a = A[j][i];
+            
+            int c = 0;
+            switch (gate_op) {
+                case 0:
+                    // XOR operation (appearing, e.g., in the θ step)
+                    c = a ^ b;
+                case 1:
+                    // ANDP (appearing in the χ step)
+                    c = (a ^ MASK_BITS) & b;
+                default:
+                    error(`Invalid gate operation opcode: ${gate_op} at row ${i} and chunk ${j}`);
+            }
+            C[j][i] = c;
         }
-        C[i] = c;
     }
 
     // --> Prove that the circuit gates are satisfied
-    col witness multiplicity;
-    lookup_proves(KECCAKF_TABLE_ID, [GATE_OP, A, B, C], multiplicity);
+    col witness multiplicity[chunks];
+    for (int j = 0; j < chunks; j++) {
+        lookup_proves(KECCAKF_TABLE_ID, [GATE_OP, A[j], B, C[j]], multiplicity[j]);
+    }
 }

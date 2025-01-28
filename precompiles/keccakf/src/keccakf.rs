@@ -250,7 +250,7 @@ impl KeccakfSM {
 
         timer_start_trace!(KECCAKF_TRACE);
         let num_rows = keccakf_trace.num_rows();
-        
+
         // Check that we can fit all the keccakfs in the trace
         let num_inputs = inputs.len();
         assert!(num_inputs <= self.num_available_keccakfs);
