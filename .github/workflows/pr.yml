@@ -48,7 +48,12 @@ jobs:
       - name: Setup CI
         uses: ./.github/actions/setup
 
-      - name: Install Rust
+      - name: Clean Rust toolchain
+        run: |
+          rustup self uninstall -y || true
+          rm -rf ~/.rustup ~/.cargo        
+
+      - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
