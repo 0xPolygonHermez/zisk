@@ -108,8 +108,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
     ///
     /// # Returns
     /// A vector of `MainInstance` objects.
-    fn assign_main_instances(&self, pctx: &ProofCtx<F>, main_planning: &mut Vec<Plan>) {
-        main_planning.into_iter().for_each(|plan| {
+    fn assign_main_instances(&self, pctx: &ProofCtx<F>, main_planning: &mut [Plan]) {
+        main_planning.iter_mut().for_each(|plan| {
             let (_, global_idx) = pctx.dctx_add_instance(
                 plan.airgroup_id,
                 plan.air_id,
@@ -228,9 +228,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
     }
 
     #[allow(clippy::type_complexity)]
-    fn assign_sec_instances(&self, pctx: &ProofCtx<F>, plans: &mut Vec<Vec<Plan>>) {
-        plans.into_iter().enumerate().for_each(|(_, plans_by_sm)| {
-            plans_by_sm.into_iter().for_each(move |plan| {
+    fn assign_sec_instances(&self, pctx: &ProofCtx<F>, plans: &mut [Vec<Plan>]) {
+        plans.iter_mut().for_each(|plans_by_sm| {
+            plans_by_sm.iter_mut().for_each(move |plan| {
                 let global_id = pctx.dctx_add_instance_no_assign(
                     plan.airgroup_id,
                     plan.air_id,
