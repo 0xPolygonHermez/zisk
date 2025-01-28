@@ -42,9 +42,9 @@ pub struct ZiskExecutor<F: PrimeField> {
     secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,
 
     /// Planning information for main state machines.
-    pub min_traces: RwLock<Option<Vec<EmuTrace>>>,
-    pub main_planning: RwLock<Option<Vec<Plan>>>,
-    pub sec_planning: RwLock<Option<Vec<Vec<Plan>>>>,
+    pub min_traces: RwLock<Vec<EmuTrace>>,
+    pub main_planning: RwLock<Vec<Plan>>,
+    pub sec_planning: RwLock<Vec<Vec<Plan>>>,
 }
 
 impl<F: PrimeField> ZiskExecutor<F> {
@@ -62,9 +62,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
             input_data_path,
             zisk_rom,
             secondary_sm: Vec::new(),
-            min_traces: RwLock::new(None),
-            main_planning: RwLock::new(None),
-            sec_planning: RwLock::new(None),
+            min_traces: RwLock::new(Vec::new()),
+            main_planning: RwLock::new(Vec::new()),
+            sec_planning: RwLock::new(Vec::new()),
         }
     }
 
@@ -121,7 +121,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
     }
 
     fn create_main_instances(&self, pctx: &ProofCtx<F>) -> Vec<MainInstance> {
-        let main_planning = self.main_planning.write().unwrap().take().unwrap();
+        let mut main_planning_guard = self.main_planning.write().unwrap();
+        let main_planning = std::mem::take(&mut *main_planning_guard);
 
         main_planning
             .into_iter()
@@ -263,7 +264,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let mut table_instances = Vec::new();
         let mut other_instances = Vec::new();
 
-        let sec_planning = self.sec_planning.write().unwrap().take().unwrap();
+        let mut sec_planning_guard = self.sec_planning.write().unwrap();
+        let sec_planning = std::mem::take(&mut *sec_planning_guard);
 
         sec_planning.into_iter().enumerate().for_each(|(i, plans_by_sm)| {
             plans_by_sm.into_iter().for_each(|plan| {
@@ -298,8 +300,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
         main_instances: Vec<MainInstance>,
         secn_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
     ) {
-        let min_traces_guard = self.min_traces.read().unwrap(); // Binding the read guard
-        let min_traces = min_traces_guard.as_ref().unwrap();
+        let min_traces_guard = self.min_traces.read().unwrap();
+        let min_traces = &*min_traces_guard;
 
         // Combine main_instances and secn_instances into a single parallel iterator
         let main_iter = main_instances.into_par_iter().map(|mut main_instance| {
@@ -532,9 +534,9 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         self.assign_main_instances(&pctx, &mut main_planning);
         self.assign_sec_instances(&pctx, &mut sec_planning);
 
-        self.min_traces.write().unwrap().replace(min_traces);
-        self.main_planning.write().unwrap().replace(main_planning);
-        self.sec_planning.write().unwrap().replace(sec_planning);
+        *self.min_traces.write().unwrap() = min_traces;
+        *self.main_planning.write().unwrap() = main_planning;
+        *self.sec_planning.write().unwrap() = sec_planning;
     }
 
     fn calculate_witness(
