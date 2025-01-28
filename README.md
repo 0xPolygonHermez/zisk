@@ -4,7 +4,7 @@ This repository is under active development and should be considered experimenta
 
 # Polygon ZisK
 
-**Polygon ZisK** is an innovative Zero-Knowledge (ZK) prover developed by Polygon. It is designed to generate and verify ZK proofs for programs written in Rust, with plans to extend support to other programming languages in the future.
+**Polygon ZisK** is an innovative and high-performance Zero-Knowledge (ZK) prover developed by Polygon. It is designed to efficiently generate and verify ZK proofs for programs written in Rust, with plans to extend support to other programming languages in the future.
 
 ZisK simplifies the integration of ZK technology, providing developers with a powerful tool to enhance security, privacy, and scalability across blockchain ecosystems and other applications.
 
