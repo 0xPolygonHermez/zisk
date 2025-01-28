@@ -114,6 +114,14 @@ cargo-zisk build
 
 This command compiles the program using the `riscv64ima_polygon_ziskos` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/riscv64ima-polygon-ziskos-elf/debug` directory.
 
+For production use, compile the ELF file with the `--release` flag, similar to how you compile Rust projects:
+
+```bash
+cargo-zisk build --release
+```
+
+In this case, the `sha_hasher` ELF file will be generated in the `./target/riscv64ima-polygon-ziskos-elf/release` directory.
+
 ## Execute
 You can test your compiled program using the ZisK emulator (`ziskemu`) before generating a proof. Use the `-e` (`--elf`) flag to specify the location of the ELF file and the `-i` (`--inputs`) flag to specify the location of the input file:
 
@@ -139,14 +147,6 @@ This command builds the ELF file and executes it using `ziskemu` along with the 
 ├── Cargo.lock
 ├── Cargo.toml
 ```
-
-For production use, compile the ELF file with the `--release` flag, similar to how you compile Rust projects:
-
-```bash
-cargo-zisk build --release
-```
-
-In this case, the `sha_hasher` ELF file will be generated in the `./target/riscv64ima-polygon-ziskos-elf/release` directory.
 
 ## Metrics and Statistics
 
