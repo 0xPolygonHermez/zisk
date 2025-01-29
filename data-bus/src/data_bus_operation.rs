@@ -87,18 +87,16 @@ impl OperationBusData<u64> {
             data[2] = inst.op_type as u64; // OP_TYPE
             data[3] = a; // A
             data[4] = b; // B
-            for i in 0..25 {
-                data[4 + i] = inst_ctx.precompiled.input_data[i]; // Keccak input data
-            }
-            return ExtOperationData::OperationKeccakData(data);
+            data[5..(5 + 25)].copy_from_slice(&inst_ctx.precompiled.input_data[..25]);
+            ExtOperationData::OperationKeccakData(data)
         } else {
-            return ExtOperationData::OperationData([
+            ExtOperationData::OperationData([
                 inst_ctx.step,       // STEP
                 inst.op as u64,      // OP
                 inst.op_type as u64, // OP_TYPE
                 a,                   // A
                 b,                   // B
-            ]);
+            ])
         }
     }
 
