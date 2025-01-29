@@ -174,4 +174,19 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationKeccakData(d) => d[B],
         }
     }
+
+    /// Retrieves the extra data from operation data.
+    ///
+    /// # Arguments
+    /// * `data` - A reference to the operation data payload.
+    ///
+    /// # Returns
+    /// The extra data as a `Vec<PayloadType>`.
+    #[inline(always)]
+    pub fn get_extra_data(data: &ExtOperationData<u64>) -> Vec<PayloadType> {
+        match data {
+            ExtOperationData::OperationKeccakData(d) => d[5..(5 + 25)].to_vec(),
+            _ => vec![],
+        }
+    }
 }

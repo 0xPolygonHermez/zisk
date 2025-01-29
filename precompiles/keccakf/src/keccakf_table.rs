@@ -69,7 +69,7 @@ impl KeccakfTableSM {
     ///
     /// # Returns
     /// The calculated table row offset.
-    pub fn calculate_table_row(gate_opcode: KeccakfTableGateOp, a: u64, b: u64) -> u64 {
+    pub fn calculate_table_row(gate_opcode: &KeccakfTableGateOp, a: u64, b: u64) -> u64 {
         debug_assert!(a <= MASK_BITS);
         debug_assert!(b <= MASK_BITS);
 
@@ -82,7 +82,7 @@ impl KeccakfTableSM {
     }
 
     /// Computes the opcode offset for the given operation.
-    fn offset_opcode(gate_opcode: KeccakfTableGateOp) -> u64 {
+    fn offset_opcode(gate_opcode: &KeccakfTableGateOp) -> u64 {
         match gate_opcode {
             KeccakfTableGateOp::Xor => 0,
             KeccakfTableGateOp::Andp => P2_BITS_SQUARED,
