@@ -79,10 +79,12 @@ impl ArithFullSM {
 
         let mut aop = ArithOperation::new();
         for (irow, input) in inputs.iter().enumerate() {
-            let opcode = OperationBusData::get_op(input);
-            let a = OperationBusData::get_a(input);
-            let b = OperationBusData::get_b(input);
-            let step = OperationBusData::get_step(input);
+            let opcode =
+                OperationBusData::get_op(&data_bus::ExtOperationData::OperationData(*input));
+            let a = OperationBusData::get_a(&data_bus::ExtOperationData::OperationData(*input));
+            let b = OperationBusData::get_b(&data_bus::ExtOperationData::OperationData(*input));
+            let step =
+                OperationBusData::get_step(&data_bus::ExtOperationData::OperationData(*input));
 
             aop.calculate(opcode, a, b);
             let mut t: ArithTraceRow<F> = Default::default();
@@ -230,10 +232,10 @@ impl ArithFullSM {
     /// Generates binary inputs for operations requiring additional validation (e.g., division).
     pub fn generate_inputs(input: &OperationData<u64>) -> Vec<Vec<PayloadType>> {
         let mut aop = ArithOperation::new();
-        let opcode = OperationBusData::get_op(input);
-        let a = OperationBusData::get_a(input);
-        let b = OperationBusData::get_b(input);
-        let step = OperationBusData::get_step(input);
+        let opcode = OperationBusData::get_op(&data_bus::ExtOperationData::OperationData(*input));
+        let a = OperationBusData::get_a(&data_bus::ExtOperationData::OperationData(*input));
+        let b = OperationBusData::get_b(&data_bus::ExtOperationData::OperationData(*input));
+        let step = OperationBusData::get_step(&data_bus::ExtOperationData::OperationData(*input));
 
         aop.calculate(opcode, a, b);
 

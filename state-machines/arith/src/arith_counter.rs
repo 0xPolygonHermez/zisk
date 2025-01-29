@@ -67,7 +67,8 @@ impl Metrics for ArithCounter {
     fn measure(&mut self, _bus_id: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
         let data: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
-        let inst_op_type = OperationBusData::get_op_type(&data);
+        let inst_op_type =
+            OperationBusData::get_op_type(&data_bus::ExtOperationData::OperationData(data));
         if let Some(index) = self.op_type.iter().position(|&op_type| op_type as u64 == inst_op_type)
         {
             self.counter[index].update(1);
@@ -124,7 +125,8 @@ impl BusDevice<u64> for ArithCounter {
 
         let input: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
-        let op_type = OperationBusData::get_op_type(&input);
+        let op_type =
+            OperationBusData::get_op_type(&data_bus::ExtOperationData::OperationData(input));
 
         if op_type as u32 != ZiskOperationType::Arith as u32 {
             return (false, vec![]);

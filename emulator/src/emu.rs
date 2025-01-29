@@ -5,8 +5,8 @@ use crate::{
     ParEmuOptions,
 };
 use data_bus::{
-    BusDevice, ExtOperationData, OperationBusData, OperationData, OperationKeccakData, RomBusData,
-    MEM_BUS_ID, OPERATION_BUS_ID, ROM_BUS_ID,
+    BusDevice, ExtOperationData, OperationBusData, RomBusData, MEM_BUS_ID, OPERATION_BUS_ID,
+    ROM_BUS_ID,
 };
 use p3_field::{AbstractField, PrimeField};
 use riscv::RiscVRegisters;
@@ -1666,7 +1666,7 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             let number_of_mem_reads = (instruction.input_size + 7) >> 3;
-            for i in 0..number_of_mem_reads {
+            for _ in 0..number_of_mem_reads {
                 let mem_read = trace_step.mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
                 self.ctx.inst_ctx.precompiled.input_data.push(mem_read);
@@ -1804,7 +1804,7 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             let number_of_mem_reads = (instruction.input_size + 7) >> 3;
-            for i in 0..number_of_mem_reads {
+            for _ in 0..number_of_mem_reads {
                 let mem_read = trace_step.mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
                 self.ctx.inst_ctx.precompiled.input_data.push(mem_read);
@@ -1861,7 +1861,7 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             let number_of_mem_reads = (instruction.input_size + 7) >> 3;
-            for i in 0..number_of_mem_reads {
+            for _ in 0..number_of_mem_reads {
                 let mem_read = trace_step.mem_reads[*trace_step_index];
                 *trace_step_index += 1;
                 self.ctx.inst_ctx.precompiled.input_data.push(mem_read);

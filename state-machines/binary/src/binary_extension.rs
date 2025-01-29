@@ -110,10 +110,11 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         range_check: &mut HashMap<u64, u64>,
     ) -> BinaryExtensionTraceRow<F> {
         // Get the opcode
-        let op = OperationBusData::get_op(operation);
-        let a = OperationBusData::get_a(operation);
-        let b = OperationBusData::get_b(operation);
-        let step = OperationBusData::get_step(operation);
+        let op = OperationBusData::get_op(&data_bus::ExtOperationData::OperationData(*operation));
+        let a = OperationBusData::get_a(&data_bus::ExtOperationData::OperationData(*operation));
+        let b = OperationBusData::get_b(&data_bus::ExtOperationData::OperationData(*operation));
+        let step =
+            OperationBusData::get_step(&data_bus::ExtOperationData::OperationData(*operation));
 
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(op).expect("Invalid ZiskOp opcode");

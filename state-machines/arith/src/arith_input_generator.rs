@@ -73,7 +73,8 @@ impl BusDevice<u64> for ArithInputGenerator {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         let input: OperationData<u64> =
             data.try_into().expect("ArithInputGenerator: Failed to convert data");
-        let op_type = OperationBusData::get_op_type(&input);
+        let op_type =
+            OperationBusData::get_op_type(&data_bus::ExtOperationData::OperationData(input));
 
         if op_type as u32 != ZiskOperationType::Arith as u32 {
             return (false, vec![]);

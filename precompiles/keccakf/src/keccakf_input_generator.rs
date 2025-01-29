@@ -74,7 +74,8 @@ impl BusDevice<u64> for KeccakfInputGenerator {
         let input: OperationData<u64> =
             data.try_into().expect("KeccakfInputGenerator: Failed to convert data");
 
-        let op_type = OperationBusData::get_op_type(&input);
+        let op_type =
+            OperationBusData::get_op_type(&data_bus::ExtOperationData::OperationData(input));
         if op_type as u32 != ZiskOperationType::Keccak as u32 {
             return (false, vec![]);
         }

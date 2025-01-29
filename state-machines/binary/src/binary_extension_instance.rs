@@ -105,7 +105,8 @@ impl<F: PrimeField> BusDevice<u64> for BinaryExtensionInstance<F> {
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         let data: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
-        let op_type = OperationBusData::get_op_type(&data);
+        let op_type =
+            OperationBusData::get_op_type(&data_bus::ExtOperationData::OperationData(data));
 
         if op_type as u32 != ZiskOperationType::BinaryE as u32 {
             return (false, vec![]);

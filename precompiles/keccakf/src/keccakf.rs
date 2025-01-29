@@ -3,7 +3,7 @@ use std::{fs, sync::Arc};
 use log::info;
 use p3_field::PrimeField64;
 
-use data_bus::{OperationBusData, OperationData, PayloadType};
+use data_bus::{OperationBusData, OperationData, OperationKeccakData, PayloadType};
 use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
@@ -76,16 +76,19 @@ impl KeccakfSM {
         &self,
         trace: &mut KeccakfTrace<F>,
         num_slots: usize,
-        input: &OperationData<u64>,
+        input: &OperationKeccakData<u64>,
         multiplicity: &mut [u64],
     ) {
         // Create an empty row
         let mut row: KeccakfTraceRow<F> = Default::default();
 
         // Get the basic data from the input
-        let debug_main_step = OperationBusData::get_step(input);
-        let step_input = OperationBusData::get_a(input);
-        let addr_input = OperationBusData::get_b(input);
+        let debug_main_step =
+            OperationBusData::get_step(&data_bus::ExtOperationData::OperationKeccakData(*input));
+        let step_input =
+            OperationBusData::get_a(&data_bus::ExtOperationData::OperationKeccakData(*input));
+        let addr_input =
+            OperationBusData::get_b(&data_bus::ExtOperationData::OperationKeccakData(*input));
 
         // Set main SM step
         row.debug_main_step = F::from_canonical_u64(debug_main_step);
@@ -244,7 +247,7 @@ impl KeccakfSM {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<F: PrimeField64>(
         &self,
-        inputs: &[OperationData<u64>],
+        inputs: &[OperationKeccakData<u64>],
     ) -> AirInstance<F> {
         let mut keccakf_trace = KeccakfTrace::new();
 
@@ -314,9 +317,12 @@ impl KeccakfSM {
 
     /// Generates memory inputs.
     pub fn generate_inputs(input: &OperationData<u64>) -> Vec<Vec<PayloadType>> {
-        let debug_main_step = OperationBusData::get_step(input);
-        let step_input = OperationBusData::get_a(input);
-        let addr_input = OperationBusData::get_b(input);
+        let debug_main_step =
+            OperationBusData::get_step(&data_bus::ExtOperationData::OperationData(*input));
+        let step_input =
+            OperationBusData::get_a(&data_bus::ExtOperationData::OperationData(*input));
+        let addr_input =
+            OperationBusData::get_b(&data_bus::ExtOperationData::OperationData(*input));
 
         // TODO: Get the raw inputs from memory
         // TODO: Compute the output of the keccakf

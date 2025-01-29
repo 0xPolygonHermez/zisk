@@ -110,8 +110,11 @@ impl OperationBusData<u64> {
     /// # Returns
     /// The step value as a `PayloadType`.
     #[inline(always)]
-    pub fn get_step(data: &OperationData<u64>) -> PayloadType {
-        data[STEP]
+    pub fn get_step(data: &ExtOperationData<u64>) -> PayloadType {
+        match data {
+            ExtOperationData::OperationData(d) => d[STEP],
+            ExtOperationData::OperationKeccakData(d) => d[STEP],
+        }
     }
 
     /// Retrieves the operation code from operation data.
@@ -122,8 +125,11 @@ impl OperationBusData<u64> {
     /// # Returns
     /// The operation code as a `u8`.
     #[inline(always)]
-    pub fn get_op(data: &OperationData<u64>) -> u8 {
-        data[OP] as u8
+    pub fn get_op(data: &ExtOperationData<u64>) -> u8 {
+        match data {
+            ExtOperationData::OperationData(d) => d[OP] as u8,
+            ExtOperationData::OperationKeccakData(d) => d[OP] as u8,
+        }
     }
 
     /// Retrieves the operation type from operation data.
@@ -134,8 +140,11 @@ impl OperationBusData<u64> {
     /// # Returns
     /// The operation type as a `PayloadType`.
     #[inline(always)]
-    pub fn get_op_type(data: &OperationData<u64>) -> PayloadType {
-        data[OP_TYPE]
+    pub fn get_op_type(data: &ExtOperationData<u64>) -> PayloadType {
+        match data {
+            ExtOperationData::OperationData(d) => d[OP_TYPE],
+            ExtOperationData::OperationKeccakData(d) => d[OP_TYPE],
+        }
     }
 
     /// Retrieves the `a` parameter from operation data.
@@ -146,8 +155,11 @@ impl OperationBusData<u64> {
     /// # Returns
     /// The `a` parameter as a `PayloadType`.
     #[inline(always)]
-    pub fn get_a(data: &OperationData<u64>) -> PayloadType {
-        data[A]
+    pub fn get_a(data: &ExtOperationData<u64>) -> PayloadType {
+        match data {
+            ExtOperationData::OperationData(d) => d[A],
+            ExtOperationData::OperationKeccakData(d) => d[A],
+        }
     }
 
     /// Retrieves the `b` parameter from operation data.
@@ -158,7 +170,10 @@ impl OperationBusData<u64> {
     /// # Returns
     /// The `b` parameter as a `PayloadType`.
     #[inline(always)]
-    pub fn get_b(data: &OperationData<u64>) -> PayloadType {
-        data[B]
+    pub fn get_b(data: &ExtOperationData<u64>) -> PayloadType {
+        match data {
+            ExtOperationData::OperationData(d) => d[B],
+            ExtOperationData::OperationKeccakData(d) => d[B],
+        }
     }
 }

@@ -64,7 +64,8 @@ impl Metrics for RegularCounters {
     fn measure(&mut self, _: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
         let data: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
-        let inst_op_type = OperationBusData::get_op_type(&data);
+        let inst_op_type =
+            OperationBusData::get_op_type(&data_bus::ExtOperationData::OperationData(data));
         if let Some(index) = self.op_type.iter().position(|&op_type| op_type as u64 == inst_op_type)
         {
             self.counter[index].update(1);
