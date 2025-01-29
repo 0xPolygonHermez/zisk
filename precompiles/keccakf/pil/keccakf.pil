@@ -6,28 +6,32 @@ const int KECCAKF_OP = 0xF1;
 
 // Precompile in charge of performing the Keccak-f[1600] permutation. For reference: https://keccak.team/files/Keccak-reference-3.0.pdf
 
-airtemplate Keccakf(const int N = 2**21, int RC = 2, const int chunks = 6, const int bits = 11, const int operation_bus_id) {
-    // The keccak-f circuit is defined over a prime field,
-    // so we need to ensure that the chosen gate input size fits
-    const int NUM_KECCAKF_PER_SLOT = chunks * bits;
-    println(`The number of Keccak-f per slot is ${NUM_KECCAKF_PER_SLOT}`);
-    if (NUM_KECCAKF_PER_SLOT >= log2(PRIME)) {
-        error(`The number of Keccak-f per slot is too large for the prime field}`);
-    }
-
+airtemplate Keccakf(const int N = 2**23, int RC = 2, const int chunks, const int bits, const int bits_reduced, const int operation_bus_id) {
     // Keccak-f circuit size
     const int CIRCUIT_XORS = 116886;
     const int CIRCUIT_ANDPS = 38400;
-    const int CIRCUIT_SIZE = CIRCUIT_ANDPS + CIRCUIT_XORS; // Slot size
+    const int CIRCUIT_SIZE = CIRCUIT_ANDPS + CIRCUIT_XORS;
+    println(`The size of the Keccak-f circuit is ${CIRCUIT_SIZE}`);
 
     // Ensure that the keccak-f circuit fits
     if (N < CIRCUIT_SIZE) {
         error(`N must be at least ${CIRCUIT_SIZE} to fit the Keccak-f circuit, but received N=${N}`);
     }
 
+    // Ensure that the keccak-f input fit in the prime field
+    const int BITS_INPUT = (chunks - 1)*bits + bits_reduced;
+    if (BITS_INPUT >= log2(PRIME)) {
+        error(`The number of bits ${BITS_INPUT} is too large for the prime ${PRIME}`);
+    }
+
+    // Compute some stats
+    const int NUM_KECCAKF_PER_SLOT = chunks * bits;
     const int NUM_SLOTS = (N - 1) / CIRCUIT_SIZE;
     const int NUM_KECCAKF = NUM_SLOTS * NUM_KECCAKF_PER_SLOT;
-    println(`The total number of Keccak-f with N=2**${log2(N)} is ${NUM_KECCAKF}`);
+    const int NON_USABLE_ROWS = (N - 1) % CIRCUIT_SIZE;
+    println(`The number of Keccak-f per circuit is ${NUM_KECCAKF_PER_SLOT > log2(PRIME) ? log2(PRIME)-1 : NUM_KECCAKF_PER_SLOT}`);
+    println(`The number of circuits that fit for the given N is ${NUM_SLOTS} and the total number of Keccak-f is ${NUM_KECCAKF}`);
+    println(`The number of non-usable (padding) rows is ${NON_USABLE_ROWS}`);
 
     const int P2_BITS = 2**bits;
     const int P2_CHUNK_BITS = 2**(bits * chunks);
@@ -50,8 +54,14 @@ airtemplate Keccakf(const int N = 2**21, int RC = 2, const int chunks = 6, const
     col witness free_in_a[chunks], free_in_b[chunks], free_in_c[chunks];
 
     // --> Circuit gates constraints
-    for (int i = 0; i < chunks; i++) {
-        lookup_assumes(KECCAKF_TABLE_ID, [GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i]]);
+    if (bits != bits_reduced) {
+        for (int i = 0; i < chunks; i++) {
+            lookup_assumes(KECCAKF_TABLE_ID, [i == chunks - 1 ? 1 : 0, GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i]]);
+        }
+    } else {
+        for (int i = 0; i < chunks; i++) {
+            lookup_assumes(KECCAKF_TABLE_ID, [GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i]]);
+        }
     }
 
     // --> Circuit connections constraints
