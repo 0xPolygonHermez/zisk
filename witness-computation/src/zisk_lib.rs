@@ -6,6 +6,7 @@
 
 use executor::ZiskExecutor;
 use pil_std_lib::Std;
+use proofman_common::load_from_json;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
@@ -13,6 +14,7 @@ use sm_rom::RomSM;
 use sm_std::StdSM;
 use std::sync::Arc;
 use zisk_core::Riscv2zisk;
+use zisk_pil::{ZiskPublicValues, ZiskPublics};
 
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;
@@ -57,7 +59,7 @@ impl<F: PrimeField> WitnessLibrary<F> for WitnessLib {
         let mem_sm = Mem::new(std.clone());
 
         // Step 4: Create the executor and register the secondary state machines
-        let mut executor = ZiskExecutor::new(wcm.get_public_inputs_path().unwrap(), zisk_rom);
+        let mut executor = ZiskExecutor::new(wcm.get_input_data_path().unwrap(), zisk_rom);
         executor.register_sm(std_sm);
         executor.register_sm(rom_sm);
         executor.register_sm(binary_sm);

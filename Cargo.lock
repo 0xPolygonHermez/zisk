@@ -2003,6 +2003,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_arrays"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38636132857f68ec3d5f3eb121166d2af33cb55174c4d5ff645db6165cbef0fd"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.217"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2115,6 +2124,7 @@ dependencies = [
 name = "sm-main"
 version = "0.2.0"
 dependencies = [
+ "data-bus",
  "log",
  "p3-field",
  "proofman-common",
@@ -3197,6 +3207,7 @@ dependencies = [
  "proofman-common",
  "proofman-macros",
  "serde",
+ "serde_arrays",
 ]
 
 [[package]]

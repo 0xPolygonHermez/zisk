@@ -15,7 +15,7 @@ const int OPERATION_BUS_ID = 5000;
 proofval enable_input_data;
 enable_input_data * (1 - enable_input_data);
 
-const int PUBLIC_INPUTS_64_BITS = 16;  // 16 x 64 bits = 1024 bits
+const int PUBLIC_INPUTS_64_BITS = 64;  // 64 x 64 bits = 4096 bits
 public inputs[PUBLIC_INPUTS_64_BITS * 2]; // 2 x 32-bits = 64 bits
 
 const int PUBLIC_OP = 0x30;
