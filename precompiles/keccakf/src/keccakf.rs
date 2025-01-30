@@ -30,12 +30,12 @@ pub struct KeccakfSM {
     pub num_available_keccakfs: usize,
 }
 
-type KeccakfInput = [u64; CHUNKS * BITS];
+type KeccakfInput = [u64; INPUT_DATA_SIZE_BITS];
 
 impl KeccakfSM {
     const MY_NAME: &'static str = "Keccakf ";
 
-    const NUM_KECCAKF_PER_SLOT: usize = CHUNKS * BITS;
+    const NUM_KECCAKF_PER_SLOT: usize = CHUNKS_KECCAKF * BITS_KECCAKF;
 
     /// Creates a new Keccakf State Machine instance.
     ///
@@ -84,7 +84,7 @@ impl KeccakfSM {
         multiplicity: &mut [u64],
     ) {
         // Process the inputs
-        let zero_input: KeccakfInput = [0u64; CHUNKS * BITS];
+        let zero_input: KeccakfInput = [0u64; INPUT_DATA_SIZE_BITS];
         let mut inputs_raw: Vec<KeccakfInput> = vec![zero_input; num_slots];
         inputs.iter().enumerate().for_each(|(i, input)| {
             // Get the raw keccakf input as 25 u64 values
@@ -210,7 +210,7 @@ impl KeccakfSM {
                         trace,
                         |row| &mut row.free_in_c,
                         gate_ref,
-                        (a_val ^ MASK_CHUNK_BITS) & b_val,
+                        (a_val ^ MASK_CHUNK_BITS_KECCAKF) & b_val,
                     );
                     table_op = KeccakfTableGateOp::Andp;
                 } else {
@@ -218,9 +218,9 @@ impl KeccakfSM {
                 }
 
                 // Update the multiplicity table
-                for i in 0..CHUNKS {
-                    let a = (a_val >> (i * BITS)) & MASK_BITS;
-                    let b = (b_val >> (i * BITS)) & MASK_BITS;
+                for i in 0..CHUNKS_KECCAKF {
+                    let a = (a_val >> (i * BITS_KECCAKF)) & MASK_BITS_KECCAKF;
+                    let b = (b_val >> (i * BITS_KECCAKF)) & MASK_BITS_KECCAKF;
                     let table_row = KeccakfTableSM::calculate_table_row(&table_op, a, b);
                     multiplicity[table_row as usize] += 1;
                 }
@@ -231,32 +231,32 @@ impl KeccakfSM {
 
         fn set_col<F: PrimeField64>(
             trace: &mut KeccakfTrace<F>,
-            cols: impl Fn(&mut KeccakfTraceRow<F>) -> &mut [F; CHUNKS],
+            cols: impl Fn(&mut KeccakfTraceRow<F>) -> &mut [F; CHUNKS_KECCAKF],
             index: usize,
             value: u64,
         ) {
             let mut _value = value;
             let row = &mut trace[index];
             let cols = cols(row);
-            for i in 0..CHUNKS {
-                cols[i] = F::from_canonical_u64(_value & MASK_BITS);
-                _value >>= BITS;
+            for i in 0..CHUNKS_KECCAKF {
+                cols[i] = F::from_canonical_u64(_value & MASK_BITS_KECCAKF);
+                _value >>= BITS_KECCAKF;
             }
         }
 
         fn get_col<F: PrimeField64>(
             trace: &mut KeccakfTrace<F>,
-            cols: impl Fn(&mut KeccakfTraceRow<F>) -> &mut [F; CHUNKS],
+            cols: impl Fn(&mut KeccakfTraceRow<F>) -> &mut [F; CHUNKS_KECCAKF],
             index: usize,
         ) -> u64 {
             let mut value = 0;
             let row = &mut trace[index];
             let cols = cols(row);
-            for i in 0..CHUNKS {
+            for i in 0..CHUNKS_KECCAKF {
                 let col_i_val = F::as_canonical_u64(&cols[i]);
-                value += col_i_val << ((i * BITS) as u64);
+                value += col_i_val << ((i * BITS_KECCAKF) as u64);
             }
-            value & MASK_CHUNK_BITS
+            value & MASK_CHUNK_BITS_KECCAKF
         }
     }
 
@@ -293,18 +293,27 @@ impl KeccakfSM {
             num_rows_needed as f64 / num_rows as f64 * 100.0
         );
 
+        // Initialize the multiplicity table
+        let mut multiplicity_table = vec![0u64; KeccakfTableTrace::<F>::NUM_ROWS];
+
         // Fill the first row with 0b00..00 and 0b11..11
         let mut first_row: KeccakfTraceRow<F> = Default::default();
-        for i in 0..CHUNKS {
-            first_row.free_in_a[i] = F::from_canonical_u64(0);
-            first_row.free_in_b[i] = F::from_canonical_u64(MASK_BITS);
+        let zeros = 0u64;
+        let ones = MASK_BITS_KECCAKF;
+        for i in 0..CHUNKS_KECCAKF {
+            first_row.free_in_a[i] = F::from_canonical_u64(zeros);
+            first_row.free_in_b[i] = F::from_canonical_u64(ones);
             // 0b00..00 ^ 0b11..11 = 0b11..11 (assuming GATE_OP refers to XOR)
-            first_row.free_in_c[i] = F::from_canonical_u64(MASK_BITS);
+            first_row.free_in_c[i] = F::from_canonical_u64(ones);
         }
+        // Update the multiplicity table
+        let table_row = KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, zeros, ones);
+        multiplicity_table[table_row as usize] += CHUNKS_KECCAKF as u64;
+
+        // Assign the first row
         keccakf_trace[0] = first_row;
 
         // Fill the rest of the trace
-        let mut multiplicity_table = vec![0u64; KeccakfTableTrace::<F>::NUM_ROWS];
         self.process_slice(&mut keccakf_trace, num_slots_needed, inputs, &mut multiplicity_table);
         timer_stop_and_log_trace!(KECCAKF_TRACE);
 
@@ -312,8 +321,8 @@ impl KeccakfSM {
         // A row with all zeros satisfies the constraints (assuming GATE_OP refers to XOR)
         let padding_row: KeccakfTraceRow<F> = Default::default();
 
-        for i in num_inputs..num_rows {
-            keccakf_trace[i + 1] = padding_row;
+        for i in (1 + num_inputs)..num_rows {
+            keccakf_trace[i] = padding_row;
         }
 
         let row = KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, 0, 0);
