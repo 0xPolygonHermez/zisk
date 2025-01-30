@@ -47,13 +47,13 @@ pub struct ZiskRun {
     no_default_features: bool,
     #[clap(long, short)]
     qemu: bool,
-    #[clap(long, short)]
+    #[clap(long, short = 'x')]
     stats: bool,
     #[clap(long)]
     gdb: bool,
     #[clap(long, short, default_value =  DEFAULT_INPUT_VALUE)]
     input: Option<String>,
-    #[clap(long, short)]
+    #[clap(long, short = 'm')]
     metrics: bool,
     #[clap(last = true)]
     args: Vec<String>,
