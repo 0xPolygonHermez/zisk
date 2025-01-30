@@ -135,7 +135,7 @@ trace!(KeccakfTrace<F> {
 },  0, 14, 4194304 );
 
 trace!(KeccakfTableTrace<F> {
- multiplicity: [F; 1],
+ multiplicity: F,
 },  0, 15, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
