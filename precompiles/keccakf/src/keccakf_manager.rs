@@ -53,14 +53,14 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
         Box::new(
             RegularPlanner::new()
                 .add_instance(InstanceInfo::new(
-                    KeccakfTrace::<usize>::AIR_ID,
                     KeccakfTrace::<usize>::AIRGROUP_ID,
+                    KeccakfTrace::<usize>::AIR_ID,
                     KeccakfTrace::<usize>::NUM_ROWS,
                     ZiskOperationType::Keccak,
                 ))
                 .add_table_instance(TableInfo::new(
-                    KeccakfTableTrace::<usize>::AIR_ID,
                     KeccakfTableTrace::<usize>::AIRGROUP_ID,
+                    KeccakfTableTrace::<usize>::AIR_ID,
                 )),
         )
     }

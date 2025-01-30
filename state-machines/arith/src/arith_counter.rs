@@ -124,21 +124,25 @@ impl BusDevice<u64> for ArithCounter {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         self.measure(bus_id, data);
 
-        let input: OperationData<u64> =
+        let input: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
-        let op_type =
-            OperationBusData::get_op_type(&data_bus::ExtOperationData::OperationData(input));
+
+        let op_type = OperationBusData::get_op_type(&input);
 
         if op_type as u32 != ZiskOperationType::Arith as u32 {
             return (false, vec![]);
         }
 
-        let inputs = ArithFullSM::generate_inputs(&input)
-            .into_iter()
-            .map(|x| (*bus_id, x))
-            .collect::<Vec<_>>();
+        if let ExtOperationData::OperationData(input) = input {
+            let inputs = ArithFullSM::generate_inputs(&input)
+                .into_iter()
+                .map(|x| (*bus_id, x))
+                .collect::<Vec<_>>();
 
-        (false, inputs)
+            (false, inputs)
+        } else {
+            panic!("Expected ExtOperationData::OperationData");
+        }
     }
 
     /// Returns the bus IDs associated with this counter.
