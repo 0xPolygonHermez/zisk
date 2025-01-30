@@ -1,8 +1,8 @@
 //! Data required to prove the different Zisk operations
 
-use std::{collections::HashMap, fmt};
+use core::fmt;
 
-/// Required data to make an operation.
+/// Required data to make an operation.  
 ///
 /// Stores the minimum information to reproduce an operation execution:
 /// * The opcode and the a and b registers values (regardless of their sources)
@@ -66,24 +66,4 @@ impl ZiskRequiredMemory {
             ZiskRequiredMemory::Extended { values: _, address } => *address,
         }
     }
-}
-
-/// Data required to get some operations proven by the secondary state machine
-#[derive(Clone, Default)]
-pub struct ZiskRequired {
-    pub arith: Vec<ZiskRequiredOperation>,
-    pub binary: Vec<ZiskRequiredOperation>,
-    pub binary_extension: Vec<ZiskRequiredOperation>,
-    pub memory: Vec<ZiskRequiredMemory>,
-}
-
-/// Histogram of the program counter values used during the program execution.
-///
-/// Each pc value has a u64 counter, associated to it via a hash map.
-/// The counter is increased every time the corresponding instruction is executed.
-#[derive(Clone, Default)]
-pub struct ZiskPcHistogram {
-    pub map: HashMap<u64, u64>,
-    pub end_pc: u64,
-    pub steps: u64,
 }

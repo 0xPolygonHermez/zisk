@@ -1,143 +1,51 @@
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc, Mutex,
-};
+//! The `BinaryBasicSM` module implements the logic for the Binary Basic State Machine.
+//!
+//! This state machine processes binary-related operations.
 
+use std::sync::Arc;
+
+use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM};
+use data_bus::{OperationBusData, OperationData};
 use log::info;
-use p3_field::Field;
-use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::AirInstance;
+use p3_field::PrimeField;
+use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use std::cmp::Ordering as CmpOrdering;
-use zisk_core::{zisk_ops::ZiskOp, ZiskRequiredOperation};
-use zisk_pil::{BinaryRow, BinaryTrace, BINARY_AIR_IDS, BINARY_TABLE_AIR_IDS, ZISK_AIRGROUP_ID};
-
-use crate::{BinaryBasicTableOp, BinaryBasicTableSM};
-
-// 64 bits opcodes
-const MINU_OP: u8 = ZiskOp::Minu.code();
-const MIN_OP: u8 = ZiskOp::Min.code();
-const MAXU_OP: u8 = ZiskOp::Maxu.code();
-const MAX_OP: u8 = ZiskOp::Max.code();
-pub const LT_ABS_NP_OP: u8 = 0x06;
-pub const LT_ABS_PN_OP: u8 = 0x07;
-pub const LTU_OP: u8 = ZiskOp::Ltu.code();
-const LT_OP: u8 = ZiskOp::Lt.code();
-pub const GT_OP: u8 = 0x0a;
-const EQ_OP: u8 = ZiskOp::Eq.code();
-const ADD_OP: u8 = ZiskOp::Add.code();
-const SUB_OP: u8 = ZiskOp::Sub.code();
-const LEU_OP: u8 = ZiskOp::Leu.code();
-const LE_OP: u8 = ZiskOp::Le.code();
-const AND_OP: u8 = ZiskOp::And.code();
-const OR_OP: u8 = ZiskOp::Or.code();
-const XOR_OP: u8 = ZiskOp::Xor.code();
-
-// 32 bits opcodes
-const MINUW_OP: u8 = ZiskOp::MinuW.code();
-const MINW_OP: u8 = ZiskOp::MinW.code();
-const MAXUW_OP: u8 = ZiskOp::MaxuW.code();
-const MAXW_OP: u8 = ZiskOp::MaxW.code();
-const LTUW_OP: u8 = ZiskOp::LtuW.code();
-const LTW_OP: u8 = ZiskOp::LtW.code();
-const EQW_OP: u8 = ZiskOp::EqW.code();
-const ADDW_OP: u8 = ZiskOp::AddW.code();
-const SUBW_OP: u8 = ZiskOp::SubW.code();
-const LEUW_OP: u8 = ZiskOp::LeuW.code();
-const LEW_OP: u8 = ZiskOp::LeW.code();
+use zisk_core::zisk_ops::ZiskOp;
+use zisk_pil::{BinaryTableTrace, BinaryTrace, BinaryTraceRow};
 
 const BYTES: usize = 8;
 const HALF_BYTES: usize = BYTES / 2;
 const MASK_U64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
 
-pub struct BinaryBasicSM<F> {
-    wcm: Arc<WitnessManager<F>>,
-
-    // Count of registered predecessors
-    registered_predecessors: AtomicU32,
-
-    // Inputs
-    inputs: Mutex<Vec<ZiskRequiredOperation>>,
-
-    // Secondary State machines
-    binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
+/// The `BinaryBasicSM` struct encapsulates the logic of the Binary Basic State Machine.
+pub struct BinaryBasicSM {
+    /// Reference to the Binary Basic Table State Machine.
+    binary_basic_table_sm: Arc<BinaryBasicTableSM>,
 }
 
-#[derive(Debug)]
-pub enum BinaryBasicSMErr {
-    InvalidOpcode,
-}
-
-impl<F: Field> BinaryBasicSM<F> {
+impl BinaryBasicSM {
     const MY_NAME: &'static str = "Binary  ";
 
-    pub fn new(
-        wcm: Arc<WitnessManager<F>>,
-        binary_basic_table_sm: Arc<BinaryBasicTableSM<F>>,
-        airgroup_id: usize,
-        air_ids: &[usize],
-    ) -> Arc<Self> {
-        let binary_basic = Self {
-            wcm: wcm.clone(),
-            registered_predecessors: AtomicU32::new(0),
-            inputs: Mutex::new(Vec::new()),
-            binary_basic_table_sm,
-        };
-        let binary_basic = Arc::new(binary_basic);
-
-        wcm.register_component(binary_basic.clone(), Some(airgroup_id), Some(air_ids));
-
-        binary_basic.binary_basic_table_sm.register_predecessor();
-
-        binary_basic
+    /// Creates a new Binary Basic State Machine instance.
+    ///
+    /// # Arguments
+    /// * `binary_basic_table_sm` - An `Arc`-wrapped reference to the Binary Basic Table State
+    ///   Machine.
+    ///
+    /// # Returns
+    /// A new `BinaryBasicSM` instance.
+    pub fn new(binary_basic_table_sm: Arc<BinaryBasicTableSM>) -> Arc<Self> {
+        Arc::new(Self { binary_basic_table_sm })
     }
 
-    pub fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    pub fn unregister_predecessor(&self) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            // If there are remaining inputs, prove them
-            self.prove(&[], true);
-
-            self.binary_basic_table_sm.unregister_predecessor();
-        }
-    }
-
-    pub fn operations() -> Vec<u8> {
-        vec![
-            MINU_OP,
-            MIN_OP,
-            MAXU_OP,
-            MAX_OP,
-            LT_ABS_NP_OP,
-            LT_ABS_PN_OP,
-            LTU_OP,
-            LT_OP,
-            GT_OP,
-            EQ_OP,
-            ADD_OP,
-            SUB_OP,
-            LEU_OP,
-            LE_OP,
-            AND_OP,
-            OR_OP,
-            XOR_OP,
-            MINUW_OP,
-            MINW_OP,
-            MAXUW_OP,
-            MAXW_OP,
-            LTUW_OP,
-            LTW_OP,
-            EQW_OP,
-            ADDW_OP,
-            SUBW_OP,
-            LEUW_OP,
-            LEW_OP,
-        ]
-    }
-
+    /// Determines if an opcode corresponds to a 32-bit operation.
+    ///
+    /// # Arguments
+    /// * `opcode` - The opcode to evaluate.
+    ///
+    /// # Returns
+    /// `true` if the opcode is 32-bit; `false` otherwise.
     fn opcode_is_32_bits(opcode: u8) -> bool {
         const OPCODES_32_BITS: [u8; 11] = [
             MINUW_OP, MINW_OP, MAXUW_OP, MAXW_OP, LTUW_OP, LTW_OP, EQW_OP, ADDW_OP, SUBW_OP,
@@ -147,6 +55,7 @@ impl<F: Field> BinaryBasicSM<F> {
         OPCODES_32_BITS.contains(&opcode)
     }
 
+    /// Helper function for LT_ABS_NP operation execution.
     fn lt_abs_np_execute(a: u64, b: u64) -> (u64, bool) {
         let a_pos = (a ^ MASK_U64).wrapping_add(1);
         if a_pos < b {
@@ -156,6 +65,7 @@ impl<F: Field> BinaryBasicSM<F> {
         }
     }
 
+    /// Helper function for LT_ABS_PN operation execution.
     fn lt_abs_pn_execute(a: u64, b: u64) -> (u64, bool) {
         let b_pos = (b ^ MASK_U64).wrapping_add(1);
         if a < b_pos {
@@ -165,6 +75,7 @@ impl<F: Field> BinaryBasicSM<F> {
         }
     }
 
+    /// Helper function for GT operation execution.
     fn gt_execute(a: u64, b: u64) -> (u64, bool) {
         if (a as i64) > (b as i64) {
             (1, true)
@@ -173,6 +84,17 @@ impl<F: Field> BinaryBasicSM<F> {
         }
     }
 
+    /// Executes a binary operation based on the opcode and inputs `a` and `b`.
+    ///
+    /// # Arguments
+    /// * `opcode` - The operation code to execute.
+    /// * `a` - The first operand.
+    /// * `b` - The second operand.
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// * The result of the operation (`u64`).
+    /// * A boolean indicating whether the operation generated a carry/flag.
     fn execute(opcode: u8, a: u64, b: u64) -> (u64, bool) {
         let is_zisk_op = ZiskOp::try_from_code(opcode).is_ok();
         if is_zisk_op {
@@ -187,6 +109,13 @@ impl<F: Field> BinaryBasicSM<F> {
         }
     }
 
+    /// Returns the initial carry value for a given opcode.
+    ///
+    /// # Arguments
+    /// * `opcode` - The opcode to evaluate.
+    ///
+    /// # Returns
+    /// The initial carry value (`u64`).
     fn get_inital_carry(opcode: u8) -> u64 {
         let is_zisk_op = ZiskOp::try_from_code(opcode).is_ok();
         if is_zisk_op {
@@ -200,17 +129,29 @@ impl<F: Field> BinaryBasicSM<F> {
         }
     }
 
+    /// Processes a slice of operation data, generating a trace row and updating multiplicities.
+    ///
+    /// # Arguments
+    /// * `operation` - The operation data to process.
+    /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
+    ///
+    /// # Returns
+    /// A `BinaryTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice(
-        operation: &ZiskRequiredOperation,
+    pub fn process_slice<F: PrimeField>(
+        input: &OperationData<u64>,
         multiplicity: &mut [u64],
-    ) -> BinaryRow<F> {
+    ) -> BinaryTraceRow<F> {
         // Create an empty trace
-        let mut row: BinaryRow<F> = Default::default();
+        let mut row: BinaryTraceRow<F> = Default::default();
 
         // Execute the opcode
-        let opcode = operation.opcode;
-        let (c, _) = Self::execute(opcode, operation.a, operation.b);
+        let opcode = OperationBusData::get_op(input);
+        let a = OperationBusData::get_a(input);
+        let b = OperationBusData::get_b(input);
+        let step = OperationBusData::get_step(input);
+
+        let (c, _) = Self::execute(opcode, a, b);
 
         // Set mode32
         let mode32 = Self::opcode_is_32_bits(opcode);
@@ -221,13 +162,13 @@ impl<F: Field> BinaryBasicSM<F> {
         let c_filtered = if mode32 { c & 0xFFFFFFFF } else { c };
 
         // Split a in bytes and store them in free_in_a
-        let a_bytes: [u8; 8] = operation.a.to_le_bytes();
+        let a_bytes: [u8; 8] = a.to_le_bytes();
         for (i, value) in a_bytes.iter().enumerate() {
             row.free_in_a[i] = F::from_canonical_u8(*value);
         }
 
         // Split b in bytes and store them in free_in_b
-        let b_bytes: [u8; 8] = operation.b.to_le_bytes();
+        let b_bytes: [u8; 8] = b.to_le_bytes();
         for (i, value) in b_bytes.iter().enumerate() {
             row.free_in_b[i] = F::from_canonical_u8(*value);
         }
@@ -239,7 +180,7 @@ impl<F: Field> BinaryBasicSM<F> {
         }
 
         // Set main SM step
-        row.debug_main_step = F::from_canonical_u64(operation.step);
+        row.debug_main_step = F::from_canonical_u64(step);
 
         // Set use last carry and carry[], based on operation
         let mut cout: u64;
@@ -256,8 +197,7 @@ impl<F: Field> BinaryBasicSM<F> {
                 // Set opcode is min or max
                 row.op_is_min_max = F::one();
 
-                let result_is_a: u64 =
-                    if (operation.a == operation.b) || (operation.b == c_filtered) { 0 } else { 1 };
+                let result_is_a: u64 = if (a == b) || (b == c_filtered) { 0 } else { 1 };
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = if (opcode == MINU_OP) || (opcode == MINUW_OP) {
@@ -289,9 +229,9 @@ impl<F: Field> BinaryBasicSM<F> {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Min) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Min)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if (a_bytes[i] & 0x80) != 0 { 1 } else { 0 };
                     }
@@ -305,7 +245,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = cout + 2 + 4 * result_is_a;
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
@@ -324,8 +264,7 @@ impl<F: Field> BinaryBasicSM<F> {
                 // Set opcode is min or max
                 row.op_is_min_max = F::one();
 
-                let result_is_a: u64 =
-                    if (operation.a == operation.b) || (operation.b == c_filtered) { 0 } else { 1 };
+                let result_is_a: u64 = if (a == b) || (b == c_filtered) { 0 } else { 1 };
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = if (opcode == MAXU_OP) || (opcode == MAXUW_OP) {
@@ -357,9 +296,9 @@ impl<F: Field> BinaryBasicSM<F> {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Max) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Max)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if (a_bytes[i] & 0x80) != 0 { 0 } else { 1 };
                     }
@@ -373,7 +312,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = cout + 2 + 4 * result_is_a;
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
@@ -433,7 +372,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = cout + 8 * plast[i];
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         binary_basic_table_op,
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
@@ -489,7 +428,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = cout + 8 * plast[i];
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         binary_basic_table_op,
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
@@ -534,9 +473,9 @@ impl<F: Field> BinaryBasicSM<F> {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op.eq(&BinaryBasicTableOp::Lt)) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op.eq(&BinaryBasicTableOp::Lt))
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                     }
@@ -547,7 +486,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = cin + 8 * plast[i];
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
@@ -604,7 +543,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = cout + 8 * plast[i];
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         binary_basic_table_op,
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
@@ -647,7 +586,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = cout + 8 * plast[i];
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
@@ -692,7 +631,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let b_byte = if mode32 && (i >= 4) { 0 } else { b_bytes[i] };
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
@@ -736,7 +675,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let b_byte = if mode32 && (i >= 4) { 0 } else { b_bytes[i] };
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
@@ -776,9 +715,9 @@ impl<F: Field> BinaryBasicSM<F> {
                     if a_bytes[i] <= b_bytes[i] {
                         cout = 1;
                     }
-                    if (binary_basic_table_op == BinaryBasicTableOp::Le) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Le)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = c;
                     }
@@ -789,7 +728,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = cin + 8 * plast[i];
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         if mode32 && (i >= 4) {
                             BinaryBasicTableOp::Ext32
                         } else {
@@ -824,7 +763,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = 0;
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         binary_basic_table_op,
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
@@ -855,7 +794,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = 0;
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         binary_basic_table_op,
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
@@ -887,7 +826,7 @@ impl<F: Field> BinaryBasicSM<F> {
                     let flags = 0;
 
                     // Store the required in the vector
-                    let row = BinaryBasicTableSM::<F>::calculate_table_row(
+                    let row = BinaryBasicTableSM::calculate_table_row(
                         binary_basic_table_op,
                         a_bytes[i] as u64,
                         b_bytes[i] as u64,
@@ -922,9 +861,9 @@ impl<F: Field> BinaryBasicSM<F> {
 
         // Set free_in_a_or_c and free_in_b_or_zero
         for i in 0..HALF_BYTES {
-            row.free_in_a_or_c[i] = mode64 *
-                (row.free_in_a[i + HALF_BYTES] - row.free_in_c[HALF_BYTES - 1]) +
-                row.free_in_c[HALF_BYTES - 1];
+            row.free_in_a_or_c[i] = mode64
+                * (row.free_in_a[i + HALF_BYTES] - row.free_in_c[HALF_BYTES - 1])
+                + row.free_in_c[HALF_BYTES - 1];
             row.free_in_b_or_zero[i] = mode64 * row.free_in_b[i + HALF_BYTES];
         }
 
@@ -941,57 +880,53 @@ impl<F: Field> BinaryBasicSM<F> {
         row
     }
 
-    pub fn prove_instance(&self, operations: Vec<ZiskRequiredOperation>, prover_buffer: &mut [F]) {
-        Self::prove_internal(&self.wcm, &self.binary_basic_table_sm, operations, prover_buffer);
-    }
+    /// Computes the witness for a series of inputs and produces an `AirInstance`.
+    ///
+    /// # Arguments
+    /// * `operations` - A slice of operations to process.
+    ///
+    /// # Returns
+    /// An `AirInstance` containing the computed witness data.
+    pub fn compute_witness<F: PrimeField>(&self, inputs: &[OperationData<u64>]) -> AirInstance<F> {
+        let mut binary_trace = BinaryTrace::new();
 
-    fn prove_internal(
-        wcm: &WitnessManager<F>,
-        binary_basic_table_sm: &BinaryBasicTableSM<F>,
-        operations: Vec<ZiskRequiredOperation>,
-        prover_buffer: &mut [F],
-    ) {
         timer_start_trace!(BINARY_TRACE);
-        let pctx = wcm.get_pctx();
-        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]);
-        let air_binary_table = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_TABLE_AIR_IDS[0]);
-        assert!(operations.len() <= air.num_rows());
+        let num_rows = binary_trace.num_rows();
+        assert!(inputs.len() <= num_rows);
 
         info!(
-            "{}: ··· Creating Binary basic instance [{} / {} rows filled {:.2}%]",
+            "{}: ··· Creating Binary instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
-            operations.len(),
-            air.num_rows(),
-            operations.len() as f64 / air.num_rows() as f64 * 100.0
+            inputs.len(),
+            num_rows,
+            inputs.len() as f64 / num_rows as f64 * 100.0
         );
 
-        let mut multiplicity_table = vec![0u64; air_binary_table.num_rows()];
-        let mut trace_buffer =
-            BinaryTrace::<F>::map_buffer(prover_buffer, air.num_rows(), 0).unwrap();
+        let mut multiplicity_table = vec![0u64; BinaryTableTrace::<F>::NUM_ROWS];
 
-        for (i, operation) in operations.iter().enumerate() {
+        for (i, operation) in inputs.iter().enumerate() {
             let row = Self::process_slice(operation, &mut multiplicity_table);
-            trace_buffer[i] = row;
+            binary_trace[i] = row;
         }
         timer_stop_and_log_trace!(BINARY_TRACE);
 
         timer_start_trace!(BINARY_PADDING);
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
-        let padding_row = BinaryRow::<F> {
+        let padding_row = BinaryTraceRow::<F> {
             m_op: F::from_canonical_u8(AND_OP),
             m_op_or_ext: F::from_canonical_u8(AND_OP),
             ..Default::default()
         };
 
-        for i in operations.len()..air.num_rows() {
-            trace_buffer[i] = padding_row;
+        for i in inputs.len()..num_rows {
+            binary_trace[i] = padding_row;
         }
 
-        let padding_size = air.num_rows() - operations.len();
+        let padding_size = num_rows - inputs.len();
         for last in 0..2 {
             let multiplicity = (7 - 6 * last as u64) * padding_size as u64;
-            let row = BinaryBasicTableSM::<F>::calculate_table_row(
+            let row = BinaryBasicTableSM::calculate_table_row(
                 BinaryBasicTableOp::And,
                 0,
                 0,
@@ -1004,52 +939,9 @@ impl<F: Field> BinaryBasicSM<F> {
         timer_stop_and_log_trace!(BINARY_PADDING);
 
         timer_start_trace!(BINARY_TABLE);
-        binary_basic_table_sm.process_slice(&multiplicity_table);
+        self.binary_basic_table_sm.process_slice(&multiplicity_table);
         timer_stop_and_log_trace!(BINARY_TABLE);
 
-        std::thread::spawn(move || {
-            drop(operations);
-            drop(multiplicity_table);
-        });
-    }
-
-    pub fn prove(&self, operations: &[ZiskRequiredOperation], drain: bool) {
-        if let Ok(mut inputs) = self.inputs.lock() {
-            inputs.extend_from_slice(operations);
-
-            let pctx = self.wcm.get_pctx();
-            let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]);
-
-            while inputs.len() >= air.num_rows() || (drain && !inputs.is_empty()) {
-                let num_drained = std::cmp::min(air.num_rows(), inputs.len());
-                let drained_inputs = inputs.drain(..num_drained).collect::<Vec<_>>();
-
-                let binary_basic_table_sm = self.binary_basic_table_sm.clone();
-                let wcm = self.wcm.clone();
-
-                let sctx = self.wcm.get_sctx().clone();
-
-                let trace: BinaryTrace<'_, _> = BinaryTrace::new(air.num_rows());
-                let mut prover_buffer = trace.buffer.unwrap();
-
-                Self::prove_internal(
-                    &wcm,
-                    &binary_basic_table_sm,
-                    drained_inputs,
-                    &mut prover_buffer,
-                );
-
-                let air_instance = AirInstance::new(
-                    sctx,
-                    ZISK_AIRGROUP_ID,
-                    BINARY_AIR_IDS[0],
-                    None,
-                    prover_buffer,
-                );
-                wcm.get_pctx().air_instance_repo.add_air_instance(air_instance, None);
-            }
-        }
+        AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))
     }
 }
-
-impl<F: Send + Sync> WitnessComponent<F> for BinaryBasicSM<F> {}

@@ -2,11 +2,11 @@ use clap::{Arg, Command};
 use colored::Colorize;
 use p3_goldilocks::Goldilocks;
 use proofman_common::{get_custom_commit_trace, GlobalInfo, ProofType, SetupCtx};
+use proofman_util::create_buffer_fast;
 use sm_rom::RomSM;
-use stark::StarkBufferAllocator;
 use std::{path::Path, sync::Arc};
 use sysinfo::System;
-use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::RomRomTrace;
 
 fn main() {
     let matches = Command::new("ROM Handler")
@@ -80,24 +80,25 @@ fn main() {
         std::process::exit(1);
     }
 
-    let buffer_allocator: Arc<StarkBufferAllocator> =
-        Arc::new(StarkBufferAllocator::new(proving_key_path.to_path_buf()));
     let global_info = GlobalInfo::new(proving_key_path);
     let sctx = Arc::new(SetupCtx::new(&global_info, &ProofType::Basic));
 
-    let setup = sctx.get_setup(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]);
+    let mut custom_rom_trace: RomRomTrace<Goldilocks> = RomRomTrace::new();
+    let setup = sctx.get_setup(custom_rom_trace.airgroup_id(), custom_rom_trace.air_id);
 
-    match RomSM::<Goldilocks>::compute_trace_rom_buffer(
-        rom_path.to_path_buf(),
-        buffer_allocator,
-        &sctx,
-    ) {
-        Ok((commit_id, buffer_rom)) => {
-            get_custom_commit_trace(commit_id, 0, setup, buffer_rom, rom_buffer_str.as_str());
-        }
-        Err(e) => {
-            log::error!("Error: {}", e);
-            std::process::exit(1);
-        }
-    }
+    RomSM::compute_custom_trace_rom(rom_path.to_path_buf(), &mut custom_rom_trace);
+
+    let n_ext = (1 << setup.stark_info.stark_struct.n_bits_ext) as usize;
+    let n_cols = custom_rom_trace.num_rows();
+
+    let buffer_ext = create_buffer_fast(n_ext * n_cols);
+
+    get_custom_commit_trace(
+        custom_rom_trace.commit_id.unwrap() as u64,
+        0,
+        setup,
+        custom_rom_trace.get_buffer(),
+        buffer_ext,
+        rom_buffer_str.as_str(),
+    );
 }

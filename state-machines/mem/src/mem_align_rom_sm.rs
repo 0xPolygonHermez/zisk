@@ -1,17 +1,9 @@
 use std::{
     collections::HashMap,
-    sync::{
-        atomic::{AtomicU32, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
 };
 
-use log::info;
-use p3_field::PrimeField;
-use proofman::{WitnessComponent, WitnessManager};
-use proofman_common::AirInstance;
-
-use zisk_pil::{MemAlignRomRow, MemAlignRomTrace, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::MemAlignRomTrace;
 
 #[derive(Debug, Clone, Copy)]
 pub enum MemOp {
@@ -25,15 +17,7 @@ const OP_SIZES: [u64; 4] = [2, 3, 3, 5];
 const ONE_WORD_COMBINATIONS: u64 = 20; // (0..4,[1,2,4]), (5,6,[1,2]), (7,[1]) -> 5*3 + 2*2 + 1*1 = 20
 const TWO_WORD_COMBINATIONS: u64 = 11; // (1..4,[8]), (5,6,[4,8]), (7,[2,4,8]) -> 4*1 + 2*2 + 1*3 = 11
 
-pub struct MemAlignRomSM<F> {
-    // Witness computation manager
-    wcm: Arc<WitnessManager<F>>,
-
-    // Count of registered predecessors
-    registered_predecessors: AtomicU32,
-
-    // Rom data
-    num_rows: usize,
+pub struct MemAlignRomSM {
     multiplicity: Mutex<HashMap<u64, u64>>, // row_num -> multiplicity
 }
 
@@ -42,38 +26,13 @@ pub enum ExtensionTableSMErr {
     InvalidOpcode,
 }
 
-impl<F: PrimeField> MemAlignRomSM<F> {
-    const MY_NAME: &'static str = "MemAlignRom";
+impl MemAlignRomSM {
+    // const MY_NAME: &'static str = "MemAlignRom";
 
-    pub fn new(wcm: Arc<WitnessManager<F>>) -> Arc<Self> {
-        let pctx = wcm.get_pctx();
-        let air = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_ROM_AIR_IDS[0]);
-        let num_rows = air.num_rows();
-
-        let mem_align_rom = Self {
-            wcm: wcm.clone(),
-            registered_predecessors: AtomicU32::new(0),
-            num_rows,
-            multiplicity: Mutex::new(HashMap::with_capacity(num_rows)),
-        };
-        let mem_align_rom = Arc::new(mem_align_rom);
-        wcm.register_component(
-            mem_align_rom.clone(),
-            Some(ZISK_AIRGROUP_ID),
-            Some(MEM_ALIGN_ROM_AIR_IDS),
-        );
-
-        mem_align_rom
-    }
-
-    pub fn register_predecessor(&self) {
-        self.registered_predecessors.fetch_add(1, Ordering::SeqCst);
-    }
-
-    pub fn unregister_predecessor(&self) {
-        if self.registered_predecessors.fetch_sub(1, Ordering::SeqCst) == 1 {
-            self.create_air_instance();
-        }
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            multiplicity: Mutex::new(HashMap::with_capacity(MemAlignRomTrace::<usize>::NUM_ROWS)),
+        })
     }
 
     pub fn calculate_next_pc(&self, opcode: MemOp, offset: usize, width: usize) -> u64 {
@@ -89,9 +48,9 @@ impl<F: PrimeField> MemAlignRomSM<F> {
             ),
 
             MemOp::TwoWrites => (
-                1 + ONE_WORD_COMBINATIONS * OP_SIZES[0] +
-                    ONE_WORD_COMBINATIONS * OP_SIZES[1] +
-                    TWO_WORD_COMBINATIONS * OP_SIZES[2],
+                1 + ONE_WORD_COMBINATIONS * OP_SIZES[0]
+                    + ONE_WORD_COMBINATIONS * OP_SIZES[1]
+                    + TWO_WORD_COMBINATIONS * OP_SIZES[2],
                 false,
             ),
         };
@@ -105,7 +64,7 @@ impl<F: PrimeField> MemAlignRomSM<F> {
         for i in 0..op_size {
             let row_idx = first_row_idx + i;
             // Check whether the row index is within the bounds
-            debug_assert!(row_idx < self.num_rows as u64);
+            debug_assert!(row_idx < MemAlignRomTrace::<usize>::NUM_ROWS as u64);
             // Update the multiplicity
             self.update_multiplicity_by_row_idx(row_idx, 1);
         }
@@ -162,6 +121,16 @@ impl<F: PrimeField> MemAlignRomSM<F> {
         }
     }
 
+    pub fn detach_multiplicity(&self) -> Vec<u64> {
+        let multiplicity = self.multiplicity.lock().unwrap();
+        let mut multiplicity_vec = vec![0; MemAlignRomTrace::<usize>::NUM_ROWS];
+        for (row_idx, multiplicity) in multiplicity.iter() {
+            assert!(*row_idx < MemAlignRomTrace::<usize>::NUM_ROWS as u64);
+            multiplicity_vec[*row_idx as usize] = *multiplicity;
+        }
+        multiplicity_vec
+    }
+
     pub fn update_padding_row(&self, padding_len: u64) {
         // Update entry at the padding row (pos = 0) with the given padding length
         self.update_multiplicity_by_row_idx(0, padding_len);
@@ -171,44 +140,4 @@ impl<F: PrimeField> MemAlignRomSM<F> {
         let mut multiplicity = self.multiplicity.lock().unwrap();
         *multiplicity.entry(row_idx).or_insert(0) += mul;
     }
-
-    pub fn create_air_instance(&self) {
-        // Get the contexts
-        let wcm = self.wcm.clone();
-        let pctx = wcm.get_pctx();
-        let sctx = wcm.get_sctx();
-
-        // Get the Mem Align ROM AIR
-        let air_mem_align_rom = pctx.pilout.get_air(ZISK_AIRGROUP_ID, MEM_ALIGN_ROM_AIR_IDS[0]);
-        let air_mem_align_rom_rows = air_mem_align_rom.num_rows();
-
-        let mut trace_buffer: MemAlignRomTrace<'_, _> =
-            MemAlignRomTrace::new(air_mem_align_rom_rows);
-
-        // Initialize the trace buffer to zero
-        for i in 0..air_mem_align_rom_rows {
-            trace_buffer[i] = MemAlignRomRow { multiplicity: F::zero() };
-        }
-
-        // Fill the trace buffer with the multiplicity values
-        if let Ok(multiplicity) = self.multiplicity.lock() {
-            for (row_idx, multiplicity) in multiplicity.iter() {
-                trace_buffer[*row_idx as usize] =
-                    MemAlignRomRow { multiplicity: F::from_canonical_u64(*multiplicity) };
-            }
-        }
-
-        info!("{}: ··· Creating Mem Align Rom instance", Self::MY_NAME,);
-
-        let air_instance = AirInstance::new(
-            sctx,
-            ZISK_AIRGROUP_ID,
-            MEM_ALIGN_ROM_AIR_IDS[0],
-            None,
-            trace_buffer.buffer.unwrap(),
-        );
-        pctx.air_instance_repo.add_air_instance(air_instance, None);
-    }
 }
-
-impl<F: Send + Sync> WitnessComponent<F> for MemAlignRomSM<F> {}

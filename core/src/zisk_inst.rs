@@ -61,7 +61,7 @@ pub const STORE_IND: u64 = 2;
 /// Internal operations are proven as part of the main state machine itself, given their
 /// simplicity. External operations (rest of types) are proven in their corresponding secondary
 /// state machine.
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd)]
 #[repr(u32)]
 pub enum ZiskOperationType {
     None,
@@ -73,11 +73,9 @@ pub enum ZiskOperationType {
     PubOut,
 }
 
-/// Defines the length of the enumerated ZiskOperationType, required to build some structures to
-/// store data splitted by operation type.
-pub const ZISK_OPERATION_TYPE_VARIANTS: usize = 7;
+pub const ZISK_OP_TYPE_COUNT: usize = 7;
 
-/// Zisk instruction structure.   
+/// ZisK instruction definition
 ///
 /// ZisK instructions are defined as a binary operation with 2 results: op(a, b) -> (c, flag)
 /// a, b and c are u64 registers; flag is a boolean.  
@@ -230,19 +228,19 @@ impl ZiskInst {
     /// Constructs a `flags`` bitmap made of combinations of fields of the Zisk instruction.  This
     /// field is used by the PIL to proof some of the operations.
     pub fn get_flags(&self) -> u64 {
-        let flags: u64 = 1 |
-            (((self.a_src == SRC_IMM) as u64) << 1) |
-            (((self.a_src == SRC_MEM) as u64) << 2) |
-            (((self.a_src == SRC_STEP) as u64) << 3) |
-            (((self.b_src == SRC_IMM) as u64) << 4) |
-            (((self.b_src == SRC_MEM) as u64) << 5) |
-            ((self.is_external_op as u64) << 6) |
-            ((self.store_ra as u64) << 7) |
-            (((self.store == STORE_MEM) as u64) << 8) |
-            (((self.store == STORE_IND) as u64) << 9) |
-            ((self.set_pc as u64) << 10) |
-            ((self.m32 as u64) << 11) |
-            (((self.b_src == SRC_IND) as u64) << 12);
+        let flags: u64 = 1
+            | (((self.a_src == SRC_IMM) as u64) << 1)
+            | (((self.a_src == SRC_MEM) as u64) << 2)
+            | (((self.a_src == SRC_STEP) as u64) << 3)
+            | (((self.b_src == SRC_IMM) as u64) << 4)
+            | (((self.b_src == SRC_MEM) as u64) << 5)
+            | ((self.is_external_op as u64) << 6)
+            | ((self.store_ra as u64) << 7)
+            | (((self.store == STORE_MEM) as u64) << 8)
+            | (((self.store == STORE_IND) as u64) << 9)
+            | ((self.set_pc as u64) << 10)
+            | ((self.m32 as u64) << 11)
+            | (((self.b_src == SRC_IND) as u64) << 12);
 
         flags
     }

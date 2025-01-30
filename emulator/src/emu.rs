@@ -1,18 +1,74 @@
 use std::mem;
 
 use crate::{
-    EmuContext, EmuFullTraceStep, EmuOptions, EmuStartingPoints, EmuTrace, EmuTraceEnd,
-    EmuTraceStart, EmuTraceStep, ParEmuOptions,
+    EmuContext, EmuFullTraceStep, EmuOptions, EmuTrace, EmuTraceEnd, EmuTraceStart, EmuTraceSteps,
+    ParEmuOptions,
 };
+use data_bus::{BusDevice, OperationBusData, RomBusData, MEM_BUS_ID, OPERATION_BUS_ID, ROM_BUS_ID};
 use p3_field::{AbstractField, PrimeField};
 use riscv::RiscVRegisters;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
+use data_bus::DataBus;
 use zisk_core::{
-    InstContext, ZiskInst, ZiskOperationType, ZiskPcHistogram, ZiskRequiredMemory,
-    ZiskRequiredOperation, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
-    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, SYS_ADDR, ZISK_OPERATION_TYPE_VARIANTS,
+    InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
+    SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
 };
+
+struct MemBusHelpers {}
+
+const MEMORY_LOAD_OP: u64 = 1;
+const MEMORY_STORE_OP: u64 = 2;
+
+const MEM_STEP_BASE: u64 = 1;
+const MAX_MEM_STEP_OFFSET: u64 = 2;
+const MAX_MEM_OPS_BY_STEP_OFFSET: u64 = 2;
+const MAX_MEM_OPS_BY_MAIN_STEP: u64 = (MAX_MEM_STEP_OFFSET + 1) * MAX_MEM_OPS_BY_STEP_OFFSET;
+
+impl MemBusHelpers {
+    // function mem_load(expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[]) {
+    // function mem_store(expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[])
+    // {
+    pub fn mem_load(
+        addr: u32,
+        step: u64,
+        step_offset: u8,
+        bytes: u8,
+        mem_values: [u64; 2],
+    ) -> [u64; 7] {
+        [
+            MEMORY_LOAD_OP,
+            addr as u64,
+            MEM_STEP_BASE
+                + MAX_MEM_OPS_BY_MAIN_STEP * step
+                + MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64,
+            bytes as u64,
+            mem_values[0],
+            mem_values[1],
+            0,
+        ]
+    }
+    pub fn mem_write(
+        addr: u32,
+        step: u64,
+        step_offset: u8,
+        bytes: u8,
+        value: u64,
+        mem_values: [u64; 2],
+    ) -> [u64; 7] {
+        [
+            MEMORY_STORE_OP,
+            addr as u64,
+            MEM_STEP_BASE
+                + MAX_MEM_OPS_BY_MAIN_STEP * step
+                + MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64,
+            bytes as u64,
+            mem_values[0],
+            mem_values[1],
+            value,
+        ]
+    }
+}
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
@@ -29,8 +85,8 @@ pub struct Emu<'a> {
 /// - run -> step -> source_a, source_b, store_c (full functionality, called by main state machine,
 ///   calls callback with trace)
 /// - run -> run_fast -> step_fast -> source_a, source_b, store_c (maximum speed, for benchmarking)
-/// - run_slice -> step_slice -> source_a_slice, source_b_slice (generates full trace and required
-///   input data for secondary state machines)
+/// - run_slice -> step_slice -> source_a_slice, source_b_slice, store_c_slice (generates full trace
+///   and required input data for secondary state machines)
 impl<'a> Emu<'a> {
     pub fn new(rom: &ZiskRom) -> Emu {
         Emu { rom, ctx: EmuContext::default() }
@@ -42,6 +98,7 @@ impl<'a> Emu<'a> {
         emu.ctx.inst_ctx.sp = trace_start.sp;
         emu.ctx.inst_ctx.step = trace_start.step;
         emu.ctx.inst_ctx.c = trace_start.c;
+        emu.ctx.inst_ctx.regs = trace_start.regs;
 
         emu
     }
@@ -70,13 +127,25 @@ impl<'a> Emu<'a> {
         match instruction.a_src {
             SRC_C => self.ctx.inst_ctx.a = self.ctx.inst_ctx.c,
             SRC_MEM => {
-                let mut addr = instruction.a_offset_imm0;
+                // Calculate memory address
+                let mut address = instruction.a_offset_imm0;
                 if instruction.a_use_sp_imm1 != 0 {
-                    addr += self.ctx.inst_ctx.sp;
+                    address += self.ctx.inst_ctx.sp;
                 }
-                self.ctx.inst_ctx.a = self.ctx.inst_ctx.mem.read(addr, 8);
+
+                // If the operation is a register operation, get it from the context registers
+                if Mem::address_is_register(address) {
+                    self.ctx.inst_ctx.a = self.get_reg(Mem::address_to_register_index(address));
+                }
+                // Otherwise, get it from memory
+                else {
+                    self.ctx.inst_ctx.a = self.ctx.inst_ctx.mem.read(address, 8);
+                    self.ctx.trace.steps.mem_reads.push(self.ctx.inst_ctx.a);
+                }
+
+                // Feed the stats
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_memory_read(addr, 8);
+                    self.ctx.stats.on_memory_read(address, 8);
                 }
             }
             SRC_IMM => {
@@ -93,46 +162,46 @@ impl<'a> Emu<'a> {
     }
 
     /// Calculate the 'a' register value based on the source specified by the current instruction
+    /// and generate memory reads data
     #[inline(always)]
-    pub fn source_a_memory(
+    pub fn source_a_mem_reads_generate(
         &mut self,
         instruction: &ZiskInst,
-        emu_mem: &mut Vec<ZiskRequiredMemory>,
+        mem_reads: &mut Vec<u64>,
     ) {
         match instruction.a_src {
             SRC_C => self.ctx.inst_ctx.a = self.ctx.inst_ctx.c,
             SRC_MEM => {
-                // Build the memory address
-                let mut addr = instruction.a_offset_imm0;
+                // Calculate memory address
+                let mut address = instruction.a_offset_imm0;
                 if instruction.a_use_sp_imm1 != 0 {
-                    addr += self.ctx.inst_ctx.sp;
+                    address += self.ctx.inst_ctx.sp;
                 }
 
-                // Call read_required to get both the read value and the additional data (aligned
-                // read values required to construct the requested read value, if not aligned)
-                let additional_data: Vec<u64>;
-                (self.ctx.inst_ctx.a, additional_data) =
-                    self.ctx.inst_ctx.mem.read_required(addr, 8);
+                // If the operation is a register operation, get it from the context registers
+                if Mem::address_is_register(address) {
+                    self.ctx.inst_ctx.a = self.get_reg(Mem::address_to_register_index(address));
+                }
+                // Otherwise, get it from memory
+                else if Mem::is_full_aligned(address, 8) {
+                    self.ctx.inst_ctx.a = self.ctx.inst_ctx.mem.read(address, 8);
+                    mem_reads.push(self.ctx.inst_ctx.a);
+                } else {
+                    let mut additional_data: Vec<u64>;
+                    (self.ctx.inst_ctx.a, additional_data) =
+                        self.ctx.inst_ctx.mem.read_required(address, 8);
+                    debug_assert!(!additional_data.is_empty());
+                    mem_reads.append(&mut additional_data);
+                }
+                /*println!(
+                    "Emu::source_a_mem_reads_generate() mem_leads.len={} value={:x}",
+                    mem_reads.len(),
+                    self.ctx.inst_ctx.a
+                );*/
 
-                // Store the read value into the vector as a basic record
-                let required_memory = ZiskRequiredMemory::Basic {
-                    step: self.ctx.inst_ctx.step,
-                    step_offset: 0,
-                    is_write: false,
-                    address: addr as u32,
-                    width: 8,
-                    value: self.ctx.inst_ctx.a,
-                };
-                emu_mem.push(required_memory);
-
-                // Store the additional data, if any, as extended records
-                if !additional_data.is_empty() {
-                    assert!(additional_data.len() <= 2);
-                    let mut values: [u64; 2] = [0; 2];
-                    values[..additional_data.len()].copy_from_slice(&additional_data[..]);
-                    let required_memory =
-                        ZiskRequiredMemory::Extended { values, address: addr as u32 };
-                    emu_mem.push(required_memory);
+                // Feed the stats
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_read(address, 8);
                 }
             }
             SRC_IMM => {
@@ -142,7 +211,158 @@ impl<'a> Emu<'a> {
             // #[cfg(feature = "sp")]
             // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
             _ => panic!(
-                "Emu::source_a() Invalid a_src={} pc={}",
+                "Emu::source_a_mem_reads_generate() Invalid a_src={} pc={}",
+                instruction.a_src, self.ctx.inst_ctx.pc
+            ),
+        }
+    }
+
+    /// Calculate the 'a' register value based on the source specified by the current instruction,
+    /// using formerly generated memory reads from a previous emulation
+    #[inline(always)]
+    pub fn source_a_mem_reads_consume(
+        &mut self,
+        instruction: &ZiskInst,
+        mem_reads: &[u64],
+        mem_reads_index: &mut usize,
+    ) {
+        match instruction.a_src {
+            SRC_C => self.ctx.inst_ctx.a = self.ctx.inst_ctx.c,
+            SRC_MEM => {
+                // Calculate memory address
+                let mut address = instruction.a_offset_imm0;
+                if instruction.a_use_sp_imm1 != 0 {
+                    address += self.ctx.inst_ctx.sp;
+                }
+
+                // If the operation is a register operation, get it from the context registers
+                if Mem::address_is_register(address) {
+                    self.ctx.inst_ctx.a = self.get_reg(Mem::address_to_register_index(address));
+                }
+                // Otherwise, get it from memory
+                else if Mem::is_full_aligned(address, 8) {
+                    assert!(*mem_reads_index < mem_reads.len());
+                    self.ctx.inst_ctx.a = mem_reads[*mem_reads_index];
+                    *mem_reads_index += 1;
+                } else {
+                    let (required_address_1, required_address_2) =
+                        Mem::required_addresses(address, 8);
+                    debug_assert!(required_address_1 != required_address_2);
+                    assert!(*mem_reads_index < mem_reads.len());
+                    let raw_data_1 = mem_reads[*mem_reads_index];
+                    *mem_reads_index += 1;
+                    assert!(*mem_reads_index < mem_reads.len());
+                    let raw_data_2 = mem_reads[*mem_reads_index];
+                    *mem_reads_index += 1;
+                    self.ctx.inst_ctx.a =
+                        Mem::get_double_not_aligned_data(address, 8, raw_data_1, raw_data_2);
+                }
+                /*println!(
+                    "Emu::source_a_mem_reads_consume() mem_leads_index={} value={:x}",
+                    *mem_reads_index, self.ctx.inst_ctx.a
+                );*/
+
+                // Feed the stats
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_read(address, 8);
+                }
+            }
+            SRC_IMM => {
+                self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
+            }
+            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
+            // #[cfg(feature = "sp")]
+            // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
+            _ => panic!(
+                "Emu::source_a_mem_reads_consume() Invalid a_src={} pc={}",
+                instruction.a_src, self.ctx.inst_ctx.pc
+            ),
+        }
+    }
+
+    /// Calculate the 'a' register value based on the source specified by the current instruction,
+    /// using formerly generated memory reads from a previous emulation
+    #[inline(always)]
+    pub fn source_a_mem_reads_consume_databus<BD: BusDevice<u64>>(
+        &mut self,
+        instruction: &ZiskInst,
+        mem_reads: &[u64],
+        mem_reads_index: &mut usize,
+        data_bus: &mut DataBus<u64, BD>,
+    ) {
+        match instruction.a_src {
+            SRC_C => self.ctx.inst_ctx.a = self.ctx.inst_ctx.c,
+            SRC_MEM => {
+                // Calculate memory address
+                let mut address = instruction.a_offset_imm0;
+                if instruction.a_use_sp_imm1 != 0 {
+                    address += self.ctx.inst_ctx.sp;
+                }
+
+                // If the operation is a register operation, get it from the context registers
+                if Mem::address_is_register(address) {
+                    self.ctx.inst_ctx.a = self.get_reg(Mem::address_to_register_index(address));
+                    let payload = MemBusHelpers::mem_load(
+                        address as u32,
+                        self.ctx.inst_ctx.step,
+                        0,
+                        8,
+                        [self.ctx.inst_ctx.a, 0],
+                    );
+                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                }
+                // Otherwise, get it from memory
+                else if Mem::is_full_aligned(address, 8) {
+                    assert!(*mem_reads_index < mem_reads.len());
+                    self.ctx.inst_ctx.a = mem_reads[*mem_reads_index];
+                    *mem_reads_index += 1;
+                    let payload = MemBusHelpers::mem_load(
+                        address as u32,
+                        self.ctx.inst_ctx.step,
+                        0,
+                        8,
+                        [self.ctx.inst_ctx.a, 0],
+                    );
+                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                } else {
+                    let (required_address_1, required_address_2) =
+                        Mem::required_addresses(address, 8);
+                    debug_assert!(required_address_1 != required_address_2);
+                    assert!(*mem_reads_index < mem_reads.len());
+                    let raw_data_1 = mem_reads[*mem_reads_index];
+                    *mem_reads_index += 1;
+                    assert!(*mem_reads_index < mem_reads.len());
+                    let raw_data_2 = mem_reads[*mem_reads_index];
+                    *mem_reads_index += 1;
+                    self.ctx.inst_ctx.a =
+                        Mem::get_double_not_aligned_data(address, 8, raw_data_1, raw_data_2);
+                    let payload = MemBusHelpers::mem_load(
+                        address as u32,
+                        self.ctx.inst_ctx.step,
+                        0,
+                        8,
+                        [raw_data_1, raw_data_2],
+                    );
+                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                }
+                /*println!(
+                    "Emu::source_a_mem_reads_consume() mem_leads_index={} value={:x}",
+                    *mem_reads_index, self.ctx.inst_ctx.a
+                );*/
+
+                // Feed the stats
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_read(address, 8);
+                }
+            }
+            SRC_IMM => {
+                self.ctx.inst_ctx.a = instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32)
+            }
+            SRC_STEP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.step,
+            // #[cfg(feature = "sp")]
+            // SRC_SP => self.ctx.inst_ctx.a = self.ctx.inst_ctx.sp,
+            _ => panic!(
+                "Emu::source_a_mem_reads_consume_databus() Invalid a_src={} pc={}",
                 instruction.a_src, self.ctx.inst_ctx.pc
             ),
         }
@@ -154,11 +374,21 @@ impl<'a> Emu<'a> {
         match instruction.b_src {
             SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
             SRC_MEM => {
+                // Calculate memory address
                 let mut addr = instruction.b_offset_imm0;
                 if instruction.b_use_sp_imm1 != 0 {
                     addr += self.ctx.inst_ctx.sp;
                 }
-                self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, 8);
+
+                // If the operation is a register operation, get it from the context registers
+                if Mem::address_is_register(addr) {
+                    self.ctx.inst_ctx.b = self.get_reg(Mem::address_to_register_index(addr));
+                }
+                // Otherwise, get it from memory
+                else {
+                    self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, 8);
+                    self.ctx.trace.steps.mem_reads.push(self.ctx.inst_ctx.b);
+                }
                 if self.ctx.do_stats {
                     self.ctx.stats.on_memory_read(addr, 8);
                 }
@@ -167,12 +397,22 @@ impl<'a> Emu<'a> {
                 self.ctx.inst_ctx.b = instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32)
             }
             SRC_IND => {
+                // Calculate memory address
                 let mut addr =
                     (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
                 if instruction.b_use_sp_imm1 != 0 {
                     addr += self.ctx.inst_ctx.sp;
                 }
-                self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, instruction.ind_width);
+
+                // If the operation is a register operation, get it from the context registers
+                if Mem::address_is_register(addr) {
+                    self.ctx.inst_ctx.b = self.get_reg(Mem::address_to_register_index(addr));
+                }
+                // Otherwise, get it from memory
+                else {
+                    self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, instruction.ind_width);
+                    self.ctx.trace.steps.mem_reads.push(self.ctx.inst_ctx.b);
+                }
                 if self.ctx.do_stats {
                     self.ctx.stats.on_memory_read(addr, instruction.ind_width);
                 }
@@ -186,87 +426,390 @@ impl<'a> Emu<'a> {
 
     /// Calculate the 'b' register value based on the source specified by the current instruction
     #[inline(always)]
-    pub fn source_b_memory(
+    pub fn source_b_mem_reads_generate(
         &mut self,
         instruction: &ZiskInst,
-        emu_mem: &mut Vec<ZiskRequiredMemory>,
+        mem_reads: &mut Vec<u64>,
     ) {
         match instruction.b_src {
             SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
             SRC_MEM => {
-                // Build the memory address
-                let mut addr = instruction.b_offset_imm0;
+                // Calculate memory address
+                let mut address = instruction.b_offset_imm0;
                 if instruction.b_use_sp_imm1 != 0 {
-                    addr += self.ctx.inst_ctx.sp;
+                    address += self.ctx.inst_ctx.sp;
                 }
 
-                // Call read_required to get both the read value and the additional data (aligned
-                // read values required to construct the requested read value, if not aligned)
-                let additional_data: Vec<u64>;
-                (self.ctx.inst_ctx.b, additional_data) =
-                    self.ctx.inst_ctx.mem.read_required(addr, 8);
+                // If the operation is a register operation, get it from the context registers
+                if Mem::address_is_register(address) {
+                    self.ctx.inst_ctx.b = self.get_reg(Mem::address_to_register_index(address));
+                }
+                // Otherwise, get it from memory
+                else if Mem::is_full_aligned(address, 8) {
+                    self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(address, 8);
+                    mem_reads.push(self.ctx.inst_ctx.b);
+                } else {
+                    let mut additional_data: Vec<u64>;
+                    (self.ctx.inst_ctx.b, additional_data) =
+                        self.ctx.inst_ctx.mem.read_required(address, 8);
+                    debug_assert!(!additional_data.is_empty());
+                    mem_reads.append(&mut additional_data);
+                }
+                /*println!(
+                    "Emu::source_b_mem_reads_generate() mem_leads.len={} value={:x}",
+                    mem_reads.len(),
+                    self.ctx.inst_ctx.b
+                );*/
 
-                // Store the read value into the vector as a basic record
-                let required_memory = ZiskRequiredMemory::Basic {
-                    step: self.ctx.inst_ctx.step,
-                    step_offset: 1,
-                    is_write: false,
-                    address: addr as u32,
-                    width: 8,
-                    value: self.ctx.inst_ctx.b,
-                };
-                emu_mem.push(required_memory);
-
-                // Store the additional data, if any, as extended records
-                if !additional_data.is_empty() {
-                    assert!(additional_data.len() <= 2);
-                    let mut values: [u64; 2] = [0; 2];
-                    values[..additional_data.len()].copy_from_slice(&additional_data[..]);
-                    let required_memory =
-                        ZiskRequiredMemory::Extended { values, address: addr as u32 };
-                    emu_mem.push(required_memory);
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_read(address, 8);
                 }
             }
             SRC_IMM => {
                 self.ctx.inst_ctx.b = instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32)
             }
             SRC_IND => {
-                // Build the memory address
-                let mut addr =
+                // Calculate memory address
+                let mut address =
                     (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
                 if instruction.b_use_sp_imm1 != 0 {
-                    addr += self.ctx.inst_ctx.sp;
+                    address += self.ctx.inst_ctx.sp;
                 }
 
-                // Call read_required to get both the read value and the additional data (aligned
-                // read values required to construct the requested read value, if not aligned)
-                let additional_data: Vec<u64>;
-                (self.ctx.inst_ctx.b, additional_data) =
-                    self.ctx.inst_ctx.mem.read_required(addr, instruction.ind_width);
+                // If the operation is a register operation, get it from the context registers
+                if Mem::address_is_register(address) {
+                    assert!(instruction.ind_width == 8);
+                    self.ctx.inst_ctx.b = self.get_reg(Mem::address_to_register_index(address));
+                }
+                // Otherwise, get it from memory
+                else if Mem::is_full_aligned(address, instruction.ind_width) {
+                    self.ctx.inst_ctx.b =
+                        self.ctx.inst_ctx.mem.read(address, instruction.ind_width);
+                    mem_reads.push(self.ctx.inst_ctx.b);
+                } else {
+                    let mut additional_data: Vec<u64>;
+                    (self.ctx.inst_ctx.b, additional_data) =
+                        self.ctx.inst_ctx.mem.read_required(address, instruction.ind_width);
+                    debug_assert!(!additional_data.is_empty());
+                    mem_reads.append(&mut additional_data);
+                }
+                /*println!(
+                    "Emu::source_b_mem_reads_generate() mem_leads.len={} value={:x}",
+                    mem_reads.len(),
+                    self.ctx.inst_ctx.b
+                );*/
 
-                // Store the read value into the vector as a basic record
-                let required_memory = ZiskRequiredMemory::Basic {
-                    step: self.ctx.inst_ctx.step,
-                    step_offset: 1,
-                    is_write: false,
-                    address: addr as u32,
-                    width: instruction.ind_width as u8,
-                    value: self.ctx.inst_ctx.b,
-                };
-                emu_mem.push(required_memory);
-
-                // Store the additional data, if any, as extended records
-                if !additional_data.is_empty() {
-                    assert!(additional_data.len() <= 2);
-                    let mut values: [u64; 2] = [0; 2];
-                    values[..additional_data.len()].copy_from_slice(&additional_data[..]);
-                    let required_memory =
-                        ZiskRequiredMemory::Extended { values, address: addr as u32 };
-                    emu_mem.push(required_memory);
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_read(address, instruction.ind_width);
                 }
             }
             _ => panic!(
-                "Emu::source_b() Invalid b_src={} pc={}",
+                "Emu::source_b_mem_reads_generate() Invalid b_src={} pc={}",
+                instruction.b_src, self.ctx.inst_ctx.pc
+            ),
+        }
+    }
+
+    /// Calculate the 'b' register value based on the source specified by the current instruction,
+    /// using formerly generated memory reads from a previous emulation
+    #[inline(always)]
+    pub fn source_b_mem_reads_consume(
+        &mut self,
+        instruction: &ZiskInst,
+        mem_reads: &[u64],
+        mem_reads_index: &mut usize,
+    ) {
+        match instruction.b_src {
+            SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
+            SRC_MEM => {
+                // Calculate memory address
+                let mut address = instruction.b_offset_imm0;
+                if instruction.b_use_sp_imm1 != 0 {
+                    address += self.ctx.inst_ctx.sp;
+                }
+
+                // If the operation is a register operation, get it from the context registers
+                if Mem::address_is_register(address) {
+                    self.ctx.inst_ctx.b = self.get_reg(Mem::address_to_register_index(address));
+                }
+                // Otherwise, get it from memory
+                else if Mem::is_full_aligned(address, 8) {
+                    assert!(*mem_reads_index < mem_reads.len());
+                    self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
+                    *mem_reads_index += 1;
+                } else {
+                    let (required_address_1, required_address_2) =
+                        Mem::required_addresses(address, 8);
+                    if required_address_1 == required_address_2 {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        self.ctx.inst_ctx.b =
+                            Mem::get_single_not_aligned_data(address, 8, raw_data);
+                    } else {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_1 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_2 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        self.ctx.inst_ctx.b =
+                            Mem::get_double_not_aligned_data(address, 8, raw_data_1, raw_data_2);
+                    }
+                }
+                /*println!(
+                    "Emu::source_b_mem_reads_consume() mem_leads_index={} value={:x}",
+                    *mem_reads_index, self.ctx.inst_ctx.b
+                );*/
+
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_read(address, 8);
+                }
+            }
+            SRC_IMM => {
+                self.ctx.inst_ctx.b = instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32)
+            }
+            SRC_IND => {
+                // Calculate memory address
+                let mut address =
+                    (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
+                if instruction.b_use_sp_imm1 != 0 {
+                    address += self.ctx.inst_ctx.sp;
+                }
+
+                // If the operation is a register operation, get it from the context registers
+                if Mem::address_is_register(address) {
+                    assert!(instruction.ind_width == 8);
+                    self.ctx.inst_ctx.b = self.get_reg(Mem::address_to_register_index(address));
+                }
+                // Otherwise, get it from memory
+                else if Mem::is_full_aligned(address, instruction.ind_width) {
+                    assert!(*mem_reads_index < mem_reads.len());
+                    self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
+                    *mem_reads_index += 1;
+                } else {
+                    let (required_address_1, required_address_2) =
+                        Mem::required_addresses(address, instruction.ind_width);
+                    if required_address_1 == required_address_2 {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        self.ctx.inst_ctx.b = Mem::get_single_not_aligned_data(
+                            address,
+                            instruction.ind_width,
+                            raw_data,
+                        );
+                    } else {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_1 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_2 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        self.ctx.inst_ctx.b = Mem::get_double_not_aligned_data(
+                            address,
+                            instruction.ind_width,
+                            raw_data_1,
+                            raw_data_2,
+                        );
+                    }
+                }
+                /*println!(
+                    "Emu::source_b_mem_reads_consume() mem_leads_index={} value={:x}",
+                    *mem_reads_index, self.ctx.inst_ctx.b
+                );*/
+
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_read(address, instruction.ind_width);
+                }
+            }
+            _ => panic!(
+                "Emu::source_b_mem_reads_consume() Invalid b_src={} pc={}",
+                instruction.b_src, self.ctx.inst_ctx.pc
+            ),
+        }
+    }
+
+    /// Calculate the 'b' register value based on the source specified by the current instruction,
+    /// using formerly generated memory reads from a previous emulation
+    #[inline(always)]
+    pub fn source_b_mem_reads_consume_databus<BD: BusDevice<u64>>(
+        &mut self,
+        instruction: &ZiskInst,
+        mem_reads: &[u64],
+        mem_reads_index: &mut usize,
+        data_bus: &mut DataBus<u64, BD>,
+    ) {
+        match instruction.b_src {
+            SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
+            SRC_MEM => {
+                // Calculate memory address
+                let mut address = instruction.b_offset_imm0;
+                if instruction.b_use_sp_imm1 != 0 {
+                    address += self.ctx.inst_ctx.sp;
+                }
+
+                // If the operation is a register operation, get it from the context registers
+                if Mem::address_is_register(address) {
+                    self.ctx.inst_ctx.b = self.get_reg(Mem::address_to_register_index(address));
+                    let payload = MemBusHelpers::mem_load(
+                        address as u32,
+                        self.ctx.inst_ctx.step,
+                        1,
+                        8,
+                        [self.ctx.inst_ctx.b, 0],
+                    );
+                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                }
+                // Otherwise, get it from memory
+                else if Mem::is_full_aligned(address, 8) {
+                    assert!(*mem_reads_index < mem_reads.len());
+                    self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
+                    *mem_reads_index += 1;
+                    let payload = MemBusHelpers::mem_load(
+                        address as u32,
+                        self.ctx.inst_ctx.step,
+                        1,
+                        8,
+                        [self.ctx.inst_ctx.b, 0],
+                    );
+                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                } else {
+                    let (required_address_1, required_address_2) =
+                        Mem::required_addresses(address, 8);
+                    if required_address_1 == required_address_2 {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        self.ctx.inst_ctx.b =
+                            Mem::get_single_not_aligned_data(address, 8, raw_data);
+                        let payload = MemBusHelpers::mem_load(
+                            address as u32,
+                            self.ctx.inst_ctx.step,
+                            1,
+                            8,
+                            [raw_data, 0],
+                        );
+                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                    } else {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_1 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_2 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        self.ctx.inst_ctx.b =
+                            Mem::get_double_not_aligned_data(address, 8, raw_data_1, raw_data_2);
+                        let payload = MemBusHelpers::mem_load(
+                            address as u32,
+                            self.ctx.inst_ctx.step,
+                            1,
+                            8,
+                            [raw_data_1, raw_data_2],
+                        );
+                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                    }
+                }
+                /*println!(
+                    "Emu::source_b_mem_reads_consume() mem_leads_index={} value={:x}",
+                    *mem_reads_index, self.ctx.inst_ctx.b
+                );*/
+
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_read(address, 8);
+                }
+            }
+            SRC_IMM => {
+                self.ctx.inst_ctx.b = instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32)
+            }
+            SRC_IND => {
+                // Calculate memory address
+                let mut address =
+                    (self.ctx.inst_ctx.a as i64 + instruction.b_offset_imm0 as i64) as u64;
+                if instruction.b_use_sp_imm1 != 0 {
+                    address += self.ctx.inst_ctx.sp;
+                }
+
+                // If the operation is a register operation, get it from the context registers
+                if Mem::address_is_register(address) {
+                    assert!(instruction.ind_width == 8);
+                    self.ctx.inst_ctx.b = self.get_reg(Mem::address_to_register_index(address));
+                    let payload = MemBusHelpers::mem_load(
+                        address as u32,
+                        self.ctx.inst_ctx.step,
+                        1,
+                        8,
+                        [self.ctx.inst_ctx.b, 0],
+                    );
+                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                }
+                // Otherwise, get it from memory
+                else if Mem::is_full_aligned(address, instruction.ind_width) {
+                    assert!(*mem_reads_index < mem_reads.len());
+                    self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
+                    *mem_reads_index += 1;
+                    let payload = MemBusHelpers::mem_load(
+                        address as u32,
+                        self.ctx.inst_ctx.step,
+                        1,
+                        8,
+                        [self.ctx.inst_ctx.b, 0],
+                    );
+                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                } else {
+                    let (required_address_1, required_address_2) =
+                        Mem::required_addresses(address, instruction.ind_width);
+                    if required_address_1 == required_address_2 {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        self.ctx.inst_ctx.b = Mem::get_single_not_aligned_data(
+                            address,
+                            instruction.ind_width,
+                            raw_data,
+                        );
+                        let payload = MemBusHelpers::mem_load(
+                            address as u32,
+                            self.ctx.inst_ctx.step,
+                            1,
+                            instruction.ind_width as u8,
+                            [raw_data, 0],
+                        );
+                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                    } else {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_1 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_2 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        self.ctx.inst_ctx.b = Mem::get_double_not_aligned_data(
+                            address,
+                            instruction.ind_width,
+                            raw_data_1,
+                            raw_data_2,
+                        );
+                        let payload = MemBusHelpers::mem_load(
+                            address as u32,
+                            self.ctx.inst_ctx.step,
+                            1,
+                            8,
+                            [raw_data_1, raw_data_2],
+                        );
+                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                    }
+                }
+                /*println!(
+                    "Emu::source_b_mem_reads_consume() mem_leads_index={} value={:x}",
+                    *mem_reads_index, self.ctx.inst_ctx.b
+                );*/
+
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_memory_read(address, instruction.ind_width);
+                }
+            }
+            _ => panic!(
+                "Emu::source_b_mem_reads_consume_databus() Invalid b_src={} pc={}",
                 instruction.b_src, self.ctx.inst_ctx.pc
             ),
         }
@@ -278,34 +821,62 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_MEM => {
+                // Calculate value
                 let val: i64 = if instruction.store_ra {
                     self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
                 } else {
                     self.ctx.inst_ctx.c as i64
                 };
+                let val = val as u64;
+
+                // Calculate memory address
                 let mut addr: i64 = instruction.store_offset;
                 if instruction.store_use_sp {
                     addr += self.ctx.inst_ctx.sp as i64;
                 }
-                self.ctx.inst_ctx.mem.write(addr as u64, val as u64, 8);
+                debug_assert!(addr >= 0);
+                let addr = addr as u64;
+
+                // If the operation is a register operation, write it to the context registers
+                if Mem::address_is_register(addr) {
+                    self.set_reg(Mem::address_to_register_index(addr), val);
+                }
+                // Otherwise, get it from memory
+                else {
+                    self.ctx.inst_ctx.mem.write(addr, val, 8);
+                }
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_memory_write(addr as u64, 8);
+                    self.ctx.stats.on_memory_write(addr, 8);
                 }
             }
             STORE_IND => {
+                // Calculate value
                 let val: i64 = if instruction.store_ra {
                     self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
                 } else {
                     self.ctx.inst_ctx.c as i64
                 };
+                let val = val as u64;
+
+                // Calculate memory address
                 let mut addr = instruction.store_offset;
                 if instruction.store_use_sp {
                     addr += self.ctx.inst_ctx.sp as i64;
                 }
                 addr += self.ctx.inst_ctx.a as i64;
-                self.ctx.inst_ctx.mem.write(addr as u64, val as u64, instruction.ind_width);
+                debug_assert!(addr >= 0);
+                let addr = addr as u64;
+
+                // If the operation is a register operation, write it to the context registers
+                if Mem::address_is_register(addr) {
+                    self.set_reg(Mem::address_to_register_index(addr), val);
+                }
+                // Otherwise, get it from memory
+                else {
+                    self.ctx.inst_ctx.mem.write(addr, val, instruction.ind_width);
+                }
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_memory_write(addr as u64, instruction.ind_width);
+                    self.ctx.stats.on_memory_write(addr, instruction.ind_width);
                 }
             }
             _ => panic!(
@@ -315,101 +886,357 @@ impl<'a> Emu<'a> {
         }
     }
 
-    /// Store the 'c' register value based on the storage specified by the current instruction
+    /// Store the 'c' register value based on the storage specified by the current instruction and
+    /// log memory access if required
     #[inline(always)]
-    pub fn store_c_memory(
+    pub fn store_c_mem_reads_generate(&mut self, instruction: &ZiskInst, mem_reads: &mut Vec<u64>) {
+        match instruction.store {
+            STORE_NONE => {}
+            STORE_MEM => {
+                // Calculate the value
+                let value: i64 = if instruction.store_ra {
+                    self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
+                } else {
+                    self.ctx.inst_ctx.c as i64
+                };
+                let value: u64 = value as u64;
+
+                // Calculate the memory address
+                let mut address: i64 = instruction.store_offset;
+                if instruction.store_use_sp {
+                    address += self.ctx.inst_ctx.sp as i64;
+                }
+                debug_assert!(address >= 0);
+                let address = address as u64;
+
+                // If the operation is a register operation, write it to the context registers
+                if Mem::address_is_register(address) {
+                    self.set_reg(Mem::address_to_register_index(address), value);
+                }
+                // Otherwise, if not aligned, get old raw data from memory, then write it
+                else if Mem::is_full_aligned(address, 8) {
+                    self.ctx.inst_ctx.mem.write(address, value, 8);
+                } else {
+                    let mut additional_data: Vec<u64>;
+                    (self.ctx.inst_ctx.b, additional_data) =
+                        self.ctx.inst_ctx.mem.read_required(address, 8);
+                    debug_assert!(!additional_data.is_empty());
+                    mem_reads.append(&mut additional_data);
+
+                    self.ctx.inst_ctx.mem.write(address, value, 8);
+                }
+            }
+            STORE_IND => {
+                // Calculate the value
+                let value: i64 = if instruction.store_ra {
+                    self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
+                } else {
+                    self.ctx.inst_ctx.c as i64
+                };
+                let value = value as u64;
+
+                // Calculate the memory address
+                let mut address = instruction.store_offset;
+                if instruction.store_use_sp {
+                    address += self.ctx.inst_ctx.sp as i64;
+                }
+                address += self.ctx.inst_ctx.a as i64;
+                debug_assert!(address >= 0);
+                let address = address as u64;
+
+                // If the operation is a register operation, write it to the context registers
+                if Mem::address_is_register(address) {
+                    assert!(instruction.ind_width == 8);
+                    self.set_reg(Mem::address_to_register_index(address), value);
+                }
+                // Otherwise, if not aligned, get old raw data from memory, then write it
+                else if Mem::is_full_aligned(address, instruction.ind_width) {
+                    self.ctx.inst_ctx.mem.write(address, value, instruction.ind_width);
+                } else {
+                    let mut additional_data: Vec<u64>;
+                    (self.ctx.inst_ctx.b, additional_data) =
+                        self.ctx.inst_ctx.mem.read_required(address, instruction.ind_width);
+                    debug_assert!(!additional_data.is_empty());
+                    mem_reads.append(&mut additional_data);
+
+                    self.ctx.inst_ctx.mem.write(address, value, instruction.ind_width);
+                }
+            }
+            _ => panic!(
+                "Emu::store_c_mem_reads_generate() Invalid store={} pc={}",
+                instruction.store, self.ctx.inst_ctx.pc
+            ),
+        }
+    }
+
+    /// Store the 'c' register value based on the storage specified by the current instruction and
+    /// log memory access if required
+    #[inline(always)]
+    pub fn store_c_mem_reads_consume(
         &mut self,
         instruction: &ZiskInst,
-        emu_mem: &mut Vec<ZiskRequiredMemory>,
+        mem_reads: &[u64],
+        mem_reads_index: &mut usize,
     ) {
         match instruction.store {
             STORE_NONE => {}
             STORE_MEM => {
-                // Calculate the value to write
-                let val: i64 = if instruction.store_ra {
-                    self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
-                } else {
-                    self.ctx.inst_ctx.c as i64
-                };
-
-                // Build the memory address
-                let mut addr: i64 = instruction.store_offset;
+                // Calculate the memory address
+                let mut address: i64 = instruction.store_offset;
                 if instruction.store_use_sp {
-                    addr += self.ctx.inst_ctx.sp as i64;
+                    address += self.ctx.inst_ctx.sp as i64;
                 }
+                debug_assert!(address >= 0);
+                let address = address as u64;
 
-                // Call write_silent_required to get the additional data (aligned read values
-                // required to construct the new written data, if not aligned)
-                let additional_data: Vec<u64> =
-                    self.ctx.inst_ctx.mem.write_silent_required(addr as u64, val as u64, 8);
+                // If the operation is a register operation, write it to the context registers
+                if Mem::address_is_register(address) {
+                    // Calculate the value
+                    let value: i64 = if instruction.store_ra {
+                        self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
+                    } else {
+                        self.ctx.inst_ctx.c as i64
+                    };
+                    let value = value as u64;
 
-                // Store the written value into the vector as a basic record
-                let required_memory = ZiskRequiredMemory::Basic {
-                    step: self.ctx.inst_ctx.step,
-                    step_offset: 2,
-                    is_write: true,
-                    address: addr as u32,
-                    width: 8,
-                    value: val as u64,
-                };
-                emu_mem.push(required_memory);
-
-                // Store the additional data, if any, as extended records
-                if !additional_data.is_empty() {
-                    assert!(additional_data.len() <= 2);
-                    let mut values: [u64; 2] = [0; 2];
-                    values[..additional_data.len()].copy_from_slice(&additional_data[..]);
-                    let required_memory =
-                        ZiskRequiredMemory::Extended { values, address: addr as u32 };
-                    emu_mem.push(required_memory);
+                    self.set_reg(Mem::address_to_register_index(address), value);
+                }
+                // Otherwise, if not aligned, get old raw data from memory, then write it
+                else if !Mem::is_full_aligned(address, 8) {
+                    let (required_address_1, required_address_2) =
+                        Mem::required_addresses(address, 8);
+                    if required_address_1 == required_address_2 {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        *mem_reads_index += 1;
+                    } else {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        *mem_reads_index += 1;
+                        assert!(*mem_reads_index < mem_reads.len());
+                        *mem_reads_index += 1;
+                    }
                 }
             }
             STORE_IND => {
-                // Calculate the value to write
-                let val: i64 = if instruction.store_ra {
+                // Calculate the memory address
+                let mut address = instruction.store_offset;
+                if instruction.store_use_sp {
+                    address += self.ctx.inst_ctx.sp as i64;
+                }
+                address += self.ctx.inst_ctx.a as i64;
+                debug_assert!(address >= 0);
+                let address = address as u64;
+
+                // If the operation is a register operation, write it to the context registers
+                if Mem::address_is_register(address) {
+                    // Calculate the value
+                    let value: i64 = if instruction.store_ra {
+                        self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
+                    } else {
+                        self.ctx.inst_ctx.c as i64
+                    };
+                    let value = value as u64;
+
+                    assert!(instruction.ind_width == 8);
+                    self.set_reg(Mem::address_to_register_index(address), value);
+                }
+                // Otherwise, if not aligned, get old raw data from memory, then write it
+                else if !Mem::is_full_aligned(address, instruction.ind_width) {
+                    let (required_address_1, required_address_2) =
+                        Mem::required_addresses(address, instruction.ind_width);
+                    if required_address_1 == required_address_2 {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        *mem_reads_index += 1;
+                    } else {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        *mem_reads_index += 1;
+                        assert!(*mem_reads_index < mem_reads.len());
+                        *mem_reads_index += 1;
+                    }
+                }
+            }
+            _ => panic!(
+                "Emu::store_c_mem_reads_consume() Invalid store={} pc={}",
+                instruction.store, self.ctx.inst_ctx.pc
+            ),
+        }
+    }
+
+    /// Store the 'c' register value based on the storage specified by the current instruction and
+    /// log memory access if required
+    #[inline(always)]
+    pub fn store_c_mem_reads_consume_databus<BD: BusDevice<u64>>(
+        &mut self,
+        instruction: &ZiskInst,
+        mem_reads: &[u64],
+        mem_reads_index: &mut usize,
+        data_bus: &mut DataBus<u64, BD>,
+    ) {
+        match instruction.store {
+            STORE_NONE => {}
+            STORE_MEM => {
+                // Calculate the value
+                let value: i64 = if instruction.store_ra {
                     self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
                 } else {
                     self.ctx.inst_ctx.c as i64
                 };
+                let value = value as u64;
 
-                // Build the memory address
-                let mut addr = instruction.store_offset;
+                // Calculate the memory address
+                let mut address: i64 = instruction.store_offset;
                 if instruction.store_use_sp {
-                    addr += self.ctx.inst_ctx.sp as i64;
+                    address += self.ctx.inst_ctx.sp as i64;
                 }
-                addr += self.ctx.inst_ctx.a as i64;
+                debug_assert!(address >= 0);
+                let address = address as u64;
 
-                // Call write_silent_required to get the additional data (aligned read values
-                // required to construct the new written data, if not aligned)
-                let additional_data: Vec<u64> = self.ctx.inst_ctx.mem.write_silent_required(
-                    addr as u64,
-                    val as u64,
-                    instruction.ind_width,
-                );
+                // If the operation is a register operation, write it to the context registers
+                if Mem::address_is_register(address) {
+                    self.set_reg(Mem::address_to_register_index(address), value);
 
-                // Store the written value into the vector as a basic record
-                let required_memory = ZiskRequiredMemory::Basic {
-                    step: self.ctx.inst_ctx.step,
-                    step_offset: 2,
-                    is_write: true,
-                    address: addr as u32,
-                    width: instruction.ind_width as u8,
-                    value: val as u64,
+                    let payload = MemBusHelpers::mem_write(
+                        address as u32,
+                        self.ctx.inst_ctx.step,
+                        2,
+                        8,
+                        value,
+                        [value, 0],
+                    );
+                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                } else if Mem::is_full_aligned(address, 8) {
+                    let payload = MemBusHelpers::mem_write(
+                        address as u32,
+                        self.ctx.inst_ctx.step,
+                        2,
+                        8,
+                        value,
+                        [value, 0],
+                    );
+                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                }
+                // Otherwise, if not aligned, get old raw data from memory, then write it
+                else {
+                    let (required_address_1, required_address_2) =
+                        Mem::required_addresses(address, 8);
+                    if required_address_1 == required_address_2 {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+
+                        let payload = MemBusHelpers::mem_write(
+                            address as u32,
+                            self.ctx.inst_ctx.step,
+                            2,
+                            8,
+                            value,
+                            [raw_data, 0],
+                        );
+                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                    } else {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_1 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_2 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+
+                        let payload = MemBusHelpers::mem_write(
+                            address as u32,
+                            self.ctx.inst_ctx.step,
+                            2,
+                            8,
+                            value,
+                            [raw_data_1, raw_data_2],
+                        );
+                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                    }
+                }
+            }
+            STORE_IND => {
+                // Calculate the value
+                let value: i64 = if instruction.store_ra {
+                    self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
+                } else {
+                    self.ctx.inst_ctx.c as i64
                 };
-                emu_mem.push(required_memory);
+                let value = value as u64;
 
-                // Store the additional data, if any, as extended records
-                if !additional_data.is_empty() {
-                    assert!(additional_data.len() <= 2);
-                    let mut values: [u64; 2] = [0; 2];
-                    values[..additional_data.len()].copy_from_slice(&additional_data[..]);
-                    let required_memory =
-                        ZiskRequiredMemory::Extended { values, address: addr as u32 };
-                    emu_mem.push(required_memory);
+                // Calculate the memory address
+                let mut address = instruction.store_offset;
+                if instruction.store_use_sp {
+                    address += self.ctx.inst_ctx.sp as i64;
+                }
+                address += self.ctx.inst_ctx.a as i64;
+                debug_assert!(address >= 0);
+                let address = address as u64;
+
+                // If the operation is a register operation, write it to the context registers
+                if Mem::address_is_register(address) {
+                    assert!(instruction.ind_width == 8);
+                    self.set_reg(Mem::address_to_register_index(address), value);
+
+                    let payload = MemBusHelpers::mem_write(
+                        address as u32,
+                        self.ctx.inst_ctx.step,
+                        2,
+                        8,
+                        value,
+                        [value, 0],
+                    );
+                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                }
+                // Otherwise, if aligned
+                else if Mem::is_full_aligned(address, instruction.ind_width) {
+                    let payload = MemBusHelpers::mem_write(
+                        address as u32,
+                        self.ctx.inst_ctx.step,
+                        2,
+                        instruction.ind_width as u8,
+                        value,
+                        [value, 0],
+                    );
+                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                }
+                // Otherwise, if not aligned, get old raw data from memory, then write it
+                else {
+                    let (required_address_1, required_address_2) =
+                        Mem::required_addresses(address, instruction.ind_width);
+                    if required_address_1 == required_address_2 {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+
+                        let payload = MemBusHelpers::mem_write(
+                            address as u32,
+                            self.ctx.inst_ctx.step,
+                            2,
+                            instruction.ind_width as u8,
+                            value,
+                            [raw_data, 0],
+                        );
+                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                    } else {
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_1 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+                        assert!(*mem_reads_index < mem_reads.len());
+                        let raw_data_2 = mem_reads[*mem_reads_index];
+                        *mem_reads_index += 1;
+
+                        let payload = MemBusHelpers::mem_write(
+                            address as u32,
+                            self.ctx.inst_ctx.step,
+                            2,
+                            instruction.ind_width as u8,
+                            value,
+                            [raw_data_1, raw_data_2],
+                        );
+                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                    }
                 }
             }
             _ => panic!(
-                "Emu::store_c() Invalid store={} pc={}",
+                "Emu::store_c_mem_reads_consume_databus() Invalid store={} pc={}",
                 instruction.store, self.ctx.inst_ctx.pc
             ),
         }
@@ -425,8 +1252,7 @@ impl<'a> Emu<'a> {
     //         self.ctx.inst_ctx.sp += instruction.inc_sp;
     //     }
     // }
-
-    // Set PC, based on current PC, current flag and current instruction
+    /// Set PC, based on current PC, current flag and current instruction
     #[inline(always)]
     pub fn set_pc(&mut self, instruction: &ZiskInst) {
         if instruction.set_pc {
@@ -461,30 +1287,6 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step += 1;
     }
 
-    /// Run the whole program, getting pc histogram
-    #[inline(always)]
-    pub fn run_pc_histogram(&mut self, inputs: Vec<u8>, options: &EmuOptions) -> ZiskPcHistogram {
-        // Create an empty pc histogram
-        let mut histogram = ZiskPcHistogram::default();
-
-        // Context, where the state of the execution is stored and modified at every execution step
-        self.ctx = self.create_emu_context(inputs);
-
-        // Run the steps
-        while !self.ctx.inst_ctx.end && (self.ctx.inst_ctx.step < options.max_steps) {
-            let count = histogram.map.entry(self.ctx.inst_ctx.pc).or_default();
-            *count += 1;
-            //println!("Emu::run_pc_histogram() adding pc={}", self.ctx.inst_ctx.pc);
-            self.step_fast();
-            if self.ctx.inst_ctx.end {
-                histogram.end_pc = self.ctx.inst_ctx.pc;
-                histogram.steps = self.ctx.inst_ctx.step;
-            }
-        }
-
-        histogram
-    }
-
     /// Run the whole program
     pub fn run(
         &mut self,
@@ -512,7 +1314,7 @@ impl<'a> Emu<'a> {
             }
 
             // Reserve enough entries for all the requested steps between callbacks
-            self.ctx.trace.steps.reserve(self.ctx.callback_steps as usize);
+            self.ctx.trace.steps.mem_reads.reserve(self.ctx.callback_steps as usize);
 
             // Init pc to the rom entry address
             self.ctx.trace.start_state.pc = ROM_ENTRY;
@@ -541,9 +1343,9 @@ impl<'a> Emu<'a> {
             }
 
             // Log emulation step, if requested
-            if options.print_step.is_some() &&
-                (options.print_step.unwrap() != 0) &&
-                ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
+            if options.print_step.is_some()
+                && (options.print_step.unwrap() != 0)
+                && ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
             {
                 println!("step={}", self.ctx.inst_ctx.step);
             }
@@ -605,7 +1407,7 @@ impl<'a> Emu<'a> {
         inputs: Vec<u8>,
         options: &EmuOptions,
         par_options: &ParEmuOptions,
-    ) -> (Vec<EmuTrace>, EmuStartingPoints) {
+    ) -> Vec<EmuTrace> {
         // Context, where the state of the execution is stored and modified at every execution step
         self.ctx = self.create_emu_context(inputs);
 
@@ -616,9 +1418,6 @@ impl<'a> Emu<'a> {
         self.ctx.do_stats = options.stats;
 
         let mut emu_traces = Vec::new();
-        let mut emu_segments = EmuStartingPoints::default();
-
-        let mut segment_count = [0u64; ZISK_OPERATION_TYPE_VARIANTS];
 
         while !self.ctx.inst_ctx.end {
             let block_idx = self.ctx.inst_ctx.step / par_options.num_steps as u64;
@@ -626,7 +1425,7 @@ impl<'a> Emu<'a> {
                 block_idx % par_options.num_threads as u64 == par_options.thread_id as u64;
 
             if !is_my_block {
-                self.par_step_2::<F>(options, par_options, &mut emu_segments, &mut segment_count);
+                self.par_step();
             } else {
                 // Check if is the first step of a new block
                 if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
@@ -636,39 +1435,22 @@ impl<'a> Emu<'a> {
                             sp: self.ctx.inst_ctx.sp,
                             c: self.ctx.inst_ctx.c,
                             step: self.ctx.inst_ctx.step,
+                            regs: self.ctx.inst_ctx.regs,
+                            mem_reads_index: 0,
                         },
                         last_state: EmuTraceStart::default(),
-                        steps: Vec::with_capacity(par_options.num_steps),
+                        steps: EmuTraceSteps {
+                            mem_reads: Vec::with_capacity(par_options.num_steps),
+                            steps: 0,
+                        },
                         end: EmuTraceEnd { end: false },
                     });
                 }
-                self.par_step::<F>(
-                    options,
-                    par_options,
-                    emu_traces.last_mut().unwrap(),
-                    &mut emu_segments,
-                    &mut segment_count,
-                );
+                self.par_step_my_block::<F>(emu_traces.last_mut().unwrap());
             }
         }
 
-        (emu_traces, emu_segments)
-    }
-
-    pub fn par_run_memory<F: PrimeField>(&mut self, inputs: Vec<u8>) -> Vec<ZiskRequiredMemory> {
-        // Context, where the state of the execution is stored and modified at every execution step
-        self.ctx = self.create_emu_context(inputs);
-
-        // Init pc to the rom entry address
-        self.ctx.trace.start_state.pc = ROM_ENTRY;
-
-        let mut emu_mem = Vec::new();
-
-        while !self.ctx.inst_ctx.end {
-            self.par_step_memory::<F>(&mut emu_mem);
-        }
-
-        emu_mem
+        emu_traces
     }
 
     /// Performs one single step of the emulation
@@ -678,13 +1460,8 @@ impl<'a> Emu<'a> {
         let pc = self.ctx.inst_ctx.pc;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
-        /*println!(
-            "Emu::step() executing step={} pc={:x} inst={}",
-            self.ctx.inst_ctx.step,
-            self.ctx.inst_ctx.pc,
-            instruction.to_text()
-        );*/
-        //println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
+        //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
+        // inst.i.to_string()); println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
 
         //println!("PCLOG={}", instruction.to_text());
 
@@ -726,7 +1503,7 @@ impl<'a> Emu<'a> {
         #[cfg(debug_assertions)]
         if options.log_step {
             println!(
-                "step={} pc={} next={} op={}={} a={} b={} c={} flag={} inst={}",
+                "step={} pc={:x} next={:x} op={}={} a={:x} b={:x} c={:x} flag={} inst={}",
                 self.ctx.inst_ctx.step,
                 pc,
                 self.ctx.inst_ctx.pc,
@@ -744,16 +1521,12 @@ impl<'a> Emu<'a> {
 
         // Store an emulator trace, if requested
         if self.ctx.do_callback {
-            let trace_step = EmuTraceStep { a: self.ctx.inst_ctx.a, b: self.ctx.inst_ctx.b };
-
-            self.ctx.trace.steps.push(trace_step);
-
             // Increment step counter
             self.ctx.inst_ctx.step += 1;
 
-            if self.ctx.inst_ctx.end ||
-                ((self.ctx.inst_ctx.step - self.ctx.last_callback_step) ==
-                    self.ctx.callback_steps)
+            if self.ctx.inst_ctx.end
+                || ((self.ctx.inst_ctx.step - self.ctx.last_callback_step)
+                    == self.ctx.callback_steps)
             {
                 // In run() we have checked the callback consistency with ctx.do_callback
                 let callback = callback.as_ref().unwrap();
@@ -763,7 +1536,7 @@ impl<'a> Emu<'a> {
 
                 // Swap the emulator trace to avoid memory copies
                 let mut trace = EmuTrace::default();
-                trace.steps.reserve(self.ctx.callback_steps as usize);
+                trace.steps.mem_reads.reserve(self.ctx.callback_steps as usize);
                 mem::swap(&mut self.ctx.trace, &mut trace);
                 (callback)(trace);
 
@@ -772,6 +1545,7 @@ impl<'a> Emu<'a> {
                 self.ctx.trace.start_state.sp = self.ctx.inst_ctx.sp;
                 self.ctx.trace.start_state.c = self.ctx.inst_ctx.c;
                 self.ctx.trace.start_state.step = self.ctx.inst_ctx.step;
+                self.ctx.trace.start_state.regs = self.ctx.inst_ctx.regs;
 
                 // Increment the last callback step counter
                 self.ctx.last_callback_step += self.ctx.callback_steps;
@@ -784,28 +1558,51 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    #[allow(unused_variables)]
-    pub fn par_step<F: PrimeField>(
-        &mut self,
-        options: &EmuOptions,
-        par_options: &ParEmuOptions,
-        emu_full_trace_vec: &mut EmuTrace,
-        emu_segments: &mut EmuStartingPoints,
-        segment_count: &mut [u64; ZISK_OPERATION_TYPE_VARIANTS],
-    ) {
-        let last_pc = self.ctx.inst_ctx.pc;
-        let last_c = self.ctx.inst_ctx.c;
-
+    pub fn par_step_my_block<F: PrimeField>(&mut self, emu_full_trace_vec: &mut EmuTrace) {
         emu_full_trace_vec.last_state = EmuTraceStart {
             pc: self.ctx.inst_ctx.pc,
             sp: self.ctx.inst_ctx.sp,
             c: self.ctx.inst_ctx.c,
             step: self.ctx.inst_ctx.step,
+            regs: self.ctx.inst_ctx.regs,
+            mem_reads_index: emu_full_trace_vec.steps.mem_reads.len(),
         };
 
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         // Build the 'a' register value  based on the source specified by the current instruction
+        self.source_a_mem_reads_generate(instruction, &mut emu_full_trace_vec.steps.mem_reads);
+
+        // Build the 'b' register value  based on the source specified by the current instruction
+        self.source_b_mem_reads_generate(instruction, &mut emu_full_trace_vec.steps.mem_reads);
+
+        // Call the operation
+        (instruction.func)(&mut self.ctx.inst_ctx);
+
+        // Store the 'c' register value based on the storage specified by the current instruction
+        self.store_c_mem_reads_generate(instruction, &mut emu_full_trace_vec.steps.mem_reads);
+
+        // Set SP, if specified by the current instruction
+        // #[cfg(feature = "sp")]
+        // self.set_sp(instruction);
+
+        // Set PC, based on current PC, current flag and current instruction
+        self.set_pc(instruction);
+
+        // If this is the last instruction, stop executing
+        self.ctx.inst_ctx.end = instruction.end;
+
+        // Increment step counter
+        self.ctx.inst_ctx.step += 1;
+        emu_full_trace_vec.steps.steps += 1;
+    }
+
+    /// Performs one single step of the emulation
+    #[inline(always)]
+    pub fn par_step(&mut self) {
+        let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+
+        // Build the 'a' register value  based on the source specified by the current instruction
         self.source_a(instruction);
 
         // Build the 'b' register value  based on the source specified by the current instruction
@@ -827,203 +1624,155 @@ impl<'a> Emu<'a> {
         // If this is the last instruction, stop executing
         self.ctx.inst_ctx.end = instruction.end;
 
-        emu_full_trace_vec
-            .steps
-            .push(EmuTraceStep { a: self.ctx.inst_ctx.a, b: self.ctx.inst_ctx.b });
-
-        let op_type = instruction.op_type as usize;
-        segment_count[op_type] += 1;
-        emu_segments.total_steps[op_type] += 1;
-
-        if par_options.segment_sizes[op_type] != 0 {
-            if segment_count[op_type] == 1 {
-                emu_segments.add(
-                    instruction.op_type,
-                    last_pc,
-                    self.ctx.inst_ctx.sp,
-                    last_c,
-                    self.ctx.inst_ctx.step,
-                );
-            } else if segment_count[op_type] == par_options.segment_sizes[op_type] {
-                segment_count[op_type] = 0;
-            }
-        }
-
         // Increment step counter
         self.ctx.inst_ctx.step += 1;
     }
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    #[allow(unused_variables)]
-    pub fn par_step_memory<F: PrimeField>(&mut self, emu_mem: &mut Vec<ZiskRequiredMemory>) {
-        //let last_pc = self.ctx.inst_ctx.pc;
-        //let last_c = self.ctx.inst_ctx.c;
-
-        let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-
-        // println!(
-        //     "#### step={} pc={} op={}={} a={} b={} c={} flag={} inst={}",
-        //     self.ctx.inst_ctx.step,
-        //     self.ctx.inst_ctx.pc,
-        //     instruction.op,
-        //     instruction.op_str,
-        //     self.ctx.inst_ctx.a,
-        //     self.ctx.inst_ctx.b,
-        //     self.ctx.inst_ctx.c,
-        //     self.ctx.inst_ctx.flag,
-        //     instruction.to_text()
-        // );
-        // self.print_regs();
-        // println!();
-
-        // Build the 'a' register value  based on the source specified by the current instruction
-        self.source_a_memory(instruction, emu_mem);
-
-        // Build the 'b' register value  based on the source specified by the current instruction
-        self.source_b_memory(instruction, emu_mem);
-
-        // Call the operation
-        (instruction.func)(&mut self.ctx.inst_ctx);
-
-        // Store the 'c' register value based on the storage specified by the current instruction
-        self.store_c_memory(instruction, emu_mem);
-
-        // Set SP, if specified by the current instruction
-        // #[cfg(feature = "sp")]
-        // self.set_sp(instruction);
-
-        // Set PC, based on current PC, current flag and current instruction
-        self.set_pc(instruction);
-
-        // If this is the last instruction, stop executing
-        self.ctx.inst_ctx.end = instruction.end;
-
-        // Increment step counter
-        self.ctx.inst_ctx.step += 1;
-    }
-
-    /// Performs one single step of the emulation
-    #[inline(always)]
-    #[allow(unused_variables)]
-    pub fn par_step_2<F: PrimeField>(
+    pub fn step_emu_trace<F: PrimeField, BD: BusDevice<u64>>(
         &mut self,
-        options: &EmuOptions,
-        par_options: &ParEmuOptions,
-        emu_segments: &mut EmuStartingPoints,
-        segment_count: &mut [u64; ZISK_OPERATION_TYPE_VARIANTS],
-    ) {
-        let last_pc = self.ctx.inst_ctx.pc;
-        let last_c = self.ctx.inst_ctx.c;
-
+        trace_step: &EmuTraceSteps,
+        mem_reads_index: &mut usize,
+        data_bus: &mut DataBus<u64, BD>,
+    ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-
-        // Build the 'a' register value  based on the source specified by the current instruction
-        self.source_a(instruction);
-
-        // Build the 'b' register value  based on the source specified by the current instruction
-        self.source_b(instruction);
-
-        // Call the operation
+        self.source_a_mem_reads_consume_databus(
+            instruction,
+            &trace_step.mem_reads,
+            mem_reads_index,
+            data_bus,
+        );
+        self.source_b_mem_reads_consume_databus(
+            instruction,
+            &trace_step.mem_reads,
+            mem_reads_index,
+            data_bus,
+        );
         (instruction.func)(&mut self.ctx.inst_ctx);
+        self.store_c_mem_reads_consume_databus(
+            instruction,
+            &trace_step.mem_reads,
+            mem_reads_index,
+            data_bus,
+        );
 
-        // Store the 'c' register value based on the storage specified by the current instruction
-        self.store_c(instruction);
+        let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
+        data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload.to_vec());
 
-        // Set SP, if specified by the current instruction
+        let rom_payload = RomBusData::from_instruction(instruction, &self.ctx.inst_ctx);
+        data_bus.write_to_bus(ROM_BUS_ID, rom_payload.to_vec());
+
+        // let finished = inst_observer.on_instruction(instruction, &self.ctx.inst_ctx);
+
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
-
-        // Set PC, based on current PC, current flag and current instruction
         self.set_pc(instruction);
-
-        // If this is the last instruction, stop executing
         self.ctx.inst_ctx.end = instruction.end;
 
-        let op_type = instruction.op_type as usize;
-        segment_count[op_type] += 1;
-        emu_segments.total_steps[op_type] += 1;
-
-        if par_options.segment_sizes[op_type] != 0 {
-            if segment_count[op_type] == 1 {
-                emu_segments.add(
-                    instruction.op_type,
-                    last_pc,
-                    self.ctx.inst_ctx.sp,
-                    last_c,
-                    self.ctx.inst_ctx.step,
-                );
-            } else if segment_count[op_type] == par_options.segment_sizes[op_type] {
-                segment_count[op_type] = 0;
-            }
-        }
-        // Increment step counter
         self.ctx.inst_ctx.step += 1;
+        //trace_step.steps += 1;
+
+        false
     }
 
     /// Run a slice of the program to generate full traces
     #[inline(always)]
-    pub fn run_slice_required<F: PrimeField>(
+    pub fn process_emu_trace<F: PrimeField, BD: BusDevice<u64>>(
+        &mut self,
+        emu_trace: &EmuTrace,
+        data_bus: &mut DataBus<u64, BD>,
+    ) {
+        // Set initial state
+        self.ctx.inst_ctx.pc = emu_trace.start_state.pc;
+        self.ctx.inst_ctx.sp = emu_trace.start_state.sp;
+        self.ctx.inst_ctx.step = emu_trace.start_state.step;
+        self.ctx.inst_ctx.c = emu_trace.start_state.c;
+        self.ctx.inst_ctx.regs = emu_trace.start_state.regs;
+
+        let mut mem_reads_index: usize = 0;
+        let emu_trace_steps = &emu_trace.steps;
+        for _ in 0..emu_trace.steps.steps {
+            self.step_emu_trace::<F, BD>(emu_trace_steps, &mut mem_reads_index, data_bus);
+        }
+    }
+
+    /// Run a slice of the program to generate full traces
+    #[inline(always)]
+    pub fn process_emu_traces<BD: BusDevice<u64>>(
         &mut self,
         vec_traces: &[EmuTrace],
-        op_type: ZiskOperationType,
-        emu_trace_start: &EmuTraceStart,
-        num_rows: usize,
-    ) -> Vec<ZiskRequiredOperation> {
-        let mut result = Vec::new();
-
+        chunk_id: usize,
+        data_bus: &mut DataBus<u64, BD>,
+        is_multiple: bool,
+    ) {
+        let emu_trace_start = &vec_traces[chunk_id].start_state;
         // Set initial state
         self.ctx.inst_ctx.pc = emu_trace_start.pc;
         self.ctx.inst_ctx.sp = emu_trace_start.sp;
         self.ctx.inst_ctx.step = emu_trace_start.step;
         self.ctx.inst_ctx.c = emu_trace_start.c;
+        self.ctx.inst_ctx.regs = emu_trace_start.regs;
 
-        let mut current_box_id = 0;
-        let mut current_step_idx = loop {
-            if current_box_id == vec_traces.len() - 1 ||
-                vec_traces[current_box_id + 1].start_state.step >= emu_trace_start.step
-            {
-                break emu_trace_start.step as usize -
-                    vec_traces[current_box_id].start_state.step as usize;
+        let mut current_chunk = chunk_id;
+        let mut current_step_idx = 0;
+
+        let mut emu_trace_steps = &vec_traces[current_chunk].steps;
+        let mut mem_reads_index: usize = 0;
+        loop {
+            if self.step_emu_traces(emu_trace_steps, &mut mem_reads_index, data_bus) {
+                break;
             }
-            current_box_id += 1;
-        };
-
-        let last_trace = vec_traces.last().unwrap();
-        let last_step = last_trace.start_state.step + last_trace.steps.len() as u64;
-        let mut current_step = emu_trace_start.step;
-
-        while current_step < last_step && result.len() < num_rows {
-            let step = &vec_traces[current_box_id].steps[current_step_idx];
-
-            self.step_slice_required::<F>(step, &op_type, &mut result);
+            if self.ctx.inst_ctx.end {
+                break;
+            }
 
             current_step_idx += 1;
-            if current_step_idx == vec_traces[current_box_id].steps.len() {
-                current_box_id += 1;
+            if current_step_idx == vec_traces[current_chunk].steps.steps {
+                if is_multiple {
+                    break;
+                }
+                current_chunk += 1;
                 current_step_idx = 0;
+                emu_trace_steps = &vec_traces[current_chunk].steps;
+                mem_reads_index = 0;
             }
-
-            current_step += 1;
         }
-
-        // Return emulator slice
-        result
     }
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn step_slice_required<F: PrimeField>(
+    pub fn step_emu_traces<BD: BusDevice<u64>>(
         &mut self,
-        trace_step: &EmuTraceStep,
-        op_type: &ZiskOperationType,
-        required: &mut Vec<ZiskRequiredOperation>,
-    ) {
+        trace_step: &EmuTraceSteps,
+        mem_reads_index: &mut usize,
+        data_bus: &mut DataBus<u64, BD>,
+    ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        self.ctx.inst_ctx.a = trace_step.a;
-        self.ctx.inst_ctx.b = trace_step.b;
+        self.source_a_mem_reads_consume_databus(
+            instruction,
+            &trace_step.mem_reads,
+            mem_reads_index,
+            data_bus,
+        );
+        self.source_b_mem_reads_consume_databus(
+            instruction,
+            &trace_step.mem_reads,
+            mem_reads_index,
+            data_bus,
+        );
         (instruction.func)(&mut self.ctx.inst_ctx);
-        // No need to store c
+        self.store_c_mem_reads_consume_databus(
+            instruction,
+            &trace_step.mem_reads,
+            mem_reads_index,
+            data_bus,
+        );
+        let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
+        if data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload.to_vec()) {
+            return true;
+        }
+
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
         self.set_pc(instruction);
@@ -1031,45 +1780,24 @@ impl<'a> Emu<'a> {
 
         self.ctx.inst_ctx.step += 1;
 
-        // Build and store the operation required data
-        if op_type != &instruction.op_type {
-            return;
-        }
-        match instruction.op_type {
-            ZiskOperationType::Arith | ZiskOperationType::Binary | ZiskOperationType::BinaryE => {
-                let required_operation = ZiskRequiredOperation {
-                    step: self.ctx.inst_ctx.step - 1,
-                    opcode: instruction.op,
-                    a: if instruction.m32 {
-                        self.ctx.inst_ctx.a & 0xffffffff
-                    } else {
-                        self.ctx.inst_ctx.a
-                    },
-                    b: if instruction.m32 {
-                        self.ctx.inst_ctx.b & 0xffffffff
-                    } else {
-                        self.ctx.inst_ctx.b
-                    },
-                };
-                required.push(required_operation);
-            }
-            _ => panic!("Emu::step_slice() found invalid op_type"),
-        }
+        // finished
+        false
     }
 
     /// Performs one single step of the emulation
     #[inline(always)]
     pub fn step_slice_full_trace<F: PrimeField>(
         &mut self,
-        trace_step: &EmuTraceStep,
+        trace_step: &EmuTraceSteps,
+        trace_step_index: &mut usize,
     ) -> EmuFullTraceStep<F> {
         let last_pc = self.ctx.inst_ctx.pc;
         let last_c = self.ctx.inst_ctx.c;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        self.ctx.inst_ctx.a = trace_step.a;
-        self.ctx.inst_ctx.b = trace_step.b;
+        self.source_a_mem_reads_consume(instruction, &trace_step.mem_reads, trace_step_index);
+        self.source_b_mem_reads_consume(instruction, &trace_step.mem_reads, trace_step_index);
         (instruction.func)(&mut self.ctx.inst_ctx);
-        // No need to store c
+        self.store_c_mem_reads_consume(instruction, &trace_step.mem_reads, trace_step_index);
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
         self.set_pc(instruction);
@@ -1084,6 +1812,7 @@ impl<'a> Emu<'a> {
         full_trace_step
     }
 
+    #[inline(always)]
     pub fn build_full_trace_step<F: AbstractField>(
         inst: &ZiskInst,
         inst_ctx: &InstContext,
@@ -1095,8 +1824,8 @@ impl<'a> Emu<'a> {
         let b = [inst_ctx.b & 0xFFFFFFFF, (inst_ctx.b >> 32) & 0xFFFFFFFF];
         let c = [inst_ctx.c & 0xFFFFFFFF, (inst_ctx.c >> 32) & 0xFFFFFFFF];
 
-        let addr1 = (inst.b_offset_imm0 as i64 +
-            if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
+        let addr1 = (inst.b_offset_imm0 as i64
+            + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
 
         let jmp_offset1 = if inst.jmp_offset1 >= 0 {
             F::from_canonical_u64(inst.jmp_offset1 as u64)
@@ -1174,9 +1903,9 @@ impl<'a> Emu<'a> {
             m32: F::from_bool(inst.m32),
             addr1: F::from_canonical_u64(addr1),
             __debug_operation_bus_enabled: F::from_bool(
-                inst.op_type == ZiskOperationType::Arith ||
-                    inst.op_type == ZiskOperationType::Binary ||
-                    inst.op_type == ZiskOperationType::BinaryE,
+                inst.op_type == ZiskOperationType::Arith
+                    || inst.op_type == ZiskOperationType::Binary
+                    || inst.op_type == ZiskOperationType::BinaryE,
             ),
         }
     }
@@ -1242,10 +1971,74 @@ impl<'a> Emu<'a> {
     pub fn get_regs_array(&self) -> [u64; 32] {
         let mut regs_array: [u64; 32] = [0; 32];
         for (i, reg) in regs_array.iter_mut().enumerate() {
-            *reg = self.ctx.inst_ctx.mem.read(SYS_ADDR + (i as u64) * 8, 8);
+            *reg = self.ctx.inst_ctx.regs[i];
         }
         regs_array
     }
+
+    #[inline(always)]
+    pub fn get_reg(&self, index: usize) -> u64 {
+        debug_assert!(index < 32);
+        self.ctx.inst_ctx.regs[index]
+        //println!("Emu::get_reg() index={} value={:x}", index, value);
+    }
+
+    #[inline(always)]
+    pub fn set_reg(&mut self, index: usize, value: u64) {
+        debug_assert!(index < 32);
+        self.ctx.inst_ctx.regs[index] = value;
+        //println!("Emu::set_reg() index={} value={:x}", index, value);
+    }
+
+    // #[inline(always)]
+    // pub fn memory_read(&mut self, address: u64, width: u64) -> u64 {
+    //     let value: u64;
+
+    //     // If the operation is a register operation, get it from the context registers
+    //     if (width == 8) && Mem::address_is_register(address) {
+    //         value = self.get_reg(Mem::address_to_register_index(address));
+    //     }
+    //     // Otherwise, get it from memory
+    //     else {
+    //         assert!(*mem_reads_index < mem_reads.len());
+    //         value = mem_reads[*mem_reads_index];
+    //         *mem_reads_index += 1;
+    //     }
+    //     // Update stats
+    //     if self.ctx.do_stats {
+    //         self.ctx.stats.on_memory_read(address, width);
+    //     }
+
+    //     value
+    // }
+
+    // #[inline(always)]
+    // pub fn memory_read_mem_reads(
+    //     &mut self,
+    //     address: u64,
+    //     width: u64,
+    //     mem_reads: &Vec<u64>,
+    //     mem_reads_index: &mut usize,
+    // ) -> u64 {
+    //     let value: u64;
+
+    //     // If the operation is a register operation, get it from the context registers
+    //     if (width == 8) && Mem::address_is_register(address) {
+    //         value = self.get_reg(Mem::address_to_register_index(address));
+    //     }
+    //     // Otherwise, get it from memory
+    //     else {
+    //         assert!(*mem_reads_index < mem_reads.len());
+    //         value = mem_reads[*mem_reads_index];
+    //         *mem_reads_index += 1;
+    //     }
+    //     // Update stats
+    //     if self.ctx.do_stats {
+    //         self.ctx.stats.on_memory_read(address, width);
+    //     }
+
+    //     value
+    // }
 
     pub fn print_regs(&self) {
         let regs_array: [u64; 32] = self.get_regs_array();

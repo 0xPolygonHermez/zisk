@@ -2,75 +2,226 @@
 // Manual modifications are not recommended and may be overwritten.
 use proofman_common as common;
 pub use proofman_macros::trace;
+pub use proofman_macros::values;
 
-trace!(MainRow, MainTrace<F> {
+use std::fmt;
+
+#[allow(dead_code)]
+type FieldExtension<F> = [F; 3];
+
+pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
+
+//AIRGROUP CONSTANTS
+
+pub const ZISK_AIRGROUP_ID: usize = 0;
+
+//AIR CONSTANTS
+
+pub const MAIN_AIR_IDS: &[usize] = &[0];
+
+pub const ROM_AIR_IDS: &[usize] = &[1];
+
+pub const MEM_AIR_IDS: &[usize] = &[2];
+
+pub const ROM_DATA_AIR_IDS: &[usize] = &[3];
+
+pub const INPUT_DATA_AIR_IDS: &[usize] = &[4];
+
+pub const MEM_ALIGN_AIR_IDS: &[usize] = &[5];
+
+pub const MEM_ALIGN_ROM_AIR_IDS: &[usize] = &[6];
+
+pub const ARITH_AIR_IDS: &[usize] = &[7];
+
+pub const ARITH_TABLE_AIR_IDS: &[usize] = &[8];
+
+pub const ARITH_RANGE_TABLE_AIR_IDS: &[usize] = &[9];
+
+pub const BINARY_AIR_IDS: &[usize] = &[10];
+
+pub const BINARY_TABLE_AIR_IDS: &[usize] = &[11];
+
+pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[12];
+
+pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[13];
+
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[14];
+
+pub const U_8_AIR_AIR_IDS: &[usize] = &[15];
+
+pub const U_16_AIR_AIR_IDS: &[usize] = &[16];
+
+
+//PUBLICS
+use serde::Deserialize;
+use serde::Serialize;
+#[derive(Default, Debug, Serialize, Deserialize)]
+pub struct ZiskPublics {
+    #[serde(default)] 
+    pub rom_root: [u64; 4],
+    
+}
+
+values!(ZiskPublicValues<F> {
+ rom_root: [F; 4],
+});
+ 
+values!(ZiskProofValues<F> {
+ enable_input_data: F,
+});
+ 
+trace!(MainTrace<F> {
  a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, __debug_operation_bus_enabled: F,
-});
+},  0, 0, 2097152 );
 
-trace!(RomRow, RomTrace<F> {
+trace!(RomTrace<F> {
  multiplicity: F,
-});
+},  0, 1, 4194304 );
 
-trace!(MemRow, MemTrace<F> {
+trace!(MemTrace<F> {
  addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: F,
-});
+},  0, 2, 2097152 );
 
-trace!(RomDataRow, RomDataTrace<F> {
+trace!(RomDataTrace<F> {
  addr: F, step: F, sel: F, addr_changes: F, value: [F; 2],
-});
+},  0, 3, 2097152 );
 
-trace!(InputDataRow, InputDataTrace<F> {
+trace!(InputDataTrace<F> {
  addr: F, step: F, sel: F, addr_changes: F, value_word: [F; 4],
-});
+},  0, 4, 2097152 );
 
-trace!(MemAlignRow, MemAlignTrace<F> {
+trace!(MemAlignTrace<F> {
  addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], step: F, delta_addr: F, sel_prove: F, value: [F; 2],
-});
+},  0, 5, 2097152 );
 
-trace!(MemAlignRomRow, MemAlignRomTrace<F> {
+trace!(MemAlignRomTrace<F> {
  multiplicity: F,
-});
+},  0, 6, 256 );
 
-trace!(ArithRow, ArithTrace<F> {
+trace!(ArithTrace<F> {
  carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, debug_main_step: F, main_div: F, main_mul: F, signed: F, div_by_zero: F, div_overflow: F, inv_sum_all_bs: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
-});
+},  0, 7, 2097152 );
 
-trace!(ArithTableRow, ArithTableTrace<F> {
+trace!(ArithTableTrace<F> {
  multiplicity: F,
-});
+},  0, 8, 128 );
 
-trace!(ArithRangeTableRow, ArithRangeTableTrace<F> {
+trace!(ArithRangeTableTrace<F> {
  multiplicity: F,
-});
+},  0, 9, 4194304 );
 
-trace!(BinaryRow, BinaryTrace<F> {
+trace!(BinaryTrace<F> {
  m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, has_initial_carry: F, cout: F, result_is_a: F, use_last_carry_mode32: F, use_last_carry_mode64: F, m_op_or_ext: F, free_in_a_or_c: [F; 4], free_in_b_or_zero: [F; 4], multiplicity: F, debug_main_step: F,
-});
+},  0, 10, 2097152 );
 
-trace!(BinaryTableRow, BinaryTableTrace<F> {
+trace!(BinaryTableTrace<F> {
  multiplicity: F,
-});
+},  0, 11, 8388608 );
 
-trace!(BinaryExtensionRow, BinaryExtensionTrace<F> {
+trace!(BinaryExtensionTrace<F> {
  op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], debug_main_step: F, multiplicity: F,
-});
+},  0, 12, 2097152 );
 
-trace!(BinaryExtensionTableRow, BinaryExtensionTableTrace<F> {
+trace!(BinaryExtensionTableTrace<F> {
  multiplicity: F,
-});
+},  0, 13, 4194304 );
 
-trace!(SpecifiedRangesRow, SpecifiedRangesTrace<F> {
+trace!(SpecifiedRangesTrace<F> {
  mul: [F; 2],
-});
+},  0, 14, 16777216 );
 
-trace!(U8AirRow, U8AirTrace<F> {
+trace!(U8AirTrace<F> {
  mul: F,
-});
+},  0, 15, 256 );
 
-trace!(U16AirRow, U16AirTrace<F> {
+trace!(U16AirTrace<F> {
  mul: F,
-});
+},  0, 16, 65536 );
 
-trace!(RomRomRow, RomRomTrace<F> {
+trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
+}, 0, 1, 4194304, 0 );
+
+values!(MainAirValues<F> {
+ main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2],
+});
+
+values!(MemAirValues<F> {
+ segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F,
+});
+
+values!(RomDataAirValues<F> {
+ segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F,
+});
+
+values!(InputDataAirValues<F> {
+ segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F,
+});
+
+values!(MainAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(RomAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(MemAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(RomDataAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(InputDataAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(MemAlignAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(MemAlignRomAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(ArithAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(ArithTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(ArithRangeTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(BinaryAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(BinaryTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(BinaryExtensionAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(BinaryExtensionTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(SpecifiedRangesAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(U8AirAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(U16AirAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
 });
