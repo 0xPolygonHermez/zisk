@@ -166,3 +166,10 @@ int main(int argc, char *argv[])
 
     if (verbose) printf("Emulator C end\n");
 }
+
+extern int _print_abcflag(uint64_t a, uint64_t b, uint64_t c, uint64_t flag)
+{
+    printf("a=%08x b=%08x c=%08x flag=%08x\n", a, b, c, flag);
+    fflush(stdout);
+    return 65;
+}

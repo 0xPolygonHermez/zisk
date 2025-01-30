@@ -134,9 +134,10 @@ pub struct ZiskRom {
 
 #[derive(Default, Debug, Clone)]
 pub struct ZiskAsmRegister {
-    is_constant: bool,    // register is a constant value known at compilation time
-    constant_value: u64,  // register constant value, only valid if is_constant==true
-    string_value: String, // register string value: a constant value (e.g. "0x3f") or a register (e.g. "rax")
+    is_constant: bool,   // register is a constant value known at compilation time
+    constant_value: u64, // register constant value, only valid if is_constant==true
+    string_value: String, /* register string value: a constant value (e.g. "0x3f") or a register
+                          * (e.g. "rax") */
 }
 
 #[derive(Default, Debug, Clone)]
@@ -506,6 +507,7 @@ impl ZiskRom {
         //*s += "instruction_format: .ascii \"PC=%d\\n\"\n";
 
         *s += ".section .text\n";
+        *s += ".extern print_abcflag\n\n";
         *s += ".global emulator_start\n";
         *s += "emulator_start:\n";
 
@@ -555,10 +557,12 @@ impl ZiskRom {
                         "\tmov {}, 0x{:x} /* a=SRC_MEM: address = i.a_offset_imm0 */\n",
                         REG_ADDRESS, instruction.a_offset_imm0
                     );
-                    *s += &format!(
-                        "\tadd {}, {} /* a=SRC_MEM: address += sp */\n",
-                        REG_ADDRESS, REG_SP
-                    );
+                    if instruction.a_use_sp_imm1 != 0 {
+                        *s += &format!(
+                            "\tadd {}, {} /* a=SRC_MEM: address += sp */\n",
+                            REG_ADDRESS, REG_SP
+                        );
+                    }
                     *s += &format!(
                         "\tmov {}, [{}] /* a=SRC_MEM: a = mem[address] */\n",
                         REG_A, REG_ADDRESS
@@ -590,10 +594,12 @@ impl ZiskRom {
                         "\tmov {}, 0x{:x} /* b=SRC_MEM: address = i.b_offset_imm0 */\n",
                         REG_ADDRESS, instruction.b_offset_imm0
                     );
-                    *s += &format!(
-                        "\tadd {}, {} /* b=SRC_MEM: address += sp */\n",
-                        REG_ADDRESS, REG_SP
-                    );
+                    if instruction.b_use_sp_imm1 != 0 {
+                        *s += &format!(
+                            "\tadd {}, {} /* b=SRC_MEM: address += sp */\n",
+                            REG_ADDRESS, REG_SP
+                        );
+                    }
                     *s += &format!(
                         "\tmov {}, [{}] /* b=SRC_MEM: b = mem[address] */\n",
                         REG_B, REG_ADDRESS
@@ -774,6 +780,18 @@ impl ZiskRom {
                     instruction.store, ctx.pc
                 ),
             }
+
+            // *s += &format!("\tpush {}\n", REG_FLAG);
+            // *s += &format!("\tpush {}\n", REG_FLAG);
+            // *s += &format!("\tpush {}\n", REG_C);
+            // *s += &format!("\tpush {}\n", REG_B);
+            // *s += &format!("\tpush {}\n", REG_A);
+            // *s += &format!("\tcall _print_abcflag\n");
+            // *s += &format!("\tpop {}\n", REG_A);
+            // *s += &format!("\tpop {}\n", REG_B);
+            // *s += &format!("\tpop {}\n", REG_C);
+            // *s += &format!("\tpop {}\n", REG_FLAG);
+            // *s += &format!("\tpop {}\n", REG_FLAG);
 
             // Set pc
             ctx.jump_to_dynamic_pc = false;
@@ -1612,8 +1630,8 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Divu => {
-                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX := Remainder.
-                // Make sure b is in REG_B
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
+                // Remainder. Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s +=
                         &format!("\tmov {}, {} /* Divu: b = value */\n", REG_B, ctx.b.string_value);
@@ -1641,8 +1659,8 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Remu => {
-                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX := Remainder.
-                // Make sure b is in REG_B
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
+                // Remainder. Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s +=
                         &format!("\tmov {}, {} /* Remu: b = value */\n", REG_B, ctx.b.string_value);
@@ -1679,10 +1697,12 @@ impl ZiskRom {
             }
             ZiskOp::Div => {
                 // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
-                // If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should be -MIN_I64,
-                // which cannot be represented with 64 bits (overflow) and it returns c=a.
+                // If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should
+                // be -MIN_I64, which cannot be represented with 64 bits (overflow)
+                // and it returns c=a.
 
-                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX := Remainder.
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
+                // Remainder.
 
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
@@ -1759,10 +1779,12 @@ impl ZiskRom {
             }
             ZiskOp::Rem => {
                 // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
-                // If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should be -MIN_I64,
-                // which cannot be represented with 64 bits (overflow) and it returns c=a.
+                // If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should
+                // be -MIN_I64, which cannot be represented with 64 bits (overflow)
+                // and it returns c=a.
 
-                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX := Remainder.
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
+                // Remainder.
 
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
@@ -1915,7 +1937,8 @@ impl ZiskRom {
             }
             ZiskOp::DivW => {
                 // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
-                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX := Remainder.
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
+                // Remainder.
 
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
@@ -1955,7 +1978,8 @@ impl ZiskRom {
             }
             ZiskOp::RemW => {
                 // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
-                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX := Remainder.
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
+                // Remainder.
 
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
