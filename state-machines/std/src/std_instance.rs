@@ -83,4 +83,8 @@ impl<F: PrimeField> BusDevice<u64> for StdInstance<F> {
     fn bus_id(&self) -> Vec<BusId> {
         vec![]
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }

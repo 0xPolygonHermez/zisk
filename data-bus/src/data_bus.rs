@@ -3,7 +3,7 @@
 //! omnipresent devices that process all data sent to the bus. This module provides mechanisms to
 //! send data, route it to the appropriate subscribers, and manage device connections.
 
-use std::collections::HashMap;
+use std::{any::Any, collections::HashMap};
 
 /// Type representing the unique identifier of a bus channel.
 pub type BusId = u16;
@@ -21,7 +21,7 @@ pub type MemData = [PayloadType; 4];
 ///
 /// # Associated Type
 /// * `D` - The type of data handled by the `BusDevice`.
-pub trait BusDevice<D>: Send {
+pub trait BusDevice<D>: Any + Send {
     /// Processes incoming data sent to the device.
     ///
     /// # Arguments
@@ -43,6 +43,8 @@ pub trait BusDevice<D>: Send {
     /// # Returns
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId>;
+
+    fn as_any(&self) -> &dyn Any;
 }
 
 /// A bus system facilitating communication between multiple publishers and subscribers.

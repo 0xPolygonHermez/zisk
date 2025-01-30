@@ -74,7 +74,4 @@ impl<F: PrimeField> ComponentBuilder<F> for Mem<F> {
             _ => panic!("Memory::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
         }
     }
-    fn build_inputs_generator(&self) -> Option<Box<dyn BusDeviceInstance<F>>> {
-        None
-    }
 }

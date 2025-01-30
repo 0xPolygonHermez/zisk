@@ -5,7 +5,7 @@
 //! execution plans.
 
 use crate::ArithFullSM;
-use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
+use data_bus::{BusDevice, BusId, OperationBusData, OperationData, PayloadType, OPERATION_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType};
@@ -25,9 +25,6 @@ pub struct ArithFullInstance {
     /// The instance context.
     ictx: InstanceCtx,
 
-    /// Helper to skip instructions based on the plan's configuration.
-    collect_skipper: CollectSkipper,
-
     /// Collected inputs for witness computation.
     inputs: Vec<OperationData<u64>>,
 
@@ -44,12 +41,8 @@ impl ArithFullInstance {
     ///
     /// # Returns
     /// A new `ArithFullInstance` instance initialized with the provided state machine and context.
-    pub fn new(arith_full_sm: Arc<ArithFullSM>, mut ictx: InstanceCtx, bus_id: BusId) -> Self {
-        let collect_info = ictx.plan.collect_info.take().expect("collect_info should be Some");
-        let collect_skipper =
-            *collect_info.downcast::<CollectSkipper>().expect("Expected CollectSkipper");
-
-        Self { arith_full_sm, ictx, collect_skipper, inputs: Vec::new(), bus_id }
+    pub fn new(arith_full_sm: Arc<ArithFullSM>, ictx: InstanceCtx, bus_id: BusId) -> Self {
+        Self { arith_full_sm, ictx, inputs: Vec::new(), bus_id }
     }
 }
 
@@ -83,9 +76,79 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
     }
+
+    fn build_inputs_collector2(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+        match self.ictx.plan.air_id {
+            id if id == ArithTrace::<usize>::AIR_ID => Some(Box::new(
+                ArithFullInstance2Collector::new(OPERATION_BUS_ID, self.ictx.plan.collect_info),
+            )),
+            _ => None,
+        }
+    }
 }
 
 impl BusDevice<u64> for ArithFullInstance {
+    /// Processes data received on the bus, collecting the inputs necessary for witness computation.
+    ///
+    /// # Arguments
+    /// * `_bus_id` - The ID of the bus (unused in this implementation).
+    /// * `data` - The data received from the bus.
+    ///
+    /// # Returns
+    /// A tuple where:
+    /// - The first element indicates whether further processing should continue.
+    /// - The second element is always empty.
+    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
+        let data: OperationData<u64> =
+            data.try_into().expect("Regular Metrics: Failed to convert data");
+        let op_type = OperationBusData::get_op_type(&data);
+
+        if op_type as u32 != ZiskOperationType::Arith as u32 {
+            return (false, vec![]);
+        }
+
+        // if self.collect_skipper.should_skip() {
+        //     return (false, vec![]);
+        // }
+
+        self.inputs.push(data);
+
+        // Check if the required number of rows has been collected for computation.
+        (self.inputs.len() == ArithTrace::<usize>::NUM_ROWS, vec![])
+    }
+
+    /// Returns the bus IDs associated with this instance.
+    ///
+    /// # Returns
+    /// A vector containing the connected bus ID.
+    fn bus_id(&self) -> Vec<BusId> {
+        vec![self.bus_id]
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+////////////////////////////////
+pub struct ArithFullInstance2Collector {
+    /// Collected inputs for witness computation.
+    inputs: Vec<OperationData<u64>>,
+
+    /// The connected bus ID.
+    bus_id: BusId,
+
+    /// Helper to skip instructions based on the plan's configuration.
+    collect_skipper: CollectSkipper,
+}
+
+impl ArithFullInstance2Collector {
+    pub fn new(bus_id: BusId, collect_skipper: Option<CollectSkipper>) -> Self {
+        Self { inputs: Vec::new(), bus_id, collect_skipper: collect_skipper.unwrap() }
+    }
+}
+
+impl BusDevice<u64> for ArithFullInstance2Collector {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -121,5 +184,9 @@ impl BusDevice<u64> for ArithFullInstance {
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
         vec![self.bus_id]
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

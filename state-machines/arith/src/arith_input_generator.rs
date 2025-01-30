@@ -28,37 +28,6 @@ impl ArithInputGenerator {
     }
 }
 
-impl<F: PrimeField> Instance<F> for ArithInputGenerator {
-    /// Retrieves the checkpoint associated with this generator.
-    ///
-    /// # Returns
-    /// A `CheckPoint::None`, as this generator does not maintain any `CheckPoint`.
-    fn check_point(&self) -> CheckPoint {
-        CheckPoint::None
-    }
-
-    /// Retrieves the type of this instance.
-    ///
-    /// # Returns
-    /// An `InstanceType::Instance`, indicating this is of type instance.
-    fn instance_type(&self) -> sm_common::InstanceType {
-        sm_common::InstanceType::Instance
-    }
-
-    /// Computes the witness for this generator.
-    ///
-    /// This generator does not compute a witness and always returns `None`.
-    ///
-    /// # Arguments
-    /// * `_` - The proof context (unused in this implementation).
-    ///
-    /// # Returns
-    /// Always returns `None`.
-    fn compute_witness(&mut self, _: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        None
-    }
-}
-
 impl BusDevice<u64> for ArithInputGenerator {
     /// Processes data received on the bus and generates inputs for binary operations.
     ///
@@ -93,5 +62,9 @@ impl BusDevice<u64> for ArithInputGenerator {
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
         vec![self.bus_id]
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

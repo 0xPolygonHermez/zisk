@@ -5,6 +5,7 @@
 //! input generators, enabling flexible and modular integration of components.
 
 use crate::{BusDeviceInstance, BusDeviceMetrics, InstanceCtx, Plan, Planner};
+use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::ProofCtx;
 
@@ -53,7 +54,7 @@ pub trait ComponentBuilder<F: PrimeField>: Send + Sync {
     ///
     /// # Default Implementation
     /// Returns `None` by default, indicating no input generator is provided.
-    fn build_inputs_generator(&self) -> Option<Box<dyn BusDeviceInstance<F>>> {
+    fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<u64>>> {
         None
     }
 }

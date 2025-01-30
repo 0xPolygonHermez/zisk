@@ -6,8 +6,7 @@
 
 use crate::ArithCounter;
 use sm_common::{
-    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Plan,
-    Planner, TableInfo,
+    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics, Plan, Planner, TableInfo
 };
 
 /// The `ArithPlanner` struct organizes execution plans for arithmetic instances and tables.
@@ -79,7 +78,7 @@ impl Planner for ArithPlanner {
         }
 
         counters.iter().for_each(|(chunk_id, counter)| {
-            let reg_counter = counter.as_any().downcast_ref::<ArithCounter>().unwrap();
+            let reg_counter = Metrics::as_any(&**counter).downcast_ref::<ArithCounter>().unwrap();
 
             // Iterate over `instances_info` and add `InstCount` objects to the correct vector
             for (index, instance_info) in self.instances_info.iter().enumerate() {

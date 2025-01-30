@@ -78,4 +78,8 @@ impl BusDevice<u64> for RomInstance {
     fn bus_id(&self) -> Vec<BusId> {
         vec![]
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }

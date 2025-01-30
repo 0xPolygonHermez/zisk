@@ -399,7 +399,6 @@ impl<'a> MemModulePlanner<'a> {
         prev_value: u64,
         skip_rows: u32,
     ) {
-        assert!(skip_rows > 0);
         self.close_segment(last_addr, last_step);
 
         self.segments.push({

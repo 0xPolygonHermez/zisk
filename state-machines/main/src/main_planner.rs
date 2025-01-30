@@ -44,7 +44,7 @@ impl MainPlanner {
                     Some(segment_id),
                     InstanceType::Instance,
                     CheckPoint::Single(segment_id),
-                    Some(Box::new(CollectSkipper::new(0))),
+                    Some(CollectSkipper::new(0)),
                     None,
                 )
             })

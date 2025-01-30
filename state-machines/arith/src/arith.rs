@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use data_bus::OPERATION_BUS_ID;
+use data_bus::{BusDevice, PayloadType, OPERATION_BUS_ID};
 use p3_field::PrimeField;
 use sm_common::{
     table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx,
@@ -18,8 +18,8 @@ use zisk_core::ZiskOperationType;
 use zisk_pil::{ArithRangeTableTrace, ArithTableTrace, ArithTrace};
 
 use crate::{
-    ArithCounter, ArithFullInstance, ArithFullSM, ArithInputGenerator, ArithPlanner,
-    ArithRangeTableSM, ArithTableSM,
+    arith_full_instance::ArithFullInstance2Collector, ArithCounter, ArithFullInstance, ArithFullSM,
+    ArithInputGenerator, ArithPlanner, ArithRangeTableSM, ArithTableSM,
 };
 
 /// The `ArithSM` struct represents the Arithmetic State Machine, which
@@ -124,7 +124,7 @@ impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
     ///
     /// # Returns
     /// A boxed implementation of `ArithInputGenerator`.
-    fn build_inputs_generator(&self) -> Option<Box<dyn BusDeviceInstance<F>>> {
+    fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
         Some(Box::new(ArithInputGenerator::new(OPERATION_BUS_ID)))
     }
 }

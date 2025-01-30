@@ -2,10 +2,11 @@
 //! in the context of proof systems. It includes traits and macros for defining instances
 //! and integrating them with state machines and proofs.
 
+use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 
-use crate::CheckPoint;
+use crate::{BusDeviceWrapper, CheckPoint, InstanceCtx};
 
 /// Represents the type of an instance, either a standalone instance or a table.
 #[derive(Debug, PartialEq)]
@@ -30,6 +31,14 @@ pub trait Instance<F: PrimeField>: Send {
     /// An optional `AirInstance` object representing the computed witness.
     fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>>;
 
+    fn compute_witness2(
+        &mut self,
+        pctx: &ProofCtx<F>,
+        collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+    ) -> Option<AirInstance<F>> {
+        None
+    }
+
     /// Retrieves the checkpoint associated with the instance.
     ///
     /// # Returns
@@ -41,6 +50,10 @@ pub trait Instance<F: PrimeField>: Send {
     /// # Returns
     /// An `InstanceType` indicating whether the instance is standalone or table-based.
     fn instance_type(&self) -> InstanceType;
+
+    fn build_inputs_collector2(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+        None
+    } // TODO remove default implementation
 }
 
 /// Macro to define a table-backed instance.
@@ -116,6 +129,10 @@ macro_rules! table_instance {
         impl data_bus::BusDevice<u64> for $InstanceName {
             fn bus_id(&self) -> Vec<BusId> {
                 vec![self.bus_id]
+            }
+
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
             }
         }
     };

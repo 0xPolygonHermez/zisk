@@ -86,7 +86,7 @@ impl BusDevice<u64> for RomCounter {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         self.measure(bus_id, data);
 
-        (true, vec![])
+        (false, vec![])
     }
 
     /// Returns the bus IDs associated with this counter.
@@ -95,5 +95,9 @@ impl BusDevice<u64> for RomCounter {
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
         vec![self.bus_id]
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

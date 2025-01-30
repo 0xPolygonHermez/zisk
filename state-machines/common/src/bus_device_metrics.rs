@@ -79,4 +79,8 @@ impl BusDevice<u64> for BusDeviceMetricsWrapper {
     fn bus_id(&self) -> Vec<BusId> {
         self.inner.bus_id()
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }

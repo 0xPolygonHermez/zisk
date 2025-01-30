@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM};
-use data_bus::{OperationBusData, OperationData};
+use crate::{binary_basic_instance::BinaryBasicCollector, binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM};
+use data_bus::{OperationBusData, OperationData, PayloadType};
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
@@ -229,9 +229,9 @@ impl BinaryBasicSM {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Min) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Min)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if (a_bytes[i] & 0x80) != 0 { 1 } else { 0 };
                     }
@@ -296,9 +296,9 @@ impl BinaryBasicSM {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Max) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Max)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if (a_bytes[i] & 0x80) != 0 { 0 } else { 1 };
                     }
@@ -473,9 +473,9 @@ impl BinaryBasicSM {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op.eq(&BinaryBasicTableOp::Lt)) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op.eq(&BinaryBasicTableOp::Lt))
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                     }
@@ -715,9 +715,9 @@ impl BinaryBasicSM {
                     if a_bytes[i] <= b_bytes[i] {
                         cout = 1;
                     }
-                    if (binary_basic_table_op == BinaryBasicTableOp::Le) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Le)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = c;
                     }
@@ -861,9 +861,9 @@ impl BinaryBasicSM {
 
         // Set free_in_a_or_c and free_in_b_or_zero
         for i in 0..HALF_BYTES {
-            row.free_in_a_or_c[i] = mode64 *
-                (row.free_in_a[i + HALF_BYTES] - row.free_in_c[HALF_BYTES - 1]) +
-                row.free_in_c[HALF_BYTES - 1];
+            row.free_in_a_or_c[i] = mode64
+                * (row.free_in_a[i + HALF_BYTES] - row.free_in_c[HALF_BYTES - 1])
+                + row.free_in_c[HALF_BYTES - 1];
             row.free_in_b_or_zero[i] = mode64 * row.free_in_b[i + HALF_BYTES];
         }
 
@@ -941,6 +941,67 @@ impl BinaryBasicSM {
         timer_start_trace!(BINARY_TABLE);
         self.binary_basic_table_sm.process_slice(&multiplicity_table);
         timer_stop_and_log_trace!(BINARY_TABLE);
+
+        AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))
+    }
+
+    pub fn compute_witness2<F: PrimeField>(
+        &self,
+        inputs: Vec<(usize, Box<sm_common::BusDeviceWrapper<PayloadType>>)>
+    ) -> AirInstance<F> {
+        let mut binary_trace = BinaryTrace::new();
+
+        // timer_start_trace!(BINARY_TRACE);
+        // let num_rows = binary_trace.num_rows();
+        // assert!(inputs.len() <= num_rows);
+
+        // info!(
+        //     "{}: ··· Creating Binary instance [{} / {} rows filled {:.2}%]",
+        //     Self::MY_NAME,
+        //     inputs.len(),
+        //     num_rows,
+        //     inputs.len() as f64 / num_rows as f64 * 100.0
+        // );
+
+        // let mut multiplicity_table = vec![0u64; BinaryTableTrace::<F>::NUM_ROWS];
+
+        // for (i, operation) in inputs.iter().enumerate() {
+        //     let row = Self::process_slice(operation, &mut multiplicity_table);
+        //     binary_trace[i] = row;
+        // }
+        // timer_stop_and_log_trace!(BINARY_TRACE);
+
+        // timer_start_trace!(BINARY_PADDING);
+        // // Note: We can choose any operation that trivially satisfies the constraints on padding
+        // // rows
+        // let padding_row = BinaryTraceRow::<F> {
+        //     m_op: F::from_canonical_u8(AND_OP),
+        //     m_op_or_ext: F::from_canonical_u8(AND_OP),
+        //     ..Default::default()
+        // };
+
+        // for i in inputs.len()..num_rows {
+        //     binary_trace[i] = padding_row;
+        // }
+
+        // let padding_size = num_rows - inputs.len();
+        // for last in 0..2 {
+        //     let multiplicity = (7 - 6 * last as u64) * padding_size as u64;
+        //     let row = BinaryBasicTableSM::calculate_table_row(
+        //         BinaryBasicTableOp::And,
+        //         0,
+        //         0,
+        //         0,
+        //         last as u64,
+        //         0,
+        //     );
+        //     multiplicity_table[row as usize] += multiplicity;
+        // }
+        // timer_stop_and_log_trace!(BINARY_PADDING);
+
+        // timer_start_trace!(BINARY_TABLE);
+        // self.binary_basic_table_sm.process_slice(&multiplicity_table);
+        // timer_stop_and_log_trace!(BINARY_TABLE);
 
         AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))
     }
