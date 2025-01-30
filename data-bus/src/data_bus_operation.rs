@@ -37,6 +37,24 @@ pub enum ExtOperationData<D> {
     OperationKeccakData(OperationKeccakData<D>),
 }
 
+impl<D: Copy> TryFrom<&[D]> for ExtOperationData<D> {
+    type Error = &'static str;
+
+    fn try_from(data: &[D]) -> Result<Self, Self::Error> {
+        match data.len() {
+            OPERATION_BUS_DATA_SIZE => {
+                let array: OperationData<D> = data.try_into().map_err(|_| "Invalid OperationData size")?;
+                Ok(ExtOperationData::OperationData(array))
+            }
+            val if val == OPERATION_BUS_DATA_SIZE + 25 => {
+                let array: OperationKeccakData<D> = data.try_into().map_err(|_| "Invalid OperationKeccakData size")?;
+                Ok(ExtOperationData::OperationKeccakData(array))
+            }
+            _ => Err("Unexpected data length"),
+        }
+    }
+}
+
 /// Provides utility functions for creating and interacting with operation bus data.
 ///
 /// This struct is implemented as a zero-sized type with a `PhantomData` marker to enable
