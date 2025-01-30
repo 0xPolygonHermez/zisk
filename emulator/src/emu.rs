@@ -1976,7 +1976,8 @@ impl<'a> Emu<'a> {
             __debug_operation_bus_enabled: F::from_bool(
                 inst.op_type == ZiskOperationType::Arith
                     || inst.op_type == ZiskOperationType::Binary
-                    || inst.op_type == ZiskOperationType::BinaryE,
+                    || inst.op_type == ZiskOperationType::BinaryE
+                    || inst.op_type == ZiskOperationType::Keccak,
             ),
         }
     }

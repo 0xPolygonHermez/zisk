@@ -4,7 +4,7 @@
 
 use std::ops::Add;
 
-use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OperationData};
+use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData};
 use sm_common::{Counter, Metrics};
 use zisk_core::ZiskOperationType;
 

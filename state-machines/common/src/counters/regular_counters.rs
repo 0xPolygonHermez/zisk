@@ -3,7 +3,7 @@
 //! and collects metrics for specified `ZiskOperationType` instructions.
 
 use crate::{Counter, Metrics};
-use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OPERATION_BUS_DATA_SIZE};
+use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData};
 use std::ops::Add;
 use zisk_core::ZiskOperationType;
 
