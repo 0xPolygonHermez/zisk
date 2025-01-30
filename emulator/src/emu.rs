@@ -21,9 +21,7 @@ const MEMORY_LOAD_OP: u64 = 1;
 const MEMORY_STORE_OP: u64 = 2;
 
 const MEM_STEP_BASE: u64 = 1;
-const MAX_MEM_STEP_OFFSET: u64 = 2;
-const MAX_MEM_OPS_BY_STEP_OFFSET: u64 = 2;
-const MAX_MEM_OPS_BY_MAIN_STEP: u64 = (MAX_MEM_STEP_OFFSET + 1) * MAX_MEM_OPS_BY_STEP_OFFSET;
+const MAX_MEM_OPS_BY_MAIN_STEP: u64 = 4;
 
 impl MemBusHelpers {
     // function mem_load(expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[]) {
@@ -39,9 +37,7 @@ impl MemBusHelpers {
         [
             MEMORY_LOAD_OP,
             addr as u64,
-            MEM_STEP_BASE +
-                MAX_MEM_OPS_BY_MAIN_STEP * step +
-                MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64,
+            MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + step_offset as u64,
             bytes as u64,
             mem_values[0],
             mem_values[1],
@@ -59,9 +55,7 @@ impl MemBusHelpers {
         [
             MEMORY_STORE_OP,
             addr as u64,
-            MEM_STEP_BASE +
-                MAX_MEM_OPS_BY_MAIN_STEP * step +
-                MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64,
+            MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + step_offset as u64,
             bytes as u64,
             mem_values[0],
             mem_values[1],
