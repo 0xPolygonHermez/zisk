@@ -152,11 +152,10 @@ impl Planner for MemPlanner {
         // let mut mem_align_planner = Arc::new(Mutex::new(MemAlignPlanner::new(counters.clone())));
         let mut mem_align_planner = MemAlignPlanner::new(counters.clone());
 
-        let planners: Vec(MemPlanCalculator) = vec![
+        let planners = vec![
             Arc::clone(&mem_planner),
             Arc::clone(&rom_data_planner),
             Arc::clone(&input_data_planner),
-            //            Arc::clone(&mem_align_planner),
         ];
 
         planners.par_iter().for_each(|plan| {
