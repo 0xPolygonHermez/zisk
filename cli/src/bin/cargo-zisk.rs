@@ -54,7 +54,7 @@ pub struct ZiskRun {
     #[clap(long, short, default_value =  DEFAULT_INPUT_VALUE)]
     input: Option<String>,
     #[clap(long, short = 'm')]
-    metrics: bool,
+    log_metrics: bool,
     #[clap(last = true)]
     args: Vec<String>,
 }
@@ -142,7 +142,7 @@ impl ZiskRun {
             if self.stats {
                 extra_command += " -x ";
             }
-            if self.metrics {
+            if self.log_metrics {
                 extra_command += " -m ";
             }
             if self.input.is_some() {
