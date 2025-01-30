@@ -124,16 +124,19 @@ airtemplate Keccakf(const int N = 2**23, int RC = 2, const int chunks, const int
 
     // --> Constraints to read inputs from memory and write outputs to memory
     col witness a_src_mem;
-    col witness mem_step;
-    precompiled_mem_load(sel: a_src_mem,
-             main_step: mem_step,
+    precompiled_mem_load(
+             sel: a_src_mem,
+             main_step: step_input,
              addr: addr_input,
-             value: a_mem);
+             value: a_mem
+            );
 
     expr addr_output = addr_input;
     col witness c_src_mem;
-    precompiled_mem_store(sel: c_src_mem,
-              main_step: mem_step,
+    precompiled_mem_store(
+              sel: c_src_mem,
+              main_step: step_input,
               addr: addr_output,
-              value: c_mem);
+              value: c_mem
+            );
 }
