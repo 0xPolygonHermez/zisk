@@ -43,11 +43,13 @@ impl<D: Copy> TryFrom<&[D]> for ExtOperationData<D> {
     fn try_from(data: &[D]) -> Result<Self, Self::Error> {
         match data.len() {
             OPERATION_BUS_DATA_SIZE => {
-                let array: OperationData<D> = data.try_into().map_err(|_| "Invalid OperationData size")?;
+                let array: OperationData<D> =
+                    data.try_into().map_err(|_| "Invalid OperationData size")?;
                 Ok(ExtOperationData::OperationData(array))
             }
             val if val == OPERATION_BUS_DATA_SIZE + 25 => {
-                let array: OperationKeccakData<D> = data.try_into().map_err(|_| "Invalid OperationKeccakData size")?;
+                let array: OperationKeccakData<D> =
+                    data.try_into().map_err(|_| "Invalid OperationKeccakData size")?;
                 Ok(ExtOperationData::OperationKeccakData(array))
             }
             _ => Err("Unexpected data length"),

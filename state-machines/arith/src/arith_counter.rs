@@ -4,7 +4,7 @@
 
 use std::ops::Add;
 
-use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
+use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OperationData};
 use sm_common::{Counter, Metrics};
 use zisk_core::ZiskOperationType;
 
@@ -65,10 +65,11 @@ impl Metrics for ArithCounter {
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs for the bus.
     fn measure(&mut self, _bus_id: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
-        let data: OperationData<u64> =
+        let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
-        let inst_op_type =
-            OperationBusData::get_op_type(&data_bus::ExtOperationData::OperationData(data));
+
+        let inst_op_type = OperationBusData::get_op_type(&data);
+
         if let Some(index) = self.op_type.iter().position(|&op_type| op_type as u64 == inst_op_type)
         {
             self.counter[index].update(1);
