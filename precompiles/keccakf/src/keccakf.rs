@@ -103,7 +103,7 @@ impl KeccakfSM {
 
             // TODO: Compute the output of the keccakf??
             // TODO: Write the raw input/output to memory??
-            // TODO: The previous memory calls should give me a_src_mem, c_src_mem, mem_step
+            // TODO: The previous memory calls should give me a_src_mem, c_src_mem
 
             // Get the basic data from the input
             let debug_main_step =
@@ -118,7 +118,6 @@ impl KeccakfSM {
                 debug_main_step: F::from_canonical_u64(debug_main_step),
                 step_input: F::from_canonical_u64(step_input),
                 addr_input: F::from_canonical_u64(addr_input),
-                mem_step: F::zero(),
                 a_src_mem: F::zero(),
                 c_src_mem: F::zero(),
                 ..Default::default()

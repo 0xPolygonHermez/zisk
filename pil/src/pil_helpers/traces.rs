@@ -55,23 +55,25 @@ pub const U_8_AIR_AIR_IDS: &[usize] = &[17];
 
 pub const U_16_AIR_AIR_IDS: &[usize] = &[18];
 
+
 //PUBLICS
 use serde::Deserialize;
 use serde::Serialize;
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct ZiskPublics {
-    #[serde(default)]
+    #[serde(default)] 
     pub rom_root: [u64; 4],
+    
 }
 
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4],
 });
-
+ 
 values!(ZiskProofValues<F> {
  enable_input_data: F,
 });
-
+ 
 trace!(MainTrace<F> {
  a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, __debug_operation_bus_enabled: F,
 },  0, 0, 2097152 );
@@ -129,11 +131,11 @@ trace!(BinaryExtensionTableTrace<F> {
 },  0, 13, 4194304 );
 
 trace!(KeccakfTrace<F> {
- free_in_a: [F; 6], free_in_b: [F; 6], free_in_c: [F; 6], multiplicity: F, debug_main_step: F, step_input: F, addr_input: F, a_src_mem: F, mem_step: F, c_src_mem: F,
-},  0, 14, 2097152 );
+ free_in_a: [F; 6], free_in_b: [F; 6], free_in_c: [F; 6], debug_main_step: F, step_input: F, addr_input: F, multiplicity: F, a_src_mem: F, c_src_mem: F,
+},  0, 14, 4194304 );
 
 trace!(KeccakfTableTrace<F> {
- multiplicity: F,
+ multiplicity: [F; 1],
 },  0, 15, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
