@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let conn_c = FixedColsInfo::new("Keccakf.CONN_C", None, conn_c);
     let gate_op = FixedColsInfo::new("Keccakf.GATE_OP", None, gate_op);
 
-    let output_file = format!("precompiles/keccakf/src/keccakf_fixed_{}.bin", bits);
+    let output_file = "precompiles/keccakf/src/keccakf_fixed.bin";
     write_fixed_cols_bin(
         &output_file,
         "Zisk",
