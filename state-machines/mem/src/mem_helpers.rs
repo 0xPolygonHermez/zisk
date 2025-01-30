@@ -68,9 +68,9 @@ pub struct MemHelpers {}
 
 impl MemHelpers {
     pub fn main_step_to_address_step(step: u64, step_offset: u8) -> u64 {
-        MEM_STEP_BASE +
-            MAX_MEM_OPS_BY_MAIN_STEP * step +
-            MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64
+        MEM_STEP_BASE
+            + MAX_MEM_OPS_BY_MAIN_STEP * step
+            + MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64
     }
     pub fn is_aligned(addr: u32, width: u8) -> bool {
         (addr & MEM_ADDR_ALIGN_MASK) == 0 && width == 8
@@ -146,7 +146,7 @@ impl MemHelpers {
         let lo_mask = !(byte_mask << offset);
         let lo_write = (lo_mask & read_values[0]) | (value << offset);
         if !is_double {
-            return [lo_write, read_values[1]]
+            return [lo_write, read_values[1]];
         }
 
         let hi_mask = !(byte_mask >> (64 - offset));

@@ -59,9 +59,9 @@ impl MemPlanner {
                 plan.air_id,
                 plan.segment_id.unwrap_or(0),
                 plan.check_point,
-                if plan.air_id == MEM_AIR_IDS[0] ||
-                    plan.air_id == INPUT_DATA_AIR_IDS[0] ||
-                    plan.air_id == ROM_DATA_AIR_IDS[0]
+                if plan.air_id == MEM_AIR_IDS[0]
+                    || plan.air_id == INPUT_DATA_AIR_IDS[0]
+                    || plan.air_id == ROM_DATA_AIR_IDS[0]
                 {
                     let meta = plan
                         .meta
