@@ -1,6 +1,6 @@
 use crate::{
-    MemAlignResponse, MAX_MEM_OPS_BY_MAIN_STEP, MAX_MEM_OPS_BY_STEP_OFFSET, MEMORY_MAX_DIFF,
-    MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS, MEM_STEP_BASE, RAM_W_ADDR_INIT,
+    MemAlignResponse, MAX_MEM_OPS_BY_MAIN_STEP, MEMORY_MAX_DIFF, MEMORY_STORE_OP,
+    MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS, MEM_STEP_BASE, RAM_W_ADDR_INIT,
 };
 use std::fmt;
 use zisk_core::{ZiskRequiredMemory, RAM_ADDR};
@@ -67,10 +67,12 @@ impl MemAlignInput {
 pub struct MemHelpers {}
 
 impl MemHelpers {
-    pub fn main_step_to_address_step(step: u64, step_offset: u8) -> u64 {
-        MEM_STEP_BASE +
-            MAX_MEM_OPS_BY_MAIN_STEP * step +
-            MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64
+    pub fn main_step_to_address_step(step: u64, slot: u8) -> u64 {
+        debug_assert!(slot < 3);
+        MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + slot as u64
+    }
+    pub fn main_step_to_precompiled_mem_step(step: u64, is_write: bool) -> u64 {
+        MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + if is_write { 3 } else { 2 }
     }
     pub fn is_aligned(addr: u32, width: u8) -> bool {
         (addr & MEM_ADDR_ALIGN_MASK) == 0 && width == 8

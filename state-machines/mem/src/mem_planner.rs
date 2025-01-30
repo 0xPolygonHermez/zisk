@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+#[cfg(feature = "debug_mem")]
+use crate::MemHelpers;
+
 use sm_common::{BusDeviceMetrics, ChunkId, Plan, Planner};
 use zisk_pil::{
     InputDataTrace, MemTrace, RomDataTrace, INPUT_DATA_AIR_IDS, MEM_AIR_IDS, ROM_DATA_AIR_IDS,
@@ -65,9 +68,9 @@ impl MemPlanner {
                     plan.air_id,
                     plan.segment_id.unwrap_or(0),
                     plan.check_point,
-                    meta.prev_addr * MEM_BYTES,
+                    MemHelpers::get_addr(meta.prev_addr),
                     meta.prev_step,
-                    meta.last_addr * MEM_BYTES,
+                    MemHelpers::get_addr(meta.last_addr),
                     meta.last_step,
                     meta.skip_rows,
                     meta.is_last_segment,
