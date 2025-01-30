@@ -18,8 +18,8 @@ use std::{
 use tiny_keccak::keccakf;
 
 use crate::{
-    InstContext, PrecompiledEmulationMode, ZiskOperationType, ZiskRequiredOperation, M64, REG_A0,
-    SYS_ADDR,
+    InstContext, Mem, PrecompiledEmulationMode, ZiskOperationType, ZiskRequiredOperation, M64,
+    REG_A0, SYS_ADDR,
 };
 
 /// Determines the type of a [`ZiskOp`].  
@@ -1063,7 +1063,7 @@ pub fn opc_max_w(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn opc_keccak(ctx: &mut InstContext) {
     // Get address from register a0 = x10
-    let address = ctx.mem.read(REG_A0, 8);
+    let address = ctx.regs[Mem::address_to_register_index(REG_A0)];
 
     // Allocate room for 25 u64 = 128 bytes = 1600 bits
     const WORDS: usize = 25;
