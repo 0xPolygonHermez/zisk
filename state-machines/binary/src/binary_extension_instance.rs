@@ -7,7 +7,7 @@
 use crate::BinaryExtensionSM;
 use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OperationData};
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, ProofCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 use zisk_core::ZiskOperationType;
@@ -70,7 +70,11 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
     ///
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
-    fn compute_witness(&mut self, _pctx: Option<&ProofCtx<F>>) -> Option<AirInstance<F>> {
+    fn compute_witness(
+        &mut self,
+        _pctx: &ProofCtx<F>,
+        _sctx: &SetupCtx<F>,
+    ) -> Option<AirInstance<F>> {
         Some(self.binary_extension_sm.compute_witness(&self.inputs))
     }
 

@@ -30,7 +30,8 @@ pub trait Instance<F: PrimeField>: Send {
     ///
     /// # Returns
     /// An optional `AirInstance` object representing the computed witness.
-    fn compute_witness(&mut self, pctx: Option<&ProofCtx<F>>) -> Option<AirInstance<F>>;
+    fn compute_witness(&mut self, pctx: &ProofCtx<F>, sctx: &SetupCtx<F>)
+        -> Option<AirInstance<F>>;
 
     /// Retrieves the checkpoint associated with the instance.
     ///
@@ -64,7 +65,7 @@ macro_rules! table_instance {
         use p3_field::PrimeField;
 
         use data_bus::BusId;
-        use proofman_common::{AirInstance, FromTrace, ProofCtx};
+        use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
         use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
         use zisk_pil::$Trace;
 
@@ -94,8 +95,11 @@ macro_rules! table_instance {
         }
 
         impl<F: PrimeField> Instance<F> for $InstanceName {
-            fn compute_witness(&mut self, pctx: Option<&ProofCtx<F>>) -> Option<AirInstance<F>> {
-                let pctx = pctx.expect("Proof context should be provided");
+            fn compute_witness(
+                &mut self,
+                pctx: &ProofCtx<F>,
+                _sctx: &SetupCtx<F>,
+            ) -> Option<AirInstance<F>> {
                 let mut multiplicity = self.table_sm.detach_multiplicity();
 
                 pctx.dctx_distribute_multiplicity(&mut multiplicity, self.ictx.global_id);
@@ -167,7 +171,11 @@ macro_rules! instance {
         }
 
         impl<F: PrimeField> Instance<F> for $name {
-            fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
+            fn compute_witness(
+                &mut self,
+                _pctx: &ProofCtx<F>,
+                _sctx: &SetupCtx<F>,
+            ) -> Option<AirInstance<F>> {
                 Some(self.sm.compute_witness(&self.inputs))
             }
 
