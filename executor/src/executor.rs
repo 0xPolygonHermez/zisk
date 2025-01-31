@@ -23,6 +23,7 @@ use std::{
     fs,
     path::PathBuf,
     sync::{Arc, RwLock},
+    collections::HashMap,
 };
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, EmuTrace, ZiskEmulator};
@@ -555,16 +556,20 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
 
         MainSM::debug(pctx.clone(), sctx.clone());
 
-        // TODO: HOW TO AVOID DUPLICATION ??
+        let mut debug_airs: HashMap<(usize, usize), bool> = HashMap::new();
 
-        secn_instances.iter().for_each(|(_, sec_instance)| {
-            if sec_instance.instance_type() == InstanceType::Instance {
+        secn_instances.iter().for_each(|(global_idx, sec_instance)| {
+            let instance_info = pctx.dctx_get_instance_info(*global_idx);
+            if sec_instance.instance_type() == InstanceType::Instance && !debug_airs.contains_key(&instance_info) {
+                debug_airs.insert(instance_info, true);                
                 sec_instance.debug(pctx.clone(), sctx.clone());
             }
         });
 
         table_instances.iter().for_each(|(global_idx, sec_instance)| {
-            if sec_instance.instance_type() == InstanceType::Table && pctx.dctx_is_my_instance(*global_idx) {
+            let instance_info = pctx.dctx_get_instance_info(*global_idx);
+            if sec_instance.instance_type() == InstanceType::Table && pctx.dctx_is_my_instance(*global_idx) && !debug_airs.contains_key(&instance_info) {
+                debug_airs.insert(instance_info, true);                
                 sec_instance.debug(pctx.clone(), sctx.clone());
             }
         });
