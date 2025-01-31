@@ -49,7 +49,11 @@ impl<F: PrimeField> Instance<F> for RomInstance {
     ///
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
-    fn compute_witness(&mut self, _pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) -> Option<AirInstance<F>> {
+    fn compute_witness(
+        &mut self,
+        _pctx: &ProofCtx<F>,
+        _sctx: &SetupCtx<F>,
+    ) -> Option<AirInstance<F>> {
         Some(RomSM::compute_witness(&self.zisk_rom, &self.ictx.plan))
     }
 

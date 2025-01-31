@@ -70,7 +70,11 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
     ///
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
-    fn compute_witness(&mut self, _pctx: &ProofCtx<F>, _sctx:&SetupCtx<F>) -> Option<AirInstance<F>> {
+    fn compute_witness(
+        &mut self,
+        _pctx: &ProofCtx<F>,
+        _sctx: &SetupCtx<F>,
+    ) -> Option<AirInstance<F>> {
         Some(self.binary_extension_sm.compute_witness(&self.inputs))
     }
 
