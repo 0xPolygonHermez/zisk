@@ -216,16 +216,22 @@ impl KeccakfSM {
                 } else {
                     panic!("Invalid operation");
                 }
+            }
 
-                // Update the multiplicity table
-                for i in 0..CHUNKS_KECCAKF {
-                    let a = (a_val >> (i * BITS_KECCAKF)) & MASK_BITS_KECCAKF;
-                    let b = (b_val >> (i * BITS_KECCAKF)) & MASK_BITS_KECCAKF;
-                    let table_row = KeccakfTableSM::calculate_table_row(&table_op, a, b);
+            // Update the multiplicity table for the slot
+            for i in 0..self.slot_size {
+                let a = trace[i].free_in_a;
+                let b = trace[i].free_in_b;
+                let table_op = KeccakfTableGateOp::Andp; // TODO: Consult the fixed column!
+                for j in 0..CHUNKS_KECCAKF {
+                    let a_val = F::as_canonical_u64(&a[j]);
+                    let b_val = F::as_canonical_u64(&b[j]);
+                    let table_row = KeccakfTableSM::calculate_table_row(&table_op, a_val, b_val);
                     multiplicity[table_row as usize] += 1;
                 }
             }
 
+            // Move to the next slot
             offset += self.slot_size;
         }
 
@@ -318,18 +324,15 @@ impl KeccakfSM {
         timer_stop_and_log_trace!(KECCAKF_TRACE);
 
         timer_start_trace!(KECCAKF_PADDING);
-        // A row with all zeros satisfies the constraints (assuming GATE_OP refers to XOR)
+        // A row with all zeros satisfies the constraints (since both XOR(0,0) and ANDP(0,0) are 0)
         let padding_row: KeccakfTraceRow<F> = Default::default();
-
-        for i in (1 + num_inputs)..num_rows {
+        for i in (1 + self.slot_size*num_slots_needed)..num_rows {
             keccakf_trace[i] = padding_row;
+
+            let gete_op = KeccakfTableGateOp::Xor; // TODO: Consult the fixed column!
+            let table_row = KeccakfTableSM::calculate_table_row(&gete_op, 0, 0);
+            multiplicity_table[table_row as usize] += 1;
         }
-
-        let row = KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, 0, 0);
-        let padding_size = num_rows - num_inputs - 1;
-        let multiplicity = padding_size as u64;
-        multiplicity_table[row as usize] += multiplicity;
-
         timer_stop_and_log_trace!(KECCAKF_PADDING);
 
         timer_start_trace!(KECCAKF_TABLE);
