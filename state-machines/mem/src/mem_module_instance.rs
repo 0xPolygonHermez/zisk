@@ -181,7 +181,11 @@ impl<F: PrimeField> MemModuleInstance<F> {
 }
 
 impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
-    fn compute_witness(&mut self, _pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) -> Option<AirInstance<F>> {
+    fn compute_witness(
+        &mut self,
+        _pctx: &ProofCtx<F>,
+        _sctx: &SetupCtx<F>,
+    ) -> Option<AirInstance<F>> {
         if self.inputs.is_empty() {
             return None;
         }

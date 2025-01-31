@@ -49,7 +49,11 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
     ///
     /// # Returns
     /// Always returns `None` as this instance does not generate an `AirInstance`.
-    fn compute_witness(&mut self, _pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) -> Option<AirInstance<F>> {
+    fn compute_witness(
+        &mut self,
+        _pctx: &ProofCtx<F>,
+        _sctx: &SetupCtx<F>,
+    ) -> Option<AirInstance<F>> {
         let plan = &self.ictx.plan;
         let rc_type = plan.meta.as_ref().unwrap().downcast_ref::<RangeCheckAir>().unwrap();
 
