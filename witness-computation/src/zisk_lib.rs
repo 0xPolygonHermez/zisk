@@ -6,7 +6,6 @@
 
 use executor::ZiskExecutor;
 use pil_std_lib::Std;
-use proofman_common::load_from_json;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
@@ -14,7 +13,6 @@ use sm_rom::RomSM;
 use sm_std::StdSM;
 use std::sync::Arc;
 use zisk_core::Riscv2zisk;
-use zisk_pil::{ZiskPublicValues, ZiskPublics};
 
 use p3_field::PrimeField;
 use p3_goldilocks::Goldilocks;

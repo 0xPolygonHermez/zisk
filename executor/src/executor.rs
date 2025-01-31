@@ -118,6 +118,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     ///
     /// # Returns
     /// A vector of metrics grouped by chunk ID.
+    #[allow(clippy::type_complexity)]
     fn count(
         &self,
         min_traces: &[EmuTrace],
@@ -161,7 +162,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let mut main_vec_counters = Vec::new();
 
         for (chunk_id, counter_slice) in main_metrics_slices.iter_mut().enumerate() {
-            for (_, counter) in counter_slice.drain(..).enumerate() {
+            for counter in counter_slice.drain(..) {
                 main_vec_counters.push((chunk_id, counter));
             }
         }
