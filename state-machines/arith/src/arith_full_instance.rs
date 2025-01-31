@@ -5,7 +5,7 @@
 //! execution plans.
 
 use crate::ArithFullSM;
-use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
+use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OperationData};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType};
@@ -97,8 +97,9 @@ impl BusDevice<u64> for ArithFullInstance {
     /// - The first element indicates whether further processing should continue.
     /// - The second element is always empty.
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
-        let data: OperationData<u64> =
+        let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
+
         let op_type = OperationBusData::get_op_type(&data);
 
         if op_type as u32 != ZiskOperationType::Arith as u32 {
@@ -109,10 +110,13 @@ impl BusDevice<u64> for ArithFullInstance {
             return (false, vec![]);
         }
 
-        self.inputs.push(data);
-
-        // Check if the required number of rows has been collected for computation.
-        (self.inputs.len() == ArithTrace::<usize>::NUM_ROWS, vec![])
+        if let ExtOperationData::OperationData(data) = data {
+            self.inputs.push(data);
+            // Check if the required number of rows has been collected for computation.
+            (self.inputs.len() == ArithTrace::<usize>::NUM_ROWS, vec![])
+        } else {
+            panic!("Expected ExtOperationData::OperationData");
+        }
     }
 
     /// Returns the bus IDs associated with this instance.

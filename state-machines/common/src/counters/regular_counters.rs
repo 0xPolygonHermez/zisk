@@ -3,7 +3,7 @@
 //! and collects metrics for specified `ZiskOperationType` instructions.
 
 use crate::{Counter, Metrics};
-use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
+use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData};
 use std::ops::Add;
 use zisk_core::ZiskOperationType;
 
@@ -62,9 +62,11 @@ impl Metrics for RegularCounters {
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs for the bus.
     fn measure(&mut self, _: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
-        let data: OperationData<u64> =
+        let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
+
         let inst_op_type = OperationBusData::get_op_type(&data);
+
         if let Some(index) = self.op_type.iter().position(|&op_type| op_type as u64 == inst_op_type)
         {
             self.counter[index].update(1);
@@ -120,7 +122,7 @@ impl BusDevice<u64> for RegularCounters {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         self.measure(bus_id, data);
 
-        (true, vec![])
+        (false, vec![])
     }
 
     /// Returns the bus IDs associated with this counter.

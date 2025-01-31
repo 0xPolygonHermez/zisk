@@ -79,10 +79,12 @@ impl ArithFullSM {
 
         let mut aop = ArithOperation::new();
         for (irow, input) in inputs.iter().enumerate() {
-            let opcode = OperationBusData::get_op(input);
-            let a = OperationBusData::get_a(input);
-            let b = OperationBusData::get_b(input);
-            let step = OperationBusData::get_step(input);
+            let opcode =
+                OperationBusData::get_op(&data_bus::ExtOperationData::OperationData(*input));
+            let a = OperationBusData::get_a(&data_bus::ExtOperationData::OperationData(*input));
+            let b = OperationBusData::get_b(&data_bus::ExtOperationData::OperationData(*input));
+            let step =
+                OperationBusData::get_step(&data_bus::ExtOperationData::OperationData(*input));
 
             aop.calculate(opcode, a, b);
             let mut t: ArithTraceRow<F> = Default::default();
@@ -230,10 +232,10 @@ impl ArithFullSM {
     /// Generates binary inputs for operations requiring additional validation (e.g., division).
     pub fn generate_inputs(input: &OperationData<u64>) -> Vec<Vec<PayloadType>> {
         let mut aop = ArithOperation::new();
-        let opcode = OperationBusData::get_op(input);
-        let a = OperationBusData::get_a(input);
-        let b = OperationBusData::get_b(input);
-        let step = OperationBusData::get_step(input);
+        let opcode = OperationBusData::get_op(&data_bus::ExtOperationData::OperationData(*input));
+        let a = OperationBusData::get_a(&data_bus::ExtOperationData::OperationData(*input));
+        let b = OperationBusData::get_b(&data_bus::ExtOperationData::OperationData(*input));
+        let step = OperationBusData::get_step(&data_bus::ExtOperationData::OperationData(*input));
 
         aop.calculate(opcode, a, b);
 
@@ -260,14 +262,14 @@ impl ArithFullSM {
                 step,
                 opcode,
                 ZiskOperationType::Binary as u64,
-                aop.d[0] +
-                    CHUNK_SIZE * aop.d[1] +
-                    CHUNK_SIZE.pow(2) * (aop.d[2] + extension.0) +
-                    CHUNK_SIZE.pow(3) * aop.d[3],
-                aop.b[0] +
-                    CHUNK_SIZE * aop.b[1] +
-                    CHUNK_SIZE.pow(2) * (aop.b[2] + extension.1) +
-                    CHUNK_SIZE.pow(3) * aop.b[3],
+                aop.d[0]
+                    + CHUNK_SIZE * aop.d[1]
+                    + CHUNK_SIZE.pow(2) * (aop.d[2] + extension.0)
+                    + CHUNK_SIZE.pow(3) * aop.d[3],
+                aop.b[0]
+                    + CHUNK_SIZE * aop.b[1]
+                    + CHUNK_SIZE.pow(2) * (aop.b[2] + extension.1)
+                    + CHUNK_SIZE.pow(3) * aop.b[3],
             )
             .to_vec()]
         } else {

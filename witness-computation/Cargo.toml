@@ -15,6 +15,7 @@ sm-common = { path = "../state-machines/common" }
 sm-main = { path = "../state-machines/main" }
 sm-mem = { path = "../state-machines/mem" }
 sm-rom = { path = "../state-machines/rom" }
+precomp-keccakf = { path = "../precompiles/keccakf" }
 zisk-pil = { path = "../pil" }
 ziskemu = { path = "../emulator" }
 zisk-core = { path = "../core" }

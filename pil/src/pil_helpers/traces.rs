@@ -131,8 +131,8 @@ trace!(BinaryExtensionTableTrace<F> {
 },  0, 13, 4194304 );
 
 trace!(KeccakfTrace<F> {
- free_in_a: [F; 6], free_in_b: [F; 6], free_in_c: [F; 6], multiplicity: F, debug_main_step: F, step_input: F, addr_input: F, a_src_mem: F, mem_step: F, c_src_mem: F,
-},  0, 14, 2097152 );
+ free_in_a: [F; 6], free_in_b: [F; 6], free_in_c: [F; 6], debug_main_step: F, step_input: F, addr_input: F, multiplicity: F, a_src_mem: F, c_src_mem: F,
+},  0, 14, 4194304 );
 
 trace!(KeccakfTableTrace<F> {
  multiplicity: F,

@@ -146,10 +146,10 @@ impl BinaryBasicSM {
         let mut row: BinaryTraceRow<F> = Default::default();
 
         // Execute the opcode
-        let opcode = OperationBusData::get_op(input);
-        let a = OperationBusData::get_a(input);
-        let b = OperationBusData::get_b(input);
-        let step = OperationBusData::get_step(input);
+        let opcode = OperationBusData::get_op(&data_bus::ExtOperationData::OperationData(*input));
+        let a = OperationBusData::get_a(&data_bus::ExtOperationData::OperationData(*input));
+        let b = OperationBusData::get_b(&data_bus::ExtOperationData::OperationData(*input));
+        let step = OperationBusData::get_step(&data_bus::ExtOperationData::OperationData(*input));
 
         let (c, _) = Self::execute(opcode, a, b);
 
@@ -229,9 +229,9 @@ impl BinaryBasicSM {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Min) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Min)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if (a_bytes[i] & 0x80) != 0 { 1 } else { 0 };
                     }
@@ -296,9 +296,9 @@ impl BinaryBasicSM {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Max) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Max)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if (a_bytes[i] & 0x80) != 0 { 0 } else { 1 };
                     }
@@ -473,9 +473,9 @@ impl BinaryBasicSM {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op.eq(&BinaryBasicTableOp::Lt)) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op.eq(&BinaryBasicTableOp::Lt))
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                     }
@@ -715,9 +715,9 @@ impl BinaryBasicSM {
                     if a_bytes[i] <= b_bytes[i] {
                         cout = 1;
                     }
-                    if (binary_basic_table_op == BinaryBasicTableOp::Le) &&
-                        (plast[i] == 1) &&
-                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Le)
+                        && (plast[i] == 1)
+                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = c;
                     }
@@ -861,9 +861,9 @@ impl BinaryBasicSM {
 
         // Set free_in_a_or_c and free_in_b_or_zero
         for i in 0..HALF_BYTES {
-            row.free_in_a_or_c[i] = mode64 *
-                (row.free_in_a[i + HALF_BYTES] - row.free_in_c[HALF_BYTES - 1]) +
-                row.free_in_c[HALF_BYTES - 1];
+            row.free_in_a_or_c[i] = mode64
+                * (row.free_in_a[i + HALF_BYTES] - row.free_in_c[HALF_BYTES - 1])
+                + row.free_in_c[HALF_BYTES - 1];
             row.free_in_b_or_zero[i] = mode64 * row.free_in_b[i + HALF_BYTES];
         }
 

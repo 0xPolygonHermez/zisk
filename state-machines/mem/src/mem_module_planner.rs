@@ -138,8 +138,8 @@ impl<'a> MemModulePlanner<'a> {
             {
                 Ok(pos) => self.cursors.push((index, pos + REGISTERS_COUNT)),
                 Err(pos) => {
-                    if pos < counter.1.addr_sorted.len() &&
-                        counter.1.addr_sorted[pos].0 <= self.config.to_addr
+                    if pos < counter.1.addr_sorted.len()
+                        && counter.1.addr_sorted[pos].0 <= self.config.to_addr
                     {
                         self.cursors.push((index, pos + REGISTERS_COUNT));
                     }
@@ -182,13 +182,13 @@ impl<'a> MemModulePlanner<'a> {
         };
 
         let mut cursor_next_addr_pos = cursor_next_pos - REGISTERS_COUNT;
-        if cursor_on_registers &&
-            cursor_next_addr_pos < self.counters[cursor_index].1.addr_sorted.len()
+        if cursor_on_registers
+            && cursor_next_addr_pos < self.counters[cursor_index].1.addr_sorted.len()
         {
             // filter addr out of [from_addr, to_addr]
-            while cursor_next_addr_pos < self.counters[cursor_index].1.addr_sorted.len() &&
-                self.counters[cursor_index].1.addr_sorted[cursor_next_addr_pos].0 <
-                    self.config.from_addr
+            while cursor_next_addr_pos < self.counters[cursor_index].1.addr_sorted.len()
+                && self.counters[cursor_index].1.addr_sorted[cursor_next_addr_pos].0
+                    < self.config.from_addr
             {
                 cursor_next_addr_pos += 1;
                 cursor_next_pos += 1;
@@ -196,9 +196,9 @@ impl<'a> MemModulePlanner<'a> {
         }
 
         // if it's last position, we must remove for list of open_cursors, if not we increment
-        if cursor_next_addr_pos >= self.counters[cursor_index].1.addr_sorted.len() ||
-            self.counters[cursor_index].1.addr_sorted[cursor_next_addr_pos].0 >
-                self.config.to_addr
+        if cursor_next_addr_pos >= self.counters[cursor_index].1.addr_sorted.len()
+            || self.counters[cursor_index].1.addr_sorted[cursor_next_addr_pos].0
+                > self.config.to_addr
         {
             self.cursors.remove(min_index);
         } else {

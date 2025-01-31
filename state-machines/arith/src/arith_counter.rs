@@ -4,7 +4,7 @@
 
 use std::ops::Add;
 
-use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
+use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData};
 use sm_common::{Counter, Metrics};
 use zisk_core::ZiskOperationType;
 
@@ -65,9 +65,11 @@ impl Metrics for ArithCounter {
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs for the bus.
     fn measure(&mut self, _bus_id: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
-        let data: OperationData<u64> =
+        let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
+
         let inst_op_type = OperationBusData::get_op_type(&data);
+
         if let Some(index) = self.op_type.iter().position(|&op_type| op_type as u64 == inst_op_type)
         {
             self.counter[index].update(1);
@@ -122,20 +124,25 @@ impl BusDevice<u64> for ArithCounter {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
         self.measure(bus_id, data);
 
-        let input: OperationData<u64> =
+        let input: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
+
         let op_type = OperationBusData::get_op_type(&input);
 
         if op_type as u32 != ZiskOperationType::Arith as u32 {
             return (false, vec![]);
         }
 
-        let inputs = ArithFullSM::generate_inputs(&input)
-            .into_iter()
-            .map(|x| (*bus_id, x))
-            .collect::<Vec<_>>();
+        if let ExtOperationData::OperationData(input) = input {
+            let inputs = ArithFullSM::generate_inputs(&input)
+                .into_iter()
+                .map(|x| (*bus_id, x))
+                .collect::<Vec<_>>();
 
-        (false, inputs)
+            (false, inputs)
+        } else {
+            panic!("Expected ExtOperationData::OperationData");
+        }
     }
 
     /// Returns the bus IDs associated with this counter.

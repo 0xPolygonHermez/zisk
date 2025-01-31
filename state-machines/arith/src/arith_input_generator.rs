@@ -4,7 +4,7 @@
 //! It implements the `Instance` and `BusDevice` traits, facilitating input generation
 //! for the `ArithFullSM` state machine based on data received over the bus.
 
-use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
+use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, Instance};
@@ -71,20 +71,24 @@ impl BusDevice<u64> for ArithInputGenerator {
     /// - The first element indicates whether processing should continue (`false` in this case).
     /// - The second element contains the derived inputs to be sent back to the bus.
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
-        let input: OperationData<u64> =
-            data.try_into().expect("ArithInputGenerator: Failed to convert data");
+        let input: ExtOperationData<u64> =
+            data.try_into().expect("Regular Metrics: Failed to convert data");
+
         let op_type = OperationBusData::get_op_type(&input);
 
         if op_type as u32 != ZiskOperationType::Arith as u32 {
             return (false, vec![]);
         }
 
-        let inputs = ArithFullSM::generate_inputs(&input)
-            .into_iter()
-            .map(|x| (*bus_id, x))
-            .collect::<Vec<_>>();
-
-        (false, inputs)
+        if let ExtOperationData::OperationData(input) = input {
+            let inputs = ArithFullSM::generate_inputs(&input)
+                .into_iter()
+                .map(|x| (*bus_id, x))
+                .collect::<Vec<_>>();
+            (false, inputs)
+        } else {
+            panic!("Expected ExtOperationData::OperationData");
+        }
     }
 
     /// Returns the bus IDs associated with this instance.

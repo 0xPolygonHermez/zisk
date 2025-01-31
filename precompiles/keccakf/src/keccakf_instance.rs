@@ -5,12 +5,12 @@
 //! execution plans.
 
 use crate::KeccakfSM;
-use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
+use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OperationKeccakData};
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType};
-use std::sync::Arc;
 use zisk_core::ZiskOperationType;
+use std::sync::Arc;
 
 /// The `KeccakfInstance` struct represents an instance for the Keccakf State Machine.
 ///
@@ -27,7 +27,7 @@ pub struct KeccakfInstance {
     collect_skipper: CollectSkipper,
 
     /// Collected inputs for witness computation.
-    inputs: Vec<OperationData<u64>>,
+    inputs: Vec<OperationKeccakData<u64>>,
 
     /// The connected bus ID.
     bus_id: BusId,
@@ -97,8 +97,9 @@ impl BusDevice<u64> for KeccakfInstance {
     /// - The first element indicates whether further processing should continue.
     /// - The second element contains derived inputs to be sent back to the bus (always empty).
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
-        let data: OperationData<u64> =
+        let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
+
         let op_type = OperationBusData::get_op_type(&data);
 
         if op_type as u32 != ZiskOperationType::Keccak as u32 {
@@ -109,10 +110,14 @@ impl BusDevice<u64> for KeccakfInstance {
             return (false, vec![]);
         }
 
-        self.inputs.push(data);
+        if let ExtOperationData::OperationKeccakData(data) = data {
+            self.inputs.push(data);
 
-        // Check if the required number of inputs has been collected for computation.
-        (self.inputs.len() == self.keccakf_sm.num_available_keccakfs, vec![])
+            // Check if the required number of inputs has been collected for computation.
+            (self.inputs.len() == self.keccakf_sm.num_available_keccakfs, vec![])
+        } else {
+            panic!("Expected ExtOperationData::OperationData");
+        }
     }
 
     /// Returns the bus IDs associated with this instance.

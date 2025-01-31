@@ -189,6 +189,7 @@ impl ZiskInstBuilder {
         self.i.m32 = optxt.contains("_w");
         self.i.func = op.get_call_function();
         self.i.op_type = op.op_type().into();
+        self.i.input_size = op.input_size();
         Ok(())
     }
 
