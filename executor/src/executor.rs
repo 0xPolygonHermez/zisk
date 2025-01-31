@@ -5,7 +5,8 @@
 
 use itertools::Itertools;
 use p3_field::PrimeField;
-use proofman_common::ProofCtx;
+use proofman_common::{ProofCtx, SetupCtx};
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use witness::WitnessComponent;
 
 use rayon::prelude::*;
@@ -17,7 +18,12 @@ use sm_common::{
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
 
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    fs,
+    path::PathBuf,
+    sync::{Arc, RwLock},
+};
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, EmuTrace, ZiskEmulator};
 
@@ -34,6 +40,11 @@ pub struct ZiskExecutor<F: PrimeField> {
 
     /// Registered secondary state machines.
     secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,
+
+    /// Planning information for main state machines.
+    pub min_traces: RwLock<Vec<EmuTrace>>,
+    pub main_planning: RwLock<Vec<Plan>>,
+    pub sec_planning: RwLock<Vec<Vec<Plan>>>,
 }
 
 impl<F: PrimeField> ZiskExecutor<F> {
@@ -47,7 +58,14 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// * `public_inputs_path` - Path to the public inputs file.
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
     pub fn new(public_inputs_path: PathBuf, zisk_rom: Arc<ZiskRom>) -> Self {
-        Self { public_inputs_path, zisk_rom, secondary_sm: Vec::new() }
+        Self {
+            public_inputs_path,
+            zisk_rom,
+            secondary_sm: Vec::new(),
+            min_traces: RwLock::new(Vec::new()),
+            main_planning: RwLock::new(Vec::new()),
+            sec_planning: RwLock::new(Vec::new()),
+        }
     }
 
     /// Registers a secondary state machine with the executor.
@@ -90,20 +108,28 @@ impl<F: PrimeField> ZiskExecutor<F> {
     ///
     /// # Returns
     /// A vector of `MainInstance` objects.
-    fn create_main_instances(
-        &self,
-        pctx: &ProofCtx<F>,
-        main_planning: Vec<Plan>,
-    ) -> Vec<MainInstance> {
+    fn assign_main_instances(&self, pctx: &ProofCtx<F>, main_planning: &mut [Plan]) {
+        main_planning.iter_mut().for_each(|plan| {
+            let (_, global_idx) = pctx.dctx_add_instance(
+                plan.airgroup_id,
+                plan.air_id,
+                pctx.get_weight(plan.airgroup_id, plan.air_id),
+            );
+
+            plan.set_global_id(global_idx);
+        });
+    }
+
+    fn create_main_instances(&self, pctx: &ProofCtx<F>) -> Vec<MainInstance> {
+        let mut main_planning_guard = self.main_planning.write().unwrap();
+        let main_planning = std::mem::take(&mut *main_planning_guard);
+
         main_planning
             .into_iter()
             .filter_map(|plan| {
-                if let (true, global_idx) = pctx.dctx_add_instance(
-                    plan.airgroup_id,
-                    plan.air_id,
-                    pctx.get_weight(plan.airgroup_id, plan.air_id),
-                ) {
-                    Some(MainInstance::new(InstanceCtx::new(global_idx, plan)))
+                let global_id = plan.global_id.unwrap();
+                if pctx.dctx_is_my_instance(global_id) {
+                    Some(MainInstance::new(InstanceCtx::new(global_id, plan)))
                 } else {
                     None
                 }
@@ -181,6 +207,22 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .for_each(|(i, sm)| sm.configure_instances(pctx, &plannings[i]));
     }
 
+    #[allow(clippy::type_complexity)]
+    fn assign_sec_instances(&self, pctx: &ProofCtx<F>, plans: &mut [Vec<Plan>]) {
+        plans.iter_mut().for_each(|plans_by_sm| {
+            plans_by_sm.iter_mut().for_each(move |plan| {
+                let global_id = pctx.dctx_add_instance_no_assign(
+                    plan.airgroup_id,
+                    plan.air_id,
+                    pctx.get_weight(plan.airgroup_id, plan.air_id),
+                );
+                plan.set_global_id(global_id);
+            })
+        });
+
+        pctx.dctx_assign_instances();
+    }
+
     /// Creates secondary state machine instances based on their plans.
     ///
     /// # Arguments
@@ -195,38 +237,21 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn create_sec_instances(
         &self,
         pctx: &ProofCtx<F>,
-        plans: Vec<Vec<Plan>>,
     ) -> (
         Vec<(usize, Box<dyn BusDeviceInstance<F>>)>, // Table instances
         Vec<(usize, Box<dyn BusDeviceInstance<F>>)>, // Non-table instances
     ) {
-        let gids: Vec<_> = plans
-            .into_iter()
-            .enumerate()
-            .flat_map(|(i, plans_by_sm)| {
-                plans_by_sm.into_iter().map(move |plan| {
-                    Some((
-                        pctx.dctx_add_instance_no_assign(
-                            plan.airgroup_id,
-                            plan.air_id,
-                            pctx.get_weight(plan.airgroup_id, plan.air_id),
-                        ),
-                        plan.instance_type == InstanceType::Table,
-                        plan,
-                        i,
-                    ))
-                })
-            })
-            .collect();
-
-        pctx.dctx_assign_instances();
-
         let mut table_instances = Vec::new();
         let mut other_instances = Vec::new();
 
-        gids.into_iter().for_each(|item| {
-            if let Some((global_idx, is_table, plan, i)) = item {
+        let mut sec_planning_guard = self.sec_planning.write().unwrap();
+        let sec_planning = std::mem::take(&mut *sec_planning_guard);
+
+        sec_planning.into_iter().enumerate().for_each(|(i, plans_by_sm)| {
+            plans_by_sm.into_iter().for_each(|plan| {
+                let global_idx = plan.global_id.unwrap();
                 let is_mine = pctx.dctx_is_my_instance(global_idx);
+                let is_table = plan.instance_type == InstanceType::Table;
                 if is_mine || is_table {
                     let ictx = InstanceCtx::new(global_idx, plan);
                     let instance = (global_idx, self.secondary_sm[i].build_inputs_collector(ictx));
@@ -236,7 +261,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                         other_instances.push(instance);
                     }
                 }
-            }
+            })
         });
 
         (table_instances, other_instances)
@@ -252,10 +277,12 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn witness_instances(
         &self,
         pctx: &ProofCtx<F>,
-        min_traces: &[EmuTrace],
         main_instances: Vec<MainInstance>,
         secn_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
     ) {
+        let min_traces_guard = self.min_traces.read().unwrap();
+        let min_traces = &*min_traces_guard;
+
         // Combine main_instances and secn_instances into a single parallel iterator
         let main_iter = main_instances.into_par_iter().map(|mut main_instance| {
             Either::Left(move || {
@@ -456,24 +483,69 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         };
 
         // PHASE 1. MINIMAL TRACES. Process the ROM super fast to collect the Minimal Traces
+        timer_start_info!(COMPUTE_MINIMAL_TRACE);
         let min_traces = self.compute_minimal_traces(public_inputs, Self::NUM_THREADS);
+        timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
+        timer_start_info!(COUNT_AND_PLAN);
         // PHASE 2. COUNTING. Count the metrics for the Secondary SM instances
         let sec_count = self.count_sec(&min_traces);
 
         // PHASE 3. PLANNING. Plan the instances
-        let main_planning = MainPlanner::plan::<F>(&min_traces, Self::MIN_TRACE_SIZE);
-        let sec_planning = self.plan_sec(sec_count);
+        let mut main_planning = MainPlanner::plan::<F>(&min_traces, Self::MIN_TRACE_SIZE);
+        let mut sec_planning = self.plan_sec(sec_count);
 
         // PHASE 4. PLANNING. Plan the instances
         self.configure_instances(&pctx, &sec_planning);
 
-        // PHASE 5. INSTANCES. Create the instances
-        let main_instances = self.create_main_instances(&pctx, main_planning);
-        let (table_instances, secn_instances) = self.create_sec_instances(&pctx, sec_planning);
+        timer_stop_and_log_info!(COUNT_AND_PLAN);
 
-        // PHASE 6. WITNESS. Compute the witnesses
-        self.witness_instances(&pctx, &min_traces, main_instances, secn_instances);
-        self.witness_tables(&pctx, table_instances);
+        // PHASE 5. INSTANCES. Assign the instances
+        self.assign_main_instances(&pctx, &mut main_planning);
+        self.assign_sec_instances(&pctx, &mut sec_planning);
+
+        *self.min_traces.write().unwrap() = min_traces;
+        *self.main_planning.write().unwrap() = main_planning;
+        *self.sec_planning.write().unwrap() = sec_planning;
+    }
+
+    fn calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, _sctx: Arc<SetupCtx<F>>) {
+        if stage == 1 {
+            // PHASE 6. WITNESS. Compute the witnesses
+            let main_instances = self.create_main_instances(&pctx);
+            let (table_instances, secn_instances) = self.create_sec_instances(&pctx);
+
+            self.witness_instances(&pctx, main_instances, secn_instances);
+            self.witness_tables(&pctx, table_instances);
+        }
+    }
+
+    fn debug(&self, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+        let (table_instances, secn_instances) = self.create_sec_instances(&pctx);
+
+        MainSM::debug(pctx.clone(), sctx.clone());
+
+        let mut debug_airs: HashMap<(usize, usize), bool> = HashMap::new();
+
+        secn_instances.iter().for_each(|(global_idx, sec_instance)| {
+            let instance_info = pctx.dctx_get_instance_info(*global_idx);
+            if sec_instance.instance_type() == InstanceType::Instance
+                && !debug_airs.contains_key(&instance_info)
+            {
+                debug_airs.insert(instance_info, true);
+                sec_instance.debug(pctx.clone(), sctx.clone());
+            }
+        });
+
+        table_instances.iter().for_each(|(global_idx, sec_instance)| {
+            let instance_info = pctx.dctx_get_instance_info(*global_idx);
+            if sec_instance.instance_type() == InstanceType::Table
+                && pctx.dctx_is_my_instance(*global_idx)
+                && !debug_airs.contains_key(&instance_info)
+            {
+                debug_airs.insert(instance_info, true);
+                sec_instance.debug(pctx.clone(), sctx.clone());
+            }
+        });
     }
 }
