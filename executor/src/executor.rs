@@ -30,6 +30,7 @@ pub struct ZiskExecutor<F: PrimeField> {
     /// ZisK ROM, a binary file containing the ZisK program to be executed.
     pub zisk_rom: Arc<ZiskRom>,
 
+    /// Path to the input data file.
     pub input_data_path: PathBuf,
 
     /// Registered secondary state machines.
@@ -44,7 +45,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// Creates a new instance of the `ZiskExecutor`.
     ///
     /// # Arguments
-    /// * `public_inputs_path` - Path to the public inputs file.
+    /// * `input_data_path` - Path to the input data file.
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
     pub fn new(input_data_path: PathBuf, zisk_rom: Arc<ZiskRom>) -> Self {
         Self { input_data_path, zisk_rom, secondary_sm: Vec::new() }
@@ -61,7 +62,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// Computes minimal traces by processing the ZisK ROM with given public inputs.
     ///
     /// # Arguments
-    /// * `public_inputs` - Public inputs for the ROM execution.
+    /// * `input_data` - Input data for the ROM execution.
     /// * `num_threads` - Number of threads to use for parallel execution.
     ///
     /// # Returns

@@ -146,7 +146,7 @@ impl MemHelpers {
         let lo_mask = !(byte_mask << offset);
         let lo_write = (lo_mask & read_values[0]) | (value << offset);
         if !is_double {
-            return [lo_write, read_values[1]]
+            return [lo_write, read_values[1]];
         }
 
         let hi_mask = !(byte_mask >> (64 - offset));

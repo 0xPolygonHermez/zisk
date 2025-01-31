@@ -24,6 +24,8 @@ impl MainPlanner {
     ///
     /// # Arguments
     /// * `min_traces` - A slice of `EmuTrace` instances representing the segments to be planned.
+    /// * `main_counters` - A vector of main counters, each associated with a specific chunk ID.
+    /// * `min_traces_size` - The size of the minimal traces.
     ///
     /// # Returns
     /// A vector of `Plan` instances, each corresponding to a segment of the main trace.

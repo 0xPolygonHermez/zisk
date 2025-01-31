@@ -26,6 +26,8 @@ impl<T: BusDevice<u64> + Metrics + std::any::Any> BusDeviceMetrics for T {}
 pub struct BusDeviceMetricsWrapper {
     /// The inner boxed `BusDeviceMetrics`.
     pub inner: Box<dyn BusDeviceMetrics>,
+
+    /// A flag indicating whether the device is a secondary device.
     pub is_secondary: bool,
 }
 
@@ -34,6 +36,7 @@ impl BusDeviceMetricsWrapper {
     ///
     /// # Arguments
     /// * `inner` - A boxed implementation of the `BusDeviceMetrics` trait.
+    /// * `is_secondary` - A flag indicating whether the device is a secondary device.
     ///
     /// # Returns
     /// A new `BusDeviceMetricsWrapper` instance.
