@@ -7,7 +7,7 @@
 use crate::ArithFullSM;
 use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, ProofCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 use zisk_core::ZiskOperationType;
@@ -64,7 +64,7 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
     ///
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
-    fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
+    fn compute_witness(&mut self, _pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) -> Option<AirInstance<F>> {
         Some(self.arith_full_sm.compute_witness(&self.inputs))
     }
 

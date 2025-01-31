@@ -298,6 +298,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn witness_instances(
         &self,
         pctx: &ProofCtx<F>,
+        sctx: &SetupCtx<F>,
         main_instances: Vec<MainInstance>,
         secn_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
     ) {
@@ -331,7 +332,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     }
                 }
 
-                if let Some(air_instance) = secn_instance.compute_witness(pctx) {
+                if let Some(air_instance) = secn_instance.compute_witness(pctx, sctx) {
                     pctx.air_instance_repo.add_air_instance(air_instance, global_id);
                 }
             })
@@ -352,6 +353,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn witness_tables(
         &self,
         pctx: &ProofCtx<F>,
+        sctx: &SetupCtx<F>,
         table_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
     ) {
         let mut instances = table_instances
@@ -369,7 +371,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         instances.iter_mut().for_each(|(global_idx, sec_instance)| {
             if sec_instance.instance_type() == InstanceType::Table {
-                if let Some(air_instance) = sec_instance.compute_witness(pctx) {
+                if let Some(air_instance) = sec_instance.compute_witness(pctx, sctx) {
                     if pctx.dctx_is_my_instance(*global_idx) {
                         pctx.air_instance_repo.add_air_instance(air_instance, *global_idx);
                     }
@@ -540,14 +542,14 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         *self.sec_planning.write().unwrap() = sec_planning;
     }
 
-    fn calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, _sctx: Arc<SetupCtx<F>>) {
+    fn calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>) {
         if stage == 1 {
             // PHASE 6. WITNESS. Compute the witnesses
             let main_instances = self.create_main_instances(&pctx);
             let (table_instances, secn_instances) = self.create_sec_instances(&pctx);
 
-            self.witness_instances(&pctx, main_instances, secn_instances);
-            self.witness_tables(&pctx, table_instances);
+            self.witness_instances(&pctx, &sctx, main_instances, secn_instances);
+            self.witness_tables(&pctx, &sctx, table_instances);
         }
     }
 

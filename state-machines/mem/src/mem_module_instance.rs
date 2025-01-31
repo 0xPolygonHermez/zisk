@@ -4,7 +4,7 @@ use crate::{
 };
 use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, ProofCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use rayon::prelude::*;
 use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
@@ -207,7 +207,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
 }
 
 impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
-    fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
+    fn compute_witness(&mut self, _pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) -> Option<AirInstance<F>> {
         if self.inputs.is_empty() {
             return None;
         }

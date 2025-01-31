@@ -6,7 +6,7 @@
 
 use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, ProofCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{CheckPoint, Instance};
 use zisk_core::ZiskOperationType;
 
@@ -54,7 +54,7 @@ impl<F: PrimeField> Instance<F> for ArithInputGenerator {
     ///
     /// # Returns
     /// Always returns `None`.
-    fn compute_witness(&mut self, _: &ProofCtx<F>) -> Option<AirInstance<F>> {
+    fn compute_witness(&mut self, _: &ProofCtx<F>, _sctx: &SetupCtx<F>) -> Option<AirInstance<F>> {
         None
     }
 }
