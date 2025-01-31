@@ -33,7 +33,7 @@ impl MemDebug {
     }
     pub fn log(&mut self, addr: u32, step: u64, bytes: u8, is_write: bool, is_internal: bool) {
         if addr < 0xA000_0000 {
-            return
+            return;
         }
         assert!(!self.prepared);
         let addr_w = MemHelpers::get_addr_w(addr);
@@ -120,11 +120,11 @@ impl MemDebug {
     }
     fn prepare(&mut self) -> bool {
         if self.prepared {
-            return false
+            return false;
         }
         if self.ops.is_empty() {
             self.prepared = true;
-            return false
+            return false;
         }
         println!("[MemDebug] sorting information .....");
         self.ops.sort_by_key(|op| (op.addr, op.step));
@@ -152,7 +152,7 @@ impl MemDebug {
     }
     pub fn save_to_file(&mut self, file_name: &str) {
         if !self.prepare() {
-            return
+            return;
         }
         println!("[MemDebug] writing information {} .....", file_name);
         let file = File::create(file_name).unwrap();
