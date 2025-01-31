@@ -7,6 +7,7 @@ edition = "2021"
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 serde = { version = "1.0.204", features = ["derive"] }
+serde_arrays = "0.1"
 
 [features]
 default = []

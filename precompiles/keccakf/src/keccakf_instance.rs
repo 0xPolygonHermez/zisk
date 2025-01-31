@@ -7,7 +7,7 @@
 use crate::KeccakfSM;
 use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OperationKeccakData};
 use p3_field::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType};
 use zisk_core::ZiskOperationType;
 use std::sync::Arc;
@@ -64,8 +64,8 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance {
     ///
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
-    fn compute_witness(&mut self, _pctx: Option<&ProofCtx<F>>) -> Option<AirInstance<F>> {
-        Some(self.keccakf_sm.compute_witness(&self.inputs))
+    fn compute_witness(&mut self, _pctx: &ProofCtx<F>, sctx: &SetupCtx<F>) -> Option<AirInstance<F>> {
+        Some(self.keccakf_sm.compute_witness(sctx, &self.inputs))
     }
 
     /// Retrieves the checkpoint associated with this instance.

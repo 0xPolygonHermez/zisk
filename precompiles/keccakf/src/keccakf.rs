@@ -1,3 +1,4 @@
+use core::panic;
 use std::{fs, sync::Arc};
 
 use log::info;
@@ -6,9 +7,9 @@ use p3_field::PrimeField64;
 use data_bus::{
     ExtOperationData, OperationBusData, OperationData, OperationKeccakData, PayloadType,
 };
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_pil::{KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
+use zisk_pil::{KeccakfFixed, KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
 
 use crate::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM, Script, ValueType};
 
@@ -78,6 +79,7 @@ impl KeccakfSM {
     #[inline(always)]
     pub fn process_slice<F: PrimeField64>(
         &self,
+        fixed: &KeccakfFixed<F>,
         trace: &mut KeccakfTrace<F>,
         num_slots: usize,
         inputs: &[OperationKeccakData<u64>],
@@ -126,7 +128,7 @@ impl KeccakfSM {
             };
         });
 
-        // Set the remaining columns by using the script
+        // Set the values of free_in_a, free_in_b, free_in_c using the script
         let script = self.script.clone();
         let mut offset = 0;
         for i in 0..num_slots {
@@ -201,10 +203,8 @@ impl KeccakfSM {
                 let a_val = get_col(trace, |row| &mut row.free_in_a, gate_ref);
                 let b_val = get_col(trace, |row| &mut row.free_in_b, gate_ref);
                 let op = &line.op;
-                let table_op: KeccakfTableGateOp;
                 if op == "xor" {
                     set_col(trace, |row| &mut row.free_in_c, gate_ref, a_val ^ b_val);
-                    table_op = KeccakfTableGateOp::Xor;
                 } else if op == "andp" {
                     set_col(
                         trace,
@@ -212,24 +212,31 @@ impl KeccakfSM {
                         gate_ref,
                         (a_val ^ MASK_CHUNK_BITS_KECCAKF) & b_val,
                     );
-                    table_op = KeccakfTableGateOp::Andp;
                 } else {
                     panic!("Invalid operation");
                 }
             }
 
             // Update the multiplicity table for the slot
-            for i in 0..self.slot_size {
+            let row_idx = if offset == 0 { 1 } else { offset + 1 };
+            for i in row_idx..(row_idx + self.slot_size) {
                 let a = trace[i].free_in_a;
                 let b = trace[i].free_in_b;
-                let table_op = KeccakfTableGateOp::Andp; // TODO: Consult the fixed column!
+                let gate_op = fixed[i].GATE_OP;
+                let gate_op_val = match F::as_canonical_u64(&gate_op) {
+                    0u64 => KeccakfTableGateOp::Xor,
+                    1u64 => KeccakfTableGateOp::Andp,
+                    _ => panic!("Invalid gate operation"),
+                };
                 for j in 0..CHUNKS_KECCAKF {
                     let a_val = F::as_canonical_u64(&a[j]);
                     let b_val = F::as_canonical_u64(&b[j]);
-                    let table_row = KeccakfTableSM::calculate_table_row(&table_op, a_val, b_val);
+                    let table_row = KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val);
                     multiplicity[table_row as usize] += 1;
                 }
             }
+
+            // TOOD: Get the keccak-f output for debugging
 
             // Move to the next slot
             offset += self.slot_size;
@@ -275,11 +282,16 @@ impl KeccakfSM {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<F: PrimeField64>(
         &self,
+        sctx: &SetupCtx<F>,
         inputs: &[OperationKeccakData<u64>],
     ) -> AirInstance<F> {
-        let mut keccakf_trace = KeccakfTrace::new();
+        // Get the fixed cols
+        let airgroup_id = KeccakfTrace::<usize>::AIRGROUP_ID;
+        let air_id = KeccakfTrace::<usize>::AIR_ID;
+        let fixed = KeccakfFixed::from_vec(sctx.get_fixed(airgroup_id, air_id));
 
         timer_start_trace!(KECCAKF_TRACE);
+        let mut keccakf_trace = KeccakfTrace::new();
         let num_rows = keccakf_trace.num_rows();
 
         // Check that we can fit all the keccakfs in the trace
@@ -302,14 +314,18 @@ impl KeccakfSM {
         // Initialize the multiplicity table
         let mut multiplicity_table = vec![0u64; KeccakfTableTrace::<F>::NUM_ROWS];
 
-        // Fill the first row with 0b00..00 and 0b11..11
+        // Set a = 0b00..00 and b = 0b11..11 at the first row
+        // Set, e.g., the operation to be an XOR and set c = 0b11..11 = b = a ^ b
         let mut first_row: KeccakfTraceRow<F> = Default::default();
         let zeros = 0u64;
         let ones = MASK_BITS_KECCAKF;
+        let gate_op = fixed[0].GATE_OP.as_canonical_u64();
+        if gate_op != KeccakfTableGateOp::Xor as u64 {
+            panic!("Invalid initial dummy gate operation");
+        }
         for i in 0..CHUNKS_KECCAKF {
             first_row.free_in_a[i] = F::from_canonical_u64(zeros);
             first_row.free_in_b[i] = F::from_canonical_u64(ones);
-            // 0b00..00 ^ 0b11..11 = 0b11..11 (assuming GATE_OP refers to XOR)
             first_row.free_in_c[i] = F::from_canonical_u64(ones);
         }
         // Update the multiplicity table
@@ -320,7 +336,7 @@ impl KeccakfSM {
         keccakf_trace[0] = first_row;
 
         // Fill the rest of the trace
-        self.process_slice(&mut keccakf_trace, num_slots_needed, inputs, &mut multiplicity_table);
+        self.process_slice(&fixed, &mut keccakf_trace, num_slots_needed, inputs, &mut multiplicity_table);
         timer_stop_and_log_trace!(KECCAKF_TRACE);
 
         timer_start_trace!(KECCAKF_PADDING);
@@ -329,8 +345,12 @@ impl KeccakfSM {
         for i in (1 + self.slot_size*num_slots_needed)..num_rows {
             keccakf_trace[i] = padding_row;
 
-            let gete_op = KeccakfTableGateOp::Xor; // TODO: Consult the fixed column!
-            let table_row = KeccakfTableSM::calculate_table_row(&gete_op, 0, 0);
+            let gate_op = match F::as_canonical_u64(&fixed[i].GATE_OP) {
+                0u64 => KeccakfTableGateOp::Xor,
+                1u64 => KeccakfTableGateOp::Andp,
+                _ => panic!("Invalid gate operation"),
+            };
+            let table_row = KeccakfTableSM::calculate_table_row(&gate_op, 0, 0);
             multiplicity_table[table_row as usize] += 1;
         }
         timer_stop_and_log_trace!(KECCAKF_PADDING);

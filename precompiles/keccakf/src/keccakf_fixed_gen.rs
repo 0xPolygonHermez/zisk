@@ -180,8 +180,8 @@ fn cols_gen(
             }
 
             match line.op.as_str() {
-                "xor" => gate_op[ref_] = F::one(),
-                "andp" => gate_op[ref_] = F::zero(),
+                "xor" => gate_op[ref_] = F::zero(),
+                "andp" => gate_op[ref_] = F::one(),
                 _ => panic!("Invalid op: {}", line.op),
             }
         }

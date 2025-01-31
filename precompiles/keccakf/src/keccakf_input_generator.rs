@@ -6,7 +6,7 @@
 
 use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OperationData};
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, ProofCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{CheckPoint, Instance};
 use zisk_core::ZiskOperationType;
 
@@ -54,7 +54,7 @@ impl<F: PrimeField> Instance<F> for KeccakfInputGenerator {
     ///
     /// # Returns
     /// Always returns `None`.
-    fn compute_witness(&mut self, _pctx: Option<&ProofCtx<F>>) -> Option<AirInstance<F>> {
+    fn compute_witness(&mut self, _pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) -> Option<AirInstance<F>> {
         None
     }
 }
