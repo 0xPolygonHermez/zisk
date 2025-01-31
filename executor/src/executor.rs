@@ -20,10 +20,10 @@ use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_pil::ZiskPublicValues;
 
 use std::{
+    collections::HashMap,
     fs,
     path::PathBuf,
     sync::{Arc, RwLock},
-    collections::HashMap,
 };
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, EmuTrace, ZiskEmulator};
@@ -560,16 +560,21 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
 
         secn_instances.iter().for_each(|(global_idx, sec_instance)| {
             let instance_info = pctx.dctx_get_instance_info(*global_idx);
-            if sec_instance.instance_type() == InstanceType::Instance && !debug_airs.contains_key(&instance_info) {
-                debug_airs.insert(instance_info, true);                
+            if sec_instance.instance_type() == InstanceType::Instance
+                && !debug_airs.contains_key(&instance_info)
+            {
+                debug_airs.insert(instance_info, true);
                 sec_instance.debug(pctx.clone(), sctx.clone());
             }
         });
 
         table_instances.iter().for_each(|(global_idx, sec_instance)| {
             let instance_info = pctx.dctx_get_instance_info(*global_idx);
-            if sec_instance.instance_type() == InstanceType::Table && pctx.dctx_is_my_instance(*global_idx) && !debug_airs.contains_key(&instance_info) {
-                debug_airs.insert(instance_info, true);                
+            if sec_instance.instance_type() == InstanceType::Table
+                && pctx.dctx_is_my_instance(*global_idx)
+                && !debug_airs.contains_key(&instance_info)
+            {
+                debug_airs.insert(instance_info, true);
                 sec_instance.debug(pctx.clone(), sctx.clone());
             }
         });
