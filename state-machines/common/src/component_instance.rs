@@ -2,8 +2,10 @@
 //! in the context of proof systems. It includes traits and macros for defining instances
 //! and integrating them with state machines and proofs.
 
+use std::sync::Arc;
+
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, ProofCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 
 use crate::CheckPoint;
 
@@ -41,6 +43,8 @@ pub trait Instance<F: PrimeField>: Send {
     /// # Returns
     /// An `InstanceType` indicating whether the instance is standalone or table-based.
     fn instance_type(&self) -> InstanceType;
+
+    fn debug(&self, _pctx: Arc<ProofCtx<F>>, _sctx: Arc<SetupCtx<F>>) {}
 }
 
 /// Macro to define a table-backed instance.

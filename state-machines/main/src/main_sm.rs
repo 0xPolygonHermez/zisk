@@ -7,6 +7,8 @@
 //!   segment.
 //! - Methods for computing the witness and setting up trace rows.
 
+use std::sync::Arc;
+
 use log::info;
 use p3_field::PrimeField;
 use sm_common::{BusDeviceMetrics, InstanceCtx};
@@ -14,7 +16,7 @@ use sm_common::{BusDeviceMetrics, InstanceCtx};
 use data_bus::OPERATION_BUS_ID;
 use zisk_core::ZiskRom;
 
-use proofman_common::{AirInstance, FromTrace, ProofCtx};
+use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 
 use zisk_pil::{MainAirValues, MainTrace};
 use ziskemu::{Emu, EmuTrace};
@@ -181,5 +183,9 @@ impl MainSM {
 
     pub fn build_counter() -> Box<dyn BusDeviceMetrics> {
         Box::new(MainCounter::new(OPERATION_BUS_ID))
+    }
+    
+    pub fn debug<F: PrimeField>(_pctx: Arc<ProofCtx<F>>, _sctx: Arc<SetupCtx<F>>) {
+        // No debug information to display
     }
 }
