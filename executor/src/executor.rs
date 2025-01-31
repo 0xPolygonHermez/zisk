@@ -5,7 +5,7 @@
 
 use itertools::Itertools;
 use p3_field::PrimeField;
-use proofman_common::ProofCtx;
+use proofman_common::{ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use witness::WitnessComponent;
 
@@ -508,12 +508,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         *self.sec_planning.write().unwrap() = sec_planning;
     }
 
-    fn calculate_witness(
-        &self,
-        stage: u32,
-        pctx: Arc<ProofCtx<F>>,
-        _sctx: Arc<proofman_common::SetupCtx>,
-    ) {
+    fn calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, _sctx: Arc<SetupCtx<F>>) {
         if stage == 1 {
             // PHASE 6. WITNESS. Compute the witnesses
             let main_instances = self.create_main_instances(&pctx);
@@ -522,5 +517,25 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
             self.witness_instances(&pctx, main_instances, secn_instances);
             self.witness_tables(&pctx, table_instances);
         }
+    }
+
+    fn debug(&self, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+        let (table_instances, secn_instances) = self.create_sec_instances(&pctx);
+
+        MainSM::debug(pctx.clone(), sctx.clone());
+
+        // TODO: HOW TO AVOID DUPLICATION ??
+
+        secn_instances.iter().for_each(|(_, sec_instance)| {
+            if sec_instance.instance_type() == InstanceType::Instance {
+                sec_instance.debug(pctx.clone(), sctx.clone());
+            }
+        });
+
+        table_instances.iter().for_each(|(global_idx, sec_instance)| {
+            if sec_instance.instance_type() == InstanceType::Table && pctx.dctx_is_my_instance(*global_idx) {
+                sec_instance.debug(pctx.clone(), sctx.clone());
+            }
+        });
     }
 }
