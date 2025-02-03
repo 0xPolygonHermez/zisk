@@ -1765,9 +1765,7 @@ impl<'a> Emu<'a> {
             data_bus,
         );
         let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
-        if data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload.to_vec()) {
-            return true;
-        }
+        data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload.to_vec());
 
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);

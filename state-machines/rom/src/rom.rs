@@ -15,9 +15,7 @@ use itertools::Itertools;
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
-use sm_common::{
-    BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan, Planner,
-};
+use sm_common::{BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan, Planner};
 
 use crate::{RomCounter, RomInstance, RomPlanner};
 use zisk_core::{Riscv2zisk, ZiskRom, SRC_IMM};
@@ -205,15 +203,14 @@ impl<F: PrimeField> ComponentBuilder<F> for RomSM {
         Box::new(RomPlanner {})
     }
 
-    /// Builds an inputs data collector for ROM operations.
+    /// Builds an instance of the ROM state machine.
     ///
     /// # Arguments
     /// * `ictx` - The context of the instance, containing the plan and its associated
-    ///   configurations.
     ///
     /// # Returns
     /// A boxed implementation of `RomInstance`.
-    fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
+    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn sm_common::Instance<F>> {
         Box::new(RomInstance::new(self.zisk_rom.clone(), ictx))
     }
 }

@@ -91,79 +91,6 @@ pub fn plan(counts: &[InstCount], size: u64) -> Vec<(CheckPoint, CollectSkipper)
     checkpoints
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Tests the basic functionality of the `plan` function with multiple chunks.
-    #[test]
-    fn test_plan_basic() {
-        let counts = vec![InstCount::new(0, 500), InstCount::new(1, 700), InstCount::new(2, 300)];
-        let size = 300;
-        let checkpoints = plan(&counts, size);
-        assert_eq!(
-            checkpoints,
-            vec![
-                (CheckPoint::Single(0), CollectSkipper::new(0)),
-                (CheckPoint::Single(0), CollectSkipper::new(300)),
-                (CheckPoint::Single(1), CollectSkipper::new(100)),
-                (CheckPoint::Single(1), CollectSkipper::new(400)),
-                (CheckPoint::Single(2), CollectSkipper::new(0)),
-            ]
-        );
-    }
-
-    /// Tests the `plan` function with a single chunk containing multiple intervals.
-    #[test]
-    fn test_plan_single_chunk() {
-        let counts = vec![InstCount { chunk_id: 0, inst_count: 1000 }];
-        let size = 250;
-        let checkpoints = plan(&counts, size);
-        assert_eq!(
-            checkpoints,
-            vec![
-                (CheckPoint::Single(0), CollectSkipper::new(0)),
-                (CheckPoint::Single(0), CollectSkipper::new(250)),
-                (CheckPoint::Single(0), CollectSkipper::new(500)),
-                (CheckPoint::Single(0), CollectSkipper::new(750)),
-            ]
-        );
-    }
-
-    /// Tests the `plan` function with small chunks where intervals span across chunks.
-    #[test]
-    fn test_plan_small_chunks() {
-        let counts = vec![InstCount::new(0, 100), InstCount::new(1, 150)];
-        let size = 200;
-        let checkpoints = plan(&counts, size);
-        assert_eq!(
-            checkpoints,
-            vec![
-                (CheckPoint::Single(0), CollectSkipper::new(0)),
-                (CheckPoint::Single(1), CollectSkipper::new(100)),
-            ]
-        );
-    }
-
-    /// Tests the `plan` function with chunks whose sizes exactly match the interval size.
-    #[test]
-    fn test_plan_no_remainder() {
-        let counts = vec![
-            InstCount { chunk_id: 0, inst_count: 300 },
-            InstCount { chunk_id: 1, inst_count: 300 },
-        ];
-        let size = 300;
-        let checkpoints = plan(&counts, size);
-        assert_eq!(
-            checkpoints,
-            vec![
-                (CheckPoint::Single(0), CollectSkipper::new(0)),
-                (CheckPoint::Single(1), CollectSkipper::new(0)),
-            ]
-        );
-    }
-}
-
 /// Generates a nested list of checkpoints from instruction counts across multiple chunks.
 ///
 /// Each inner vector corresponds to a scope of the plan and contains tuples of:
@@ -237,6 +164,79 @@ pub fn plan_2(counts: &[InstCount], size: u64) -> Vec<CheckPoint> {
     }
 
     checkpoints
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Tests the basic functionality of the `plan` function with multiple chunks.
+    #[test]
+    fn test_plan_basic() {
+        let counts = vec![InstCount::new(0, 500), InstCount::new(1, 700), InstCount::new(2, 300)];
+        let size = 300;
+        let checkpoints = plan(&counts, size);
+        assert_eq!(
+            checkpoints,
+            vec![
+                (CheckPoint::Single(0), CollectSkipper::new(0)),
+                (CheckPoint::Single(0), CollectSkipper::new(300)),
+                (CheckPoint::Single(1), CollectSkipper::new(100)),
+                (CheckPoint::Single(1), CollectSkipper::new(400)),
+                (CheckPoint::Single(2), CollectSkipper::new(0)),
+            ]
+        );
+    }
+
+    /// Tests the `plan` function with a single chunk containing multiple intervals.
+    #[test]
+    fn test_plan_single_chunk() {
+        let counts = vec![InstCount { chunk_id: 0, inst_count: 1000 }];
+        let size = 250;
+        let checkpoints = plan(&counts, size);
+        assert_eq!(
+            checkpoints,
+            vec![
+                (CheckPoint::Single(0), CollectSkipper::new(0)),
+                (CheckPoint::Single(0), CollectSkipper::new(250)),
+                (CheckPoint::Single(0), CollectSkipper::new(500)),
+                (CheckPoint::Single(0), CollectSkipper::new(750)),
+            ]
+        );
+    }
+
+    /// Tests the `plan` function with small chunks where intervals span across chunks.
+    #[test]
+    fn test_plan_small_chunks() {
+        let counts = vec![InstCount::new(0, 100), InstCount::new(1, 150)];
+        let size = 200;
+        let checkpoints = plan(&counts, size);
+        assert_eq!(
+            checkpoints,
+            vec![
+                (CheckPoint::Single(0), CollectSkipper::new(0)),
+                (CheckPoint::Single(1), CollectSkipper::new(100)),
+            ]
+        );
+    }
+
+    /// Tests the `plan` function with chunks whose sizes exactly match the interval size.
+    #[test]
+    fn test_plan_no_remainder() {
+        let counts = vec![
+            InstCount { chunk_id: 0, inst_count: 300 },
+            InstCount { chunk_id: 1, inst_count: 300 },
+        ];
+        let size = 300;
+        let checkpoints = plan(&counts, size);
+        assert_eq!(
+            checkpoints,
+            vec![
+                (CheckPoint::Single(0), CollectSkipper::new(0)),
+                (CheckPoint::Single(1), CollectSkipper::new(0)),
+            ]
+        );
+    }
 }
 
 // #[cfg(test)]

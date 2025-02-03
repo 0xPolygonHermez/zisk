@@ -4,14 +4,11 @@ use crate::{
     InputDataSM, MemAlignInstance, MemAlignRomSM, MemAlignSM, MemCounters, MemModuleInstance,
     MemPlanner, MemSM, RomDataSM,
 };
-use data_bus::MEM_BUS_ID;
+use data_bus::{BusDevice, PayloadType, MEM_BUS_ID};
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
-use sm_common::{
-    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan,
-    Planner,
-};
+use sm_common::{table_instance, BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan, Planner};
 use zisk_pil::{
     InputDataTrace, MemAlignRomTrace, MemAlignTrace, MemTrace, RomDataTrace, ZiskProofValues,
 };
@@ -53,21 +50,28 @@ impl<F: PrimeField> ComponentBuilder<F> for Mem<F> {
         proof_values.enable_input_data = F::from_bool(enable_input_data);
     }
 
-    fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
+    /// Builds an instance of the Memory state machine.
+    ///
+    /// # Arguments
+    /// * `ictx` - The context of the instance, containing the plan and its associated
+    ///
+    /// # Returns
+    /// A boxed implementation of a Memory Instance.
+    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn sm_common::Instance<F>> {
         match ictx.plan.air_id {
-            id if id == MemTrace::<usize>::AIR_ID => {
+            MemTrace::<usize>::AIR_ID => {
                 Box::new(MemModuleInstance::new(self.mem_sm.clone(), ictx))
             }
-            id if id == RomDataTrace::<usize>::AIR_ID => {
+            RomDataTrace::<usize>::AIR_ID => {
                 Box::new(MemModuleInstance::new(self.rom_data_sm.clone(), ictx))
             }
-            id if id == InputDataTrace::<usize>::AIR_ID => {
+            InputDataTrace::<usize>::AIR_ID => {
                 Box::new(MemModuleInstance::new(self.input_data_sm.clone(), ictx))
             }
-            id if id == MemAlignTrace::<usize>::AIR_ID => {
+            MemAlignTrace::<usize>::AIR_ID => {
                 Box::new(MemAlignInstance::new(self.mem_align_sm.clone(), ictx))
             }
-            id if id == MemAlignRomTrace::<usize>::AIR_ID => {
+            MemAlignRomTrace::<usize>::AIR_ID => {
                 table_instance!(MemAlignRomInstance, MemAlignRomSM, MemAlignRomTrace);
                 Box::new(MemAlignRomInstance::new(self.mem_align_rom_sm.clone(), ictx, MEM_BUS_ID))
             }

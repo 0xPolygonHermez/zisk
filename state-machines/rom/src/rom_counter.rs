@@ -83,10 +83,10 @@ impl BusDevice<u64> for RomCounter {
     /// - The second element is an empty vector, as this implementation does not produce derived
     ///   inputs.
     #[inline]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         self.measure(bus_id, data);
 
-        (false, vec![])
+        None
     }
 
     /// Returns the bus IDs associated with this counter.

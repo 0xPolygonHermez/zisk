@@ -5,7 +5,6 @@
 use std::sync::Arc;
 
 use crate::RomSM;
-use data_bus::{BusDevice, BusId};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
@@ -50,7 +49,8 @@ impl<F: PrimeField> Instance<F> for RomInstance {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        Some(RomSM::compute_witness(&self.zisk_rom, &self.ictx.plan))
+        None
+        // Some(RomSM::compute_witness(&self.zisk_rom, &self.ictx.plan))
     }
 
     fn compute_witness2(
@@ -75,19 +75,5 @@ impl<F: PrimeField> Instance<F> for RomInstance {
     /// An `InstanceType` representing the type of this instance (`InstanceType::Instance`).
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
-    }
-}
-
-impl BusDevice<u64> for RomInstance {
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![]
-    }
-
-    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
-        self
     }
 }

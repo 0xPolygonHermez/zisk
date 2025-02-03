@@ -207,7 +207,7 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
 }
 
 impl<F: PrimeField> BusDevice<u64> for MemModuleInstance<F> {
-    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
+    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         // info!("MemModuleInstance process_data bus_id:{} len: {}", _bus_id, data.len());
         // info!(
         //     "MemModuleInstance process_data len: {:X},{:X},{:X},{:X},{:X}",
@@ -220,7 +220,7 @@ impl<F: PrimeField> BusDevice<u64> for MemModuleInstance<F> {
         let bytes = MemBusData::get_bytes(data);
         if !MemHelpers::is_aligned(addr, bytes) {
             self.process_unaligned_data(data);
-            return (false, vec![]);
+            return None;
         }
         // info!("MemModuleInstance process_data addr: {:x} bytes: {:x}", addr, bytes);
         let addr_w = MemHelpers::get_addr_w(addr);
@@ -231,7 +231,7 @@ impl<F: PrimeField> BusDevice<u64> for MemModuleInstance<F> {
             self.filtered_inputs_push(addr_w, step, false, MemBusData::get_mem_values(data)[0]);
         }
 
-        (false, vec![])
+        None
     }
 
     fn bus_id(&self) -> Vec<BusId> {

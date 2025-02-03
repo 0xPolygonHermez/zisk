@@ -1,4 +1,3 @@
-mod bus_device_instance;
 mod bus_device_metrics;
 mod bus_device_wrapper;
 mod component_builder;
@@ -11,7 +10,6 @@ mod instance_context;
 mod operations;
 mod planners;
 
-pub use bus_device_instance::*;
 pub use bus_device_metrics::*;
 pub use bus_device_wrapper::*;
 pub use component_builder::*;

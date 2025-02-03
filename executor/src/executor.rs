@@ -13,8 +13,8 @@ use rayon::prelude::*;
 
 use data_bus::{BusDevice, DataBus, PayloadType, OPERATION_BUS_ID};
 use sm_common::{
-    BusDeviceInstance, BusDeviceMetrics, BusDeviceMetricsWrapper, BusDeviceWrapper, CheckPoint,
-    ComponentBuilder, InstanceCtx, InstanceType, Plan,
+    BusDeviceMetrics, BusDeviceMetricsWrapper, BusDeviceWrapper, CheckPoint, ComponentBuilder,
+    Instance, InstanceCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
 
@@ -196,8 +196,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
         pctx: &ProofCtx<F>,
         plans: Vec<Vec<Plan>>,
     ) -> (
-        Vec<(usize, Box<dyn BusDeviceInstance<F>>)>, // Table instances
-        Vec<(usize, Box<dyn BusDeviceInstance<F>>)>, // Non-table instances
+        Vec<(usize, Box<dyn Instance<F>>)>, // Table instances
+        Vec<(usize, Box<dyn Instance<F>>)>, // Non-table instances
     ) {
         let gids: Vec<_> = plans
             .into_iter()
@@ -228,7 +228,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 let is_mine = pctx.dctx_is_my_instance(global_idx);
                 if is_mine || is_table {
                     let ictx = InstanceCtx::new(global_idx, plan);
-                    let instance = (global_idx, self.secondary_sm[i].build_inputs_collector(ictx));
+                    let instance = (global_idx, self.secondary_sm[i].build_instance(ictx));
                     if is_table {
                         table_instances.push(instance);
                     } else {
@@ -277,7 +277,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         &self,
         pctx: &ProofCtx<F>,
         min_traces: &[EmuTrace],
-        secn_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
+        secn_instances: Vec<(usize, Box<dyn Instance<F>>)>,
     ) {
         timer_start_info!(WITNESS_SECN_1);
         // Group the instances by the chunk they need to process
@@ -326,7 +326,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn witness_tables(
         &self,
         pctx: &ProofCtx<F>,
-        table_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
+        table_instances: Vec<(usize, Box<dyn Instance<F>>)>,
     ) {
         let mut instances = table_instances
             .into_iter()
@@ -355,7 +355,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn chunks_to_execute(
         &self,
         min_traces: &[EmuTrace],
-        secn_instances: &[(usize, Box<dyn BusDeviceInstance<F>>)],
+        secn_instances: &[(usize, Box<dyn Instance<F>>)],
     ) -> Vec<Vec<usize>> {
         let mut chunks_to_execute = vec![Vec::new(); min_traces.len()];
         secn_instances.iter().enumerate().for_each(|(idx, (_, secn_instance))| match secn_instance
@@ -420,12 +420,12 @@ impl<F: PrimeField> ZiskExecutor<F> {
     ///   # Arguments
     ///   * `sec_instance` - The secondary state machine instance to manage.
     ///  * `chunks_to_execute` - A vector of chunk IDs to execute
-    /// 
+    ///
     ///   # Returns
     ///  A vector of `DataBus` instances, each configured with collectors for the secondary state
     fn get_data_bus_collectors(
         &self,
-        secn_instances: &[(usize, Box<dyn BusDeviceInstance<F>>)],
+        secn_instances: &[(usize, Box<dyn Instance<F>>)],
         chunks_to_execute: Vec<Vec<usize>>,
     ) -> Vec<Option<DataBus<u64, BusDeviceWrapper<u64>>>> {
         chunks_to_execute
@@ -474,9 +474,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// of collectors for each instance.
     fn close_data_bus_collectors(
         &self,
-        secn_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
+        secn_instances: Vec<(usize, Box<dyn Instance<F>>)>,
         mut data_buses: Vec<Option<DataBus<u64, BusDeviceWrapper<u64>>>>,
-    ) -> Vec<(usize, Box<dyn BusDeviceInstance<F>>, Vec<(usize, Box<BusDeviceWrapper<u64>>)>)> {
+    ) -> Vec<(usize, Box<dyn Instance<F>>, Vec<(usize, Box<BusDeviceWrapper<u64>>)>)> {
         let mut collectors_by_instance = Vec::new();
         for (global_id, secn_instance) in secn_instances {
             collectors_by_instance.push((global_id, secn_instance, Vec::new()));

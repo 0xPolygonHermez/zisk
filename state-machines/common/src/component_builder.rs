@@ -4,7 +4,7 @@
 //! This trait provides methods to create counters, planners, input collectors, and optional
 //! input generators, enabling flexible and modular integration of components.
 
-use crate::{BusDeviceInstance, BusDeviceMetrics, InstanceCtx, Plan, Planner};
+use crate::{BusDeviceMetrics, Instance, InstanceCtx, Plan, Planner};
 use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::ProofCtx;
@@ -36,21 +36,13 @@ pub trait ComponentBuilder<F: PrimeField>: Send + Sync {
     #[allow(unused_variables)]
     fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Plan]) {}
 
-    /// Builds an inputs bus device data collector for capturing and processing bus device inputs.
-    ///
-    /// # Arguments
-    /// * `ictx` - The `InstanceCtx` associated with this collector, providing contextual
-    ///   information about the instance's environment.
-    ///
-    /// # Returns
-    /// A boxed implementation of `BusDeviceInstance` specific to the given context.
-    fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>>;
+    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>>;
 
     /// Optionally creates an input generator for producing inputs to be sent back to the bus.
     ///
     /// # Returns
-    /// An `Option` containing a boxed implementation of `BusDeviceInstance`, or `None`
-    /// if the component does not support input generation.
+    /// An `Option` containing a boxed implementation of `BusDevice`, or `None` if the component
+    /// does not support input generation.
     ///
     /// # Default Implementation
     /// Returns `None` by default, indicating no input generator is provided.

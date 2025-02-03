@@ -188,10 +188,10 @@ impl Metrics for MemCounters {
 
 impl BusDevice<u64> for MemCounters {
     #[inline]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         self.measure(bus_id, data);
 
-        (false, vec![])
+        None
     }
 
     fn bus_id(&self) -> Vec<BusId> {

@@ -25,7 +25,7 @@ impl<D: 'static> BusDevice<D> for BusDeviceWrapper<D> {
         &mut self,
         bus_id: &data_bus::BusId,
         data: &[D],
-    ) -> (bool, Vec<(data_bus::BusId, Vec<D>)>) {
+    ) -> Option<Vec<(data_bus::BusId, Vec<D>)>> {
         self.bus_device.as_mut().unwrap().process_data(bus_id, data)
     }
 

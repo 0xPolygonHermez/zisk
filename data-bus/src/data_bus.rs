@@ -32,10 +32,10 @@ pub trait BusDevice<D>: Any + Send {
     /// A tuple containing:
     /// - `bool` indicating whether processing should end.
     /// - A vector of `(BusId, Vec<D>)` representing additional data to be sent to other bus IDs.
-    fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> (bool, Vec<(BusId, Vec<D>)>) {
+    fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> Option<Vec<(BusId, Vec<D>)>> {
         let _ = bus_id;
         let _ = data;
-        (true, vec![])
+        None
     }
 
     /// Returns the bus IDs associated with this instance.
@@ -121,16 +121,12 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     ///
     /// # Returns
     /// `true` if processing completed successfully, otherwise `false`.
-    pub fn write_to_bus(&mut self, bus_id: BusId, payload: Vec<D>) -> bool {
+    pub fn write_to_bus(&mut self, bus_id: BusId, payload: Vec<D>) {
         self.pending_transfers.push((bus_id, payload));
 
         while let Some((bus_id, payload)) = self.pending_transfers.pop() {
-            if self.route_data(bus_id, &payload) {
-                return true;
-            }
+            self.route_data(bus_id, &payload)
         }
-
-        false
     }
 
     /// Routes data to the devices subscribed to a specific bus ID or global devices.
@@ -141,30 +137,22 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     ///
     /// # Returns
     /// `true` if processing completed successfully, otherwise `false`.
-    fn route_data(&mut self, bus_id: BusId, payload: &[D]) -> bool {
+    fn route_data(&mut self, bus_id: BusId, payload: &[D]) {
         // Notify specific subscribers
         if let Some(bus_id_devices) = self.devices_bus_id_map.get(&bus_id) {
             for &device_idx in bus_id_devices {
-                let (end, result) = self.devices[device_idx].process_data(&bus_id, payload);
-                self.pending_transfers.extend(result);
-
-                if end {
-                    return true;
+                if let Some(result) = self.devices[device_idx].process_data(&bus_id, payload) {
+                    self.pending_transfers.extend(result);
                 }
             }
         }
 
         // Notify global (omni) subscribers
         for &device_idx in &self.omni_devices {
-            let (end, result) = self.devices[device_idx].process_data(&bus_id, payload);
-            self.pending_transfers.extend(result);
-
-            if end {
-                return true;
+            if let Some(result) = self.devices[device_idx].process_data(&bus_id, payload) {
+                self.pending_transfers.extend(result);
             }
         }
-
-        false
     }
 
     /// Outputs the current state of the bus for debugging purposes.

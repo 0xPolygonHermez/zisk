@@ -36,13 +36,13 @@ impl BusDevice<u64> for ArithInputGenerator {
     /// A tuple where:
     /// - The first element indicates whether processing should continue (`false` in this case).
     /// - The second element contains the derived inputs to be sent back to the bus.
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         let input: OperationData<u64> =
             data.try_into().expect("ArithInputGenerator: Failed to convert data");
         let op_type = OperationBusData::get_op_type(&input);
 
         if op_type as u32 != ZiskOperationType::Arith as u32 {
-            return (false, vec![]);
+            return None;
         }
 
         let inputs = ArithFullSM::generate_inputs(&input)
@@ -50,7 +50,7 @@ impl BusDevice<u64> for ArithInputGenerator {
             .map(|x| (*bus_id, x))
             .collect::<Vec<_>>();
 
-        (false, inputs)
+        Some(inputs)
     }
 
     /// Returns the bus IDs associated with this instance.

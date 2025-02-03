@@ -48,19 +48,19 @@ impl<F: PrimeField> Instance<F> for MemAlignInstance<F> {
 }
 
 impl<F: PrimeField> BusDevice<u64> for MemAlignInstance<F> {
-    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
+    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         let addr = MemBusData::get_addr(data);
         let bytes = MemBusData::get_bytes(data);
         if MemHelpers::is_aligned(addr, bytes) {
-            return (false, vec![]);
+            return None;
         }
         if self.skip_pending > 0 {
             self.skip_pending -= 1;
-            return (false, vec![]);
+            return None;
         }
 
         if self.pending_count == 0 {
-            return (true, vec![]);
+            return None;
         }
         self.pending_count -= 1;
         let is_write = MemHelpers::is_write(MemBusData::get_op(data));
@@ -81,7 +81,7 @@ impl<F: PrimeField> BusDevice<u64> for MemAlignInstance<F> {
             mem_values,
         });
 
-        (false, vec![])
+        None
     }
 
     fn bus_id(&self) -> Vec<BusId> {

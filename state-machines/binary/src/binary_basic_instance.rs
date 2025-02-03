@@ -5,7 +5,7 @@
 //! execution plans.
 
 use crate::BinaryBasicSM;
-use data_bus::{BusDevice, BusId, OperationBusData, OperationData, PayloadType, OPERATION_BUS_ID};
+use data_bus::{BusDevice, BusId, OperationBusData, OperationData, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{
@@ -26,9 +26,6 @@ pub struct BinaryBasicInstance {
     /// Instance context.
     ictx: InstanceCtx,
 
-    /// Collected inputs for witness computation.
-    inputs: Vec<OperationData<u64>>,
-
     /// The connected bus ID.
     bus_id: BusId,
 }
@@ -44,7 +41,7 @@ impl BinaryBasicInstance {
     /// A new `BinaryBasicInstance` instance initialized with the provided state machine and
     /// context.
     pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, ictx: InstanceCtx, bus_id: BusId) -> Self {
-        Self { binary_basic_sm, ictx, inputs: Vec::new(), bus_id }
+        Self { binary_basic_sm, ictx, bus_id }
     }
 }
 
@@ -60,7 +57,8 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        Some(self.binary_basic_sm.compute_witness(&self.inputs))
+        None
+        // Some(self.binary_basic_sm.compute_witness(&self.inputs))
     }
 
     fn compute_witness2(
@@ -71,11 +69,8 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
         let collectors = collectors
             .into_iter()
             .map(|(chunk_id, mut collector)| {
-                let collector = collector
-                    .detach_device()
-                    .as_any()
-                    .downcast::<BinaryBasicCollector<F>>()
-                    .unwrap();
+                let collector =
+                    collector.detach_device().as_any().downcast::<BinaryBasicCollector>().unwrap();
                 (chunk_id, collector)
             })
             .collect();
@@ -101,12 +96,12 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
 
     fn build_inputs_collector2(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         match self.ictx.plan.air_id {
-            id if id == BinaryTrace::<F>::AIR_ID => {
+            BinaryTrace::<F>::AIR_ID => {
                 Some(Box::new(match &self.ictx.plan.check_point {
                     CheckPoint::Multiple2(check_point) => {
                         // check_point is an array
-                        BinaryBasicCollector::<F>::new(
-                            OPERATION_BUS_ID,
+                        BinaryBasicCollector::new(
+                            self.bus_id,
                             check_point[&chunk_id].0,
                             check_point[&chunk_id].1,
                         )
@@ -119,50 +114,7 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
     }
 }
 
-impl BusDevice<u64> for BinaryBasicInstance {
-    /// Processes data received on the bus, collecting the inputs necessary for witness computation.
-    ///
-    /// # Arguments
-    /// * `_bus_id` - The ID of the bus (unused in this implementation).
-    /// * `data` - The data received from the bus.
-    ///
-    /// # Returns
-    /// A tuple where:
-    /// - The first element indicates whether further processing should continue.
-    /// - The second element contains derived inputs to be sent back to the bus (always empty).
-    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
-        let data: OperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-        let op_type = OperationBusData::get_op_type(&data);
-
-        if op_type as u32 != ZiskOperationType::Binary as u32 {
-            return (false, vec![]);
-        }
-
-        // if self.collect_skipper.should_skip() {
-        //     return (false, vec![]);
-        // }
-
-        self.inputs.push(data);
-
-        (self.inputs.len() == BinaryTrace::<usize>::NUM_ROWS, vec![])
-    }
-
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
-    }
-
-    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
-        self
-    }
-}
-
-///////////////////////////////////
-pub struct BinaryBasicCollector<F: PrimeField> {
+pub struct BinaryBasicCollector {
     /// Collected inputs for witness computation.
     pub inputs: Vec<OperationData<u64>>,
 
@@ -173,23 +125,15 @@ pub struct BinaryBasicCollector<F: PrimeField> {
 
     /// Helper to skip instructions based on the plan's configuration.
     collect_skipper: CollectSkipper,
-
-    _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: PrimeField> BinaryBasicCollector<F> {
+impl BinaryBasicCollector {
     pub fn new(bus_id: BusId, num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self {
-            inputs: Vec::new(),
-            bus_id,
-            num_operations,
-            collect_skipper,
-            _phantom: std::marker::PhantomData,
-        }
+        Self { inputs: Vec::new(), bus_id, num_operations, collect_skipper }
     }
 }
 
-impl<F: PrimeField> BusDevice<u64> for BinaryBasicCollector<F> {
+impl BusDevice<u64> for BinaryBasicCollector {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -200,9 +144,9 @@ impl<F: PrimeField> BusDevice<u64> for BinaryBasicCollector<F> {
     /// A tuple where:
     /// - The first element indicates whether further processing should continue.
     /// - The second element contains derived inputs to be sent back to the bus (always empty).
-    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
+    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         if self.inputs.len() == self.num_operations as usize {
-            return (false, vec![]);
+            return None;
         }
 
         let data: OperationData<u64> =
@@ -210,16 +154,16 @@ impl<F: PrimeField> BusDevice<u64> for BinaryBasicCollector<F> {
         let op_type = OperationBusData::get_op_type(&data);
 
         if op_type as u32 != ZiskOperationType::Binary as u32 {
-            return (false, vec![]);
+            return None;
         }
 
         if self.collect_skipper.should_skip() {
-            return (false, vec![]);
+            return None;
         }
 
         self.inputs.push(data);
 
-        (self.inputs.len() == BinaryTrace::<F>::NUM_ROWS, vec![])
+        None
     }
 
     /// Returns the bus IDs associated with this instance.

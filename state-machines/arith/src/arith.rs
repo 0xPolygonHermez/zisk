@@ -11,8 +11,8 @@ use std::sync::Arc;
 use data_bus::{BusDevice, PayloadType, OPERATION_BUS_ID};
 use p3_field::PrimeField;
 use sm_common::{
-    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx,
-    InstanceInfo, Planner, TableInfo,
+    table_instance, BusDeviceMetrics, ComponentBuilder, InstanceCtx, InstanceInfo, Planner,
+    TableInfo,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::{ArithRangeTableTrace, ArithTableTrace, ArithTrace};
@@ -83,24 +83,19 @@ impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
         )
     }
 
-    /// Builds an inputs data collector for arithmetic operations.
+    /// Builds an instance of the Arithmetic state machine.
     ///
     /// # Arguments
-    ///
     /// * `ictx` - The context of the instance, containing the plan and its associated
-    ///   configurations.
     ///
     /// # Returns
-    /// A boxed implementation of `BusDeviceInstance` specific to the requested `air_id` instance.
-    ///
-    /// # Panics
-    /// Panics if the provided `air_id` is not supported.
-    fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
+    /// A boxed implementation of `StdInstance`.
+    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn sm_common::Instance<F>> {
         match ictx.plan.air_id {
-            id if id == ArithTrace::<usize>::AIR_ID => {
+            ArithTrace::<usize>::AIR_ID => {
                 Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), ictx, OPERATION_BUS_ID))
             }
-            id if id == ArithTableTrace::<usize>::AIR_ID => {
+            ArithTableTrace::<usize>::AIR_ID => {
                 table_instance!(ArithTableInstance, ArithTableSM, ArithTableTrace);
                 Box::new(ArithTableInstance::new(
                     self.arith_table_sm.clone(),
@@ -108,7 +103,7 @@ impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
                     OPERATION_BUS_ID,
                 ))
             }
-            id if id == ArithRangeTableTrace::<usize>::AIR_ID => {
+            ArithRangeTableTrace::<usize>::AIR_ID => {
                 table_instance!(ArithRangeTableInstance, ArithRangeTableSM, ArithRangeTableTrace);
                 Box::new(ArithRangeTableInstance::new(
                     self.arith_range_table_sm.clone(),

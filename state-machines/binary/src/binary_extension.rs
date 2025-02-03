@@ -15,7 +15,6 @@ use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
-use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryExtensionTraceRow};
 
@@ -69,12 +68,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     /// Determines if the given opcode represents a shift operation.
     fn opcode_is_shift(opcode: ZiskOp) -> bool {
         match opcode {
-            ZiskOp::Sll
-            | ZiskOp::Srl
-            | ZiskOp::Sra
-            | ZiskOp::SllW
-            | ZiskOp::SrlW
-            | ZiskOp::SraW => true,
+            ZiskOp::Sll |
+            ZiskOp::Srl |
+            ZiskOp::Sra |
+            ZiskOp::SllW |
+            ZiskOp::SrlW |
+            ZiskOp::SraW => true,
 
             ZiskOp::SignExtendB | ZiskOp::SignExtendH | ZiskOp::SignExtendW => false,
 
@@ -87,12 +86,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         match opcode {
             ZiskOp::SllW | ZiskOp::SrlW | ZiskOp::SraW => true,
 
-            ZiskOp::Sll
-            | ZiskOp::Srl
-            | ZiskOp::Sra
-            | ZiskOp::SignExtendB
-            | ZiskOp::SignExtendH
-            | ZiskOp::SignExtendW => false,
+            ZiskOp::Sll |
+            ZiskOp::Srl |
+            ZiskOp::Sra |
+            ZiskOp::SignExtendB |
+            ZiskOp::SignExtendH |
+            ZiskOp::SignExtendW => false,
 
             _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={:?}", opcode),
         }
@@ -331,73 +330,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` representing the computed witness.
-    pub fn compute_witness(&self, operations: &[OperationData<u64>]) -> AirInstance<F> {
-        timer_start_debug!(BINARY_EXTENSION_TRACE);
-        let mut binary_e_trace = BinaryExtensionTrace::new();
-
-        let num_rows = binary_e_trace.num_rows();
-        assert!(operations.len() <= num_rows);
-
-        info!(
-            "{}: ··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
-            operations.len(),
-            num_rows,
-            operations.len() as f64 / num_rows as f64 * 100.0
-        );
-
-        let mut multiplicity_table = vec![0u64; BinaryExtensionTableTrace::<F>::NUM_ROWS];
-        let mut range_check: HashMap<u64, u64> = HashMap::new();
-
-        for (i, operation) in operations.iter().enumerate() {
-            let row = Self::process_slice(operation, &mut multiplicity_table, &mut range_check);
-            binary_e_trace[i] = row;
-        }
-        timer_stop_and_log_debug!(BINARY_EXTENSION_TRACE);
-
-        timer_start_debug!(BINARY_EXTENSION_PADDING);
-        // Note: We can choose any operation that trivially satisfies the constraints on padding
-        // rows
-        let padding_row = BinaryExtensionTraceRow::<F> {
-            op: F::from_canonical_u8(SE_W_OP),
-            ..Default::default()
-        };
-
-        for i in operations.len()..num_rows {
-            binary_e_trace[i] = padding_row;
-        }
-
-        let padding_size = num_rows - operations.len();
-        for i in 0..8 {
-            let multiplicity = padding_size as u64;
-            let row = BinaryExtensionTableSM::calculate_table_row(
-                BinaryExtensionTableOp::SignExtendW,
-                i,
-                0,
-                0,
-            );
-            multiplicity_table[row as usize] += multiplicity;
-        }
-        timer_stop_and_log_debug!(BINARY_EXTENSION_PADDING);
-
-        timer_start_debug!(BINARY_EXTENSION_TABLE);
-        self.binary_extension_table_sm.process_slice(&multiplicity_table);
-        timer_stop_and_log_debug!(BINARY_EXTENSION_TABLE);
-
-        let range_id = self.std.get_range(BigInt::from(0), BigInt::from(0xFFFFFF), None);
-        timer_start_debug!(BINARY_EXTENSION_RANGE);
-        for (value, multiplicity) in &range_check {
-            self.std.range_check(
-                F::from_canonical_u64(*value),
-                F::from_canonical_u64(*multiplicity),
-                range_id,
-            );
-        }
-        timer_stop_and_log_debug!(BINARY_EXTENSION_RANGE);
-
-        AirInstance::new_from_trace(FromTrace::new(&mut binary_e_trace))
-    }
-
     pub fn compute_witness2(
         &self,
         input_collectors: Vec<(usize, Box<BinaryExtensionCollector<F>>)>,
