@@ -86,11 +86,11 @@ impl MemDebug {
             _ => panic!("Invalid bytes {}", bytes),
         };
         let order = (order as u16) & 0x01;
-        let flags: u16 = if is_write { 0x100 } else { 0 } |
-            if internal { 0x80 } else { 0 } |
-            (order << 6) |
-            (offset << 3) |
-            bytes;
+        let flags: u16 = if is_write { 0x100 } else { 0 }
+            | if internal { 0x80 } else { 0 }
+            | (order << 6)
+            | (offset << 3)
+            | bytes;
         flags
     }
     pub fn flags_to_order(flags: u16) -> u8 {

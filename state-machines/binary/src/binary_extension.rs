@@ -66,12 +66,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     /// Determines if the given opcode represents a shift operation.
     fn opcode_is_shift(opcode: ZiskOp) -> bool {
         match opcode {
-            ZiskOp::Sll |
-            ZiskOp::Srl |
-            ZiskOp::Sra |
-            ZiskOp::SllW |
-            ZiskOp::SrlW |
-            ZiskOp::SraW => true,
+            ZiskOp::Sll
+            | ZiskOp::Srl
+            | ZiskOp::Sra
+            | ZiskOp::SllW
+            | ZiskOp::SrlW
+            | ZiskOp::SraW => true,
 
             ZiskOp::SignExtendB | ZiskOp::SignExtendH | ZiskOp::SignExtendW => false,
 
@@ -84,12 +84,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         match opcode {
             ZiskOp::SllW | ZiskOp::SrlW | ZiskOp::SraW => true,
 
-            ZiskOp::Sll |
-            ZiskOp::Srl |
-            ZiskOp::Sra |
-            ZiskOp::SignExtendB |
-            ZiskOp::SignExtendH |
-            ZiskOp::SignExtendW => false,
+            ZiskOp::Sll
+            | ZiskOp::Srl
+            | ZiskOp::Sra
+            | ZiskOp::SignExtendB
+            | ZiskOp::SignExtendH
+            | ZiskOp::SignExtendW => false,
 
             _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={:?}", opcode),
         }
