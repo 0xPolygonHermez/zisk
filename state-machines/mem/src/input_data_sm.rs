@@ -86,6 +86,11 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
 
         for mem_op in mem_ops.iter() {
             let distance = mem_op.addr - last_addr;
+
+            if i >= trace.num_rows {
+                break;
+            }
+
             if distance > 1 {
                 // check if has enough rows to complete the internal reads + regular memory
                 let mut internal_reads = distance - 1;

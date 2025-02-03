@@ -76,6 +76,9 @@ impl<F: PrimeField> MemModule<F> for RomDataSM<F> {
         let mut i = 0;
         for mem_op in mem_ops.iter() {
             let distance = mem_op.addr - last_addr;
+            if i >= trace.num_rows {
+                break;
+            }
             if distance > 1 {
                 let mut internal_reads = distance - 1;
 

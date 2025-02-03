@@ -57,7 +57,12 @@ impl<F: PrimeField> MemSM<F> {
         for i in 0..num_rows {
             let addr = trace[i].addr.as_canonical_biguint().to_bigint().unwrap() * 8;
             let step = trace[i].step.as_canonical_biguint().to_bigint().unwrap();
-            writeln!(writer, "{:#010X} {:#12}", addr, step).unwrap();
+            writeln!(
+                writer,
+                "{:#010X} {} {} {:?}",
+                addr, trace[i].step, trace[i].wr, trace[i].value
+            )
+            .unwrap();
         }
         println!("[MemDebug] done");
     }

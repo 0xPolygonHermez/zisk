@@ -1,5 +1,5 @@
 use rayon::{prelude::*, ThreadPoolBuilder};
-use std::{sync::Arc, thread::Thread};
+use std::sync::Arc;
 
 use crate::{MemCounters, MemHelpers, MemPlanCalculator, UsesCounter, STEP_MEMORY_MAX_DIFF};
 use sm_common::{CheckPoint, ChunkId, InstanceType, Plan};
@@ -109,10 +109,10 @@ impl<'a> MemModulePlanner<'a> {
     }
     fn init_cursor(&mut self) {
         // check if any register has data
-        if self.config.map_registers {
-            if self.counters[0].1.registers[0].count > 0 || self.get_next_cursor_register() {
-                self.cursor_on_registers = true;
-            }
+        if self.config.map_registers
+            && (self.counters[0].1.registers[0].count > 0 || self.get_next_cursor_register())
+        {
+            self.cursor_on_registers = true;
         }
 
         let initial_sorted_boxes = self.prepare_sorted_boxes();
@@ -135,11 +135,11 @@ impl<'a> MemModulePlanner<'a> {
             let (counter_index, register_index) = self.get_cursor_register_data();
             let chunk_id = self.counters[counter_index].0;
             let addr_w = MemHelpers::register_to_addr_w(register_index as u8);
-            let uses = self.counters[counter_index].1.registers[register_index].clone();
+            let uses = self.counters[counter_index].1.registers[register_index];
             self.get_next_cursor_register();
             return (chunk_id, addr_w, uses);
         }
-        return self.get_next_addr_cursor();
+        self.get_next_addr_cursor()
     }
 
     fn get_next_addr_cursor(&mut self) -> (ChunkId, u32, UsesCounter) {
@@ -150,7 +150,7 @@ impl<'a> MemModulePlanner<'a> {
         (
             self.counters[counter_index].0,
             self.counters[counter_index].1.addr_sorted[aid][addr_index].0,
-            self.counters[counter_index].1.addr_sorted[aid][addr_index].1.clone(),
+            self.counters[counter_index].1.addr_sorted[aid][addr_index].1,
         )
     }
 
@@ -163,7 +163,7 @@ impl<'a> MemModulePlanner<'a> {
             }
         }
         self.init_sorted_boxes_cursor();
-        return false;
+        false
     }
     #[cfg(feature = "debug_mem")]
     fn debug_sorted_boxes(&self) {
@@ -224,7 +224,7 @@ impl<'a> MemModulePlanner<'a> {
     }
     fn merge_sorted_boxes(&self, sorted_boxes: &[Vec<SortedBox>], arity: usize) -> Vec<SortedBox> {
         if sorted_boxes.len() <= 1 {
-            return sorted_boxes.get(0).cloned().unwrap_or_default();
+            return sorted_boxes.first().cloned().unwrap_or_default();
         }
         let total_size: usize = sorted_boxes.iter().map(|b| b.len()).sum();
         let target_size: usize = arity * (total_size / sorted_boxes.len());
@@ -249,7 +249,7 @@ impl<'a> MemModulePlanner<'a> {
             groups.push(&sorted_boxes[start_index..sorted_boxes.len()]);
         }
         let next_boxes: Vec<Vec<SortedBox>> =
-            groups.into_par_iter().map(|group| self.merge_k_sorted_boxes(&group)).collect();
+            groups.into_par_iter().map(|group| self.merge_k_sorted_boxes(group)).collect();
         self.merge_sorted_boxes(&next_boxes, arity)
     }
     fn merge_k_sorted_boxes(&self, boxes: &[Vec<SortedBox>]) -> Vec<SortedBox> {
@@ -321,7 +321,7 @@ impl<'a> MemModulePlanner<'a> {
                         // row
                         // rows_applied = 0 => never, because means no more space in current
                         // segment but always open a new segment after close a segment.
-                        skip_rows - 1,
+                        skip_rows,
                     );
                 }
             }
