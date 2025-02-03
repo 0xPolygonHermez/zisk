@@ -56,7 +56,6 @@ const REG_B_W: &str = "eax";
 const REG_B_H: &str = "ax";
 const REG_B_B: &str = "al";
 const REG_C: &str = "r15";
-const REG_C_W: &str = "r15w";
 const REG_FLAG: &str = "rdx";
 const REG_STEP: &str = "qword ptr [STEP]";
 const REG_SP: &str = "qword ptr [REG_SP]";
@@ -1196,49 +1195,20 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::SllW => {
-                if ctx.b.is_constant {
-                    s += &format!("\tmov {}, {} /* SllW: c = a */\n", REG_C, ctx.a.string_value);
-                    s += &format!(
-                        "\tshl {}, 0x{:x} /* SllW: c = a << b */\n",
-                        REG_C_W,
-                        ctx.b.constant_value & 0x3f
-                    );
-                    s += &format!(
-                        "\tmovsxd {}, {} /* SllW: sign extend to quad */\n",
-                        REG_C, REG_C_W
-                    );
-                } else {
-                    s += &format!(
-                        "\tmov {}, {} /* SllW: c(value) = a */\n",
-                        REG_VALUE, ctx.a.string_value
-                    );
-                    s += &format!("\tmov rcx, {} /* SllW: c = b */\n", REG_B);
-                    s += &format!("\tshl {}, cl /* SllW: c(value) = a << b */\n", REG_VALUE_W);
-                    s += &format!(
-                        "\tmovsxd {}, {} /* SllW: sign extend to quad */\n",
-                        REG_C, REG_VALUE_W
-                    );
-                }
+                s +=
+                    &format!("\tmov {}, {} /* SllW: value = a */\n", REG_VALUE, ctx.a.string_value);
+                s += &format!("\tmov rcx, {} /* SllW: c = b */\n", ctx.b.string_value);
+                s += &format!("\tshl {}, cl /* SllW: value = a << b */\n", REG_VALUE_W);
+                s += &format!(
+                    "\tmovsxd {}, {} /* SllW: sign extend to quad value -> c */\n",
+                    REG_C, REG_VALUE_W
+                );
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sra => {
                 s += &format!("\tmov {}, {} /* Sra: c = a */\n", REG_C, ctx.a.string_value);
-                if ctx.b.is_constant {
-                    s += &format!("\tmov {}, {} /* Sra: c = a */\n", REG_C, ctx.a.string_value);
-                    s += &format!(
-                        "\tsar {}, 0x{:x} /* Sra: c = a >> b */\n",
-                        REG_C,
-                        ctx.b.constant_value & 0x3f
-                    );
-                } else {
-                    s += &format!(
-                        "\tmov {}, {} /* Sra: c(value) = a */\n",
-                        REG_VALUE, ctx.a.string_value
-                    );
-                    s += &format!("\tmov {}, {} /* Sra: c = b */\n", REG_C, REG_B);
-                    s += &format!("\tsar {}, {} /* Sra: c(value) = a >> b */\n", REG_VALUE, REG_C);
-                    s += &format!("\tmov {}, {} /* Sra: c = value */\n", REG_C, REG_VALUE);
-                }
+                s += &format!("\tmov rcx, {} /* Sra: rcx = b */\n", ctx.b.string_value);
+                s += &format!("\tsar {}, cl /* Sra: c = c >> b(cl) */\n", REG_C);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Srl => {
@@ -1275,11 +1245,8 @@ impl ZiskRom {
                         "\tmov {}, {} /* SraW: c(value) = a */\n",
                         REG_VALUE, ctx.a.string_value
                     );
-                    s += &format!("\tmov {}, {} /* SraW: c = b */\n", REG_C, REG_B);
-                    s += &format!(
-                        "\tsar {}, {} /* SraW: c(value) = a >> b */\n",
-                        REG_VALUE_W, REG_C_W
-                    );
+                    s += &format!("\tmov rcx, {} /* SraW: rcx = b */\n", REG_B);
+                    s += &format!("\tsar {}, cl /* SraW: c(value) = a >> b */\n", REG_VALUE_W);
                     s += &format!(
                         "\tmovsxd {}, {} /* SraW: sign extend to quad */\n",
                         REG_C, REG_VALUE_W

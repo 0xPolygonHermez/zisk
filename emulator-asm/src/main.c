@@ -54,13 +54,13 @@ void print_usage (void)
     printf("Usage: emu <input_file> [-v verbose on] [-o output off] [-h/--help print this]\n");
 }
 
+// Configuration
+bool verbose = false;
+bool output = true;
+char * input_file = NULL;
+
 int main(int argc, char *argv[])
 {
-    // Configuration
-    bool verbose = false;
-    bool output = true;
-    char * input_file = NULL;
-
     // Parse arguments
     if (argc > 1)
     {
@@ -182,7 +182,7 @@ int main(int argc, char *argv[])
     emulator_start();
     struct timeval stop_time;
     gettimeofday(&stop_time,NULL);
-    printf("Duration = %d us\n", TimeDiff(start_time, stop_time));
+    if (verbose) printf("Duration = %d us\n", TimeDiff(start_time, stop_time));
 
     // Log output
     if (output)
@@ -225,6 +225,6 @@ extern int _print_step(uint64_t step)
     uint64_t duration_s = duration/1000;
     if (duration_s == 0) duration_s = 1;
     uint64_t speed = step / duration_s;
-    printf("print_step() Counter=%d Step=%d Duration=%dus Speed=%dsteps/ms\n", print_step_counter, step, duration, speed);
+    if (verbose) printf("print_step() Counter=%d Step=%d Duration=%dus Speed=%dsteps/ms\n", print_step_counter, step, duration, speed);
     return 0;
 }
