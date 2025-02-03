@@ -1,41 +1,40 @@
 use crate::{MemAlignCheckPoint, MemAlignInput, MemAlignSM, MemHelpers};
-use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
+use data_bus::{BusDevice, BusId, MemBusData, PayloadType, MEM_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
+use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 
 pub struct MemAlignInstance<F: PrimeField> {
-    checkpoint: MemAlignCheckPoint,
     /// Instance context
     ictx: InstanceCtx,
 
-    /// Collected inputs
-    inputs: Vec<MemAlignInput>,
     mem_align_sm: Arc<MemAlignSM<F>>,
-    pending_count: u32,
-    skip_pending: u32,
 }
 
 impl<F: PrimeField> MemAlignInstance<F> {
     pub fn new(mem_align_sm: Arc<MemAlignSM<F>>, ictx: InstanceCtx) -> Self {
-        let checkpoint =
-            ictx.plan.meta.as_ref().unwrap().downcast_ref::<MemAlignCheckPoint>().unwrap().clone();
-
-        Self {
-            ictx,
-            inputs: Vec::new(),
-            mem_align_sm,
-            checkpoint: checkpoint.clone(),
-            skip_pending: checkpoint.skip,
-            pending_count: checkpoint.count,
-        }
+        println!("MemAlignInstance::new() {:?}", ictx.plan);
+        Self { ictx, mem_align_sm }
     }
 }
 
 impl<F: PrimeField> Instance<F> for MemAlignInstance<F> {
-    fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        Some(self.mem_align_sm.compute_witness(&self.inputs, self.checkpoint.rows))
+    fn compute_witness(
+        &mut self,
+        _pctx: &ProofCtx<F>,
+        collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+    ) -> Option<AirInstance<F>> {
+        let collectors: Vec<_> = collectors
+            .into_iter()
+            .map(|(chunk_id, mut collector)| {
+                let collector =
+                    collector.detach_device().as_any().downcast::<MemAlignCollector>().unwrap();
+                (chunk_id, collector)
+            })
+            .collect();
+
+        Some(self.mem_align_sm.compute_witness(collectors))
     }
 
     fn check_point(&self) -> CheckPoint {
@@ -45,9 +44,37 @@ impl<F: PrimeField> Instance<F> for MemAlignInstance<F> {
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
     }
+
+    fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+        Some(Box::new(MemAlignCollector::new(&self.ictx)))
+    }
 }
 
-impl<F: PrimeField> BusDevice<u64> for MemAlignInstance<F> {
+pub struct MemAlignCollector {
+    /// Collected inputs
+    pub inputs: Vec<MemAlignInput>,
+
+    pending_count: u32,
+    skip_pending: u32,
+    pub rows: u32,
+}
+
+impl MemAlignCollector {
+    pub fn new(ictx: &InstanceCtx) -> Self {
+        let checkpoint =
+            ictx.plan.meta.as_ref().unwrap().downcast_ref::<MemAlignCheckPoint>().unwrap().clone();
+
+        println!("Checkpoint: {:?}", checkpoint);
+        Self {
+            inputs: Vec::new(),
+            skip_pending: checkpoint.skip,
+            pending_count: checkpoint.count,
+            rows: checkpoint.rows,
+        }
+    }
+}
+
+impl BusDevice<u64> for MemAlignCollector {
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         let addr = MemBusData::get_addr(data);
         let bytes = MemBusData::get_bytes(data);

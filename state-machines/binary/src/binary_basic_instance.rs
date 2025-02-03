@@ -56,12 +56,7 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
     ///
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
-    fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        None
-        // Some(self.binary_basic_sm.compute_witness(&self.inputs))
-    }
-
-    fn compute_witness2(
+    fn compute_witness(
         &mut self,
         _pctx: &ProofCtx<F>,
         collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
@@ -75,7 +70,7 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
             })
             .collect();
 
-        Some(self.binary_basic_sm.compute_witness2(collectors))
+        Some(self.binary_basic_sm.compute_witness(collectors))
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -94,7 +89,7 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
         InstanceType::Instance
     }
 
-    fn build_inputs_collector2(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         match self.ictx.plan.air_id {
             BinaryTrace::<F>::AIR_ID => {
                 Some(Box::new(match &self.ictx.plan.check_point {

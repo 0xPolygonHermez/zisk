@@ -29,9 +29,7 @@ pub trait Instance<F: PrimeField>: Send {
     ///
     /// # Returns
     /// An optional `AirInstance` object representing the computed witness.
-    fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>>;
-
-    fn compute_witness2(
+    fn compute_witness(
         &mut self,
         _pctx: &ProofCtx<F>,
         _collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
@@ -51,9 +49,9 @@ pub trait Instance<F: PrimeField>: Send {
     /// An `InstanceType` indicating whether the instance is standalone or table-based.
     fn instance_type(&self) -> InstanceType;
 
-    fn build_inputs_collector2(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         None
-    } // TODO remove default implementation
+    }
 }
 
 /// Macro to define a table-backed instance.
@@ -72,9 +70,9 @@ macro_rules! table_instance {
 
         use p3_field::PrimeField;
 
-        use data_bus::BusId;
+        use data_bus::{BusId, PayloadType};
         use proofman_common::{AirInstance, FromTrace, ProofCtx};
-        use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
+        use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
         use zisk_pil::$Trace;
 
         use rayon::prelude::*;
@@ -103,7 +101,11 @@ macro_rules! table_instance {
         }
 
         impl<F: PrimeField> Instance<F> for $InstanceName {
-            fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
+            fn compute_witness(
+                &mut self,
+                pctx: &ProofCtx<F>,
+                _collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+            ) -> Option<AirInstance<F>> {
                 let mut multiplicity = self.table_sm.detach_multiplicity();
 
                 pctx.dctx_distribute_multiplicity(&mut multiplicity, self.ictx.global_id);

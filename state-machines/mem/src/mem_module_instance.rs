@@ -10,18 +10,132 @@ use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 
 pub struct MemModuleInstance<F: PrimeField> {
-    /// Binary Basic state machine
-    mem_check_point: MemModuleSegmentCheckPoint,
     /// Instance context
     ictx: InstanceCtx,
 
-    /// Collected inputs
-    inputs: Vec<MemInput>,
     module: Arc<dyn MemModule<F>>,
 }
 
 impl<F: PrimeField> MemModuleInstance<F> {
     pub fn new(module: Arc<dyn MemModule<F>>, ictx: InstanceCtx) -> Self {
+        Self { ictx, module: module.clone() }
+    }
+
+    fn prepare_inputs(&mut self, inputs: &mut [MemInput]) {
+        // sort all instance inputs
+        timer_start_debug!(MEM_SORT);
+        inputs.sort_by_key(|input| (input.addr, input.step));
+        timer_stop_and_log_debug!(MEM_SORT);
+    }
+
+    fn fit_inputs_and_get_prev_segment(
+        &mut self,
+        inputs: &mut Vec<MemInput>,
+        mem_check_point: MemModuleSegmentCheckPoint,
+    ) -> MemPreviousSegment {
+        let mut prev_segment = MemPreviousSegment {
+            addr: mem_check_point.prev_addr,
+            step: mem_check_point.prev_step,
+            value: mem_check_point.prev_value,
+        };
+        #[cfg(feature = "debug_mem")]
+        let initial = (self.inputs[0].addr, self.inputs[0].step, self.inputs.len());
+
+        if mem_check_point.skip_rows > 0 {
+            let mut input_index = 0;
+            let mut skip_rows = 0;
+            loop {
+                while inputs[input_index].addr == prev_segment.addr
+                    && (inputs[input_index].step - prev_segment.step) > STEP_MEMORY_MAX_DIFF
+                    && skip_rows < mem_check_point.skip_rows as usize
+                {
+                    prev_segment.step += STEP_MEMORY_MAX_DIFF;
+                    skip_rows += 1;
+                }
+                if skip_rows >= mem_check_point.skip_rows as usize {
+                    break;
+                }
+                prev_segment.addr = inputs[input_index].addr;
+                prev_segment.step = inputs[input_index].step;
+                prev_segment.value = inputs[input_index].value;
+                input_index += 1;
+                skip_rows += 1;
+            }
+            inputs.drain(0..input_index);
+        }
+        #[cfg(feature = "debug_mem")]
+        let original_inputs_len = self.inputs.len();
+
+        inputs.truncate(mem_check_point.rows as usize);
+
+        #[cfg(feature = "debug_mem")]
+        println!(
+            "[Mem:{}] #1 INPUT [0x{:X},{}] {} => [0x{:X},{}] {} => {} F [0x{:X},{},skip:{}]-[0x{:X},{}]",
+            self.ictx.plan.segment_id.unwrap(),
+            initial.0,
+            initial.1,
+            initial.2,
+            self.inputs[0].addr,
+            self.inputs[0].step,
+            original_inputs_len,
+            self.inputs.len(),
+            self.mem_check_point.prev_addr,
+            self.mem_check_point.prev_step,
+            self.mem_check_point.skip_rows,
+            self.mem_check_point.last_addr,
+            self.mem_check_point.last_step,
+        );
+        prev_segment
+    }
+}
+
+impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
+    fn compute_witness(
+        &mut self,
+        _pctx: &ProofCtx<F>,
+        _collectors: Vec<(usize, Box<sm_common::BusDeviceWrapper<data_bus::PayloadType>>)>,
+    ) -> Option<AirInstance<F>> {
+        let mut inputs = Vec::new(); // TODO modify!!!!
+        let is_last_segment = true; // TODO Modify
+        let mem_check_point = MemModuleSegmentCheckPoint::default(); // TODO modify
+
+        if inputs.is_empty() {
+            return None;
+        }
+        self.prepare_inputs(&mut inputs);
+        let prev_segment = self.fit_inputs_and_get_prev_segment(&mut inputs, mem_check_point);
+
+        let segment_id = self.ictx.plan.segment_id.unwrap();
+
+        Some(self.module.compute_witness(&inputs, segment_id, is_last_segment, &prev_segment))
+    }
+
+    fn build_inputs_collector(
+        &self,
+        _chunk_id: usize,
+    ) -> Option<Box<dyn BusDevice<data_bus::PayloadType>>> {
+        Some(Box::new(MemModuleCollector::new(&self.ictx)))
+    }
+
+    fn check_point(&self) -> CheckPoint {
+        self.ictx.plan.check_point.clone()
+    }
+
+    fn instance_type(&self) -> InstanceType {
+        InstanceType::Instance
+    }
+}
+
+pub struct MemModuleCollector {
+    /// Binary Basic state machine
+    mem_check_point: MemModuleSegmentCheckPoint,
+
+    /// Collected inputs
+    inputs: Vec<MemInput>,
+}
+
+impl MemModuleCollector {
+    pub fn new(ictx: &InstanceCtx) -> Self {
         let mem_check_point = ictx
             .plan
             .meta
@@ -30,7 +144,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
             .downcast_ref::<MemModuleSegmentCheckPoint>()
             .unwrap()
             .clone();
-        Self { ictx, inputs: Vec::new(), mem_check_point, module: module.clone() }
+        Self { inputs: Vec::new(), mem_check_point }
     }
 
     fn process_unaligned_data(&mut self, data: &[u64]) {
@@ -117,100 +231,13 @@ impl<F: PrimeField> MemModuleInstance<F> {
             self.inputs.push(MemInput::new(addr_w, is_write, step, value));
         }
     }
-    fn prepare_inputs(&mut self) {
-        // sort all instance inputs
-        timer_start_debug!(MEM_SORT);
-        self.inputs.sort_by_key(|input| (input.addr, input.step));
-        timer_stop_and_log_debug!(MEM_SORT);
-    }
-    fn fit_inputs_and_get_prev_segment(&mut self) -> MemPreviousSegment {
-        let mut prev_segment = MemPreviousSegment {
-            addr: self.mem_check_point.prev_addr,
-            step: self.mem_check_point.prev_step,
-            value: self.mem_check_point.prev_value,
-        };
-        #[cfg(feature = "debug_mem")]
-        let initial = (self.inputs[0].addr, self.inputs[0].step, self.inputs.len());
-
-        if self.mem_check_point.skip_rows > 0 {
-            let mut input_index = 0;
-            let mut skip_rows = 0;
-            loop {
-                while self.inputs[input_index].addr == prev_segment.addr &&
-                    (self.inputs[input_index].step - prev_segment.step) > STEP_MEMORY_MAX_DIFF &&
-                    skip_rows < self.mem_check_point.skip_rows as usize
-                {
-                    prev_segment.step += STEP_MEMORY_MAX_DIFF;
-                    skip_rows += 1;
-                }
-                if skip_rows >= self.mem_check_point.skip_rows as usize {
-                    break;
-                }
-                prev_segment.addr = self.inputs[input_index].addr;
-                prev_segment.step = self.inputs[input_index].step;
-                prev_segment.value = self.inputs[input_index].value;
-                input_index += 1;
-                skip_rows += 1;
-            }
-            self.inputs.drain(0..input_index);
-        }
-        #[cfg(feature = "debug_mem")]
-        let original_inputs_len = self.inputs.len();
-
-        self.inputs.truncate(self.mem_check_point.rows as usize);
-
-        #[cfg(feature = "debug_mem")]
-        println!(
-            "[Mem:{}] #1 INPUT [0x{:X},{}] {} => [0x{:X},{}] {} => {} F [0x{:X},{},skip:{}]-[0x{:X},{}]",
-            self.ictx.plan.segment_id.unwrap(),
-            initial.0,
-            initial.1,
-            initial.2,
-            self.inputs[0].addr,
-            self.inputs[0].step,
-            original_inputs_len,
-            self.inputs.len(),
-            self.mem_check_point.prev_addr,
-            self.mem_check_point.prev_step,
-            self.mem_check_point.skip_rows,
-            self.mem_check_point.last_addr,
-            self.mem_check_point.last_step,
-        );
-        prev_segment
-    }
 }
 
-impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
-    fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        if self.inputs.is_empty() {
-            return None;
-        }
-        self.prepare_inputs();
-        let prev_segment = self.fit_inputs_and_get_prev_segment();
-
-        let segment_id = self.ictx.plan.segment_id.unwrap();
-        Some(self.module.compute_witness(
-            &self.inputs,
-            segment_id,
-            self.mem_check_point.is_last_segment,
-            &prev_segment,
-        ))
-    }
-
-    fn check_point(&self) -> CheckPoint {
-        self.ictx.plan.check_point.clone()
-    }
-
-    fn instance_type(&self) -> InstanceType {
-        InstanceType::Instance
-    }
-}
-
-impl<F: PrimeField> BusDevice<u64> for MemModuleInstance<F> {
+impl BusDevice<u64> for MemModuleCollector {
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
-        // info!("MemModuleInstance process_data bus_id:{} len: {}", _bus_id, data.len());
+        // info!("MemModuleCollector process_data bus_id:{} len: {}", _bus_id, data.len());
         // info!(
-        //     "MemModuleInstance process_data len: {:X},{:X},{:X},{:X},{:X}",
+        //     "MemModuleCollector process_data len: {:X},{:X},{:X},{:X},{:X}",
         //     data[0], data[1], data[2], data[3], data[4]
         // );
         assert!(*_bus_id == MEM_BUS_ID);
@@ -222,7 +249,7 @@ impl<F: PrimeField> BusDevice<u64> for MemModuleInstance<F> {
             self.process_unaligned_data(data);
             return None;
         }
-        // info!("MemModuleInstance process_data addr: {:x} bytes: {:x}", addr, bytes);
+        // info!("MemModuleCollector process_data addr: {:x} bytes: {:x}", addr, bytes);
         let addr_w = MemHelpers::get_addr_w(addr);
         let is_write = MemHelpers::is_write(MemBusData::get_op(data));
         if is_write {

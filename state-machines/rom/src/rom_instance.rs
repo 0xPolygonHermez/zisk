@@ -48,12 +48,7 @@ impl<F: PrimeField> Instance<F> for RomInstance {
     ///
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
-    fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
-        None
-        // Some(RomSM::compute_witness(&self.zisk_rom, &self.ictx.plan))
-    }
-
-    fn compute_witness2(
+    fn compute_witness(
         &mut self,
         _pctx: &ProofCtx<F>,
         _collectors: Vec<(usize, Box<sm_common::BusDeviceWrapper<data_bus::PayloadType>>)>,

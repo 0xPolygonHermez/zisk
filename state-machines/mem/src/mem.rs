@@ -4,7 +4,7 @@ use crate::{
     InputDataSM, MemAlignInstance, MemAlignRomSM, MemAlignSM, MemCounters, MemModuleInstance,
     MemPlanner, MemSM, RomDataSM,
 };
-use data_bus::{BusDevice, PayloadType, MEM_BUS_ID};
+use data_bus::MEM_BUS_ID;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;

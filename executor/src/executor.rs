@@ -311,7 +311,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         timer_start_info!(WITNESS_SECN_5);
         collectors_by_instance.into_par_iter().for_each(|(global_idx, mut instance, collector)| {
-            if let Some(air_instance) = instance.compute_witness2(pctx, collector) {
+            if let Some(air_instance) = instance.compute_witness(pctx, collector) {
                 pctx.air_instance_repo.add_air_instance(air_instance, global_idx);
             }
         });
@@ -343,7 +343,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         instances.iter_mut().for_each(|(global_idx, sec_instance)| {
             if sec_instance.instance_type() == InstanceType::Table {
-                if let Some(air_instance) = sec_instance.compute_witness(pctx) {
+                if let Some(air_instance) = sec_instance.compute_witness(pctx, vec![]) {
                     if pctx.dctx_is_my_instance(*global_idx) {
                         pctx.air_instance_repo.add_air_instance(air_instance, *global_idx);
                     }
@@ -440,7 +440,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
                 for idx in secn_indices {
                     let (_, secn_instance) = &secn_instances[*idx];
-                    let bus_device = secn_instance.build_inputs_collector2(chunk_id);
+                    let bus_device = secn_instance.build_inputs_collector(chunk_id);
                     if let Some(bus_device) = bus_device {
                         let bus_device = Box::new(BusDeviceWrapper::new(Some(*idx), bus_device));
                         data_bus.connect_device(bus_device.bus_id(), bus_device);
