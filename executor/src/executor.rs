@@ -579,6 +579,8 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         let main_planning = MainPlanner::plan::<F>(&min_traces, Self::MIN_TRACE_SIZE);
         let sec_planning = self.plan_sec(sec_count);
 
+        println!("Sec planning: {:?}", sec_planning);
+
         // PHASE 4. PLANNING. Plan the instances
         self.configure_instances(&pctx, &sec_planning);
 

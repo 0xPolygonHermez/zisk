@@ -6,8 +6,7 @@
 
 use crate::ArithCounter;
 use sm_common::{
-    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics,
-    Plan, Planner, TableInfo,
+    plan, plan_2, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics, Plan, Planner, TableInfo
 };
 
 /// The `ArithPlanner` struct organizes execution plans for arithmetic instances and tables.
@@ -96,16 +95,16 @@ impl Planner for ArithPlanner {
         let mut plan_result = Vec::new();
 
         for (idx, instance) in self.instances_info.iter().enumerate() {
-            let plan: Vec<_> = plan(&count[idx], instance.num_rows as u64)
+            let plan: Vec<_> = plan_2(&count[idx], instance.num_rows as u64)
                 .into_iter()
-                .map(|(check_point, collect_info_skip)| {
+                .map(|check_point| {
                     Plan::new(
                         instance.airgroup_id,
                         instance.air_id,
                         None,
                         InstanceType::Instance,
                         check_point,
-                        Some(collect_info_skip),
+                        None,
                         None,
                     )
                 })

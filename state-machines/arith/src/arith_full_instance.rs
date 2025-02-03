@@ -8,7 +8,7 @@ use crate::ArithFullSM;
 use data_bus::{BusDevice, BusId, OperationBusData, OperationData, PayloadType, OPERATION_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType};
+use sm_common::{BusDeviceWrapper, CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
@@ -61,6 +61,26 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
         Some(self.arith_full_sm.compute_witness(&self.inputs))
     }
 
+    fn compute_witness2(
+        &mut self,
+        _pctx: &ProofCtx<F>,
+        collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+    ) -> Option<AirInstance<F>> {
+        let collectors = collectors
+            .into_iter()
+            .map(|(chunk_id, mut collector)| {
+                let collector = collector
+                    .detach_device()
+                    .as_any()
+                    .downcast::<ArithFullInstance2Collector>()
+                    .unwrap();
+                (chunk_id, collector)
+            })
+            .collect();
+
+        Some(self.arith_full_sm.compute_witness2(collectors))
+    }
+
     /// Retrieves the checkpoint associated with this instance.
     ///
     /// # Returns
@@ -77,12 +97,22 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
         InstanceType::Instance
     }
 
-    fn build_inputs_collector2(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector2(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         match self.ictx.plan.air_id {
-            // id if id == ArithTrace::<usize>::AIR_ID => Some(Box::new(
-            //     ArithFullInstance2Collector::new(OPERATION_BUS_ID, self.ictx.plan.collect_info),
-            // )),
-            _ => None,
+            id if id == ArithTrace::<F>::AIR_ID => {
+                Some(Box::new(match &self.ictx.plan.check_point {
+                    CheckPoint::Multiple2(check_point) => {
+                        // check_point is an array
+                        ArithFullInstance2Collector::new(
+                            OPERATION_BUS_ID,
+                            check_point[&chunk_id].0,
+                            check_point[&chunk_id].1,
+                        )
+                    }
+                    _ => panic!("Binary Basic: Invalid checkpoint type"),
+                }))
+            }
+            _ => panic!("BinaryBasicInstance: Unsupported air_id: {:?}", self.ictx.plan.air_id),
         }
     }
 }
@@ -133,18 +163,20 @@ impl BusDevice<u64> for ArithFullInstance {
 ////////////////////////////////
 pub struct ArithFullInstance2Collector {
     /// Collected inputs for witness computation.
-    inputs: Vec<OperationData<u64>>,
+    pub inputs: Vec<OperationData<u64>>,
 
     /// The connected bus ID.
     bus_id: BusId,
+
+    num_operations: u64,
 
     /// Helper to skip instructions based on the plan's configuration.
     collect_skipper: CollectSkipper,
 }
 
 impl ArithFullInstance2Collector {
-    pub fn new(bus_id: BusId, collect_skipper: Option<CollectSkipper>) -> Self {
-        Self { inputs: Vec::new(), bus_id, collect_skipper: collect_skipper.unwrap() }
+    pub fn new(bus_id: BusId, num_operations: u64, collect_skipper: CollectSkipper) -> Self {
+        Self { inputs: Vec::new(), bus_id, num_operations, collect_skipper }
     }
 }
 
@@ -160,6 +192,10 @@ impl BusDevice<u64> for ArithFullInstance2Collector {
     /// - The first element indicates whether further processing should continue.
     /// - The second element is always empty.
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
+        if self.inputs.len() == self.num_operations as usize {
+            return (false, vec![]);
+        }
+
         let data: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         let op_type = OperationBusData::get_op_type(&data);
