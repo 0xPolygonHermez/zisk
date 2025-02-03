@@ -45,8 +45,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, M64, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND,
-    SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
+    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, M64, P2_32, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
+    SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
 };
 
 const REG_A: &str = "rbx";
@@ -532,11 +532,11 @@ impl ZiskRom {
             // *s += &format!("\tmov rax, 0\n");
             // *s += &format!("\tcall printf\n");
 
-            *s += "\tmov rax, 1\n"; // TODO
-                                    //*s += "\tmov rdi, 1\n";
-                                    // *s += &format!("\tlea rsi, pc_{}_log\n", ctx.pc);
-                                    // *s += &format!("\tmov rdx, pc_{}_log_len\n", ctx.pc);
-                                    // *s += "\tsyscall\n\n";
+            //*s += "\tmov rax, 1\n"; // TODO
+            //*s += "\tmov rdi, 1\n";
+            // *s += &format!("\tlea rsi, pc_{}_log\n", ctx.pc);
+            // *s += &format!("\tmov rdx, pc_{}_log_len\n", ctx.pc);
+            // *s += "\tsyscall\n\n";
 
             // Set register a content based on instruction a_src
             ctx.a.is_constant = false;
@@ -637,12 +637,14 @@ impl ZiskRom {
                             );
                         }
                         2 => {
+                            *s += &format!("\tmov {}, 0 /* b=SRC_IND(2): b = 0 */\n", REG_B);
                             *s += &format!(
                                 "\tmov {}, word ptr [{}] /* b=SRC_IND(2): b = mem[address] */\n",
                                 REG_B_H, REG_ADDRESS
                             );
                         }
                         1 => {
+                            *s += &format!("\tmov {}, 0 /* b=SRC_IND(1): b = 0 */\n", REG_B);
                             *s += &format!(
                                 "\tmov {}, byte ptr [{}] /* b=SRC_IND(1): b = mem[address] */\n",
                                 REG_B_B, REG_ADDRESS
@@ -1074,7 +1076,7 @@ impl ZiskRom {
                 // Make sure b is stored in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* SignExtendB: b = value */\n",
+                        "\tmov {}, {} /* SignExtendB: b = const_value */\n",
                         REG_B, ctx.b.string_value
                     );
                 }
@@ -1089,7 +1091,7 @@ impl ZiskRom {
                 // Make sure b is stored in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* SignExtendH: b = value */\n",
+                        "\tmov {}, {} /* SignExtendH: b = const_value */\n",
                         REG_B, ctx.b.string_value
                     );
                 }
@@ -1104,7 +1106,7 @@ impl ZiskRom {
                 // Make sure b is stored in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* SignExtendW: b = value */\n",
+                        "\tmov {}, {} /* SignExtendW: b = const_value */\n",
                         REG_B, ctx.b.string_value
                     );
                 }
@@ -1133,8 +1135,10 @@ impl ZiskRom {
                 // call	<core::num::wrapping::Wrapping<i32> as core::ops::arith::Add>::add
                 // cdqe
                 if ctx.b.is_constant {
-                    s +=
-                        &format!("\tmov {}, {} /* AddW: b = value */\n", REG_B, ctx.b.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* AddW: b = const_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
                 }
                 s += &format!("\tadd {}, {} /* AddW: b += a */\n", REG_B, ctx.a.string_value);
                 s += &format!("\tcdqe /* AddW: trunk b */\n");
@@ -1153,8 +1157,10 @@ impl ZiskRom {
             ZiskOp::SubW => {
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
-                    s +=
-                        &format!("\tmov {}, {} /* SubW: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* SubW: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
                 }
                 // Used only to preserve b value
                 //s +=
@@ -1252,9 +1258,6 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::SraW => {
-                // ((Wrapping(a as i32) >> (b & 0x3f) as usize).0 as u64, false)
-                // call	<core::num::wrapping::Wrapping<i32> as core::ops::bit::Shr<usize>>::shr
-                // cdqe
                 if ctx.b.is_constant {
                     s +=
                         &format!("\tmov {}, {} /* SraW: c = a */\n", REG_VALUE, ctx.a.string_value);
@@ -1285,8 +1288,6 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::SrlW => {
-                // call	<core::num::wrapping::Wrapping<u32> as core::ops::bit::Shr<usize>>::shr
-                // cdqe
                 if ctx.b.is_constant {
                     s +=
                         &format!("\tmov {}, {} /* SrlW: c = a */\n", REG_VALUE, ctx.a.string_value);
@@ -1315,7 +1316,10 @@ impl ZiskRom {
             ZiskOp::Eq => {
                 // Make sure a is in REG_A to compare it against b (constant, expression or reg)
                 if ctx.a.is_constant {
-                    s += &format!("\tmov {}, {} /* Eq: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* Eq: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
                 }
                 s += &format!("\tcmp {}, {} /* Eq: a == b ? */\n", REG_A, ctx.b.string_value);
                 s += &format!("\tje pc_{:x}_equal_true\n", ctx.pc);
@@ -1331,7 +1335,7 @@ impl ZiskRom {
                 // Make sure a is in REG_A to compare it against b (constant, expression or reg)
                 if ctx.a.is_constant {
                     s += &format!(
-                        "\tmov {}, 0x{:x} /* EqW: a = constant */\n",
+                        "\tmov {}, 0x{:x} /* EqW: a = const_value */\n",
                         REG_A,
                         ctx.a.constant_value & 0xffffffff
                     );
@@ -1358,7 +1362,10 @@ impl ZiskRom {
             ZiskOp::Ltu => {
                 // Make sure a is in REG_A to compare it against b (constant, expression or reg)
                 if ctx.a.is_constant {
-                    s += &format!("\tmov {}, {} /* Ltu: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* Ltu: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
                 }
                 s += &format!("\tcmp {}, {} /* Ltu: a == b ? */\n", REG_A, ctx.b.string_value);
                 s += &format!("\tjb pc_{:x}_ltu_true\n", ctx.pc);
@@ -1373,7 +1380,19 @@ impl ZiskRom {
             ZiskOp::Lt => {
                 // Make sure a is in REG_A to compare it against b (constant, expression or reg)
                 if ctx.a.is_constant {
-                    s += &format!("\tmov {}, {} /* Lt: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* Lt: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
+                }
+                // If b is constant and too big, move it to its register
+                if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
+                    s += &format!(
+                        "\tmov {}, {} /* Lt: b = const_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
+                    ctx.b.is_constant = false;
+                    ctx.b.string_value = REG_B.to_string();
                 }
                 s += &format!("\tcmp {}, {} /* Lt: a == b ? */\n", REG_A, ctx.b.string_value);
                 s += &format!("\tjl pc_{:x}_lt_true\n", ctx.pc);
@@ -1417,7 +1436,7 @@ impl ZiskRom {
                 // Make sure a is in REG_A to compare it against b (constant or reg)
                 if ctx.a.is_constant {
                     s += &format!(
-                        "\tmov {}, 0x{:x} /* LtW: a = constant */\n",
+                        "\tmov {}, 0x{:x} /* LtW: a = const_value */\n",
                         REG_A,
                         ctx.a.constant_value & 0xffffffff
                     );
@@ -1444,7 +1463,19 @@ impl ZiskRom {
             ZiskOp::Leu => {
                 // Make sure a is in REG_A to compare it against b (constant, expression or reg)
                 if ctx.a.is_constant {
-                    s += &format!("\tmov {}, {} /* Leu: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* Leu: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
+                }
+                // If b is constant and too big, move it to its register
+                if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
+                    s += &format!(
+                        "\tmov {}, {} /* Leu: b = const_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
+                    ctx.b.is_constant = false;
+                    ctx.b.string_value = REG_B.to_string();
                 }
                 s += &format!("\tcmp {}, {} /* Leu: a == b ? */\n", REG_A, ctx.b.string_value);
                 s += &format!("\tpc_{:x}_jbe leu_true\n", ctx.pc);
@@ -1459,7 +1490,19 @@ impl ZiskRom {
             ZiskOp::Le => {
                 // Make sure a is in REG_A to compare it against b (constant, expression or reg)
                 if ctx.a.is_constant {
-                    s += &format!("\tmov {}, {} /* Le: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* Le: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
+                }
+                // If b is constant and too big, move it to its register
+                if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
+                    s += &format!(
+                        "\tmov {}, {} /* Le: b = const_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
+                    ctx.b.is_constant = false;
+                    ctx.b.string_value = REG_B.to_string();
                 }
                 s += &format!("\tcmp {}, {} /* Le: a == b ? */\n", REG_A, ctx.b.string_value);
                 s += &format!("\tjle pc_{:x}_lte_true\n", ctx.pc);
@@ -1475,7 +1518,7 @@ impl ZiskRom {
                 // Make sure a is in REG_A to compare it against b (constant or reg)
                 if ctx.a.is_constant {
                     s += &format!(
-                        "\tmov {}, 0x{:x} /* LeuW: a = constant */\n",
+                        "\tmov {}, 0x{:x} /* LeuW: a = const_value */\n",
                         REG_A,
                         ctx.a.constant_value & 0xffffffff
                     );
@@ -1503,7 +1546,7 @@ impl ZiskRom {
                 // Make sure a is in REG_A to compare it against b (constant or reg)
                 if ctx.a.is_constant {
                     s += &format!(
-                        "\tmov {}, 0x{:x} /* LeW: a = constant */\n",
+                        "\tmov {}, 0x{:x} /* LeW: a = const_value */\n",
                         REG_A,
                         ctx.a.constant_value & 0xffffffff
                     );
@@ -1553,6 +1596,13 @@ impl ZiskRom {
             }
             ZiskOp::Mulu => {
                 // RDX:RAX := RAX ∗ r/m64
+                // Make sure a is in REG_A
+                if ctx.a.is_constant {
+                    s += &format!(
+                        "\tmov {}, {} /* Mulu: a = constant value */\n",
+                        REG_A, ctx.a.string_value
+                    );
+                }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
@@ -1566,6 +1616,7 @@ impl ZiskRom {
             }
             ZiskOp::Muluh => {
                 // RDX:RAX := RAX ∗ r/m64
+                // Make sure a is in REG_A
                 if ctx.a.is_constant {
                     s += &format!(
                         "\tmov {}, {} /* Muluh: a = constant value */\n",
@@ -1575,7 +1626,7 @@ impl ZiskRom {
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* Muluh: b = b_value */\n",
+                        "\tmov {}, {} /* Muluh: b = const_value */\n",
                         REG_B, ctx.b.string_value
                     );
                 }
@@ -1585,6 +1636,7 @@ impl ZiskRom {
             }
             ZiskOp::Mulsuh => {
                 // RDX:RAX := RAX ∗ r/m64
+                // Make sure a is in REG_A
                 if ctx.a.is_constant {
                     s += &format!(
                         "\tmov {}, {} /* Mulsuh: a = constant value */\n",
@@ -1594,7 +1646,7 @@ impl ZiskRom {
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* Mulsuh: b = b_value */\n",
+                        "\tmov {}, {} /* Mulsuh: b = const_value */\n",
                         REG_B, ctx.b.string_value
                     );
                 }
@@ -1612,14 +1664,15 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Mul => {
+                // RDX:RAX := RAX ∗ r/m64
+
+                // Make sure a is in REG_A
                 if ctx.a.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* Mul: a = constant value */\n",
+                        "\tmov {}, {} /* Mul: a = const_value */\n",
                         REG_A, ctx.a.string_value
                     );
                 }
-
-                // RDX:RAX := RAX ∗ r/m64
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
@@ -1633,16 +1686,18 @@ impl ZiskRom {
             }
             ZiskOp::Mulh => {
                 // RDX:RAX := RAX ∗ r/m64
+
+                // Make sure a is in REG_A
                 if ctx.a.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* Mulh: a = constant value */\n",
+                        "\tmov {}, {} /* Mulh: a = const_value */\n",
                         REG_A, ctx.a.string_value
                     );
                 }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* Mulh: b = b_value */\n",
+                        "\tmov {}, {} /* Mulh: b = const_value */\n",
                         REG_B, ctx.b.string_value
                     );
                 }
@@ -1652,6 +1707,8 @@ impl ZiskRom {
             }
             ZiskOp::MulW => {
                 // RDX:RAX := RAX ∗ r/m64
+
+                // Make sure a is in REG_A
                 if ctx.a.is_constant {
                     s += &format!(
                         "\tmov {}, {} /* MulW: a = constant value */\n",
@@ -1675,8 +1732,10 @@ impl ZiskRom {
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder. Make sure b is in REG_B
                 if ctx.b.is_constant {
-                    s +=
-                        &format!("\tmov {}, {} /* Divu: b = value */\n", REG_B, ctx.b.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* Divu: b = const_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
                 }
                 // If b==0 return 0xffffffffffffffff
                 s += &format!("\tcmp {}, 0 /* Divu: if b == 0 return f's */\n", REG_B);
@@ -1704,8 +1763,10 @@ impl ZiskRom {
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder. Make sure b is in REG_B
                 if ctx.b.is_constant {
-                    s +=
-                        &format!("\tmov {}, {} /* Remu: b = value */\n", REG_B, ctx.b.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* Remu: b = const_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
                 }
                 // If b==0 return a
                 s += &format!("\tcmp {}, 0 /* Remu: if b == 0 return a */\n", REG_B);
@@ -1748,11 +1809,17 @@ impl ZiskRom {
 
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
-                    s += &format!("\tmov {}, {} /* Div: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* Div: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
                 }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
-                    s += &format!("\tmov {}, {} /* Div: b = value */\n", REG_B, ctx.b.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* Div: b = const_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
                 }
 
                 // Check divide by zero:
@@ -1801,7 +1868,6 @@ impl ZiskRom {
                 s += &format!("pc_{:x}_div_divide:\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* Div: value = b backup */\n", REG_VALUE, REG_B);
                 s += &format!("\tmov rax, {} /* Div: rax = a */\n", REG_A);
-                //s += &format!("\tcdo /* Div: RDX:RAX:= sign-extend of RAX */\n");
                 s += &format!("\tbt rax, 63 /* Div: is a negative? */\n");
                 s += &format!("\tjnc pc_{:x}_a_is_positive\n", ctx.pc);
                 s +=
@@ -1830,11 +1896,17 @@ impl ZiskRom {
 
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
-                    s += &format!("\tmov {}, {} /* Rem: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* Rem: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
                 }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
-                    s += &format!("\tmov {}, {} /* Rem: b = value */\n", REG_B, ctx.b.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* Rem: b = const_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
                 }
 
                 // Check divide by zero:
@@ -1883,7 +1955,6 @@ impl ZiskRom {
                 s += &format!("pc_{:x}_rem_divide:\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* Rem: value = b backup */\n", REG_VALUE, REG_B);
                 s += &format!("\tmov rax, {} /* Rem: rax = a */\n", REG_A);
-                //s += &format!("\tcdo /* Rem: RDX:RAX:= sign-extend of RAX */\n");
                 s += &format!("\tbt rax, 63 /* Rem: is a negative? */\n");
                 s += &format!("\tjnc pc_{:x}_a_is_positive\n", ctx.pc);
                 s +=
@@ -1905,14 +1976,14 @@ impl ZiskRom {
                 // Make sure a is in REG_A_W
                 if ctx.a.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* DivuW: a = value */\n",
+                        "\tmov {}, {} /* DivuW: a = const_value */\n",
                         REG_A, ctx.a.string_value
                     );
                 }
                 // Make sure b is in REG_B_W
                 if ctx.b.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* DivuW: b = value */\n",
+                        "\tmov {}, {} /* DivuW: b = const_value */\n",
                         REG_B, ctx.b.string_value
                     );
                 }
@@ -1943,14 +2014,14 @@ impl ZiskRom {
                 // Make sure a is in REG_A_W
                 if ctx.a.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* RemuW: a = value */\n",
+                        "\tmov {}, {} /* RemuW: a = const_value */\n",
                         REG_A, ctx.a.string_value
                     );
                 }
                 // Make sure b is in REG_B_W
                 if ctx.b.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* RemuW: b = value */\n",
+                        "\tmov {}, {} /* RemuW: b = const_value */\n",
                         REG_B, ctx.b.string_value
                     );
                 }
@@ -1984,13 +2055,17 @@ impl ZiskRom {
 
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
-                    s +=
-                        &format!("\tmov {}, {} /* DivW: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* DivW: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
                 }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
-                    s +=
-                        &format!("\tmov {}, {} /* DivW: b = value */\n", REG_B, ctx.b.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* DivW: b = const_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
                 }
 
                 // Check divide by zero:
@@ -2025,13 +2100,17 @@ impl ZiskRom {
 
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
-                    s +=
-                        &format!("\tmov {}, {} /* RemW: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* RemW: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
                 }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
-                    s +=
-                        &format!("\tmov {}, {} /* RemW: b = value */\n", REG_B, ctx.b.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* RemW: b = const_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
                 }
 
                 // Check divide by zero:
@@ -2061,8 +2140,10 @@ impl ZiskRom {
             ZiskOp::Minu => {
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
-                    s +=
-                        &format!("\tmov {}, {} /* Minu: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* Minu: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
                 }
                 s += &format!(
                     "\tcmp {}, {} /* Minu: compare a and b */\n",
@@ -2079,7 +2160,10 @@ impl ZiskRom {
             ZiskOp::Min => {
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
-                    s += &format!("\tmov {}, {} /* Min: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* Min: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
                 }
                 s += &format!(
                     "\tcmp {}, {} /* Min: compare a and b */\n",
@@ -2097,14 +2181,14 @@ impl ZiskRom {
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* MinuW: a = value */\n",
+                        "\tmov {}, {} /* MinuW: a = const_value */\n",
                         REG_A, ctx.a.string_value
                     );
                 }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* MinuW: b = value */\n",
+                        "\tmov {}, {} /* MinuW: b = const_value */\n",
                         REG_B, ctx.b.string_value
                     );
                 }
@@ -2120,13 +2204,17 @@ impl ZiskRom {
             ZiskOp::MinW => {
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
-                    s +=
-                        &format!("\tmov {}, {} /* MinW: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* MinW: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
                 }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
-                    s +=
-                        &format!("\tmov {}, {} /* MinW: b = value */\n", REG_B, ctx.b.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* MinW: b = const_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
                 }
                 s += &format!("\tcmp {}, {} /* MinW: compare a and b */\n", REG_A_W, REG_B_W);
                 s += &format!("\tjl pc_{:x}_minw_a_is_below_b\n", ctx.pc);
@@ -2140,8 +2228,10 @@ impl ZiskRom {
             ZiskOp::Maxu => {
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
-                    s +=
-                        &format!("\tmov {}, {} /* Maxu: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* Maxu: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
                 }
                 s += &format!(
                     "\tcmp {}, {} /* Maxu: compare a and b */\n",
@@ -2158,7 +2248,10 @@ impl ZiskRom {
             ZiskOp::Max => {
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
-                    s += &format!("\tmov {}, {} /* Max: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* Max: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
                 }
                 s += &format!(
                     "\tcmp {}, {} /* Max: compare a and b */\n",
@@ -2176,14 +2269,14 @@ impl ZiskRom {
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* MaxuW: a = value */\n",
+                        "\tmov {}, {} /* MaxuW: a = const_value */\n",
                         REG_A, ctx.a.string_value
                     );
                 }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
-                        "\tmov {}, {} /* MaxuW: b = value */\n",
+                        "\tmov {}, {} /* MaxuW: b = const_value */\n",
                         REG_B, ctx.b.string_value
                     );
                 }
@@ -2199,13 +2292,17 @@ impl ZiskRom {
             ZiskOp::MaxW => {
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
-                    s +=
-                        &format!("\tmov {}, {} /* MaxW: a = value */\n", REG_A, ctx.a.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* MaxW: a = const_value */\n",
+                        REG_A, ctx.a.string_value
+                    );
                 }
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
-                    s +=
-                        &format!("\tmov {}, {} /* MaxW: b = value */\n", REG_B, ctx.b.string_value);
+                    s += &format!(
+                        "\tmov {}, {} /* MaxW: b = const_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
                 }
                 s += &format!("\tcmp {}, {} /* MaxW: compare a and b */\n", REG_A_W, REG_B_W);
                 s += &format!("\tjg pc_{:x}_maxw_a_is_below_b\n", ctx.pc);
