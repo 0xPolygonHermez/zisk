@@ -286,7 +286,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         timer_start_info!(WITNESS_SECN_2);
         // Create data buses for each chunk
-        let mut data_buses = self.get_databus_counters2(&secn_instances, instances_by_chunk);
+        let mut data_buses = self.get_data_bus_collectors(&secn_instances, instances_by_chunk);
         timer_stop_and_log_info!(WITNESS_SECN_2);
 
         timer_start_info!(WITNESS_SECN_3);
@@ -306,7 +306,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         timer_start_info!(WITNESS_SECN_4);
         // Close the data buses and get for each instance its collectors
-        let collectors_by_instance = self.close_data_bus_counters2(secn_instances, data_buses);
+        let collectors_by_instance = self.close_data_bus_collectors(secn_instances, data_buses);
         timer_stop_and_log_info!(WITNESS_SECN_4);
 
         timer_start_info!(WITNESS_SECN_5);
@@ -379,36 +379,6 @@ impl<F: PrimeField> ZiskExecutor<F> {
         chunks_to_execute
     }
 
-    /// Processes a checkpoint to compute the witness for a secondary state machine instance.
-    ///
-    /// # Arguments
-    /// * `min_traces` - Minimal traces obtained from the ROM execution.
-    /// * `sec_instance` - The secondary state machine instance to process.
-    /// * `chunk_ids` - The chunk IDs that the instance needs to process.
-    ///
-    /// # Returns
-    /// The updated secondary instance after processing the checkpoint.
-    // fn process_checkpoint(
-    //     &self,
-    //     min_traces: &[EmuTrace],
-    //     sec_instance: Box<dyn BusDevice<u64>>,
-    //     chunk_ids: &[usize],
-    //     is_multiple: bool,
-    // ) -> Box<dyn BusDeviceInstance<F>> {
-    //     let mut data_bus = self.get_data_bus_collectors(sec_instance);
-    //     chunk_ids.iter().for_each(|&chunk_id| {
-    //         ZiskEmulator::process_emu_traces::<F, BusDeviceWrapper<u64>>(
-    //             &self.zisk_rom,
-    //             min_traces,
-    //             chunk_id,
-    //             &mut data_bus,
-    //             is_multiple,
-    //         );
-    //     });
-
-    //     self.close_data_bus_collectors(data_bus)
-    // }
-
     /// Retrieves a `DataBus` configured with counters for each secondary state machine.
     ///
     /// # Returns
@@ -425,7 +395,35 @@ impl<F: PrimeField> ZiskExecutor<F> {
         data_bus
     }
 
-    fn get_databus_counters2(
+    /// Finalizes a `DataBus` with counters, detaching and closing all devices.
+    ///
+    /// # Arguments
+    /// * `data_bus` - A `DataBus` instance with attached counters.
+    ///
+    /// # Returns
+    /// A vector containing all detached counters after closing their associated devices.
+    fn close_data_bus_counters(
+        &self,
+        mut data_bus: DataBus<u64, BusDeviceMetricsWrapper>,
+    ) -> Vec<Box<dyn BusDeviceMetrics>> {
+        data_bus
+            .detach_devices()
+            .into_iter()
+            .map(|mut device| {
+                device.on_close();
+                device.inner
+            })
+            .collect::<Vec<_>>()
+    }
+
+    /// Retrieves a data bus for managing collectors in secondary state machines.
+    ///   # Arguments
+    ///   * `sec_instance` - The secondary state machine instance to manage.
+    ///  * `chunks_to_execute` - A vector of chunk IDs to execute
+    /// 
+    ///   # Returns
+    ///  A vector of `DataBus` instances, each configured with collectors for the secondary state
+    fn get_data_bus_collectors(
         &self,
         secn_instances: &[(usize, Box<dyn BusDeviceInstance<F>>)],
         chunks_to_execute: Vec<Vec<usize>>,
@@ -465,28 +463,16 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .collect::<Vec<_>>()
     }
 
-    /// Finalizes a `DataBus` with counters, detaching and closing all devices.
+    /// Closes a data bus used for managing collectors and returns the first instance.
     ///
     /// # Arguments
-    /// * `data_bus` - A `DataBus` instance with attached counters.
+    /// * `secn_instances` - A vector of secondary state machine instances.
+    /// * `data_buses` - A vector of data buses with attached collectors.
     ///
     /// # Returns
-    /// A vector containing all detached counters after closing their associated devices.
-    fn close_data_bus_counters(
-        &self,
-        mut data_bus: DataBus<u64, BusDeviceMetricsWrapper>,
-    ) -> Vec<Box<dyn BusDeviceMetrics>> {
-        data_bus
-            .detach_devices()
-            .into_iter()
-            .map(|mut device| {
-                device.on_close();
-                device.inner
-            })
-            .collect::<Vec<_>>()
-    }
-
-    fn close_data_bus_counters2(
+    /// A vector of tuples containing the global ID, secondary state machine instance, and a vector
+    /// of collectors for each instance.
+    fn close_data_bus_collectors(
         &self,
         secn_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
         mut data_buses: Vec<Option<DataBus<u64, BusDeviceWrapper<u64>>>>,
@@ -508,52 +494,6 @@ impl<F: PrimeField> ZiskExecutor<F> {
         }
         collectors_by_instance
     }
-
-    /*   /// Retrieves a data bus for managing collectors in secondary state machines.
-     *
-     * # Arguments
-     * * `sec_instance` - The secondary state machine instance to manage.
-     *
-     * # Returns
-     * A `DataBus` instance with collectors connected.
-     */
-    // fn get_data_bus_collectors(
-    //     &self,
-    //     sec_instance: Box<dyn BusDevice<u64>>,
-    // ) -> DataBus<u64, BusDeviceWrapper<u64>> {
-    //     let mut data_bus = DataBus::new();
-
-    //     let bus_device_instance = sec_instance;
-    //     data_bus.connect_device(
-    //         bus_device_instance.bus_id(),
-    //         Box::new(BusDeviceWrapper::new(bus_device_instance)),
-    //     );
-
-    //     self.secondary_sm.iter().for_each(|sm| {
-    //         if let Some(input_generator) = sm.build_inputs_generator() {
-    //             data_bus.connect_device(
-    //                 input_generator.bus_id(),
-    //                 Box::new(BusDeviceWrapper::new(input_generator)),
-    //             );
-    //         }
-    //     });
-    //     data_bus
-    // }
-
-    /*    /// Closes a data bus used for managing collectors and returns the first instance.
-     *
-     * # Arguments
-     * * `data_bus` - The `DataBus` instance to close.
-     *
-     * # Returns
-     * The first `BusDeviceInstance` after detaching the bus.
-     */
-    // fn close_data_bus_collectors(
-    //     &self,
-    //     mut data_bus: DataBus<u64, BusDeviceWrapper<u64>>,
-    // ) -> Box<dyn BusDevice<F>> {
-    //     data_bus.devices.remove(0).0
-    // }
 }
 
 impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {

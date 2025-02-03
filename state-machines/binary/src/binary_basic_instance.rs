@@ -8,7 +8,6 @@ use crate::BinaryBasicSM;
 use data_bus::{BusDevice, BusId, OperationBusData, OperationData, PayloadType, OPERATION_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use sm_common::{
     BusDeviceWrapper, CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType,
 };

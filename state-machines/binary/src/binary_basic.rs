@@ -12,7 +12,7 @@ use data_bus::{OperationBusData, OperationData};
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
-use proofman_util::{timer_start_info, timer_start_trace, timer_stop_and_log_info, timer_stop_and_log_trace};
+use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryTableTrace, BinaryTrace, BinaryTraceRow};
