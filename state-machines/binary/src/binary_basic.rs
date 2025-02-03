@@ -4,12 +4,15 @@
 
 use std::sync::Arc;
 
-use crate::{binary_basic_instance::BinaryBasicCollector, binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM};
-use data_bus::{OperationBusData, OperationData, PayloadType};
+use crate::{
+    binary_basic_instance::BinaryBasicCollector, binary_constants::*, BinaryBasicTableOp,
+    BinaryBasicTableSM,
+};
+use data_bus::{OperationBusData, OperationData};
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
-use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use proofman_util::{timer_start_info, timer_start_trace, timer_stop_and_log_info, timer_stop_and_log_trace};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryTableTrace, BinaryTrace, BinaryTraceRow};
@@ -888,9 +891,9 @@ impl BinaryBasicSM {
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<F: PrimeField>(&self, inputs: &[OperationData<u64>]) -> AirInstance<F> {
+        timer_start_trace!(BINARY_TRACE);
         let mut binary_trace = BinaryTrace::new();
 
-        timer_start_trace!(BINARY_TRACE);
         let num_rows = binary_trace.num_rows();
         assert!(inputs.len() <= num_rows);
 
@@ -947,61 +950,59 @@ impl BinaryBasicSM {
 
     pub fn compute_witness2<F: PrimeField>(
         &self,
-        inputs: Vec<(usize, Box<sm_common::BusDeviceWrapper<PayloadType>>)>
+        input_collectors: Vec<(usize, Box<BinaryBasicCollector<F>>)>,
     ) -> AirInstance<F> {
         let mut binary_trace = BinaryTrace::new();
 
-        // timer_start_trace!(BINARY_TRACE);
-        // let num_rows = binary_trace.num_rows();
-        // assert!(inputs.len() <= num_rows);
+        let num_rows = binary_trace.num_rows();
 
-        // info!(
-        //     "{}: ··· Creating Binary instance [{} / {} rows filled {:.2}%]",
-        //     Self::MY_NAME,
-        //     inputs.len(),
-        //     num_rows,
-        //     inputs.len() as f64 / num_rows as f64 * 100.0
-        // );
+        let total_inputs: usize = input_collectors.iter().map(|(_, c)| c.inputs.len()).sum();
+        assert!(total_inputs <= num_rows);
 
-        // let mut multiplicity_table = vec![0u64; BinaryTableTrace::<F>::NUM_ROWS];
+        info!(
+            "{}: ··· Creating Binary instance [{} / {} rows filled {:.2}%]",
+            Self::MY_NAME,
+            total_inputs,
+            num_rows,
+            total_inputs as f64 / num_rows as f64 * 100.0
+        );
 
-        // for (i, operation) in inputs.iter().enumerate() {
-        //     let row = Self::process_slice(operation, &mut multiplicity_table);
-        //     binary_trace[i] = row;
-        // }
-        // timer_stop_and_log_trace!(BINARY_TRACE);
+        let mut multiplicity_table = vec![0u64; BinaryTableTrace::<F>::NUM_ROWS];
 
-        // timer_start_trace!(BINARY_PADDING);
-        // // Note: We can choose any operation that trivially satisfies the constraints on padding
-        // // rows
-        // let padding_row = BinaryTraceRow::<F> {
-        //     m_op: F::from_canonical_u8(AND_OP),
-        //     m_op_or_ext: F::from_canonical_u8(AND_OP),
-        //     ..Default::default()
-        // };
+        let mut idx = 0;
+        for (_chunk_id, input_collector) in input_collectors {
+            for input in input_collector.inputs {
+                let row = Self::process_slice(&input, &mut multiplicity_table);
+                binary_trace[idx] = row;
+                idx += 1;
+            }
+        }
 
-        // for i in inputs.len()..num_rows {
-        //     binary_trace[i] = padding_row;
-        // }
+        // Note: We can choose any operation that trivially satisfies the constraints on padding
+        // rows
+        let padding_row = BinaryTraceRow::<F> {
+            m_op: F::from_canonical_u8(AND_OP),
+            m_op_or_ext: F::from_canonical_u8(AND_OP),
+            ..Default::default()
+        };
 
-        // let padding_size = num_rows - inputs.len();
-        // for last in 0..2 {
-        //     let multiplicity = (7 - 6 * last as u64) * padding_size as u64;
-        //     let row = BinaryBasicTableSM::calculate_table_row(
-        //         BinaryBasicTableOp::And,
-        //         0,
-        //         0,
-        //         0,
-        //         last as u64,
-        //         0,
-        //     );
-        //     multiplicity_table[row as usize] += multiplicity;
-        // }
-        // timer_stop_and_log_trace!(BINARY_PADDING);
+        binary_trace.buffer[idx..num_rows].fill(padding_row);
 
-        // timer_start_trace!(BINARY_TABLE);
-        // self.binary_basic_table_sm.process_slice(&multiplicity_table);
-        // timer_stop_and_log_trace!(BINARY_TABLE);
+        let padding_size = num_rows - idx;
+        for last in 0..2 {
+            let multiplicity = (7 - 6 * last as u64) * padding_size as u64;
+            let row = BinaryBasicTableSM::calculate_table_row(
+                BinaryBasicTableOp::And,
+                0,
+                0,
+                0,
+                last as u64,
+                0,
+            );
+            multiplicity_table[row as usize] += multiplicity;
+        }
+
+        self.binary_basic_table_sm.process_slice(&multiplicity_table);
 
         AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))
     }

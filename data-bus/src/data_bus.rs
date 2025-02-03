@@ -44,7 +44,7 @@ pub trait BusDevice<D>: Any + Send {
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId>;
 
-    fn as_any(&self) -> &dyn Any;
+    fn as_any(self: Box<Self>) -> Box<dyn Any>;
 }
 
 /// A bus system facilitating communication between multiple publishers and subscribers.

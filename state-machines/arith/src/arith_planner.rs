@@ -6,7 +6,8 @@
 
 use crate::ArithCounter;
 use sm_common::{
-    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics, Plan, Planner, TableInfo
+    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics,
+    Plan, Planner, TableInfo,
 };
 
 /// The `ArithPlanner` struct organizes execution plans for arithmetic instances and tables.

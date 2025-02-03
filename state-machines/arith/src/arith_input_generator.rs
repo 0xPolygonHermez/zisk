@@ -5,9 +5,6 @@
 //! for the `ArithFullSM` state machine based on data received over the bus.
 
 use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
-use p3_field::PrimeField;
-use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{CheckPoint, Instance};
 use zisk_core::ZiskOperationType;
 
 use crate::ArithFullSM;
@@ -64,7 +61,7 @@ impl BusDevice<u64> for ArithInputGenerator {
         vec![self.bus_id]
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 }

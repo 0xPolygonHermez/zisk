@@ -18,8 +18,8 @@ use zisk_core::ZiskOperationType;
 use zisk_pil::{ArithRangeTableTrace, ArithTableTrace, ArithTrace};
 
 use crate::{
-    arith_full_instance::ArithFullInstance2Collector, ArithCounter, ArithFullInstance, ArithFullSM,
-    ArithInputGenerator, ArithPlanner, ArithRangeTableSM, ArithTableSM,
+    ArithCounter, ArithFullInstance, ArithFullSM, ArithInputGenerator, ArithPlanner,
+    ArithRangeTableSM, ArithTableSM,
 };
 
 /// The `ArithSM` struct represents the Arithmetic State Machine, which

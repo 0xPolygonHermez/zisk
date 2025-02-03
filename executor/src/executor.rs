@@ -13,8 +13,8 @@ use rayon::prelude::*;
 
 use data_bus::{BusDevice, DataBus, PayloadType, OPERATION_BUS_ID};
 use sm_common::{
-    BusDeviceInstance, BusDeviceInstanceWrapper, BusDeviceMetrics, BusDeviceMetricsWrapper,
-    BusDeviceWrapper, CheckPoint, ComponentBuilder, InstanceCtx, InstanceType, Plan,
+    BusDeviceInstance, BusDeviceMetrics, BusDeviceMetricsWrapper, BusDeviceWrapper, CheckPoint,
+    ComponentBuilder, InstanceCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
 
@@ -279,64 +279,17 @@ impl<F: PrimeField> ZiskExecutor<F> {
         min_traces: &[EmuTrace],
         secn_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
     ) {
-        timer_start_info!(CCCC_1);
-        let mut chunks_to_execute = vec![Vec::new(); min_traces.len()];
-        secn_instances.iter().enumerate().for_each(|(idx, (_, secn_instance))| match secn_instance
-            .check_point()
-        {
-            CheckPoint::None => {}
-            CheckPoint::Single(chunk_id) => {
-                chunks_to_execute[chunk_id].push(idx);
-            }
-            CheckPoint::Multiple(chunk_ids) => {
-                chunk_ids.iter().for_each(|&chunk_id| {
-                    chunks_to_execute[chunk_id].push(idx);
-                });
-            }
-            CheckPoint::Multiple2(chunk_ids) => {
-                chunk_ids.iter().for_each(|(chunk_id, _)| {
-                    chunks_to_execute[*chunk_id].push(idx);
-                });
-            }
-        });
+        timer_start_info!(WITNESS_SECN_1);
+        // Group the instances by the chunk they need to process
+        let instances_by_chunk = self.chunks_to_execute(min_traces, &secn_instances);
+        timer_stop_and_log_info!(WITNESS_SECN_1);
 
-        let mut data_buses = chunks_to_execute
-            .iter()
-            .enumerate()
-            .map(|(chunk_id, secn_indices)| {
-                if secn_indices.is_empty() {
-                    return None;
-                }
+        timer_start_info!(WITNESS_SECN_2);
+        // Create data buses for each chunk
+        let mut data_buses = self.get_databus_counters2(&secn_instances, instances_by_chunk);
+        timer_stop_and_log_info!(WITNESS_SECN_2);
 
-                let mut data_bus: DataBus<u64, BusDeviceWrapper<PayloadType>> = DataBus::new();
-
-                for idx in secn_indices {
-                    let (_, secn_instance) = &secn_instances[*idx];
-                    let bus_device = secn_instance.build_inputs_collector2(chunk_id);
-                    if let Some(bus_device) = bus_device {
-                        let bus_device = Box::new(BusDeviceWrapper::new(Some(*idx), bus_device));
-                        data_bus.connect_device(bus_device.bus_id(), bus_device);
-                    }
-                }
-
-                self.secondary_sm.iter().for_each(|sm| {
-                    let inputs_generator = sm.build_inputs_generator();
-
-                    if let Some(inputs_generator) = inputs_generator {
-                        data_bus.connect_device(
-                            vec![OPERATION_BUS_ID],
-                            Box::new(BusDeviceWrapper::new(None, inputs_generator)),
-                        );
-                    }
-                });
-
-                Some(data_bus)
-            })
-            .collect::<Vec<_>>();
-
-        timer_stop_and_log_info!(CCCC_1);
-
-        timer_start_info!(CCCC_EXECUTE_EMU);
+        timer_start_info!(WITNESS_SECN_3);
         // Execute collect process for each chunk
         data_buses.par_iter_mut().enumerate().for_each(|(chunk_id, data_bus)| {
             if let Some(data_bus) = data_bus {
@@ -345,42 +298,24 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     min_traces,
                     chunk_id,
                     data_bus,
-                    false,
+                    true,
                 );
             }
         });
+        timer_stop_and_log_info!(WITNESS_SECN_3);
 
-        timer_stop_and_log_info!(CCCC_EXECUTE_EMU);
-
-        timer_start_info!(CCCC_GROUP);
-
+        timer_start_info!(WITNESS_SECN_4);
         // Close the data buses and get for each instance its collectors
-        let mut collectors_by_instance = Vec::new();
-        for (global_id, secn_instance) in secn_instances {
-            collectors_by_instance.push((global_id, secn_instance, Vec::new()));
-        }
+        let collectors_by_instance = self.close_data_bus_counters2(secn_instances, data_buses);
+        timer_stop_and_log_info!(WITNESS_SECN_4);
 
-        for (chunk_id, data_bus) in data_buses.iter_mut().enumerate() {
-            if let Some(data_bus) = data_bus {
-                let collectors = data_bus.detach_devices(); // Moves devices out
-                for collector in collectors {
-                    if let Some(idx) = collector.instance_idx() {
-                        collectors_by_instance[idx].2.push((chunk_id, collector));
-                    }
-                }
-            }
-        }
-
-        timer_stop_and_log_info!(CCCC_GROUP);
-
-        timer_start_info!(CCCC_COMPUTE_WITNESS);
-        collectors_by_instance.into_par_iter().for_each(|mut xxx| {
-            if let Some(air_instance) = xxx.1.compute_witness2(pctx, xxx.2) {
-                pctx.air_instance_repo.add_air_instance(air_instance, xxx.0);
+        timer_start_info!(WITNESS_SECN_5);
+        collectors_by_instance.into_par_iter().for_each(|(global_idx, mut instance, collector)| {
+            if let Some(air_instance) = instance.compute_witness2(pctx, collector) {
+                pctx.air_instance_repo.add_air_instance(air_instance, global_idx);
             }
         });
-
-        timer_stop_and_log_info!(CCCC_COMPUTE_WITNESS);
+        timer_stop_and_log_info!(WITNESS_SECN_5);
     }
 
     /// Computes and generates witnesses for secondary state machine instances of type `Table`.
@@ -415,6 +350,33 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 }
             }
         });
+    }
+
+    fn chunks_to_execute(
+        &self,
+        min_traces: &[EmuTrace],
+        secn_instances: &[(usize, Box<dyn BusDeviceInstance<F>>)],
+    ) -> Vec<Vec<usize>> {
+        let mut chunks_to_execute = vec![Vec::new(); min_traces.len()];
+        secn_instances.iter().enumerate().for_each(|(idx, (_, secn_instance))| match secn_instance
+            .check_point()
+        {
+            CheckPoint::None => {}
+            CheckPoint::Single(chunk_id) => {
+                chunks_to_execute[chunk_id].push(idx);
+            }
+            CheckPoint::Multiple(chunk_ids) => {
+                chunk_ids.iter().for_each(|&chunk_id| {
+                    chunks_to_execute[chunk_id].push(idx);
+                });
+            }
+            CheckPoint::Multiple2(chunk_ids) => {
+                chunk_ids.iter().for_each(|(chunk_id, _)| {
+                    chunks_to_execute[*chunk_id].push(idx);
+                });
+            }
+        });
+        chunks_to_execute
     }
 
     /// Processes a checkpoint to compute the witness for a secondary state machine instance.
@@ -463,6 +425,46 @@ impl<F: PrimeField> ZiskExecutor<F> {
         data_bus
     }
 
+    fn get_databus_counters2(
+        &self,
+        secn_instances: &[(usize, Box<dyn BusDeviceInstance<F>>)],
+        chunks_to_execute: Vec<Vec<usize>>,
+    ) -> Vec<Option<DataBus<u64, BusDeviceWrapper<u64>>>> {
+        chunks_to_execute
+            .iter()
+            .enumerate()
+            .map(|(chunk_id, secn_indices)| {
+                if secn_indices.is_empty() {
+                    return None;
+                }
+
+                let mut data_bus: DataBus<u64, BusDeviceWrapper<PayloadType>> = DataBus::new();
+
+                for idx in secn_indices {
+                    let (_, secn_instance) = &secn_instances[*idx];
+                    let bus_device = secn_instance.build_inputs_collector2(chunk_id);
+                    if let Some(bus_device) = bus_device {
+                        let bus_device = Box::new(BusDeviceWrapper::new(Some(*idx), bus_device));
+                        data_bus.connect_device(bus_device.bus_id(), bus_device);
+                    }
+                }
+
+                self.secondary_sm.iter().for_each(|sm| {
+                    let inputs_generator = sm.build_inputs_generator();
+
+                    if let Some(inputs_generator) = inputs_generator {
+                        data_bus.connect_device(
+                            vec![OPERATION_BUS_ID],
+                            Box::new(BusDeviceWrapper::new(None, inputs_generator)),
+                        );
+                    }
+                });
+
+                Some(data_bus)
+            })
+            .collect::<Vec<_>>()
+    }
+
     /// Finalizes a `DataBus` with counters, detaching and closing all devices.
     ///
     /// # Arguments
@@ -484,13 +486,36 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .collect::<Vec<_>>()
     }
 
+    fn close_data_bus_counters2(
+        &self,
+        secn_instances: Vec<(usize, Box<dyn BusDeviceInstance<F>>)>,
+        mut data_buses: Vec<Option<DataBus<u64, BusDeviceWrapper<u64>>>>,
+    ) -> Vec<(usize, Box<dyn BusDeviceInstance<F>>, Vec<(usize, Box<BusDeviceWrapper<u64>>)>)> {
+        let mut collectors_by_instance = Vec::new();
+        for (global_id, secn_instance) in secn_instances {
+            collectors_by_instance.push((global_id, secn_instance, Vec::new()));
+        }
+
+        for (chunk_id, data_bus) in data_buses.iter_mut().enumerate() {
+            if let Some(data_bus) = data_bus {
+                let collectors = data_bus.detach_devices();
+                for collector in collectors {
+                    if let Some(idx) = collector.instance_idx() {
+                        collectors_by_instance[idx].2.push((chunk_id, collector));
+                    }
+                }
+            }
+        }
+        collectors_by_instance
+    }
+
     /*   /// Retrieves a data bus for managing collectors in secondary state machines.
-    ///
-    /// # Arguments
-    /// * `sec_instance` - The secondary state machine instance to manage.
-    ///
-    /// # Returns
-    /// A `DataBus` instance with collectors connected.
+     *
+     * # Arguments
+     * * `sec_instance` - The secondary state machine instance to manage.
+     *
+     * # Returns
+     * A `DataBus` instance with collectors connected.
      */
     // fn get_data_bus_collectors(
     //     &self,
@@ -516,12 +541,12 @@ impl<F: PrimeField> ZiskExecutor<F> {
     // }
 
     /*    /// Closes a data bus used for managing collectors and returns the first instance.
-    ///
-    /// # Arguments
-    /// * `data_bus` - The `DataBus` instance to close.
-    ///
-    /// # Returns
-    /// The first `BusDeviceInstance` after detaching the bus.
+     *
+     * # Arguments
+     * * `data_bus` - The `DataBus` instance to close.
+     *
+     * # Returns
+     * The first `BusDeviceInstance` after detaching the bus.
      */
     // fn close_data_bus_collectors(
     //     &self,

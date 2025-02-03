@@ -77,11 +77,11 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
         InstanceType::Instance
     }
 
-    fn build_inputs_collector2(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector2(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         match self.ictx.plan.air_id {
-            id if id == ArithTrace::<usize>::AIR_ID => Some(Box::new(
-                ArithFullInstance2Collector::new(OPERATION_BUS_ID, self.ictx.plan.collect_info),
-            )),
+            // id if id == ArithTrace::<usize>::AIR_ID => Some(Box::new(
+            //     ArithFullInstance2Collector::new(OPERATION_BUS_ID, self.ictx.plan.collect_info),
+            // )),
             _ => None,
         }
     }
@@ -125,7 +125,7 @@ impl BusDevice<u64> for ArithFullInstance {
         vec![self.bus_id]
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 }
@@ -186,7 +186,7 @@ impl BusDevice<u64> for ArithFullInstance2Collector {
         vec![self.bus_id]
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 }

@@ -78,7 +78,7 @@ impl<F: PrimeField> BusDevice<u64> for BusDeviceInstanceWrapper<F> {
         self.inner.bus_id()
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self.inner.as_any()
     }
 }

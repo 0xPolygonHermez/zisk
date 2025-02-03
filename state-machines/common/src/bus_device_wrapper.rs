@@ -33,7 +33,7 @@ impl<D: 'static> BusDevice<D> for BusDeviceWrapper<D> {
         self.bus_device.as_ref().unwrap().bus_id()
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 }

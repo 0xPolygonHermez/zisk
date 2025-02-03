@@ -53,6 +53,14 @@ impl<F: PrimeField> Instance<F> for RomInstance {
         Some(RomSM::compute_witness(&self.zisk_rom, &self.ictx.plan))
     }
 
+    fn compute_witness2(
+        &mut self,
+        _pctx: &ProofCtx<F>,
+        _collectors: Vec<(usize, Box<sm_common::BusDeviceWrapper<data_bus::PayloadType>>)>,
+    ) -> Option<AirInstance<F>> {
+        Some(RomSM::compute_witness(&self.zisk_rom, &self.ictx.plan))
+    }
+
     /// Retrieves the checkpoint associated with this instance.
     ///
     /// # Returns
@@ -79,7 +87,7 @@ impl BusDevice<u64> for RomInstance {
         vec![]
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 }

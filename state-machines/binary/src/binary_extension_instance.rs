@@ -69,18 +69,22 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
 
     fn compute_witness2(
         &mut self,
-        pctx: &ProofCtx<F>,
+        _pctx: &ProofCtx<F>,
         collectors: Vec<(usize, Box<sm_common::BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
-        let mut collectors2: Vec<Box<dyn BusDevice<u64>>> = Vec::new();
+        let collectors = collectors
+            .into_iter()
+            .map(|(chunk_id, mut collector)| {
+                let collector = collector
+                    .detach_device()
+                    .as_any()
+                    .downcast::<BinaryExtensionCollector<F>>()
+                    .unwrap();
+                (chunk_id, collector)
+            })
+            .collect();
 
-        // for collector in collectors {
-        //     if collector.1.bus_device().as_any().is::<BinaryExtensionCollector>() {
-        //         collectors2.push(collector.1); // Move the entire `Box<dyn BusDevice>`
-        //     }
-        // }
-
-        None
+        Some(self.binary_extension_sm.compute_witness2(collectors))
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -101,15 +105,20 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
 
     fn build_inputs_collector2(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         match self.ictx.plan.air_id {
-            id if id == BinaryExtensionTrace::<usize>::AIR_ID => {
+            id if id == BinaryExtensionTrace::<F>::AIR_ID => {
                 Some(Box::new(match &self.ictx.plan.check_point {
                     CheckPoint::Multiple2(check_point) => {
-                        BinaryExtensionCollector::new(OPERATION_BUS_ID, check_point[&chunk_id].1)
+                        // check_point is an array
+                        BinaryExtensionCollector::<F>::new(
+                            OPERATION_BUS_ID,
+                            check_point[&chunk_id].0,
+                            check_point[&chunk_id].1,
+                        )
                     }
-                    _ => panic!("Binary Extension: Invalid checkpoint type"),
+                    _ => panic!("Binary Basic: Invalid checkpoint type"),
                 }))
             }
-            _ => None,
+            _ => panic!("BinaryBasicInstance: Unsupported air_id: {:?}", self.ictx.plan.air_id),
         }
     }
 }
@@ -151,30 +160,40 @@ impl<F: PrimeField> BusDevice<u64> for BinaryExtensionInstance<F> {
         vec![self.bus_id]
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 }
 
 ///////////////////////////////////
-pub struct BinaryExtensionCollector {
+pub struct BinaryExtensionCollector<F: PrimeField> {
     /// Collected inputs for witness computation.
-    inputs: Vec<OperationData<u64>>,
+    pub inputs: Vec<OperationData<u64>>,
 
     /// The connected bus ID.
     bus_id: BusId,
 
+    num_operations: u64,
+
     /// Helper to skip instructions based on the plan's configuration.
     collect_skipper: CollectSkipper,
+
+    _phantom: std::marker::PhantomData<F>,
 }
 
-impl BinaryExtensionCollector {
-    pub fn new(bus_id: BusId, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), bus_id, collect_skipper }
+impl<F: PrimeField> BinaryExtensionCollector<F> {
+    pub fn new(bus_id: BusId, num_operations: u64, collect_skipper: CollectSkipper) -> Self {
+        Self {
+            inputs: Vec::new(),
+            bus_id,
+            num_operations,
+            collect_skipper,
+            _phantom: std::marker::PhantomData,
+        }
     }
 }
 
-impl BusDevice<u64> for BinaryExtensionCollector {
+impl<F: PrimeField> BusDevice<u64> for BinaryExtensionCollector<F> {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -186,6 +205,10 @@ impl BusDevice<u64> for BinaryExtensionCollector {
     /// - The first element indicates whether further processing should continue.
     /// - The second element is always empty.
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
+        if self.inputs.len() == self.num_operations as usize {
+            return (false, vec![]);
+        }
+
         let data: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         let op_type = OperationBusData::get_op_type(&data);
@@ -200,7 +223,7 @@ impl BusDevice<u64> for BinaryExtensionCollector {
 
         self.inputs.push(data);
 
-        (self.inputs.len() == BinaryExtensionTrace::<usize>::NUM_ROWS, vec![])
+        (self.inputs.len() == BinaryExtensionTrace::<F>::NUM_ROWS, vec![])
     }
 
     /// Returns the bus IDs associated with this instance.
@@ -211,7 +234,7 @@ impl BusDevice<u64> for BinaryExtensionCollector {
         vec![self.bus_id]
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 }

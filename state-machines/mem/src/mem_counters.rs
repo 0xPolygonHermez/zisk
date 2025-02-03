@@ -198,7 +198,7 @@ impl BusDevice<u64> for MemCounters {
         vec![MEM_BUS_ID]
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 }

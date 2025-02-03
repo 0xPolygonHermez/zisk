@@ -80,10 +80,8 @@ pub fn plan(counts: &[InstCount], size: u64) -> Vec<(CheckPoint, CollectSkipper)
         // Add checkpoints within the current chunk
         while offset + size < inst_count {
             offset += size;
-            checkpoints.push((
-                CheckPoint::Single(current_chunk),
-                CollectSkipper::new(offset as u64),
-            ));
+            checkpoints
+                .push((CheckPoint::Single(current_chunk), CollectSkipper::new(offset as u64)));
         }
 
         // Carry over remaining instructions to the next chunk
@@ -166,7 +164,6 @@ mod tests {
     }
 }
 
-
 /// Generates a nested list of checkpoints from instruction counts across multiple chunks.
 ///
 /// Each inner vector corresponds to a scope of the plan and contains tuples of:
@@ -194,17 +191,13 @@ mod tests {
 /// assert_eq!(
 ///     nested_checkpoints,
 ///     vec![
-///         vec![
-///             (CheckPoint(0), 400, CollectSkipper::new(0)),
-///         ],
+///         vec![(CheckPoint(0), 400, CollectSkipper::new(0)),],
 ///         vec![
 ///             (CheckPoint(0), 100, CollectSkipper::new(400)),
 ///             (CheckPoint(1), 200, CollectSkipper::new(0)),
 ///             (CheckPoint(2), 100, CollectSkipper::new(0)),
 ///         ],
-///         vec![
-///             (CheckPoint(2), 200, CollectSkipper::new(100)),
-///         ],
+///         vec![(CheckPoint(2), 200, CollectSkipper::new(100)),],
 ///     ]
 /// );
 /// ```
@@ -224,10 +217,8 @@ pub fn plan_2(counts: &[InstCount], size: u64) -> Vec<CheckPoint> {
         while inst_count > 0 {
             let checkpoint_size = remaining_size.min(inst_count);
 
-            current_scope.insert(current_chunk, (
-                checkpoint_size,
-                CollectSkipper::new(cumulative_offset),
-            ));
+            current_scope
+                .insert(current_chunk, (checkpoint_size, CollectSkipper::new(cumulative_offset)));
 
             cumulative_offset += checkpoint_size;
             inst_count -= checkpoint_size;
@@ -248,16 +239,14 @@ pub fn plan_2(counts: &[InstCount], size: u64) -> Vec<CheckPoint> {
     checkpoints
 }
 
-
-
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
 
 //     #[test]
 //     fn test_plan_2_multiple_chunks() {
-//         let counts = vec![InstCount::new(0, 500), InstCount::new(1, 200), InstCount::new(2, 300)];
-//         let size = 400;
+//         let counts = vec![InstCount::new(0, 500), InstCount::new(1, 200), InstCount::new(2,
+// 300)];         let size = 400;
 //         let nested_checkpoints = plan_2(&counts, size);
 //         assert_eq!(
 //             nested_checkpoints,
@@ -300,8 +289,8 @@ pub fn plan_2(counts: &[InstCount], size: u64) -> Vec<CheckPoint> {
 
 //         #[test]
 //     fn test_plan_2_multiple_chunk() {
-//         let counts = vec![InstCount { chunk_id: 0, inst_count: 100 }, InstCount { chunk_id: 0, inst_count: 200 }, InstCount { chunk_id: 0, inst_count: 90 }];
-//         let size = 400;
+//         let counts = vec![InstCount { chunk_id: 0, inst_count: 100 }, InstCount { chunk_id: 0,
+// inst_count: 200 }, InstCount { chunk_id: 0, inst_count: 90 }];         let size = 400;
 //         let nested_checkpoints = plan_2(&counts, size);
 //         assert_eq!(
 //             nested_checkpoints,

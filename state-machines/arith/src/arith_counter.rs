@@ -146,7 +146,7 @@ impl BusDevice<u64> for ArithCounter {
         vec![self.bus_id]
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 }

@@ -136,9 +136,9 @@ impl<F: PrimeField> MemModuleInstance<F> {
             let mut input_index = 0;
             let mut skip_rows = 0;
             loop {
-                while self.inputs[input_index].addr == prev_segment.addr
-                    && (self.inputs[input_index].step - prev_segment.step) > STEP_MEMORY_MAX_DIFF
-                    && skip_rows < self.mem_check_point.skip_rows as usize
+                while self.inputs[input_index].addr == prev_segment.addr &&
+                    (self.inputs[input_index].step - prev_segment.step) > STEP_MEMORY_MAX_DIFF &&
+                    skip_rows < self.mem_check_point.skip_rows as usize
                 {
                     prev_segment.step += STEP_MEMORY_MAX_DIFF;
                     skip_rows += 1;
@@ -238,7 +238,7 @@ impl<F: PrimeField> BusDevice<u64> for MemModuleInstance<F> {
         vec![MEM_BUS_ID]
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 }

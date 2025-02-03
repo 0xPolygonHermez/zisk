@@ -6,7 +6,7 @@ use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 
-use crate::{BusDeviceWrapper, CheckPoint, InstanceCtx};
+use crate::{BusDeviceWrapper, CheckPoint};
 
 /// Represents the type of an instance, either a standalone instance or a table.
 #[derive(Debug, PartialEq)]
@@ -33,8 +33,8 @@ pub trait Instance<F: PrimeField>: Send {
 
     fn compute_witness2(
         &mut self,
-        pctx: &ProofCtx<F>,
-        collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+        _pctx: &ProofCtx<F>,
+        _collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         None
     }
@@ -51,7 +51,7 @@ pub trait Instance<F: PrimeField>: Send {
     /// An `InstanceType` indicating whether the instance is standalone or table-based.
     fn instance_type(&self) -> InstanceType;
 
-    fn build_inputs_collector2(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector2(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         None
     } // TODO remove default implementation
 }
@@ -131,7 +131,7 @@ macro_rules! table_instance {
                 vec![self.bus_id]
             }
 
-            fn as_any(&self) -> &dyn std::any::Any {
+            fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
                 self
             }
         }

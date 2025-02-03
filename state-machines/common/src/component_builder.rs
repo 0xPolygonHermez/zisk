@@ -54,7 +54,7 @@ pub trait ComponentBuilder<F: PrimeField>: Send + Sync {
     ///
     /// # Default Implementation
     /// Returns `None` by default, indicating no input generator is provided.
-    fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<u64>>> {
+    fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
         None
     }
 }

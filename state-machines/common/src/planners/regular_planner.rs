@@ -3,7 +3,8 @@
 //! to construct detailed plans for execution.
 
 use crate::{
-    component_counter, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceType, Plan, Planner, RegularCounters
+    component_counter, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceType, Plan,
+    Planner, RegularCounters,
 };
 use zisk_core::ZiskOperationType;
 
@@ -138,7 +139,9 @@ impl Planner for RegularPlanner {
         }
 
         counters.iter().for_each(|(chunk_id, counter)| {
-            let reg_counter = component_counter::Metrics::as_any(&**counter).downcast_ref::<RegularCounters>().unwrap();
+            let reg_counter = component_counter::Metrics::as_any(&**counter)
+                .downcast_ref::<RegularCounters>()
+                .unwrap();
 
             // Iterate over `instances_info` and add `InstCount` objects to the correct vector
             for (index, instance_info) in self.instances_info.iter().enumerate() {

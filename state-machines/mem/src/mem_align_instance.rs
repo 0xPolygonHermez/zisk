@@ -88,7 +88,7 @@ impl<F: PrimeField> BusDevice<u64> for MemAlignInstance<F> {
         vec![MEM_BUS_ID]
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 }
