@@ -51,24 +51,16 @@ use crate::{
 
 const REG_A: &str = "rbx";
 const REG_A_W: &str = "ebx";
-//const REG_A_H: &str = "bx";
-//const REG_A_B: &str = "bl";
-
 const REG_B: &str = "rax";
 const REG_B_W: &str = "eax";
 const REG_B_H: &str = "ax";
 const REG_B_B: &str = "al";
-
-const REG_C: &str = "rcx";
-const REG_C_W: &str = "ecx";
-//const REG_C_H: &str = "cx";
-//const REG_C_B: &str = "cl";
-
+const REG_C: &str = "r15";
+const REG_C_W: &str = "r15w";
 const REG_FLAG: &str = "rdx";
-
-const REG_STEP: &str = "r11";
-const REG_SP: &str = "r10";
-const REG_PC: &str = "r9";
+const REG_STEP: &str = "qword ptr [STEP]";
+const REG_SP: &str = "qword ptr [REG_SP]";
+const REG_PC: &str = "r14";
 const REG_VALUE: &str = "r12";
 const REG_VALUE_W: &str = "r12d";
 const REG_VALUE_H: &str = "r12w";
@@ -497,6 +489,14 @@ impl ZiskRom {
         *s += "msg: .ascii \"Zisk assembly emulator\\n\"\n";
         *s += ".set msglen, (. - msg)\n\n";
 
+        *s += ".section .data\n";
+        *s += ".comm STEP, 8, 8\n";
+        *s += ".comm REG_SP, 8, 8\n";
+        *s += &format!("\tmov {}, 0 /* Registers initialization: a = 0 */\n", REG_A);
+        *s += &format!("\tmov {}, 0 /* Registers initialization: b = 0 */\n", REG_B);
+        *s += &format!("\tmov {}, 0 /* Registers initialization: c = 0 */\n", REG_C);
+        *s += &format!("\tmov {}, 0 /* Registers initialization: flag = 0 */\n", REG_FLAG);
+
         // for k in 0..keys.len() {
         //     let pc = keys[k];
         //     let instruction = &self.insts[&pc].i;
@@ -504,19 +504,12 @@ impl ZiskRom {
         //     *s += &format!(".set pc_{}_log_len, (. - pc_{}_log)\n", pc, pc);
         // }
 
-        //*s += "instruction_format: .ascii \"PC=%d\\n\"\n";
-
         *s += ".section .text\n";
         *s += ".extern print_abcflag\n\n";
+        *s += ".extern print_char\n\n";
+        *s += ".extern print_step\n\n";
         *s += ".global emulator_start\n";
         *s += "emulator_start:\n";
-
-        // Log start message
-        // *s += "\tmov rax, 1\n";
-        // *s += "\tmov rdi, 1\n";
-        // *s += "\tlea rsi, msg\n";
-        // *s += "\tmov rdx, msglen\n";
-        // *s += "\tsyscall\n\n";
 
         // Registers initialization
         *s += &format!("\tmov {}, 0 /* Registers initialization: step = 0 */\n", REG_STEP);
@@ -539,11 +532,11 @@ impl ZiskRom {
             // *s += &format!("\tmov rax, 0\n");
             // *s += &format!("\tcall printf\n");
 
-            // *s += "\tmov rax, 1\n";
-            // *s += "\tmov rdi, 1\n";
-            // *s += &format!("\tlea rsi, pc_{}_log\n", ctx.pc);
-            // *s += &format!("\tmov rdx, pc_{}_log_len\n", ctx.pc);
-            // *s += "\tsyscall\n\n";
+            *s += "\tmov rax, 1\n"; // TODO
+                                    //*s += "\tmov rdi, 1\n";
+                                    // *s += &format!("\tlea rsi, pc_{}_log\n", ctx.pc);
+                                    // *s += &format!("\tmov rdx, pc_{}_log_len\n", ctx.pc);
+                                    // *s += "\tsyscall\n\n";
 
             // Set register a content based on instruction a_src
             ctx.a.is_constant = false;
@@ -573,6 +566,8 @@ impl ZiskRom {
                     ctx.a.constant_value =
                         instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32);
                     ctx.a.string_value = format!("0x{:x}", ctx.a.constant_value);
+                    // Used only to get register traces:
+                    //*s += &format!("\tmov {}, {} /* a=a_value */\n", REG_A, ctx.a.string_value);
                 }
                 SRC_STEP => {
                     *s += &format!("\tmov {}, {} /* a=SRC_STEP: a = step */\n", REG_A, REG_STEP);
@@ -610,6 +605,8 @@ impl ZiskRom {
                     ctx.b.constant_value =
                         instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32);
                     ctx.b.string_value = format!("0x{:x}", ctx.b.constant_value);
+                    // Used only to get register traces:
+                    //*s += &format!("\tmov {}, {} /*b=b_value */\n", REG_B, ctx.b.string_value);
                 }
                 SRC_IND => {
                     *s += &format!(
@@ -768,6 +765,28 @@ impl ZiskRom {
                                 REG_VALUE_B,
                                 if instruction.store_ra { "" } else { "= c " }
                             );
+                            *s += &format!(
+                                "\tmov {}, 0xa0000200 /* STORE_IND(1): aux = UART */\n",
+                                REG_FLAG,
+                            );
+                            *s += &format!(
+                                "\tcmp {}, {} /* STORE_IND(1): if address = USART then print char */\n",
+                                REG_ADDRESS, REG_FLAG
+                            );
+                            *s += &format!(
+                                "\tjne pc_{:x}_store_c_not_uart /* STORE_IND(1): continue */\n",
+                                ctx.pc,
+                            );
+                            *s += &format!(
+                                "\tmov dil, {} /* STORE_IND(1): rdi = value */\n",
+                                REG_VALUE_B
+                            );
+                            *s += &format!("\tpush {}\n", REG_VALUE);
+                            *s += &format!(
+                                "\tcall _print_char /* STORE_IND(1): call print_char() */\n"
+                            );
+                            *s += &format!("\tpop {}\n", REG_VALUE);
+                            *s += &format!("pc_{:x}_store_c_not_uart:\n", ctx.pc);
                         }
                         _ => panic!(
                             "ZiskRom::save_to_asm() Invalid ind_width={} pc={}",
@@ -781,11 +800,31 @@ impl ZiskRom {
                 ),
             }
 
+            if ctx.c.is_constant {
+                *s += &format!(
+                    "\tmov {}, {} /* STORE: make sure c=value */\n",
+                    REG_C, ctx.c.string_value
+                );
+            }
+
+            // Used only to get traces of registers a, b, c and flag/step
             // *s += &format!("\tpush {}\n", REG_FLAG);
             // *s += &format!("\tpush {}\n", REG_FLAG);
             // *s += &format!("\tpush {}\n", REG_C);
             // *s += &format!("\tpush {}\n", REG_B);
             // *s += &format!("\tpush {}\n", REG_A);
+            // *s += &format!("\tmov rdi, {}\n", REG_A);
+            // *s += &format!("\tmov rsi, {}\n", REG_B);
+            // *s += &format!("\tmov rdx, {}\n", REG_C);
+            // // if ctx.flag_is_always_one {
+            // //     *s += &format!("\tmov rcx, 1\n");
+            // // } else if ctx.flag_is_always_zero {
+            // //     *s += &format!("\tmov rcx, 0\n");
+            // // } else {
+            // //     *s += &format!("\tmov rcx, {}\n", REG_FLAG);
+            // // }
+            // *s += &format!("\tmov rcx, {}\n", REG_STEP);
+            // *s += &format!("\tmov rax, 0\n"); // NEW
             // *s += &format!("\tcall _print_abcflag\n");
             // *s += &format!("\tpop {}\n", REG_A);
             // *s += &format!("\tpop {}\n", REG_B);
@@ -871,6 +910,17 @@ impl ZiskRom {
             // Increment step counter
             *s += &format!("\tinc {} /* increment step */\n", REG_STEP);
 
+            // Used only to get logs of step
+            // *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, REG_STEP);
+            // *s += &format!("\tand {}, 0xfffff /* value = step */\n", REG_VALUE);
+            // *s += &format!("\tcmp {}, 0 /* value = step */\n", REG_VALUE);
+            // *s += &format!("\tjne  pc_{:x}_inc_step_done /* value = step */\n", ctx.pc);
+            // *s += &format!("\tpush {}\n", REG_VALUE);
+            // *s += &format!("\tmov rdi, {}\n", REG_STEP);
+            // *s += &format!("\tcall _print_step\n");
+            // *s += &format!("\tpop {}\n", REG_VALUE);
+            // *s += &format!("pc_{:x}_inc_step_done:\n", ctx.pc);
+
             // If step % K == 0 then store data
             // *s += &format!("\tmov {}, {} /* copy step into value */\n", REG_VALUE, REG_STEP);
             // *s += &format!("\tand {}, 0xffff /* value &= k */\n", REG_VALUE);
@@ -909,27 +959,21 @@ impl ZiskRom {
         *s += "\n";
         *s += "execute_end:\n";
 
+        // Used only to get the last log of step
+        *s += &format!("\tpush {}\n", REG_VALUE);
+        *s += &format!("\tmov rdi, {}\n", REG_STEP);
+        *s += &format!("\tcall _print_step\n");
+        *s += &format!("\tpop {}\n", REG_VALUE);
+
         // *s += "\tmov rax, 60\n";
         // *s += "\tmov rdi, 0\n";
         // *s += "\tsyscall\n\n";
 
         *s += "\tret\n";
 
-        //*s += "\n";
-        //*s += ".rodata\n";
-        //for key in &keys {
-        // Map fixed-length pc labels to real variable-length instruction labels
-        // This is used to implement dynamic jumps, i.e. to jump to an address that is not
-        // a constant in the instruction, but dynamically built as part of the emulation
-        //*s += &format!("\tlog_{:x}_msg: .string \"pc={:x}\"\n", key, key);
-        //break;
-        //*s += &format!("log_{:x}_len equ $ -log.{:x}.msg\n", key, key);
-        //}
-
         // For all program addresses in the vector, create an assembly set of instructions with a
         // map label
         *s += "\n";
-        //*s += ".data\n";
         *s += ".section .rodata\n";
         *s += ".align 64\n";
         for key in &keys {
@@ -940,6 +984,8 @@ impl ZiskRom {
             // Map fixed-length pc labels to real variable-length instruction labels
             // This is used to implement dynamic jumps, i.e. to jump to an address that is not
             // a constant in the instruction, but dynamically built as part of the emulation
+
+            // Only use labels in boundary pc addresses
             // match *key {
             //     0x1000 | 0x10000000 | 0x80000000 => {
             //         *s += &format!("\nmap_pc_{:x}: \t.quad pc_{:x}", key, key)
@@ -947,6 +993,7 @@ impl ZiskRom {
             //     _ => *s += &format!(", pc_{:x}", key),
             // }
 
+            // Use labels always
             *s += &format!("map_pc_{:x}: \t.quad pc_{:x}\n", key, key);
         }
         *s += "\n";
@@ -1072,7 +1119,7 @@ impl ZiskRom {
                 // call	<core::num::wrapping::Wrapping<u64> as core::ops::arith::Add>::add
                 if ctx.a.is_constant && (ctx.a.constant_value == 0) {
                     s += &format!("\t/* Add: c = a(0) + b = b = {} */\n", ctx.b.string_value);
-                    ctx.c.string_value = ctx.b.string_value.clone();
+                    ctx.c = ctx.b.clone();
                 } else {
                     s += &format!("\tmov {}, {} /* Add: c = a */\n", REG_C, ctx.a.string_value);
                     s += &format!(
@@ -1104,17 +1151,22 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::SubW => {
-                // call	<core::num::wrapping::Wrapping<i32> as core::ops::arith::Sub>::sub
-                // cdqe
                 // Make sure a is in REG_A
                 if ctx.a.is_constant {
                     s +=
                         &format!("\tmov {}, {} /* SubW: a = value */\n", REG_A, ctx.a.string_value);
                 }
+                // Used only to preserve b value
+                //s +=
+                //    &format!("\tmov {}, {} /* SubW: value = b */\n", REG_VALUE, ctx.b.string_value);
                 s += &format!("\tsub {}, {} /* SubW: a -= b */\n", REG_A, ctx.b.string_value);
                 s += &format!("\tmov {}, {} /* SubW: b = a = a - b*/\n", REG_B, REG_A);
                 s += &format!("\tcdqe /* SubW: trunk b */\n");
                 s += &format!("\tmov {}, {} /* SubW: c = b */\n", REG_C, REG_B);
+                // Used only to preserver a,b values
+                // s += &format!("\tmov {}, {} /* SubW: a = value */\n", REG_A, ctx.a.string_value);
+                // s +=
+                //     &format!("\tmov {}, {} /* SubW: value = b */\n", ctx.b.string_value, REG_VALUE);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sll => {
@@ -1131,15 +1183,13 @@ impl ZiskRom {
                         "\tmov {}, {} /* Sll: c(value) = a */\n",
                         REG_VALUE, ctx.a.string_value
                     );
-                    s += &format!("\tmov {}, {} /* Sll: c = b */\n", REG_C, REG_B);
-                    s += &format!("\tshl {}, {} /* Sll: c(value) = a << b */\n", REG_VALUE, REG_C);
+                    s += &format!("\tmov rcx, {} /* Sll: c = b */\n", REG_B);
+                    s += &format!("\tshl {}, cl /* Sll: c(value) = a << b */\n", REG_VALUE);
                     s += &format!("\tmov {}, {} /* Sll: c = value */\n", REG_C, REG_VALUE);
                 }
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::SllW => {
-                // call	<core::num::wrapping::Wrapping<u32> as core::ops::bit::Shl<usize>>::shl
-                // cdqe
                 if ctx.b.is_constant {
                     s += &format!("\tmov {}, {} /* SllW: c = a */\n", REG_C, ctx.a.string_value);
                     s += &format!(
@@ -1156,11 +1206,8 @@ impl ZiskRom {
                         "\tmov {}, {} /* SllW: c(value) = a */\n",
                         REG_VALUE, ctx.a.string_value
                     );
-                    s += &format!("\tmov {}, {} /* SllW: c = b */\n", REG_C, REG_B);
-                    s += &format!(
-                        "\tshl {}, {} /* SllW: c(value) = a << b */\n",
-                        REG_VALUE_W, REG_C_W
-                    );
+                    s += &format!("\tmov rcx, {} /* SllW: c = b */\n", REG_B);
+                    s += &format!("\tshl {}, cl /* SllW: c(value) = a << b */\n", REG_VALUE_W);
                     s += &format!(
                         "\tmovsxd {}, {} /* SllW: sign extend to quad */\n",
                         REG_C, REG_VALUE_W
@@ -1169,7 +1216,6 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sra => {
-                // (((a as i64) >> (b & 0x3f)) as u64, false)
                 s += &format!("\tmov {}, {} /* Sra: c = a */\n", REG_C, ctx.a.string_value);
                 if ctx.b.is_constant {
                     s += &format!("\tmov {}, {} /* Sra: c = a */\n", REG_C, ctx.a.string_value);
@@ -1199,8 +1245,8 @@ impl ZiskRom {
                     );
                 } else {
                     s += &format!("\tmov {}, {} /* Srl: c = a */\n", REG_VALUE, ctx.a.string_value);
-                    s += &format!("\tmov {}, {} /* Srl: b = value */\n", REG_C, ctx.b.string_value);
-                    s += &format!("\tshr {}, {} /* Srl: c(value) = a >> b */\n", REG_VALUE, REG_C);
+                    s += &format!("\tmov rcx, {} /* Srl: b = value */\n", ctx.b.string_value);
+                    s += &format!("\tshr {}, cl /* Srl: c(value) = a >> b */\n", REG_VALUE);
                     s += &format!("\tmov {}, {} /* Srl: c = value */\n", REG_C, REG_VALUE);
                 }
                 ctx.flag_is_always_zero = true;
@@ -1256,12 +1302,8 @@ impl ZiskRom {
                 } else {
                     s +=
                         &format!("\tmov {}, {} /* SrlW: c = a */\n", REG_VALUE, ctx.a.string_value);
-                    s +=
-                        &format!("\tmov {}, {} /* SrlW: b = value */\n", REG_C, ctx.b.string_value);
-                    s += &format!(
-                        "\tshr {}, {} /* SrlW: c(value) = a >> b */\n",
-                        REG_VALUE_W, REG_C_W
-                    );
+                    s += &format!("\tmov rcx, {} /* SrlW: b = value */\n", ctx.b.string_value);
+                    s += &format!("\tshr {}, cl /* SrlW: c(value) = a >> b */\n", REG_VALUE_W);
                     s += &format!(
                         "\tmovsxd {}, {} /* SlrW: sign extend to quad */\n",
                         REG_C, REG_VALUE_W

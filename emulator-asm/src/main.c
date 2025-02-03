@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/time.h>
 
 void emulator_start(void);
 
@@ -18,6 +19,35 @@ void emulator_start(void);
 
 #define INPUT_ADDR 0x90000000
 #define MAX_INPUT_SIZE 0x08000000
+
+struct timeval start_time;
+
+uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime)
+{
+    struct timeval diff;
+
+    // Calculate the time difference
+    diff.tv_sec = endTime.tv_sec - startTime.tv_sec;
+    if (endTime.tv_usec >= startTime.tv_usec)
+    {
+        diff.tv_usec = endTime.tv_usec - startTime.tv_usec;
+    }
+    else if (diff.tv_sec > 0)
+    {
+        diff.tv_usec = 1000000 + endTime.tv_usec - startTime.tv_usec;
+        diff.tv_sec--;
+    }
+    else
+    {
+        // gettimeofday() can go backwards under some circumstances: NTP, multithread...
+        //cerr << "Error: TimeDiff() got startTime > endTime: startTime.tv_sec=" << startTime.tv_sec << " startTime.tv_usec=" << startTime.tv_usec << " endTime.tv_sec=" << endTime.tv_sec << " endTime.tv_usec=" << endTime.tv_usec << endl;
+        return 0;
+    }
+
+    // Return the total number of us
+    return diff.tv_usec + 1000000 * diff.tv_sec;
+}
+
 
 void print_usage (void)
 {
@@ -148,7 +178,11 @@ int main(int argc, char *argv[])
     }
 
     // Call emulator assembly code
+    gettimeofday(&start_time,NULL);
     emulator_start();
+    struct timeval stop_time;
+    gettimeofday(&stop_time,NULL);
+    printf("Duration = %d us\n", TimeDiff(start_time, stop_time));
 
     // Log output
     if (output)
@@ -169,7 +203,28 @@ int main(int argc, char *argv[])
 
 extern int _print_abcflag(uint64_t a, uint64_t b, uint64_t c, uint64_t flag)
 {
-    printf("a=%08x b=%08x c=%08x flag=%08x\n", a, b, c, flag);
+    printf("a=%08llx b=%08llx c=%08llx flag=%08llx\n", a, b, c, flag);
     fflush(stdout);
-    return 65;
+    return 0;
+}
+
+extern int _print_char(uint64_t param)
+{
+    char c = param;
+    printf("%c", c);
+    return 0;
+}
+
+uint64_t print_step_counter = 0;
+extern int _print_step(uint64_t step)
+{
+    print_step_counter++;
+    struct timeval stop_time;
+    gettimeofday(&stop_time,NULL);
+    uint64_t duration = TimeDiff(start_time, stop_time);
+    uint64_t duration_s = duration/1000;
+    if (duration_s == 0) duration_s = 1;
+    uint64_t speed = step / duration_s;
+    printf("print_step() Counter=%d Step=%d Duration=%dus Speed=%dsteps/ms\n", print_step_counter, step, duration, speed);
+    return 0;
 }

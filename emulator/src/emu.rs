@@ -1474,7 +1474,14 @@ impl<'a> Emu<'a> {
         // Call the operation
         (instruction.func)(&mut self.ctx.inst_ctx);
 
-        //println!("a={:08x} b={:08x} c={:08x} flag={:08x}\n", a, b, c, flag);
+        // println!(
+        //     "a={:08x} b={:08x} c={:08x} flag={:08x}",
+        //     self.ctx.inst_ctx.a,
+        //     self.ctx.inst_ctx.b,
+        //     self.ctx.inst_ctx.c,
+        //     //self.ctx.inst_ctx.flag as u64
+        //     self.ctx.inst_ctx.step,
+        // );
 
         // Retrieve statistics data
         if self.ctx.do_stats {

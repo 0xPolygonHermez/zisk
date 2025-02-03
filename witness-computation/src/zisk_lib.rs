@@ -42,6 +42,7 @@ impl<F: PrimeField> WitnessLibrary<F> for WitnessLib {
             String::new(),
             String::new(),
             String::new(),
+            String::new(),
         );
 
         // Step 2: Convert program to ROM
