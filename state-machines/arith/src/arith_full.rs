@@ -7,8 +7,7 @@
 use std::sync::Arc;
 
 use crate::{
-    arith_full_instance::ArithInstanceCollector, ArithOperation, ArithRangeTableInputs,
-    ArithRangeTableSM, ArithTableInputs, ArithTableSM,
+    ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
 };
 use data_bus::{OperationBusData, OperationData, PayloadType};
 use log::info;
@@ -61,13 +60,13 @@ impl ArithFullSM {
     /// An `AirInstance` containing the computed arithmetic trace.
     pub fn compute_witness<F: PrimeField>(
         &self,
-        input_collectors: Vec<(usize, Box<ArithInstanceCollector>)>,
+        inputs: &[Vec<OperationData<u64>>],
     ) -> AirInstance<F> {
         let mut arith_trace = ArithTrace::new();
 
         let num_rows = arith_trace.num_rows();
 
-        let total_inputs: usize = input_collectors.iter().map(|(_, c)| c.inputs.len()).sum();
+        let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
         assert!(total_inputs <= num_rows);
 
         let mut range_table_inputs = ArithRangeTableInputs::new();
@@ -83,8 +82,8 @@ impl ArithFullSM {
 
         let mut aop = ArithOperation::new();
         let mut idx = 0;
-        for (_chunk_id, input_collector) in input_collectors {
-            for input in &input_collector.inputs {
+        for inner_inputs in inputs {
+            for input in inner_inputs {
                 let opcode = OperationBusData::get_op(input);
                 let a = OperationBusData::get_a(input);
                 let b = OperationBusData::get_b(input);
