@@ -4,10 +4,7 @@
 
 use std::sync::Arc;
 
-use crate::{
-    binary_basic_instance::BinaryBasicCollector, binary_constants::*, BinaryBasicTableOp,
-    BinaryBasicTableSM,
-};
+use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM};
 use data_bus::{OperationBusData, OperationData};
 use log::info;
 use p3_field::PrimeField;
@@ -231,9 +228,9 @@ impl BinaryBasicSM {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Min)
-                        && (plast[i] == 1)
-                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Min) &&
+                        (plast[i] == 1) &&
+                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if (a_bytes[i] & 0x80) != 0 { 1 } else { 0 };
                     }
@@ -298,9 +295,9 @@ impl BinaryBasicSM {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op == BinaryBasicTableOp::Max)
-                        && (plast[i] == 1)
-                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Max) &&
+                        (plast[i] == 1) &&
+                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if (a_bytes[i] & 0x80) != 0 { 0 } else { 1 };
                     }
@@ -475,9 +472,9 @@ impl BinaryBasicSM {
                     }
 
                     // If the chunk is signed, then the result is the sign of a
-                    if (binary_basic_table_op.eq(&BinaryBasicTableOp::Lt))
-                        && (plast[i] == 1)
-                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op.eq(&BinaryBasicTableOp::Lt)) &&
+                        (plast[i] == 1) &&
+                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                     }
@@ -717,9 +714,9 @@ impl BinaryBasicSM {
                     if a_bytes[i] <= b_bytes[i] {
                         cout = 1;
                     }
-                    if (binary_basic_table_op == BinaryBasicTableOp::Le)
-                        && (plast[i] == 1)
-                        && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
+                    if (binary_basic_table_op == BinaryBasicTableOp::Le) &&
+                        (plast[i] == 1) &&
+                        (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80)
                     {
                         cout = c;
                     }
@@ -863,9 +860,9 @@ impl BinaryBasicSM {
 
         // Set free_in_a_or_c and free_in_b_or_zero
         for i in 0..HALF_BYTES {
-            row.free_in_a_or_c[i] = mode64
-                * (row.free_in_a[i + HALF_BYTES] - row.free_in_c[HALF_BYTES - 1])
-                + row.free_in_c[HALF_BYTES - 1];
+            row.free_in_a_or_c[i] = mode64 *
+                (row.free_in_a[i + HALF_BYTES] - row.free_in_c[HALF_BYTES - 1]) +
+                row.free_in_c[HALF_BYTES - 1];
             row.free_in_b_or_zero[i] = mode64 * row.free_in_b[i + HALF_BYTES];
         }
 
@@ -891,13 +888,13 @@ impl BinaryBasicSM {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<F: PrimeField>(
         &self,
-        input_collectors: Vec<(usize, Box<BinaryBasicCollector>)>,
+        inputs: &[Vec<OperationData<u64>>],
     ) -> AirInstance<F> {
         let mut binary_trace = BinaryTrace::new();
 
         let num_rows = binary_trace.num_rows();
 
-        let total_inputs: usize = input_collectors.iter().map(|(_, c)| c.inputs.len()).sum();
+        let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
         assert!(total_inputs <= num_rows);
 
         info!(
@@ -911,9 +908,9 @@ impl BinaryBasicSM {
         let mut multiplicity_table = vec![0u64; BinaryTableTrace::<F>::NUM_ROWS];
 
         let mut idx = 0;
-        for (_chunk_id, input_collector) in input_collectors {
-            for input in input_collector.inputs {
-                let row = Self::process_slice(&input, &mut multiplicity_table);
+        for inner_inputs in inputs {
+            for input in inner_inputs {
+                let row = Self::process_slice(input, &mut multiplicity_table);
                 binary_trace[idx] = row;
                 idx += 1;
             }

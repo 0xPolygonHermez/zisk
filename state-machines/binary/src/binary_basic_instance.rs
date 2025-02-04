@@ -61,16 +61,19 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
         _pctx: &ProofCtx<F>,
         collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
-        let collectors = collectors
+        let inputs: Vec<_> = collectors
             .into_iter()
-            .map(|(chunk_id, mut collector)| {
-                let collector =
-                    collector.detach_device().as_any().downcast::<BinaryBasicCollector>().unwrap();
-                (chunk_id, collector)
+            .map(|(_, mut collector)| {
+                collector
+                    .detach_device()
+                    .as_any()
+                    .downcast::<BinaryBasicCollector>()
+                    .unwrap()
+                    .inputs
             })
             .collect();
 
-        Some(self.binary_basic_sm.compute_witness(collectors))
+        Some(self.binary_basic_sm.compute_witness(&inputs))
     }
 
     /// Retrieves the checkpoint associated with this instance.

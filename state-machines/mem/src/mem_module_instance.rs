@@ -45,9 +45,9 @@ impl<F: PrimeField> MemModuleInstance<F> {
             let mut input_index = 0;
             let mut skip_rows = 0;
             loop {
-                while inputs[input_index].addr == prev_segment.addr
-                    && (inputs[input_index].step - prev_segment.step) > STEP_MEMORY_MAX_DIFF
-                    && skip_rows < mem_check_point.skip_rows as usize
+                while inputs[input_index].addr == prev_segment.addr &&
+                    (inputs[input_index].step - prev_segment.step) > STEP_MEMORY_MAX_DIFF &&
+                    skip_rows < mem_check_point.skip_rows as usize
                 {
                     prev_segment.step += STEP_MEMORY_MAX_DIFF;
                     skip_rows += 1;

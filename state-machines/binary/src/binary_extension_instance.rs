@@ -65,19 +65,19 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
         _pctx: &ProofCtx<F>,
         collectors: Vec<(usize, Box<sm_common::BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
-        let collectors = collectors
+        let inputs: Vec<_> = collectors
             .into_iter()
-            .map(|(chunk_id, mut collector)| {
-                let collector = collector
+            .map(|(_, mut collector)| {
+                collector
                     .detach_device()
                     .as_any()
                     .downcast::<BinaryExtensionCollector<F>>()
-                    .unwrap();
-                (chunk_id, collector)
+                    .unwrap()
+                    .inputs
             })
             .collect();
 
-        Some(self.binary_extension_sm.compute_witness(collectors))
+        Some(self.binary_extension_sm.compute_witness(&inputs))
     }
 
     /// Retrieves the checkpoint associated with this instance.

@@ -5,10 +5,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{
-    binary_extension_instance::BinaryExtensionCollector, BinaryExtensionTableOp,
-    BinaryExtensionTableSM,
-};
+use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM};
 use data_bus::{OperationBusData, OperationData};
 use log::info;
 use num_bigint::BigInt;
@@ -68,12 +65,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     /// Determines if the given opcode represents a shift operation.
     fn opcode_is_shift(opcode: ZiskOp) -> bool {
         match opcode {
-            ZiskOp::Sll
-            | ZiskOp::Srl
-            | ZiskOp::Sra
-            | ZiskOp::SllW
-            | ZiskOp::SrlW
-            | ZiskOp::SraW => true,
+            ZiskOp::Sll |
+            ZiskOp::Srl |
+            ZiskOp::Sra |
+            ZiskOp::SllW |
+            ZiskOp::SrlW |
+            ZiskOp::SraW => true,
 
             ZiskOp::SignExtendB | ZiskOp::SignExtendH | ZiskOp::SignExtendW => false,
 
@@ -86,12 +83,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         match opcode {
             ZiskOp::SllW | ZiskOp::SrlW | ZiskOp::SraW => true,
 
-            ZiskOp::Sll
-            | ZiskOp::Srl
-            | ZiskOp::Sra
-            | ZiskOp::SignExtendB
-            | ZiskOp::SignExtendH
-            | ZiskOp::SignExtendW => false,
+            ZiskOp::Sll |
+            ZiskOp::Srl |
+            ZiskOp::Sra |
+            ZiskOp::SignExtendB |
+            ZiskOp::SignExtendH |
+            ZiskOp::SignExtendW => false,
 
             _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={:?}", opcode),
         }
@@ -330,15 +327,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` representing the computed witness.
-    pub fn compute_witness(
-        &self,
-        input_collectors: Vec<(usize, Box<BinaryExtensionCollector<F>>)>,
-    ) -> AirInstance<F> {
+    pub fn compute_witness(&self, inputs: &[Vec<OperationData<u64>>]) -> AirInstance<F> {
         let mut binary_e_trace = BinaryExtensionTrace::new();
 
         let num_rows = binary_e_trace.num_rows();
 
-        let total_inputs: usize = input_collectors.iter().map(|(_, c)| c.inputs.len()).sum();
+        let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
         assert!(total_inputs <= num_rows);
 
         info!(
@@ -353,9 +347,9 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         let mut range_check: HashMap<u64, u64> = HashMap::new();
 
         let mut idx = 0;
-        for (_chunk_id, input_collector) in input_collectors {
-            for input in input_collector.inputs {
-                let row = Self::process_slice(&input, &mut multiplicity_table, &mut range_check);
+        for inner_inputs in inputs {
+            for input in inner_inputs {
+                let row = Self::process_slice(input, &mut multiplicity_table, &mut range_check);
                 binary_e_trace[idx] = row;
                 idx += 1;
             }
