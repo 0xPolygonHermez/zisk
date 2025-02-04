@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <sys/time.h>
 
+#include "XKCP/Keccak-more-compact.h"
+
 void emulator_start(void);
 
 #define RAM_ADDR 0xa0000000
@@ -226,5 +228,14 @@ extern int _print_step(uint64_t step)
     if (duration_s == 0) duration_s = 1;
     uint64_t speed = step / duration_s;
     if (verbose) printf("print_step() Counter=%d Step=%d Duration=%dus Speed=%dsteps/ms\n", print_step_counter, step, duration, speed);
+    return 0;
+}
+
+extern uint64_t STEP;
+extern int _opcode_keccak(uint64_t address)
+{
+    //if (verbose) printf("opcode_keccak() calling KeccakF1600() step=%d address=%08llx\n", STEP, address);
+    KeccakF1600((void *)address);
+    //if (verbose) printf("opcode_keccak() called KeccakF1600()\n");
     return 0;
 }

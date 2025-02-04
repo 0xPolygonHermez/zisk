@@ -45,8 +45,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, M64, P2_32, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
-    SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
+    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, M64, P2_32, REG_A0, ROM_ADDR, ROM_ENTRY, SRC_C,
+    SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
 };
 
 const REG_A: &str = "rbx";
@@ -507,6 +507,7 @@ impl ZiskRom {
         *s += ".extern print_abcflag\n\n";
         *s += ".extern print_char\n\n";
         *s += ".extern print_step\n\n";
+        *s += ".extern opcode_keccak\n\n";
         *s += ".global emulator_start\n";
         *s += "emulator_start:\n";
 
@@ -531,8 +532,8 @@ impl ZiskRom {
             // *s += &format!("\tmov rax, 0\n");
             // *s += &format!("\tcall printf\n");
 
-            //*s += "\tmov rax, 1\n"; // TODO
-            //*s += "\tmov rdi, 1\n";
+            // *s += "\tmov rax, 1\n";
+            // *s += "\tmov rdi, 1\n";
             // *s += &format!("\tlea rsi, pc_{}_log\n", ctx.pc);
             // *s += &format!("\tmov rdx, pc_{}_log_len\n", ctx.pc);
             // *s += "\tsyscall\n\n";
@@ -565,7 +566,7 @@ impl ZiskRom {
                     ctx.a.constant_value =
                         instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32);
                     ctx.a.string_value = format!("0x{:x}", ctx.a.constant_value);
-                    // Used only to get register traces:
+                    // DEBUG: Used only to get register traces:
                     //*s += &format!("\tmov {}, {} /* a=a_value */\n", REG_A, ctx.a.string_value);
                 }
                 SRC_STEP => {
@@ -604,7 +605,7 @@ impl ZiskRom {
                     ctx.b.constant_value =
                         instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32);
                     ctx.b.string_value = format!("0x{:x}", ctx.b.constant_value);
-                    // Used only to get register traces:
+                    // DEBUG: Used only to get register traces:
                     //*s += &format!("\tmov {}, {} /*b=b_value */\n", REG_B, ctx.b.string_value);
                 }
                 SRC_IND => {
@@ -819,7 +820,7 @@ impl ZiskRom {
             // *s += &format!("\tmov rdx, {}\n", REG_C);
             // // if ctx.flag_is_always_one {
             // //     *s += &format!("\tmov rcx, 1\n");
-            // // } else if ctx.flag_is_always_zero {
+            // // } else if ctx.flag_is_always_zero {4
             // //     *s += &format!("\tmov rcx, 0\n");
             // // } else {
             // //     *s += &format!("\tmov rcx, {}\n", REG_FLAG);
@@ -1139,9 +1140,14 @@ impl ZiskRom {
                         REG_B, ctx.b.string_value
                     );
                 }
+                // DEBUG: Used only to preserve b value
+                // s +=
+                //     &format!("\tmov {}, {} /* AddW: value = b */\n", REG_VALUE, ctx.b.string_value);
                 s += &format!("\tadd {}, {} /* AddW: b += a */\n", REG_B, ctx.a.string_value);
                 s += &format!("\tcdqe /* AddW: trunk b */\n");
                 s += &format!("\tmov {}, {} /* AddW: c = b */\n", REG_C, REG_B);
+                // DEBUG: Used only to preserve b value
+                //s += &format!("\tmov {}, {} /* AddW: b = value */\n", REG_B, REG_VALUE);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sub => {
@@ -1160,18 +1166,22 @@ impl ZiskRom {
                         "\tmov {}, {} /* SubW: a = const_value */\n",
                         REG_A, ctx.a.string_value
                     );
+                    ctx.a.string_value = REG_A.to_string();
                 }
-                // Used only to preserve b value
-                //s +=
-                //    &format!("\tmov {}, {} /* SubW: value = b */\n", REG_VALUE, ctx.b.string_value);
+                // DEBUG: Used only to preserve b value
+                // s += &format!(
+                //     "\tmov {}, {} /* SubW: address = a */\n",
+                //     REG_ADDRESS, ctx.a.string_value
+                // );
+                // s +=
+                //     &format!("\tmov {}, {} /* SubW: value = b */\n", REG_VALUE, ctx.b.string_value);
                 s += &format!("\tsub {}, {} /* SubW: a -= b */\n", REG_A, ctx.b.string_value);
                 s += &format!("\tmov {}, {} /* SubW: b = a = a - b*/\n", REG_B, REG_A);
                 s += &format!("\tcdqe /* SubW: trunk b */\n");
                 s += &format!("\tmov {}, {} /* SubW: c = b */\n", REG_C, REG_B);
-                // Used only to preserver a,b values
-                // s += &format!("\tmov {}, {} /* SubW: a = value */\n", REG_A, ctx.a.string_value);
-                // s +=
-                //     &format!("\tmov {}, {} /* SubW: value = b */\n", ctx.b.string_value, REG_VALUE);
+                // DEBUG: Used only to preserver a,b values
+                // s += &format!("\tmov {}, {} /* SubW: a = address */\n", REG_A, REG_ADDRESS);
+                // s += &format!("\tmov {}, {} /* SubW: b = value */\n", REG_B, REG_VALUE);
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sll => {
@@ -2281,9 +2291,14 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Keccak => {
-                // TODO
-                s += &format!("\tmov {}, 0 /* Keccak */\n", REG_C);
-                s += &format!("\tmov {}, 0\n", REG_FLAG);
+                s += &format!("\tpush {}\n", REG_VALUE);
+                s += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, REG_A0);
+                s += &format!("\tmov rdi, [{}]\n", REG_VALUE);
+                s += &format!("\tcall _opcode_keccak\n");
+                s += &format!("\tpop {}\n", REG_VALUE);
+
+                s += &format!("\tmov {}, 0 /* Keccak: c=0 */\n", REG_C);
+                ctx.flag_is_always_zero = true;
             }
             ZiskOp::PubOut => {
                 s += &format!("\t/* PubOut: c = b = {} */\n", ctx.b.string_value);
