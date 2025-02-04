@@ -181,10 +181,14 @@ impl MainSM {
         *next_pc = emu.ctx.inst_ctx.pc;
     }
 
+    pub fn debug<F: PrimeField>(_pctx: Arc<ProofCtx<F>>, _sctx: Arc<SetupCtx<F>>) {
+        // No debug information to display
+    }
+
     pub fn build_counter() -> Box<dyn BusDeviceMetrics> {
         Box::new(MainCounter::new(OPERATION_BUS_ID))
     }
-    
+
     pub fn debug<F: PrimeField>(_pctx: Arc<ProofCtx<F>>, _sctx: Arc<SetupCtx<F>>) {
         // No debug information to display
     }
