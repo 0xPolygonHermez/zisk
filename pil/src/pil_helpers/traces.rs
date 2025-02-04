@@ -72,13 +72,6 @@ impl Default for ZiskPublics {
     }
 }
 
-impl Default for ZiskPublics {
-    fn default() -> Self {
-        Self {  
-            rom_root: [0; 4], 
-        }
-    }
-}
 
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],

@@ -517,7 +517,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
 
         // PHASE 1. MINIMAL TRACES. Process the ROM super fast to collect the Minimal Traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
-        let min_traces = self.compute_minimal_traces(public_inputs, Self::NUM_THREADS);
+        let min_traces = self.compute_minimal_traces(input_data, Self::NUM_THREADS);
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
         timer_start_info!(COUNT_AND_PLAN);
@@ -525,7 +525,16 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         let (main_count, sec_count) = self.count(&min_traces);
 
         // PHASE 3. PLANNING. Plan the instances
-        let mut main_planning = MainPlanner::plan::<F>(&min_traces, Self::MIN_TRACE_SIZE);
+        let (mut main_planning, public_values) =
+            MainPlanner::plan::<F>(&min_traces, main_count, Self::MIN_TRACE_SIZE);
+
+        // Update pctx
+        let mut publics = ZiskPublicValues::from_vec_guard(pctx.get_publics());
+
+        for (index, value) in public_values.iter() {
+            publics.inputs[*index as usize] = F::from_canonical_u32(*value);
+        }
+
         let mut sec_planning = self.plan_sec(sec_count);
 
         // PHASE 4. PLANNING. Plan the instances
