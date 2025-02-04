@@ -4,6 +4,8 @@
 //! It organizes execution plans for both regular instances and table instances,
 //! leveraging arithmetic operation counts and metadata to construct detailed plans.
 
+use std::any::Any;
+
 use crate::ArithCounter;
 use sm_common::{
     plan_2, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics,
@@ -98,15 +100,15 @@ impl Planner for ArithPlanner {
         for (idx, instance) in self.instances_info.iter().enumerate() {
             let plan: Vec<_> = plan_2(&count[idx], instance.num_rows as u64)
                 .into_iter()
-                .map(|check_point| {
+                .map(|(check_point, collect_info)| {
+                    let converted: Box<dyn Any> = Box::new(collect_info);
                     Plan::new(
                         instance.airgroup_id,
                         instance.air_id,
                         None,
                         InstanceType::Instance,
                         check_point,
-                        None,
-                        None,
+                        Some(converted),
                     )
                 })
                 .collect();
@@ -121,7 +123,6 @@ impl Planner for ArithPlanner {
                 None,
                 InstanceType::Table,
                 CheckPoint::None,
-                None,
                 None,
             ));
         }

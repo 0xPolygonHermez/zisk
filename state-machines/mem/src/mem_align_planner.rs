@@ -115,7 +115,6 @@ impl<'a> MemAlignPlanner<'a> {
             Some(self.instances.len()),
             InstanceType::Instance,
             CheckPoint::Multiple(chunks),
-            None,
             Some(Box::new(check_points)),
         );
         self.instances.push(instance);
@@ -155,7 +154,6 @@ impl MemPlanCalculator for MemAlignPlanner<'_> {
             None,
             InstanceType::Table,
             CheckPoint::None,
-            None,
             None,
         ));
         std::mem::take(&mut self.instances)

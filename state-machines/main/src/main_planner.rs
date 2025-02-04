@@ -4,7 +4,7 @@
 //! to a specific `Plan` instance.
 
 use p3_field::PrimeField;
-use sm_common::{CheckPoint, CollectSkipper, InstanceType, Plan};
+use sm_common::{CheckPoint, InstanceType, Plan};
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::EmuTrace;
 
@@ -44,7 +44,6 @@ impl MainPlanner {
                     Some(segment_id),
                     InstanceType::Instance,
                     CheckPoint::Single(segment_id),
-                    Some(CollectSkipper::new(0)),
                     None,
                 )
             })

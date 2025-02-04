@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use crate::{CheckPoint, CollectSkipper};
+use crate::{CheckPoint, ChunkId, CollectSkipper};
 
 /// Represents the instruction count for a specific chunk.
 ///
@@ -128,13 +128,17 @@ pub fn plan(counts: &[InstCount], size: u64) -> Vec<(CheckPoint, CollectSkipper)
 ///     ]
 /// );
 /// ```
-pub fn plan_2(counts: &[InstCount], size: u64) -> Vec<CheckPoint> {
+#[allow(clippy::type_complexity)]
+pub fn plan_2(
+    counts: &[InstCount],
+    size: u64,
+) -> Vec<(CheckPoint, HashMap<ChunkId, (u64, CollectSkipper)>)> {
     if counts.is_empty() || size == 0 {
         return vec![];
     }
 
     let mut checkpoints = Vec::new();
-    let mut current_scope: HashMap<usize, (u64, CollectSkipper)> = HashMap::new();
+    let mut current_scope: HashMap<ChunkId, (u64, CollectSkipper)> = HashMap::new();
     let mut remaining_size = size; // Remaining size for the current scope.
 
     for (current_chunk, count) in counts.iter().enumerate() {
@@ -152,7 +156,8 @@ pub fn plan_2(counts: &[InstCount], size: u64) -> Vec<CheckPoint> {
             remaining_size -= checkpoint_size;
 
             if remaining_size == 0 {
-                checkpoints.push(CheckPoint::Multiple2(std::mem::take(&mut current_scope)));
+                let keys = current_scope.keys().cloned().collect::<Vec<_>>();
+                checkpoints.push((CheckPoint::Multiple(keys), std::mem::take(&mut current_scope)));
                 remaining_size = size;
             }
         }
@@ -160,7 +165,8 @@ pub fn plan_2(counts: &[InstCount], size: u64) -> Vec<CheckPoint> {
 
     // Push any remaining checkpoints into the result.
     if !current_scope.is_empty() {
-        checkpoints.push(CheckPoint::Multiple2(current_scope));
+        let keys = current_scope.keys().cloned().collect::<Vec<_>>();
+        checkpoints.push((CheckPoint::Multiple(keys), current_scope));
     }
 
     checkpoints
@@ -242,7 +248,10 @@ mod tests {
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
-
+//
+//     #[derive(Debug, Clone, PartialEq)]
+//     pub struct CheckPoint2(pub usize);
+//
 //     #[test]
 //     fn test_plan_2_multiple_chunks() {
 //         let counts = vec![InstCount::new(0, 500), InstCount::new(1, 200), InstCount::new(2,

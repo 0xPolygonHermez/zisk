@@ -9,9 +9,9 @@ use data_bus::{BusDevice, BusId, OperationBusData, OperationData, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use sm_common::{
-    BusDeviceWrapper, CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType,
+    BusDeviceWrapper, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
 };
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
 
@@ -93,22 +93,20 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
     }
 
     fn build_inputs_collector(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        match self.ictx.plan.air_id {
-            ArithTrace::<F>::AIR_ID => {
-                Some(Box::new(match &self.ictx.plan.check_point {
-                    CheckPoint::Multiple2(check_point) => {
-                        // check_point is an array
-                        ArithInstanceCollector::new(
-                            self.bus_id,
-                            check_point[&chunk_id].0,
-                            check_point[&chunk_id].1,
-                        )
-                    }
-                    _ => panic!("Binary Basic: Invalid checkpoint type"),
-                }))
-            }
-            _ => panic!("BinaryBasicInstance: Unsupported air_id: {:?}", self.ictx.plan.air_id),
-        }
+        assert_eq!(
+            self.ictx.plan.air_id,
+            ArithTrace::<F>::AIR_ID,
+            "BinaryInstance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+
+        let meta = self.ictx.plan.meta.as_ref().unwrap();
+        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
+        Some(Box::new(ArithInstanceCollector::new(
+            self.bus_id,
+            collect_info[&chunk_id].0,
+            collect_info[&chunk_id].1,
+        )))
     }
 }
 

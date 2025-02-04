@@ -48,7 +48,6 @@ impl Planner for RomPlanner {
             None,
             InstanceType::Instance,
             CheckPoint::None,
-            None,
             Some(Box::new(total)),
         )]
     }

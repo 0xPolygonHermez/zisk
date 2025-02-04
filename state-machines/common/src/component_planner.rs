@@ -2,7 +2,7 @@
 //! execution plans. It defines the `Plan` structure, `Planner` trait, and utility types
 //! like `CheckPoint` and `CollectSkipper` for efficient planning and execution flows.
 
-use std::{any::Any, collections::HashMap};
+use std::any::Any;
 
 use crate::{BusDeviceMetrics, InstanceType};
 
@@ -67,13 +67,7 @@ pub enum CheckPoint {
 
     /// Multiple chunk checkpoints.
     Multiple(Vec<ChunkId>),
-
-    /// A checkpoint with a specific instance count.
-    Multiple2(HashMap<ChunkId, (u64, CollectSkipper)>),
 }
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct CheckPoint2(pub usize);
 
 /// The `Plan` struct represents a single execution plan.
 #[derive(Debug)]
@@ -92,9 +86,6 @@ pub struct Plan {
 
     /// The checkpoint type associated with this plan.
     pub check_point: CheckPoint,
-
-    /// Information required for input collection.
-    pub collect_info: Option<CollectSkipper>,
 
     /// Additional metadata associated with the plan.
     pub meta: Option<Box<dyn Any>>,
@@ -120,10 +111,9 @@ impl Plan {
         segment_id: Option<usize>,
         instance_type: InstanceType,
         check_point: CheckPoint,
-        collect_info: Option<CollectSkipper>,
         meta: Option<Box<dyn Any>>,
     ) -> Self {
-        Plan { airgroup_id, air_id, segment_id, instance_type, check_point, collect_info, meta }
+        Plan { airgroup_id, air_id, segment_id, instance_type, check_point, meta }
     }
 }
 

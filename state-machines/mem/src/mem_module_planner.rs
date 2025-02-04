@@ -450,7 +450,6 @@ impl MemPlanCalculator for MemModulePlanner<'_> {
                 Some(segment_id),
                 InstanceType::Instance,
                 CheckPoint::Multiple(segment.chunks.clone()),
-                None,
                 Some(Box::new(check_point)),
             ));
 

@@ -358,11 +358,6 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     chunks_to_execute[chunk_id].push(idx);
                 });
             }
-            CheckPoint::Multiple2(chunk_ids) => {
-                chunk_ids.iter().for_each(|(chunk_id, _)| {
-                    chunks_to_execute[*chunk_id].push(idx);
-                });
-            }
         });
         chunks_to_execute
     }
