@@ -1,7 +1,7 @@
 use crate::{MemAlignCheckPoint, MemAlignInput, MemAlignSM, MemHelpers};
 use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, ProofCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 
@@ -34,7 +34,11 @@ impl<F: PrimeField> MemAlignInstance<F> {
 }
 
 impl<F: PrimeField> Instance<F> for MemAlignInstance<F> {
-    fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
+    fn compute_witness(
+        &mut self,
+        _pctx: &ProofCtx<F>,
+        _sctx: &SetupCtx<F>,
+    ) -> Option<AirInstance<F>> {
         Some(self.mem_align_sm.compute_witness(&self.inputs, self.checkpoint.rows))
     }
 

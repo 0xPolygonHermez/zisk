@@ -2,8 +2,10 @@
 //! in the context of proof systems. It includes traits and macros for defining instances
 //! and integrating them with state machines and proofs.
 
+use std::sync::Arc;
+
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, ProofCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 
 use crate::CheckPoint;
 
@@ -28,7 +30,8 @@ pub trait Instance<F: PrimeField>: Send {
     ///
     /// # Returns
     /// An optional `AirInstance` object representing the computed witness.
-    fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>>;
+    fn compute_witness(&mut self, pctx: &ProofCtx<F>, sctx: &SetupCtx<F>)
+        -> Option<AirInstance<F>>;
 
     /// Retrieves the checkpoint associated with the instance.
     ///
@@ -41,6 +44,8 @@ pub trait Instance<F: PrimeField>: Send {
     /// # Returns
     /// An `InstanceType` indicating whether the instance is standalone or table-based.
     fn instance_type(&self) -> InstanceType;
+
+    fn debug(&self, _pctx: Arc<ProofCtx<F>>, _sctx: Arc<SetupCtx<F>>) {}
 }
 
 /// Macro to define a table-backed instance.
@@ -60,7 +65,7 @@ macro_rules! table_instance {
         use p3_field::PrimeField;
 
         use data_bus::BusId;
-        use proofman_common::{AirInstance, FromTrace, ProofCtx};
+        use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
         use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
         use zisk_pil::$Trace;
 
@@ -90,7 +95,11 @@ macro_rules! table_instance {
         }
 
         impl<F: PrimeField> Instance<F> for $InstanceName {
-            fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
+            fn compute_witness(
+                &mut self,
+                pctx: &ProofCtx<F>,
+                _sctx: &SetupCtx<F>,
+            ) -> Option<AirInstance<F>> {
                 let mut multiplicity = self.table_sm.detach_multiplicity();
 
                 pctx.dctx_distribute_multiplicity(&mut multiplicity, self.ictx.global_id);
@@ -162,7 +171,11 @@ macro_rules! instance {
         }
 
         impl<F: PrimeField> Instance<F> for $name {
-            fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
+            fn compute_witness(
+                &mut self,
+                _pctx: &ProofCtx<F>,
+                _sctx: &SetupCtx<F>,
+            ) -> Option<AirInstance<F>> {
                 Some(self.sm.compute_witness(&self.inputs))
             }
 
