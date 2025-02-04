@@ -57,7 +57,7 @@ pub fn set_output(id: usize, value: u32) {
         )
     };
 
-    assert!(id < 16, "Maximum number of public outputs: 16");
+    assert!(id < 64, "Maximum number of public outputs: 64");
 
     if arch_id_zisk == ARCH_ID_ZISK as usize {
         addr_n = OUTPUT_ADDR as *mut u32;
