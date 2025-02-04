@@ -6,8 +6,6 @@ pub use proofman_macros::values;
 
 use std::fmt;
 
-use rayon::prelude::*;
-
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
