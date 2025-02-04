@@ -6,7 +6,6 @@
 use itertools::Itertools;
 use p3_field::PrimeField;
 use proofman_common::ProofCtx;
-use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use witness::WitnessComponent;
 
 use rayon::prelude::*;
@@ -279,17 +278,12 @@ impl<F: PrimeField> ZiskExecutor<F> {
         min_traces: &[EmuTrace],
         secn_instances: Vec<(usize, Box<dyn Instance<F>>)>,
     ) {
-        timer_start_info!(WITNESS_SECN_1);
         // Group the instances by the chunk they need to process
         let instances_by_chunk = self.chunks_to_execute(min_traces, &secn_instances);
-        timer_stop_and_log_info!(WITNESS_SECN_1);
 
-        timer_start_info!(WITNESS_SECN_2);
         // Create data buses for each chunk
         let mut data_buses = self.get_data_bus_collectors(&secn_instances, instances_by_chunk);
-        timer_stop_and_log_info!(WITNESS_SECN_2);
 
-        timer_start_info!(WITNESS_SECN_3);
         // Execute collect process for each chunk
         data_buses.par_iter_mut().enumerate().for_each(|(chunk_id, data_bus)| {
             if let Some(data_bus) = data_bus {
@@ -298,24 +292,18 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     min_traces,
                     chunk_id,
                     data_bus,
-                    true,
                 );
             }
         });
-        timer_stop_and_log_info!(WITNESS_SECN_3);
 
-        timer_start_info!(WITNESS_SECN_4);
         // Close the data buses and get for each instance its collectors
         let collectors_by_instance = self.close_data_bus_collectors(secn_instances, data_buses);
-        timer_stop_and_log_info!(WITNESS_SECN_4);
 
-        timer_start_info!(WITNESS_SECN_5);
         collectors_by_instance.into_par_iter().for_each(|(global_idx, mut instance, collector)| {
             if let Some(air_instance) = instance.compute_witness(pctx, collector) {
                 pctx.air_instance_repo.add_air_instance(air_instance, global_idx);
             }
         });
-        timer_stop_and_log_info!(WITNESS_SECN_5);
     }
 
     /// Computes and generates witnesses for secondary state machine instances of type `Table`.
@@ -503,15 +491,11 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
     /// # Arguments
     /// * `pctx` - Proof context for managing air instances and computation.
     fn execute(&self, pctx: Arc<ProofCtx<F>>) {
-        // Call emulate with these options
-        let public_inputs = {
-            // Read inputs data from the provided inputs path
-            let path = PathBuf::from(self.public_inputs_path.display().to_string());
-            fs::read(path).expect("Could not read inputs file")
-        };
-
         // PHASE 1. MINIMAL TRACES. Process the ROM super fast to collect the Minimal Traces
-        let min_traces = self.compute_minimal_traces(public_inputs, Self::NUM_THREADS);
+        let pi_path = PathBuf::from(self.public_inputs_path.display().to_string());
+        let pi = fs::read(pi_path).expect("Could not read inputs file");
+
+        let min_traces = self.compute_minimal_traces(pi, Self::NUM_THREADS);
 
         // PHASE 2. COUNTING. Count the metrics for the Secondary SM instances
         let sec_count = self.count_sec(&min_traces);
@@ -528,12 +512,8 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         let (table_instances, secn_instances) = self.create_sec_instances(&pctx, sec_planning);
 
         // PHASE 6. WITNESS. Compute the witnesses
-        timer_start_info!(WITNESS_MAIN);
         self.witness_main_instances(&pctx, &min_traces, main_instances);
-        timer_stop_and_log_info!(WITNESS_MAIN);
-        timer_start_info!(WITNESS_SECN);
         self.witness_secn_instances(&pctx, &min_traces, secn_instances);
-        timer_stop_and_log_info!(WITNESS_SECN);
         self.witness_tables(&pctx, table_instances);
     }
 }
