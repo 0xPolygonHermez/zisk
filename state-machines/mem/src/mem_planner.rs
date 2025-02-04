@@ -1,9 +1,9 @@
-use std::sync::Arc;
+use rayon::prelude::*;
+use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "debug_mem")]
 use crate::MemDebug;
 use sm_common::{BusDeviceMetrics, ChunkId, Plan, Planner};
-use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "debug_mem")]
 use crate::MemHelpers;
