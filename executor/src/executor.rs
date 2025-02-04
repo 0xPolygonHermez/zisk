@@ -472,6 +472,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// # Returns
     /// A vector of tuples containing the global ID, secondary state machine instance, and a vector
     /// of collectors for each instance.
+    #[allow(clippy::type_complexity)]
     fn close_data_bus_collectors(
         &self,
         secn_instances: Vec<(usize, Box<dyn Instance<F>>)>,
@@ -518,8 +519,6 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         // PHASE 3. PLANNING. Plan the instances
         let main_planning = MainPlanner::plan::<F>(&min_traces, Self::MIN_TRACE_SIZE);
         let sec_planning = self.plan_sec(sec_count);
-
-        println!("Sec planning: {:?}", sec_planning);
 
         // PHASE 4. PLANNING. Plan the instances
         self.configure_instances(&pctx, &sec_planning);

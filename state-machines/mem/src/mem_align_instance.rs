@@ -1,4 +1,5 @@
 use crate::{MemAlignCheckPoint, MemAlignInput, MemAlignSM, MemHelpers};
+use core::panic;
 use data_bus::{BusDevice, BusId, MemBusData, PayloadType, MEM_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
@@ -14,7 +15,6 @@ pub struct MemAlignInstance<F: PrimeField> {
 
 impl<F: PrimeField> MemAlignInstance<F> {
     pub fn new(mem_align_sm: Arc<MemAlignSM<F>>, ictx: InstanceCtx) -> Self {
-        println!("MemAlignInstance::new() {:?}", ictx.plan);
         Self { ictx, mem_align_sm }
     }
 }
@@ -25,16 +25,23 @@ impl<F: PrimeField> Instance<F> for MemAlignInstance<F> {
         _pctx: &ProofCtx<F>,
         collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
-        let collectors: Vec<_> = collectors
+        let mut used_rows = 0;
+        let inputs: Vec<_> = collectors
             .into_iter()
-            .map(|(chunk_id, mut collector)| {
+            .enumerate()
+            .map(|(i, (_, mut collector))| {
+                // Downcast to your specific collector type.
                 let collector =
                     collector.detach_device().as_any().downcast::<MemAlignCollector>().unwrap();
-                (chunk_id, collector)
+                if i == 0 {
+                    used_rows = collector.rows;
+                }
+                // Return the inputs vector for this collector.
+                collector.inputs
             })
             .collect();
 
-        Some(self.mem_align_sm.compute_witness(collectors))
+        Some(self.mem_align_sm.compute_witness(&inputs, used_rows as usize))
     }
 
     fn check_point(&self) -> CheckPoint {
@@ -45,31 +52,36 @@ impl<F: PrimeField> Instance<F> for MemAlignInstance<F> {
         InstanceType::Instance
     }
 
-    fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(MemAlignCollector::new(&self.ictx)))
+    fn build_inputs_collector(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+        let meta = self.ictx.plan.meta.as_ref().unwrap();
+        let checkpoint = meta.downcast_ref::<Vec<MemAlignCheckPoint>>().unwrap();
+
+        if let CheckPoint::Multiple(plan_checkpoints) = &self.ictx.plan.check_point {
+            // Find in xxx the idx of the chunk_id
+            let idx = plan_checkpoints.iter().position(|&x| x == chunk_id).unwrap();
+            Some(Box::new(MemAlignCollector::new(&checkpoint[idx])))
+        } else {
+            panic!("Invalid checkpoint type");
+        }
     }
 }
 
 pub struct MemAlignCollector {
     /// Collected inputs
-    pub inputs: Vec<MemAlignInput>,
+    inputs: Vec<MemAlignInput>,
 
     pending_count: u32,
     skip_pending: u32,
-    pub rows: u32,
+    rows: u32,
 }
 
 impl MemAlignCollector {
-    pub fn new(ictx: &InstanceCtx) -> Self {
-        let checkpoint =
-            ictx.plan.meta.as_ref().unwrap().downcast_ref::<MemAlignCheckPoint>().unwrap().clone();
-
-        println!("Checkpoint: {:?}", checkpoint);
+    pub fn new(mem_align_checkpoint: &MemAlignCheckPoint) -> Self {
         Self {
             inputs: Vec::new(),
-            skip_pending: checkpoint.skip,
-            pending_count: checkpoint.count,
-            rows: checkpoint.rows,
+            skip_pending: mem_align_checkpoint.skip,
+            pending_count: mem_align_checkpoint.count,
+            rows: mem_align_checkpoint.rows,
         }
     }
 }

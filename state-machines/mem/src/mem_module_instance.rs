@@ -14,11 +14,16 @@ pub struct MemModuleInstance<F: PrimeField> {
     ictx: InstanceCtx,
 
     module: Arc<dyn MemModule<F>>,
+
+    mem_check_point: MemModuleSegmentCheckPoint,
 }
 
 impl<F: PrimeField> MemModuleInstance<F> {
     pub fn new(module: Arc<dyn MemModule<F>>, ictx: InstanceCtx) -> Self {
-        Self { ictx, module: module.clone() }
+        let meta = ictx.plan.meta.as_ref().unwrap();
+        let mem_check_point = meta.downcast_ref::<MemModuleSegmentCheckPoint>().unwrap().clone();
+
+        Self { ictx, module: module.clone(), mem_check_point }
     }
 
     fn prepare_inputs(&mut self, inputs: &mut [MemInput]) {
@@ -39,7 +44,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
             value: mem_check_point.prev_value,
         };
         #[cfg(feature = "debug_mem")]
-        let initial = (self.inputs[0].addr, self.inputs[0].step, self.inputs.len());
+        let initial = (inputs[0].addr, inputs[0].step, inputs.len());
 
         if mem_check_point.skip_rows > 0 {
             let mut input_index = 0;
@@ -64,7 +69,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
             inputs.drain(0..input_index);
         }
         #[cfg(feature = "debug_mem")]
-        let original_inputs_len = self.inputs.len();
+        let original_inputs_len = inputs.len();
 
         inputs.truncate(mem_check_point.rows as usize);
 
@@ -75,10 +80,10 @@ impl<F: PrimeField> MemModuleInstance<F> {
             initial.0,
             initial.1,
             initial.2,
-            self.inputs[0].addr,
-            self.inputs[0].step,
+            inputs[0].addr,
+            inputs[0].step,
             original_inputs_len,
-            self.inputs.len(),
+            inputs.len(),
             self.mem_check_point.prev_addr,
             self.mem_check_point.prev_step,
             self.mem_check_point.skip_rows,
@@ -93,25 +98,32 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
     fn compute_witness(
         &mut self,
         _pctx: &ProofCtx<F>,
-        _collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+        collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
-        let mut inputs = Vec::new(); // TODO modify!!!!
-        let is_last_segment = true; // TODO Modify
-        let mem_check_point = MemModuleSegmentCheckPoint::default(); // TODO modify
+        let inputs: Vec<_> = collectors
+            .into_iter()
+            .map(|(_, mut collector)| {
+                collector.detach_device().as_any().downcast::<MemModuleCollector>().unwrap().inputs
+            })
+            .collect();
+        let mut inputs = inputs.into_iter().flatten().collect::<Vec<_>>();
 
         if inputs.is_empty() {
             return None;
         }
+
         self.prepare_inputs(&mut inputs);
-        let prev_segment = self.fit_inputs_and_get_prev_segment(&mut inputs, mem_check_point);
+        let prev_segment =
+            self.fit_inputs_and_get_prev_segment(&mut inputs, self.mem_check_point.clone());
 
         let segment_id = self.ictx.plan.segment_id.unwrap();
 
+        let is_last_segment = self.mem_check_point.is_last_segment;
         Some(self.module.compute_witness(&inputs, segment_id, is_last_segment, &prev_segment))
     }
 
     fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(MemModuleCollector::new(&self.ictx)))
+        Some(Box::new(MemModuleCollector::new(self.mem_check_point.clone())))
     }
 
     fn check_point(&self) -> CheckPoint {
@@ -132,15 +144,7 @@ pub struct MemModuleCollector {
 }
 
 impl MemModuleCollector {
-    pub fn new(ictx: &InstanceCtx) -> Self {
-        let mem_check_point = ictx
-            .plan
-            .meta
-            .as_ref()
-            .unwrap()
-            .downcast_ref::<MemModuleSegmentCheckPoint>()
-            .unwrap()
-            .clone();
+    pub fn new(mem_check_point: MemModuleSegmentCheckPoint) -> Self {
         Self { inputs: Vec::new(), mem_check_point }
     }
 

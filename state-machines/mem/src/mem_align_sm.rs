@@ -12,7 +12,7 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_pil::{MemAlignTrace, MemAlignTraceRow};
 
-use crate::{MemAlignCollector, MemAlignInput, MemAlignRomSM, MemOp};
+use crate::{MemAlignInput, MemAlignRomSM, MemOp};
 
 const RC: usize = 2;
 const CHUNK_NUM: usize = 8;
@@ -787,12 +787,15 @@ impl<F: PrimeField> MemAlignSM<F> {
         (value >> (chunk * CHUNK_BITS)) & CHUNK_BITS_MASK
     }
 
-    pub fn compute_witness(&self, mem_ops: Vec<(usize, Box<MemAlignCollector>)>) -> AirInstance<F> {
+    pub fn compute_witness(
+        &self,
+        mem_ops: &[Vec<MemAlignInput>],
+        used_rows: usize,
+    ) -> AirInstance<F> {
         let mut trace = MemAlignTrace::<F>::new();
         let mut reg_range_check = [0u64; 1 << CHUNK_BITS];
 
         let num_rows = trace.num_rows();
-        let used_rows: usize = mem_ops[0].1.rows as usize;
 
         info!(
             "{}: ··· Creating Mem Align instance [{} / {} rows filled {:.2}%]",
@@ -803,9 +806,9 @@ impl<F: PrimeField> MemAlignSM<F> {
         );
 
         let mut index = 0;
-        for (_chunk_id, input_collector) in mem_ops {
-            for input in input_collector.inputs {
-                let count = self.prove_mem_align_op(&input, &mut trace, index);
+        for inner_memp_ops in mem_ops {
+            for input in inner_memp_ops {
+                let count = self.prove_mem_align_op(input, &mut trace, index);
                 for i in 0..count {
                     for j in 0..CHUNK_NUM {
                         let element = trace[index + i].reg[j]

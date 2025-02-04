@@ -32,5 +32,6 @@ pub trait MemModule<F>: Send + Sync {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
     ) -> AirInstance<F>;
+    
     fn get_addr_ranges(&self) -> Vec<(u32, u32)>;
 }
