@@ -11,8 +11,8 @@ use riscv::RiscVRegisters;
 // use zisk_core::SRC_SP;
 use data_bus::DataBus;
 use zisk_core::{
-    InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
-    SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
+    InstContext, Mem, ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
+    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
 };
 
 struct MemBusHelpers {}
@@ -1898,11 +1898,6 @@ impl<'a> Emu<'a> {
             jmp_offset2,
             m32: F::from_bool(inst.m32),
             addr1: F::from_canonical_u64(addr1),
-            __debug_operation_bus_enabled: F::from_bool(
-                inst.op_type == ZiskOperationType::Arith
-                    || inst.op_type == ZiskOperationType::Binary
-                    || inst.op_type == ZiskOperationType::BinaryE,
-            ),
         }
     }
 
@@ -1933,12 +1928,19 @@ impl<'a> Emu<'a> {
     pub fn get_output_32(&self) -> Vec<u32> {
         let n = self.ctx.inst_ctx.mem.read(OUTPUT_ADDR, 4);
         let mut addr = OUTPUT_ADDR + 4;
-
         let mut output: Vec<u32> = Vec::with_capacity(n as usize);
         for _i in 0..n {
             output.push(self.ctx.inst_ctx.mem.read(addr, 4) as u32);
             addr += 4;
         }
+
+        // let mut addr = OUTPUT_ADDR;
+        // let mut output: Vec<u32> = Vec::with_capacity(32);
+        // for _i in 0..32 {
+        //     output.push(self.ctx.inst_ctx.mem.read(addr, 4) as u32);
+        //     addr += 4;
+        // }
+
         output
     }
 

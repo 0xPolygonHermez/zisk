@@ -16,6 +16,7 @@ use sm_common::{
     CheckPoint, ComponentBuilder, InstanceCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
+use zisk_pil::ZiskPublicValues;
 
 use std::{fs, path::PathBuf, sync::Arc};
 use zisk_core::ZiskRom;
@@ -29,8 +30,8 @@ pub struct ZiskExecutor<F: PrimeField> {
     /// ZisK ROM, a binary file containing the ZisK program to be executed.
     pub zisk_rom: Arc<ZiskRom>,
 
-    /// Path to the public inputs file.
-    pub public_inputs_path: PathBuf,
+    /// Path to the input data file.
+    pub input_data_path: PathBuf,
 
     /// Registered secondary state machines.
     secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,
@@ -44,10 +45,10 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// Creates a new instance of the `ZiskExecutor`.
     ///
     /// # Arguments
-    /// * `public_inputs_path` - Path to the public inputs file.
+    /// * `input_data_path` - Path to the input data file.
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
-    pub fn new(public_inputs_path: PathBuf, zisk_rom: Arc<ZiskRom>) -> Self {
-        Self { public_inputs_path, zisk_rom, secondary_sm: Vec::new() }
+    pub fn new(input_data_path: PathBuf, zisk_rom: Arc<ZiskRom>) -> Self {
+        Self { input_data_path, zisk_rom, secondary_sm: Vec::new() }
     }
 
     /// Registers a secondary state machine with the executor.
@@ -61,12 +62,12 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// Computes minimal traces by processing the ZisK ROM with given public inputs.
     ///
     /// # Arguments
-    /// * `public_inputs` - Public inputs for the ROM execution.
+    /// * `input_data` - Input data for the ROM execution.
     /// * `num_threads` - Number of threads to use for parallel execution.
     ///
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
-    fn compute_minimal_traces(&self, public_inputs: Vec<u8>, num_threads: usize) -> Vec<EmuTrace> {
+    fn compute_minimal_traces(&self, input_data: Vec<u8>, num_threads: usize) -> Vec<EmuTrace> {
         assert!(Self::MIN_TRACE_SIZE.is_power_of_two());
 
         // Settings for the emulator
@@ -75,7 +76,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         ZiskEmulator::compute_minimal_traces::<F>(
             &self.zisk_rom,
-            &public_inputs,
+            &input_data,
             &emu_options,
             num_threads,
         )
@@ -118,12 +119,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
     ///
     /// # Returns
     /// A vector of metrics grouped by chunk ID.
-    fn count_sec(&self, min_traces: &[EmuTrace]) -> Vec<Vec<(usize, Box<dyn BusDeviceMetrics>)>> {
-        if self.secondary_sm.is_empty() {
-            return Vec::new();
-        }
-
-        let mut metrics_slices = min_traces
+    #[allow(clippy::type_complexity)]
+    fn count(
+        &self,
+        min_traces: &[EmuTrace],
+    ) -> (Vec<(usize, Box<dyn BusDeviceMetrics>)>, Vec<Vec<(usize, Box<dyn BusDeviceMetrics>)>>)
+    {
+        let (mut main_metrics_slices, mut sec_metrics_slices): (Vec<_>, Vec<_>) = min_traces
             .par_iter()
             .map(|minimal_trace| {
                 let mut data_bus = self.get_data_bus_counters();
@@ -134,20 +136,39 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     &mut data_bus,
                 );
 
-                self.close_data_bus_counters(data_bus)
+                let (mut main, mut secondary) = (Vec::new(), Vec::new());
+
+                let result = self.close_data_bus_counters(data_bus);
+                for (is_secondary, counter) in result {
+                    if is_secondary {
+                        secondary.push(counter);
+                    } else {
+                        main.push(counter);
+                    }
+                }
+                (main, secondary)
             })
-            .collect::<Vec<_>>();
+            .unzip();
 
         // Group counters by chunk_id and counter type
-        let mut vec_counters = (0..metrics_slices[0].len()).map(|_| Vec::new()).collect::<Vec<_>>();
+        let mut sec_vec_counters =
+            (0..sec_metrics_slices[0].len()).map(|_| Vec::new()).collect::<Vec<_>>();
 
-        for (chunk_id, counter_slice) in metrics_slices.iter_mut().enumerate() {
+        for (chunk_id, counter_slice) in sec_metrics_slices.iter_mut().enumerate() {
             for (i, counter) in counter_slice.drain(..).enumerate() {
-                vec_counters[i].push((chunk_id, counter));
+                sec_vec_counters[i].push((chunk_id, counter));
             }
         }
 
-        vec_counters
+        let mut main_vec_counters = Vec::new();
+
+        for (chunk_id, counter_slice) in main_metrics_slices.iter_mut().enumerate() {
+            for counter in counter_slice.drain(..) {
+                main_vec_counters.push((chunk_id, counter));
+            }
+        }
+
+        (main_vec_counters, sec_vec_counters)
     }
 
     /// Plans the secondary state machines by generating plans from the counted metrics.
@@ -366,11 +387,21 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// A `DataBus` instance with connected counters for each registered secondary state machine.
     fn get_data_bus_counters(&self) -> DataBus<PayloadType, BusDeviceMetricsWrapper> {
         let mut data_bus = DataBus::new();
+
+        let counter = MainSM::build_counter();
+
+        data_bus.connect_device(
+            counter.bus_id(),
+            Box::new(BusDeviceMetricsWrapper::new(counter, false)),
+        );
+
         self.secondary_sm.iter().for_each(|sm| {
             let counter = sm.build_counter();
 
-            data_bus
-                .connect_device(counter.bus_id(), Box::new(BusDeviceMetricsWrapper::new(counter)));
+            data_bus.connect_device(
+                counter.bus_id(),
+                Box::new(BusDeviceMetricsWrapper::new(counter, true)),
+            );
         });
 
         data_bus
@@ -386,13 +417,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn close_data_bus_counters(
         &self,
         mut data_bus: DataBus<u64, BusDeviceMetricsWrapper>,
-    ) -> Vec<Box<dyn BusDeviceMetrics>> {
+    ) -> Vec<(bool, Box<dyn BusDeviceMetrics>)> {
         data_bus
             .detach_devices()
             .into_iter()
             .map(|mut device| {
                 device.on_close();
-                device.inner
+                (device.is_secondary, device.inner)
             })
             .collect::<Vec<_>>()
     }
@@ -449,20 +480,29 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
     /// * `pctx` - Proof context for managing air instances and computation.
     fn execute(&self, pctx: Arc<ProofCtx<F>>) {
         // Call emulate with these options
-        let public_inputs = {
+        let input_data = {
             // Read inputs data from the provided inputs path
-            let path = PathBuf::from(self.public_inputs_path.display().to_string());
+            let path = PathBuf::from(self.input_data_path.display().to_string());
             fs::read(path).expect("Could not read inputs file")
         };
 
         // PHASE 1. MINIMAL TRACES. Process the ROM super fast to collect the Minimal Traces
-        let min_traces = self.compute_minimal_traces(public_inputs, Self::NUM_THREADS);
+        let min_traces = self.compute_minimal_traces(input_data, Self::NUM_THREADS);
 
         // PHASE 2. COUNTING. Count the metrics for the Secondary SM instances
-        let sec_count = self.count_sec(&min_traces);
+        let (main_count, sec_count) = self.count(&min_traces);
 
         // PHASE 3. PLANNING. Plan the instances
-        let main_planning = MainPlanner::plan::<F>(&min_traces, Self::MIN_TRACE_SIZE);
+        let (main_planning, public_values) =
+            MainPlanner::plan::<F>(&min_traces, main_count, Self::MIN_TRACE_SIZE);
+
+        // Update pctx
+        let mut publics = ZiskPublicValues::from_vec_guard(pctx.get_publics());
+
+        for (index, value) in public_values.iter() {
+            publics.inputs[*index as usize] = F::from_canonical_u32(*value);
+        }
+
         let sec_planning = self.plan_sec(sec_count);
 
         // PHASE 4. PLANNING. Plan the instances
