@@ -115,9 +115,7 @@ impl BusDevice<u64> for ArithCounter {
     /// * `data` - The data received from the bus.
     ///
     /// # Returns
-    /// A tuple where:
-    /// - The first element indicates whether processing should continue.
-    /// - The second element contains derived inputs to be sent back to the bus.
+    /// A vector of derived inputs to be sent back to the bus.
     #[inline]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         self.measure(bus_id, data);
@@ -146,6 +144,7 @@ impl BusDevice<u64> for ArithCounter {
         vec![self.bus_id]
     }
 
+    /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }

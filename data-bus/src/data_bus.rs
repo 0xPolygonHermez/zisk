@@ -29,9 +29,8 @@ pub trait BusDevice<D>: Any + Send {
     /// * `data` - A reference to the data payload being processed.
     ///
     /// # Returns
-    /// A tuple containing:
-    /// - `bool` indicating whether processing should end.
-    /// - A vector of `(BusId, Vec<D>)` representing additional data to be sent to other bus IDs.
+    /// An optional vector of tuples containing the bus ID and data payload to be sent to other
+    /// devices. If no data is to be sent, `None` is returned.
     fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> Option<Vec<(BusId, Vec<D>)>> {
         let _ = bus_id;
         let _ = data;
@@ -44,6 +43,7 @@ pub trait BusDevice<D>: Any + Send {
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId>;
 
+    /// Converts the device to a generic `Any` type.
     fn as_any(self: Box<Self>) -> Box<dyn Any>;
 }
 
@@ -118,9 +118,6 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// # Arguments
     /// * `bus_id` - The ID of the bus receiving the data.
     /// * `payload` - The data payload to be sent.
-    ///
-    /// # Returns
-    /// `true` if processing completed successfully, otherwise `false`.
     pub fn write_to_bus(&mut self, bus_id: BusId, payload: Vec<D>) {
         self.pending_transfers.push((bus_id, payload));
 
@@ -134,9 +131,6 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// # Arguments
     /// * `bus_id` - The ID of the bus to route the data to.
     /// * `payload` - A reference to the data payload being routed.
-    ///
-    /// # Returns
-    /// `true` if processing completed successfully, otherwise `false`.
     fn route_data(&mut self, bus_id: BusId, payload: &[D]) {
         // Notify specific subscribers
         if let Some(bus_id_devices) = self.devices_bus_id_map.get(&bus_id) {

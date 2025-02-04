@@ -46,6 +46,7 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
     ///
     /// # Arguments
     /// * `_pctx` - The proof context, unused in this implementation.
+    /// * `_collectors` - A vector of input collectors to process and collect data for witness
     ///
     /// # Returns
     /// Always returns `None` as this instance does not generate an `AirInstance`.
@@ -88,6 +89,7 @@ impl<F: PrimeField> BusDevice<u64> for StdInstance<F> {
         vec![]
     }
 
+    /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }

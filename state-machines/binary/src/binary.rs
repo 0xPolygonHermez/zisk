@@ -107,6 +107,13 @@ impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
         )
     }
 
+    /// Builds an instance for binary operations.
+    ///
+    /// # Arguments
+    /// * `ictx` - The instance context.
+    ///
+    /// # Returns
+    /// A boxed implementation of `Instance` for binary operations.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
             BinaryTrace::<usize>::AIR_ID => Box::new(BinaryBasicInstance::new(

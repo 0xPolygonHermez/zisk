@@ -47,6 +47,7 @@ impl BusDevice<u64> for DummyCounter {
         vec![]
     }
 
+    /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }

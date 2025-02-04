@@ -92,6 +92,13 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
         InstanceType::Instance
     }
 
+    /// Builds an input collector for the instance.
+    ///
+    /// # Arguments
+    /// * `chunk_id` - The chunk ID associated with the input collector.
+    ///
+    /// # Returns
+    /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
@@ -110,6 +117,7 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
     }
 }
 
+/// The `BinaryBasicCollector` struct represents an input collector for binary-related operations.
 pub struct BinaryBasicCollector {
     /// Collected inputs for witness computation.
     inputs: Vec<OperationData<u64>>,
@@ -117,6 +125,7 @@ pub struct BinaryBasicCollector {
     /// The connected bus ID.
     bus_id: BusId,
 
+    /// The number of operations to collect.
     num_operations: u64,
 
     /// Helper to skip instructions based on the plan's configuration.
@@ -124,6 +133,15 @@ pub struct BinaryBasicCollector {
 }
 
 impl BinaryBasicCollector {
+    /// Creates a new `BinaryBasicCollector`.
+    ///
+    /// # Arguments
+    /// * `bus_id` - The connected bus ID.
+    /// * `num_operations` - The number of operations to collect.
+    /// * `collect_skipper` - Helper to skip instructions based on the plan's configuration.
+    ///
+    /// # Returns
+    /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
     pub fn new(bus_id: BusId, num_operations: u64, collect_skipper: CollectSkipper) -> Self {
         Self { inputs: Vec::new(), bus_id, num_operations, collect_skipper }
     }
@@ -137,9 +155,9 @@ impl BusDevice<u64> for BinaryBasicCollector {
     /// * `data` - The data received from the bus.
     ///
     /// # Returns
-    /// A tuple where:
-    /// - The first element indicates whether further processing should continue.
-    /// - The second element contains derived inputs to be sent back to the bus (always empty).
+    /// An optional vector of tuples where:
+    /// - The first element is the bus ID.
+    /// - The second element is always empty indicating there are no derived inputs.
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         if self.inputs.len() == self.num_operations as usize {
             return None;
@@ -170,6 +188,7 @@ impl BusDevice<u64> for BinaryBasicCollector {
         vec![self.bus_id]
     }
 
+    /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }

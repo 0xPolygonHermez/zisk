@@ -36,6 +36,10 @@ pub trait ComponentBuilder<F: PrimeField>: Send + Sync {
     #[allow(unused_variables)]
     fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Plan]) {}
 
+    /// Builds an instance with the provided context.
+    ///
+    /// # Arguments
+    /// * `ictx` - The instance context used to create the instance.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>>;
 
     /// Optionally creates an input generator for producing inputs to be sent back to the bus.

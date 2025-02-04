@@ -59,6 +59,7 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
     ///
     /// # Arguments
     /// * `_pctx` - The proof context, unused in this implementation.
+    /// * `collectors` - A vector of input collectors to process and collect data for witness
     ///
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
@@ -98,6 +99,13 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
         InstanceType::Instance
     }
 
+    /// Builds an input collector for the instance.
+    ///
+    /// # Arguments
+    /// * `chunk_id` - The chunk ID associated with the input collector.
+    ///
+    /// # Returns
+    /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
@@ -116,6 +124,7 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
     }
 }
 
+/// The `BinaryExtensionCollector` struct represents an input collector for binary extension
 pub struct BinaryExtensionCollector<F: PrimeField> {
     /// Collected inputs for witness computation.
     inputs: Vec<OperationData<u64>>,
@@ -123,11 +132,13 @@ pub struct BinaryExtensionCollector<F: PrimeField> {
     /// The connected bus ID.
     bus_id: BusId,
 
+    /// The number of operations to collect.
     num_operations: u64,
 
     /// Helper to skip instructions based on the plan's configuration.
     collect_skipper: CollectSkipper,
 
+    /// Phantom data for the prime field.
     _phantom: std::marker::PhantomData<F>,
 }
 
@@ -151,9 +162,9 @@ impl<F: PrimeField> BusDevice<u64> for BinaryExtensionCollector<F> {
     /// * `data` - The data received from the bus.
     ///
     /// # Returns
-    /// A tuple where:
-    /// - The first element indicates whether further processing should continue.
-    /// - The second element is always empty.
+    /// An optional vector of tuples where:
+    /// - The first element is the bus ID.
+    /// - The second element is always empty indicating there are no derived inputs.
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         if self.inputs.len() == self.num_operations as usize {
             return None;
@@ -184,6 +195,7 @@ impl<F: PrimeField> BusDevice<u64> for BinaryExtensionCollector<F> {
         vec![self.bus_id]
     }
 
+    /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }

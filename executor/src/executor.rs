@@ -35,8 +35,10 @@ pub struct ZiskExecutor<F: PrimeField> {
 }
 
 impl<F: PrimeField> ZiskExecutor<F> {
-    /// The number of threads to use for parallel processing.
+    /// The number of threads to use for parallel processing when computing minimal traces.
     const NUM_THREADS: usize = 16;
+
+    /// The size in rows of the minimal traces
     const MIN_TRACE_SIZE: u64 = 1 << 18;
 
     /// Creates a new instance of the `ZiskExecutor`.
@@ -310,7 +312,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     ///
     /// # Arguments
     /// * `pctx` - Proof context for managing air instances.
-    /// * `collected_instances` - A vector of collected secondary state machine instances.
+    /// * `table_instances` - Secondary state machine table instances to compute witnesses for
     fn witness_tables(
         &self,
         pctx: &ProofCtx<F>,
@@ -340,6 +342,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
         });
     }
 
+    /// Groups secondary state machine instances by the chunk they need to process.
+    ///  # Arguments
+    /// * `min_traces` - Minimal traces
+    /// * `secn_instances` - Secondary state machine instances to group.
+    /// # Returns
+    /// A vector of vectors containing the indices of secondary state machine instances to execute
+    /// for each chunk.
     fn chunks_to_execute(
         &self,
         min_traces: &[EmuTrace],

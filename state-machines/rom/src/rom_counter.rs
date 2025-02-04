@@ -78,10 +78,9 @@ impl BusDevice<u64> for RomCounter {
     /// * `data` - The data received from the bus.
     ///
     /// # Returns
-    /// A tuple where:
-    /// - The first element is `true`, indicating that processing should continue.
-    /// - The second element is an empty vector, as this implementation does not produce derived
-    ///   inputs.
+    /// An optional vector of tuples where:
+    /// - The first element is the bus ID.
+    /// - The second element is always empty indicating there are no derived inputs.
     #[inline]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         self.measure(bus_id, data);
@@ -97,6 +96,7 @@ impl BusDevice<u64> for RomCounter {
         vec![self.bus_id]
     }
 
+    /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }

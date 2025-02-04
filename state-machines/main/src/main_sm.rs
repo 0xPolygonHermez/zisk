@@ -51,13 +51,12 @@ impl MainSM {
     /// ROM, and emulation traces.
     ///
     /// # Arguments
-    /// * `pctx` - Shared proof context for managing instances and air values.
     /// * `zisk_rom` - Reference to the Zisk ROM used for execution.
     /// * `min_traces` - A vector of the minimal traces, each segment has num_within minimal traces
     ///   inside.
+    /// * `min_trace_size` - The size of the minimal traces.
     /// * `main_instance` - Reference to the `MainInstance` representing the current segment.
     /// * `is_last_segment` - Flag indicating if this is the last segment.
-    /// * `min_trace_size` - The size of the minimal traces.
     ///
     /// The computed trace is added to the proof context's air instance repository.
     pub fn compute_witness<F: PrimeField>(

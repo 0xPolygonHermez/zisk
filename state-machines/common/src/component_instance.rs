@@ -26,6 +26,7 @@ pub trait Instance<F: PrimeField>: Send {
     ///
     /// # Arguments
     /// * `pctx` - The proof context containing necessary information for computation.
+    /// * `collectors` - A vector of input collectors to process and collect data for witness.
     ///
     /// # Returns
     /// An optional `AirInstance` object representing the computed witness.
@@ -49,6 +50,13 @@ pub trait Instance<F: PrimeField>: Send {
     /// An `InstanceType` indicating whether the instance is standalone or table-based.
     fn instance_type(&self) -> InstanceType;
 
+    /// Builds an input collector for the instance.
+    ///
+    /// # Arguments
+    /// * `chunk_id` - The chunk ID associated with the input collector.
+    ///
+    /// # Returns
+    /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         None
     }
@@ -133,6 +141,7 @@ macro_rules! table_instance {
                 vec![self.bus_id]
             }
 
+            /// Provides a dynamic reference for downcasting purposes.
             fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
                 self
             }

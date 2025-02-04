@@ -122,6 +122,13 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         Some(self.module.compute_witness(&inputs, segment_id, is_last_segment, &prev_segment))
     }
 
+    /// Builds an input collector for the instance.
+    ///
+    /// # Arguments
+    /// * `chunk_id` - The chunk ID associated with the input collector.
+    ///
+    /// # Returns
+    /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         Some(Box::new(MemModuleCollector::new(self.mem_check_point.clone())))
     }
@@ -266,6 +273,7 @@ impl BusDevice<u64> for MemModuleCollector {
         vec![MEM_BUS_ID]
     }
 
+    /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
