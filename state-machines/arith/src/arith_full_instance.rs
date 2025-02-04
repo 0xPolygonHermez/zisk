@@ -114,7 +114,7 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
 
 pub struct ArithInstanceCollector {
     /// Collected inputs for witness computation.
-    pub inputs: Vec<OperationData<u64>>,
+    inputs: Vec<OperationData<u64>>,
 
     /// The connected bus ID.
     bus_id: BusId,

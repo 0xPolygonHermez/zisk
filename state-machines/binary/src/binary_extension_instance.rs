@@ -120,7 +120,7 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
 
 pub struct BinaryExtensionCollector<F: PrimeField> {
     /// Collected inputs for witness computation.
-    pub inputs: Vec<OperationData<u64>>,
+    inputs: Vec<OperationData<u64>>,
 
     /// The connected bus ID.
     bus_id: BusId,
