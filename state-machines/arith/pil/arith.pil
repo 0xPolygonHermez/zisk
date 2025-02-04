@@ -35,7 +35,6 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     col witness na_fb;
     col witness nb_fa;
 
-    col witness debug_main_step; // only for debug
 /*
     col witness secondary;       // op_index: 0 => first result, 1 => second result;
     secondary * (secondary - 1) === 0;

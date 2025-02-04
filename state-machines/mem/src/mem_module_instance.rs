@@ -1,11 +1,12 @@
 use crate::{
     MemHelpers, MemInput, MemModule, MemModuleSegmentCheckPoint, MemPreviousSegment,
-    MEMORY_MAX_DIFF,
+    STEP_MEMORY_MAX_DIFF,
 };
 use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
+use rayon::prelude::*;
 use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 
@@ -18,6 +19,7 @@ pub struct MemModuleInstance<F: PrimeField> {
     /// Collected inputs
     inputs: Vec<MemInput>,
     module: Arc<dyn MemModule<F>>,
+    prev_last_value: u64,
 }
 
 impl<F: PrimeField> MemModuleInstance<F> {
@@ -30,7 +32,13 @@ impl<F: PrimeField> MemModuleInstance<F> {
             .downcast_ref::<MemModuleSegmentCheckPoint>()
             .unwrap()
             .clone();
-        Self { ictx, inputs: Vec::new(), mem_check_point, module: module.clone() }
+        Self {
+            ictx,
+            inputs: Vec::new(),
+            mem_check_point,
+            module: module.clone(),
+            prev_last_value: 0,
+        }
     }
 
     fn process_unaligned_data(&mut self, data: &[u64]) {
@@ -97,13 +105,22 @@ impl<F: PrimeField> MemModuleInstance<F> {
         self.filtered_inputs_push(addr_w + 1, write_step, true, write_values[1]);
     }
 
-    fn discart_addr_step(&self, addr: u32, step: u64) -> bool {
+    fn discart_addr_step(&mut self, addr: u32, step: u64, value: u64) -> bool {
         if addr < self.mem_check_point.prev_addr || addr > self.mem_check_point.last_addr {
             return true;
         }
 
-        if addr == self.mem_check_point.prev_addr && step <= self.mem_check_point.prev_step {
-            return true;
+        if addr == self.mem_check_point.prev_addr {
+            match step.cmp(&self.mem_check_point.prev_step) {
+                std::cmp::Ordering::Less => {
+                    return true;
+                }
+                std::cmp::Ordering::Equal => {
+                    self.prev_last_value = value;
+                    return true;
+                }
+                std::cmp::Ordering::Greater => {}
+            }
         }
 
         if addr == self.mem_check_point.last_addr && step > self.mem_check_point.last_step {
@@ -113,14 +130,14 @@ impl<F: PrimeField> MemModuleInstance<F> {
         false
     }
     fn filtered_inputs_push(&mut self, addr_w: u32, step: u64, is_write: bool, value: u64) {
-        if !self.discart_addr_step(addr_w, step) {
+        if !self.discart_addr_step(addr_w, step, value) {
             self.inputs.push(MemInput::new(addr_w, is_write, step, value));
         }
     }
     fn prepare_inputs(&mut self) {
         // sort all instance inputs
         timer_start_debug!(MEM_SORT);
-        self.inputs.sort_by_key(|input| (input.addr, input.step));
+        self.inputs.par_sort_by_key(|input| (input.addr, input.step));
         timer_stop_and_log_debug!(MEM_SORT);
     }
     fn fit_inputs_and_get_prev_segment(&mut self) -> MemPreviousSegment {
@@ -132,28 +149,37 @@ impl<F: PrimeField> MemModuleInstance<F> {
         #[cfg(feature = "debug_mem")]
         let initial = (self.inputs[0].addr, self.inputs[0].step, self.inputs.len());
 
-        if self.mem_check_point.skip_rows > 0 {
-            let mut input_index = 0;
-            let mut skip_rows = 0;
-            loop {
-                while self.inputs[input_index].addr == prev_segment.addr
-                    && (self.inputs[input_index].step - prev_segment.step) > MEMORY_MAX_DIFF
-                    && skip_rows < self.mem_check_point.skip_rows as usize
-                {
-                    prev_segment.step += MEMORY_MAX_DIFF;
+        match self.mem_check_point.skip_rows.cmp(&1) {
+            std::cmp::Ordering::Equal => {
+                prev_segment.value = self.prev_last_value;
+            }
+            std::cmp::Ordering::Greater => {
+                let check_point_skip_rows = self.mem_check_point.skip_rows - 1;
+                let mut input_index = 0;
+                let mut skip_rows = 0;
+                loop {
+                    while self.inputs[input_index].addr == prev_segment.addr
+                        && (self.inputs[input_index].step - prev_segment.step)
+                            > STEP_MEMORY_MAX_DIFF
+                        && skip_rows < check_point_skip_rows as usize
+                    {
+                        prev_segment.step += STEP_MEMORY_MAX_DIFF;
+                        skip_rows += 1;
+                    }
+                    if skip_rows >= check_point_skip_rows as usize {
+                        break;
+                    }
+                    prev_segment.addr = self.inputs[input_index].addr;
+                    prev_segment.step = self.inputs[input_index].step;
+                    prev_segment.value = self.inputs[input_index].value;
+                    input_index += 1;
                     skip_rows += 1;
                 }
-                if skip_rows >= self.mem_check_point.skip_rows as usize {
-                    break;
-                }
-                prev_segment.addr = self.inputs[input_index].addr;
-                prev_segment.step = self.inputs[input_index].step;
-                prev_segment.value = self.inputs[input_index].value;
-                input_index += 1;
-                skip_rows += 1;
+                self.inputs.drain(0..input_index);
             }
-            self.inputs.drain(0..input_index);
+            std::cmp::Ordering::Less => {}
         }
+
         #[cfg(feature = "debug_mem")]
         let original_inputs_len = self.inputs.len();
 
@@ -161,20 +187,20 @@ impl<F: PrimeField> MemModuleInstance<F> {
 
         #[cfg(feature = "debug_mem")]
         println!(
-            "[Mem:{}] #1 INPUT [0x{:X},{}] {} => [0x{:X},{}] {} => {} F [0x{:X},{},skip:{}]-[0x{:X},{}]",
-            self.ictx.plan.segment_id.unwrap(),
-            initial.0,
-            initial.1,
-            initial.2,
-            self.inputs[0].addr,
-            self.inputs[0].step,
-            original_inputs_len,
-            self.inputs.len(),
-            self.mem_check_point.prev_addr,
-            self.mem_check_point.prev_step,
-            self.mem_check_point.skip_rows,
-            self.mem_check_point.last_addr,
-            self.mem_check_point.last_step,
+        "[Mem:{}] #1 INPUT [0x{:X},{}] {} => [0x{:X},{}] {} => {} F [0x{:X},{},skip:{}]-[0x{:X},{}]",
+        self.ictx.plan.segment_id.unwrap(),
+        initial.0,
+        initial.1,
+        initial.2,
+        self.inputs[0].addr,
+        self.inputs[0].step,
+        original_inputs_len,
+        self.inputs.len(),
+        self.mem_check_point.prev_addr,
+        self.mem_check_point.prev_step,
+        self.mem_check_point.skip_rows,
+        self.mem_check_point.last_addr,
+        self.mem_check_point.last_step,
         );
         prev_segment
     }

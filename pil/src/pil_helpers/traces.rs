@@ -54,36 +54,32 @@ pub const U_8_AIR_AIR_IDS: &[usize] = &[15];
 
 pub const U_16_AIR_AIR_IDS: &[usize] = &[16];
 
-
 //PUBLICS
 use serde::Deserialize;
 use serde::Serialize;
 use serde_arrays;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ZiskPublics {
-    #[serde(with = "serde_arrays")] 
+    #[serde(with = "serde_arrays")]
     pub rom_root: [u64; 4],
-    #[serde(with = "serde_arrays")] 
+    #[serde(with = "serde_arrays")]
     pub inputs: [u64; 64],
 }
 
 impl Default for ZiskPublics {
     fn default() -> Self {
-        Self {  
-            rom_root: [0; 4],  
-            inputs: [0; 64], 
-        }
+        Self { rom_root: [0; 4], inputs: [0; 64] }
     }
 }
 
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],
 });
- 
+
 values!(ZiskProofValues<F> {
  enable_input_data: F,
 });
- 
+
 trace!(MainTrace<F> {
  a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F,
 },  0, 0, 2097152 );
@@ -113,7 +109,7 @@ trace!(MemAlignRomTrace<F> {
 },  0, 6, 256 );
 
 trace!(ArithTrace<F> {
- carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, debug_main_step: F, main_div: F, main_mul: F, signed: F, div_by_zero: F, div_overflow: F, inv_sum_all_bs: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
+ carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, main_div: F, main_mul: F, signed: F, div_by_zero: F, div_overflow: F, inv_sum_all_bs: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
 },  0, 7, 2097152 );
 
 trace!(ArithTableTrace<F> {
