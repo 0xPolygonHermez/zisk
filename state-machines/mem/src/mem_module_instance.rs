@@ -2,11 +2,11 @@ use crate::{
     MemHelpers, MemInput, MemModule, MemModuleSegmentCheckPoint, MemPreviousSegment,
     STEP_MEMORY_MAX_DIFF,
 };
-use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
+use data_bus::{BusDevice, BusId, MemBusData, PayloadType, MEM_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
+use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 
 pub struct MemModuleInstance<F: PrimeField> {
@@ -93,7 +93,7 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
     fn compute_witness(
         &mut self,
         _pctx: &ProofCtx<F>,
-        _collectors: Vec<(usize, Box<sm_common::BusDeviceWrapper<data_bus::PayloadType>>)>,
+        _collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         let mut inputs = Vec::new(); // TODO modify!!!!
         let is_last_segment = true; // TODO Modify
@@ -110,10 +110,7 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         Some(self.module.compute_witness(&inputs, segment_id, is_last_segment, &prev_segment))
     }
 
-    fn build_inputs_collector(
-        &self,
-        _chunk_id: usize,
-    ) -> Option<Box<dyn BusDevice<data_bus::PayloadType>>> {
+    fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         Some(Box::new(MemModuleCollector::new(&self.ictx)))
     }
 

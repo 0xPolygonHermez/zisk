@@ -8,7 +8,9 @@ use crate::BinaryExtensionSM;
 use data_bus::{BusDevice, BusId, OperationBusData, OperationData, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx};
-use sm_common::{CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType};
+use sm_common::{
+    BusDeviceWrapper, CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType,
+};
 use std::sync::Arc;
 use zisk_core::ZiskOperationType;
 use zisk_pil::BinaryExtensionTrace;
@@ -63,7 +65,7 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
     fn compute_witness(
         &mut self,
         _pctx: &ProofCtx<F>,
-        collectors: Vec<(usize, Box<sm_common::BusDeviceWrapper<PayloadType>>)>,
+        collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
