@@ -82,7 +82,6 @@ impl ArithFullSM {
             let opcode = OperationBusData::get_op(input);
             let a = OperationBusData::get_a(input);
             let b = OperationBusData::get_b(input);
-            let step = OperationBusData::get_step(input);
 
             aop.calculate(opcode, a, b);
             let mut t: ArithTraceRow<F> = Default::default();
@@ -128,7 +127,6 @@ impl ArithFullSM {
             t.main_div = F::from_bool(aop.main_div);
             t.sext = F::from_bool(aop.sext);
             t.multiplicity = F::one();
-            t.debug_main_step = F::from_canonical_u64(step);
             t.range_ab = F::from_canonical_u8(aop.range_ab);
             t.range_cd = F::from_canonical_u8(aop.range_cd);
             t.div_by_zero = F::from_bool(aop.div_by_zero);
@@ -233,7 +231,6 @@ impl ArithFullSM {
         let opcode = OperationBusData::get_op(input);
         let a = OperationBusData::get_a(input);
         let b = OperationBusData::get_b(input);
-        let step = OperationBusData::get_step(input);
 
         aop.calculate(opcode, a, b);
 
@@ -257,7 +254,6 @@ impl ArithFullSM {
 
             // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do this!
             vec![OperationBusData::from_values(
-                step,
                 opcode,
                 ZiskOperationType::Binary as u64,
                 aop.d[0]

@@ -4,26 +4,26 @@ require "std_lookup.pil"
 
 /*
     List 64-bit operations:
-      name     │    op    │   m_op   │ has_initial_carry │ carry │ use_last_carry │ ZisK OP │ Notes                                              │ 
-    ───────────┼──────────┼──────────┼───────────────────┼───────┼────────────────┼─────────┼────────────────────────────────────────────────────┼ 
-     MINU      │   0x02   │   0x02   │                   │   X   │                │    X    │                                                    │ 
-     MIN       │   0x03   │   0x03   │                   │   X   │                │    X    │                                                    │ 
-     MAXU      │   0x04   │   0x04   │                   │   X   │                │    X    │                                                    │ 
-     MAX       │   0x05   │   0x05   │                   │   X   │                │    X    │                                                    │ 
-     LT_ABS_NP │   0x06   │   0x06   │         X         │   X   │       X        │         │ This operation is used by the arithmetic component │ 
-     LT_ABS_PN │   0x07   │   0x07   │         X         │   X   │       X        │         │ This operation is used by the arithmetic component │ 
-     LTU       │   0x08   │   0x08   │                   │   X   │       X        │    X    │                                                    │ 
-     LT        │   0x09   │   0x09   │                   │   X   │       X        │    X    │                                                    │ 
-     GT        │   0x0a   │   0x0a   │                   │   X   │       X        │         │ This operation is used by the arithmetic component │ 
-     EQ        │   0x0b   │   0x0b   │                   │   X   │       X        │    X    │                                                    │ 
-     ADD       │   0x0c   │   0x0c   │                   │   X   │                │    X    │                                                    │ 
-     SUB       │   0x0d   │   0x0d   │                   │   X   │                │    X    │                                                    │ 
-     LEU       │   0x0e   │   0x0e   │                   │   X   │       X        │    X    │                                                    │ 
-     LE        │   0x0f   │   0x0f   │                   │   X   │       X        │    X    │                                                    │ 
-     AND       │   0x10   │   0x10   │                   │       │                │    X    │                                                    │ 
-     OR        │   0x11   │   0x11   │                   │       │                │    X    │                                                    │ 
-     XOR       │   0x12   │   0x12   │                   │       │                │    X    │                                                    │ 
-    ───────────┼──────────┼──────────┼───────────────────┼───────┼────────────────┼─────────┼────────────────────────────────────────────────────┼ 
+      name     │    op    │   m_op   │ has_initial_carry │ carry │ use_last_carry │ ZisK OP │ Notes                                              │
+    ───────────┼──────────┼──────────┼───────────────────┼───────┼────────────────┼─────────┼────────────────────────────────────────────────────┼
+     MINU      │   0x02   │   0x02   │                   │   X   │                │    X    │                                                    │
+     MIN       │   0x03   │   0x03   │                   │   X   │                │    X    │                                                    │
+     MAXU      │   0x04   │   0x04   │                   │   X   │                │    X    │                                                    │
+     MAX       │   0x05   │   0x05   │                   │   X   │                │    X    │                                                    │
+     LT_ABS_NP │   0x06   │   0x06   │         X         │   X   │       X        │         │ This operation is used by the arithmetic component │
+     LT_ABS_PN │   0x07   │   0x07   │         X         │   X   │       X        │         │ This operation is used by the arithmetic component │
+     LTU       │   0x08   │   0x08   │                   │   X   │       X        │    X    │                                                    │
+     LT        │   0x09   │   0x09   │                   │   X   │       X        │    X    │                                                    │
+     GT        │   0x0a   │   0x0a   │                   │   X   │       X        │         │ This operation is used by the arithmetic component │
+     EQ        │   0x0b   │   0x0b   │                   │   X   │       X        │    X    │                                                    │
+     ADD       │   0x0c   │   0x0c   │                   │   X   │                │    X    │                                                    │
+     SUB       │   0x0d   │   0x0d   │                   │   X   │                │    X    │                                                    │
+     LEU       │   0x0e   │   0x0e   │                   │   X   │       X        │    X    │                                                    │
+     LE        │   0x0f   │   0x0f   │                   │   X   │       X        │    X    │                                                    │
+     AND       │   0x10   │   0x10   │                   │       │                │    X    │                                                    │
+     OR        │   0x11   │   0x11   │                   │       │                │    X    │                                                    │
+     XOR       │   0x12   │   0x12   │                   │       │                │    X    │                                                    │
+    ───────────┼──────────┼──────────┼───────────────────┼───────┼────────────────┼─────────┼────────────────────────────────────────────────────┼
 
     List 32-bit operations:
      name      │    op    │   m_op   │ has_initial_carry │ carry │ use_last_carry │ ZisK OP │
@@ -171,6 +171,5 @@ airtemplate Binary(const int N = 2**21, const int operation_bus_id) {
     expr op = m_op + 0x20 * mode32;
 
     col witness multiplicity;
-    col witness debug_main_step;
-    lookup_proves(OPERATION_BUS_ID, [debug_main_step, op, ...a, ...b, ...c, cout - result_is_a], multiplicity);
+    lookup_proves(OPERATION_BUS_ID, [op, ...a, ...b, ...c, cout - result_is_a], multiplicity);
 }
