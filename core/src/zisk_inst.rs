@@ -17,6 +17,7 @@
 //! | Source   | Register(s) | Value                                                    |
 //! |----------|-------------|----------------------------------------------------------|
 //! | SRC_C    | a and b     | Current value of the c register                          |
+//! | SRC_REG  | a and b     | Value read from current register at a constant index     |
 //! | SRC_MEM  | a and b     | Value read from current memory at a constant address     |
 //! | SRC_IMM  | a and b     | Constant (immediate) value                               |
 //! | SRC_STEP | a           | Current execution step                                   |
@@ -30,6 +31,7 @@
 //! | Store      | Register | Storage                                                     |
 //! |------------|----------|-------------------------------------------------------------|
 //! | STORE_NONE | c        | Value is not stored anywhere                                |
+//! | STORE_REG  | c        | Value is stored in register at a constant index             |
 //! | STORE_MEM  | c        | Value is stored in memory at a constant address             |
 //! | STORE_IND  | c        | value is stored in memory at an indirect address a + offset |
 
@@ -47,6 +49,8 @@ pub const SRC_STEP: u64 = 3;
 // pub const SRC_SP: u64 = 4;
 /// b register source is value read from memory at an indirect address a + b
 pub const SRC_IND: u64 = 5;
+/// a or b registers source is value read from register at a constant index
+pub const SRC_REG: u64 = 6;
 
 /// c register value is not stored anywhere
 pub const STORE_NONE: u64 = 0;
@@ -54,10 +58,12 @@ pub const STORE_NONE: u64 = 0;
 pub const STORE_MEM: u64 = 1;
 /// c register value is stored in memory at an indirect address a + offset
 pub const STORE_IND: u64 = 2;
+/// c register value is stored stored in register at a constant index
+pub const STORE_REG: u64 = 3;
 
-/// Describes the type of the Zisk opcode.  
+/// Describes the type of the Zisk opcode.
 ///
-/// This type determines how the operation result will be proven.  
+/// This type determines how the operation result will be proven.
 /// Internal operations are proven as part of the main state machine itself, given their
 /// simplicity. External operations (rest of types) are proven in their corresponding secondary
 /// state machine.
@@ -78,9 +84,9 @@ pub const ZISK_OP_TYPE_COUNT: usize = 7;
 /// ZisK instruction definition
 ///
 /// ZisK instructions are defined as a binary operation with 2 results: op(a, b) -> (c, flag)
-/// a, b and c are u64 registers; flag is a boolean.  
-/// a and b are loaded from the respective sources specified in the instruction.  
-/// c is stored according to the destination specified in the instruction.  
+/// a, b and c are u64 registers; flag is a boolean.
+/// a and b are loaded from the respective sources specified in the instruction.
+/// c is stored according to the destination specified in the instruction.
 /// flag meaning is operation-dependant.
 #[derive(Debug, Clone)]
 pub struct ZiskInst {
@@ -240,7 +246,10 @@ impl ZiskInst {
             | (((self.store == STORE_IND) as u64) << 9)
             | ((self.set_pc as u64) << 10)
             | ((self.m32 as u64) << 11)
-            | (((self.b_src == SRC_IND) as u64) << 12);
+            | (((self.b_src == SRC_IND) as u64) << 12)
+            | (((self.a_src == SRC_REG) as u64) << 13)
+            | (((self.b_src == SRC_REG) as u64) << 14)
+            | (((self.store == SRC_REG) as u64) << 15);
 
         flags
     }

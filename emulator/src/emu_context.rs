@@ -8,6 +8,7 @@ pub struct EmuContext {
     pub tracerv: Vec<String>,
     pub tracerv_step: u64,
     pub tracerv_current_regs: [u64; 32],
+    pub tracerv_current_reg_steps: [u64; 32],
     pub trace_pc: u64,
     pub do_callback: bool,
     pub callback_steps: u64,

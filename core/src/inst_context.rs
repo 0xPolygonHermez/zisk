@@ -36,6 +36,7 @@ pub struct InstContext {
     /// End flag, set to true only by the last instruction to execute
     pub end: bool,
     pub regs: [u64; 32],
+    pub reg_steps: [u64; 32],
 }
 
 /// RisK instruction context implementation
@@ -53,6 +54,7 @@ impl InstContext {
             step: 0,
             end: false,
             regs: [0; 32],
+            reg_steps: [0; 32],
         }
     }
 

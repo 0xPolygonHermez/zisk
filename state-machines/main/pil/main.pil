@@ -6,8 +6,10 @@ const int BOOT_ADDR = 0x1000;
 const int END_PC_ADDR = 0x1000_0000;
 const int INITIAL_SP = 0;
 const int END_SP = 0;
+const int MAX_RANGE = 1 << 24;
+const int REG_BASE_ADDR = 0xA000_0000;
 
-airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int operation_bus_id, int MAIN_CONTINUATION_ID = 1000) {
+airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int operation_bus_id, const int MAIN_CONTINUATION_ID = 1000, const int REG_NUM = 7) {
 
     col fixed SEGMENT_L1 = [1,0...];
     col fixed SEGMENT_STEP = [0..(N-1)];
@@ -179,19 +181,43 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         addr2 = store_offset + store_ind * a[0];
     }
 
+    // regs on main
+    col witness a_reg_prev_mem_step;
+    col witness b_reg_prev_mem_step;
+    col witness store_reg_prev_mem_step;
+    col witness store_reg_prev_value[RC];
+    col witness a_src_reg;
+    col witness b_src_reg;
+    col witness store_reg;
+
+    const expr a_mem_step = main_step_to_mem_step(STEP, 0);
+    const expr b_mem_step = main_step_to_mem_step(STEP, 1);
+    const expr store_mem_step = main_step_to_mem_step(STEP, 2);
+
     // memory function to define the first memory read slot.
-    mem_load(sel: a_src_mem,
-             step: STEP,
+    reg_pre_load(sel: a_src_reg,
+             prev_mem_step: a_reg_prev_mem_step,
              addr: addr0,
              value: a);
 
-    //memory function to define the second memory read slot.
-    mem_load(sel: sel_mem_b,
-             step: STEP,
-             step_offset: 1,
+    mem_load(sel: a_src_mem + a_src_reg,
+             mem_step: a_mem_step,
+             addr: addr0,
+             value: a);
+
+
+    // memory function to define the second memory read slot.
+    reg_pre_load(sel: a_src_reg,
+             prev_mem_step: b_reg_prev_mem_step,
+             addr: addr1,
+             value: b);
+
+    mem_load(sel: sel_mem_b + b_src_reg,
+             mem_step: b_mem_step,
              bytes: b_src_ind * (ind_width - 8) + 8,
              addr: addr1,
              value: b);
+
 
     const expr store_value[2];
 
@@ -199,12 +225,20 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     store_value[1] = (1 - store_ra) * c[1];
 
     // memory function to define the first memory store slot (after memory reads)
-    mem_store(sel: store_mem + store_ind,
-              step: STEP,
-              step_offset: 2,
+    mem_store(sel: store_mem + store_ind + store_reg,
+              mem_step: store_mem_step,
               bytes: store_ind * (ind_width - 8) + 8,
               addr: addr2,
               value: store_value);
+
+    reg_pre_store(sel: store_reg,
+              prev_mem_step: store_reg_prev_mem_step,
+              addr: store_offset,
+              value: store_reg_prev_value);
+
+    range_check(a_mem_step - a_reg_prev_mem_step, 1, MAX_RANGE);
+    range_check(b_mem_step - b_reg_prev_mem_step, 1, MAX_RANGE);
+    range_check(store_mem_step - store_reg_prev_mem_step, 1, MAX_RANGE);
 
     lookup_assumes(operation_bus_id, [op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op);
 
@@ -282,13 +316,37 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         SEGMENT_LAST * (segment_last_c[index] - c[index]) === 0;
     }
 
+    const expr main_next_segment = (main_segment + 1) * (1 - main_last_segment);
+
+    if (stack_enabled) {
+        direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_previous_c, segment_initial_sp]);
+        direct_update_proves(MAIN_CONTINUATION_ID, [main_next_segment, main_last_segment, segment_next_pc, ...segment_last_c, segment_next_sp]);
+    } else {
+        direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_previous_c]);
+        direct_update_proves(MAIN_CONTINUATION_ID, [main_next_segment, main_last_segment, segment_next_pc, ...segment_last_c]);
+    }
+
+    // Register Zero is hard-wired zero.
+    airval last_reg_value[REG_NUM][RC];
+    airval last_reg_mem_step[REG_NUM];
+
+    const expr last_segment_reg_mem_step = main_step_to_special_mem_step(main_segment * N + N - 1);
+    for (int ireg = 0; ireg < REG_NUM; ++ireg) {
+        range_check(expression: last_segment_reg_mem_step - last_reg_mem_step[ireg], min: 1, max: MEMORY_MAX_DIFF);
+        reg_pre_load(prev_mem_step: last_reg_mem_step[ireg], addr: ireg + 1, value: last_reg_value[ireg]);
+        mem_load(mem_step: last_segment_reg_mem_step, addr: ireg + 1, value: last_reg_value[ireg], sel: (1 - main_last_segment));
+    }
+
     flag * (1 - flag) === 0;
+
+
 
     // set lsb of rom_flags always to 1 to force that padding rom rows (all values to zero), doesn't
     // match with main trace.
-    const expr rom_flags = 1 + 2 * a_src_imm + 4 * a_src_mem + 8 * a_src_step + 16 * b_src_imm + 32 * b_src_mem
-                           + 64 * is_external_op + 128 * store_ra + 256 * store_mem + 512 * store_ind +
-                           + 1024 * set_pc + 2048 * m32 + 4096 * b_src_ind;
+    const expr rom_flags = 1 + 2 * a_src_imm + 4 * a_src_mem + 8 * a_src_step + 16 * b_src_imm
+                           + 32 * b_src_mem + 64 * is_external_op + 128 * store_ra + 256 * store_mem
+                           + 512 * store_ind + 1024 * set_pc + 2048 * m32 + 4096 * b_src_ind
+                           + 8192 * a_src_reg + 16384 * b_src_reg + 32768 * store_reg;
 
 
     lookup_assumes(ROM_BUS_ID, [pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
@@ -327,5 +385,12 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         direct_global_update_assumes(MAIN_CONTINUATION_ID, expressions: [0, 1, END_PC_ADDR, ...zeros]);
     }
 
+    for (int ireg = 0; ireg < REG_NUM; ++ireg) {
+        global_init_mem(sel: 1, addr: reg_to_addr(ireg), value: zeros);
+    }
 
+}
+
+function reg_to_addr (int reg_index): int {
+    return REG_BASE_ADDR + reg_index * 8;
 }

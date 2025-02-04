@@ -58,8 +58,9 @@ const int MEMORY_LOAD_OP = 1;
 const int MEMORY_STORE_OP = 2;
 const int MEMORY_MAX_DIFF = 2**24;
 
+const int RESERVED_MEM_STEPS = 1;
 const int MAX_MEM_STEP_OFFSET = 2;
-const int MAX_MEM_OPS_PER_MAIN_STEP = (MAX_MEM_STEP_OFFSET + 1) * 2;
+const int MAX_MEM_STEPS_PER_MAIN_STEP = 4;
 
 const int MAX_RANGE_CHECK_CHUNK = 2**16;
 
@@ -294,19 +295,57 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
 // Memory helpers to use the memory
 
-function mem_load(int id = MEMORY_ID, expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[], expr sel = 1) {
-    mem_assumes(id, MEMORY_LOAD_OP, addr, step, step_offset, bytes, value, sel);
+function mem_load(int id = MEMORY_ID, expr addr, expr mem_step, expr bytes = 8, expr value[], expr sel = 1) {
+    mem_assumes(id, MEMORY_LOAD_OP, addr, mem_step, bytes, value, sel);
 }
 
-function mem_store(int id = MEMORY_ID, expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[], expr sel = 1) {
-    mem_assumes(id, MEMORY_STORE_OP, addr, step, step_offset, bytes, value, sel);
+function mem_store(int id = MEMORY_ID, expr addr, expr mem_step, expr bytes = 8, expr value[], expr sel = 1) {
+    mem_assumes(id, MEMORY_STORE_OP, addr, mem_step, bytes, value, sel);
 }
 
-private function mem_assumes(int id, int mem_op, expr addr, expr step, expr step_offset, expr bytes, expr value[], expr sel) {
+function main_step_to_precompiled_mem_step(const expr step, const int is_write = 0): expr {
+    const int write_inc = is_write ? 3 : 2;
+    return RESERVED_MEM_STEPS + MAX_MEM_STEPS_PER_MAIN_STEP * step + write_inc;
+}
+
+function precompiled_mem_load(int id = MEMORY_ID, expr addr, expr main_step, expr value[], expr sel = 1) {
+    mem_assumes(id, MEMORY_LOAD_OP, addr, main_step_to_precompiled_mem_step(main_step), 8, value, sel);
+}
+
+function precompiled_mem_store(int id = MEMORY_ID, expr addr, expr main_step, expr value[], expr sel = 1 ) {
+    mem_assumes(id, MEMORY_STORE_OP, addr, main_step_to_precompiled_mem_step(main_step, 1) + 1, 8, value, sel);
+}
+
+function reg_pre_load(int id = MEMORY_ID, expr addr, expr prev_mem_step, expr value[], expr sel = 1) {
+    mem_proves(id, MEMORY_LOAD_OP, addr, prev_mem_step, value, sel);
+}
+
+function reg_pre_store(int id = MEMORY_ID, expr addr, expr prev_mem_step, expr value[], expr sel = 1) {
+    mem_proves(id, MEMORY_STORE_OP, addr, prev_mem_step, value, sel);
+}
+
+function global_init_mem(int id = MEMORY_ID, expr addr, expr value[], expr sel = 1) {
+    direct_global_update_assumes(id, [MEMORY_LOAD_OP, addr, 0, 8, ...value], sel: sel);
+}
+
+
+function main_step_to_mem_step(const expr step, int step_offset = 0): expr {
     if (step_offset > MAX_MEM_STEP_OFFSET) {
         error("step_offset ${step_offset} is greater than max value allowed ${MAX_MEM_STEP_OFFSET}");
     }
+    return RESERVED_MEM_STEPS + MAX_MEM_STEPS_PER_MAIN_STEP * step + step_offset;
+}
 
+function main_step_to_special_mem_step(const expr step):expr {
+    return RESERVED_MEM_STEPS + MAX_MEM_STEPS_PER_MAIN_STEP * step + MAX_MEM_STEPS_PER_MAIN_STEP - 1;
+}
+
+private function mem_assumes(int id, int mem_op, expr addr, expr mem_step, expr bytes, expr value[], expr sel) {
     // adding 1 at step for first continuation
-    permutation_assumes(id, [mem_op, addr, 1 + MAX_MEM_OPS_PER_MAIN_STEP * step + 2 * step_offset, bytes, ...value], sel: sel);
+    permutation_assumes(id, [mem_op, addr, mem_step, bytes, ...value], sel: sel);
+}
+
+private function mem_proves(int id, int mem_op, expr addr, expr mem_step, expr value[], expr sel) {
+    // adding 1 at step for first continuation
+    permutation_proves(id, [mem_op, addr, mem_step, 8, ...value], sel: sel);
 }
