@@ -115,7 +115,9 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
         let mut increment;
         let f_max_increment = F::from_canonical_u64(STEP_MEMORY_MAX_DIFF);
 
+        #[cfg(feature = "debug_mem")]
         let mut _mem_op_done = 0;
+
         for mem_op in mem_ops {
             let mut step = mem_op.step;
 
@@ -211,7 +213,11 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
 
             trace[i].increment = F::from_canonical_u64(increment);
             trace[i].wr = F::from_bool(mem_op.is_write);
-            _mem_op_done += 1;
+
+            #[cfg(feature = "debug_mem")]
+            {
+                _mem_op_done += 1;
+            }
 
             // Store the value of incremenet so it can be range checked
             let range_index = increment as usize - 1;
