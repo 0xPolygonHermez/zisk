@@ -14,6 +14,54 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     const expr SEGMENT_LAST = SEGMENT_L1';
 
+    // CONTINUATIONS
+    //
+    // Main continuations use air values to define constraints in a one-dimensional space
+    // between air segments. Additionally, constraints involving these air values
+    // and two-dimensional elements (trace, with rows and columns) are defined in air,
+    // usually affecting values in the first and last rows of each segment.
+    //
+    //                       ┌── segment/next_segment
+    //                       │   ┌── 0/is_last_segment
+    //                       │   │     ┌── inicial_pc/next_pc
+    //                       │   │     │          ┌── previous_c/last_c
+    //                       │   │     │          │
+    //                       │   │     │          │             BUS
+    //  global constraint  [  0|  0|INITIAL_PC|0         ]   => | | ╌┐
+    //                                                          | |  ┆
+    //  segment-0          [  0|  0|INITIAL_PC|0         ]   <= | | <┘
+    //  segment-0          [  1|  0|pc_1      |last_c    ]   => | | ╌┐
+    //  segment-1          [  1|  0|pc_1      |previous_c]   <= | | <┘
+    //  segment-1          [  2|  0|pc_2      |last_c    ]   => | | ╌┐
+    //                     :   :   :          :          :      : :  :
+    //                     :   :   :          :          :      : :  :
+    //  segment-i          [  i|  0|pc_i      |previous_c]   <= | | <┘
+    //  segment-i          [i+1|  0|pc_i+1    |last_c    ]   => | | ╌┐
+    //                     :   :   :          :          :      : :  :
+    //                     :   :   :          :          :      : :  :
+    //  segment-n          [  n|  0|pc_n      |previous_c]   <= | | <┘
+    //  segment-n          [  0|  1|END_PC    |0         ]   => | | ╌┐
+    //                                                          | |  ┆
+    //  global constraint  [  0|  1|END_PC    |0         ]   <= | | <┘
+    //
+    // One segment "assumes" the state/values of the previous segment and "proves" the state/values
+    // of the next segment. To prevent an insecure cycle, we enforce that the beginning and end
+    // of the cycle are defined by global constraints. With this mechanism, we ensure that only one
+    // cycle is executed and what is exactly the initial and final state of the main trace.
+    //
+    // In the "assumed" state of the segment we put a 0 on second column (is_last_segment), while in
+    // "proved" state we put the value of is_last_segment, with this we ensure that the end of last
+    // segment cannot be used to init a new cycle.
+    //
+    // In main continuations, the `pc` of the next step is determined by the current state
+    // (flags, register values, etc.). For this reason, in the last row, the next `pc` value is
+    // calculated and then sent to the bus. In the first row of the next segment, it is verified
+    // that these two values match.
+    //
+    // In the case of `c`, the current value of `c` is sent in the last row of a segment.
+    // Within a segment, when `last_c` is referenced, if we are in the first row,
+    // we take the value received from the bus; otherwise, we take the value from the previous row.
+
     airval main_last_segment;
     airval main_segment;
     airval segment_initial_pc;
@@ -26,28 +74,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         airval segment_next_sp;
     }
 
-    // continuations
-    //
-    // first row of each segment is its initial state and must match with last
-    // row of previous segment. This first row it's a valid rom line, same that
-    // last of previous segment. This way to do continuations implies that:
-    //
-    // - each segment only has N-1 valid rows.
-    //
-    // - it's possible reference previous row, but no next row.
-    //
-    // - the first two rows has same SEGMENT_STEP 0.
-    //
-    // - global bus constraint with initial state of main (as initial PC)
-    //          [segment:0, is_last_segment: 0, pc: INITIAL_PC, a, b, c, flag]
-    //
-    // - global bus constraint with final state of main (as expected PC)
-    //          [segment:0, is_last_segment: 1, pc: FINAL_PC, a, b, c, flag]
-    //
-    // - is_last_segment it's used for security to avoid used to do more cycles of main.
-    //
-    // - registers a,b could be removed from main continuations.
-    //
+    // boolean constraint
 
     main_last_segment * (1 - main_last_segment) === 0;
 
@@ -58,58 +85,62 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     col witness a[RC];
     col witness b[RC];
     col witness c[RC];
-    col witness flag;
+    col witness flag;                  // Conditional flag modified by operations
 
-    col witness pc;      // Program counter
+    col witness pc;                    // Program counter
 
     // Source A
 
-    col witness a_src_imm;         // Selector
-    col witness a_src_mem;         // Selector
-    col witness a_offset_imm0;
-
+    col witness a_src_imm;             // Selector indicating that 'a' uses an immediate value.
+    col witness a_src_mem;             // Selector indicating that 'a' is read from memory.
+    col witness a_offset_imm0;         // Depending on the flag values, this witness contains either
+                                       // the lower 32-bit part of an immediate value or the memory
+                                       // address offset.
     if (stack_enabled == 1) {
         col witness air.sp;
         col witness air.a_src_sp;
         col witness air.a_use_sp_imm1;
     } else {
-        col witness air.a_imm1;
+        col witness air.a_imm1;        // The higher 32-bit part of a immediate value
     }
-    col witness a_src_step;
+    col witness a_src_step;            // Selector to load the `step` in register `a`
 
     // Source B
 
-    col witness b_src_imm;         // Selector
-    col witness b_src_mem;         // Selector
-    col witness b_offset_imm0;
+    col witness b_src_imm;             // Selector indicating that 'b' uses an immediate value.
+    col witness b_src_mem;             // Selector indicating that 'b' is read from memory.
+    col witness b_offset_imm0;         // Depending on the flag values, this witness contains either
+                                       // the lower 32-bit part of an immediate value or the memory
+                                       // address offset.
 
     if (stack_enabled) {
         col witness air.b_use_sp_imm1;
     } else {
-        col witness air.b_imm1;
+        col witness air.b_imm1;        // The higher 32-bit part of a immediate value
     }
-    col witness b_src_ind;
-    col witness ind_width;  // 8, 4, 2, 1
+    col witness b_src_ind;             // Selector to indicate take value in a as address to
+                                       // read b form memory (b = mem[a])
+    col witness ind_width;             // bytes: 8, 4, 2, 1
 
     // Operations related
 
-    col witness is_external_op;    // 1 If it's an op proved by a different coprocessor (1 clock op).
-    col witness op;                // if is_external_op1== is_external_op2 == 0 if op=0  then a->c, flag->1
-                                   //                                           if op=1 then  b->c, flag->0;
-                                   // else then this op is passed to the bus.
+    col witness is_external_op;        // [is_external_op == 1] => operation op sent to bus
+    col witness op;                    // [is_external_op == 0 && op=0] ==>  a=last_c, flag=1
+                                       // [is_external_op == 0 && op=0] ==>  b=last_c, flag=0
+                                       // else then this op is sent to the bus.
 
     // Destination C
 
     // What to store
-    col witness store_ra;  // Store the return address instead of the C register.
+    col witness store_ra;              // Store the return address instead of the C register.
 
     // Where to store
-    col witness store_mem;  // 1 of the registers are read/write from memory
-    col witness store_ind;
+    col witness store_mem;             // Selector for store c to memory
+    col witness store_ind;             // Selector for store c to memory address in a
 
-    col witness store_offset;
+    col witness store_offset;          // Memory address offset used on c
 
-    col witness set_pc;
+    col witness set_pc;                // Selector to set to pc the value in c
 
 
     if (stack_enabled) {
@@ -119,12 +150,18 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     }
 
 
-    col witness jmp_offset1, jmp_offset2;  // if flag, goto2, else goto 1
-    col witness m32;
+    col witness jmp_offset1;           // next default pc if flag = 0
+    col witness jmp_offset2;           // next default pc if flag = 1
+    col witness m32;                   // selector to indicate the high part of operands (a,b) send
+                                       // to bus must be 0, because it's a 32 bits operation. Used
+                                       // to avoid sent to bus dirty values.
 
     const expr sel_mem_b;
-
     sel_mem_b = b_src_mem + b_src_ind;
+
+    // Some of these values are expressions while others are witness + constraint. The expressions
+    // are "converted" to witness to avoid increase the degree on stage 2 with extension.
+
     if (stack_enabled) {
         col witness air.addr0;
         col witness air.addr1;
@@ -142,13 +179,13 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         addr2 = store_offset + store_ind * a[0];
     }
 
-    // Mem.load
+    // memory function to define the first memory read slot.
     mem_load(sel: a_src_mem,
              step: STEP,
              addr: addr0,
              value: a);
 
-    // Mem.load
+    //memory function to define the second memory read slot.
     mem_load(sel: sel_mem_b,
              step: STEP,
              step_offset: 1,
@@ -161,7 +198,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     store_value[0] = store_ra*(pc + jmp_offset2 - c[0]) + c[0];
     store_value[1] = (1 - store_ra) * c[1];
 
-    // Mem.store
+    // memory function to define the first memory store slot (after memory reads)
     mem_store(sel: store_mem + store_ind,
               step: STEP,
               step_offset: 2,
@@ -169,10 +206,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
               addr: addr2,
               value: store_value);
 
-    // Operation.assume => how organize software
-    col witness __debug_operation_bus_enabled;
-
-    lookup_assumes(operation_bus_id, [STEP, op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op * __debug_operation_bus_enabled);
+    // send to bus, the external operation
+    lookup_assumes(operation_bus_id, [STEP, op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op);
 
     const expr a_src_c;
     const expr b_src_c;
@@ -226,9 +261,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // if is not an external op and op=1 set flag = 0
     (1 - is_external_op) * op * (flag) === 0;
 
-
     flag * set_pc === 0;
-    // TODO! The following constraint is correct but something is not working in the compiler
 
     const expr expected_current_pc = 'set_pc * ('c[0] + 'jmp_offset1) + (1 - 'set_pc) * ('pc + 'jmp_offset2) + 'flag * ('jmp_offset1 - 'jmp_offset2);
     (1 - SEGMENT_L1) * (pc - expected_current_pc) === 0;
@@ -250,16 +283,6 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         SEGMENT_LAST * (segment_last_c[index] - c[index]) === 0;
     }
 
-    const expr main_next_segment = (main_segment + 1) * (1 - main_last_segment);
-
-    if (stack_enabled) {
-        direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_previous_c, segment_initial_sp]);
-        direct_update_proves(MAIN_CONTINUATION_ID, [main_next_segment, main_last_segment, segment_next_pc, ...segment_last_c, segment_next_sp]);
-    } else {
-        direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_previous_c]);
-        direct_update_proves(MAIN_CONTINUATION_ID, [main_next_segment, main_last_segment, segment_next_pc, ...segment_last_c]);
-    }
-
     flag * (1 - flag) === 0;
 
     // set lsb of rom_flags always to 1 to force that padding rom rows (all values to zero), doesn't
@@ -271,6 +294,26 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     lookup_assumes(ROM_BUS_ID, [pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
                                 op, store_offset, jmp_offset1, jmp_offset2, rom_flags]);
+
+    // Continuations
+
+    // In the last segment
+
+    const expr main_next_segment = (main_segment + 1) * (1 - main_last_segment);
+
+    if (stack_enabled) {
+        direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_previous_c, segment_initial_sp]);
+        direct_update_proves(MAIN_CONTINUATION_ID, [main_next_segment, main_last_segment, segment_next_pc, ...segment_last_c, segment_next_sp]);
+    } else {
+        direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_previous_c]);
+        direct_update_proves(MAIN_CONTINUATION_ID, [main_next_segment, main_last_segment, segment_next_pc, ...segment_last_c]);
+    }
+
+    // This global constraint is sent to the bus to define the initial and final values of
+    // continuations. A global constraint is used to ensure there is only one initial and one final
+    // value, preventing multiple cycles of `main`.
+    // In the initial state define the initial PC and final PC. Before finish a execution the
+    // value of "c" must be 0.
 
     const int zeros[RC];
     for (int index = 0; index < RC; ++index) {
@@ -284,4 +327,6 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         direct_global_update_proves(MAIN_CONTINUATION_ID, expressions: [0, 0, BOOT_ADDR, ...zeros]);
         direct_global_update_assumes(MAIN_CONTINUATION_ID, expressions: [0, 1, END_PC_ADDR, ...zeros]);
     }
+
+
 }
