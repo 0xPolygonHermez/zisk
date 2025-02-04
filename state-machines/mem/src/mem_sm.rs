@@ -57,7 +57,12 @@ impl<F: PrimeField> MemSM<F> {
         for i in 0..num_rows {
             let addr = trace[i].addr.as_canonical_biguint().to_bigint().unwrap() * 8;
             let step = trace[i].step.as_canonical_biguint().to_bigint().unwrap();
-            writeln!(writer, "{:#010X} {:#12}", addr, step).unwrap();
+            writeln!(
+                writer,
+                "{:#010X} {} {} {:?}",
+                addr, trace[i].step, trace[i].wr, trace[i].value
+            )
+            .unwrap();
         }
         println!("[MemDebug] done");
     }
@@ -110,7 +115,9 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
         let mut increment;
         let f_max_increment = F::from_canonical_u64(STEP_MEMORY_MAX_DIFF);
 
+        #[cfg(feature = "debug_mem")]
         let mut _mem_op_done = 0;
+
         for mem_op in mem_ops {
             let mut step = mem_op.step;
 
@@ -206,7 +213,11 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
 
             trace[i].increment = F::from_canonical_u64(increment);
             trace[i].wr = F::from_bool(mem_op.is_write);
-            _mem_op_done += 1;
+
+            #[cfg(feature = "debug_mem")]
+            {
+                _mem_op_done += 1;
+            }
 
             // Store the value of incremenet so it can be range checked
             let range_index = increment as usize - 1;
@@ -283,7 +294,7 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
             );
         }
         self.std.range_check(
-            F::from_canonical_u64(STEP_MEMORY_MAX_DIFF),
+            f_max_increment,
             F::from_canonical_u64(range_check_data_max),
             range_id,
         );

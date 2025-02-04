@@ -10,14 +10,17 @@
 use log::info;
 use p3_field::PrimeField;
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
-use sm_common::InstanceCtx;
+use sm_common::{BusDeviceMetrics, InstanceCtx};
 
+use data_bus::OPERATION_BUS_ID;
 use zisk_core::ZiskRom;
 
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 
 use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
 use ziskemu::{Emu, EmuTrace};
+
+use crate::MainCounter;
 
 /// Represents an instance of the main state machine,
 /// containing context for managing a specific segment of the main trace.
@@ -172,5 +175,13 @@ impl MainSM {
         }
 
         emu.ctx.inst_ctx.pc
+    }
+
+    pub fn debug<F: PrimeField>(_pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {
+        // No debug information to display
+    }
+
+    pub fn build_counter() -> Box<dyn BusDeviceMetrics> {
+        Box::new(MainCounter::new(OPERATION_BUS_ID))
     }
 }

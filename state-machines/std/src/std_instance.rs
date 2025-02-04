@@ -8,7 +8,7 @@ use std::sync::Arc;
 use data_bus::{BusDevice, BusId, PayloadType};
 use p3_field::PrimeField;
 use pil_std_lib::{RangeCheckAir, Std};
-use proofman_common::{AirInstance, ProofCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
 
 /// The `StdInstance` struct represents an instance to perform the witness computations for PIL2
@@ -53,6 +53,7 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
     fn compute_witness(
         &mut self,
         _pctx: &ProofCtx<F>,
+        _sctx: &SetupCtx<F>,
         _collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         let plan = &self.ictx.plan;

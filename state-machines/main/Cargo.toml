@@ -7,10 +7,12 @@ edition = "2021"
 sm-common = { path = "../common" }
 ziskemu = { path = "../../emulator" }
 zisk-core = { path = "../../core" }
+data-bus = { path = "../../data-bus" }
 zisk-pil = { path = "../../pil" }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
+proofman-macros = { workspace = true }
 p3-field = { workspace = true }
 log = { workspace = true }
 rayon = { workspace = true }
@@ -18,3 +20,4 @@ rayon = { workspace = true }
 [features]
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
+debug = ["proofman-macros/debug"]

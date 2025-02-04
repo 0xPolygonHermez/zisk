@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::RomSM;
 use data_bus::PayloadType;
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, ProofCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
 use zisk_core::ZiskRom;
 
@@ -53,6 +53,7 @@ impl<F: PrimeField> Instance<F> for RomInstance {
     fn compute_witness(
         &mut self,
         _pctx: &ProofCtx<F>,
+        _sctx: &SetupCtx<F>,
         _collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         Some(RomSM::compute_witness(&self.zisk_rom, &self.ictx.plan))

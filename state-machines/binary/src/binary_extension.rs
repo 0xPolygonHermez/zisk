@@ -65,12 +65,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     /// Determines if the given opcode represents a shift operation.
     fn opcode_is_shift(opcode: ZiskOp) -> bool {
         match opcode {
-            ZiskOp::Sll |
-            ZiskOp::Srl |
-            ZiskOp::Sra |
-            ZiskOp::SllW |
-            ZiskOp::SrlW |
-            ZiskOp::SraW => true,
+            ZiskOp::Sll
+            | ZiskOp::Srl
+            | ZiskOp::Sra
+            | ZiskOp::SllW
+            | ZiskOp::SrlW
+            | ZiskOp::SraW => true,
 
             ZiskOp::SignExtendB | ZiskOp::SignExtendH | ZiskOp::SignExtendW => false,
 
@@ -83,12 +83,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         match opcode {
             ZiskOp::SllW | ZiskOp::SrlW | ZiskOp::SraW => true,
 
-            ZiskOp::Sll |
-            ZiskOp::Srl |
-            ZiskOp::Sra |
-            ZiskOp::SignExtendB |
-            ZiskOp::SignExtendH |
-            ZiskOp::SignExtendW => false,
+            ZiskOp::Sll
+            | ZiskOp::Srl
+            | ZiskOp::Sra
+            | ZiskOp::SignExtendB
+            | ZiskOp::SignExtendH
+            | ZiskOp::SignExtendW => false,
 
             _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={:?}", opcode),
         }
@@ -112,7 +112,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         let op = OperationBusData::get_op(operation);
         let a = OperationBusData::get_a(operation);
         let b = OperationBusData::get_b(operation);
-        let step = OperationBusData::get_step(operation);
 
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(op).expect("Invalid ZiskOp opcode");
@@ -150,9 +149,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         let in2_1: u64 = (b_val >> 32) & 0xFFFFFFFF;
         row.in2[0] = F::from_canonical_u64(in2_0);
         row.in2[1] = F::from_canonical_u64(in2_1);
-
-        // Set main SM step
-        row.debug_main_step = F::from_canonical_u64(step);
 
         // Calculate the trace output
         let mut t_out: [[u64; 2]; 8] = [[0; 2]; 8];

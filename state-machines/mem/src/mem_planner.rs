@@ -1,12 +1,12 @@
-use std::sync::Arc;
+use rayon::prelude::*;
+use std::sync::{Arc, Mutex};
 
+#[cfg(feature = "debug_mem")]
+use crate::MemDebug;
 use sm_common::{BusDeviceMetrics, ChunkId, Metrics, Plan, Planner};
 
 #[cfg(feature = "debug_mem")]
-use zisk_pil::MEM_ALIGN_AIR_IDS;
-
-#[cfg(feature = "debug_mem")]
-use crate::{MemAlignCheckPoint, MemDebug, MemHelpers};
+use crate::MemHelpers;
 
 use zisk_pil::{
     InputDataTrace, MemTrace, RomDataTrace, INPUT_DATA_AIR_IDS, MEM_AIR_IDS, ROM_DATA_AIR_IDS,
@@ -52,40 +52,40 @@ impl MemPlanner {
         use crate::MemModuleSegmentCheckPoint;
 
         for (index, plan) in plans.iter().enumerate() {
-            info!(
-                "[Mem] PLAN #{} [{}:{}:{}] {:?}{}",
-                index,
-                plan.airgroup_id,
-                plan.air_id,
-                plan.segment_id.unwrap_or(0),
-                plan.check_point,
-                if plan.air_id == MEM_AIR_IDS[0] ||
-                    plan.air_id == INPUT_DATA_AIR_IDS[0] ||
-                    plan.air_id == ROM_DATA_AIR_IDS[0]
-                {
-                    let meta = plan
-                        .meta
-                        .as_ref()
-                        .unwrap()
-                        .downcast_ref::<MemModuleSegmentCheckPoint>()
-                        .unwrap();
-                    format!(
-                        " [0x{:X},{}] => [0x{:X},{}] skip:{} last:{}",
-                        MemHelpers::get_addr(meta.prev_addr),
-                        meta.prev_step,
-                        MemHelpers::get_addr(meta.last_addr),
-                        meta.last_step,
-                        meta.skip_rows,
-                        meta.is_last_segment
-                    )
-                } else if plan.air_id == MEM_ALIGN_AIR_IDS[0] {
-                    let meta =
-                        plan.meta.as_ref().unwrap().downcast_ref::<MemAlignCheckPoint>().unwrap();
-                    format!(" skip:{} count:{} rows:{}", meta.skip, meta.count, meta.rows,)
-                } else {
-                    "".to_string()
-                }
-            );
+            if plan.air_id == MEM_AIR_IDS[0]
+                || plan.air_id == INPUT_DATA_AIR_IDS[0]
+                || plan.air_id == ROM_DATA_AIR_IDS[0]
+            {
+                let meta = plan
+                    .meta
+                    .as_ref()
+                    .unwrap()
+                    .downcast_ref::<MemModuleSegmentCheckPoint>()
+                    .unwrap();
+                info!(
+                    "[Mem] PLAN #{} [{}:{}:{}] {:?} [0x{:X},{}] => [0x{:X},{}] skip:{} last:{}",
+                    index,
+                    plan.airgroup_id,
+                    plan.air_id,
+                    plan.segment_id.unwrap_or(0),
+                    plan.check_point,
+                    MemHelpers::get_addr(meta.prev_addr),
+                    meta.prev_step,
+                    MemHelpers::get_addr(meta.last_addr),
+                    meta.last_step,
+                    meta.skip_rows,
+                    meta.is_last_segment,
+                );
+            } else {
+                info!(
+                    "[Mem] PLAN #{} [{}:{}:{}] {:?}",
+                    index,
+                    plan.airgroup_id,
+                    plan.air_id,
+                    plan.segment_id.unwrap_or(0),
+                    plan.check_point,
+                );
+            }
         }
     }
 }
@@ -93,68 +93,84 @@ impl MemPlanner {
 impl Planner for MemPlanner {
     fn plan(&self, metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
         // convert generic information to specific information
-        let _counters: Vec<(ChunkId, &MemCounters)> = metrics
+        let mut counters: Vec<(ChunkId, &MemCounters)> = metrics
             .iter()
             .map(|(chunk_id, metric)| {
                 (*chunk_id, Metrics::as_any(&**metric).downcast_ref::<MemCounters>().unwrap())
             })
             .collect();
-
-        let counters = Arc::new(_counters);
+        counters.par_sort_by_key(|(chunk_id, _)| *chunk_id);
+        let counters = Arc::new(counters);
 
         #[cfg(feature = "debug_mem")]
         self.collect_debug_data(counters.clone());
 
-        let mut planners: Vec<Box<dyn MemPlanCalculator>> = vec![
-            Box::new(MemModulePlanner::new(
-                MemModulePlannerConfig {
-                    airgroup_id: ZISK_AIRGROUP_ID,
-                    air_id: MEM_AIR_IDS[0],
-                    from_addr: RAM_W_ADDR_INIT,
-                    to_addr: RAM_W_ADDR_END,
-                    rows: MemTrace::<usize>::NUM_ROWS as u32,
-                    consecutive_addr: false,
-                    intermediate_step_reads: true,
-                    map_registers: true,
-                },
-                counters.clone(),
-            )),
-            Box::new(MemModulePlanner::new(
-                MemModulePlannerConfig {
-                    airgroup_id: ZISK_AIRGROUP_ID,
-                    air_id: ROM_DATA_AIR_IDS[0],
-                    from_addr: ROM_DATA_W_ADDR_INIT,
-                    to_addr: ROM_DATA_W_ADDR_END,
-                    rows: RomDataTrace::<usize>::NUM_ROWS as u32,
-                    consecutive_addr: true,
-                    intermediate_step_reads: false,
-                    map_registers: false,
-                },
-                counters.clone(),
-            )),
-            Box::new(MemModulePlanner::new(
-                MemModulePlannerConfig {
-                    airgroup_id: ZISK_AIRGROUP_ID,
-                    air_id: INPUT_DATA_AIR_IDS[0],
-                    from_addr: INPUT_DATA_W_ADDR_INIT,
-                    to_addr: INPUT_DATA_W_ADDR_END,
-                    rows: InputDataTrace::<usize>::NUM_ROWS as u32,
-                    consecutive_addr: true,
-                    intermediate_step_reads: false,
-                    map_registers: false,
-                },
-                counters.clone(),
-            )),
-            Box::new(MemAlignPlanner::new(counters.clone())),
+        let mem_planner = Arc::new(Mutex::new(MemModulePlanner::new(
+            MemModulePlannerConfig {
+                airgroup_id: ZISK_AIRGROUP_ID,
+                air_id: MEM_AIR_IDS[0],
+                addr_index: 2,
+                from_addr: RAM_W_ADDR_INIT,
+                to_addr: RAM_W_ADDR_END,
+                rows: MemTrace::<usize>::NUM_ROWS as u32,
+                consecutive_addr: false,
+                intermediate_step_reads: true,
+                map_registers: true,
+            },
+            counters.clone(),
+        )));
+
+        let rom_data_planner = Arc::new(Mutex::new(MemModulePlanner::new(
+            MemModulePlannerConfig {
+                airgroup_id: ZISK_AIRGROUP_ID,
+                air_id: ROM_DATA_AIR_IDS[0],
+                addr_index: 0,
+                from_addr: ROM_DATA_W_ADDR_INIT,
+                to_addr: ROM_DATA_W_ADDR_END,
+                rows: RomDataTrace::<usize>::NUM_ROWS as u32,
+                consecutive_addr: true,
+                intermediate_step_reads: false,
+                map_registers: false,
+            },
+            counters.clone(),
+        )));
+
+        let input_data_planner = Arc::new(Mutex::new(MemModulePlanner::new(
+            MemModulePlannerConfig {
+                airgroup_id: ZISK_AIRGROUP_ID,
+                air_id: INPUT_DATA_AIR_IDS[0],
+                addr_index: 1,
+                from_addr: INPUT_DATA_W_ADDR_INIT,
+                to_addr: INPUT_DATA_W_ADDR_END,
+                rows: InputDataTrace::<usize>::NUM_ROWS as u32,
+                consecutive_addr: true,
+                intermediate_step_reads: false,
+                map_registers: false,
+            },
+            counters.clone(),
+        )));
+        // let mut mem_align_planner = Arc::new(Mutex::new(MemAlignPlanner::new(counters.clone())));
+        let mut mem_align_planner = MemAlignPlanner::new(counters.clone());
+
+        let planners = vec![
+            Arc::clone(&mem_planner),
+            Arc::clone(&rom_data_planner),
+            Arc::clone(&input_data_planner),
         ];
 
-        for item in &mut planners {
-            item.plan();
-        }
+        planners.par_iter().for_each(|plan| {
+            let mut locked_plan = plan.lock().unwrap();
+            locked_plan.plan();
+        });
+        mem_align_planner.plan();
+
         let mut plans: Vec<Plan> = Vec::new();
-        for item in &mut planners {
-            plans.append(&mut item.collect_plans());
-        }
+        plans.append(&mut mem_planner.lock().unwrap().collect_plans());
+        plans.append(&mut rom_data_planner.lock().unwrap().collect_plans());
+        plans.append(&mut input_data_planner.lock().unwrap().collect_plans());
+        // plans.append(&mut mem_align_planner.lock().unwrap().collect_plans());
+        plans.append(&mut mem_align_planner.collect_plans());
+
         #[cfg(feature = "debug_mem")]
         self.debug_plans(plans.as_ref());
         plans

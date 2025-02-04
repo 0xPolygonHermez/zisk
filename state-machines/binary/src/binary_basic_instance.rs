@@ -7,7 +7,7 @@
 use crate::BinaryBasicSM;
 use data_bus::{BusDevice, BusId, OperationBusData, OperationData, PayloadType};
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, ProofCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
     BusDeviceWrapper, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
 };
@@ -59,6 +59,7 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
     fn compute_witness(
         &mut self,
         _pctx: &ProofCtx<F>,
+        _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors

@@ -19,7 +19,7 @@ use sm_common::{BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan, Planner};
 
 use crate::{RomCounter, RomInstance, RomPlanner};
 use zisk_core::{Riscv2zisk, ZiskRom, SRC_IMM};
-use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace, RomTraceRow};
+use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace};
 
 /// The `RomSM` struct represents the ROM State Machine
 pub struct RomSM {
@@ -50,7 +50,7 @@ impl RomSM {
     /// # Returns
     /// An `AirInstance` containing the computed witness trace data.
     pub fn compute_witness<F: PrimeField>(rom: &ZiskRom, plan: &Plan) -> AirInstance<F> {
-        let mut rom_trace = RomTrace::new();
+        let mut rom_trace = RomTrace::new_zeroes();
         let mut rom_custom_trace = RomRomTrace::new();
 
         let metadata = plan.meta.as_ref().unwrap().downcast_ref::<RomCounter>().unwrap();
@@ -87,11 +87,6 @@ impl RomSM {
                 }
             }
             rom_trace[i].multiplicity = F::from_canonical_u64(multiplicity);
-        }
-
-        // Padd with zeroes
-        for i in rom.insts.len()..rom_trace.num_rows() {
-            rom_trace[i] = RomTraceRow::default();
         }
 
         Self::compute_trace_rom(rom, &mut rom_custom_trace);

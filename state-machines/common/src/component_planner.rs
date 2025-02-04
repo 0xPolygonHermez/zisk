@@ -89,6 +89,8 @@ pub struct Plan {
 
     /// Additional metadata associated with the plan.
     pub meta: Option<Box<dyn Any>>,
+
+    pub global_id: Option<usize>,
 }
 
 impl Plan {
@@ -113,9 +115,16 @@ impl Plan {
         check_point: CheckPoint,
         meta: Option<Box<dyn Any>>,
     ) -> Self {
-        Plan { airgroup_id, air_id, segment_id, instance_type, check_point, meta }
+        Plan { airgroup_id, air_id, segment_id, instance_type, check_point, meta, global_id: None }
+    }
+
+    pub fn set_global_id(&mut self, global_id: usize) {
+        self.global_id = Some(global_id);
     }
 }
+
+unsafe impl Send for Plan {}
+unsafe impl Sync for Plan {}
 
 /// The `Planner` trait defines the interface for creating execution plans.
 ///

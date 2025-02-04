@@ -5,7 +5,8 @@
 
 use itertools::Itertools;
 use p3_field::PrimeField;
-use proofman_common::ProofCtx;
+use proofman_common::{ProofCtx, SetupCtx};
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use witness::WitnessComponent;
 
 use rayon::prelude::*;
@@ -16,8 +17,14 @@ use sm_common::{
     Instance, InstanceCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
+use zisk_pil::ZiskPublicValues;
 
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    fs,
+    path::PathBuf,
+    sync::{Arc, RwLock},
+};
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, EmuTrace, ZiskEmulator};
 
@@ -27,11 +34,16 @@ pub struct ZiskExecutor<F: PrimeField> {
     /// ZisK ROM, a binary file containing the ZisK program to be executed.
     pub zisk_rom: Arc<ZiskRom>,
 
-    /// Path to the public inputs file.
-    pub public_inputs_path: PathBuf,
+    /// Path to the input data file.
+    pub input_data_path: PathBuf,
 
     /// Registered secondary state machines.
     secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,
+
+    /// Planning information for main state machines.
+    pub min_traces: RwLock<Vec<EmuTrace>>,
+    pub main_planning: RwLock<Vec<Plan>>,
+    pub sec_planning: RwLock<Vec<Vec<Plan>>>,
 }
 
 impl<F: PrimeField> ZiskExecutor<F> {
@@ -44,10 +56,17 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// Creates a new instance of the `ZiskExecutor`.
     ///
     /// # Arguments
-    /// * `public_inputs_path` - Path to the public inputs file.
+    /// * `input_data_path` - Path to the input data file.
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
-    pub fn new(public_inputs_path: PathBuf, zisk_rom: Arc<ZiskRom>) -> Self {
-        Self { public_inputs_path, zisk_rom, secondary_sm: Vec::new() }
+    pub fn new(input_data_path: PathBuf, zisk_rom: Arc<ZiskRom>) -> Self {
+        Self {
+            input_data_path,
+            zisk_rom,
+            secondary_sm: Vec::new(),
+            min_traces: RwLock::new(Vec::new()),
+            main_planning: RwLock::new(Vec::new()),
+            sec_planning: RwLock::new(Vec::new()),
+        }
     }
 
     /// Registers a secondary state machine with the executor.
@@ -61,12 +80,12 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// Computes minimal traces by processing the ZisK ROM with given public inputs.
     ///
     /// # Arguments
-    /// * `public_inputs` - Public inputs for the ROM execution.
+    /// * `input_data` - Input data for the ROM execution.
     /// * `num_threads` - Number of threads to use for parallel execution.
     ///
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
-    fn compute_minimal_traces(&self, public_inputs: Vec<u8>, num_threads: usize) -> Vec<EmuTrace> {
+    fn compute_minimal_traces(&self, input_data: Vec<u8>, num_threads: usize) -> Vec<EmuTrace> {
         assert!(Self::MIN_TRACE_SIZE.is_power_of_two());
 
         // Settings for the emulator
@@ -75,7 +94,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         ZiskEmulator::compute_minimal_traces::<F>(
             &self.zisk_rom,
-            &public_inputs,
+            &input_data,
             &emu_options,
             num_threads,
         )
@@ -90,20 +109,28 @@ impl<F: PrimeField> ZiskExecutor<F> {
     ///
     /// # Returns
     /// A vector of `MainInstance` objects.
-    fn create_main_instances(
-        &self,
-        pctx: &ProofCtx<F>,
-        main_planning: Vec<Plan>,
-    ) -> Vec<MainInstance> {
+    fn assign_main_instances(&self, pctx: &ProofCtx<F>, main_planning: &mut [Plan]) {
+        main_planning.iter_mut().for_each(|plan| {
+            let (_, global_idx) = pctx.dctx_add_instance(
+                plan.airgroup_id,
+                plan.air_id,
+                pctx.get_weight(plan.airgroup_id, plan.air_id),
+            );
+
+            plan.set_global_id(global_idx);
+        });
+    }
+
+    fn create_main_instances(&self, pctx: &ProofCtx<F>) -> Vec<MainInstance> {
+        let mut main_planning_guard = self.main_planning.write().unwrap();
+        let main_planning = std::mem::take(&mut *main_planning_guard);
+
         main_planning
             .into_iter()
             .filter_map(|plan| {
-                if let (true, global_idx) = pctx.dctx_add_instance(
-                    plan.airgroup_id,
-                    plan.air_id,
-                    pctx.get_weight(plan.airgroup_id, plan.air_id),
-                ) {
-                    Some(MainInstance::new(InstanceCtx::new(global_idx, plan)))
+                let global_id = plan.global_id.unwrap();
+                if pctx.dctx_is_my_instance(global_id) {
+                    Some(MainInstance::new(InstanceCtx::new(global_id, plan)))
                 } else {
                     None
                 }
@@ -118,12 +145,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
     ///
     /// # Returns
     /// A vector of metrics grouped by chunk ID.
-    fn count_sec(&self, min_traces: &[EmuTrace]) -> Vec<Vec<(usize, Box<dyn BusDeviceMetrics>)>> {
-        if self.secondary_sm.is_empty() {
-            return Vec::new();
-        }
-
-        let mut metrics_slices = min_traces
+    #[allow(clippy::type_complexity)]
+    fn count(
+        &self,
+        min_traces: &[EmuTrace],
+    ) -> (Vec<(usize, Box<dyn BusDeviceMetrics>)>, Vec<Vec<(usize, Box<dyn BusDeviceMetrics>)>>)
+    {
+        let (mut main_metrics_slices, mut sec_metrics_slices): (Vec<_>, Vec<_>) = min_traces
             .par_iter()
             .map(|minimal_trace| {
                 let mut data_bus = self.get_data_bus_counters();
@@ -134,20 +162,39 @@ impl<F: PrimeField> ZiskExecutor<F> {
                     &mut data_bus,
                 );
 
-                self.close_data_bus_counters(data_bus)
+                let (mut main, mut secondary) = (Vec::new(), Vec::new());
+
+                let result = self.close_data_bus_counters(data_bus);
+                for (is_secondary, counter) in result {
+                    if is_secondary {
+                        secondary.push(counter);
+                    } else {
+                        main.push(counter);
+                    }
+                }
+                (main, secondary)
             })
-            .collect::<Vec<_>>();
+            .unzip();
 
         // Group counters by chunk_id and counter type
-        let mut vec_counters = (0..metrics_slices[0].len()).map(|_| Vec::new()).collect::<Vec<_>>();
+        let mut sec_vec_counters =
+            (0..sec_metrics_slices[0].len()).map(|_| Vec::new()).collect::<Vec<_>>();
 
-        for (chunk_id, counter_slice) in metrics_slices.iter_mut().enumerate() {
+        for (chunk_id, counter_slice) in sec_metrics_slices.iter_mut().enumerate() {
             for (i, counter) in counter_slice.drain(..).enumerate() {
-                vec_counters[i].push((chunk_id, counter));
+                sec_vec_counters[i].push((chunk_id, counter));
             }
         }
 
-        vec_counters
+        let mut main_vec_counters = Vec::new();
+
+        for (chunk_id, counter_slice) in main_metrics_slices.iter_mut().enumerate() {
+            for counter in counter_slice.drain(..) {
+                main_vec_counters.push((chunk_id, counter));
+            }
+        }
+
+        (main_vec_counters, sec_vec_counters)
     }
 
     /// Plans the secondary state machines by generating plans from the counted metrics.
@@ -181,6 +228,22 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .for_each(|(i, sm)| sm.configure_instances(pctx, &plannings[i]));
     }
 
+    #[allow(clippy::type_complexity)]
+    fn assign_sec_instances(&self, pctx: &ProofCtx<F>, plans: &mut [Vec<Plan>]) {
+        plans.iter_mut().for_each(|plans_by_sm| {
+            plans_by_sm.iter_mut().for_each(move |plan| {
+                let global_id = pctx.dctx_add_instance_no_assign(
+                    plan.airgroup_id,
+                    plan.air_id,
+                    pctx.get_weight(plan.airgroup_id, plan.air_id),
+                );
+                plan.set_global_id(global_id);
+            })
+        });
+
+        pctx.dctx_assign_instances();
+    }
+
     /// Creates secondary state machine instances based on their plans.
     ///
     /// # Arguments
@@ -195,38 +258,21 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn create_sec_instances(
         &self,
         pctx: &ProofCtx<F>,
-        plans: Vec<Vec<Plan>>,
     ) -> (
         Vec<(usize, Box<dyn Instance<F>>)>, // Table instances
         Vec<(usize, Box<dyn Instance<F>>)>, // Non-table instances
     ) {
-        let gids: Vec<_> = plans
-            .into_iter()
-            .enumerate()
-            .flat_map(|(i, plans_by_sm)| {
-                plans_by_sm.into_iter().map(move |plan| {
-                    Some((
-                        pctx.dctx_add_instance_no_assign(
-                            plan.airgroup_id,
-                            plan.air_id,
-                            pctx.get_weight(plan.airgroup_id, plan.air_id),
-                        ),
-                        plan.instance_type == InstanceType::Table,
-                        plan,
-                        i,
-                    ))
-                })
-            })
-            .collect();
-
-        pctx.dctx_assign_instances();
-
         let mut table_instances = Vec::new();
         let mut other_instances = Vec::new();
 
-        gids.into_iter().for_each(|item| {
-            if let Some((global_idx, is_table, plan, i)) = item {
+        let mut sec_planning_guard = self.sec_planning.write().unwrap();
+        let sec_planning = std::mem::take(&mut *sec_planning_guard);
+
+        sec_planning.into_iter().enumerate().for_each(|(i, plans_by_sm)| {
+            plans_by_sm.into_iter().for_each(|plan| {
+                let global_idx = plan.global_id.unwrap();
                 let is_mine = pctx.dctx_is_my_instance(global_idx);
+                let is_table = plan.instance_type == InstanceType::Table;
                 if is_mine || is_table {
                     let ictx = InstanceCtx::new(global_idx, plan);
                     let instance = (global_idx, self.secondary_sm[i].build_instance(ictx));
@@ -236,7 +282,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                         other_instances.push(instance);
                     }
                 }
-            }
+            })
         });
 
         (table_instances, other_instances)
@@ -248,12 +294,10 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// * `pctx` - Proof context for managing air instances.
     /// * `min_traces` - Minimal traces obtained from the ROM execution.
     /// * `main_instances` - Main state machine instances to compute witnesses for
-    fn witness_main_instances(
-        &self,
-        pctx: &ProofCtx<F>,
-        min_traces: &[EmuTrace],
-        main_instances: Vec<MainInstance>,
-    ) {
+    fn witness_main_instances(&self, pctx: &ProofCtx<F>, main_instances: Vec<MainInstance>) {
+        let min_traces_guard = self.min_traces.read().unwrap();
+        let min_traces = &*min_traces_guard;
+
         let last_segment_id = main_instances.len() - 1;
         main_instances.into_par_iter().enumerate().for_each(|(segment_id, mut main_instance)| {
             let air_instance = MainSM::compute_witness(
@@ -277,9 +321,12 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn witness_secn_instances(
         &self,
         pctx: &ProofCtx<F>,
-        min_traces: &[EmuTrace],
+        sctx: &SetupCtx<F>,
         secn_instances: Vec<(usize, Box<dyn Instance<F>>)>,
     ) {
+        let min_traces_guard = self.min_traces.read().unwrap();
+        let min_traces = &*min_traces_guard;
+
         // Group the instances by the chunk they need to process
         let instances_by_chunk = self.chunks_to_execute(min_traces, &secn_instances);
 
@@ -302,7 +349,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let collectors_by_instance = self.close_data_bus_collectors(secn_instances, data_buses);
 
         collectors_by_instance.into_par_iter().for_each(|(global_idx, mut instance, collector)| {
-            if let Some(air_instance) = instance.compute_witness(pctx, collector) {
+            if let Some(air_instance) = instance.compute_witness(pctx, sctx, collector) {
                 pctx.air_instance_repo.add_air_instance(air_instance, global_idx);
             }
         });
@@ -316,6 +363,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn witness_tables(
         &self,
         pctx: &ProofCtx<F>,
+        sctx: &SetupCtx<F>,
         table_instances: Vec<(usize, Box<dyn Instance<F>>)>,
     ) {
         let mut instances = table_instances
@@ -333,7 +381,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         instances.iter_mut().for_each(|(global_idx, sec_instance)| {
             if sec_instance.instance_type() == InstanceType::Table {
-                if let Some(air_instance) = sec_instance.compute_witness(pctx, vec![]) {
+                if let Some(air_instance) = sec_instance.compute_witness(pctx, sctx, vec![]) {
                     if pctx.dctx_is_my_instance(*global_idx) {
                         pctx.air_instance_repo.add_air_instance(air_instance, *global_idx);
                     }
@@ -377,11 +425,21 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// A `DataBus` instance with connected counters for each registered secondary state machine.
     fn get_data_bus_counters(&self) -> DataBus<PayloadType, BusDeviceMetricsWrapper> {
         let mut data_bus = DataBus::new();
+
+        let counter = MainSM::build_counter();
+
+        data_bus.connect_device(
+            counter.bus_id(),
+            Box::new(BusDeviceMetricsWrapper::new(counter, false)),
+        );
+
         self.secondary_sm.iter().for_each(|sm| {
             let counter = sm.build_counter();
 
-            data_bus
-                .connect_device(counter.bus_id(), Box::new(BusDeviceMetricsWrapper::new(counter)));
+            data_bus.connect_device(
+                counter.bus_id(),
+                Box::new(BusDeviceMetricsWrapper::new(counter, true)),
+            );
         });
 
         data_bus
@@ -397,13 +455,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn close_data_bus_counters(
         &self,
         mut data_bus: DataBus<u64, BusDeviceMetricsWrapper>,
-    ) -> Vec<Box<dyn BusDeviceMetrics>> {
+    ) -> Vec<(bool, Box<dyn BusDeviceMetrics>)> {
         data_bus
             .detach_devices()
             .into_iter()
             .map(|mut device| {
                 device.on_close();
-                device.inner
+                (device.is_secondary, device.inner)
             })
             .collect::<Vec<_>>()
     }
@@ -495,29 +553,87 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
     /// # Arguments
     /// * `pctx` - Proof context for managing air instances and computation.
     fn execute(&self, pctx: Arc<ProofCtx<F>>) {
+        // Call emulate with these options
+        let input_data = {
+            // Read inputs data from the provided inputs path
+            let path = PathBuf::from(self.input_data_path.display().to_string());
+            fs::read(path).expect("Could not read inputs file")
+        };
+
         // PHASE 1. MINIMAL TRACES. Process the ROM super fast to collect the Minimal Traces
-        let pi_path = PathBuf::from(self.public_inputs_path.display().to_string());
-        let pi = fs::read(pi_path).expect("Could not read inputs file");
+        timer_start_info!(COMPUTE_MINIMAL_TRACE);
+        let min_traces = self.compute_minimal_traces(input_data, Self::NUM_THREADS);
+        timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
-        let min_traces = self.compute_minimal_traces(pi, Self::NUM_THREADS);
-
+        timer_start_info!(COUNT_AND_PLAN);
         // PHASE 2. COUNTING. Count the metrics for the Secondary SM instances
-        let sec_count = self.count_sec(&min_traces);
+        let (main_count, sec_count) = self.count(&min_traces);
 
         // PHASE 3. PLANNING. Plan the instances
-        let main_planning = MainPlanner::plan::<F>(&min_traces, Self::MIN_TRACE_SIZE);
-        let sec_planning = self.plan_sec(sec_count);
+        let (mut main_planning, public_values) =
+            MainPlanner::plan::<F>(&min_traces, main_count, Self::MIN_TRACE_SIZE);
+
+        // Update pctx
+        let mut publics = ZiskPublicValues::from_vec_guard(pctx.get_publics());
+
+        for (index, value) in public_values.iter() {
+            publics.inputs[*index as usize] = F::from_canonical_u32(*value);
+        }
+
+        let mut sec_planning = self.plan_sec(sec_count);
 
         // PHASE 4. PLANNING. Plan the instances
         self.configure_instances(&pctx, &sec_planning);
 
-        // PHASE 5. INSTANCES. Create the instances
-        let main_instances = self.create_main_instances(&pctx, main_planning);
-        let (table_instances, secn_instances) = self.create_sec_instances(&pctx, sec_planning);
+        timer_stop_and_log_info!(COUNT_AND_PLAN);
 
-        // PHASE 6. WITNESS. Compute the witnesses
-        self.witness_main_instances(&pctx, &min_traces, main_instances);
-        self.witness_secn_instances(&pctx, &min_traces, secn_instances);
-        self.witness_tables(&pctx, table_instances);
+        // PHASE 5. INSTANCES. Assign the instances
+        self.assign_main_instances(&pctx, &mut main_planning);
+        self.assign_sec_instances(&pctx, &mut sec_planning);
+
+        *self.min_traces.write().unwrap() = min_traces;
+        *self.main_planning.write().unwrap() = main_planning;
+        *self.sec_planning.write().unwrap() = sec_planning;
+    }
+
+    fn calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+        if stage == 1 {
+            // PHASE 6. WITNESS. Compute the witnesses
+            let main_instances = self.create_main_instances(&pctx);
+            let (table_instances, secn_instances) = self.create_sec_instances(&pctx);
+
+            self.witness_main_instances(&pctx, main_instances);
+            self.witness_secn_instances(&pctx, &sctx, secn_instances);
+            self.witness_tables(&pctx, &sctx, table_instances);
+        }
+    }
+
+    fn debug(&self, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+        let (table_instances, secn_instances) = self.create_sec_instances(&pctx);
+
+        MainSM::debug(&pctx, &sctx);
+
+        let mut debug_airs: HashMap<(usize, usize), bool> = HashMap::new();
+
+        secn_instances.iter().for_each(|(global_idx, sec_instance)| {
+            let instance_info = pctx.dctx_get_instance_info(*global_idx);
+            if sec_instance.instance_type() == InstanceType::Instance
+                && !debug_airs.contains_key(&instance_info)
+            {
+                debug_airs.insert(instance_info, true);
+                sec_instance.debug(&pctx, &sctx);
+            }
+        });
+
+        table_instances.iter().for_each(|(global_idx, sec_instance)| {
+            let instance_info = pctx.dctx_get_instance_info(*global_idx);
+            if sec_instance.instance_type() == InstanceType::Table
+                && pctx.dctx_is_my_instance(*global_idx)
+                && !debug_airs.contains_key(&instance_info)
+            {
+                debug_airs.insert(instance_info, true);
+                sec_instance.debug(&pctx, &sctx);
+            }
+        });
     }
 }

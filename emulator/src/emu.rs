@@ -11,8 +11,8 @@ use riscv::RiscVRegisters;
 // use zisk_core::SRC_SP;
 use data_bus::DataBus;
 use zisk_core::{
-    InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
-    SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
+    InstContext, Mem, ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
+    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
 };
 
 struct MemBusHelpers {}
@@ -39,9 +39,9 @@ impl MemBusHelpers {
         [
             MEMORY_LOAD_OP,
             addr as u64,
-            MEM_STEP_BASE +
-                MAX_MEM_OPS_BY_MAIN_STEP * step +
-                MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64,
+            MEM_STEP_BASE
+                + MAX_MEM_OPS_BY_MAIN_STEP * step
+                + MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64,
             bytes as u64,
             mem_values[0],
             mem_values[1],
@@ -59,9 +59,9 @@ impl MemBusHelpers {
         [
             MEMORY_STORE_OP,
             addr as u64,
-            MEM_STEP_BASE +
-                MAX_MEM_OPS_BY_MAIN_STEP * step +
-                MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64,
+            MEM_STEP_BASE
+                + MAX_MEM_OPS_BY_MAIN_STEP * step
+                + MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64,
             bytes as u64,
             mem_values[0],
             mem_values[1],
@@ -1343,9 +1343,9 @@ impl<'a> Emu<'a> {
             }
 
             // Log emulation step, if requested
-            if options.print_step.is_some() &&
-                (options.print_step.unwrap() != 0) &&
-                ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
+            if options.print_step.is_some()
+                && (options.print_step.unwrap() != 0)
+                && ((self.ctx.inst_ctx.step % options.print_step.unwrap()) == 0)
             {
                 println!("step={}", self.ctx.inst_ctx.step);
             }
@@ -1520,9 +1520,9 @@ impl<'a> Emu<'a> {
             // Increment step counter
             self.ctx.inst_ctx.step += 1;
 
-            if self.ctx.inst_ctx.end ||
-                ((self.ctx.inst_ctx.step - self.ctx.last_callback_step) ==
-                    self.ctx.callback_steps)
+            if self.ctx.inst_ctx.end
+                || ((self.ctx.inst_ctx.step - self.ctx.last_callback_step)
+                    == self.ctx.callback_steps)
             {
                 // In run() we have checked the callback consistency with ctx.do_callback
                 let callback = callback.as_ref().unwrap();
@@ -1804,8 +1804,8 @@ impl<'a> Emu<'a> {
         let b = [inst_ctx.b & 0xFFFFFFFF, (inst_ctx.b >> 32) & 0xFFFFFFFF];
         let c = [inst_ctx.c & 0xFFFFFFFF, (inst_ctx.c >> 32) & 0xFFFFFFFF];
 
-        let addr1 = (inst.b_offset_imm0 as i64 +
-            if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
+        let addr1 = (inst.b_offset_imm0 as i64
+            + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
 
         let jmp_offset1 = if inst.jmp_offset1 >= 0 {
             F::from_canonical_u64(inst.jmp_offset1 as u64)
@@ -1882,11 +1882,6 @@ impl<'a> Emu<'a> {
             jmp_offset2,
             m32: F::from_bool(inst.m32),
             addr1: F::from_canonical_u64(addr1),
-            __debug_operation_bus_enabled: F::from_bool(
-                inst.op_type == ZiskOperationType::Arith ||
-                    inst.op_type == ZiskOperationType::Binary ||
-                    inst.op_type == ZiskOperationType::BinaryE,
-            ),
         }
     }
 
@@ -1917,12 +1912,19 @@ impl<'a> Emu<'a> {
     pub fn get_output_32(&self) -> Vec<u32> {
         let n = self.ctx.inst_ctx.mem.read(OUTPUT_ADDR, 4);
         let mut addr = OUTPUT_ADDR + 4;
-
         let mut output: Vec<u32> = Vec::with_capacity(n as usize);
         for _i in 0..n {
             output.push(self.ctx.inst_ctx.mem.read(addr, 4) as u32);
             addr += 4;
         }
+
+        // let mut addr = OUTPUT_ADDR;
+        // let mut output: Vec<u32> = Vec::with_capacity(32);
+        // for _i in 0..32 {
+        //     output.push(self.ctx.inst_ctx.mem.read(addr, 4) as u32);
+        //     addr += 4;
+        // }
+
         output
     }
 
