@@ -129,7 +129,7 @@ impl Metrics for MemCounters {
                 (
                     2,
                     MemHelpers::get_write_values(
-                        addr_w,
+                        addr,
                         bytes,
                         MemBusData::get_value(data),
                         MemBusData::get_mem_values(data),
