@@ -68,7 +68,7 @@ impl MemPlanner {
                     plan.air_id,
                     plan.segment_id.unwrap_or(0),
                     plan.check_point,
-                    MemHelpers::get_addr(prev_addr),
+                    MemHelpers::get_addr(meta.prev_addr),
                     meta.prev_step,
                     MemHelpers::get_addr(meta.last_addr),
                     meta.last_step,
