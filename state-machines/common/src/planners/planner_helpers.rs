@@ -47,25 +47,6 @@ impl InstCount {
 /// # Returns
 /// A nested list of tuples containing the checkpoint, instruction count, and offset for each
 /// checkpoint.
-/// # Example
-/// ```rust
-/// use plan::plan;
-/// use plan::InstCount;
-///
-/// let counts = vec![InstCount::new(0, 500), InstCount::new(1, 700), InstCount::new(2, 300)];
-/// let size = 300;
-/// let checkpoints = plan(&counts, size);
-///
-/// assert_eq!(
-///    checkpoints,
-///   vec![
-///      (CheckPoint::Single(0), CollectSkipper::new(0)),
-///      (CheckPoint::Single(0), CollectSkipper::new(300)),
-///      (CheckPoint::Single(1), CollectSkipper::new(100)),
-///      (CheckPoint::Single(1), CollectSkipper::new(400)),
-///      (CheckPoint::Single(2), CollectSkipper::new(0)),
-///   ]
-/// ```
 #[allow(clippy::type_complexity)]
 pub fn plan(
     counts: &[InstCount],
@@ -113,193 +94,86 @@ pub fn plan(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
-    /// Tests the basic functionality of the `plan` function with multiple chunks.
     #[test]
-    fn test_plan_basic() {
-        let counts = vec![InstCount::new(0, 500), InstCount::new(1, 700), InstCount::new(2, 300)];
-        let size = 300;
-        let checkpoints = plan(&counts, size);
-
-        let transformed_checkpoints: Vec<(CheckPoint, CollectSkipper)> = checkpoints
-            .into_iter()
-            .map(|(checkpoint, map)| {
-                let (_, (_, skipper)) = map.iter().next().expect("Expected at least one entry");
-                (checkpoint, *skipper)
-            })
-            .collect();
-
-        assert_eq!(
-            transformed_checkpoints,
-            vec![
-                (CheckPoint::Single(0), CollectSkipper::new(0)),
-                (CheckPoint::Single(0), CollectSkipper::new(300)),
-                (CheckPoint::Single(1), CollectSkipper::new(100)),
-                (CheckPoint::Single(1), CollectSkipper::new(400)),
-                (CheckPoint::Single(2), CollectSkipper::new(0)),
-            ]
-        );
+    fn test_empty_counts() {
+        let result = plan(&[], 10);
+        assert!(result.is_empty());
     }
 
-    /// Tests the `plan` function with a single chunk containing multiple intervals.
     #[test]
-    fn test_plan_single_chunk() {
-        let counts = vec![InstCount { chunk_id: 0, inst_count: 1000 }];
-        let size = 250;
-        let checkpoints = plan(&counts, size);
-
-        let transformed_checkpoints: Vec<(CheckPoint, CollectSkipper)> = checkpoints
-            .into_iter()
-            .map(|(checkpoint, map)| {
-                let (_, (_, skipper)) = map.iter().next().expect("Expected at least one entry");
-                (checkpoint, *skipper)
-            })
-            .collect();
-
-        assert_eq!(
-            transformed_checkpoints,
-            vec![
-                (CheckPoint::Single(0), CollectSkipper::new(0)),
-                (CheckPoint::Single(0), CollectSkipper::new(250)),
-                (CheckPoint::Single(0), CollectSkipper::new(500)),
-                (CheckPoint::Single(0), CollectSkipper::new(750)),
-            ]
-        );
+    fn test_size_zero() {
+        let counts = [InstCount::new(0, 5)];
+        let result = plan(&counts, 0);
+        assert!(result.is_empty());
     }
 
-    /// Tests the `plan` function with small chunks where intervals span across chunks.
     #[test]
-    fn test_plan_small_chunks() {
-        let counts = vec![InstCount::new(0, 100), InstCount::new(1, 150)];
-        let size = 200;
-        let checkpoints = plan(&counts, size);
-
-        let transformed_checkpoints: Vec<(CheckPoint, CollectSkipper)> = checkpoints
-            .into_iter()
-            .map(|(checkpoint, map)| {
-                let (_, (_, skipper)) = map.iter().next().expect("Expected at least one entry");
-                (checkpoint, *skipper)
-            })
-            .collect();
-
-        assert_eq!(
-            transformed_checkpoints,
-            vec![
-                (CheckPoint::Single(0), CollectSkipper::new(0)),
-                (CheckPoint::Single(1), CollectSkipper::new(100)),
-            ]
-        );
+    fn test_single_count_fits_exactly() {
+        let counts = [InstCount::new(0, 10)];
+        let size = 10;
+        let expected = vec![(
+            CheckPoint::Multiple(vec![0]),
+            [(0, (10, CollectSkipper::new(0)))].into_iter().collect::<HashMap<_, _>>(),
+        )];
+        let result = plan(&counts, size);
+        assert_eq!(result, expected);
     }
 
-    /// Tests the `plan` function with chunks whose sizes exactly match the interval size.
     #[test]
-    fn test_plan_no_remainder() {
-        let counts = vec![
-            InstCount { chunk_id: 0, inst_count: 300 },
-            InstCount { chunk_id: 1, inst_count: 300 },
+    fn test_single_count_larger_than_size() {
+        let counts = [InstCount::new(0, 25)];
+        let size = 10;
+        let expected = vec![
+            (
+                CheckPoint::Multiple(vec![0]),
+                [(0, (10, CollectSkipper::new(0)))].into_iter().collect::<HashMap<_, _>>(),
+            ),
+            (
+                CheckPoint::Multiple(vec![0]),
+                [(0, (10, CollectSkipper::new(10)))].into_iter().collect::<HashMap<_, _>>(),
+            ),
+            (
+                CheckPoint::Multiple(vec![0]),
+                [(0, (5, CollectSkipper::new(20)))].into_iter().collect::<HashMap<_, _>>(),
+            ),
         ];
-        let size = 300;
-        let checkpoints = plan(&counts, size);
+        let result = plan(&counts, size);
+        assert_eq!(result, expected);
+    }
 
-        let transformed_checkpoints: Vec<(CheckPoint, CollectSkipper)> = checkpoints
-            .into_iter()
-            .map(|(checkpoint, map)| {
-                let (_, (_, skipper)) = map.iter().next().expect("Expected at least one entry");
-                (checkpoint, *skipper)
-            })
-            .collect();
+    #[test]
+    fn test_multiple_chunks() {
+        let counts = [InstCount::new(0, 15), InstCount::new(1, 5)];
+        let size = 10;
+        let mut expected = vec![
+            (
+                CheckPoint::Multiple(vec![0]),
+                [(0, (10, CollectSkipper::new(0)))].into_iter().collect::<HashMap<_, _>>(),
+            ),
+            (
+                CheckPoint::Multiple(vec![0, 1]),
+                [(0, (5, CollectSkipper::new(10))), (1, (5, CollectSkipper::new(0)))]
+                    .into_iter()
+                    .collect::<HashMap<_, _>>(),
+            ),
+        ];
 
-        assert_eq!(
-            transformed_checkpoints,
-            vec![
-                (CheckPoint::Single(0), CollectSkipper::new(0)),
-                (CheckPoint::Single(1), CollectSkipper::new(0)),
-            ]
-        );
+        let mut result = plan(&counts, size);
+
+        // Sort `Multiple` checkpoints to ensure consistent ordering before comparing.
+        for (checkpoint, _) in &mut result {
+            if let CheckPoint::Multiple(ref mut ids) = checkpoint {
+                ids.sort();
+            }
+        }
+        for (checkpoint, _) in &mut expected {
+            if let CheckPoint::Multiple(ref mut ids) = checkpoint {
+                ids.sort();
+            }
+        }
+
+        assert_eq!(result, expected);
     }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//
-//     #[derive(Debug, Clone, PartialEq)]
-//     pub struct CheckPoint2(pub usize);
-//
-//     #[test]
-//     fn test_plan_2_multiple_chunks() {
-//         let counts = vec![InstCount::new(0, 500), InstCount::new(1, 200), InstCount::new(2,
-// 300)];         let size = 400;
-//         let nested_checkpoints = plan_2(&counts, size);
-//         assert_eq!(
-//             nested_checkpoints,
-//             vec![
-//                 vec![
-//                     (CheckPoint2(0), 400, CollectSkipper::new(0)),
-//                 ],
-//                 vec![
-//                     (CheckPoint2(0), 100, CollectSkipper::new(400)),
-//                     (CheckPoint2(1), 200, CollectSkipper::new(0)),
-//                     (CheckPoint2(2), 100, CollectSkipper::new(0)),
-//                 ],
-//                 vec![
-//                     (CheckPoint2(2), 200, CollectSkipper::new(100)),
-//                 ],
-//             ]
-//         );
-//     }
-
-//     #[test]
-//     fn test_plan_2_single_chunk() {
-//         let counts = vec![InstCount { chunk_id: 0, inst_count: 1000 }];
-//         let size = 400;
-//         let nested_checkpoints = plan_2(&counts, size);
-//         assert_eq!(
-//             nested_checkpoints,
-//             vec![
-//                 vec![
-//                     (CheckPoint2(0), 400, CollectSkipper::new(0)),
-//                 ],
-//                 vec![
-//                     (CheckPoint2(0), 400, CollectSkipper::new(400)),
-//                 ],
-//                 vec![
-//                     (CheckPoint2(0), 200, CollectSkipper::new(800)),
-//                 ],
-//             ]
-//         );
-//     }
-
-//         #[test]
-//     fn test_plan_2_multiple_chunk() {
-//         let counts = vec![InstCount { chunk_id: 0, inst_count: 100 }, InstCount { chunk_id: 0,
-// inst_count: 200 }, InstCount { chunk_id: 0, inst_count: 90 }];         let size = 400;
-//         let nested_checkpoints = plan_2(&counts, size);
-//         assert_eq!(
-//             nested_checkpoints,
-//             vec![
-//                 vec![
-//                     (CheckPoint2(0), 100, CollectSkipper::new(0)),
-//                     (CheckPoint2(1), 200, CollectSkipper::new(0)),
-//                     (CheckPoint2(2), 90, CollectSkipper::new(0)),
-//                 ],
-//             ]
-//         );
-//     }
-
-//     #[test]
-//     fn test_plan_2_empty_counts() {
-//         let counts = vec![];
-//         let size = 400;
-//         let nested_checkpoints = plan_2(&counts, size);
-//         assert!(nested_checkpoints.is_empty());
-//     }
-
-//     #[test]
-//     fn test_plan_2_size_zero() {
-//         let counts = vec![InstCount::new(0, 500)];
-//         let size = 0;
-//         let nested_checkpoints = plan_2(&counts, size);
-//         assert!(nested_checkpoints.is_empty());
-//     }
-// }
