@@ -51,7 +51,6 @@ impl<F: PrimeField> Planner for StdPlanner<F> {
                     None,
                     InstanceType::Table,
                     CheckPoint::None,
-                    None,
                     Some(Box::new(rc_type)),
                 )
             })

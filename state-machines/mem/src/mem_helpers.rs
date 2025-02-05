@@ -1,6 +1,6 @@
 use crate::{
-    MemAlignResponse, MAX_MEM_OPS_BY_MAIN_STEP, MAX_MEM_OPS_BY_STEP_OFFSET, MEMORY_MAX_DIFF,
-    MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS, MEM_STEP_BASE, RAM_W_ADDR_INIT,
+    MemAlignResponse, MAX_MEM_OPS_BY_MAIN_STEP, MAX_MEM_OPS_BY_STEP_OFFSET, MEMORY_STORE_OP,
+    MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS, MEM_STEP_BASE, RAM_W_ADDR_INIT, STEP_MEMORY_MAX_DIFF,
 };
 use std::fmt;
 use zisk_core::{ZiskRequiredMemory, RAM_ADDR};
@@ -78,6 +78,9 @@ impl MemHelpers {
     pub fn get_addr_w(addr: u32) -> u32 {
         addr >> MEM_BYTES_BITS
     }
+    pub fn get_addr(addr_w: u32) -> u32 {
+        addr_w << MEM_BYTES_BITS
+    }
     #[inline(always)]
     pub fn get_read_step(step: u64) -> u64 {
         step
@@ -105,8 +108,8 @@ impl MemHelpers {
     #[inline(always)]
     pub fn get_extra_internal_reads(previous_step: u64, step: u64) -> u64 {
         let diff = step - previous_step;
-        if diff > MEMORY_MAX_DIFF {
-            (diff - 1) / MEMORY_MAX_DIFF
+        if diff > STEP_MEMORY_MAX_DIFF {
+            (diff - 1) / STEP_MEMORY_MAX_DIFF
         } else {
             0
         }
