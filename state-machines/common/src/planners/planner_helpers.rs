@@ -2,7 +2,9 @@
 //! distributed across multiple chunks. It defines the `InstCount` structure and the `plan`
 //! function to facilitate the creation of checkpoints at specified intervals.
 
-use crate::{CheckPoint, CollectSkipper};
+use std::collections::HashMap;
+
+use crate::{CheckPoint, ChunkId, CollectSkipper};
 
 /// Represents the instruction count for a specific chunk.
 ///
@@ -31,61 +33,59 @@ impl InstCount {
     }
 }
 
-/// Generates a list of checkpoints from instruction counts across multiple chunks.
+/// Generates a nested list of checkpoints from instruction counts across multiple chunks.
 ///
-/// This function calculates checkpoints based on a specified interval (`size`) of instructions
-/// and generates a `CheckPoint` for each interval.
+/// Each inner vector corresponds to a scope of the plan and contains tuples of:
+/// - A `CheckPoint` representing the checkpoint's location.
+/// - The number of instructions for the chunk.
+/// - A `CollectSkipper` containing the associated offset for the checkpoint.
 ///
 /// # Arguments
 /// * `counts` - A slice of `InstCount` representing instruction counts for each chunk.
 /// * `size` - The interval (number of instructions) at which checkpoints are generated.
 ///
 /// # Returns
-/// A vector of tuples, where each tuple contains:
-/// - A `CheckPoint` representing the checkpoint's location.
-/// - A `Box<CollectSkipper>` containing the associated offset for the checkpoint.
-///
-/// # Example
-/// ```
-/// use sm_common::{plan, CheckPoint, CollectSkipper, InstCount};
-///
-/// let counts = vec![InstCount::new(0, 500), InstCount::new(1, 700), InstCount::new(2, 300)];
-/// let size = 300;
-/// let checkpoints = plan(&counts, size);
-/// assert_eq!(
-///     checkpoints,
-///     vec![
-///         (CheckPoint::Single(0), Box::new(CollectSkipper::new(0))),
-///         (CheckPoint::Single(0), Box::new(CollectSkipper::new(300))),
-///         (CheckPoint::Single(1), Box::new(CollectSkipper::new(100))),
-///         (CheckPoint::Single(1), Box::new(CollectSkipper::new(400))),
-///         (CheckPoint::Single(2), Box::new(CollectSkipper::new(0))),
-///     ]
-/// );
-/// ```
-pub fn plan(counts: &[InstCount], size: u64) -> Vec<(CheckPoint, Box<CollectSkipper>)> {
-    if counts.is_empty() {
+/// A nested list of tuples containing the checkpoint, instruction count, and offset for each
+/// checkpoint.
+#[allow(clippy::type_complexity)]
+pub fn plan(
+    counts: &[InstCount],
+    size: u64,
+) -> Vec<(CheckPoint, HashMap<ChunkId, (u64, CollectSkipper)>)> {
+    if counts.is_empty() || size == 0 {
         return vec![];
     }
 
-    let mut checkpoints = vec![(CheckPoint::Single(0), Box::new(CollectSkipper::new(0)))];
-    let mut offset = 0i64;
-    let size = size as i64;
+    let mut checkpoints = Vec::new();
+    let mut current_scope: HashMap<ChunkId, (u64, CollectSkipper)> = HashMap::new();
+    let mut remaining_size = size; // Remaining size for the current scope.
 
     for (current_chunk, count) in counts.iter().enumerate() {
-        let inst_count = count.inst_count as i64;
+        let mut inst_count = count.inst_count;
+        let mut cumulative_offset = 0u64; // Reset cumulative offset for each chunk.
 
-        // Add checkpoints within the current chunk
-        while offset + size < inst_count {
-            offset += size;
-            checkpoints.push((
-                CheckPoint::Single(current_chunk),
-                Box::new(CollectSkipper::new(offset as u64)),
-            ));
+        while inst_count > 0 {
+            let checkpoint_size = remaining_size.min(inst_count);
+
+            current_scope
+                .insert(current_chunk, (checkpoint_size, CollectSkipper::new(cumulative_offset)));
+
+            cumulative_offset += checkpoint_size;
+            inst_count -= checkpoint_size;
+            remaining_size -= checkpoint_size;
+
+            if remaining_size == 0 {
+                let keys = current_scope.keys().cloned().collect::<Vec<_>>();
+                checkpoints.push((CheckPoint::Multiple(keys), std::mem::take(&mut current_scope)));
+                remaining_size = size;
+            }
         }
+    }
 
-        // Carry over remaining instructions to the next chunk
-        offset -= inst_count;
+    // Push any remaining checkpoints into the result.
+    if !current_scope.is_empty() {
+        let keys = current_scope.keys().cloned().collect::<Vec<_>>();
+        checkpoints.push((CheckPoint::Multiple(keys), current_scope));
     }
 
     checkpoints
@@ -94,72 +94,86 @@ pub fn plan(counts: &[InstCount], size: u64) -> Vec<(CheckPoint, Box<CollectSkip
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
-    /// Tests the basic functionality of the `plan` function with multiple chunks.
     #[test]
-    fn test_plan_basic() {
-        let counts = vec![InstCount::new(0, 500), InstCount::new(1, 700), InstCount::new(2, 300)];
-        let size = 300;
-        let checkpoints = plan(&counts, size);
-        assert_eq!(
-            checkpoints,
-            vec![
-                (CheckPoint::Single(0), Box::new(CollectSkipper::new(0))),
-                (CheckPoint::Single(0), Box::new(CollectSkipper::new(300))),
-                (CheckPoint::Single(1), Box::new(CollectSkipper::new(100))),
-                (CheckPoint::Single(1), Box::new(CollectSkipper::new(400))),
-                (CheckPoint::Single(2), Box::new(CollectSkipper::new(0))),
-            ]
-        );
+    fn test_empty_counts() {
+        let result = plan(&[], 10);
+        assert!(result.is_empty());
     }
 
-    /// Tests the `plan` function with a single chunk containing multiple intervals.
     #[test]
-    fn test_plan_single_chunk() {
-        let counts = vec![InstCount { chunk_id: 0, inst_count: 1000 }];
-        let size = 250;
-        let checkpoints = plan(&counts, size);
-        assert_eq!(
-            checkpoints,
-            vec![
-                (CheckPoint::Single(0), Box::new(CollectSkipper::new(0))),
-                (CheckPoint::Single(0), Box::new(CollectSkipper::new(250))),
-                (CheckPoint::Single(0), Box::new(CollectSkipper::new(500))),
-                (CheckPoint::Single(0), Box::new(CollectSkipper::new(750))),
-            ]
-        );
+    fn test_size_zero() {
+        let counts = [InstCount::new(0, 5)];
+        let result = plan(&counts, 0);
+        assert!(result.is_empty());
     }
 
-    /// Tests the `plan` function with small chunks where intervals span across chunks.
     #[test]
-    fn test_plan_small_chunks() {
-        let counts = vec![InstCount::new(0, 100), InstCount::new(1, 150)];
-        let size = 200;
-        let checkpoints = plan(&counts, size);
-        assert_eq!(
-            checkpoints,
-            vec![
-                (CheckPoint::Single(0), Box::new(CollectSkipper::new(0))),
-                (CheckPoint::Single(1), Box::new(CollectSkipper::new(100))),
-            ]
-        );
+    fn test_single_count_fits_exactly() {
+        let counts = [InstCount::new(0, 10)];
+        let size = 10;
+        let expected = vec![(
+            CheckPoint::Multiple(vec![0]),
+            [(0, (10, CollectSkipper::new(0)))].into_iter().collect::<HashMap<_, _>>(),
+        )];
+        let result = plan(&counts, size);
+        assert_eq!(result, expected);
     }
 
-    /// Tests the `plan` function with chunks whose sizes exactly match the interval size.
     #[test]
-    fn test_plan_no_remainder() {
-        let counts = vec![
-            InstCount { chunk_id: 0, inst_count: 300 },
-            InstCount { chunk_id: 1, inst_count: 300 },
+    fn test_single_count_larger_than_size() {
+        let counts = [InstCount::new(0, 25)];
+        let size = 10;
+        let expected = vec![
+            (
+                CheckPoint::Multiple(vec![0]),
+                [(0, (10, CollectSkipper::new(0)))].into_iter().collect::<HashMap<_, _>>(),
+            ),
+            (
+                CheckPoint::Multiple(vec![0]),
+                [(0, (10, CollectSkipper::new(10)))].into_iter().collect::<HashMap<_, _>>(),
+            ),
+            (
+                CheckPoint::Multiple(vec![0]),
+                [(0, (5, CollectSkipper::new(20)))].into_iter().collect::<HashMap<_, _>>(),
+            ),
         ];
-        let size = 300;
-        let checkpoints = plan(&counts, size);
-        assert_eq!(
-            checkpoints,
-            vec![
-                (CheckPoint::Single(0), Box::new(CollectSkipper::new(0))),
-                (CheckPoint::Single(1), Box::new(CollectSkipper::new(0))),
-            ]
-        );
+        let result = plan(&counts, size);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_multiple_chunks() {
+        let counts = [InstCount::new(0, 15), InstCount::new(1, 5)];
+        let size = 10;
+        let mut expected = vec![
+            (
+                CheckPoint::Multiple(vec![0]),
+                [(0, (10, CollectSkipper::new(0)))].into_iter().collect::<HashMap<_, _>>(),
+            ),
+            (
+                CheckPoint::Multiple(vec![0, 1]),
+                [(0, (5, CollectSkipper::new(10))), (1, (5, CollectSkipper::new(0)))]
+                    .into_iter()
+                    .collect::<HashMap<_, _>>(),
+            ),
+        ];
+
+        let mut result = plan(&counts, size);
+
+        // Sort `Multiple` checkpoints to ensure consistent ordering before comparing.
+        for (checkpoint, _) in &mut result {
+            if let CheckPoint::Multiple(ref mut ids) = checkpoint {
+                ids.sort();
+            }
+        }
+        for (checkpoint, _) in &mut expected {
+            if let CheckPoint::Multiple(ref mut ids) = checkpoint {
+                ids.sort();
+            }
+        }
+
+        assert_eq!(result, expected);
     }
 }

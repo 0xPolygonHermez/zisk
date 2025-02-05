@@ -9,7 +9,6 @@ use data_bus::{OperationBusData, OperationData};
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
-use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryTableTrace, BinaryTrace, BinaryTraceRow};
@@ -149,7 +148,6 @@ impl BinaryBasicSM {
         let opcode = OperationBusData::get_op(input);
         let a = OperationBusData::get_a(input);
         let b = OperationBusData::get_b(input);
-        let step = OperationBusData::get_step(input);
 
         let (c, _) = Self::execute(opcode, a, b);
 
@@ -178,9 +176,6 @@ impl BinaryBasicSM {
         for (i, value) in c_bytes.iter().enumerate() {
             row.free_in_c[i] = F::from_canonical_u8(*value);
         }
-
-        // Set main SM step
-        row.debug_main_step = F::from_canonical_u64(step);
 
         // Set use last carry and carry[], based on operation
         let mut cout: u64;
@@ -887,30 +882,36 @@ impl BinaryBasicSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<F: PrimeField>(&self, inputs: &[OperationData<u64>]) -> AirInstance<F> {
+    pub fn compute_witness<F: PrimeField>(
+        &self,
+        inputs: &[Vec<OperationData<u64>>],
+    ) -> AirInstance<F> {
         let mut binary_trace = BinaryTrace::new();
 
-        timer_start_trace!(BINARY_TRACE);
         let num_rows = binary_trace.num_rows();
-        assert!(inputs.len() <= num_rows);
+
+        let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
+        assert!(total_inputs <= num_rows);
 
         info!(
             "{}: ··· Creating Binary instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
-            inputs.len(),
+            total_inputs,
             num_rows,
-            inputs.len() as f64 / num_rows as f64 * 100.0
+            total_inputs as f64 / num_rows as f64 * 100.0
         );
 
         let mut multiplicity_table = vec![0u64; BinaryTableTrace::<F>::NUM_ROWS];
 
-        for (i, operation) in inputs.iter().enumerate() {
-            let row = Self::process_slice(operation, &mut multiplicity_table);
-            binary_trace[i] = row;
+        let mut idx = 0;
+        for inner_inputs in inputs {
+            for input in inner_inputs {
+                let row = Self::process_slice(input, &mut multiplicity_table);
+                binary_trace[idx] = row;
+                idx += 1;
+            }
         }
-        timer_stop_and_log_trace!(BINARY_TRACE);
 
-        timer_start_trace!(BINARY_PADDING);
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
         let padding_row = BinaryTraceRow::<F> {
@@ -919,11 +920,9 @@ impl BinaryBasicSM {
             ..Default::default()
         };
 
-        for i in inputs.len()..num_rows {
-            binary_trace[i] = padding_row;
-        }
+        binary_trace.buffer[idx..num_rows].fill(padding_row);
 
-        let padding_size = num_rows - inputs.len();
+        let padding_size = num_rows - idx;
         for last in 0..2 {
             let multiplicity = (7 - 6 * last as u64) * padding_size as u64;
             let row = BinaryBasicTableSM::calculate_table_row(
@@ -936,11 +935,8 @@ impl BinaryBasicSM {
             );
             multiplicity_table[row as usize] += multiplicity;
         }
-        timer_stop_and_log_trace!(BINARY_PADDING);
 
-        timer_start_trace!(BINARY_TABLE);
         self.binary_basic_table_sm.process_slice(&multiplicity_table);
-        timer_stop_and_log_trace!(BINARY_TABLE);
 
         AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))
     }

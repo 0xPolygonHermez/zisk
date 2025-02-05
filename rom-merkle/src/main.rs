@@ -81,7 +81,7 @@ fn main() {
     }
 
     let global_info = GlobalInfo::new(proving_key_path);
-    let sctx = Arc::new(SetupCtx::new(&global_info, &ProofType::Basic, false));
+    let sctx = Arc::new(SetupCtx::<Goldilocks>::new(&global_info, &ProofType::Basic, false));
 
     let mut custom_rom_trace: RomRomTrace<Goldilocks> = RomRomTrace::new();
     let setup = sctx.get_setup(custom_rom_trace.airgroup_id(), custom_rom_trace.air_id);

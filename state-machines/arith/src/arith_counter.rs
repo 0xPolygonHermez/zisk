@@ -115,11 +115,9 @@ impl BusDevice<u64> for ArithCounter {
     /// * `data` - The data received from the bus.
     ///
     /// # Returns
-    /// A tuple where:
-    /// - The first element indicates whether processing should continue.
-    /// - The second element contains derived inputs to be sent back to the bus.
+    /// A vector of derived inputs to be sent back to the bus.
     #[inline]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         self.measure(bus_id, data);
 
         let input: OperationData<u64> =
@@ -127,7 +125,7 @@ impl BusDevice<u64> for ArithCounter {
         let op_type = OperationBusData::get_op_type(&input);
 
         if op_type as u32 != ZiskOperationType::Arith as u32 {
-            return (false, vec![]);
+            return None;
         }
 
         let inputs = ArithFullSM::generate_inputs(&input)
@@ -135,7 +133,7 @@ impl BusDevice<u64> for ArithCounter {
             .map(|x| (*bus_id, x))
             .collect::<Vec<_>>();
 
-        (false, inputs)
+        Some(inputs)
     }
 
     /// Returns the bus IDs associated with this counter.
@@ -144,5 +142,10 @@ impl BusDevice<u64> for ArithCounter {
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
         vec![self.bus_id]
+    }
+
+    /// Provides a dynamic reference for downcasting purposes.
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
     }
 }

@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
 use crate::{MemHelpers, MemInput, MemPreviousSegment, MEM_BYTES};
-use proofman_common::AirInstance;
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use zisk_core::ZiskRequiredMemory;
 
 impl MemInput {
@@ -24,7 +26,7 @@ impl MemInput {
     }
 }
 
-pub trait MemModule<F>: Send + Sync {
+pub trait MemModule<F: Clone>: Send + Sync {
     fn compute_witness(
         &self,
         mem_ops: &[MemInput],
@@ -32,5 +34,7 @@ pub trait MemModule<F>: Send + Sync {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
     ) -> AirInstance<F>;
+
     fn get_addr_ranges(&self) -> Vec<(u32, u32)>;
+    fn debug(&self, _pctx: Arc<ProofCtx<F>>, _sctx: Arc<SetupCtx<F>>) {}
 }

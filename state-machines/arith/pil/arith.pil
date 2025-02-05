@@ -35,7 +35,6 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     col witness na_fb;
     col witness nb_fa;
 
-    col witness debug_main_step; // only for debug
 /*
     col witness secondary;       // op_index: 0 => first result, 1 => second result;
     secondary * (secondary - 1) === 0;
@@ -266,8 +265,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
 
     col witness multiplicity;
 
-    lookup_proves(operation_bus_id, [debug_main_step,
-                                     op,
+    lookup_proves(operation_bus_id, [op,
                                      bus_a0, bus_a1,
                                      bus_b0, bus_b1,
                                      bus_res0, bus_res1,
@@ -275,11 +273,10 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
 
     // Check that remainder (d) is lower than divisor (b) when division is performed
     // Specifically, we ensure that 0 <= |d| < |b|
-    lookup_assumes(operation_bus_id, [debug_main_step,
-                                      (1 - nr) * (1 - nb) * LTU_OP + nr * (1 - nb) * LT_ABS_NP_OP + (1 - nr) * nb * LT_ABS_PN_OP + nr * nb * GT_OP,
+    lookup_assumes(operation_bus_id, [(1 - nr) * (1 - nb) * LTU_OP + nr * (1 - nb) * LT_ABS_NP_OP + (1 - nr) * nb * LT_ABS_PN_OP + nr * nb * GT_OP,
                                       (d[0] + CHUNK_SIZE * d[1]), (d[2] + CHUNK_SIZE * d[3]) + m32 * nr * 0xFFFFFFFF, // remainder
                                       (b[0] + CHUNK_SIZE * b[1]), (b[2] + CHUNK_SIZE * b[3]) + m32 * nb * 0xFFFFFFFF, // divisor
-                                      1, 0, 
+                                      1, 0,
                                       1], sel: div * (1 - div_by_zero));
 
     for (int index = 0; index < length(carry); ++index) {

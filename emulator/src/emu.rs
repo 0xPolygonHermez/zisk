@@ -11,8 +11,8 @@ use riscv::RiscVRegisters;
 // use zisk_core::SRC_SP;
 use data_bus::DataBus;
 use zisk_core::{
-    InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
-    SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
+    InstContext, Mem, ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
+    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
 };
 
 struct MemBusHelpers {}
@@ -1700,38 +1700,27 @@ impl<'a> Emu<'a> {
         vec_traces: &[EmuTrace],
         chunk_id: usize,
         data_bus: &mut DataBus<u64, BD>,
-        is_multiple: bool,
     ) {
-        let emu_trace_start = &vec_traces[chunk_id].start_state;
         // Set initial state
+        let emu_trace_start = &vec_traces[chunk_id].start_state;
         self.ctx.inst_ctx.pc = emu_trace_start.pc;
         self.ctx.inst_ctx.sp = emu_trace_start.sp;
         self.ctx.inst_ctx.step = emu_trace_start.step;
         self.ctx.inst_ctx.c = emu_trace_start.c;
         self.ctx.inst_ctx.regs = emu_trace_start.regs;
 
-        let mut current_chunk = chunk_id;
         let mut current_step_idx = 0;
-
-        let mut emu_trace_steps = &vec_traces[current_chunk].steps;
         let mut mem_reads_index: usize = 0;
         loop {
-            if self.step_emu_traces(emu_trace_steps, &mut mem_reads_index, data_bus) {
-                break;
-            }
+            self.step_emu_traces(&vec_traces[chunk_id].steps, &mut mem_reads_index, data_bus);
+
             if self.ctx.inst_ctx.end {
                 break;
             }
 
             current_step_idx += 1;
-            if current_step_idx == vec_traces[current_chunk].steps.steps {
-                if is_multiple {
-                    break;
-                }
-                current_chunk += 1;
-                current_step_idx = 0;
-                emu_trace_steps = &vec_traces[current_chunk].steps;
-                mem_reads_index = 0;
+            if current_step_idx == vec_traces[chunk_id].steps.steps {
+                break;
             }
         }
     }
@@ -1743,7 +1732,7 @@ impl<'a> Emu<'a> {
         trace_step: &EmuTraceSteps,
         mem_reads_index: &mut usize,
         data_bus: &mut DataBus<u64, BD>,
-    ) -> bool {
+    ) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
         self.source_a_mem_reads_consume_databus(
             instruction,
@@ -1765,9 +1754,7 @@ impl<'a> Emu<'a> {
             data_bus,
         );
         let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
-        if data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload.to_vec()) {
-            return true;
-        }
+        data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload.to_vec());
 
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
@@ -1775,9 +1762,6 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.end = instruction.end;
 
         self.ctx.inst_ctx.step += 1;
-
-        // finished
-        false
     }
 
     /// Performs one single step of the emulation
@@ -1898,11 +1882,6 @@ impl<'a> Emu<'a> {
             jmp_offset2,
             m32: F::from_bool(inst.m32),
             addr1: F::from_canonical_u64(addr1),
-            __debug_operation_bus_enabled: F::from_bool(
-                inst.op_type == ZiskOperationType::Arith
-                    || inst.op_type == ZiskOperationType::Binary
-                    || inst.op_type == ZiskOperationType::BinaryE,
-            ),
         }
     }
 
@@ -1933,12 +1912,19 @@ impl<'a> Emu<'a> {
     pub fn get_output_32(&self) -> Vec<u32> {
         let n = self.ctx.inst_ctx.mem.read(OUTPUT_ADDR, 4);
         let mut addr = OUTPUT_ADDR + 4;
-
         let mut output: Vec<u32> = Vec::with_capacity(n as usize);
         for _i in 0..n {
             output.push(self.ctx.inst_ctx.mem.read(addr, 4) as u32);
             addr += 4;
         }
+
+        // let mut addr = OUTPUT_ADDR;
+        // let mut output: Vec<u32> = Vec::with_capacity(32);
+        // for _i in 0..32 {
+        //     output.push(self.ctx.inst_ctx.mem.read(addr, 4) as u32);
+        //     addr += 4;
+        // }
+
         output
     }
 

@@ -2,10 +2,11 @@
 //! in the context of proof systems. It includes traits and macros for defining instances
 //! and integrating them with state machines and proofs.
 
+use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, ProofCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 
-use crate::CheckPoint;
+use crate::{BusDeviceWrapper, CheckPoint};
 
 /// Represents the type of an instance, either a standalone instance or a table.
 #[derive(Debug, PartialEq)]
@@ -25,10 +26,18 @@ pub trait Instance<F: PrimeField>: Send {
     ///
     /// # Arguments
     /// * `pctx` - The proof context containing necessary information for computation.
+    /// * `collectors` - A vector of input collectors to process and collect data for witness.
     ///
     /// # Returns
     /// An optional `AirInstance` object representing the computed witness.
-    fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>>;
+    fn compute_witness(
+        &mut self,
+        _pctx: &ProofCtx<F>,
+        _sctx: &SetupCtx<F>,
+        _collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+    ) -> Option<AirInstance<F>> {
+        None
+    }
 
     /// Retrieves the checkpoint associated with the instance.
     ///
@@ -41,6 +50,18 @@ pub trait Instance<F: PrimeField>: Send {
     /// # Returns
     /// An `InstanceType` indicating whether the instance is standalone or table-based.
     fn instance_type(&self) -> InstanceType;
+
+    /// Builds an input collector for the instance.
+    ///
+    /// # Arguments
+    /// * `chunk_id` - The chunk ID associated with the input collector.
+    ///
+    /// # Returns
+    /// An `Option` containing the input collector for the instance.
+    fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+        None
+    }
+    fn debug(&self, _pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {}
 }
 
 /// Macro to define a table-backed instance.
@@ -59,9 +80,9 @@ macro_rules! table_instance {
 
         use p3_field::PrimeField;
 
-        use data_bus::BusId;
-        use proofman_common::{AirInstance, FromTrace, ProofCtx};
-        use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
+        use data_bus::{BusId, PayloadType};
+        use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
+        use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
         use zisk_pil::$Trace;
 
         use rayon::prelude::*;
@@ -90,7 +111,12 @@ macro_rules! table_instance {
         }
 
         impl<F: PrimeField> Instance<F> for $InstanceName {
-            fn compute_witness(&mut self, pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
+            fn compute_witness(
+                &mut self,
+                pctx: &ProofCtx<F>,
+                _sctx: &SetupCtx<F>,
+                _collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+            ) -> Option<AirInstance<F>> {
                 let mut multiplicity = self.table_sm.detach_multiplicity();
 
                 pctx.dctx_distribute_multiplicity(&mut multiplicity, self.ictx.global_id);
@@ -116,6 +142,11 @@ macro_rules! table_instance {
         impl data_bus::BusDevice<u64> for $InstanceName {
             fn bus_id(&self) -> Vec<BusId> {
                 vec![self.bus_id]
+            }
+
+            /// Provides a dynamic reference for downcasting purposes.
+            fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+                self
             }
         }
     };
@@ -162,7 +193,11 @@ macro_rules! instance {
         }
 
         impl<F: PrimeField> Instance<F> for $name {
-            fn compute_witness(&mut self, _pctx: &ProofCtx<F>) -> Option<AirInstance<F>> {
+            fn compute_witness(
+                &mut self,
+                _pctx: &ProofCtx<F>,
+                _sctx: &SetupCtx<F>,
+            ) -> Option<AirInstance<F>> {
                 Some(self.sm.compute_witness(&self.inputs))
             }
 
