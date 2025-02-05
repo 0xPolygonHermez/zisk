@@ -326,6 +326,4 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         direct_global_update_proves(MAIN_CONTINUATION_ID, expressions: [0, 0, BOOT_ADDR, ...zeros]);
         direct_global_update_assumes(MAIN_CONTINUATION_ID, expressions: [0, 1, END_PC_ADDR, ...zeros]);
     }
-
-
 }

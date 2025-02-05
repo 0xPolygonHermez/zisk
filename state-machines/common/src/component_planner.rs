@@ -87,9 +87,6 @@ pub struct Plan {
     /// The checkpoint type associated with this plan.
     pub check_point: CheckPoint,
 
-    /// Information required for input collection.
-    pub collect_info: Option<Box<dyn Any>>,
-
     /// Additional metadata associated with the plan.
     pub meta: Option<Box<dyn Any>>,
 
@@ -116,19 +113,9 @@ impl Plan {
         segment_id: Option<usize>,
         instance_type: InstanceType,
         check_point: CheckPoint,
-        collect_info: Option<Box<dyn Any>>,
         meta: Option<Box<dyn Any>>,
     ) -> Self {
-        Plan {
-            airgroup_id,
-            air_id,
-            segment_id,
-            instance_type,
-            check_point,
-            collect_info,
-            meta,
-            global_id: None,
-        }
+        Plan { airgroup_id, air_id, segment_id, instance_type, check_point, meta, global_id: None }
     }
 
     pub fn set_global_id(&mut self, global_id: usize) {

@@ -9,6 +9,8 @@ pub use proofman_macros::values;
 
 use std::fmt;
 
+use rayon::prelude::*;
+
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
@@ -54,29 +56,44 @@ pub const U_8_AIR_AIR_IDS: &[usize] = &[15];
 
 pub const U_16_AIR_AIR_IDS: &[usize] = &[16];
 
+
 //PUBLICS
 use serde::Deserialize;
 use serde::Serialize;
 use serde_arrays;
+
+
+fn default_array_rom_root() -> [u64; 4] {
+    [0; 4]
+}
+
+fn default_array_inputs() -> [u64; 64] {
+    [0; 64]
+}
+
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ZiskPublics {
-    #[serde(default, with = "serde_arrays")]
+    #[serde(default = "default_array_rom_root", with = "serde_arrays")]
     pub rom_root: [u64; 4],
-    #[serde(with = "serde_arrays")]
+    #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
+    
 }
 
 impl Default for ZiskPublics {
     fn default() -> Self {
-        Self { rom_root: [0; 4], inputs: [0; 64] }
+        Self {  
+            rom_root: [0; 4],  
+            inputs: [0; 64], 
+        }
     }
 }
-
 
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],
 });
-
+ 
 values!(ZiskProofValues<F> {
  enable_input_data: F,
 });

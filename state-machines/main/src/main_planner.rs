@@ -4,7 +4,7 @@
 //! to a specific `Plan` instance.
 
 use p3_field::PrimeField;
-use sm_common::{BusDeviceMetrics, CheckPoint, ChunkId, CollectSkipper, InstanceType, Plan};
+use sm_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan};
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 use ziskemu::EmuTrace;
 
@@ -39,7 +39,7 @@ impl MainPlanner {
         let mut publics = Vec::new();
 
         main_counters.iter().for_each(|(_, counter)| {
-            let reg_counter = counter.as_any().downcast_ref::<MainCounter>().unwrap();
+            let reg_counter = Metrics::as_any(&**counter).downcast_ref::<MainCounter>().unwrap();
             publics.extend_from_slice(&reg_counter.publics);
         });
 
@@ -59,7 +59,6 @@ impl MainPlanner {
                     Some(segment_id),
                     InstanceType::Instance,
                     CheckPoint::Single(segment_id),
-                    Some(Box::new(CollectSkipper::new(0))),
                     None,
                 )
             })
