@@ -2,9 +2,10 @@ require "std_constants.pil"
 require "std_lookup.pil"
 require "std_connection.pil"
 
-const int KECCAKF_OP = 0xF1;
-
 // Precompile in charge of performing the Keccak-f[1600] permutation. For reference: https://keccak.team/files/Keccak-reference-3.0.pdf
+
+const int KECCAKF_OP = 0xF1;
+const int KECCAKF_CIRCUIT_ID = 0x190;
 
 airtemplate Keccakf(const int N = 2**23, int RC = 2, const int chunks, const int bits, const int bits_reduced, const int operation_bus_id) {
     // Keccak-f circuit size
@@ -69,48 +70,11 @@ airtemplate Keccakf(const int N = 2**23, int RC = 2, const int chunks, const int
     expr a = 0;
     expr b = 0;
     expr c = 0;
-    expr a_mem[RC],b_mem[RC],c_mem[RC];
-    for (int i = 0; i < RC; i++) {
-        a_mem[i] = 0;
-        b_mem[i] = 0;
-        c_mem[i] = 0;
-    }
-    int rs = 0;
-    expr _accum_a = 0;
-    expr _accum_b = 0;
-    expr _accum_c = 0;
-    int _i = 0;
     for (int i = 0; i < chunks; i++) {
         const int shift = P2_BITS**i;
-        const int _shift = P2_BITS**_i;
-
-        if (_shift * P2_BITS >= P2_32) {
-            a_mem[rs] = _accum_a;
-            b_mem[rs] = _accum_b;
-            c_mem[rs] = _accum_c;
-
-            _accum_a = 0;
-            _accum_b = 0;
-            _accum_c = 0;
-            _i = 0;
-            rs++;
-        }
-
         a += free_in_a[i] * shift;
         b += free_in_b[i] * shift;
         c += free_in_c[i] * shift;
-
-        _accum_a += free_in_a[i] * _shift;
-        _accum_b += free_in_b[i] * _shift;
-        _accum_c += free_in_c[i] * _shift;
-        _i++;
-    }
-
-    // Store the remaining accumulated values
-    if (_accum_a != 0) {
-        a_mem[rs] = _accum_a;
-        b_mem[rs] = _accum_b;
-        c_mem[rs] = _accum_c;
     }
 
     // Enforce constants 0b00..000 and 0b11..111 at the first row for direct access
@@ -118,7 +82,7 @@ airtemplate Keccakf(const int N = 2**23, int RC = 2, const int chunks, const int
     L1 * a === 0;
     L1 * (b - MASK_CHUNK_BITS) === 0;
 
-    connection(opid: 400, cols: [a, b, c], CONN: [CONN_A, CONN_B, CONN_C]);
+    connection(opid: KECCAKF_CIRCUIT_ID, cols: [a, b, c], CONN: [CONN_A, CONN_B, CONN_C]);
 
     // --> Constraints to make sure that this coprocessor is called from the main processor
     col witness debug_main_step;
@@ -129,19 +93,21 @@ airtemplate Keccakf(const int N = 2**23, int RC = 2, const int chunks, const int
 
     // --> Constraints to read inputs from memory and write outputs to memory
     col witness a_src_mem;
+    col witness input[RC]; // TODO: Enforce constraints...
     precompiled_mem_load(
              sel: a_src_mem,
              main_step: step_input,
              addr: addr_input,
-             value: a_mem
+             value: input
             );
 
     expr addr_output = addr_input;
     col witness c_src_mem;
+    col witness output[RC]; // TODO: Enforce constraints...
     precompiled_mem_store(
               sel: c_src_mem,
               main_step: step_input,
               addr: addr_output,
-              value: c_mem
+              value: output
             );
 }

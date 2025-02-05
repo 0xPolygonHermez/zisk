@@ -4,6 +4,8 @@ use std::{fs, sync::Arc};
 use log::info;
 use p3_field::PrimeField64;
 
+use tiny_keccak::keccakf;
+
 use data_bus::{
     ExtOperationData, OperationBusData, OperationData, OperationKeccakData, PayloadType,
 };
@@ -11,7 +13,7 @@ use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{KeccakfFixed, KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
 
-use crate::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM, Script, ValueType};
+use crate::{keccakf, keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM, Script, ValueType};
 
 /// The `KeccakfSM` struct encapsulates the logic of the Keccakf State Machine.
 pub struct KeccakfSM {
@@ -86,19 +88,27 @@ impl KeccakfSM {
         multiplicity: &mut [u64],
     ) {
         // Process the inputs
-        let zero_input: KeccakfInput = [0u64; INPUT_DATA_SIZE_BITS];
-        let mut inputs_raw: Vec<KeccakfInput> = vec![zero_input; num_slots];
+        let mut inputs_raw: Vec<KeccakfInput> = vec![[0u64; INPUT_DATA_SIZE_BITS]; num_slots];
         inputs.iter().enumerate().for_each(|(i, input)| {
             // Get the raw keccakf input as 25 u64 values
             let keccakf_input: Vec<u64> =
                 OperationBusData::get_extra_data(&ExtOperationData::OperationKeccakData(*input));
+            println!("Input (R): {:?}", keccakf_input.iter().map(|x| format!("{:016X}", x)).collect::<Vec<String>>().join(" "));
+
+            // Apply the keccakf function for debugging
+            // ========================================
+            let keccakf_inputs = [0u64; INPUT_DATA_SIZE_BITS];
+            let mut keccakf_input_r: [u64; 25] = keccakf_input.clone().try_into().unwrap();
+            keccakf(&mut keccakf_input_r);
+            println!("\nOuput (R): {:?}", keccakf_input_r.iter().map(|x| format!("{:016X}", x)).collect::<Vec<String>>().join(" "));
+            // ========================================
 
             // Process the raw data
             let slot = i / Self::NUM_KECCAKF_PER_SLOT;
             keccakf_input.iter().enumerate().for_each(|(j, &value)| {
                 // Divide the value in bits
                 for k in 0..64 {
-                    let bit_pos = k + 64 * j;
+                    let bit_pos = (63 - k) + 64 * j;
                     let old_value = inputs_raw[slot][bit_pos];
                     let new_bit = (value >> k) & 1;
                     inputs_raw[slot][bit_pos] = (old_value << 1) | new_bit;
@@ -122,46 +132,50 @@ impl KeccakfSM {
                 debug_main_step: F::from_canonical_u64(debug_main_step),
                 step_input: F::from_canonical_u64(step_input),
                 addr_input: F::from_canonical_u64(addr_input),
-                a_src_mem: F::zero(),
-                c_src_mem: F::zero(),
+                a_src_mem: F::one(), // TODO: Fix
+                c_src_mem: F::one(), // TODO: Fix
+                input: [F::one(), F::from_canonical_u8(2)], // TODO: Fix
+                output: [F::one(), F::from_canonical_u8(2)], // TODO: Fix
                 ..Default::default()
             };
         });
+        println!("\nInput (P): {:?}", bits_to_hex_le(&inputs_raw[0]).join(" "));
 
         // Set the values of free_in_a, free_in_b, free_in_c using the script
         let script = self.script.clone();
         let mut offset = 0;
         for i in 0..num_slots {
+            let mut bit_output_pos = [0u64; INPUT_DATA_SIZE_BITS];
             for j in 0..self.slot_size {
                 let line = &script.program[j];
-                let gate_ref = line.ref_ + i * self.slot_size;
+                let row = line.ref_ + i * self.slot_size;
 
                 let a = &line.a;
                 match a {
-                    ValueType::Input(input_data) => {
+                    ValueType::Input(a) => {
                         set_col(
                             trace,
                             |row| &mut row.free_in_a,
-                            gate_ref,
-                            inputs_raw[i][input_data.bit],
+                            row,
+                            inputs_raw[i][a.bit],
                         );
                     }
-                    ValueType::Wired(wired_data) => {
-                        let mut gate = wired_data.gate;
+                    ValueType::Wired(b) => {
+                        let mut gate = b.gate;
                         if gate > 0 {
                             gate += offset;
                         }
 
-                        let pin = &wired_data.pin;
+                        let pin = &b.pin;
                         if pin == "a" {
                             let pinned_value = get_col(trace, |row| &mut row.free_in_a, gate);
-                            set_col(trace, |row| &mut row.free_in_a, gate_ref, pinned_value);
+                            set_col(trace, |row| &mut row.free_in_a, row, pinned_value);
                         } else if pin == "b" {
                             let pinned_value = get_col(trace, |row| &mut row.free_in_b, gate);
-                            set_col(trace, |row| &mut row.free_in_a, gate_ref, pinned_value);
+                            set_col(trace, |row| &mut row.free_in_a, row, pinned_value);
                         } else if pin == "c" {
                             let pinned_value = get_col(trace, |row| &mut row.free_in_c, gate);
-                            set_col(trace, |row| &mut row.free_in_a, gate_ref, pinned_value);
+                            set_col(trace, |row| &mut row.free_in_a, row, pinned_value);
                         } else {
                             panic!("Invalid pin");
                         }
@@ -170,58 +184,89 @@ impl KeccakfSM {
 
                 let b = &line.b;
                 match b {
-                    ValueType::Input(input_data) => {
+                    ValueType::Input(b) => {
                         set_col(
                             trace,
                             |row| &mut row.free_in_b,
-                            gate_ref,
-                            inputs_raw[i][input_data.bit],
+                            row,
+                            inputs_raw[i][b.bit],
                         );
                     }
-                    ValueType::Wired(wired_data) => {
-                        let mut gate = wired_data.gate;
+                    ValueType::Wired(b) => {
+                        let mut gate = b.gate;
                         if gate > 0 {
                             gate += offset;
                         }
 
-                        let pin = &wired_data.pin;
+                        let pin = &b.pin;
                         if pin == "a" {
+                            // // If pin == "a" and gate == offset, we are in an output assignation gate.
+                            // // Get the output value
+                            // if gate == offset {
+                            //     let output_value = get_col(trace, |row| &mut row.free_in_a, row);
+                            //     bit_output_pos.push(output_value);
+                            // }
+
                             let pinned_value = get_col(trace, |row| &mut row.free_in_a, gate);
-                            set_col(trace, |row| &mut row.free_in_b, gate_ref, pinned_value);
+                            set_col(trace, |row| &mut row.free_in_b, row, pinned_value);
                         } else if pin == "b" {
                             let pinned_value = get_col(trace, |row| &mut row.free_in_b, gate);
-                            set_col(trace, |row| &mut row.free_in_b, gate_ref, pinned_value);
+                            set_col(trace, |row| &mut row.free_in_b, row, pinned_value);
                         } else if pin == "c" {
                             let pinned_value = get_col(trace, |row| &mut row.free_in_c, gate);
-                            set_col(trace, |row| &mut row.free_in_b, gate_ref, pinned_value);
+                            set_col(trace, |row| &mut row.free_in_b, row, pinned_value);
                         } else {
                             panic!("Invalid pin");
                         }
                     }
                 }
 
-                let a_val = get_col(trace, |row| &mut row.free_in_a, gate_ref);
-                let b_val = get_col(trace, |row| &mut row.free_in_b, gate_ref);
+                let a_val = get_col(trace, |row| &mut row.free_in_a, row) & MASK_CHUNK_BITS_KECCAKF;
+                let b_val = get_col(trace, |row| &mut row.free_in_b, row) & MASK_CHUNK_BITS_KECCAKF;
                 let op = &line.op;
+                let c_val;
                 if op == "xor" {
-                    set_col(trace, |row| &mut row.free_in_c, gate_ref, a_val ^ b_val);
+                    c_val = a_val ^ b_val;
                 } else if op == "andp" {
-                    set_col(
-                        trace,
-                        |row| &mut row.free_in_c,
-                        gate_ref,
-                        (a_val ^ MASK_CHUNK_BITS_KECCAKF) & b_val,
-                    );
+                    c_val = (a_val ^ MASK_CHUNK_BITS_KECCAKF) & b_val
                 } else {
                     panic!("Invalid operation");
                 }
+
+                set_col(trace, |row| &mut row.free_in_c, row, c_val);
+
+                if line.ref_ >= STATE_OUT_REF_0 && (line.ref_ - STATE_OUT_REF_0) % STATE_IN_REF_DISTANCE == 0 {
+                    let bit_pos = (line.ref_ - STATE_OUT_REF_0) / STATE_IN_REF_DISTANCE;
+                    if bit_pos < INPUT_DATA_SIZE_BITS {
+                        bit_output_pos[bit_pos] = c_val;
+                    }
+                }
+
+                // if j > self.slot_size - 9 {
+                //     println!("Program Line: {} || a[{row}] = {}, b[{row}] = {}, c[{row}] = {}", j, a_val, b_val, c_val);
+                // }
             }
 
             // Update the multiplicity table for the slot
+            let mut bit_input_pos = Vec::with_capacity(INPUT_DATA_SIZE_BITS);
+            let mut bit_output_pos2 = Vec::with_capacity(INPUT_DATA_SIZE_BITS);
             let row_idx = if offset == 0 { 1 } else { offset + 1 };
             for i in row_idx..(row_idx + self.slot_size) {
                 let a = trace[i].free_in_a;
                 let b = trace[i].free_in_b;
+                let c = trace[i].free_in_c;
+
+                if i >= STATE_IN_REF_0 && (i - STATE_IN_REF_0) % STATE_IN_REF_DISTANCE == 0 && bit_input_pos.len() < INPUT_DATA_SIZE_BITS {
+                    bit_input_pos.push(F::as_canonical_u64(&a[0]));
+                }
+
+                if i >= STATE_OUT_REF_0 && (i - STATE_OUT_REF_0) % STATE_IN_REF_DISTANCE == 0 && bit_output_pos2.len() < INPUT_DATA_SIZE_BITS {
+                    // if bit_output_pos2.len() > INPUT_DATA_SIZE_BITS - 9 {
+                    //     println!("FR a[{i}] = {}, b[{i}] = {}, c[{i}] = {}", a[0], b[0], c[0]);
+                    // }
+                    bit_output_pos2.push(F::as_canonical_u64(&c[0]));
+                }
+
                 let gate_op = fixed[i].GATE_OP;
                 let gate_op_val = match F::as_canonical_u64(&gate_op) {
                     0u64 => KeccakfTableGateOp::Xor,
@@ -237,9 +282,35 @@ impl KeccakfSM {
             }
 
             // TOOD: Get the keccak-f output for debugging
+            println!("\nInput (C): {:?}", bits_to_hex_le(&bit_input_pos).join(" "));
+            println!("\nOuput (C): {:?}", bits_to_hex_le(&bit_output_pos).join(" "));
+            println!("\nOuput (C): {:?}", bits_to_hex_le(&bit_output_pos2).join(" "));
 
             // Move to the next slot
             offset += self.slot_size;
+        }
+
+        // [0,1,1,1,0,0]
+
+        // [0,1] 0 -> MSB 1 -> LSB
+
+        fn bits_to_hex_le(bits: &[u64]) -> Vec<String> {
+            let mut bytes = Vec::new();
+            for (j, chunk) in bits.chunks(64).enumerate() {
+                if j == 0 || j == 24 {
+                    println!("Chunk: {:?}", chunk);
+                }
+                let mut byte = 0u64;
+                for (i, &bit) in chunk.iter().enumerate() {
+                    byte |= bit << (64 - i - 1);
+                }
+                bytes.push(byte);
+            }
+        
+            // Convert bytes to hexadecimal representation
+            bytes.iter()
+                .map(|byte| format!("{:016X}", byte))
+                .collect::<Vec<String>>()
         }
 
         fn set_col<F: PrimeField64>(
@@ -269,8 +340,19 @@ impl KeccakfSM {
                 let col_i_val = F::as_canonical_u64(&cols[i]);
                 value += col_i_val << ((i * BITS_KECCAKF) as u64);
             }
-            value & MASK_CHUNK_BITS_KECCAKF
+            value
         }
+
+        // fn bits_to_field_bit(block: usize, is_output: bool, bit: usize, slot_size: usize) -> usize {
+        //     let mut o = 1;
+        //     o += block / 44 * slot_size;
+        //     if is_output {
+        //         o += 1600 * 44;
+        //     }
+        //     o += bit * 44;
+        //     o += block % 44;
+        //     o
+        // }
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
@@ -288,7 +370,7 @@ impl KeccakfSM {
         // Get the fixed cols
         let airgroup_id = KeccakfTrace::<usize>::AIRGROUP_ID;
         let air_id = KeccakfTrace::<usize>::AIR_ID;
-        let fixed = KeccakfFixed::from_vec(sctx.get_fixed(airgroup_id, air_id));
+        let fixed = KeccakfFixed::from_slice(sctx.get_fixed_slice(airgroup_id, air_id));
 
         timer_start_trace!(KECCAKF_TRACE);
         let mut keccakf_trace = KeccakfTrace::new();

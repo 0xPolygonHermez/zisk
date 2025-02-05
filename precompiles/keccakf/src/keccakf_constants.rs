@@ -22,6 +22,10 @@ pub const P2_BITS_AB: u64 = P2_BITS_A * P2_BITS_B;
 pub const MASK_BITS_A: u64 = P2_BITS_A - 1;
 pub const MASK_BITS_B: u64 = P2_BITS_B - 1;
 
-/// Gate types
+/// Circuit parameters
+pub const STATE_IN_REF_0: usize = 45;
+pub const STATE_IN_REF_DISTANCE: usize = 44;
+pub const STATE_OUT_REF_0: usize = 70_445; // 45 + (1600 * 44);
+pub const STATE_OUT_REF_DISTANCE: usize = 44;
 pub const XOR_GATE_OP: u8 = 0x00;
 pub const ANDP_GATE_OP: u8 = 0x01;

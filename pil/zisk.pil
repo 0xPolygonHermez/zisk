@@ -35,7 +35,11 @@ airgroup Zisk {
     BinaryExtension(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
     BinaryExtensionTable();
 
-    const int KECCAKF_BITS = 10;
-    Keccakf(N: 2**22, RC: 2, chunks: 6, bits: KECCAKF_BITS, bits_reduced: KECCAKF_BITS, operation_bus_id: OPERATION_BUS_ID);
+    // const int KECCAKF_BITS = 10;
+    // Keccakf(N: 2**22, RC: 2, chunks: 6, bits: KECCAKF_BITS, bits_reduced: KECCAKF_BITS, operation_bus_id: OPERATION_BUS_ID);
+    // KeccakfTable(N: 2**21, chunks: 1, bits: KECCAKF_BITS, bits_reduced: KECCAKF_BITS);
+
+    const int KECCAKF_BITS = 1;
+    Keccakf(N: 2**18, RC: 2, chunks: 1, bits: KECCAKF_BITS, bits_reduced: KECCAKF_BITS, operation_bus_id: OPERATION_BUS_ID);
     KeccakfTable(N: 2**21, chunks: 1, bits: KECCAKF_BITS, bits_reduced: KECCAKF_BITS);
 }
