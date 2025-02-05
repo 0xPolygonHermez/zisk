@@ -6,8 +6,6 @@
 #include <stdint.h>
 #include <sys/time.h>
 
-#include "XKCP/Keccak-more-compact.h"
-
 void emulator_start(void);
 
 #define RAM_ADDR 0xa0000000
@@ -23,6 +21,13 @@ void emulator_start(void);
 #define MAX_INPUT_SIZE 0x08000000
 
 struct timeval start_time;
+
+extern uint64_t STEP;
+struct timeval keccak_start, keccak_stop;
+uint64_t keccak_counter = 0;
+uint64_t keccak_duration = 0;
+
+extern void keccakf1600_generic(uint64_t state[25]);
 
 uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime)
 {
@@ -184,7 +189,13 @@ int main(int argc, char *argv[])
     emulator_start();
     struct timeval stop_time;
     gettimeofday(&stop_time,NULL);
-    if (verbose) printf("Duration = %d us\n", TimeDiff(start_time, stop_time));
+    if (verbose)
+    {
+        uint64_t duration = TimeDiff(start_time, stop_time);
+        printf("Duration = %d us\n", duration);
+        uint64_t keccak_percentage = duration == 0 ? 0 : (keccak_duration * 100) / duration;
+        printf("Keccak counter = %d, duration = %d us, percentage = %d \n", keccak_counter, keccak_duration, keccak_percentage);
+    }
 
     // Log output
     if (output)
@@ -231,11 +242,17 @@ extern int _print_step(uint64_t step)
     return 0;
 }
 
-extern uint64_t STEP;
 extern int _opcode_keccak(uint64_t address)
 {
+    if (verbose) gettimeofday(&keccak_start, NULL);
     //if (verbose) printf("opcode_keccak() calling KeccakF1600() step=%d address=%08llx\n", STEP, address);
-    KeccakF1600((void *)address);
+    keccakf1600_generic((uint64_t *)address);
     //if (verbose) printf("opcode_keccak() called KeccakF1600()\n");
+    if (verbose)
+    {
+        gettimeofday(&keccak_stop, NULL);
+        keccak_counter++;
+        keccak_duration += TimeDiff(keccak_start, keccak_stop);
+    }
     return 0;
 }

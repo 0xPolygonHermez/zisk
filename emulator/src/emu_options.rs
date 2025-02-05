@@ -104,5 +104,6 @@ impl EmuOptions {
             && !self.log_step
             && !self.verbose
             && !self.tracerv
+            && !self.stats
     }
 }
