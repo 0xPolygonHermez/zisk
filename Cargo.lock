@@ -1493,7 +1493,9 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#17ad6adf07fa716bb38c8a1be2ca4888544aabb2"
 dependencies = [
+ "colored",
  "log",
  "num-bigint",
  "num-traits",
@@ -1608,6 +1610,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#17ad6adf07fa716bb38c8a1be2ca4888544aabb2"
 dependencies = [
  "env_logger",
  "log",
@@ -1626,6 +1629,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#17ad6adf07fa716bb38c8a1be2ca4888544aabb2"
 dependencies = [
  "log",
  "p3-field",
@@ -1637,15 +1641,18 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#17ad6adf07fa716bb38c8a1be2ca4888544aabb2"
 dependencies = [
  "proc-macro2",
  "quote",
+ "rayon",
  "syn",
 ]
 
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#17ad6adf07fa716bb38c8a1be2ca4888544aabb2"
 dependencies = [
  "log",
 ]
@@ -1653,6 +1660,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#17ad6adf07fa716bb38c8a1be2ca4888544aabb2"
 dependencies = [
  "colored",
  "p3-field",
@@ -2574,6 +2582,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#17ad6adf07fa716bb38c8a1be2ca4888544aabb2"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -3075,6 +3084,7 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 [[package]]
 name = "witness"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#17ad6adf07fa716bb38c8a1be2ca4888544aabb2"
 dependencies = [
  "colored",
  "env_logger",
@@ -3218,6 +3228,7 @@ version = "0.2.0"
 dependencies = [
  "proofman-common",
  "proofman-macros",
+ "rayon",
  "serde",
 ]
 
