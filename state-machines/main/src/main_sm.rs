@@ -27,6 +27,8 @@ use crate::MainCounter;
 pub struct MainInstance {
     /// Instance Context
     pub ictx: InstanceCtx,
+
+    pub is_last_segment: bool,
 }
 
 impl MainInstance {
@@ -37,8 +39,8 @@ impl MainInstance {
     ///
     /// # Returns
     /// A new `MainInstance`.
-    pub fn new(ictx: InstanceCtx) -> Self {
-        Self { ictx }
+    pub fn new(ictx: InstanceCtx, is_last_segment: bool) -> Self {
+        Self { ictx, is_last_segment }
     }
 }
 
@@ -59,7 +61,6 @@ impl MainSM {
     ///   inside.
     /// * `min_trace_size` - The size of the minimal traces.
     /// * `main_instance` - Reference to the `MainInstance` representing the current segment.
-    /// * `is_last_segment` - Flag indicating if this is the last segment.
     ///
     /// The computed trace is added to the proof context's air instance repository.
     pub fn compute_witness<F: PrimeField>(
@@ -67,7 +68,6 @@ impl MainSM {
         min_traces: &[EmuTrace],
         min_trace_size: u64,
         main_instance: &mut MainInstance,
-        is_last_segment: bool,
     ) -> AirInstance<F> {
         // Create the main trace buffer
         let mut main_trace = MainTrace::new();
@@ -125,7 +125,7 @@ impl MainSM {
         let mut air_values = MainAirValues::<F>::new();
 
         air_values.main_segment = F::from_canonical_usize(segment_id);
-        air_values.main_last_segment = F::from_bool(is_last_segment);
+        air_values.main_last_segment = F::from_bool(main_instance.is_last_segment);
         air_values.segment_initial_pc = main_trace.buffer[0].pc;
         air_values.segment_next_pc = F::from_canonical_u64(*next_pc);
         air_values.segment_previous_c = prev_segment_last_c;

@@ -125,12 +125,14 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let mut main_planning_guard = self.main_planning.write().unwrap();
         let main_planning = std::mem::take(&mut *main_planning_guard);
 
+        let len = main_planning.len() - 1;
         main_planning
             .into_iter()
             .filter_map(|plan| {
                 let global_id = plan.global_id.unwrap();
+                let is_last_segment = plan.segment_id.unwrap() == len;
                 if pctx.dctx_is_my_instance(global_id) {
-                    Some(MainInstance::new(InstanceCtx::new(global_id, plan)))
+                    Some(MainInstance::new(InstanceCtx::new(global_id, plan), is_last_segment))
                 } else {
                     None
                 }
@@ -298,14 +300,12 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let min_traces_guard = self.min_traces.read().unwrap();
         let min_traces = &*min_traces_guard;
 
-        let last_segment_id = main_instances.len() - 1;
-        main_instances.into_par_iter().enumerate().for_each(|(segment_id, mut main_instance)| {
+        main_instances.into_par_iter().for_each(|mut main_instance| {
             let air_instance = MainSM::compute_witness(
                 &self.zisk_rom,
                 min_traces,
                 Self::MIN_TRACE_SIZE,
                 &mut main_instance,
-                segment_id == last_segment_id,
             );
 
             pctx.air_instance_repo.add_air_instance(air_instance, main_instance.ictx.global_id);

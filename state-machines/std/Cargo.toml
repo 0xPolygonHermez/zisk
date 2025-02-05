@@ -21,4 +21,4 @@ itertools = { workspace = true }
 [features]
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
-debug = ["proofman-macros/debug"]
+diagnostic = ["proofman-macros/diagnostic"]

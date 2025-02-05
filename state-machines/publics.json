@@ -1,6 +1,7 @@
 {
-    "nPublics": 4,
+    "nPublics": 68,
     "definitions": [
-        { "name": "rom_root", "initialPos": 0, "chunks": [4, 64] }
+        { "name": "rom_root", "initialPos": 0, "chunks": [4, 64] },
+        { "name": "inputs", "initialPos": 4, "chunks": [64, 32] }
     ]
 }

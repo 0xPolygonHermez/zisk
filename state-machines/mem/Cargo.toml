@@ -24,6 +24,6 @@ num-bigint = { workspace = true }
 [features]
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
-debug = ["proofman-macros/debug"]
+diagnostic = ["proofman-macros/diagnostic"]
 debug_mem = []
 debug_mem_align = []
