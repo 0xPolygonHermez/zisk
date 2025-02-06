@@ -4,7 +4,7 @@
 //! This state machine handles operations like shift-left logical (`Sll`), shift-right logical
 //! (`Srl`), arithmetic shifts, and sign extensions.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
 use p3_field::Field;
 use zisk_core::{P2_11, P2_19, P2_8};
@@ -51,11 +51,11 @@ impl BinaryExtensionTableSM {
     ///
     /// # Arguments
     /// * `input` - A slice of `u64` values to process.
-    pub fn process_slice(&self, input: &[u64]) {
+    pub fn process_slice(&self, input: &[AtomicU64]) {
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
         for (i, val) in input.iter().enumerate() {
-            multiplicity[i] += *val;
+            multiplicity[i] += val.load(std::sync::atomic::Ordering::Relaxed);
         }
     }
 

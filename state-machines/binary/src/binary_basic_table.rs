@@ -3,7 +3,7 @@
 //! This state machine is responsible for handling basic binary operations, calculating table rows,
 //! and managing multiplicity tables for binary table traces.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
 use p3_field::Field;
 use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8, P2_9};
@@ -57,12 +57,11 @@ impl BinaryBasicTableSM {
     ///
     /// # Arguments
     /// * `input` - A slice of `u64` values representing the input data.
-    pub fn process_slice(&self, input: &[u64]) {
-        // Create the trace vector
+    pub fn process_slice(&self, input: &[AtomicU64]) {
         let mut multiplicity = self.multiplicity.lock().unwrap();
 
         for (i, val) in input.iter().enumerate() {
-            multiplicity[i] += *val;
+            multiplicity[i] += val.load(std::sync::atomic::Ordering::Relaxed);
         }
     }
 

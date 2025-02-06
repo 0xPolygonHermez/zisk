@@ -7,8 +7,8 @@ mod component_planner;
 mod counters;
 mod field;
 mod instance_context;
-mod operations;
 mod planners;
+mod utils;
 
 pub use bus_device_metrics::*;
 pub use bus_device_wrapper::*;
@@ -19,5 +19,5 @@ pub use component_planner::*;
 pub use counters::*;
 pub use field::*;
 pub use instance_context::*;
-pub use operations::*;
 pub use planners::*;
+pub use utils::*;
