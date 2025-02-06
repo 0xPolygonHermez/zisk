@@ -63,16 +63,15 @@ impl BusDevice<u64> for BusDeviceMetricsWrapper {
     /// * `data` - The payload data received from the bus.
     ///
     /// # Returns
-    /// A tuple where:
-    /// - The first element is a boolean indicating whether processing should continue.
-    /// - The second element is a vector of tuples containing bus IDs and their associated data
-    ///   payloads.
+    /// An optional vector of tuples where:
+    /// - The first element is the bus ID.
+    /// - The second element contains the derived inputs to be sent back to the bus.
     #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
-    ) -> (bool, Vec<(BusId, Vec<u64>)>) {
+    ) -> Option<Vec<(BusId, Vec<u64>)>> {
         self.inner.process_data(bus_id, data)
     }
 
@@ -82,5 +81,10 @@ impl BusDevice<u64> for BusDeviceMetricsWrapper {
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
         self.inner.bus_id()
+    }
+
+    /// Provides a dynamic reference for downcasting purposes.
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
     }
 }

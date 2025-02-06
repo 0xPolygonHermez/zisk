@@ -59,13 +59,13 @@ impl BusDevice<u64> for MainCounter {
     /// - The first element indicates whether processing should continue.
     /// - The second element contains derived inputs to be sent back to the bus.
     #[inline]
-    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
+    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         let input: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         let op_type = OperationBusData::get_op_type(&input);
 
         if op_type as u32 != ZiskOperationType::PubOut as u32 {
-            return (false, vec![]);
+            return None;
         }
 
         let pub_index = 2 * OperationBusData::get_a(&input);
@@ -76,7 +76,7 @@ impl BusDevice<u64> for MainCounter {
         self.publics.push((pub_index, values[0]));
         self.publics.push((pub_index + 1, values[1]));
 
-        (false, Vec::new())
+        None
     }
 
     /// Returns the bus IDs associated with this counter.
@@ -85,5 +85,10 @@ impl BusDevice<u64> for MainCounter {
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
         vec![self.bus_id]
+    }
+
+    /// Provides a dynamic reference for downcasting purposes.
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
     }
 }

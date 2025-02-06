@@ -12,7 +12,6 @@ use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
-use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryExtensionTraceRow};
 
@@ -324,31 +323,34 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` representing the computed witness.
-    pub fn compute_witness(&self, operations: &[OperationData<u64>]) -> AirInstance<F> {
-        timer_start_debug!(BINARY_EXTENSION_TRACE);
+    pub fn compute_witness(&self, inputs: &[Vec<OperationData<u64>>]) -> AirInstance<F> {
         let mut binary_e_trace = BinaryExtensionTrace::new();
 
         let num_rows = binary_e_trace.num_rows();
-        assert!(operations.len() <= num_rows);
+
+        let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
+        assert!(total_inputs <= num_rows);
 
         info!(
             "{}: ··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
-            operations.len(),
+            total_inputs,
             num_rows,
-            operations.len() as f64 / num_rows as f64 * 100.0
+            total_inputs as f64 / num_rows as f64 * 100.0
         );
 
         let mut multiplicity_table = vec![0u64; BinaryExtensionTableTrace::<F>::NUM_ROWS];
         let mut range_check: HashMap<u64, u64> = HashMap::new();
 
-        for (i, operation) in operations.iter().enumerate() {
-            let row = Self::process_slice(operation, &mut multiplicity_table, &mut range_check);
-            binary_e_trace[i] = row;
+        let mut idx = 0;
+        for inner_inputs in inputs {
+            for input in inner_inputs {
+                let row = Self::process_slice(input, &mut multiplicity_table, &mut range_check);
+                binary_e_trace[idx] = row;
+                idx += 1;
+            }
         }
-        timer_stop_and_log_debug!(BINARY_EXTENSION_TRACE);
 
-        timer_start_debug!(BINARY_EXTENSION_PADDING);
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
         let padding_row = BinaryExtensionTraceRow::<F> {
@@ -356,11 +358,9 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
             ..Default::default()
         };
 
-        for i in operations.len()..num_rows {
-            binary_e_trace[i] = padding_row;
-        }
+        binary_e_trace.buffer[idx..num_rows].fill(padding_row);
 
-        let padding_size = num_rows - operations.len();
+        let padding_size = num_rows - idx;
         for i in 0..8 {
             let multiplicity = padding_size as u64;
             let row = BinaryExtensionTableSM::calculate_table_row(
@@ -371,14 +371,10 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
             );
             multiplicity_table[row as usize] += multiplicity;
         }
-        timer_stop_and_log_debug!(BINARY_EXTENSION_PADDING);
 
-        timer_start_debug!(BINARY_EXTENSION_TABLE);
         self.binary_extension_table_sm.process_slice(&multiplicity_table);
-        timer_stop_and_log_debug!(BINARY_EXTENSION_TABLE);
 
         let range_id = self.std.get_range(BigInt::from(0), BigInt::from(0xFFFFFF), None);
-        timer_start_debug!(BINARY_EXTENSION_RANGE);
         for (value, multiplicity) in &range_check {
             self.std.range_check(
                 F::from_canonical_u64(*value),
@@ -386,7 +382,6 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                 range_id,
             );
         }
-        timer_stop_and_log_debug!(BINARY_EXTENSION_RANGE);
 
         AirInstance::new_from_trace(FromTrace::new(&mut binary_e_trace))
     }

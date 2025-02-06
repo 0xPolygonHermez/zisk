@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "debug_mem")]
 use crate::MemDebug;
-use sm_common::{BusDeviceMetrics, ChunkId, Plan, Planner};
+use sm_common::{BusDeviceMetrics, ChunkId, Metrics, Plan, Planner};
 
 #[cfg(feature = "debug_mem")]
 use crate::MemHelpers;
@@ -96,7 +96,7 @@ impl Planner for MemPlanner {
         let mut counters: Vec<(ChunkId, &MemCounters)> = metrics
             .iter()
             .map(|(chunk_id, metric)| {
-                (*chunk_id, metric.as_any().downcast_ref::<MemCounters>().unwrap())
+                (*chunk_id, Metrics::as_any(&**metric).downcast_ref::<MemCounters>().unwrap())
             })
             .collect();
         counters.par_sort_by_key(|(chunk_id, _)| *chunk_id);

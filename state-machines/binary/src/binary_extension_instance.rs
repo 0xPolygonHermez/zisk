@@ -5,11 +5,13 @@
 //! execution plans.
 
 use crate::BinaryExtensionSM;
-use data_bus::{BusDevice, BusId, OperationBusData, OperationData};
+use data_bus::{BusDevice, BusId, OperationBusData, OperationData, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use sm_common::{CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType};
-use std::sync::Arc;
+use sm_common::{
+    BusDeviceWrapper, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
+};
+use std::{collections::HashMap, sync::Arc};
 use zisk_core::ZiskOperationType;
 use zisk_pil::BinaryExtensionTrace;
 
@@ -24,12 +26,6 @@ pub struct BinaryExtensionInstance<F: PrimeField> {
 
     /// Instance context.
     ictx: InstanceCtx,
-
-    /// Helper to manage instruction skipping.
-    collect_skipper: CollectSkipper,
-
-    /// Collected inputs for witness computation.
-    inputs: Vec<OperationData<u64>>,
 
     /// The connected bus ID.
     bus_id: BusId,
@@ -48,14 +44,10 @@ impl<F: PrimeField> BinaryExtensionInstance<F> {
     /// context.
     pub fn new(
         binary_extension_sm: Arc<BinaryExtensionSM<F>>,
-        mut ictx: InstanceCtx,
+        ictx: InstanceCtx,
         bus_id: BusId,
     ) -> Self {
-        let collect_info = ictx.plan.collect_info.take().expect("collect_info should be Some");
-        let collect_skipper =
-            *collect_info.downcast::<CollectSkipper>().expect("Expected CollectSkipper");
-
-        Self { binary_extension_sm, ictx, collect_skipper, inputs: Vec::new(), bus_id }
+        Self { binary_extension_sm, ictx, bus_id }
     }
 }
 
@@ -67,6 +59,7 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
     ///
     /// # Arguments
     /// * `_pctx` - The proof context, unused in this implementation.
+    /// * `collectors` - A vector of input collectors to process and collect data for witness
     ///
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
@@ -74,8 +67,21 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
+        collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
-        Some(self.binary_extension_sm.compute_witness(&self.inputs))
+        let inputs: Vec<_> = collectors
+            .into_iter()
+            .map(|(_, mut collector)| {
+                collector
+                    .detach_device()
+                    .as_any()
+                    .downcast::<BinaryExtensionCollector<F>>()
+                    .unwrap()
+                    .inputs
+            })
+            .collect();
+
+        Some(self.binary_extension_sm.compute_witness(&inputs))
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -93,9 +99,63 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
     fn instance_type(&self) -> InstanceType {
         InstanceType::Instance
     }
+
+    /// Builds an input collector for the instance.
+    ///
+    /// # Arguments
+    /// * `chunk_id` - The chunk ID associated with the input collector.
+    ///
+    /// # Returns
+    /// An `Option` containing the input collector for the instance.
+    fn build_inputs_collector(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+        assert_eq!(
+            self.ictx.plan.air_id,
+            BinaryExtensionTrace::<F>::AIR_ID,
+            "BinaryExtensionInstance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+
+        let meta = self.ictx.plan.meta.as_ref().unwrap();
+        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
+        Some(Box::new(BinaryExtensionCollector::<F>::new(
+            self.bus_id,
+            collect_info[&chunk_id].0,
+            collect_info[&chunk_id].1,
+        )))
+    }
 }
 
-impl<F: PrimeField> BusDevice<u64> for BinaryExtensionInstance<F> {
+/// The `BinaryExtensionCollector` struct represents an input collector for binary extension
+pub struct BinaryExtensionCollector<F: PrimeField> {
+    /// Collected inputs for witness computation.
+    inputs: Vec<OperationData<u64>>,
+
+    /// The connected bus ID.
+    bus_id: BusId,
+
+    /// The number of operations to collect.
+    num_operations: u64,
+
+    /// Helper to skip instructions based on the plan's configuration.
+    collect_skipper: CollectSkipper,
+
+    /// Phantom data for the prime field.
+    _phantom: std::marker::PhantomData<F>,
+}
+
+impl<F: PrimeField> BinaryExtensionCollector<F> {
+    pub fn new(bus_id: BusId, num_operations: u64, collect_skipper: CollectSkipper) -> Self {
+        Self {
+            inputs: Vec::new(),
+            bus_id,
+            num_operations,
+            collect_skipper,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<F: PrimeField> BusDevice<u64> for BinaryExtensionCollector<F> {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -103,25 +163,29 @@ impl<F: PrimeField> BusDevice<u64> for BinaryExtensionInstance<F> {
     /// * `data` - The data received from the bus.
     ///
     /// # Returns
-    /// A tuple where:
-    /// - The first element indicates whether further processing should continue.
-    /// - The second element is always empty.
-    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
+    /// An optional vector of tuples where:
+    /// - The first element is the bus ID.
+    /// - The second element is always empty indicating there are no derived inputs.
+    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        if self.inputs.len() == self.num_operations as usize {
+            return None;
+        }
+
         let data: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         let op_type = OperationBusData::get_op_type(&data);
 
         if op_type as u32 != ZiskOperationType::BinaryE as u32 {
-            return (false, vec![]);
+            return None;
         }
 
         if self.collect_skipper.should_skip() {
-            return (false, vec![]);
+            return None;
         }
 
         self.inputs.push(data);
 
-        (self.inputs.len() == BinaryExtensionTrace::<usize>::NUM_ROWS, vec![])
+        None
     }
 
     /// Returns the bus IDs associated with this instance.
@@ -130,5 +194,10 @@ impl<F: PrimeField> BusDevice<u64> for BinaryExtensionInstance<F> {
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
         vec![self.bus_id]
+    }
+
+    /// Provides a dynamic reference for downcasting purposes.
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
     }
 }

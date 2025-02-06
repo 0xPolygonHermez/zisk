@@ -316,16 +316,6 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         SEGMENT_LAST * (segment_last_c[index] - c[index]) === 0;
     }
 
-    const expr main_next_segment = (main_segment + 1) * (1 - main_last_segment);
-
-    if (stack_enabled) {
-        direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_previous_c, segment_initial_sp]);
-        direct_update_proves(MAIN_CONTINUATION_ID, [main_next_segment, main_last_segment, segment_next_pc, ...segment_last_c, segment_next_sp]);
-    } else {
-        direct_update_assumes(MAIN_CONTINUATION_ID, [main_segment, 0, segment_initial_pc, ...segment_previous_c]);
-        direct_update_proves(MAIN_CONTINUATION_ID, [main_next_segment, main_last_segment, segment_next_pc, ...segment_last_c]);
-    }
-
     // Register Zero is hard-wired zero.
     airval last_reg_value[REG_NUM][RC];
     airval last_reg_mem_step[REG_NUM];
