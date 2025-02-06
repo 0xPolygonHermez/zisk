@@ -4,10 +4,12 @@ require "std_connection.pil"
 
 // Precompile in charge of performing the Keccak-f[1600] permutation. For reference: https://keccak.team/files/Keccak-reference-3.0.pdf
 
+const int KECCAKF_SIZE_BITS = 1600;
+
 const int KECCAKF_OP = 0xF1;
 const int KECCAKF_CIRCUIT_ID = 0x190;
 
-airtemplate Keccakf(const int N = 2**23, int RC = 2, const int chunks, const int bits, const int bits_reduced, const int operation_bus_id) {
+airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, const int chunks, const int bits, const int bits_reduced, const int operation_bus_id) {
     // Keccak-f circuit size
     const int CIRCUIT_XORS = 116886;
     const int CIRCUIT_ANDPS = 38400;
@@ -91,22 +93,63 @@ airtemplate Keccakf(const int N = 2**23, int RC = 2, const int chunks, const int
     lookup_proves(OPERATION_BUS_ID, [KECCAKF_OP, step_input, 0, addr_input, 0, 0, 0, 0], multiplicity);
 
     // --> Constraints to read inputs from memory and write outputs to memory
-    col witness a_src_mem;
-    col witness input[RC]; // TODO: Enforce constraints...
+    col witness bit[RC];
+    col witness val[RC];
+
+    if (NUM_KECCAKF_PER_SLOT == 1) {
+        const int air.latch_num_keccakf = 1;
+        const int air.factor_num_keccakf = 1;
+    } else {
+        col fixed air.latch_num_keccakf = [1,0:(NUM_KECCAKF_PER_SLOT-1)]...;
+        col fixed air.factor_num_keccakf = [1,2..*..2**(NUM_KECCAKF_PER_SLOT-1)]...;
+    }
+
+    // `bit` is a bit
+    for (int i = 0; i < RC; i++) {
+        bit[i] * (1 - bit[i]) === 0;
+    }
+
+    // `val` accumulates bits. After NUM_KECCAKF_PER_SLOT*i clocks, `val` has accumulated the i-th bit of the keccakf's 
+    for (int i = 0; i < RC; i++) {
+        val[i] === 'val[i] * (1 - latch_num_keccakf) + bit[i] * factor_num_keccakf;
+    }
+
+    // TODO: Use connections to check that the values of val1 and val2 are the same as the values set in the gates
+    // Every NUM_KECCAKF_PER_SLOT*i clocks, `val` has to be the coincide with the 'a'-th gate entry
+    // latch_num_keccakf * (val - a) === 0;
+
+    const int CHUNKS_TO_PROCESS = KECCAKF_SIZE_BITS / RB;
+
+    // `state` accumulates RB bits of the j-th keccakf state each clock
+    // After NUM_KECCAKF_PER_SLOT clocks, `state` has accumulated RB bits of the NUM_KECCAKF_PER_SLOT keccakf's
+    // After CHUNKS_TO_PROCESS * NUM_KECCAKF_PER_SLOT clocks, `state` has accumulated all the bits
+    expr state[RC];
+    for (int i = 0; i < RC; i++) {
+        state[i] = 0;
+        for (int j = 0; j < RB; j++) {
+            state[i] += bit[i]'(NUM_KECCAKF_PER_SLOT*j) * 2**j;
+        }
+    }
+
+    const int CLOCKS = CHUNKS_TO_PROCESS * NUM_KECCAKF_PER_SLOT;
+    col fixed is_input  = [[1:CLOCKS,0:CLOCKS,0:(CIRCUIT_SIZE - 2*CLOCKS)]:NUM_SLOTS,0...];
+    col fixed is_output = [[0:CLOCKS,1:CLOCKS,0:(CIRCUIT_SIZE - 2*CLOCKS)]:NUM_SLOTS,0...];
+
+    // step and addr should be the same every NUM_KECCAKF_PER_SLOT clock
+    (is_input + is_output)*(step'(NUM_KECCAKF_PER_SLOT) - step) === 0;
+    (is_input + is_output)*(addr'(NUM_KECCAKF_PER_SLOT) - addr) === 0;
+
     precompiled_mem_load(
-             sel: a_src_mem,
-             main_step: step_input,
-             addr: addr_input,
-             value: input
+             sel: is_input,
+             main_step: step,
+             addr: addr,
+             value: state
             );
 
-    expr addr_output = addr_input;
-    col witness c_src_mem;
-    col witness output[RC]; // TODO: Enforce constraints...
     precompiled_mem_store(
-              sel: c_src_mem,
-              main_step: step_input,
-              addr: addr_output,
-              value: output
+              sel: is_output,
+              main_step: step,
+              addr: addr,
+              value: state
             );
 }

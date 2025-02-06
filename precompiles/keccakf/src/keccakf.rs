@@ -13,7 +13,7 @@ use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{KeccakfFixed, KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
 
-use crate::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM, Script, ValueType};
+use crate::{keccakf, keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM, Script, ValueType};
 
 /// The `KeccakfSM` struct encapsulates the logic of the Keccakf State Machine.
 pub struct KeccakfSM {
@@ -89,22 +89,31 @@ impl KeccakfSM {
     ) {
         // Process the inputs
         let mut inputs_raw: Vec<KeccakfInput> = vec![[0u64; INPUT_DATA_SIZE_BITS]; num_slots];
-        let mut idx = 0;
+        inputs.iter().enumerate().for_each(|(i, input)| {
+            // Get the raw keccakf input as 25 u64 values
+            let keccakf_input: Vec<u64> =
+                OperationBusData::get_extra_data(&ExtOperationData::OperationKeccakData(*input));
+            // let mut keccakf_input_r: [u64; 25] = keccakf_input.clone().try_into().unwrap();
 
-        for inner_vector in inputs {
-            for input in inner_vector {
-                // Get the raw keccakf input as 25 u64 values
-                let keccakf_input: Vec<u64> = OperationBusData::get_extra_data(
-                    &ExtOperationData::OperationKeccakData(*input),
-                );
-                println!(
-                    "Input (R): {:?}",
-                    keccakf_input
-                        .iter()
-                        .map(|x| format!("{:016X}", x))
-                        .collect::<Vec<String>>()
-                        .join(" ")
-                );
+            // Apply the keccakf function for debugging
+            // ========================================
+            // let keccakf_inputs = [0u64; INPUT_DATA_SIZE_BITS];
+            // println!("Input (R): {:?}", print_tiny_format(&keccakf_input_r));
+            // keccakf(&mut keccakf_input_r);
+            // println!("\nOuput (R): {:?}", print_tiny_format(&keccakf_input_r));
+            // ========================================
+
+            // Process the raw data
+            let slot = i / Self::NUM_KECCAKF_PER_SLOT;
+            keccakf_input.iter().enumerate().for_each(|(j, &value)| {
+                // Divide the value in bits
+                for k in 0..64 {
+                    let bit_pos = (63 - k) + 64 * j;
+                    let old_value = inputs_raw[slot][bit_pos];
+                    let new_bit = (value >> k) & 1;
+                    inputs_raw[slot][bit_pos] = (old_value << 1) | new_bit;
+                }
+            });
 
                 // Apply the keccakf function for debugging
                 // ========================================
@@ -158,15 +167,15 @@ impl KeccakfSM {
                 // });
 
                 idx += 1;
-            }
-        }
+            });
 
-        println!("\nInput (P): {:?}", bits_to_hex_le(&inputs_raw[0]).join(" "));
+        // println!("\nInput (P): {:?}", print_seq_format(&inputs_raw[0]));
 
         // Set the values of free_in_a, free_in_b, free_in_c using the script
         let script = self.script.clone();
         let mut offset = 0;
         for i in 0..num_slots {
+            let mut bit_input_pos = [0u64; INPUT_DATA_SIZE_BITS];
             let mut bit_output_pos = [0u64; INPUT_DATA_SIZE_BITS];
             for j in 0..self.slot_size {
                 let line = &script.program[j];
@@ -247,18 +256,19 @@ impl KeccakfSM {
 
                 set_col(trace, |row| &mut row.free_in_c, row, c_val);
 
-                if line.ref_ >= STATE_OUT_REF_0
-                    && (line.ref_ - STATE_OUT_REF_0) % STATE_IN_REF_DISTANCE == 0
-                {
+                if line.ref_ >= STATE_IN_REF_0 && (line.ref_ - STATE_IN_REF_0) % STATE_IN_REF_DISTANCE == 0 {
+                    let bit_pos = (line.ref_ - STATE_IN_REF_0) / STATE_IN_REF_DISTANCE;
+                    if bit_pos < INPUT_DATA_SIZE_BITS {
+                        bit_input_pos[bit_pos] = a_val;
+                    }
+                }
+
+                if line.ref_ >= STATE_OUT_REF_0 && (line.ref_ - STATE_OUT_REF_0) % STATE_IN_REF_DISTANCE == 0 {
                     let bit_pos = (line.ref_ - STATE_OUT_REF_0) / STATE_IN_REF_DISTANCE;
                     if bit_pos < INPUT_DATA_SIZE_BITS {
                         bit_output_pos[bit_pos] = c_val;
                     }
                 }
-
-                // if j > self.slot_size - 9 {
-                //     println!("Program Line: {} || a[{row}] = {}, b[{row}] = {}, c[{row}] = {}", j, a_val, b_val, c_val);
-                // }
             }
 
             // Update the multiplicity table for the slot
@@ -302,33 +312,42 @@ impl KeccakfSM {
             }
 
             // TOOD: Get the keccak-f output for debugging
-            println!("\nInput (C): {:?}", bits_to_hex_le(&bit_input_pos).join(" "));
-            println!("\nOuput (C): {:?}", bits_to_hex_le(&bit_output_pos).join(" "));
-            println!("\nOuput (C): {:?}", bits_to_hex_le(&bit_output_pos2).join(" "));
+            // println!("\nInput (C): {:?}", print_seq_format(&bit_input_pos));
+            // println!("\nOuput (C): {:?}", print_seq_format(&bit_output_pos));
 
             // Move to the next slot
             offset += self.slot_size;
         }
 
-        // [0,1,1,1,0,0]
-
-        // [0,1] 0 -> MSB 1 -> LSB
-
-        fn bits_to_hex_le(bits: &[u64]) -> Vec<String> {
-            let mut bytes = Vec::new();
-            for (j, chunk) in bits.chunks(64).enumerate() {
-                if j == 0 || j == 24 {
-                    println!("Chunk: {:?}", chunk);
+        fn print_tiny_format(input: &[u64; 25]) -> String {
+            // Split each chunk into bytes
+            let mut bytes = vec![0u8; 200]; // 1600 bits = 200 bytes
+            for (i, &chunk) in input.iter().enumerate() {
+                let byte_index = i * 8;
+                for j in 0..8 {
+                    let bit_index = j;
+                    bytes[byte_index + j] = ((chunk >> bit_index) & 1) as u8;
                 }
-                let mut byte = 0u64;
-                for (i, &bit) in chunk.iter().enumerate() {
-                    byte |= bit << (64 - i - 1);
-                }
-                bytes.push(byte);
             }
 
-            // Convert bytes to hexadecimal representation
-            bytes.iter().map(|byte| format!("{:016X}", byte)).collect::<Vec<String>>()
+            // Print the bytes in hex format
+            bytes.iter()
+                .map(|byte| format!("{:02X}", byte))
+                .collect::<Vec<String>>()
+                .join(" ")
+        }
+
+        fn print_seq_format(output: &[u64; 1600]) -> String {
+            let mut bytes = vec![0u8; 200]; // 1600 bits = 200 bytes
+            for (i, &bit) in output.iter().enumerate() {
+                let byte_index = i / 8;
+                let bit_index = i % 8;
+                bytes[byte_index] |= (bit as u8) << bit_index;
+            }
+            bytes.iter()
+                .map(|byte| format!("{:02X}", byte))
+                .collect::<Vec<String>>()
+                .join(" ")
         }
 
         fn set_col<F: PrimeField64>(
