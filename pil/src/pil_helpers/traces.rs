@@ -4,7 +4,8 @@
 #![allow(non_snake_case)]
 
 use proofman_common as common;
-pub use proofman_macros::{trace, values};
+pub use proofman_macros::trace;
+pub use proofman_macros::values;
 
 use std::fmt;
 
@@ -55,10 +56,12 @@ pub const U_8_AIR_AIR_IDS: &[usize] = &[15];
 
 pub const U_16_AIR_AIR_IDS: &[usize] = &[16];
 
+
 //PUBLICS
 use serde::Deserialize;
 use serde::Serialize;
 use serde_arrays;
+
 
 fn default_array_rom_root() -> [u64; 4] {
     [0; 4]
@@ -68,34 +71,39 @@ fn default_array_inputs() -> [u64; 64] {
     [0; 64]
 }
 
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ZiskPublics {
     #[serde(default = "default_array_rom_root", with = "serde_arrays")]
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
+    
 }
 
 impl Default for ZiskPublics {
     fn default() -> Self {
-        Self { rom_root: [0; 4], inputs: [0; 64] }
+        Self {  
+            rom_root: [0; 4],  
+            inputs: [0; 64], 
+        }
     }
 }
 
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],
 });
-
+ 
 values!(ZiskProofValues<F> {
  enable_input_data: F,
 });
-
+ 
 trace!(MainFixed<F> {
  SEGMENT_L1: F, SEGMENT_STEP: F, __L1__: F,
 },  0, 0, 2097152 );
 
 trace!(MainTrace<F> {
- a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F,
+ a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, a_reg_prev_mem_step: F, b_reg_prev_mem_step: F, store_reg_prev_mem_step: F, store_reg_prev_value: [F; 2], a_src_reg: F, b_src_reg: F, store_reg: F,
 },  0, 0, 2097152 );
 
 trace!(RomFixed<F> {
@@ -231,7 +239,7 @@ trace!(RomRomTrace<F> {
 }, 0, 1, 4194304, 0 );
 
 values!(MainAirValues<F> {
- main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 8], last_reg_mem_step: [F; 8],
+ main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 7], last_reg_mem_step: [F; 7],
 });
 
 values!(MemAirValues<F> {

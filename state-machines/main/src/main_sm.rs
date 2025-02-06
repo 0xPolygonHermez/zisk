@@ -7,8 +7,6 @@
 //!   segment.
 //! - Methods for computing the witness and setting up trace rows.
 
-use std::sync::Arc;
-
 use log::info;
 use p3_field::PrimeField;
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
@@ -106,7 +104,6 @@ impl MainSM {
                 Self::fill_partial_trace(zisk_rom, chunk, &segment_min_traces[chunk_id])
             })
             .collect::<Vec<u64>>();
-
         let next_pc = next_pcs.last().unwrap();
 
         // Pad remaining rows with the last valid row
@@ -200,14 +197,6 @@ impl MainSM {
     }
 
     pub fn debug<F: PrimeField>(_pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {
-        // No debug information to display
-    }
-
-    pub fn build_counter() -> Box<dyn BusDeviceMetrics> {
-        Box::new(MainCounter::new(OPERATION_BUS_ID))
-    }
-
-    pub fn debug<F: PrimeField>(_pctx: Arc<ProofCtx<F>>, _sctx: Arc<SetupCtx<F>>) {
         // No debug information to display
     }
 

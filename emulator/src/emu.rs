@@ -11,8 +11,8 @@ use riscv::RiscVRegisters;
 // use zisk_core::SRC_SP;
 use data_bus::DataBus;
 use zisk_core::{
-    InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
-    SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    InstContext, Mem, ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
+    SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 struct MemBusHelpers {}
@@ -1161,10 +1161,31 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     pub fn set_pc(&mut self, instruction: &ZiskInst) {
         if instruction.set_pc {
+            println!(
+                "set_pc.1({} => {} + {} = {}",
+                self.ctx.inst_ctx.pc,
+                self.ctx.inst_ctx.c,
+                instruction.jmp_offset1,
+                self.ctx.inst_ctx.c as i64 + instruction.jmp_offset1
+            );
             self.ctx.inst_ctx.pc = (self.ctx.inst_ctx.c as i64 + instruction.jmp_offset1) as u64;
         } else if self.ctx.inst_ctx.flag {
+            println!(
+                "set_pc.2({} => {} + {} = {}",
+                self.ctx.inst_ctx.pc,
+                self.ctx.inst_ctx.pc,
+                instruction.jmp_offset1,
+                self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset1
+            );
             self.ctx.inst_ctx.pc = (self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset1) as u64;
         } else {
+            println!(
+                "set_pc.3({} => {} + {} = {}",
+                self.ctx.inst_ctx.pc,
+                self.ctx.inst_ctx.pc,
+                instruction.jmp_offset2,
+                self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
+            );
             self.ctx.inst_ctx.pc = (self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2) as u64;
         }
     }
@@ -1501,6 +1522,11 @@ impl<'a> Emu<'a> {
     /// Performs one single step of the emulation
     #[inline(always)]
     pub fn par_step(&mut self) {
+        println!(
+            "CALL get_instruction [pc:{} step:{}]",
+            self.ctx.inst_ctx.pc, self.ctx.inst_ctx.step
+        );
+
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         // Build the 'a' register value  based on the source specified by the current instruction

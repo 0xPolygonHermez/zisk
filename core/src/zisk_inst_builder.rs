@@ -153,10 +153,6 @@ impl ZiskInstBuilder {
             if offset == 0 {
                 return;
             }
-            // else {
-            //     dst = "mem";
-            //     offset = REG_FIRST as i64 + offset * 8;
-            // }
         }
 
         self.i.store_ra = store_ra;
