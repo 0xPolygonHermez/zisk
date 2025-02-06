@@ -88,46 +88,22 @@ impl KeccakfSM {
         multiplicity: &mut [u64],
     ) {
         // Process the inputs
+        let mut idx = 0;
         let mut inputs_raw: Vec<KeccakfInput> = vec![[0u64; INPUT_DATA_SIZE_BITS]; num_slots];
-        inputs.iter().enumerate().for_each(|(i, input)| {
-            // Get the raw keccakf input as 25 u64 values
-            let keccakf_input: Vec<u64> =
-                OperationBusData::get_extra_data(&ExtOperationData::OperationKeccakData(*input));
-            // let mut keccakf_input_r: [u64; 25] = keccakf_input.clone().try_into().unwrap();
-
-            // Apply the keccakf function for debugging
-            // ========================================
-            // let keccakf_inputs = [0u64; INPUT_DATA_SIZE_BITS];
-            // println!("Input (R): {:?}", print_tiny_format(&keccakf_input_r));
-            // keccakf(&mut keccakf_input_r);
-            // println!("\nOuput (R): {:?}", print_tiny_format(&keccakf_input_r));
-            // ========================================
-
-            // Process the raw data
-            let slot = i / Self::NUM_KECCAKF_PER_SLOT;
-            keccakf_input.iter().enumerate().for_each(|(j, &value)| {
-                // Divide the value in bits
-                for k in 0..64 {
-                    let bit_pos = (63 - k) + 64 * j;
-                    let old_value = inputs_raw[slot][bit_pos];
-                    let new_bit = (value >> k) & 1;
-                    inputs_raw[slot][bit_pos] = (old_value << 1) | new_bit;
-                }
-            });
+        for inner_vector in inputs {
+            for input in inner_vector {
+                // Get the raw keccakf input as 25 u64 values
+                let keccakf_input: Vec<u64> = OperationBusData::get_extra_data(
+                    &ExtOperationData::OperationKeccakData(*input),
+                );
+                // let mut keccakf_input_r: [u64; 25] = keccakf_input.clone().try_into().unwrap();
 
                 // Apply the keccakf function for debugging
                 // ========================================
                 // let keccakf_inputs = [0u64; INPUT_DATA_SIZE_BITS];
-                let mut keccakf_input_r: [u64; 25] = keccakf_input.clone().try_into().unwrap();
-                keccakf(&mut keccakf_input_r);
-                println!(
-                    "\nOuput (R): {:?}",
-                    keccakf_input_r
-                        .iter()
-                        .map(|x| format!("{:016X}", x))
-                        .collect::<Vec<String>>()
-                        .join(" ")
-                );
+                // println!("Input (R): {:?}", print_tiny_format(&keccakf_input_r));
+                // keccakf(&mut keccakf_input_r);
+                // println!("\nOuput (R): {:?}", print_tiny_format(&keccakf_input_r));
                 // ========================================
 
                 // Process the raw data
@@ -147,8 +123,6 @@ impl KeccakfSM {
                 // TODO: The previous memory calls should give me a_src_mem, c_src_mem
 
                 // Get the basic data from the input
-                let debug_main_step =
-                    OperationBusData::get_step(&ExtOperationData::OperationKeccakData(*input));
                 let step_input =
                     OperationBusData::get_a(&ExtOperationData::OperationKeccakData(*input));
                 let addr_input =
@@ -164,11 +138,10 @@ impl KeccakfSM {
                     output: [F::one(), F::from_canonical_u8(2)], // TODO: Fix
                     ..Default::default()
                 };
-                // });
 
                 idx += 1;
-            });
-
+            }
+        }
         // println!("\nInput (P): {:?}", print_seq_format(&inputs_raw[0]));
 
         // Set the values of free_in_a, free_in_b, free_in_c using the script
@@ -221,13 +194,6 @@ impl KeccakfSM {
 
                         let pin = &b.pin;
                         if pin == "a" {
-                            // // If pin == "a" and gate == offset, we are in an output assignation gate.
-                            // // Get the output value
-                            // if gate == offset {
-                            //     let output_value = get_col(trace, |row| &mut row.free_in_a, row);
-                            //     bit_output_pos.push(output_value);
-                            // }
-
                             let pinned_value = get_col(trace, |row| &mut row.free_in_a, gate);
                             set_col(trace, |row| &mut row.free_in_b, row, pinned_value);
                         } else if pin == "b" {
@@ -272,31 +238,10 @@ impl KeccakfSM {
             }
 
             // Update the multiplicity table for the slot
-            let mut bit_input_pos = Vec::with_capacity(INPUT_DATA_SIZE_BITS);
-            let mut bit_output_pos2 = Vec::with_capacity(INPUT_DATA_SIZE_BITS);
             let row_idx = if offset == 0 { 1 } else { offset + 1 };
             for i in row_idx..(row_idx + self.slot_size) {
                 let a = trace[i].free_in_a;
                 let b = trace[i].free_in_b;
-                let c = trace[i].free_in_c;
-
-                if i >= STATE_IN_REF_0
-                    && (i - STATE_IN_REF_0) % STATE_IN_REF_DISTANCE == 0
-                    && bit_input_pos.len() < INPUT_DATA_SIZE_BITS
-                {
-                    bit_input_pos.push(F::as_canonical_u64(&a[0]));
-                }
-
-                if i >= STATE_OUT_REF_0
-                    && (i - STATE_OUT_REF_0) % STATE_IN_REF_DISTANCE == 0
-                    && bit_output_pos2.len() < INPUT_DATA_SIZE_BITS
-                {
-                    // if bit_output_pos2.len() > INPUT_DATA_SIZE_BITS - 9 {
-                    //     println!("FR a[{i}] = {}, b[{i}] = {}, c[{i}] = {}", a[0], b[0], c[0]);
-                    // }
-                    bit_output_pos2.push(F::as_canonical_u64(&c[0]));
-                }
-
                 let gate_op = fixed[i].GATE_OP;
                 let gate_op_val = match F::as_canonical_u64(&gate_op) {
                     0u64 => KeccakfTableGateOp::Xor,

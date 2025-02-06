@@ -9,7 +9,6 @@ proofman-macros = { workspace = true }
 serde = { version = "1.0.204", features = ["derive"] }
 rayon = { workspace = true }
 serde_arrays = "0.1"
-rayon = "1.10"
 
 
 [features]
