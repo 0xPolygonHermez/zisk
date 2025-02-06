@@ -782,16 +782,14 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                self.set_reg(instruction.store_offset as usize, self.ctx.inst_ctx.c);
+                self.set_reg(
+                    instruction.store_offset as usize,
+                    self.get_value_to_store(instruction),
+                );
             }
             STORE_MEM => {
                 // Calculate value
-                let val: i64 = if instruction.store_ra {
-                    self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
-                } else {
-                    self.ctx.inst_ctx.c as i64
-                };
-                let val = val as u64;
+                let val = self.get_value_to_store(instruction);
 
                 // Calculate memory address
                 let mut addr: i64 = instruction.store_offset;
@@ -845,16 +843,14 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                self.set_reg(instruction.store_offset as usize, self.ctx.inst_ctx.c);
+                self.set_reg(
+                    instruction.store_offset as usize,
+                    self.get_value_to_store(instruction),
+                );
             }
             STORE_MEM => {
                 // Calculate the value
-                let value: i64 = if instruction.store_ra {
-                    self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
-                } else {
-                    self.ctx.inst_ctx.c as i64
-                };
-                let value: u64 = value as u64;
+                let value = self.get_value_to_store(instruction);
 
                 // Calculate the memory address
                 let mut address: i64 = instruction.store_offset;
@@ -879,12 +875,7 @@ impl<'a> Emu<'a> {
             }
             STORE_IND => {
                 // Calculate the value
-                let value: i64 = if instruction.store_ra {
-                    self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
-                } else {
-                    self.ctx.inst_ctx.c as i64
-                };
-                let value = value as u64;
+                let value = self.get_value_to_store(instruction);
 
                 // Calculate the memory address
                 let mut address = instruction.store_offset;
@@ -931,7 +922,7 @@ impl<'a> Emu<'a> {
             STORE_REG => {
                 self.set_traced_reg(
                     instruction.store_offset as usize,
-                    self.ctx.inst_ctx.c,
+                    self.get_value_to_store(instruction),
                     reg_trace,
                 );
             }
@@ -1004,16 +995,14 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                self.set_reg(instruction.store_offset as usize, self.ctx.inst_ctx.c);
+                self.set_reg(
+                    instruction.store_offset as usize,
+                    self.get_value_to_store(instruction),
+                );
             }
             STORE_MEM => {
                 // Calculate the value
-                let value: i64 = if instruction.store_ra {
-                    self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
-                } else {
-                    self.ctx.inst_ctx.c as i64
-                };
-                let value = value as u64;
+                let value = self.get_value_to_store(instruction);
 
                 // Calculate the memory address
                 let mut address: i64 = instruction.store_offset;
@@ -1074,12 +1063,7 @@ impl<'a> Emu<'a> {
             }
             STORE_IND => {
                 // Calculate the value
-                let value: i64 = if instruction.store_ra {
-                    self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
-                } else {
-                    self.ctx.inst_ctx.c as i64
-                };
-                let value = value as u64;
+                let value = self.get_value_to_store(instruction);
 
                 // Calculate the memory address
                 let mut address = instruction.store_offset;
@@ -1161,31 +1145,10 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     pub fn set_pc(&mut self, instruction: &ZiskInst) {
         if instruction.set_pc {
-            println!(
-                "set_pc.1({} => {} + {} = {}",
-                self.ctx.inst_ctx.pc,
-                self.ctx.inst_ctx.c,
-                instruction.jmp_offset1,
-                self.ctx.inst_ctx.c as i64 + instruction.jmp_offset1
-            );
             self.ctx.inst_ctx.pc = (self.ctx.inst_ctx.c as i64 + instruction.jmp_offset1) as u64;
         } else if self.ctx.inst_ctx.flag {
-            println!(
-                "set_pc.2({} => {} + {} = {}",
-                self.ctx.inst_ctx.pc,
-                self.ctx.inst_ctx.pc,
-                instruction.jmp_offset1,
-                self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset1
-            );
             self.ctx.inst_ctx.pc = (self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset1) as u64;
         } else {
-            println!(
-                "set_pc.3({} => {} + {} = {}",
-                self.ctx.inst_ctx.pc,
-                self.ctx.inst_ctx.pc,
-                instruction.jmp_offset2,
-                self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2
-            );
             self.ctx.inst_ctx.pc = (self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2) as u64;
         }
     }
@@ -1522,11 +1485,6 @@ impl<'a> Emu<'a> {
     /// Performs one single step of the emulation
     #[inline(always)]
     pub fn par_step(&mut self) {
-        println!(
-            "CALL get_instruction [pc:{} step:{}]",
-            self.ctx.inst_ctx.pc, self.ctx.inst_ctx.step
-        );
-
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         // Build the 'a' register value  based on the source specified by the current instruction
@@ -1985,6 +1943,14 @@ impl<'a> Emu<'a> {
         //println!("Emu::set_reg() index={} value={:x}", index, value);
     }
 
+    #[inline(always)]
+    pub fn get_value_to_store(&self, instruction: &ZiskInst) -> u64 {
+        if instruction.store_ra {
+            (self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2) as u64
+        } else {
+            self.ctx.inst_ctx.c as u64
+        }
+    }
     // #[inline(always)]
     // pub fn memory_read(&mut self, address: u64, width: u64) -> u64 {
     //     let value: u64;

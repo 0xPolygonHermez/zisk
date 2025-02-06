@@ -110,19 +110,35 @@ impl ZiskRom {
     /// corresponding vector.
     #[inline(always)]
     pub fn get_instruction(&self, pc: u64) -> &ZiskInst {
-        println!("get_instruction() [pc:{}]", pc);
         // If the address is a program address...
-        assert!(pc < 0x100000000, "ZiskRom::get_instruction() pc={} is out of range", pc);
         if pc >= ROM_ADDR {
             // If the address is alligned, take it from the proper vector
             if pc & 0b11 == 0 {
                 // pc is aligned to a 4-byte boundary
-                &self.rom_instructions[((pc - ROM_ADDR) >> 2) as usize]
-            // Otherwise, take it from the non alligned vector, using the the difference of the pc
-            // vs. the offset as the index
+                let rom_index = ((pc - ROM_ADDR) >> 2) as usize;
+                if rom_index >= self.rom_instructions.len() {
+                    panic!(
+                        "ZiskRom::get_instruction() pc={} is out of range rom_instructions (rom_index:{} >= {})",
+                        pc,
+                        rom_index,
+                        self.rom_instructions.len()
+                    );
+                }
+                &self.rom_instructions[rom_index]
+                // Otherwise, take it from the non alligned vector, using the the difference of the pc
+                // vs. the offset as the index
             } else {
                 // pc is not aligned to a 4-byte boundary
-                &self.rom_na_instructions[(pc - self.offset_rom_na_unstructions) as usize]
+                let rom_index = (pc - self.offset_rom_na_unstructions) as usize;
+                if rom_index >= self.rom_na_instructions.len() {
+                    panic!(
+                        "ZiskRom::get_instruction() pc={} is out of range rom_na_instructions (rom_index:{} >= {})",
+                        pc,
+                        rom_index,
+                        self.rom_na_instructions.len()
+                    );
+                }
+                &self.rom_na_instructions[rom_index]
             }
         } else if pc >= ROM_ENTRY {
             // pc is in the ROM_ENTRY range (always alligned)
