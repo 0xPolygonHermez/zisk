@@ -177,6 +177,7 @@ impl MainSM {
         emu.ctx.inst_ctx.pc
     }
 
+    /// Debug method for the main state machine.
     pub fn debug<F: PrimeField>(_pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {
         // No debug information to display
     }

@@ -53,6 +53,8 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
     ///
     /// # Arguments
     /// * `_pctx` - The proof context, unused in this implementation.
+    /// * `_sctx` - The setup context, unused in this implementation.
+    /// * `collectors` - A vector of input collectors to process and collect data for witness
     ///
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.

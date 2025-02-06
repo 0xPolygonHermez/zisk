@@ -25,8 +25,10 @@ pub trait Instance<F: PrimeField>: Send {
     /// Computes the witness for the instance based on the proof context.
     ///
     /// # Arguments
-    /// * `pctx` - The proof context containing necessary information for computation.
-    /// * `collectors` - A vector of input collectors to process and collect data for witness.
+    /// * `_pctx` - The proof context, unused in this implementation.
+    /// * `_sctx` - The setup context, unused in this implementation.
+    /// * `_collectors` - A vector of input collectors to process and collect data for witness,
+    /// unused in this implementation
     ///
     /// # Returns
     /// An optional `AirInstance` object representing the computed witness.
@@ -61,6 +63,12 @@ pub trait Instance<F: PrimeField>: Send {
     fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         None
     }
+
+    /// Debugs the instance.
+    ///
+    /// # Arguments
+    /// * `_pctx` - The proof context, unused in this implementation.
+    /// * `_sctx` - The setup context, unused in this implementation.
     fn debug(&self, _pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {}
 }
 

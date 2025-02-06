@@ -46,7 +46,9 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
     ///
     /// # Arguments
     /// * `_pctx` - The proof context, unused in this implementation.
-    /// * `_collectors` - A vector of input collectors to process and collect data for witness
+    /// * `_sctx` - The setup context, unused in this implementation.
+    /// * `_collectors` - A vector of input collectors to process and collect data for witness,
+    /// unused in this implementation.
     ///
     /// # Returns
     /// Always returns `None` as this instance does not generate an `AirInstance`.
