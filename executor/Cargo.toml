@@ -11,7 +11,6 @@ ziskemu = { path = "../emulator" }
 zisk-core = { path = "../core" }
 data-bus = { path = "../data-bus" }
 
-
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 witness = { workspace = true }

@@ -2,6 +2,17 @@
     Memory Component (Mem)
     ======================
 
+    Memory is sorted by address and step for all memory accesses to prove the correctness of memory.
+    This verifies that, within the same memory address, `mem_steps` (acting like timestamps) are
+    incremental. Additionally, each time the address changes, it must be greater than the previous
+    address to prevent repeated addresses.
+
+    There are three types of memory:
+    - Mutable (read/write) memory.
+    - Immutable (read-only) memory, with a single write at initialization.
+    - Immutable free-input memory, always reading the same value for each address.
+
+
     - Allows to define a memory on a region with size <= MEMORY_MAX_DIFF * mem_bytes (2^24).
     - Inside this component the address are mem-byte address, to translate internal adress to
       external need to multiply by mem_bytes.
@@ -19,7 +30,7 @@
     - mem_bytes = number of bytes of memory word (8 bytes by default)
     - base_address = base byte address when start the memory
     - mem_size = size of memory in bytes (0x800_0000 by default)
-    - immutable = if memory is immutable, first access is a write (by default is mutable)
+    - immutable = if memory is immutable, first access must be a write (by default is mutable)
     - free_input_mem = if memory is a free input memory, memory without write, all access are reads
                        with same value, this value it's stablished by executor.
 
@@ -51,6 +62,8 @@ const int RESERVED_MEM_STEPS = 1;
 const int MAX_MEM_STEP_OFFSET = 2;
 const int MAX_MEM_STEPS_PER_MAIN_STEP = 4;
 
+const int MAX_RANGE_CHECK_CHUNK = 2**16;
+
 airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2, const int mem_bytes = 8,
                 const int base_address = 0, const int mem_size = 0x800_0000, int immutable = 0,
                 const int free_input_mem = 0, const expr enable_flag = 1) {
@@ -67,8 +80,12 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     airval is_first_segment;
     airval is_last_segment;
 
+    // constraints for boolean airvalues
+
     is_first_segment * (1 - is_first_segment) === 0;
     is_last_segment * (1 - is_last_segment) === 0;
+
+    // If is_first_segment means that segment must be 0
     is_first_segment * segment_id === 0;
 
     col witness addr;        // n-byte address, real address = addr * mem_bytes
@@ -76,21 +93,27 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     col witness sel;
     col witness addr_changes;
 
-    if (!free_input_mem) {
-        col witness air.value[RC];
-    } else {
+    // boolean constraints
+
+    sel * (1 - sel) === 0;
+    addr_changes * (1 - addr_changes) === 0;
+
+    // constraints over value
+
+    if (free_input_mem) {
         immutable = 1;
         col witness air.value_word[RC*2];
         const expr air.value[RC];
         for (int index = 0; index < RC; ++index) {
-            value[index] = value_word[index*2] +  2**16 * value_word[index*2 + 1];
+            value[index] = value_word[index*2] +  MAX_RANGE_CHECK_CHUNK * value_word[index*2 + 1];
 
             // how value is a free-input, must be checked that it's 32-bit well formed value
-            range_check(value_word[index*2], 0, 2**16 - 1);
-            range_check(value_word[index*2+1], 0, 2**16 - 1);
+            range_check(value_word[index*2], 0, MAX_RANGE_CHECK_CHUNK - 1);
+            range_check(value_word[index*2+1], 0, MAX_RANGE_CHECK_CHUNK - 1);
         }
+    } else {
+        col witness air.value[RC];
     }
-
 
     if (free_input_mem) {
         // free input memory must be read-only
@@ -99,26 +122,48 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         // immutable memory in address change, must be write first or a read of zero.
         const expr air.wr = addr_changes * sel;
         for (int i = 0; i < RC; i++) {
-            // addr_changes * (1 - wr) * value[i] === 0;
+            // really constraint is addr_changes * (1 - wr) * value[i] === 0, but it's simplified because
+            // addr_changes * addr_changes = addr_changes
             addr_changes * (1 - sel) * value[i] === 0;
         }
     } else {
         col witness air.wr;
         const expr air.rd = 1 - wr;
+
+        // boolean constraint over wr;
         wr * (1 - wr) === 0;
-        // if wr is 1, sel must be 1 (not allowed writes)
+
+        // all writes must be "launched" to the bus, not allowed silent writes
         wr * (1 - sel) === 0;
     }
 
-    sel * (1 - sel) === 0;
+    // CONTINUATIONS
 
-    addr_changes * (1 - addr_changes) === 0;
+    // These previous values used on direct update to air bus, using constraints proves the relation
+    // with values of first row of current segment
 
     airval previous_segment_value[RC];
     airval previous_segment_step, previous_segment_addr;
 
-    // continuation for next segment, these values used on direct update to air bus, and after
-    // with constraints force that these values are the same as last row of current segment.
+    // In columns sent to the bus, we add base_address to avoid collisions between different memory
+    // areas. Also for security send is_last_segment to avoid reuse end of last segment as start of
+    // new cycle of segments
+
+    // this constraint "assumes" that previous values of this segment
+
+    direct_update_assumes(MEMORY_CONT_ID,
+                  [
+                    base_address,               // identify area of memory
+                    segment_id,                 // current segment_id
+                                                // proves of last segment
+                    previous_segment_addr,
+                    previous_segment_step,
+                    ...previous_segment_value
+                  ]);
+
+    // This constraint "proves" that the previous values of the next segment are the current last
+    // values of this segment (airvals).
+    // These last values must match the last row values of the current segment.
 
     airval segment_last_value[RC];
     airval segment_last_step, segment_last_addr;
@@ -130,25 +175,13 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     SEGMENT_LAST * (addr - segment_last_addr) === 0;
     SEGMENT_LAST * (step - segment_last_step) === 0;
 
-    // add base_address to the columns to avoid collisions between different memories
-    // for security send is_last_segment to avoid reuse end of last segment as start of new cycle of segments
-    direct_update_assumes(MEMORY_CONT_ID,
-                  [
-                    base_address,                               // identify area of memory
-                    segment_id,                                 // current segment_id
-                                                                // proves of last segment
-                    previous_segment_addr,
-                    previous_segment_step,
-                    ...previous_segment_value
-                  ]);
-
     direct_update_proves(MEMORY_CONT_ID,
                   [
-                    base_address,                               // identify area of memory
-                    segment_id + 1,                             // next segment_id, for last segment
-                                                                // this value is forced to 0 to match global constraint
-                    segment_last_addr,                          // last addr of segment
-                    segment_last_step,                          // last step of segment
+                    base_address,               // identify area of memory
+                    segment_id + 1,             // next segment_id, for last segment
+                                                // this value is forced to 0 to match global constraint
+                    segment_last_addr,          // last addr of segment
+                    segment_last_step,          // last step of segment
                     ...segment_last_value
                   ],
                   sel: (1 - is_last_segment));
@@ -158,23 +191,60 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         zeros[i] = 0;
     }
 
+    // Global constraint to ensure that memory segments are initialized only once. The `enable_flag`
+    // must be a boolean value. The constraint on this boolean should be defined outside of memory
+    // to prevent redundant constraints.This flag is used to handle cases where a memory area is not
+    // used during a given execution.
+
     direct_global_update_proves(MEMORY_CONT_ID, [ base_address, 0, internal_base_address, 0, ...zeros], sel: enable_flag);
 
-    // for security check that first address has correct value, to avoid add huge quantity of instances to "overflow" prime field.
+    // For security, ensure that the first address has the correct value to prevent adding a large
+    // number of instances that could cause an "overflow" in the prime field.
+
     range_check(expression: previous_segment_addr - internal_base_address + 1, min: 1, max: MEMORY_MAX_DIFF);
 
-    // control final of memory
+    // Final memory control: the last address must be within the memory area.
+    // Since the initial address is inside the memory area and addresses are either equal or incremental,
+    // if the last address is within the memory area, all addresses are guaranteed to be inside as well.
+
     range_check(expression: internal_end_address - segment_last_addr + 1, min: 1, max: MEMORY_MAX_DIFF);
 
+    // Check the order of operations inside segment
 
-    // check increment of memory
     if (immutable) {
-        // addresses are incremental, to save range check, increment, etc, address must be consecutive.
+
+        // Immutable means that all operations must produces the same value. In the case of
+        // free-input memory, no write operations exist. The first read value for a given address
+        // determines all subsequent values for that same address.
+
+        // In this type of memory, addresses need to be ordered. However, execution typically
+        // accesses a full range of addresses. To avoid wasting a range check, we assume that
+        // addresses are consecutive (note that addresses are `mem_bytes` addresses). If the executor
+        // detects that an address has not been accessed, it must be added but not sent to the bus.
+
+        // `previous_addr` is `previous_segment_addr` in row 0 and the `addr` of the previous row
+        // for all other rows.
+
+        // In the case of immutable memory, the first row must be "different" to force `address_change`.
+        // For this reason, we subtract one from `previous_segment_addr`, which in the first segment is equal
+        // to the first address of the memory area.
+
         const expr air.previous_addr = SEGMENT_L1 * (previous_segment_addr - is_first_segment - 'addr) + 'addr;
         const expr delta_addr = addr - previous_addr;
+
+        // If the address changes, the difference must be one
+
         addr_changes * (delta_addr - 1) === 0;
+
+        // If the address does not change, the current address and previous must be the same.
+
         (1 - addr_changes) * (addr - previous_addr) === 0;
+
     } else {
+
+        // In this case we don't need to substract one, as happends on immutable memory, because the step of first
+        // previous segment is 0 and first possible step is greater than 0.
+
         const expr air.previous_addr = SEGMENT_L1 * (previous_segment_addr - 'addr) + 'addr;
         const expr delta_addr = addr - previous_addr;
 
@@ -198,7 +268,6 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     //          setting is_last_segment = 1
 
     // if addr_changes == 0 means that addr and previous address are the same
-    // TODO:
 
     for (int index = 0; index < length(value); index++) {
         const expr previous_value = SEGMENT_L1 * (previous_segment_value[index] - 'value[index]) + 'value[index];
@@ -208,7 +277,6 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
         } else {
             // if address not change and it isn't write, value must be equal to previous value
-            // TODO: boundary constraints
             (1 - addr_changes) * (1 - wr) * (value[index] - previous_value)  ===  0;
 
             // if address changes, and it isn't a write, value must be 0.
@@ -225,6 +293,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     permutation_proves(MEMORY_ID, expressions: [mem_op, addr * mem_bytes, step, mem_bytes, ...value], sel: sel);
 }
 
+// Memory helpers to use the memory
 function mem_load(int id = MEMORY_ID, expr addr, expr mem_step, expr bytes = 8, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     mem_assumes(id, MEMORY_LOAD_OP, addr, mem_step, bytes, value, sel, name);
 }

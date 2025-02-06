@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use std::collections::HashMap;
 
 use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
@@ -8,19 +9,29 @@ use crate::{MemHelpers, MEM_REGS_ADDR, MEM_REGS_MASK};
 #[cfg(feature = "debug_mem")]
 use crate::MemDebug;
 
+#[cfg(feature = "debug_mem")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct UsesCounterDebug {
+    pub internal_reads: u32,
+    pub mem_align_extra_rows: u32,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct UsesCounter {
     pub first_step: u64,
     pub last_step: u64,
     pub count: u64,
     pub last_value: u64,
+    pub addr: u32,
+    #[cfg(feature = "debug_mem")]
+    pub debug: UsesCounterDebug,
 }
 
 #[derive(Default, Debug)]
 pub struct MemCounters {
     pub registers: [UsesCounter; 32],
     pub addr: HashMap<u32, UsesCounter>,
-    pub addr_sorted: Vec<(u32, UsesCounter)>,
+    pub addr_sorted: [Vec<(u32, UsesCounter)>; 3],
     pub mem_align: Vec<u8>,
     pub mem_align_rows: u32,
     #[cfg(feature = "debug_mem")]
@@ -33,7 +44,7 @@ impl MemCounters {
         Self {
             registers: [empty_counter; 32],
             addr: HashMap::new(),
-            addr_sorted: Vec::new(),
+            addr_sorted: [Vec::new(), Vec::new(), Vec::new()],
             mem_align: Vec::new(),
             mem_align_rows: 0,
             #[cfg(feature = "debug_mem")]
@@ -51,6 +62,7 @@ impl Metrics for MemCounters {
         let step = MemBusData::get_step(data);
         let bytes = MemBusData::get_bytes(data);
 
+        // #[cfg(feature = "debug_mem")]
         // self.debug.log(addr, step, bytes, is_write, false);
 
         if (addr & MEM_REGS_MASK) == MEM_REGS_ADDR {
@@ -63,12 +75,23 @@ impl Metrics for MemCounters {
             };
 
             if self.registers[reg_index].count == 0 {
-                self.registers[reg_index] =
-                    UsesCounter { first_step: step, last_step: step, count: 1, last_value };
+                self.registers[reg_index] = UsesCounter {
+                    first_step: step,
+                    last_step: step,
+                    count: 1,
+                    last_value,
+                    addr: (0xA000_0000 / 8) + reg_index as u32,
+                    #[cfg(feature = "debug_mem")]
+                    debug: UsesCounterDebug { internal_reads: 0, mem_align_extra_rows: 0 },
+                };
             } else {
                 let internal_reads =
                     MemHelpers::get_extra_internal_reads(self.registers[reg_index].last_step, step);
                 self.registers[reg_index].count += 1 + internal_reads;
+                #[cfg(feature = "debug_mem")]
+                {
+                    self.registers[reg_index].debug.internal_reads += internal_reads as u32;
+                }
                 self.registers[reg_index].last_step = step;
                 self.registers[reg_index].last_value = last_value;
             }
@@ -84,17 +107,29 @@ impl Metrics for MemCounters {
                     let internal_reads =
                         MemHelpers::get_extra_internal_reads_by_addr(addr_w, value.last_step, step);
                     value.count += 1 + internal_reads;
+                    #[cfg(feature = "debug_mem")]
+                    {
+                        value.debug.internal_reads += internal_reads as u32;
+                    }
                     value.last_step = step;
                     value.last_value = last_value;
                 })
-                .or_insert(UsesCounter { first_step: step, last_step: step, count: 1, last_value });
+                .or_insert(UsesCounter {
+                    first_step: step,
+                    last_step: step,
+                    count: 1,
+                    last_value,
+                    addr: addr_w,
+                    #[cfg(feature = "debug_mem")]
+                    debug: UsesCounterDebug { internal_reads: 0, mem_align_extra_rows: 0 },
+                });
         } else {
             let addr_count = if MemHelpers::is_double(addr, bytes) { 2 } else { 1 };
             let (ops_by_addr, last_values) = if MemHelpers::is_write(op) {
                 (
                     2,
                     MemHelpers::get_write_values(
-                        addr_w,
+                        addr,
                         bytes,
                         MemBusData::get_value(data),
                         MemBusData::get_mem_values(data),
@@ -118,12 +153,23 @@ impl Metrics for MemCounters {
                         value.count += ops_by_addr + internal_reads;
                         value.last_step = last_step;
                         value.last_value = last_values[index as usize];
+                        #[cfg(feature = "debug_mem")]
+                        {
+                            value.debug.internal_reads += internal_reads as u32;
+                            value.debug.mem_align_extra_rows += ops_by_addr as u32 - 1;
+                        }
                     })
                     .or_insert(UsesCounter {
                         first_step: step,
                         last_step,
                         count: ops_by_addr,
                         last_value: last_values[index as usize],
+                        addr: _addr_w,
+                        #[cfg(feature = "debug_mem")]
+                        debug: UsesCounterDebug {
+                            internal_reads: 0,
+                            mem_align_extra_rows: ops_by_addr as u32 - 1,
+                        },
                     });
             }
             let mem_align_op_rows = 1 + addr_count * ops_by_addr as u32;
@@ -136,10 +182,20 @@ impl Metrics for MemCounters {
 
     fn on_close(&mut self) {
         // address must be ordered
-        let addr_hashmap = std::mem::take(&mut self.addr);
-        self.addr_sorted = addr_hashmap.into_iter().collect();
-        self.addr_sorted.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut addr_vector: Vec<(u32, UsesCounter)> =
+            std::mem::take(&mut self.addr).into_iter().collect();
+        addr_vector.par_sort_by_key(|(key, _)| *key);
+
+        // Divideix el vector original en tres parts
+        let point = addr_vector.partition_point(|x| x.0 < (0xA000_0000 / 8));
+        self.addr_sorted[2] = addr_vector.split_off(point);
+
+        let point = addr_vector.partition_point(|x| x.0 < (0x9000_0000 / 8));
+        self.addr_sorted[1] = addr_vector.split_off(point);
+
+        self.addr_sorted[0] = addr_vector;
     }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -147,13 +203,18 @@ impl Metrics for MemCounters {
 
 impl BusDevice<u64> for MemCounters {
     #[inline]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         self.measure(bus_id, data);
 
-        (false, vec![])
+        None
     }
 
     fn bus_id(&self) -> Vec<BusId> {
         vec![MEM_BUS_ID]
+    }
+
+    /// Provides a dynamic reference for downcasting purposes.
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
     }
 }

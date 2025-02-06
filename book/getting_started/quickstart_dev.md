@@ -18,8 +18,8 @@ Run the following commands to clone the necessary repositories:
 ```bash
 git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
 git clone -b develop https://github.com/0xPolygonHermez/zisk.git
-git clone -b 0.0.16 https://github.com/0xPolygonHermez/pil2-proofman.git
-git clone -b 0.0.16 https://github.com/0xPolygonHermez/pil2-proofman-js
+git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman.git
+git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman-js
 ```
 
 ## Compile a Verifiable Rust Program
@@ -150,7 +150,7 @@ Sample inputs are located in `zisk/emulator/benches/data`:
 ### Verify Constraints Only
 ```bash
 // Using input_one_segment.bin
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_one_segment.bin --proving-key ../zisk/build/provingKey)
+(cargo build --release --features debug && cd ../pil2-proofman; cargo run --release --features debug --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_one_segment.bin --proving-key ../zisk/build/provingKey)
 
 // Using input_two_segments.bin
 (cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_two_segments.bin --proving-key ../zisk/build/provingKey)`

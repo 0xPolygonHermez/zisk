@@ -5,9 +5,6 @@
 //! for the `ArithFullSM` state machine based on data received over the bus.
 
 use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData};
-use p3_field::PrimeField;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use sm_common::{CheckPoint, Instance};
 use zisk_core::ZiskOperationType;
 
 use crate::ArithFullSM;
@@ -28,37 +25,6 @@ impl ArithInputGenerator {
     }
 }
 
-impl<F: PrimeField> Instance<F> for ArithInputGenerator {
-    /// Retrieves the checkpoint associated with this generator.
-    ///
-    /// # Returns
-    /// A `CheckPoint::None`, as this generator does not maintain any `CheckPoint`.
-    fn check_point(&self) -> CheckPoint {
-        CheckPoint::None
-    }
-
-    /// Retrieves the type of this instance.
-    ///
-    /// # Returns
-    /// An `InstanceType::Instance`, indicating this is of type instance.
-    fn instance_type(&self) -> sm_common::InstanceType {
-        sm_common::InstanceType::Instance
-    }
-
-    /// Computes the witness for this generator.
-    ///
-    /// This generator does not compute a witness and always returns `None`.
-    ///
-    /// # Arguments
-    /// * `_` - The proof context (unused in this implementation).
-    ///
-    /// # Returns
-    /// Always returns `None`.
-    fn compute_witness(&mut self, _: &ProofCtx<F>, _sctx: &SetupCtx<F>) -> Option<AirInstance<F>> {
-        None
-    }
-}
-
 impl BusDevice<u64> for ArithInputGenerator {
     /// Processes data received on the bus and generates inputs for binary operations.
     ///
@@ -67,17 +33,17 @@ impl BusDevice<u64> for ArithInputGenerator {
     /// * `data` - The data received from the bus.
     ///
     /// # Returns
-    /// A tuple where:
-    /// - The first element indicates whether processing should continue (`false` in this case).
+    /// An optional vector of tuples where:
+    /// - The first element is the bus ID.
     /// - The second element contains the derived inputs to be sent back to the bus.
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         let input: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
         let op_type = OperationBusData::get_op_type(&input);
 
         if op_type as u32 != ZiskOperationType::Arith as u32 {
-            return (false, vec![]);
+            return None;
         }
 
         if let ExtOperationData::OperationData(input) = input {
@@ -85,7 +51,9 @@ impl BusDevice<u64> for ArithInputGenerator {
                 .into_iter()
                 .map(|x| (*bus_id, x))
                 .collect::<Vec<_>>();
-            (false, inputs)
+
+        Some(inputs)
+
         } else {
             panic!("Expected ExtOperationData::OperationData");
         }
@@ -97,5 +65,10 @@ impl BusDevice<u64> for ArithInputGenerator {
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
         vec![self.bus_id]
+    }
+
+    /// Provides a dynamic reference for downcasting purposes.
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
     }
 }

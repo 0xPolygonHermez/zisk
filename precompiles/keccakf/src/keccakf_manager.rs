@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
-use data_bus::OPERATION_BUS_ID;
+use data_bus::{BusDevice, PayloadType, OPERATION_BUS_ID};
 use p3_field::{PrimeField, PrimeField64};
 
 use sm_common::{
-    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx,
-    InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
+    table_instance, BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, InstanceInfo,
+    Planner, RegularCounters, RegularPlanner, TableInfo,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::{KeccakfTableTrace, KeccakfTrace};
 
-use crate::{KeccakfInstance, KeccakfSM, KeccakfTableSM};
+use crate::{KeccakfInputGenerator, KeccakfInstance, KeccakfSM, KeccakfTableSM};
 
 /// The `KeccakfManager` struct represents the Keccakf manager,
 /// which is responsible for managing the Keccakf state machine and its table state machine.
@@ -76,7 +76,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
     ///
     /// # Panics
     /// Panics if the provided `air_id` is not supported.
-    fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
+    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
             id if id == KeccakfTrace::<usize>::AIR_ID => {
                 Box::new(KeccakfInstance::new(self.keccakf_sm.clone(), ictx, OPERATION_BUS_ID))
@@ -93,5 +93,9 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
                 panic!("KeccakfBuilder::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id)
             }
         }
+    }
+
+    fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
+        Some(Box::new(KeccakfInputGenerator::new(OPERATION_BUS_ID)))
     }
 }

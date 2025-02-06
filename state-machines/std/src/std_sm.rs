@@ -10,9 +10,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use sm_common::{
-    BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, DummyCounter, InstanceCtx, Planner,
-};
+use sm_common::{BusDeviceMetrics, ComponentBuilder, DummyCounter, Instance, InstanceCtx, Planner};
 
 use crate::{StdInstance, StdPlanner};
 
@@ -53,15 +51,14 @@ impl<F: PrimeField> ComponentBuilder<F> for StdSM<F> {
         Box::new(StdPlanner::new(self.std.clone()))
     }
 
-    /// Builds an inputs data collector for standard library operations.
+    /// Builds an instance of the PIL2 standard library state machine.
     ///
     /// # Arguments
     /// * `ictx` - The context of the instance, containing the plan and its associated
-    ///   configurations.
     ///
     /// # Returns
     /// A boxed implementation of `StdInstance`.
-    fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
+    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         Box::new(StdInstance::new(self.std.clone(), ictx))
     }
 }

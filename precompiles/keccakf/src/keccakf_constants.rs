@@ -4,8 +4,8 @@
 pub const INPUT_DATA_SIZE_BITS: usize = 1600; // 200 bytes
 
 /// Keccakf Parameters
-pub const CHUNKS_KECCAKF: usize = 1;
-pub const BITS_KECCAKF: usize = 1;
+pub const CHUNKS_KECCAKF: usize = 6;
+pub const BITS_KECCAKF: usize = 10;
 pub const P2_BITS_KECCAKF: u64 = 1 << BITS_KECCAKF;
 pub const P2_CHUNK_BITS_KECCAKF: u64 = 1 << (BITS_KECCAKF * CHUNKS_KECCAKF);
 pub const MASK_BITS_KECCAKF: u64 = P2_BITS_KECCAKF - 1;

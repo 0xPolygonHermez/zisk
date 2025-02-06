@@ -23,6 +23,7 @@ zisk-core = { path = "../core" }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
+proofman-macros = { workspace = true }
 witness = { workspace = true }
 p3-field = { workspace=true }
 pil-std-lib = { workspace = true }
@@ -35,3 +36,4 @@ rayon = { workspace = true }
 [features]
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
+diagnostic = ["proofman-macros/diagnostic"]

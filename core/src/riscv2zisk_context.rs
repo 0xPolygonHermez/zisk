@@ -1520,17 +1520,15 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
 
     // :0014
     // Returns from the program execution.
-    // Reads output data using the specific pubout operation
-    // Read the output data length located at first 64 bits of output data,
-    // and then then read output data in chunks of 64 bits:
+    // Reads output data using the specific pubout operation in 32 chunks of 64 bits:
     //
-    // loadw: c(reg1) = b(mem=OUTPUT_ADDR), a=0   // TODO: check that Nx4 < OUTPUT_SIZE
+    // loadw: c(reg1) = b(32), a=0
     // copyb: c(reg2)=b=0, a=0
-    // copyb: c(reg3)=b=OUTPUT_ADDR+4, a=0
+    // copyb: c(reg3)=b=OUTPUT_ADDR, a=0
     //
     // eq: if reg2==reg1 jump to end
     // pubout: c=b.mem(reg3), a = reg2
-    // add: reg3 = reg3 + 4 // Increment memory address
+    // add: reg3 = reg3 + 8 // Increment memory address
     // add: reg2 = reg2 + 1, jump -12 // Increment index, goto eq
     //
     // end
@@ -1538,13 +1536,13 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     // Copy output data address into register #1
     // copyb: reg1 = c = b = mem(OUTPUT_ADDR,4), a=0
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", OUTPUT_ADDR, false);
-    zib.src_b("ind", 0, false);
+    zib.src_a("imm", 0, false);
+    zib.src_b("imm", 32, false);
     zib.ind_width(4);
     zib.op("copyb").unwrap();
     zib.store("reg", 1, false, false);
     zib.j(0, 4);
-    zib.verbose("Set reg1 to output data length read at OUTPUT_ADDR");
+    zib.verbose("Set reg1 to output data length = 32");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1567,11 +1565,11 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     // the data length value
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
-    zib.src_b("imm", OUTPUT_ADDR + 4, false);
+    zib.src_b("imm", OUTPUT_ADDR, false);
     zib.op("copyb").unwrap();
     zib.store("reg", 3, false, false);
     zib.j(0, 4);
-    zib.verbose("Set reg3 to OUTPUT_ADDR + 4");
+    zib.verbose("Set reg3 to OUTPUT_ADDR");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1589,12 +1587,12 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
-    // :0024 -> copyb: c = b = mem(reg3, 4)
+    // :0024 -> copyb: c = b = mem(reg3, 8)
     // Copy the contents of memory at address set by register #3 into c, i.e. copy output data chunk
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 3, false);
     zib.src_b("ind", 0, false);
-    zib.ind_width(4);
+    zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.store("none", 0, false, false);
     zib.j(0, 4);
@@ -1603,7 +1601,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
-    // :0028 -> pubout: c = last_c = mem(reg3, 4), a = reg2 = index
+    // :0028 -> pubout: c = last_c = mem(reg3, 8), a = reg2 = index
     // Call the special operation pubout with this data, being a the data chunk index
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 2, false);
@@ -1616,11 +1614,11 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
-    // :002c -> add: reg3 = reg3 + 4
-    // Increase the register #3, i.e. the data address, in 4 units
+    // :002c -> add: reg3 = reg3 + 8
+    // Increase the register #3, i.e. the data address, in 8 units
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 3, false);
-    zib.src_b("imm", 4, false);
+    zib.src_b("imm", 8, false);
     zib.op("add").unwrap();
     zib.store("reg", 3, false, false);
     zib.j(0, 4);
@@ -1666,25 +1664,13 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.src_a("reg", 17, false);
     zib.src_b("imm", CAUSE_EXIT, false);
     zib.op("eq").unwrap();
-    zib.j(4, 8);
-    zib.verbose(&format!("beq r17, {} # Check if is exit", CAUSE_EXIT));
+    zib.j(-36, 8);
+    zib.verbose(&format!("beq r17, {} # Check if is exit, jump to output, then end", CAUSE_EXIT));
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
-    // :003c jump to END (error)
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", ROM_EXIT, false);
-    zib.op("copyb").unwrap();
-    zib.set_pc();
-    zib.j(0, 0);
-    zib.verbose("jump to end due to error");
-    zib.build();
-    rom.insts.insert(rom.next_init_inst_addr, zib);
-    rom.next_init_inst_addr += 4;
-
-    // :0040
+    // :003c
     // If register a7==CAUSE_KECCAK, then call the keccak opcode and return
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 17, false);
@@ -1696,7 +1682,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
-    // :0044
+    // :0040
     // Call the keccak precompiled opcode
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("step", 0, false);
@@ -1708,7 +1694,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
-    // :0048
+    // :0044
     // Return to the instruction next to the one that made this ecall
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);

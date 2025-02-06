@@ -13,7 +13,7 @@ use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{KeccakfFixed, KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
 
-use crate::{keccakf, keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM, Script, ValueType};
+use crate::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM, Script, ValueType};
 
 /// The `KeccakfSM` struct encapsulates the logic of the Keccakf State Machine.
 pub struct KeccakfSM {
@@ -84,61 +84,83 @@ impl KeccakfSM {
         fixed: &KeccakfFixed<F>,
         trace: &mut KeccakfTrace<F>,
         num_slots: usize,
-        inputs: &[OperationKeccakData<u64>],
+        inputs: &[Vec<OperationKeccakData<u64>>],
         multiplicity: &mut [u64],
     ) {
         // Process the inputs
         let mut inputs_raw: Vec<KeccakfInput> = vec![[0u64; INPUT_DATA_SIZE_BITS]; num_slots];
-        inputs.iter().enumerate().for_each(|(i, input)| {
-            // Get the raw keccakf input as 25 u64 values
-            let keccakf_input: Vec<u64> =
-                OperationBusData::get_extra_data(&ExtOperationData::OperationKeccakData(*input));
-            println!("Input (R): {:?}", keccakf_input.iter().map(|x| format!("{:016X}", x)).collect::<Vec<String>>().join(" "));
+        let mut idx = 0;
 
-            // Apply the keccakf function for debugging
-            // ========================================
-            let keccakf_inputs = [0u64; INPUT_DATA_SIZE_BITS];
-            let mut keccakf_input_r: [u64; 25] = keccakf_input.clone().try_into().unwrap();
-            keccakf(&mut keccakf_input_r);
-            println!("\nOuput (R): {:?}", keccakf_input_r.iter().map(|x| format!("{:016X}", x)).collect::<Vec<String>>().join(" "));
-            // ========================================
+        for inner_vector in inputs {
+            for input in inner_vector {
+                // Get the raw keccakf input as 25 u64 values
+                let keccakf_input: Vec<u64> = OperationBusData::get_extra_data(
+                    &ExtOperationData::OperationKeccakData(*input),
+                );
+                println!(
+                    "Input (R): {:?}",
+                    keccakf_input
+                        .iter()
+                        .map(|x| format!("{:016X}", x))
+                        .collect::<Vec<String>>()
+                        .join(" ")
+                );
 
-            // Process the raw data
-            let slot = i / Self::NUM_KECCAKF_PER_SLOT;
-            keccakf_input.iter().enumerate().for_each(|(j, &value)| {
-                // Divide the value in bits
-                for k in 0..64 {
-                    let bit_pos = (63 - k) + 64 * j;
-                    let old_value = inputs_raw[slot][bit_pos];
-                    let new_bit = (value >> k) & 1;
-                    inputs_raw[slot][bit_pos] = (old_value << 1) | new_bit;
-                }
-            });
+                // Apply the keccakf function for debugging
+                // ========================================
+                // let keccakf_inputs = [0u64; INPUT_DATA_SIZE_BITS];
+                let mut keccakf_input_r: [u64; 25] = keccakf_input.clone().try_into().unwrap();
+                keccakf(&mut keccakf_input_r);
+                println!(
+                    "\nOuput (R): {:?}",
+                    keccakf_input_r
+                        .iter()
+                        .map(|x| format!("{:016X}", x))
+                        .collect::<Vec<String>>()
+                        .join(" ")
+                );
+                // ========================================
 
-            // TODO: Compute the output of the keccakf??
-            // TODO: Write the raw input/output to memory??
-            // TODO: The previous memory calls should give me a_src_mem, c_src_mem
+                // Process the raw data
+                let slot = idx / Self::NUM_KECCAKF_PER_SLOT;
+                keccakf_input.iter().enumerate().for_each(|(j, &value)| {
+                    // Divide the value in bits
+                    for k in 0..64 {
+                        let bit_pos = (63 - k) + 64 * j;
+                        let old_value = inputs_raw[slot][bit_pos];
+                        let new_bit = (value >> k) & 1;
+                        inputs_raw[slot][bit_pos] = (old_value << 1) | new_bit;
+                    }
+                });
 
-            // Get the basic data from the input
-            let debug_main_step =
-                OperationBusData::get_step(&ExtOperationData::OperationKeccakData(*input));
-            let step_input =
-                OperationBusData::get_a(&ExtOperationData::OperationKeccakData(*input));
-            let addr_input =
-                OperationBusData::get_b(&ExtOperationData::OperationKeccakData(*input));
+                // TODO: Compute the output of the keccakf??
+                // TODO: Write the raw input/output to memory??
+                // TODO: The previous memory calls should give me a_src_mem, c_src_mem
 
-            trace[i + 1] = KeccakfTraceRow {
-                multiplicity: F::one(), // The pair (step_input, addr_input) is unique each time, so its multiplicity is 1
-                debug_main_step: F::from_canonical_u64(debug_main_step),
-                step_input: F::from_canonical_u64(step_input),
-                addr_input: F::from_canonical_u64(addr_input),
-                a_src_mem: F::one(), // TODO: Fix
-                c_src_mem: F::one(), // TODO: Fix
-                input: [F::one(), F::from_canonical_u8(2)], // TODO: Fix
-                output: [F::one(), F::from_canonical_u8(2)], // TODO: Fix
-                ..Default::default()
-            };
-        });
+                // Get the basic data from the input
+                let debug_main_step =
+                    OperationBusData::get_step(&ExtOperationData::OperationKeccakData(*input));
+                let step_input =
+                    OperationBusData::get_a(&ExtOperationData::OperationKeccakData(*input));
+                let addr_input =
+                    OperationBusData::get_b(&ExtOperationData::OperationKeccakData(*input));
+
+                trace[idx + 1] = KeccakfTraceRow {
+                    multiplicity: F::one(), // The pair (step_input, addr_input) is unique each time, so its multiplicity is 1
+                    step_input: F::from_canonical_u64(step_input),
+                    addr_input: F::from_canonical_u64(addr_input),
+                    a_src_mem: F::one(),                         // TODO: Fix
+                    c_src_mem: F::one(),                         // TODO: Fix
+                    input: [F::one(), F::from_canonical_u8(2)],  // TODO: Fix
+                    output: [F::one(), F::from_canonical_u8(2)], // TODO: Fix
+                    ..Default::default()
+                };
+                // });
+
+                idx += 1;
+            }
+        }
+
         println!("\nInput (P): {:?}", bits_to_hex_le(&inputs_raw[0]).join(" "));
 
         // Set the values of free_in_a, free_in_b, free_in_c using the script
@@ -153,12 +175,7 @@ impl KeccakfSM {
                 let a = &line.a;
                 match a {
                     ValueType::Input(a) => {
-                        set_col(
-                            trace,
-                            |row| &mut row.free_in_a,
-                            row,
-                            inputs_raw[i][a.bit],
-                        );
+                        set_col(trace, |row| &mut row.free_in_a, row, inputs_raw[i][a.bit]);
                     }
                     ValueType::Wired(b) => {
                         let mut gate = b.gate;
@@ -185,12 +202,7 @@ impl KeccakfSM {
                 let b = &line.b;
                 match b {
                     ValueType::Input(b) => {
-                        set_col(
-                            trace,
-                            |row| &mut row.free_in_b,
-                            row,
-                            inputs_raw[i][b.bit],
-                        );
+                        set_col(trace, |row| &mut row.free_in_b, row, inputs_raw[i][b.bit]);
                     }
                     ValueType::Wired(b) => {
                         let mut gate = b.gate;
@@ -235,7 +247,9 @@ impl KeccakfSM {
 
                 set_col(trace, |row| &mut row.free_in_c, row, c_val);
 
-                if line.ref_ >= STATE_OUT_REF_0 && (line.ref_ - STATE_OUT_REF_0) % STATE_IN_REF_DISTANCE == 0 {
+                if line.ref_ >= STATE_OUT_REF_0
+                    && (line.ref_ - STATE_OUT_REF_0) % STATE_IN_REF_DISTANCE == 0
+                {
                     let bit_pos = (line.ref_ - STATE_OUT_REF_0) / STATE_IN_REF_DISTANCE;
                     if bit_pos < INPUT_DATA_SIZE_BITS {
                         bit_output_pos[bit_pos] = c_val;
@@ -256,11 +270,17 @@ impl KeccakfSM {
                 let b = trace[i].free_in_b;
                 let c = trace[i].free_in_c;
 
-                if i >= STATE_IN_REF_0 && (i - STATE_IN_REF_0) % STATE_IN_REF_DISTANCE == 0 && bit_input_pos.len() < INPUT_DATA_SIZE_BITS {
+                if i >= STATE_IN_REF_0
+                    && (i - STATE_IN_REF_0) % STATE_IN_REF_DISTANCE == 0
+                    && bit_input_pos.len() < INPUT_DATA_SIZE_BITS
+                {
                     bit_input_pos.push(F::as_canonical_u64(&a[0]));
                 }
 
-                if i >= STATE_OUT_REF_0 && (i - STATE_OUT_REF_0) % STATE_IN_REF_DISTANCE == 0 && bit_output_pos2.len() < INPUT_DATA_SIZE_BITS {
+                if i >= STATE_OUT_REF_0
+                    && (i - STATE_OUT_REF_0) % STATE_IN_REF_DISTANCE == 0
+                    && bit_output_pos2.len() < INPUT_DATA_SIZE_BITS
+                {
                     // if bit_output_pos2.len() > INPUT_DATA_SIZE_BITS - 9 {
                     //     println!("FR a[{i}] = {}, b[{i}] = {}, c[{i}] = {}", a[0], b[0], c[0]);
                     // }
@@ -306,11 +326,9 @@ impl KeccakfSM {
                 }
                 bytes.push(byte);
             }
-        
+
             // Convert bytes to hexadecimal representation
-            bytes.iter()
-                .map(|byte| format!("{:016X}", byte))
-                .collect::<Vec<String>>()
+            bytes.iter().map(|byte| format!("{:016X}", byte)).collect::<Vec<String>>()
         }
 
         fn set_col<F: PrimeField64>(
@@ -365,7 +383,7 @@ impl KeccakfSM {
     pub fn compute_witness<F: PrimeField64>(
         &self,
         sctx: &SetupCtx<F>,
-        inputs: &[OperationKeccakData<u64>],
+        inputs: &[Vec<OperationKeccakData<u64>>],
     ) -> AirInstance<F> {
         // Get the fixed cols
         let airgroup_id = KeccakfTrace::<usize>::AIRGROUP_ID;
@@ -377,7 +395,7 @@ impl KeccakfSM {
         let num_rows = keccakf_trace.num_rows();
 
         // Check that we can fit all the keccakfs in the trace
-        let num_inputs = inputs.len();
+        let num_inputs: usize = inputs.iter().map(|c| c.len()).sum();
         assert!(num_inputs <= self.num_available_keccakfs);
 
         let num_slots_needed = num_inputs.div_ceil(Self::NUM_KECCAKF_PER_SLOT);
@@ -418,13 +436,19 @@ impl KeccakfSM {
         keccakf_trace[0] = first_row;
 
         // Fill the rest of the trace
-        self.process_slice(&fixed, &mut keccakf_trace, num_slots_needed, inputs, &mut multiplicity_table);
+        self.process_slice(
+            &fixed,
+            &mut keccakf_trace,
+            num_slots_needed,
+            inputs,
+            &mut multiplicity_table,
+        );
         timer_stop_and_log_trace!(KECCAKF_TRACE);
 
         timer_start_trace!(KECCAKF_PADDING);
         // A row with all zeros satisfies the constraints (since both XOR(0,0) and ANDP(0,0) are 0)
         let padding_row: KeccakfTraceRow<F> = Default::default();
-        for i in (1 + self.slot_size*num_slots_needed)..num_rows {
+        for i in (1 + self.slot_size * num_slots_needed)..num_rows {
             keccakf_trace[i] = padding_row;
 
             let gate_op = match F::as_canonical_u64(&fixed[i].GATE_OP) {
@@ -445,13 +469,13 @@ impl KeccakfSM {
     }
 
     /// Generates memory inputs.
-    pub fn generate_inputs(input: &OperationData<u64>) -> Vec<Vec<PayloadType>> {
-        let debug_main_step =
-            OperationBusData::get_step(&data_bus::ExtOperationData::OperationData(*input));
-        let step_input =
-            OperationBusData::get_a(&data_bus::ExtOperationData::OperationData(*input));
-        let addr_input =
-            OperationBusData::get_b(&data_bus::ExtOperationData::OperationData(*input));
+    pub fn generate_inputs(_input: &OperationData<u64>) -> Vec<Vec<PayloadType>> {
+        // let debug_main_step =
+        //     OperationBusData::get_step(&data_bus::ExtOperationData::OperationData(*input));
+        // let step_input =
+        //     OperationBusData::get_a(&data_bus::ExtOperationData::OperationData(*input));
+        // let addr_input =
+        //     OperationBusData::get_b(&data_bus::ExtOperationData::OperationData(*input));
 
         // TODO: Get the raw inputs from memory
         // TODO: Compute the output of the keccakf

@@ -5,11 +5,11 @@
 
 use std::sync::Arc;
 
-use data_bus::{BusDevice, BusId};
+use data_bus::{BusDevice, BusId, PayloadType};
 use p3_field::PrimeField;
 use pil_std_lib::{RangeCheckAir, Std};
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use sm_common::{CheckPoint, Instance, InstanceCtx, InstanceType};
+use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
 
 /// The `StdInstance` struct represents an instance to perform the witness computations for PIL2
 /// standard library plans.
@@ -46,6 +46,7 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
     ///
     /// # Arguments
     /// * `_pctx` - The proof context, unused in this implementation.
+    /// * `_collectors` - A vector of input collectors to process and collect data for witness
     ///
     /// # Returns
     /// Always returns `None` as this instance does not generate an `AirInstance`.
@@ -53,6 +54,7 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
+        _collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         let plan = &self.ictx.plan;
         let rc_type = plan.meta.as_ref().unwrap().downcast_ref::<RangeCheckAir>().unwrap();
@@ -86,5 +88,10 @@ impl<F: PrimeField> BusDevice<u64> for StdInstance<F> {
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
         vec![]
+    }
+
+    /// Provides a dynamic reference for downcasting purposes.
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
     }
 }

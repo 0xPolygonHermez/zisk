@@ -63,10 +63,10 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib {
         // Step 5: Create the executor and register the secondary state machines
         let mut executor = ZiskExecutor::new(wcm.get_input_data_path().unwrap(), zisk_rom);
         executor.register_sm(std_sm);
+        executor.register_sm(mem_sm);
         executor.register_sm(rom_sm);
         executor.register_sm(binary_sm);
         executor.register_sm(arith_sm);
-        executor.register_sm(mem_sm);
 
         // Step 6: Register the precompiles state machines
         executor.register_sm(keccakf_sm);
