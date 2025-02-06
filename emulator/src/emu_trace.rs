@@ -12,7 +12,6 @@ pub struct EmuTraceStart {
     /// Initial value of the step
     pub step: u64,
     pub regs: [u64; 32],
-    pub reg_steps: [u64; 32],
     pub mem_reads_index: usize,
 }
 

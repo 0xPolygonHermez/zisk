@@ -70,6 +70,17 @@ impl MemBusHelpers {
             + MAX_MEM_OPS_BY_MAIN_STEP * step
             + MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64
     }
+    pub fn mem_step_to_slot(mem_step: u64) -> u8 {
+        (((mem_step - MEM_STEP_BASE) % MAX_MEM_OPS_BY_MAIN_STEP) / MAX_MEM_OPS_BY_STEP_OFFSET) as u8
+    }
+}
+
+pub struct EmuRegTrace {
+    pub reg_steps: [u64; 32],
+    pub reg_prev_steps: [u64; 3],
+    pub store_reg_prev_value: u64,
+    pub first_step_uses: [Option<u64>; 32],
+    pub first_value_uses: [Option<u64>; 32],
 }
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -101,7 +112,6 @@ impl<'a> Emu<'a> {
         emu.ctx.inst_ctx.step = trace_start.step;
         emu.ctx.inst_ctx.c = trace_start.c;
         emu.ctx.inst_ctx.regs = trace_start.regs;
-        emu.ctx.inst_ctx.reg_steps = trace_start.reg_steps;
 
         emu
     }
@@ -132,7 +142,7 @@ impl<'a> Emu<'a> {
             SRC_REG => {
                 // Calculate memory address
                 let reg = instruction.a_offset_imm0 as usize;
-                self.ctx.inst_ctx.a = self.get_logged_reg(reg, 0);
+                self.ctx.inst_ctx.a = self.get_reg(reg);
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -176,7 +186,7 @@ impl<'a> Emu<'a> {
             SRC_REG => {
                 // Calculate memory address
                 let reg = instruction.a_offset_imm0 as usize;
-                self.ctx.inst_ctx.a = self.get_logged_reg(reg, 0);
+                self.ctx.inst_ctx.a = self.get_reg(reg);
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -228,11 +238,13 @@ impl<'a> Emu<'a> {
         instruction: &ZiskInst,
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
+        reg_trace: &mut EmuRegTrace,
     ) {
         match instruction.a_src {
             SRC_C => self.ctx.inst_ctx.a = self.ctx.inst_ctx.c,
             SRC_REG => {
-                self.ctx.inst_ctx.a = self.get_logged_reg(instruction.a_offset_imm0 as usize, 0);
+                self.ctx.inst_ctx.a =
+                    self.get_traced_reg(instruction.a_offset_imm0 as usize, 0, reg_trace);
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -295,7 +307,7 @@ impl<'a> Emu<'a> {
         match instruction.a_src {
             SRC_C => self.ctx.inst_ctx.a = self.ctx.inst_ctx.c,
             SRC_REG => {
-                self.ctx.inst_ctx.a = self.get_logged_reg(instruction.a_offset_imm0 as usize, 0);
+                self.ctx.inst_ctx.a = self.get_reg(instruction.a_offset_imm0 as usize);
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -368,7 +380,7 @@ impl<'a> Emu<'a> {
             SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
             SRC_REG => {
                 // Calculate memory address
-                self.ctx.inst_ctx.b = self.get_logged_reg(instruction.b_offset_imm0 as usize, 1);
+                self.ctx.inst_ctx.b = self.get_reg(instruction.b_offset_imm0 as usize);
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -421,7 +433,7 @@ impl<'a> Emu<'a> {
         match instruction.b_src {
             SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
             SRC_REG => {
-                self.ctx.inst_ctx.b = self.get_logged_reg(instruction.b_offset_imm0 as usize, 1);
+                self.ctx.inst_ctx.b = self.get_reg(instruction.b_offset_imm0 as usize);
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -493,11 +505,13 @@ impl<'a> Emu<'a> {
         instruction: &ZiskInst,
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
+        reg_trace: &mut EmuRegTrace,
     ) {
         match instruction.b_src {
             SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
             SRC_REG => {
-                self.ctx.inst_ctx.b = self.get_logged_reg(instruction.b_offset_imm0 as usize, 1);
+                self.ctx.inst_ctx.b =
+                    self.get_traced_reg(instruction.b_offset_imm0 as usize, 1, reg_trace);
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -612,7 +626,7 @@ impl<'a> Emu<'a> {
         match instruction.b_src {
             SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
             SRC_REG => {
-                self.ctx.inst_ctx.b = self.get_logged_reg(instruction.b_offset_imm0 as usize, 1);
+                self.ctx.inst_ctx.b = self.get_reg(instruction.b_offset_imm0 as usize);
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -768,7 +782,7 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                self.set_logged_reg(instruction.store_offset as usize, self.ctx.inst_ctx.c, 2);
+                self.set_reg(instruction.store_offset as usize, self.ctx.inst_ctx.c);
             }
             STORE_MEM => {
                 // Calculate value
@@ -831,7 +845,7 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                self.set_logged_reg(instruction.store_offset as usize, self.ctx.inst_ctx.c, 2);
+                self.set_reg(instruction.store_offset as usize, self.ctx.inst_ctx.c);
             }
             STORE_MEM => {
                 // Calculate the value
@@ -910,11 +924,16 @@ impl<'a> Emu<'a> {
         instruction: &ZiskInst,
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
+        reg_trace: &mut EmuRegTrace,
     ) {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                self.set_logged_reg(instruction.store_offset as usize, self.ctx.inst_ctx.c, 2);
+                self.set_traced_reg(
+                    instruction.store_offset as usize,
+                    self.ctx.inst_ctx.c,
+                    reg_trace,
+                );
             }
             STORE_MEM => {
                 // Calculate the memory address
@@ -985,7 +1004,7 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
-                self.set_logged_reg(instruction.store_offset as usize, self.ctx.inst_ctx.c, 2);
+                self.set_reg(instruction.store_offset as usize, self.ctx.inst_ctx.c);
             }
             STORE_MEM => {
                 // Calculate the value
@@ -1322,7 +1341,6 @@ impl<'a> Emu<'a> {
                             c: self.ctx.inst_ctx.c,
                             step: self.ctx.inst_ctx.step,
                             regs: self.ctx.inst_ctx.regs,
-                            reg_steps: self.ctx.inst_ctx.reg_steps,
                             mem_reads_index: 0,
                         },
                         last_state: EmuTraceStart::default(),
@@ -1448,7 +1466,6 @@ impl<'a> Emu<'a> {
             c: self.ctx.inst_ctx.c,
             step: self.ctx.inst_ctx.step,
             regs: self.ctx.inst_ctx.regs,
-            reg_steps: self.ctx.inst_ctx.reg_steps,
             mem_reads_index: emu_full_trace_vec.steps.mem_reads.len(),
         };
 
@@ -1573,7 +1590,6 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step = emu_trace.start_state.step;
         self.ctx.inst_ctx.c = emu_trace.start_state.c;
         self.ctx.inst_ctx.regs = emu_trace.start_state.regs;
-        self.ctx.inst_ctx.reg_steps = emu_trace.start_state.reg_steps;
 
         let mut mem_reads_index: usize = 0;
         let emu_trace_steps = &emu_trace.steps;
@@ -1598,7 +1614,6 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step = emu_trace_start.step;
         self.ctx.inst_ctx.c = emu_trace_start.c;
         self.ctx.inst_ctx.regs = emu_trace_start.regs;
-        self.ctx.inst_ctx.reg_steps = emu_trace_start.reg_steps;
 
         let mut current_chunk = chunk_id;
         let mut current_step_idx = 0;
@@ -1676,6 +1691,7 @@ impl<'a> Emu<'a> {
         &mut self,
         trace_step: &EmuTraceSteps,
         trace_step_index: &mut usize,
+        reg_trace: &mut EmuRegTrace,
     ) -> EmuFullTraceStep<F> {
         let last_pc = self.ctx.inst_ctx.pc;
         let last_c = self.ctx.inst_ctx.c;
@@ -1686,18 +1702,38 @@ impl<'a> Emu<'a> {
         // let store_reg_prev_mem_step: todo!(),
         // let store_reg_prev_value: todo!(),
 
-        self.source_a_mem_reads_consume(instruction, &trace_step.mem_reads, trace_step_index);
-        self.source_b_mem_reads_consume(instruction, &trace_step.mem_reads, trace_step_index);
+        self.source_a_mem_reads_consume(
+            instruction,
+            &trace_step.mem_reads,
+            trace_step_index,
+            reg_trace,
+        );
+        self.source_b_mem_reads_consume(
+            instruction,
+            &trace_step.mem_reads,
+            trace_step_index,
+            reg_trace,
+        );
         (instruction.func)(&mut self.ctx.inst_ctx);
-        self.store_c_mem_reads_consume(instruction, &trace_step.mem_reads, trace_step_index);
+        self.store_c_mem_reads_consume(
+            instruction,
+            &trace_step.mem_reads,
+            trace_step_index,
+            reg_trace,
+        );
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
 
         // Build and store the full trace
-        let full_trace_step =
-            Self::build_full_trace_step(instruction, &self.ctx.inst_ctx, last_c, last_pc);
+        let full_trace_step = Self::build_full_trace_step(
+            instruction,
+            &self.ctx.inst_ctx,
+            last_c,
+            last_pc,
+            &reg_trace,
+        );
 
         self.ctx.inst_ctx.step += 1;
 
@@ -1710,11 +1746,16 @@ impl<'a> Emu<'a> {
         inst_ctx: &InstContext,
         _last_c: u64, // TODO! Check if it's necessay
         _last_pc: u64,
+        reg_trace: &EmuRegTrace,
     ) -> EmuFullTraceStep<F> {
         // Calculate intermediate values
         let a = [inst_ctx.a & 0xFFFFFFFF, (inst_ctx.a >> 32) & 0xFFFFFFFF];
         let b = [inst_ctx.b & 0xFFFFFFFF, (inst_ctx.b >> 32) & 0xFFFFFFFF];
         let c = [inst_ctx.c & 0xFFFFFFFF, (inst_ctx.c >> 32) & 0xFFFFFFFF];
+        let store_prev_value = [
+            reg_trace.store_reg_prev_value & 0xFFFFFFFF,
+            (reg_trace.store_reg_prev_value >> 32) & 0xFFFFFFFF,
+        ];
 
         let addr1 = (inst.b_offset_imm0 as i64
             + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
@@ -1797,10 +1838,13 @@ impl<'a> Emu<'a> {
             jmp_offset2,
             m32: F::from_bool(inst.m32),
             addr1: F::from_canonical_u64(addr1),
-            a_reg_prev_mem_step: todo!(),
-            b_reg_prev_mem_step: todo!(),
-            store_reg_prev_mem_step: todo!(),
-            store_reg_prev_value: todo!(),
+            a_reg_prev_mem_step: F::from_canonical_u64(reg_trace.reg_prev_steps[0]),
+            b_reg_prev_mem_step: F::from_canonical_u64(reg_trace.reg_prev_steps[1]),
+            store_reg_prev_mem_step: F::from_canonical_u64(reg_trace.reg_prev_steps[2]),
+            store_reg_prev_value: [
+                F::from_canonical_u64(store_prev_value[0]),
+                F::from_canonical_u64(store_prev_value[1]),
+            ],
         }
     }
 
@@ -1878,9 +1922,16 @@ impl<'a> Emu<'a> {
     }
 
     #[inline(always)]
-    pub fn get_logged_reg(&mut self, index: usize, slot: u8) -> u64 {
-        debug_assert!(index < 32);
-        self.ctx.inst_ctx.reg_steps[index] =
+    pub fn get_traced_reg(&mut self, index: usize, slot: u8, reg_trace: &mut EmuRegTrace) -> u64 {
+        debug_assert!(index < 32 && slot < 3);
+
+        // registry information about use to update later
+        if reg_trace.first_step_uses[index] == None {
+            reg_trace.first_step_uses[index] =
+                Some(MemBusHelpers::main_step_to_mem_step(self.ctx.inst_ctx.step, slot));
+        }
+        reg_trace.reg_prev_steps[slot as usize] = reg_trace.reg_steps[index];
+        reg_trace.reg_steps[index] =
             MemBusHelpers::main_step_to_mem_step(self.ctx.inst_ctx.step, slot);
         self.ctx.inst_ctx.regs[index]
 
@@ -1888,11 +1939,24 @@ impl<'a> Emu<'a> {
     }
 
     #[inline(always)]
-    pub fn set_logged_reg(&mut self, index: usize, value: u64, slot: u8) {
+    pub fn set_traced_reg(&mut self, index: usize, value: u64, reg_trace: &mut EmuRegTrace) {
         debug_assert!(index < 32);
+
+        // registry information about use to update later
+        if reg_trace.first_step_uses[index] == None {
+            reg_trace.first_step_uses[index] =
+                Some(MemBusHelpers::main_step_to_mem_step(self.ctx.inst_ctx.step, 2));
+        }
+        if reg_trace.first_value_uses[index] == None {
+            reg_trace.first_value_uses[index] =
+                Some(MemBusHelpers::main_step_to_mem_step(self.ctx.inst_ctx.step, 2));
+        }
+
+        reg_trace.reg_prev_steps[2] = reg_trace.reg_steps[index];
+        reg_trace.store_reg_prev_value = self.ctx.inst_ctx.regs[index];
+        reg_trace.reg_steps[index] =
+            MemBusHelpers::main_step_to_mem_step(self.ctx.inst_ctx.step, 2);
         self.ctx.inst_ctx.regs[index] = value;
-        self.ctx.inst_ctx.reg_steps[index] =
-            MemBusHelpers::main_step_to_mem_step(self.ctx.inst_ctx.step, slot);
         //println!("Emu::set_reg() index={} value={:x}", index, value);
     }
 

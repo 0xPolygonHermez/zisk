@@ -19,7 +19,7 @@ use zisk_core::ZiskRom;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 
 use zisk_pil::{MainAirValues, MainTrace};
-use ziskemu::{Emu, EmuTrace};
+use ziskemu::{Emu, EmuRegTrace, EmuTrace};
 
 use crate::MainCounter;
 
@@ -116,12 +116,20 @@ impl MainSM {
         let last_row = main_trace.buffer[filled_rows - 1];
         main_trace.buffer[filled_rows..num_rows].fill(last_row);
 
+        let mut reg_trace = EmuRegTrace {
+            reg_steps: [0; 32],
+            reg_prev_steps: [0; 3],
+            store_reg_prev_value: 0,
+            first_step_uses: [None; 32],
+            first_value_uses: [None; 32],
+        };
+
         // Determine the last row of the previous segment
         let prev_segment_last_c = if start_idx > 0 {
             let prev_trace = &min_traces[start_idx - 1];
             let mut emu = Emu::from_emu_trace_start(zisk_rom, &prev_trace.last_state);
             let mut mem_reads_index = prev_trace.last_state.mem_reads_index;
-            emu.step_slice_full_trace(&prev_trace.steps, &mut mem_reads_index).c
+            emu.step_slice_full_trace(&prev_trace.steps, &mut mem_reads_index, &mut reg_trace).c
         } else {
             [F::zero(), F::zero()]
         };
@@ -160,6 +168,14 @@ impl MainSM {
         // Total number of rows to fill from the emu trace
         let total_rows = min_trace.steps.steps as usize;
 
+        let mut reg_trace = EmuRegTrace {
+            reg_steps: [0; 32],
+            reg_prev_steps: [0; 3],
+            store_reg_prev_value: 0,
+            first_step_uses: [None; 32],
+            first_value_uses: [None; 32],
+        };
+
         // Process rows in batches
         for batch_start in (0..total_rows).step_by(Self::BATCH_SIZE) {
             // Determine the size of the current batch
@@ -167,7 +183,8 @@ impl MainSM {
 
             // Fill the batch buffer
             batch_buffer.buffer.iter_mut().take(batch_size).for_each(|row| {
-                *row = emu.step_slice_full_trace(emu_trace_step, &mut mem_reads_index);
+                *row =
+                    emu.step_slice_full_trace(emu_trace_step, &mut mem_reads_index, &mut reg_trace);
             });
 
             // Copy the processed batch into the main trace buffer
