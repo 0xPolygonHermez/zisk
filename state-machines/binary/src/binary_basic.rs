@@ -13,10 +13,9 @@ use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
-use sm_common::create_atomic_vec;
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::{BinaryTableTrace, BinaryTrace, BinaryTraceRow};
+use zisk_pil::{BinaryTrace, BinaryTraceRow};
 
 const BYTES: usize = 8;
 const HALF_BYTES: usize = BYTES / 2;
@@ -906,8 +905,6 @@ impl BinaryBasicSM {
             total_inputs as f64 / num_rows as f64 * 100.0
         );
 
-        let multiplicity_table = create_atomic_vec(BinaryTableTrace::<F>::NUM_ROWS);
-
         // Split the binary_e_trace.buffer into slices matching each inner vector’s length.
         let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
         let mut slices = Vec::with_capacity(inputs.len());
@@ -921,7 +918,7 @@ impl BinaryBasicSM {
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
         slices.into_par_iter().enumerate().for_each(|(i, slice)| {
             slice.iter_mut().enumerate().for_each(|(j, cell)| {
-                *cell = Self::process_slice(&inputs[i][j], &multiplicity_table);
+                *cell = Self::process_slice(&inputs[i][j], &self.binary_basic_table_sm.detach_multiplicity());
             });
         });
 
@@ -946,10 +943,9 @@ impl BinaryBasicSM {
                 last as u64,
                 0,
             );
-            multiplicity_table[row as usize].fetch_add(multiplicity, Ordering::Relaxed);
+            self.binary_basic_table_sm.update_multiplicity(row, multiplicity);
         }
 
-        self.binary_basic_table_sm.process_slice(&multiplicity_table);
 
         AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))
     }

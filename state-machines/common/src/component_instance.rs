@@ -125,14 +125,14 @@ macro_rules! table_instance {
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
             ) -> Option<AirInstance<F>> {
-                let mut multiplicity = self.table_sm.detach_multiplicity();
+                let multiplicity = self.table_sm.detach_multiplicity();
 
-                pctx.dctx_distribute_multiplicity(&mut multiplicity, self.ictx.global_id);
+                pctx.dctx_distribute_multiplicity(multiplicity, self.ictx.global_id);
 
                 let mut trace = $Trace::new();
 
                 trace.buffer[0..trace.num_rows].par_iter_mut().enumerate().for_each(
-                    |(i, input)| input.multiplicity = F::from_canonical_u64(multiplicity[i]),
+                    |(i, input)| input.multiplicity = F::from_canonical_u64(multiplicity[i].load(std::sync::atomic::Ordering::Relaxed)),
                 );
 
                 Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))

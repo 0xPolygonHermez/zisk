@@ -3,9 +3,10 @@
 //! This state machine manages the multiplicity table for arithmetic table traces and provides
 //! functionality to process inputs and manage multiplicity data.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::{Ordering, AtomicU64}, Arc};
 
 use crate::ArithTableInputs;
+use sm_common::create_atomic_vec;
 use zisk_pil::ArithTableTrace;
 
 /// The `ArithTableSM` struct represents the Arithmetic Table State Machine.
@@ -14,7 +15,7 @@ use zisk_pil::ArithTableTrace;
 /// inputs and retrieve the accumulated data.
 pub struct ArithTableSM {
     /// Multiplicity table shared across threads.
-    multiplicity: Mutex<Vec<u64>>,
+    multiplicity: Vec<AtomicU64>,
 }
 
 impl ArithTableSM {
@@ -23,7 +24,7 @@ impl ArithTableSM {
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithTableSM`.
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { multiplicity: Mutex::new(vec![0; ArithTableTrace::<usize>::NUM_ROWS]) })
+        Arc::new(Self {  multiplicity: create_atomic_vec(ArithTableTrace::<usize>::NUM_ROWS) })
     }
 
     /// Processes a slice of input data and updates the multiplicity table.
@@ -32,10 +33,8 @@ impl ArithTableSM {
     /// * `inputs` - A reference to `ArithTableInputs`, containing rows and their corresponding
     ///   values.
     pub fn process_slice(&self, inputs: &ArithTableInputs) {
-        let mut multiplicity = self.multiplicity.lock().unwrap();
-
         for (row, value) in inputs {
-            multiplicity[row] += value;
+            self.multiplicity[row].fetch_add(value, Ordering::Relaxed);
         }
     }
 
@@ -43,8 +42,7 @@ impl ArithTableSM {
     ///
     /// # Returns
     /// A vector containing the multiplicity table.
-    pub fn detach_multiplicity(&self) -> Vec<u64> {
-        let mut multiplicity = self.multiplicity.lock().unwrap();
-        std::mem::take(&mut *multiplicity)
+    pub fn detach_multiplicity(&self) -> &[AtomicU64] {
+        &self.multiplicity
     }
 }

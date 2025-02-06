@@ -3,9 +3,10 @@
 //! This state machine manages the multiplicity table for arithmetic range table traces
 //! and provides functionality to process inputs and manage multiplicity data.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::{Ordering, AtomicU64}, Arc};
 
 use crate::ArithRangeTableInputs;
+use sm_common::create_atomic_vec;
 use zisk_pil::ArithRangeTableTrace;
 
 /// The `ArithRangeTableSM` struct represents the Arithmetic Range Table State Machine.
@@ -14,7 +15,7 @@ use zisk_pil::ArithRangeTableTrace;
 /// methods to process inputs and retrieve the accumulated data.
 pub struct ArithRangeTableSM {
     /// Multiplicity table shared across threads.
-    multiplicity: Mutex<Vec<u64>>,
+    multiplicity: Vec<AtomicU64>,
 }
 
 impl ArithRangeTableSM {
@@ -24,20 +25,13 @@ impl ArithRangeTableSM {
     /// An `Arc`-wrapped instance of `ArithRangeTableSM`.
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            multiplicity: Mutex::new(vec![0; ArithRangeTableTrace::<usize>::NUM_ROWS]),
+            multiplicity:  create_atomic_vec(ArithRangeTableTrace::<usize>::NUM_ROWS),
         })
     }
 
-    /// Processes a slice of input data and updates the multiplicity table.
-    ///
-    /// # Arguments
-    /// * `inputs` - A reference to `ArithRangeTableInputs`, containing rows and their corresponding
-    ///   values.
     pub fn process_slice(&self, inputs: &ArithRangeTableInputs) {
-        let mut multiplicity = self.multiplicity.lock().unwrap();
-
         for (row, value) in inputs {
-            multiplicity[row] += value;
+            self.multiplicity[row].fetch_add(value, Ordering::Relaxed);
         }
     }
 
@@ -45,8 +39,7 @@ impl ArithRangeTableSM {
     ///
     /// # Returns
     /// A vector containing the multiplicity table.
-    pub fn detach_multiplicity(&self) -> Vec<u64> {
-        let mut multiplicity = self.multiplicity.lock().unwrap();
-        std::mem::take(&mut *multiplicity)
+    pub fn detach_multiplicity(&self) -> &[AtomicU64] {
+        &self.multiplicity
     }
 }
