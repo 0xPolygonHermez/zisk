@@ -8,7 +8,6 @@ crate-type = ["dylib"]
 
 [dependencies]
 executor = { path = "../executor" }
-sm-std = { path = "../state-machines/std" }
 sm-arith = { path = "../state-machines/arith" }
 sm-binary = { path = "../state-machines/binary" }
 sm-common = { path = "../state-machines/common" }

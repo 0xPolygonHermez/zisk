@@ -10,7 +10,6 @@ use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
-use sm_std::StdSM;
 use std::sync::Arc;
 use zisk_core::Riscv2zisk;
 
@@ -50,7 +49,6 @@ impl<F: PrimeField> WitnessLibrary<F> for WitnessLib {
 
         // Step 3: Initialize the secondary state machines
         let std = Std::new(wcm.clone());
-        let std_sm = StdSM::new(std.clone());
         let rom_sm = RomSM::new(zisk_rom.clone());
         let binary_sm = BinarySM::new(std.clone());
         let arith_sm = ArithSM::new();
