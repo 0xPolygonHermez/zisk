@@ -13,7 +13,7 @@ use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{KeccakfFixed, KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
 
-use crate::{keccakf, keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM, Script, ValueType};
+use crate::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM, Script, ValueType};
 
 /// The `KeccakfSM` struct encapsulates the logic of the Keccakf State Machine.
 pub struct KeccakfSM {
@@ -130,12 +130,12 @@ impl KeccakfSM {
 
                 trace[idx + 1] = KeccakfTraceRow {
                     multiplicity: F::one(), // The pair (step_input, addr_input) is unique each time, so its multiplicity is 1
-                    step_input: F::from_canonical_u64(step_input),
-                    addr_input: F::from_canonical_u64(addr_input),
-                    a_src_mem: F::one(),                         // TODO: Fix
-                    c_src_mem: F::one(),                         // TODO: Fix
-                    input: [F::one(), F::from_canonical_u8(2)],  // TODO: Fix
-                    output: [F::one(), F::from_canonical_u8(2)], // TODO: Fix
+                    step: F::from_canonical_u64(step_input),
+                    addr: F::from_canonical_u64(addr_input),
+                    // a_src_mem: F::one(),                         // TODO: Fix
+                    // c_src_mem: F::one(),                         // TODO: Fix
+                    // input: [F::one(), F::from_canonical_u8(2)],  // TODO: Fix
+                    // output: [F::one(), F::from_canonical_u8(2)], // TODO: Fix
                     ..Default::default()
                 };
 
@@ -433,7 +433,7 @@ impl KeccakfSM {
     }
 
     /// Generates memory inputs.
-    pub fn generate_inputs(_input: &OperationData<u64>) -> Vec<Vec<PayloadType>> {
+    pub fn generate_inputs(_input: &OperationKeccakData<u64>) -> Vec<Vec<PayloadType>> {
         // let debug_main_step =
         //     OperationBusData::get_step(&data_bus::ExtOperationData::OperationData(*input));
         // let step_input =

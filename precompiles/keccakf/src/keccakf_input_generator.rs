@@ -46,7 +46,7 @@ impl BusDevice<PayloadType> for KeccakfInputGenerator {
             return None;
         }
 
-        if let ExtOperationData::OperationData(data) = data {
+        if let ExtOperationData::OperationKeccakData(data) = data {
             let inputs = KeccakfSM::generate_inputs(&data)
                 .into_iter()
                 .map(|x| (*bus_id, x))

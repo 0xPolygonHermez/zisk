@@ -87,48 +87,64 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
     connection(opid: KECCAKF_CIRCUIT_ID, cols: [a, b, c], CONN: [CONN_A, CONN_B, CONN_C]);
 
     // --> Constraints to make sure that this coprocessor is called from the main processor
-    col witness step_input;
-    col witness addr_input;
+    col witness step;
+    col witness addr;
     col witness multiplicity;
-    lookup_proves(OPERATION_BUS_ID, [KECCAKF_OP, step_input, 0, addr_input, 0, 0, 0, 0], multiplicity);
+    lookup_proves(OPERATION_BUS_ID, [KECCAKF_OP, step, 0, addr, 0, 0, 0, 0], multiplicity);
 
     // --> Constraints to read inputs from memory and write outputs to memory
-    col witness bit[RC];
-    col witness val[RC];
+    col witness bit1;
+    col witness bit2;
+    col witness val1;
+    col witness val2;
+    // Note: We process two bits in parallel
 
+    const int STATE_SIZE = NUM_KECCAKF_PER_SLOT * KECCAKF_SIZE_BITS;
     if (NUM_KECCAKF_PER_SLOT == 1) {
-        const int air.latch_num_keccakf = 1;
-        const int air.factor_num_keccakf = 1;
+        // TODO: Fix this edge case
+        // const int air.latch_num_keccakf = 1;
+        // const int air.factor_num_keccakf = 1;
     } else {
-        col fixed air.latch_num_keccakf = [1,0:(NUM_KECCAKF_PER_SLOT-1)]...;
-        col fixed air.factor_num_keccakf = [1,2..*..2**(NUM_KECCAKF_PER_SLOT-1)]...;
+        // Instructions to add a latch:
+        //  - When there are slots.
+        //  - Every NUM_KECCAKF_PER_SLOT clocks (including the first one).
+        //  - When there are still bits to process (i.e., we repeat the previous instruction KECCAKF_SIZE_BITS times).
+        col fixed air.latch_num_keccakf  = [[[0:(NUM_KECCAKF_PER_SLOT-1),1]:KECCAKF_SIZE_BITS, 
+                                              0:(CIRCUIT_SIZE - STATE_SIZE)]:NUM_SLOTS,
+                                            0...];
+        // Instructions to add the factor:
+        //  - When there are slots.
+        //  - Every clock, for the clock in the slot, we add the factor 1 << clk
+        //  - When there are still bits to process (i.e., we repeat the previous instruction KECCAKF_SIZE_BITS times).
+        col fixed air.factor_num_keccakf = [[[1,2..*..2**(NUM_KECCAKF_PER_SLOT-1)]:KECCAKF_SIZE_BITS, 
+                                              0:(CIRCUIT_SIZE - STATE_SIZE)]:NUM_SLOTS,
+                                            0...];
     }
 
     // `bit` is a bit
-    for (int i = 0; i < RC; i++) {
-        bit[i] * (1 - bit[i]) === 0;
-    }
+    bit1 * (1 - bit1) === 0;
+    bit2 * (1 - bit2) === 0;
 
     // `val` accumulates bits. After NUM_KECCAKF_PER_SLOT*i clocks, `val` has accumulated the i-th bit of the keccakf's 
-    for (int i = 0; i < RC; i++) {
-        val[i] === 'val[i] * (1 - latch_num_keccakf) + bit[i] * factor_num_keccakf;
-    }
+    val1 === 'val1 * (1 - latch_num_keccakf) + bit1 * factor_num_keccakf;
+    val2 === 'val2 * (1 - latch_num_keccakf) + bit2 * factor_num_keccakf;
 
-    // TODO: Use connections to check that the values of val1 and val2 are the same as the values set in the gates
     // Every NUM_KECCAKF_PER_SLOT*i clocks, `val` has to be the coincide with the 'a'-th gate entry
-    // latch_num_keccakf * (val - a) === 0;
+    latch_num_keccakf * (val1 - a) === 0;
+    latch_num_keccakf * (val2 - a') === 0;
 
     const int CHUNKS_TO_PROCESS = KECCAKF_SIZE_BITS / RB;
 
     // `state` accumulates RB bits of the j-th keccakf state each clock
     // After NUM_KECCAKF_PER_SLOT clocks, `state` has accumulated RB bits of the NUM_KECCAKF_PER_SLOT keccakf's
     // After CHUNKS_TO_PROCESS * NUM_KECCAKF_PER_SLOT clocks, `state` has accumulated all the bits
-    expr state[RC];
-    for (int i = 0; i < RC; i++) {
-        state[i] = 0;
-        for (int j = 0; j < RB; j++) {
-            state[i] += bit[i]'(NUM_KECCAKF_PER_SLOT*j) * 2**j;
-        }
+    expr state1 = 0;
+    expr state2 = 0;
+    for (int j = 0; j < RB; j++) {
+        const expr next_bit1 = (j % 2 == 0) ? bit1'(NUM_KECCAKF_PER_SLOT*j/2) : bit2'(NUM_KECCAKF_PER_SLOT*(j-1)/2);
+        const expr next_bit2 = (j % 2 == 0) ? bit1'(NUM_KECCAKF_PER_SLOT*(RB/2 + j/2)) : bit2'(NUM_KECCAKF_PER_SLOT*(RB/2 + (j-1)/2));
+        state1 += next_bit1 * 2**j;
+        state2 += next_bit2 * 2**j;
     }
 
     const int CLOCKS = CHUNKS_TO_PROCESS * NUM_KECCAKF_PER_SLOT;
@@ -136,20 +152,20 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
     col fixed is_output = [[0:CLOCKS,1:CLOCKS,0:(CIRCUIT_SIZE - 2*CLOCKS)]:NUM_SLOTS,0...];
 
     // step and addr should be the same every NUM_KECCAKF_PER_SLOT clock
-    (is_input + is_output)*(step'(NUM_KECCAKF_PER_SLOT) - step) === 0;
-    (is_input + is_output)*(addr'(NUM_KECCAKF_PER_SLOT) - addr) === 0;
+    (is_input + is_output) * (step'(NUM_KECCAKF_PER_SLOT) - step) === 0;
+    (is_input + is_output) * (addr'(NUM_KECCAKF_PER_SLOT) - addr) === 0;
 
     precompiled_mem_load(
              sel: is_input,
              main_step: step,
              addr: addr,
-             value: state
+             value: [state1, state2]
             );
 
     precompiled_mem_store(
               sel: is_output,
               main_step: step,
               addr: addr,
-              value: state
+              value: [state1, state2]
             );
 }
