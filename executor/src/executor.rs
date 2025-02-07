@@ -53,6 +53,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// The size in rows of the minimal traces
     const MIN_TRACE_SIZE: u64 = 1 << 18;
 
+    const MAX_NUM_STEPS: u64 = 1 << 32;
+
     /// Creates a new instance of the `ZiskExecutor`.
     ///
     /// # Arguments
@@ -89,8 +91,11 @@ impl<F: PrimeField> ZiskExecutor<F> {
         assert!(Self::MIN_TRACE_SIZE.is_power_of_two());
 
         // Settings for the emulator
-        let emu_options =
-            EmuOptions { trace_steps: Some(Self::MIN_TRACE_SIZE), ..EmuOptions::default() };
+        let emu_options = EmuOptions {
+            trace_steps: Some(Self::MIN_TRACE_SIZE),
+            max_steps: Self::MAX_NUM_STEPS,
+            ..EmuOptions::default()
+        };
 
         ZiskEmulator::compute_minimal_traces::<F>(
             &self.zisk_rom,
