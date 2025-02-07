@@ -48,7 +48,7 @@ impl<F: PrimeField> Instance<F> for RomInstance {
     /// * `_pctx` - The proof context, unused in this implementation.
     /// * `_sctx` - The setup context, unused in this implementation.
     /// * `_collectors` - A vector of input collectors to process and collect data for witness,
-    /// unused in this implementation.
+    ///   unused in this implementation.
     ///
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
