@@ -592,6 +592,7 @@ impl ZiskRom {
             ctx.b.is_constant = false;
             ctx.b.is_saved = false;
             ctx.b.string_value = REG_B.to_string();
+            let is_copy_b = instruction.op == ZiskOp::CopyB.code();
             match instruction.b_src {
                 SRC_C => {
                     *s += &format!("\tmov {}, {} /* b=SRC_C: b = c */\n", REG_B, REG_C);
@@ -608,17 +609,26 @@ impl ZiskRom {
                             REG_ADDRESS, REG_SP
                         );
                     }
+
                     *s += &format!(
-                        "\tmov {}, [{}] /* b=SRC_MEM: b = mem[address] */\n",
-                        REG_B, REG_ADDRESS
+                        "\tmov {}, [{}] /* b=SRC_MEM: {} = mem[address] */\n",
+                        if is_copy_b { REG_C } else { REG_B },
+                        REG_ADDRESS,
+                        if is_copy_b { "c(CopyB)" } else { "b" }
                     );
-                    ctx.b.is_saved = true;
+                    ctx.b.is_saved = !is_copy_b;
                 }
                 SRC_IMM => {
                     ctx.b.is_constant = true;
                     ctx.b.constant_value =
                         instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32);
                     ctx.b.string_value = format!("0x{:x}", ctx.b.constant_value);
+                    if is_copy_b {
+                        *s += &format!(
+                            "\tmov {}, {} /* b=SRC_IMM: c(CopyB) = constant */\n",
+                            REG_C, ctx.b.string_value
+                        )
+                    }
                     ctx.b.is_saved = false;
                     // DEBUG: Used only to get register traces:
                     //*s += &format!("\tmov {}, {} /*b=b_value */\n", REG_B, ctx.b.string_value);
@@ -641,28 +651,34 @@ impl ZiskRom {
                     match instruction.ind_width {
                         8 => {
                             *s += &format!(
-                                "\tmov {}, qword ptr [{}] /* b=SRC_IND(8): b = mem[address] */\n",
-                                REG_B, REG_ADDRESS
+                                "\tmov {}, qword ptr [{}] /* b=SRC_IND(8): {} = mem[address] */\n",
+                                if is_copy_b { REG_C } else { REG_B },
+                                REG_ADDRESS,
+                                if is_copy_b { "c(CopyB)" } else { "b" }
                             );
                         }
                         4 => {
                             *s += &format!(
-                                "\tmov {}, [{}] /* b=SRC_IND(4): b = mem[address] */\n",
-                                REG_B_W, REG_ADDRESS
+                                "\tmov {}, [{}] /* b=SRC_IND(4): {} = mem[address] */\n",
+                                if is_copy_b { REG_C_W } else { REG_B_W },
+                                REG_ADDRESS,
+                                if is_copy_b { "c(CopyB)" } else { "b" }
                             );
                         }
                         2 => {
-                            *s += &format!("\tmov {}, 0 /* b=SRC_IND(2): b = 0 */\n", REG_B);
                             *s += &format!(
-                                "\tmov {}, word ptr [{}] /* b=SRC_IND(2): b = mem[address] */\n",
-                                REG_B_H, REG_ADDRESS
+                                "\tmovzx {}, word ptr [{}] /* b=SRC_IND(2): {} = mem[address] */\n",
+                                if is_copy_b { REG_C } else { REG_B },
+                                REG_ADDRESS,
+                                if is_copy_b { "c(CopyB)" } else { "b" }
                             );
                         }
                         1 => {
-                            *s += &format!("\tmov {}, 0 /* b=SRC_IND(1): b = 0 */\n", REG_B);
                             *s += &format!(
-                                "\tmov {}, byte ptr [{}] /* b=SRC_IND(1): b = mem[address] */\n",
-                                REG_B_B, REG_ADDRESS
+                                "\tmovzx {}, byte ptr [{}] /* b=SRC_IND(1): {} = mem[address] */\n",
+                                if is_copy_b { REG_C } else { REG_B },
+                                REG_ADDRESS,
+                                if is_copy_b { "c(CopyB)" } else { "b" }
                             );
                         }
                         _ => panic!(
@@ -670,7 +686,7 @@ impl ZiskRom {
                             instruction.ind_width, ctx.pc
                         ),
                     }
-                    ctx.b.is_saved = true;
+                    ctx.b.is_saved = !is_copy_b;
                 }
                 _ => panic!(
                     "ZiskRom::save_to_asm() Invalid b_src={} pc={}",
@@ -1107,7 +1123,7 @@ impl ZiskRom {
             }
             ZiskOp::CopyB => {
                 //s += &format!("\t/* CopyB: c = b = {} */\n", ctx.b.string_value);
-                s += &format!("\tmov {}, {} /* CopyB: c = b */\n", REG_C, ctx.b.string_value);
+                //s += &format!("\tmov {}, {} /* CopyB: c = b */\n", REG_C, ctx.b.string_value);
                 //ctx.c = ctx.b.clone();
                 ctx.c.is_constant = ctx.b.is_constant;
                 ctx.c.constant_value = ctx.b.constant_value;
