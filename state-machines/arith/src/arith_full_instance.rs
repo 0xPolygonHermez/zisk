@@ -53,6 +53,7 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
     ///
     /// # Arguments
     /// * `pctx` - The proof context, unused in this implementation.
+    /// * `sctx` - The setup context, unused in this implementation.
     /// * `collectors` - A vector of input collectors to process and collect data for witness
     ///
     /// # Returns
