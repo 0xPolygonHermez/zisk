@@ -84,10 +84,10 @@ impl ArithFullSM {
         let mut idx = 0;
         for inner_inputs in inputs {
             for input in inner_inputs {
-            let opcode =
-                OperationBusData::get_op(&data_bus::ExtOperationData::OperationData(*input));
-            let a = OperationBusData::get_a(&data_bus::ExtOperationData::OperationData(*input));
-            let b = OperationBusData::get_b(&data_bus::ExtOperationData::OperationData(*input));
+                let opcode =
+                    OperationBusData::get_op(&data_bus::ExtOperationData::OperationData(*input));
+                let a = OperationBusData::get_a(&data_bus::ExtOperationData::OperationData(*input));
+                let b = OperationBusData::get_b(&data_bus::ExtOperationData::OperationData(*input));
 
                 aop.calculate(opcode, a, b);
                 let mut t: ArithTraceRow<F> = Default::default();

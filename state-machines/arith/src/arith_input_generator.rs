@@ -52,8 +52,7 @@ impl BusDevice<u64> for ArithInputGenerator {
                 .map(|x| (*bus_id, x))
                 .collect::<Vec<_>>();
 
-        Some(inputs)
-
+            Some(inputs)
         } else {
             panic!("Expected ExtOperationData::OperationData");
         }
