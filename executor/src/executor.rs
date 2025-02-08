@@ -1,7 +1,23 @@
-//! The `ZiskExecutor` module provides the main logic for orchestrating the execution of the ZisK
-//! ROM program to generate the witness computation. It is responsible for managing state machines,
-//! planning instances, and computing witnesses for both main and secondary state machines,
-//! leveraging parallel processing for efficiency.
+//! The `ZiskExecutor` module serves as the core orchestrator for executing the ZisK ROM program
+//! and generating witness computations. It manages the execution of the state machines, from initial
+//! planning to witness computation, ensuring efficient parallel processing and resource
+//! utilization.
+//!
+//! This module handles both main and secondary state machines, integrating complex tasks such as
+//! planning, configuration, and witness generation into a streamlined process.
+//!
+//! ## Executor Workflow
+//! The execution is divided into distinct, sequential phases:
+//!
+//! 1. **Minimal Traces**: Rapidly process the ROM to collect minimal traces with minimal overhead.
+//! 2. **Counting**: Creates the metrics required for the secondary state machine instances.
+//! 3. **Planning**: Strategically plan the execution of instances to optimize resource usage.
+//! 4. **Instance Creation**: Creates the AIR instances for the main and secondary state machines.
+//! 5. **Witness Computation**: Compute the witnesses for all AIR instances, leveraging parallelism
+//!    for efficiency.
+//!
+//! By structuring these phases, the `ZiskExecutor` ensures high-performance execution while
+//! maintaining clarity and modularity in the computation process.
 
 use itertools::Itertools;
 use p3_field::PrimeField;
