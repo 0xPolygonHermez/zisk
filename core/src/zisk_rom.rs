@@ -548,7 +548,7 @@ impl ZiskRom {
             // to save instructions
             let zisk_op = ZiskOp::try_from_code(instruction.op).unwrap();
             let store_b_in_c = match zisk_op {
-                ZiskOp::CopyB => true,
+                ZiskOp::CopyB | ZiskOp::PubOut => true,
                 _ => false,
             };
             let store_a_in_c = match zisk_op {
@@ -2372,13 +2372,12 @@ impl ZiskRom {
                 s += &format!("\tmov rdi, [{}]\n", REG_VALUE);
                 s += &format!("\tcall _opcode_keccak\n");
                 s += &format!("\tpop {}\n", REG_VALUE);
-
                 s += &format!("\tmov {}, 0 /* Keccak: c=0 */\n", REG_C);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::PubOut => {
-                s += &format!("\tmov {}, {} /* PubOut: c = b */\n", REG_C, ctx.b.string_value);
+                // b has been previously stored in c
                 ctx.c.is_constant = ctx.b.is_constant;
                 ctx.c.constant_value = ctx.b.constant_value;
                 ctx.c.is_saved = true;
