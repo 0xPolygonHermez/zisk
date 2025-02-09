@@ -561,8 +561,12 @@ impl ZiskRom {
                 | ZiskOp::Sub
                 | ZiskOp::Min
                 | ZiskOp::Minu
+                | ZiskOp::MinW
+                | ZiskOp::MinuW
                 | ZiskOp::Max
-                | ZiskOp::Maxu => true,
+                | ZiskOp::Maxu
+                | ZiskOp::MaxW
+                | ZiskOp::MaxuW => true,
                 _ => false,
             };
             assert!(!(store_a_in_c && store_b_in_c));
@@ -2275,13 +2279,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::MinuW => {
-                // Make sure a is in REG_A
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* MinuW: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
+                // a has been previously stored in c
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
@@ -2289,24 +2287,15 @@ impl ZiskRom {
                         REG_B, ctx.b.string_value
                     );
                 }
-                s += &format!("\tcmp {}, {} /* MinuW: compare a and b */\n", REG_A_W, REG_B_W);
+                s += &format!("\tcmp {}, {} /* MinuW: compare a and b */\n", REG_C_W, REG_B_W);
                 s += &format!("\tjb pc_{:x}_minuw_a_is_below_b\n", ctx.pc);
-                s += &format!("\tmov {}, {} /* c = b */\n", REG_C, REG_B);
-                s += &format!("\tjmp pc_{:x}_minuw_a_is_not_below_b\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* MinuW: c = b */\n", REG_C, REG_B);
                 s += &format!("pc_{:x}_minuw_a_is_below_b:\n", ctx.pc);
-                s += &format!("\tmov {}, {} /* c = a */\n", REG_C, REG_A);
-                s += &format!("pc_{:x}_minuw_a_is_not_below_b:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::MinW => {
-                // Make sure a is in REG_A
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* MinW: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
+                // a has been previously stored in c
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
@@ -2314,13 +2303,10 @@ impl ZiskRom {
                         REG_B, ctx.b.string_value
                     );
                 }
-                s += &format!("\tcmp {}, {} /* MinW: compare a and b */\n", REG_A_W, REG_B_W);
+                s += &format!("\tcmp {}, {} /* MinW: compare a and b */\n", REG_C_W, REG_B_W);
                 s += &format!("\tjl pc_{:x}_minw_a_is_below_b\n", ctx.pc);
-                s += &format!("\tmov {}, {} /* c = b */\n", REG_C, REG_B);
-                s += &format!("\tjmp pc_{:x}_minw_a_is_not_below_b\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* MinW: c = b */\n", REG_C, REG_B);
                 s += &format!("pc_{:x}_minw_a_is_below_b:\n", ctx.pc);
-                s += &format!("\tmov {}, {} /* c = a */\n", REG_C, REG_A);
-                s += &format!("pc_{:x}_minw_a_is_not_below_b:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -2349,13 +2335,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::MaxuW => {
-                // Make sure a is in REG_A
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* MaxuW: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
+                // a has been previously stored in c
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
@@ -2363,24 +2343,15 @@ impl ZiskRom {
                         REG_B, ctx.b.string_value
                     );
                 }
-                s += &format!("\tcmp {}, {} /* MaxuW: compare a and b */\n", REG_A_W, REG_B_W);
-                s += &format!("\tja pc_{:x}_maxuw_a_is_below_b\n", ctx.pc);
-                s += &format!("\tmov {}, {} /* c = b */\n", REG_C, REG_B);
-                s += &format!("\tjmp pc_{:x}_maxuw_a_is_not_below_b\n", ctx.pc);
-                s += &format!("pc_{:x}_maxuw_a_is_below_b:\n", ctx.pc);
-                s += &format!("\tmov {}, {} /* c = a */\n", REG_C, REG_A);
-                s += &format!("pc_{:x}_maxuw_a_is_not_below_b:\n", ctx.pc);
+                s += &format!("\tcmp {}, {} /* MaxuW: compare a and b */\n", REG_C_W, REG_B_W);
+                s += &format!("\tja pc_{:x}_maxuw_a_is_above_b\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* MaxuW: c = b */\n", REG_C, REG_B);
+                s += &format!("pc_{:x}_maxuw_a_is_above_b:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::MaxW => {
-                // Make sure a is in REG_A
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* MaxW: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
+                // a has been previously stored in c
                 // Make sure b is in REG_B
                 if ctx.b.is_constant {
                     s += &format!(
@@ -2388,13 +2359,10 @@ impl ZiskRom {
                         REG_B, ctx.b.string_value
                     );
                 }
-                s += &format!("\tcmp {}, {} /* MaxW: compare a and b */\n", REG_A_W, REG_B_W);
-                s += &format!("\tjg pc_{:x}_maxw_a_is_below_b\n", ctx.pc);
-                s += &format!("\tmov {}, {} /* c = b */\n", REG_C, REG_B);
-                s += &format!("\tjmp pc_{:x}_maxw_a_is_not_below_b\n", ctx.pc);
-                s += &format!("pc_{:x}_maxw_a_is_below_b:\n", ctx.pc);
-                s += &format!("\tmov {}, {} /* c = a */\n", REG_C, REG_A);
-                s += &format!("pc_{:x}_maxw_a_is_not_below_b:\n", ctx.pc);
+                s += &format!("\tcmp {}, {} /* MaxW: compare a and b */\n", REG_C_W, REG_B_W);
+                s += &format!("\tjg pc_{:x}_maxw_a_is_above_b\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* MaxW: c = b */\n", REG_C, REG_B);
+                s += &format!("pc_{:x}_maxw_a_is_above_b:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
