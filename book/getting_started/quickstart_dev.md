@@ -18,8 +18,8 @@ Run the following commands to clone the necessary repositories:
 ```bash
 git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
 git clone -b develop https://github.com/0xPolygonHermez/zisk.git
-git clone -b 0.0.16 https://github.com/0xPolygonHermez/pil2-proofman.git
-git clone -b 0.0.16 https://github.com/0xPolygonHermez/pil2-proofman-js
+git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman.git
+git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman-js
 ```
 
 ## Compile a Verifiable Rust Program
