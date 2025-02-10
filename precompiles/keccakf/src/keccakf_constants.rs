@@ -3,6 +3,8 @@
 /// Generic Parameters
 pub const INPUT_DATA_SIZE_BITS: usize = 1600;
 pub const INPUT_DATA_SIZE_BYTES: usize = INPUT_DATA_SIZE_BITS / 8; // 200
+pub const RB: usize = 32;
+pub const RB_BLOCKS_TO_PROCESS: usize = INPUT_DATA_SIZE_BITS / RB; // 50
 
 /// Keccakf Parameters
 pub const CHUNKS_KECCAKF: usize = 6;

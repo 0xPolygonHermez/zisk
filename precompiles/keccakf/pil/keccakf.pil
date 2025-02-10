@@ -109,15 +109,15 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
         //  - When there are slots.
         //  - Every NUM_KECCAKF_PER_SLOT clocks (including the first one).
         //  - When there are still bits to process (i.e., we repeat the previous instruction KECCAKF_SIZE_BITS times).
-        col fixed air.latch_num_keccakf  = [[[0:(NUM_KECCAKF_PER_SLOT-1),1]:KECCAKF_SIZE_BITS, 
-                                              0:(CIRCUIT_SIZE - STATE_SIZE)]:NUM_SLOTS,
+        col fixed air.latch_num_keccakf  = [1,[[1,0:(NUM_KECCAKF_PER_SLOT-1)]:KECCAKF_SIZE_BITS, 
+                                                1:(CIRCUIT_SIZE - STATE_SIZE)]:NUM_SLOTS,
                                             0...];
         // Instructions to add the factor:
         //  - When there are slots.
         //  - Every clock, for the clock in the slot, we add the factor 1 << clk
         //  - When there are still bits to process (i.e., we repeat the previous instruction KECCAKF_SIZE_BITS times).
-        col fixed air.factor_num_keccakf = [[[1,2..*..2**(NUM_KECCAKF_PER_SLOT-1)]:KECCAKF_SIZE_BITS, 
-                                              0:(CIRCUIT_SIZE - STATE_SIZE)]:NUM_SLOTS,
+        col fixed air.factor_num_keccakf = [0,[[1,2..*..2**(NUM_KECCAKF_PER_SLOT-1)]:KECCAKF_SIZE_BITS, 
+                                                0:(CIRCUIT_SIZE - STATE_SIZE)]:NUM_SLOTS,
                                             0...];
     }
 
@@ -130,8 +130,8 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
     val2 === 'val2 * (1 - latch_num_keccakf) + bit2 * factor_num_keccakf;
 
     // Every NUM_KECCAKF_PER_SLOT*i clocks, `val` has to be the coincide with the 'a'-th gate entry
-    latch_num_keccakf * (val1 - a) === 0;
-    latch_num_keccakf * (val2 - a') === 0;
+    latch_num_keccakf * ('val1 - a) === 0;
+    latch_num_keccakf * ('val2 - a') === 0;
 
     const int CHUNKS_TO_PROCESS = KECCAKF_SIZE_BITS / RB;
 
