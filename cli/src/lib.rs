@@ -1,3 +1,4 @@
+pub mod toolchain;
 pub mod commands;
 
 use anyhow::{Context, Result};
@@ -24,6 +25,9 @@ pub const ZISK_VERSION_MESSAGE: &str = concat!(
     env!("VERGEN_BUILD_TIMESTAMP"),
     ")"
 );
+
+const DEFAULT_INPUT_VALUE: &str = "build/input.bin";
+const ZISK_TARGET: &str = "riscv64ima-polygon-ziskos-elf";
 
 trait CommandExecutor {
     fn run(&mut self) -> Result<()>;
