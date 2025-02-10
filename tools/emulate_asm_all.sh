@@ -89,7 +89,7 @@ do
 
     # Transpile the ELF RISC-V file to Zisk, and then generate assembly file emu.asm
     cargo build --bin=riscv2zisk
-    ./target/debug/riscv2zisk $ELF_FILE rom.json rom.pil rom.bin emulator-asm/src/emu.asm
+    ./target/debug/riscv2zisk $ELF_FILE none none none emulator-asm/src/emu.asm
 
     # Compile the assembly emulator derived from this ELF file
     cd emulator-asm

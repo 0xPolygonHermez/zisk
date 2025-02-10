@@ -147,6 +147,11 @@ pub struct ZiskAsmContext {
     a: ZiskAsmRegister,
     b: ZiskAsmRegister,
     c: ZiskAsmRegister,
+
+    store_a_in_c: bool,
+    store_a_in_a: bool,
+    store_b_in_c: bool,
+    store_b_in_b: bool,
 }
 
 /// ZisK ROM implementation
@@ -547,11 +552,13 @@ impl ZiskRom {
             // Set special storage destinations for a and b registers, based on operations, in order
             // to save instructions
             let zisk_op = ZiskOp::try_from_code(instruction.op).unwrap();
-            let store_b_in_c = match zisk_op {
-                ZiskOp::CopyB | ZiskOp::PubOut => true,
-                _ => false,
-            };
-            let store_a_in_c = match zisk_op {
+            ctx.store_a_in_c = false;
+            ctx.store_a_in_a = false;
+            ctx.store_b_in_c = false;
+            ctx.store_b_in_b = false;
+
+            match zisk_op {
+                ZiskOp::CopyB | ZiskOp::PubOut => ctx.store_b_in_c = true,
                 ZiskOp::Xor
                 | ZiskOp::And
                 | ZiskOp::Or
@@ -566,19 +573,42 @@ impl ZiskRom {
                 | ZiskOp::Max
                 | ZiskOp::Maxu
                 | ZiskOp::MaxW
-                | ZiskOp::MaxuW => true,
-                _ => false,
+                | ZiskOp::MaxuW => ctx.store_a_in_c = true,
+                ZiskOp::SignExtendB | ZiskOp::SignExtendH | ZiskOp::SignExtendW | ZiskOp::AddW => {
+                    ctx.store_b_in_b = true
+                }
+                ZiskOp::SubW
+                | ZiskOp::Eq
+                | ZiskOp::Ltu
+                | ZiskOp::Lt
+                | ZiskOp::LtuW
+                | ZiskOp::LtW
+                | ZiskOp::Leu
+                | ZiskOp::Le
+                | ZiskOp::LeuW
+                | ZiskOp::LeW => ctx.store_a_in_a = true,
+                _ => {}
             };
-            assert!(!(store_a_in_c && store_b_in_c));
+
+            // Make sure we don't store two registers in the same register
+            assert!(!(ctx.store_a_in_c && ctx.store_b_in_c));
+            assert!(!(ctx.store_a_in_c && ctx.store_a_in_a));
+            assert!(!(ctx.store_b_in_c && ctx.store_b_in_b));
 
             // Set register b content: only SRC_C
+            // This is required because in case a must be stored in c, it would overwrite the
+            // previouse value of c
             ctx.b.is_constant = false;
             ctx.b.is_saved = false;
             ctx.b.string_value = REG_B.to_string();
             match instruction.b_src {
                 SRC_C => {
-                    *s += &format!("\tmov {}, {} /* b=SRC_C: b = c */\n", REG_B, REG_C);
-                    ctx.b.is_saved = true;
+                    if !ctx.store_b_in_c {
+                        *s += &format!("\tmov {}, {} /* b=SRC_C: b = c */\n", REG_B, REG_C);
+                        ctx.b.is_saved = true;
+                    } else {
+                        ctx.b.is_saved = false;
+                    }
                 }
                 _ => {}
             }
@@ -589,8 +619,12 @@ impl ZiskRom {
             ctx.a.string_value = REG_A.to_string();
             match instruction.a_src {
                 SRC_C => {
-                    *s += &format!("\tmov {}, {} /* a=SRC_C: a = c */\n", REG_A, REG_C);
-                    ctx.a.is_saved = true;
+                    if !ctx.store_a_in_c {
+                        *s += &format!("\tmov {}, {} /* a=SRC_C: a = c */\n", REG_A, REG_C);
+                        ctx.a.is_saved = true;
+                    } else {
+                        ctx.a.is_saved = false;
+                    }
                 }
                 SRC_MEM => {
                     *s += &format!(
@@ -605,9 +639,9 @@ impl ZiskRom {
                     }
                     *s += &format!(
                         "\tmov {}, [{}] /* a=SRC_MEM: {} = mem[address] */\n",
-                        if store_a_in_c { REG_C } else { REG_A },
+                        if ctx.store_a_in_c { REG_C } else { REG_A },
                         REG_ADDRESS,
-                        if store_a_in_c { "c" } else { "a" }
+                        if ctx.store_a_in_c { "c" } else { "a" }
                     );
                     ctx.a.is_saved = true;
                 }
@@ -616,24 +650,32 @@ impl ZiskRom {
                     ctx.a.constant_value =
                         instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32);
                     ctx.a.string_value = format!("0x{:x}", ctx.a.constant_value);
-                    if store_a_in_c {
+                    if ctx.store_a_in_c {
                         *s += &format!(
                             "\tmov {}, {} /* a=SRC_IMM: c = constant */\n",
                             REG_C, ctx.a.string_value
-                        )
+                        );
+                        ctx.a.is_saved = false;
+                    } else if ctx.store_a_in_a {
+                        *s += &format!(
+                            "\tmov {}, {} /* a=SRC_IMM: a = constant */\n",
+                            REG_A, ctx.a.string_value
+                        );
+                        ctx.a.is_saved = true;
+                    } else {
+                        ctx.a.is_saved = false;
                     }
-                    ctx.a.is_saved = false;
                     // DEBUG: Used only to get register traces:
                     //*s += &format!("\tmov {}, {} /* a=a_value */\n", REG_A, ctx.a.string_value);
                 }
                 SRC_STEP => {
                     *s += &format!(
                         "\tmov {}, {} /* a=SRC_STEP: {} = step */\n",
-                        if store_a_in_c { REG_C } else { REG_A },
+                        if ctx.store_a_in_c { REG_C } else { REG_A },
                         REG_STEP,
-                        if store_a_in_c { "c" } else { "a" }
+                        if ctx.store_a_in_c { "c" } else { "a" }
                     );
-                    ctx.a.is_saved = true;
+                    ctx.a.is_saved = !ctx.store_a_in_c;
                 }
                 _ => {
                     panic!("ZiskRom::source_a() Invalid a_src={} pc={}", instruction.a_src, ctx.pc)
@@ -657,24 +699,32 @@ impl ZiskRom {
 
                     *s += &format!(
                         "\tmov {}, [{}] /* b=SRC_MEM: {} = mem[address] */\n",
-                        if store_b_in_c { REG_C } else { REG_B },
+                        if ctx.store_b_in_c { REG_C } else { REG_B },
                         REG_ADDRESS,
-                        if store_b_in_c { "c" } else { "b" }
+                        if ctx.store_b_in_c { "c" } else { "b" }
                     );
-                    ctx.b.is_saved = !store_b_in_c;
+                    ctx.b.is_saved = !ctx.store_b_in_c;
                 }
                 SRC_IMM => {
                     ctx.b.is_constant = true;
                     ctx.b.constant_value =
                         instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32);
                     ctx.b.string_value = format!("0x{:x}", ctx.b.constant_value);
-                    if store_b_in_c {
+                    if ctx.store_b_in_c {
                         *s += &format!(
                             "\tmov {}, {} /* b=SRC_IMM: c = constant */\n",
                             REG_C, ctx.b.string_value
-                        )
+                        );
+                        ctx.b.is_saved = false;
+                    } else if ctx.store_b_in_b {
+                        *s += &format!(
+                            "\tmov {}, {} /* b=SRC_IMM: c = constant */\n",
+                            REG_B, ctx.b.string_value
+                        );
+                        ctx.b.is_saved = true;
+                    } else {
+                        ctx.b.is_saved = false;
                     }
-                    ctx.b.is_saved = false;
                     // DEBUG: Used only to get register traces:
                     //*s += &format!("\tmov {}, {} /*b=b_value */\n", REG_B, ctx.b.string_value);
                 }
@@ -697,33 +747,33 @@ impl ZiskRom {
                         8 => {
                             *s += &format!(
                                 "\tmov {}, qword ptr [{}] /* b=SRC_IND(8): {} = mem[address] */\n",
-                                if store_b_in_c { REG_C } else { REG_B },
+                                if ctx.store_b_in_c { REG_C } else { REG_B },
                                 REG_ADDRESS,
-                                if store_b_in_c { "c(CopyB)" } else { "b" }
+                                if ctx.store_b_in_c { "c(CopyB)" } else { "b" }
                             );
                         }
                         4 => {
                             *s += &format!(
                                 "\tmov {}, [{}] /* b=SRC_IND(4): {} = mem[address] */\n",
-                                if store_b_in_c { REG_C_W } else { REG_B_W },
+                                if ctx.store_b_in_c { REG_C_W } else { REG_B_W },
                                 REG_ADDRESS,
-                                if store_b_in_c { "c(CopyB)" } else { "b" }
+                                if ctx.store_b_in_c { "c(CopyB)" } else { "b" }
                             );
                         }
                         2 => {
                             *s += &format!(
                                 "\tmovzx {}, word ptr [{}] /* b=SRC_IND(2): {} = mem[address] */\n",
-                                if store_b_in_c { REG_C } else { REG_B },
+                                if ctx.store_b_in_c { REG_C } else { REG_B },
                                 REG_ADDRESS,
-                                if store_b_in_c { "c(CopyB)" } else { "b" }
+                                if ctx.store_b_in_c { "c(CopyB)" } else { "b" }
                             );
                         }
                         1 => {
                             *s += &format!(
                                 "\tmovzx {}, byte ptr [{}] /* b=SRC_IND(1): {} = mem[address] */\n",
-                                if store_b_in_c { REG_C } else { REG_B },
+                                if ctx.store_b_in_c { REG_C } else { REG_B },
                                 REG_ADDRESS,
-                                if store_b_in_c { "c(CopyB)" } else { "b" }
+                                if ctx.store_b_in_c { "c(CopyB)" } else { "b" }
                             );
                         }
                         _ => panic!(
@@ -731,7 +781,7 @@ impl ZiskRom {
                             instruction.ind_width, ctx.pc
                         ),
                     }
-                    ctx.b.is_saved = !store_b_in_c;
+                    ctx.b.is_saved = !ctx.store_b_in_c;
                 }
                 _ => panic!(
                     "ZiskRom::save_to_asm() Invalid b_src={} pc={}",
@@ -1157,9 +1207,7 @@ impl ZiskRom {
         ctx.c.string_value = REG_C.to_string();
         match zisk_op {
             ZiskOp::Flag => {
-                //s += &format!("\t/* Flag: c = 0 */\n");
                 s += &format!("\tmov {}, 0 /* Flag: c = 0 */\n", REG_C);
-
                 ctx.c.is_constant = true;
                 ctx.c.constant_value = 0;
                 ctx.c.string_value = "0".to_string();
@@ -1167,22 +1215,14 @@ impl ZiskRom {
                 ctx.flag_is_always_one = true;
             }
             ZiskOp::CopyB => {
-                //s += &format!("\t/* CopyB: c = b = {} */\n", ctx.b.string_value);
-                //s += &format!("\tmov {}, {} /* CopyB: c = b */\n", REG_C, ctx.b.string_value);
-                //ctx.c = ctx.b.clone();
+                assert!(ctx.store_b_in_c);
                 ctx.c.is_constant = ctx.b.is_constant;
                 ctx.c.constant_value = ctx.b.constant_value;
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::SignExtendB => {
-                // Make sure b is stored in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* SignExtendB: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
+                assert!(ctx.store_b_in_b);
                 s += &format!(
                     "\tmovsx {}, {} /* SignExtendW: sign extend b(8b) to c(64b) */\n",
                     REG_C, REG_B_B
@@ -1191,13 +1231,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::SignExtendH => {
-                // Make sure b is stored in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* SignExtendH: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
+                assert!(ctx.store_b_in_b);
                 s += &format!(
                     "\tmovsx {}, {} /* SignExtendW: sign extend b(16b) to c(64b) */\n",
                     REG_C, REG_B_H
@@ -1206,13 +1240,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::SignExtendW => {
-                // Make sure b is stored in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* SignExtendW: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
+                assert!(ctx.store_b_in_b);
                 s += &format!(
                     "\tmovsxd {}, {} /* SignExtendW: sign extend b(32b) to c(64b) */\n",
                     REG_C, REG_B_W
@@ -1221,32 +1249,32 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Add => {
-                // call	<core::num::wrapping::Wrapping<u64> as core::ops::arith::Add>::add
+                assert!(!ctx.store_a_in_a);
+                assert!(!ctx.store_a_in_c);
+                assert!(!ctx.store_b_in_b);
+                assert!(!ctx.store_b_in_c);
                 if ctx.a.is_constant && (ctx.a.constant_value == 0) {
                     s += &format!(
                         "\tmov {}, {} /* Add: c = a(0) + b = b */\n",
                         REG_C, ctx.b.string_value
                     );
-                    ctx.c.is_saved = true;
+                } else if ctx.b.is_constant && (ctx.b.constant_value == 0) {
+                    s += &format!(
+                        "\tmov {}, {} /* Add: c = a + b(0) = a */\n",
+                        REG_C, ctx.a.string_value
+                    );
                 } else {
                     s += &format!("\tmov {}, {} /* Add: c = a */\n", REG_C, ctx.a.string_value);
                     s += &format!(
                         "\tadd {}, {} /* Add: c = c + b = a + b */\n",
                         REG_C, ctx.b.string_value
                     );
-                    ctx.c.is_saved = true;
                 }
+                ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::AddW => {
-                // call	<core::num::wrapping::Wrapping<i32> as core::ops::arith::Add>::add
-                // cdqe
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* AddW: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
+                assert!(ctx.store_b_in_b);
                 // DEBUG: Used only to preserve b value
                 // s +=
                 //     &format!("\tmov {}, {} /* AddW: value = b */\n", REG_VALUE, ctx.b.string_value);
@@ -1259,7 +1287,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sub => {
-                // b has been previously stored in c
+                assert!(ctx.store_a_in_c);
                 s += &format!(
                     "\tsub {}, {} /* Sub: c = c - b = a - b */\n",
                     REG_C, ctx.b.string_value
@@ -1268,14 +1296,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::SubW => {
-                // Make sure a is in REG_A
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* SubW: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                    ctx.a.string_value = REG_A.to_string();
-                }
+                assert!(ctx.store_a_in_a);
                 // DEBUG: Used only to preserve b value
                 // s += &format!(
                 //     "\tmov {}, {} /* SubW: address = a */\n",
@@ -1294,22 +1315,16 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sll => {
-                // c <<= b
+                assert!(ctx.store_a_in_c);
                 if ctx.b.is_constant {
-                    //s += &format!("\tmov {}, {} /* Sll: c = a */\n", REG_C, ctx.a.string_value);
                     s += &format!(
                         "\tshl {}, 0x{:x} /* Sll: c = a << b */\n",
                         REG_C,
                         ctx.b.constant_value & 0x3f
                     );
                 } else {
-                    // s += &format!(
-                    //     "\tmov {}, {} /* Sll: c(value) = a */\n",
-                    //     REG_VALUE, ctx.a.string_value
-                    // );
                     s += &format!("\tmov rcx, {} /* Sll: c = b */\n", REG_B);
                     s += &format!("\tshl {}, cl /* Sll: c(value) = a << b */\n", REG_C);
-                    //s += &format!("\tmov {}, {} /* Sll: c = value */\n", REG_C, REG_VALUE);
                 }
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -1327,14 +1342,14 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sra => {
-                // a has been previously stored in c
+                assert!(ctx.store_a_in_c);
                 s += &format!("\tmov rcx, {} /* Sra: rcx = b */\n", ctx.b.string_value);
                 s += &format!("\tsar {}, cl /* Sra: c = c >> b(cl) */\n", REG_C);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Srl => {
-                // a has been previously stored in c
+                assert!(ctx.store_a_in_c);
                 if ctx.b.is_constant {
                     s += &format!(
                         "\tshr {}, 0x{:x} /* Srl: c = a >> b */\n",
@@ -1404,13 +1419,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Eq => {
-                // Make sure a is in REG_A to compare it against b (constant, expression or reg)
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Eq: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
+                assert!(ctx.store_a_in_a);
                 s += &format!("\tcmp {}, {} /* Eq: a == b ? */\n", REG_A, ctx.b.string_value);
                 s += &format!("\tje pc_{:x}_equal_true\n", ctx.pc);
                 s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
@@ -1452,13 +1461,7 @@ impl ZiskRom {
                 ctx.c.is_saved = true;
             }
             ZiskOp::Ltu => {
-                // Make sure a is in REG_A to compare it against b (constant, expression or reg)
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Ltu: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
+                assert!(ctx.store_a_in_a);
                 s += &format!("\tcmp {}, {} /* Ltu: a == b ? */\n", REG_A, ctx.b.string_value);
                 s += &format!("\tjb pc_{:x}_ltu_true\n", ctx.pc);
                 s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
@@ -1471,13 +1474,7 @@ impl ZiskRom {
                 ctx.c.is_saved = true;
             }
             ZiskOp::Lt => {
-                // Make sure a is in REG_A to compare it against b (constant, expression or reg)
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Lt: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
+                assert!(ctx.store_a_in_a);
                 // If b is constant and too big, move it to its register
                 if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
                     s += &format!(
@@ -1499,14 +1496,7 @@ impl ZiskRom {
                 ctx.c.is_saved = true;
             }
             ZiskOp::LtuW => {
-                // Make sure a is in REG_A to compare it against b (constant, expression or reg)
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, 0x{:x} /* LtuW: a = constant */\n",
-                        REG_A,
-                        ctx.a.constant_value & 0xffffffff
-                    );
-                }
+                assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
                 if ctx.b.is_constant {
                     s += &format!(
@@ -1528,14 +1518,7 @@ impl ZiskRom {
                 ctx.c.is_saved = true;
             }
             ZiskOp::LtW => {
-                // Make sure a is in REG_A to compare it against b (constant or reg)
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, 0x{:x} /* LtW: a = const_value */\n",
-                        REG_A,
-                        ctx.a.constant_value & 0xffffffff
-                    );
-                }
+                assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
                 if ctx.b.is_constant {
                     s += &format!(
@@ -1557,13 +1540,7 @@ impl ZiskRom {
                 ctx.c.is_saved = true;
             }
             ZiskOp::Leu => {
-                // Make sure a is in REG_A to compare it against b (constant, expression or reg)
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Leu: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
+                assert!(ctx.store_a_in_a);
                 // If b is constant and too big, move it to its register
                 if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
                     s += &format!(
@@ -1585,13 +1562,7 @@ impl ZiskRom {
                 ctx.c.is_saved = true;
             }
             ZiskOp::Le => {
-                // Make sure a is in REG_A to compare it against b (constant, expression or reg)
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Le: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
+                assert!(ctx.store_a_in_a);
                 // If b is constant and too big, move it to its register
                 if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
                     s += &format!(
@@ -1613,14 +1584,7 @@ impl ZiskRom {
                 ctx.c.is_saved = true;
             }
             ZiskOp::LeuW => {
-                // Make sure a is in REG_A to compare it against b (constant or reg)
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, 0x{:x} /* LeuW: a = const_value */\n",
-                        REG_A,
-                        ctx.a.constant_value & 0xffffffff
-                    );
-                }
+                assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
                 if ctx.b.is_constant {
                     s += &format!(
@@ -1642,14 +1606,7 @@ impl ZiskRom {
                 ctx.c.is_saved = true;
             }
             ZiskOp::LeW => {
-                // Make sure a is in REG_A to compare it against b (constant or reg)
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, 0x{:x} /* LeW: a = const_value */\n",
-                        REG_A,
-                        ctx.a.constant_value & 0xffffffff
-                    );
-                }
+                assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
                 if ctx.b.is_constant {
                     s += &format!(
@@ -1671,7 +1628,7 @@ impl ZiskRom {
                 ctx.c.is_saved = true;
             }
             ZiskOp::And => {
-                // a has been previously stored in c
+                assert!(ctx.store_a_in_c);
                 s += &format!(
                     "\tand {}, {} /* And: c = c AND b = a AND b */\n",
                     REG_C, ctx.b.string_value
@@ -1680,7 +1637,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Or => {
-                // a has been previously stored in c
+                assert!(ctx.store_a_in_c);
                 s += &format!(
                     "\tor {}, {} /* Or: c = c OR b = a OR b */\n",
                     REG_C, ctx.b.string_value
@@ -1689,7 +1646,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Xor => {
-                // a has been previously stored in c
+                assert!(ctx.store_a_in_c);
                 s += &format!(
                     "\txor {}, {} /* Xor: c = c XOR b = a XOR b */\n",
                     REG_C, ctx.b.string_value
