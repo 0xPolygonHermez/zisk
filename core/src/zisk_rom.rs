@@ -568,12 +568,12 @@ impl ZiskRom {
                 | ZiskOp::Sub
                 | ZiskOp::Min
                 | ZiskOp::Minu
-                | ZiskOp::MinW
-                | ZiskOp::MinuW
                 | ZiskOp::Max
-                | ZiskOp::Maxu
-                | ZiskOp::MaxW
-                | ZiskOp::MaxuW => ctx.store_a_in_c = true,
+                | ZiskOp::Maxu => ctx.store_a_in_c = true,
+                ZiskOp::MinuW | ZiskOp::MinW | ZiskOp::MaxuW | ZiskOp::MaxW => {
+                    ctx.store_a_in_c = true;
+                    ctx.store_b_in_b = true;
+                }
                 ZiskOp::SignExtendB | ZiskOp::SignExtendH | ZiskOp::SignExtendW | ZiskOp::AddW => {
                     ctx.store_b_in_b = true
                 }
@@ -587,6 +587,24 @@ impl ZiskRom {
                 | ZiskOp::Le
                 | ZiskOp::LeuW
                 | ZiskOp::LeW => ctx.store_a_in_a = true,
+                ZiskOp::Mulu
+                | ZiskOp::Muluh
+                | ZiskOp::Mulsuh
+                | ZiskOp::Mul
+                | ZiskOp::Mulh
+                | ZiskOp::MulW
+                | ZiskOp::Div
+                | ZiskOp::Rem
+                | ZiskOp::DivuW
+                | ZiskOp::RemuW
+                | ZiskOp::DivW
+                | ZiskOp::RemW => {
+                    ctx.store_a_in_a = true;
+                    ctx.store_b_in_b = true;
+                }
+                ZiskOp::Divu | ZiskOp::Remu => {
+                    ctx.store_b_in_b = true;
+                }
                 _ => {}
             };
 
@@ -1655,63 +1673,27 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Mulu => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
                 // RDX:RAX := RAX ∗ r/m64
-                // Make sure a is in REG_A
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Mulu: a = constant value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
-                // Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Mulu: b = b_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
                 s += &format!("\tmul {} /* Mulu: rax*reg -> rdx:rax */\n", REG_A);
                 s += &format!("\tmov {}, rax /* Mulu: c = result(rax) */\n", REG_C);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Muluh => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
                 // RDX:RAX := RAX ∗ r/m64
-                // Make sure a is in REG_A
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Muluh: a = constant value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
-                // Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Muluh: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
                 s += &format!("\tmul {} /* Muluh: rax*reg -> rdx:rax */\n", REG_A);
                 s += &format!("\tmov {}, rdx /* Muluh: c = high result(rdx) */\n", REG_C);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Mulsuh => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
                 // RDX:RAX := RAX ∗ r/m64
-                // Make sure a is in REG_A
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Mulsuh: a = constant value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
-                // Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Mulsuh: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
                 s += &format!("\tmov rsi, {} /* Mulsuh: rsi=b */\n", REG_B);
                 s += &format!("\tmov rax, {} /* Mulsuh: rax=a */\n", REG_A);
                 s += &format!("\tmov {}, rax /* Mulsuh: value=a */\n", REG_VALUE);
@@ -1727,82 +1709,36 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Mul => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
                 // RDX:RAX := RAX ∗ r/m64
-
-                // Make sure a is in REG_A
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Mul: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
-                // Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Mul: b = b_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
                 s += &format!("\timul {} /* Mul: rax*reg -> rdx:rax */\n", REG_A);
                 s += &format!("\tmov {}, rax /* Mul: c = result(rax) */\n", REG_C);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Mulh => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
                 // RDX:RAX := RAX ∗ r/m64
-
-                // Make sure a is in REG_A
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Mulh: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
-                // Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Mulh: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
                 s += &format!("\timul {} /* Mulh: rax*reg -> rdx:rax */\n", REG_A);
                 s += &format!("\tmov {}, rdx /* Mulh: c = high result(rdx) */\n", REG_C);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::MulW => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
                 // RDX:RAX := RAX ∗ r/m64
-
-                // Make sure a is in REG_A
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* MulW: a = constant value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
-                // Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* MulW: b = b_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
                 s += &format!("\tmul {} /* MulW: rax*reg -> rdx:rax */\n", REG_A_W);
-                //s += &format!("\tmov {}, rax /* MulW: c = result(rax) */\n", REG_C);
-
                 s += &format!("\tmovsxd {}, {} /* MulW: sign extend to quad */\n", REG_C, REG_B_W);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Divu => {
+                assert!(ctx.store_b_in_b);
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
-                // Remainder. Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Divu: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
+                // Remainder
                 // If b==0 return 0xffffffffffffffff
                 s += &format!("\tcmp {}, 0 /* Divu: if b == 0 return f's */\n", REG_B);
                 s += &format!(
@@ -1827,14 +1763,9 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Remu => {
+                assert!(ctx.store_b_in_b);
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
-                // Remainder. Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Remu: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
+                // Remainder
                 // If b==0 return a
                 s += &format!("\tcmp {}, 0 /* Remu: if b == 0 return a */\n", REG_B);
                 s += &format!(
@@ -1867,28 +1798,15 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Div => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
                 // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
                 // If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should
                 // be -MIN_I64, which cannot be represented with 64 bits (overflow)
                 // and it returns c=a.
 
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
-                // Remainder.
-
-                // Make sure a is in REG_A
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Div: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
-                // Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Div: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
+                // Remainder
 
                 // Check divide by zero:
                 // If b==0 return 0xffffffffffffffff
@@ -1955,28 +1873,15 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Rem => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
                 // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
                 // If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should
                 // be -MIN_I64, which cannot be represented with 64 bits (overflow)
                 // and it returns c=a.
 
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
-                // Remainder.
-
-                // Make sure a is in REG_A
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Rem: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
-                // Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* Rem: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
+                // Remainder
 
                 // Check divide by zero:
                 // If b==0 return 0xffffffffffffffff
@@ -2043,20 +1948,8 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::DivuW => {
-                // Make sure a is in REG_A_W
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* DivuW: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
-                // Make sure b is in REG_B_W
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* DivuW: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
                 s += &format!("\tcmp {}, 0 /* DivuW: if b==0 then return all f's */\n", REG_B_W);
                 s += &format!(
                     "\tjne pc_{:x}_divuw_b_is_not_zero /* DivuW: if b is not zero, divide */\n",
@@ -2082,20 +1975,8 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::RemuW => {
-                // Make sure a is in REG_A_W
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* RemuW: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
-                // Make sure b is in REG_B_W
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* RemuW: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
                 s += &format!("\tcmp {}, 0 /* RemuW: if b==0 then return a */\n", REG_B_W);
                 s += &format!(
                     "\tjne pc_{:x}_remuw_b_is_not_zero /* RemuW: if b is not zero, divide */\n",
@@ -2121,24 +2002,11 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::DivW => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
                 // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
-                // Remainder.
-
-                // Make sure a is in REG_A
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* DivW: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
-                // Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* DivW: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
+                // Remainder
 
                 // Check divide by zero:
                 // If b==0 return 0xffffffffffffffff
@@ -2167,24 +2035,11 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::RemW => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
                 // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder.
-
-                // Make sure a is in REG_A
-                if ctx.a.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* RemW: a = const_value */\n",
-                        REG_A, ctx.a.string_value
-                    );
-                }
-                // Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* RemW: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
 
                 // Check divide by zero:
                 // If b==0 return a
@@ -2212,7 +2067,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Minu => {
-                // a has been previously stored in c
+                assert!(ctx.store_a_in_c);
                 s += &format!(
                     "\tcmp {}, {} /* Minu: compare a and b */\n",
                     REG_C, ctx.b.string_value
@@ -2224,7 +2079,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Min => {
-                // a has been previously stored in c
+                assert!(ctx.store_a_in_c);
                 s += &format!(
                     "\tcmp {}, {} /* Min: compare a and b */\n",
                     REG_C, ctx.b.string_value
@@ -2236,14 +2091,8 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::MinuW => {
-                // a has been previously stored in c
-                // Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* MinuW: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
+                assert!(ctx.store_a_in_c);
+                assert!(ctx.store_b_in_b);
                 s += &format!("\tcmp {}, {} /* MinuW: compare a and b */\n", REG_C_W, REG_B_W);
                 s += &format!("\tjb pc_{:x}_minuw_a_is_below_b\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* MinuW: c = b */\n", REG_C, REG_B);
@@ -2252,14 +2101,8 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::MinW => {
-                // a has been previously stored in c
-                // Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* MinW: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
+                assert!(ctx.store_a_in_c);
+                assert!(ctx.store_b_in_b);
                 s += &format!("\tcmp {}, {} /* MinW: compare a and b */\n", REG_C_W, REG_B_W);
                 s += &format!("\tjl pc_{:x}_minw_a_is_below_b\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* MinW: c = b */\n", REG_C, REG_B);
@@ -2268,7 +2111,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Maxu => {
-                // a has been previously stored in c
+                assert!(ctx.store_a_in_c);
                 s += &format!(
                     "\tcmp {}, {} /* Maxu: compare a and b */\n",
                     REG_C, ctx.b.string_value
@@ -2280,7 +2123,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Max => {
-                // a has been previously stored in c
+                assert!(ctx.store_a_in_c);
                 s += &format!(
                     "\tcmp {}, {} /* Max: compare a and b */\n",
                     REG_C, ctx.b.string_value
@@ -2292,14 +2135,8 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::MaxuW => {
-                // a has been previously stored in c
-                // Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* MaxuW: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
+                assert!(ctx.store_a_in_c);
+                assert!(ctx.store_b_in_b);
                 s += &format!("\tcmp {}, {} /* MaxuW: compare a and b */\n", REG_C_W, REG_B_W);
                 s += &format!("\tja pc_{:x}_maxuw_a_is_above_b\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* MaxuW: c = b */\n", REG_C, REG_B);
@@ -2308,14 +2145,8 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::MaxW => {
-                // a has been previously stored in c
-                // Make sure b is in REG_B
-                if ctx.b.is_constant {
-                    s += &format!(
-                        "\tmov {}, {} /* MaxW: b = const_value */\n",
-                        REG_B, ctx.b.string_value
-                    );
-                }
+                assert!(ctx.store_a_in_c);
+                assert!(ctx.store_b_in_b);
                 s += &format!("\tcmp {}, {} /* MaxW: compare a and b */\n", REG_C_W, REG_B_W);
                 s += &format!("\tjg pc_{:x}_maxw_a_is_above_b\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* MaxW: c = b */\n", REG_C, REG_B);
@@ -2334,7 +2165,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::PubOut => {
-                // b has been previously stored in c
+                assert!(ctx.store_b_in_c);
                 ctx.c.is_constant = ctx.b.is_constant;
                 ctx.c.constant_value = ctx.b.constant_value;
                 ctx.c.is_saved = true;
