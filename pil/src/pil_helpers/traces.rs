@@ -215,11 +215,11 @@ trace!(BinaryExtensionTableTrace<F> {
 },  0, 13, 4194304 );
 
 trace!(KeccakfFixed<F> {
- L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, ID: F, latch_num_keccakf: F, factor_num_keccakf: F, is_input: F, is_output: F, __L1__: F,
+ L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, ID: F, latch_num_keccakf: F, factor_num_keccakf: F, latch_rb: F, __L1__: F,
 },  0, 14, 4194304 );
 
 trace!(KeccakfTrace<F> {
- free_in_a: [F; 6], free_in_b: [F; 6], free_in_c: [F; 6], step: F, addr: F, multiplicity: F, bit1: F, bit2: F, val1: F, val2: F,
+ free_in_a: [F; 6], free_in_b: [F; 6], free_in_c: [F; 6], step: F, addr: F, multiplicity: F, bit1: F, bit2: F, val1: F, val2: F, is_val: F,
 },  0, 14, 4194304 );
 
 trace!(KeccakfTableFixed<F> {

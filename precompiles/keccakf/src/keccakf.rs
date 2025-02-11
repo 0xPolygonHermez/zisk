@@ -40,6 +40,8 @@ impl KeccakfSM {
 
     const NUM_KECCAKF_PER_SLOT: usize = CHUNKS_KECCAKF * BITS_KECCAKF;
 
+    const BLOCKS_PER_SLOT: usize = Self::NUM_KECCAKF_PER_SLOT * RB * RB_BLOCKS_TO_PROCESS;
+
     /// Creates a new Keccakf State Machine instance.
     ///
     /// # Arguments
@@ -84,74 +86,214 @@ impl KeccakfSM {
         fixed: &KeccakfFixed<F>,
         trace: &mut KeccakfTrace<F>,
         num_slots: usize,
-        inputs: &[Vec<OperationKeccakData<u64>>],
+        inputs: &[OperationKeccakData<u64>],
+        num_inputs: usize,
         multiplicity: &mut [u64],
     ) {
+        let mut inputs_bits: Vec<KeccakfInput> = vec![[0u64; INPUT_DATA_SIZE_BITS]; num_slots];
+
         // Process the inputs
-        let mut idx = 0;
-        let mut inputs_raw: Vec<KeccakfInput> = vec![[0u64; INPUT_DATA_SIZE_BITS]; num_slots];
-        let mut bit1 = vec![0u64; num_slots];
-        let mut bit2 = 0;
-        let mut val1 = 0;
-        let mut val2 = 0;
-        for inner_vector in inputs {
-            for input in inner_vector {
-                // Get the raw keccakf input as 25 u64 values
-                let keccakf_input: Vec<u64> = OperationBusData::get_extra_data(
-                    &ExtOperationData::OperationKeccakData(*input),
-                );
-                println!("Input (R): {:?}", keccakf_input);
-                let mut keccakf_input_r: [u64; 25] = keccakf_input.clone().try_into().unwrap();
+        let initial_offset = 1; // Number of constant values used in the circuit
+        let input_offset = Self::BLOCKS_PER_SLOT / 2;
+        inputs.iter().enumerate().for_each(|(i, input)| {
+            // Get the basic data from the input
+            let step_received =
+                OperationBusData::get_a(&ExtOperationData::OperationKeccakData(*input));
+            let addr_received =
+                OperationBusData::get_b(&ExtOperationData::OperationKeccakData(*input));
 
-                // Apply the keccakf function for debugging
-                // ========================================
-                // let keccakf_inputs = [0u64; INPUT_DATA_SIZE_BITS];
-                println!("Input (R): {:?}", print_tiny_format(&keccakf_input_r));
-                keccakf(&mut keccakf_input_r);
-                println!("\nOuput (R): {:?}", print_tiny_format(&keccakf_input_r));
-                // ========================================
+            // Get the raw keccakf input as 25 u64 values
+            let keccakf_input: [u64; 25] =
+                OperationBusData::get_extra_data(&ExtOperationData::OperationKeccakData(*input)).try_into().unwrap();
 
-                // Process the raw data
-                // (slot i) [0b1011,  0b0011,  0b1000,  0b0010]
-                // (slot i) [1,1,0,1, 1,1,0,0, 0,0,0,1, 0,0,1,0]
-                let slot = idx / Self::NUM_KECCAKF_PER_SLOT;
-                keccakf_input.iter().enumerate().for_each(|(j, &value)| {
-                    // Divide the value in bits
+            // Apply the keccakf function and get the output
+            let mut keccakf_output = keccakf_input.clone();
+            keccakf(&mut keccakf_output);
+
+            // Process the keccakf input
+            let slot = i / Self::NUM_KECCAKF_PER_SLOT;
+            let slot_pos = i % Self::NUM_KECCAKF_PER_SLOT;
+            let slot_offset = slot * self.slot_size;
+            keccakf_input.iter().enumerate().for_each(|(j, &value)| {
+                let chunk_offset = j * Self::NUM_KECCAKF_PER_SLOT * 64 / 2;
+                for k in 0..64 {
+                    // Divide the value in bits:
+                    //    (slot i) [0b1011,  0b0011,  0b1000,  0b0010]
+                    //    (slot i) [1,1,0,1, 1,1,0,0, 0,0,0,1, 0,0,1,0]
+                    let bit_pos = k + 64 * j;
+                    let old_value = inputs_bits[slot][bit_pos];
+                    let new_bit = (value >> k) & 1;
+                    inputs_bits[slot][bit_pos] = (old_value << 1) | new_bit;
+
+                    // In even bits, we update bit1 and val1; in odd bits, we update bit2 and val2
+                    if k % 2 == 0 {
+                        let bit_offset = k * Self::NUM_KECCAKF_PER_SLOT / 2;
+                        let pos = initial_offset + slot_offset + chunk_offset + bit_offset;
+                        update_bit_val(fixed, trace, pos, new_bit, slot_pos, true);
+
+                        // We use the even bits to activate also set the step and addr values
+                        trace[pos].step = F::from_canonical_u64(step_received);
+                        trace[pos].addr = F::from_canonical_u64(addr_received);
+                        trace[pos].is_val = F::one();
+
+                        // TODO: Write the raw input/output to memory??
+                    } else {
+                        let bit_offset = (k - 1) * Self::NUM_KECCAKF_PER_SLOT / 2;
+                        let pos = initial_offset + slot_offset + chunk_offset + bit_offset;
+                        update_bit_val(fixed, trace, pos, new_bit, slot_pos, false);
+                    }
+                }
+            });
+
+            // Process the output
+            keccakf_output.iter().enumerate().for_each(|(j, &value)| {
+                let chunk_offset = j * Self::NUM_KECCAKF_PER_SLOT * 64 / 2;
+                for k in 0..64 {
+                    let new_bit = (value >> k) & 1;
+                    if k % 2 == 0 {
+                        let bit_offset = k * Self::NUM_KECCAKF_PER_SLOT / 2;
+                        let pos =
+                            initial_offset + slot_offset + input_offset + chunk_offset + bit_offset;
+                        update_bit_val(fixed, trace, pos, new_bit, slot_pos, true);
+
+                        trace[pos].step = F::from_canonical_u64(step_received);
+                        trace[pos].addr = F::from_canonical_u64(addr_received);
+                        if j == 24 && k < 62 {
+                            trace[pos].is_val = F::one();
+                        }
+
+                        // TODO: Write the raw input/output to memory??
+
+                    } else {
+                        let bit_offset = (k - 1) * Self::NUM_KECCAKF_PER_SLOT / 2;
+                        let pos =
+                            initial_offset + slot_offset + input_offset + chunk_offset + bit_offset;
+                        update_bit_val(fixed, trace, pos, new_bit, slot_pos, false);
+                    }
+                }
+            });
+
+            // Update the multiplicity for the input
+            let pos = initial_offset + slot_offset + slot_pos;
+            trace[pos].multiplicity = F::one(); // The pair (step_input, addr_input) is unique each time, so its multiplicity is 1
+        });
+        // println!("\nInput (P): {:?}", print_seq_format(&inputs_bits[0]));
+
+        // It the number of inputs is less than the available keccakfs, we need to fill the remaining inputs
+        if num_inputs < self.num_available_keccakfs {
+            // Compute the hash of zero
+            let mut zero_output: [u64; 25] = [0u64; 25];
+            keccakf(&mut zero_output);
+
+            // If the number of inputs is not a multiple of NUM_KECCAKF_PER_SLOT,
+            // we fill the last processed slot
+            let rem_inputs = num_inputs % Self::NUM_KECCAKF_PER_SLOT;
+            if num_inputs % Self::NUM_KECCAKF_PER_SLOT != 0 {
+                let slot = (num_inputs - 1) / Self::NUM_KECCAKF_PER_SLOT;
+                let slot_offset = slot * Self::BLOCKS_PER_SLOT;
+                // Since no more bits are being introduced as input, we let 0 be the
+                // new bits and therefore we repeat the last values
+                for j in 0..RB * RB_BLOCKS_TO_PROCESS / 2 {
+                    let block_offset = j * Self::NUM_KECCAKF_PER_SLOT;
+                    for k in rem_inputs..Self::NUM_KECCAKF_PER_SLOT {
+                        let pos = initial_offset + slot_offset + block_offset + k;
+                        // trace[pos+1].bit1 = F::zero();
+                        // trace[pos+1].bit2 = F::zero();
+                        trace[pos + 1].val1 = trace[pos].val1;
+                        trace[pos + 1].val2 = trace[pos].val2;
+                    }
+                }
+
+                // Since the new bits are all zero, we have to set the hash of 0 as the respective output
+                zero_output.iter().enumerate().for_each(|(j, &value)| {
+                    let chunk_offset = j * Self::NUM_KECCAKF_PER_SLOT * 64 / 2;
                     for k in 0..64 {
-                        let bit_pos = k + 64 * j;
-                        let old_value = inputs_raw[slot][bit_pos];
                         let new_bit = (value >> k) & 1;
-                        inputs_raw[slot][bit_pos] = (old_value << 1) | new_bit;
+                        // In even bits, we update bit1 and val1; in odd bits, we update bit2 and val2
+                        if k % 2 == 0 {
+                            let bit_offset = k * Self::NUM_KECCAKF_PER_SLOT / 2;
+                            for w in rem_inputs..Self::NUM_KECCAKF_PER_SLOT {
+                                let pos = initial_offset
+                                    + slot_offset
+                                    + input_offset
+                                    + chunk_offset
+                                    + bit_offset
+                                    + w;
+                                trace[pos].bit1 = F::from_canonical_u64(new_bit);
+                                trace[pos + 1].val1 = if w > 0 {
+                                    // TODO: This check is not necessary
+                                    trace[pos].val1 + F::from_canonical_u64(new_bit << w)
+                                } else {
+                                    F::from_canonical_u64(new_bit << w)
+                                };
+                            }
+                        } else {
+                            let bit_offset = (k - 1) * Self::NUM_KECCAKF_PER_SLOT / 2;
+                            for w in rem_inputs..Self::NUM_KECCAKF_PER_SLOT {
+                                let pos = initial_offset
+                                    + slot_offset
+                                    + input_offset
+                                    + chunk_offset
+                                    + bit_offset
+                                    + w;
+                                trace[pos].bit2 = F::from_canonical_u64(new_bit);
+                                trace[pos + 1].val2 = if w > 0 {
+                                    trace[pos].val2 + F::from_canonical_u64(new_bit << w)
+                                } else {
+                                    F::from_canonical_u64(new_bit << w)
+                                };
+                            }
+                        }
                     }
                 });
-
-                // TODO: Compute the output of the keccakf??
-                // TODO: Write the raw input/output to memory??
-                // TODO: The previous memory calls should give me a_src_mem, c_src_mem
-
-                // Get the basic data from the input
-                let step_input =
-                    OperationBusData::get_a(&ExtOperationData::OperationKeccakData(*input));
-                let addr_input =
-                    OperationBusData::get_b(&ExtOperationData::OperationKeccakData(*input));
-
-                trace[idx + 1] = KeccakfTraceRow {
-                    multiplicity: F::one(), // The pair (step_input, addr_input) is unique each time, so its multiplicity is 1
-                    step: F::from_canonical_u64(step_input),
-                    addr: F::from_canonical_u64(addr_input),
-                    // a_src_mem: F::one(),                         // TODO: Fix
-                    // c_src_mem: F::one(),                         // TODO: Fix
-                    // input: [F::one(), F::from_canonical_u8(2)],  // TODO: Fix
-                    // output: [F::one(), F::from_canonical_u8(2)], // TODO: Fix
-                    ..Default::default()
-                };
-
-                idx += 1;
             }
-        }
-        println!("\nInput (P): {:?}", print_seq_format(&inputs_raw[0]));
 
-        // Set the values of bin1, bin2, val1, val2
+            // Fill the remaining slots with the hash of 0
+            let next_slot = num_inputs.div_ceil(Self::NUM_KECCAKF_PER_SLOT);
+            zero_output.iter().enumerate().for_each(|(j, &value)| {
+                for s in next_slot..self.num_available_slots {
+                    let slot_offset = s * self.slot_size;
+                    let chunk_offset = j * Self::NUM_KECCAKF_PER_SLOT * 64 / 2;
+                    for k in 0..64 {
+                        let new_bit = (value >> k) & 1;
+                        // In even bits, we update bit1 and val1; in odd bits, we update bit2 and val2
+                        if k % 2 == 0 {
+                            let bit_offset = k * Self::NUM_KECCAKF_PER_SLOT / 2;
+                            for w in 0..Self::NUM_KECCAKF_PER_SLOT {
+                                let pos = initial_offset
+                                    + slot_offset
+                                    + input_offset
+                                    + chunk_offset
+                                    + bit_offset
+                                    + w;
+                                trace[pos].bit1 = F::from_canonical_u64(new_bit);
+                                trace[pos + 1].val1 = if w > 0 {
+                                    trace[pos].val1 + F::from_canonical_u64(new_bit << w)
+                                } else {
+                                    F::from_canonical_u64(new_bit << w)
+                                };
+                            }
+                        } else {
+                            let bit_offset = (k - 1) * Self::NUM_KECCAKF_PER_SLOT / 2;
+                            for w in 0..Self::NUM_KECCAKF_PER_SLOT {
+                                let pos = initial_offset
+                                    + slot_offset
+                                    + input_offset
+                                    + chunk_offset
+                                    + bit_offset
+                                    + w;
+                                trace[pos].bit2 = F::from_canonical_u64(new_bit);
+                                trace[pos + 1].val2 = if w > 0 {
+                                    trace[pos].val2 + F::from_canonical_u64(new_bit << w)
+                                } else {
+                                    F::from_canonical_u64(new_bit << w)
+                                };
+                            }
+                        }
+                    }
+                }
+            });
+        }
 
         // Set the values of free_in_a, free_in_b, free_in_c using the script
         let script = self.script.clone();
@@ -166,7 +308,7 @@ impl KeccakfSM {
                 let a = &line.a;
                 match a {
                     ValueType::Input(a) => {
-                        set_col(trace, |row| &mut row.free_in_a, row, inputs_raw[i][a.bit]);
+                        set_col(trace, |row| &mut row.free_in_a, row, inputs_bits[i][a.bit]);
                     }
                     ValueType::Wired(b) => {
                         let mut gate = b.gate;
@@ -193,7 +335,7 @@ impl KeccakfSM {
                 let b = &line.b;
                 match b {
                     ValueType::Input(b) => {
-                        set_col(trace, |row| &mut row.free_in_b, row, inputs_raw[i][b.bit]);
+                        set_col(trace, |row| &mut row.free_in_b, row, inputs_bits[i][b.bit]);
                     }
                     ValueType::Wired(b) => {
                         let mut gate = b.gate;
@@ -232,20 +374,26 @@ impl KeccakfSM {
                 set_col(trace, |row| &mut row.free_in_c, row, c_val);
 
                 if (line.ref_ >= STATE_IN_REF_0)
-                    && (line.ref_ <= STATE_IN_REF_0 + (INPUT_DATA_SIZE_BITS - 2) * STATE_IN_REF_DISTANCE / 2 + 1)
+                    && (line.ref_
+                        <= STATE_IN_REF_0
+                            + (INPUT_DATA_SIZE_BITS - 2) * STATE_IN_REF_DISTANCE / 2
+                            + 1)
                     && ((line.ref_ - STATE_IN_REF_0) % STATE_IN_REF_DISTANCE < 2)
                 {
                     let ref_pos = line.ref_ - STATE_IN_REF_0;
-                    let bit_pos = ref_pos / STATE_IN_REF_DISTANCE*2 + ref_pos % 2;
+                    let bit_pos = ref_pos / STATE_IN_REF_DISTANCE * 2 + ref_pos % 2;
                     bit_input_pos[bit_pos] = a_val;
                 }
 
                 if (line.ref_ >= STATE_OUT_REF_0)
-                    && (line.ref_ <= STATE_OUT_REF_0 + (INPUT_DATA_SIZE_BITS - 2) * STATE_OUT_REF_DISTANCE / 2 + 1)
+                    && (line.ref_
+                        <= STATE_OUT_REF_0
+                            + (INPUT_DATA_SIZE_BITS - 2) * STATE_OUT_REF_DISTANCE / 2
+                            + 1)
                     && ((line.ref_ - STATE_OUT_REF_0) % STATE_OUT_REF_DISTANCE < 2)
                 {
                     let ref_pos = line.ref_ - STATE_OUT_REF_0;
-                    let bit_pos = ref_pos / STATE_OUT_REF_DISTANCE*2 + ref_pos % 2;
+                    let bit_pos = ref_pos / STATE_OUT_REF_DISTANCE * 2 + ref_pos % 2;
                     bit_output_pos[bit_pos] = a_val;
                 }
             }
@@ -270,35 +418,36 @@ impl KeccakfSM {
             }
 
             // TOOD: Get the keccak-f output for debugging
-            println!("\nInput (C): {:?}", print_seq_format(&bit_input_pos));
-            println!("\nOuput (C): {:?}", print_seq_format(&bit_output_pos));
+            // println!("\nInput (C): {:?}", print_seq_format(&bit_input_pos));
+            // println!("\nOuput (C): {:?}", print_seq_format(&bit_output_pos));
 
             // Move to the next slot
             offset += self.slot_size;
         }
 
-        fn print_tiny_format(input: &[u64; 25]) -> String {
-            // Split each chunk into bytes
-            let mut bytes = vec![0u8; 200]; // 1600 bits = 200 bytes
-            for (i, &chunk) in input.iter().enumerate() {
-                let byte_index = i * 8;
-                for j in 0..8 {
-                    bytes[byte_index + j] = (chunk >> (j * 8)) as u8;
-                }
+        fn update_bit_val<F: PrimeField64>(
+            fixed: &KeccakfFixed<F>,
+            trace: &mut KeccakfTrace<F>,
+            pos: usize,
+            new_bit: u64,
+            slot_pos: usize,
+            is_bit1: bool,
+        ) {
+            if is_bit1 {
+                trace[pos].bit1 = F::from_canonical_u64(new_bit);
+                trace[pos + 1].val1 = if fixed[pos].latch_num_keccakf == F::zero() {
+                    trace[pos].val1 + F::from_canonical_u64(new_bit << slot_pos)
+                } else {
+                    F::from_canonical_u64(new_bit << slot_pos)
+                };
+            } else {
+                trace[pos].bit2 = F::from_canonical_u64(new_bit);
+                trace[pos + 1].val2 = if fixed[pos].latch_num_keccakf == F::zero() {
+                    trace[pos].val2 + F::from_canonical_u64(new_bit << slot_pos)
+                } else {
+                    F::from_canonical_u64(new_bit << slot_pos)
+                };
             }
-
-            // Print the bytes in hex format
-            bytes.iter().map(|byte| format!("{:02X}", byte)).collect::<Vec<String>>().join(" ")
-        }
-
-        fn print_seq_format(output: &[u64; 1600]) -> String {
-            let mut bytes = vec![0u8; 200]; // 1600 bits = 200 bytes
-            for (i, &bit) in output.iter().enumerate() {
-                let byte_index = i / 8;
-                let bit_index = i % 8;
-                bytes[byte_index] |= (bit as u8) << bit_index;
-            }
-            bytes.iter().map(|byte| format!("{:02X}", byte)).collect::<Vec<String>>().join(" ")
         }
 
         fn set_col<F: PrimeField64>(
@@ -330,6 +479,30 @@ impl KeccakfSM {
             }
             value
         }
+
+        // fn print_tiny_format(input: &[u64; 25]) -> String {
+        //     // Split each chunk into bytes
+        //     let mut bytes = vec![0u8; 200]; // 1600 bits = 200 bytes
+        //     for (i, &chunk) in input.iter().enumerate() {
+        //         let byte_index = i * 8;
+        //         for j in 0..8 {
+        //             bytes[byte_index + j] = (chunk >> (j * 8)) as u8;
+        //         }
+        //     }
+
+        //     // Print the bytes in hex format
+        //     bytes.iter().map(|byte| format!("{:02X}", byte)).collect::<Vec<String>>().join(" ")
+        // }
+
+        // fn print_seq_format(output: &[u64; 1600]) -> String {
+        //     let mut bytes = vec![0u8; 200]; // 1600 bits = 200 bytes
+        //     for (i, &bit) in output.iter().enumerate() {
+        //         let byte_index = i / 8;
+        //         let bit_index = i % 8;
+        //         bytes[byte_index] |= (bit as u8) << bit_index;
+        //     }
+        //     bytes.iter().map(|byte| format!("{:02X}", byte)).collect::<Vec<String>>().join(" ")
+        // }
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
@@ -353,8 +526,11 @@ impl KeccakfSM {
         let mut keccakf_trace = KeccakfTrace::new();
         let num_rows = keccakf_trace.num_rows();
 
+        // Flatten the inputs
+        let inputs: Vec<OperationKeccakData<u64>> = inputs.into_iter().flatten().cloned().collect();
+
         // Check that we can fit all the keccakfs in the trace
-        let num_inputs: usize = inputs.iter().map(|c| c.len()).sum();
+        let num_inputs: usize = inputs.len();
         assert!(num_inputs <= self.num_available_keccakfs);
 
         let num_slots_needed = num_inputs.div_ceil(Self::NUM_KECCAKF_PER_SLOT);
@@ -400,7 +576,8 @@ impl KeccakfSM {
             &fixed,
             &mut keccakf_trace,
             num_slots,
-            inputs,
+            &inputs,
+            num_inputs,
             &mut multiplicity_table,
         );
         timer_stop_and_log_trace!(KECCAKF_TRACE);
@@ -429,17 +606,20 @@ impl KeccakfSM {
     }
 
     /// Generates memory inputs.
-    pub fn generate_inputs(_input: &OperationKeccakData<u64>) -> Vec<Vec<PayloadType>> {
-        // let debug_main_step =
-        //     OperationBusData::get_step(&data_bus::ExtOperationData::OperationData(*input));
-        // let step_input =
-        //     OperationBusData::get_a(&data_bus::ExtOperationData::OperationData(*input));
-        // let addr_input =
-        //     OperationBusData::get_b(&data_bus::ExtOperationData::OperationData(*input));
+    pub fn generate_inputs(input: &OperationKeccakData<u64>) -> Vec<Vec<PayloadType>> {
+        // Get the basic data from the input
+        let step_received =
+            OperationBusData::get_a(&ExtOperationData::OperationKeccakData(*input));
+        let addr_received =
+            OperationBusData::get_b(&ExtOperationData::OperationKeccakData(*input));
 
-        // TODO: Get the raw inputs from memory
-        // TODO: Compute the output of the keccakf
-        // TODO: Write the raw output to memory??
+        // Get the raw keccakf input as 25 u64 values
+        let keccakf_input: [u64; 25] =
+            OperationBusData::get_extra_data(&ExtOperationData::OperationKeccakData(*input)).try_into().unwrap();
+
+        // Apply the keccakf function and get the output
+        let mut keccakf_output = keccakf_input.clone();
+        keccakf(&mut keccakf_output);
 
         if true {
             // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do
