@@ -9,8 +9,7 @@ const int END_SP = 0;
 const int MAX_RANGE = 1 << 24;
 const int REG_BASE_ADDR = 0xA000_0000;
 
-airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int operation_bus_id, const int MAIN_CONTINUATION_ID = 1000, const int REG_NUM = 7) {
-
+airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int operation_bus_id, const int MAIN_CONTINUATION_ID = 1000, const int REG_NUM = 5) {
     col fixed SEGMENT_L1 = [1,0...];
     col fixed SEGMENT_STEP = [0..(N-1)];
 
@@ -197,26 +196,28 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // memory function to define the first memory read slot.
     reg_pre_load(sel: a_src_reg,
              prev_mem_step: a_reg_prev_mem_step,
-             addr: addr0,
+             addr: a_offset_imm0,
              value: a);
 
-    mem_load(sel: a_src_mem + a_src_reg,
-             mem_step: a_mem_step,
-             addr: addr0,
-             value: a);
+    mem_op(sel: a_src_mem + a_src_reg,
+           op: MEMORY_LOAD_OP * a_src_mem + MEMORY_REG_OP * a_src_reg,
+           mem_step: a_mem_step,
+           addr: addr0,
+           value: a);
 
 
     // memory function to define the second memory read slot.
-    reg_pre_load(sel: a_src_reg,
+    reg_pre_load(sel: b_src_reg,
              prev_mem_step: b_reg_prev_mem_step,
-             addr: addr1,
+             addr: b_offset_imm0,
              value: b);
 
-    mem_load(sel: sel_mem_b + b_src_reg,
-             mem_step: b_mem_step,
-             bytes: b_src_ind * (ind_width - 8) + 8,
-             addr: addr1,
-             value: b);
+    mem_op(sel: sel_mem_b + b_src_reg,
+           op: MEMORY_LOAD_OP * sel_mem_b + MEMORY_REG_OP * b_src_reg,
+           mem_step: b_mem_step,
+           bytes: b_src_ind * (ind_width - 8) + 8,
+           addr: addr1,
+           value: b);
 
 
     const expr store_value[2];
@@ -225,20 +226,21 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     store_value[1] = (1 - store_ra) * c[1];
 
     // memory function to define the first memory store slot (after memory reads)
-    mem_store(sel: store_mem + store_ind + store_reg,
-              mem_step: store_mem_step,
-              bytes: store_ind * (ind_width - 8) + 8,
-              addr: addr2,
-              value: store_value);
+    mem_op(sel: store_mem + store_ind + store_reg,
+           op: MEMORY_STORE_OP * (store_mem + store_ind) + MEMORY_REG_OP * store_reg,
+           mem_step: store_mem_step,
+           bytes: store_ind * (ind_width - 8) + 8,
+           addr: addr2,
+           value: store_value);
 
     reg_pre_store(sel: store_reg,
               prev_mem_step: store_reg_prev_mem_step,
               addr: store_offset,
               value: store_reg_prev_value);
 
-    range_check(a_mem_step - a_reg_prev_mem_step, 1, MAX_RANGE);
-    range_check(b_mem_step - b_reg_prev_mem_step, 1, MAX_RANGE);
-    range_check(store_mem_step - store_reg_prev_mem_step, 1, MAX_RANGE);
+    range_check(expression: a_mem_step - a_reg_prev_mem_step, min: 1, max: MAX_RANGE, sel: a_src_reg);
+    range_check(expression: b_mem_step - b_reg_prev_mem_step, min: 1, max: MAX_RANGE, sel: b_src_reg);
+    range_check(expression: store_mem_step - store_reg_prev_mem_step, min: 1, max: MAX_RANGE, sel: store_reg);
 
     lookup_assumes(operation_bus_id, [op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op);
 
@@ -253,12 +255,12 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     if (stack_enabled) {
         a_src_c = 1 - a_src_step - a_src_mem - a_src_imm - a_src_sp;
-        b_src_c = 1 - b_src_mem - b_src_imm - b_src_ind;
+        b_src_c = 1 - b_src_mem - b_src_imm - b_src_ind - b_src_reg;
         a_imm[1] = a_use_sp_imm1;
         b_imm[1] = b_use_sp_imm1;
     } else {
-        a_src_c = 1 - a_src_step - a_src_mem - a_src_imm;
-        b_src_c = 1 - b_src_mem - b_src_imm - b_src_ind;
+        a_src_c = 1 - a_src_step - a_src_mem - a_src_imm - a_src_reg;
+        b_src_c = 1 - b_src_mem - b_src_imm - b_src_ind - b_src_reg;
         a_imm[1] = a_imm1;
         b_imm[1] = b_imm1;
     }
@@ -320,11 +322,11 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     airval last_reg_value[REG_NUM][RC];
     airval last_reg_mem_step[REG_NUM];
 
-    const expr last_segment_reg_mem_step = main_step_to_special_mem_step(main_segment * N + N - 1);
+    const expr last_segment_reg_mem_step = main_step_to_special_mem_step((main_segment + 1) * N - 1);
     for (int ireg = 0; ireg < REG_NUM; ++ireg) {
         range_check(expression: last_segment_reg_mem_step - last_reg_mem_step[ireg], min: 1, max: MEMORY_MAX_DIFF);
         reg_pre_load(prev_mem_step: last_reg_mem_step[ireg], addr: ireg + 1, value: last_reg_value[ireg]);
-        mem_load(mem_step: last_segment_reg_mem_step, addr: ireg + 1, value: last_reg_value[ireg], sel: (1 - main_last_segment));
+        mem_op(op: MEMORY_REG_OP, mem_step: last_segment_reg_mem_step, addr: ireg + 1, value: last_reg_value[ireg], sel: (1 - main_last_segment));
     }
 
     flag * (1 - flag) === 0;
@@ -376,11 +378,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     }
 
     for (int ireg = 0; ireg < REG_NUM; ++ireg) {
-        global_init_mem(sel: 1, addr: reg_to_addr(ireg), value: zeros);
+        global_init_mem(sel: 1, addr: ireg + 1, value: zeros);
     }
 
-}
-
-function reg_to_addr (int reg_index): int {
-    return REG_BASE_ADDR + reg_index * 8;
 }

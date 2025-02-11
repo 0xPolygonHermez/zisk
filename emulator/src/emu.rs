@@ -1,8 +1,11 @@
-use std::mem;
+use std::{
+    mem,
+    sync::{atomic::AtomicU32, Arc},
+};
 
 use crate::{
-    EmuContext, EmuFullTraceStep, EmuOptions, EmuTrace, EmuTraceEnd, EmuTraceStart, EmuTraceSteps,
-    ParEmuOptions,
+    EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, EmuTrace, EmuTraceEnd, EmuTraceStart,
+    EmuTraceSteps, ParEmuOptions,
 };
 use data_bus::{BusDevice, OperationBusData, RomBusData, MEM_BUS_ID, OPERATION_BUS_ID, ROM_BUS_ID};
 use p3_field::{AbstractField, PrimeField};
@@ -21,9 +24,7 @@ const MEMORY_LOAD_OP: u64 = 1;
 const MEMORY_STORE_OP: u64 = 2;
 
 const MEM_STEP_BASE: u64 = 1;
-const MAX_MEM_STEP_OFFSET: u64 = 2;
-const MAX_MEM_OPS_BY_STEP_OFFSET: u64 = 2;
-const MAX_MEM_OPS_BY_MAIN_STEP: u64 = (MAX_MEM_STEP_OFFSET + 1) * MAX_MEM_OPS_BY_STEP_OFFSET;
+const MAX_MEM_OPS_BY_MAIN_STEP: u64 = 4;
 
 impl MemBusHelpers {
     // function mem_load(expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[]) {
@@ -66,21 +67,8 @@ impl MemBusHelpers {
     }
     #[inline(always)]
     pub fn main_step_to_mem_step(step: u64, step_offset: u8) -> u64 {
-        MEM_STEP_BASE
-            + MAX_MEM_OPS_BY_MAIN_STEP * step
-            + MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64
+        MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + step_offset as u64
     }
-    pub fn mem_step_to_slot(mem_step: u64) -> u8 {
-        (((mem_step - MEM_STEP_BASE) % MAX_MEM_OPS_BY_MAIN_STEP) / MAX_MEM_OPS_BY_STEP_OFFSET) as u8
-    }
-}
-
-pub struct EmuRegTrace {
-    pub reg_steps: [u64; 32],
-    pub reg_prev_steps: [u64; 3],
-    pub store_reg_prev_value: u64,
-    pub first_step_uses: [Option<u64>; 32],
-    pub first_value_uses: [Option<u64>; 32],
 }
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -151,6 +139,9 @@ impl<'a> Emu<'a> {
                     address += self.ctx.inst_ctx.sp;
                 }
 
+                if address < 0x200 {
+                    println!("ALERT INSTRUCTION: {:?} PC: {:X}", instruction, self.ctx.inst_ctx.pc);
+                }
                 // get it from memory
                 self.ctx.inst_ctx.a = self.ctx.inst_ctx.mem.read(address, 8);
                 self.ctx.trace.steps.mem_reads.push(self.ctx.inst_ctx.a);
@@ -441,12 +432,20 @@ impl<'a> Emu<'a> {
                 if instruction.b_use_sp_imm1 != 0 {
                     address += self.ctx.inst_ctx.sp;
                 }
+                if Mem::is_full_aligned(address, 8) {
+                    self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(address, 8);
+                    mem_reads.push(self.ctx.inst_ctx.b);
+                } else {
+                    let mut additional_data: Vec<u64>;
+                    (self.ctx.inst_ctx.b, additional_data) =
+                        self.ctx.inst_ctx.mem.read_required(address, 8);
 
-                let mut additional_data: Vec<u64>;
-                (self.ctx.inst_ctx.b, additional_data) =
-                    self.ctx.inst_ctx.mem.read_required(address, 8);
-                debug_assert!(!additional_data.is_empty());
-                mem_reads.append(&mut additional_data);
+                    // debug_assert!(!additional_data.is_empty());
+                    if additional_data.is_empty() {
+                        println!("ADDITIONAL DATA IS EMPTY 0x{:X}", address);
+                    }
+                    mem_reads.append(&mut additional_data);
+                }
                 /*println!(
                     "Emu::source_b_mem_reads_generate() mem_leads.len={} value={:x}",
                     mem_reads.len(),
@@ -782,6 +781,10 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
+                if instruction.store_offset >= 32 {
+                    println!("instruction ALERT 0 {:?}", instruction);
+                }
+
                 self.set_reg(
                     instruction.store_offset as usize,
                     self.get_value_to_store(instruction),
@@ -843,6 +846,10 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
+                if instruction.store_offset >= 32 {
+                    println!("instruction ALERT 1 {:?}", instruction);
+                }
+
                 self.set_reg(
                     instruction.store_offset as usize,
                     self.get_value_to_store(instruction),
@@ -995,6 +1002,10 @@ impl<'a> Emu<'a> {
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
+                if instruction.store_offset >= 32 {
+                    println!("instruction ALERT 2 {:?}", instruction);
+                }
+
                 self.set_reg(
                     instruction.store_offset as usize,
                     self.get_value_to_store(instruction),
@@ -1660,15 +1671,13 @@ impl<'a> Emu<'a> {
         trace_step: &EmuTraceSteps,
         trace_step_index: &mut usize,
         reg_trace: &mut EmuRegTrace,
+        step_range_check: Option<Arc<Vec<AtomicU32>>>,
     ) -> EmuFullTraceStep<F> {
         let last_pc = self.ctx.inst_ctx.pc;
         let last_c = self.ctx.inst_ctx.c;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
-        // let a_reg_prev_mem_step: todo!(),
-        // let b_reg_prev_mem_step: todo!(),
-        // let store_reg_prev_mem_step: todo!(),
-        // let store_reg_prev_value: todo!(),
+        reg_trace.clear_reg_step_ranges();
 
         self.source_a_mem_reads_consume(
             instruction,
@@ -1689,6 +1698,11 @@ impl<'a> Emu<'a> {
             trace_step_index,
             reg_trace,
         );
+
+        if step_range_check.is_some() {
+            reg_trace.update_step_range_check(step_range_check.unwrap());
+        }
+
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
         self.set_pc(instruction);
@@ -1703,6 +1717,14 @@ impl<'a> Emu<'a> {
             &reg_trace,
         );
 
+        // if self.ctx.inst_ctx.step > 8070 && self.ctx.inst_ctx.step < 8395 {
+        //     println!(
+        //         "STEP step={} pc={:x} inst={:?} trace={:?}",
+        //         self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc, instruction, full_trace_step,
+        //     );
+        //     self.print_regs();
+        //     println!();
+        // }
         self.ctx.inst_ctx.step += 1;
 
         full_trace_step
@@ -1758,7 +1780,7 @@ impl<'a> Emu<'a> {
             F::neg(F::from_canonical_u64((-(inst.b_offset_imm0 as i64)) as u64))
         };
 
-        EmuFullTraceStep {
+        let res = EmuFullTraceStep {
             a: [F::from_canonical_u64(a[0]), F::from_canonical_u64(a[1])],
             b: [F::from_canonical_u64(b[0]), F::from_canonical_u64(b[1])],
             c: [F::from_canonical_u64(c[0]), F::from_canonical_u64(c[1])],
@@ -1813,7 +1835,8 @@ impl<'a> Emu<'a> {
                 F::from_canonical_u64(store_prev_value[0]),
                 F::from_canonical_u64(store_prev_value[1]),
             ],
-        }
+        };
+        res
     }
 
     /// Returns if the emulation ended
@@ -1891,56 +1914,27 @@ impl<'a> Emu<'a> {
 
     #[inline(always)]
     pub fn get_traced_reg(&mut self, index: usize, slot: u8, reg_trace: &mut EmuRegTrace) -> u64 {
-        debug_assert!(index < 32 && slot < 3);
-
-        // registry information about use to update later
-        if reg_trace.first_step_uses[index] == None {
-            reg_trace.first_step_uses[index] =
-                Some(MemBusHelpers::main_step_to_mem_step(self.ctx.inst_ctx.step, slot));
-        }
-        reg_trace.reg_prev_steps[slot as usize] = reg_trace.reg_steps[index];
-        reg_trace.reg_steps[index] =
-            MemBusHelpers::main_step_to_mem_step(self.ctx.inst_ctx.step, slot);
+        reg_trace.trace_reg_access(index, self.ctx.inst_ctx.step, slot);
         self.ctx.inst_ctx.regs[index]
-
-        //println!("Emu::get_reg() index={} value={:x}", index, value);
     }
 
     #[inline(always)]
     pub fn set_traced_reg(&mut self, index: usize, value: u64, reg_trace: &mut EmuRegTrace) {
-        debug_assert!(index < 32);
-
-        // registry information about use to update later
-        if reg_trace.first_step_uses[index] == None {
-            reg_trace.first_step_uses[index] =
-                Some(MemBusHelpers::main_step_to_mem_step(self.ctx.inst_ctx.step, 2));
-        }
-        if reg_trace.first_value_uses[index] == None {
-            reg_trace.first_value_uses[index] =
-                Some(MemBusHelpers::main_step_to_mem_step(self.ctx.inst_ctx.step, 2));
-        }
-
-        reg_trace.reg_prev_steps[2] = reg_trace.reg_steps[index];
+        reg_trace.trace_reg_access(index, self.ctx.inst_ctx.step, 2);
         reg_trace.store_reg_prev_value = self.ctx.inst_ctx.regs[index];
-        reg_trace.reg_steps[index] =
-            MemBusHelpers::main_step_to_mem_step(self.ctx.inst_ctx.step, 2);
         self.ctx.inst_ctx.regs[index] = value;
-        //println!("Emu::set_reg() index={} value={:x}", index, value);
     }
 
     #[inline(always)]
     pub fn get_reg(&self, index: usize) -> u64 {
         debug_assert!(index < 32);
         self.ctx.inst_ctx.regs[index]
-
-        //println!("Emu::get_reg() index={} value={:x}", index, value);
     }
 
     #[inline(always)]
     pub fn set_reg(&mut self, index: usize, value: u64) {
         debug_assert!(index < 32);
         self.ctx.inst_ctx.regs[index] = value;
-        //println!("Emu::set_reg() index={} value={:x}", index, value);
     }
 
     #[inline(always)]
@@ -1951,55 +1945,6 @@ impl<'a> Emu<'a> {
             self.ctx.inst_ctx.c as u64
         }
     }
-    // #[inline(always)]
-    // pub fn memory_read(&mut self, address: u64, width: u64) -> u64 {
-    //     let value: u64;
-
-    //     // If the operation is a register operation, get it from the context registers
-    //     if (width == 8) && Mem::address_is_register(address) {
-    //         value = self.get_reg(Mem::address_to_register_index(address));
-    //     }
-    //     // Otherwise, get it from memory
-    //     else {
-    //         assert!(*mem_reads_index < mem_reads.len());
-    //         value = mem_reads[*mem_reads_index];
-    //         *mem_reads_index += 1;
-    //     }
-    //     // Update stats
-    //     if self.ctx.do_stats {
-    //         self.ctx.stats.on_memory_read(address, width);
-    //     }
-
-    //     value
-    // }
-
-    // #[inline(always)]
-    // pub fn memory_read_mem_reads(
-    //     &mut self,
-    //     address: u64,
-    //     width: u64,
-    //     mem_reads: &Vec<u64>,
-    //     mem_reads_index: &mut usize,
-    // ) -> u64 {
-    //     let value: u64;
-
-    //     // If the operation is a register operation, get it from the context registers
-    //     if (width == 8) && Mem::address_is_register(address) {
-    //         value = self.get_reg(Mem::address_to_register_index(address));
-    //     }
-    //     // Otherwise, get it from memory
-    //     else {
-    //         assert!(*mem_reads_index < mem_reads.len());
-    //         value = mem_reads[*mem_reads_index];
-    //         *mem_reads_index += 1;
-    //     }
-    //     // Update stats
-    //     if self.ctx.do_stats {
-    //         self.ctx.stats.on_memory_read(address, width);
-    //     }
-
-    //     value
-    // }
 
     pub fn print_regs(&self) {
         let regs_array: [u64; 32] = self.get_regs_array();

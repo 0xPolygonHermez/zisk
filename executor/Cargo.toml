@@ -18,3 +18,4 @@ p3-field = { workspace=true }
 log = { workspace = true }
 itertools = { workspace = true }
 rayon = { workspace = true }
+pil-std-lib = { workspace = true }

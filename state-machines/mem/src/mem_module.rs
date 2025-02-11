@@ -15,7 +15,7 @@ impl MemInput {
                 MemInput {
                     addr: address >> 3,
                     is_write: *is_write,
-                    step: MemHelpers::main_step_to_address_step(*step, *step_offset),
+                    step: MemHelpers::main_step_to_mem_step(*step, *step_offset),
                     value: *value,
                 }
             }

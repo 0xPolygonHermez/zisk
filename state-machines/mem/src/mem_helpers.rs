@@ -1,6 +1,6 @@
 use crate::{
-    MemAlignResponse, MAX_MEM_OPS_BY_MAIN_STEP, MAX_MEM_OPS_BY_STEP_OFFSET, MEMORY_STORE_OP,
-    MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS, MEM_STEP_BASE, RAM_W_ADDR_INIT, STEP_MEMORY_MAX_DIFF,
+    MemAlignResponse, MAX_MEM_OPS_BY_MAIN_STEP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK,
+    MEM_BYTES_BITS, MEM_STEP_BASE, RAM_W_ADDR_INIT, STEP_MEMORY_MAX_DIFF,
 };
 use std::fmt;
 use zisk_core::{ZiskRequiredMemory, RAM_ADDR};
@@ -51,7 +51,7 @@ impl MemAlignInput {
                 MemAlignInput {
                     addr: *address,
                     is_write: *is_write,
-                    step: MemHelpers::main_step_to_address_step(*step, *step_offset),
+                    step: MemHelpers::main_step_to_mem_step(*step, *step_offset),
                     width: *width,
                     value: *value,
                     mem_values: [mem_values[0], mem_values[1]],
@@ -67,10 +67,8 @@ impl MemAlignInput {
 pub struct MemHelpers {}
 
 impl MemHelpers {
-    pub fn main_step_to_address_step(step: u64, step_offset: u8) -> u64 {
-        MEM_STEP_BASE
-            + MAX_MEM_OPS_BY_MAIN_STEP * step
-            + MAX_MEM_OPS_BY_STEP_OFFSET * step_offset as u64
+    pub fn main_step_to_mem_step(step: u64, step_offset: u8) -> u64 {
+        MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + step_offset as u64
     }
     pub fn is_aligned(addr: u32, width: u8) -> bool {
         (addr & MEM_ADDR_ALIGN_MASK) == 0 && width == 8
@@ -121,6 +119,23 @@ impl MemHelpers {
         } else {
             0
         }
+    }
+
+    #[inline(always)]
+    pub fn main_step_to_special_mem_step(main_step: u64) -> u64 {
+        if main_step == 0 {
+            0
+        } else {
+            Self::main_step_to_mem_step(main_step, 3)
+        }
+    }
+    #[inline(always)]
+    pub fn mem_step_to_slot(mem_step: u64) -> u8 {
+        ((mem_step - MEM_STEP_BASE) % MAX_MEM_OPS_BY_MAIN_STEP) as u8
+    }
+    #[inline(always)]
+    pub fn mem_step_to_row(mem_step: u64) -> usize {
+        ((mem_step - MEM_STEP_BASE) / MAX_MEM_OPS_BY_MAIN_STEP) as usize
     }
 
     #[cfg(target_endian = "big")]

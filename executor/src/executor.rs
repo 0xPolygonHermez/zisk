@@ -5,6 +5,7 @@
 
 use itertools::Itertools;
 use p3_field::PrimeField;
+use pil_std_lib::Std;
 use proofman_common::{ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use witness::WitnessComponent;
@@ -44,6 +45,7 @@ pub struct ZiskExecutor<F: PrimeField> {
     pub min_traces: RwLock<Vec<EmuTrace>>,
     pub main_planning: RwLock<Vec<Plan>>,
     pub secn_planning: RwLock<Vec<Vec<Plan>>>,
+    std: Arc<Std<F>>,
 }
 
 impl<F: PrimeField> ZiskExecutor<F> {
@@ -58,7 +60,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// # Arguments
     /// * `input_data_path` - Path to the input data file.
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
-    pub fn new(input_data_path: PathBuf, zisk_rom: Arc<ZiskRom>) -> Self {
+    pub fn new(input_data_path: PathBuf, zisk_rom: Arc<ZiskRom>, std: Arc<Std<F>>) -> Self {
         Self {
             input_data_path,
             zisk_rom,
@@ -66,6 +68,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
             min_traces: RwLock::new(Vec::new()),
             main_planning: RwLock::new(Vec::new()),
             secn_planning: RwLock::new(Vec::new()),
+            std,
         }
     }
 
@@ -306,6 +309,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 min_traces,
                 Self::MIN_TRACE_SIZE,
                 &mut main_instance,
+                self.std.clone(),
             );
 
             pctx.air_instance_repo.add_air_instance(air_instance, main_instance.ictx.global_id);

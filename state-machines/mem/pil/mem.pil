@@ -56,6 +56,8 @@ const int MEMORY_CONT_ID = 11;
 
 const int MEMORY_LOAD_OP = 1;
 const int MEMORY_STORE_OP = 2;
+const int MEMORY_REG_OP = 3;
+
 const int MEMORY_MAX_DIFF = 2**24;
 
 const int RESERVED_MEM_STEPS = 1;
@@ -303,6 +305,10 @@ function mem_store(int id = MEMORY_ID, expr addr, expr mem_step, expr bytes = 8,
     mem_assumes(id, MEMORY_STORE_OP, addr, mem_step, bytes, value, sel);
 }
 
+function mem_op(int id = MEMORY_ID, expr op, expr addr, expr mem_step, expr bytes = 8, expr value[], expr sel = 1) {
+    mem_assumes(id, op, addr, mem_step, bytes, value, sel);
+}
+
 function main_step_to_precompiled_mem_step(const expr step, const int is_write = 0): expr {
     const int write_inc = is_write ? 3 : 2;
     return RESERVED_MEM_STEPS + MAX_MEM_STEPS_PER_MAIN_STEP * step + write_inc;
@@ -317,15 +323,15 @@ function precompiled_mem_store(int id = MEMORY_ID, expr addr, expr main_step, ex
 }
 
 function reg_pre_load(int id = MEMORY_ID, expr addr, expr prev_mem_step, expr value[], expr sel = 1) {
-    mem_proves(id, MEMORY_LOAD_OP, addr, prev_mem_step, value, sel);
+    mem_proves(id, MEMORY_REG_OP, addr, prev_mem_step, value, sel);
 }
 
 function reg_pre_store(int id = MEMORY_ID, expr addr, expr prev_mem_step, expr value[], expr sel = 1) {
-    mem_proves(id, MEMORY_STORE_OP, addr, prev_mem_step, value, sel);
+    mem_proves(id, MEMORY_REG_OP, addr, prev_mem_step, value, sel);
 }
 
 function global_init_mem(int id = MEMORY_ID, expr addr, expr value[], expr sel = 1) {
-    direct_global_update_assumes(id, [MEMORY_LOAD_OP, addr, 0, 8, ...value], sel: sel);
+    direct_global_update_assumes(id, [MEMORY_REG_OP, addr, 0, 8, ...value], sel: sel);
 }
 
 
@@ -340,12 +346,12 @@ function main_step_to_special_mem_step(const expr step):expr {
     return RESERVED_MEM_STEPS + MAX_MEM_STEPS_PER_MAIN_STEP * step + MAX_MEM_STEPS_PER_MAIN_STEP - 1;
 }
 
-private function mem_assumes(int id, int mem_op, expr addr, expr mem_step, expr bytes, expr value[], expr sel) {
+private function mem_assumes(int id, expr mem_op, expr addr, expr mem_step, expr bytes, expr value[], expr sel) {
     // adding 1 at step for first continuation
     permutation_assumes(id, [mem_op, addr, mem_step, bytes, ...value], sel: sel);
 }
 
-private function mem_proves(int id, int mem_op, expr addr, expr mem_step, expr value[], expr sel) {
+private function mem_proves(int id, expr mem_op, expr addr, expr mem_step, expr value[], expr sel) {
     // adding 1 at step for first continuation
     permutation_proves(id, [mem_op, addr, mem_step, 8, ...value], sel: sel);
 }

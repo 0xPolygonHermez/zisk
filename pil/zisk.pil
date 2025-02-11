@@ -21,22 +21,22 @@ public inputs[PUBLIC_INPUTS_64_BITS * 2]; // 2 x 32-bits = 64 bits
 const int PUBLIC_OP = 0x30;
 
 airgroup Zisk {
-    Main(N: 2**21, RC: 2, operation_bus_id: OPERATION_BUS_ID);
-    Rom(N: 2**22);
+    Main(N: 2**20, RC: 2, operation_bus_id: OPERATION_BUS_ID);
+    Rom(N: 2**20);
 
-    Mem(N: 2**21, RC: 2, base_address: 0xA000_0000);
-    Mem(N: 2**21, RC: 2, base_address: 0x8000_0000, immutable: 1) alias RomData;
-    Mem(N: 2**21, RC: 2, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
+    Mem(N: 2**20, RC: 2, base_address: 0xA000_0000);
+    Mem(N: 2**20, RC: 2, base_address: 0x8000_0000, immutable: 1) alias RomData;
+    Mem(N: 2**20, RC: 2, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
 
-    MemAlign(N: 2**21);
+    MemAlign(N: 2**20);
     MemAlignRom(disable_fixed: 0);
 
-    Arith(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    Arith(N: 2**20, operation_bus_id: OPERATION_BUS_ID);
     ArithTable();
     ArithRangeTable();
-    Binary(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    Binary(N: 2**20, operation_bus_id: OPERATION_BUS_ID);
     BinaryTable(disable_fixed: 0);
-    BinaryExtension(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    BinaryExtension(N: 2**20, operation_bus_id: OPERATION_BUS_ID);
     BinaryExtensionTable(disable_fixed: 0);
 
     // public inputs

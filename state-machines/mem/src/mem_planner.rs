@@ -115,7 +115,6 @@ impl Planner for MemPlanner {
                 rows: MemTrace::<usize>::NUM_ROWS as u32,
                 consecutive_addr: false,
                 intermediate_step_reads: true,
-                map_registers: true,
             },
             counters.clone(),
         )));
@@ -130,7 +129,6 @@ impl Planner for MemPlanner {
                 rows: RomDataTrace::<usize>::NUM_ROWS as u32,
                 consecutive_addr: true,
                 intermediate_step_reads: false,
-                map_registers: false,
             },
             counters.clone(),
         )));
@@ -145,7 +143,6 @@ impl Planner for MemPlanner {
                 rows: InputDataTrace::<usize>::NUM_ROWS as u32,
                 consecutive_addr: true,
                 intermediate_step_reads: false,
-                map_registers: false,
             },
             counters.clone(),
         )));

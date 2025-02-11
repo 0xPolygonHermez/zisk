@@ -4,8 +4,8 @@
 
 use crate::{
     zisk_ops::{InvalidNameError, OpType, ZiskOp},
-    ZiskInst, REG_FIRST, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM,
-    STORE_NONE, STORE_REG,
+    ZiskInst, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO, REG_FIRST, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
+    SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // #[cfg(feature = "sp")]
@@ -87,12 +87,15 @@ impl ZiskInstBuilder {
             if offset_imm_reg == 0 {
                 src = "imm";
                 offset_imm_reg = 0;
+            } else if offset_imm_reg < REGS_IN_MAIN_FROM as u64
+                || offset_imm_reg > REGS_IN_MAIN_TO as u64
+            {
+                src = "mem";
+                offset_imm_reg = REG_FIRST + offset_imm_reg * 8;
             }
-            // else {
-            //     src = "mem";
-            //     offset_imm_reg = REG_FIRST + offset_imm_reg * 8;
-            // }
         }
+        // assert!(src != "mem" || offset_imm_reg != 0);
+
         self.i.a_src = self.a_src(src);
 
         if self.i.a_src == SRC_REG || self.i.a_src == SRC_MEM {
@@ -120,11 +123,12 @@ impl ZiskInstBuilder {
             if offset_imm_reg == 0 {
                 src = "imm";
                 offset_imm_reg = 0;
+            } else if offset_imm_reg < REGS_IN_MAIN_FROM as u64
+                || offset_imm_reg > REGS_IN_MAIN_TO as u64
+            {
+                src = "mem";
+                offset_imm_reg = REG_FIRST + offset_imm_reg * 8;
             }
-            // else {
-            //     src = "mem";
-            //     offset_imm_reg = REG_FIRST + offset_imm_reg * 8;
-            // }
         }
         self.i.b_src = self.b_src(src);
 
@@ -152,6 +156,9 @@ impl ZiskInstBuilder {
         if dst == "reg" {
             if offset == 0 {
                 return;
+            } else if offset < REGS_IN_MAIN_FROM as i64 || offset > REGS_IN_MAIN_TO as i64 {
+                dst = "mem";
+                offset = REG_FIRST as i64 + offset * 8;
             }
         }
 

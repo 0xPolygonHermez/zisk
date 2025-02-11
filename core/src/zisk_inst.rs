@@ -249,7 +249,7 @@ impl ZiskInst {
             | (((self.b_src == SRC_IND) as u64) << 12)
             | (((self.a_src == SRC_REG) as u64) << 13)
             | (((self.b_src == SRC_REG) as u64) << 14)
-            | (((self.store == SRC_REG) as u64) << 15);
+            | (((self.store == STORE_REG) as u64) << 15);
 
         flags
     }
