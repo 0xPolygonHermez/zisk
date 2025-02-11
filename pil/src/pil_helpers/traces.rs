@@ -239,7 +239,7 @@ trace!(RomRomTrace<F> {
 }, 0, 1, 1048576, 0 );
 
 values!(MainAirValues<F> {
- main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 5], last_reg_mem_step: [F; 5],
+ main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 20], last_reg_mem_step: [F; 20],
 });
 
 values!(MemAirValues<F> {

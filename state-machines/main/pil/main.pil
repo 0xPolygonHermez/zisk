@@ -9,7 +9,12 @@ const int END_SP = 0;
 const int MAX_RANGE = 1 << 24;
 const int REG_BASE_ADDR = 0xA000_0000;
 
-airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int operation_bus_id, const int MAIN_CONTINUATION_ID = 1000, const int REG_NUM = 5) {
+airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int operation_bus_id,
+                 const int MAIN_CONTINUATION_ID = 1000,
+                 const int REGS_IN_MAIN_FROM = 1, const int REGS_IN_MAIN_TO = 20) {
+
+    const int REGS_IN_MAIN = REGS_IN_MAIN_TO - REGS_IN_MAIN_FROM + 1;
+
     col fixed SEGMENT_L1 = [1,0...];
     col fixed SEGMENT_STEP = [0..(N-1)];
 
@@ -319,19 +324,17 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     }
 
     // Register Zero is hard-wired zero.
-    airval last_reg_value[REG_NUM][RC];
-    airval last_reg_mem_step[REG_NUM];
+    airval last_reg_value[REGS_IN_MAIN][RC];
+    airval last_reg_mem_step[REGS_IN_MAIN];
 
     const expr last_segment_reg_mem_step = main_step_to_special_mem_step((main_segment + 1) * N - 1);
-    for (int ireg = 0; ireg < REG_NUM; ++ireg) {
+    for (int ireg = 0; ireg < REGS_IN_MAIN; ++ireg) {
         range_check(expression: last_segment_reg_mem_step - last_reg_mem_step[ireg], min: 1, max: MEMORY_MAX_DIFF);
-        reg_pre_load(prev_mem_step: last_reg_mem_step[ireg], addr: ireg + 1, value: last_reg_value[ireg]);
-        mem_op(op: MEMORY_REG_OP, mem_step: last_segment_reg_mem_step, addr: ireg + 1, value: last_reg_value[ireg], sel: (1 - main_last_segment));
+        reg_pre_load(prev_mem_step: last_reg_mem_step[ireg], addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[ireg]);
+        mem_op(op: MEMORY_REG_OP, mem_step: last_segment_reg_mem_step, addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[ireg], sel: (1 - main_last_segment));
     }
 
     flag * (1 - flag) === 0;
-
-
 
     // set lsb of rom_flags always to 1 to force that padding rom rows (all values to zero), doesn't
     // match with main trace.
@@ -377,8 +380,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         direct_global_update_assumes(MAIN_CONTINUATION_ID, expressions: [0, 1, END_PC_ADDR, ...zeros]);
     }
 
-    for (int ireg = 0; ireg < REG_NUM; ++ireg) {
-        global_init_mem(sel: 1, addr: ireg + 1, value: zeros);
+    for (int ireg = 0; ireg < REGS_IN_MAIN; ++ireg) {
+        global_init_mem(sel: 1, addr: ireg + REGS_IN_MAIN_FROM, value: zeros);
     }
 
 }
