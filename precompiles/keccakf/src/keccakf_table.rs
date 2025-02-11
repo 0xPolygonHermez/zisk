@@ -69,7 +69,7 @@ impl KeccakfTableSM {
     ///
     /// # Returns
     /// The calculated table row offset.
-    pub fn calculate_table_row(gate_opcode: &KeccakfTableGateOp, a: u64, b: u64) -> u64 {
+    pub fn calculate_table_row(gate_opcode: &KeccakfTableGateOp, a: u64, b: u64) -> usize {
         debug_assert!(a <= MASK_BITS_A);
         debug_assert!(b <= MASK_BITS_B);
 
@@ -78,7 +78,7 @@ impl KeccakfTableSM {
         let offset_b: u64 = b * P2_BITS_A;
         let offset_opcode: u64 = Self::offset_opcode(gate_opcode);
 
-        offset_a + offset_b + offset_opcode
+        (offset_a + offset_b + offset_opcode).try_into().expect("Invalid table row offset")
     }
 
     /// Computes the opcode offset for the given operation.

@@ -6,9 +6,7 @@ use p3_field::PrimeField64;
 
 use tiny_keccak::keccakf;
 
-use data_bus::{
-    ExtOperationData, OperationBusData, OperationData, OperationKeccakData, PayloadType,
-};
+use data_bus::{ExtOperationData, OperationBusData, OperationKeccakData, PayloadType};
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{KeccakfFixed, KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
@@ -24,13 +22,13 @@ pub struct KeccakfSM {
     script: Arc<Script>,
 
     /// Size of a slot in the trace. It corresponds to the number of gates in the circuit.
-    pub slot_size: usize,
+    slot_size: usize,
 
     /// Number of available slots in the trace.
     num_available_slots: usize,
 
     /// Number of available keccakfs in the trace.
-    pub num_available_keccakfs: usize,
+    num_available_keccakfs: usize,
 }
 
 type KeccakfInput = [u64; INPUT_DATA_SIZE_BITS];
@@ -61,6 +59,7 @@ impl KeccakfSM {
         assert!(script.xors + script.andps == slot_size);
         assert!(script.program.len() == slot_size);
 
+        // Compute some useful values
         let num_available_slots = (KeccakfTrace::<usize>::NUM_ROWS - 1) / slot_size;
         let num_available_keccakfs = Self::NUM_KECCAKF_PER_SLOT * num_available_slots;
 
@@ -85,12 +84,12 @@ impl KeccakfSM {
         &self,
         fixed: &KeccakfFixed<F>,
         trace: &mut KeccakfTrace<F>,
-        num_slots: usize,
         inputs: &[OperationKeccakData<u64>],
-        num_inputs: usize,
         multiplicity: &mut [u64],
     ) {
-        let mut inputs_bits: Vec<KeccakfInput> = vec![[0u64; INPUT_DATA_SIZE_BITS]; num_slots];
+        let num_inputs = inputs.len();
+        let mut inputs_bits: Vec<KeccakfInput> =
+            vec![[0u64; INPUT_DATA_SIZE_BITS]; self.num_available_slots];
 
         // Process the inputs
         let initial_offset = 1; // Number of constant values used in the circuit
@@ -104,7 +103,9 @@ impl KeccakfSM {
 
             // Get the raw keccakf input as 25 u64 values
             let keccakf_input: [u64; 25] =
-                OperationBusData::get_extra_data(&ExtOperationData::OperationKeccakData(*input)).try_into().unwrap();
+                OperationBusData::get_extra_data(&ExtOperationData::OperationKeccakData(*input))
+                    .try_into()
+                    .unwrap();
 
             // Apply the keccakf function and get the output
             let mut keccakf_output = keccakf_input.clone();
@@ -163,7 +164,6 @@ impl KeccakfSM {
                         }
 
                         // TODO: Write the raw input/output to memory??
-
                     } else {
                         let bit_offset = (k - 1) * Self::NUM_KECCAKF_PER_SLOT / 2;
                         let pos =
@@ -298,7 +298,7 @@ impl KeccakfSM {
         // Set the values of free_in_a, free_in_b, free_in_c using the script
         let script = self.script.clone();
         let mut offset = 0;
-        for i in 0..num_slots {
+        for i in 0..self.num_available_slots {
             let mut bit_input_pos = [0u64; INPUT_DATA_SIZE_BITS];
             let mut bit_output_pos = [0u64; INPUT_DATA_SIZE_BITS];
             for j in 0..self.slot_size {
@@ -413,7 +413,7 @@ impl KeccakfSM {
                     let a_val = F::as_canonical_u64(&a[j]);
                     let b_val = F::as_canonical_u64(&b[j]);
                     let table_row = KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val);
-                    multiplicity[table_row as usize] += 1;
+                    multiplicity[table_row] += 1;
                 }
             }
 
@@ -479,30 +479,6 @@ impl KeccakfSM {
             }
             value
         }
-
-        // fn print_tiny_format(input: &[u64; 25]) -> String {
-        //     // Split each chunk into bytes
-        //     let mut bytes = vec![0u8; 200]; // 1600 bits = 200 bytes
-        //     for (i, &chunk) in input.iter().enumerate() {
-        //         let byte_index = i * 8;
-        //         for j in 0..8 {
-        //             bytes[byte_index + j] = (chunk >> (j * 8)) as u8;
-        //         }
-        //     }
-
-        //     // Print the bytes in hex format
-        //     bytes.iter().map(|byte| format!("{:02X}", byte)).collect::<Vec<String>>().join(" ")
-        // }
-
-        // fn print_seq_format(output: &[u64; 1600]) -> String {
-        //     let mut bytes = vec![0u8; 200]; // 1600 bits = 200 bytes
-        //     for (i, &bit) in output.iter().enumerate() {
-        //         let byte_index = i / 8;
-        //         let bit_index = i % 8;
-        //         bytes[byte_index] |= (bit as u8) << bit_index;
-        //     }
-        //     bytes.iter().map(|byte| format!("{:02X}", byte)).collect::<Vec<String>>().join(" ")
-        // }
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
@@ -531,12 +507,14 @@ impl KeccakfSM {
 
         // Check that we can fit all the keccakfs in the trace
         let num_inputs: usize = inputs.len();
-        assert!(num_inputs <= self.num_available_keccakfs);
-
         let num_slots_needed = num_inputs.div_ceil(Self::NUM_KECCAKF_PER_SLOT);
-        assert!(num_slots_needed <= self.num_available_slots); // Redundant, given the previous assert
+        let num_rows_constants = 1; // Number of rows used for the constants
+        let num_rows_needed = num_rows_constants + num_slots_needed * self.slot_size;
 
-        let num_rows_needed = 1 + num_slots_needed * self.slot_size;
+        // Sanity checks TODO: Put only in debug mode
+        assert!(num_inputs <= self.num_available_keccakfs);
+        assert!(num_slots_needed <= self.num_available_slots);
+        assert!(num_rows_needed <= num_rows);
 
         info!(
             "{}: ··· Creating Keccakf instance [{} / {} rows filled {:.2}%]",
@@ -547,59 +525,52 @@ impl KeccakfSM {
         );
 
         // Initialize the multiplicity table
-        let mut multiplicity_table = vec![0u64; KeccakfTableTrace::<F>::NUM_ROWS];
+        let mut multiplicity_keccakf_table = vec![0u64; KeccakfTableTrace::<F>::NUM_ROWS];
 
         // Set a = 0b00..00 and b = 0b11..11 at the first row
         // Set, e.g., the operation to be an XOR and set c = 0b11..11 = b = a ^ b
-        let mut first_row: KeccakfTraceRow<F> = Default::default();
+        let mut row: KeccakfTraceRow<F> = Default::default();
         let zeros = 0u64;
         let ones = MASK_BITS_KECCAKF;
         let gate_op = fixed[0].GATE_OP.as_canonical_u64();
+        // Sanity check
         if gate_op != KeccakfTableGateOp::Xor as u64 {
             panic!("Invalid initial dummy gate operation");
         }
         for i in 0..CHUNKS_KECCAKF {
-            first_row.free_in_a[i] = F::from_canonical_u64(zeros);
-            first_row.free_in_b[i] = F::from_canonical_u64(ones);
-            first_row.free_in_c[i] = F::from_canonical_u64(ones);
+            row.free_in_a[i] = F::from_canonical_u64(zeros);
+            row.free_in_b[i] = F::from_canonical_u64(ones);
+            row.free_in_c[i] = F::from_canonical_u64(ones);
         }
         // Update the multiplicity table
         let table_row = KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, zeros, ones);
-        multiplicity_table[table_row as usize] += CHUNKS_KECCAKF as u64;
+        multiplicity_keccakf_table[table_row] += CHUNKS_KECCAKF as u64;
 
-        // Assign the first row
-        keccakf_trace[0] = first_row;
+        // Assign the single constant row
+        keccakf_trace[0] = row;
 
         // Fill the rest of the trace
-        let num_slots = (num_rows - 1) / self.slot_size;
-        self.process_slice(
-            &fixed,
-            &mut keccakf_trace,
-            num_slots,
-            &inputs,
-            num_inputs,
-            &mut multiplicity_table,
-        );
+        self.process_slice(&fixed, &mut keccakf_trace, &inputs, &mut multiplicity_keccakf_table);
         timer_stop_and_log_trace!(KECCAKF_TRACE);
 
         timer_start_trace!(KECCAKF_PADDING);
         // A row with all zeros satisfies the constraints (since both XOR(0,0) and ANDP(0,0) are 0)
         let padding_row: KeccakfTraceRow<F> = Default::default();
-        for i in (1 + self.slot_size * num_slots)..num_rows {
-            keccakf_trace[i] = padding_row;
+        for i in (1 + self.slot_size * self.num_available_slots)..num_rows {
+            let gate_op = fixed[i].GATE_OP.as_canonical_u64();
+            // Sanity check
+            if gate_op != KeccakfTableGateOp::Xor as u64 {
+                panic!("Invalid initial dummy gate operation");
+            }
+            let table_row = KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, 0, 0);
+            multiplicity_keccakf_table[table_row] += CHUNKS_KECCAKF as u64;
 
-            let gate_op = match F::as_canonical_u64(&fixed[i].GATE_OP) {
-                0u64 => KeccakfTableGateOp::Xor,
-                1u64 => KeccakfTableGateOp::Andp,
-                _ => panic!("Invalid gate operation"),
-            };
-            let table_row = KeccakfTableSM::calculate_table_row(&gate_op, 0, 0);
-            multiplicity_table[table_row as usize] += CHUNKS_KECCAKF as u64;
+            keccakf_trace[i] = padding_row;
         }
         timer_stop_and_log_trace!(KECCAKF_PADDING);
 
         timer_start_trace!(KECCAKF_TABLE);
-        self.keccakf_table_sm.process_slice(&multiplicity_table);
+        self.keccakf_table_sm.process_slice(&multiplicity_keccakf_table);
         timer_stop_and_log_trace!(KECCAKF_TABLE);
 
         AirInstance::new_from_trace(FromTrace::new(&mut keccakf_trace))
@@ -608,38 +579,27 @@ impl KeccakfSM {
     /// Generates memory inputs.
     pub fn generate_inputs(input: &OperationKeccakData<u64>) -> Vec<Vec<PayloadType>> {
         // Get the basic data from the input
-        let step_received =
-            OperationBusData::get_a(&ExtOperationData::OperationKeccakData(*input));
-        let addr_received =
-            OperationBusData::get_b(&ExtOperationData::OperationKeccakData(*input));
+        let step = OperationBusData::get_a(&ExtOperationData::OperationKeccakData(*input));
+        let addr = OperationBusData::get_b(&ExtOperationData::OperationKeccakData(*input));
 
         // Get the raw keccakf input as 25 u64 values
         let keccakf_input: [u64; 25] =
-            OperationBusData::get_extra_data(&ExtOperationData::OperationKeccakData(*input)).try_into().unwrap();
+            OperationBusData::get_extra_data(&ExtOperationData::OperationKeccakData(*input))
+                .try_into()
+                .unwrap();
 
         // Apply the keccakf function and get the output
         let mut keccakf_output = keccakf_input.clone();
         keccakf(&mut keccakf_output);
 
-        if true {
-            // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do
-            // vec![OperationBusData::from_values(
-            //     step,
-            //     opcode,
-            //     ZiskOperationType::Binary as u64,
-            //     aop.d[0] +
-            //         CHUNK_SIZE * aop.d[1] +
-            //         CHUNK_SIZE.pow(2) * (aop.d[2] + extension.0) +
-            //         CHUNK_SIZE.pow(3) * aop.d[3],
-            //     aop.b[0] +
-            //         CHUNK_SIZE * aop.b[1] +
-            //         CHUNK_SIZE.pow(2) * (aop.b[2] + extension.1) +
-            //         CHUNK_SIZE.pow(3) * aop.b[3],
-            // )
-            // .to_vec()]
-            vec![]
-        } else {
-            vec![]
+        let mut mem_data = vec![];
+        for i in 0..25 {
+            mem_data.push(vec![step, addr, keccakf_input[i]]); // Read
+            mem_data.push(vec![step, addr, keccakf_output[i]]); // Write
         }
+
+        // mem_data
+        // TODO: Finish!
+        vec![]
     }
 }
