@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use colored::Colorize;
 use p3_goldilocks::Goldilocks;
