@@ -15,11 +15,17 @@ vergen = { version = "8", default-features = false, features = [
 ] }
 
 [dependencies]
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pil2-stark-build" }
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
+
+proofman-common = { workspace = true }
+
 anyhow = { version = "1.0.86", features = ["backtrace"] }
+colored = "3"
 clap = { version = "4.5.7", features = ["derive", "env"] }
-dirs = "5.0.1"
-rand = "0.8.5"
-target-lexicon = "0.12.14"
+dirs = "6"
+rand = "0.9"
+target-lexicon = "0.13"
 reqwest = { version = "0.12.4", features = [
   "stream",
   "json",

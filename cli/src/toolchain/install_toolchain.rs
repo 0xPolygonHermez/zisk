@@ -2,7 +2,7 @@ use crate::download_file;
 use anyhow::Result;
 use clap::Parser;
 use dirs::home_dir;
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{distr::Alphanumeric, Rng};
 use reqwest::Client;
 use std::{
     fs::{self},
@@ -129,7 +129,7 @@ impl InstallToolchainCmd {
         let toolchains_dir = root_dir.join("toolchains");
         fs::create_dir_all(&toolchains_dir)?;
         let random_string: String =
-            rand::thread_rng().sample_iter(&Alphanumeric).take(10).map(char::from).collect();
+            rand::rng().sample_iter(&Alphanumeric).take(10).map(char::from).collect();
         let new_toolchain_dir = toolchains_dir.join(random_string);
         fs::rename(&toolchain_dir, &new_toolchain_dir)?;
 
