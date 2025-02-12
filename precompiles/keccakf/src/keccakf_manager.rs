@@ -50,12 +50,16 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
     /// # Returns
     /// A boxed implementation of `RegularPlanner`.
     fn build_planner(&self) -> Box<dyn Planner> {
+        let slot_size = 155286;
+        let num_available_slots = (KeccakfTrace::<usize>::NUM_ROWS - 1) / slot_size;
+        let num_available_keccakfs = KeccakfSM::NUM_KECCAKF_PER_SLOT * num_available_slots;
+
         Box::new(
             RegularPlanner::new()
                 .add_instance(InstanceInfo::new(
                     KeccakfTrace::<usize>::AIRGROUP_ID,
                     KeccakfTrace::<usize>::AIR_ID,
-                    KeccakfTrace::<usize>::NUM_ROWS,
+                    num_available_keccakfs,
                     ZiskOperationType::Keccak,
                 ))
                 .add_table_instance(TableInfo::new(

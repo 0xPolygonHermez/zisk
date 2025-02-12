@@ -174,8 +174,6 @@ impl BusDevice<PayloadType> for KeccakfCollector {
 
         if let ExtOperationData::OperationKeccakData(data) = data {
             self.inputs.push(data);
-
-            // Check if the required number of inputs has been collected for computation.
             None
         } else {
             panic!("Expected ExtOperationData::OperationData");

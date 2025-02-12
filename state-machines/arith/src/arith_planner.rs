@@ -98,7 +98,7 @@ impl Planner for ArithPlanner {
         let mut plan_result = Vec::new();
 
         for (idx, instance) in self.instances_info.iter().enumerate() {
-            let plan: Vec<_> = plan(&count[idx], instance.num_rows as u64)
+            let plan: Vec<_> = plan(&count[idx], instance.num_ops as u64)
                 .into_iter()
                 .map(|(check_point, collect_info)| {
                     let converted: Box<dyn Any> = Box::new(collect_info);

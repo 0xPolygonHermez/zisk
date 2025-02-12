@@ -36,7 +36,7 @@ type KeccakfInput = [u64; INPUT_DATA_SIZE_BITS];
 impl KeccakfSM {
     const MY_NAME: &'static str = "Keccakf ";
 
-    const NUM_KECCAKF_PER_SLOT: usize = CHUNKS_KECCAKF * BITS_KECCAKF;
+    pub const NUM_KECCAKF_PER_SLOT: usize = CHUNKS_KECCAKF * BITS_KECCAKF;
 
     const BLOCKS_PER_SLOT: usize = Self::NUM_KECCAKF_PER_SLOT * RB * RB_BLOCKS_TO_PROCESS;
 
@@ -125,7 +125,7 @@ impl KeccakfSM {
                     // In even bits, we update bit1 and val1; in odd bits, we update bit2 and val2
                     if k % 2 == 0 {
                         let bit_offset = k * Self::NUM_KECCAKF_PER_SLOT / 2;
-                        let pos = initial_offset + slot_offset + chunk_offset + bit_offset;
+                        let pos = initial_offset + slot_offset + slot_pos + chunk_offset + bit_offset;
                         update_bit_val(fixed, trace, pos, new_bit, slot_pos, true);
 
                         // We use the even bits to also activate set the step and addr values
@@ -134,7 +134,7 @@ impl KeccakfSM {
                         trace[pos].is_val = F::one();
                     } else {
                         let bit_offset = (k - 1) * Self::NUM_KECCAKF_PER_SLOT / 2;
-                        let pos = initial_offset + slot_offset + chunk_offset + bit_offset;
+                        let pos = initial_offset + slot_offset + slot_pos + chunk_offset + bit_offset;
                         update_bit_val(fixed, trace, pos, new_bit, slot_pos, false);
                     }
                 }
@@ -152,7 +152,7 @@ impl KeccakfSM {
                     if k % 2 == 0 {
                         let bit_offset = k * Self::NUM_KECCAKF_PER_SLOT / 2;
                         let pos =
-                            initial_offset + slot_offset + input_offset + chunk_offset + bit_offset;
+                            initial_offset + slot_offset + input_offset + slot_pos + chunk_offset + bit_offset;
                         update_bit_val(fixed, trace, pos, new_bit, slot_pos, true);
 
                         // We use the even bits to also activate set the step and addr values
@@ -170,7 +170,7 @@ impl KeccakfSM {
                     } else {
                         let bit_offset = (k - 1) * Self::NUM_KECCAKF_PER_SLOT / 2;
                         let pos =
-                            initial_offset + slot_offset + input_offset + chunk_offset + bit_offset;
+                            initial_offset + slot_offset + input_offset + slot_pos + chunk_offset + bit_offset;
                         update_bit_val(fixed, trace, pos, new_bit, slot_pos, false);
                     }
                 }
@@ -192,7 +192,7 @@ impl KeccakfSM {
             let rem_inputs = num_inputs % Self::NUM_KECCAKF_PER_SLOT;
             if num_inputs % Self::NUM_KECCAKF_PER_SLOT != 0 {
                 let slot = (num_inputs - 1) / Self::NUM_KECCAKF_PER_SLOT;
-                let slot_offset = slot * Self::BLOCKS_PER_SLOT;
+                let slot_offset = slot * self.slot_size;
                 // Since no more bits are being introduced as input, we let 0 be the
                 // new bits and therefore we repeat the last values
                 for j in 0..RB * RB_BLOCKS_TO_PROCESS / 2 {
@@ -487,7 +487,11 @@ impl KeccakfSM {
         let num_rows_needed = num_rows_constants + num_slots_needed * self.slot_size;
 
         // Sanity checks TODO: Put only in debug mode
-        assert!(num_inputs <= self.num_available_keccakfs);
+        assert!(
+            num_inputs <= self.num_available_keccakfs,
+            "Exceeded available Keccakfs inputs: requested {}, but only {} are available.",
+            num_inputs, self.num_available_keccakfs
+        );
         assert!(num_slots_needed <= self.num_available_slots);
         assert!(num_rows_needed <= num_rows);
 
