@@ -15,6 +15,12 @@ vergen = { version = "8", default-features = false, features = [
 ] }
 
 [dependencies]
+proofman = { workspace = true }
+proofman-common = { workspace = true }
+
+p3-goldilocks = { workspace = true }
+colored = { workspace = true }
+
 anyhow = { version = "1.0.86", features = ["backtrace"] }
 clap = { version = "4.5.7", features = ["derive", "env"] }
 dirs = "6"
@@ -30,11 +36,4 @@ serde_json = "1.0.120"
 indicatif = "0.17.8"
 futures = "0.3.30"
 yansi = "1.0.1"
-
-colored = { workspace = true }
-
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pil2-stark-build" }
-proofman-common = { workspace = true }
-proofman-cli = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pil2-stark-build" }
-p3-goldilocks = { workspace = true }
 

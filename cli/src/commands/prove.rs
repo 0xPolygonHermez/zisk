@@ -1,11 +1,10 @@
 use std::{fs, path::PathBuf};
 
-use crate::ZISK_VERSION_MESSAGE;
+use crate::{commands::Field, ZISK_VERSION_MESSAGE};
 use anyhow::Result;
 use colored::Colorize;
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
-use proofman_cli::commands::field::Field;
 use proofman_common::{json_to_debug_instances_map, DebugInfo, ProofOptions};
 
 // Structure representing the 'prove' subcommand of cargo.

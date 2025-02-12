@@ -1,39 +1,13 @@
 use anyhow::Result;
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use colored::Colorize;
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::ProofOptions;
 use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo};
-use std::fmt::Display;
 use std::path::PathBuf;
-use std::str::FromStr;
 
-#[derive(Parser, Debug, Clone, ValueEnum)]
-pub enum Field {
-    Goldilocks,
-    // Add other variants here as needed
-}
-
-impl FromStr for Field {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "goldilocks" => Ok(Field::Goldilocks),
-            // Add parsing for other variants here
-            _ => Err(format!("'{}' is not a valid value for Field", s)),
-        }
-    }
-}
-
-impl Display for Field {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Field::Goldilocks => write!(f, "goldilocks"),
-        }
-    }
-}
+use crate::commands::Field;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
