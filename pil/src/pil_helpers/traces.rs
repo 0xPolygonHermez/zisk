@@ -100,51 +100,51 @@ values!(ZiskProofValues<F> {
  
 trace!(MainFixed<F> {
  SEGMENT_L1: F, SEGMENT_STEP: F, __L1__: F,
-},  0, 0, 1048576 );
+},  0, 0, 2097152 );
 
 trace!(MainTrace<F> {
  a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, a_reg_prev_mem_step: F, b_reg_prev_mem_step: F, store_reg_prev_mem_step: F, store_reg_prev_value: [F; 2], a_src_reg: F, b_src_reg: F, store_reg: F,
-},  0, 0, 1048576 );
+},  0, 0, 2097152 );
 
 trace!(RomFixed<F> {
  __L1__: F,
-},  0, 1, 1048576 );
+},  0, 1, 2097152 );
 
 trace!(RomTrace<F> {
  multiplicity: F,
-},  0, 1, 1048576 );
+},  0, 1, 2097152 );
 
 trace!(MemFixed<F> {
  SEGMENT_L1: F, __L1__: F,
-},  0, 2, 1048576 );
+},  0, 2, 2097152 );
 
 trace!(MemTrace<F> {
  addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: F,
-},  0, 2, 1048576 );
+},  0, 2, 2097152 );
 
 trace!(RomDataFixed<F> {
  SEGMENT_L1: F, __L1__: F,
-},  0, 3, 1048576 );
+},  0, 3, 2097152 );
 
 trace!(RomDataTrace<F> {
  addr: F, step: F, sel: F, addr_changes: F, value: [F; 2],
-},  0, 3, 1048576 );
+},  0, 3, 2097152 );
 
 trace!(InputDataFixed<F> {
  SEGMENT_L1: F, __L1__: F,
-},  0, 4, 1048576 );
+},  0, 4, 2097152 );
 
 trace!(InputDataTrace<F> {
  addr: F, step: F, sel: F, addr_changes: F, value_word: [F; 4],
-},  0, 4, 1048576 );
+},  0, 4, 2097152 );
 
 trace!(MemAlignFixed<F> {
  L1: F, __L1__: F,
-},  0, 5, 1048576 );
+},  0, 5, 2097152 );
 
 trace!(MemAlignTrace<F> {
  addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], step: F, delta_addr: F, sel_prove: F, value: [F; 2],
-},  0, 5, 1048576 );
+},  0, 5, 2097152 );
 
 trace!(MemAlignRomFixed<F> {
  OFFSET: F, WIDTH: F, PC: F, DELTA_PC: F, DELTA_ADDR: F, FLAGS: F, __L1__: F,
@@ -156,11 +156,11 @@ trace!(MemAlignRomTrace<F> {
 
 trace!(ArithFixed<F> {
  __L1__: F,
-},  0, 7, 1048576 );
+},  0, 7, 2097152 );
 
 trace!(ArithTrace<F> {
  carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, main_div: F, main_mul: F, signed: F, div_by_zero: F, div_overflow: F, inv_sum_all_bs: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
-},  0, 7, 1048576 );
+},  0, 7, 2097152 );
 
 trace!(ArithTableFixed<F> {
  OP: F, FLAGS: F, RANGE_AB: F, RANGE_CD: F, __L1__: F,
@@ -180,11 +180,11 @@ trace!(ArithRangeTableTrace<F> {
 
 trace!(BinaryFixed<F> {
  __L1__: F,
-},  0, 10, 1048576 );
+},  0, 10, 2097152 );
 
 trace!(BinaryTrace<F> {
  m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, has_initial_carry: F, cout: F, result_is_a: F, use_last_carry_mode32: F, use_last_carry_mode64: F, m_op_or_ext: F, free_in_a_or_c: [F; 4], free_in_b_or_zero: [F; 4], multiplicity: F,
-},  0, 10, 1048576 );
+},  0, 10, 2097152 );
 
 trace!(BinaryTableFixed<F> {
  A: F, B: F, LAST: F, CIN: F, OP: F, C: F, FLAGS: F, __L1__: F,
@@ -196,11 +196,11 @@ trace!(BinaryTableTrace<F> {
 
 trace!(BinaryExtensionFixed<F> {
  __L1__: F,
-},  0, 12, 1048576 );
+},  0, 12, 2097152 );
 
 trace!(BinaryExtensionTrace<F> {
  op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], multiplicity: F,
-},  0, 12, 1048576 );
+},  0, 12, 2097152 );
 
 trace!(BinaryExtensionTableFixed<F> {
  A: F, OFFSET: F, B: F, OP_IS_SHIFT: F, OP: F, C0: F, C1: F, __L1__: F,
@@ -236,10 +236,10 @@ trace!(U16AirTrace<F> {
 
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
-}, 0, 1, 1048576, 0 );
+}, 0, 1, 2097152, 0 );
 
 values!(MainAirValues<F> {
- main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 20], last_reg_mem_step: [F; 20],
+ main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 31], last_reg_mem_step: [F; 31],
 });
 
 values!(MemAirValues<F> {

@@ -116,5 +116,5 @@ pub const REG_T5: u64 = REG_X30; // Temporary register 5
 pub const REG_T6: u64 = REG_X31; // Temporary register 6
 
 pub const REGS_IN_MAIN_FROM: usize = 1;
-pub const REGS_IN_MAIN_TO: usize = 20;
+pub const REGS_IN_MAIN_TO: usize = 31;
 pub const REGS_IN_MAIN: usize = REGS_IN_MAIN_TO - REGS_IN_MAIN_FROM + 1;
