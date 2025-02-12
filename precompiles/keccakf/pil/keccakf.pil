@@ -150,24 +150,36 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
     col witness is_val;
     is_val * (1 - is_val) === 0;
 
+    // if multiplicity is not zero, then is_val should be 1
+    multiplicity * (is_val - 1) === 0;
+
+    // Then, if is_val = 1, it should be 1 64*50 consecutive times (input and ouput), separated by NUM_KECCAKF_PER_SLOT
+    col fixed latch_in_out = [0,[1:(NUM_KECCAKF_PER_SLOT*(KECCAKF_SIZE_BITS-1)),0:NUM_KECCAKF_PER_SLOT,
+                                 0:(CIRCUIT_SIZE - STATE_SIZE)]:NUM_SLOTS,
+                              0...];
+    latch_in_out * (is_val'(NUM_KECCAKF_PER_SLOT) - is_val) === 0;
+
     // step and addr should be the same every NUM_KECCAKF_PER_SLOT clock
     is_val * (step'(NUM_KECCAKF_PER_SLOT) - step) === 0;
     is_val * (addr'(NUM_KECCAKF_PER_SLOT) - addr) === 0;
 
     const int CLOCKS = NUM_KECCAKF_PER_SLOT * RB;
-    col fixed latch_rb = [0,[[1,0:(CLOCKS-1)]:CHUNKS_TO_PROCESS, 
-                              0:(CIRCUIT_SIZE - STATE_SIZE)]:NUM_SLOTS,
-                          0...];
+    col fixed latch_input  = [0,[[1,0:(CLOCKS-1)]:(CHUNKS_TO_PROCESS/2), [0:CLOCKS]:(CHUNKS_TO_PROCESS/2),
+                                  0:(CIRCUIT_SIZE - STATE_SIZE)]:NUM_SLOTS,
+                              0...];
+    col fixed latch_output = [0,[[0:CLOCKS]:(CHUNKS_TO_PROCESS/2), [1,0:(CLOCKS-1)]:(CHUNKS_TO_PROCESS/2),
+                                  0:(CIRCUIT_SIZE - STATE_SIZE)]:NUM_SLOTS,
+                              0...];
 
     precompiled_mem_load(
-             sel: is_val * latch_rb,
+             sel: is_val * latch_input,
              main_step: step,
              addr: addr,
              value: [state1, state2]
             );
 
     precompiled_mem_store(
-              sel: is_val * latch_rb,
+              sel: is_val * latch_output,
               main_step: step,
               addr: addr,
               value: [state1, state2]
