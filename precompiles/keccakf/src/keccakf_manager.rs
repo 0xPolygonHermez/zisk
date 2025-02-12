@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
-use data_bus::{BusDevice, PayloadType, OPERATION_BUS_ID};
+use data_bus::{BusDevice, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
 use p3_field::{PrimeField, PrimeField64};
 
 use sm_common::{
     table_instance, BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, InstanceInfo,
-    Planner, RegularCounters, RegularPlanner, TableInfo,
+    Planner, RegularPlanner, TableInfo,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::{KeccakfTableTrace, KeccakfTrace};
 
-use crate::{KeccakfInputGenerator, KeccakfInstance, KeccakfSM, KeccakfTableSM};
+use crate::{KeccakfCounter, KeccakfInputGenerator, KeccakfInstance, KeccakfSM, KeccakfTableSM};
 
 /// The `KeccakfManager` struct represents the Keccakf manager,
 /// which is responsible for managing the Keccakf state machine and its table state machine.
@@ -42,7 +42,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
     /// # Returns
     /// A boxed implementation of `RegularCounters` configured for keccakf operations.
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(RegularCounters::new(OPERATION_BUS_ID, vec![ZiskOperationType::Keccak]))
+        Box::new(KeccakfCounter::new(MEM_BUS_ID, vec![ZiskOperationType::Keccak]))
     }
 
     /// Builds a planner to plan keccakf-related instances.
@@ -50,6 +50,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
     /// # Returns
     /// A boxed implementation of `RegularPlanner`.
     fn build_planner(&self) -> Box<dyn Planner> {
+        // TODO: Read the slot size from file instead of hardcoding it.
         let slot_size = 155286;
         let num_available_slots = (KeccakfTrace::<usize>::NUM_ROWS - 1) / slot_size;
         let num_available_keccakfs = KeccakfSM::NUM_KECCAKF_PER_SLOT * num_available_slots;
@@ -100,6 +101,6 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
     }
 
     fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(KeccakfInputGenerator::new(OPERATION_BUS_ID)))
+        Some(Box::new(KeccakfInputGenerator::new(MEM_BUS_ID)))
     }
 }

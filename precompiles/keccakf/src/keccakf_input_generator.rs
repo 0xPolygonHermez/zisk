@@ -36,7 +36,7 @@ impl BusDevice<PayloadType> for KeccakfInputGenerator {
     /// A tuple where:
     /// - The first element indicates whether processing should continue (`false` in this case).
     /// - The second element contains the derived inputs to be sent back to the bus.
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
@@ -49,7 +49,7 @@ impl BusDevice<PayloadType> for KeccakfInputGenerator {
         if let ExtOperationData::OperationKeccakData(data) = data {
             let inputs = KeccakfSM::generate_inputs(&data)
                 .into_iter()
-                .map(|x| (*bus_id, x))
+                .map(|x| (self.bus_id, x))
                 .collect::<Vec<_>>();
 
             Some(inputs)
