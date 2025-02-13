@@ -48,7 +48,7 @@ impl Metrics for RomCounter {
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs.
-    fn measure(&mut self, _: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+    fn measure(&mut self, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
         let data: RomData<u64> = data.try_into().expect("Rom Metrics: Failed to convert data");
 
         self.rom.update(
@@ -82,8 +82,8 @@ impl BusDevice<u64> for RomCounter {
     /// - The first element is the bus ID.
     /// - The second element is always empty indicating there are no derived inputs.
     #[inline]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
-        self.measure(bus_id, data);
+    fn process_data(&mut self, _: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        self.measure(data);
 
         None
     }

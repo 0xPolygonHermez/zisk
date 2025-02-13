@@ -59,12 +59,11 @@ impl Metrics for ArithCounter {
     /// Tracks activity on the connected bus and updates counters for recognized operations.
     ///
     /// # Arguments
-    /// * `_bus_id` - The ID of the bus (unused in this implementation).
     /// * `data` - The data received from the bus.
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs for the bus.
-    fn measure(&mut self, _bus_id: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+    fn measure(&mut self, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
         let data: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         let inst_op_type = OperationBusData::get_op_type(&data);
@@ -118,7 +117,7 @@ impl BusDevice<u64> for ArithCounter {
     /// A vector of derived inputs to be sent back to the bus.
     #[inline]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
-        self.measure(bus_id, data);
+        self.measure(data);
 
         let input: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");

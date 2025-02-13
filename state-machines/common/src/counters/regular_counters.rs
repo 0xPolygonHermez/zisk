@@ -56,12 +56,11 @@ impl Metrics for RegularCounters {
     /// Tracks activity on the connected bus and updates counters for recognized operations.
     ///
     /// # Arguments
-    /// * `_bus_id` - The ID of the bus (ignored in this implementation).
     /// * `data` - The data received from the bus.
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs for the bus.
-    fn measure(&mut self, _: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+    fn measure(&mut self, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
         let data: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         let inst_op_type = OperationBusData::get_op_type(&data);
@@ -116,8 +115,8 @@ impl BusDevice<u64> for RegularCounters {
     /// - The first element is the bus ID.
     /// - The second element is always empty indicating there are no derived inputs.
     #[inline]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
-        self.measure(bus_id, data);
+    fn process_data(&mut self, _: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        self.measure(data);
 
         None
     }

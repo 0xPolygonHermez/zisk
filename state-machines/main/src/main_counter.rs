@@ -34,7 +34,7 @@ impl MainCounter {
 }
 
 impl Metrics for MainCounter {
-    fn measure(&mut self, _bus_id: &BusId, _data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+    fn measure(&mut self, _data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
         vec![]
     }
 

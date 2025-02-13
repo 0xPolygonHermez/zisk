@@ -20,12 +20,11 @@ impl Metrics for DummyCounter {
     /// Does nothing when tracking activity on the bus.
     ///
     /// # Arguments
-    /// * `_bus_id` - The ID of the bus (ignored in this implementation).
     /// * `_data` - The data received from the bus (ignored in this implementation).
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any metrics.
-    fn measure(&mut self, _: &BusId, _: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+    fn measure(&mut self, _: &[u64]) -> Vec<(BusId, Vec<u64>)> {
         vec![]
     }
 

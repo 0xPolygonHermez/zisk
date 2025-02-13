@@ -29,14 +29,13 @@ pub trait Metrics: Send + Sync {
     /// Measures and processes data associated with a specific bus ID.
     ///
     /// # Arguments
-    /// * `bus_id` - The ID of the bus sending the data.
     /// * `data` - The payload data associated with the bus ID.
     ///
     /// # Returns
     /// A vector of tuples containing:
     /// - The bus ID for derived data.
     /// - The derived data payload.
-    fn measure(&mut self, bus_id: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)>;
+    fn measure(&mut self, data: &[u64]) -> Vec<(BusId, Vec<u64>)>;
 
     /// Performs any necessary cleanup or finalization when the metrics instance is closed.
     fn on_close(&mut self) {}
