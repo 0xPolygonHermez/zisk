@@ -117,15 +117,17 @@ impl Planner for KeccakfPlanner {
             plan_result.extend(plan);
         }
 
-        for table_instance in self.tables_info.iter() {
-            plan_result.push(Plan::new(
-                table_instance.airgroup_id,
-                table_instance.air_id,
-                None,
-                InstanceType::Table,
-                CheckPoint::None,
-                None,
-            ));
+        if !plan_result.is_empty() {
+            for table_instance in self.tables_info.iter() {
+                plan_result.push(Plan::new(
+                    table_instance.airgroup_id,
+                    table_instance.air_id,
+                    None,
+                    InstanceType::Table,
+                    CheckPoint::None,
+                    None,
+                ));
+            }
         }
 
         plan_result
