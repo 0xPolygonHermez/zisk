@@ -34,6 +34,7 @@ impl MainCounter {
 }
 
 impl Metrics for MainCounter {
+    #[inline(always)]
     fn measure(&mut self, _data: &[u64]) {}
 
     /// Provides a dynamic reference for downcasting purposes.

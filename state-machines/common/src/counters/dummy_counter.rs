@@ -24,6 +24,7 @@ impl Metrics for DummyCounter {
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any metrics.
+    #[inline(always)]
     fn measure(&mut self, _: &[u64]) {}
 
     /// Provides a dynamic reference for downcasting purposes.

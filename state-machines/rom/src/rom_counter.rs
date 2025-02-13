@@ -48,6 +48,7 @@ impl Metrics for RomCounter {
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs.
+    #[inline(always)]
     fn measure(&mut self, data: &[u64]) {
         let data: RomData<u64> = data.try_into().expect("Rom Metrics: Failed to convert data");
 

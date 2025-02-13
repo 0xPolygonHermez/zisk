@@ -54,6 +54,7 @@ impl MemCounters {
 }
 
 impl Metrics for MemCounters {
+    #[inline(always)]
     fn measure(&mut self, data: &[u64]) {
         let op = MemBusData::get_op(data);
         let is_write = MemHelpers::is_write(op);

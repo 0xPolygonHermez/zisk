@@ -53,6 +53,7 @@ impl Metrics for ArithCounter {
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs for the bus.
+    #[inline(always)]
     fn measure(&mut self, _data: &[u64]) {
         self.counter.update(1);
     }

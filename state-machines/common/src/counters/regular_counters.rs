@@ -60,6 +60,7 @@ impl Metrics for RegularCounters {
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs for the bus.
+    #[inline(always)]
     fn measure(&mut self, data: &[u64]) {
         let data: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
