@@ -60,9 +60,6 @@ const REG_C_W: &str = "r15d";
 const REG_C_H: &str = "r15w";
 const REG_C_B: &str = "r15b";
 const REG_FLAG: &str = "rdx";
-const STEP: &str = "qword ptr [STEP]";
-const SP: &str = "qword ptr [MEM_SP]";
-const END: &str = "qword ptr [END]";
 const REG_PC: &str = "r14";
 const REG_VALUE: &str = "r12";
 const REG_VALUE_W: &str = "r12d";
@@ -70,10 +67,14 @@ const REG_VALUE_W: &str = "r12d";
 //const REG_VALUE_B: &str = "r12b";
 const REG_ADDRESS: &str = "r13";
 
+const MEM_STEP: &str = "qword ptr [MEM_STEP]";
+const MEM_SP: &str = "qword ptr [MEM_SP]";
+const MEM_END: &str = "qword ptr [MEM_END]";
+
 const TRACE_ADDR: &str = "0xc0000000";
-const TRACE_ADDRESS: &str = "qword ptr [TRACE_ADDRESS]";
-const CHUNK_ADDRESS: &str = "qword ptr [CHUNK_ADDRESS]";
-const CHUNK_START_STEP: &str = "qword ptr [MEM_CHUNK_START_STEP]";
+const MEM_TRACE_ADDRESS: &str = "qword ptr [MEM_TRACE_ADDRESS]";
+const MEM_CHUNK_ADDRESS: &str = "qword ptr [MEM_CHUNK_ADDRESS]";
+const MEM_CHUNK_START_STEP: &str = "qword ptr [MEM_CHUNK_START_STEP]";
 
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
@@ -504,11 +505,11 @@ impl ZiskRom {
         *s += ".set msglen, (. - msg)\n\n";
 
         *s += ".section .data\n";
-        *s += ".comm STEP, 8, 8\n";
+        *s += ".comm MEM_STEP, 8, 8\n";
         *s += ".comm MEM_SP, 8, 8\n";
-        *s += ".comm END, 8, 8\n";
-        *s += ".comm TRACE_ADDRESS, 8, 8\n";
-        *s += ".comm CHUNK_ADDRESS, 8, 8\n";
+        *s += ".comm MEM_END, 8, 8\n";
+        *s += ".comm MEM_TRACE_ADDRESS, 8, 8\n";
+        *s += ".comm MEM_CHUNK_ADDRESS, 8, 8\n";
         *s += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
 
         // for k in 0..keys.len() {
@@ -530,7 +531,7 @@ impl ZiskRom {
         *s += "chunk_start:\n";
 
         *s += "\t/* Increment number of chunks (first position in trace) */\n";
-        *s += &format!("\tmov {}, {} /* address = trace_addr */\n", REG_ADDRESS, TRACE_ADDRESS);
+        *s += &format!("\tmov {}, {} /* address = trace_addr */\n", REG_ADDRESS, MEM_TRACE_ADDRESS);
         *s += &format!("\tmov {}, [{}] /* value = trace_addr */\n", REG_VALUE, REG_ADDRESS);
         *s += &format!("\tinc {} /* inc value */\n", REG_VALUE);
         *s += &format!(
@@ -539,23 +540,26 @@ impl ZiskRom {
         );
 
         *s += "\t/* Write chunk start data */\n";
-        *s += &format!("\tmov {}, {} /* address = chunk_address */\n", REG_ADDRESS, CHUNK_ADDRESS);
+        *s += &format!(
+            "\tmov {}, {} /* address = chunk_address */\n",
+            REG_ADDRESS, MEM_CHUNK_ADDRESS
+        );
         *s += &format!("\tmov [{}], {} /* chunk.start.pc = pc */\n", REG_ADDRESS, REG_PC);
-        *s += &format!("\tmov {}, {} /* value = sp */\n", REG_VALUE, SP);
+        *s += &format!("\tmov {}, {} /* value = sp */\n", REG_VALUE, MEM_SP);
         *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
         *s +=
             &format!("\tmov [{}], {} /* chunk.start.sp = value = sp */\n", REG_ADDRESS, REG_VALUE);
         *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
         *s += &format!("\tmov [{}], {} /* chunk.start.c = c */\n", REG_ADDRESS, REG_C);
         *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, STEP);
+        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
         *s += &format!(
             "\tmov [{}], {} /* chunk.start.step = value = step */\n",
             REG_ADDRESS, REG_VALUE
         );
         *s += &format!(
             "\tmov [{}], {} /* chunk_start_step = value = step */\n",
-            CHUNK_START_STEP, REG_VALUE
+            MEM_CHUNK_START_STEP, REG_VALUE
         );
         for i in 1..34 {
             *s += &format!(
@@ -577,10 +581,13 @@ impl ZiskRom {
         *s += "chunk_end:\n";
 
         *s += "\t/* Write chunk last data */\n";
-        *s += &format!("\tmov {}, {} /* address = chunk_address */\n", REG_ADDRESS, CHUNK_ADDRESS);
+        *s += &format!(
+            "\tmov {}, {} /* address = chunk_address */\n",
+            REG_ADDRESS, MEM_CHUNK_ADDRESS
+        );
         *s += &format!("\tadd {}, 37*8 /* address = chunk_address + 37*8 */\n", REG_ADDRESS);
         *s += &format!("\tmov [{}], {} /* chunk.last.pc = pc */\n", REG_ADDRESS, REG_PC);
-        *s += &format!("\tmov {}, {} /* value = sp */\n", REG_VALUE, SP);
+        *s += &format!("\tmov {}, {} /* value = sp */\n", REG_VALUE, MEM_SP);
         *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
         *s += &format!("\tmov [{}], {} /* chunk.last.sp = value = sp */\n", REG_ADDRESS, REG_VALUE);
         *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
@@ -588,12 +595,12 @@ impl ZiskRom {
 
         *s += "\t/* Write chunk end data */\n";
         *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-        *s += &format!("\tmov {}, {} /* value = end */\n", REG_VALUE, END);
+        *s += &format!("\tmov {}, {} /* value = end */\n", REG_VALUE, MEM_END);
         *s += &format!("\tmov [{}], {} /* chunk.end = value = end */\n", REG_ADDRESS, REG_VALUE);
 
         *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS); // steps
-        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, STEP);
-        *s += &format!("\tsub {}, {} /* value = step_inc */\n", REG_VALUE, CHUNK_START_STEP);
+        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+        *s += &format!("\tsub {}, {} /* value = step_inc */\n", REG_VALUE, MEM_CHUNK_START_STEP);
         *s += &format!(
             "\tmov [{}], {} /* chunk.steps.step = value = step_inc */\n",
             REG_ADDRESS, REG_VALUE
@@ -605,7 +612,7 @@ impl ZiskRom {
         *s += &format!("\tadd {}, 8 /* address += 8 = new_chunk_address */\n", REG_ADDRESS); // new chunk
         *s += &format!(
             "\tmov {}, {} /* chunk_address = new_chunk_address */\n",
-            CHUNK_ADDRESS, REG_ADDRESS
+            MEM_CHUNK_ADDRESS, REG_ADDRESS
         );
 
         *s += "\tret\n\n";
@@ -618,21 +625,21 @@ impl ZiskRom {
         *s += &format!("\tmov {}, 0 /* Registers initialization: b = 0 */\n", REG_B);
         *s += &format!("\tmov {}, 0 /* Registers initialization: c = 0 */\n", REG_C);
         *s += &format!("\tmov {}, 0 /* Registers initialization: flag = 0 */\n", REG_FLAG);
-        *s += &format!("\tmov {}, 0 /* Registers initialization: step = 0 */\n", STEP);
-        *s += &format!("\tmov {}, 0 /* Registers initialization: sp = 0 */\n", SP);
-        *s += &format!("\tmov {}, 0 /* Registers initialization: end = 0 */\n", END);
+        *s += &format!("\tmov {}, 0 /* Registers initialization: step = 0 */\n", MEM_STEP);
+        *s += &format!("\tmov {}, 0 /* Registers initialization: sp = 0 */\n", MEM_SP);
+        *s += &format!("\tmov {}, 0 /* Registers initialization: end = 0 */\n", MEM_END);
         *s += &format!(
             "\tmov {}, {} /* Registers initialization: trace_address = TRACE_ADDR */\n",
             REG_VALUE, TRACE_ADDR
         );
         *s += &format!(
             "\tmov {}, {} /* Registers initialization: trace_address = TRACE_ADDR */\n",
-            TRACE_ADDRESS, REG_VALUE
+            MEM_TRACE_ADDRESS, REG_VALUE
         );
         *s += &format!("\tadd {}, 8 /* Registers initialization: value += 8 */\n", REG_VALUE);
         *s += &format!(
             "\tmov {}, {} /* Registers initialization: chunk_address = value = TRACE_ADDR + 8 */\n",
-            CHUNK_ADDRESS, REG_VALUE
+            MEM_CHUNK_ADDRESS, REG_VALUE
         );
 
         *s += "\tcall chunk_start /* Call chunk_start the first time */\n";
@@ -765,7 +772,7 @@ impl ZiskRom {
                     if instruction.a_use_sp_imm1 != 0 {
                         *s += &format!(
                             "\tadd {}, {} /* a=SRC_MEM: address += sp */\n",
-                            REG_ADDRESS, SP
+                            REG_ADDRESS, MEM_SP
                         );
                     }
                     *s += &format!(
@@ -803,7 +810,7 @@ impl ZiskRom {
                     *s += &format!(
                         "\tmov {}, {} /* a=SRC_STEP: {} = step */\n",
                         if ctx.store_a_in_c { REG_C } else { REG_A },
-                        STEP,
+                        MEM_STEP,
                         if ctx.store_a_in_c { "c" } else { "a" }
                     );
                     ctx.a.is_saved = !ctx.store_a_in_c;
@@ -824,7 +831,7 @@ impl ZiskRom {
                     if instruction.b_use_sp_imm1 != 0 {
                         *s += &format!(
                             "\tadd {}, {} /* b=SRC_MEM: address += sp */\n",
-                            REG_ADDRESS, SP
+                            REG_ADDRESS, MEM_SP
                         );
                     }
 
@@ -871,7 +878,7 @@ impl ZiskRom {
                     if instruction.b_use_sp_imm1 != 0 {
                         *s += &format!(
                             "\tadd {}, {} /* b=SRC_IND: address += sp */\n",
-                            REG_ADDRESS, SP
+                            REG_ADDRESS, MEM_SP
                         );
                     }
                     match instruction.ind_width {
@@ -941,7 +948,7 @@ impl ZiskRom {
                     if instruction.store_use_sp {
                         *s += &format!(
                             "\tadd {}, {} /* STORE_MEM: address += sp */\n",
-                            REG_ADDRESS, SP
+                            REG_ADDRESS, MEM_SP
                         );
                     }
                     // Store in mem[address]
@@ -977,7 +984,7 @@ impl ZiskRom {
                     if instruction.store_use_sp {
                         *s += &format!(
                             "\tadd {}, {} /* STORE_IND: address += sp */\n",
-                            REG_ADDRESS, SP
+                            REG_ADDRESS, MEM_SP
                         );
                     }
 
@@ -1103,7 +1110,7 @@ impl ZiskRom {
             // // } else {
             // //     *s += &format!("\tmov rcx, {}\n", REG_FLAG);
             // // }
-            // *s += &format!("\tmov rcx, {}\n", STEP);
+            // *s += &format!("\tmov rcx, {}\n", MEM_STEP);
             // *s += &format!("\tmov rax, 0\n"); // NEW
             // *s += &format!("\tcall _print_abcflag\n");
             // *s += &format!("\tpop {}\n", REG_A);
@@ -1113,13 +1120,13 @@ impl ZiskRom {
             // *s += &format!("\tpop {}\n", REG_FLAG);
 
             // Increment step counter
-            *s += &format!("\tinc {} /* increment step */\n", STEP);
+            *s += &format!("\tinc {} /* increment step */\n", MEM_STEP);
             if instruction.end {
-                *s += &format!("\tmov {}, 1 /* end = 1 */\n", END);
+                *s += &format!("\tmov {}, 1 /* end = 1 */\n", MEM_END);
                 *s += &format!("\tmov {}, {} /* pc = pc */\n", REG_PC, ctx.pc);
                 *s += &format!("\tcall chunk_end\n");
             } else {
-                *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, STEP);
+                *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
                 *s += &format!(
                     "\tand {}, chunk_size_mask /* value = value AND chunk_size_mask */\n",
                     REG_VALUE
@@ -1207,18 +1214,18 @@ impl ZiskRom {
             }
 
             // Used only to get logs of step
-            // *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, STEP);
+            // *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
             // *s += &format!("\tand {}, 0xfffff /* value = step */\n", REG_VALUE);
             // *s += &format!("\tcmp {}, 0 /* value = step */\n", REG_VALUE);
             // *s += &format!("\tjne  pc_{:x}_inc_step_done /* value = step */\n", ctx.pc);
             // *s += &format!("\tpush {}\n", REG_VALUE);
-            // *s += &format!("\tmov rdi, {}\n", STEP);
+            // *s += &format!("\tmov rdi, {}\n", MEM_STEP);
             // *s += &format!("\tcall _print_step\n");
             // *s += &format!("\tpop {}\n", REG_VALUE);
             // *s += &format!("pc_{:x}_inc_step_done:\n", ctx.pc);
 
             // If step % K == 0 then store data
-            // *s += &format!("\tmov {}, {} /* copy step into value */\n", REG_VALUE, STEP);
+            // *s += &format!("\tmov {}, {} /* copy step into value */\n", REG_VALUE, MEM_STEP);
             // *s += &format!("\tand {}, 0xffff /* value &= k */\n", REG_VALUE);
             // *s += &format!(
             //     "\tjnz pc_{:x}_no_store_data /* skip if storing is not required */\n",
@@ -1257,7 +1264,7 @@ impl ZiskRom {
 
         // Used only to get the last log of step
         *s += &format!("\tpush {}\n", REG_VALUE);
-        *s += &format!("\tmov rdi, {}\n", STEP);
+        *s += &format!("\tmov rdi, {}\n", MEM_STEP);
         *s += &format!("\tcall _print_step\n");
         *s += &format!("\tpop {}\n", REG_VALUE);
 
