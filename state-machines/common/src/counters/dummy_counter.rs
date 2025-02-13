@@ -37,6 +37,10 @@ impl Metrics for DummyCounter {
 }
 
 impl BusDevice<u64> for DummyCounter {
+    fn process_data(&mut self, _bus_id: &BusId, _data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        None
+    }
+
     /// Returns an empty vector as this counter is not associated with any bus IDs.
     ///
     /// # Returns

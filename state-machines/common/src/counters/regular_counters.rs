@@ -64,6 +64,7 @@ impl Metrics for RegularCounters {
     fn measure(&mut self, data: &[u64]) {
         let data: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
+
         let inst_op_type = OperationBusData::get_op_type(&data);
         if let Some(index) = self.op_type.iter().position(|&op_type| op_type as u64 == inst_op_type)
         {
@@ -113,8 +114,9 @@ impl BusDevice<u64> for RegularCounters {
     /// An optional vector of tuples where:
     /// - The first element is the bus ID.
     /// - The second element is always empty indicating there are no derived inputs.
-    #[inline]
-    fn process_data(&mut self, _: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        debug_assert!(*bus_id == self.bus_id);
+
         self.measure(data);
 
         None

@@ -91,7 +91,9 @@ impl MemAlignCollector {
 }
 
 impl BusDevice<u64> for MemAlignCollector {
-    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        debug_assert!(*bus_id == MEM_BUS_ID);
+
         let addr = MemBusData::get_addr(data);
         let bytes = MemBusData::get_bytes(data);
         if MemHelpers::is_aligned(addr, bytes) {

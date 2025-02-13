@@ -12,7 +12,6 @@ use p3_field::PrimeField;
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 use sm_common::{BusDeviceMetrics, InstanceCtx};
 
-use data_bus::OPERATION_BUS_ID;
 use zisk_core::ZiskRom;
 
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
@@ -183,6 +182,6 @@ impl MainSM {
     }
 
     pub fn build_counter() -> Box<dyn BusDeviceMetrics> {
-        Box::new(MainCounter::new(OPERATION_BUS_ID))
+        Box::new(MainCounter::new())
     }
 }

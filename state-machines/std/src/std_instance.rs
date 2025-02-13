@@ -84,6 +84,10 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
 }
 
 impl<F: PrimeField> BusDevice<u64> for StdInstance<F> {
+    fn process_data(&mut self, _bus_id: &BusId, _data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        None
+    }
+
     /// Returns the bus IDs associated with this instance.
     ///
     /// # Returns

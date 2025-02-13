@@ -31,11 +31,7 @@ pub trait BusDevice<D>: Any + Send {
     /// # Returns
     /// An optional vector of tuples containing the bus ID and data payload to be sent to other
     /// devices. If no data is to be sent, `None` is returned.
-    fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> Option<Vec<(BusId, Vec<D>)>> {
-        let _ = bus_id;
-        let _ = data;
-        None
-    }
+    fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> Option<Vec<(BusId, Vec<D>)>>;
 
     /// Returns the bus IDs associated with this instance.
     ///

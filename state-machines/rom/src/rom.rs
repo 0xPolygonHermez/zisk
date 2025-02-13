@@ -10,7 +10,6 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use data_bus::ROM_BUS_ID;
 use itertools::Itertools;
 use log::info;
 use p3_field::PrimeField;
@@ -187,7 +186,7 @@ impl<F: PrimeField> ComponentBuilder<F> for RomSM {
     /// # Returns
     /// A boxed implementation of `RomCounter`.
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(RomCounter::new(ROM_BUS_ID))
+        Box::new(RomCounter::new())
     }
 
     /// Builds a planner for ROM-related instances.

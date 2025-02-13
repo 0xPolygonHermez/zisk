@@ -1,36 +1,39 @@
-//! The `ArithCounter` module defines a counter for tracking arithmetic-related operations
-//! sent over the data bus. It connects to the bus and gathers metrics for specific
-//! `ZiskOperationType::Arith` instructions.
-
-use std::ops::Add;
+//! The `ArithCounter` module defines a device for tracking and processing arithmetic-related operations
+//! sent over the data bus. It serves a dual purpose:
+//! - Counting arithmetic-related instructions (`ZiskOperationType::Arith`) and gathering metrics.
+//! - Generating binary inputs derived from arithmetic operations for the `ArithFullSM` state machine.
+//!
+//! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
+//! the system bus for both monitoring and input generation.
 
 use data_bus::{BusDevice, BusId, OperationBusData, OperationData, OPERATION_BUS_ID};
 use sm_common::{Counter, Metrics};
 use zisk_core::ZiskOperationType;
 
-use crate::ArithFullSM;
+use crate::{ArithFullSM, BusDeviceMode};
 
 /// The `ArithCounter` struct represents a counter that monitors and measures
 /// arithmetic-related operations on the data bus.
 ///
 /// It tracks specific operation types (`ZiskOperationType`) and updates counters for each
 /// accepted operation type whenever data is processed on the bus.
-pub struct ArithCounter {
+pub struct ArithCounterInputGen {
     /// Vector of counters, one for each accepted `ZiskOperationType`.
     counter: Counter,
+
+    mode: BusDeviceMode,
 }
 
-impl ArithCounter {
+impl ArithCounterInputGen {
     /// Creates a new instance of `ArithCounter`.
     ///
     /// # Arguments
-    /// * `bus_id` - The ID of the bus to which this counter is connected.
-    /// * `op_type` - A vector of `ZiskOperationType` instructions to monitor.
+    /// * `mode` - The mode of the bus device.
     ///
     /// # Returns
     /// A new `ArithCounter` instance.
-    pub fn new() -> Self {
-        Self { counter: Counter::default() }
+    pub fn new(mode: BusDeviceMode) -> Self {
+        Self { counter: Counter::default(), mode }
     }
 
     /// Retrieves the count of instructions for a specific `ZiskOperationType`.
@@ -45,7 +48,7 @@ impl ArithCounter {
     }
 }
 
-impl Metrics for ArithCounter {
+impl Metrics for ArithCounterInputGen {
     /// Tracks activity on the connected bus and updates counters for recognized operations.
     ///
     /// # Arguments
@@ -67,23 +70,7 @@ impl Metrics for ArithCounter {
     }
 }
 
-impl Add for ArithCounter {
-    type Output = ArithCounter;
-
-    /// Combines two `ArithCounter` instances by summing their counters.
-    ///
-    /// # Arguments
-    /// * `self` - The first `ArithCounter` instance.
-    /// * `other` - The second `ArithCounter` instance.
-    ///
-    /// # Returns
-    /// A new `ArithCounter` with combined counters.
-    fn add(self, other: Self) -> ArithCounter {
-        ArithCounter { counter: &self.counter + &other.counter }
-    }
-}
-
-impl BusDevice<u64> for ArithCounter {
+impl BusDevice<u64> for ArithCounterInputGen {
     /// Processes data received on the bus, updating counters and generating inputs when applicable.
     ///
     /// # Arguments
@@ -92,15 +79,18 @@ impl BusDevice<u64> for ArithCounter {
     ///
     /// # Returns
     /// A vector of derived inputs to be sent back to the bus.
-    #[inline]
-    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        debug_assert!(*bus_id == OPERATION_BUS_ID);
+
         let data: OperationData<u64> = data.try_into().ok()?;
 
         if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::Arith as u32 {
             return None;
         }
 
-        self.measure(&data);
+        if self.mode == BusDeviceMode::Counter {
+            self.measure(&data);
+        }
 
         let bin_inputs = ArithFullSM::generate_inputs(&data);
         Some(bin_inputs.into_iter().map(|x| (OPERATION_BUS_ID, x)).collect())

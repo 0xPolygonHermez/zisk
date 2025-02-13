@@ -4,7 +4,7 @@
 
 use std::{any::Any, ops::AddAssign};
 
-use data_bus::{BusDevice, BusId, RomBusData, RomData};
+use data_bus::{BusDevice, BusId, RomBusData, RomData, ROM_BUS_ID};
 use sm_common::{CounterStats, Metrics};
 
 /// The `RomCounter` struct represents a counter that monitors ROM-related metrics
@@ -13,9 +13,6 @@ use sm_common::{CounterStats, Metrics};
 /// It collects execution statistics, such as the program counter (PC) of executed instructions,
 /// the total number of executed steps, and the PC of the last executed instruction.
 pub struct RomCounter {
-    /// The connected bus ID.
-    bus_id: BusId,
-
     /// Execution statistics counter for ROM instructions.
     pub rom: CounterStats,
 }
@@ -23,13 +20,10 @@ pub struct RomCounter {
 impl RomCounter {
     /// Creates a new instance of `RomCounter`.
     ///
-    /// # Arguments
-    /// * `bus_id` - The ID of the bus to which this counter is connected.
-    ///
     /// # Returns
     /// A new `RomCounter` instance.
-    pub fn new(bus_id: BusId) -> Self {
-        Self { bus_id, rom: CounterStats::default() }
+    pub fn new() -> Self {
+        Self { rom: CounterStats::default() }
     }
 }
 
@@ -81,7 +75,9 @@ impl BusDevice<u64> for RomCounter {
     /// - The first element is the bus ID.
     /// - The second element is always empty indicating there are no derived inputs.
     #[inline]
-    fn process_data(&mut self, _: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        debug_assert!(*bus_id == ROM_BUS_ID);
+
         self.measure(data);
 
         None
@@ -92,7 +88,7 @@ impl BusDevice<u64> for RomCounter {
     /// # Returns
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
+        vec![ROM_BUS_ID]
     }
 
     /// Provides a dynamic reference for downcasting purposes.
