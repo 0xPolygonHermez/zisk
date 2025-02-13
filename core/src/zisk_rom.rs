@@ -68,6 +68,7 @@ const REG_VALUE_W: &str = "r12d";
 const REG_ADDRESS: &str = "r13";
 
 const MEM_STEP: &str = "qword ptr [MEM_STEP]";
+const MEM_STEP_DOWN: &str = "qword ptr [MEM_STEP_DOWN]";
 const MEM_SP: &str = "qword ptr [MEM_SP]";
 const MEM_END: &str = "qword ptr [MEM_END]";
 
@@ -506,6 +507,7 @@ impl ZiskRom {
 
         *s += ".section .data\n";
         *s += ".comm MEM_STEP, 8, 8\n";
+        *s += ".comm MEM_STEP_DOWN, 8, 8\n";
         *s += ".comm MEM_SP, 8, 8\n";
         *s += ".comm MEM_END, 8, 8\n";
         *s += ".comm MEM_TRACE_ADDRESS, 8, 8\n";
@@ -575,10 +577,19 @@ impl ZiskRom {
                 REG_ADDRESS, REG_VALUE, i
             );
         }
+        *s += "\t/* Reset step_down */\n";
+        *s += &format!("\tmov {}, chunk_size /* value = chunk_size */\n", REG_VALUE);
+        *s += &format!("\tmov {}, {} /* step_down = chunk_size */\n", MEM_STEP_DOWN, REG_VALUE);
 
         *s += "\tret\n\n";
 
         *s += "chunk_end:\n";
+
+        *s += "\t/* Update step from step_down */\n";
+        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+        *s += &format!("\tadd {}, chunk_size /* value += chunk_size */\n", REG_VALUE);
+        *s += &format!("\tsub {}, {} /* value -= step_down */\n", REG_VALUE, MEM_STEP_DOWN);
+        *s += &format!("\tmov {}, {} /* step = value */\n", MEM_STEP, REG_VALUE);
 
         *s += "\t/* Write chunk last data */\n";
         *s += &format!(
@@ -807,6 +818,14 @@ impl ZiskRom {
                     //*s += &format!("\tmov {}, {} /* a=a_value */\n", REG_A, ctx.a.string_value);
                 }
                 SRC_STEP => {
+                    *s += "\t/* a=SRC_STEP: Update step from step_down */\n";
+                    *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+                    *s += &format!("\tadd {}, chunk_size /* value += chunk_size */\n", REG_VALUE);
+                    *s += &format!(
+                        "\tsub {}, {} /* value -= step_down */\n",
+                        REG_VALUE, MEM_STEP_DOWN
+                    );
+                    *s += &format!("\tmov {}, {} /* step = value */\n", MEM_STEP, REG_VALUE);
                     *s += &format!(
                         "\tmov {}, {} /* a=SRC_STEP: {} = step */\n",
                         if ctx.store_a_in_c { REG_C } else { REG_A },
@@ -1119,18 +1138,13 @@ impl ZiskRom {
             // *s += &format!("\tpop {}\n", REG_FLAG);
             // *s += &format!("\tpop {}\n", REG_FLAG);
 
-            // Increment step counter
-            *s += &format!("\tinc {} /* increment step */\n", MEM_STEP);
+            // Decrement step counter
+            *s += &format!("\tdec {} /* decrement step_down */\n", MEM_STEP_DOWN);
             if instruction.end {
                 *s += &format!("\tmov {}, 1 /* end = 1 */\n", MEM_END);
                 *s += &format!("\tmov {}, {} /* pc = pc */\n", REG_PC, ctx.pc);
                 *s += &format!("\tcall chunk_end\n");
             } else {
-                *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
-                *s += &format!(
-                    "\tand {}, chunk_size_mask /* value = value AND chunk_size_mask */\n",
-                    REG_VALUE
-                );
                 *s += &format!("\tjnz pc_{:x}_check_step_done\n", ctx.pc);
                 *s += &format!("\tmov {}, {} /* pc = pc */\n", REG_PC, ctx.pc);
                 *s += &format!("\tcall chunk_end\n");
