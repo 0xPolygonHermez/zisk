@@ -589,8 +589,6 @@ impl KeccakfSM {
             let write = MemBusHelpers::mem_aligned_write(new_addr, step_main, output);
             mem_data.push(write.to_vec());
         }
-        println!("Inputs: {:?}\n", mem_data[..25].to_vec());
-        println!("Outputs: {:?}", mem_data[25..].to_vec());
 
         mem_data
     }

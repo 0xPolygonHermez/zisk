@@ -44,6 +44,17 @@ impl KeccakfCounter {
     pub fn new() -> Self {
         Self { counter: Counter::default() }
     }
+
+    /// Retrieves the count of instructions for a specific `ZiskOperationType`.
+    ///
+    /// # Arguments
+    /// * `op_type` - The operation type to retrieve the count for.
+    ///
+    /// # Returns
+    /// Returns the count of instructions for the specified operation type.
+    pub fn inst_count(&self, _op_type: ZiskOperationType) -> Option<u64> {
+        Some(self.counter.inst_count)
+    }
 }
 
 impl Metrics for KeccakfCounter {

@@ -1,6 +1,7 @@
 // #![deny(missing_docs)]
 mod keccakf;
 mod keccakf_constants;
+mod keccakf_planner;
 mod keccakf_counter;
 mod keccakf_input_generator;
 mod keccakf_instance;
@@ -11,6 +12,7 @@ mod keccakf_types;
 
 pub use keccakf::*;
 pub use keccakf_constants::*;
+pub use keccakf_planner::*;
 pub use keccakf_counter::*;
 pub use keccakf_input_generator::*;
 pub use keccakf_instance::*;

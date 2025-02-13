@@ -10,7 +10,7 @@ use sm_common::{
 use zisk_core::ZiskOperationType;
 use zisk_pil::{KeccakfTableTrace, KeccakfTrace};
 
-use crate::{KeccakfCounter, KeccakfInputGenerator, KeccakfInstance, KeccakfSM, KeccakfTableSM};
+use crate::{KeccakfCounter, KeccakfInputGenerator, KeccakfInstance, KeccakfPlanner, KeccakfSM, KeccakfTableSM};
 
 /// The `KeccakfManager` struct represents the Keccakf manager,
 /// which is responsible for managing the Keccakf state machine and its table state machine.
@@ -54,7 +54,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
         let num_available_keccakfs = self.keccakf_sm.num_available_keccakfs;
 
         Box::new(
-            RegularPlanner::new()
+            KeccakfPlanner::new()
                 .add_instance(InstanceInfo::new(
                     KeccakfTrace::<usize>::AIRGROUP_ID,
                     KeccakfTrace::<usize>::AIR_ID,
