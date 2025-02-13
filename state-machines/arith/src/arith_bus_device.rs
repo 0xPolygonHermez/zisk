@@ -7,10 +7,10 @@
 //! the system bus for both monitoring and input generation.
 
 use data_bus::{BusDevice, BusId, OperationBusData, OperationData, OPERATION_BUS_ID};
-use sm_common::{Counter, Metrics};
+use sm_common::{BusDeviceMode, Counter, Metrics};
 use zisk_core::ZiskOperationType;
 
-use crate::{ArithFullSM, BusDeviceMode};
+use crate::ArithFullSM;
 
 /// The `ArithCounter` struct represents a counter that monitors and measures
 /// arithmetic-related operations on the data bus.
