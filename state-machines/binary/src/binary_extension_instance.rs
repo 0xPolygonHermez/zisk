@@ -113,7 +113,6 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
         let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
         let (num_ops, collect_skipper) = collect_info[&chunk_id];
         Some(Box::new(BinaryExtensionCollector::new(num_ops, collect_skipper)))
-
     }
 }
 
