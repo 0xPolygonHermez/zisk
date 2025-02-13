@@ -29,7 +29,7 @@ pub struct KeccakfSM {
     num_available_slots: usize,
 
     /// Number of available keccakfs in the trace.
-    num_available_keccakfs: usize,
+    pub num_available_keccakfs: usize,
 }
 
 type KeccakfInput = [u64; INPUT_DATA_SIZE_BITS];
@@ -148,7 +148,7 @@ impl KeccakfSM {
             });
 
             // Apply the keccakf function and get the output
-            let mut keccakf_output = keccakf_input.clone();
+            let mut keccakf_output = keccakf_input;
             keccakf(&mut keccakf_output);
 
             // Process the output
@@ -280,7 +280,7 @@ impl KeccakfSM {
         // Set the values of free_in_a, free_in_b, free_in_c using the script
         let script = self.script.clone();
         let mut offset = 0;
-        for i in 0..self.num_available_slots {
+        for (i, input) in inputs_bits.iter().enumerate() {
             let mut bit_input_pos = [0u64; INPUT_DATA_SIZE_BITS];
             let mut bit_output_pos = [0u64; INPUT_DATA_SIZE_BITS];
             for j in 0..self.slot_size {
@@ -290,7 +290,7 @@ impl KeccakfSM {
                 let a = &line.a;
                 match a {
                     ValueType::Input(a) => {
-                        set_col(trace, |row| &mut row.free_in_a, row, inputs_bits[i][a.bit]);
+                        set_col(trace, |row| &mut row.free_in_a, row, input[a.bit]);
                     }
                     ValueType::Wired(b) => {
                         let mut gate = b.gate;
@@ -317,7 +317,7 @@ impl KeccakfSM {
                 let b = &line.b;
                 match b {
                     ValueType::Input(b) => {
-                        set_col(trace, |row| &mut row.free_in_b, row, inputs_bits[i][b.bit]);
+                        set_col(trace, |row| &mut row.free_in_b, row, input[b.bit]);
                     }
                     ValueType::Wired(b) => {
                         let mut gate = b.gate;
@@ -437,8 +437,8 @@ impl KeccakfSM {
             let mut _value = value;
             let row = &mut trace[index];
             let cols = cols(row);
-            for i in 0..CHUNKS_KECCAKF {
-                cols[i] = F::from_canonical_u64(_value & MASK_BITS_KECCAKF);
+            for col in cols.iter_mut() {
+                *col = F::from_canonical_u64(_value & MASK_BITS_KECCAKF);
                 _value >>= BITS_KECCAKF;
             }
         }
@@ -451,8 +451,8 @@ impl KeccakfSM {
             let mut value = 0;
             let row = &mut trace[index];
             let cols = cols(row);
-            for i in 0..CHUNKS_KECCAKF {
-                let col_i_val = F::as_canonical_u64(&cols[i]);
+            for (i, col) in cols.iter().enumerate() {
+                let col_i_val = F::as_canonical_u64(col);
                 value += col_i_val << ((i * BITS_KECCAKF) as u64);
             }
             value
@@ -481,7 +481,7 @@ impl KeccakfSM {
         let num_rows = keccakf_trace.num_rows();
 
         // Flatten the inputs
-        let inputs: Vec<OperationKeccakData<u64>> = inputs.into_iter().flatten().cloned().collect();
+        let inputs: Vec<OperationKeccakData<u64>> = inputs.iter().flatten().cloned().collect();
 
         // Check that we can fit all the keccakfs in the trace
         let num_inputs: usize = inputs.len();
@@ -572,21 +572,21 @@ impl KeccakfSM {
                 .unwrap();
 
         // Apply the keccakf function and get the output
-        let mut keccakf_output = keccakf_input.clone();
+        let mut keccakf_output = keccakf_input;
         keccakf(&mut keccakf_output);
 
         let mut mem_data = vec![];
         // Compute the reads
-        for i in 0..25 {
-            let new_addr = addr + i as u32;
-            let read = MemBusHelpers::mem_aligned_load(new_addr, step_main, keccakf_input[i]);
+        for (i, &input) in keccakf_input.iter().enumerate() {
+            let new_addr = addr + 8 * i as u32;
+            let read = MemBusHelpers::mem_aligned_load(new_addr, step_main, input);
             mem_data.push(read.to_vec());
         }
 
         // Compute the writes
-        for i in 0..25 {
-            let new_addr = addr + i as u32;
-            let write = MemBusHelpers::mem_aligned_write(new_addr, step_main, keccakf_output[i]);
+        for (i, &output) in keccakf_output.iter().enumerate() {
+            let new_addr = addr + 8 * i as u32;
+            let write = MemBusHelpers::mem_aligned_write(new_addr, step_main, output);
             mem_data.push(write.to_vec());
         }
         println!("Inputs: {:?}\n", mem_data[..25].to_vec());

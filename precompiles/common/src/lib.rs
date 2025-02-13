@@ -42,9 +42,9 @@ const MAX_MEM_OPS_BY_MAIN_STEP: u64 = 4;
 impl MemBusHelpers {
     pub fn mem_aligned_load(addr: u32, step: u64, mem_value: u64) -> [u64; 7] {
         [
-            MEMORY_LOAD_OP as u64,
+            MEMORY_LOAD_OP,
             addr as u64,
-            MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 2 as u64,
+            MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 2,
             8,
             mem_value,
             0,
@@ -53,9 +53,9 @@ impl MemBusHelpers {
     }
     pub fn mem_aligned_write(addr: u32, step: u64, value: u64) -> [u64; 7] {
         [
-            MEMORY_STORE_OP as u64,
+            MEMORY_STORE_OP,
             addr as u64,
-            MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 3 as u64,
+            MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 3,
             8,
             0,
             0,

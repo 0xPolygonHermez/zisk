@@ -22,6 +22,16 @@ pub struct KeccakfCounter {
     counter: Counter,
 }
 
+impl Default for KeccakfCounter {
+    /// Creates a new instance of `KeccakfCounter` with default values.
+    ///
+    /// # Returns
+    /// A new `KeccakfCounter` instance.
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KeccakfCounter {
     /// Creates a new instance of `KeccakfCounter`.
     ///

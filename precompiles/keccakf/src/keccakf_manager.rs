@@ -50,10 +50,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
     /// # Returns
     /// A boxed implementation of `RegularPlanner`.
     fn build_planner(&self) -> Box<dyn Planner> {
-        // TODO: Read the slot size from file instead of hardcoding it.
-        let slot_size = 155286;
-        let num_available_slots = (KeccakfTrace::<usize>::NUM_ROWS - 1) / slot_size;
-        let num_available_keccakfs = KeccakfSM::NUM_KECCAKF_PER_SLOT * num_available_slots;
+        // Get the number of keccakfs that a single keccakf instance can handle
+        let num_available_keccakfs = self.keccakf_sm.num_available_keccakfs;
 
         Box::new(
             RegularPlanner::new()

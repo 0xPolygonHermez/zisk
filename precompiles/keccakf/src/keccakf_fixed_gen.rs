@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let output_file = "precompiles/keccakf/src/keccakf_fixed.bin";
     write_fixed_cols_bin(
-        &output_file,
+        output_file,
         "Zisk",
         "Keccakf",
         n as u64,
@@ -110,8 +110,8 @@ fn cols_gen(
     // Compute the connections and gate_op
     for i in 0..num_slots {
         let offset = i * slot_size;
-        for j in 0..connections.len() {
-            let conn = &connections[j].0;
+        for (j, connection) in connections.iter().enumerate() {
+            let conn = &connection.0;
             let mut ref1 = j;
             if j > 0 {
                 ref1 += offset;
@@ -198,7 +198,7 @@ fn get_ks(k: F, n: usize) -> Vec<F> {
     ks
 }
 
-fn connect(p1: &mut Vec<F>, i1: usize, p2: Option<&mut Vec<F>>, i2: usize) {
+fn connect(p1: &mut [F], i1: usize, p2: Option<&mut [F]>, i2: usize) {
     if let Some(p2) = p2 {
         std::mem::swap(&mut p1[i1], &mut p2[i2]);
     } else {
