@@ -56,7 +56,7 @@ impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
     /// # Returns
     /// A boxed implementation of `ArithCounter`.
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(ArithCounter::new(OPERATION_BUS_ID, vec![zisk_core::ZiskOperationType::Arith]))
+        Box::new(ArithCounter::new())
     }
 
     /// Builds a planner to plan arithmetic-related instances.

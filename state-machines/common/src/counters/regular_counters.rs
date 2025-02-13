@@ -60,7 +60,7 @@ impl Metrics for RegularCounters {
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs for the bus.
-    fn measure(&mut self, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+    fn measure(&mut self, data: &[u64]) {
         let data: OperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         let inst_op_type = OperationBusData::get_op_type(&data);
@@ -68,8 +68,6 @@ impl Metrics for RegularCounters {
         {
             self.counter[index].update(1);
         }
-
-        vec![]
     }
 
     /// Provides a dynamic reference for downcasting purposes.

@@ -24,9 +24,7 @@ impl Metrics for DummyCounter {
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any metrics.
-    fn measure(&mut self, _: &[u64]) -> Vec<(BusId, Vec<u64>)> {
-        vec![]
-    }
+    fn measure(&mut self, _: &[u64]) {}
 
     /// Provides a dynamic reference for downcasting purposes.
     ///

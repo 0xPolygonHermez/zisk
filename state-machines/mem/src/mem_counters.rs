@@ -54,7 +54,7 @@ impl MemCounters {
 }
 
 impl Metrics for MemCounters {
-    fn measure(&mut self, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+    fn measure(&mut self, data: &[u64]) {
         let op = MemBusData::get_op(data);
         let is_write = MemHelpers::is_write(op);
         let addr = MemBusData::get_addr(data);
@@ -176,8 +176,6 @@ impl Metrics for MemCounters {
             self.mem_align.push(mem_align_op_rows as u8);
             self.mem_align_rows += mem_align_op_rows;
         }
-
-        vec![]
     }
 
     fn on_close(&mut self) {

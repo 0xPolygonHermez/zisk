@@ -2,7 +2,6 @@
 //! performance metrics. These modules provide flexible mechanisms to count and analyze
 //! bus operations and instruction execution in a fine-grained manner.
 
-use data_bus::BusId;
 use std::{
     any::Any,
     collections::HashMap,
@@ -35,7 +34,7 @@ pub trait Metrics: Send + Sync {
     /// A vector of tuples containing:
     /// - The bus ID for derived data.
     /// - The derived data payload.
-    fn measure(&mut self, data: &[u64]) -> Vec<(BusId, Vec<u64>)>;
+    fn measure(&mut self, data: &[u64]);
 
     /// Performs any necessary cleanup or finalization when the metrics instance is closed.
     fn on_close(&mut self) {}

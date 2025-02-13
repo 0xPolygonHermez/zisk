@@ -48,7 +48,7 @@ impl Metrics for RomCounter {
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs.
-    fn measure(&mut self, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+    fn measure(&mut self, data: &[u64]) {
         let data: RomData<u64> = data.try_into().expect("Rom Metrics: Failed to convert data");
 
         self.rom.update(
@@ -57,8 +57,6 @@ impl Metrics for RomCounter {
             1,
             RomBusData::get_end(&data) == 1,
         );
-
-        vec![]
     }
 
     /// Provides a dynamic reference for downcasting purposes.
