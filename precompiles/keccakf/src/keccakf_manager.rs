@@ -5,12 +5,15 @@ use p3_field::{PrimeField, PrimeField64};
 
 use sm_common::{
     table_instance, BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, InstanceInfo,
-    Planner, RegularPlanner, TableInfo,
+    Planner, TableInfo,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::{KeccakfTableTrace, KeccakfTrace};
 
-use crate::{KeccakfCounter, KeccakfInputGenerator, KeccakfInstance, KeccakfPlanner, KeccakfSM, KeccakfTableSM};
+use crate::{
+    KeccakfCounter, KeccakfInputGenerator, KeccakfInstance, KeccakfPlanner, KeccakfSM,
+    KeccakfTableSM,
+};
 
 /// The `KeccakfManager` struct represents the Keccakf manager,
 /// which is responsible for managing the Keccakf state machine and its table state machine.
