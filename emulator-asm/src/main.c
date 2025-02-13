@@ -9,16 +9,19 @@
 void emulator_start(void);
 
 #define RAM_ADDR 0xa0000000
-#define RAM_SIZE 0x08000000
+#define RAM_SIZE 0x08000000 // 128MB
 #define SYS_ADDR RAM_ADDR
 #define SYS_SIZE 0x10000
 #define OUTPUT_ADDR (SYS_ADDR + SYS_SIZE)
 
 #define ROM_ADDR 0x80000000
-#define ROM_SIZE 0x08000000
+#define ROM_SIZE 0x08000000 // 128MB
 
 #define INPUT_ADDR 0x90000000
-#define MAX_INPUT_SIZE 0x08000000
+#define MAX_INPUT_SIZE 0x08000000 // 128MB
+
+#define TRACE_ADDR 0xc0000000
+#define TRACE_SIZE 0x08000000 // 128MB
 
 struct timeval start_time;
 
@@ -28,6 +31,11 @@ uint64_t keccak_counter = 0;
 uint64_t keccak_duration = 0;
 
 extern void keccakf1600_generic(uint64_t state[25]);
+
+#define CHUNK_SIZE 1024*1024
+uint64_t chunk_size = CHUNK_SIZE;
+uint64_t chunk_size_mask = CHUNK_SIZE - 1;
+uint64_t trace_address = TRACE_ADDR;
 
 uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime)
 {
@@ -58,12 +66,13 @@ uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime)
 
 void print_usage (void)
 {
-    printf("Usage: emu <input_file> [-v verbose on] [-o output off] [-h/--help print this]\n");
+    printf("Usage: emu <input_file> [-v verbose on] [-o output off]  [-t trace on] [-h/--help print this]\n");
 }
 
 // Configuration
 bool verbose = false;
 bool output = true;
+bool trace = false;
 char * input_file = NULL;
 
 int main(int argc, char *argv[])
@@ -81,6 +90,11 @@ int main(int argc, char *argv[])
             if (strcmp(argv[i], "-o") == 0)
             {
                 output = false;
+                continue;
+            }
+            if (strcmp(argv[i], "-t") == 0)
+            {
+                trace = true;
                 continue;
             }
             if (strcmp(argv[i], "-h") == 0)
@@ -184,6 +198,16 @@ int main(int argc, char *argv[])
         }
     }
 
+    // Allocate trace
+    void * pTrace = mmap((void *)TRACE_ADDR, TRACE_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    if (pTrace == NULL)
+    {
+        printf("Failed calling mmap(pTrace)\n");
+        return -1;
+    }
+
+    if (verbose) printf("mmap(trace) returned %08x\n", pTrace);
+
     // Call emulator assembly code
     gettimeofday(&start_time,NULL);
     emulator_start();
@@ -208,6 +232,109 @@ int main(int argc, char *argv[])
         {
             pOutput++;
             printf("%08x\n", *pOutput);
+        }
+    }
+
+    // Log trace
+    /* Trace data structure
+    [8B] Number of chunks: C
+
+    Offset to chunk 0:
+    Start state:
+        [8B] pc
+        [8B] sp
+        [8B] c
+        [8B] step
+        [8B] register[1]
+        …
+        [8B] register[31]
+        [8B] register[32]
+        [8B] register[33]
+    Last state:
+        [8B] pc
+        [8B] sp
+        [8B] c
+    End:
+        [8B] end
+    Steps:
+        [8B] steps = chunk size except for the last chunk
+        [8B] mem_reads_size
+        [8B] mem_reads[0]
+        [8B] mem_reads[1]
+        …
+        [8B] mem_reads[mem_reads_size - 1]
+
+    Offset to chunk 1:
+    …
+    Offset to chunk C-1:
+    …
+    */
+    if (trace)
+    {
+        printf("Trace content:\n");
+        uint64_t * trace = (uint64_t *)pTrace;
+        uint64_t number_of_chunks = trace[0];
+        printf("Number of chunks=%d\n", number_of_chunks);
+        if (number_of_chunks > 1000000)
+        {
+            printf("Number of chunks is too high=%d\n", number_of_chunks);
+            return -1;
+        }
+        uint64_t * chunk = trace + 1;
+        for (uint64_t c=0; c<number_of_chunks; c++)
+        {
+            uint64_t i=0;
+            printf("Chunk %d:\n", c);
+
+            // Log current chunk start state
+            printf("\tStart state:\n");
+            printf("\t\tpc=0x%08x:\n", chunk[i]);
+            i++;
+            printf("\t\tsp=0x%08x:\n", chunk[i]);
+            i++;
+            printf("\t\tc=0x%08x:\n", chunk[i]);
+            i++;
+            printf("\t\tstep=%d:\n", chunk[i]);
+            i++;
+            for (uint64_t r=1; r<34; r++)
+            {
+                printf("\t\tregister[%d]=0x%08x:\n", r, chunk[i]);
+                i++;
+            }
+
+            // Log current chunk last state
+            printf("\tLast state:\n");
+            printf("\t\tpc=0x%08x:\n", chunk[i]);
+            i++;
+            printf("\t\tsp=0x%08x:\n", chunk[i]);
+            i++;
+            printf("\t\tc=0x%08x:\n", chunk[i]);
+            i++;
+            
+            // Log current chunk end
+            printf("\tEnd:\n");
+            printf("\t\tend=%d:\n", chunk[i]);
+            i++;
+
+            // Log current chunk steps
+            printf("\tSteps:\n");
+            printf("\t\tsteps=%d:\n", chunk[i]);
+            i++;
+            uint64_t mem_reads_size = chunk[i];
+            printf("\t\tmem_reads_size=%d:\n", mem_reads_size);
+            i++;
+            if (mem_reads_size > 1000000)
+            {
+                printf("Mem reads size is too high=%d\n", mem_reads_size);
+                return -1;
+            }
+            for (uint64_t m=0; m<mem_reads_size; m++)
+            {
+                i++;
+            }
+
+            //Set next chunk pointer
+            chunk = chunk + i;
         }
     }
 
