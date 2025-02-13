@@ -267,13 +267,13 @@ impl MemModuleCollector {
 }
 
 impl BusDevice<u64> for MemModuleCollector {
-    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         // info!("MemModuleCollector process_data bus_id:{} len: {}", _bus_id, data.len());
         // info!(
         //     "MemModuleCollector process_data len: {:X},{:X},{:X},{:X},{:X}",
         //     data[0], data[1], data[2], data[3], data[4]
         // );
-        assert!(*_bus_id == MEM_BUS_ID);
+        assert!(*bus_id == MEM_BUS_ID);
 
         let addr = MemBusData::get_addr(data);
         let step = MemBusData::get_step(data);
