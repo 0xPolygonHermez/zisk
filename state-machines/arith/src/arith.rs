@@ -11,15 +11,14 @@ use std::sync::Arc;
 use data_bus::{BusDevice, PayloadType, OPERATION_BUS_ID};
 use p3_field::PrimeField;
 use sm_common::{
-    table_instance, BusDeviceMetrics, ComponentBuilder, InstanceCtx, InstanceInfo, Planner,
-    TableInfo,
+    table_instance, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, InstanceCtx, InstanceInfo, Planner, TableInfo
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::{ArithRangeTableTrace, ArithTableTrace, ArithTrace};
 
 use crate::{
     ArithCounterInputGen, ArithFullInstance, ArithFullSM, ArithPlanner, ArithRangeTableSM,
-    ArithTableSM, BusDeviceMode,
+    ArithTableSM,
 };
 
 /// The `ArithSM` struct represents the Arithmetic State Machine, which

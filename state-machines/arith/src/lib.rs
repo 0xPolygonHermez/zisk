@@ -22,11 +22,5 @@ use arith_table::*;
 use arith_table_data::*;
 use arith_table_helpers::*;
 
-#[derive(Debug, PartialEq)]
-pub enum BusDeviceMode {
-    Counter,
-    InputGenerator,
-}
-
 #[cfg(test)]
 mod arith_operation_test;
