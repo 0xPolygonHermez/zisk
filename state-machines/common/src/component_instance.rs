@@ -148,6 +148,14 @@ macro_rules! table_instance {
         }
 
         impl data_bus::BusDevice<u64> for $InstanceName {
+            fn process_data(
+                &mut self,
+                bus_id: &BusId,
+                data: &[u64],
+            ) -> Option<Vec<(BusId, Vec<u64>)>> {
+                None
+            }
+
             fn bus_id(&self) -> Vec<BusId> {
                 vec![self.bus_id]
             }

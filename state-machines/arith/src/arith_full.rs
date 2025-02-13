@@ -227,6 +227,7 @@ impl ArithFullSM {
     }
 
     /// Generates binary inputs for operations requiring additional validation (e.g., division).
+    #[inline(always)]
     pub fn generate_inputs(input: &OperationData<u64>) -> Vec<Vec<PayloadType>> {
         let mut aop = ArithOperation::new();
         let opcode = OperationBusData::get_op(input);

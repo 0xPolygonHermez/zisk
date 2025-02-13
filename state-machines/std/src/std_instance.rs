@@ -48,7 +48,7 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
     /// * `_pctx` - The proof context, unused in this implementation.
     /// * `_sctx` - The setup context, unused in this implementation.
     /// * `_collectors` - A vector of input collectors to process and collect data for witness,
-    /// unused in this implementation.
+    ///   unused in this implementation.
     ///
     /// # Returns
     /// Always returns `None` as this instance does not generate an `AirInstance`.
@@ -84,6 +84,10 @@ impl<F: PrimeField> Instance<F> for StdInstance<F> {
 }
 
 impl<F: PrimeField> BusDevice<u64> for StdInstance<F> {
+    fn process_data(&mut self, _bus_id: &BusId, _data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        None
+    }
+
     /// Returns the bus IDs associated with this instance.
     ///
     /// # Returns

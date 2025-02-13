@@ -18,8 +18,8 @@ use zisk_core::ZiskOperationType;
 use zisk_pil::{ArithRangeTableTrace, ArithTableTrace, ArithTrace};
 
 use crate::{
-    ArithCounter, ArithFullInstance, ArithFullSM, ArithInputGenerator, ArithPlanner,
-    ArithRangeTableSM, ArithTableSM,
+    ArithCounterInputGen, ArithFullInstance, ArithFullSM, ArithPlanner, ArithRangeTableSM,
+    ArithTableSM, BusDeviceMode,
 };
 
 /// The `ArithSM` struct represents the Arithmetic State Machine, which
@@ -56,7 +56,7 @@ impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
     /// # Returns
     /// A boxed implementation of `ArithCounter`.
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(ArithCounter::new(OPERATION_BUS_ID, vec![zisk_core::ZiskOperationType::Arith]))
+        Box::new(ArithCounterInputGen::new(BusDeviceMode::Counter))
     }
 
     /// Builds a planner to plan arithmetic-related instances.
@@ -93,7 +93,7 @@ impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn sm_common::Instance<F>> {
         match ictx.plan.air_id {
             ArithTrace::<usize>::AIR_ID => {
-                Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), ictx, OPERATION_BUS_ID))
+                Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), ictx))
             }
             ArithTableTrace::<usize>::AIR_ID => {
                 table_instance!(ArithTableInstance, ArithTableSM, ArithTableTrace);
@@ -120,6 +120,6 @@ impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
     /// # Returns
     /// A boxed implementation of `ArithInputGenerator`.
     fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(ArithInputGenerator::new(OPERATION_BUS_ID)))
+        Some(Box::new(ArithCounterInputGen::new(BusDeviceMode::InputGenerator)))
     }
 }

@@ -5,7 +5,7 @@
 //! execution plans.
 
 use crate::BinaryExtensionSM;
-use data_bus::{BusDevice, BusId, OperationBusData, OperationData, PayloadType};
+use data_bus::{BusDevice, BusId, OperationBusData, OperationData, PayloadType, OPERATION_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
@@ -26,9 +26,6 @@ pub struct BinaryExtensionInstance<F: PrimeField> {
 
     /// Instance context.
     ictx: InstanceCtx,
-
-    /// The connected bus ID.
-    bus_id: BusId,
 }
 
 impl<F: PrimeField> BinaryExtensionInstance<F> {
@@ -42,12 +39,8 @@ impl<F: PrimeField> BinaryExtensionInstance<F> {
     /// # Returns
     /// A new `BinaryExtensionInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(
-        binary_extension_sm: Arc<BinaryExtensionSM<F>>,
-        ictx: InstanceCtx,
-        bus_id: BusId,
-    ) -> Self {
-        Self { binary_extension_sm, ictx, bus_id }
+    pub fn new(binary_extension_sm: Arc<BinaryExtensionSM<F>>, ictx: InstanceCtx) -> Self {
+        Self { binary_extension_sm, ictx }
     }
 }
 
@@ -76,7 +69,7 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
                 collector
                     .detach_device()
                     .as_any()
-                    .downcast::<BinaryExtensionCollector<F>>()
+                    .downcast::<BinaryExtensionCollector>()
                     .unwrap()
                     .inputs
             })
@@ -118,45 +111,30 @@ impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
 
         let meta = self.ictx.plan.meta.as_ref().unwrap();
         let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
-        Some(Box::new(BinaryExtensionCollector::<F>::new(
-            self.bus_id,
-            collect_info[&chunk_id].0,
-            collect_info[&chunk_id].1,
-        )))
+        let (num_ops, collect_skipper) = collect_info[&chunk_id];
+        Some(Box::new(BinaryExtensionCollector::new(num_ops, collect_skipper)))
     }
 }
 
 /// The `BinaryExtensionCollector` struct represents an input collector for binary extension
-pub struct BinaryExtensionCollector<F: PrimeField> {
+pub struct BinaryExtensionCollector {
     /// Collected inputs for witness computation.
     inputs: Vec<OperationData<u64>>,
-
-    /// The connected bus ID.
-    bus_id: BusId,
 
     /// The number of operations to collect.
     num_operations: u64,
 
     /// Helper to skip instructions based on the plan's configuration.
     collect_skipper: CollectSkipper,
-
-    /// Phantom data for the prime field.
-    _phantom: std::marker::PhantomData<F>,
 }
 
-impl<F: PrimeField> BinaryExtensionCollector<F> {
-    pub fn new(bus_id: BusId, num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self {
-            inputs: Vec::new(),
-            bus_id,
-            num_operations,
-            collect_skipper,
-            _phantom: std::marker::PhantomData,
-        }
+impl BinaryExtensionCollector {
+    pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
+        Self { inputs: Vec::new(), num_operations, collect_skipper }
     }
 }
 
-impl<F: PrimeField> BusDevice<u64> for BinaryExtensionCollector<F> {
+impl BusDevice<u64> for BinaryExtensionCollector {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -167,7 +145,9 @@ impl<F: PrimeField> BusDevice<u64> for BinaryExtensionCollector<F> {
     /// An optional vector of tuples where:
     /// - The first element is the bus ID.
     /// - The second element is always empty indicating there are no derived inputs.
-    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        debug_assert!(*bus_id == OPERATION_BUS_ID);
+
         if self.inputs.len() == self.num_operations as usize {
             return None;
         }
@@ -194,7 +174,7 @@ impl<F: PrimeField> BusDevice<u64> for BinaryExtensionCollector<F> {
     /// # Returns
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
+        vec![OPERATION_BUS_ID]
     }
 
     /// Provides a dynamic reference for downcasting purposes.
