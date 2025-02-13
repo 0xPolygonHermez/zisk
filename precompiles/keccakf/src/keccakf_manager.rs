@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use data_bus::{BusDevice, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
+use data_bus::{BusDevice, PayloadType, OPERATION_BUS_ID};
 use p3_field::{PrimeField, PrimeField64};
 
 use sm_common::{
@@ -42,7 +42,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
     /// # Returns
     /// A boxed implementation of `RegularCounters` configured for keccakf operations.
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(KeccakfCounter::new(OPERATION_BUS_ID, vec![ZiskOperationType::Keccak]))
+        Box::new(KeccakfCounter::new())
     }
 
     /// Builds a planner to plan keccakf-related instances.
@@ -101,6 +101,6 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
     }
 
     fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(KeccakfInputGenerator::new(MEM_BUS_ID)))
+        Some(Box::new(KeccakfInputGenerator::default()))
     }
 }

@@ -4,7 +4,7 @@
 //! It implements the `Instance` and `BusDevice` traits, facilitating input generation
 //! for the `ArithFullSM` state machine based on data received over the bus.
 
-use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, PayloadType};
+use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, PayloadType, MEM_BUS_ID};
 use zisk_core::ZiskOperationType;
 
 use crate::KeccakfSM;
@@ -14,16 +14,7 @@ use crate::KeccakfSM;
 /// It interacts with the `ArithFullSM` to generate necessary inputs for binary computations
 /// by processing arithmetic data received from the data bus.
 #[derive(Default)]
-pub struct KeccakfInputGenerator {
-    /// The connected bus ID.
-    bus_id: BusId,
-}
-
-impl KeccakfInputGenerator {
-    pub fn new(bus_id: BusId) -> Self {
-        Self { bus_id }
-    }
-}
+pub struct KeccakfInputGenerator {}
 
 impl BusDevice<PayloadType> for KeccakfInputGenerator {
     /// Processes data received on the bus and generates inputs for memory operations.
@@ -37,24 +28,18 @@ impl BusDevice<PayloadType> for KeccakfInputGenerator {
     /// - The first element indicates whether processing should continue (`false` in this case).
     /// - The second element contains the derived inputs to be sent back to the bus.
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
-        let data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
+        let data: ExtOperationData<u64> = data.try_into().ok()?;
 
-        let op_type = OperationBusData::get_op_type(&data);
-
-        if op_type as u32 != ZiskOperationType::Keccak as u32 {
+        if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::Keccak as u32 {
             return None;
         }
 
-        if let ExtOperationData::OperationKeccakData(data) = data {
-            let inputs = KeccakfSM::generate_inputs(&data)
-                .into_iter()
-                .map(|x| (self.bus_id, x))
-                .collect::<Vec<_>>();
-
-            Some(inputs)
-        } else {
-            panic!("Expected ExtOperationData::OperationData");
+        match data {
+            ExtOperationData::OperationKeccakData(data) => {
+                let mem_inputs = KeccakfSM::generate_inputs(&data);
+                Some(mem_inputs.into_iter().map(|x| (MEM_BUS_ID, x)).collect())
+            }
+            _ => panic!("Expected ExtOperationData::OperationData"),
         }
     }
 
@@ -63,7 +48,7 @@ impl BusDevice<PayloadType> for KeccakfInputGenerator {
     /// # Returns
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
+        vec![MEM_BUS_ID]
     }
 
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {

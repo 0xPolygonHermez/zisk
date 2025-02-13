@@ -4,7 +4,9 @@
 
 use std::ops::Add;
 
-use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData};
+use data_bus::{
+    BusDevice, BusId, ExtOperationData, OperationBusData, MEM_BUS_ID, OPERATION_BUS_ID,
+};
 use sm_common::{Counter, Metrics};
 use zisk_core::ZiskOperationType;
 
@@ -16,14 +18,8 @@ use crate::KeccakfSM;
 /// It tracks specific operation types (`ZiskOperationType`) and updates counters for each
 /// accepted operation type whenever data is processed on the bus.
 pub struct KeccakfCounter {
-    /// Vector of `ZiskOperationType` instructions to be counted.
-    op_type: Vec<ZiskOperationType>,
-
-    /// The connected bus ID.
-    bus_id: BusId,
-
-    /// Vector of counters, one for each accepted `ZiskOperationType`.
-    counter: Vec<Counter>,
+    /// Keccakf counter.
+    counter: Counter,
 }
 
 impl KeccakfCounter {
@@ -35,23 +31,8 @@ impl KeccakfCounter {
     ///
     /// # Returns
     /// A new `KeccakfCounter` instance.
-    pub fn new(bus_id: BusId, op_type: Vec<ZiskOperationType>) -> Self {
-        let counter = vec![Counter::default(); op_type.len()];
-        Self { bus_id, op_type, counter }
-    }
-
-    /// Retrieves the count of instructions for a specific `ZiskOperationType`.
-    ///
-    /// # Arguments
-    /// * `op_type` - The operation type to retrieve the count for.
-    ///
-    /// # Returns
-    /// Returns the count of instructions for the specified operation type.
-    pub fn inst_count(&self, op_type: ZiskOperationType) -> Option<u64> {
-        if let Some(index) = self.op_type.iter().position(|&_op_type| op_type == _op_type) {
-            return Some(self.counter[index].inst_count);
-        }
-        None
+    pub fn new() -> Self {
+        Self { counter: Counter::default() }
     }
 }
 
@@ -60,20 +41,12 @@ impl Metrics for KeccakfCounter {
     ///
     /// # Arguments
     /// * `_bus_id` - The ID of the bus (unused in this implementation).
-    /// * `data` - The data received from the bus.
+    /// * `_data` - The data received from the bus.
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs for the bus.
-    fn measure(&mut self, _bus_id: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
-        let data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-
-        let inst_op_type = OperationBusData::get_op_type(&data);
-
-        if let Some(index) = self.op_type.iter().position(|&op_type| op_type as u64 == inst_op_type)
-        {
-            self.counter[index].update(1);
-        }
+    fn measure(&mut self, _bus_id: &BusId, _data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+        self.counter.update(1);
 
         vec![]
     }
@@ -99,13 +72,7 @@ impl Add for KeccakfCounter {
     /// # Returns
     /// A new `KeccakfCounter` with combined counters.
     fn add(self, other: Self) -> KeccakfCounter {
-        let counter = self
-            .counter
-            .into_iter()
-            .zip(other.counter)
-            .map(|(counter, other_counter)| &counter + &other_counter)
-            .collect();
-        KeccakfCounter { bus_id: self.bus_id, op_type: self.op_type, counter }
+        KeccakfCounter { counter: &self.counter + &other.counter }
     }
 }
 
@@ -120,27 +87,20 @@ impl BusDevice<u64> for KeccakfCounter {
     /// A vector of derived inputs to be sent back to the bus.
     #[inline]
     fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
-        let mem_bus_id = self.bus_id;
-        self.measure(&mem_bus_id, data);
+        let data: ExtOperationData<u64> = data.try_into().ok()?;
 
-        let data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-
-        let op_type = OperationBusData::get_op_type(&data);
-
-        if op_type as u32 != ZiskOperationType::Keccak as u32 {
+        if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::Keccak as u32 {
             return None;
         }
 
-        if let ExtOperationData::OperationKeccakData(data) = data {
-            let inputs = KeccakfSM::generate_inputs(&data)
-                .into_iter()
-                .map(|x| (mem_bus_id, x))
-                .collect::<Vec<_>>();
+        match data {
+            ExtOperationData::OperationKeccakData(data) => {
+                self.measure(&OPERATION_BUS_ID, &data);
 
-            Some(inputs)
-        } else {
-            panic!("Expected ExtOperationData::OperationData");
+                let mem_inputs = KeccakfSM::generate_inputs(&data);
+                Some(mem_inputs.into_iter().map(|x| (MEM_BUS_ID, x)).collect())
+            }
+            _ => panic!("Expected ExtOperationData::OperationData"),
         }
     }
 
@@ -149,7 +109,7 @@ impl BusDevice<u64> for KeccakfCounter {
     /// # Returns
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
+        vec![OPERATION_BUS_ID]
     }
 
     /// Provides a dynamic reference for downcasting purposes.
