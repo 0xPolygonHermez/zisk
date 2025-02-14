@@ -346,7 +346,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
             num_rows,
             total_inputs as f64 / num_rows as f64 * 100.0
         );
-        
+
         // Split the binary_e_trace.buffer into slices matching each inner vector’s length.
         let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
         let mut slices = Vec::with_capacity(inputs.len());
@@ -360,7 +360,10 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
         slices.into_par_iter().enumerate().for_each(|(i, slice)| {
             slice.iter_mut().enumerate().for_each(|(j, cell)| {
-                *cell = self.process_slice(&inputs[i][j], &self.binary_extension_table_sm.detach_multiplicity());
+                *cell = self.process_slice(
+                    &inputs[i][j],
+                    self.binary_extension_table_sm.detach_multiplicity(),
+                );
             });
         });
 

@@ -1,4 +1,7 @@
-use std::sync::{atomic::{AtomicU64, Ordering}, Arc};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 
 use sm_common::create_atomic_vec;
 use zisk_pil::MemAlignRomTrace;
@@ -28,9 +31,7 @@ impl MemAlignRomSM {
     // const MY_NAME: &'static str = "MemAlignRom";
 
     pub fn new() -> Arc<Self> {
-        Arc::new(Self {
-            multiplicity:  create_atomic_vec(MemAlignRomTrace::<usize>::NUM_ROWS),
-        })
+        Arc::new(Self { multiplicity: create_atomic_vec(MemAlignRomTrace::<usize>::NUM_ROWS) })
     }
 
     pub fn calculate_next_pc(&self, opcode: MemOp, offset: usize, width: usize) -> u64 {

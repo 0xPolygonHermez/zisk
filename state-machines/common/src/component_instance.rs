@@ -132,7 +132,11 @@ macro_rules! table_instance {
                 let mut trace = $Trace::new();
 
                 trace.buffer[0..trace.num_rows].par_iter_mut().enumerate().for_each(
-                    |(i, input)| input.multiplicity = F::from_canonical_u64(multiplicity[i].load(std::sync::atomic::Ordering::Relaxed)),
+                    |(i, input)| {
+                        input.multiplicity = F::from_canonical_u64(
+                            multiplicity[i].load(std::sync::atomic::Ordering::Relaxed),
+                        )
+                    },
                 );
 
                 Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))

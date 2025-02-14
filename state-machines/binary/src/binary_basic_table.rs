@@ -3,9 +3,11 @@
 //! This state machine is responsible for handling basic binary operations, calculating table rows,
 //! and managing multiplicity tables for binary table traces.
 
-use std::sync::{atomic::{AtomicU64, Ordering}, Arc};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 
-use p3_field::Field;
 use sm_common::create_atomic_vec;
 use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8, P2_9};
 use zisk_pil::BinaryTableTrace;
@@ -50,7 +52,7 @@ impl BinaryBasicTableSM {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryBasicTableSM`.
-    pub fn new<F: Field>() -> Arc<Self> {
+    pub fn new() -> Arc<Self> {
         Arc::new(Self { multiplicity: create_atomic_vec(BinaryTableTrace::<usize>::NUM_ROWS) })
     }
 

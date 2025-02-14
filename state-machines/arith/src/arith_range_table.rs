@@ -3,7 +3,10 @@
 //! This state machine manages the multiplicity table for arithmetic range table traces
 //! and provides functionality to process inputs and manage multiplicity data.
 
-use std::sync::{atomic::{Ordering, AtomicU64}, Arc};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 
 use crate::ArithRangeTableInputs;
 use sm_common::create_atomic_vec;
@@ -24,9 +27,7 @@ impl ArithRangeTableSM {
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithRangeTableSM`.
     pub fn new() -> Arc<Self> {
-        Arc::new(Self {
-            multiplicity:  create_atomic_vec(ArithRangeTableTrace::<usize>::NUM_ROWS),
-        })
+        Arc::new(Self { multiplicity: create_atomic_vec(ArithRangeTableTrace::<usize>::NUM_ROWS) })
     }
 
     pub fn process_slice(&self, inputs: &ArithRangeTableInputs) {

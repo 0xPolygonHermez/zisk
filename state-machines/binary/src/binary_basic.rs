@@ -918,7 +918,10 @@ impl BinaryBasicSM {
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
         slices.into_par_iter().enumerate().for_each(|(i, slice)| {
             slice.iter_mut().enumerate().for_each(|(j, cell)| {
-                *cell = Self::process_slice(&inputs[i][j], &self.binary_basic_table_sm.detach_multiplicity());
+                *cell = Self::process_slice(
+                    &inputs[i][j],
+                    self.binary_basic_table_sm.detach_multiplicity(),
+                );
             });
         });
 
@@ -945,7 +948,6 @@ impl BinaryBasicSM {
             );
             self.binary_basic_table_sm.update_multiplicity(row, multiplicity);
         }
-
 
         AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))
     }

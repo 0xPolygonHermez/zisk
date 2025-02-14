@@ -4,9 +4,11 @@
 //! This state machine handles operations like shift-left logical (`Sll`), shift-right logical
 //! (`Srl`), arithmetic shifts, and sign extensions.
 
-use std::sync::{atomic::{Ordering, AtomicU64}, Arc};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 
-use p3_field::Field;
 use sm_common::create_atomic_vec;
 use zisk_core::{P2_11, P2_19, P2_8};
 use zisk_pil::BinaryExtensionTableTrace;
@@ -41,9 +43,9 @@ impl BinaryExtensionTableSM {
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryExtensionTableSM` with an initialized multiplicity
     /// table.
-    pub fn new<F: Field>() -> Arc<Self> {
+    pub fn new() -> Arc<Self> {
         let binary_extension_table =
-            Self { multiplicity:  create_atomic_vec(BinaryExtensionTableTrace::<usize>::NUM_ROWS) };
+            Self { multiplicity: create_atomic_vec(BinaryExtensionTableTrace::<usize>::NUM_ROWS) };
 
         Arc::new(binary_extension_table)
     }
