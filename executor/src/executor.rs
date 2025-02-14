@@ -23,6 +23,7 @@ use itertools::Itertools;
 use p3_field::PrimeField;
 use proofman_common::{ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
+use rom_merkle::gen_elf_hash;
 use witness::WitnessComponent;
 
 use rayon::prelude::*;
@@ -33,7 +34,7 @@ use sm_common::{
     Instance, InstanceCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
-use zisk_pil::ZiskPublicValues;
+use zisk_pil::{RomRomTrace, ZiskPublicValues};
 
 use std::{
     collections::HashMap,
@@ -51,7 +52,9 @@ pub struct ZiskExecutor<F: PrimeField> {
     pub zisk_rom: Arc<ZiskRom>,
 
     /// Path to the input data file.
-    pub input_data_path: PathBuf,
+    pub input_data_path: Option<PathBuf>,
+
+    pub rom_path: Option<PathBuf>,
 
     /// Registered secondary state machines.
     secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,
@@ -76,9 +79,14 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// # Arguments
     /// * `input_data_path` - Path to the input data file.
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
-    pub fn new(input_data_path: PathBuf, zisk_rom: Arc<ZiskRom>) -> Self {
+    pub fn new(
+        input_data_path: Option<PathBuf>,
+        rom_path: Option<PathBuf>,
+        zisk_rom: Arc<ZiskRom>,
+    ) -> Self {
         Self {
             input_data_path,
+            rom_path,
             zisk_rom,
             secondary_sm: Vec::new(),
             min_traces: RwLock::new(Vec::new()),
@@ -588,7 +596,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         // Call emulate with these options
         let input_data = {
             // Read inputs data from the provided inputs path
-            let path = PathBuf::from(self.input_data_path.display().to_string());
+            let path = PathBuf::from(self.input_data_path.clone().unwrap().display().to_string());
             fs::read(path).expect("Could not read inputs file")
         };
 
@@ -678,5 +686,21 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
                 secn_instance.debug(&pctx, &sctx);
             }
         });
+    }
+
+    fn gen_custom_commits_fixed(
+        &self,
+        pctx: Arc<ProofCtx<F>>,
+        sctx: Arc<SetupCtx<F>>,
+        check: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let file_name = pctx.get_custom_commits_fixed_buffer("rom")?;
+
+        let setup = sctx.get_setup(RomRomTrace::<usize>::AIRGROUP_ID, RomRomTrace::<usize>::AIR_ID);
+        let blowup_factor =
+            1 << (setup.stark_info.stark_struct.n_bits_ext - setup.stark_info.stark_struct.n_bits);
+
+        gen_elf_hash(&self.rom_path.clone().unwrap(), file_name, blowup_factor, check)?;
+        Ok(())
     }
 }
