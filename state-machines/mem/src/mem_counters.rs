@@ -22,7 +22,6 @@ pub struct UsesCounter {
     pub last_step: u64,
     pub count: u64,
     pub last_value: u64,
-    pub addr: u32,
     #[cfg(feature = "debug_mem")]
     pub debug: UsesCounterDebug,
 }
@@ -86,7 +85,6 @@ impl Metrics for MemCounters {
                     last_step: step,
                     count: 1,
                     last_value,
-                    addr: addr_w,
                     #[cfg(feature = "debug_mem")]
                     debug: UsesCounterDebug { internal_reads: 0, mem_align_extra_rows: 0 },
                 });
@@ -131,7 +129,6 @@ impl Metrics for MemCounters {
                         last_step,
                         count: ops_by_addr,
                         last_value: last_values[index as usize],
-                        addr: _addr_w,
                         #[cfg(feature = "debug_mem")]
                         debug: UsesCounterDebug {
                             internal_reads: 0,

@@ -20,7 +20,7 @@ use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 use sm_common::{BusDeviceMetrics, InstanceCtx};
 
 use data_bus::OPERATION_BUS_ID;
-use sm_mem::{MemHelpers, MEMORY_MAX_DIFF};
+use sm_mem::{MemHelpers, MEMORY_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
@@ -105,15 +105,30 @@ impl MainSM {
             filled_rows as f64 / num_rows as f64 * 100.0
         );
 
-        let initial_step =
-            MemHelpers::main_step_to_special_mem_step((segment_id * num_rows) as u64 - 1);
+        // Calculate final_step of instance, last mem slot of last row. The initial_step is 0 for the
+        // first segment, for the rest is the final_step of the previous segment
+
+        let last_row_previous_segment =
+            if segment_id == 0 { 0 } else { (segment_id * num_rows) as u64 - 1 };
+
+        let initial_step = MemHelpers::main_step_to_special_mem_step(last_row_previous_segment);
 
         let final_step =
             MemHelpers::main_step_to_special_mem_step(((segment_id + 1) * num_rows) as u64 - 1);
 
-        let max_range = num_rows * 4;
+        // To reduce memory used, only take memory for the maximum range of mem_step inside the
+        // minimal trace.
+        let max_range = min_trace_size * MEM_STEPS_BY_MAIN_STEP;
+
+        // Vector of atomics of u32, it's enough to count all range check values of the trace.
         let step_range_check =
             Arc::new((0..max_range).map(|_| AtomicU32::new(0)).collect::<Vec<_>>());
+
+        // We know each register's previous step, but only by instance. We don't have this
+        // information by chunk, so we need to store in the EmuRegTrace the location of the
+        // first mem_step register is used in the chunk and information about the last step
+        // where the register is used. The register's last steps of one chunk are the initial
+        // steps of the next chunk. In the end, we need to update with the correct values.
 
         let fill_trace_outputs = main_trace
             .par_iter_mut_chunks(num_within)
@@ -136,49 +151,19 @@ impl MainSM {
         let last_result = fill_trace_outputs.last().unwrap();
         let next_pc = last_result.0;
 
+        // In the range checks are values too large to store in steps_range_check, but there
+        // are only a few values that exceed this limit, for this reason, are stored in a vector
+
         let mut reg_steps = [initial_step; REGS_IN_MAIN];
-        for (index, (_, _, reg_trace)) in fill_trace_outputs.iter().enumerate().skip(1) {
-            for reg_index in 0..REGS_IN_MAIN {
-                let reg_prev_mem_step = if fill_trace_outputs[index - 1].2.reg_steps[reg_index] == 0
-                {
-                    reg_steps[reg_index]
-                } else {
-                    fill_trace_outputs[index - 1].2.reg_steps[reg_index]
-                };
-                reg_steps[reg_index] = reg_prev_mem_step;
-                if reg_trace.first_step_uses[reg_index].is_some() {
-                    let mem_step = reg_trace.first_step_uses[reg_index].unwrap();
-                    let slot = MemHelpers::mem_step_to_slot(mem_step);
-                    let row = MemHelpers::mem_step_to_row(mem_step) % num_rows;
-                    let range = mem_step - reg_prev_mem_step;
-                    step_range_check[(range - 1) as usize].fetch_add(1, Ordering::Relaxed);
-                    match slot {
-                        0 => {
-                            main_trace.buffer[row].a_reg_prev_mem_step =
-                                F::from_canonical_u64(reg_prev_mem_step)
-                        }
-                        1 => {
-                            main_trace.buffer[row].b_reg_prev_mem_step =
-                                F::from_canonical_u64(reg_prev_mem_step)
-                        }
-                        2 => {
-                            main_trace.buffer[row].store_reg_prev_mem_step =
-                                F::from_canonical_u64(reg_prev_mem_step)
-                        }
-                        _ => panic!("Invalid slot {}", slot),
-                    }
-                    // TODO: range_check mem_step - reg_prev_mem_step
-                }
-            }
-        }
-        for reg_index in 0..REGS_IN_MAIN {
-            let reg_prev_mem_step = if last_result.2.reg_steps[reg_index] == 0 {
-                reg_steps[reg_index]
-            } else {
-                last_result.2.reg_steps[reg_index]
-            };
-            reg_steps[reg_index] = reg_prev_mem_step;
-        }
+        let mut large_range_checks = Self::complete_trace_with_initial_reg_steps_per_chunk(
+            num_rows,
+            &fill_trace_outputs,
+            &mut main_trace,
+            step_range_check.clone(),
+            &mut reg_steps,
+        );
+
+        Self::update_reg_steps_with_last_chunk(&last_result.2, &mut reg_steps);
 
         // Pad remaining rows with the last valid row
         // In padding row must be clear of registers access, if not need to calculate previous
@@ -209,40 +194,16 @@ impl MainSM {
         air_values.segment_previous_c = prev_segment_last_c;
         air_values.segment_last_c = last_row.c;
 
-        for ireg in 0..REGS_IN_MAIN {
-            let reg_value = last_result.1[ireg];
-            let values = [
-                F::from_canonical_u32(reg_value as u32),
-                F::from_canonical_u32((reg_value >> 32) as u32),
-            ];
-            air_values.last_reg_value[ireg] = values;
-            air_values.last_reg_mem_step[ireg] = F::from_canonical_u64(reg_steps[ireg]);
-            let range = (final_step - reg_steps[ireg] - 1) as usize;
-            assert!(
-                range < step_range_check.len(),
-                "INVALID RANGE VALUE {} segment:{} final_step:{} reg_steps[{}]:{}",
-                range,
-                segment_id,
-                final_step,
-                ireg,
-                reg_steps[ireg]
-            );
-            step_range_check[range].fetch_add(1, Ordering::Relaxed);
-        }
+        Self::update_reg_airvalues(
+            &mut air_values,
+            final_step,
+            &last_result.1,
+            &reg_steps,
+            step_range_check.clone(),
+            &mut large_range_checks,
+        );
+        Self::update_std_range_checks(std, step_range_check, &large_range_checks);
 
-        // update range checks
-        let std = std.clone();
-        let range_id = std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
-        for (value, _multiplicity) in step_range_check.iter().enumerate() {
-            let multiplicity = _multiplicity.load(Ordering::Relaxed);
-            if multiplicity != 0 {
-                std.range_check(
-                    F::from_canonical_usize(value + 1),
-                    F::from_canonical_u32(multiplicity),
-                    range_id,
-                );
-            }
-        }
         // Generate and add the AIR instance
         let from_trace = FromTrace::new(&mut main_trace).with_air_values(&mut air_values);
         AirInstance::new_from_trace(from_trace)
@@ -304,6 +265,114 @@ impl MainSM {
         )
     }
 
+    fn complete_trace_with_initial_reg_steps_per_chunk<F: PrimeField>(
+        num_rows: usize,
+        fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace)],
+        main_trace: &mut MainTrace<F>,
+        step_range_check: Arc<Vec<AtomicU32>>,
+        reg_steps: &mut [u64; REGS_IN_MAIN],
+    ) -> Vec<u32> {
+        let mut large_range_checks: Vec<u32> = vec![];
+        let max_range = step_range_check.len() as u64;
+        for (index, (_, _, reg_trace)) in fill_trace_outputs.iter().enumerate().skip(1) {
+            for reg_index in 0..REGS_IN_MAIN {
+                let reg_prev_mem_step = if fill_trace_outputs[index - 1].2.reg_steps[reg_index] == 0
+                {
+                    reg_steps[reg_index]
+                } else {
+                    fill_trace_outputs[index - 1].2.reg_steps[reg_index]
+                };
+                reg_steps[reg_index] = reg_prev_mem_step;
+                if reg_trace.first_step_uses[reg_index].is_some() {
+                    let mem_step = reg_trace.first_step_uses[reg_index].unwrap();
+                    let slot = MemHelpers::mem_step_to_slot(mem_step);
+                    let row = MemHelpers::mem_step_to_row(mem_step) % num_rows;
+                    let range = mem_step - reg_prev_mem_step;
+                    if range > max_range {
+                        large_range_checks.push(range as u32);
+                    } else {
+                        step_range_check[(range - 1) as usize].fetch_add(1, Ordering::Relaxed);
+                    }
+                    match slot {
+                        0 => {
+                            main_trace.buffer[row].a_reg_prev_mem_step =
+                                F::from_canonical_u64(reg_prev_mem_step)
+                        }
+                        1 => {
+                            main_trace.buffer[row].b_reg_prev_mem_step =
+                                F::from_canonical_u64(reg_prev_mem_step)
+                        }
+                        2 => {
+                            main_trace.buffer[row].store_reg_prev_mem_step =
+                                F::from_canonical_u64(reg_prev_mem_step)
+                        }
+                        _ => panic!("Invalid slot {}", slot),
+                    }
+                    // TODO: range_check mem_step - reg_prev_mem_step
+                }
+            }
+        }
+        large_range_checks
+    }
+    fn update_reg_steps_with_last_chunk(
+        last_emu_reg_trace: &EmuRegTrace,
+        reg_steps: &mut [u64; REGS_IN_MAIN],
+    ) {
+        for reg_index in 0..REGS_IN_MAIN {
+            let reg_prev_mem_step = if last_emu_reg_trace.reg_steps[reg_index] == 0 {
+                reg_steps[reg_index]
+            } else {
+                last_emu_reg_trace.reg_steps[reg_index]
+            };
+            reg_steps[reg_index] = reg_prev_mem_step;
+        }
+    }
+    fn update_reg_airvalues<F: PrimeField>(
+        air_values: &mut MainAirValues<'_, F>,
+        final_step: u64,
+        last_reg_values: &[u64],
+        reg_steps: &[u64; REGS_IN_MAIN],
+        step_range_check: Arc<Vec<AtomicU32>>,
+        large_range_checks: &mut Vec<u32>,
+    ) {
+        let max_range = step_range_check.len() as u64;
+        for ireg in 0..REGS_IN_MAIN {
+            let reg_value = last_reg_values[ireg];
+            let values = [
+                F::from_canonical_u32(reg_value as u32),
+                F::from_canonical_u32((reg_value >> 32) as u32),
+            ];
+            air_values.last_reg_value[ireg] = values;
+            air_values.last_reg_mem_step[ireg] = F::from_canonical_u64(reg_steps[ireg]);
+            let range = (final_step - reg_steps[ireg]) as usize;
+            if range > max_range as usize {
+                large_range_checks.push(range as u32);
+            } else {
+                step_range_check[range - 1].fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
+    fn update_std_range_checks<F: PrimeField>(
+        std: Arc<Std<F>>,
+        step_range_check: Arc<Vec<AtomicU32>>,
+        large_range_checks: &[u32],
+    ) {
+        let range_id = std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
+        for (value, _multiplicity) in step_range_check.iter().enumerate() {
+            let multiplicity = _multiplicity.load(Ordering::Relaxed);
+            if multiplicity != 0 {
+                std.range_check(
+                    F::from_canonical_usize(value + 1),
+                    F::from_canonical_u32(multiplicity),
+                    range_id,
+                );
+            }
+        }
+        println!("LARGE_RANGE_CHECKS:{} {:?}", large_range_checks.len(), large_range_checks);
+        for range in large_range_checks {
+            std.range_check(F::from_canonical_u32(*range), F::from_canonical_u32(1), range_id);
+        }
+    }
     pub fn debug<F: PrimeField>(_pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {
         // No debug information to display
     }

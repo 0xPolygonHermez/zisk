@@ -5,7 +5,7 @@ pub const MEM_ADDR_MASK: u32 = 0xFFFF_FFF8;
 
 pub const MEM_STEP_BASE: u64 = 1;
 pub const MAX_MEM_STEP_OFFSET: u64 = 2;
-pub const MAX_MEM_OPS_BY_MAIN_STEP: u64 = 4;
+pub const MEM_STEPS_BY_MAIN_STEP: u64 = 4;
 
 pub const MEMORY_LOAD_OP: u8 = 1;
 pub const MEMORY_STORE_OP: u8 = 2;

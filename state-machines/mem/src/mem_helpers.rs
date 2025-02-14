@@ -1,74 +1,14 @@
 use crate::{
-    MemAlignResponse, MAX_MEM_OPS_BY_MAIN_STEP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK,
-    MEM_BYTES_BITS, MEM_STEP_BASE, RAM_W_ADDR_INIT, STEP_MEMORY_MAX_DIFF,
+    MemAlignResponse, MEMORY_LOAD_OP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS,
+    MEM_STEPS_BY_MAIN_STEP, MEM_STEP_BASE, RAM_W_ADDR_INIT, STEP_MEMORY_MAX_DIFF,
 };
 use std::fmt;
-use zisk_core::{ZiskRequiredMemory, RAM_ADDR};
-
-#[allow(dead_code)]
-fn format_u64_hex(value: u64) -> String {
-    let hex_str = format!("{:016x}", value);
-    hex_str
-        .as_bytes()
-        .chunks(4)
-        .map(|chunk| std::str::from_utf8(chunk).unwrap())
-        .collect::<Vec<_>>()
-        .join("_")
-}
-
-#[derive(Debug, Clone)]
-pub struct MemAlignInput {
-    pub addr: u32,
-    pub is_write: bool,
-    pub width: u8,
-    pub step: u64,
-    pub value: u64,
-    pub mem_values: [u64; 2],
-}
-
-#[derive(Debug, Clone)]
-pub struct MemInput {
-    pub addr: u32,      // address in word native format means byte_address / MEM_BYTES
-    pub is_write: bool, // it's a write operation
-    pub step: u64,      // mem_step = f(main_step, main_step_offset)
-    pub value: u64,     // value to read or write
-}
-
-impl MemAlignInput {
-    pub fn new(
-        addr: u32,
-        is_write: bool,
-        width: u8,
-        step: u64,
-        value: u64,
-        mem_values: [u64; 2],
-    ) -> Self {
-        MemAlignInput { addr, is_write, width, step, value, mem_values }
-    }
-    pub fn from(mem_external_op: &ZiskRequiredMemory, mem_values: &[u64; 2]) -> Self {
-        match mem_external_op {
-            ZiskRequiredMemory::Basic { step, value, address, is_write, width, step_offset } => {
-                MemAlignInput {
-                    addr: *address,
-                    is_write: *is_write,
-                    step: MemHelpers::main_step_to_mem_step(*step, *step_offset),
-                    width: *width,
-                    value: *value,
-                    mem_values: [mem_values[0], mem_values[1]],
-                }
-            }
-            ZiskRequiredMemory::Extended { values: _, address: _ } => {
-                panic!("MemAlignInput::from() called with extended instance")
-            }
-        }
-    }
-}
-
+use zisk_core::RAM_ADDR;
 pub struct MemHelpers {}
 
 impl MemHelpers {
     pub fn main_step_to_mem_step(step: u64, step_offset: u8) -> u64 {
-        MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + step_offset as u64
+        MEM_STEP_BASE + MEM_STEPS_BY_MAIN_STEP * step + step_offset as u64
     }
     pub fn is_aligned(addr: u32, width: u8) -> bool {
         (addr & MEM_ADDR_ALIGN_MASK) == 0 && width == 8
@@ -131,11 +71,11 @@ impl MemHelpers {
     }
     #[inline(always)]
     pub fn mem_step_to_slot(mem_step: u64) -> u8 {
-        ((mem_step - MEM_STEP_BASE) % MAX_MEM_OPS_BY_MAIN_STEP) as u8
+        ((mem_step - MEM_STEP_BASE) % MEM_STEPS_BY_MAIN_STEP) as u8
     }
     #[inline(always)]
     pub fn mem_step_to_row(mem_step: u64) -> usize {
-        ((mem_step - MEM_STEP_BASE) / MAX_MEM_OPS_BY_MAIN_STEP) as usize
+        ((mem_step - MEM_STEP_BASE) / MEM_STEPS_BY_MAIN_STEP) as usize
     }
 
     #[cfg(target_endian = "big")]
@@ -192,6 +132,57 @@ impl MemHelpers {
     pub fn register_to_addr_w(register: u8) -> u32 {
         RAM_W_ADDR_INIT + register as u32
     }
+    /* struct MemHelpers {}
+
+    const MEMORY_LOAD_OP: u64 = 1;
+    const MEMORY_STORE_OP: u64 = 2;
+
+    const MEM_STEP_BASE: u64 = 1;
+    const MAX_MEM_OPS_BY_MAIN_STEP: u64 = 4;
+
+    impl MemHelpers {
+        // function mem_load(expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[]) {
+        // function mem_store(expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[])
+        // {*/
+    pub fn mem_load(
+        addr: u32,
+        step: u64,
+        step_offset: u8,
+        bytes: u8,
+        mem_values: [u64; 2],
+    ) -> [u64; 7] {
+        [
+            MEMORY_LOAD_OP as u64,
+            addr as u64,
+            Self::main_step_to_mem_step(step, step_offset),
+            bytes as u64,
+            mem_values[0],
+            mem_values[1],
+            0,
+        ]
+    }
+    pub fn mem_write(
+        addr: u32,
+        step: u64,
+        step_offset: u8,
+        bytes: u8,
+        value: u64,
+        mem_values: [u64; 2],
+    ) -> [u64; 7] {
+        [
+            MEMORY_STORE_OP as u64,
+            addr as u64,
+            Self::main_step_to_mem_step(step, step_offset),
+            bytes as u64,
+            mem_values[0],
+            mem_values[1],
+            value,
+        ]
+    }
+    /*#[inline(always)]
+    pub fn main_step_to_mem_step(step: u64, step_offset: u8) -> u64 {
+        MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + step_offset as u64
+    }*/
 }
 impl fmt::Debug for MemAlignResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

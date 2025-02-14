@@ -21,11 +21,6 @@ pub struct MemAlignRomSM {
     multiplicity: Mutex<HashMap<u64, u64>>, // row_num -> multiplicity
 }
 
-#[derive(Debug)]
-pub enum ExtensionTableSMErr {
-    InvalidOpcode,
-}
-
 impl MemAlignRomSM {
     // const MY_NAME: &'static str = "MemAlignRom";
 

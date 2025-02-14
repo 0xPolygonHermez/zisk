@@ -59,7 +59,6 @@ pub struct MemModulePlannerConfig {
     pub air_id: usize,
     pub addr_index: usize,
     pub from_addr: u32,
-    pub to_addr: u32,
     pub rows: u32,
     pub consecutive_addr: bool,
     pub intermediate_step_reads: bool,
