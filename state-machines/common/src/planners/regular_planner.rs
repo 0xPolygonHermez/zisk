@@ -190,7 +190,7 @@ impl Planner for RegularPlanner {
                 ));
             }
         }
-        
+
         plan_result
     }
 }
