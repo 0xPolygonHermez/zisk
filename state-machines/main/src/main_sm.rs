@@ -373,11 +373,13 @@ impl MainSM {
             std.range_check(F::from_canonical_u32(*range), F::from_canonical_u32(1), range_id);
         }
     }
+
+    /// Debug method for the main state machine.
     pub fn debug<F: PrimeField>(_pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {
         // No debug information to display
     }
 
     pub fn build_counter() -> Box<dyn BusDeviceMetrics> {
-        Box::new(MainCounter::new(OPERATION_BUS_ID))
+        Box::new(MainCounter::new())
     }
 }

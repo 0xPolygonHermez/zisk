@@ -1,7 +1,23 @@
-//! The `ZiskExecutor` module provides the main logic for orchestrating the execution of the ZisK
-//! ROM program to generate the witness computation. It is responsible for managing state machines,
-//! planning instances, and computing witnesses for both main and secondary state machines,
-//! leveraging parallel processing for efficiency.
+//! The `ZiskExecutor` module serves as the core orchestrator for executing the ZisK ROM program
+//! and generating witness computations. It manages the execution of the state machines, from initial
+//! planning to witness computation, ensuring efficient parallel processing and resource
+//! utilization.
+//!
+//! This module handles both main and secondary state machines, integrating complex tasks such as
+//! planning, configuration, and witness generation into a streamlined process.
+//!
+//! ## Executor Workflow
+//! The execution is divided into distinct, sequential phases:
+//!
+//! 1. **Minimal Traces**: Rapidly process the ROM to collect minimal traces with minimal overhead.
+//! 2. **Counting**: Creates the metrics required for the secondary state machine instances.
+//! 3. **Planning**: Strategically plan the execution of instances to optimize resource usage.
+//! 4. **Instance Creation**: Creates the AIR instances for the main and secondary state machines.
+//! 5. **Witness Computation**: Compute the witnesses for all AIR instances, leveraging parallelism
+//!    for efficiency.
+//!
+//! By structuring these phases, the `ZiskExecutor` ensures high-performance execution while
+//! maintaining clarity and modularity in the computation process.
 
 use itertools::Itertools;
 use p3_field::PrimeField;
@@ -55,6 +71,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// The size in rows of the minimal traces
     const MIN_TRACE_SIZE: u64 = 1 << 18;
 
+    const MAX_NUM_STEPS: u64 = 1 << 32;
+
     /// Creates a new instance of the `ZiskExecutor`.
     ///
     /// # Arguments
@@ -92,8 +110,11 @@ impl<F: PrimeField> ZiskExecutor<F> {
         assert!(Self::MIN_TRACE_SIZE.is_power_of_two());
 
         // Settings for the emulator
-        let emu_options =
-            EmuOptions { trace_steps: Some(Self::MIN_TRACE_SIZE), ..EmuOptions::default() };
+        let emu_options = EmuOptions {
+            trace_steps: Some(Self::MIN_TRACE_SIZE),
+            max_steps: Self::MAX_NUM_STEPS,
+            ..EmuOptions::default()
+        };
 
         ZiskEmulator::compute_minimal_traces::<F>(
             &self.zisk_rom,
@@ -104,14 +125,11 @@ impl<F: PrimeField> ZiskExecutor<F> {
         .expect("Error during emulator execution")
     }
 
-    /// Creates main state machine instances based on the provided planning.
+    /// Adds main state machine instances to the proof context and assigns global IDs.
     ///
     /// # Arguments
-    /// * `pctx` - Proof context for managing air instances.
+    /// * `pctx` - Proof context.
     /// * `main_planning` - Planning information for main state machines.
-    ///
-    /// # Returns
-    /// A vector of `MainInstance` objects.
     fn assign_main_instances(&self, pctx: &ProofCtx<F>, main_planning: &mut [Plan]) {
         main_planning.iter_mut().for_each(|plan| {
             let (_, global_idx) = pctx.dctx_add_instance(
@@ -124,6 +142,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
         });
     }
 
+    /// Creates main state machine instances based on the main plannings.
+    ///
+    /// # Arguments
+    /// * `pctx` - Proof context.
+    ///
+    /// # Returns
+    /// A vector of `MainInstance` objects.
     fn create_main_instances(&self, pctx: &ProofCtx<F>) -> Vec<MainInstance> {
         let mut main_planning_guard = self.main_planning.write().unwrap();
         let main_planning = std::mem::take(&mut *main_planning_guard);
@@ -220,7 +245,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// creation.
     ///
     /// # Arguments
-    /// * `pctx` - A reference to the proof context, providing shared resources for configuration.
+    /// * `pctx` - Proof context.
     /// * `plannings` - A vector of vectors containing plans for each secondary state machine.
     ///
     /// # Panics
@@ -233,9 +258,14 @@ impl<F: PrimeField> ZiskExecutor<F> {
             .for_each(|(i, sm)| sm.configure_instances(pctx, &plannings[i]));
     }
 
+    /// Adds secondary state machine instances to the proof context and assigns global IDs.
+    ///
+    /// # Arguments
+    /// * `pctx` - Proof context.
+    /// * `main_planning` - Planning information for main state machines.
     #[allow(clippy::type_complexity)]
-    fn assign_secn_instances(&self, pctx: &ProofCtx<F>, plans: &mut [Vec<Plan>]) {
-        plans.iter_mut().for_each(|plans_by_sm| {
+    fn assign_secn_instances(&self, pctx: &ProofCtx<F>, secn_planning: &mut [Vec<Plan>]) {
+        secn_planning.iter_mut().for_each(|plans_by_sm| {
             plans_by_sm.iter_mut().for_each(move |plan| {
                 let global_id = pctx.dctx_add_instance_no_assign(
                     plan.airgroup_id,
@@ -249,16 +279,15 @@ impl<F: PrimeField> ZiskExecutor<F> {
         pctx.dctx_assign_instances();
     }
 
-    /// Creates secondary state machine instances based on their plans.
+    /// Creates secondary state machine instances based on the plans.
     ///
     /// # Arguments
-    /// * `pctx` - Proof context for managing air instances.
-    /// * `plans` - A vector of plans for each secondary state machine.
+    /// * `pctx` - Proof context.
     ///
     /// # Returns
     /// A tuple containing two vectors:
-    /// * A vector of table instances.
-    /// * A vector of non-table instances.
+    /// * A vector of table instances grouped by global ID.
+    /// * A vector of non-table instances grouped by global ID.
     #[allow(clippy::type_complexity)]
     fn create_secn_instances(
         &self,
@@ -296,8 +325,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// Expands and computes witnesses for main state machines.
     ///
     /// # Arguments
-    /// * `pctx` - Proof context for managing air instances.
-    /// * `min_traces` - Minimal traces obtained from the ROM execution.
+    /// * `pctx` - Proof context.
     /// * `main_instances` - Main state machine instances to compute witnesses for
     fn witness_main_instances(&self, pctx: &ProofCtx<F>, main_instances: Vec<MainInstance>) {
         let min_traces_guard = self.min_traces.read().unwrap();
@@ -319,8 +347,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// Expands and computes witnesses for secondary state machines.
     ///
     /// # Arguments
-    /// * `pctx` - Proof context for managing air instances.
-    /// * `min_traces` - Minimal traces obtained from the ROM execution.
+    /// * `pctx` - Proof context.
+    /// * `sctx` - Setup context.
     /// * `secn_instances` - Secondary state machine instances to compute witnesses for
     fn witness_secn_instances(
         &self,
@@ -362,7 +390,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// Computes and generates witnesses for secondary state machine instances of type `Table`.
     ///
     /// # Arguments
-    /// * `pctx` - Proof context for managing air instances.
+    /// * `pctx` - Proof context.
+    /// * `sctx` - Setup context.
     /// * `table_instances` - Secondary state machine table instances to compute witnesses for
     fn witness_tables(
         &self,
@@ -395,9 +424,11 @@ impl<F: PrimeField> ZiskExecutor<F> {
     }
 
     /// Groups secondary state machine instances by the chunk they need to process.
-    ///  # Arguments
+    ///
+    /// # Arguments
     /// * `min_traces` - Minimal traces
     /// * `secn_instances` - Secondary state machine instances to group.
+    ///
     /// # Returns
     /// A vector of vectors containing the indices of secondary state machine instances to execute
     /// for each chunk.
@@ -471,12 +502,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
     }
 
     /// Retrieves a data bus for managing collectors in secondary state machines.
-    ///   # Arguments
-    /// * `secn_instances` - A vector of secondary state machine instances
-    ///  * `chunks_to_execute` - A vector of chunk IDs to execute
     ///
-    ///   # Returns
-    ///  A vector of `DataBus` instances, each configured with collectors for the secondary state
+    /// # Arguments
+    /// * `secn_instances` - A vector of secondary state machine instances
+    /// * `chunks_to_execute` - A vector of chunk IDs to execute
+    ///
+    /// # Returns
+    /// A vector of `DataBus` instances, each configured with collectors for the secondary state
     fn get_data_bus_collectors(
         &self,
         secn_instances: &[(usize, Box<dyn Instance<F>>)],
@@ -552,10 +584,10 @@ impl<F: PrimeField> ZiskExecutor<F> {
 }
 
 impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
-    /// Executes the ZisK ROM program and computes all necessary witnesses.
+    /// Executes the ZisK ROM program and calculate the plans for main and secondary state machines.
     ///
     /// # Arguments
-    /// * `pctx` - Proof context for managing air instances and computation.
+    /// * `pctx` - Proof context.
     fn execute(&self, pctx: Arc<ProofCtx<F>>) {
         // Call emulate with these options
         let input_data = {
@@ -600,6 +632,12 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         *self.secn_planning.write().unwrap() = secn_planning;
     }
 
+    /// Computes the witness for the main and secondary state machines.
+    ///
+    /// # Arguments
+    /// * `stage` - The current stage id
+    /// * `pctx` - Proof context.
+    /// * `sctx` - Setup context.
     fn calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>) {
         if stage == 1 {
             // PHASE 6. WITNESS. Compute the witnesses
@@ -612,6 +650,11 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         }
     }
 
+    /// Debugs the main and secondary state machines.
+    ///
+    /// # Arguments
+    /// * `pctx` - Proof context.
+    /// * `sctx` - Setup context.
     fn debug(&self, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>) {
         let (table_instances, secn_instances) = self.create_secn_instances(&pctx);
 

@@ -25,8 +25,10 @@ pub trait Instance<F: PrimeField>: Send {
     /// Computes the witness for the instance based on the proof context.
     ///
     /// # Arguments
-    /// * `pctx` - The proof context containing necessary information for computation.
-    /// * `collectors` - A vector of input collectors to process and collect data for witness.
+    /// * `_pctx` - The proof context, unused in this implementation.
+    /// * `_sctx` - The setup context, unused in this implementation.
+    /// * `_collectors` - A vector of input collectors to process and collect data for witness,
+    ///   unused in this implementation
     ///
     /// # Returns
     /// An optional `AirInstance` object representing the computed witness.
@@ -61,6 +63,12 @@ pub trait Instance<F: PrimeField>: Send {
     fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         None
     }
+
+    /// Debugs the instance.
+    ///
+    /// # Arguments
+    /// * `_pctx` - The proof context, unused in this implementation.
+    /// * `_sctx` - The setup context, unused in this implementation.
     fn debug(&self, _pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {}
 }
 
@@ -140,6 +148,14 @@ macro_rules! table_instance {
         }
 
         impl data_bus::BusDevice<u64> for $InstanceName {
+            fn process_data(
+                &mut self,
+                bus_id: &BusId,
+                data: &[u64],
+            ) -> Option<Vec<(BusId, Vec<u64>)>> {
+                None
+            }
+
             fn bus_id(&self) -> Vec<BusId> {
                 vec![self.bus_id]
             }

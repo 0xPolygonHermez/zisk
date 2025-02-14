@@ -6,6 +6,12 @@ use data_bus::{BusDevice, BusId, PayloadType};
 
 use crate::Metrics;
 
+#[derive(Debug, PartialEq)]
+pub enum BusDeviceMode {
+    Counter,
+    InputGenerator,
+}
+
 /// The `BusDeviceMetrics` trait combines the functionalities of `BusDevice` and `Metrics`,
 /// enabling components to act as both bus devices and metric collectors.
 ///
