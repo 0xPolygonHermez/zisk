@@ -121,8 +121,7 @@ impl KeccakfSM {
                     let bit_pos = k + 64 * j;
                     let old_value = inputs_bits[slot][bit_pos];
                     let new_bit = (value >> k) & 1;
-                    inputs_bits[slot][bit_pos] = (old_value << 1) | new_bit;
-
+                    inputs_bits[slot][bit_pos] = (new_bit << slot_pos) | old_value;
                     // In even bits, we update bit1 and val1; in odd bits, we update bit2 and val2
                     let pos = initial_offset + slot_offset + slot_pos + chunk_offset;
                     if k % 2 == 0 {
