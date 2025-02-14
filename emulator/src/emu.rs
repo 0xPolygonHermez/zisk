@@ -1651,8 +1651,8 @@ impl<'a> Emu<'a> {
             reg_trace,
         );
 
-        if step_range_check.is_some() {
-            reg_trace.update_step_range_check(step_range_check.unwrap());
+        if let Some(step_range_check) = step_range_check {
+            reg_trace.update_step_range_check(step_range_check);
         }
 
         // #[cfg(feature = "sp")]
@@ -1666,7 +1666,7 @@ impl<'a> Emu<'a> {
             &self.ctx.inst_ctx,
             last_c,
             last_pc,
-            &reg_trace,
+            reg_trace,
         );
 
         // if self.ctx.inst_ctx.step > 8070 && self.ctx.inst_ctx.step < 8395 {
@@ -1732,7 +1732,7 @@ impl<'a> Emu<'a> {
             F::neg(F::from_canonical_u64((-(inst.b_offset_imm0 as i64)) as u64))
         };
 
-        let res = EmuFullTraceStep {
+        EmuFullTraceStep {
             a: [F::from_canonical_u64(a[0]), F::from_canonical_u64(a[1])],
             b: [F::from_canonical_u64(b[0]), F::from_canonical_u64(b[1])],
             c: [F::from_canonical_u64(c[0]), F::from_canonical_u64(c[1])],
@@ -1787,8 +1787,7 @@ impl<'a> Emu<'a> {
                 F::from_canonical_u64(store_prev_value[0]),
                 F::from_canonical_u64(store_prev_value[1]),
             ],
-        };
-        res
+        }
     }
 
     /// Returns if the emulation ended
@@ -1894,7 +1893,7 @@ impl<'a> Emu<'a> {
         if instruction.store_ra {
             (self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2) as u64
         } else {
-            self.ctx.inst_ctx.c as u64
+            self.ctx.inst_ctx.c
         }
     }
 

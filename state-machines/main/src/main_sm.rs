@@ -19,7 +19,6 @@ use pil_std_lib::Std;
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 use sm_common::{BusDeviceMetrics, InstanceCtx};
 
-use data_bus::OPERATION_BUS_ID;
 use sm_mem::{MemHelpers, MEMORY_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 
@@ -275,6 +274,7 @@ impl MainSM {
         let mut large_range_checks: Vec<u32> = vec![];
         let max_range = step_range_check.len() as u64;
         for (index, (_, _, reg_trace)) in fill_trace_outputs.iter().enumerate().skip(1) {
+            #[allow(clippy::needless_range_loop)]
             for reg_index in 0..REGS_IN_MAIN {
                 let reg_prev_mem_step = if fill_trace_outputs[index - 1].2.reg_steps[reg_index] == 0
                 {
@@ -318,6 +318,7 @@ impl MainSM {
         last_emu_reg_trace: &EmuRegTrace,
         reg_steps: &mut [u64; REGS_IN_MAIN],
     ) {
+        #[allow(clippy::needless_range_loop)]
         for reg_index in 0..REGS_IN_MAIN {
             let reg_prev_mem_step = if last_emu_reg_trace.reg_steps[reg_index] == 0 {
                 reg_steps[reg_index]

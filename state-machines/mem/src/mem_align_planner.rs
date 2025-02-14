@@ -21,6 +21,7 @@ pub struct MemAlignPlanner<'a> {
 pub struct MemAlignCheckPoint {
     pub skip: u32,
     #[cfg(feature = "trace_offset")]
+    #[allow(dead_code)]
     pub trace_offset: u32,
     pub count: u32,
     pub rows: u32,

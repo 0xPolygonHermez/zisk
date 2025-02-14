@@ -47,10 +47,10 @@ impl EmuRegTrace {
         }
     }
     pub fn trace_reg_access(&mut self, reg: usize, step: u64, slot: u8) {
-        debug_assert!(reg >= REGS_IN_MAIN_FROM && reg <= REGS_IN_MAIN_TO && slot < 3);
+        debug_assert!((REGS_IN_MAIN_FROM..=REGS_IN_MAIN_TO).contains(&reg) && slot < 3);
         let ireg = reg - REGS_IN_MAIN_FROM;
         // registry information about use to update later
-        let first_reference = self.first_step_uses[ireg] == None;
+        let first_reference = self.first_step_uses[ireg].is_none();
         if first_reference {
             self.first_step_uses[ireg] = Some(main_step_to_mem_step(step, slot));
         }
@@ -65,5 +65,10 @@ impl EmuRegTrace {
         }
         self.reg_prev_steps[slot as usize] = prev_reg_step;
         self.reg_steps[ireg] = current_reg_step;
+    }
+}
+impl Default for EmuRegTrace {
+    fn default() -> Self {
+        Self::new()
     }
 }
