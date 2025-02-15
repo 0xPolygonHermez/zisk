@@ -185,7 +185,59 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         addr2 = store_offset + store_ind * a[0];
     }
 
-    // regs on main
+    //
+    // Timestamp: main_step, mem_step
+    //
+    // A step of the main is like a timestamp. We use the concepts of main_step and mem_step.
+    // The mem_step is a smaller unit than the main_step because, in the same main_step, multiple
+    // memory operations can occur. We have 4 mem_steps for each main_step to do two reads and one
+    // write. These reads and writes could be unaligned, or we could call to a precompiled operation,
+    // and we need space for them (unaligned, precompiled make read and write).
+    //
+    // The conversion is like mem_step = 1 + main_step * 4 + mem_slot.
+    // The mem_slot is the position of operation inside de main_step, 0,1 for read, 2,3 for write.
+
+    //
+    // Registers on Main
+    //
+    // Move registers from memory to main, using a linked operations list to guarantee the
+    // integrity of register operations:
+    //
+    // - List must be ordered.
+    //
+    //   To check it, on each operation, we verify with a range check that the previous operation
+    //   is older than the current; this means the difference between current mem_step and
+    //   previous_reg_mem_step is greater than 1.
+    //
+    // - Link operations
+    //
+    //   We assume that the register on the previous mem_step has a previous value, and we prove
+    //   the register has a value in the current mem_step. The previous value and value are the
+    //   same for a read operation because they use the same column. To reduce number of columns,
+    //   we reuse the actual assume used by memory. For this reason really we use prove for previous
+    //   operation and assume for current operation.
+    //
+    // - Large Range Check
+    //
+    //   When we verify that prev_reg_mem_step is less than reg_mem_step, use a range check,
+    //   but this range check is limited to 2^24, but it isn't enough. For example, if we read
+    //   a register on the first row of an instance and read again at the same row but eight
+    //   instances after, the difference between range_checks was 4 * 8 * sizeo_of_instance.
+    //
+    //   For example: 4 * 8 * 2^21 = 2^26.
+    //
+    //   To avoid this situation, we sent to bus the read of all registers on the last mem_step
+    //   of the current instance (final reload); with this, we limit the máximum difference to
+    //   size_of_instance * 4, in this case 2^23 with instances of 2^21 rows, or 2^24 with
+    //   instances of 2^22 rows.
+    //
+    // - Initial and Final Cycle
+    //
+    //   In the global constraints, we prove (assume) that the initial values of registers were
+    //   zero. At each end of the instance, we send to the bus a proves and assumes for each
+    //   register, but in the last segment, we don't send the assume, only send provers, and
+    //   with this, we close the cycle.
+
     col witness a_reg_prev_mem_step;
     col witness b_reg_prev_mem_step;
     col witness store_reg_prev_mem_step;
