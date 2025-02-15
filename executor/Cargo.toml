@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 sm-common = { path = "../state-machines/common" }
 sm-main = { path = "../state-machines/main" }
+sm-rom = { path = "../state-machines/rom" }
+rom-merkle = { path = "../rom-merkle" }
 zisk-pil = { path = "../pil" }
 ziskemu = { path = "../emulator" }
 zisk-core = { path = "../core" }
