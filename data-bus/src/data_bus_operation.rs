@@ -94,11 +94,11 @@ impl OperationBusData<u64> {
         if inst.op_type == ZiskOperationType::Keccak {
             assert!(inst_ctx.precompiled.input_data.len() == 25);
             let mut data: OperationKeccakData<u64> = [0; OPERATION_BUS_KECCAKF_DATA_SIZE + 25];
-            data[0] = inst_ctx.step; // STEP
-            data[1] = inst.op as u64; // OP
-            data[2] = inst.op_type as u64; // OP_TYPE
-            data[3] = a; // A
-            data[4] = b; // B
+            data[0] = inst.op as u64; // OP
+            data[1] = inst.op_type as u64; // OP_TYPE
+            data[2] = a; // A
+            data[3] = b; // B
+            data[4] = inst_ctx.step; // STEP
             data[5..(5 + 25)].copy_from_slice(&inst_ctx.precompiled.input_data[..25]);
             ExtOperationData::OperationKeccakData(data)
         } else {
