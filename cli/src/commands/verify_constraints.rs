@@ -3,10 +3,8 @@ use clap::Parser;
 use colored::Colorize;
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
-use proofman_common::{
-    initialize_logger, json_to_debug_instances_map, DebugInfo, ProofOptions,
-};
-use rom_merkle::{DEFAULT_CACHE_PATH, gen_elf_hash, get_rom_blowup_factor, get_elf_bin_file_path};
+use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ProofOptions};
+use rom_merkle::{gen_elf_hash, get_elf_bin_file_path, get_rom_blowup_factor, DEFAULT_CACHE_PATH};
 use std::{collections::HashMap, fs, path::PathBuf};
 
 use crate::commands::Field;
@@ -80,7 +78,8 @@ impl ZiskVerifyConstraintsCmd {
 
         let blowup_factor = get_rom_blowup_factor(&self.proving_key);
 
-        let rom_bin_path = get_elf_bin_file_path(&self.rom.to_path_buf(), &default_cache_path, blowup_factor)?;
+        let rom_bin_path =
+            get_elf_bin_file_path(&self.rom.to_path_buf(), &default_cache_path, blowup_factor)?;
 
         if !rom_bin_path.exists() {
             let _ = gen_elf_hash(

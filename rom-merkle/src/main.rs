@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    let blowup_factor = get_rom_blowup_factor(&proving_key_path);
+    let blowup_factor = get_rom_blowup_factor(proving_key_path);
 
     let rom_bin_path =
         get_elf_bin_file_path(&rom_path.to_path_buf(), &default_cache_path, blowup_factor)?;

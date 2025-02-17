@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use blake3;
 use p3_goldilocks::Goldilocks;
 use proofman_common::{write_custom_commit_trace, GlobalInfo, ProofType, StarkInfo};
 use sm_rom::RomSM;
@@ -24,7 +23,7 @@ pub fn gen_elf_hash(
 
 pub fn get_elf_bin_file_path(
     elf_path: &PathBuf,
-    default_cache_path: &PathBuf,
+    default_cache_path: &Path,
     blowup_factor: u64,
 ) -> Result<PathBuf> {
     let elf_data =
@@ -37,8 +36,8 @@ pub fn get_elf_bin_file_path(
     Ok(default_cache_path.join(rom_cache_file_name))
 }
 
-pub fn get_rom_blowup_factor(proving_key_path: &PathBuf) -> u64 {
-    let global_info = GlobalInfo::new(&proving_key_path);
+pub fn get_rom_blowup_factor(proving_key_path: &Path) -> u64 {
+    let global_info = GlobalInfo::new(proving_key_path);
     let (airgroup_id, air_id) = global_info.get_air_id("Zisk", "Rom");
     let setup_path = global_info.get_air_setup_path(airgroup_id, air_id, &ProofType::Basic);
     let stark_info_path = setup_path.display().to_string() + ".starkinfo.json";

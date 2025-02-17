@@ -1,5 +1,5 @@
-pub mod toolchain;
 pub mod commands;
+pub mod toolchain;
 
 use anyhow::{Context, Result};
 use futures::StreamExt;
