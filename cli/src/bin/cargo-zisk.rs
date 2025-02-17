@@ -1,9 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use cargo_zisk::{
-    commands::{ZiskBuild, ZiskProve, ZiskRun, ZiskSdk, ZiskVerifyConstraintsCmd},
+    commands::{ZiskBuild, ZiskProve, ZiskRun, ZiskSdk, ZiskVerifyConstraints},
     ZISK_VERSION_MESSAGE,
 };
 use clap::Parser;
+use proofman_cli::commands::verify_stark::VerifyStark;
 
 // Main enum defining cargo subcommands.
 #[derive(Parser)]
@@ -19,7 +20,8 @@ pub enum Cargo {
     Run(ZiskRun),
     Build(ZiskBuild),
     Prove(ZiskProve),
-    VerifyConstraints(ZiskVerifyConstraintsCmd),
+    VerifyConstraints(ZiskVerifyConstraints),
+    VerifyStark(VerifyStark),
 }
 
 fn main() -> Result<()> {
@@ -41,6 +43,9 @@ fn main() -> Result<()> {
         }
         Cargo::VerifyConstraints(cmd) => {
             cmd.run().context("Error executing VerifyConstraints command")?;
+        }
+        Cargo::VerifyStark(cmd) => {
+            cmd.run().map_err(|e| anyhow!("Error executing VerifyStark command: {}", e))?;
         }
     }
 

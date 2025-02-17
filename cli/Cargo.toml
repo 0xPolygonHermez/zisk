@@ -38,3 +38,7 @@ indicatif = "0.17.8"
 futures = "0.3.30"
 yansi = "1.0.1"
 
+#proofman-cli = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pil2-stark-build" }
+proofman-cli = { path = "../../pil2-proofman/cli" }
+proofman-starks-lib-c = { path = "../../pil2-proofman/provers/starks-lib-c" }
+
