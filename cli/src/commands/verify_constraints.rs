@@ -3,9 +3,11 @@ use clap::Parser;
 use colored::Colorize;
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
-use proofman_common::ProofOptions;
-use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo};
-use std::path::PathBuf;
+use proofman_common::{
+    initialize_logger, json_to_debug_instances_map, DebugInfo, ProofOptions,
+};
+use rom_merkle::{DEFAULT_CACHE_PATH, gen_elf_hash, get_rom_blowup_factor, get_elf_bin_file_path};
+use std::{collections::HashMap, fs, path::PathBuf};
 
 use crate::commands::Field;
 
@@ -21,11 +23,11 @@ pub struct ZiskVerifyConstraintsCmd {
     /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
     #[clap(short, long)]
-    pub rom: Option<PathBuf>,
+    pub rom: PathBuf,
 
     /// Inputs path
     #[clap(short = 'i', long)]
-    pub input_data: Option<PathBuf>,
+    pub input_data: PathBuf,
 
     /// Public inputs path
     #[clap(short = 'p', long)]
@@ -44,6 +46,9 @@ pub struct ZiskVerifyConstraintsCmd {
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
+
+    #[clap(short = 'c', long)]
+    pub default_cache: Option<PathBuf>,
 }
 
 impl ZiskVerifyConstraintsCmd {
@@ -61,16 +66,46 @@ impl ZiskVerifyConstraintsCmd {
             }
         };
 
+        let default_cache_path =
+            self.default_cache.clone().unwrap_or_else(|| PathBuf::from(DEFAULT_CACHE_PATH));
+
+        if !default_cache_path.exists() {
+            if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
+                if e.kind() != std::io::ErrorKind::AlreadyExists {
+                    // prevent collision in distributed mode
+                    panic!("Failed to create the proofs directory: {:?}", e);
+                }
+            }
+        }
+
+        let blowup_factor = get_rom_blowup_factor(&self.proving_key);
+
+        let rom_bin_path = get_elf_bin_file_path(&self.rom.to_path_buf(), &default_cache_path, blowup_factor)?;
+
+        if !rom_bin_path.exists() {
+            let _ = gen_elf_hash(
+                &self.rom.clone(),
+                rom_bin_path.clone().to_str().unwrap(),
+                blowup_factor,
+                false,
+            )
+            .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
+        }
+
+        let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
+        custom_commits_map.insert("rom".to_string(), rom_bin_path);
+
         match self.field {
             Field::Goldilocks => {
                 ProofMan::<Goldilocks>::generate_proof(
                     self.witness_lib.clone(),
-                    self.rom.clone(),
+                    Some(self.rom.clone()),
                     self.public_inputs.clone(),
-                    self.input_data.clone(),
+                    Some(self.input_data.clone()),
                     self.proving_key.clone(),
                     PathBuf::new(),
-                    ProofOptions::new(true, self.verbose.into(), false, false, debug_info),
+                    custom_commits_map,
+                    ProofOptions::new(true, self.verbose.into(), false, false, false, debug_info),
                 )
                 .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
             }

@@ -18,6 +18,7 @@ vergen = { version = "8", default-features = false, features = [
 proofman = { workspace = true }
 proofman-common = { workspace = true }
 
+rom-merkle = { path = "../rom-merkle" }
 p3-goldilocks = { workspace = true }
 colored = { workspace = true }
 
