@@ -3,9 +3,10 @@
 //! This state machine is responsible for handling Keccakf operations, calculating table rows,
 //! and managing multiplicity tables for Keccakf table traces.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::{AtomicU64, Ordering}, Arc};
 
 use p3_field::Field;
+use sm_common::create_atomic_vec;
 use zisk_pil::KeccakfTableTrace;
 
 use crate::keccakf_constants::*;
@@ -26,7 +27,7 @@ pub enum KeccakfTableGateOp {
 /// rows.
 pub struct KeccakfTableSM {
     /// The multiplicity table, shared across threads.
-    multiplicity: Mutex<Vec<u64>>,
+    multiplicity: Vec<AtomicU64>,
 }
 
 impl KeccakfTableSM {
@@ -35,7 +36,7 @@ impl KeccakfTableSM {
     /// # Returns
     /// An `Arc`-wrapped instance of `KeccakfTableSM`.
     pub fn new<F: Field>() -> Arc<Self> {
-        Arc::new(Self { multiplicity: Mutex::new(vec![0; KeccakfTableTrace::<F>::NUM_ROWS]) })
+        Arc::new(Self { multiplicity: create_atomic_vec(KeccakfTableTrace::<usize>::NUM_ROWS) })
     }
 
     /// Processes a slice of input data and updates the multiplicity table.
@@ -43,11 +44,8 @@ impl KeccakfTableSM {
     /// # Arguments
     /// * `input` - A slice of `u64` values representing the input data.
     pub fn process_slice(&self, input: &[u64]) {
-        // Create the trace vector
-        let mut multiplicity = self.multiplicity.lock().unwrap();
-
         for (i, val) in input.iter().enumerate() {
-            multiplicity[i] += *val;
+            self.multiplicity[i].fetch_add(*val, Ordering::Relaxed);
         }
     }
 
@@ -55,9 +53,8 @@ impl KeccakfTableSM {
     ///
     /// # Returns
     /// A vector containing the multiplicity table.
-    pub fn detach_multiplicity(&self) -> Vec<u64> {
-        let mut multiplicity = self.multiplicity.lock().unwrap();
-        std::mem::take(&mut *multiplicity)
+    pub fn detach_multiplicity(&self) -> &[AtomicU64] {
+        &self.multiplicity
     }
 
     /// Calculates the table row offset based on the provided parameters.
