@@ -11,7 +11,6 @@ use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
-use sm_std::StdSM;
 use std::sync::Arc;
 use zisk_core::Riscv2zisk;
 
@@ -51,7 +50,6 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib {
 
         // Step 3: Initialize the secondary state machines
         let std = Std::new(wcm.clone());
-        let std_sm = StdSM::new(std.clone());
         let rom_sm = RomSM::new(zisk_rom.clone());
         let binary_sm = BinarySM::new(std.clone());
         let arith_sm = ArithSM::new();
@@ -63,7 +61,6 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib {
         // Step 5: Create the executor and register the secondary state machines
         let mut executor =
             ZiskExecutor::new(wcm.get_input_data_path(), wcm.get_rom_path(), zisk_rom);
-        executor.register_sm(std_sm);
         executor.register_sm(mem_sm);
         executor.register_sm(rom_sm);
         executor.register_sm(binary_sm);

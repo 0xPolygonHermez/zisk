@@ -2,16 +2,20 @@
 //!
 //! This state machine processes binary-related operations.
 
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 
 use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM};
 use data_bus::{ExtOperationData, OperationBusData, OperationData};
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
+use rayon::prelude::*;
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::{BinaryTableTrace, BinaryTrace, BinaryTraceRow};
+use zisk_pil::{BinaryTrace, BinaryTraceRow};
 
 const BYTES: usize = 8;
 const HALF_BYTES: usize = BYTES / 2;
@@ -139,7 +143,7 @@ impl BinaryBasicSM {
     #[inline(always)]
     pub fn process_slice<F: PrimeField>(
         input: &OperationData<u64>,
-        multiplicity: &mut [u64],
+        multiplicity: &[AtomicU64],
     ) -> BinaryTraceRow<F> {
         // Create an empty trace
         let mut row: BinaryTraceRow<F> = Default::default();
@@ -252,7 +256,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
                 }
             }
             MAXU_OP | MAXUW_OP | MAX_OP | MAXW_OP => {
@@ -319,7 +323,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
                 }
             }
             LT_ABS_NP_OP => {
@@ -375,7 +379,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
                 }
             }
             LT_ABS_PN_OP => {
@@ -431,7 +435,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
                 }
             }
             LTU_OP | LTUW_OP | LT_OP | LTW_OP => {
@@ -493,7 +497,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
                 }
             }
             GT_OP => {
@@ -546,7 +550,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
                 }
             }
             EQ_OP | EQW_OP => {
@@ -593,7 +597,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
                 }
             }
             ADD_OP | ADDW_OP => {
@@ -638,7 +642,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
                 }
             }
             SUB_OP | SUBW_OP => {
@@ -682,7 +686,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
                 }
             }
             LEU_OP | LEUW_OP | LE_OP | LEW_OP => {
@@ -735,7 +739,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
                 }
             }
             AND_OP => {
@@ -766,7 +770,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
                 }
             }
             OR_OP => {
@@ -797,7 +801,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
                 }
             }
             XOR_OP => {
@@ -829,7 +833,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    multiplicity[row as usize] += 1;
+                    multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
                 }
             }
             _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={}", opcode),
@@ -901,16 +905,25 @@ impl BinaryBasicSM {
             total_inputs as f64 / num_rows as f64 * 100.0
         );
 
-        let mut multiplicity_table = vec![0u64; BinaryTableTrace::<F>::NUM_ROWS];
-
-        let mut idx = 0;
-        for inner_inputs in inputs {
-            for input in inner_inputs {
-                let row = Self::process_slice(input, &mut multiplicity_table);
-                binary_trace[idx] = row;
-                idx += 1;
-            }
+        // Split the binary_e_trace.buffer into slices matching each inner vector’s length.
+        let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
+        let mut slices = Vec::with_capacity(inputs.len());
+        let mut rest = binary_trace.buffer.as_mut_slice();
+        for size in sizes {
+            let (head, tail) = rest.split_at_mut(size);
+            slices.push(head);
+            rest = tail;
         }
+
+        // Process each slice in parallel, and use the corresponding inner input from `inputs`.
+        slices.into_par_iter().enumerate().for_each(|(i, slice)| {
+            slice.iter_mut().enumerate().for_each(|(j, cell)| {
+                *cell = Self::process_slice(
+                    &inputs[i][j],
+                    self.binary_basic_table_sm.detach_multiplicity(),
+                );
+            });
+        });
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
@@ -920,9 +933,9 @@ impl BinaryBasicSM {
             ..Default::default()
         };
 
-        binary_trace.buffer[idx..num_rows].fill(padding_row);
+        binary_trace.buffer[total_inputs..num_rows].fill(padding_row);
 
-        let padding_size = num_rows - idx;
+        let padding_size = num_rows - total_inputs;
         for last in 0..2 {
             let multiplicity = (7 - 6 * last as u64) * padding_size as u64;
             let row = BinaryBasicTableSM::calculate_table_row(
@@ -933,10 +946,8 @@ impl BinaryBasicSM {
                 last as u64,
                 0,
             );
-            multiplicity_table[row as usize] += multiplicity;
+            self.binary_basic_table_sm.update_multiplicity(row, multiplicity);
         }
-
-        self.binary_basic_table_sm.process_slice(&multiplicity_table);
 
         AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))
     }
