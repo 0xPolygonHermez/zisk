@@ -3,7 +3,10 @@
 //! This state machine handles binary extension-related operations, computes traces, and manages
 //! range checks and multiplicities for table rows based on the operations provided.
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 
 use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM};
 use data_bus::{OperationBusData, OperationData};
@@ -12,8 +15,9 @@ use num_bigint::BigInt;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
+use rayon::prelude::*;
 use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryExtensionTraceRow};
+use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow};
 
 // Constants for bit masks and operations.
 const MASK_32: u64 = 0xFFFFFFFF;
@@ -41,6 +45,8 @@ pub struct BinaryExtensionSM<F: PrimeField> {
 
     /// Reference to the Binary Extension Table State Machine.
     binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
+
+    range_id: usize,
 }
 
 impl<F: PrimeField> BinaryExtensionSM<F> {
@@ -59,7 +65,9 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         std: Arc<Std<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
     ) -> Arc<Self> {
-        Arc::new(Self { std, binary_extension_table_sm })
+        let range_id = std.get_range(BigInt::from(0), BigInt::from(0xFFFFFF), None);
+
+        Arc::new(Self { std, binary_extension_table_sm, range_id })
     }
 
     /// Determines if the given opcode represents a shift operation.
@@ -104,9 +112,9 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
     /// # Returns
     /// A `BinaryExtensionTraceRow` representing the processed trace.
     pub fn process_slice(
+        &self,
         operation: &OperationData<u64>,
-        multiplicity: &mut [u64],
-        range_check: &mut HashMap<u64, u64>,
+        multiplicity: &[AtomicU64],
     ) -> BinaryExtensionTraceRow<F> {
         // Get the opcode
         let op = OperationBusData::get_op(operation);
@@ -304,12 +312,12 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                 *a_byte as u64,
                 in2_low,
             );
-            multiplicity[row as usize] += 1;
+            multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
         }
 
         // Store the range check
         if op_is_shift {
-            *range_check.entry(in2_0).or_insert(0) += 1;
+            self.std.range_check(F::from_canonical_u64(in2_0), F::one(), self.range_id);
         }
 
         // Return successfully
@@ -339,17 +347,25 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
             total_inputs as f64 / num_rows as f64 * 100.0
         );
 
-        let mut multiplicity_table = vec![0u64; BinaryExtensionTableTrace::<F>::NUM_ROWS];
-        let mut range_check: HashMap<u64, u64> = HashMap::new();
-
-        let mut idx = 0;
-        for inner_inputs in inputs {
-            for input in inner_inputs {
-                let row = Self::process_slice(input, &mut multiplicity_table, &mut range_check);
-                binary_e_trace[idx] = row;
-                idx += 1;
-            }
+        // Split the binary_e_trace.buffer into slices matching each inner vector’s length.
+        let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
+        let mut slices = Vec::with_capacity(inputs.len());
+        let mut rest = binary_e_trace.buffer.as_mut_slice();
+        for size in sizes {
+            let (head, tail) = rest.split_at_mut(size);
+            slices.push(head);
+            rest = tail;
         }
+
+        // Process each slice in parallel, and use the corresponding inner input from `inputs`.
+        slices.into_par_iter().enumerate().for_each(|(i, slice)| {
+            slice.iter_mut().enumerate().for_each(|(j, cell)| {
+                *cell = self.process_slice(
+                    &inputs[i][j],
+                    self.binary_extension_table_sm.detach_multiplicity(),
+                );
+            });
+        });
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
@@ -358,9 +374,9 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
             ..Default::default()
         };
 
-        binary_e_trace.buffer[idx..num_rows].fill(padding_row);
+        binary_e_trace.buffer[total_inputs..num_rows].fill(padding_row);
 
-        let padding_size = num_rows - idx;
+        let padding_size = num_rows - total_inputs;
         for i in 0..8 {
             let multiplicity = padding_size as u64;
             let row = BinaryExtensionTableSM::calculate_table_row(
@@ -369,18 +385,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
                 0,
                 0,
             );
-            multiplicity_table[row as usize] += multiplicity;
-        }
-
-        self.binary_extension_table_sm.process_slice(&multiplicity_table);
-
-        let range_id = self.std.get_range(BigInt::from(0), BigInt::from(0xFFFFFF), None);
-        for (value, multiplicity) in &range_check {
-            self.std.range_check(
-                F::from_canonical_u64(*value),
-                F::from_canonical_u64(*multiplicity),
-                range_id,
-            );
+            self.binary_extension_table_sm.update_multiplicity(row, multiplicity);
         }
 
         AirInstance::new_from_trace(FromTrace::new(&mut binary_e_trace))
