@@ -99,7 +99,6 @@ impl ZiskProve {
             get_elf_bin_file_path(&self.elf.to_path_buf(), &default_cache_path, blowup_factor)?;
 
         if !rom_bin_path.exists() {
-            println!("YUP");
             let _ = gen_elf_hash(
                 &self.elf.clone(),
                 rom_bin_path.clone().to_str().unwrap(),
