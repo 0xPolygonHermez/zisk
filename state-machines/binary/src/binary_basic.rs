@@ -8,7 +8,7 @@ use std::sync::{
 };
 
 use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM};
-use data_bus::{OperationBusData, OperationData};
+use data_bus::{ExtOperationData, OperationBusData, OperationData};
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
@@ -149,9 +149,9 @@ impl BinaryBasicSM {
         let mut row: BinaryTraceRow<F> = Default::default();
 
         // Execute the opcode
-        let opcode = OperationBusData::get_op(input);
-        let a = OperationBusData::get_a(input);
-        let b = OperationBusData::get_b(input);
+        let opcode = OperationBusData::get_op(&ExtOperationData::OperationData(*input));
+        let a = OperationBusData::get_a(&ExtOperationData::OperationData(*input));
+        let b = OperationBusData::get_b(&ExtOperationData::OperationData(*input));
 
         let (c, _) = Self::execute(opcode, a, b);
 

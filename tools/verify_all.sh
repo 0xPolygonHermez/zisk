@@ -2,7 +2,7 @@
 
 # Check that at least one argument has been passed
 if [ "$#" -lt 1 ]; then
-    echo "Usage: $0 <dirname> [-l/--list -b/--begin <first_file> -e/--end <last_file> -d/--debug]"
+    echo "Usage: $0 <dirname|elf_file> [-l|--list] [-b|--begin <first_file>] [-e|--end <last_file>] [-d|--debug] [-i|--inputs <input_dir|input_file>]"
     exit 1
 fi
 
@@ -28,37 +28,21 @@ fi
 shift
 
 # Parse optional arguments
-LIST=0
-BEGIN=0
-END=0
-DEBUG=0
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        -l|--list) LIST=1 ;;
-        -b|--begin) BEGIN=$2; shift; ;;
-        -e|--end) END=$2; shift; ;;
-        -d|--debug) DEBUG=1 ;;
+        -l|--list) list=1 ;;
+        -b|--begin) begin=$2; shift ;;
+        -e|--end) end=$2; shift ;;
+        -d|--debug) debug=1 ;;
+        -i|--inputs) input_path="$2"; shift ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
 done
 
-ELF_FILES=`find $DIR -type f -name my.elf |sort`
-
-# List files with their corresponding index
-COUNTER=0
-for ELF_FILE in $ELF_FILES
-do
-    COUNTER=$((COUNTER+1))
-    echo "File ${COUNTER}: ${ELF_FILE}"
-done
-
-# Log begin and end options, if provided
-if [ $BEGIN -ne 0 ]; then
-    echo "Beginning at file ${BEGIN}";
-fi
-if [ $END -ne 0 ]; then
-    echo "Ending at file ${END}";
+# Ensure the default input file exists
+if [[ ! -f $default_input ]]; then
+    touch "$default_input"
 fi
 
 # Function to verify an ELF file with one or more input files
@@ -70,9 +54,9 @@ verify_elf_with_inputs() {
 
     echo "Verifying ELF file: $elf_file"
 
-# Create an empty input file
-INPUT_FILE="/tmp/empty_input.bin"
-touch $INPUT_FILE
+    if [[ -z $input_path ]]; then
+        # No input path provided, use the default input file
+        echo "Using default input file: $default_input"
 
         if [[ $debug -eq 1 ]]; then
             # Run with debug flag
@@ -169,16 +153,50 @@ if [[ $elf_mode -eq 0 ]]; then
         echo "Ending at file $end"
     fi
 
-    # Varify the contraints for this file
-    echo ""
-    echo "Verifying file ${COUNTER} of ${MAX_COUNTER}: ${ELF_FILE}"
-
-    if [ $DEBUG -eq 1 ]; then
-        # Run with debug flag
-        (cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom $ELF_FILE -i $INPUT_FILE --proving-key ../zisk/build/provingKey -d)
-    else
-        # Run without debug flag
-        (cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom $ELF_FILE -i $INPUT_FILE --proving-key ../zisk/build/provingKey)
+    # If just listing, exit
+    if [ $list -eq 1 ]; then
+        echo "Exiting after listing files"
+        exit 0
     fi
-done
 
+    # Record the number of files
+    max_counter=$counter
+
+    # For all ELF files
+    counter=0
+    for elf_file in $elf_files; do
+        counter=$((counter + 1))
+
+        # Skip files lower than begin
+        if [ $begin -ne 0 ] && [ $counter -lt $begin ]; then
+            continue
+        fi
+
+        # Skip files higher than end
+        if [ $end -ne 0 ] && [ $counter -gt $end ]; then
+            continue
+        fi
+
+        echo ""
+        echo "Verifying file $counter of $max_counter: $elf_file"
+
+        if [ $debug -eq 1 ]; then
+            # Run with debug flag
+            (cargo build --release && cd ../pil2-proofman; \
+            cargo run --release --bin proofman-cli verify-constraints \
+            --witness-lib ../zisk/target/release/libzisk_witness.so \
+            --rom "$elf_file" -i "$default_input" \
+            --proving-key ../zisk/build/provingKey -d)
+        else
+            # Run without debug flag
+            (cargo build --release && cd ../pil2-proofman; \
+            cargo run --release --bin proofman-cli verify-constraints \
+            --witness-lib ../zisk/target/release/libzisk_witness.so \
+            --rom "$elf_file" -i "$default_input" \
+            --proving-key ../zisk/build/provingKey)
+        fi
+    done
+else
+    # Logic for single ELF file with input directory or file
+    verify_elf_with_inputs "$elf_file" "$input_path"
+fi

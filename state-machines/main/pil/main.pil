@@ -179,16 +179,20 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         addr2 = store_offset + store_ind * a[0];
     }
 
+    const expr a_mem_step = main_step_to_mem_step(STEP, 0);
+    const expr b_mem_step = main_step_to_mem_step(STEP, 1);
+    const expr store_mem_step = main_step_to_mem_step(STEP, 2);
+
+    // Mem.load
     // memory function to define the first memory read slot.
     mem_load(sel: a_src_mem,
-             step: STEP,
+             mem_step: a_mem_step,
              addr: addr0,
              value: a);
 
     //memory function to define the second memory read slot.
     mem_load(sel: sel_mem_b,
-             step: STEP,
-             step_offset: 1,
+             mem_step: b_mem_step,
              bytes: b_src_ind * (ind_width - 8) + 8,
              addr: addr1,
              value: b);
@@ -200,8 +204,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     // memory function to define the first memory store slot (after memory reads)
     mem_store(sel: store_mem + store_ind,
-              step: STEP,
-              step_offset: 2,
+              mem_step: store_mem_step,
               bytes: store_ind * (ind_width - 8) + 8,
               addr: addr2,
               value: store_value);

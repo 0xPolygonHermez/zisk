@@ -506,6 +506,9 @@ impl<F: PrimeField> ZiskExecutor<F> {
     }
 
     /// Retrieves a data bus for managing collectors in secondary state machines.
+    ///   # Arguments
+    /// * `secn_instances` - A vector of secondary state machine instances
+    ///  * `chunks_to_execute` - A vector of chunk IDs to execute
     ///
     /// # Arguments
     /// * `secn_instances` - A vector of secondary state machine instances
@@ -596,7 +599,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         // Call emulate with these options
         let input_data = {
             // Read inputs data from the provided inputs path
-            let path = PathBuf::from(self.input_data_path.clone().unwrap().display().to_string());
+            let path = PathBuf::from(self.input_data_path.as_ref().unwrap().display().to_string());
             fs::read(path).expect("Could not read inputs file")
         };
 

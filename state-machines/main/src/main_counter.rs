@@ -2,7 +2,7 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::PubOut` instructions.
 
-use data_bus::{BusDevice, BusId, OperationBusData, OperationData, OPERATION_BUS_ID};
+use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OPERATION_BUS_ID};
 use sm_common::Metrics;
 use zisk_core::ZiskOperationType;
 
@@ -62,7 +62,7 @@ impl BusDevice<u64> for MainCounter {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
-        let data: OperationData<u64> = data.try_into().ok()?;
+        let data: ExtOperationData<u64> = data.try_into().ok()?;
 
         if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::PubOut as u32 {
             return None;
