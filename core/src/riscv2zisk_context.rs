@@ -625,7 +625,7 @@ impl Riscv2ZiskContext<'_> {
         zib.src_a("imm", 0, false);
         zib.src_b("mem", MTVEC, false);
         zib.op("copyb").unwrap();
-        //zib.store_ra("reg", 1, false);
+        zib.store_ra("reg", 1, false);
         zib.set_pc();
         zib.j(0, 4);
         zib.verbose("ecall");
@@ -1664,7 +1664,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.src_a("reg", 17, false);
     zib.src_b("imm", CAUSE_EXIT, false);
     zib.op("eq").unwrap();
-    zib.j(-36, 8);
+    zib.j(-36, 4);
     zib.verbose(&format!("beq r17, {} # Check if is exit, jump to output, then end", CAUSE_EXIT));
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
