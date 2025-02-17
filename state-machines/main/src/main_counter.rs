@@ -2,7 +2,7 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::PubOut` instructions.
 
-use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData};
+use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OPERATION_BUS_ID};
 use sm_common::Metrics;
 use zisk_core::ZiskOperationType;
 
@@ -12,31 +12,32 @@ use zisk_core::ZiskOperationType;
 /// It tracks specific operation types (`ZiskOperationType`) and updates counters for each
 /// accepted operation type whenever data is processed on the bus.
 pub struct MainCounter {
-    /// The connected bus ID.
-    bus_id: BusId,
-
     /// Public outputs for the main state machine.
     pub publics: Vec<(u64, u32)>,
+}
+
+impl Default for MainCounter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MainCounter {
     /// Creates a new instance of `MainCounter`.
     ///
     /// # Arguments
-    /// * `bus_id` - The ID of the bus to which this counter is connected.
     /// * `op_type` - A vector of `ZiskOperationType` instructions to monitor.
     ///
     /// # Returns
     /// A new `MainCounter` instance.
-    pub fn new(bus_id: BusId) -> Self {
-        Self { bus_id, publics: Vec::new() }
+    pub fn new() -> Self {
+        Self { publics: Vec::new() }
     }
 }
 
 impl Metrics for MainCounter {
-    fn measure(&mut self, _bus_id: &BusId, _data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
-        vec![]
-    }
+    #[inline(always)]
+    fn measure(&mut self, _data: &[u64]) {}
 
     /// Provides a dynamic reference for downcasting purposes.
     ///
@@ -58,18 +59,17 @@ impl BusDevice<u64> for MainCounter {
     /// A tuple where:
     /// - The first element indicates whether processing should continue.
     /// - The second element contains derived inputs to be sent back to the bus.
-    #[inline]
-    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
-        let input: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-        let op_type = OperationBusData::get_op_type(&input);
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        debug_assert!(*bus_id == OPERATION_BUS_ID);
 
-        if op_type as u32 != ZiskOperationType::PubOut as u32 {
+        let data: ExtOperationData<u64> = data.try_into().ok()?;
+
+        if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::PubOut as u32 {
             return None;
         }
 
-        let pub_index = 2 * OperationBusData::get_a(&input);
-        let pub_value = OperationBusData::get_b(&input);
+        let pub_index = 2 * OperationBusData::get_a(&data);
+        let pub_value = OperationBusData::get_b(&data);
 
         let values = [(pub_value & 0xFFFFFFFF) as u32, ((pub_value >> 32) & 0xFFFFFFFF) as u32];
 
@@ -84,7 +84,7 @@ impl BusDevice<u64> for MainCounter {
     /// # Returns
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
+        vec![OPERATION_BUS_ID]
     }
 
     /// Provides a dynamic reference for downcasting purposes.

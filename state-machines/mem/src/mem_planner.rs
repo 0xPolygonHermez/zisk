@@ -1,14 +1,13 @@
 use rayon::prelude::*;
-use sm_common::Metrics;
 use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "debug_mem")]
 use crate::MemDebug;
+use sm_common::{BusDeviceMetrics, ChunkId, Metrics, Plan, Planner};
 
 #[cfg(feature = "debug_mem")]
 use crate::MemHelpers;
 
-use sm_common::{BusDeviceMetrics, ChunkId, Plan, Planner};
 use zisk_pil::{
     InputDataTrace, MemTrace, RomDataTrace, INPUT_DATA_AIR_IDS, MEM_AIR_IDS, ROM_DATA_AIR_IDS,
     ZISK_AIRGROUP_ID,

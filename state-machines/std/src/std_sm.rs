@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use pil_std_lib::Std;
-use sm_common::{BusDeviceMetrics, ComponentBuilder, DummyCounter, Instance, InstanceCtx, Planner};
+use sm_common::{BusDeviceMetrics, ComponentBuilder, DummyCounter, InstanceCtx, Planner};
 
 use crate::{StdInstance, StdPlanner};
 
@@ -58,7 +58,7 @@ impl<F: PrimeField> ComponentBuilder<F> for StdSM<F> {
     ///
     /// # Returns
     /// A boxed implementation of `StdInstance`.
-    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
+    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn sm_common::Instance<F>> {
         Box::new(StdInstance::new(self.std.clone(), ictx))
     }
 }

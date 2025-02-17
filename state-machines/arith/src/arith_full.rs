@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crate::{
     ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
 };
-use data_bus::{OperationBusData, OperationData, PayloadType};
+use data_bus::{ExtOperationData, OperationBusData, OperationData, PayloadType};
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
@@ -84,10 +84,9 @@ impl ArithFullSM {
         let mut idx = 0;
         for inner_inputs in inputs {
             for input in inner_inputs {
-                let opcode =
-                    OperationBusData::get_op(&data_bus::ExtOperationData::OperationData(*input));
-                let a = OperationBusData::get_a(&data_bus::ExtOperationData::OperationData(*input));
-                let b = OperationBusData::get_b(&data_bus::ExtOperationData::OperationData(*input));
+                let opcode = OperationBusData::get_op(&ExtOperationData::OperationData(*input));
+                let a = OperationBusData::get_a(&ExtOperationData::OperationData(*input));
+                let b = OperationBusData::get_b(&ExtOperationData::OperationData(*input));
 
                 aop.calculate(opcode, a, b);
                 let mut t: ArithTraceRow<F> = Default::default();
@@ -228,12 +227,12 @@ impl ArithFullSM {
     }
 
     /// Generates binary inputs for operations requiring additional validation (e.g., division).
+    #[inline(always)]
     pub fn generate_inputs(input: &OperationData<u64>) -> Vec<Vec<PayloadType>> {
         let mut aop = ArithOperation::new();
-        let opcode = OperationBusData::get_op(&data_bus::ExtOperationData::OperationData(*input));
-        let a = OperationBusData::get_a(&data_bus::ExtOperationData::OperationData(*input));
-        let b = OperationBusData::get_b(&data_bus::ExtOperationData::OperationData(*input));
-        let step = OperationBusData::get_step(&data_bus::ExtOperationData::OperationData(*input));
+        let opcode = OperationBusData::get_op(&ExtOperationData::OperationData(*input));
+        let a = OperationBusData::get_a(&ExtOperationData::OperationData(*input));
+        let b = OperationBusData::get_b(&ExtOperationData::OperationData(*input));
 
         aop.calculate(opcode, a, b);
 
@@ -257,7 +256,6 @@ impl ArithFullSM {
 
             // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do this!
             vec![OperationBusData::from_values(
-                step,
                 opcode,
                 ZiskOperationType::Binary as u64,
                 aop.d[0]

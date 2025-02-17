@@ -5,7 +5,10 @@
 //! execution plans.
 
 use crate::BinaryBasicSM;
-use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OperationData, PayloadType};
+use data_bus::{
+    BusDevice, BusId, ExtOperationData, OperationBusData, OperationData, PayloadType,
+    OPERATION_BUS_ID,
+};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
@@ -25,9 +28,6 @@ pub struct BinaryBasicInstance {
 
     /// Instance context.
     ictx: InstanceCtx,
-
-    /// The connected bus ID.
-    bus_id: BusId,
 }
 
 impl BinaryBasicInstance {
@@ -40,8 +40,8 @@ impl BinaryBasicInstance {
     /// # Returns
     /// A new `BinaryBasicInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, ictx: InstanceCtx, bus_id: BusId) -> Self {
-        Self { binary_basic_sm, ictx, bus_id }
+    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, ictx: InstanceCtx) -> Self {
+        Self { binary_basic_sm, ictx }
     }
 }
 
@@ -53,6 +53,8 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
     ///
     /// # Arguments
     /// * `_pctx` - The proof context, unused in this implementation.
+    /// * `_sctx` - The setup context, unused in this implementation.
+    /// * `collectors` - A vector of input collectors to process and collect data for witness
     ///
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
@@ -110,11 +112,8 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
 
         let meta = self.ictx.plan.meta.as_ref().unwrap();
         let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
-        Some(Box::new(BinaryBasicCollector::new(
-            self.bus_id,
-            collect_info[&chunk_id].0,
-            collect_info[&chunk_id].1,
-        )))
+        let (num_ops, collect_skipper) = collect_info[&chunk_id];
+        Some(Box::new(BinaryBasicCollector::new(num_ops, collect_skipper)))
     }
 }
 
@@ -122,9 +121,6 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
 pub struct BinaryBasicCollector {
     /// Collected inputs for witness computation.
     inputs: Vec<OperationData<u64>>,
-
-    /// The connected bus ID.
-    bus_id: BusId,
 
     /// The number of operations to collect.
     num_operations: u64,
@@ -137,14 +133,13 @@ impl BinaryBasicCollector {
     /// Creates a new `BinaryBasicCollector`.
     ///
     /// # Arguments
-    /// * `bus_id` - The connected bus ID.
     /// * `num_operations` - The number of operations to collect.
     /// * `collect_skipper` - Helper to skip instructions based on the plan's configuration.
     ///
     /// # Returns
     /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
-    pub fn new(bus_id: BusId, num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), bus_id, num_operations, collect_skipper }
+    pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
+        Self { inputs: Vec::new(), num_operations, collect_skipper }
     }
 }
 
@@ -159,7 +154,9 @@ impl BusDevice<u64> for BinaryBasicCollector {
     /// An optional vector of tuples where:
     /// - The first element is the bus ID.
     /// - The second element is always empty indicating there are no derived inputs.
-    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        debug_assert!(*bus_id == OPERATION_BUS_ID);
+
         if self.inputs.len() == self.num_operations as usize {
             return None;
         }
@@ -179,10 +176,9 @@ impl BusDevice<u64> for BinaryBasicCollector {
 
         if let ExtOperationData::OperationData(data) = data {
             self.inputs.push(data);
-            None
-        } else {
-            panic!("Expected ExtOperationData::OperationData");
         }
+
+        None
     }
 
     /// Returns the bus IDs associated with this instance.
@@ -190,7 +186,7 @@ impl BusDevice<u64> for BinaryBasicCollector {
     /// # Returns
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
+        vec![OPERATION_BUS_ID]
     }
 
     /// Provides a dynamic reference for downcasting purposes.

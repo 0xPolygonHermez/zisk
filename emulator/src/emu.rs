@@ -1444,6 +1444,10 @@ impl<'a> Emu<'a> {
                     });
                 }
                 self.par_step_my_block::<F>(emu_traces.last_mut().unwrap());
+
+                if self.ctx.inst_ctx.step >= options.max_steps {
+                    panic!("Emu::par_run() reached max_steps");
+                }
             }
         }
 

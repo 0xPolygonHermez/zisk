@@ -61,7 +61,8 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib {
         let keccakf_sm = KeccakfManager::new::<F>();
 
         // Step 5: Create the executor and register the secondary state machines
-        let mut executor = ZiskExecutor::new(wcm.get_input_data_path().unwrap(), zisk_rom);
+        let mut executor =
+            ZiskExecutor::new(wcm.get_input_data_path(), wcm.get_rom_path(), zisk_rom);
         executor.register_sm(std_sm);
         executor.register_sm(mem_sm);
         executor.register_sm(rom_sm);

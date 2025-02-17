@@ -64,6 +64,8 @@ const int MAX_MEM_STEPS_PER_MAIN_STEP = 4;
 
 const int MAX_RANGE_CHECK_CHUNK = 2**16;
 
+const int MAX_RANGE_CHECK_CHUNK = 2**16;
+
 airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2, const int mem_bytes = 8,
                 const int base_address = 0, const int mem_size = 0x800_0000, int immutable = 0,
                 const int free_input_mem = 0, const expr enable_flag = 1) {

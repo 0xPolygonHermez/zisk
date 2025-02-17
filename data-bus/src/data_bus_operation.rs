@@ -9,28 +9,26 @@ use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
 pub const OPERATION_BUS_ID: u16 = 5000;
 
 /// The size of the operation data payload.
-pub const OPERATION_BUS_DATA_SIZE: usize = 5;
-
-/// Index of the step value in the operation data payload.
-const STEP: usize = 0;
+pub const OPERATION_BUS_DATA_SIZE: usize = 4;
+pub const OPERATION_BUS_KECCAKF_DATA_SIZE: usize = 5;
 
 /// Index of the operation value in the operation data payload.
-const OP: usize = 1;
+const OP: usize = 0;
 
 /// Index of the operation type in the operation data payload.
-const OP_TYPE: usize = 2;
+const OP_TYPE: usize = 1;
 
 /// Index of the `a` value in the operation data payload.
-const A: usize = 3;
+const A: usize = 2;
 
 /// Index of the `b` value in the operation data payload.
-const B: usize = 4;
+const B: usize = 3;
 
 /// Type alias for operation data payload.
 pub type OperationData<D> = [D; OPERATION_BUS_DATA_SIZE];
 
 /// Type alias for Keccak operation data payload.
-pub type OperationKeccakData<D> = [D; OPERATION_BUS_DATA_SIZE + 25];
+pub type OperationKeccakData<D> = [D; OPERATION_BUS_KECCAKF_DATA_SIZE + 25];
 
 pub enum ExtOperationData<D> {
     OperationData(OperationData<D>),
@@ -47,7 +45,7 @@ impl<D: Copy> TryFrom<&[D]> for ExtOperationData<D> {
                     data.try_into().map_err(|_| "Invalid OperationData size")?;
                 Ok(ExtOperationData::OperationData(array))
             }
-            val if val == OPERATION_BUS_DATA_SIZE + 25 => {
+            val if val == OPERATION_BUS_KECCAKF_DATA_SIZE + 25 => {
                 let array: OperationKeccakData<D> =
                     data.try_into().map_err(|_| "Invalid OperationKeccakData size")?;
                 Ok(ExtOperationData::OperationKeccakData(array))
@@ -76,14 +74,8 @@ impl OperationBusData<u64> {
     /// # Returns
     /// An array representing the operation data payload.
     #[inline(always)]
-    pub fn from_values(
-        step: u64,
-        op: u8,
-        op_type: PayloadType,
-        a: u64,
-        b: u64,
-    ) -> OperationData<u64> {
-        [step, op as u64, op_type, a, b]
+    pub fn from_values(op: u8, op_type: PayloadType, a: u64, b: u64) -> OperationData<u64> {
+        [op as u64, op_type, a, b]
     }
 
     /// Creates operation data from a `ZiskInst` instruction and its context.
@@ -101,7 +93,7 @@ impl OperationBusData<u64> {
 
         if inst.op_type == ZiskOperationType::Keccak {
             assert!(inst_ctx.precompiled.input_data.len() == 25);
-            let mut data: OperationKeccakData<u64> = [0; OPERATION_BUS_DATA_SIZE + 25];
+            let mut data: OperationKeccakData<u64> = [0; OPERATION_BUS_KECCAKF_DATA_SIZE + 25];
             data[0] = inst_ctx.step; // STEP
             data[1] = inst.op as u64; // OP
             data[2] = inst.op_type as u64; // OP_TYPE
@@ -111,27 +103,11 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationKeccakData(data)
         } else {
             ExtOperationData::OperationData([
-                inst_ctx.step,       // STEP
                 inst.op as u64,      // OP
                 inst.op_type as u64, // OP_TYPE
                 a,                   // A
                 b,                   // B
             ])
-        }
-    }
-
-    /// Retrieves the step value from operation data.
-    ///
-    /// # Arguments
-    /// * `data` - A reference to the operation data payload.
-    ///
-    /// # Returns
-    /// The step value as a `PayloadType`.
-    #[inline(always)]
-    pub fn get_step(data: &ExtOperationData<u64>) -> PayloadType {
-        match data {
-            ExtOperationData::OperationData(d) => d[STEP],
-            ExtOperationData::OperationKeccakData(d) => d[STEP],
         }
     }
 

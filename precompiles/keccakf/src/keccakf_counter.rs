@@ -66,10 +66,8 @@ impl Metrics for KeccakfCounter {
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs for the bus.
-    fn measure(&mut self, _bus_id: &BusId, _data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+    fn measure(&mut self, _data: &[u64]) {
         self.counter.update(1);
-
-        vec![]
     }
 
     /// Provides a dynamic reference for downcasting purposes.
@@ -116,7 +114,7 @@ impl BusDevice<u64> for KeccakfCounter {
 
         match data {
             ExtOperationData::OperationKeccakData(data) => {
-                self.measure(&OPERATION_BUS_ID, &data);
+                self.measure(&data);
 
                 let mem_inputs = KeccakfSM::generate_inputs(&data);
                 Some(mem_inputs.into_iter().map(|x| (MEM_BUS_ID, x)).collect())

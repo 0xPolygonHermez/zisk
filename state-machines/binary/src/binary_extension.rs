@@ -6,7 +6,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM};
-use data_bus::{OperationBusData, OperationData};
+use data_bus::{ExtOperationData, OperationBusData, OperationData};
 use log::info;
 use num_bigint::BigInt;
 use p3_field::PrimeField;
@@ -109,9 +109,9 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         range_check: &mut HashMap<u64, u64>,
     ) -> BinaryExtensionTraceRow<F> {
         // Get the opcode
-        let op = OperationBusData::get_op(&data_bus::ExtOperationData::OperationData(*operation));
-        let a = OperationBusData::get_a(&data_bus::ExtOperationData::OperationData(*operation));
-        let b = OperationBusData::get_b(&data_bus::ExtOperationData::OperationData(*operation));
+        let op = OperationBusData::get_op(&ExtOperationData::OperationData(*operation));
+        let a = OperationBusData::get_a(&ExtOperationData::OperationData(*operation));
+        let b = OperationBusData::get_b(&ExtOperationData::OperationData(*operation));
 
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(op).expect("Invalid ZiskOp opcode");

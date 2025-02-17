@@ -6,7 +6,7 @@
 
 use std::any::Any;
 
-use crate::ArithCounter;
+use crate::ArithCounterInputGen;
 use sm_common::{
     plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics,
     Plan, Planner, TableInfo,
@@ -81,7 +81,8 @@ impl Planner for ArithPlanner {
         }
 
         counters.iter().for_each(|(chunk_id, counter)| {
-            let reg_counter = Metrics::as_any(&**counter).downcast_ref::<ArithCounter>().unwrap();
+            let reg_counter =
+                Metrics::as_any(&**counter).downcast_ref::<ArithCounterInputGen>().unwrap();
 
             // Iterate over `instances_info` and add `InstCount` objects to the correct vector
             for (index, instance_info) in self.instances_info.iter().enumerate() {
@@ -116,15 +117,17 @@ impl Planner for ArithPlanner {
             plan_result.extend(plan);
         }
 
-        for table_instance in self.tables_info.iter() {
-            plan_result.push(Plan::new(
-                table_instance.airgroup_id,
-                table_instance.air_id,
-                None,
-                InstanceType::Table,
-                CheckPoint::None,
-                None,
-            ));
+        if !plan_result.is_empty() {
+            for table_instance in self.tables_info.iter() {
+                plan_result.push(Plan::new(
+                    table_instance.airgroup_id,
+                    table_instance.air_id,
+                    None,
+                    InstanceType::Table,
+                    CheckPoint::None,
+                    None,
+                ));
+            }
         }
 
         plan_result
