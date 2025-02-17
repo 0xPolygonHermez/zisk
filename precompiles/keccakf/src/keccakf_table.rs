@@ -3,7 +3,10 @@
 //! This state machine is responsible for handling Keccakf operations, calculating table rows,
 //! and managing multiplicity tables for Keccakf table traces.
 
-use std::sync::{atomic::{AtomicU64, Ordering}, Arc};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 
 use p3_field::Field;
 use sm_common::create_atomic_vec;
