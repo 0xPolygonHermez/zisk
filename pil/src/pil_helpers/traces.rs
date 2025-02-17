@@ -219,7 +219,7 @@ trace!(KeccakfFixed<F> {
 },  0, 14, 4194304 );
 
 trace!(KeccakfTrace<F> {
- free_in_a: [F; 6], free_in_b: [F; 6], free_in_c: [F; 6], step: F, addr: F, multiplicity: F, bit1: F, bit2: F, val1: F, val2: F, is_val: F,
+ free_in_a: [F; 6], free_in_b: [F; 6], free_in_c: [F; 6], step: F, addr: F, multiplicity: F, bit: [F; 2], val: [F; 2], is_val: F,
 },  0, 14, 4194304 );
 
 trace!(KeccakfTableFixed<F> {

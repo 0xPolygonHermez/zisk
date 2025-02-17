@@ -9,6 +9,7 @@ pub const MASK_RB: u64 = P2_RB - 1;
 pub const RB_BLOCKS_TO_PROCESS: usize = INPUT_DATA_SIZE_BITS / RB; // 50
 
 /// Keccakf Parameters
+pub const BITS_IN_PARALLEL_KECCAKF: usize = 2;
 pub const CHUNKS_KECCAKF: usize = 6;
 pub const BITS_KECCAKF: usize = 10;
 pub const P2_BITS_KECCAKF: u64 = 1 << BITS_KECCAKF;
