@@ -38,3 +38,5 @@ indicatif = "0.17.8"
 futures = "0.3.30"
 yansi = "1.0.1"
 
+[features]
+distributed = ["proofman/distributed", "proofman-common/distributed"]
