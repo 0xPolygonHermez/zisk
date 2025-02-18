@@ -30,7 +30,7 @@ pub enum KeccakfTableGateOp {
 /// rows.
 pub struct KeccakfTableSM {
     /// The multiplicity table, shared across threads.
-    multiplicity: Vec<AtomicU64>,
+    multiplicities: Vec<Vec<AtomicU64>>,
 }
 
 impl KeccakfTableSM {
@@ -39,25 +39,27 @@ impl KeccakfTableSM {
     /// # Returns
     /// An `Arc`-wrapped instance of `KeccakfTableSM`.
     pub fn new<F: Field>() -> Arc<Self> {
-        Arc::new(Self { multiplicity: create_atomic_vec(KeccakfTableTrace::<usize>::NUM_ROWS) })
+        let mut multiplicities = Vec::new();
+        for _ in 0..KeccakfTableTrace::<usize>::ROW_SIZE {
+            multiplicities.push(create_atomic_vec(KeccakfTableTrace::<usize>::NUM_ROWS));
+        }
+        Arc::new(Self { multiplicities })
     }
 
     /// Processes a slice of input data and updates the multiplicity table.
     ///
     /// # Arguments
     /// * `input` - A slice of `u64` values representing the input data.
-    pub fn process_slice(&self, input: &[u64]) {
-        for (i, val) in input.iter().enumerate() {
-            self.multiplicity[i].fetch_add(*val, Ordering::Relaxed);
-        }
+    pub fn update_input(&self, index: usize, value: u64) {
+        self.multiplicities[0][index].fetch_add(value, Ordering::Relaxed);
     }
 
     /// Detaches and returns the current multiplicity table.
     ///
     /// # Returns
     /// A vector containing the multiplicity table.
-    pub fn detach_multiplicity(&self) -> &[AtomicU64] {
-        &self.multiplicity
+    pub fn detach_multiplicities(&self) -> &[Vec<AtomicU64>] {
+        &self.multiplicities
     }
 
     /// Calculates the table row offset based on the provided parameters.

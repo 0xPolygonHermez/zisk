@@ -4,13 +4,12 @@ use std::{fs, sync::Arc};
 use log::info;
 use p3_field::PrimeField64;
 
-use precompiles_common::MemBusHelpers;
-use tiny_keccak::keccakf;
-
 use data_bus::{ExtOperationData, OperationBusData, OperationKeccakData, PayloadType};
+use precompiles_common::MemBusHelpers;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_pil::{KeccakfFixed, KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
+use tiny_keccak::keccakf;
+use zisk_pil::{KeccakfFixed, KeccakfTrace, KeccakfTraceRow};
 
 use crate::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM, Script, ValueType};
 
@@ -88,7 +87,6 @@ impl KeccakfSM {
         trace: &mut KeccakfTrace<F>,
         num_rows_constants: usize,
         inputs: &[OperationKeccakData<u64>],
-        multiplicity: &mut [u64],
     ) {
         let num_inputs = inputs.len();
         let mut inputs_bits: Vec<KeccakfInput> =
@@ -356,7 +354,7 @@ impl KeccakfSM {
                     let a_val = F::as_canonical_u64(&a[j]);
                     let b_val = F::as_canonical_u64(&b[j]);
                     let table_row = KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val);
-                    multiplicity[table_row] += 1;
+                    self.keccakf_table_sm.update_input(table_row, 1);
                 }
             }
 
@@ -459,9 +457,6 @@ impl KeccakfSM {
             num_rows_needed as f64 / num_rows as f64 * 100.0
         );
 
-        // Initialize the multiplicity table
-        let mut multiplicity_keccakf_table = vec![0u64; KeccakfTableTrace::<F>::NUM_ROWS];
-
         // Set a = 0b00..00 and b = 0b11..11 at the first row
         // Set, e.g., the operation to be an XOR and set c = 0b11..11 = b = a ^ b
         let mut row: KeccakfTraceRow<F> = Default::default();
@@ -481,19 +476,13 @@ impl KeccakfSM {
         }
         // Update the multiplicity table
         let table_row = KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, zeros, ones);
-        multiplicity_keccakf_table[table_row] += CHUNKS_KECCAKF as u64;
+        self.keccakf_table_sm.update_input(table_row, CHUNKS_KECCAKF as u64);
 
         // Assign the single constant row
         keccakf_trace[0] = row;
 
         // Fill the rest of the trace
-        self.process_slice(
-            &fixed,
-            &mut keccakf_trace,
-            num_rows_constants,
-            &inputs,
-            &mut multiplicity_keccakf_table,
-        );
+        self.process_slice(&fixed, &mut keccakf_trace, num_rows_constants, &inputs);
         timer_stop_and_log_trace!(KECCAKF_TRACE);
 
         timer_start_trace!(KECCAKF_PADDING);
@@ -509,15 +498,11 @@ impl KeccakfSM {
             );
 
             let table_row = KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, 0, 0);
-            multiplicity_keccakf_table[table_row] += CHUNKS_KECCAKF as u64;
+            self.keccakf_table_sm.update_input(table_row, CHUNKS_KECCAKF as u64);
 
             keccakf_trace[i] = padding_row;
         }
         timer_stop_and_log_trace!(KECCAKF_PADDING);
-
-        timer_start_trace!(KECCAKF_TABLE);
-        self.keccakf_table_sm.process_slice(&multiplicity_keccakf_table);
-        timer_stop_and_log_trace!(KECCAKF_TABLE);
 
         AirInstance::new_from_trace(FromTrace::new(&mut keccakf_trace))
     }

@@ -4,7 +4,7 @@ use data_bus::{BusDevice, PayloadType, OPERATION_BUS_ID};
 use p3_field::{PrimeField, PrimeField64};
 
 use sm_common::{
-    table_instance, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
+    table_instance_array, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
     InstanceInfo, Planner, TableInfo,
 };
 use zisk_core::ZiskOperationType;
@@ -85,7 +85,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
                 Box::new(KeccakfInstance::new(self.keccakf_sm.clone(), ictx))
             }
             id if id == KeccakfTableTrace::<usize>::AIR_ID => {
-                table_instance!(KeccakfTableInstance, KeccakfTableSM, KeccakfTableTrace);
+                table_instance_array!(KeccakfTableInstance, KeccakfTableSM, KeccakfTableTrace);
                 Box::new(KeccakfTableInstance::new(
                     self.keccakf_table_sm.clone(),
                     ictx,
