@@ -111,6 +111,7 @@ pub struct ZiskInst {
     pub op_type: ZiskOperationType,
     pub verbose: String,
     pub m32: bool,
+    pub input_size: u64,
 }
 
 /// Default constructor
@@ -145,6 +146,7 @@ impl Default for ZiskInst {
             op_type: ZiskOperationType::None,
             verbose: String::new(),
             m32: false,
+            input_size: 0,
         }
     }
 }

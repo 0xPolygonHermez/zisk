@@ -24,8 +24,8 @@ pub struct InstanceInfo {
     /// The AIR ID.
     pub air_id: usize,
 
-    /// The number of rows required by the instance.
-    pub num_rows: usize,
+    /// The number of operations required by the instance.
+    pub num_ops: usize,
 
     /// The `ZiskOperationType` associated with the instance.
     pub op_type: ZiskOperationType,
@@ -37,7 +37,7 @@ impl InstanceInfo {
     /// # Arguments
     /// * `air_id` - The AIR ID.
     /// * `airgroup_id` - The AIR group ID.
-    /// * `num_rows` - The number of rows for this instance.
+    /// * `num_ops` - The number of operations for this instance.
     /// * `op_type` - The operation type associated with the instance.
     ///
     /// # Returns
@@ -45,10 +45,10 @@ impl InstanceInfo {
     pub fn new(
         airgroup_id: usize,
         air_id: usize,
-        num_rows: usize,
+        num_ops: usize,
         op_type: ZiskOperationType,
     ) -> Self {
-        InstanceInfo { air_id, airgroup_id, num_rows, op_type }
+        InstanceInfo { air_id, airgroup_id, num_ops, op_type }
     }
 }
 
@@ -160,7 +160,7 @@ impl Planner for RegularPlanner {
         let mut plan_result = Vec::new();
 
         for (idx, instance) in self.instances_info.iter().enumerate() {
-            let plan: Vec<_> = plan(&count[idx], instance.num_rows as u64)
+            let plan: Vec<_> = plan(&count[idx], instance.num_ops as u64)
                 .into_iter()
                 .map(|(check_point, collect_info)| {
                     let converted: Box<dyn Any> = Box::new(collect_info);

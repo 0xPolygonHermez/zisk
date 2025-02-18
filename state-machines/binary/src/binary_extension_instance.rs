@@ -5,7 +5,10 @@
 //! execution plans.
 
 use crate::BinaryExtensionSM;
-use data_bus::{BusDevice, BusId, OperationBusData, OperationData, PayloadType, OPERATION_BUS_ID};
+use data_bus::{
+    BusDevice, BusId, ExtOperationData, OperationBusData, OperationData, PayloadType,
+    OPERATION_BUS_ID,
+};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
@@ -152,8 +155,9 @@ impl BusDevice<u64> for BinaryExtensionCollector {
             return None;
         }
 
-        let data: OperationData<u64> =
+        let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
+
         let op_type = OperationBusData::get_op_type(&data);
 
         if op_type as u32 != ZiskOperationType::BinaryE as u32 {
@@ -164,7 +168,9 @@ impl BusDevice<u64> for BinaryExtensionCollector {
             return None;
         }
 
-        self.inputs.push(data);
+        if let ExtOperationData::OperationData(data) = data {
+            self.inputs.push(data);
+        }
 
         None
     }

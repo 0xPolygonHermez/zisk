@@ -5,7 +5,10 @@
 //! execution plans.
 
 use crate::ArithFullSM;
-use data_bus::{BusDevice, BusId, OperationBusData, OperationData, PayloadType, OPERATION_BUS_ID};
+use data_bus::{
+    BusDevice, BusId, ExtOperationData, OperationBusData, OperationData, PayloadType,
+    OPERATION_BUS_ID,
+};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
@@ -159,7 +162,7 @@ impl BusDevice<u64> for ArithInstanceCollector {
             return None;
         }
 
-        let data: OperationData<u64> = data.try_into().ok()?;
+        let data: ExtOperationData<u64> = data.try_into().ok()?;
 
         if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::Arith as u32 {
             return None;
@@ -169,8 +172,9 @@ impl BusDevice<u64> for ArithInstanceCollector {
             return None;
         }
 
-        self.inputs.push(data);
-
+        if let ExtOperationData::OperationData(data) = data {
+            self.inputs.push(data);
+        }
         None
     }
 

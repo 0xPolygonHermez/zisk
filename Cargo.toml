@@ -16,6 +16,8 @@ members = [
     "state-machines/rom",
     "witness-computation",
     "ziskos/entrypoint",
+    "precompiles/zisk_precompiles",
+    "precompiles/common",
 ]
 
 resolver = "2"
