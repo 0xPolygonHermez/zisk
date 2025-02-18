@@ -84,9 +84,11 @@ impl ArithFullSM {
         let mut idx = 0;
         for inner_inputs in inputs {
             for input in inner_inputs {
-                let opcode = OperationBusData::get_op(&ExtOperationData::OperationData(*input));
-                let a = OperationBusData::get_a(&ExtOperationData::OperationData(*input));
-                let b = OperationBusData::get_b(&ExtOperationData::OperationData(*input));
+                let input_data = ExtOperationData::OperationData(*input);
+
+                let opcode = OperationBusData::get_op(&input_data);
+                let a = OperationBusData::get_a(&input_data);
+                let b = OperationBusData::get_b(&input_data);
 
                 aop.calculate(opcode, a, b);
                 let mut t: ArithTraceRow<F> = Default::default();
@@ -230,9 +232,12 @@ impl ArithFullSM {
     #[inline(always)]
     pub fn generate_inputs(input: &OperationData<u64>) -> Vec<Vec<PayloadType>> {
         let mut aop = ArithOperation::new();
-        let opcode = OperationBusData::get_op(&ExtOperationData::OperationData(*input));
-        let a = OperationBusData::get_a(&ExtOperationData::OperationData(*input));
-        let b = OperationBusData::get_b(&ExtOperationData::OperationData(*input));
+
+        let input_data = ExtOperationData::OperationData(*input);
+
+        let opcode = OperationBusData::get_op(&input_data);
+        let a = OperationBusData::get_a(&input_data);
+        let b = OperationBusData::get_b(&input_data);
 
         aop.calculate(opcode, a, b);
 
