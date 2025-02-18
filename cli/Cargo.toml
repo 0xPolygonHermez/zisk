@@ -39,4 +39,5 @@ futures = "0.3.30"
 yansi = "1.0.1"
 
 [features]
+default = []
 distributed = ["proofman/distributed", "proofman-common/distributed"]
