@@ -17,9 +17,11 @@ vergen = { version = "8", default-features = false, features = [
 [dependencies]
 proofman = { workspace = true }
 proofman-common = { workspace = true }
+proofman-starks-lib-c = { workspace = true }
 
 rom-merkle = { path = "../rom-merkle" }
 p3-goldilocks = { workspace = true }
+p3-field = { workspace = true }
 colored = { workspace = true }
 
 anyhow = { version = "1.0.86", features = ["backtrace"] }
@@ -38,7 +40,5 @@ indicatif = "0.17.8"
 futures = "0.3.30"
 yansi = "1.0.1"
 
-#proofman-cli = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pil2-stark-build" }
-proofman-cli = { path = "../../pil2-proofman/cli" }
-proofman-starks-lib-c = { path = "../../pil2-proofman/provers/starks-lib-c" }
+
 

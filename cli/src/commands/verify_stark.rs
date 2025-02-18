@@ -16,7 +16,7 @@ use crate::ZISK_VERSION_MESSAGE;
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 #[command(propagate_version = true)]
-pub struct VerifyStark {
+pub struct ZiskVerify {
     #[clap(short = 'p', long)]
     pub proof: String,
 
@@ -37,9 +37,11 @@ pub struct VerifyStark {
     pub verbose: u8, // Using u8 to hold the number of `-v`
 }
 
-impl VerifyStark {
+impl ZiskVerify {
+    const NAME: &'static str = "VStark  ";
+
     pub fn run(&self) -> Result<()> {
-        println!("{} VerifyStark", format!("{: >12}", "Command").bright_green().bold());
+        println!("{} ZiskVerify", format!("{: >12}", "Command").bright_green().bold());
         println!();
 
         initialize_logger(self.verbose.into());
@@ -81,14 +83,14 @@ impl VerifyStark {
         if !valid {
             println!(
                 "{}: ··· {}",
-                "VStark  ",
+                Self::NAME,
                 "\u{2717} Stark proof was not verified".bright_red().bold()
             );
             Err(anyhow!("Stark proof was not verified"))
         } else {
             println!(
                 "{}:     {}",
-                "VStark  ",
+                Self::NAME,
                 "\u{2713} Stark proof was verified".bright_green().bold()
             );
             Ok(())
