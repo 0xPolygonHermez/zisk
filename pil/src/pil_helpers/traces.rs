@@ -2,6 +2,8 @@
 // Manual modifications are not recommended and may be overwritten.
 #![allow(clippy::all)]
 #![allow(non_snake_case)]
+#![allow(non_upper_case_globals)]
+#![allow(dead_code)]
 
 use proofman_common as common;
 pub use proofman_macros::trace;
@@ -254,6 +256,7 @@ trace!(U16AirTrace<F> {
  mul: F,
 },  0, 18, 65536 );
 
+pub const RomRomHash: &str = "aa8bf8c0f3757c69cac124f513b6b2a66653708e85300b9407effcff3b707190";
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
 }, 0, 1, 4194304, 0 );
