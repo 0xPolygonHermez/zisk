@@ -24,7 +24,8 @@ pub extern "C" fn syscall_keccak_f(state: *mut [u64; 25]) {
             "ecall",
             in("a7") crate::syscalls::KECCAKF,
             in("a0") state,
-            in("a1") 0
+            in("a1") 0,
+            out("ra") _,
         );
     }
 

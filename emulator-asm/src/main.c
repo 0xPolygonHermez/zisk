@@ -21,16 +21,18 @@ void emulator_start(void);
 #define MAX_INPUT_SIZE 0x08000000 // 128MB
 
 #define TRACE_ADDR 0xc0000000
-#define TRACE_SIZE 0x08000000 // 128MB
+#define TRACE_SIZE 0x10000000 // 256MB
 
 struct timeval start_time;
 
-extern uint64_t STEP;
+extern uint64_t MEM_STEP;
 struct timeval keccak_start, keccak_stop;
 uint64_t keccak_counter = 0;
 uint64_t keccak_duration = 0;
 
 extern void keccakf1600_generic(uint64_t state[25]);
+
+extern void zisk_keccakf(uint64_t state[25]);
 
 #define CHUNK_SIZE 1024*1024
 uint64_t chunk_size = CHUNK_SIZE;
@@ -73,6 +75,9 @@ void print_usage (void)
 bool verbose = false;
 bool output = true;
 bool trace = false;
+bool trace_trace = false;
+bool metrics = false;
+bool keccak_metrics = false;
 char * input_file = NULL;
 
 int main(int argc, char *argv[])
@@ -95,6 +100,22 @@ int main(int argc, char *argv[])
             if (strcmp(argv[i], "-t") == 0)
             {
                 trace = true;
+                continue;
+            }
+            if (strcmp(argv[i], "-tt") == 0)
+            {
+                trace = true;
+                trace_trace = true;
+                continue;
+            }
+            if (strcmp(argv[i], "-m") == 0)
+            {
+                metrics = true;
+                continue;
+            }
+            if (strcmp(argv[i], "-k") == 0)
+            {
+                keccak_metrics = true;
                 continue;
             }
             if (strcmp(argv[i], "-h") == 0)
@@ -213,12 +234,13 @@ int main(int argc, char *argv[])
     emulator_start();
     struct timeval stop_time;
     gettimeofday(&stop_time,NULL);
-    if (verbose)
+    if (metrics || verbose)
     {
         uint64_t duration = TimeDiff(start_time, stop_time);
-        printf("Duration = %d us\n", duration);
+        printf("Duration = %d us Keccak counter = %d,\n", duration, keccak_counter);
         uint64_t keccak_percentage = duration == 0 ? 0 : (keccak_duration * 100) / duration;
-        printf("Keccak counter = %d, duration = %d us, percentage = %d \n", keccak_counter, keccak_duration, keccak_percentage);
+        uint64_t single_keccak_duration_ns = keccak_counter == 0 ? 0 : (keccak_duration * 1000) / keccak_counter;
+        //printf("Keccak counter = %d, duration = %d us, single keccak duration = %d ns, percentage = %d \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
     }
 
     // Log output
@@ -323,19 +345,28 @@ int main(int argc, char *argv[])
             uint64_t mem_reads_size = chunk[i];
             printf("\t\tmem_reads_size=%d:\n", mem_reads_size);
             i++;
-            if (mem_reads_size > 1000000)
+            if (mem_reads_size > 10000000)
             {
                 printf("Mem reads size is too high=%d\n", mem_reads_size);
                 return -1;
             }
-            for (uint64_t m=0; m<mem_reads_size; m++)
+            if (trace_trace)
             {
-                i++;
+                for (uint64_t m=0; m<mem_reads_size; m++)
+                {
+                    printf("\t\tchunk[%d].mem_reads[%d]=%08x:\n", c, m, chunk[i]);
+                    i++;
+                }
+            }
+            else
+            {
+                i += mem_reads_size;
             }
 
             //Set next chunk pointer
             chunk = chunk + i;
         }
+        printf("Trace=%08x chunk=%08x size=%d\n", trace, chunk, chunk - trace);
     }
 
     if (verbose) printf("Emulator C end\n");
@@ -371,14 +402,15 @@ extern int _print_step(uint64_t step)
 
 extern int _opcode_keccak(uint64_t address)
 {
-    if (verbose) gettimeofday(&keccak_start, NULL);
-    //if (verbose) printf("opcode_keccak() calling KeccakF1600() step=%d address=%08llx\n", STEP, address);
+    if (keccak_metrics || verbose) gettimeofday(&keccak_start, NULL);
+    //if (verbose) printf("opcode_keccak() calling KeccakF1600() counter=%d step=%08llx address=%08llx\n", keccak_counter, /**(uint64_t *)*/MEM_STEP, address);
     keccakf1600_generic((uint64_t *)address);
+    //zisk_keccakf((uint64_t *)address);
     //if (verbose) printf("opcode_keccak() called KeccakF1600()\n");
-    if (verbose)
+    keccak_counter++;
+    if (keccak_metrics || verbose)
     {
         gettimeofday(&keccak_stop, NULL);
-        keccak_counter++;
         keccak_duration += TimeDiff(keccak_start, keccak_stop);
     }
     return 0;
