@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
 use sm_common::Metrics;
 
-use crate::{MemHelpers, MEM_REGS_ADDR, MEM_REGS_MASK};
+use crate::MemHelpers;
 
 #[cfg(feature = "debug_mem")]
 use crate::MemDebug;
@@ -22,14 +22,12 @@ pub struct UsesCounter {
     pub last_step: u64,
     pub count: u64,
     pub last_value: u64,
-    pub addr: u32,
     #[cfg(feature = "debug_mem")]
     pub debug: UsesCounterDebug,
 }
 
 #[derive(Default, Debug)]
 pub struct MemCounters {
-    pub registers: [UsesCounter; 32],
     pub addr: HashMap<u32, UsesCounter>,
     pub addr_sorted: [Vec<(u32, UsesCounter)>; 3],
     pub mem_align: Vec<u8>,
@@ -40,9 +38,7 @@ pub struct MemCounters {
 
 impl MemCounters {
     pub fn new() -> Self {
-        let empty_counter = UsesCounter::default();
         Self {
-            registers: [empty_counter; 32],
             addr: HashMap::new(),
             addr_sorted: [Vec::new(), Vec::new(), Vec::new()],
             mem_align: Vec::new(),
@@ -66,37 +62,7 @@ impl Metrics for MemCounters {
         // #[cfg(feature = "debug_mem")]
         // self.debug.log(addr, step, bytes, is_write, false);
 
-        if (addr & MEM_REGS_MASK) == MEM_REGS_ADDR {
-            let reg_index = ((addr >> 3) & 0x1F) as usize;
-            // last value is needed for continuations and internal reads
-            let last_value = if is_write {
-                MemBusData::get_value(data)
-            } else {
-                MemBusData::get_mem_values(data)[0]
-            };
-
-            if self.registers[reg_index].count == 0 {
-                self.registers[reg_index] = UsesCounter {
-                    first_step: step,
-                    last_step: step,
-                    count: 1,
-                    last_value,
-                    addr: (0xA000_0000 / 8) + reg_index as u32,
-                    #[cfg(feature = "debug_mem")]
-                    debug: UsesCounterDebug { internal_reads: 0, mem_align_extra_rows: 0 },
-                };
-            } else {
-                let internal_reads =
-                    MemHelpers::get_extra_internal_reads(self.registers[reg_index].last_step, step);
-                self.registers[reg_index].count += 1 + internal_reads;
-                #[cfg(feature = "debug_mem")]
-                {
-                    self.registers[reg_index].debug.internal_reads += internal_reads as u32;
-                }
-                self.registers[reg_index].last_step = step;
-                self.registers[reg_index].last_value = last_value;
-            }
-        } else if MemHelpers::is_aligned(addr, bytes) {
+        if MemHelpers::is_aligned(addr, bytes) {
             let last_value = if is_write {
                 MemBusData::get_value(data)
             } else {
@@ -120,7 +86,6 @@ impl Metrics for MemCounters {
                     last_step: step,
                     count: 1,
                     last_value,
-                    addr: addr_w,
                     #[cfg(feature = "debug_mem")]
                     debug: UsesCounterDebug { internal_reads: 0, mem_align_extra_rows: 0 },
                 });
@@ -165,7 +130,6 @@ impl Metrics for MemCounters {
                         last_step,
                         count: ops_by_addr,
                         last_value: last_values[index as usize],
-                        addr: _addr_w,
                         #[cfg(feature = "debug_mem")]
                         debug: UsesCounterDebug {
                             internal_reads: 0,

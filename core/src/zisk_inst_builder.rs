@@ -1,11 +1,11 @@
-//! Builds a Zisk instruction.  
+//! Builds a Zisk instruction.
 //! The ZiskInstBuilder structure contains one ZiskInst structure, and provides a set of helper
 //! methods to modify its attributes
 
 use crate::{
     zisk_ops::{InvalidNameError, OpType, ZiskOp},
-    ZiskInst, REG_FIRST, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM,
-    STORE_NONE,
+    ZiskInst, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO, REG_FIRST, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
+    SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // #[cfg(feature = "sp")]
@@ -30,6 +30,7 @@ impl ZiskInstBuilder {
     /// Converts a string to an a source value
     fn a_src(&self, src: &str) -> u64 {
         match src {
+            "reg" => SRC_REG,
             "mem" => SRC_MEM,
             "imm" => SRC_IMM,
             "lastc" => SRC_C,
@@ -43,6 +44,7 @@ impl ZiskInstBuilder {
     /// Converts a string to a b source value
     fn b_src(&self, src: &str) -> u64 {
         match src {
+            "reg" => SRC_REG,
             "mem" => SRC_MEM,
             "imm" => SRC_IMM,
             "lastc" => SRC_C,
@@ -56,6 +58,7 @@ impl ZiskInstBuilder {
         match store {
             "none" => STORE_NONE,
             "mem" => STORE_MEM,
+            "reg" => STORE_REG,
             "ind" => STORE_IND,
             _ => panic!("ZiskInstBuilder::c_store() called with invalid store={}", store),
         }
@@ -84,14 +87,18 @@ impl ZiskInstBuilder {
             if offset_imm_reg == 0 {
                 src = "imm";
                 offset_imm_reg = 0;
-            } else {
+            } else if offset_imm_reg < REGS_IN_MAIN_FROM as u64
+                || offset_imm_reg > REGS_IN_MAIN_TO as u64
+            {
                 src = "mem";
                 offset_imm_reg = REG_FIRST + offset_imm_reg * 8;
             }
         }
+        // assert!(src != "mem" || offset_imm_reg != 0);
+
         self.i.a_src = self.a_src(src);
 
-        if self.i.a_src == SRC_MEM {
+        if self.i.a_src == SRC_REG || self.i.a_src == SRC_MEM {
             if use_sp {
                 self.i.a_use_sp_imm1 = 1;
             } else {
@@ -116,14 +123,16 @@ impl ZiskInstBuilder {
             if offset_imm_reg == 0 {
                 src = "imm";
                 offset_imm_reg = 0;
-            } else {
+            } else if offset_imm_reg < REGS_IN_MAIN_FROM as u64
+                || offset_imm_reg > REGS_IN_MAIN_TO as u64
+            {
                 src = "mem";
                 offset_imm_reg = REG_FIRST + offset_imm_reg * 8;
             }
         }
         self.i.b_src = self.b_src(src);
 
-        if self.i.b_src == SRC_MEM || self.i.b_src == SRC_IND {
+        if self.i.b_src == SRC_REG || self.i.b_src == SRC_MEM || self.i.b_src == SRC_IND {
             if use_sp {
                 self.i.b_use_sp_imm1 = 1;
             } else {
@@ -147,7 +156,7 @@ impl ZiskInstBuilder {
         if dst == "reg" {
             if offset == 0 {
                 return;
-            } else {
+            } else if offset < REGS_IN_MAIN_FROM as i64 || offset > REGS_IN_MAIN_TO as i64 {
                 dst = "mem";
                 offset = REG_FIRST as i64 + offset * 8;
             }
@@ -156,7 +165,7 @@ impl ZiskInstBuilder {
         self.i.store_ra = store_ra;
         self.i.store = self.c_store(dst);
 
-        if self.i.store == STORE_MEM || self.i.store == STORE_IND {
+        if self.i.store == STORE_REG || self.i.store == STORE_MEM || self.i.store == STORE_IND {
             self.i.store_use_sp = use_sp;
             self.i.store_offset = offset;
         } else {

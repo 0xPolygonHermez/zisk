@@ -22,11 +22,6 @@ pub struct MemAlignRomSM {
     multiplicity: Vec<AtomicU64>, // row_num -> multiplicity
 }
 
-#[derive(Debug)]
-pub enum ExtensionTableSMErr {
-    InvalidOpcode,
-}
-
 impl MemAlignRomSM {
     // const MY_NAME: &'static str = "MemAlignRom";
 
