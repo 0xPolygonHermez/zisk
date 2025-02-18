@@ -1,0 +1,8 @@
+[package]
+name = "zisk-precompiles"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+precompiles-common = { path = "../common" }
+precomp-keccakf = { path = "../keccakf" }

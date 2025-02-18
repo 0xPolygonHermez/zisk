@@ -49,10 +49,10 @@ impl<F: PrimeField> BinarySM<F> {
     /// # Returns
     /// An `Arc`-wrapped instance of `BinarySM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let binary_basic_table_sm = BinaryBasicTableSM::new::<F>();
+        let binary_basic_table_sm = BinaryBasicTableSM::new();
         let binary_basic_sm = BinaryBasicSM::new(binary_basic_table_sm.clone());
 
-        let binary_extension_table_sm = BinaryExtensionTableSM::new::<F>();
+        let binary_extension_table_sm = BinaryExtensionTableSM::new();
         let binary_extension_sm = BinaryExtensionSM::new(std, binary_extension_table_sm.clone());
 
         Arc::new(Self {

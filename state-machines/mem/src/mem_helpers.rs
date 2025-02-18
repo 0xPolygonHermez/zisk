@@ -7,8 +7,11 @@ use zisk_core::RAM_ADDR;
 pub struct MemHelpers {}
 
 impl MemHelpers {
-    pub fn main_step_to_mem_step(step: u64, step_offset: u8) -> u64 {
-        MEM_STEP_BASE + MEM_STEPS_BY_MAIN_STEP * step + step_offset as u64
+    pub fn main_step_to_mem_step(step: u64, slot: u8) -> u64 {
+        MEM_STEP_BASE + MEM_STEPS_BY_MAIN_STEP * step + slot as u64
+    }
+    pub fn main_step_to_precompiled_mem_step(step: u64, is_write: bool) -> u64 {
+        MEM_STEP_BASE + MEM_STEPS_BY_MAIN_STEP * step + if is_write { 3 } else { 2 }
     }
     pub fn is_aligned(addr: u32, width: u8) -> bool {
         (addr & MEM_ADDR_ALIGN_MASK) == 0 && width == 8

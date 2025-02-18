@@ -7,7 +7,10 @@ use crate::{
     EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, EmuTrace, EmuTraceEnd, EmuTraceStart,
     EmuTraceSteps, ParEmuOptions,
 };
-use data_bus::{BusDevice, OperationBusData, RomBusData, MEM_BUS_ID, OPERATION_BUS_ID, ROM_BUS_ID};
+use data_bus::{
+    BusDevice, ExtOperationData, OperationBusData, RomBusData, MEM_BUS_ID, OPERATION_BUS_ID,
+    ROM_BUS_ID,
+};
 use p3_field::{AbstractField, PrimeField};
 use riscv::RiscVRegisters;
 use sm_mem::MemHelpers;
@@ -15,8 +18,8 @@ use sm_mem::MemHelpers;
 // use zisk_core::SRC_SP;
 use data_bus::DataBus;
 use zisk_core::{
-    InstContext, Mem, ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
-    SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    InstContext, Mem, PrecompiledEmulationMode, ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C,
+    SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -1424,8 +1427,25 @@ impl<'a> Emu<'a> {
         // Build the 'b' register value  based on the source specified by the current instruction
         self.source_b_mem_reads_generate(instruction, &mut emu_full_trace_vec.steps.mem_reads);
 
+        // If this is a precompiled, get the required input data to copy it to mem_reads
+        if instruction.input_size > 0 {
+            self.ctx.inst_ctx.precompiled.emulation_mode =
+                PrecompiledEmulationMode::GenerateMemReads;
+            self.ctx.inst_ctx.precompiled.input_data.clear();
+            self.ctx.inst_ctx.precompiled.output_data.clear();
+        }
+
         // Call the operation
         (instruction.func)(&mut self.ctx.inst_ctx);
+
+        // If this is a precompiled, copy input data to mem_reads
+        if instruction.input_size > 0 {
+            emu_full_trace_vec
+                .steps
+                .mem_reads
+                .append(&mut self.ctx.inst_ctx.precompiled.input_data);
+            self.ctx.inst_ctx.precompiled.emulation_mode = PrecompiledEmulationMode::None;
+        }
 
         // Store the 'c' register value based on the storage specified by the current instruction
         self.store_c_mem_reads_generate(instruction, &mut emu_full_trace_vec.steps.mem_reads);
@@ -1497,6 +1517,19 @@ impl<'a> Emu<'a> {
             mem_reads_index,
             data_bus,
         );
+        // If this is a precompiled, get the required input data from mem_reads
+        if instruction.input_size > 0 {
+            self.ctx.inst_ctx.precompiled.emulation_mode =
+                PrecompiledEmulationMode::ConsumeMemReads;
+            self.ctx.inst_ctx.precompiled.input_data.clear();
+            self.ctx.inst_ctx.precompiled.output_data.clear();
+            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            for _ in 0..number_of_mem_reads {
+                let mem_read = trace_step.mem_reads[*mem_reads_index];
+                *mem_reads_index += 1;
+                self.ctx.inst_ctx.precompiled.input_data.push(mem_read);
+            }
+        }
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_mem_reads_consume_databus(
             instruction,
@@ -1505,10 +1538,23 @@ impl<'a> Emu<'a> {
             data_bus,
         );
 
+        // Get operation bus data
         let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
-        data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload.to_vec());
 
+        // Write operation bus data to operation bus
+        match operation_payload {
+            ExtOperationData::OperationData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+            }
+            ExtOperationData::OperationKeccakData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+            }
+        }
+
+        // Get rom bus data
         let rom_payload = RomBusData::from_instruction(instruction, &self.ctx.inst_ctx);
+
+        // Write rom bus data to rom bus
         data_bus.write_to_bus(ROM_BUS_ID, rom_payload.to_vec());
 
         // let finished = inst_observer.on_instruction(instruction, &self.ctx.inst_ctx);
@@ -1598,6 +1644,19 @@ impl<'a> Emu<'a> {
             mem_reads_index,
             data_bus,
         );
+        // If this is a precompiled, get the required input data from mem_reads
+        if instruction.input_size > 0 {
+            self.ctx.inst_ctx.precompiled.emulation_mode =
+                PrecompiledEmulationMode::ConsumeMemReads;
+            self.ctx.inst_ctx.precompiled.input_data.clear();
+            self.ctx.inst_ctx.precompiled.output_data.clear();
+            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            for _ in 0..number_of_mem_reads {
+                let mem_read = trace_step.mem_reads[*mem_reads_index];
+                *mem_reads_index += 1;
+                self.ctx.inst_ctx.precompiled.input_data.push(mem_read);
+            }
+        }
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_mem_reads_consume_databus(
             instruction,
@@ -1605,8 +1664,19 @@ impl<'a> Emu<'a> {
             mem_reads_index,
             data_bus,
         );
+
+        // Get operation bus data
         let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
-        data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload.to_vec());
+
+        // Write operation bus data to operation bus
+        match operation_payload {
+            ExtOperationData::OperationData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+            }
+            ExtOperationData::OperationKeccakData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+            }
+        }
 
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
@@ -1643,6 +1713,20 @@ impl<'a> Emu<'a> {
             trace_step_index,
             reg_trace,
         );
+        // If this is a precompiled, get the required input data from mem_reads
+        if instruction.input_size > 0 {
+            self.ctx.inst_ctx.precompiled.emulation_mode =
+                PrecompiledEmulationMode::ConsumeMemReads;
+            self.ctx.inst_ctx.precompiled.input_data.clear();
+            self.ctx.inst_ctx.precompiled.output_data.clear();
+            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
+            for _ in 0..number_of_mem_reads {
+                let mem_read = trace_step.mem_reads[*trace_step_index];
+                *trace_step_index += 1;
+                self.ctx.inst_ctx.precompiled.input_data.push(mem_read);
+            }
+        }
+
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_mem_reads_consume(
             instruction,

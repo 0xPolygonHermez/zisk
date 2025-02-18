@@ -6,3 +6,4 @@
 *.pilout
 /tmp
 *.log
+/cache

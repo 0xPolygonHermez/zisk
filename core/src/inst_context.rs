@@ -6,6 +6,33 @@
 
 use crate::{Mem, ROM_ENTRY};
 
+/// Zisk precompiled
+#[derive(Debug, Default)]
+pub enum PrecompiledEmulationMode {
+    #[default]
+    None,
+    GenerateMemReads,
+    ConsumeMemReads,
+}
+
+/// Zisk precompiled instruction context.
+/// Stores the input data (of the size expected by the precompiled components) and the output data.
+/// If the precompiled component finds input_data not empty, it should use this data instead of
+/// reading it from memory
+#[derive(Debug, Default)]
+pub struct PrecompiledInstContext {
+    /// Precompiled emulation mode
+    pub emulation_mode: PrecompiledEmulationMode,
+    /// Precompiled input data address
+    pub input_data_address: u64,
+    /// Precompiled input data
+    pub input_data: Vec<u64>,
+    /// Precompiled output data address
+    pub output_data_address: u64,
+    /// Precompiled output data
+    pub output_data: Vec<u64>,
+}
+
 #[derive(Debug)]
 /// ZisK instruction context data container, storing the state of the execution
 pub struct InstContext {
@@ -35,7 +62,12 @@ pub struct InstContext {
 
     /// End flag, set to true only by the last instruction to execute
     pub end: bool,
+
+    /// Registers
     pub regs: [u64; 32],
+
+    /// Precompiled data
+    pub precompiled: PrecompiledInstContext,
 }
 
 /// RisK instruction context implementation
@@ -53,6 +85,7 @@ impl InstContext {
             step: 0,
             end: false,
             regs: [0; 32],
+            precompiled: PrecompiledInstContext::default(),
         }
     }
 
