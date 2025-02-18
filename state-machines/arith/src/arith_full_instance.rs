@@ -175,6 +175,7 @@ impl BusDevice<u64> for ArithInstanceCollector {
         if let ExtOperationData::OperationData(data) = data {
             self.inputs.push(data);
         }
+
         None
     }
 

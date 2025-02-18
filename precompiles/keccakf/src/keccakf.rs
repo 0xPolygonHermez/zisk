@@ -98,17 +98,15 @@ impl KeccakfSM {
         let initial_offset = num_rows_constants;
         let input_offset = Self::BLOCKS_PER_SLOT / BITS_IN_PARALLEL_KECCAKF; // Length of the input data
         inputs.iter().enumerate().for_each(|(i, input)| {
+            let input_data = ExtOperationData::OperationKeccakData(*input);
+
             // Get the basic data from the input
-            let step_received =
-                OperationBusData::get_a(&ExtOperationData::OperationKeccakData(*input));
-            let addr_received =
-                OperationBusData::get_b(&ExtOperationData::OperationKeccakData(*input));
+            let step_received = OperationBusData::get_a(&input_data);
+            let addr_received = OperationBusData::get_b(&input_data);
 
             // Get the raw keccakf input as 25 u64 values
             let keccakf_input: [u64; 25] =
-                OperationBusData::get_extra_data(&ExtOperationData::OperationKeccakData(*input))
-                    .try_into()
-                    .unwrap();
+                OperationBusData::get_extra_data(&input_data).try_into().unwrap();
 
             let slot = i / Self::NUM_KECCAKF_PER_SLOT;
             let slot_pos = i % Self::NUM_KECCAKF_PER_SLOT;
@@ -527,14 +525,14 @@ impl KeccakfSM {
     /// Generates memory inputs.
     pub fn generate_inputs(input: &OperationKeccakData<u64>) -> Vec<Vec<PayloadType>> {
         // Get the basic data from the input
-        let step_main = OperationBusData::get_a(&ExtOperationData::OperationKeccakData(*input));
-        let addr = OperationBusData::get_b(&ExtOperationData::OperationKeccakData(*input)) as u32;
+        let input_data = ExtOperationData::OperationKeccakData(*input);
+
+        let step_main = OperationBusData::get_a(&input_data);
+        let addr = OperationBusData::get_b(&input_data) as u32;
 
         // Get the raw keccakf input as 25 u64 values
         let keccakf_input: [u64; 25] =
-            OperationBusData::get_extra_data(&ExtOperationData::OperationKeccakData(*input))
-                .try_into()
-                .unwrap();
+            OperationBusData::get_extra_data(&input_data).try_into().unwrap();
 
         // Apply the keccakf function and get the output
         let mut keccakf_output = keccakf_input;

@@ -21,6 +21,7 @@ pub struct ArithCounterInputGen {
     /// Vector of counters, one for each accepted `ZiskOperationType`.
     counter: Counter,
 
+    /// Bus device mode (counter or input generator).
     mode: BusDeviceMode,
 }
 
