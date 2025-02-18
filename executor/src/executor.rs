@@ -85,6 +85,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
         input_data_path: Option<PathBuf>,
         rom_path: Option<PathBuf>,
         zisk_rom: Arc<ZiskRom>,
+        std: Arc<Std<F>>,
     ) -> Self {
         Self {
             input_data_path,
