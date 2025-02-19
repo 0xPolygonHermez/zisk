@@ -106,8 +106,6 @@ impl<'a> MemModulePlanner<'a> {
         let initial_sorted_boxes = self.prepare_sorted_boxes();
         self.sorted_boxes = self.merge_sorted_boxes(&initial_sorted_boxes, 4);
         self.init_sorted_boxes_cursor();
-        #[cfg(feature = "debug_mem")]
-        self.debug_sorted_boxes();
     }
     fn cursors_end(&self) -> bool {
         self.cursor_index >= self.cursor_count
@@ -124,24 +122,6 @@ impl<'a> MemModulePlanner<'a> {
         )
     }
 
-    #[cfg(feature = "debug_mem")]
-    fn debug_sorted_boxes(&self) {
-        let aid = self.config.addr_index;
-        let mut prev_addr = 0;
-        let mut prev_step = 0;
-        for box_ref in self.sorted_boxes.iter() {
-            let addr = box_ref.addr;
-            let _addr = self.counters[box_ref.i_counter as usize].1.addr_sorted[aid]
-                [box_ref.i_addr as usize]
-                .0;
-            let step = self.counters[box_ref.i_counter as usize].1.addr_sorted[aid]
-                [box_ref.i_addr as usize]
-                .1
-                .first_step;
-            prev_addr = addr;
-            prev_step = step;
-        }
-    }
     fn init_sorted_boxes_cursor(&mut self) {
         self.cursor_index = 0;
         self.cursor_count = self.sorted_boxes.len();
