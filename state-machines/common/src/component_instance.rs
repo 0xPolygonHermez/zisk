@@ -21,7 +21,7 @@ pub enum InstanceType {
 /// The `Instance` trait defines the interface for any computation instance used in proof systems.
 ///
 /// It provides methods to compute witnesses, retrieve checkpoints, and specify instance types.
-pub trait Instance<F: PrimeField>: Send {
+pub trait Instance<F: PrimeField>: Send + Sync {
     /// Computes the witness for the instance based on the proof context.
     ///
     /// # Arguments

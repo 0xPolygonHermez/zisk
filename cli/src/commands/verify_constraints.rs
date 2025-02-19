@@ -95,20 +95,18 @@ impl ZiskVerifyConstraints {
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
         match self.field {
-            Field::Goldilocks => {
-                ProofMan::<Goldilocks>::generate_proof(
-                    self.witness_lib.clone(),
-                    Some(self.elf.clone()),
-                    self.public_inputs.clone(),
-                    self.input.clone(),
-                    self.proving_key.clone(),
-                    PathBuf::new(),
-                    custom_commits_map,
-                    ProofOptions::new(true, self.verbose.into(), false, false, false, debug_info),
-                )
-                .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
-            }
-        }
+            Field::Goldilocks => ProofMan::<Goldilocks>::verify_proof_constraints(
+                self.witness_lib.clone(),
+                Some(self.elf.clone()),
+                self.public_inputs.clone(),
+                Some(self.inputs.clone()),
+                self.proving_key.clone(),
+                PathBuf::new(),
+                custom_commits_map,
+                ProofOptions::new(true, self.verbose.into(), false, false, false, debug_info),
+            )
+            .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?,
+        };
 
         Ok(())
     }

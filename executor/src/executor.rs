@@ -19,7 +19,6 @@
 //! By structuring these phases, the `ZiskExecutor` ensures high-performance execution while
 //! maintaining clarity and modularity in the computation process.
 
-use itertools::Itertools;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use proofman_common::{ProofCtx, SetupCtx};
@@ -35,7 +34,7 @@ use sm_common::{
     Instance, InstanceCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
-use zisk_pil::{RomRomTrace, ZiskPublicValues};
+use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
 
 use std::{
     collections::HashMap,
@@ -64,6 +63,9 @@ pub struct ZiskExecutor<F: PrimeField> {
     pub min_traces: RwLock<Vec<EmuTrace>>,
     pub main_planning: RwLock<Vec<Plan>>,
     pub secn_planning: RwLock<Vec<Vec<Plan>>>,
+
+    pub main_instances: RwLock<HashMap<usize, MainInstance>>,
+    pub secn_instances: RwLock<HashMap<usize, Box<dyn Instance<F>>>>,
     std: Arc<Std<F>>,
 }
 
@@ -95,6 +97,8 @@ impl<F: PrimeField> ZiskExecutor<F> {
             min_traces: RwLock::new(Vec::new()),
             main_planning: RwLock::new(Vec::new()),
             secn_planning: RwLock::new(Vec::new()),
+            main_instances: RwLock::new(HashMap::new()),
+            secn_instances: RwLock::new(HashMap::new()),
             std,
         }
     }
@@ -141,40 +145,34 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// * `main_planning` - Planning information for main state machines.
     fn assign_main_instances(&self, pctx: &ProofCtx<F>, main_planning: &mut [Plan]) {
         main_planning.iter_mut().for_each(|plan| {
-            let (_, global_idx) = pctx.dctx_add_instance(
-                plan.airgroup_id,
-                plan.air_id,
-                pctx.get_weight(plan.airgroup_id, plan.air_id),
-            );
+            let global_id = pctx.add_instance(plan.airgroup_id, plan.air_id);
 
-            plan.set_global_id(global_idx);
+            plan.set_global_id(global_id);
         });
     }
 
-    /// Creates main state machine instances based on the main plannings.
+    /// Creates main state machine instance based on a main planning.
     ///
     /// # Arguments
-    /// * `pctx` - Proof context.
+    /// * `global_id` - Global ID of the main instance to be created.
     ///
     /// # Returns
-    /// A vector of `MainInstance` objects.
-    fn create_main_instances(&self, pctx: &ProofCtx<F>) -> Vec<MainInstance> {
+    /// A vector of `MainInstance` object.
+    fn create_main_instance(&self, global_id: usize) -> MainInstance {
         let mut main_planning_guard = self.main_planning.write().unwrap();
-        let main_planning = std::mem::take(&mut *main_planning_guard);
 
-        let len = main_planning.len() - 1;
-        main_planning
-            .into_iter()
-            .filter_map(|plan| {
-                let global_id = plan.global_id.unwrap();
-                let is_last_segment = plan.segment_id.unwrap() == len;
-                if pctx.dctx_is_my_instance(global_id) {
-                    Some(MainInstance::new(InstanceCtx::new(global_id, plan), is_last_segment))
-                } else {
-                    None
-                }
-            })
-            .collect()
+        let plan_idx = main_planning_guard.iter().position(|x| x.global_id.unwrap() == global_id);
+        if plan_idx.is_none() {
+            panic!("Main instance not found");
+        }
+
+        let plan_idx = plan_idx.unwrap();
+        let plan = main_planning_guard.remove(plan_idx);
+
+        let global_id = plan.global_id.unwrap();
+        let is_last_segment = *plan.meta.as_ref().unwrap().downcast_ref::<bool>().unwrap();
+
+        MainInstance::new(InstanceCtx::new(global_id, plan), is_last_segment)
     }
 
     /// Counts metrics for secondary state machines based on minimal traces.
@@ -276,16 +274,15 @@ impl<F: PrimeField> ZiskExecutor<F> {
     fn assign_secn_instances(&self, pctx: &ProofCtx<F>, secn_planning: &mut [Vec<Plan>]) {
         secn_planning.iter_mut().for_each(|plans_by_sm| {
             plans_by_sm.iter_mut().for_each(move |plan| {
-                let global_id = pctx.dctx_add_instance_no_assign(
-                    plan.airgroup_id,
-                    plan.air_id,
-                    pctx.get_weight(plan.airgroup_id, plan.air_id),
-                );
-                plan.set_global_id(global_id);
+                if plan.instance_type == InstanceType::Instance {
+                    let global_id = pctx.add_instance(plan.airgroup_id, plan.air_id);
+                    plan.set_global_id(global_id);
+                } else {
+                    let global_id = pctx.add_instance_all(plan.airgroup_id, plan.air_id);
+                    plan.set_global_id(global_id);
+                }
             })
         });
-
-        pctx.dctx_assign_instances();
     }
 
     /// Creates secondary state machine instances based on the plans.
@@ -331,48 +328,84 @@ impl<F: PrimeField> ZiskExecutor<F> {
         (table_instances, other_instances)
     }
 
-    /// Expands and computes witnesses for main state machines.
+    fn create_secn_instance(&self, global_id: usize) -> Box<dyn Instance<F>> {
+        let mut secn_planning_guard = self.secn_planning.write().unwrap();
+
+        let plan_idx = secn_planning_guard.iter().enumerate().find_map(|(outer_idx, plans)| {
+            plans
+                .iter()
+                .position(|plan| plan.global_id.unwrap() == global_id)
+                .map(|inner_idx| (outer_idx, inner_idx))
+        });
+        if plan_idx.is_none() {
+            panic!("Secondary instance not found");
+        }
+
+        let plan_idx = plan_idx.unwrap();
+        let plan = secn_planning_guard[plan_idx.0].remove(plan_idx.1);
+
+        let global_id = plan.global_id.unwrap();
+
+        // let is_mine = pctx.dctx_is_my_instance(global_id);
+        // let is_table = plan.instance_type == InstanceType::Table;
+        // if is_mine || is_table {
+        //     let ictx = InstanceCtx::new(global_id, plan);
+        //     let instance = (global_id, self.secondary_sm[plan_idx.0].build_instance(ictx));
+        // }
+
+        // // TODO! What to do if it's not mine and is not a table ?
+        // instance
+
+        let ictx = InstanceCtx::new(global_id, plan);
+        self.secondary_sm[plan_idx.0].build_instance(ictx)
+    }
+
+    /// Expands and computes witnesses for a main instance.
     ///
     /// # Arguments
     /// * `pctx` - Proof context.
-    /// * `main_instances` - Main state machine instances to compute witnesses for
-    fn witness_main_instances(&self, pctx: &ProofCtx<F>, main_instances: Vec<MainInstance>) {
+    /// * `main_instance` - Main instance to compute witness for
+    fn witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &mut MainInstance) {
         let min_traces_guard = self.min_traces.read().unwrap();
         let min_traces = &*min_traces_guard;
 
-        main_instances.into_par_iter().for_each(|mut main_instance| {
-            let air_instance = MainSM::compute_witness(
-                &self.zisk_rom,
-                min_traces,
-                Self::MIN_TRACE_SIZE,
-                &mut main_instance,
-                self.std.clone(),
-            );
+        let air_instance = MainSM::compute_witness(
+            &self.zisk_rom,
+            min_traces,
+            Self::MIN_TRACE_SIZE,
+            main_instance,
+            self.std.clone(),
+        );
 
-            pctx.air_instance_repo.add_air_instance(air_instance, main_instance.ictx.global_id);
-        });
+        pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
     }
 
-    /// Expands and computes witnesses for secondary state machines.
+    /// Expands and computes witness for a secondary state machines instance.
     ///
     /// # Arguments
     /// * `pctx` - Proof context.
     /// * `sctx` - Setup context.
-    /// * `secn_instances` - Secondary state machine instances to compute witnesses for
-    fn witness_secn_instances(
+    /// * `global_id` - Global ID of the secondary state machine instance.
+    /// * `secn_instance` - Secondary state machine instance to compute witness for
+    fn witness_secn_instance(
         &self,
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
-        secn_instances: Vec<(usize, Box<dyn Instance<F>>)>,
+        global_id: usize,
+        secn_instance: &mut Box<dyn Instance<F>>,
     ) {
+        if secn_instance.instance_type() != InstanceType::Instance {
+            panic!("Instance is not a secondary state machine instance");
+        }
+
         let min_traces_guard = self.min_traces.read().unwrap();
         let min_traces = &*min_traces_guard;
 
         // Group the instances by the chunk they need to process
-        let instances_by_chunk = self.chunks_to_execute(min_traces, &secn_instances);
+        let chunks_to_execute = self.chunks_to_execute(min_traces, secn_instance);
 
         // Create data buses for each chunk
-        let mut data_buses = self.get_data_bus_collectors(&secn_instances, instances_by_chunk);
+        let mut data_buses = self.get_data_bus_collectors(secn_instance, chunks_to_execute);
 
         // Execute collect process for each chunk
         data_buses.par_iter_mut().enumerate().for_each(|(chunk_id, data_bus)| {
@@ -387,79 +420,66 @@ impl<F: PrimeField> ZiskExecutor<F> {
         });
 
         // Close the data buses and get for each instance its collectors
-        let collectors_by_instance = self.close_data_bus_collectors(secn_instances, data_buses);
+        let collectors_by_instance = self.close_data_bus_collectors(data_buses);
 
-        collectors_by_instance.into_par_iter().for_each(|(global_idx, mut instance, collector)| {
-            if let Some(air_instance) = instance.compute_witness(pctx, sctx, collector) {
-                pctx.air_instance_repo.add_air_instance(air_instance, global_idx);
-            }
-        });
+        if let Some(air_instance) =
+            secn_instance.compute_witness(pctx, sctx, collectors_by_instance)
+        {
+            pctx.add_air_instance(air_instance, global_id);
+        }
     }
 
-    /// Computes and generates witnesses for secondary state machine instances of type `Table`.
+    /// Computes and generates witness for secondary state machine instance of type `Table`.
     ///
     /// # Arguments
     /// * `pctx` - Proof context.
     /// * `sctx` - Setup context.
-    /// * `table_instances` - Secondary state machine table instances to compute witnesses for
-    fn witness_tables(
+    /// * `global_id` - Global ID of the secondary state machine instance.
+    /// * `table_instance` - Secondary state machine table instance to compute witness for
+    fn witness_table(
         &self,
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
-        table_instances: Vec<(usize, Box<dyn Instance<F>>)>,
+        global_id: usize,
+        table_instance: &mut Box<dyn Instance<F>>,
     ) {
-        let mut instances = table_instances
-            .into_iter()
-            .filter(|(_, secn_instance)| secn_instance.instance_type() == InstanceType::Table)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .sorted_by(|(a, _), (b, _)| {
-                let (airgroup_id_a, air_id_a) = pctx.dctx_get_instance_info(*a);
-                let (airgroup_id_b, air_id_b) = pctx.dctx_get_instance_info(*b);
+        if table_instance.instance_type() != InstanceType::Table {
+            panic!("Instance is not a table");
+        }
 
-                airgroup_id_a.cmp(&airgroup_id_b).then(air_id_a.cmp(&air_id_b))
-            })
-            .collect::<Vec<_>>();
-
-        instances.iter_mut().for_each(|(global_idx, secn_instance)| {
-            if secn_instance.instance_type() == InstanceType::Table {
-                if let Some(air_instance) = secn_instance.compute_witness(pctx, sctx, vec![]) {
-                    if pctx.dctx_is_my_instance(*global_idx) {
-                        pctx.air_instance_repo.add_air_instance(air_instance, *global_idx);
-                    }
-                }
+        if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![]) {
+            if pctx.dctx_is_my_instance(global_id) {
+                pctx.add_air_instance(air_instance, global_id);
             }
-        });
+        }
     }
 
-    /// Groups secondary state machine instances by the chunk they need to process.
+    /// Computes all the chunks to be executed to generate the witness given an instance.
     ///
     /// # Arguments
     /// * `min_traces` - Minimal traces
-    /// * `secn_instances` - Secondary state machine instances to group.
+    /// * `secn_instance` - Secondary state machine instance to group.
     ///
     /// # Returns
-    /// A vector of vectors containing the indices of secondary state machine instances to execute
-    /// for each chunk.
+    /// A vector of booleans indicating which chunks to execute.
     fn chunks_to_execute(
         &self,
         min_traces: &[EmuTrace],
-        secn_instances: &[(usize, Box<dyn Instance<F>>)],
-    ) -> Vec<Vec<usize>> {
-        let mut chunks_to_execute = vec![Vec::new(); min_traces.len()];
-        secn_instances.iter().enumerate().for_each(|(idx, (_, secn_instance))| match secn_instance
-            .check_point()
-        {
+        secn_instance: &Box<dyn Instance<F>>,
+    ) -> Vec<bool> {
+        let mut chunks_to_execute = vec![false; min_traces.len()];
+
+        match secn_instance.check_point() {
             CheckPoint::None => {}
             CheckPoint::Single(chunk_id) => {
-                chunks_to_execute[chunk_id].push(idx);
+                chunks_to_execute[chunk_id] = true;
             }
             CheckPoint::Multiple(chunk_ids) => {
                 chunk_ids.iter().for_each(|&chunk_id| {
-                    chunks_to_execute[chunk_id].push(idx);
+                    chunks_to_execute[chunk_id] = true;
                 });
             }
-        });
+        };
         chunks_to_execute
     }
 
@@ -511,38 +531,32 @@ impl<F: PrimeField> ZiskExecutor<F> {
     }
 
     /// Retrieves a data bus for managing collectors in secondary state machines.
-    ///   # Arguments
-    /// * `secn_instances` - A vector of secondary state machine instances
-    ///  * `chunks_to_execute` - A vector of chunk IDs to execute
-    ///
     /// # Arguments
-    /// * `secn_instances` - A vector of secondary state machine instances
-    /// * `chunks_to_execute` - A vector of chunk IDs to execute
+    /// * `secn_instance` - Secondary state machine instance.
+    /// * `chunks_to_execute` - A vector of booleans indicating which chunks to execute.
     ///
     /// # Returns
-    /// A vector of `DataBus` instances, each configured with collectors for the secondary state
+    /// A vector of data buses with attached collectors for each chunk to be executed
     fn get_data_bus_collectors(
         &self,
-        secn_instances: &[(usize, Box<dyn Instance<F>>)],
-        chunks_to_execute: Vec<Vec<usize>>,
+        secn_instance: &Box<dyn Instance<F>>,
+        chunks_to_execute: Vec<bool>,
     ) -> Vec<Option<DataBus<u64, BusDeviceWrapper<u64>>>> {
         chunks_to_execute
             .iter()
             .enumerate()
-            .map(|(chunk_id, secn_indices)| {
-                if secn_indices.is_empty() {
+            .map(|(chunk_id, to_be_executed)| {
+                if !to_be_executed {
                     return None;
                 }
 
                 let mut data_bus: DataBus<u64, BusDeviceWrapper<PayloadType>> = DataBus::new();
 
-                for idx in secn_indices {
-                    let (_, secn_instance) = &secn_instances[*idx];
-                    let bus_device = secn_instance.build_inputs_collector(chunk_id);
-                    if let Some(bus_device) = bus_device {
-                        let bus_device = Box::new(BusDeviceWrapper::new(Some(*idx), bus_device));
-                        data_bus.connect_device(bus_device.bus_id(), bus_device);
-                    }
+                let bus_device = secn_instance.build_inputs_collector(chunk_id);
+                if let Some(bus_device) = bus_device {
+                    // TODO!!!!!!!!  Canviar!!! Treure aquest BusDeviceWrapper!!!!!
+                    let bus_device = Box::new(BusDeviceWrapper::new(Some(1), bus_device));
+                    data_bus.connect_device(bus_device.bus_id(), bus_device);
                 }
 
                 self.secondary_sm.iter().for_each(|sm| {
@@ -570,23 +584,19 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// # Returns
     /// A vector of tuples containing the global ID, secondary state machine instance, and a vector
     /// of collectors for each instance.
-    #[allow(clippy::type_complexity)]
     fn close_data_bus_collectors(
         &self,
-        secn_instances: Vec<(usize, Box<dyn Instance<F>>)>,
         mut data_buses: Vec<Option<DataBus<u64, BusDeviceWrapper<u64>>>>,
-    ) -> Vec<(usize, Box<dyn Instance<F>>, Vec<(usize, Box<BusDeviceWrapper<u64>>)>)> {
+    ) -> Vec<(usize, Box<BusDeviceWrapper<u64>>)> {
         let mut collectors_by_instance = Vec::new();
-        for (global_id, secn_instance) in secn_instances {
-            collectors_by_instance.push((global_id, secn_instance, Vec::new()));
-        }
 
         for (chunk_id, data_bus) in data_buses.iter_mut().enumerate() {
             if let Some(data_bus) = data_bus {
                 let collectors = data_bus.detach_devices();
                 for collector in collectors {
-                    if let Some(idx) = collector.instance_idx() {
-                        collectors_by_instance[idx].2.push((chunk_id, collector));
+                    if let Some(_) = collector.instance_idx() {
+                        // TODO!!!! Remove this Some...
+                        collectors_by_instance.push((chunk_id, collector));
                     }
                 }
             }
@@ -600,7 +610,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
     ///
     /// # Arguments
     /// * `pctx` - Proof context.
-    fn execute(&self, pctx: Arc<ProofCtx<F>>) {
+    fn execute(&self, pctx: Arc<ProofCtx<F>>) -> Vec<usize> {
         // Call emulate with these options
         let input_data = {
             // Read inputs data from the provided inputs path
@@ -639,9 +649,19 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         self.assign_main_instances(&pctx, &mut main_planning);
         self.assign_secn_instances(&pctx, &mut secn_planning);
 
+        let main_global_ids =
+            main_planning.iter().map(|plan| plan.global_id.unwrap()).collect::<Vec<_>>();
+        let secn_global_ids = secn_planning
+            .iter()
+            .map(|plans| plans.iter().map(|plan| plan.global_id.unwrap()).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+        let secn_global_ids = secn_global_ids.iter().flatten().map(|x| *x).collect::<Vec<_>>();
+
         *self.min_traces.write().unwrap() = min_traces;
         *self.main_planning.write().unwrap() = main_planning;
         *self.secn_planning.write().unwrap() = secn_planning;
+
+        [main_global_ids, secn_global_ids].concat()
     }
 
     /// Computes the witness for the main and secondary state machines.
@@ -650,16 +670,46 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
     /// * `stage` - The current stage id
     /// * `pctx` - Proof context.
     /// * `sctx` - Setup context.
-    fn calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>) {
-        if stage == 1 {
-            // PHASE 6. WITNESS. Compute the witnesses
-            let main_instances = self.create_main_instances(&pctx);
-            let (table_instances, secn_instances) = self.create_secn_instances(&pctx);
-
-            self.witness_main_instances(&pctx, main_instances);
-            self.witness_secn_instances(&pctx, &sctx, secn_instances);
-            self.witness_tables(&pctx, &sctx, table_instances);
+    fn calculate_witness(
+        &self,
+        stage: u32,
+        pctx: Arc<ProofCtx<F>>,
+        sctx: Arc<SetupCtx<F>>,
+        global_ids: &[usize],
+    ) {
+        if stage != 1 {
+            return;
         }
+
+        global_ids.iter().for_each(|&global_id| {
+            let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+            println!("Calculating witness for instance: {:?} air_id: {:?}", global_id, air_id);
+
+            if MAIN_AIR_IDS.contains(&air_id) {
+                let mut main_instances_guard = self.main_instances.write().unwrap();
+
+                let main_instance = main_instances_guard
+                    .entry(global_id)
+                    .or_insert_with(|| self.create_main_instance(global_id));
+
+                self.witness_main_instance(&pctx, main_instance);
+            } else {
+                let mut secn_instances_guard = self.secn_instances.write().unwrap();
+
+                let secn_instance = secn_instances_guard
+                    .entry(global_id)
+                    .or_insert_with(|| self.create_secn_instance(global_id));
+
+                match secn_instance.instance_type() {
+                    InstanceType::Instance => {
+                        self.witness_secn_instance(&pctx, &sctx, global_id, secn_instance)
+                    }
+                    InstanceType::Table => {
+                        self.witness_table(&pctx, &sctx, global_id, secn_instance)
+                    }
+                }
+            }
+        });
     }
 
     /// Debugs the main and secondary state machines.
@@ -667,7 +717,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
     /// # Arguments
     /// * `pctx` - Proof context.
     /// * `sctx` - Setup context.
-    fn debug(&self, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>) {
+    fn debug(&self, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>, global_ids: &[usize]) {
         let (table_instances, secn_instances) = self.create_secn_instances(&pctx);
 
         MainSM::debug(&pctx, &sctx);
