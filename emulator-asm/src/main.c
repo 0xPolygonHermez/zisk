@@ -82,6 +82,51 @@ char * input_file = NULL;
 
 int main(int argc, char *argv[])
 {
+    /*
+    {
+        uint64_t data[25] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+        keccakf1600_generic((uint64_t *)data);
+        for (uint64_t i=0; i<25; i++)
+        {
+            printf("data1[%d]=%016llx\n", i, data[i]);
+        }
+    }
+    {
+        uint64_t data[25] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+        zisk_keccakf((uint64_t *)data);
+        for (uint64_t i=0; i<25; i++)
+        {
+            printf("data2[%d]=%016llx\n", i, data[i]);
+        }
+    }
+    {
+        uint64_t data[25] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+        gettimeofday(&keccak_start, NULL);
+        for (uint64_t i=0; i<1000000; i++)
+        {
+            keccakf1600_generic((uint64_t *)data);
+        }
+        gettimeofday(&keccak_stop, NULL);
+        keccak_duration += TimeDiff(keccak_start, keccak_stop);
+        keccak_counter = 1000000;
+        uint64_t single_keccak_duration_ns = keccak_counter == 0 ? 0 : (keccak_duration * 1000) / keccak_counter;
+        printf("Keccak1 counter = %d, duration = %d us, single keccak duration = %d ns\n", keccak_counter, keccak_duration, single_keccak_duration_ns);
+    }
+    {
+        uint64_t data[25] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+        gettimeofday(&keccak_start, NULL);
+        for (uint64_t i=0; i<1000000; i++)
+        {
+            zisk_keccakf((uint64_t *)data);
+        }
+        gettimeofday(&keccak_stop, NULL);
+        keccak_duration += TimeDiff(keccak_start, keccak_stop);
+        keccak_counter = 1000000;
+        uint64_t single_keccak_duration_ns = keccak_counter == 0 ? 0 : (keccak_duration * 1000) / keccak_counter;
+        printf("Keccak2 counter = %d, duration = %d us, single keccak duration = %d ns\n", keccak_counter, keccak_duration, single_keccak_duration_ns);
+    }
+    return 0;*/
+
     // Parse arguments
     if (argc > 1)
     {
@@ -234,13 +279,13 @@ int main(int argc, char *argv[])
     emulator_start();
     struct timeval stop_time;
     gettimeofday(&stop_time,NULL);
-    if (metrics || verbose)
+    if (keccak_metrics || metrics || verbose)
     {
         uint64_t duration = TimeDiff(start_time, stop_time);
         printf("Duration = %d us Keccak counter = %d,\n", duration, keccak_counter);
         uint64_t keccak_percentage = duration == 0 ? 0 : (keccak_duration * 100) / duration;
         uint64_t single_keccak_duration_ns = keccak_counter == 0 ? 0 : (keccak_duration * 1000) / keccak_counter;
-        //printf("Keccak counter = %d, duration = %d us, single keccak duration = %d ns, percentage = %d \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
+        printf("Keccak counter = %d, duration = %d us, single keccak duration = %d ns, percentage = %d \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
     }
 
     // Log output
