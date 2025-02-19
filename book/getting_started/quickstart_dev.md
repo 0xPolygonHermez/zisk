@@ -109,6 +109,8 @@ Run the following commands to clone the necessary repositories to be able to gen
 git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
 git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman.git
 git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman-js
+(cd ../pil2-compiler && npm i)
+(cd ../pil2-proofman-js && npm i)
 ```
 
 All following commands should be executed in the `zisk` folder.
