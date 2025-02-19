@@ -319,7 +319,7 @@ function precompiled_mem_load(int id = MEMORY_ID, expr addr, expr main_step, exp
 }
 
 function precompiled_mem_store(int id = MEMORY_ID, expr addr, expr main_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT ) {
-    mem_assumes(id, MEMORY_STORE_OP, addr, main_step_to_precompiled_mem_step(main_step, 1) + 1, 8, value, sel, name);
+    mem_assumes(id, MEMORY_STORE_OP, addr, main_step_to_precompiled_mem_step(main_step, 1), 8, value, sel, name);
 }
 
 function reg_pre_load(int id = MEMORY_ID, expr addr, expr prev_mem_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
