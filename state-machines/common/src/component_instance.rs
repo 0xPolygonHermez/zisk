@@ -133,7 +133,7 @@ macro_rules! table_instance {
 
                 trace.buffer.par_iter_mut().enumerate().for_each(|(i, input)| {
                     input.multiplicity = F::from_canonical_u64(
-                        multiplicity[i].load(std::sync::atomic::Ordering::Relaxed),
+                        multiplicity[i].swap(0,std::sync::atomic::Ordering::Relaxed),
                     )
                 });
 
@@ -233,7 +233,7 @@ macro_rules! table_instance_array {
                 buffer.par_chunks_mut(trace.row_size).enumerate().for_each(|(row, chunk)| {
                     for (col, vec) in multiplicities.iter().enumerate() {
                         chunk[col] = F::from_canonical_u64(
-                            vec[row].load(std::sync::atomic::Ordering::Relaxed),
+                            vec[row].swap(0,std::sync::atomic::Ordering::Relaxed),
                         );
                     }
                 });
