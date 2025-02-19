@@ -87,11 +87,20 @@ impl Default for EmuOptions {
 impl fmt::Display for EmuOptions {
     /// Formats a string with the configuration information
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ROM: {:?}\nELF: {:?}\nINPUT: {:?}\nMAX_STEPS: {}\nPRINT_STEP: {:?}\nTRACE: {:?}\nOUTPUT: {:?}\nVERBOSE: {}\ntrace_steps={:?}",
-            self.rom, self.elf, self.inputs, self.max_steps, self.print_step, self.trace, self.output, self.verbose, self.trace_steps
-        )
+        writeln!(f, "ROM: {:?}", self.rom)?;
+        writeln!(f, "ELF: {:?}", self.elf)?;
+        writeln!(f, "INPUT: {:?}", self.inputs)?;
+        writeln!(f, "MAX_STEPS: {}", self.max_steps)?;
+        writeln!(f, "PRINT_STEP: {:?}", self.print_step)?;
+        writeln!(f, "TRACE: {:?}", self.trace)?;
+        writeln!(f, "OUTPUT: {:?}", self.output)?;
+        writeln!(f, "LOG_OUTPUT: {:?}", self.log_output)?;
+        writeln!(f, "VERBOSE: {}", self.verbose)?;
+        writeln!(f, "TRACE_STEPS: {:?}", self.trace_steps)?;
+        writeln!(f, "METRICS: {:?}", self.log_metrics)?;
+        writeln!(f, "STATS: {:?}", self.stats)?;
+        writeln!(f, "TRACERV: {:?}", self.tracerv)?;
+        writeln!(f, "LOG_STEP: {:?}", self.log_step)
     }
 }
 
@@ -104,5 +113,6 @@ impl EmuOptions {
             && !self.log_step
             && !self.verbose
             && !self.tracerv
+            && !self.stats
     }
 }
