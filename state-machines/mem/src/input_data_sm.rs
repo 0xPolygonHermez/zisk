@@ -86,6 +86,11 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
 
         for mem_op in mem_ops.iter() {
             let distance = mem_op.addr - last_addr;
+
+            if i >= trace.num_rows {
+                break;
+            }
+
             if distance > 1 {
                 // check if has enough rows to complete the internal reads + regular memory
                 let mut internal_reads = distance - 1;
@@ -208,9 +213,5 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
         air_values.segment_last_value[1] = F::from_canonical_u32((last_value >> 32) as u32);
 
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
-    }
-
-    fn get_addr_ranges(&self) -> Vec<(u32, u32)> {
-        vec![(INPUT_ADDR as u32, (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32)]
     }
 }

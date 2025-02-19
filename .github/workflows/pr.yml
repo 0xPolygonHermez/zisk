@@ -18,6 +18,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openmpi-bin openmpi-common libopenmpi-dev
+
       - name: Setup CI
         uses: ./.github/actions/setup
 
@@ -44,6 +49,11 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openmpi-bin openmpi-common libopenmpi-dev
 
       - name: Setup CI
         uses: ./.github/actions/setup

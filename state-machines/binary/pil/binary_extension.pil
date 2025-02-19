@@ -86,12 +86,10 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id) {
     expr in1_low = in1[0] + in1[1]*2**8 + in1[2]*2**16 + in1[3]*2**24;
     expr in1_high = in1[4] + in1[5]*2**8 + in1[6]*2**16 + in1[7]*2**24;
 
-    col witness debug_main_step;
     col witness multiplicity;
     lookup_proves(
         operation_bus_id,
         [
-            debug_main_step,
             op,
             op_is_shift * (in1_low - in2[0]) + in2[0],
             op_is_shift * (in1_high - in2[1]) + in2[1],

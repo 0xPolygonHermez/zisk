@@ -4,10 +4,12 @@
 //! It organizes execution plans for both regular instances and table instances,
 //! leveraging arithmetic operation counts and metadata to construct detailed plans.
 
-use crate::ArithCounter;
+use std::any::Any;
+
+use crate::ArithCounterInputGen;
 use sm_common::{
-    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Plan,
-    Planner, TableInfo,
+    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics,
+    Plan, Planner, TableInfo,
 };
 
 /// The `ArithPlanner` struct organizes execution plans for arithmetic instances and tables.
@@ -79,7 +81,8 @@ impl Planner for ArithPlanner {
         }
 
         counters.iter().for_each(|(chunk_id, counter)| {
-            let reg_counter = counter.as_any().downcast_ref::<ArithCounter>().unwrap();
+            let reg_counter =
+                Metrics::as_any(&**counter).downcast_ref::<ArithCounterInputGen>().unwrap();
 
             // Iterate over `instances_info` and add `InstCount` objects to the correct vector
             for (index, instance_info) in self.instances_info.iter().enumerate() {
@@ -96,17 +99,17 @@ impl Planner for ArithPlanner {
         let mut plan_result = Vec::new();
 
         for (idx, instance) in self.instances_info.iter().enumerate() {
-            let plan: Vec<_> = plan(&count[idx], instance.num_rows as u64)
+            let plan: Vec<_> = plan(&count[idx], instance.num_ops as u64)
                 .into_iter()
-                .map(|(check_point, collect_info_skip)| {
+                .map(|(check_point, collect_info)| {
+                    let converted: Box<dyn Any> = Box::new(collect_info);
                     Plan::new(
                         instance.airgroup_id,
                         instance.air_id,
                         None,
                         InstanceType::Instance,
                         check_point,
-                        Some(collect_info_skip),
-                        None,
+                        Some(converted),
                     )
                 })
                 .collect();
@@ -114,16 +117,17 @@ impl Planner for ArithPlanner {
             plan_result.extend(plan);
         }
 
-        for table_instance in self.tables_info.iter() {
-            plan_result.push(Plan::new(
-                table_instance.airgroup_id,
-                table_instance.air_id,
-                None,
-                InstanceType::Table,
-                CheckPoint::None,
-                None,
-                None,
-            ));
+        if !plan_result.is_empty() {
+            for table_instance in self.tables_info.iter() {
+                plan_result.push(Plan::new(
+                    table_instance.airgroup_id,
+                    table_instance.air_id,
+                    None,
+                    InstanceType::Table,
+                    CheckPoint::None,
+                    None,
+                ));
+            }
         }
 
         plan_result

@@ -3,7 +3,7 @@
 //! omnipresent devices that process all data sent to the bus. This module provides mechanisms to
 //! send data, route it to the appropriate subscribers, and manage device connections.
 
-use std::collections::HashMap;
+use std::{any::Any, collections::HashMap};
 
 /// Type representing the unique identifier of a bus channel.
 pub type BusId = u16;
@@ -21,7 +21,7 @@ pub type MemData = [PayloadType; 4];
 ///
 /// # Associated Type
 /// * `D` - The type of data handled by the `BusDevice`.
-pub trait BusDevice<D>: Send {
+pub trait BusDevice<D>: Any + Send {
     /// Processes incoming data sent to the device.
     ///
     /// # Arguments
@@ -29,20 +29,18 @@ pub trait BusDevice<D>: Send {
     /// * `data` - A reference to the data payload being processed.
     ///
     /// # Returns
-    /// A tuple containing:
-    /// - `bool` indicating whether processing should end.
-    /// - A vector of `(BusId, Vec<D>)` representing additional data to be sent to other bus IDs.
-    fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> (bool, Vec<(BusId, Vec<D>)>) {
-        let _ = bus_id;
-        let _ = data;
-        (true, vec![])
-    }
+    /// An optional vector of tuples containing the bus ID and data payload to be sent to other
+    /// devices. If no data is to be sent, `None` is returned.
+    fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> Option<Vec<(BusId, Vec<D>)>>;
 
     /// Returns the bus IDs associated with this instance.
     ///
     /// # Returns
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId>;
+
+    /// Converts the device to a generic `Any` type.
+    fn as_any(self: Box<Self>) -> Box<dyn Any>;
 }
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
@@ -116,19 +114,12 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// # Arguments
     /// * `bus_id` - The ID of the bus receiving the data.
     /// * `payload` - The data payload to be sent.
-    ///
-    /// # Returns
-    /// `true` if processing completed successfully, otherwise `false`.
-    pub fn write_to_bus(&mut self, bus_id: BusId, payload: Vec<D>) -> bool {
+    pub fn write_to_bus(&mut self, bus_id: BusId, payload: Vec<D>) {
         self.pending_transfers.push((bus_id, payload));
 
         while let Some((bus_id, payload)) = self.pending_transfers.pop() {
-            if self.route_data(bus_id, &payload) {
-                return true;
-            }
+            self.route_data(bus_id, &payload)
         }
-
-        false
     }
 
     /// Routes data to the devices subscribed to a specific bus ID or global devices.
@@ -136,33 +127,22 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// # Arguments
     /// * `bus_id` - The ID of the bus to route the data to.
     /// * `payload` - A reference to the data payload being routed.
-    ///
-    /// # Returns
-    /// `true` if processing completed successfully, otherwise `false`.
-    fn route_data(&mut self, bus_id: BusId, payload: &[D]) -> bool {
+    fn route_data(&mut self, bus_id: BusId, payload: &[D]) {
         // Notify specific subscribers
         if let Some(bus_id_devices) = self.devices_bus_id_map.get(&bus_id) {
             for &device_idx in bus_id_devices {
-                let (end, result) = self.devices[device_idx].process_data(&bus_id, payload);
-                self.pending_transfers.extend(result);
-
-                if end {
-                    return true;
+                if let Some(result) = self.devices[device_idx].process_data(&bus_id, payload) {
+                    self.pending_transfers.extend(result);
                 }
             }
         }
 
         // Notify global (omni) subscribers
         for &device_idx in &self.omni_devices {
-            let (end, result) = self.devices[device_idx].process_data(&bus_id, payload);
-            self.pending_transfers.extend(result);
-
-            if end {
-                return true;
+            if let Some(result) = self.devices[device_idx].process_data(&bus_id, payload) {
+                self.pending_transfers.extend(result);
             }
         }
-
-        false
     }
 
     /// Outputs the current state of the bus for debugging purposes.

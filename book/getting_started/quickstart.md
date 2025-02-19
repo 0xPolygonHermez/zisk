@@ -112,8 +112,8 @@ ziskup
 ```bash
 git clone https://github.com/0xPolygonHermez/zisk
 git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
-git clone -b 0.0.16 https://github.com/0xPolygonHermez/pil2-proofman.git
-git clone -b 0.0.16 https://github.com/0xPolygonHermez/pil2-proofman-js
+git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman.git
+git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman-js
 ```
 
 All following commands should be executed in the `zisk` folder.
@@ -124,7 +124,7 @@ cd zisk
 ### Compile Zisk PIL
 
 ```bash
-(cd ../pil2-compiler && npm i && cd ../zisk && node --max-old-space-size=65536 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines -o pil/zisk.pilout)
+(cd ../pil2-compiler && npm i && cd ../zisk && node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout)
 ```
 
 ### Compile the PIl2 Stark C++ Library (run only once):
@@ -139,12 +139,19 @@ Run this whenever the `.pilout` file changes:
 (cd ../pil2-proofman; cargo run --bin proofman-cli pil-helpers --pilout ../zisk/pil/zisk.pilout --path ../zisk/pil/src/ -o)
 ```
 
+### Generate External Fixed Cols
+Run this whenever the `.pilout` file changes:
+
+```bash
+cargo run --release --bin keccakf_fixed_gen
+```
+
 ### Generate Setup Data
 Run this whenever the `.pilout` file changes:
 
 ```bash
 (cd ../pil2-proofman-js && npm i)
-node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zisk.pilout -b build -t ../pil2-proofman/pil2-stark/build/bctree -r
+node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zisk.pilout -b build -t ../pil2-proofman/pil2-stark/build/bctree -i precompiles/keccakf/src/keccakf_fixed.bin -r
 ```
 
 ### Compile Witness Computation library (`libzisk_witness.so`)

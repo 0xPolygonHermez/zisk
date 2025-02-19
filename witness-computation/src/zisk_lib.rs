@@ -6,22 +6,22 @@
 
 use executor::ZiskExecutor;
 use pil_std_lib::Std;
+use precomp_keccakf::KeccakfManager;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
-use sm_std::StdSM;
 use std::sync::Arc;
 use zisk_core::Riscv2zisk;
 
-use p3_field::PrimeField;
+use p3_field::PrimeField64;
 use p3_goldilocks::Goldilocks;
 use witness::{witness_library, WitnessLibrary, WitnessManager};
 
 // Macro invocation to generate the core `WitnessLibrary` implementation for the ZisK system.
 witness_library!(WitnessLib, Goldilocks);
 
-impl<F: PrimeField> WitnessLibrary<F> for WitnessLib {
+impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib {
     /// Registers the witness components and initializes the execution pipeline.
     ///
     /// # Arguments
@@ -50,21 +50,26 @@ impl<F: PrimeField> WitnessLibrary<F> for WitnessLib {
 
         // Step 3: Initialize the secondary state machines
         let std = Std::new(wcm.clone());
-        let std_sm = StdSM::new(std.clone());
         let rom_sm = RomSM::new(zisk_rom.clone());
         let binary_sm = BinarySM::new(std.clone());
         let arith_sm = ArithSM::new();
         let mem_sm = Mem::new(std.clone());
 
-        // Step 4: Create the executor and register the secondary state machines
-        let mut executor = ZiskExecutor::new(wcm.get_public_inputs_path().unwrap(), zisk_rom);
-        executor.register_sm(std_sm);
+        // Step 4: Initialize the precompiles state machines
+        let keccakf_sm = KeccakfManager::new::<F>();
+
+        // Step 5: Create the executor and register the secondary state machines
+        let mut executor =
+            ZiskExecutor::new(wcm.get_input_data_path(), wcm.get_rom_path(), zisk_rom, std);
+        executor.register_sm(mem_sm);
         executor.register_sm(rom_sm);
         executor.register_sm(binary_sm);
         executor.register_sm(arith_sm);
-        executor.register_sm(mem_sm);
 
-        // Step 5: Register the executor as a component in the Witness Manager
+        // Step 6: Register the precompiles state machines
+        executor.register_sm(keccakf_sm);
+
+        // Step 7: Register the executor as a component in the Witness Manager
         wcm.register_component(Arc::new(executor));
     }
 }

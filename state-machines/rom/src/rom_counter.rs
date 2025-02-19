@@ -4,7 +4,7 @@
 
 use std::{any::Any, ops::AddAssign};
 
-use data_bus::{BusDevice, BusId, RomBusData, RomData};
+use data_bus::{BusDevice, BusId, RomBusData, RomData, ROM_BUS_ID};
 use sm_common::{CounterStats, Metrics};
 
 /// The `RomCounter` struct represents a counter that monitors ROM-related metrics
@@ -13,9 +13,6 @@ use sm_common::{CounterStats, Metrics};
 /// It collects execution statistics, such as the program counter (PC) of executed instructions,
 /// the total number of executed steps, and the PC of the last executed instruction.
 pub struct RomCounter {
-    /// The connected bus ID.
-    bus_id: BusId,
-
     /// Execution statistics counter for ROM instructions.
     pub rom: CounterStats,
 }
@@ -23,13 +20,10 @@ pub struct RomCounter {
 impl RomCounter {
     /// Creates a new instance of `RomCounter`.
     ///
-    /// # Arguments
-    /// * `bus_id` - The ID of the bus to which this counter is connected.
-    ///
     /// # Returns
     /// A new `RomCounter` instance.
-    pub fn new(bus_id: BusId) -> Self {
-        Self { bus_id, rom: CounterStats::default() }
+    pub fn new() -> Self {
+        Self { rom: CounterStats::default() }
     }
 }
 
@@ -48,7 +42,8 @@ impl Metrics for RomCounter {
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs.
-    fn measure(&mut self, _: &BusId, data: &[u64]) -> Vec<(BusId, Vec<u64>)> {
+    #[inline(always)]
+    fn measure(&mut self, data: &[u64]) {
         let data: RomData<u64> = data.try_into().expect("Rom Metrics: Failed to convert data");
 
         self.rom.update(
@@ -57,8 +52,6 @@ impl Metrics for RomCounter {
             1,
             RomBusData::get_end(&data) == 1,
         );
-
-        vec![]
     }
 
     /// Provides a dynamic reference for downcasting purposes.
@@ -78,15 +71,16 @@ impl BusDevice<u64> for RomCounter {
     /// * `data` - The data received from the bus.
     ///
     /// # Returns
-    /// A tuple where:
-    /// - The first element is `true`, indicating that processing should continue.
-    /// - The second element is an empty vector, as this implementation does not produce derived
-    ///   inputs.
+    /// An optional vector of tuples where:
+    /// - The first element is the bus ID.
+    /// - The second element is always empty indicating there are no derived inputs.
     #[inline]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> (bool, Vec<(BusId, Vec<u64>)>) {
-        self.measure(bus_id, data);
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        debug_assert!(*bus_id == ROM_BUS_ID);
 
-        (true, vec![])
+        self.measure(data);
+
+        None
     }
 
     /// Returns the bus IDs associated with this counter.
@@ -94,6 +88,11 @@ impl BusDevice<u64> for RomCounter {
     /// # Returns
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
+        vec![ROM_BUS_ID]
+    }
+
+    /// Provides a dynamic reference for downcasting purposes.
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
     }
 }

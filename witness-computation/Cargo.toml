@@ -8,13 +8,13 @@ crate-type = ["dylib"]
 
 [dependencies]
 executor = { path = "../executor" }
-sm-std = { path = "../state-machines/std" }
 sm-arith = { path = "../state-machines/arith" }
 sm-binary = { path = "../state-machines/binary" }
 sm-common = { path = "../state-machines/common" }
 sm-main = { path = "../state-machines/main" }
 sm-mem = { path = "../state-machines/mem" }
 sm-rom = { path = "../state-machines/rom" }
+precomp-keccakf = { path = "../precompiles/keccakf" }
 zisk-pil = { path = "../pil" }
 ziskemu = { path = "../emulator" }
 zisk-core = { path = "../core" }
@@ -22,15 +22,17 @@ zisk-core = { path = "../core" }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
+proofman-macros = { workspace = true }
 witness = { workspace = true }
 p3-field = { workspace=true }
 pil-std-lib = { workspace = true }
 log = { workspace = true }
 
 env_logger = "0.11"
-p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
+p3-goldilocks = { workspace = true}
 rayon = { workspace = true }
 
 [features]
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
+diagnostic = ["proofman-macros/diagnostic"]

@@ -41,6 +41,7 @@ impl CollectSkipper {
     ///
     /// # Returns
     /// `true` if the instruction should be skipped, `false` otherwise.
+    #[inline(always)]
     pub fn should_skip(&mut self) -> bool {
         if !self.skipping {
             return false;
@@ -87,11 +88,10 @@ pub struct Plan {
     /// The checkpoint type associated with this plan.
     pub check_point: CheckPoint,
 
-    /// Information required for input collection.
-    pub collect_info: Option<Box<dyn Any>>,
-
     /// Additional metadata associated with the plan.
     pub meta: Option<Box<dyn Any>>,
+
+    pub global_id: Option<usize>,
 }
 
 impl Plan {
@@ -114,12 +114,18 @@ impl Plan {
         segment_id: Option<usize>,
         instance_type: InstanceType,
         check_point: CheckPoint,
-        collect_info: Option<Box<dyn Any>>,
         meta: Option<Box<dyn Any>>,
     ) -> Self {
-        Plan { airgroup_id, air_id, segment_id, instance_type, check_point, collect_info, meta }
+        Plan { airgroup_id, air_id, segment_id, instance_type, check_point, meta, global_id: None }
+    }
+
+    pub fn set_global_id(&mut self, global_id: usize) {
+        self.global_id = Some(global_id);
     }
 }
+
+unsafe impl Send for Plan {}
+unsafe impl Sync for Plan {}
 
 /// The `Planner` trait defines the interface for creating execution plans.
 ///
