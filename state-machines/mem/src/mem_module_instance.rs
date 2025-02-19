@@ -47,7 +47,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
         #[cfg(feature = "debug_mem")]
         let initial = (inputs[0].addr, inputs[0].step, inputs.len());
 
-                match mem_check_point.skip_rows.cmp(&1) {
+        match mem_check_point.skip_rows.cmp(&1) {
             std::cmp::Ordering::Equal => {
                 prev_segment.value = prev_last_value;
             }
@@ -114,8 +114,9 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, mut collector)| {
-                let mem_module_collector = collector.detach_device().as_any().downcast::<MemModuleCollector>().unwrap();
-                
+                let mem_module_collector =
+                    collector.detach_device().as_any().downcast::<MemModuleCollector>().unwrap();
+
                 if mem_module_collector.prev_last_value != 0 {
                     prev_last_value = mem_module_collector.prev_last_value;
                 }
