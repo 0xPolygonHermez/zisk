@@ -129,7 +129,7 @@ impl<'a> MemModulePlanner<'a> {
         let aid = self.config.addr_index;
         let mut prev_addr = 0;
         let mut prev_step = 0;
-        for (i, box_ref) in self.sorted_boxes.iter().enumerate() {
+        for box_ref in self.sorted_boxes.iter() {
             let addr = box_ref.addr;
             let _addr = self.counters[box_ref.i_counter as usize].1.addr_sorted[aid]
                 [box_ref.i_addr as usize]
@@ -138,16 +138,6 @@ impl<'a> MemModulePlanner<'a> {
                 [box_ref.i_addr as usize]
                 .1
                 .first_step;
-            let order_ok = prev_addr < addr || (prev_addr == addr && prev_step < step);
-            println!(
-                "#{} addr:{:#10X}({:#10X}){} step:{}{}",
-                i,
-                addr * 8,
-                _addr * 8,
-                if addr == _addr as u64 { "" } else { "!!!" },
-                step,
-                if order_ok { "" } else { " order fail !!!" }
-            );
             prev_addr = addr;
             prev_step = step;
         }

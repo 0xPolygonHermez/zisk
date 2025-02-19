@@ -16,7 +16,6 @@ pub struct MemModuleInstance<F: PrimeField> {
     module: Arc<dyn MemModule<F>>,
 
     mem_check_point: MemModuleSegmentCheckPoint,
-    prev_last_value: u64,
 }
 
 impl<F: PrimeField> MemModuleInstance<F> {
@@ -24,7 +23,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
         let meta = ictx.plan.meta.as_ref().unwrap();
         let mem_check_point = meta.downcast_ref::<MemModuleSegmentCheckPoint>().unwrap().clone();
 
-        Self { ictx, module: module.clone(), mem_check_point, prev_last_value: 0 }
+        Self { ictx, module: module.clone(), mem_check_point }
     }
 
     fn prepare_inputs(&mut self, inputs: &mut [MemInput]) {
@@ -111,10 +110,17 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
+        let mut prev_last_value = 0;
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, mut collector)| {
-                collector.detach_device().as_any().downcast::<MemModuleCollector>().unwrap().inputs
+                let mem_module_collector =
+                    collector.detach_device().as_any().downcast::<MemModuleCollector>().unwrap();
+
+                if mem_module_collector.prev_last_value != 0 {
+                    prev_last_value = mem_module_collector.prev_last_value;
+                }
+                mem_module_collector.inputs
             })
             .collect();
         let mut inputs = inputs.into_iter().flatten().collect::<Vec<_>>();
@@ -127,7 +133,7 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         let prev_segment = self.fit_inputs_and_get_prev_segment(
             &mut inputs,
             self.mem_check_point.clone(),
-            self.prev_last_value,
+            prev_last_value,
         );
 
         let segment_id = self.ictx.plan.segment_id.unwrap();

@@ -1699,7 +1699,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#4a2c1eb92e9b95770c68bb944cb5047de537ea5c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#0dee3b2d9487af9a0c237b61f0985781476bb083"
 dependencies = [
  "colored",
  "log",
@@ -1857,7 +1857,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#4a2c1eb92e9b95770c68bb944cb5047de537ea5c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#0dee3b2d9487af9a0c237b61f0985781476bb083"
 dependencies = [
  "colored",
  "env_logger",
@@ -1881,7 +1881,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#4a2c1eb92e9b95770c68bb944cb5047de537ea5c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#0dee3b2d9487af9a0c237b61f0985781476bb083"
 dependencies = [
  "env_logger",
  "log",
@@ -1901,7 +1901,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#4a2c1eb92e9b95770c68bb944cb5047de537ea5c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#0dee3b2d9487af9a0c237b61f0985781476bb083"
 dependencies = [
  "log",
  "p3-field",
@@ -1913,7 +1913,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#4a2c1eb92e9b95770c68bb944cb5047de537ea5c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#0dee3b2d9487af9a0c237b61f0985781476bb083"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1924,7 +1924,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#4a2c1eb92e9b95770c68bb944cb5047de537ea5c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#0dee3b2d9487af9a0c237b61f0985781476bb083"
 dependencies = [
  "log",
 ]
@@ -1932,7 +1932,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#4a2c1eb92e9b95770c68bb944cb5047de537ea5c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#0dee3b2d9487af9a0c237b61f0985781476bb083"
 dependencies = [
  "colored",
  "p3-field",
@@ -2550,7 +2550,7 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "stark"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#4a2c1eb92e9b95770c68bb944cb5047de537ea5c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#0dee3b2d9487af9a0c237b61f0985781476bb083"
 dependencies = [
  "log",
  "p3-field",
@@ -2906,7 +2906,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#4a2c1eb92e9b95770c68bb944cb5047de537ea5c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#0dee3b2d9487af9a0c237b61f0985781476bb083"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -2929,9 +2929,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.16"
+version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a210d160f08b701c8721ba1c726c11662f877ea6b7094007e1ca9a1041945034"
+checksum = "00e2473a93778eb0bad35909dff6a10d28e63f792f16ed15e404fca9d5eeedbe"
 
 [[package]]
 name = "unicode-width"
@@ -3372,7 +3372,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#4a2c1eb92e9b95770c68bb944cb5047de537ea5c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.4.0#0dee3b2d9487af9a0c237b61f0985781476bb083"
 dependencies = [
  "colored",
  "env_logger",

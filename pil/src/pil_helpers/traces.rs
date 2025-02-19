@@ -81,7 +81,7 @@ pub struct ZiskPublics {
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
-}
+    }
 
 impl Default for ZiskPublics {
     fn default() -> Self {
@@ -92,11 +92,11 @@ impl Default for ZiskPublics {
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],
 });
-
+ 
 values!(ZiskProofValues<F> {
  enable_input_data: F,
 });
-
+ 
 trace!(MainFixed<F> {
  SEGMENT_L1: F, SEGMENT_STEP: F, __L1__: F,
 },  0, 0, 2097152 );
@@ -255,7 +255,7 @@ trace!(RomRomTrace<F> {
 }, 0, 1, 2097152, 0 );
 
 values!(MainAirValues<F> {
- main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], im_direct: [FieldExtension<F>; 2], last_reg_value: [[F; 2]; 31], last_reg_mem_step: [F; 31],
+ main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 31], last_reg_mem_step: [F; 31], im_direct: [FieldExtension<F>; 95],
 });
 
 values!(MemAirValues<F> {
