@@ -11,18 +11,17 @@ Optional recommendations:
 - Use the [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) extension for VS Code to enhance your Rust development experience.
 - Use the [PIL2 Highlight syntax code](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) for VS Code to highlight PIL2 code when writing it.
 
-## Clone Repositories
+## Clone Zisk Repository
 
-Run the following commands to clone the necessary repositories:
+Run the following command to clone the Zisk repository:
 
 ```bash
-git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
 git clone -b develop https://github.com/0xPolygonHermez/zisk.git
-git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman.git
-git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman-js
 ```
 
 ## Compile a Verifiable Rust Program
+
+TODO: Addinstructions to compile cargo-zisk
 
 ### Setup
 Install qemu:
@@ -96,49 +95,63 @@ To input `0x0234`:
 echo -en "\x34\x02\x00\x00\x00\x00\x00\x00" > input_two_segments.bin
 ```
 
-## Prepare Your Setup
+## Setup
+
+### Use an already generated setup
+
+TODO: Add instructions to use an already generated setup
+
+### Generate a new setup
+
+Run the following commands to clone the necessary repositories to be able to generate a new setup:
+
+```bash
+git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
+git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman.git
+git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman-js
+```
 
 All following commands should be executed in the `zisk` folder.
 
-### Compile Zisk PIL
+#### Compile Zisk PIL
 
 ```bash
-node --max-old-space-size=65536 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines -o pil/zisk.pilout
+node --max-old-space-size=131072 {path to pil2-compiler folder}/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout
 ```
 
-### Compile PILs with `std_mock` (for testing without `std`):
+#### Generate Fixed Data
+
 ```bash
-node ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-components/lib/std_mock/pil,state-machines -o pil/zisk.pilout
+cargo run --release --bin keccakf_fixed_gen
+mv precompiles/keccakf/src/keccakf_fixed.bin build
 ```
 
-### Compile the PIl2 Stark C++ Library (run only once):
-```bash
-(cd ../pil2-proofman/pil2-stark && git submodule init && git submodule update && make clean && make -j starks_lib && make -j bctree)
-```
+This command will generate the `keccakf_fixed.bin` file in the `build` folder.
 
-### Generate PIL-Helpers Rust Code
-Run this whenever the `.pilout` file changes:
+#### Compile the PIl2 Stark C++ Library (run only once):
 
 ```bash
-(cd ../pil2-proofman; cargo run --bin proofman-cli pil-helpers --pilout ../zisk/pil/zisk.pilout --path ../zisk/pil/src/ -o)
+(cd {path to pil2-proofman folder}/pil2-stark && git submodule init && git submodule update && make clean && make -j starks_lib && make -j bctree)
 ```
 
 ### Generate Setup Data
 Run this whenever the `.pilout` file changes:
 
-```bash[]
-node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zisk.pilout -b build -t ../pil2-proofman/pil2-stark/build/bctree
+```bash
+node --max-old-space-size=65536 {path to pil2-proofman-js folder}/src/main_setup.js -a pil/zisk.pilout -b build -t {path to pil2-proofman folder}/pil2-stark/build/bctree -i ./build/keccakf_fixed.bin
 ```
 
-### Compile Witness Computation library (`libzisk_witness.so`)
+### Optional. Generate PIL-Helpers Rust Code
+Run this whenever the `.pilout` file changes:
+
+```bash
+(cd {path to pil2-proofman folder}; cargo run --bin proofman-cli pil-helpers --pilout {path to zisk folder}pil/zisk.pilout --path {path to zisk folder}/pil/src/ -o)
+```
+
+## Compile Zisk Witness Computation library (`libzisk_witness.so`)
 ```bash
 cargo build --release
 ```
-
-> If you get a library not found error, set the path manually:
-> ```bash
-> export RUSTFLAGS="-L native={path to your pil2-stark folder}/pil2-stark/lib"
-> ```
 
 ## Generate & Verify Proofs
 
@@ -150,13 +163,7 @@ Sample inputs are located in `zisk/emulator/benches/data`:
 ### Verify Constraints Only
 ```bash
 // Using input_one_segment.bin
-(cargo build --release --features debug && cd ../pil2-proofman; cargo run --release --features debug --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_one_segment.bin --proving-key ../zisk/build/provingKey)
-
-// Using input_two_segments.bin
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_two_segments.bin --proving-key ../zisk/build/provingKey)`
-
-// Using input.bin
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input.bin --proving-key ../zisk/build/provingKey)`
+cargo-zisk verify-constraints --witness-lib ./target/release/libzisk_witness.so --rom ./emulator/benches/data/my.elf -i ./emulator/benches/data/input_one_segment.bin --proving-key ./build/provingKey
 ```
 
 ### Generate a Proof
@@ -165,13 +172,7 @@ To generate the aggregated proofs, add `-a`
 
 ```bash
 // Using input_one_segment.bin
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_one_segment.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -a -v)
-
-// Using input_two_segments.bin
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_two_segments.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -a -v)
-
-// Using input.bin
-(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -a -v)
+cargo-zisk prove --witness-lib ./target/release/libzisk_witness.so --rom ./emulator/benches/data/my.elf -i ./emulator/benches/data/input_one_segment.bin --proving-key ./build/provingKey --output-dir ../zisk/proofs -a -v
 ```
 
 ### Verify the Proof
