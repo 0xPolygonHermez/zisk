@@ -139,15 +139,6 @@ impl<'a> MemModulePlanner<'a> {
                 .1
                 .first_step;
             let order_ok = prev_addr < addr || (prev_addr == addr && prev_step < step);
-            println!(
-                "#{} addr:{:#10X}({:#10X}){} step:{}{}",
-                i,
-                addr * 8,
-                _addr * 8,
-                if addr == _addr as u64 { "" } else { "!!!" },
-                step,
-                if order_ok { "" } else { " order fail !!!" }
-            );
             prev_addr = addr;
             prev_step = step;
         }
