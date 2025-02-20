@@ -62,18 +62,18 @@ impl MemPlanner {
                     .downcast_ref::<MemModuleSegmentCheckPoint>()
                     .unwrap();
                 info!(
-                    "[Mem] PLAN #{} [{}:{}:{}] {:?} [0x{:X},{}] => [0x{:X},{}] skip:{} last:{}",
+                    "[Mem] PLAN #{} [{}:{}:{}] [0x{:X},{}] => [0x{:X},{}] skip:{} last:{} {:?}",
                     index,
                     plan.airgroup_id,
                     plan.air_id,
                     plan.segment_id.unwrap_or(0),
-                    plan.check_point,
                     MemHelpers::get_addr(meta.prev_addr),
                     meta.prev_step,
                     MemHelpers::get_addr(meta.last_addr),
                     meta.last_step,
                     meta.skip_rows,
                     meta.is_last_segment,
+                    plan.check_point,
                 );
             } else {
                 info!(

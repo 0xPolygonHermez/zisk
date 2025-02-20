@@ -369,7 +369,6 @@ impl MainSM {
                 );
             }
         }
-        println!("LARGE_RANGE_CHECKS:{} {:?}", large_range_checks.len(), large_range_checks);
         for range in large_range_checks {
             std.range_check(F::from_canonical_u32(*range), F::from_canonical_u32(1), range_id);
         }
