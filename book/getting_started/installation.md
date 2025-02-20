@@ -1,6 +1,6 @@
 # Installation Guide
 
-You can install the ZisK toolchain either from prebuilt binaries (recommended) or by building it from source.
+You can install ZisK from prebuilt binaries (recommended) or by building it ZisK Rust toolchain and CLI tools from source.
 
 ## Requirements
 ZisK currently supports Linux x86_64 systems. **Proof generation on macOS is not supported.**
@@ -63,10 +63,10 @@ As an alternative, you can use the [Nix package manager](https://github.com/NixO
 
     This will open a shell with the `PATH` and `LD_LIBRARY_PATH` correctly configured for building the project. Exit the shell with `Ctrl+D`.
 
-## Installing ZisK toolchain
+## Installing ZisK
 
 ### Option 1: Prebuilt binaries (recommended)
-1. Install the ZisK toolchain installer `ziskup`:
+1. Install the ZisK installer `ziskup`:
     ```bash
     curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/develop/ziskup/install.sh  | bash
     ```
@@ -76,7 +76,7 @@ As an alternative, you can use the [Nix package manager](https://github.com/NixO
     source $HOME/.bashrc
     ```
 
-2. Use `ziskup` to install the ZisK toolchain:
+2. Use `ziskup` to install ZisK toolchain and CLI tools:
     ```bash
     ziskup
     ```
@@ -92,7 +92,20 @@ As an alternative, you can use the [Nix package manager](https://github.com/NixO
     zisk
     ```
 
+4. Verify the installation of `cargo-zisk` CLI tool:
+    ```bash
+    cargo-zisk --version
+    ```
+
+5. To update the ZisK toolchain to the latest version, simply run again:
+    ```bash
+    ziskup
+    ```
+
 ### Option 2: Building from source
+
+#### Build ZisK
+
 1. Ensure all [dependencies](https://github.com/rust-lang/rust/blob/master/INSTALL.md#dependencies) required to build the Rust toolchain from source are installed.
 
 2. Clone the ZisK repository:
@@ -101,27 +114,91 @@ As an alternative, you can use the [Nix package manager](https://github.com/NixO
     cd zisk
     ```
 
-3. Build the ZisK toolchain:
+3. Build ZisK tools:
     ```bash
-    cargo run --bin=cargo-zisk -- sdk build-toolchain
+    cargo build --release
     ```
 
-4. Install the ZisK toolchain:
+4. Copy the tools to `~/.zisk/bin` directory:
     ```bash
-    cargo run --bin=cargo-zisk -- sdk install-toolchain
+    mkdir -p $HOME/.zisk/bin
+    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so $HOME/.zisk/bin
     ```
 
-5. Verify the installation:
+5. Add `~/.zisk/bin` to your profile file, for example for `.bashrc` execute the following commands:
+    ```bash
+    echo >>$HOME/.bashrc && echo "export PATH=\"\$PATH:$HOME/.zisk/bin\"" >> $HOME/.bashrc
+    source $HOME/.bashrc
+    ```
+
+6. Build the ZisK toolchain:
+    ```bash
+    cargo-zisk sdk build-toolchain
+    ```
+
+7. Install the ZisK toolchain:
+    ```bash
+    ZISK_TOOLCHAIN_SOURCE_DIR=. cargo-zisk sdk install-toolchain
+    ```
+
+8. Verify the installation:
     ```bash
     rustup toolchain list
     ```
     Ensure `zisk` appears in the list of installed toolchains.
 
-## Update ZisK toolchain
-To update the ZisK toolchain to the latest version, simply run:
-```bash
-ziskup
-```
+#### Build Setup
+The setup building process is highly intensive in terms of CPU and memory usage. You will need a machine with at least the following hardware requirements:
+
+* 4 CPUs
+* 512 GB of RAM
+* 100 GB of free disk space
+
+Please note that the process can be long, taking approximately 2–3 hours depending on the machine used.
+
+[NodeJS](https://nodejs.org/en/download) version 18.20.3 is required to build the setup files.
+
+1. Clone the following repositories:
+    ```bash
+    git clone https://github.com/0xPolygonHermez/pil2-compiler.git
+    git clone https://github.com/0xPolygonHermez/pil2-proofman.git
+    git clone https://github.com/0xPolygonHermez/pil2-proofman-js
+    ```
+2. Install packages:
+    ```bash
+    (cd ../pil2-compiler && npm i)
+    (cd ../pil2-proofman-js && npm i)
+
+3. **Note:** All subsequent commands must be executed from the `zisk` folder created in the previous section.
+
+4. Compile ZisK PIL:
+    ```bash
+    node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil, ../pil2-proofman/pil2-components/lib/std/pil, state-machines, precompiles -o pil/zisk.pilout
+    ```
+
+    This command will create the `pil/zisk.pilout` file
+
+5. Generate fixed data:
+    ```bash
+    cargo run --release --bin keccakf_fixed_gen
+    mkdir build
+    mv precompiles/keccakf/src/keccakf_fixed.bin build
+    ```
+
+    These commands generates the `keccakf_fixed.bin` file in the `build` directory.
+
+6. Generate setup data: (Note that this command may take 2–3 hours to complete)
+    ```bash
+    node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -i ./build/keccakf_fixed.bin -r
+    ```
+
+    This command generates the `provingKey` directory.
+
+7. Copy (or move) the `provingKey` directory to `$HOME/.zisk` directory:
+
+    ```bash
+    cp -R provingKey $HOME/.zisk
+    ```
 
 ## Uninstall Zisk toolchain
 To uninstall the ZisK toolchain run:

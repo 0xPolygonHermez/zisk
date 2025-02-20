@@ -4,7 +4,7 @@ In this guide, you will learn how to create and run a simple program using ZisK.
 
 ## Create a Project
 
-The first step is to generate a new example project using the `cargo-zisk sdk new <name>` command. This command creates a new folder named `<name>` in your current directory. For example:
+The first step is to generate a new example project using the `cargo-zisk sdk new <name>` command. This command creates a new directory named `<name>` in your current directory. For example:
 ```bash
 cargo-zisk sdk new sha_hasher
 cd sha_hasher
@@ -42,11 +42,24 @@ public 6: 0x1f142cac
 public 7: 0x233f1280
 ```
 
-## Execute on ZisK Emulator
-Before generating a proof, you can test the program using the ZisK emulator to ensure correctness:
+## Build
+
+The next step is to build the program using the `cargo-zisk` command to generate an ELF file (RISC-V), which will be used later to generate the proof. Execute:
+
 ```bash
-cargo-zisk run
+cargo-zisk build --release
 ```
+
+This command builds the program using the `riscv64ima_polygon_ziskos` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/riscv64ima-polygon-ziskos-elf/release` directory.
+
+## Execute
+
+Before generating a proof, you can test the program using the ZisK emulator to ensure its correctness. Specify the ELF file (using the `-e` or `--elf flag`) and the input file `input.bin` (using the `-i` or `--inputs` flag):
+
+```bash
+ziskemu -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin
+```
+
 The output will be:
 ```
 98211882
@@ -59,68 +72,30 @@ abf6352a
 233f1280
 ```
 
-Alternatively, you can compile the program to generate an ELF file (RISC-V) and then use `ziskemu` tool to execute the ELF file (`-e`, `--elf` flag) with `input.bin` file as the ZisK input (`-i`, `--inputs` flag):
+Alternatively, you can build and run the program with:
 
 ```bash
-cargo-zisk build
-ziskemu -e target/riscv64ima-polygon-ziskos-elf/debug/sha_hasher -i build/input.bin
+cargo-zisk run
 ```
 
-## Prove (WIP)
+This command uses the file located at `build/input.bin` as the input file.
 
-### Setup
+## Prove
+
+You can generate and verify a proof using the `cargo-zisk prove` command by providing the ELF file (with the `-e` or `--elf` flag) and the input file (with the `-i` or `--input-data` flag).
+
+To generate and verify a proof for the previously built ELF and input files, execute:
 
 ```bash
-git clone https://github.com/0xPolygonHermez/zisk
-git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
-git clone -b 0.0.16 https://github.com/0xPolygonHermez/pil2-proofman.git
-git clone -b 0.0.16 https://github.com/0xPolygonHermez/pil2-proofman-js
+cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
 ```
 
-All following commands should be executed in the `zisk` folder.
-```bash
-cd zisk
+This command generates the proof in the `./proof directory`. If everything goes well, you will see a message similar to:
+
+```
+...
+[INFO ] ProofMan:     ✓ Vadcop Final proof was verified
+[INFO ]      stop <<< GENERATING_VADCOP_PROOF 91706ms
+[INFO ] ProofMan: Proofs generated successfully
 ```
 
-### Compile
-
-```bash
-(cd ../pil2-compiler && npm i && cd ../zisk && node --max-old-space-size=65536 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines -o pil/zisk.pilout)
-```
-
-#### Compile the PIl2 Stark C++ Library (run only once):
-```bash
-(cd ../pil2-proofman/pil2-stark && git submodule init && git submodule update && make clean && make -j starks_lib && make -j bctree) && export RUSTFLAGS=$RUSTFLAGS" -L native=$PWD/../pil2-proofman/pil2-stark/lib"
-```
-
-#### Generate PIL-Helpers Rust Code
-Run this whenever the `.pilout` file changes:
-
-```bash
-(cd ../pil2-proofman; cargo run --bin proofman-cli pil-helpers --pilout ../zisk/pil/zisk.pilout --path ../zisk/pil/src/ -o)
-```
-
-#### Generate Setup Data
-Run this whenever the `.pilout` file changes:
-
-```bash
-(cd ../pil2-proofman-js && npm i)
-node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zisk.pilout -b build -t ../pil2-proofman/pil2-stark/build/bctree -r
-```
-
-#### Compile Witness Computation library (`libzisk_witness.so`)
-```bash
-cargo build --release
-```
-
-#### Generate a Proof
-To generate the proof, the following command needs to be run.
-
-```bash
-(cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../hello_world/target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i ../hello_world/build/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -v -a)
-```
-
-#### Verify the Proof
-```bash
-node ../pil2-proofman-js/src/main_verify -k build/provingKey/ -p proofs -t vadcop_final
-```

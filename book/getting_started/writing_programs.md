@@ -1,6 +1,6 @@
 # Writing Programs
 
-In this document we will explain how to write/modify a Rust program to be executed in ZisK
+This document explains how to write or modify a Rust program for execution in ZisK.
 
 ## Setup
 
@@ -10,7 +10,8 @@ Writing a Rust program for ZisK is similar to writing a standard Rust program, w
 
 1. Modify `main.rs` file:
 
-    Add the following code to your `main.rs` file to mark the main function as the entry point for ZisK:
+    Add the following code to mark the main function as the entry point for ZisK:
+
     ```rust
     #![no_main]
     ziskos::entrypoint!(main);
@@ -18,7 +19,8 @@ Writing a Rust program for ZisK is similar to writing a standard Rust program, w
 
 2. Modify `Cargo.toml` file:
 
-    Add the `ziskos` crate as a dependency in your `Cargo.toml` file:
+    Add the `ziskos` crate as a dependency:
+
     ```toml
     [dependencies]
     ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
@@ -106,7 +108,7 @@ for i in 0..8 {
 
 Before compiling your program for ZisK, you can test it on the native architecture just like any regular Rust program using the `cargo` command.
 
-Once your program is ready to run on ZisK, you need to compile it into an ELF file (RISC-V architecture). To do this, use the `cargo-zisk` CLI tool:
+Once your program is ready to run on ZisK, compile it into an ELF file (RISC-V architecture), using the `cargo-zisk` CLI tool:
 
 ```bash
 cargo-zisk build
@@ -114,7 +116,7 @@ cargo-zisk build
 
 This command compiles the program using the `riscv64ima_polygon_ziskos` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/riscv64ima-polygon-ziskos-elf/debug` directory.
 
-For production use, compile the ELF file with the `--release` flag, similar to how you compile Rust projects:
+For production, compile the ELF file with the `--release` flag, similar to how you compile Rust projects:
 
 ```bash
 cargo-zisk build --release
@@ -123,17 +125,18 @@ cargo-zisk build --release
 In this case, the `sha_hasher` ELF file will be generated in the `./target/riscv64ima-polygon-ziskos-elf/release` directory.
 
 ## Execute
+
 You can test your compiled program using the ZisK emulator (`ziskemu`) before generating a proof. Use the `-e` (`--elf`) flag to specify the location of the ELF file and the `-i` (`--inputs`) flag to specify the location of the input file:
 
 ```bash
-cargo-zisk build
-ziskemu -e target/riscv64ima-polygon-ziskos-elf/debug/sha_hasher -i build/input.bin
+cargo-zisk build --release
+ziskemu -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin
 ```
 
 Alternatively, you can build and execute the program in the ZisK emulator with a single command:
 
 ```bash
-cargo-zisk run
+cargo-zisk run --release
 ```
 
 This command builds the ELF file and executes it using `ziskemu` along with the `input.bin` file that must be located in the `.build` directory at the root of your Rust project:
@@ -146,6 +149,23 @@ This command builds the ELF file and executes it using `ziskemu` along with the 
 |   └── main.rs
 ├── Cargo.lock
 ├── Cargo.toml
+```
+
+Alternatively, you can specify the location of the input file using `-i` (`--input`) flag:
+
+```bash
+cargo-zisk run -i build/input.bin
+```
+
+If the program requires a large number of ZisK steps, you might encounter the following error:
+```
+Error during emulation: EmulationNoCompleted
+Error: Error executing Run command
+```
+
+To resolve this, you can increase the number of execution steps using the `-n` (`--max-steps`) flag. For example:
+```bash
+ziskemu -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -n 10000000000
 ```
 
 ## Metrics and Statistics
@@ -228,3 +248,61 @@ bd13089b
 6ccf1fca
 ...
 ```
+
+## Prove
+
+### Verify Constraints
+Before to generate a proof (that can take some time) you can verify that all the constraints are satisfied:
+
+```bash
+cargo-zisk verify-constraints -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey
+```
+
+If everything is correct, you will see an output similar to:
+
+```
+[INFO ] GlCstVfy: --> Checking global constraints
+[INFO ] CstrVrfy: ··· ✓ All global constraints were successfully verified
+[INFO ] CstrVrfy: ··· ✓ All constraints were verified
+```
+
+### Generate Proof
+
+To generate a proof, run following command:
+
+```bash
+cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
+```
+In this command:
+
+* `-e` (`--elf`) flag is used to specify the ELF file localtion.
+* `-i` (`--inputs`) flag is used specify the input file location.
+* `-w` (`--witness`) and `-k` (`--proving-key`) flags are used to specify the location of the witness library and proving key files required for proof generation (located in the `$HOME/.zisk` installation folder by default).
+* `-o` (`--output`) flag determines the output directory (in this example `proof`).
+* `-a` (`--aggregation`) flag indicates that a final aggregated proof (containing all generated sub-proofs) should be produced.
+* `-y` (`--verify-proofs`) flag instructs the tool to verify the proof immediately after it is generated (verification can also be performed later using the `cargo-zisk verify` command).
+
+If the process is successful, you should see a message similar to:
+
+```
+...
+[INFO ] ProofMan:     ✓ Vadcop Final proof was verified
+[INFO ]      stop <<< GENERATING_VADCOP_PROOF 91706ms
+[INFO ] ProofMan: Proofs generated successfully
+```
+
+### Verify Proof
+
+To verify a generated proof, use the following command:
+
+```bash
+cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json -u ./proof/publics.json -s $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.starkinfo.json -e $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verifier.bin -k $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.json
+```
+
+In this command:
+
+* `-p` (`--proof`) flag specifies the final proof file generated with cargo-zisk prove.
+* `-u` (`--public_inputs`) flag provides the path to the public inputs associated with the proof.
+* The remaining flags specify the files required for verification, located in the `$HOME/.zisk` directory by default.
+
+
