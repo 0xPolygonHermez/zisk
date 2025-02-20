@@ -21,11 +21,15 @@ void emulator_start(void);
 #define MAX_INPUT_SIZE 0x08000000 // 128MB
 
 #define TRACE_ADDR 0xc0000000
-#define TRACE_SIZE 0x10000000 // 256MB
+#define TRACE_SIZE 0x40000000 // 1GB
 
 struct timeval start_time;
 
 extern uint64_t MEM_STEP;
+extern uint64_t MEM_TRACE_ADDRESS;
+extern uint64_t MEM_CHUNK_ADDRESS;
+extern uint64_t MEM_CHUNK_START_STEP;
+
 struct timeval keccak_start, keccak_stop;
 uint64_t keccak_counter = 0;
 uint64_t keccak_duration = 0;
@@ -282,10 +286,20 @@ int main(int argc, char *argv[])
     if (keccak_metrics || metrics || verbose)
     {
         uint64_t duration = TimeDiff(start_time, stop_time);
-        printf("Duration = %d us Keccak counter = %d,\n", duration, keccak_counter);
-        uint64_t keccak_percentage = duration == 0 ? 0 : (keccak_duration * 100) / duration;
-        uint64_t single_keccak_duration_ns = keccak_counter == 0 ? 0 : (keccak_duration * 1000) / keccak_counter;
-        printf("Keccak counter = %d, duration = %d us, single keccak duration = %d ns, percentage = %d \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
+        uint64_t steps = MEM_STEP;
+        uint64_t step_duration_ns = steps == 0 ? 0 : (duration * 1000) / steps;
+        uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
+        uint64_t mem_trace_address = MEM_TRACE_ADDRESS;
+        uint64_t mem_chunk_address = MEM_CHUNK_ADDRESS;
+        uint64_t trace_size = mem_chunk_address - mem_trace_address;
+        uint64_t trace_size_percentage = (trace_size * 100) / TRACE_SIZE;
+        printf("Duration = %d us, Keccak counter = %d, steps = %d, step duration = %d ns, tp = %d steps/s, trace size = %d B(%d%%)\n", duration, keccak_counter, steps, step_duration_ns, step_tp_sec, trace_size, trace_size_percentage);
+        if (keccak_metrics)
+        {
+            uint64_t keccak_percentage = duration == 0 ? 0 : (keccak_duration * 100) / duration;
+            uint64_t single_keccak_duration_ns = keccak_counter == 0 ? 0 : (keccak_duration * 1000) / keccak_counter;
+            printf("Keccak counter = %d, duration = %d us, single keccak duration = %d ns, percentage = %d \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
+        }
     }
 
     // Log output
