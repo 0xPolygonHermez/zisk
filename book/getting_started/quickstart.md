@@ -100,7 +100,7 @@ This command generates the proof in the `./proof directory`. If everything goes 
 ```
 ## Distributed prove
 
-Zisk can run proves using multiple processes in the same server or in multiple servers. To use zisk in distributed mode you need to have installed an mpi library. To use the distributed mode the compilation command is:
+Zisk can run proves using multiple processes in the same server or in multiple servers. To use zisk in distributed mode you need to have installed a mpi library. To use the distributed mode the compilation command is:
 
 ```bash
 cargo-zisk build --release --features "distributed"
