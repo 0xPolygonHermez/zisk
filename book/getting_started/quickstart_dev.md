@@ -174,7 +174,7 @@ To generate the aggregated proofs, add `-a`
 (cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -a -v)
 ```
 
-## Distributed prove
+### Distributed prove
 
 Zisk can run proves using multiple processes in the same server or in multiple servers. To use zisk in distributed mode you need to have installed an mpi library. To use the distributed mode the compilation command is:
 
