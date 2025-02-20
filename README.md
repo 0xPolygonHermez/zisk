@@ -1,18 +1,18 @@
 ⚠️ **Work in Progress (WIP)**
 
-This repository is under active development and should be considered experimental. Features, APIs, and functionality may change frequently as the project evolves.
+This repository is under **active development** and should be considered **experimental**. APIs, features, and functionality **may change frequentl**y as the project evolves.
 
 # Polygon ZisK
 
-**Polygon ZisK** is an innovative and high-performance Zero-Knowledge (ZK) prover developed by Polygon. It is designed to efficiently generate and verify ZK proofs for programs written in Rust, with plans to extend support to other programming languages in the future.
+Polygon ZisK is an innovative and high-performance zkVM (Zero-Knowledge Virtual Machine) developed by Polygon that enables trustless, verifiable computation, allowing developers to generate and verify proofs for arbitrary program execution efficiently.
 
-ZisK simplifies the integration of ZK technology, providing developers with a powerful tool to enhance security, privacy, and scalability across blockchain ecosystems and other applications.
+ZisK aims to provide a flexible and developer-friendly zkVM, with Rust as its primary language for writing provable programs, with planned support for other languages in the future. By abstracting complex zero-knowledge proof generation, ZisK simplifies the integration of ZK technology into scalable, private, and secure applications across blockchain ecosystems and beyond.
 
 # Getting Started
 
-To start using ZisK, follow the [installation guide](https://0xpolygonhermez.github.io/zisk/getting_started/installation.html) and review the [quickstart](https://0xpolygonhermez.github.io/zisk/getting_started/quickstart.html) section.
+To start using ZisK, follow the [installation guide](https://0xpolygonhermez.github.io/zisk/getting_started/installation.html) and review the [quickstart](https://0xpolygonhermez.github.io/zisk/getting_started/quickstart.html).
 
-You can find the complete documentation [here](https://0xpolygonhermez.github.io/zisk/)
+📚 Complete Documentation: [ZisK Docs](https://0xpolygonhermez.github.io/zisk/)
 
 # License
 
