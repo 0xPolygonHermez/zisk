@@ -532,6 +532,8 @@ impl ZiskRom {
         *s += ".extern chunk_size\n";
         *s += ".extern chunk_size_mask\n\n";
 
+        /* CHUNK START */
+
         *s += "chunk_start:\n";
 
         *s += "\t/* Increment number of chunks (first position in trace) */\n";
@@ -597,6 +599,8 @@ impl ZiskRom {
 
         *s += "\tret\n\n";
 
+        /* CHUNK END */
+
         *s += "chunk_end:\n";
 
         *s += "\t/* Update step from step_down */\n";
@@ -653,24 +657,24 @@ impl ZiskRom {
         *s += "emulator_start:\n";
 
         // Registers initialization
-        *s += &format!("\tmov {}, 0 /* Registers initialization: a = 0 */\n", REG_A);
-        *s += &format!("\tmov {}, 0 /* Registers initialization: b = 0 */\n", REG_B);
-        *s += &format!("\tmov {}, 0 /* Registers initialization: c = 0 */\n", REG_C);
-        *s += &format!("\tmov {}, 0 /* Registers initialization: flag = 0 */\n", REG_FLAG);
-        *s += &format!("\tmov {}, 0 /* Registers initialization: step = 0 */\n", MEM_STEP);
-        *s += &format!("\tmov {}, 0 /* Registers initialization: sp = 0 */\n", MEM_SP);
-        *s += &format!("\tmov {}, 0 /* Registers initialization: end = 0 */\n", MEM_END);
+        *s += &format!("\tmov {}, 0 /* Register initialization: a = 0 */\n", REG_A);
+        *s += &format!("\tmov {}, 0 /* Register initialization: b = 0 */\n", REG_B);
+        *s += &format!("\tmov {}, 0 /* Register initialization: c = 0 */\n", REG_C);
+        *s += &format!("\tmov {}, 0 /* Register initialization: flag = 0 */\n", REG_FLAG);
+        *s += &format!("\tmov {}, 0 /* Memory initialization: step = 0 */\n", MEM_STEP);
+        *s += &format!("\tmov {}, 0 /* Memory initialization: sp = 0 */\n", MEM_SP);
+        *s += &format!("\tmov {}, 0 /* Memory initialization: end = 0 */\n", MEM_END);
         *s += &format!(
-            "\tmov {}, {} /* Registers initialization: trace_address = TRACE_ADDR */\n",
+            "\tmov {}, {} /* Memory initialization: value = TRACE_ADDR */\n",
             REG_VALUE, TRACE_ADDR
         );
         *s += &format!(
-            "\tmov {}, {} /* Registers initialization: trace_address = TRACE_ADDR */\n",
+            "\tmov {}, {} /* Memory initialization: trace_address = value = TRACE_ADDR */\n",
             MEM_TRACE_ADDRESS, REG_VALUE
         );
-        *s += &format!("\tadd {}, 8 /* Registers initialization: value += 8 */\n", REG_VALUE);
+        *s += &format!("\tadd {}, 8 /* Memory initialization: value += 8 */\n", REG_VALUE);
         *s += &format!(
-            "\tmov {}, {} /* Registers initialization: chunk_address = value = TRACE_ADDR + 8 */\n",
+            "\tmov {}, {} /* Memory initialization: chunk_address = value = TRACE_ADDR + 8 */\n\n",
             MEM_CHUNK_ADDRESS, REG_VALUE
         );
 
@@ -773,11 +777,13 @@ impl ZiskRom {
             ctx.b.string_value = REG_B.to_string();
             match instruction.b_src {
                 SRC_C => {
-                    if !ctx.store_b_in_c {
-                        *s += &format!("\tmov {}, {} /* b=SRC_C: b = c */\n", REG_B, REG_C);
-                        ctx.b.is_saved = true;
-                    } else {
+                    *s += "\t/* b=SRC_C */\n";
+                    if ctx.store_b_in_c {
+                        // No need to copy c to b, since we need b to be stored in c
                         ctx.b.is_saved = false;
+                    } else {
+                        *s += &format!("\tmov {}, {} /* b = c */\n", REG_B, REG_C);
+                        ctx.b.is_saved = true;
                     }
                 }
                 _ => {}
@@ -789,11 +795,13 @@ impl ZiskRom {
             ctx.a.string_value = REG_A.to_string();
             match instruction.a_src {
                 SRC_C => {
+                    *s += "\t/* a=SRC_C */\n";
                     if !ctx.store_a_in_c {
-                        *s += &format!("\tmov {}, {} /* a=SRC_C: a = c */\n", REG_A, REG_C);
-                        ctx.a.is_saved = true;
-                    } else {
+                        // No need to copy c to a, since we need a to be stored in c
                         ctx.a.is_saved = false;
+                    } else {
+                        *s += &format!("\tmov {}, {} /* a = c */\n", REG_A, REG_C);
+                        ctx.a.is_saved = true;
                     }
                 }
                 SRC_MEM => {
@@ -816,11 +824,12 @@ impl ZiskRom {
                         if ctx.store_a_in_c { "c" } else { "a" }
                     );
 
-                    // Check if address i fully aligned, i.e. if it is a multiple of 8 (bytes)
+                    // Check if address is aligned, i.e. it is a multiple of 8
                     *s += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
                     *s += &format!("\tjnz pc_{:x}_a_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
 
                     // a register memory address is fully alligned
+
                     // Increment chunk.steps.mem_reads_size
                     *s += &format!(
                         "\tmov {}, [{}] /* value = mem_reads_size */\n",
@@ -906,19 +915,20 @@ impl ZiskRom {
                     ctx.a.is_saved = true;
                 }
                 SRC_IMM => {
+                    *s += "\t/* a=SRC_IMM */\n";
                     ctx.a.is_constant = true;
                     ctx.a.constant_value =
                         instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32);
                     ctx.a.string_value = format!("0x{:x}", ctx.a.constant_value);
                     if ctx.store_a_in_c {
                         *s += &format!(
-                            "\tmov {}, {} /* a=SRC_IMM: c = constant */\n",
+                            "\tmov {}, {} /* c = constant */\n",
                             REG_C, ctx.a.string_value
                         );
                         ctx.a.is_saved = false;
                     } else if ctx.store_a_in_a {
                         *s += &format!(
-                            "\tmov {}, {} /* a=SRC_IMM: a = constant */\n",
+                            "\tmov {}, {} /* a = constant */\n",
                             REG_A, ctx.a.string_value
                         );
                         ctx.a.is_saved = true;
@@ -930,18 +940,19 @@ impl ZiskRom {
                 }
                 SRC_STEP => {
                     *s += "\t/* a=SRC_STEP: Update step from step_down */\n";
-                    *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
-                    *s += &format!("\tadd {}, chunk_size /* value += chunk_size */\n", REG_VALUE);
+                    let store_a_reg = if ctx.store_a_in_c { REG_C } else { REG_A };
+                    let store_a_reg_name = if ctx.store_a_in_c { "c" } else { "a" };
                     *s += &format!(
-                        "\tsub {}, {} /* value -= step_down */\n",
-                        REG_VALUE, MEM_STEP_DOWN
+                        "\tmov {}, {} /* {} = step */\n",
+                        store_a_reg, MEM_STEP, store_a_reg_name
                     );
-                    *s += &format!("\tmov {}, {} /* step = value */\n", MEM_STEP, REG_VALUE);
                     *s += &format!(
-                        "\tmov {}, {} /* a=SRC_STEP: {} = step */\n",
-                        if ctx.store_a_in_c { REG_C } else { REG_A },
-                        MEM_STEP,
-                        if ctx.store_a_in_c { "c" } else { "a" }
+                        "\tadd {}, chunk_size /* {} += chunk_size */\n",
+                        store_a_reg, store_a_reg_name
+                    );
+                    *s += &format!(
+                        "\tsub {}, {} /* {} -= step_down */\n",
+                        store_a_reg, MEM_STEP_DOWN, store_a_reg_name
                     );
                     ctx.a.is_saved = !ctx.store_a_in_c;
                 }
@@ -954,19 +965,17 @@ impl ZiskRom {
             match instruction.b_src {
                 SRC_C => {}
                 SRC_MEM => {
+                    *s += "\t/* b=SRC_MEM */\n";
                     *s += &format!(
-                        "\tmov {}, 0x{:x} /* b=SRC_MEM: address = i.b_offset_imm0 */\n",
+                        "\tmov {}, 0x{:x} /* address = i.b_offset_imm0 */\n",
                         REG_ADDRESS, instruction.b_offset_imm0
                     );
                     if instruction.b_use_sp_imm1 != 0 {
-                        *s += &format!(
-                            "\tadd {}, {} /* b=SRC_MEM: address += sp */\n",
-                            REG_ADDRESS, MEM_SP
-                        );
+                        *s += &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, MEM_SP);
                     }
 
                     *s += &format!(
-                        "\tmov {}, [{}] /* b=SRC_MEM: {} = mem[address] */\n",
+                        "\tmov {}, [{}] /* {} = mem[address] */\n",
                         if ctx.store_b_in_c { REG_C } else { REG_B },
                         REG_ADDRESS,
                         if ctx.store_b_in_c { "c" } else { "b" }
@@ -974,19 +983,20 @@ impl ZiskRom {
                     ctx.b.is_saved = !ctx.store_b_in_c;
                 }
                 SRC_IMM => {
+                    *s += "\t/* b=SRC_IMM */\n";
                     ctx.b.is_constant = true;
                     ctx.b.constant_value =
                         instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32);
                     ctx.b.string_value = format!("0x{:x}", ctx.b.constant_value);
                     if ctx.store_b_in_c {
                         *s += &format!(
-                            "\tmov {}, {} /* b=SRC_IMM: c = constant */\n",
+                            "\tmov {}, {} /* c = constant */\n",
                             REG_C, ctx.b.string_value
                         );
                         ctx.b.is_saved = false;
                     } else if ctx.store_b_in_b {
                         *s += &format!(
-                            "\tmov {}, {} /* b=SRC_IMM: c = constant */\n",
+                            "\tmov {}, {} /* b = constant */\n",
                             REG_B, ctx.b.string_value
                         );
                         ctx.b.is_saved = true;
@@ -997,24 +1007,22 @@ impl ZiskRom {
                     //*s += &format!("\tmov {}, {} /*b=b_value */\n", REG_B, ctx.b.string_value);
                 }
                 SRC_IND => {
+                    *s += "\t/* b=SRC_IND */\n";
                     *s += &format!(
-                        "\tmov {}, {} /* b=SRC_IND: address = a */\n",
+                        "\tmov {}, {} /* address = a */\n",
                         REG_ADDRESS, ctx.a.string_value
                     );
                     *s += &format!(
-                        "\tadd {}, 0x{:x} /* b=SRC_IND: address += i.b_offset_imm0 */\n",
+                        "\tadd {}, 0x{:x} /* address += i.b_offset_imm0 */\n",
                         REG_ADDRESS, instruction.b_offset_imm0
                     );
                     if instruction.b_use_sp_imm1 != 0 {
-                        *s += &format!(
-                            "\tadd {}, {} /* b=SRC_IND: address += sp */\n",
-                            REG_ADDRESS, MEM_SP
-                        );
+                        *s += &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, MEM_SP);
                     }
                     match instruction.ind_width {
                         8 => {
                             *s += &format!(
-                                "\tmov {}, qword ptr [{}] /* b=SRC_IND(8): {} = mem[address] */\n",
+                                "\tmov {}, qword ptr [{}] /* width=8: {} = mem[address] */\n",
                                 if ctx.store_b_in_c { REG_C } else { REG_B },
                                 REG_ADDRESS,
                                 if ctx.store_b_in_c { "c(CopyB)" } else { "b" }
@@ -1022,7 +1030,7 @@ impl ZiskRom {
                         }
                         4 => {
                             *s += &format!(
-                                "\tmov {}, [{}] /* b=SRC_IND(4): {} = mem[address] */\n",
+                                "\tmov {}, [{}] /* width=4: {} = mem[address] */\n",
                                 if ctx.store_b_in_c { REG_C_W } else { REG_B_W },
                                 REG_ADDRESS,
                                 if ctx.store_b_in_c { "c(CopyB)" } else { "b" }
@@ -1030,7 +1038,7 @@ impl ZiskRom {
                         }
                         2 => {
                             *s += &format!(
-                                "\tmovzx {}, word ptr [{}] /* b=SRC_IND(2): {} = mem[address] */\n",
+                                "\tmovzx {}, word ptr [{}] /* width=2: {} = mem[address] */\n",
                                 if ctx.store_b_in_c { REG_C } else { REG_B },
                                 REG_ADDRESS,
                                 if ctx.store_b_in_c { "c(CopyB)" } else { "b" }
@@ -1038,7 +1046,7 @@ impl ZiskRom {
                         }
                         1 => {
                             *s += &format!(
-                                "\tmovzx {}, byte ptr [{}] /* b=SRC_IND(1): {} = mem[address] */\n",
+                                "\tmovzx {}, byte ptr [{}] /* width=1: {} = mem[address] */\n",
                                 if ctx.store_b_in_c { REG_C } else { REG_B },
                                 REG_ADDRESS,
                                 if ctx.store_b_in_c { "c(CopyB)" } else { "b" }
@@ -1070,52 +1078,46 @@ impl ZiskRom {
                     *s += &format!("\t/* STORE_NONE */\n");
                 }
                 STORE_MEM => {
+                    *s += &format!("\t/* STORE_MEM */\n");
                     // Calculate memory address and store it in REG_ADDRESS
                     *s += &format!(
-                        "\tmov {}, 0x{:x}/* STORE_MEM: address = i.store_offset */\n",
+                        "\tmov {}, 0x{:x}/* address = i.store_offset */\n",
                         REG_ADDRESS, instruction.store_offset
                     );
                     if instruction.store_use_sp {
-                        *s += &format!(
-                            "\tadd {}, {} /* STORE_MEM: address += sp */\n",
-                            REG_ADDRESS, MEM_SP
-                        );
+                        *s += &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, MEM_SP);
                     }
                     // Store in mem[address]
                     if instruction.store_ra {
                         *s += &format!(
-                            "\tmov {}, 0x{:x} /* STORE_MEM: value = pc + jmp_offset2 */\n",
+                            "\tmov {}, 0x{:x} /* value = pc + jmp_offset2 */\n",
                             REG_VALUE,
                             (ctx.pc as i64 + instruction.jmp_offset2) as u64
                         );
                         *s += &format!(
-                            "\tmov [{}], {} /* STORE_MEM: mem[address] = value */\n",
+                            "\tmov [{}], {} /* mem[address] = value */\n",
                             REG_ADDRESS, REG_VALUE
                         );
                     } else {
-                        *s += &format!(
-                            "\tmov [{}], {} /* STORE_MEM: mem[address] = c */\n",
-                            REG_ADDRESS, REG_C
-                        );
+                        *s +=
+                            &format!("\tmov [{}], {} /* mem[address] = c */\n", REG_ADDRESS, REG_C);
                     }
                 }
                 STORE_IND => {
+                    *s += &format!("\t/* STORE_IND */\n");
                     // Calculate memory address and store it in REG_ADDRESS
                     *s += &format!(
-                        "\tmov {}, {} /* STORE_IND: address = a */\n",
+                        "\tmov {}, {} /* address = a */\n",
                         REG_ADDRESS, ctx.a.string_value
                     );
                     if instruction.store_offset != 0 {
                         *s += &format!(
-                            "\tadd {}, 0x{:x} /* STORE_IND: address += i.store_offset */\n",
+                            "\tadd {}, 0x{:x} /* address += i.store_offset */\n",
                             REG_ADDRESS, instruction.store_offset as u64
                         );
                     }
                     if instruction.store_use_sp {
-                        *s += &format!(
-                            "\tadd {}, {} /* STORE_IND: address += sp */\n",
-                            REG_ADDRESS, MEM_SP
-                        );
+                        *s += &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, MEM_SP);
                     }
 
                     // Store mem[address] = value
@@ -1123,13 +1125,13 @@ impl ZiskRom {
                         8 => {
                             if instruction.store_ra {
                                 *s += &format!(
-                                    "\tmov qword ptr [{}], {} /* STORE_IND(8): mem[address] = pc + jmp_offset2 */\n",
+                                    "\tmov qword ptr [{}], {} /* width=8: mem[address] = pc + jmp_offset2 */\n",
                                     REG_ADDRESS,
                                     (ctx.pc as i64 + instruction.jmp_offset2) as u64
                                 );
                             } else {
                                 *s += &format!(
-                                    "\tmov [{}], {} /* STORE_IND(8): mem[address] = c */\n",
+                                    "\tmov [{}], {} /* width=8: mem[address] = c */\n",
                                     REG_ADDRESS, REG_C
                                 );
                             }
@@ -1137,13 +1139,13 @@ impl ZiskRom {
                         4 => {
                             if instruction.store_ra {
                                 *s += &format!(
-                                    "\tmov dword ptr [{}], {} /* STORE_IND(4): mem[address] = pc + jmp_offset2 */\n",
+                                    "\tmov dword ptr [{}], {} /* width=4: mem[address] = pc + jmp_offset2 */\n",
                                     REG_ADDRESS,
                                     (ctx.pc as i64 + instruction.jmp_offset2) as u64
                                 );
                             } else {
                                 *s += &format!(
-                                    "\tmov [{}], {} /* STORE_IND(4): mem[address] = c */\n",
+                                    "\tmov [{}], {} /* width=4: mem[address] = c */\n",
                                     REG_ADDRESS, REG_C_W
                                 );
                             }
@@ -1151,13 +1153,13 @@ impl ZiskRom {
                         2 => {
                             if instruction.store_ra {
                                 *s += &format!(
-                                    "\tmov word ptr [{}], {} /* STORE_IND(2): mem[address] = pc + jmp_offset2 */\n",
+                                    "\tmov word ptr [{}], {} /* width=2: mem[address] = pc + jmp_offset2 */\n",
                                     REG_ADDRESS,
                                     (ctx.pc as i64 + instruction.jmp_offset2) as u64
                                 );
                             } else {
                                 *s += &format!(
-                                    "\tmov [{}], {} /* STORE_IND(2): mem[address] = c */\n",
+                                    "\tmov [{}], {} /* width=2: mem[address] = c */\n",
                                     REG_ADDRESS, REG_C_H
                                 );
                             }
@@ -1165,43 +1167,38 @@ impl ZiskRom {
                         1 => {
                             if instruction.store_ra {
                                 *s += &format!(
-                                    "\tmov word ptr [{}], {} /* STORE_IND(1): mem[address] = pc + jmp_offset2 */\n",
+                                    "\tmov word ptr [{}], {} /* width=1: mem[address] = pc + jmp_offset2 */\n",
                                     REG_ADDRESS,
                                     (ctx.pc as i64 + instruction.jmp_offset2) as u64
                                 );
                             } else {
                                 *s += &format!(
-                                    "\tmov [{}], {} /* STORE_IND(1): mem[address] = c */\n",
+                                    "\tmov [{}], {} /* width=1: mem[address] = c */\n",
                                     REG_ADDRESS, REG_C_B
                                 );
                             }
                             *s += &format!(
-                                "\tmov {}, 0xa0000200 /* STORE_IND(1): aux = UART */\n",
+                                "\tmov {}, 0xa0000200 /* width=1: aux = UART */\n",
                                 REG_FLAG,
                             );
                             *s += &format!(
-                                "\tcmp {}, {} /* STORE_IND(1): if address = USART then print char */\n",
+                                "\tcmp {}, {} /* width=1: if address = USART then print char */\n",
                                 REG_ADDRESS, REG_FLAG
                             );
                             *s += &format!(
-                                "\tjne pc_{:x}_store_c_not_uart /* STORE_IND(1): continue */\n",
+                                "\tjne pc_{:x}_store_c_not_uart /* width=1: continue */\n",
                                 ctx.pc,
                             );
                             if instruction.store_ra {
                                 *s += &format!(
-                                    "\tmov dil, 0x{:x} /* STORE_IND(1): rdi = value */\n",
+                                    "\tmov dil, 0x{:x} /* width=1: rdi = value */\n",
                                     (ctx.pc as i64 + instruction.jmp_offset2) as u64 as u8
                                 );
                             } else {
-                                *s += &format!(
-                                    "\tmov dil, {} /* STORE_IND(1): rdi = c */\n",
-                                    REG_C_B
-                                );
+                                *s += &format!("\tmov dil, {} /* width=1: rdi = c */\n", REG_C_B);
                             }
                             *s += &format!("\tpush {}\n", REG_VALUE);
-                            *s += &format!(
-                                "\tcall _print_char /* STORE_IND(1): call print_char() */\n"
-                            );
+                            *s += &format!("\tcall _print_char /* width=1: call print_char() */\n");
                             *s += &format!("\tpop {}\n", REG_VALUE);
                             *s += &format!("pc_{:x}_store_c_not_uart:\n", ctx.pc);
                         }
@@ -1250,6 +1247,7 @@ impl ZiskRom {
             // *s += &format!("\tpop {}\n", REG_FLAG);
 
             // Decrement step counter
+            *s += &format!("\t/* STEP */\n");
             *s += &format!("\tdec {} /* decrement step_down */\n", MEM_STEP_DOWN);
             if instruction.end {
                 *s += &format!("\tmov {}, 1 /* end = 1 */\n", MEM_END);
@@ -1267,21 +1265,19 @@ impl ZiskRom {
             ctx.jump_to_dynamic_pc = false;
             ctx.jump_to_static_pc = String::new();
             if instruction.set_pc {
+                *s += &format!("\t/* set pc */\n");
                 if ctx.c.is_constant {
                     let new_pc = (ctx.c.constant_value as i64 + instruction.jmp_offset1) as u64;
                     *s += &format!(
-                        "\tmov {}, 0x{:x} /* set_pc 1: pc = c + i.jmp_offset1 */\n",
+                        "\tmov {}, 0x{:x} /* pc = c(const) + i.jmp_offset1 */\n",
                         REG_PC, new_pc
                     );
                     ctx.jump_to_static_pc =
-                        format!("\tjmp pc_{:x} /* set_pc 1: jump to static pc */\n", new_pc);
+                        format!("\tjmp pc_{:x} /* jump to static pc */\n", new_pc);
                 } else {
+                    *s += &format!("\tmov {}, {} /* pc = c */\n", REG_PC, ctx.c.string_value);
                     *s += &format!(
-                        "\tmov {}, {} /* set_pc 2: pc = c */\n",
-                        REG_PC, ctx.c.string_value
-                    );
-                    *s += &format!(
-                        "\tadd {}, 0x{:x} /* set_pc 2: pc += i.jmp_offset1 */\n",
+                        "\tadd {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
                         REG_PC, instruction.jmp_offset1
                     );
                     ctx.jump_to_dynamic_pc = true;
@@ -1290,7 +1286,7 @@ impl ZiskRom {
                 if ctx.flag_is_always_zero {
                     if ctx.pc as i64 + instruction.jmp_offset2 != ctx.next_pc as i64 {
                         *s += &format!(
-                            "\tmov {}, 0x{:x} /* set_pc 3: pc += i.jmp_offset2 */\n",
+                            "\tmov {}, 0x{:x} /* flag=0: pc += i.jmp_offset2 */\n",
                             REG_PC,
                             (ctx.pc as i64 + instruction.jmp_offset2) as u64
                         );
@@ -1303,7 +1299,7 @@ impl ZiskRom {
                 } else if ctx.flag_is_always_one {
                     if ctx.pc as i64 + instruction.jmp_offset1 != ctx.next_pc as i64 {
                         *s += &format!(
-                            "\tmov {}, 0x{:x} /* set_pc 4: pc += i.jmp_offset1 */\n",
+                            "\tmov {}, 0x{:x} /* flag=1: pc += i.jmp_offset1 */\n",
                             REG_PC,
                             (ctx.pc as i64 + instruction.jmp_offset1) as u64
                         );
@@ -1314,9 +1310,10 @@ impl ZiskRom {
                         ctx.jump_to_dynamic_pc = true;
                     }
                 } else {
+                    *s += &format!("\t/* pc = f(flag) */\n");
                     // Calculate the new pc
-                    *s += &format!("\tcmp {}, 1 /* set_pc 5: flag == 1 ? */\n", REG_FLAG);
-                    *s += &format!("\tjne pc_{:x}_flag_false /* flag == 1 ? */\n", ctx.pc);
+                    *s += &format!("\tcmp {}, 1 /* flag == 1 ? */\n", REG_FLAG);
+                    *s += &format!("\tjne pc_{:x}_flag_false\n", ctx.pc);
                     *s += &format!(
                         "\tmov {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
                         REG_PC,
