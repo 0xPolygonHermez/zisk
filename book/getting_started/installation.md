@@ -1,6 +1,6 @@
 # Installation Guide
 
-You can install ZisK from prebuilt binaries (recommended) or by building it ZisK Rust toolchain and CLI tools from source.
+You can install ZisK from prebuilt binaries (recommended) or by building ZisK tools, toolchain and setup files from source.
 
 ## Requirements
 ZisK currently supports Linux x86_64 systems. **Proof generation on macOS is not supported.**
@@ -97,10 +97,13 @@ As an alternative, you can use the [Nix package manager](https://github.com/NixO
     cargo-zisk --version
     ```
 
-5. To update the ZisK toolchain to the latest version, simply run again:
-    ```bash
-    ziskup
-    ```
+5. Download and install setup files:
+
+To update ZisK to the latest version, simply run again:
+
+```bash
+ziskup
+```
 
 ### Option 2: Building from source
 
@@ -110,7 +113,7 @@ As an alternative, you can use the [Nix package manager](https://github.com/NixO
 
 2. Clone the ZisK repository:
     ```bash
-    git clone git@github.com:0xPolygonHermez/zisk.git
+    git clone https://github.com/0xPolygonHermez/zisk.git
     cd zisk
     ```
 
@@ -131,12 +134,12 @@ As an alternative, you can use the [Nix package manager](https://github.com/NixO
     source $HOME/.bashrc
     ```
 
-6. Build the ZisK toolchain:
+6. Build the Rust ZisK toolchain:
     ```bash
     cargo-zisk sdk build-toolchain
     ```
 
-7. Install the ZisK toolchain:
+7. Install the Rust ZisK toolchain:
     ```bash
     ZISK_TOOLCHAIN_SOURCE_DIR=. cargo-zisk sdk install-toolchain
     ```
