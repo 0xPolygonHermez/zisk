@@ -151,7 +151,7 @@ As an alternative, you can use the [Nix package manager](https://github.com/NixO
 The setup building process is highly intensive in terms of CPU and memory usage. You will need a machine with at least the following hardware requirements:
 
 * 4 CPUs
-* 512 GB of RAM
+* 128 GB of RAM
 * 100 GB of free disk space
 
 Please note that the process can be long, taking approximately 2–3 hours depending on the machine used.
