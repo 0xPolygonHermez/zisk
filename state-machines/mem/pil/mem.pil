@@ -296,23 +296,34 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 }
 
 // Memory helpers to use the memory
+// mem_step is the step of memory step, to translate from main_step to mem_step use main_step_to_mem_step
 
+// Helpers for main memory operations
+
+// Function to send to bus a memory load operations (only for main)
 function mem_load(int id = MEMORY_ID, expr addr, expr mem_step, expr bytes = 8, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     mem_assumes(id, MEMORY_LOAD_OP, addr, mem_step, bytes, value, sel, name);
 }
 
+// Function to send to bus a memory write operation (only for main)
 function mem_store(int id = MEMORY_ID, expr addr, expr mem_step, expr bytes = 8, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     mem_assumes(id, MEMORY_STORE_OP, addr, mem_step, bytes, value, sel, name);
 }
 
+// Function to send to bus a memory operation (only for main)
 function mem_op(int id = MEMORY_ID, expr op, expr addr, expr mem_step, expr bytes = 8, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     mem_assumes(id, op, addr, mem_step, bytes, value, sel, name);
 }
 
+// Helpers for main memory operations
+
+// Functions to translate from main step send to bus, to memory step (used by precompiled memory operations)
 function main_step_to_precompiled_mem_step(const expr step, const int is_write = 0): expr {
     const int write_inc = is_write ? 3 : 2;
     return RESERVED_MEM_STEPS + MAX_MEM_STEPS_PER_MAIN_STEP * step + write_inc;
 }
+
+// Helpers for precompiled memory operations
 
 function precompiled_mem_load(int id = MEMORY_ID, expr addr, expr main_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     mem_assumes(id, MEMORY_LOAD_OP, addr, main_step_to_precompiled_mem_step(main_step), 8, value, sel, name);
@@ -322,6 +333,8 @@ function precompiled_mem_store(int id = MEMORY_ID, expr addr, expr main_step, ex
     mem_assumes(id, MEMORY_STORE_OP, addr, main_step_to_precompiled_mem_step(main_step, 1), 8, value, sel, name);
 }
 
+// Helpers for main registers operations (reuse memory operations)
+
 function reg_pre_load(int id = MEMORY_ID, expr addr, expr prev_mem_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     mem_proves(id, MEMORY_REG_OP, addr, prev_mem_step, value, sel, name: name);
 }
@@ -330,10 +343,12 @@ function reg_pre_store(int id = MEMORY_ID, expr addr, expr prev_mem_step, expr v
     mem_proves(id, MEMORY_REG_OP, addr, prev_mem_step, value, sel, name);
 }
 
+// Function to send the register operation cycle initialization to the bus.
 function global_init_mem(int id = MEMORY_ID, expr addr, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     direct_global_update_assumes(id, [MEMORY_REG_OP, addr, 0, 8, ...value], sel: sel, name: name);
 }
 
+// Functions to translate from main step to memory step (used by main)
 
 function main_step_to_mem_step(const expr step, int step_offset = 0): expr {
     if (step_offset > MAX_MEM_STEP_OFFSET) {

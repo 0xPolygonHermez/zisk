@@ -68,21 +68,23 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // Within a segment, when `last_c` is referenced, if we are in the first row,
     // we take the value received from the bus; otherwise, we take the value from the previous row.
 
-    airval main_last_segment;
-    airval main_segment;
-    airval segment_initial_pc;
-    airval segment_previous_c[RC];
-    airval segment_next_pc;
-    airval segment_last_c[RC];
+    airval main_last_segment;          // Selector to indicate that this is last main segment
+    airval main_segment;               // Id of current main segment
+    airval segment_initial_pc;         // Initial value of `pc`, it matches the `pc` value at row 0.
+    airval segment_previous_c[RC];     // Last value stored in previous instance.
+    airval segment_next_pc;            // The initial `pc` of next instance.
+    airval segment_last_c[RC];         // Last value stored in current instance.
 
     if (stack_enabled) {
-        airval segment_initial_sp;
-        airval segment_next_sp;
+        airval segment_initial_sp;     // Initial value of `sp`, it matches the `sp` value at row 0.
+        airval segment_next_sp;        // The initial `sp` of next instance.
     }
 
-    // boolean constraint
+    // main_last_segment is a boolean value
 
     main_last_segment * (1 - main_last_segment) === 0;
+
+    // STEP is a composed value of SEGMENT_STEP (relative to segment) and main_segment
 
     const expr STEP = main_segment * N + SEGMENT_STEP;
 
@@ -137,10 +139,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     // Destination C
 
-    // What to store
     col witness store_ra;              // Store the return address instead of the C register.
 
-    // Where to store
     col witness store_mem;             // Selector for store c to memory
     col witness store_ind;             // Selector for store c to memory address in a
 
@@ -148,17 +148,16 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     col witness set_pc;                // Selector to set to pc the value in c
 
-
     if (stack_enabled) {
-        col witness air.store_use_sp;
-        col witness air.set_sp;
-        col witness air.inc_sp;
+        col witness air.store_use_sp;  // Selector to calculate store address use sp
+        col witness air.set_sp;        // Selector to set result as new value of sp
+        col witness air.inc_sp;        // Increment of sp (negative or positive)
     }
 
 
-    col witness jmp_offset1;           // next default pc if flag = 0
-    col witness jmp_offset2;           // next default pc if flag = 1
-    col witness m32;                   // selector to indicate the high part of operands (a,b) send
+    col witness jmp_offset1;           // Next default pc if flag = 0
+    col witness jmp_offset2;           // Next default pc if flag = 1
+    col witness m32;                   // Selector to indicate the high part of operands (a,b) send
                                        // to bus must be 0, because it's a 32 bits operation. Used
                                        // to avoid sent to bus dirty values.
 
@@ -237,24 +236,37 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     //   zero. At each end of the instance, we send to the bus a proves and assumes for each
     //   register, but in the last segment, we don't send the assume, only send provers, and
     //   with this, we close the cycle.
+    //
+    // - The register region and normal memory are non-overlapping.
+    //
+    //   The register area is mapped to a separate "address range", ensuring it does not
+    //   interfere with normal memory. Registers use indexes as their addresses to prevent overlap
+    //   with regular memory. The area allocated for registers does not overlap with any memory
+    //   region. As a result, no memory state machine can validate memory access in this area;
+    //   only the main state machine can 'prove' such memory access.
 
-    col witness a_reg_prev_mem_step;
-    col witness b_reg_prev_mem_step;
-    col witness store_reg_prev_mem_step;
-    col witness store_reg_prev_value[RC];
-    col witness a_src_reg;
-    col witness b_src_reg;
-    col witness store_reg;
+    col witness a_reg_prev_mem_step;      // Previous mem_step where register a_offset_imm0 is used
+    col witness b_reg_prev_mem_step;      // Previous mem_step where register b_offset_imm0 is used
+    col witness store_reg_prev_mem_step;  // Previous mem_step where register store_offset is used
+    col witness store_reg_prev_value[RC]; // Previous value of register store_offset is used
+    col witness a_src_reg;                // Selector indicating that 'a' is read from register
+    col witness b_src_reg;                // Selector indicating that 'b' is read from register
+    col witness store_reg;                // Selector to store result to register
+
+    // Calculate the memory step from the main step
 
     const expr a_mem_step = main_step_to_mem_step(STEP, 0);
     const expr b_mem_step = main_step_to_mem_step(STEP, 1);
     const expr store_mem_step = main_step_to_mem_step(STEP, 2);
 
-    // memory function to define the first memory read slot.
+    // Memory function to prove that previous register a_offset_imm0 access.
+
     reg_pre_load(sel: a_src_reg,
              prev_mem_step: a_reg_prev_mem_step,
              addr: a_offset_imm0,
              value: a);
+
+    // Memory function to assume current register a_offset_imm0 access or memory access to addr0.
 
     mem_op(sel: a_src_mem + a_src_reg,
            op: MEMORY_LOAD_OP * a_src_mem + MEMORY_REG_OP * a_src_reg,
@@ -263,11 +275,14 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
            value: a);
 
 
-    // memory function to define the second memory read slot.
+    // Memory function to prove that previous register b_offset_imm0 access.
+
     reg_pre_load(sel: b_src_reg,
              prev_mem_step: b_reg_prev_mem_step,
              addr: b_offset_imm0,
              value: b);
+
+    // Memory function to assume current register b_offset_imm0 access or memory access to addr1.
 
     mem_op(sel: sel_mem_b + b_src_reg,
            op: MEMORY_LOAD_OP * sel_mem_b + MEMORY_REG_OP * b_src_reg,
@@ -276,13 +291,22 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
            addr: addr1,
            value: b);
 
+    // Calculate the value to store in memory
 
     const expr store_value[2];
 
     store_value[0] = store_ra*(pc + jmp_offset2 - c[0]) + c[0];
     store_value[1] = (1 - store_ra) * c[1];
 
-    // memory function to define the first memory store slot (after memory reads)
+    // Memory function to prove that previous register store_offset access.
+
+    reg_pre_store(sel: store_reg,
+              prev_mem_step: store_reg_prev_mem_step,
+              addr: store_offset,
+              value: store_reg_prev_value);
+
+    // Memory function to assume current register store_offset access or memory access to addr2.
+
     mem_op(sel: store_mem + store_ind + store_reg,
            op: MEMORY_STORE_OP * (store_mem + store_ind) + MEMORY_REG_OP * store_reg,
            mem_step: store_mem_step,
@@ -290,14 +314,14 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
            addr: addr2,
            value: store_value);
 
-    reg_pre_store(sel: store_reg,
-              prev_mem_step: store_reg_prev_mem_step,
-              addr: store_offset,
-              value: store_reg_prev_value);
+    // Range check for register operations, to check that previous register access is greater than
+    // the current register access.
 
     range_check(expression: a_mem_step - a_reg_prev_mem_step, min: 1, max: MAX_RANGE, sel: a_src_reg);
     range_check(expression: b_mem_step - b_reg_prev_mem_step, min: 1, max: MAX_RANGE, sel: b_src_reg);
     range_check(expression: store_mem_step - store_reg_prev_mem_step, min: 1, max: MAX_RANGE, sel: store_reg);
+
+    // Sent to bus the external operation
 
     lookup_assumes(operation_bus_id, [op, a[0], (1 - m32) * a[1], b[0], (1 - m32) * b[1], ...c, flag], sel: is_external_op);
 
@@ -309,6 +333,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     a_imm[0] = a_offset_imm0;
     b_imm[0] = b_offset_imm0;
+
+    // Optimization to avoid use extra columns when c is source for a or b.
 
     if (stack_enabled) {
         a_src_c = 1 - a_src_step - a_src_mem - a_src_imm - a_src_sp;
@@ -330,14 +356,17 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
             // a_src_sp ===> set a = sp (only less significant index, rest must be 0)
             a_src_sp * (a[index] - (index == 0 ? sp: 0 )) === 0;
         }
+
+        // If source is step, value must be same as STEP
         a_src_step * (a[index] - (index == 0 ? STEP : 0)) === 0;
+
+        // If source is c, value must be same as previous_c
         a_src_c * (a[index] - previous_c) === 0;
         b_src_c * (b[index] - previous_c) === 0;
 
+        // If source is immediate, value must immediate value
         a_src_imm * (a[index] - a_imm[index]) === 0;
         b_src_imm * (b[index] - b_imm[index]) === 0;
-
-        // continuations_transition(last_c[index], c[index]); // last_c[index]' = c[index];
 
         // if is not an external op and op=0 set c = 0
         (1 - is_external_op) * (1 - op) * c[index] === 0;
@@ -353,6 +382,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // if is not an external op and op=1 set flag = 0
     (1 - is_external_op) * op * (flag) === 0;
 
+    // The selectors flag an set_pc are disjoint, meaning they cannot be active simultaneously.
     flag * set_pc === 0;
 
     const expr expected_current_pc = 'set_pc * ('c[0] + 'jmp_offset1) + (1 - 'set_pc) * ('pc + 'jmp_offset2) + 'flag * ('jmp_offset1 - 'jmp_offset2);
@@ -375,33 +405,74 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         SEGMENT_LAST * (segment_last_c[index] - c[index]) === 0;
     }
 
-    // Register Zero is hard-wired zero.
-    airval last_reg_value[REGS_IN_MAIN][RC];
-    airval last_reg_mem_step[REGS_IN_MAIN];
+    // Contraints for registers on main
+
+    airval last_reg_value[REGS_IN_MAIN][RC];    // last value in the segment for each register.
+    airval last_reg_mem_step[REGS_IN_MAIN];     // last mem_step in the segment for each register.
+
+    // Calculate the last `mem_step` of the current segment. If the last rows have stored a value
+    // in a register, the `mem_offset` is 2. For this reason, `mem_offset` 3 is safe and available.
+    // The `mem_offset` is only used by precompiled or unaligned memory writes, which exclude a
+    // register write.
 
     const expr last_segment_reg_mem_step = main_step_to_special_mem_step((main_segment + 1) * N - 1);
+
+    // Reload all registers to prevent a large range check, this reload ensures that the range check
+    // verifies the validity of both the previous and current accesses in this last `reg_mem_step`.
+    // In the case of the last segment, the current access isn't send to closed the cycle.
+
     for (int ireg = 0; ireg < REGS_IN_MAIN; ++ireg) {
+        // Range check to verify that thre previous access was before the last access.
         range_check(expression: last_segment_reg_mem_step - last_reg_mem_step[ireg], min: 1, max: MEMORY_MAX_DIFF);
+
+        // Proves the last access.
         reg_pre_load(prev_mem_step: last_reg_mem_step[ireg], addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[ireg]);
+
+        // Send to the bus current access, it will the previous access in the next segment.
+        // Selector because this must not be send in the last segment.
         mem_op(op: MEMORY_REG_OP, mem_step: last_segment_reg_mem_step, addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[ireg], sel: (1 - main_last_segment));
     }
+
+    // flag must be boolean
 
     flag * (1 - flag) === 0;
 
     // set lsb of rom_flags always to 1 to force that padding rom rows (all values to zero), doesn't
     // match with main trace.
+
+    // To compress flags into a single value and optimize ROM, we must ensure that all these flags
+    // are boolean.
+
+    a_src_imm * (1 - a_src_imm) === 0;
+    a_src_mem * (1 - a_src_mem) === 0;
+    a_src_step * (1 - a_src_step) === 0;
+    b_src_imm * (1 - b_src_imm) === 0;
+    b_src_mem * (1 - b_src_mem) === 0;
+    is_external_op * (1 - is_external_op) === 0;
+    store_ra * (1 - store_ra) === 0;
+    store_mem * (1 - store_mem) === 0;
+    store_ind * (1 - store_ind) === 0;
+    set_pc * (1 - set_pc) === 0;
+    m32 * (1 - m32) === 0;
+    b_src_ind * (1 - b_src_ind) === 0;
+    a_src_reg * (1 - a_src_reg) === 0;
+    b_src_reg * (1 - b_src_reg) === 0;
+    store_reg * (1 - store_reg) === 0;
+
     const expr rom_flags = 1 + 2 * a_src_imm + 4 * a_src_mem + 8 * a_src_step + 16 * b_src_imm
                            + 32 * b_src_mem + 64 * is_external_op + 128 * store_ra + 256 * store_mem
                            + 512 * store_ind + 1024 * set_pc + 2048 * m32 + 4096 * b_src_ind
                            + 8192 * a_src_reg + 16384 * b_src_reg + 32768 * store_reg;
 
+    // Lookup in ROM to ensure that only program instructions are executed.
 
     lookup_assumes(ROM_BUS_ID, [pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
                                 op, store_offset, jmp_offset1, jmp_offset2, rom_flags]);
 
-    // Continuations
+    // Continuations beetwen segments, we assume initial state and proves the final state.
 
-    // In the last segment
+    // The next segment increments the current segment by one, except for the last segment, which
+    // closes the cycle at the known main_segment_id.
 
     const expr main_next_segment = (main_segment + 1) * (1 - main_last_segment);
 
@@ -416,13 +487,16 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // This global constraint is sent to the bus to define the initial and final values of
     // continuations. A global constraint is used to ensure there is only one initial and one final
     // value, preventing multiple cycles of `main`.
-    // In the initial state define the initial PC and final PC. Before finish a execution the
+
+    // In the initial state define the initial `pc` and final  `pc`. Before finish a execution the
     // value of "c" must be 0.
 
     const int zeros[RC];
     for (int index = 0; index < RC; ++index) {
         zeros[index] = 0;
     }
+
+    // These constraints define the state at the beginning and end of a main continuation.
 
     if (stack_enabled) {
         direct_global_update_proves(MAIN_CONTINUATION_ID, expressions: [0, 0, BOOT_ADDR, ...zeros, INITIAL_SP]);
@@ -431,6 +505,9 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         direct_global_update_proves(MAIN_CONTINUATION_ID, expressions: [0, 0, BOOT_ADDR, ...zeros]);
         direct_global_update_assumes(MAIN_CONTINUATION_ID, expressions: [0, 1, END_PC_ADDR, ...zeros]);
     }
+
+    // The initialization of the main registers cycle, these constraints that defines the beginning
+    // of a cycle of register access. Their initial value is set to zero.
 
     for (int ireg = 0; ireg < REGS_IN_MAIN; ++ireg) {
         global_init_mem(sel: 1, addr: ireg + REGS_IN_MAIN_FROM, value: zeros);

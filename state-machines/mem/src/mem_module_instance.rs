@@ -33,6 +33,19 @@ impl<F: PrimeField> MemModuleInstance<F> {
         timer_stop_and_log_debug!(MEM_SORT);
     }
 
+    /// This method calculates intermediate accesses without adding inputs and trims
+    /// the inputs while considering skipped rows for this instance.
+    ///
+    /// Additionally, it computes the necessary information for memory continuations.
+    /// It returns the previous segment information.
+    ///
+    /// # Arguments
+    /// * `inputs` - The inputs to be processed.
+    /// * `mem_check_point` - The memory check point.
+    /// * `prev_last_value` - The previous last value.
+    ///
+    /// # Returns
+    /// The previous segment information.
     fn fit_inputs_and_get_prev_segment(
         &mut self,
         inputs: &mut Vec<MemInput>,
@@ -110,6 +123,9 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
+        // Collect inputs from all collectors. At most, one of them has `prev_last_value` non zero,
+        // we take this `prev_last_value`, which represents the last value of the previous segment.
+
         let mut prev_last_value = 0;
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -129,13 +145,19 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
             return None;
         }
 
+        // This method sorts all inputs
         self.prepare_inputs(&mut inputs);
+
+        // This method calculates intermediate accesses without adding inputs and trims
+        // the inputs while considering skipped rows for this instance.
+        // Additionally, it computes the necessary information for memory continuations.
         let prev_segment = self.fit_inputs_and_get_prev_segment(
             &mut inputs,
             self.mem_check_point.clone(),
             prev_last_value,
         );
 
+        // Extract segment id from instance context
         let segment_id = self.ictx.plan.segment_id.unwrap();
 
         let is_last_segment = self.mem_check_point.is_last_segment;
@@ -169,6 +191,8 @@ pub struct MemModuleCollector {
     /// Collected inputs
     inputs: Vec<MemInput>,
 
+    /// Edge case for the previous last value, also known as the cutting value (the last value of
+    /// the previous segment).
     prev_last_value: u64,
 }
 
@@ -177,6 +201,15 @@ impl MemModuleCollector {
         Self { inputs: Vec::new(), mem_check_point, prev_last_value: 0 }
     }
 
+    /// Processes an unaligned memory access.
+    ///
+    /// Processes an unaligned memory access by computing all necessary aligned memory operations
+    /// required to validate the unaligned access. The method determines the specific access case
+    /// based on whether it involves a single or double memory access and calls the appropriate
+    /// method to handle it.
+    ///
+    /// # Parameters
+    /// - `data`: The data associated with the memory access.
     fn process_unaligned_data(&mut self, data: &[u64]) {
         let addr = MemBusData::get_addr(data);
         let addr_w = MemHelpers::get_addr_w(addr);
@@ -195,12 +228,32 @@ impl MemModuleCollector {
         }
     }
 
+    /// Processes an unaligned single read operation.
+    ///
+    /// Handles an unaligned single read operation by computing all necessary aligned memory
+    /// operations required to validate the unaligned access. Finally, it uses `filtered_inputs_push`
+    /// to push only the necessary memory accesses into `inputs`.
+    ///
+    /// # Parameters
+    /// - `addr_w`: The memory address (aligned to 8 bytes).
+    /// - `data`: The data associated with the memory access.
     fn process_unaligned_single_read(&mut self, addr_w: u32, data: &[u64]) {
         let value = MemBusData::get_mem_values(data)[0];
         let step = MemBusData::get_step(data);
         self.filtered_inputs_push(addr_w, step, false, value);
     }
 
+    /// Processes an unaligned single write operation.
+    ///
+    /// Handles an unaligned single write operation by computing all necessary aligned memory
+    /// operations required to validate the unaligned access. Additionally, it calculates the
+    /// write value for the given memory access. Finally, it uses `filtered_inputs_push` to
+    /// push only the necessary memory accesses into `inputs`.
+    ///
+    /// # Parameters
+    /// - `addr_w`: The memory address (aligned to 8 bytes).
+    /// - `bytes`: The number of bytes to be written.
+    /// - `data`: The data associated with the memory access.
     fn process_unaligned_single_write(&mut self, addr_w: u32, bytes: u8, data: &[u64]) {
         let read_values = MemBusData::get_mem_values(data);
         let write_values = MemHelpers::get_write_values(
@@ -214,6 +267,15 @@ impl MemModuleCollector {
         self.filtered_inputs_push(addr_w, MemHelpers::get_write_step(step), true, write_values[0]);
     }
 
+    /// Processes an unaligned double read operation.
+    ///
+    /// Handles an unaligned double read operation by computing all necessary aligned memory
+    /// operations required to validate the unaligned access. Finally, it uses `filtered_inputs_push`
+    /// to push only the necessary memory accesses into `inputs`.
+    ///
+    /// # Parameters
+    /// - `addr_w`: The memory address (aligned to 8 bytes).
+    /// - `data`: The data associated with the memory access.
     fn process_unaligned_double_read(&mut self, addr_w: u32, data: &[u64]) {
         let read_values = MemBusData::get_mem_values(data);
         let step = MemBusData::get_step(data);
@@ -221,6 +283,17 @@ impl MemModuleCollector {
         self.filtered_inputs_push(addr_w + 1, step, false, read_values[1]);
     }
 
+    /// Processes an unaligned double write operation.
+    ///
+    /// Handles an unaligned double write operation by computing all necessary aligned memory
+    /// operations required to validate the unaligned access. Additionally, it calculates the
+    /// write value for the given memory access. Finally, it uses `filtered_inputs_push` to
+    /// push only the necessary memory accesses into `inputs`.
+    ///
+    /// # Parameters
+    /// - `addr_w`: The memory address (aligned to 8 bytes).
+    /// - `bytes`: The number of bytes to be written.
+    /// - `data`: The data associated with the memory access.
     fn process_unaligned_double_write(&mut self, addr_w: u32, bytes: u8, data: &[u64]) {
         let read_values = MemBusData::get_mem_values(data);
         let write_values = MemHelpers::get_write_values(
@@ -241,10 +314,26 @@ impl MemModuleCollector {
         self.filtered_inputs_push(addr_w + 1, write_step, true, write_values[1]);
     }
 
+    /// Discards the given memory access if it is not part of the current segment.
+    ///
+    /// This function checks whether the given memory access (defined by `addr`, `step`, and `value`)
+    /// should be discarded. If the access is not part of the current segment, the function returns `true`.
+    ///
+    /// # Parameters
+    /// - `addr`: The memory address (8 bytes aligned).
+    /// - `step`: The mem_step of the memory access.
+    /// - `value`: The value to be read or written.
+    ///
+    /// # Returns
+    /// `true` if the access should be discarded, `false` otherwise.
     fn discart_addr_step(&mut self, addr: u32, step: u64, value: u64) -> bool {
         if addr < self.mem_check_point.prev_addr || addr > self.mem_check_point.last_addr {
             return true;
         }
+
+        // Edge case where only the cutting address and step are known, but the value at this point
+        // is unknown. This value must be saved because it is needed for memory continuations,
+        // it represents the last value of the previous segment.
 
         if addr == self.mem_check_point.prev_addr {
             match step.cmp(&self.mem_check_point.prev_step) {
@@ -265,6 +354,18 @@ impl MemModuleCollector {
 
         false
     }
+
+    /// Pushes the access only if this access must be managed with current instance.
+    ///
+    /// This function checks whether the given memory access (defined by `addr_w`, `step`, and `value`)
+    /// should be discarded using `discard_addr_step()`. If it is not discarded,
+    /// a new `MemInput` instance is created and pushed to `inputs`.
+    ///
+    /// # Parameters
+    /// - `addr_w`: The memory address (8 bytes aligned).
+    /// - `step`: The mem_step of the memory access.
+    /// - `is_write`: Indicates whether the access is a write operation.
+    /// - `value`: The value to be read or written.
     fn filtered_inputs_push(&mut self, addr_w: u32, step: u64, is_write: bool, value: u64) {
         if !self.discart_addr_step(addr_w, step, value) {
             self.inputs.push(MemInput::new(addr_w, is_write, step, value));
@@ -276,21 +377,24 @@ impl BusDevice<u64> for MemModuleCollector {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
-        // info!("MemModuleCollector process_data bus_id:{} len: {}", _bus_id, data.len());
-        // info!(
-        //     "MemModuleCollector process_data len: {:X},{:X},{:X},{:X},{:X}",
-        //     data[0], data[1], data[2], data[3], data[4]
-        // );
         assert!(*bus_id == MEM_BUS_ID);
+
+        // decoding information in bus
 
         let addr = MemBusData::get_addr(data);
         let step = MemBusData::get_step(data);
         let bytes = MemBusData::get_bytes(data);
+
+        // If the access is unaligned (not aligned to 8 bytes or has a width different from 8 bytes).
+
         if !MemHelpers::is_aligned(addr, bytes) {
             self.process_unaligned_data(data);
             return None;
         }
-        // info!("MemModuleCollector process_data addr: {:x} bytes: {:x}", addr, bytes);
+
+        // Direct case when is aligned, calculated 8 bytes addres (addr_w) and check if is a
+        // write or read.
+
         let addr_w = MemHelpers::get_addr_w(addr);
         let is_write = MemHelpers::is_write(MemBusData::get_op(data));
         if is_write {
