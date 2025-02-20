@@ -42,6 +42,7 @@ witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch
 # proofman-macros = { path = "../pil2-proofman/macros" }
 # proofman-util = { path = "../pil2-proofman/util" }
 # pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
+# proofman-starks-lib-c = { path = "../pil2-proofman/provers/starks-lib-c" }
 # witness = { path = "../pil2-proofman/witness" }
 
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }

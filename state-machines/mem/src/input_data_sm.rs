@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::{MemInput, MemModule, MemPreviousSegment, MEMORY_MAX_DIFF, MEM_BYTES_BITS};
-use num_bigint::BigInt;
-use p3_field::PrimeField;
+
+use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
@@ -19,13 +19,13 @@ const _: () = {
     );
 };
 
-pub struct InputDataSM<F: PrimeField> {
+pub struct InputDataSM<F: PrimeField64> {
     /// PIL2 standard library
     std: Arc<Std<F>>,
 }
 
 #[allow(unused, unused_variables)]
-impl<F: PrimeField> InputDataSM<F> {
+impl<F: PrimeField64> InputDataSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         Arc::new(Self { std: std.clone() })
     }
@@ -40,7 +40,7 @@ impl<F: PrimeField> InputDataSM<F> {
     }
 }
 
-impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
+impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
     // TODO PRE: proxy calculate if exists jmp on step out-of-range, adding internal inputs
     // memory only need to process these special inputs, but inputs no change. At end of
     // inputs proxy add an extra internal input to jump to last address
@@ -71,10 +71,10 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
         let mut range_check_data = Box::new([0u64; 1 << 16]);
 
         // range of instance
-        let range_id = self.std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
+        let range_id = self.std.get_range(1, MEMORY_MAX_DIFF as i64, None);
         self.std.range_check(
-            F::from_canonical_u32(previous_segment.addr - INPUT_DATA_W_ADDR_INIT + 1),
-            F::one(),
+            (previous_segment.addr - INPUT_DATA_W_ADDR_INIT + 1) as i64,
+            1,
             range_id,
         );
 
@@ -174,26 +174,27 @@ impl<F: PrimeField> MemModule<F> for InputDataSM<F> {
         }
 
         self.std.range_check(
-            F::from_canonical_u32(INPUT_DATA_W_ADDR_END - last_addr + 1),
-            F::one(),
+            (INPUT_DATA_W_ADDR_END - last_addr + 1) as i64,
+            1,
             range_id,
         );
 
         // range of chunks
-        let range_id = self.std.get_range(BigInt::from(0), BigInt::from((1 << 16) - 1), None);
+        let range_id = self.std.get_range(0, (1 << 16) - 1, None);
         for (value, &multiplicity) in range_check_data.iter().enumerate() {
             if multiplicity == 0 {
                 continue;
             }
 
             self.std.range_check(
-                F::from_canonical_usize(value),
-                F::from_canonical_u64(multiplicity),
+                value as i64,
+                multiplicity,
                 range_id,
             );
         }
         for value_chunk in &value {
-            self.std.range_check(*value_chunk, F::from_canonical_usize(padding_size), range_id);
+            let value = value_chunk.as_canonical_u64();
+            self.std.range_check(value as i64, padding_size as u64, range_id);
         }
 
         let mut air_values = InputDataAirValues::<F>::new();

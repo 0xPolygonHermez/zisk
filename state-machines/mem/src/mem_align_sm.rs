@@ -4,9 +4,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use log::info;
-use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
-use p3_field::PrimeField;
+use p3_field::PrimeField64;
 use pil_std_lib::Std;
 
 use proofman_common::{AirInstance, FromTrace};
@@ -44,7 +43,7 @@ pub struct MemAlignResponse {
     pub step: u64,
     pub value: Option<u64>,
 }
-pub struct MemAlignSM<F: PrimeField> {
+pub struct MemAlignSM<F: PrimeField64> {
     /// PIL2 standard library
     _std: Arc<Std<F>>,
 
@@ -64,7 +63,7 @@ macro_rules! debug_info {
     };
 }
 
-impl<F: PrimeField> MemAlignSM<F> {
+impl<F: PrimeField64> MemAlignSM<F> {
     const MY_NAME: &'static str = "MemAlign";
 
     pub fn new(std: Arc<Std<F>>, mem_align_rom_sm: Arc<MemAlignRomSM>) -> Arc<Self> {
@@ -841,11 +840,11 @@ impl<F: PrimeField> MemAlignSM<F> {
     fn update_std_range_check(&self, reg_range_check: &[u64]) {
         // Perform the range checks
         let std = self._std.clone();
-        let range_id = std.get_range(BigInt::from(0), BigInt::from(CHUNK_BITS_MASK), None);
+        let range_id = std.get_range(0, CHUNK_BITS_MASK as i64, None);
         for (value, &multiplicity) in reg_range_check.iter().enumerate() {
             std.range_check(
-                F::from_canonical_usize(value),
-                F::from_canonical_u64(multiplicity),
+                value as i64,
+                multiplicity,
                 range_id,
             );
         }
