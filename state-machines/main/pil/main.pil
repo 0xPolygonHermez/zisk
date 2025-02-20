@@ -356,10 +356,15 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
             // a_src_sp ===> set a = sp (only less significant index, rest must be 0)
             a_src_sp * (a[index] - (index == 0 ? sp: 0 )) === 0;
         }
+
+        // If source is step, value must be same as STEP
         a_src_step * (a[index] - (index == 0 ? STEP : 0)) === 0;
+
+        // If source is c, value must be same as previous_c
         a_src_c * (a[index] - previous_c) === 0;
         b_src_c * (b[index] - previous_c) === 0;
 
+        // If source is immediate, value must immediate value
         a_src_imm * (a[index] - a_imm[index]) === 0;
         b_src_imm * (b[index] - b_imm[index]) === 0;
 
@@ -400,14 +405,31 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         SEGMENT_LAST * (segment_last_c[index] - c[index]) === 0;
     }
 
+    // Contraints for registers on main
 
-    airval last_reg_value[REGS_IN_MAIN][RC];
-    airval last_reg_mem_step[REGS_IN_MAIN];
+    airval last_reg_value[REGS_IN_MAIN][RC];    // last value in the segment for each register.
+    airval last_reg_mem_step[REGS_IN_MAIN];     // last mem_step in the segment for each register.
+
+    // Calculate the last `mem_step` of the current segment. If the last rows have stored a value
+    // in a register, the `mem_offset` is 2. For this reason, `mem_offset` 3 is safe and available.
+    // The `mem_offset` is only used by precompiled or unaligned memory writes, which exclude a
+    // register write.
 
     const expr last_segment_reg_mem_step = main_step_to_special_mem_step((main_segment + 1) * N - 1);
+
+    // Reload all registers to prevent a large range check, this reload ensures that the range check
+    // verifies the validity of both the previous and current accesses in this last `reg_mem_step`.
+    // In the case of the last segment, the current access isn't send to closed the cycle.
+
     for (int ireg = 0; ireg < REGS_IN_MAIN; ++ireg) {
+        // Range check to verify that thre previous access was before the last access.
         range_check(expression: last_segment_reg_mem_step - last_reg_mem_step[ireg], min: 1, max: MEMORY_MAX_DIFF);
+
+        // Proves the last access.
         reg_pre_load(prev_mem_step: last_reg_mem_step[ireg], addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[ireg]);
+
+        // Send to the bus current access, it will the previous access in the next segment.
+        // Selector because this must not be send in the last segment.
         mem_op(op: MEMORY_REG_OP, mem_step: last_segment_reg_mem_step, addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[ireg], sel: (1 - main_last_segment));
     }
 
