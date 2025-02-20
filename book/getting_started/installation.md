@@ -153,15 +153,15 @@ ziskup
 #### Build Setup
 The setup building process is highly intensive in terms of CPU and memory usage. You will need a machine with at least the following hardware requirements:
 
-* 4 CPUs
-* 128 GB of RAM
+* 32 CPUs
+* 512 GB of RAM
 * 100 GB of free disk space
 
 Please note that the process can be long, taking approximately 2–3 hours depending on the machine used.
 
-[NodeJS](https://nodejs.org/en/download) version 18.20.3 is required to build the setup files.
+[NodeJS](https://nodejs.org/en/download) version 20.x or higher is required to build the setup files.
 
-1. Clone the following repositories:
+1. Clone the following repositories in the parent folder of the `zisk` folder created in the previous section:
     ```bash
     git clone https://github.com/0xPolygonHermez/pil2-compiler.git
     git clone https://github.com/0xPolygonHermez/pil2-proofman.git
@@ -174,7 +174,7 @@ Please note that the process can be long, taking approximately 2–3 hours depen
 
 3. **Note:** All subsequent commands must be executed from the `zisk` folder created in the previous section.
 
-4. Compile ZisK PIL:
+4. Compile ZisK PIL: (Note that this command may take 30-40 minutes to complete)
     ```bash
     node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil, ../pil2-proofman/pil2-components/lib/std/pil, state-machines, precompiles -o pil/zisk.pilout
     ```
