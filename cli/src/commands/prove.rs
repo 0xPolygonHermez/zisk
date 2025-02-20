@@ -46,7 +46,7 @@ pub struct ZiskProve {
     #[clap(short = 'f', long, default_value_t = false)]
     pub final_snark: bool,
 
-    #[clap(short = 'k', long, default_value_t = false)]
+    #[clap(short = 'y', long, default_value_t = false)]
     pub verify_proofs: bool,
 
     /// Verbosity (-v, -vv)
