@@ -98,4 +98,17 @@ This command generates the proof in the `./proof directory`. If everything goes 
 [INFO ]      stop <<< GENERATING_VADCOP_PROOF 91706ms
 [INFO ] ProofMan: Proofs generated successfully
 ```
+## Distributed prove
+
+Zisk can run proves using multiple processes in the same server or in multiple servers. To use zisk in distributed mode you need to have installed an mpi library. To use the distributed mode the compilation command is:
+
+```bash
+cargo-zisk build --release --features "distributed"
+```
+
+Then the execution command will be:
+
+```bash
+mpirun --bind-to none -np <number_processes> -x OMP_NUM_THREADS=<number_of_threads_per_process> cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
+```
 
