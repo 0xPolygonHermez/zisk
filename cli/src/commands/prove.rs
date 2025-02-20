@@ -12,36 +12,47 @@ use std::{collections::HashMap, fs, path::PathBuf};
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 pub struct ZiskProve {
     /// Witness computation dynamic library path
-    #[clap(short, long)]
+    #[clap(short = 'w', long)]
     pub witness_lib: PathBuf,
+
     /// ELF file path
-    /// This is the path to the ELF file that the witness computation dynamic library will use
+    /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
     #[clap(short = 'e', long)]
     pub elf: PathBuf,
-    /// Inputs path
+
+    /// Input path
     #[clap(short = 'i', long)]
-    pub inputs: PathBuf,
+    pub input: Option<PathBuf>,
+
     /// Public inputs path
-    #[clap(short = 'p', long)]
+    #[clap(short = 'u', long)]
     pub public_inputs: Option<PathBuf>,
+
     /// Setup folder path
-    #[clap(long)]
+    #[clap(short = 'k', long)]
     pub proving_key: PathBuf,
+
     /// Output dir path
     #[clap(short = 'o', long, default_value = "tmp")]
     pub output_dir: PathBuf,
+
     #[clap(long, default_value_t = Field::Goldilocks)]
     pub field: Field,
+
     #[clap(short = 'a', long, default_value_t = false)]
     pub aggregation: bool,
+
     #[clap(short = 'f', long, default_value_t = false)]
     pub final_snark: bool,
-    #[clap(short = 'k', long, default_value_t = false)]
+
+    #[clap(short = 'y', long, default_value_t = false)]
     pub verify_proofs: bool,
+
     /// Verbosity (-v, -vv)
-    #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
+    #[arg(short ='v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
+
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
 
@@ -117,7 +128,7 @@ impl ZiskProve {
                     self.witness_lib.clone(),
                     Some(self.elf.clone()),
                     self.public_inputs.clone(),
-                    Some(self.inputs.clone()),
+                    self.input.clone(),
                     self.proving_key.clone(),
                     self.output_dir.clone(),
                     custom_commits_map,

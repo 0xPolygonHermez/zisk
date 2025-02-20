@@ -7,39 +7,39 @@ use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo,
 use rom_merkle::{gen_elf_hash, get_elf_bin_file_path, get_rom_blowup_factor, DEFAULT_CACHE_PATH};
 use std::{collections::HashMap, fs, path::PathBuf};
 
-use crate::commands::Field;
+use crate::{commands::Field, ZISK_VERSION_MESSAGE};
 
 #[derive(Parser)]
-#[command(version, about, long_about = None)]
+#[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 #[command(propagate_version = true)]
-pub struct ZiskVerifyConstraintsCmd {
+pub struct ZiskVerifyConstraints {
     /// Witness computation dynamic library path
-    #[clap(short, long)]
+    #[clap(short = 'w', long)]
     pub witness_lib: PathBuf,
 
     /// ROM file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
-    #[clap(short, long)]
-    pub rom: PathBuf,
+    #[clap(short = 'e', long)]
+    pub elf: PathBuf,
 
-    /// Inputs path
+    /// Input path
     #[clap(short = 'i', long)]
-    pub input_data: PathBuf,
+    pub input: Option<PathBuf>,
 
     /// Public inputs path
-    #[clap(short = 'p', long)]
+    #[clap(short = 'u', long)]
     pub public_inputs: Option<PathBuf>,
 
     /// Setup folder path
-    #[clap(long)]
+    #[clap(short = 'k', long)]
     pub proving_key: PathBuf,
 
     #[clap(long, default_value_t = Field::Goldilocks)]
     pub field: Field,
 
     /// Verbosity (-v, -vv)
-    #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
+    #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
     #[clap(short = 'd', long)]
@@ -49,7 +49,7 @@ pub struct ZiskVerifyConstraintsCmd {
     pub default_cache: Option<PathBuf>,
 }
 
-impl ZiskVerifyConstraintsCmd {
+impl ZiskVerifyConstraints {
     pub fn run(&self) -> Result<()> {
         println!("{} VerifyConstraints", format!("{: >12}", "Command").bright_green().bold());
         println!();
@@ -79,11 +79,11 @@ impl ZiskVerifyConstraintsCmd {
         let blowup_factor = get_rom_blowup_factor(&self.proving_key);
 
         let rom_bin_path =
-            get_elf_bin_file_path(&self.rom.to_path_buf(), &default_cache_path, blowup_factor)?;
+            get_elf_bin_file_path(&self.elf.to_path_buf(), &default_cache_path, blowup_factor)?;
 
         if !rom_bin_path.exists() {
             let _ = gen_elf_hash(
-                &self.rom.clone(),
+                &self.elf.clone(),
                 rom_bin_path.clone().to_str().unwrap(),
                 blowup_factor,
                 false,
@@ -98,9 +98,9 @@ impl ZiskVerifyConstraintsCmd {
             Field::Goldilocks => {
                 ProofMan::<Goldilocks>::generate_proof(
                     self.witness_lib.clone(),
-                    Some(self.rom.clone()),
+                    Some(self.elf.clone()),
                     self.public_inputs.clone(),
-                    Some(self.input_data.clone()),
+                    self.input.clone(),
                     self.proving_key.clone(),
                     PathBuf::new(),
                     custom_commits_map,

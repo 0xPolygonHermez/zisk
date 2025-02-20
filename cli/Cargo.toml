@@ -17,9 +17,11 @@ vergen = { version = "8", default-features = false, features = [
 [dependencies]
 proofman = { workspace = true }
 proofman-common = { workspace = true }
+proofman-starks-lib-c = { workspace = true }
 
 rom-merkle = { path = "../rom-merkle" }
 p3-goldilocks = { workspace = true }
+p3-field = { workspace = true }
 colored = { workspace = true }
 
 anyhow = { version = "1.0.86", features = ["backtrace"] }
