@@ -2,8 +2,6 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::Keccakf` instructions.
 
-use std::ops::Add;
-
 use data_bus::{
     BusDevice, BusId, ExtOperationData, OperationBusData, MEM_BUS_ID, OPERATION_BUS_ID,
 };
@@ -69,22 +67,6 @@ impl Metrics for KeccakfCounterInputGen {
     /// A reference to `self` as `dyn std::any::Any`.
     fn as_any(&self) -> &dyn std::any::Any {
         self
-    }
-}
-
-impl Add for KeccakfCounterInputGen {
-    type Output = KeccakfCounterInputGen;
-
-    /// Combines two `KeccakfCounter` instances by summing their counters.
-    ///
-    /// # Arguments
-    /// * `self` - The first `KeccakfCounter` instance.
-    /// * `other` - The second `KeccakfCounter` instance.
-    ///
-    /// # Returns
-    /// A new `KeccakfCounter` with combined counters.
-    fn add(self, other: Self) -> KeccakfCounterInputGen {
-        KeccakfCounterInputGen { counter: &self.counter + &other.counter, mode: self.mode }
     }
 }
 

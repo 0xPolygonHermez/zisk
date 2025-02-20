@@ -5,18 +5,23 @@
 //! execution plans.
 
 use crate::KeccakfSM;
-use data_bus::{
-    BusDevice, BusId, ExtOperationData, OperationBusData, OperationKeccakData, PayloadType,
-    OPERATION_BUS_ID,
-};
+use data_bus::{BusDevice, OperationKeccakData, PayloadType, OPERATION_BUS_ID};
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
-    BusDeviceWrapper, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
+    input_collector, BusDeviceWrapper, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx,
+    InstanceType,
 };
-use std::{any::Any, collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 use zisk_core::ZiskOperationType;
 use zisk_pil::KeccakfTrace;
+
+input_collector!(
+    KeccakfCollector,
+    ZiskOperationType::Keccak,
+    OperationKeccakData,
+    OPERATION_BUS_ID
+);
 
 /// The `KeccakfInstance` struct represents an instance for the Keccakf State Machine.
 ///
@@ -101,86 +106,5 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance {
         let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
         let (num_ops, collect_skipper) = collect_info[&chunk_id];
         Some(Box::new(KeccakfCollector::new(num_ops, collect_skipper)))
-    }
-}
-
-pub struct KeccakfCollector {
-    /// Collected inputs for witness computation.
-    inputs: Vec<OperationKeccakData<u64>>,
-
-    /// The number of operations to collect.
-    num_operations: u64,
-
-    /// Helper to skip instructions based on the plan's configuration.
-    collect_skipper: CollectSkipper,
-}
-
-impl KeccakfCollector {
-    /// Creates a new `KeccakfCollector`.
-    ///
-    /// # Arguments
-    ///
-    /// * `bus_id` - The connected bus ID.
-    /// * `num_operations` - The number of operations to collect.
-    /// * `collect_skipper` - The helper to skip instructions based on the plan's configuration.
-    ///
-    /// # Returns
-    /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
-    pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
-    }
-}
-
-impl BusDevice<PayloadType> for KeccakfCollector {
-    /// Processes data received on the bus, collecting the inputs necessary for witness computation.
-    ///
-    /// # Arguments
-    /// * `_bus_id` - The ID of the bus (unused in this implementation).
-    /// * `data` - The data received from the bus.
-    ///
-    /// # Returns
-    /// A tuple where:
-    /// - The first element indicates whether further processing should continue.
-    /// - The second element contains derived inputs to be sent back to the bus (always empty).
-    fn process_data(
-        &mut self,
-        bus_id: &BusId,
-        data: &[PayloadType],
-    ) -> Option<Vec<(BusId, Vec<PayloadType>)>> {
-        debug_assert!(*bus_id == OPERATION_BUS_ID);
-
-        if self.inputs.len() == self.num_operations as usize {
-            return None;
-        }
-
-        let data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-
-        if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::Keccak as u32 {
-            return None;
-        }
-
-        if self.collect_skipper.should_skip() {
-            return None;
-        }
-
-        if let ExtOperationData::OperationKeccakData(data) = data {
-            self.inputs.push(data);
-            None
-        } else {
-            panic!("Expected ExtOperationData::OperationData");
-        }
-    }
-
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![OPERATION_BUS_ID]
-    }
-
-    fn as_any(self: Box<Self>) -> Box<dyn Any> {
-        self
     }
 }

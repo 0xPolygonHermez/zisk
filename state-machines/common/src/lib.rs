@@ -6,6 +6,7 @@ mod component_instance;
 mod component_planner;
 mod field;
 mod instance_context;
+mod macros;
 mod planner_helpers;
 mod regular_counters;
 mod regular_planner;
