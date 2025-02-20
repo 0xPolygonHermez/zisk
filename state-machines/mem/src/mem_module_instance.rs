@@ -210,7 +210,6 @@ impl MemModuleCollector {
     ///
     /// # Parameters
     /// - `data`: The data associated with the memory access.
-
     fn process_unaligned_data(&mut self, data: &[u64]) {
         let addr = MemBusData::get_addr(data);
         let addr_w = MemHelpers::get_addr_w(addr);
@@ -238,7 +237,6 @@ impl MemModuleCollector {
     /// # Parameters
     /// - `addr_w`: The memory address (aligned to 8 bytes).
     /// - `data`: The data associated with the memory access.
-
     fn process_unaligned_single_read(&mut self, addr_w: u32, data: &[u64]) {
         let value = MemBusData::get_mem_values(data)[0];
         let step = MemBusData::get_step(data);
@@ -256,7 +254,6 @@ impl MemModuleCollector {
     /// - `addr_w`: The memory address (aligned to 8 bytes).
     /// - `bytes`: The number of bytes to be written.
     /// - `data`: The data associated with the memory access.
-
     fn process_unaligned_single_write(&mut self, addr_w: u32, bytes: u8, data: &[u64]) {
         let read_values = MemBusData::get_mem_values(data);
         let write_values = MemHelpers::get_write_values(
@@ -279,7 +276,6 @@ impl MemModuleCollector {
     /// # Parameters
     /// - `addr_w`: The memory address (aligned to 8 bytes).
     /// - `data`: The data associated with the memory access.
-
     fn process_unaligned_double_read(&mut self, addr_w: u32, data: &[u64]) {
         let read_values = MemBusData::get_mem_values(data);
         let step = MemBusData::get_step(data);
@@ -298,7 +294,6 @@ impl MemModuleCollector {
     /// - `addr_w`: The memory address (aligned to 8 bytes).
     /// - `bytes`: The number of bytes to be written.
     /// - `data`: The data associated with the memory access.
-
     fn process_unaligned_double_write(&mut self, addr_w: u32, bytes: u8, data: &[u64]) {
         let read_values = MemBusData::get_mem_values(data);
         let write_values = MemHelpers::get_write_values(
@@ -331,7 +326,6 @@ impl MemModuleCollector {
     ///
     /// # Returns
     /// `true` if the access should be discarded, `false` otherwise.
-
     fn discart_addr_step(&mut self, addr: u32, step: u64, value: u64) -> bool {
         if addr < self.mem_check_point.prev_addr || addr > self.mem_check_point.last_addr {
             return true;
@@ -372,7 +366,6 @@ impl MemModuleCollector {
     /// - `step`: The mem_step of the memory access.
     /// - `is_write`: Indicates whether the access is a write operation.
     /// - `value`: The value to be read or written.
-
     fn filtered_inputs_push(&mut self, addr_w: u32, step: u64, is_write: bool, value: u64) {
         if !self.discart_addr_step(addr_w, step, value) {
             self.inputs.push(MemInput::new(addr_w, is_write, step, value));
