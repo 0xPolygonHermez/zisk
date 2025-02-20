@@ -196,7 +196,11 @@ int main(int argc, char *argv[])
         printf("Failed calling mmap(ram)\n");
         return -1;
     }
-
+    if ((uint64_t)pRam != RAM_ADDR)
+    {
+        printf("Called mmap(pRam) but returned address = 0x%08x != 0x%08x\n", RAM_ADDR, ROM_ADDR);
+        return -1;
+    }
     if (verbose) printf("mmap(ram) returned %08x\n", pRam);
 
     // Allocate rom
@@ -204,6 +208,11 @@ int main(int argc, char *argv[])
     if (pRom == NULL)
     {
         printf("Failed calling mmap(rom)\n");
+        return -1;
+    }
+    if ((uint64_t)pRom != ROM_ADDR)
+    {
+        printf("Called mmap(pRom) but returned address = 0x%08x != 0x%08x\n", pRom, ROM_ADDR);
         return -1;
     }
     if (verbose) printf("mmap(rom) returned %08x\n", pRom);
@@ -255,6 +264,11 @@ int main(int argc, char *argv[])
         printf("Failed calling mmap(input)\n");
         return -1;
     }
+    if ((uint64_t)pInput != INPUT_ADDR)
+    {
+        printf("Called mmap(pInput) but returned address = 0x%08x != 0x%08x\n", pInput, INPUT_ADDR);
+        return -1;
+    }
     if (verbose) printf("mmap(input) returned %08x\n", pInput);
     *(uint64_t *)INPUT_ADDR = (uint64_t)input_file_size;
 
@@ -275,6 +289,11 @@ int main(int argc, char *argv[])
         printf("Failed calling mmap(pTrace)\n");
         return -1;
     }
+    if ((uint64_t)pTrace != TRACE_ADDR)
+    {
+        printf("Called mmap(pTrace) but returned address = 0x%08x != 0x%08x\n", pTrace, TRACE_ADDR);
+        return -1;
+    }
 
     if (verbose) printf("mmap(trace) returned %08x\n", pTrace);
 
@@ -293,7 +312,16 @@ int main(int argc, char *argv[])
         uint64_t mem_chunk_address = MEM_CHUNK_ADDRESS;
         uint64_t trace_size = mem_chunk_address - mem_trace_address;
         uint64_t trace_size_percentage = (trace_size * 100) / TRACE_SIZE;
-        printf("Duration = %d us, Keccak counter = %d, steps = %d, step duration = %d ns, tp = %d steps/s, trace size = %d B(%d%%)\n", duration, keccak_counter, steps, step_duration_ns, step_tp_sec, trace_size, trace_size_percentage);
+        printf("Duration = %d us, Keccak counter = %d, steps = %d, step duration = %d ns, tp = %d steps/s, trace size = 0x%08x - 0x%08x = %d B(%d%%)\n",
+            duration,
+            keccak_counter,
+            steps,
+            step_duration_ns,
+            step_tp_sec,
+            mem_chunk_address,
+            mem_trace_address,
+            trace_size,
+            trace_size_percentage);
         if (keccak_metrics)
         {
             uint64_t keccak_percentage = duration == 0 ? 0 : (keccak_duration * 100) / duration;
@@ -353,7 +381,7 @@ int main(int argc, char *argv[])
     if (trace)
     {
         printf("Trace content:\n");
-        uint64_t * trace = (uint64_t *)pTrace;
+        uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
         uint64_t number_of_chunks = trace[0];
         printf("Number of chunks=%d\n", number_of_chunks);
         if (number_of_chunks > 1000000)
@@ -425,7 +453,7 @@ int main(int argc, char *argv[])
             //Set next chunk pointer
             chunk = chunk + i;
         }
-        printf("Trace=%08x chunk=%08x size=%d\n", trace, chunk, chunk - trace);
+        printf("Trace=%08x chunk=%08x size=%d\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
     }
 
     if (verbose) printf("Emulator C end\n");
