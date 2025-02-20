@@ -2212,7 +2212,6 @@ name = "riscv"
 version = "0.2.0"
 dependencies = [
  "elf",
- "json",
 ]
 
 [[package]]
