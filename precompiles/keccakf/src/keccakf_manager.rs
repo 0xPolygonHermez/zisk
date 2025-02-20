@@ -4,16 +4,13 @@ use data_bus::{BusDevice, PayloadType, OPERATION_BUS_ID};
 use p3_field::{PrimeField, PrimeField64};
 
 use sm_common::{
-    table_instance, BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, InstanceInfo,
-    Planner, TableInfo,
+    table_instance_array, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
+    InstanceInfo, Planner, TableInfo,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::{KeccakfTableTrace, KeccakfTrace};
 
-use crate::{
-    KeccakfCounter, KeccakfInputGenerator, KeccakfInstance, KeccakfPlanner, KeccakfSM,
-    KeccakfTableSM,
-};
+use crate::{KeccakfCounterInputGen, KeccakfInstance, KeccakfPlanner, KeccakfSM, KeccakfTableSM};
 
 /// The `KeccakfManager` struct represents the Keccakf manager,
 /// which is responsible for managing the Keccakf state machine and its table state machine.
@@ -45,7 +42,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
     /// # Returns
     /// A boxed implementation of `RegularCounters` configured for keccakf operations.
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(KeccakfCounter::new())
+        Box::new(KeccakfCounterInputGen::new(BusDeviceMode::Counter))
     }
 
     /// Builds a planner to plan keccakf-related instances.
@@ -85,10 +82,10 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
             id if id == KeccakfTrace::<usize>::AIR_ID => {
-                Box::new(KeccakfInstance::new(self.keccakf_sm.clone(), ictx, OPERATION_BUS_ID))
+                Box::new(KeccakfInstance::new(self.keccakf_sm.clone(), ictx))
             }
             id if id == KeccakfTableTrace::<usize>::AIR_ID => {
-                table_instance!(KeccakfTableInstance, KeccakfTableSM, KeccakfTableTrace);
+                table_instance_array!(KeccakfTableInstance, KeccakfTableSM, KeccakfTableTrace);
                 Box::new(KeccakfTableInstance::new(
                     self.keccakf_table_sm.clone(),
                     ictx,
@@ -102,6 +99,6 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
     }
 
     fn build_inputs_generator(&self) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(KeccakfInputGenerator::default()))
+        Some(Box::new(KeccakfCounterInputGen::new(BusDeviceMode::InputGenerator)))
     }
 }

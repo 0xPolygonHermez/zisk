@@ -20,6 +20,7 @@ pub struct MemDebug {
     prepared: bool,
 }
 
+#[allow(dead_code)]
 impl MemDebug {
     pub fn new() -> Self {
         MemDebug { ops: Vec::new(), prepared: false }

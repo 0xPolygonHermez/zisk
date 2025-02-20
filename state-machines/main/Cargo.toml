@@ -9,6 +9,7 @@ ziskemu = { path = "../../emulator" }
 zisk-core = { path = "../../core" }
 data-bus = { path = "../../data-bus" }
 zisk-pil = { path = "../../pil" }
+sm-mem = { path = "../mem" }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
@@ -16,6 +17,8 @@ proofman-macros = { workspace = true }
 p3-field = { workspace = true }
 log = { workspace = true }
 rayon = { workspace = true }
+num-bigint = { workspace = true }
+pil-std-lib = { workspace = true }
 
 [features]
 default = []

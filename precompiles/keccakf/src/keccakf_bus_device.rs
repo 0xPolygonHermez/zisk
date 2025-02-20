@@ -7,7 +7,7 @@ use std::ops::Add;
 use data_bus::{
     BusDevice, BusId, ExtOperationData, OperationBusData, MEM_BUS_ID, OPERATION_BUS_ID,
 };
-use sm_common::{Counter, Metrics};
+use sm_common::{BusDeviceMode, Counter, Metrics};
 use zisk_core::ZiskOperationType;
 
 use crate::KeccakfSM;
@@ -17,22 +17,15 @@ use crate::KeccakfSM;
 ///
 /// It tracks specific operation types (`ZiskOperationType`) and updates counters for each
 /// accepted operation type whenever data is processed on the bus.
-pub struct KeccakfCounter {
+pub struct KeccakfCounterInputGen {
     /// Keccakf counter.
     counter: Counter,
+
+    /// Bus device mode (counter or input generator).
+    mode: BusDeviceMode,
 }
 
-impl Default for KeccakfCounter {
-    /// Creates a new instance of `KeccakfCounter` with default values.
-    ///
-    /// # Returns
-    /// A new `KeccakfCounter` instance.
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl KeccakfCounter {
+impl KeccakfCounterInputGen {
     /// Creates a new instance of `KeccakfCounter`.
     ///
     /// # Arguments
@@ -41,8 +34,8 @@ impl KeccakfCounter {
     ///
     /// # Returns
     /// A new `KeccakfCounter` instance.
-    pub fn new() -> Self {
-        Self { counter: Counter::default() }
+    pub fn new(mode: BusDeviceMode) -> Self {
+        Self { counter: Counter::default(), mode }
     }
 
     /// Retrieves the count of instructions for a specific `ZiskOperationType`.
@@ -52,12 +45,12 @@ impl KeccakfCounter {
     ///
     /// # Returns
     /// Returns the count of instructions for the specified operation type.
-    pub fn inst_count(&self, _op_type: ZiskOperationType) -> Option<u64> {
-        Some(self.counter.inst_count)
+    pub fn inst_count(&self, op_type: ZiskOperationType) -> Option<u64> {
+        (op_type == ZiskOperationType::Keccak).then_some(self.counter.inst_count)
     }
 }
 
-impl Metrics for KeccakfCounter {
+impl Metrics for KeccakfCounterInputGen {
     /// Tracks activity on the connected bus and updates counters for recognized operations.
     ///
     /// # Arguments
@@ -79,8 +72,8 @@ impl Metrics for KeccakfCounter {
     }
 }
 
-impl Add for KeccakfCounter {
-    type Output = KeccakfCounter;
+impl Add for KeccakfCounterInputGen {
+    type Output = KeccakfCounterInputGen;
 
     /// Combines two `KeccakfCounter` instances by summing their counters.
     ///
@@ -90,12 +83,12 @@ impl Add for KeccakfCounter {
     ///
     /// # Returns
     /// A new `KeccakfCounter` with combined counters.
-    fn add(self, other: Self) -> KeccakfCounter {
-        KeccakfCounter { counter: &self.counter + &other.counter }
+    fn add(self, other: Self) -> KeccakfCounterInputGen {
+        KeccakfCounterInputGen { counter: &self.counter + &other.counter, mode: self.mode }
     }
 }
 
-impl BusDevice<u64> for KeccakfCounter {
+impl BusDevice<u64> for KeccakfCounterInputGen {
     /// Processes data received on the bus, updating counters and generating inputs when applicable.
     ///
     /// # Arguments
@@ -105,7 +98,9 @@ impl BusDevice<u64> for KeccakfCounter {
     /// # Returns
     /// A vector of derived inputs to be sent back to the bus.
     #[inline]
-    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        debug_assert!(*bus_id == OPERATION_BUS_ID);
+
         let data: ExtOperationData<u64> = data.try_into().ok()?;
 
         if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::Keccak as u32 {
@@ -114,7 +109,9 @@ impl BusDevice<u64> for KeccakfCounter {
 
         match data {
             ExtOperationData::OperationKeccakData(data) => {
-                self.measure(&data);
+                if self.mode == BusDeviceMode::Counter {
+                    self.measure(&data);
+                }
 
                 let mem_inputs = KeccakfSM::generate_inputs(&data);
                 Some(mem_inputs.into_iter().map(|x| (MEM_BUS_ID, x)).collect())

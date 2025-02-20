@@ -148,10 +148,12 @@ impl BinaryBasicSM {
         // Create an empty trace
         let mut row: BinaryTraceRow<F> = Default::default();
 
+        let input_data = ExtOperationData::OperationData(*input);
+
         // Execute the opcode
-        let opcode = OperationBusData::get_op(&ExtOperationData::OperationData(*input));
-        let a = OperationBusData::get_a(&ExtOperationData::OperationData(*input));
-        let b = OperationBusData::get_b(&ExtOperationData::OperationData(*input));
+        let opcode = OperationBusData::get_op(&input_data);
+        let a = OperationBusData::get_a(&input_data);
+        let b = OperationBusData::get_b(&input_data);
 
         let (c, _) = Self::execute(opcode, a, b);
 

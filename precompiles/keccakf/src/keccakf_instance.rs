@@ -7,6 +7,7 @@
 use crate::KeccakfSM;
 use data_bus::{
     BusDevice, BusId, ExtOperationData, OperationBusData, OperationKeccakData, PayloadType,
+    OPERATION_BUS_ID,
 };
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
@@ -27,9 +28,6 @@ pub struct KeccakfInstance {
 
     /// Instance context.
     ictx: InstanceCtx,
-
-    /// The connected bus ID.
-    bus_id: BusId,
 }
 
 impl KeccakfInstance {
@@ -43,8 +41,8 @@ impl KeccakfInstance {
     /// # Returns
     /// A new `KeccakfInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(keccakf_sm: Arc<KeccakfSM>, ictx: InstanceCtx, bus_id: BusId) -> Self {
-        Self { keccakf_sm, ictx, bus_id }
+    pub fn new(keccakf_sm: Arc<KeccakfSM>, ictx: InstanceCtx) -> Self {
+        Self { keccakf_sm, ictx }
     }
 }
 
@@ -101,20 +99,14 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance {
 
         let meta = self.ictx.plan.meta.as_ref().unwrap();
         let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
-        Some(Box::new(KeccakfCollector::new(
-            self.bus_id,
-            collect_info[&chunk_id].0,
-            collect_info[&chunk_id].1,
-        )))
+        let (num_ops, collect_skipper) = collect_info[&chunk_id];
+        Some(Box::new(KeccakfCollector::new(num_ops, collect_skipper)))
     }
 }
 
 pub struct KeccakfCollector {
     /// Collected inputs for witness computation.
     inputs: Vec<OperationKeccakData<u64>>,
-
-    /// The connected bus ID.
-    bus_id: BusId,
 
     /// The number of operations to collect.
     num_operations: u64,
@@ -134,8 +126,8 @@ impl KeccakfCollector {
     ///
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
-    pub fn new(bus_id: BusId, num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), bus_id, num_operations, collect_skipper }
+    pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
+        Self { inputs: Vec::new(), num_operations, collect_skipper }
     }
 }
 
@@ -152,9 +144,11 @@ impl BusDevice<PayloadType> for KeccakfCollector {
     /// - The second element contains derived inputs to be sent back to the bus (always empty).
     fn process_data(
         &mut self,
-        _bus_id: &BusId,
+        bus_id: &BusId,
         data: &[PayloadType],
     ) -> Option<Vec<(BusId, Vec<PayloadType>)>> {
+        debug_assert!(*bus_id == OPERATION_BUS_ID);
+
         if self.inputs.len() == self.num_operations as usize {
             return None;
         }
@@ -162,9 +156,7 @@ impl BusDevice<PayloadType> for KeccakfCollector {
         let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
-        let op_type = OperationBusData::get_op_type(&data);
-
-        if op_type as u32 != ZiskOperationType::Keccak as u32 {
+        if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::Keccak as u32 {
             return None;
         }
 
@@ -185,7 +177,7 @@ impl BusDevice<PayloadType> for KeccakfCollector {
     /// # Returns
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
+        vec![OPERATION_BUS_ID]
     }
 
     fn as_any(self: Box<Self>) -> Box<dyn Any> {

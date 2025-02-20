@@ -1,8 +1,7 @@
 // #![deny(missing_docs)]
 mod keccakf;
+mod keccakf_bus_device;
 mod keccakf_constants;
-mod keccakf_counter;
-mod keccakf_input_generator;
 mod keccakf_instance;
 mod keccakf_manager;
 mod keccakf_planner;
@@ -11,9 +10,8 @@ mod keccakf_table;
 mod keccakf_types;
 
 pub use keccakf::*;
+pub use keccakf_bus_device::*;
 pub use keccakf_constants::*;
-pub use keccakf_counter::*;
-pub use keccakf_input_generator::*;
 pub use keccakf_instance::*;
 pub use keccakf_manager::*;
 pub use keccakf_planner::*;

@@ -1,4 +1,7 @@
-use crate::{SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE};
+use crate::{
+    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
+    STORE_REG,
+};
 
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
@@ -31,6 +34,7 @@ pub fn convert_vector(input: &[u8]) -> Vec<u32> {
 pub fn source_to_str(source: u64) -> &'static str {
     match source {
         SRC_C => "SRC_C",
+        SRC_REG => "SRC_REG",
         SRC_MEM => "SRC_MEM",
         SRC_IMM => "SRC_IMM",
         SRC_STEP => "SRC_STEP",
@@ -46,6 +50,7 @@ pub fn store_to_str(store: u64) -> &'static str {
     match store {
         STORE_NONE => "STORE_NONE",
         STORE_MEM => "STORE_MEM",
+        STORE_REG => "STORE_REG",
         STORE_IND => "STORE_IND",
         _ => panic!("store_to_str() unknown store({})", store),
     }
