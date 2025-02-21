@@ -106,6 +106,26 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
     ```
 
 5. Download and install setup files:
+    Download the proving key files:
+    ```bash
+    curl -O https://storage.googleapis.com/zisk/zisk-provingkey-0.4.0.tar.gz
+    curl -O https://storage.googleapis.com/zisk/zisk-provingkey-0.4.0.tar.gz.md5
+    ```
+
+    Verify the MD5 checksum:
+    ```bash
+    md5sum -c zisk-provingkey-0.4.0.tar.gz.md5
+    ```
+
+    Extract the file to the `$HOME/.zisk` directory:
+    ```bash
+    tar -xvf zisk-provingkey-0.4.0.tar.gz $HOME/.zisk
+    ```
+
+    Alternatively, if you only need to verify proofs, you can download and install the verify key files. Follow the same installation steps:
+     ```bash
+    curl -O https://storage.googleapis.com/zisk/zisk-verifykey-0.4.0.tar.gz
+    ```    
 
 To update ZisK to the latest version, simply run again:
 ```bash
