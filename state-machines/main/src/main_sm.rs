@@ -235,6 +235,7 @@ impl MainSM {
 
         // Process rows in batches
         let mut batch_buffer = MainTrace::with_capacity(1 << 12);
+
         for batch_start in (0..total_rows).step_by(Self::BATCH_SIZE) {
             // Determine the size of the current batch
             let batch_size = (batch_start + Self::BATCH_SIZE).min(total_rows) - batch_start;
@@ -245,7 +246,7 @@ impl MainSM {
                     &min_trace.steps,
                     &mut mem_reads_index,
                     reg_trace,
-                    Some(step_range_check.clone()),
+                    Some(&**step_range_check),
                 );
             });
 
