@@ -138,7 +138,7 @@ jobs:
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-          
+
       - name: Install rust toolchain
         id: rustc-toolchain
         uses: actions-rs/toolchain@v1
@@ -152,7 +152,11 @@ jobs:
         with:
           key: ${{ matrix.target }}
           cache-on-failure: true
-      
+
+      - name: Install mpi
+        shell: bash
+        run: sudo apt-get install -y clang openmpi-bin openmpi-common libopenmpi-dev
+
       - name: Install go
         uses: actions/setup-go@v5
         with:
