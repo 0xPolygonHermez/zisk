@@ -22,9 +22,9 @@ runs:
       shell: bash
       run: sudo apt-get install -y protobuf-compiler
 
-    - name: Install mpi
-      shell: bash
-      run: sudo apt-get install -y clang openmpi-bin openmpi-common libopenmpi-dev
+    # - name: Install mpi
+    #   shell: bash
+    #   run: sudo apt-get install -y clang openmpi-bin openmpi-common libopenmpi-dev
 
     - name: Print go version
       shell: bash
