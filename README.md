@@ -1,6 +1,14 @@
-⚠️ **Work in Progress (WIP)**
+## ⚠️ Disclaimer: Software Under Development ⚠️
 
-This repository is under **active development** and should be considered **experimental**. APIs, features, and functionality **may change frequently** as the project evolves.
+This software is currently under **active development** and has not been audited for security or correctness.
+
+Please be aware of the following:
+* The software is **not fully tested**.
+* **Do not use it in production environments** until a stable production release is available. 🚧
+* Additional functionalities and optimizations **are planned for future releases**.
+* Future updates may introduce breaking **backward compatible changes** as development progresses.
+
+If you encounter any errors or unexpected behavior, please report them. Your feedback is highly appreciated in improving the software.
 
 # ZisK
 
