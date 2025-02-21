@@ -24,7 +24,8 @@ runs:
 
     - name: Install mpi
       shell: bash
-      run: sudo apt-get install -y clang openmpi-bin openmpi-common libopenmpi-dev
+      run: sudo apt-get install -y clang openmpi-bin openmpi-common libopenmpi-dev  nlohmann-json3-dev build-essential libbenchmark-dev libomp-dev libgmp-dev  nasm libsodium-dev cmake
+      
 
     - name: Print go version
       shell: bash
