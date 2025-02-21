@@ -1,7 +1,4 @@
-use std::{
-    mem,
-    sync::{atomic::AtomicU32, Arc},
-};
+use std::{mem, sync::atomic::AtomicU32};
 
 use crate::{
     EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, EmuTrace, EmuTraceEnd, EmuTraceStart,
@@ -1693,7 +1690,7 @@ impl<'a> Emu<'a> {
         trace_step: &EmuTraceSteps,
         trace_step_index: &mut usize,
         reg_trace: &mut EmuRegTrace,
-        step_range_check: Option<Arc<Vec<AtomicU32>>>,
+        step_range_check: Option<&[AtomicU32]>,
     ) -> EmuFullTraceStep<F> {
         let last_pc = self.ctx.inst_ctx.pc;
         let last_c = self.ctx.inst_ctx.c;

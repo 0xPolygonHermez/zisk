@@ -1,7 +1,4 @@
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc,
-};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use zisk_core::{REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 
@@ -36,7 +33,7 @@ impl EmuRegTrace {
     pub fn clear_reg_step_ranges(&mut self) {
         self.reg_step_ranges = [0; 3];
     }
-    pub fn update_step_range_check(&self, step_range_check: Arc<Vec<AtomicU32>>) {
+    pub fn update_step_range_check(&self, step_range_check: &[AtomicU32]) {
         for range in self.reg_step_ranges.iter() {
             // 0 isn't a valid range value, 0 is used to mark as no range
             if *range == 0 {
