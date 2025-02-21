@@ -156,7 +156,16 @@ jobs:
       - name: Install libraries
         shell: bash
         run: sudo apt-get install -y clang nlohmann-json3-dev build-essential libbenchmark-dev libomp-dev libgmp-dev  nasm libsodium-dev cmake openmpi-bin openmpi-common libopenmpi-dev
-        
+
+      - name: Verify libiomp5 installation
+        run: |
+          find /usr -name "libiomp5*"
+          ls -l /usr/lib/x86_64-linux-gnu/libiomp5.*
+          echo $LD_LIBRARY_PATH
+
+      - name: Set LD_LIBRARY_PATH
+        run: echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
       - name: Install go
         uses: actions/setup-go@v5
         with:
