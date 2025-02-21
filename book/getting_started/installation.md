@@ -119,7 +119,7 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
 
     Extract the file to the `$HOME/.zisk` directory:
     ```bash
-    tar -xvf zisk-provingkey-0.4.0.tar.gz $HOME/.zisk
+    tar --overwrite -xvf zisk-provingkey-0.4.0.tar.gz -C $HOME/.zisk
     ```
 
     Alternatively, if you only need to verify proofs, you can download and install the verify key files. Follow the same installation steps:
