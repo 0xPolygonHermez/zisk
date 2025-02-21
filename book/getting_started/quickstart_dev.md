@@ -150,7 +150,7 @@ Sample inputs are located in `zisk/emulator/benches/data`:
 ### Verify Constraints Only
 ```bash
 // Using input_one_segment.bin
-(cargo build --release --features debug && cd ../pil2-proofman; cargo run --release --features debug --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_one_segment.bin --proving-key ../zisk/build/provingKey)
+(cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_one_segment.bin --proving-key ../zisk/build/provingKey)
 
 // Using input_two_segments.bin
 (cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli verify-constraints --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input_two_segments.bin --proving-key ../zisk/build/provingKey)`
@@ -174,6 +174,19 @@ To generate the aggregated proofs, add `-a`
 (cargo build --release && cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../zisk/emulator/benches/data/my.elf -i ../zisk/emulator/benches/data/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -a -v)
 ```
 
+### Distributed prove
+
+Zisk can run proves using multiple processes in the same server or in multiple servers. To use zisk in distributed mode you need to have installed a mpi library. To use the distributed mode the compilation command is:
+
+```bash
+cargo-zisk build --release --features "distributed"
+```
+
+Then the execution command will be:
+
+```bash
+mpirun --bind-to none -np <number_processes> -x OMP_NUM_THREADS=<number_of_threads_per_process> target/release/cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
+```
 ### Verify the Proof
 ```bash
 node ../pil2-proofman-js/src/main_verify -k ./build/provingKey -p ./proofs
