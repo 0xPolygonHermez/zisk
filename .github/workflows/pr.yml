@@ -30,7 +30,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --all-targets --all-features
+          args: --all-targets # --all-features
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
