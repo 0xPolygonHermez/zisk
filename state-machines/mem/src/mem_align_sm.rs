@@ -842,11 +842,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         let std = self._std.clone();
         let range_id = std.get_range(0, CHUNK_BITS_MASK as i64, None);
         for (value, &multiplicity) in reg_range_check.iter().enumerate() {
-            std.range_check(
-                value as i64,
-                multiplicity,
-                range_id,
-            );
+            std.range_check(value as i64, multiplicity, range_id);
         }
     }
 }

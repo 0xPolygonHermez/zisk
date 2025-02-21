@@ -223,11 +223,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             if range_index < MEMORY_MAX_DIFF as usize {
                 if range_check_data[range_index] == 0xFFFF {
                     range_check_data[range_index] = 0;
-                    std.range_check(
-                        increment as i64,
-                        f_range_check_max_value,
-                        range_id,
-                    );
+                    std.range_check(increment as i64, f_range_check_max_value, range_id);
                 } else {
                     range_check_data[range_index] += 1;
                 }
@@ -271,11 +267,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         }
         if padding_size > 0 {
             // Store the padding range checks
-            self.std.range_check(
-                padding_step as i64,
-                padding_size as u64,
-                range_id,
-            );
+            self.std.range_check(padding_step as i64, padding_size as u64, range_id);
         }
 
         // no add extra +1 because index = value - 1
@@ -286,17 +278,9 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             if multiplicity == 0 {
                 continue;
             }
-            self.std.range_check(
-                (value + 1) as i64,
-                multiplicity as u64,
-                range_id,
-            );
+            self.std.range_check((value + 1) as i64, multiplicity as u64, range_id);
         }
-        self.std.range_check(
-            STEP_MEMORY_MAX_DIFF as i64,
-            range_check_data_max,
-            range_id,
-        );
+        self.std.range_check(STEP_MEMORY_MAX_DIFF as i64, range_check_data_max, range_id);
 
         let mut air_values = MemAirValues::<F>::new();
         air_values.segment_id = F::from_canonical_usize(segment_id);

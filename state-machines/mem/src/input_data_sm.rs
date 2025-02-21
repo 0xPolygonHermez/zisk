@@ -173,11 +173,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             trace[i].addr_changes = F::zero();
         }
 
-        self.std.range_check(
-            (INPUT_DATA_W_ADDR_END - last_addr + 1) as i64,
-            1,
-            range_id,
-        );
+        self.std.range_check((INPUT_DATA_W_ADDR_END - last_addr + 1) as i64, 1, range_id);
 
         // range of chunks
         let range_id = self.std.get_range(0, (1 << 16) - 1, None);
@@ -186,11 +182,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
                 continue;
             }
 
-            self.std.range_check(
-                value as i64,
-                multiplicity,
-                range_id,
-            );
+            self.std.range_check(value as i64, multiplicity, range_id);
         }
         for value_chunk in &value {
             let value = value_chunk.as_canonical_u64();

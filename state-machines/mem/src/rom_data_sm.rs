@@ -137,11 +137,7 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
             }
         }
 
-        self.std.range_check(
-            (ROM_DATA_W_ADDR_END - last_addr + 1) as i64,
-            1,
-            range_id,
-        );
+        self.std.range_check((ROM_DATA_W_ADDR_END - last_addr + 1) as i64, 1, range_id);
 
         let mut air_values = RomDataAirValues::<F>::new();
         air_values.segment_id = F::from_canonical_usize(segment_id);

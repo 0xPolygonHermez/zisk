@@ -363,11 +363,7 @@ impl MainSM {
         for (value, _multiplicity) in step_range_check.iter().enumerate() {
             let multiplicity = _multiplicity.load(Ordering::Relaxed);
             if multiplicity != 0 {
-                std.range_check(
-                    (value + 1) as i64,
-                    multiplicity as u64,
-                    range_id,
-                );
+                std.range_check((value + 1) as i64, multiplicity as u64, range_id);
             }
         }
         for range in large_range_checks {
