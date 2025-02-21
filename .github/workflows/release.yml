@@ -148,6 +148,16 @@ jobs:
             libomp-dev libgmp-dev nasm libsodium-dev cmake openmpi-bin \
             openmpi-common libopenmpi-dev
 
+      - name: Install Intel OpenMP
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg
+          wget -qO- https://apt.repos.intel.com/2021/GPG-PUB-KEY-INTEL-2021.PUB | sudo apt-key add -
+          echo "deb https://apt.repos.intel.com/oneapi all main" | sudo tee /etc/apt/sources.list.d/intel-oneapi.list
+          sudo apt-get update
+          sudo apt-get install -y intel-oneapi-openmp
+
       # - name: Verify libiomp5 installation
       #   run: |
       #     find /usr -name "libiomp5*"
