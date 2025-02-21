@@ -1,17 +1,16 @@
 # Quickstart
 
-In this section, we will show you how to create a simple program using ZisK.
+In this guide, you will learn how to create and run a simple program using ZisK.
 
-## Create Project
+## Create a Project
 
-The first step is to create a new project using the `cargo-zisk sdk new <name>` command. This command will create a new folder in your current directory.
-
+The first step is to generate a new example project using the `cargo-zisk sdk new <name>` command. This command creates a new directory named `<name>` in your current directory. For example:
 ```bash
-cargo-zisk sdk new hello_world
-cd hello_world
+cargo-zisk sdk new sha_hasher
+cd sha_hasher
 ```
 
-This will create a new project with the following structure:
+This will create a project with the following structure:
 
 ```
 .
@@ -21,152 +20,95 @@ This will create a new project with the following structure:
 ├── .gitignore
 └── src
     └── main.rs
-
-2 directories, 8 files
 ```
 
-For running the program in the native architecture:
-```
-$ cargo run --target x86_64-unknown-linux-gnu
-     Running `target/x86_64-unknown-linux-gnu/debug/sha_hasher`
-n:20 [152, 33, 24, 130, 189, 19, 8, 155, 108, 207, 31, 202, 129, 247, 240, 228, 171, 246, 53, 42, 12, 57, 201, 177, 31, 20, 44, 172, 35, 63, 18, 128]
-```
+The example program takes a number `n` as input and computes the SHA-256 hash `n` times. 
 
-## Run on ZisK emulator
+The `build.rs` file generates an `input.bin` file containing the value of `n` (e.g., 20). This file is used in `main.rs` as input to calculate the hash.
 
+You can run the program on your native architecture with the following command:
 ```bash
-cargo-zisk run --release
-   Compiling sha_hasher v0.1.0 (/home/edu/hello_world)
-    Finished `release` profile [optimized] target(s) in 0.20s
-     Running `ziskemu -i build/input.bin -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher`
-n:20 [152, 33, 24, 130, 189, 19, 8, 155, 108, 207, 31, 202, 129, 247, 240, 228, 171, 246, 53, 42, 12, 57, 201, 177, 31, 20, 44, 172, 35, 63, 18, 128]
+cargo run
 ```
-or  
+The output will be:
+```
+public 0: 0x98211882
+public 1: 0xbd13089b
+public 2: 0x6ccf1fca
+public 3: 0x81f7f0e4
+public 4: 0xabf6352a
+public 5: 0x0c39c9b1
+public 6: 0x1f142cac
+public 7: 0x233f1280
+```
+
+## Build
+
+The next step is to build the program using the `cargo-zisk` command to generate an ELF file (RISC-V), which will be used later to generate the proof. Execute:
+
 ```bash
 cargo-zisk build --release
-ziskemu -i build/input.bin -x -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher
-```
-### metrics
-```bash
-cargo-zisk run --release -m
-   Compiling sha_hasher v0.1.0 (/home/edu/hello_world)
-    Finished `release` profile [optimized] target(s) in 0.20s
-     Running `ziskemu -i build/input.bin -m -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher`
-n:20 [152, 33, 24, 130, 189, 19, 8, 155, 108, 207, 31, 202, 129, 247, 240, 228, 171, 246, 53, 42, 12, 57, 201, 177, 31, 20, 44, 172, 35, 63, 18, 128]
-process_rom() steps=99288 duration=0.0024 tp=40.9284 Msteps/s freq=2892.0000 70.6600 clocks/step
 ```
 
-### stats
-```bash
-cargo-zisk run --release --stats
-   Compiling sha_hasher v0.1.0 (/home/edu/hello_world)
-    Finished `release` profile [optimized] target(s) in 0.20s
-     Running `ziskemu -i build/input.bin -x -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher`
-n:20 [152, 33, 24, 130, 189, 19, 8, 155, 108, 207, 31, 202, 129, 247, 240, 228, 171, 246, 53, 42, 12, 57, 201, 177, 31, 20, 44, 172, 35, 63, 18, 128]
-Cost definitions:
-    AREA_PER_SEC: 1000000 steps
-    COST_MEMA_R1: 0.00002 sec
-    COST_MEMA_R2: 0.00004 sec
-    COST_MEMA_W1: 0.00004 sec
-    COST_MEMA_W2: 0.00008 sec
-    COST_USUAL: 0.000008 sec
-    COST_STEP: 0.00005 sec
+This command builds the program using the `riscv64ima_polygon_ziskos` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/riscv64ima-polygon-ziskos-elf/release` directory.
 
-Total Cost: 14.25 sec
-    Main Cost: 4.96 sec 99287 steps
-    Mem Cost: 2.54 sec 254054 steps
-    Mem Align: 0.06 sec 3130 steps
-    Opcodes: 6.63 sec 1335 steps (92652 ops)
-    Usual: 0.05 sec 6636 steps
-    Memory: 155262 a reads + 1846 na1 reads + 0 na2 reads + 96304 a writes + 642 na1 writes + 0 na2 writes = 157108 reads + 96946 writes = 254054 r/w
-    Registy: 147515 reads + 90588 writes = 238103 r/w
+## Execute
 
-Opcodes:
-    flag: 0.00 sec (0 steps/op) (660 ops)
-    copyb: 0.00 sec (0 steps/op) (16521 ops)
-    add: 1.39 sec (77 steps/op) (18059 ops)
-    sub: 0.00 sec (77 steps/op) (10 ops)
-    ltu: 0.03 sec (77 steps/op) (412 ops)
-    eq: 0.02 sec (77 steps/op) (224 ops)
-    sll: 1.24 sec (109 steps/op) (11360 ops)
-    srl: 0.02 sec (109 steps/op) (216 ops)
-    add_w: 0.00 sec (77 steps/op) (52 ops)
-    sub_w: 0.00 sec (77 steps/op) (24 ops)
-    srl_w: 1.43 sec (109 steps/op) (13141 ops)
-    and: 0.40 sec (77 steps/op) (5168 ops)
-    or: 0.94 sec (77 steps/op) (12209 ops)
-    xor: 1.06 sec (77 steps/op) (13779 ops)
-    signextend_b: 0.03 sec (109 steps/op) (320 ops)
-    signextend_w: 0.05 sec (109 steps/op) (480 ops)
-    mul: 0.00 sec (97 steps/op) (17 ops)
-```
-
-## Update zisk toolchain to latest version
+Before generating a proof, you can test the program using the ZisK emulator to ensure its correctness. Specify the ELF file (using the `-e` or `--elf flag`) and the input file `input.bin` (using the `-i` or `--inputs` flag):
 
 ```bash
-ziskup
+ziskemu -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin
 ```
 
-## Prepare Your Setup
+The output will be:
+```
+98211882
+bd13089b
+6ccf1fca
+81f7f0e4
+abf6352a
+0c39c9b1
+1f142cac
+233f1280
+```
+
+Alternatively, you can build and run the program with:
 
 ```bash
-git clone https://github.com/0xPolygonHermez/zisk
-git clone -b develop https://github.com/0xPolygonHermez/pil2-compiler.git
-git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman.git
-git clone -b develop https://github.com/0xPolygonHermez/pil2-proofman-js
+cargo-zisk run
 ```
 
-All following commands should be executed in the `zisk` folder.
-```bash
-cd zisk
-```
+This command uses the file located at `build/input.bin` as the input file.
 
-### Compile Zisk PIL
+## Prove
+
+You can generate and verify a proof using the `cargo-zisk prove` command by providing the ELF file (with the `-e` or `--elf` flag) and the input file (with the `-i` or `--input-data` flag).
+
+To generate and verify a proof for the previously built ELF and input files, execute:
 
 ```bash
-(cd ../pil2-compiler && npm i && cd ../zisk && node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout)
+cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
 ```
 
-### Compile the PIl2 Stark C++ Library (run only once):
-```bash
-(cd ../pil2-proofman/pil2-stark && git submodule init && git submodule update && make clean && make -j starks_lib && make -j bctree) && export RUSTFLAGS=$RUSTFLAGS" -L native=$PWD/../pil2-proofman/pil2-stark/lib"
+This command generates the proof in the `./proof directory`. If everything goes well, you will see a message similar to:
+
 ```
-
-### Generate PIL-Helpers Rust Code
-Run this whenever the `.pilout` file changes:
-
-```bash
-(cd ../pil2-proofman; cargo run --bin proofman-cli pil-helpers --pilout ../zisk/pil/zisk.pilout --path ../zisk/pil/src/ -o)
+...
+[INFO ] ProofMan:     ✓ Vadcop Final proof was verified
+[INFO ]      stop <<< GENERATING_VADCOP_PROOF 91706ms
+[INFO ] ProofMan: Proofs generated successfully
 ```
+## Distributed prove
 
-### Generate External Fixed Cols
-Run this whenever the `.pilout` file changes:
+Zisk can run proves using multiple processes in the same server or in multiple servers. To use zisk in distributed mode you need to have installed a mpi library. To use the distributed mode the compilation command is:
 
 ```bash
-cargo run --release --bin keccakf_fixed_gen
+cargo-zisk build --release --features "distributed"
 ```
 
-### Generate Setup Data
-Run this whenever the `.pilout` file changes:
+Then the execution command will be:
 
 ```bash
-(cd ../pil2-proofman-js && npm i)
-node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zisk.pilout -b build -t ../pil2-proofman/pil2-stark/build/bctree -i precompiles/keccakf/src/keccakf_fixed.bin -r
+mpirun --bind-to none -np <number_processes> -x OMP_NUM_THREADS=<number_of_threads_per_process> target/release/cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
 ```
 
-### Compile Witness Computation library (`libzisk_witness.so`)
-```bash
-cargo build --release
-```
-
-### Generate a Proof
-To generate the proof, the following command needs to be run.
-
-```bash
-(cd ../pil2-proofman; cargo run --release --bin proofman-cli prove --witness-lib ../zisk/target/release/libzisk_witness.so --rom ../hello_world/target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i ../hello_world/build/input.bin --proving-key ../zisk/build/provingKey --output-dir ../zisk/proofs -v -a)
-```
-
-### Verify the Proof
-```bash
-node ../pil2-proofman-js/src/main_verify -k build/provingKey/ -p proofs -t vadcop_final
-```
