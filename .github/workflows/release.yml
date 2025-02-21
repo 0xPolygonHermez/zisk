@@ -144,7 +144,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update && sudo apt-get install -y \
-            intel-openmp clang nlohmann-json3-dev build-essential libbenchmark-dev \
+            clang nlohmann-json3-dev build-essential libbenchmark-dev \
             libomp-dev libgmp-dev nasm libsodium-dev cmake openmpi-bin \
             openmpi-common libopenmpi-dev
 
