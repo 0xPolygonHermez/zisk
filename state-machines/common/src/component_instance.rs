@@ -128,7 +128,8 @@ macro_rules! table_instance {
                 let mut trace = $Trace::new();
 
                 let multiplicity = self.table_sm.detach_multiplicity();
-
+                self.table_sm.set_calculated();
+                
                 pctx.dctx_distribute_multiplicity(multiplicity, self.ictx.global_id);
 
                 trace.buffer.par_iter_mut().enumerate().for_each(|(i, input)| {
@@ -226,6 +227,7 @@ macro_rules! table_instance_array {
                 let mut trace = $Trace::new();
 
                 let multiplicities = self.table_sm.detach_multiplicities();
+                self.table_sm.set_calculated();
                 pctx.dctx_distribute_multiplicities(multiplicities, self.ictx.global_id);
 
                 let mut buffer = trace.get_buffer();

@@ -4,7 +4,7 @@
 //! functionality to process inputs and manage multiplicity data.
 
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicU64, AtomicBool, Ordering},
     Arc,
 };
 
@@ -19,6 +19,7 @@ use zisk_pil::ArithTableTrace;
 pub struct ArithTableSM {
     /// Multiplicity table shared across threads.
     multiplicity: Vec<AtomicU64>,
+    calculated: AtomicBool,
 }
 
 impl ArithTableSM {
@@ -27,7 +28,7 @@ impl ArithTableSM {
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithTableSM`.
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { multiplicity: create_atomic_vec(ArithTableTrace::<usize>::NUM_ROWS) })
+        Arc::new(Self { multiplicity: create_atomic_vec(ArithTableTrace::<usize>::NUM_ROWS), calculated: AtomicBool::new(false) })
     }
 
     /// Processes a slice of input data and updates the multiplicity table.
@@ -36,6 +37,9 @@ impl ArithTableSM {
     /// * `inputs` - A reference to `ArithTableInputs`, containing rows and their corresponding
     ///   values.
     pub fn process_slice(&self, inputs: &ArithTableInputs) {
+        if self.calculated.load(Ordering::Relaxed) {
+            return;
+        }
         for (row, value) in inputs {
             self.multiplicity[row].fetch_add(value, Ordering::Relaxed);
         }
@@ -47,5 +51,9 @@ impl ArithTableSM {
     /// A vector containing the multiplicity table.
     pub fn detach_multiplicity(&self) -> &[AtomicU64] {
         &self.multiplicity
+    }
+
+    pub fn set_calculated(&self) {
+        self.calculated.store(true, Ordering::Relaxed);
     }
 }
