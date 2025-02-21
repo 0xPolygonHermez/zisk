@@ -139,6 +139,22 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install libraries
+        shell: bash
+        run: sudo apt-get install -y clang nlohmann-json3-dev build-essential libbenchmark-dev libomp-dev libgmp-dev  nasm libsodium-dev cmake openmpi-bin openmpi-common libopenmpi-dev
+
+      # - name: Verify libiomp5 installation
+      #   run: |
+      #     find /usr -name "libiomp5*"
+      #     ls -l /usr/lib/x86_64-linux-gnu/libiomp5.*
+      #     echo $LD_LIBRARY_PATH
+
+      # - name: Set LD_LIBRARY_PATH
+      #   run: echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
+      - name: Set LD_LIBRARY_PATH for OpenMP
+        run: echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
       - name: Install rust toolchain
         id: rustc-toolchain
         uses: actions-rs/toolchain@v1
@@ -152,19 +168,6 @@ jobs:
         with:
           key: ${{ matrix.target }}
           cache-on-failure: true
-
-      - name: Install libraries
-        shell: bash
-        run: sudo apt-get install -y clang nlohmann-json3-dev build-essential libbenchmark-dev libomp-dev libgmp-dev  nasm libsodium-dev cmake openmpi-bin openmpi-common libopenmpi-dev
-
-      - name: Verify libiomp5 installation
-        run: |
-          find /usr -name "libiomp5*"
-          ls -l /usr/lib/x86_64-linux-gnu/libiomp5.*
-          echo $LD_LIBRARY_PATH
-
-      - name: Set LD_LIBRARY_PATH
-        run: echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: Install go
         uses: actions/setup-go@v5
