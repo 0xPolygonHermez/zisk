@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y openmpi-bin openmpi-common libopenmpi-dev
+          sudo apt-get install -y openmpi-bin openmpi-common libopenmpi-dev nlohmann-json3-dev
 
       - name: Setup CI
         uses: ./.github/actions/setup
