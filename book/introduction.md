@@ -1,17 +1,16 @@
 # Introduction
 
-**Polygon ZisK** provides a highly performant Zero-Knowledge (ZK) prover, designed to deliver exceptional speed and efficiency in generating and verifying ZK proofs. It supports Rust-based programs, with plans to expand to other languages, making it an ideal solution for integrating ZK technology into new or existing projects
+ZisK is a high-performance zkVM (Zero-Knowledge Virtual Machine) designed to generate zero-knowledge proofs of arbitrary program execution. It enables developers to prove the correctness of a computation without revealing its internal state, making ZisK a powerful tool for privacy-preserving and verifiable computation.
 
-One of the key advantages of ZisK is its ability to reduce the complexity of cryptographic operations. ZK proofs are traditionally challenging to implement due to their computational intensity and the need for specialized knowledge. ZisK addresses these challenges by providing a high-performance solution that minimizes the computational overhead, making ZK proofs more accessible to a wider range of developers. This allows programmers to focus more on building innovative applications while ensuring robust privacy and security features.
+Proving systems traditionally involve complex cryptographic operations that require deep expertise and significant computational resources. ZisK abstracts these complexities by providing an optimized toolstack that minimizes computational overhead, making ZK technology accessible to a broader range of developers. With Rust-based execution and planned multi-language support, ZisK is designed to be developer-friendly while maintaining high performance and robust security.
 
-## ZisK Advantages
-- Architecture designed for low latency
-- Rust generation proving system
-- Prover/Verifier does not need to be recompiled for each proof
-- Prover standard interface (JSON-RPC, GRPC, CLI)
-- Prover can be used as a library in your own code
-- Decentralized architecture
-- Low proof generation cost
-- Fully open source
-- Based on Polygon zkEVM and Plonky3 proving technology
+## Why ZisK?
+- High-performance architecture optimized for low-latency proof generation.
+- Rust-based zkVM, with future support for additional languages.
+- No recompilation required across different programs.
+- Standardized prover interface (JSON-RPC, GRPC, CLI).
+- Flexible integration: usable as a standalone service or as a library.
+- Decentralized architecture for trustless proof generation.
+- Optimized proof generation costs for real-world applications.
+- Fully open-source and backed by Polygon zkEVM and Plonky3 technology.
 
