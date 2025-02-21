@@ -99,7 +99,7 @@ impl ZiskVerifyConstraints {
                 self.witness_lib.clone(),
                 Some(self.elf.clone()),
                 self.public_inputs.clone(),
-                Some(self.inputs.clone()),
+                self.input.clone(),
                 self.proving_key.clone(),
                 PathBuf::new(),
                 custom_commits_map,

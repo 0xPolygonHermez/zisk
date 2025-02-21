@@ -1699,7 +1699,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#f2ddda70058d10862917e79ac0e712d6735891dd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#b362d42b398f69d1d0a7ae2019e789adcba98043"
 dependencies = [
  "colored",
  "log",
@@ -1857,7 +1857,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#f2ddda70058d10862917e79ac0e712d6735891dd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#b362d42b398f69d1d0a7ae2019e789adcba98043"
 dependencies = [
  "colored",
  "env_logger",
@@ -1881,7 +1881,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#f2ddda70058d10862917e79ac0e712d6735891dd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#b362d42b398f69d1d0a7ae2019e789adcba98043"
 dependencies = [
  "env_logger",
  "log",
@@ -1901,7 +1901,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#f2ddda70058d10862917e79ac0e712d6735891dd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#b362d42b398f69d1d0a7ae2019e789adcba98043"
 dependencies = [
  "log",
  "p3-field",
@@ -1913,7 +1913,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#f2ddda70058d10862917e79ac0e712d6735891dd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#b362d42b398f69d1d0a7ae2019e789adcba98043"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1924,7 +1924,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#f2ddda70058d10862917e79ac0e712d6735891dd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#b362d42b398f69d1d0a7ae2019e789adcba98043"
 dependencies = [
  "log",
 ]
@@ -1932,7 +1932,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#f2ddda70058d10862917e79ac0e712d6735891dd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#b362d42b398f69d1d0a7ae2019e789adcba98043"
 dependencies = [
  "colored",
  "p3-field",
@@ -2549,7 +2549,7 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "stark"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#f2ddda70058d10862917e79ac0e712d6735891dd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#b362d42b398f69d1d0a7ae2019e789adcba98043"
 dependencies = [
  "log",
  "p3-field",
@@ -2905,7 +2905,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#f2ddda70058d10862917e79ac0e712d6735891dd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#b362d42b398f69d1d0a7ae2019e789adcba98043"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -3371,7 +3371,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#f2ddda70058d10862917e79ac0e712d6735891dd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-global-challenge#b362d42b398f69d1d0a7ae2019e789adcba98043"
 dependencies = [
  "colored",
  "env_logger",

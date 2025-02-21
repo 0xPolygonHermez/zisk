@@ -151,7 +151,7 @@ impl ZiskProve {
                     self.witness_lib.clone(),
                     Some(self.elf.clone()),
                     self.public_inputs.clone(),
-                    Some(self.inputs.clone()),
+                    self.input.clone(),
                     self.proving_key.clone(),
                     self.output_dir.clone(),
                     custom_commits_map,
