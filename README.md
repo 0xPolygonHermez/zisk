@@ -1,6 +1,6 @@
 ⚠️ **Work in Progress (WIP)**
 
-This repository is under **active development** and should be considered **experimental**. APIs, features, and functionality **may change frequentl**y as the project evolves.
+This repository is under **active development** and should be considered **experimental**. APIs, features, and functionality **may change frequently** as the project evolves.
 
 # ZisK
 
