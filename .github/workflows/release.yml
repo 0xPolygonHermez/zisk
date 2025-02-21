@@ -9,6 +9,7 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
+  pull_request:
 
 env:
   CARGO_TERM_COLOR: always
@@ -44,14 +45,14 @@ jobs:
             echo "IS_NIGHTLY=false" >> $GITHUB_ENV
           fi
 
-      # If it's a nightly release, tag with the release time. If the tag is `develop`, we want to use 
+      # If it's a nightly release, tag with the release time. If the tag is `develop`, we want to use
       # `latest` as the tag name. Else, use the tag name as is.
       - name: Compute release name and tag
         id: release_info
         run: |
           echo "IS_NIGHTLY=$IS_NIGHTLY"
           echo "GITHUB_REF_NAME=$GITHUB_REF_NAME"
-          
+
           if [[ $IS_NIGHTLY == "true" ]]; then
             echo "IS_NIGHTLY"
             echo "tag_name=nightly-${GITHUB_SHA}"
@@ -111,11 +112,11 @@ jobs:
             svm_target_platform: linux-amd64
             platform: linux
             arch: amd64
-         # - runner: warp-ubuntu-latest-arm64-4x
-         #   target: aarch64-unknown-linux-gnu
-         #   svm_target_platform: linux-aarch64
-         #   platform: linux
-         #   arch: arm64
+          # - runner: warp-ubuntu-latest-arm64-4x
+          #   target: aarch64-unknown-linux-gnu
+          #   svm_target_platform: linux-aarch64
+          #   platform: linux
+          #   arch: arm64
           # - runner: macos-13
           #   target: x86_64-apple-darwin
           #   svm_target_platform: macosx-amd64
@@ -141,7 +142,10 @@ jobs:
 
       - name: Install libraries
         shell: bash
-        run: sudo apt-get install -y clang nlohmann-json3-dev build-essential libbenchmark-dev libomp-dev libgmp-dev  nasm libsodium-dev cmake openmpi-bin openmpi-common libopenmpi-dev
+        run: |
+          sudo apt-get install -y intel-openmp clang nlohmann-json3-dev build-essential \
+          libbenchmark-dev libomp-dev libgmp-dev nasm libsodium-dev \
+          cmake openmpi-bin openmpi-common libopenmpi-dev
 
       # - name: Verify libiomp5 installation
       #   run: |
@@ -172,8 +176,8 @@ jobs:
       - name: Install go
         uses: actions/setup-go@v5
         with:
-          go-version: '^1.22.1'
-        
+          go-version: "^1.22.1"
+
       - name: Check go installation
         run: |
           go version
@@ -216,7 +220,7 @@ jobs:
             ldd "$bin" || true
             $bin --version || true
           done
-      
+
       - name: Set VERSION_NAME
         run: echo "VERSION_NAME=$([ \"$IS_NIGHTLY\" == 'true' ] && echo 'nightly' || echo '${{ needs.prepare.outputs.tag_name }}')" >> $GITHUB_ENV
 
