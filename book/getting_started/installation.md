@@ -105,7 +105,8 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
     cargo-zisk --version
     ```
 
-5. Download and install setup files:
+5. Download and install setup files: 
+
     Download the proving key files:
     ```bash
     curl -O https://storage.googleapis.com/zisk/zisk-provingkey-0.4.0.tar.gz
@@ -129,7 +130,7 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
     ```    
 
     Then, follow the same verification and installation steps as for the proving key files.
-    
+
 To update ZisK to the latest version, simply run again:
 ```bash
 ziskup
