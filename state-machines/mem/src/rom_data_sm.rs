@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use crate::{MemInput, MemModule, MemPreviousSegment, MEMORY_MAX_DIFF, MEM_BYTES_BITS};
-use num_bigint::BigInt;
-use p3_field::PrimeField;
+use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_core::{ROM_ADDR, ROM_ADDR_MAX};
@@ -15,13 +14,13 @@ const _: () = {
     assert!(ROM_ADDR_MAX <= 0xFFFF_FFFF, "ROM_DATA memory exceeds the 32-bit addressable range");
 };
 
-pub struct RomDataSM<F: PrimeField> {
+pub struct RomDataSM<F: PrimeField64> {
     /// PIL2 standard library
     std: Arc<Std<F>>,
 }
 
 #[allow(unused, unused_variables)]
-impl<F: PrimeField> RomDataSM<F> {
+impl<F: PrimeField64> RomDataSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         Arc::new(Self { std: std.clone() })
     }
@@ -36,7 +35,7 @@ impl<F: PrimeField> RomDataSM<F> {
     }
 }
 
-impl<F: PrimeField> MemModule<F> for RomDataSM<F> {
+impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///
     /// This method is invoked by the executor when no further witness data remains to be added.
@@ -61,10 +60,10 @@ impl<F: PrimeField> MemModule<F> for RomDataSM<F> {
         );
 
         // range of instance
-        let range_id = self.std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
+        let range_id = self.std.get_range(1, MEMORY_MAX_DIFF as i64, None);
         self.std.range_check(
-            F::from_canonical_u32(previous_segment.addr - ROM_DATA_W_ADDR_INIT + 1),
-            F::one(),
+            (previous_segment.addr - ROM_DATA_W_ADDR_INIT + 1) as i64,
+            1,
             range_id,
         );
 
@@ -139,8 +138,8 @@ impl<F: PrimeField> MemModule<F> for RomDataSM<F> {
         }
 
         self.std.range_check(
-            F::from_canonical_u32(ROM_DATA_W_ADDR_END - last_addr + 1),
-            F::one(),
+            (ROM_DATA_W_ADDR_END - last_addr + 1) as i64,
+            1,
             range_id,
         );
 

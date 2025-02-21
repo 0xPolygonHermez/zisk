@@ -13,8 +13,8 @@ use std::sync::{
 };
 
 use log::info;
-use num_bigint::BigInt;
-use p3_field::PrimeField;
+
+use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 use sm_common::{BusDeviceMetrics, InstanceCtx};
@@ -70,7 +70,7 @@ impl MainSM {
     /// * `main_instance` - Reference to the `MainInstance` representing the current segment.
     ///
     /// The computed trace is added to the proof context's air instance repository.
-    pub fn compute_witness<F: PrimeField>(
+    pub fn compute_witness<F: PrimeField64>(
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
         min_trace_size: u64,
@@ -218,7 +218,7 @@ impl MainSM {
     ///
     /// # Returns
     /// The next program counter value after processing the minimal trace.
-    fn fill_partial_trace<F: PrimeField>(
+    fn fill_partial_trace<F: PrimeField64>(
         zisk_rom: &ZiskRom,
         main_trace: &mut [MainTraceRow<F>],
         min_trace: &EmuTrace,
@@ -265,7 +265,7 @@ impl MainSM {
         )
     }
 
-    fn complete_trace_with_initial_reg_steps_per_chunk<F: PrimeField>(
+    fn complete_trace_with_initial_reg_steps_per_chunk<F: PrimeField64>(
         num_rows: usize,
         fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace)],
         main_trace: &mut MainTrace<F>,
@@ -329,7 +329,7 @@ impl MainSM {
             reg_steps[reg_index] = reg_prev_mem_step;
         }
     }
-    fn update_reg_airvalues<F: PrimeField>(
+    fn update_reg_airvalues<F: PrimeField64>(
         air_values: &mut MainAirValues<'_, F>,
         final_step: u64,
         last_reg_values: &[u64],
@@ -354,29 +354,29 @@ impl MainSM {
             }
         }
     }
-    fn update_std_range_checks<F: PrimeField>(
+    fn update_std_range_checks<F: PrimeField64>(
         std: Arc<Std<F>>,
         step_range_check: Arc<Vec<AtomicU32>>,
         large_range_checks: &[u32],
     ) {
-        let range_id = std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
+        let range_id = std.get_range(1, MEMORY_MAX_DIFF as i64, None);
         for (value, _multiplicity) in step_range_check.iter().enumerate() {
             let multiplicity = _multiplicity.load(Ordering::Relaxed);
             if multiplicity != 0 {
                 std.range_check(
-                    F::from_canonical_usize(value + 1),
-                    F::from_canonical_u32(multiplicity),
+                    (value + 1) as i64,
+                    multiplicity as u64,
                     range_id,
                 );
             }
         }
         for range in large_range_checks {
-            std.range_check(F::from_canonical_u32(*range), F::from_canonical_u32(1), range_id);
+            std.range_check(*range as i64, 1, range_id);
         }
     }
 
     /// Debug method for the main state machine.
-    pub fn debug<F: PrimeField>(_pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {
+    pub fn debug<F: PrimeField64>(_pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {
         // No debug information to display
     }
 
