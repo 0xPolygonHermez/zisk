@@ -3,7 +3,10 @@
 //! omnipresent devices that process all data sent to the bus. This module provides mechanisms to
 //! send data, route it to the appropriate subscribers, and manage device connections.
 
-use std::{any::Any, collections::HashMap};
+use std::{
+    any::Any,
+    collections::{HashMap, VecDeque},
+};
 
 /// Type representing the unique identifier of a bus channel.
 pub type BusId = u16;
@@ -31,11 +34,7 @@ pub trait BusDevice<D>: Any + Send {
     /// # Returns
     /// An optional vector of tuples containing the bus ID and data payload to be sent to other
     /// devices. If no data is to be sent, `None` is returned.
-    fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> Option<Vec<(BusId, Vec<D>)>> {
-        let _ = bus_id;
-        let _ = data;
-        None
-    }
+    fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> Option<Vec<(BusId, Vec<D>)>>;
 
     /// Returns the bus IDs associated with this instance.
     ///
@@ -67,7 +66,7 @@ pub struct DataBus<D, BD: BusDevice<D>> {
     omni_devices: Vec<usize>,
 
     /// Queue of pending data transfers to be processed.
-    pending_transfers: Vec<(BusId, Vec<D>)>,
+    pending_transfers: VecDeque<(BusId, Vec<D>)>,
 }
 
 impl<D, BD: BusDevice<D>> Default for DataBus<D, BD> {
@@ -84,7 +83,7 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
             devices: Vec::new(),
             devices_bus_id_map: HashMap::new(),
             omni_devices: Vec::new(),
-            pending_transfers: Vec::new(),
+            pending_transfers: VecDeque::new(),
         }
     }
 
@@ -119,9 +118,8 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// * `bus_id` - The ID of the bus receiving the data.
     /// * `payload` - The data payload to be sent.
     pub fn write_to_bus(&mut self, bus_id: BusId, payload: Vec<D>) {
-        self.pending_transfers.push((bus_id, payload));
-
-        while let Some((bus_id, payload)) = self.pending_transfers.pop() {
+        self.pending_transfers.push_back((bus_id, payload));
+        while let Some((bus_id, payload)) = self.pending_transfers.pop_front() {
             self.route_data(bus_id, &payload)
         }
     }

@@ -5,4 +5,3 @@ edition = "2021"
 
 [dependencies]
 elf = "0.7.4"
-json = "0.12.4"

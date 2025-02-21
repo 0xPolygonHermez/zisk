@@ -9,6 +9,8 @@ require "binary/pil/binary_table.pil"
 require "binary/pil/binary_extension.pil"
 require "binary/pil/binary_extension_table.pil"
 require "arith/pil/arith.pil"
+require "keccakf/pil/keccakf.pil"
+require "keccakf/pil/keccakf_table.pil"
 
 const int OPERATION_BUS_ID = 5000;
 
@@ -22,22 +24,27 @@ const int PUBLIC_OP = 0x30;
 
 airgroup Zisk {
     Main(N: 2**21, RC: 2, operation_bus_id: OPERATION_BUS_ID);
-    Rom(N: 2**22);
+    Rom(N: 2**21);
 
     Mem(N: 2**21, RC: 2, base_address: 0xA000_0000);
     Mem(N: 2**21, RC: 2, base_address: 0x8000_0000, immutable: 1) alias RomData;
     Mem(N: 2**21, RC: 2, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
 
     MemAlign(N: 2**21);
-    MemAlignRom(disable_fixed: 0);
+    MemAlignRom();
 
     Arith(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
     ArithTable();
     ArithRangeTable();
     Binary(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
-    BinaryTable(disable_fixed: 0);
+    BinaryTable();
     BinaryExtension(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
-    BinaryExtensionTable(disable_fixed: 0);
+    BinaryExtensionTable();
+
+    // Precompiles
+    const int KECCAKF_BITS = 10;
+    Keccakf(N: 2**22, RC: 2, RB: 32, bits_in_parallel: 2, chunks: 6, bits: KECCAKF_BITS, bits_reduced: KECCAKF_BITS, operation_bus_id: OPERATION_BUS_ID);
+    KeccakfTable(N: 2**21, chunks: 1, bits: KECCAKF_BITS, bits_reduced: KECCAKF_BITS);
 
     // public inputs
     for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {

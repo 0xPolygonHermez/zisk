@@ -1,8 +1,9 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
 };
 
+use sm_common::create_atomic_vec;
 use zisk_pil::MemAlignRomTrace;
 
 #[derive(Debug, Clone, Copy)]
@@ -18,21 +19,14 @@ const ONE_WORD_COMBINATIONS: u64 = 20; // (0..4,[1,2,4]), (5,6,[1,2]), (7,[1]) -
 const TWO_WORD_COMBINATIONS: u64 = 11; // (1..4,[8]), (5,6,[4,8]), (7,[2,4,8]) -> 4*1 + 2*2 + 1*3 = 11
 
 pub struct MemAlignRomSM {
-    multiplicity: Mutex<HashMap<u64, u64>>, // row_num -> multiplicity
-}
-
-#[derive(Debug)]
-pub enum ExtensionTableSMErr {
-    InvalidOpcode,
+    multiplicity: Vec<AtomicU64>, // row_num -> multiplicity
 }
 
 impl MemAlignRomSM {
     // const MY_NAME: &'static str = "MemAlignRom";
 
     pub fn new() -> Arc<Self> {
-        Arc::new(Self {
-            multiplicity: Mutex::new(HashMap::with_capacity(MemAlignRomTrace::<usize>::NUM_ROWS)),
-        })
+        Arc::new(Self { multiplicity: create_atomic_vec(MemAlignRomTrace::<usize>::NUM_ROWS) })
     }
 
     pub fn calculate_next_pc(&self, opcode: MemOp, offset: usize, width: usize) -> u64 {
@@ -121,14 +115,8 @@ impl MemAlignRomSM {
         }
     }
 
-    pub fn detach_multiplicity(&self) -> Vec<u64> {
-        let multiplicity = self.multiplicity.lock().unwrap();
-        let mut multiplicity_vec = vec![0; MemAlignRomTrace::<usize>::NUM_ROWS];
-        for (row_idx, multiplicity) in multiplicity.iter() {
-            assert!(*row_idx < MemAlignRomTrace::<usize>::NUM_ROWS as u64);
-            multiplicity_vec[*row_idx as usize] = *multiplicity;
-        }
-        multiplicity_vec
+    pub fn detach_multiplicity(&self) -> &[AtomicU64] {
+        &self.multiplicity
     }
 
     pub fn update_padding_row(&self, padding_len: u64) {
@@ -137,7 +125,6 @@ impl MemAlignRomSM {
     }
 
     pub fn update_multiplicity_by_row_idx(&self, row_idx: u64, mul: u64) {
-        let mut multiplicity = self.multiplicity.lock().unwrap();
-        *multiplicity.entry(row_idx).or_insert(0) += mul;
+        self.multiplicity[row_idx as usize].fetch_add(mul, Ordering::Relaxed);
     }
 }

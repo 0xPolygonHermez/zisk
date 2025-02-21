@@ -5,7 +5,10 @@
 //! execution plans.
 
 use crate::ArithFullSM;
-use data_bus::{BusDevice, BusId, OperationBusData, OperationData, PayloadType};
+use data_bus::{
+    BusDevice, BusId, ExtOperationData, OperationBusData, OperationData, PayloadType,
+    OPERATION_BUS_ID,
+};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
@@ -26,9 +29,6 @@ pub struct ArithFullInstance {
 
     /// The instance context.
     ictx: InstanceCtx,
-
-    /// The connected bus ID.
-    bus_id: BusId,
 }
 
 impl ArithFullInstance {
@@ -40,8 +40,8 @@ impl ArithFullInstance {
     ///
     /// # Returns
     /// A new `ArithFullInstance` instance initialized with the provided state machine and context.
-    pub fn new(arith_full_sm: Arc<ArithFullSM>, ictx: InstanceCtx, bus_id: BusId) -> Self {
-        Self { arith_full_sm, ictx, bus_id }
+    pub fn new(arith_full_sm: Arc<ArithFullSM>, ictx: InstanceCtx) -> Self {
+        Self { arith_full_sm, ictx }
     }
 }
 
@@ -53,6 +53,7 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
     ///
     /// # Arguments
     /// * `pctx` - The proof context, unused in this implementation.
+    /// * `sctx` - The setup context, unused in this implementation.
     /// * `collectors` - A vector of input collectors to process and collect data for witness
     ///
     /// # Returns
@@ -111,11 +112,8 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
 
         let meta = self.ictx.plan.meta.as_ref().unwrap();
         let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
-        Some(Box::new(ArithInstanceCollector::new(
-            self.bus_id,
-            collect_info[&chunk_id].0,
-            collect_info[&chunk_id].1,
-        )))
+        let (num_ops, collect_skipper) = collect_info[&chunk_id];
+        Some(Box::new(ArithInstanceCollector::new(num_ops, collect_skipper)))
     }
 }
 
@@ -123,9 +121,6 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
 pub struct ArithInstanceCollector {
     /// Collected inputs for witness computation.
     inputs: Vec<OperationData<u64>>,
-
-    /// The connected bus ID.
-    bus_id: BusId,
 
     /// The number of operations to collect.
     num_operations: u64,
@@ -139,14 +134,13 @@ impl ArithInstanceCollector {
     ///
     /// # Arguments
     ///
-    /// * `bus_id` - The connected bus ID.
     /// * `num_operations` - The number of operations to collect.
     /// * `collect_skipper` - The helper to skip instructions based on the plan's configuration.
     ///
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
-    pub fn new(bus_id: BusId, num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), bus_id, num_operations, collect_skipper }
+    pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
+        Self { inputs: Vec::new(), num_operations, collect_skipper }
     }
 }
 
@@ -161,16 +155,16 @@ impl BusDevice<u64> for ArithInstanceCollector {
     /// An optional vector of tuples where:
     /// - The first element is the bus ID.
     /// - The second element is always empty indicating there are no derived inputs.
-    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        debug_assert!(*bus_id == OPERATION_BUS_ID);
+
         if self.inputs.len() == self.num_operations as usize {
             return None;
         }
 
-        let data: OperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-        let op_type = OperationBusData::get_op_type(&data);
+        let data: ExtOperationData<u64> = data.try_into().ok()?;
 
-        if op_type as u32 != ZiskOperationType::Arith as u32 {
+        if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::Arith as u32 {
             return None;
         }
 
@@ -178,9 +172,10 @@ impl BusDevice<u64> for ArithInstanceCollector {
             return None;
         }
 
-        self.inputs.push(data);
+        if let ExtOperationData::OperationData(data) = data {
+            self.inputs.push(data);
+        }
 
-        // Check if the required number of rows has been collected for computation.
         None
     }
 
@@ -189,7 +184,7 @@ impl BusDevice<u64> for ArithInstanceCollector {
     /// # Returns
     /// A vector containing the connected bus ID.
     fn bus_id(&self) -> Vec<BusId> {
-        vec![self.bus_id]
+        vec![OPERATION_BUS_ID]
     }
 
     /// Provides a dynamic reference for downcasting purposes.

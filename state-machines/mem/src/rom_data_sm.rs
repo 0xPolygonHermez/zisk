@@ -162,8 +162,4 @@ impl<F: PrimeField> MemModule<F> for RomDataSM<F> {
 
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
     }
-
-    fn get_addr_ranges(&self) -> Vec<(u32, u32)> {
-        vec![(ROM_ADDR as u32, ROM_ADDR_MAX as u32)]
-    }
 }

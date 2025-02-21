@@ -1,7 +1,7 @@
 use rayon::{prelude::*, ThreadPoolBuilder};
 use std::sync::Arc;
 
-use crate::{MemCounters, MemHelpers, MemPlanCalculator, UsesCounter, STEP_MEMORY_MAX_DIFF};
+use crate::{MemCounters, MemPlanCalculator, UsesCounter, STEP_MEMORY_MAX_DIFF};
 use sm_common::{CheckPoint, ChunkId, InstanceType, Plan};
 
 const REGISTERS_COUNT: usize = 32;
@@ -30,10 +30,8 @@ pub struct MemModulePlanner<'a> {
     consume_addr: u32,
     consume_from_step: u64,
     consume_to_step: u64,
-    cursor_on_registers: bool,
     cursor_index: usize,
     cursor_count: usize,
-    counters_count: usize,
     sorted_boxes: Vec<SortedBox>,
 }
 
@@ -61,9 +59,7 @@ pub struct MemModulePlannerConfig {
     pub air_id: usize,
     pub addr_index: usize,
     pub from_addr: u32,
-    pub to_addr: u32,
     pub rows: u32,
-    pub map_registers: bool,
     pub consecutive_addr: bool,
     pub intermediate_step_reads: bool,
 }
@@ -85,10 +81,8 @@ impl<'a> MemModulePlanner<'a> {
             consume_addr: 0,
             consume_from_step: 0,
             consume_to_step: 0,
-            cursor_on_registers: false,
             cursor_index: 0,
             cursor_count: counters_count * REGISTERS_COUNT,
-            counters_count,
             sorted_boxes: Vec::new(),
         }
     }
@@ -109,40 +103,14 @@ impl<'a> MemModulePlanner<'a> {
     }
     fn init_cursor(&mut self) {
         // check if any register has data
-        if self.config.map_registers
-            && (self.counters[0].1.registers[0].count > 0 || self.get_next_cursor_register())
-        {
-            self.cursor_on_registers = true;
-        }
-
         let initial_sorted_boxes = self.prepare_sorted_boxes();
         self.sorted_boxes = self.merge_sorted_boxes(&initial_sorted_boxes, 4);
-        if !self.cursor_on_registers {
-            self.init_sorted_boxes_cursor();
-        }
-        #[cfg(feature = "debug_mem")]
-        self.debug_sorted_boxes();
+        self.init_sorted_boxes_cursor();
     }
-    fn get_cursor_register_data(&self) -> (usize, usize) {
-        (self.cursor_index % self.counters_count, self.cursor_index / self.counters_count)
-    }
-
     fn cursors_end(&self) -> bool {
-        !self.cursor_on_registers && self.cursor_index >= self.cursor_count
+        self.cursor_index >= self.cursor_count
     }
     fn get_next_cursor(&mut self) -> (ChunkId, u32, UsesCounter) {
-        if self.cursor_on_registers {
-            let (counter_index, register_index) = self.get_cursor_register_data();
-            let chunk_id = self.counters[counter_index].0;
-            let addr_w = MemHelpers::register_to_addr_w(register_index as u8);
-            let uses = self.counters[counter_index].1.registers[register_index];
-            self.get_next_cursor_register();
-            return (chunk_id, addr_w, uses);
-        }
-        self.get_next_addr_cursor()
-    }
-
-    fn get_next_addr_cursor(&mut self) -> (ChunkId, u32, UsesCounter) {
         let aid = self.config.addr_index;
         let counter_index = self.sorted_boxes[self.cursor_index].i_counter as usize;
         let addr_index = self.sorted_boxes[self.cursor_index].i_addr as usize;
@@ -154,47 +122,7 @@ impl<'a> MemModulePlanner<'a> {
         )
     }
 
-    fn get_next_cursor_register(&mut self) -> bool {
-        while self.cursor_index + 1 < self.cursor_count {
-            self.cursor_index += 1;
-            let (counter_index, register_index) = self.get_cursor_register_data();
-            if self.counters[counter_index].1.registers[register_index].count > 0 {
-                return true;
-            }
-        }
-        self.init_sorted_boxes_cursor();
-        false
-    }
-    #[cfg(feature = "debug_mem")]
-    fn debug_sorted_boxes(&self) {
-        let aid = self.config.addr_index;
-        let mut prev_addr = 0;
-        let mut prev_step = 0;
-        for (i, box_ref) in self.sorted_boxes.iter().enumerate() {
-            let addr = box_ref.addr;
-            let _addr = self.counters[box_ref.i_counter as usize].1.addr_sorted[aid]
-                [box_ref.i_addr as usize]
-                .0;
-            let step = self.counters[box_ref.i_counter as usize].1.addr_sorted[aid]
-                [box_ref.i_addr as usize]
-                .1
-                .first_step;
-            let order_ok = prev_addr < addr || (prev_addr == addr && prev_step < step);
-            println!(
-                "#{} addr:{:#10X}({:#10X}){} step:{}{}",
-                i,
-                addr * 8,
-                _addr * 8,
-                if addr == _addr as u64 { "" } else { "!!!" },
-                step,
-                if order_ok { "" } else { " order fail !!!" }
-            );
-            prev_addr = addr;
-            prev_step = step;
-        }
-    }
     fn init_sorted_boxes_cursor(&mut self) {
-        self.cursor_on_registers = false;
         self.cursor_index = 0;
         self.cursor_count = self.sorted_boxes.len();
         // println!("INIT SORTED BOXES CURSOR {}/{}", self.cursor_index, self.cursor_count);
