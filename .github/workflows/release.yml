@@ -222,10 +222,18 @@ jobs:
           target="${{ matrix.target }}"
           flags=()
 
+          # Intel OpenMP library path
+          IOMP5_PATH="/opt/intel/oneapi/compiler/latest/linux/compiler/lib/intel64_lin"
+          export LD_LIBRARY_PATH="$IOMP5_PATH:$LD_LIBRARY_PATH"
+
+          # Handle Windows executable suffix
           [[ "$target" == *windows* ]] && exe=".exe"
 
-          RUSTFLAGS='-C target-feature=+crt-static' cargo build --release -p cargo-zisk -p ziskemu -p riscv -p zisk-core --target "$target" "${flags[@]}"
+          # RUSTFLAGS including Intel OpenMP library path and linking
+          RUSTFLAGS="-C target-feature=+crt-static -L$${IOMP5_PATH} -liomp5" cargo build --release \
+            -p cargo-zisk -p ziskemu -p riscv -p zisk-core --target "$target" "${flags[@]}"
 
+          # Verify built binaries
           bins=(cargo-zisk ziskemu)
           for name in "${bins[@]}"; do
             bin=./target/$target/release/$name$exe
