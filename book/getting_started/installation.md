@@ -177,14 +177,14 @@ Please note that the process can be long, taking approximately 2–3 hours depen
     ```
 2. Install packages:
     ```bash
-    (cd ../pil2-compiler && npm i)
-    (cd ../pil2-proofman-js && npm i)
+    (cd pil2-compiler && npm i)
+    (cd pil2-proofman-js && npm i)
 
 3. **Note:** All subsequent commands must be executed from the `zisk` folder created in the previous section.
 
-4. Compile ZisK PIL: (Note that this command may take 30-40 minutes to complete):
+4. Compile ZisK PIL: (Note that this command may take 20-30 minutes to complete)
     ```bash
-    node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil, ../pil2-proofman/pil2-components/lib/std/pil, state-machines, precompiles -o pil/zisk.pilout
+    node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout
     ```
 
     This command will create the `pil/zisk.pilout` file
@@ -208,12 +208,12 @@ Please note that the process can be long, taking approximately 2–3 hours depen
 7. Copy (or move) the `provingKey` directory to `$HOME/.zisk` directory:
 
     ```bash
-    cp -R provingKey $HOME/.zisk
+    cp -R build/provingKey $HOME/.zisk
     ```
 
-## Uninstall Zisk toolchain
+## Uninstall Zisk
+To uninstall ZisK, run:
 
-To uninstall the ZisK toolchain run:
 ```bash
-rustup toolchain remove zisk
+rm -rf $HOME/.zisk
 ```
