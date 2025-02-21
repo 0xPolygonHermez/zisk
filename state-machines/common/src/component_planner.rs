@@ -41,6 +41,7 @@ impl CollectSkipper {
     ///
     /// # Returns
     /// `true` if the instruction should be skipped, `false` otherwise.
+    #[inline(always)]
     pub fn should_skip(&mut self) -> bool {
         if !self.skipping {
             return false;

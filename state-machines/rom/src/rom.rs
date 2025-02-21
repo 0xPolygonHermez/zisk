@@ -10,7 +10,6 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use data_bus::ROM_BUS_ID;
 use itertools::Itertools;
 use log::info;
 use p3_field::PrimeField;
@@ -51,7 +50,6 @@ impl RomSM {
     /// An `AirInstance` containing the computed witness trace data.
     pub fn compute_witness<F: PrimeField>(rom: &ZiskRom, plan: &Plan) -> AirInstance<F> {
         let mut rom_trace = RomTrace::new_zeroes();
-        let mut rom_custom_trace = RomRomTrace::new();
 
         let metadata = plan.meta.as_ref().unwrap().downcast_ref::<RomCounter>().unwrap();
 
@@ -89,11 +87,7 @@ impl RomSM {
             rom_trace[i].multiplicity = F::from_canonical_u64(multiplicity);
         }
 
-        Self::compute_trace_rom(rom, &mut rom_custom_trace);
-
-        AirInstance::new_from_trace(
-            FromTrace::new(&mut rom_trace).with_custom_traces(vec![&mut rom_custom_trace]),
-        )
+        AirInstance::new_from_trace(FromTrace::new(&mut rom_trace))
     }
 
     /// Computes the ROM trace based on the ROM instructions.
@@ -187,7 +181,7 @@ impl<F: PrimeField> ComponentBuilder<F> for RomSM {
     /// # Returns
     /// A boxed implementation of `RomCounter`.
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(RomCounter::new(ROM_BUS_ID))
+        Box::new(RomCounter::new())
     }
 
     /// Builds a planner for ROM-related instances.

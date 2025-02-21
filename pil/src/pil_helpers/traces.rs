@@ -2,6 +2,8 @@
 // Manual modifications are not recommended and may be overwritten.
 #![allow(clippy::all)]
 #![allow(non_snake_case)]
+#![allow(non_upper_case_globals)]
+#![allow(dead_code)]
 
 use proofman_common as common;
 pub use proofman_macros::trace;
@@ -50,18 +52,20 @@ pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[12];
 
 pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[13];
 
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[14];
+pub const KECCAKF_AIR_IDS: &[usize] = &[14];
 
-pub const U_8_AIR_AIR_IDS: &[usize] = &[15];
+pub const KECCAKF_TABLE_AIR_IDS: &[usize] = &[15];
 
-pub const U_16_AIR_AIR_IDS: &[usize] = &[16];
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[16];
 
+pub const U_8_AIR_AIR_IDS: &[usize] = &[17];
+
+pub const U_16_AIR_AIR_IDS: &[usize] = &[18];
 
 //PUBLICS
 use serde::Deserialize;
 use serde::Serialize;
 use serde_arrays;
-
 
 fn default_array_rom_root() -> [u64; 4] {
     [0; 4]
@@ -71,22 +75,17 @@ fn default_array_inputs() -> [u64; 64] {
     [0; 64]
 }
 
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ZiskPublics {
     #[serde(default = "default_array_rom_root", with = "serde_arrays")]
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
-    
-}
+    }
 
 impl Default for ZiskPublics {
     fn default() -> Self {
-        Self {  
-            rom_root: [0; 4],  
-            inputs: [0; 64], 
-        }
+        Self { rom_root: [0; 4], inputs: [0; 64] }
     }
 }
 
@@ -103,16 +102,16 @@ trace!(MainFixed<F> {
 },  0, 0, 2097152 );
 
 trace!(MainTrace<F> {
- a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F,
+ a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, a_reg_prev_mem_step: F, b_reg_prev_mem_step: F, store_reg_prev_mem_step: F, store_reg_prev_value: [F; 2], a_src_reg: F, b_src_reg: F, store_reg: F,
 },  0, 0, 2097152 );
 
 trace!(RomFixed<F> {
  __L1__: F,
-},  0, 1, 4194304 );
+},  0, 1, 2097152 );
 
 trace!(RomTrace<F> {
  multiplicity: F,
-},  0, 1, 4194304 );
+},  0, 1, 2097152 );
 
 trace!(MemFixed<F> {
  SEGMENT_L1: F, __L1__: F,
@@ -210,48 +209,65 @@ trace!(BinaryExtensionTableTrace<F> {
  multiplicity: F,
 },  0, 13, 4194304 );
 
+trace!(KeccakfFixed<F> {
+ L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, ID: F, latch_num_keccakf: F, factor_num_keccakf: F, latch_in_out: F, addr_inc: F, latch_in: F, latch_out: F, __L1__: F,
+},  0, 14, 4194304 );
+
+trace!(KeccakfTrace<F> {
+ free_in_a: [F; 6], free_in_b: [F; 6], free_in_c: [F; 6], step: F, addr: F, multiplicity: F, bit: [F; 2], val: [F; 2], is_val: F,
+},  0, 14, 4194304 );
+
+trace!(KeccakfTableFixed<F> {
+ A: [F; 1], B: F, GATE_OP: F, C: [F; 1], __L1__: F,
+},  0, 15, 2097152 );
+
+trace!(KeccakfTableTrace<F> {
+ multiplicity: [F; 1],
+},  0, 15, 2097152 );
+
 trace!(SpecifiedRangesFixed<F> {
  RANGE: [F; 2], __L1__: F,
-},  0, 14, 16777216 );
+},  0, 16, 16777216 );
 
 trace!(SpecifiedRangesTrace<F> {
  mul: [F; 2],
-},  0, 14, 16777216 );
+},  0, 16, 16777216 );
 
 trace!(U8AirFixed<F> {
  U8: F, __L1__: F,
-},  0, 15, 256 );
+},  0, 17, 256 );
 
 trace!(U8AirTrace<F> {
  mul: F,
-},  0, 15, 256 );
+},  0, 17, 256 );
 
 trace!(U16AirFixed<F> {
  U16: F, __L1__: F,
-},  0, 16, 65536 );
+},  0, 18, 65536 );
 
 trace!(U16AirTrace<F> {
  mul: F,
-},  0, 16, 65536 );
+},  0, 18, 65536 );
 
+pub const RomRomHash: &str = "aa8bf8c0f3757c69cac124f513b6b2a66653708e85300b9407effcff3b707190";
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
-}, 0, 1, 4194304, 0 );
+}, 0, 1, 2097152, 0 );
 
 values!(MainAirValues<F> {
- main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2],
+ main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 31], last_reg_mem_step: [F; 31], im_direct: [FieldExtension<F>; 95],
 });
 
 values!(MemAirValues<F> {
- segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F,
+ segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, im_direct: [FieldExtension<F>; 4],
 });
 
 values!(RomDataAirValues<F> {
- segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F,
+ segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, im_direct: [FieldExtension<F>; 4],
 });
 
 values!(InputDataAirValues<F> {
- segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F,
+ segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, im_direct: [FieldExtension<F>; 4],
 });
 
 values!(MainAirGroupValues<F> {
@@ -307,6 +323,14 @@ values!(BinaryExtensionAirGroupValues<F> {
 });
 
 values!(BinaryExtensionTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(KeccakfAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(KeccakfTableAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 

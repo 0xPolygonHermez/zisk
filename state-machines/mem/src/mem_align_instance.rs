@@ -26,23 +26,19 @@ impl<F: PrimeField> Instance<F> for MemAlignInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
-        let mut used_rows = 0;
+        let mut total_rows = 0;
         let inputs: Vec<_> = collectors
             .into_iter()
-            .enumerate()
-            .map(|(i, (_, mut collector))| {
-                // Downcast to your specific collector type.
+            .map(|(_, mut collector)| {
                 let collector =
                     collector.detach_device().as_any().downcast::<MemAlignCollector>().unwrap();
-                if i == 0 {
-                    used_rows = collector.rows;
-                }
-                // Return the inputs vector for this collector.
+
+                total_rows += collector.rows;
+
                 collector.inputs
             })
             .collect();
-
-        Some(self.mem_align_sm.compute_witness(&inputs, used_rows as usize))
+        Some(self.mem_align_sm.compute_witness(&inputs, total_rows as usize))
     }
 
     fn check_point(&self) -> CheckPoint {
@@ -95,7 +91,9 @@ impl MemAlignCollector {
 }
 
 impl BusDevice<u64> for MemAlignCollector {
-    fn process_data(&mut self, _bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        debug_assert!(*bus_id == MEM_BUS_ID);
+
         let addr = MemBusData::get_addr(data);
         let bytes = MemBusData::get_bytes(data);
         if MemHelpers::is_aligned(addr, bytes) {

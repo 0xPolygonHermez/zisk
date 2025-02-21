@@ -1,0 +1,211 @@
+require "std_constants.pil"
+require "std_lookup.pil"
+require "std_connection.pil"
+
+// Precompile in charge of performing the Keccak-f[1600] permutation. For reference: https://keccak.team/files/Keccak-reference-3.0.pdf
+
+const int KECCAKF_SIZE_BITS = 1600;
+
+const int KECCAKF_OP = 0xF1;
+const int KECCAKF_CIRCUIT_ID = 0x190;
+
+airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, const int bits_in_parallel = 2, const int chunks, const int bits, const int bits_reduced, const int operation_bus_id) {
+    // Keccak-f circuit size
+    const int CIRCUIT_SIZE = 155286;
+    println(`The size of the Keccak-f circuit is ${CIRCUIT_SIZE}`);
+
+    // Ensure that the keccak-f circuit fits
+    if (N < CIRCUIT_SIZE) {
+        error(`N must be at least ${CIRCUIT_SIZE} to fit the Keccak-f circuit, but received N=${N}`);
+    }
+
+    // Ensure that the keccak-f input fit in the prime field
+    const int BITS_INPUT = (chunks - 1)*bits + bits_reduced;
+    if (BITS_INPUT >= log2(PRIME)) {
+        error(`The number of bits ${BITS_INPUT} is too large for the prime ${PRIME}`);
+    }
+
+    // Compute some stats
+    const int NUM_KECCAKF_PER_SLOT = chunks * bits;
+    const int NUM_SLOTS = (N - 1) / CIRCUIT_SIZE;
+    const int NUM_KECCAKF = NUM_SLOTS * NUM_KECCAKF_PER_SLOT;
+    const int NON_USABLE_ROWS = (N - 1) % CIRCUIT_SIZE;
+    println(`The number of Keccak-f per circuit is ${NUM_KECCAKF_PER_SLOT > log2(PRIME) ? log2(PRIME)-1 : NUM_KECCAKF_PER_SLOT}`);
+    println(`The number of circuits that fit for the given N is ${NUM_SLOTS} and the total number of Keccak-f is ${NUM_KECCAKF}`);
+    println(`The number of non-usable (padding) rows is ${NON_USABLE_ROWS}`);
+
+    const int P2_BITS = 2**bits;
+    const int P2_CHUNK_BITS = 2**(bits * chunks);
+    const int MASK_CHUNK_BITS = P2_CHUNK_BITS - 1;
+
+    col fixed L1 = [1,0...];
+
+    // Column specifying the circuit gates
+    #pragma fixed_external
+    col fixed GATE_OP;
+
+    // Columns specifying the circuit connections
+    #pragma fixed_external
+    col fixed CONN_A;
+    #pragma fixed_external
+    col fixed CONN_B;
+    #pragma fixed_external
+    col fixed CONN_C;
+
+    col witness free_in_a[chunks], free_in_b[chunks], free_in_c[chunks];
+
+    // --> Circuit gates constraints
+    if (bits != bits_reduced) {
+        for (int i = 0; i < chunks; i++) {
+            lookup_assumes(KECCAKF_TABLE_ID, [i == chunks - 1 ? 1 : 0, GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i]]);
+        }
+    } else {
+        for (int i = 0; i < chunks; i++) {
+            lookup_assumes(KECCAKF_TABLE_ID, [GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i]]);
+        }
+    }
+
+    // --> Circuit connections constraints
+    // Start by reconstructing the input from the chunks
+    expr a = 0;
+    expr b = 0;
+    expr c = 0;
+    for (int i = 0; i < chunks; i++) {
+        const int shift = P2_BITS**i;
+        a += free_in_a[i] * shift;
+        b += free_in_b[i] * shift;
+        c += free_in_c[i] * shift;
+    }
+
+    // Enforce constants 0b00..000 and 0b11..111 at the first row for direct access
+    // This reduces the circuit connections
+    L1 * a === 0;
+    L1 * (b - MASK_CHUNK_BITS) === 0;
+
+    connection(opid: KECCAKF_CIRCUIT_ID, cols: [a, b, c], CONN: [CONN_A, CONN_B, CONN_C]);
+
+    // --> Constraints to make sure that this coprocessor is called from the main processor
+    col witness step;
+    col witness addr;
+    col witness multiplicity;
+    lookup_proves(OPERATION_BUS_ID, [KECCAKF_OP, step, 0, addr, 0, 0, 0, 0], multiplicity);
+
+    // --> Constraints to read inputs from memory and write outputs to memory
+    col witness bit[bits_in_parallel];
+    col witness val[bits_in_parallel];
+    // Note: We process `bits_in_parallel` bits in parallel
+
+    const int IN_SIZE = NUM_KECCAKF_PER_SLOT * KECCAKF_SIZE_BITS / bits_in_parallel;
+    const int OUT_SIZE = IN_SIZE;
+    const int IN_OUT_SIZE = IN_SIZE + OUT_SIZE;
+    // Instructions to add a latch:
+    //  - When there are slots.
+    //  - Every NUM_KECCAKF_PER_SLOT clocks (except for the first one).
+    //  - When there are still bits to process (i.e., we repeat the previous instruction KECCAKF_SIZE_BITS times).
+    col fixed latch_num_keccakf  = [0,[[0:NUM_KECCAKF_PER_SLOT,1],[0:(NUM_KECCAKF_PER_SLOT-1),1]:(KECCAKF_SIZE_BITS-1), 
+                                            0:(CIRCUIT_SIZE - (IN_OUT_SIZE+1))]:NUM_SLOTS,
+                                        0...];
+
+    // Instructions to add the factor:
+    //  - When there are slots.
+    //  - Every clock, for the clock in the slot, we add the factor 1 << clk.
+    //  - When there are still bits to process (i.e., we repeat the previous instruction KECCAKF_SIZE_BITS times).
+    col fixed factor_num_keccakf;
+    if (NUM_KECCAKF_PER_SLOT != 1) {
+        factor_num_keccakf = [0,[[1,2..*..2**(NUM_KECCAKF_PER_SLOT-1)]:KECCAKF_SIZE_BITS, 
+                                  0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_SLOTS,
+                              0...];
+    } else {
+        factor_num_keccakf = [0, [1:KECCAKF_SIZE_BITS, 0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_SLOTS, 0...];
+    }
+
+    // `bit` is a bit
+    for (int i = 0; i < bits_in_parallel; i++) {
+        bit[i] * (1 - bit[i]) === 0;
+    }
+
+    // `val` accumulates bits. In each i-th latch, `val` has accumulated the i-th bit of the keccakf's 
+    for (int i = 0; i < bits_in_parallel; i++) {
+        val[i]' === val[i] * (1 - latch_num_keccakf) + bit[i] * factor_num_keccakf;
+    }
+
+    // In each i-th latch, `val` has to coincide with the 'a'-th gate entry
+    for (int i = 0; i < bits_in_parallel; i++) {
+        latch_num_keccakf * (val[i] - a'(i)) === 0;
+    }
+
+    // `state` accumulates RB bits of the i-th keccakf state each clock
+    // After NUM_KECCAKF_PER_SLOT clocks, `state` has accumulated RB bits of the NUM_KECCAKF_PER_SLOT keccakf's
+    expr state[RC];
+    // Initialize the state
+    for (int i = 0; i < RC; i++) {
+        state[i] = 0;
+    }
+    // Update the state
+    const int RB_OFFSET = RB / bits_in_parallel;
+    for (int i = 0; i < RB; i++) {
+        const int state_bit = i % bits_in_parallel;
+        const int state_idx = (i - state_bit) / bits_in_parallel;
+        for (int j = 0; j < RC; j++) {
+            state[j] += bit[state_bit]'(NUM_KECCAKF_PER_SLOT*(RB_OFFSET * j + state_idx)) * 2**i;
+        }
+    }
+
+    // `is_val` is an indicator that the value is valid
+    col witness is_val;
+    is_val * (1 - is_val) === 0;
+
+    // if multiplicity is not zero, then is_val should be 1
+    multiplicity * (is_val - 1) === 0;
+
+    // Then, if is_val = 1, it should be 1 (RB*2)*CHUNKS_TO_PROCESS times (input and ouput), separated by NUM_KECCAKF_PER_SLOT
+    // escept for the very last bit
+    const int CHUNKS_TO_PROCESS = KECCAKF_SIZE_BITS / RB;
+    const int INPUT_CHUNKS = CHUNKS_TO_PROCESS / bits_in_parallel;
+    const int OUTPUT_CHUNKS = INPUT_CHUNKS;
+    const int IN_OUT_CHUNKS = INPUT_CHUNKS + OUTPUT_CHUNKS;
+    const int RB_SIZE = NUM_KECCAKF_PER_SLOT * RB;
+    const int RB_SIZE_MINUS_ONE = NUM_KECCAKF_PER_SLOT * (RB - 1);
+    col fixed latch_in_out = [0,[[1:NUM_KECCAKF_PER_SLOT,0:RB_SIZE_MINUS_ONE]:(IN_OUT_CHUNKS-1),
+                                  0:RB_SIZE,
+                                  0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_SLOTS,
+                              0...];
+    latch_in_out * (is_val'(RB_SIZE) - is_val) === 0;
+
+    // step should be the same every NUM_KECCAKF_PER_SLOT clock
+    is_val * (step'(RB_SIZE) - step) === 0;
+
+    // addr should be the previous plus one every RB_SIZE clock
+    // except when there is a change from input to output
+    col fixed addr_inc = [0,[
+                             [8:NUM_KECCAKF_PER_SLOT,0:RB_SIZE_MINUS_ONE]:(INPUT_CHUNKS-1),
+                             [(-8*(INPUT_CHUNKS-1)):NUM_KECCAKF_PER_SLOT,0:RB_SIZE_MINUS_ONE],
+                             [8:NUM_KECCAKF_PER_SLOT,0:RB_SIZE_MINUS_ONE]:(OUTPUT_CHUNKS-1),
+                              0:RB_SIZE,
+                              0:(CIRCUIT_SIZE - IN_OUT_SIZE)
+                            ]:NUM_SLOTS,
+                          0...];
+    is_val * (addr'(RB_SIZE) - (addr + addr_inc)) === 0;
+
+    col fixed latch_in  = [0,[[1:NUM_KECCAKF_PER_SLOT,0:RB_SIZE_MINUS_ONE]:INPUT_CHUNKS,
+                               0:(CIRCUIT_SIZE - IN_SIZE)]:NUM_SLOTS,
+                           0...];
+
+    col fixed latch_out = [0,[ 0:(RB_SIZE*INPUT_CHUNKS),
+                              [1:NUM_KECCAKF_PER_SLOT,0:RB_SIZE_MINUS_ONE]:OUTPUT_CHUNKS,
+                               0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_SLOTS,
+                           0...];
+    precompiled_mem_load(
+             sel: is_val * latch_in,
+             main_step: step,
+             addr: addr,
+             value: state
+            );
+
+    precompiled_mem_store(
+              sel: is_val * latch_out,
+              main_step: step,
+              addr: addr,
+              value: state
+            );
+}

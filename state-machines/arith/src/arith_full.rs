@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crate::{
     ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
 };
-use data_bus::{OperationBusData, OperationData, PayloadType};
+use data_bus::{ExtOperationData, OperationBusData, OperationData, PayloadType};
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
@@ -84,9 +84,11 @@ impl ArithFullSM {
         let mut idx = 0;
         for inner_inputs in inputs {
             for input in inner_inputs {
-                let opcode = OperationBusData::get_op(input);
-                let a = OperationBusData::get_a(input);
-                let b = OperationBusData::get_b(input);
+                let input_data = ExtOperationData::OperationData(*input);
+
+                let opcode = OperationBusData::get_op(&input_data);
+                let a = OperationBusData::get_a(&input_data);
+                let b = OperationBusData::get_b(&input_data);
 
                 aop.calculate(opcode, a, b);
                 let mut t: ArithTraceRow<F> = Default::default();
@@ -227,11 +229,15 @@ impl ArithFullSM {
     }
 
     /// Generates binary inputs for operations requiring additional validation (e.g., division).
+    #[inline(always)]
     pub fn generate_inputs(input: &OperationData<u64>) -> Vec<Vec<PayloadType>> {
         let mut aop = ArithOperation::new();
-        let opcode = OperationBusData::get_op(input);
-        let a = OperationBusData::get_a(input);
-        let b = OperationBusData::get_b(input);
+
+        let input_data = ExtOperationData::OperationData(*input);
+
+        let opcode = OperationBusData::get_op(&input_data);
+        let a = OperationBusData::get_a(&input_data);
+        let b = OperationBusData::get_b(&input_data);
 
         aop.calculate(opcode, a, b);
 

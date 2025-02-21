@@ -14,9 +14,8 @@ use zisk_pil::{
 };
 
 use crate::{
-    MemAlignPlanner, MemCounters, MemModulePlanner, MemModulePlannerConfig, INPUT_DATA_W_ADDR_END,
-    INPUT_DATA_W_ADDR_INIT, RAM_W_ADDR_END, RAM_W_ADDR_INIT, ROM_DATA_W_ADDR_END,
-    ROM_DATA_W_ADDR_INIT,
+    MemAlignPlanner, MemCounters, MemModulePlanner, MemModulePlannerConfig, INPUT_DATA_W_ADDR_INIT,
+    RAM_W_ADDR_INIT, ROM_DATA_W_ADDR_INIT,
 };
 
 pub trait MemPlanCalculator {
@@ -63,18 +62,18 @@ impl MemPlanner {
                     .downcast_ref::<MemModuleSegmentCheckPoint>()
                     .unwrap();
                 info!(
-                    "[Mem] PLAN #{} [{}:{}:{}] {:?} [0x{:X},{}] => [0x{:X},{}] skip:{} last:{}",
+                    "[Mem] PLAN #{} [{}:{}:{}] [0x{:X},{}] => [0x{:X},{}] skip:{} last:{} {:?}",
                     index,
                     plan.airgroup_id,
                     plan.air_id,
                     plan.segment_id.unwrap_or(0),
-                    plan.check_point,
                     MemHelpers::get_addr(meta.prev_addr),
                     meta.prev_step,
                     MemHelpers::get_addr(meta.last_addr),
                     meta.last_step,
                     meta.skip_rows,
                     meta.is_last_segment,
+                    plan.check_point,
                 );
             } else {
                 info!(
@@ -111,11 +110,9 @@ impl Planner for MemPlanner {
                 air_id: MEM_AIR_IDS[0],
                 addr_index: 2,
                 from_addr: RAM_W_ADDR_INIT,
-                to_addr: RAM_W_ADDR_END,
                 rows: MemTrace::<usize>::NUM_ROWS as u32,
                 consecutive_addr: false,
                 intermediate_step_reads: true,
-                map_registers: true,
             },
             counters.clone(),
         )));
@@ -126,11 +123,9 @@ impl Planner for MemPlanner {
                 air_id: ROM_DATA_AIR_IDS[0],
                 addr_index: 0,
                 from_addr: ROM_DATA_W_ADDR_INIT,
-                to_addr: ROM_DATA_W_ADDR_END,
                 rows: RomDataTrace::<usize>::NUM_ROWS as u32,
                 consecutive_addr: true,
                 intermediate_step_reads: false,
-                map_registers: false,
             },
             counters.clone(),
         )));
@@ -141,11 +136,9 @@ impl Planner for MemPlanner {
                 air_id: INPUT_DATA_AIR_IDS[0],
                 addr_index: 1,
                 from_addr: INPUT_DATA_W_ADDR_INIT,
-                to_addr: INPUT_DATA_W_ADDR_END,
                 rows: InputDataTrace::<usize>::NUM_ROWS as u32,
                 consecutive_addr: true,
                 intermediate_step_reads: false,
-                map_registers: false,
             },
             counters.clone(),
         )));

@@ -8,6 +8,7 @@ use zisk_pil::{MemAlignTrace, MEM_ALIGN_AIR_IDS, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIR
 pub struct MemAlignPlanner<'a> {
     instances: Vec<Plan>,
     num_rows: u32,
+    #[cfg(feature = "trace_offset")]
     trace_offset: u32, // NOTE: This is currently not used but is kept for future use
     chunk_id: Option<ChunkId>,
     chunks: Vec<ChunkId>,
@@ -19,6 +20,8 @@ pub struct MemAlignPlanner<'a> {
 #[derive(Clone, Debug)]
 pub struct MemAlignCheckPoint {
     pub skip: u32,
+    #[cfg(feature = "trace_offset")]
+    #[allow(dead_code)]
     pub trace_offset: u32,
     pub count: u32,
     pub rows: u32,
@@ -30,6 +33,7 @@ impl<'a> MemAlignPlanner<'a> {
         Self {
             instances: Vec::new(),
             num_rows,
+            #[cfg(feature = "trace_offset")]
             trace_offset: 0,
             chunk_id: None,
             chunks: Vec::new(),
@@ -78,9 +82,9 @@ impl<'a> MemAlignPlanner<'a> {
             };
 
             // calculate trace_offset = rows_used = num_rows - rows_available
-            let trace_offset = self.num_rows - self.rows_available;
             self.check_points.push(MemAlignCheckPoint {
-                trace_offset,
+                #[cfg(feature = "trace_offset")]
+                trace_offset: self.num_rows - self.rows_available,
                 skip: operations_done,
                 count,
                 rows: rows_fit,

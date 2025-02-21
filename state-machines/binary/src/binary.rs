@@ -49,10 +49,10 @@ impl<F: PrimeField> BinarySM<F> {
     /// # Returns
     /// An `Arc`-wrapped instance of `BinarySM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let binary_basic_table_sm = BinaryBasicTableSM::new::<F>();
+        let binary_basic_table_sm = BinaryBasicTableSM::new();
         let binary_basic_sm = BinaryBasicSM::new(binary_basic_table_sm.clone());
 
-        let binary_extension_table_sm = BinaryExtensionTableSM::new::<F>();
+        let binary_extension_table_sm = BinaryExtensionTableSM::new();
         let binary_extension_sm = BinaryExtensionSM::new(std, binary_extension_table_sm.clone());
 
         Arc::new(Self {
@@ -116,18 +116,15 @@ impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
     /// A boxed implementation of `Instance` for binary operations.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            BinaryTrace::<usize>::AIR_ID => Box::new(BinaryBasicInstance::new(
-                self.binary_basic_sm.clone(),
-                ictx,
-                OPERATION_BUS_ID,
-            )),
-            BinaryExtensionTrace::<usize>::AIR_ID => Box::new(BinaryExtensionInstance::new(
-                self.binary_extension_sm.clone(),
-                ictx,
-                OPERATION_BUS_ID,
-            )),
+            BinaryTrace::<usize>::AIR_ID => {
+                Box::new(BinaryBasicInstance::new(self.binary_basic_sm.clone(), ictx))
+            }
+            BinaryExtensionTrace::<usize>::AIR_ID => {
+                Box::new(BinaryExtensionInstance::new(self.binary_extension_sm.clone(), ictx))
+            }
             BinaryTableTrace::<usize>::AIR_ID => {
                 table_instance!(BinaryBasicTableInstance, BinaryBasicTableSM, BinaryTableTrace);
+
                 Box::new(BinaryBasicTableInstance::new(
                     self.binary_basic_table_sm.clone(),
                     ictx,
@@ -140,6 +137,7 @@ impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
                     BinaryExtensionTableSM,
                     BinaryExtensionTableTrace
                 );
+
                 Box::new(BinaryExtensionTableInstance::new(
                     self.binary_extension_table_sm.clone(),
                     ictx,
