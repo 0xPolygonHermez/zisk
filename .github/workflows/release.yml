@@ -224,13 +224,24 @@ jobs:
 
           # Intel OpenMP library path
           IOMP5_PATH="/opt/intel/oneapi/compiler/latest/linux/compiler/lib/intel64_lin"
+
+          # Verify libiomp5 presence
+          if [ ! -f "$IOMP5_PATH/libiomp5.so" ]; then
+            echo "libiomp5.so not found in $IOMP5_PATH"
+            exit 1
+          fi
+
+          # Set LD_LIBRARY_PATH for the linker
           export LD_LIBRARY_PATH="$IOMP5_PATH:$LD_LIBRARY_PATH"
+          echo "LD_LIBRARY_PATH set to $LD_LIBRARY_PATH"
 
           # Handle Windows executable suffix
           [[ "$target" == *windows* ]] && exe=".exe"
 
           # Proper RUSTFLAGS with variable expansion
           export RUSTFLAGS="-C target-feature=+crt-static -L${IOMP5_PATH} -liomp5"
+
+          echo "Using RUSTFLAGS: $RUSTFLAGS"
 
           # Build with correct RUSTFLAGS
           cargo build --release -p cargo-zisk -p ziskemu -p riscv -p zisk-core --target "$target" "${flags[@]}"
