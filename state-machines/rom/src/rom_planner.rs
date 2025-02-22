@@ -1,8 +1,7 @@
 //! The `RomPlanner` module defines a planner for organizing execution plans for ROM-related
 //! operations. It aggregates ROM metrics and generates a plan for the execution flow.
 
-use data_bus::ROM_BUS_ID;
-use sm_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Plan, Planner};
+use sm_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan, Planner};
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::RomCounter;
@@ -35,10 +34,10 @@ impl Planner for RomPlanner {
             panic!("RomPlanner::plan() No metrics found");
         }
 
-        let mut total = RomCounter::new(ROM_BUS_ID);
+        let mut total = RomCounter::new();
 
         for (_, metric) in metrics {
-            let metric = metric.as_any().downcast_ref::<RomCounter>().unwrap();
+            let metric = Metrics::as_any(&*metric).downcast_ref::<RomCounter>().unwrap();
             total += metric;
         }
 
@@ -48,7 +47,6 @@ impl Planner for RomPlanner {
             None,
             InstanceType::Instance,
             CheckPoint::None,
-            None,
             Some(Box::new(total)),
         )]
     }

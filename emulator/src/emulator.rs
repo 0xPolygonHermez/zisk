@@ -245,13 +245,12 @@ impl ZiskEmulator {
         min_traces: &[EmuTrace],
         chunk_id: usize,
         data_bus: &mut DataBus<u64, BD>,
-        is_multiple: bool,
     ) {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);
 
         // Run the emulation
-        emu.process_emu_traces(min_traces, chunk_id, data_bus, is_multiple);
+        emu.process_emu_traces(min_traces, chunk_id, data_bus);
     }
 
     /// Finds all files in a directory and returns a vector with their full paths

@@ -4,9 +4,12 @@
 //! This state machine handles operations like shift-left logical (`Sll`), shift-right logical
 //! (`Srl`), arithmetic shifts, and sign extensions.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 
-use p3_field::Field;
+use sm_common::create_atomic_vec;
 use zisk_core::{P2_11, P2_19, P2_8};
 use zisk_pil::BinaryExtensionTableTrace;
 
@@ -30,8 +33,8 @@ pub enum BinaryExtensionTableOp {
 /// This state machine manages multiplicity for table rows and processes operations such as shifts
 /// and sign extensions.
 pub struct BinaryExtensionTableSM {
-    /// The multiplicity table, protected by a mutex for thread-safe access.
-    multiplicity: Mutex<Vec<u64>>,
+    /// The multiplicity table
+    multiplicity: Vec<AtomicU64>,
 }
 
 impl BinaryExtensionTableSM {
@@ -40,9 +43,9 @@ impl BinaryExtensionTableSM {
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryExtensionTableSM` with an initialized multiplicity
     /// table.
-    pub fn new<F: Field>() -> Arc<Self> {
+    pub fn new() -> Arc<Self> {
         let binary_extension_table =
-            Self { multiplicity: Mutex::new(vec![0; BinaryExtensionTableTrace::<F>::NUM_ROWS]) };
+            Self { multiplicity: create_atomic_vec(BinaryExtensionTableTrace::<usize>::NUM_ROWS) };
 
         Arc::new(binary_extension_table)
     }
@@ -51,21 +54,16 @@ impl BinaryExtensionTableSM {
     ///
     /// # Arguments
     /// * `input` - A slice of `u64` values to process.
-    pub fn process_slice(&self, input: &[u64]) {
-        let mut multiplicity = self.multiplicity.lock().unwrap();
-
-        for (i, val) in input.iter().enumerate() {
-            multiplicity[i] += *val;
-        }
+    pub fn update_multiplicity(&self, row: u64, value: u64) {
+        self.multiplicity[row as usize].fetch_add(value, Ordering::Relaxed);
     }
 
     /// Detaches the current multiplicity table, returning its contents and resetting it.
     ///
     /// # Returns
     /// A `Vec<u64>` containing the multiplicity table's current values.
-    pub fn detach_multiplicity(&self) -> Vec<u64> {
-        let mut multiplicity = self.multiplicity.lock().unwrap();
-        std::mem::take(&mut *multiplicity)
+    pub fn detach_multiplicity(&self) -> &[AtomicU64] {
+        &self.multiplicity
     }
 
     /// Calculates the row index in the Binary Extension Table based on the operation and its

@@ -17,6 +17,7 @@ riscv = { path = "../riscv" }
 zisk-pil = { path = "../pil" }
 data-bus = { path = "../data-bus" }
 rayon = { workspace = true }
+sm-mem = { path = "../state-machines/mem" }
 
 p3-field = { workspace=true }
 clap = { version = "4.5.9", features = ["derive", "env"] }
@@ -31,7 +32,7 @@ vergen = { version = "8", default-features = false, features = [
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
-pprof = { version = "0.13.0", features = ["flamegraph", "criterion"] }
+pprof = { version = "0.14.0", features = ["flamegraph", "criterion"] }
 
 [[bench]]
 name = "benchmark"

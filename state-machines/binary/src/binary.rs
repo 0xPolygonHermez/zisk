@@ -17,8 +17,8 @@ use data_bus::OPERATION_BUS_ID;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
 use sm_common::{
-    table_instance, BusDeviceInstance, BusDeviceMetrics, ComponentBuilder, InstanceCtx,
-    InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
+    table_instance, BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, InstanceInfo,
+    Planner, RegularCounters, RegularPlanner, TableInfo,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace};
@@ -49,10 +49,10 @@ impl<F: PrimeField> BinarySM<F> {
     /// # Returns
     /// An `Arc`-wrapped instance of `BinarySM`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let binary_basic_table_sm = BinaryBasicTableSM::new::<F>();
+        let binary_basic_table_sm = BinaryBasicTableSM::new();
         let binary_basic_sm = BinaryBasicSM::new(binary_basic_table_sm.clone());
 
-        let binary_extension_table_sm = BinaryExtensionTableSM::new::<F>();
+        let binary_extension_table_sm = BinaryExtensionTableSM::new();
         let binary_extension_sm = BinaryExtensionSM::new(std, binary_extension_table_sm.clone());
 
         Arc::new(Self {
@@ -107,45 +107,37 @@ impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
         )
     }
 
-    /// Builds an inputs data collector for binary operations.
+    /// Builds an instance for binary operations.
     ///
     /// # Arguments
-    /// * `ictx` - The context of the instance, containing the plan and its associated
-    ///   configurations.
+    /// * `ictx` - The instance context.
     ///
     /// # Returns
-    /// A boxed implementation of `BusDeviceInstance` specific to the requested `air_id` instance.
-    ///
-    /// # Panics
-    /// Panics if the provided `air_id` is not supported.
-    fn build_inputs_collector(&self, ictx: InstanceCtx) -> Box<dyn BusDeviceInstance<F>> {
+    /// A boxed implementation of `Instance` for binary operations.
+    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            id if id == BinaryTrace::<usize>::AIR_ID => Box::new(BinaryBasicInstance::new(
-                self.binary_basic_sm.clone(),
-                ictx,
-                OPERATION_BUS_ID,
-            )),
-            id if id == BinaryExtensionTrace::<usize>::AIR_ID => {
-                Box::new(BinaryExtensionInstance::new(
-                    self.binary_extension_sm.clone(),
-                    ictx,
-                    OPERATION_BUS_ID,
-                ))
+            BinaryTrace::<usize>::AIR_ID => {
+                Box::new(BinaryBasicInstance::new(self.binary_basic_sm.clone(), ictx))
             }
-            id if id == BinaryTableTrace::<usize>::AIR_ID => {
+            BinaryExtensionTrace::<usize>::AIR_ID => {
+                Box::new(BinaryExtensionInstance::new(self.binary_extension_sm.clone(), ictx))
+            }
+            BinaryTableTrace::<usize>::AIR_ID => {
                 table_instance!(BinaryBasicTableInstance, BinaryBasicTableSM, BinaryTableTrace);
+
                 Box::new(BinaryBasicTableInstance::new(
                     self.binary_basic_table_sm.clone(),
                     ictx,
                     OPERATION_BUS_ID,
                 ))
             }
-            id if id == BinaryExtensionTableTrace::<usize>::AIR_ID => {
+            BinaryExtensionTableTrace::<usize>::AIR_ID => {
                 table_instance!(
                     BinaryExtensionTableInstance,
                     BinaryExtensionTableSM,
                     BinaryExtensionTableTrace
                 );
+
                 Box::new(BinaryExtensionTableInstance::new(
                     self.binary_extension_table_sm.clone(),
                     ictx,

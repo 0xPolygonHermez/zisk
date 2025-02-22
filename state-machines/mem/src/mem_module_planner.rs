@@ -1,6 +1,7 @@
+use rayon::{prelude::*, ThreadPoolBuilder};
 use std::sync::Arc;
 
-use crate::{MemCounters, MemHelpers, MemPlanCalculator, UsesCounter, MEMORY_MAX_DIFF};
+use crate::{MemCounters, MemPlanCalculator, UsesCounter, STEP_MEMORY_MAX_DIFF};
 use sm_common::{CheckPoint, ChunkId, InstanceType, Plan};
 
 const REGISTERS_COUNT: usize = 32;
@@ -22,13 +23,16 @@ pub struct MemModulePlanner<'a> {
     last_step: u64,
     last_addr: u32,  // addr of last addr uses
     last_value: u64, // value of last addr uses
-    cursors: Vec<(usize, usize)>,
+
     segments: Vec<MemModuleSegment>,
     current_chunk_id: Option<ChunkId>,
     counters: Arc<Vec<(ChunkId, &'a MemCounters)>>,
     consume_addr: u32,
     consume_from_step: u64,
     consume_to_step: u64,
+    cursor_index: usize,
+    cursor_count: usize,
+    sorted_boxes: Vec<SortedBox>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -42,14 +46,20 @@ pub struct MemModuleSegmentCheckPoint {
     pub last_step: u64,
     pub prev_value: u64,
 }
+
+#[derive(Debug, Default, Clone)]
+pub struct SortedBox {
+    pub addr: u64,
+    pub i_counter: u32,
+    pub i_addr: u32,
+}
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MemModulePlannerConfig {
     pub airgroup_id: usize,
     pub air_id: usize,
+    pub addr_index: usize,
     pub from_addr: u32,
-    pub to_addr: u32,
     pub rows: u32,
-    pub map_registers: bool,
     pub consecutive_addr: bool,
     pub intermediate_step_reads: bool,
 }
@@ -58,19 +68,22 @@ impl<'a> MemModulePlanner<'a> {
         config: MemModulePlannerConfig,
         counters: Arc<Vec<(ChunkId, &'a MemCounters)>>,
     ) -> Self {
+        let counters_count = counters.len();
         Self {
             config,
             last_addr: config.from_addr,
             last_step: 0,
             last_value: 0,
             rows_available: config.rows,
-            cursors: Vec::new(),
             segments: Vec::new(),
             counters,
             current_chunk_id: None,
             consume_addr: 0,
             consume_from_step: 0,
             consume_to_step: 0,
+            cursor_index: 0,
+            cursor_count: counters_count * REGISTERS_COUNT,
+            sorted_boxes: Vec::new(),
         }
     }
     pub fn module_plan(&mut self) {
@@ -79,132 +92,116 @@ impl<'a> MemModulePlanner<'a> {
         }
         self.open_initial_segment();
         // create a list of cursors, this list has the non-empty indexs of metric (couters) and his
-        // cursor init to first position
-        self.init_cursors();
-        while !self.cursors.is_empty() {
-            // searches for the first smallest element in the vector and returns its index.
-            let (cursor_index, cursor_pos) = self.get_next_cursor_index_and_pos();
-
-            let chunk_id = self.get_cursor_chunk_id(cursor_index);
-            let (addr, addr_uses) = self.get_cursor_data(cursor_index, cursor_pos);
+        self.init_cursor();
+        while !self.cursors_end() {
+            // searches for the first smallest element in the vector
+            let (chunk_id, addr, addr_uses) = self.get_next_cursor();
+            // println!("chunk_id:{:?} addr:{:#010X} addr_uses:{:?}", chunk_id, addr * 8,
+            // addr_uses);
             self.add_to_current_instance(chunk_id, addr, &addr_uses);
         }
     }
-    fn get_cursor_chunk_id(&self, cursor_index: usize) -> ChunkId {
-        self.counters[cursor_index].0
+    fn init_cursor(&mut self) {
+        // check if any register has data
+        let initial_sorted_boxes = self.prepare_sorted_boxes();
+        self.sorted_boxes = self.merge_sorted_boxes(&initial_sorted_boxes, 4);
+        self.init_sorted_boxes_cursor();
     }
-    fn get_cursor_data(&self, cursor_index: usize, cursor_pos: usize) -> (u32, UsesCounter) {
-        let result = if cursor_pos < REGISTERS_COUNT {
-            (
-                MemHelpers::register_to_addr_w(cursor_pos as u8),
-                self.counters[cursor_index].1.registers[cursor_pos],
-            )
-        } else {
-            let addr = self.counters[cursor_index].1.addr_sorted[cursor_pos - REGISTERS_COUNT].0;
-            let addr_uses =
-                self.counters[cursor_index].1.addr_sorted[cursor_pos - REGISTERS_COUNT].1;
-            (addr, addr_uses)
-        };
-        debug_assert!(
-            result.0 >= self.config.from_addr && result.0 <= self.config.to_addr,
-            "INVALID_CURSOR addr:{:#010X} from_addr:{:#010X} to_addr:{:#010X} cursor:[{},{}]",
-            result.0 * 8,
-            self.config.from_addr * 8,
-            self.config.to_addr * 8,
-            cursor_index,
-            cursor_pos,
-        );
-        result
+    fn cursors_end(&self) -> bool {
+        self.cursor_index >= self.cursor_count
     }
-    fn init_cursors(&mut self) {
-        // for each chunk-counter that has addr_sorted element add a cursor to the first element
-        self.cursors = Vec::new();
-        for (index, counter) in self.counters.iter().enumerate() {
-            let mut jmp_to_next = false;
-            // first take registers if them are mapped on top of the current memory area
-            if self.config.map_registers {
-                for ireg in 0..counter.1.registers.len() {
-                    if counter.1.registers[ireg].count > 0 {
-                        self.cursors.push((index, ireg));
-                        jmp_to_next = true;
-                        break;
+    fn get_next_cursor(&mut self) -> (ChunkId, u32, UsesCounter) {
+        let aid = self.config.addr_index;
+        let counter_index = self.sorted_boxes[self.cursor_index].i_counter as usize;
+        let addr_index = self.sorted_boxes[self.cursor_index].i_addr as usize;
+        self.cursor_index += 1;
+        (
+            self.counters[counter_index].0,
+            self.counters[counter_index].1.addr_sorted[aid][addr_index].0,
+            self.counters[counter_index].1.addr_sorted[aid][addr_index].1,
+        )
+    }
+
+    fn init_sorted_boxes_cursor(&mut self) {
+        self.cursor_index = 0;
+        self.cursor_count = self.sorted_boxes.len();
+        // println!("INIT SORTED BOXES CURSOR {}/{}", self.cursor_index, self.cursor_count);
+    }
+
+    fn prepare_sorted_boxes(&self) -> Vec<Vec<SortedBox>> {
+        let pool = ThreadPoolBuilder::new().num_threads(4).build().unwrap();
+        pool.install(|| {
+            self.counters
+                .par_iter()
+                .enumerate()
+                .map(|(i, counter)| {
+                    let addr_count = counter.1.addr_sorted[self.config.addr_index].len();
+                    let mut counter_boxes: Vec<SortedBox> = Vec::with_capacity(addr_count);
+                    for i_addr in 0..addr_count {
+                        let addr = counter.1.addr_sorted[self.config.addr_index][i_addr].0 as u64;
+                        counter_boxes.push(SortedBox {
+                            addr,
+                            i_counter: i as u32,
+                            i_addr: i_addr as u32,
+                        });
                     }
-                }
-            }
-            if jmp_to_next || counter.1.addr_sorted.is_empty() {
-                continue;
-            }
-            match counter.1.addr_sorted.binary_search_by(|(key, _)| key.cmp(&self.config.from_addr))
-            {
-                Ok(pos) => self.cursors.push((index, pos + REGISTERS_COUNT)),
-                Err(pos) => {
-                    if pos < counter.1.addr_sorted.len()
-                        && counter.1.addr_sorted[pos].0 <= self.config.to_addr
-                    {
-                        self.cursors.push((index, pos + REGISTERS_COUNT));
-                    }
-                }
-            }
-        }
-
-        #[cfg(debug_assertions)]
-        for (cursor_index, cursor_pos) in self.cursors.iter() {
-            let (_, _) = self.get_cursor_data(*cursor_index, *cursor_pos);
-        }
+                    counter_boxes
+                })
+                .collect()
+        })
     }
-    fn get_next_cursor_index_and_pos(&mut self) -> (usize, usize) {
-        let (min_index, _) = self
-            .cursors
-            .iter()
-            .enumerate()
-            .min_by_key(|&(_, &(index, cursor))| {
-                if cursor < REGISTERS_COUNT {
-                    MemHelpers::register_to_addr_w(cursor as u8)
-                } else {
-                    self.counters[index].1.addr_sorted[cursor - REGISTERS_COUNT].0
-                }
-            })
-            .unwrap();
-        let cursor_index = self.cursors[min_index].0;
-        let cursor_pos = self.cursors[min_index].1;
+    fn merge_sorted_boxes(&self, sorted_boxes: &[Vec<SortedBox>], arity: usize) -> Vec<SortedBox> {
+        if sorted_boxes.len() <= 1 {
+            return sorted_boxes.first().cloned().unwrap_or_default();
+        }
+        let total_size: usize = sorted_boxes.iter().map(|b| b.len()).sum();
+        let target_size: usize = arity * (total_size / sorted_boxes.len());
 
-        let cursor_on_registers = cursor_pos < REGISTERS_COUNT;
-        let mut cursor_next_pos = if cursor_on_registers {
-            for ireg in cursor_pos + 1..REGISTERS_COUNT {
-                if self.counters[cursor_index].1.registers[ireg].count > 0 {
-                    self.cursors[min_index].1 = ireg;
-                    return (cursor_index, cursor_pos);
-                }
-            }
-            REGISTERS_COUNT
-        } else {
-            cursor_pos + 1
-        };
-
-        let mut cursor_next_addr_pos = cursor_next_pos - REGISTERS_COUNT;
-        if cursor_on_registers
-            && cursor_next_addr_pos < self.counters[cursor_index].1.addr_sorted.len()
-        {
-            // filter addr out of [from_addr, to_addr]
-            while cursor_next_addr_pos < self.counters[cursor_index].1.addr_sorted.len()
-                && self.counters[cursor_index].1.addr_sorted[cursor_next_addr_pos].0
-                    < self.config.from_addr
-            {
-                cursor_next_addr_pos += 1;
-                cursor_next_pos += 1;
+        let mut groups: Vec<&[Vec<SortedBox>]> = Vec::new();
+        let mut group_weight = 0;
+        let mut start_index = 0;
+        let mut end_index = 1;
+        for sorted_box in sorted_boxes.iter() {
+            let box_weight = sorted_box.len();
+            if group_weight + box_weight <= target_size {
+                end_index += 1;
+                group_weight += box_weight;
+            } else {
+                groups.push(&sorted_boxes[start_index..end_index]);
+                group_weight = 0;
+                start_index = end_index;
+                end_index += 1;
             }
         }
-
-        // if it's last position, we must remove for list of open_cursors, if not we increment
-        if cursor_next_addr_pos >= self.counters[cursor_index].1.addr_sorted.len()
-            || self.counters[cursor_index].1.addr_sorted[cursor_next_addr_pos].0
-                > self.config.to_addr
-        {
-            self.cursors.remove(min_index);
-        } else {
-            self.cursors[min_index].1 = cursor_next_pos;
+        if start_index < sorted_boxes.len() {
+            groups.push(&sorted_boxes[start_index..sorted_boxes.len()]);
         }
-        (cursor_index, cursor_pos)
+        let next_boxes: Vec<Vec<SortedBox>> =
+            groups.into_par_iter().map(|group| self.merge_k_sorted_boxes(group)).collect();
+        self.merge_sorted_boxes(&next_boxes, arity)
+    }
+    fn merge_k_sorted_boxes(&self, boxes: &[Vec<SortedBox>]) -> Vec<SortedBox> {
+        if boxes.len() == 1 {
+            return boxes[0].clone();
+        }
+        let total_len: usize = boxes.iter().map(|b| b.len()).sum();
+        let mut merged: Vec<SortedBox> = Vec::with_capacity(total_len);
+        let mut cursors = vec![0; boxes.len()];
+        for _ in 0..total_len {
+            let mut min_addr = u64::MAX;
+            let mut min_index = 0;
+            for (i, box_ref) in boxes.iter().enumerate() {
+                // we take the new min_index only if addr is less than min_addr, because the
+                // boxes are sorted by step (time)
+                if cursors[i] < box_ref.len() && box_ref[cursors[i]].addr < min_addr {
+                    min_addr = box_ref[cursors[i]].addr;
+                    min_index = i;
+                }
+            }
+            merged.push(boxes[min_index][cursors[min_index]].clone());
+            cursors[min_index] += 1;
+        }
+        merged
     }
     /// Add "counter-address" to the current instance
     /// If the chunk_id is not in the list, it will be added. This method need to verify the
@@ -229,11 +226,10 @@ impl<'a> MemModulePlanner<'a> {
                     self.consume_rows(pending_rows as u32, 2);
                     self.close_and_open_segment(
                         addr,
-                        addr_uses.first_step,
-                        addr,
+                        // if the block fit inside current segment, the last step is last_step,
+                        // means the previous step of last segment was last_step
                         addr_uses.last_step,
                         addr_uses.last_value,
-                        0,
                     );
                     break;
                 }
@@ -242,13 +238,18 @@ impl<'a> MemModulePlanner<'a> {
                     self.consume_rows(rows_applied, 3);
                     pending_rows -= rows_applied as u64;
                     skip_rows += rows_applied;
-                    self.close_and_open_segment(
+                    self.close_and_open_segment_with_skip(
                         addr,
                         addr_uses.first_step,
                         addr,
                         addr_uses.last_step,
                         0,
-                        skip_rows - 1,
+                        // when we skipping inputs, the previous addr/step is naturally discarted
+                        // because it belongs to the previous segment, for this reason we skip 1
+                        // row
+                        // rows_applied = 0 => never, because means no more space in current
+                        // segment but always open a new segment after close a segment.
+                        skip_rows,
                     );
                 }
             }
@@ -310,23 +311,18 @@ impl<'a> MemModulePlanner<'a> {
                 let rows_applied = self.rows_available;
                 self.consume_rows(rows_applied, 5);
                 pending -= rows_applied;
-                self.close_and_open_segment(
-                    addr + (count - pending - 1) * addr_inc,
-                    self.last_step + step_inc as u64 * (count - pending - 1) as u64,
-                    addr + (count - pending) * addr_inc,
-                    self.last_step + step_inc as u64 * (count - pending) as u64,
-                    self.last_value,
-                    // with informatio we don't need to skip anything, we skip only when we don't
-                    // have information (addr, step) of previous instance
-                    0,
-                );
+                let segment_last_addr = addr + (count - pending) * addr_inc;
+                let segment_last_step = self.last_step + step_inc as u64 * (count - pending) as u64;
+                // with informatio we don't need to skip anything, we skip only when we don't
+                // have information (addr, step) of previous instance
+                self.close_and_open_segment(segment_last_addr, segment_last_step, self.last_value);
             }
             if pending == 0 {
                 break;
             }
         }
-        self.last_addr = addr + (count - pending) * addr_inc;
-        self.last_step += step_inc as u64 * (count - pending) as u64;
+        self.last_addr = addr + count * addr_inc;
+        self.last_step += step_inc as u64 * count as u64;
         self.update_segment();
     }
     fn add_internal_reads_to_current_instance(&mut self, addr: u32, addr_uses: &UsesCounter) {
@@ -343,14 +339,22 @@ impl<'a> MemModulePlanner<'a> {
         }
 
         let step_diff = addr_uses.first_step - self.last_step;
-        if step_diff <= MEMORY_MAX_DIFF {
+        if step_diff <= STEP_MEMORY_MAX_DIFF {
             return;
         }
 
         // at this point we need to add internal reads, we calculate how many internal reads we need
-        let internal_rows = (step_diff - 1) / MEMORY_MAX_DIFF;
-        assert!(internal_rows < self.config.rows as u64);
-        self.add_internal_rows(addr, internal_rows as u32, 0, MEMORY_MAX_DIFF as u32);
+        let internal_rows = (step_diff - 1) / STEP_MEMORY_MAX_DIFF;
+        assert!(
+            internal_rows < self.config.rows as u64,
+            "internal_rows:{} < config.rows:{} ===> addr: {:#010X} addr_uses.first_step:{} last_step:{}",
+            internal_rows,
+            self.config.rows,
+            addr * 8,
+            addr_uses.first_step,
+            self.last_step
+        );
+        self.add_internal_rows(addr, internal_rows as u32, 0, STEP_MEMORY_MAX_DIFF as u32);
     }
     fn open_initial_segment(&mut self) {
         self.segments.push({
@@ -377,7 +381,23 @@ impl<'a> MemModulePlanner<'a> {
         self.segments[lindex].last_step = last_step;
         self.rows_available = self.config.rows;
     }
-    fn close_and_open_segment(
+    fn close_and_open_segment(&mut self, last_addr: u32, last_step: u64, last_value: u64) {
+        self.close_segment(last_addr, last_step);
+
+        self.segments.push({
+            MemModuleSegment {
+                prev_addr: last_addr,
+                prev_step: last_step,
+                prev_value: last_value,
+                last_addr,
+                last_step,
+                skip_rows: 0,
+                rows: 0,
+                chunks: Vec::new(),
+            }
+        });
+    }
+    fn close_and_open_segment_with_skip(
         &mut self,
         prev_addr: u32,
         prev_step: u64,
@@ -437,7 +457,6 @@ impl MemPlanCalculator for MemModulePlanner<'_> {
                 Some(segment_id),
                 InstanceType::Instance,
                 CheckPoint::Multiple(segment.chunks.clone()),
-                None,
                 Some(Box::new(check_point)),
             ));
 

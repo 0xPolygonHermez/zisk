@@ -7,3 +7,4 @@
 /tmp
 *.log
 /emulator-asm/build*
+/cache

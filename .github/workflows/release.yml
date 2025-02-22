@@ -116,16 +116,16 @@ jobs:
          #   svm_target_platform: linux-aarch64
          #   platform: linux
          #   arch: arm64
-          - runner: macos-13
-            target: x86_64-apple-darwin
-            svm_target_platform: macosx-amd64
-            platform: darwin
-            arch: amd64
-          - runner: macos-14
-            target: aarch64-apple-darwin
-            svm_target_platform: macosx-aarch64
-            platform: darwin
-            arch: arm64
+          # - runner: macos-13
+          #   target: x86_64-apple-darwin
+          #   svm_target_platform: macosx-amd64
+          #   platform: darwin
+          #   arch: amd64
+          # - runner: macos-14
+          #   target: aarch64-apple-darwin
+          #   svm_target_platform: macosx-aarch64
+          #   platform: darwin
+          #   arch: arm64
           # - runner: windows-latest
           #   target: x86_64-pc-windows-msvc
           #   svm_target_platform: windows-amd64
@@ -138,7 +138,23 @@ jobs:
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-          
+
+      - name: Install libraries
+        shell: bash
+        run: sudo apt-get install -y clang nlohmann-json3-dev build-essential libbenchmark-dev libomp-dev libgmp-dev  nasm libsodium-dev cmake openmpi-bin openmpi-common libopenmpi-dev
+
+      # - name: Verify libiomp5 installation
+      #   run: |
+      #     find /usr -name "libiomp5*"
+      #     ls -l /usr/lib/x86_64-linux-gnu/libiomp5.*
+      #     echo $LD_LIBRARY_PATH
+
+      # - name: Set LD_LIBRARY_PATH
+      #   run: echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
+      - name: Set LD_LIBRARY_PATH for OpenMP
+        run: echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
       - name: Install rust toolchain
         id: rustc-toolchain
         uses: actions-rs/toolchain@v1
@@ -152,7 +168,7 @@ jobs:
         with:
           key: ${{ matrix.target }}
           cache-on-failure: true
-      
+
       - name: Install go
         uses: actions/setup-go@v5
         with:
@@ -191,7 +207,7 @@ jobs:
 
           [[ "$target" == *windows* ]] && exe=".exe"
 
-          RUSTFLAGS='-C target-feature=+crt-static' cargo build --release --all-features -p cargo-zisk -p ziskemu -p riscv -p zisk-core --target "$target" "${flags[@]}"
+          RUSTFLAGS='-C target-feature=+crt-static' cargo build --release -p cargo-zisk -p ziskemu -p riscv -p zisk-core --target "$target" "${flags[@]}"
 
           bins=(cargo-zisk ziskemu)
           for name in "${bins[@]}"; do
