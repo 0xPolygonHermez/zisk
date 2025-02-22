@@ -229,9 +229,11 @@ jobs:
           # Handle Windows executable suffix
           [[ "$target" == *windows* ]] && exe=".exe"
 
-          # RUSTFLAGS including Intel OpenMP library path and linking
-          RUSTFLAGS="-C target-feature=+crt-static -L$${IOMP5_PATH} -liomp5" cargo build --release \
-            -p cargo-zisk -p ziskemu -p riscv -p zisk-core --target "$target" "${flags[@]}"
+          # Proper RUSTFLAGS with variable expansion
+          export RUSTFLAGS="-C target-feature=+crt-static -L${IOMP5_PATH} -liomp5"
+
+          # Build with correct RUSTFLAGS
+          cargo build --release -p cargo-zisk -p ziskemu -p riscv -p zisk-core --target "$target" "${flags[@]}"
 
           # Verify built binaries
           bins=(cargo-zisk ziskemu)
