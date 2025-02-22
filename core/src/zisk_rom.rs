@@ -794,18 +794,15 @@ impl ZiskRom {
             ctx.b.is_constant = false;
             ctx.b.is_saved = false;
             ctx.b.string_value = REG_B.to_string();
-            match instruction.b_src {
-                SRC_C => {
-                    *s += "\t/* b=SRC_C */\n";
-                    if ctx.store_b_in_c {
-                        // No need to copy c to b, since we need b to be stored in c
-                        ctx.b.is_saved = false;
-                    } else {
-                        *s += &format!("\tmov {}, {} /* b = c */\n", REG_B, REG_C);
-                        ctx.b.is_saved = true;
-                    }
+            if instruction.b_src == SRC_C {
+                *s += "\t/* b=SRC_C */\n";
+                if ctx.store_b_in_c {
+                    // No need to copy c to b, since we need b to be stored in c
+                    ctx.b.is_saved = false;
+                } else {
+                    *s += &format!("\tmov {}, {} /* b = c */\n", REG_B, REG_C);
+                    ctx.b.is_saved = true;
                 }
-                _ => {}
             }
 
             // Set register a content based on instruction a_src
@@ -832,7 +829,7 @@ impl ZiskRom {
                     *s += &format!(
                         "\tmov {}, 0x{:x} /* address = i.a_offset_imm0 */\n",
                         REG_ADDRESS,
-                        RAM_ADDR + (instruction.a_offset_imm0 as u64 * 8)
+                        RAM_ADDR + (instruction.a_offset_imm0 * 8)
                     );
 
                     // Read from memory and store in the proper register: a or c
@@ -1012,7 +1009,7 @@ impl ZiskRom {
                     *s += &format!(
                         "\tmov {}, 0x{:x} /* address = i.b_offset_imm0 */\n",
                         REG_ADDRESS,
-                        RAM_ADDR + (instruction.b_offset_imm0 as u64 * 8)
+                        RAM_ADDR + (instruction.b_offset_imm0 * 8)
                     );
 
                     // Read from memory and store in the proper register: b or c
@@ -1461,7 +1458,7 @@ impl ZiskRom {
             // Store register c
             match instruction.store {
                 STORE_NONE => {
-                    *s += &format!("\t/* STORE_NONE */\n");
+                    *s += "\t/* STORE_NONE */\n";
                 }
                 STORE_REG => {
                     *s += &format!("\t/* STORE_REG reg={} */\n", instruction.store_offset);
@@ -1493,7 +1490,7 @@ impl ZiskRom {
                     }
                 }
                 STORE_MEM => {
-                    *s += &format!("\t/* STORE_MEM */\n");
+                    *s += "\t/* STORE_MEM */\n";
 
                     // Calculate memory address and store it in REG_ADDRESS
                     *s += &format!(
@@ -1578,7 +1575,7 @@ impl ZiskRom {
                     *s += &format!("pc_{:x}_c_address_aligned:\n", ctx.pc);
                 }
                 STORE_IND => {
-                    *s += &format!("\t/* STORE_IND */\n");
+                    *s += "\t/* STORE_IND */\n";
 
                     // Calculate memory address and store it in REG_ADDRESS
                     *s += &format!(
@@ -1673,7 +1670,7 @@ impl ZiskRom {
                                 *s += &format!("\tmov dil, {} /* width=1: rdi = c */\n", REG_C_B);
                             }
                             *s += &format!("\tpush {}\n", REG_VALUE);
-                            *s += &format!("\tcall _print_char /* width=1: call print_char() */\n");
+                            *s += "\tcall _print_char /* width=1: call print_char() */\n";
                             *s += &format!("\tpop {}\n", REG_VALUE);
                             *s += &format!("pc_{:x}_store_c_not_uart:\n", ctx.pc);
                         }
@@ -1913,17 +1910,17 @@ impl ZiskRom {
             // *s += &format!("\tpop {}\n", REG_FLAG);
 
             // Decrement step counter
-            *s += &format!("\t/* STEP */\n");
+            *s += "\t/* STEP */\n";
             *s += &format!("\tdec {} /* decrement step_down */\n", MEM_STEP_DOWN);
             if instruction.end {
                 *s += &format!("\tmov {}, 1 /* end = 1 */\n", MEM_END);
                 *s += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
-                *s += &format!("\tcall chunk_end\n");
+                *s += "\tcall chunk_end\n";
             } else {
                 *s += &format!("\tjnz pc_{:x}_check_step_done\n", ctx.pc);
                 *s += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
-                *s += &format!("\tcall chunk_end\n");
-                *s += &format!("\tcall chunk_start\n");
+                *s += "\tcall chunk_end\n";
+                *s += "\tcall chunk_start\n";
                 *s += &format!("pc_{:x}_check_step_done:\n", ctx.pc);
             }
 
@@ -1931,7 +1928,7 @@ impl ZiskRom {
             ctx.jump_to_dynamic_pc = false;
             ctx.jump_to_static_pc = String::new();
             if instruction.set_pc {
-                *s += &format!("\t/* set pc */\n");
+                *s += "\t/* set pc */\n";
                 if ctx.c.is_constant {
                     let new_pc = (ctx.c.constant_value as i64 + instruction.jmp_offset1) as u64;
                     *s += &format!(
@@ -1948,57 +1945,55 @@ impl ZiskRom {
                     );
                     ctx.jump_to_dynamic_pc = true;
                 }
-            } else {
-                if ctx.flag_is_always_zero {
-                    if ctx.pc as i64 + instruction.jmp_offset2 != ctx.next_pc as i64 {
-                        *s += &format!(
-                            "\tmov {}, 0x{:x} /* flag=0: pc += i.jmp_offset2 */\n",
-                            REG_PC,
-                            (ctx.pc as i64 + instruction.jmp_offset2) as u64
-                        );
-                        // *s += &format!(
-                        //     "\tadd {}, 0x{:x} /* set_pc 3: pc += i.jmp_offset2 */\n",
-                        //     REG_PC, instruction.jmp_offset2
-                        // );
-                        ctx.jump_to_dynamic_pc = true;
-                    }
-                } else if ctx.flag_is_always_one {
-                    if ctx.pc as i64 + instruction.jmp_offset1 != ctx.next_pc as i64 {
-                        *s += &format!(
-                            "\tmov {}, 0x{:x} /* flag=1: pc += i.jmp_offset1 */\n",
-                            REG_PC,
-                            (ctx.pc as i64 + instruction.jmp_offset1) as u64
-                        );
-                        // *s += &format!(
-                        //     "\tadd {}, 0x{:x} /* set_pc 4: pc += i.jmp_offset1 */\n",
-                        //     REG_PC, instruction.jmp_offset1
-                        // );
-                        ctx.jump_to_dynamic_pc = true;
-                    }
-                } else {
-                    *s += &format!("\t/* pc = f(flag) */\n");
-                    // Calculate the new pc
-                    *s += &format!("\tcmp {}, 1 /* flag == 1 ? */\n", REG_FLAG);
-                    *s += &format!("\tjne pc_{:x}_flag_false\n", ctx.pc);
+            } else if ctx.flag_is_always_zero {
+                if ctx.pc as i64 + instruction.jmp_offset2 != ctx.next_pc as i64 {
                     *s += &format!(
-                        "\tmov {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
-                        REG_PC,
-                        (ctx.pc as i64 + instruction.jmp_offset1) as u64
-                    );
-                    *s += &format!("\tjmp pc_{:x}_flag_done\n", ctx.pc);
-                    *s += &format!("pc_{:x}_flag_false:\n", ctx.pc);
-                    *s += &format!(
-                        "\tmov {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
+                        "\tmov {}, 0x{:x} /* flag=0: pc += i.jmp_offset2 */\n",
                         REG_PC,
                         (ctx.pc as i64 + instruction.jmp_offset2) as u64
                     );
-                    *s += &format!("pc_{:x}_flag_done:\n", ctx.pc);
                     // *s += &format!(
-                    //     "\tadd {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
+                    //     "\tadd {}, 0x{:x} /* set_pc 3: pc += i.jmp_offset2 */\n",
                     //     REG_PC, instruction.jmp_offset2
                     // );
                     ctx.jump_to_dynamic_pc = true;
                 }
+            } else if ctx.flag_is_always_one {
+                if ctx.pc as i64 + instruction.jmp_offset1 != ctx.next_pc as i64 {
+                    *s += &format!(
+                        "\tmov {}, 0x{:x} /* flag=1: pc += i.jmp_offset1 */\n",
+                        REG_PC,
+                        (ctx.pc as i64 + instruction.jmp_offset1) as u64
+                    );
+                    // *s += &format!(
+                    //     "\tadd {}, 0x{:x} /* set_pc 4: pc += i.jmp_offset1 */\n",
+                    //     REG_PC, instruction.jmp_offset1
+                    // );
+                    ctx.jump_to_dynamic_pc = true;
+                }
+            } else {
+                *s += "\t/* pc = f(flag) */\n";
+                // Calculate the new pc
+                *s += &format!("\tcmp {}, 1 /* flag == 1 ? */\n", REG_FLAG);
+                *s += &format!("\tjne pc_{:x}_flag_false\n", ctx.pc);
+                *s += &format!(
+                    "\tmov {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
+                    REG_PC,
+                    (ctx.pc as i64 + instruction.jmp_offset1) as u64
+                );
+                *s += &format!("\tjmp pc_{:x}_flag_done\n", ctx.pc);
+                *s += &format!("pc_{:x}_flag_false:\n", ctx.pc);
+                *s += &format!(
+                    "\tmov {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
+                    REG_PC,
+                    (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                );
+                *s += &format!("pc_{:x}_flag_done:\n", ctx.pc);
+                // *s += &format!(
+                //     "\tadd {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
+                //     REG_PC, instruction.jmp_offset2
+                // );
+                ctx.jump_to_dynamic_pc = true;
             }
 
             // Used only to get logs of step
@@ -2034,16 +2029,15 @@ impl ZiskRom {
                 *s += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
                 *s += &format!("\tsub {}, {} /* pc -= 0x80000000 */\n", REG_PC, REG_ADDRESS);
                 *s += &format!("\tmov rax, {} /* rax = pc */\n", REG_PC);
-                *s +=
-                    &format!("\tlea rbx, [map_pc_80000000] /* rbx = index table base address */\n");
-                *s += &format!("\tmov rax, [rbx + rax*2] /* rax = table entry address */\n");
-                *s += &format!("\tjmp rax /* jump to table entry address */\n");
+                *s += "\tlea rbx, [map_pc_80000000] /* rbx = index table base address */\n";
+                *s += "\tmov rax, [rbx + rax*2] /* rax = table entry address */\n";
+                *s += "\tjmp rax /* jump to table entry address */\n";
                 *s += &format!("pc_{:x}_jump_to_low_address:\n", ctx.pc);
                 *s += &format!("\tsub {}, 0x1000 /* pc -= 0x1000 */\n", REG_PC);
                 *s += &format!("\tmov rax, {} /* rax = pc */\n", REG_PC);
-                *s += &format!("\tlea rbx, [map_pc_1000] /* rbx = index table base address */\n");
-                *s += &format!("\tmov rax, [rbx + rax*2] /* rax = table entry address */\n");
-                *s += &format!("\tjmp rax /* jump to table entry address */\n");
+                *s += "\tlea rbx, [map_pc_1000] /* rbx = index table base address */\n";
+                *s += "\tmov rax, [rbx + rax*2] /* rax = table entry address */\n";
+                *s += "\tjmp rax /* jump to table entry address */\n";
             }
         }
 
@@ -2053,7 +2047,7 @@ impl ZiskRom {
         // Used only to get the last log of step
         *s += &format!("\tpush {}\n", REG_VALUE);
         *s += &format!("\tmov rdi, {}\n", MEM_STEP);
-        *s += &format!("\tcall _print_step\n");
+        *s += "\tcall _print_step\n";
         *s += &format!("\tpop {}\n", REG_VALUE);
 
         // *s += "\tmov rax, 60\n";
@@ -2221,7 +2215,7 @@ impl ZiskRom {
                 // s +=
                 //     &format!("\tmov {}, {} /* AddW: value = b */\n", REG_VALUE, ctx.b.string_value);
                 s += &format!("\tadd {}, {} /* AddW: b += a */\n", REG_B, ctx.a.string_value);
-                s += &format!("\tcdqe /* AddW: trunk b */\n");
+                s += "\tcdqe /* AddW: trunk b */\n";
                 s += &format!("\tmov {}, {} /* AddW: c = b */\n", REG_C, REG_B);
                 ctx.c.is_saved = true;
                 // DEBUG: Used only to preserve b value
@@ -2248,7 +2242,7 @@ impl ZiskRom {
                 //     &format!("\tmov {}, {} /* SubW: value = b */\n", REG_VALUE, ctx.b.string_value);
                 s += &format!("\tsub {}, {} /* SubW: a -= b */\n", REG_A, ctx.b.string_value);
                 s += &format!("\tmov {}, {} /* SubW: b = a = a - b*/\n", REG_B, REG_A);
-                s += &format!("\tcdqe /* SubW: trunk b */\n");
+                s += "\tcdqe /* SubW: trunk b */\n";
                 s += &format!("\tmov {}, {} /* SubW: c = b */\n", REG_C, REG_B);
                 ctx.c.is_saved = true;
                 // DEBUG: Used only to preserver a,b values
@@ -2622,12 +2616,12 @@ impl ZiskRom {
                 s += &format!("\tmov rax, {} /* Mulsuh: rax=a */\n", REG_A);
                 s += &format!("\tmov {}, rax /* Mulsuh: value=a */\n", REG_VALUE);
                 s += &format!("\tsar {}, 63 /* Mulsuh: value=a>>63=a_bit_63 */\n", REG_VALUE);
-                s += &format!("\tmov rdx, 0 /* Mulsuh: rdx=0, rdx:rax=a */\n");
-                s += &format!("\tmul rsi /* Mulsuh: rdx:rax=a*b (unsigned) */\n");
-                s += &format!("\tmov rcx, rax /* Mulsuh: rax=a */\n");
+                s += "\tmov rdx, 0 /* Mulsuh: rdx=0, rdx:rax=a */\n";
+                s += "\tmul rsi /* Mulsuh: rdx:rax=a*b (unsigned) */\n";
+                s += "\tmov rcx, rax /* Mulsuh: rax=a */\n";
                 s += &format!("\tmov rax, {} /* Mulsuh: rax=a_bit_63 */\n", REG_VALUE);
-                s += &format!("\timul rax, rsi /* Mulsuh: rax=rax*b=a_bit_63*b */\n");
-                s += &format!("\tadd rdx, rax /* Mulsuh: rdx=rdx+a_bit_63*b */\n");
+                s += "\timul rax, rsi /* Mulsuh: rax=rax*b=a_bit_63*b */\n";
+                s += "\tadd rdx, rax /* Mulsuh: rdx=rdx+a_bit_63*b */\n";
                 s += &format!("\tmov {}, rdx /* Mulsuh: c=high result(rdx) */\n", REG_C);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2675,7 +2669,7 @@ impl ZiskRom {
                 s += &format!("pc_{:x}_divu_b_is_not_zero:\n", ctx.pc);
 
                 s += &format!("\tmov {}, {} /* Divu: value = b backup */\n", REG_VALUE, REG_B);
-                s += &format!("\tmov rdx, 0 /* Divu: rdx = 0 */\n");
+                s += "\tmov rdx, 0 /* Divu: rdx = 0 */\n";
                 s += &format!("\tmov rax, {} /* Divu: rax = a */\n", ctx.a.string_value);
                 s += &format!(
                     "\tdiv {} /* Divu: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
@@ -2704,7 +2698,7 @@ impl ZiskRom {
                 s += &format!("pc_{:x}_remu_b_is_not_zero:\n", ctx.pc);
 
                 s += &format!("\tmov {}, {} /* Remu: value = b backup */\n", REG_VALUE, REG_B);
-                s += &format!("\tmov rdx, 0 /* Remu: rdx = 0 */\n");
+                s += "\tmov rdx, 0 /* Remu: rdx = 0 */\n";
                 s += &format!("\tmov rax, {} /* Remu: rax = a */\n", ctx.a.string_value);
                 s += &format!(
                     "\tdiv {} /* Remu: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
@@ -2778,13 +2772,12 @@ impl ZiskRom {
                 s += &format!("pc_{:x}_div_divide:\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* Div: value = b backup */\n", REG_VALUE, REG_B);
                 s += &format!("\tmov rax, {} /* Div: rax = a */\n", REG_A);
-                s += &format!("\tbt rax, 63 /* Div: is a negative? */\n");
+                s += "\tbt rax, 63 /* Div: is a negative? */\n";
                 s += &format!("\tjnc pc_{:x}_a_is_positive\n", ctx.pc);
-                s +=
-                    &format!("\tmov rdx, 0xffffffffffffffff /* Div: a is negative, rdx = f's */\n");
+                s += "\tmov rdx, 0xffffffffffffffff /* Div: a is negative, rdx = f's */\n";
                 s += &format!("\tjmp pc_{:x}_a_done\n", ctx.pc);
                 s += &format!("pc_{:x}_a_is_positive:\n", ctx.pc);
-                s += &format!("\tmov rdx, 0 /* Div: a is positive, rdx = 0 */\n");
+                s += "\tmov rdx, 0 /* Div: a is positive, rdx = 0 */\n";
                 s += &format!("pc_{:x}_a_done:\n", ctx.pc);
 
                 s += &format!(
@@ -2853,13 +2846,12 @@ impl ZiskRom {
                 s += &format!("pc_{:x}_rem_divide:\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* Rem: value = b backup */\n", REG_VALUE, REG_B);
                 s += &format!("\tmov rax, {} /* Rem: rax = a */\n", REG_A);
-                s += &format!("\tbt rax, 63 /* Rem: is a negative? */\n");
+                s += "\tbt rax, 63 /* Rem: is a negative? */\n";
                 s += &format!("\tjnc pc_{:x}_a_is_positive\n", ctx.pc);
-                s +=
-                    &format!("\tmov rdx, 0xffffffffffffffff /* Rem: a is negative, rdx = f's */\n");
+                s += "\tmov rdx, 0xffffffffffffffff /* Rem: a is negative, rdx = f's */\n";
                 s += &format!("\tjmp pc_{:x}_a_done\n", ctx.pc);
                 s += &format!("pc_{:x}_a_is_positive:\n", ctx.pc);
-                s += &format!("\tmov rdx, 0 /* Rem: a is positive, rdx = 0 */\n");
+                s += "\tmov rdx, 0 /* Rem: a is positive, rdx = 0 */\n";
                 s += &format!("pc_{:x}_a_done:\n", ctx.pc);
 
                 s += &format!(
@@ -2887,7 +2879,7 @@ impl ZiskRom {
                 s += &format!("pc_{:x}_divuw_b_is_not_zero:\n", ctx.pc);
 
                 s += &format!("\tmov {}, {} /* DivuW: value = b backup */\n", REG_VALUE_W, REG_B_W);
-                s += &format!("\tmov rdx, 0 /* DivuW: rdx = 0 */\n");
+                s += "\tmov rdx, 0 /* DivuW: rdx = 0 */\n";
                 s += &format!("\tmov eax, {} /* DivuW: rax = a */\n", REG_A_W);
                 s += &format!(
                     "\tdiv {} /* DivuW: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
@@ -2914,7 +2906,7 @@ impl ZiskRom {
                 s += &format!("pc_{:x}_remuw_b_is_not_zero:\n", ctx.pc);
 
                 s += &format!("\tmov {}, {} /* RemuW: value = b backup */\n", REG_VALUE_W, REG_B_W);
-                s += &format!("\tmov rdx, 0 /* RemuW: rdx = 0 */\n");
+                s += "\tmov rdx, 0 /* RemuW: rdx = 0 */\n";
                 s += &format!("\tmov eax, {} /* RemuW: rax = a */\n", REG_A_W);
                 s += &format!(
                     "\tdiv {} /* RemuW: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
@@ -2948,7 +2940,7 @@ impl ZiskRom {
                 s += &format!("pc_{:x}_divw_divide:\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* DivW: value = b backup */\n", REG_VALUE_W, REG_B_W);
                 s += &format!("\tmov eax, {} /* DivW: rax = a */\n", REG_A_W);
-                s += &format!("\tcdq /* DivW: EDX:EAX := sign-extend of EAX */\n");
+                s += "\tcdq /* DivW: EDX:EAX := sign-extend of EAX */\n";
                 s += &format!(
                     "\tidiv {} /* DivW: edx:eax / value(b backup) -> eax (edx remainder)*/\n",
                     REG_VALUE_W
@@ -2980,7 +2972,7 @@ impl ZiskRom {
                 s += &format!("pc_{:x}_remw_divide:\n", ctx.pc);
                 s += &format!("\tmov {}, {} /* RemW: value = b backup */\n", REG_VALUE_W, REG_B_W);
                 s += &format!("\tmov eax, {} /* RemW: rax = a */\n", REG_A_W);
-                s += &format!("\tcdq /* RemW: EDX:EAX := sign-extend of EAX */\n");
+                s += "\tcdq /* RemW: EDX:EAX := sign-extend of EAX */\n";
                 s += &format!(
                     "\tidiv {} /* RemW: edx:eax / value(b backup) -> eax (edx remainder)*/\n",
                     REG_VALUE_W
@@ -3081,7 +3073,7 @@ impl ZiskRom {
             ZiskOp::Keccak => {
                 s += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, REG_A0);
                 s += &format!("\tmov rdi, [{}]\n", REG_VALUE);
-                s += &format!("\tcall _opcode_keccak\n");
+                s += "\tcall _opcode_keccak\n";
                 s += &format!("\tmov {}, 0 /* Keccak: c=0 */\n", REG_C);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
