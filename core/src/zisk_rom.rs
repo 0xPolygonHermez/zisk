@@ -45,8 +45,9 @@
 use std::collections::HashMap;
 
 use crate::{
-    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, M64, P2_32, REG_A0, REG_FIRST, ROM_ADDR,
-    ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
+    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, M64, P2_32, RAM_ADDR, REG_A0, REG_FIRST, ROM_ADDR,
+    ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM,
+    STORE_NONE, STORE_REG,
 };
 
 const REG_A: &str = "rbx";
@@ -822,6 +823,26 @@ impl ZiskRom {
                         ctx.a.is_saved = true;
                     }
                 }
+                SRC_REG => {
+                    *s += &format!("\t/* a=SRC_REG reg={} */\n", instruction.a_offset_imm0);
+
+                    assert!(instruction.a_offset_imm0 <= 32);
+
+                    // Calculate memory address
+                    *s += &format!(
+                        "\tmov {}, 0x{:x} /* address = i.a_offset_imm0 */\n",
+                        REG_ADDRESS,
+                        RAM_ADDR + (instruction.a_offset_imm0 as u64 * 8)
+                    );
+
+                    // Read from memory and store in the proper register: a or c
+                    *s += &format!(
+                        "\tmov {}, [{}] /* {} = mem[address] */\n",
+                        if ctx.store_a_in_c { REG_C } else { REG_A },
+                        REG_ADDRESS,
+                        if ctx.store_a_in_c { "c" } else { "a" }
+                    );
+                }
                 SRC_MEM => {
                     *s += "\t/* a=SRC_MEM */\n";
 
@@ -982,6 +1003,26 @@ impl ZiskRom {
             // Set register b content: all except SRC_C
             match instruction.b_src {
                 SRC_C => {}
+                SRC_REG => {
+                    *s += &format!("\t/* b=SRC_REG reg={} */\n", instruction.b_offset_imm0);
+
+                    assert!(instruction.b_offset_imm0 <= 32);
+
+                    // Calculate memory address
+                    *s += &format!(
+                        "\tmov {}, 0x{:x} /* address = i.b_offset_imm0 */\n",
+                        REG_ADDRESS,
+                        RAM_ADDR + (instruction.b_offset_imm0 as u64 * 8)
+                    );
+
+                    // Read from memory and store in the proper register: b or c
+                    *s += &format!(
+                        "\tmov {}, [{}] /* {} = mem[address] */\n",
+                        if ctx.store_b_in_c { REG_C } else { REG_B },
+                        REG_ADDRESS,
+                        if ctx.store_b_in_c { "c" } else { "b" }
+                    );
+                }
                 SRC_MEM => {
                     *s += "\t/* b=SRC_MEM */\n";
 
@@ -1421,6 +1462,35 @@ impl ZiskRom {
             match instruction.store {
                 STORE_NONE => {
                     *s += &format!("\t/* STORE_NONE */\n");
+                }
+                STORE_REG => {
+                    *s += &format!("\t/* STORE_REG reg={} */\n", instruction.store_offset);
+
+                    assert!(instruction.store_offset >= 0);
+                    assert!(instruction.store_offset <= 32);
+
+                    // Calculate memory address and store it in REG_ADDRESS
+                    *s += &format!(
+                        "\tmov {}, 0x{:x}/* address = i.store_offset */\n",
+                        REG_ADDRESS,
+                        RAM_ADDR + (instruction.store_offset as u64 * 8)
+                    );
+
+                    // Store in mem[address]
+                    if instruction.store_ra {
+                        *s += &format!(
+                            "\tmov {}, 0x{:x} /* value = pc + jmp_offset2 */\n",
+                            REG_VALUE,
+                            (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                        );
+                        *s += &format!(
+                            "\tmov [{}], {} /* mem[address] = value */\n",
+                            REG_ADDRESS, REG_VALUE
+                        );
+                    } else {
+                        *s +=
+                            &format!("\tmov [{}], {} /* mem[address] = c */\n", REG_ADDRESS, REG_C);
+                    }
                 }
                 STORE_MEM => {
                     *s += &format!("\t/* STORE_MEM */\n");
