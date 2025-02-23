@@ -3071,9 +3071,43 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Keccak => {
-                s += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, REG_A0);
-                s += &format!("\tmov rdi, [{}]\n", REG_VALUE);
+                s += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, REG_A0);
+                s += &format!("\tmov rdi, [{}]\n", REG_ADDRESS);
+
+                // Copy read data into mem_reads_address and advance it
+                for k in 0..25 {
+                    s += &format!(
+                        "\tmov {}, [{}] /* value = mem[keccak_address[{}]] */\n",
+                        REG_VALUE, REG_ADDRESS, k
+                    );
+                    s += &format!(
+                        "\tmov [{}], {} /* [mem_reads_address] = value */\n",
+                        REG_MEM_READS_ADDRESS, REG_VALUE
+                    );
+                    s += &format!(
+                        "\tadd {}, 8 /* advance mem_reads_address */\n",
+                        REG_MEM_READS_ADDRESS
+                    );
+                    if k < 24 {
+                        s += &format!("\tadd {}, 8 /* advance address */\n", REG_ADDRESS);
+                    }
+                }
+
+                // Increment chunk.steps.mem_reads_size in 25 units
+                s += &format!(
+                    "\tmov {}, [{}] /* value = mem_reads_size */\n",
+                    REG_VALUE, REG_MEM_READS_SIZE
+                );
+                s += &format!("\tadd {}, 25 /* value += 25 */\n", REG_VALUE);
+                s += &format!(
+                    "\tmov [{}], {} /* mem_reads_size = value */\n",
+                    REG_MEM_READS_SIZE, REG_VALUE
+                );
+
+                // Call the keccak function
                 s += "\tcall _opcode_keccak\n";
+
+                // Set result
                 s += &format!("\tmov {}, 0 /* Keccak: c=0 */\n", REG_C);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
