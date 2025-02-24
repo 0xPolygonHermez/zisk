@@ -268,7 +268,7 @@ jobs:
 
           # Build with debugging
           echo "🚀 Starting cargo build..."
-          cargo build --release --target "$target" "${flags[@]}"
+          cargo build --release -p cargo-zisk -p ziskemu -p riscv -p zisk-core -p keccakf_fixed_gen -p riscv2zisk -p rom-merkle --target "$target" "${flags[@]}"
 
           # Verify built binaries
           bins=(cargo-zisk ziskemu keccakf_fixed_gen riscv2zisk rom-merkle)
@@ -280,13 +280,13 @@ jobs:
             $bin --version || echo "⚠️  Running $bin --version failed"
           done
 
-          libraries=(libzisk_witness.so)
-          for name in "${libraries[@]}"; do
-            bin=./target/$target/release/$name
-            echo "🔍 Verifying binary library: $bin"
-            file "$bin" || echo "⚠️  file command failed on $bin"
-            ldd "$bin" || echo "⚠️  ldd command failed on $bin"
-          done
+          # libraries=(libzisk_witness.so)
+          # for name in "${libraries[@]}"; do
+          #   bin=./target/$target/release/$name
+          #   echo "🔍 Verifying binary library: $bin"
+          #   file "$bin" || echo "⚠️  file command failed on $bin"
+          #   ldd "$bin" || echo "⚠️  ldd command failed on $bin"
+          # done
 
           echo "✅ Build process completed."
 
