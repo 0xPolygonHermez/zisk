@@ -268,7 +268,9 @@ jobs:
 
           # Build with debugging
           echo "🚀 Starting cargo build..."
-          cargo build --release -p cargo-zisk -p ziskemu -p riscv -p zisk-core -p keccakf_fixed_gen -p riscv2zisk -p rom-merkle --target "$target" "${flags[@]}"
+          cargo build --release -p cargo-zisk -p ziskemu -p riscv -p zisk-core -p rom-merkle \
+          -p precomp-keccakf \
+          --target "$target" "${flags[@]}"
 
           # Verify built binaries
           bins=(cargo-zisk ziskemu keccakf_fixed_gen riscv2zisk rom-merkle)
