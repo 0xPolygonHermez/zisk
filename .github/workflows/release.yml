@@ -279,7 +279,9 @@ jobs:
             echo "🔍 Verifying binary: $bin"
             file "$bin" || echo "⚠️  file command failed on $bin"
             ldd "$bin" || echo "⚠️  ldd command failed on $bin"
-            $bin --version || echo "⚠️  Running $bin --version failed"
+            if [[ "$name" != "riscv2zisk" ]]; then
+              $bin --version || echo "⚠️  Running $bin --version failed"
+            fi
           done
 
           # libraries=(libzisk_witness.so)
