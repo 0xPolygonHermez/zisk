@@ -9,6 +9,7 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
+  pull_request:
 
 env:
   CARGO_TERM_COLOR: always
@@ -267,16 +268,24 @@ jobs:
 
           # Build with debugging
           echo "🚀 Starting cargo build..."
-          cargo build --release -p cargo-zisk -p ziskemu -p riscv -p zisk-core --target "$target" "${flags[@]}"
+          cargo build --release --target "$target" "${flags[@]}"
 
           # Verify built binaries
-          bins=(cargo-zisk ziskemu)
+          bins=(cargo-zisk ziskemu keccakf_fixed_gen riscv2zisk rom-merkle)
           for name in "${bins[@]}"; do
             bin=./target/$target/release/$name$exe
             echo "🔍 Verifying binary: $bin"
             file "$bin" || echo "⚠️  file command failed on $bin"
             ldd "$bin" || echo "⚠️  ldd command failed on $bin"
             $bin --version || echo "⚠️  Running $bin --version failed"
+          done
+
+          libraries=(libzisk_witness.so)
+          for name in "${libraries[@]}"; do
+            bin=./target/$target/release/$name
+            echo "🔍 Verifying binary library: $bin"
+            file "$bin" || echo "⚠️  file command failed on $bin"
+            ldd "$bin" || echo "⚠️  ldd command failed on $bin"
           done
 
           echo "✅ Build process completed."
