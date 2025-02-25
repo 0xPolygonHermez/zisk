@@ -267,7 +267,7 @@ impl<'a> Emu<'a> {
                         8,
                         [self.ctx.inst_ctx.a, 0],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
                 } else {
                     let (required_address_1, required_address_2) =
                         Mem::required_addresses(address, 8);
@@ -287,7 +287,7 @@ impl<'a> Emu<'a> {
                         8,
                         [raw_data_1, raw_data_2],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
                 }
                 /*println!(
                     "Emu::source_a_mem_reads_consume() mem_leads_index={} value={:x}",
@@ -594,7 +594,7 @@ impl<'a> Emu<'a> {
                         8,
                         [self.ctx.inst_ctx.b, 0],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
                 } else {
                     let (required_address_1, required_address_2) =
                         Mem::required_addresses(address, 8);
@@ -611,7 +611,7 @@ impl<'a> Emu<'a> {
                             8,
                             [raw_data, 0],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
                     } else {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data_1 = mem_reads[*mem_reads_index];
@@ -628,7 +628,7 @@ impl<'a> Emu<'a> {
                             8,
                             [raw_data_1, raw_data_2],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
                     }
                 }
                 /*println!(
@@ -663,7 +663,7 @@ impl<'a> Emu<'a> {
                         8,
                         [self.ctx.inst_ctx.b, 0],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
                 } else {
                     let (required_address_1, required_address_2) =
                         Mem::required_addresses(address, instruction.ind_width);
@@ -683,7 +683,7 @@ impl<'a> Emu<'a> {
                             instruction.ind_width as u8,
                             [raw_data, 0],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
                     } else {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data_1 = mem_reads[*mem_reads_index];
@@ -704,7 +704,7 @@ impl<'a> Emu<'a> {
                             8,
                             [raw_data_1, raw_data_2],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
                     }
                 }
                 /*println!(
@@ -980,7 +980,7 @@ impl<'a> Emu<'a> {
                         value,
                         [value, 0],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
                 }
                 // Otherwise, if not aligned, get old raw data from memory, then write it
                 else {
@@ -999,7 +999,7 @@ impl<'a> Emu<'a> {
                             value,
                             [raw_data, 0],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
                     } else {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data_1 = mem_reads[*mem_reads_index];
@@ -1016,7 +1016,7 @@ impl<'a> Emu<'a> {
                             value,
                             [raw_data_1, raw_data_2],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
                     }
                 }
             }
@@ -1043,7 +1043,7 @@ impl<'a> Emu<'a> {
                         value,
                         [value, 0],
                     );
-                    data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                    data_bus.write_to_bus(MEM_BUS_ID, &payload);
                 }
                 // Otherwise, if not aligned, get old raw data from memory, then write it
                 else {
@@ -1062,7 +1062,7 @@ impl<'a> Emu<'a> {
                             value,
                             [raw_data, 0],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
                     } else {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data_1 = mem_reads[*mem_reads_index];
@@ -1079,7 +1079,7 @@ impl<'a> Emu<'a> {
                             value,
                             [raw_data_1, raw_data_2],
                         );
-                        data_bus.write_to_bus(MEM_BUS_ID, payload.to_vec());
+                        data_bus.write_to_bus(MEM_BUS_ID, &payload);
                     }
                 }
             }
@@ -1541,10 +1541,10 @@ impl<'a> Emu<'a> {
         // Write operation bus data to operation bus
         match operation_payload {
             ExtOperationData::OperationData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
             }
             ExtOperationData::OperationKeccakData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
             }
         }
 
@@ -1552,7 +1552,7 @@ impl<'a> Emu<'a> {
         let rom_payload = RomBusData::from_instruction(instruction, &self.ctx.inst_ctx);
 
         // Write rom bus data to rom bus
-        data_bus.write_to_bus(ROM_BUS_ID, rom_payload.to_vec());
+        data_bus.write_to_bus(ROM_BUS_ID, &rom_payload);
 
         // let finished = inst_observer.on_instruction(instruction, &self.ctx.inst_ctx);
 
@@ -1668,10 +1668,10 @@ impl<'a> Emu<'a> {
         // Write operation bus data to operation bus
         match operation_payload {
             ExtOperationData::OperationData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
             }
             ExtOperationData::OperationKeccakData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
             }
         }
 
