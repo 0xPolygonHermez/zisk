@@ -46,7 +46,6 @@ use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, EmuTrace, ZiskEmulator};
 
 type DeviceMetricsByChunk = (usize, Box<dyn BusDeviceMetrics>); // (chunk_id, metrics)
-type InstanceByChunk<F> = Vec<(usize, Box<dyn Instance<F>>)>; // (chunk_id, instance)
 type DeviceMetricsList = Vec<DeviceMetricsByChunk>;
 type NestedDeviceMetricsList = Vec<DeviceMetricsList>;
 
@@ -282,49 +281,6 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 plan.set_global_id(global_id);
             }
         }
-    }
-
-    /// Creates secondary state machine instances based on the plans.
-    ///
-    /// # Arguments
-    /// * `pctx` - Proof context.
-    ///
-    /// # Returns
-    /// A tuple containing two vectors:
-    /// * A vector of table instances grouped by global ID.
-    /// * A vector of non-table instances grouped by global ID.
-    fn create_secn_instances(
-        &self,
-        pctx: &ProofCtx<F>,
-    ) -> (InstanceByChunk<F>, InstanceByChunk<F>) // (Table instances, Non-table instances)
-    {
-        let mut table_instances = Vec::new();
-        let mut other_instances = Vec::new();
-
-        let mut secn_planning_guard = self.secn_planning.write().unwrap();
-        let secn_planning = std::mem::take(&mut *secn_planning_guard);
-
-        for (i, plans_by_sm) in secn_planning.into_iter().enumerate() {
-            for plan in plans_by_sm {
-                let global_idx = plan.global_id.expect("Global ID not set");
-
-                let is_mine = pctx.dctx_is_my_instance(global_idx);
-                let is_table = plan.instance_type == InstanceType::Table;
-
-                if is_mine || is_table {
-                    let ictx = InstanceCtx::new(global_idx, plan);
-                    let instance = (global_idx, self.secondary_sm[i].build_instance(ictx));
-
-                    if is_table {
-                        table_instances.push(instance);
-                    } else {
-                        other_instances.push(instance);
-                    }
-                }
-            }
-        }
-
-        (table_instances, other_instances)
     }
 
     /// Creates a secondary state machine instance based on the provided global ID.
@@ -674,7 +630,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
             return;
         }
 
-        global_ids.iter().for_each(|&global_id| {
+        for &global_id in global_ids {
             let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
 
             if MAIN_AIR_IDS.contains(&air_id) {
@@ -701,7 +657,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
                     }
                 }
             }
-        });
+        }
     }
 
     /// Debugs the main and secondary state machines.
@@ -711,32 +667,18 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
     /// * `sctx` - Setup context.
     /// * `global_ids` - Global IDs of the instances to debug.
     fn debug(&self, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>, global_ids: &[usize]) {
-        let (table_instances, secn_instances) = self.create_secn_instances(&pctx);
+        for &global_id in global_ids {
+            let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
 
-        MainSM::debug(&pctx, &sctx);
+            if MAIN_AIR_IDS.contains(&air_id) {
+                MainSM::debug(&pctx, &sctx);
+            } else {
+                let secn_instances = self.secn_instances.read().unwrap();
+                let secn_instance = secn_instances.get(&global_id).expect("Instance not found");
 
-        let mut debug_airs: HashMap<(usize, usize), bool> = HashMap::new();
-
-        secn_instances.iter().for_each(|(global_idx, secn_instance)| {
-            let instance_info = pctx.dctx_get_instance_info(*global_idx);
-            if secn_instance.instance_type() == InstanceType::Instance
-                && !debug_airs.contains_key(&instance_info)
-            {
-                debug_airs.insert(instance_info, true);
                 secn_instance.debug(&pctx, &sctx);
             }
-        });
-
-        table_instances.iter().for_each(|(global_idx, secn_instance)| {
-            let instance_info = pctx.dctx_get_instance_info(*global_idx);
-            if secn_instance.instance_type() == InstanceType::Table
-                && pctx.dctx_is_my_instance(*global_idx)
-                && !debug_airs.contains_key(&instance_info)
-            {
-                debug_airs.insert(instance_info, true);
-                secn_instance.debug(&pctx, &sctx);
-            }
-        });
+        }
     }
 
     fn gen_custom_commits_fixed(
