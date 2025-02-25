@@ -81,7 +81,7 @@ pub struct ZiskPublics {
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
-    }
+}
 
 impl Default for ZiskPublics {
     fn default() -> Self {
@@ -92,11 +92,11 @@ impl Default for ZiskPublics {
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],
 });
- 
+
 values!(ZiskProofValues<F> {
  enable_input_data: F,
 });
- 
+
 trace!(MainFixed<F> {
  SEGMENT_L1: F, SEGMENT_STEP: F, __L1__: F,
 },  0, 0, 2097152 );

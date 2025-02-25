@@ -17,7 +17,7 @@ members = [
     "witness-computation",
     "ziskos/entrypoint",
     "precompiles/zisk_precompiles",
-    "precompiles/common",
+    "precompiles/common"
 ]
 
 resolver = "2"

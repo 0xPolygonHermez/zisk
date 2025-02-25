@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 precompiles-common = { path = "../common" }
 precomp-keccakf = { path = "../keccakf" }
+precomp-arith-256 = { path = "../arith_256" }
