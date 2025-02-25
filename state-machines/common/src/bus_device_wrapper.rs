@@ -3,7 +3,7 @@ use data_bus::BusDevice;
 /// The `BusDeviceWrapper` struct wraps a `BusDevice` trait object
 pub struct BusDeviceWrapper<D> {
     /// The instance index of the device.
-    instance_idx: Option<usize>,
+    is_input_generator: bool,
 
     /// The wrapped `BusDevice` trait object.
     bus_device: Option<Box<dyn BusDevice<D>>>,
@@ -18,13 +18,13 @@ impl<D> BusDeviceWrapper<D> {
     ///
     /// # Returns
     /// A new `BusDeviceWrapper` instance.
-    pub fn new(instance_idx: Option<usize>, bus_device: Box<dyn BusDevice<D>>) -> Self {
-        Self { instance_idx, bus_device: Some(bus_device) }
+    pub fn new(is_input_generator: bool, bus_device: Box<dyn BusDevice<D>>) -> Self {
+        Self { is_input_generator, bus_device: Some(bus_device) }
     }
 
     /// Retrieves the instance index of the device.
-    pub fn instance_idx(&self) -> Option<usize> {
-        self.instance_idx
+    pub fn is_input_generator(&self) -> bool {
+        self.is_input_generator
     }
 
     /// Detaches the device from the wrapper.
