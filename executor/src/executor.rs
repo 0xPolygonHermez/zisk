@@ -20,7 +20,7 @@
 //! maintaining clarity and modularity in the computation process.
 
 use itertools::Itertools;
-use p3_field::PrimeField;
+use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
@@ -48,7 +48,7 @@ use ziskemu::{EmuOptions, EmuTrace, ZiskEmulator};
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
-pub struct ZiskExecutor<F: PrimeField> {
+pub struct ZiskExecutor<F: PrimeField64> {
     /// ZisK ROM, a binary file containing the ZisK program to be executed.
     pub zisk_rom: Arc<ZiskRom>,
 
@@ -67,7 +67,7 @@ pub struct ZiskExecutor<F: PrimeField> {
     std: Arc<Std<F>>,
 }
 
-impl<F: PrimeField> ZiskExecutor<F> {
+impl<F: PrimeField64> ZiskExecutor<F> {
     /// The number of threads to use for parallel processing when computing minimal traces.
     const NUM_THREADS: usize = 16;
 
@@ -595,7 +595,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     }
 }
 
-impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
+impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     /// Executes the ZisK ROM program and calculate the plans for main and secondary state machines.
     ///
     /// # Arguments

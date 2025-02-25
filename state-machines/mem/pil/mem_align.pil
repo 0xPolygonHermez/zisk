@@ -87,7 +87,7 @@ require "std_range_check.pil"
     Notice that it is enough with 8 combinations.
 */
 
-airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM = 8, const int CHUNK_BITS = 8) {
+airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM = 8, const int CHUNK_BITS = 8, const int use_predefined_ranges = 0) {
     const int CHUNKS_BY_RC = CHUNK_NUM / RC;
 
     col witness addr;           // CHUNK_NUM-byte address, real address = addr * CHUNK_NUM
@@ -109,7 +109,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     //  - 'reg == reg in transitions V <- W, W <- R,
     // in any case, sel_up_to_down,sel_down_to_up are 0 in [V] steps.
     for (int i = 0; i < CHUNK_NUM; i++) {
-        range_check(reg[i], 0, 2**CHUNK_BITS-1);
+        range_check(reg[i], 0, 2**CHUNK_BITS-1, predefined: use_predefined_ranges);
 
         (reg[i]' - reg[i]) * sel[i] * sel_up_to_down === 0;
         ('reg[i] - reg[i]) * sel[i] * sel_down_to_up === 0;

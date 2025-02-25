@@ -1,4 +1,3 @@
-use num_bigint::BigInt;
 use std::sync::Arc;
 
 #[cfg(feature = "debug_mem")]
@@ -10,7 +9,7 @@ use std::{
 };
 
 use crate::{MemInput, MemModule, MEMORY_MAX_DIFF, MEM_BYTES_BITS, STEP_MEMORY_MAX_DIFF};
-use p3_field::PrimeField;
+use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 
@@ -27,7 +26,7 @@ const _: () = {
     );
 };
 
-pub struct MemSM<F: PrimeField> {
+pub struct MemSM<F: PrimeField64> {
     /// PIL2 standard library
     std: Arc<Std<F>>,
 }
@@ -39,7 +38,7 @@ pub struct MemPreviousSegment {
 }
 
 #[allow(unused, unused_variables)]
-impl<F: PrimeField> MemSM<F> {
+impl<F: PrimeField64> MemSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         Arc::new(Self { std: std.clone() })
     }
@@ -68,7 +67,7 @@ impl<F: PrimeField> MemSM<F> {
     }
 }
 
-impl<F: PrimeField> MemModule<F> for MemSM<F> {
+impl<F: PrimeField64> MemModule<F> for MemSM<F> {
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///
     /// This method is invoked by the executor when no further witness data remains to be added.
@@ -97,9 +96,9 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
 
         let std = self.std.clone();
 
-        let range_id = std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
+        let range_id = std.get_range(1, MEMORY_MAX_DIFF as i64, None);
         let mut range_check_data: Vec<u16> = vec![0; MEMORY_MAX_DIFF as usize];
-        let f_range_check_max_value = F::from_canonical_u64(0xFFFF + 1);
+        let f_range_check_max_value = 0xFFFF + 1;
 
         // use special counter for internal reads
         let mut range_check_data_max = 0u64;
@@ -224,11 +223,7 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
             if range_index < MEMORY_MAX_DIFF as usize {
                 if range_check_data[range_index] == 0xFFFF {
                     range_check_data[range_index] = 0;
-                    std.range_check(
-                        F::from_canonical_u64(increment),
-                        f_range_check_max_value,
-                        range_id,
-                    );
+                    std.range_check(increment as i64, f_range_check_max_value, range_id);
                 } else {
                     range_check_data[range_index] += 1;
                 }
@@ -272,11 +267,7 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
         }
         if padding_size > 0 {
             // Store the padding range checks
-            self.std.range_check(
-                padding_increment,
-                F::from_canonical_usize(padding_size),
-                range_id,
-            );
+            self.std.range_check(padding_step as i64, padding_size as u64, range_id);
         }
 
         // no add extra +1 because index = value - 1
@@ -287,17 +278,9 @@ impl<F: PrimeField> MemModule<F> for MemSM<F> {
             if multiplicity == 0 {
                 continue;
             }
-            self.std.range_check(
-                F::from_canonical_usize(value + 1),
-                F::from_canonical_u16(multiplicity),
-                range_id,
-            );
+            self.std.range_check((value + 1) as i64, multiplicity as u64, range_id);
         }
-        self.std.range_check(
-            f_max_increment,
-            F::from_canonical_u64(range_check_data_max),
-            range_id,
-        );
+        self.std.range_check(STEP_MEMORY_MAX_DIFF as i64, range_check_data_max, range_id);
 
         let mut air_values = MemAirValues::<F>::new();
         air_values.segment_id = F::from_canonical_usize(segment_id);
