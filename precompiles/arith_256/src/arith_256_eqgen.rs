@@ -445,10 +445,10 @@ fn main() {
         &[("p2_256", "0x10000000000000000000000000000000000000000000000000000000000000000")],
     );
 
-    let rust_file = current_dir.join("helpers/arith_eq0.rs");
+    let rust_file = current_dir.join("helpers/arith_256_eq0.rs");
     eq.generate_rust_code_to_file(0, "x1,y1,x2,y2,y3,q0,q1", rust_file.to_str().unwrap());
 
-    let pil_file = current_dir.join("../pil/arith_eq0.pil");
+    let pil_file = current_dir.join("../pil/arith_256_eq0.pil");
     eq.generate_pil_code_to_file(0, "arith_eq", pil_file.to_str().unwrap());
 
     // SECP256K1
@@ -464,10 +464,10 @@ fn main() {
         ],
     );
 
-    let rust_file = current_dir.join("helpers/arith_eq1.rs");
+    let rust_file = current_dir.join("helpers/arith_256_eq1.rs");
     eq.generate_rust_code_to_file(1, "x1,y1,x2,y2,s,q0", rust_file.to_str().unwrap());
 
-    let pil_file = current_dir.join("../pil/arith_eq1.pil");
+    let pil_file = current_dir.join("../pil/arith_256_eq1.pil");
     eq.generate_pil_code_to_file(1, "arith_eq", pil_file.to_str().unwrap());
 
     // s - duplicate points
@@ -481,10 +481,10 @@ fn main() {
         ],
     );
 
-    let rust_file = current_dir.join("helpers/arith_eq2.rs");
+    let rust_file = current_dir.join("helpers/arith_256_eq2.rs");
     eq.generate_rust_code_to_file(2, "x1,y1,s,q0", rust_file.to_str().unwrap());
 
-    let pil_file = current_dir.join("../pil/arith_eq2.pil");
+    let pil_file = current_dir.join("../pil/arith_256_eq2.pil");
     eq.generate_pil_code_to_file(2, "arith_eq", pil_file.to_str().unwrap());
 
     // x3
@@ -498,10 +498,10 @@ fn main() {
         ],
     );
 
-    let rust_file = current_dir.join("helpers/arith_eq3.rs");
+    let rust_file = current_dir.join("helpers/arith_256_eq3.rs");
     eq.generate_rust_code_to_file(3, "x1,x2,x3,s,q1", rust_file.to_str().unwrap());
 
-    let pil_file = current_dir.join("../pil/arith_eq3.pil");
+    let pil_file = current_dir.join("../pil/arith_256_eq3.pil");
     eq.generate_pil_code_to_file(3, "arith_eq", pil_file.to_str().unwrap());
 
     // y3
@@ -515,9 +515,9 @@ fn main() {
         ],
     );
 
-    let rust_file = current_dir.join("helpers/arith_eq4.rs");
+    let rust_file = current_dir.join("helpers/arith_256_eq4.rs");
     eq.generate_rust_code_to_file(4, "x1,y1,x3,y3,s,q2", rust_file.to_str().unwrap());
 
-    let pil_file = current_dir.join("../pil/arith_eq4.pil");
+    let pil_file = current_dir.join("../pil/arith_256_eq4.pil");
     eq.generate_pil_code_to_file(4, "arith_eq", pil_file.to_str().unwrap());
 }
