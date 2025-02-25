@@ -596,7 +596,11 @@ impl ArithEq0 {
             }
             29 => x1[15] * y1[14] + x1[14] * y1[15] - q0[15] * y2[14] - q0[14] * y2[15],
             30 => x1[15] * y1[15] - q0[15] * y2[15],
-            _ => 0,
+            31 => 0,
+            _ => panic!(
+                "ArithEq0: error on invalid icol:{} for equation:{}",
+                icol, eq_index
+            ),
         }
     }
 }

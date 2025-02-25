@@ -228,6 +228,7 @@ impl ArithEquation {
                 }
             }
         }
+        self.add_zero_terms();
     }
     fn index_to_row_offset(index: usize, row: usize, terms_by_clock: usize) -> i32 {
         if terms_by_clock == 0 {
@@ -236,7 +237,12 @@ impl ArithEquation {
             (index / terms_by_clock) as i32 - row as i32
         }
     }
-
+    fn add_zero_terms(&mut self) {
+        let total_chunks = self.config.chunks * 2;
+        while self.terms.len() < total_chunks {
+            self.terms.push(vec![]);
+        }
+    }
     fn map_chunks(
         &mut self,
         terms_by_clock: usize,
@@ -248,6 +254,10 @@ impl ArithEquation {
         for (icol, addition_cols) in self.terms.iter().enumerate() {
             let mut out = String::new();
             let clock = if terms_by_clock == 0 { 0 } else { icol / terms_by_clock };
+            if addition_cols.len() == 0 {
+                output.push(format!("{}{}", 0, last_end_of_line));
+                continue;
+            }
             let last_j = addition_cols.len() - 1;
             for (j, addt) in addition_cols.iter().enumerate() {
                 line.append(if addt.negative {
@@ -334,10 +344,11 @@ impl ArithEquation {
             self.generate_terms();
         }
 
+        let struct_name = format!("ArithEq{}", eq_index);
         let mut out = self.generate_code_header()
             + &format!(
-                "\nstruct ArithEq{0} {{}}\n\nimpl ArithEq{0} {{\n\tpub fn calculate(icol: u8",
-                eq_index
+                "\nstruct {0} {{}}\n\nimpl {0} {{\n\tpub fn calculate(icol: u8",
+                struct_name
             );
         if args_order.is_empty() {
             for var in self.vars.iter() {
@@ -380,7 +391,9 @@ impl ArithEquation {
         for (icol, col) in self.map_chunks(0, "\n", "").iter().enumerate() {
             out = out + &format!("{} => ", icol) + &col + ",\n";
         }
-        out = out + "\t\t\t_ => 0,\n\t\t}\n\t}\n}\n";
+        out = out
+            + &format!("\t\t\t_ => panic!(\"{}:", struct_name)
+            + " error on invalid icol:{} for equation:{}\", icol, eq_index),\n\t\t}\n\t}\n}\n";
         rustfmt_wrapper::rustfmt(out).unwrap()
     }
     fn generate_pil_code(&mut self, eq_index: u8, const_name: &str) -> String {

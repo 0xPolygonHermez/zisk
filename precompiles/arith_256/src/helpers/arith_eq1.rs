@@ -850,7 +850,11 @@ impl ArithEq1 {
                     - 0xFFFF * q0[15]
             }
             30 => s[15] * x2[15] - s[15] * x1[15] - 0xFFFF * q0[15],
-            _ => 0,
+            31 => 0,
+            _ => panic!(
+                "ArithEq1: error on invalid icol:{} for equation:{}",
+                icol, eq_index
+            ),
         }
     }
 }

@@ -615,7 +615,11 @@ impl ArithEq3 {
             }
             29 => s[15] * s[14] + s[14] * s[15] - 0xFFFF * q1[14] - 0xFFFF * q1[15],
             30 => s[15] * s[15] - 0xFFFF * q1[15],
-            _ => 0,
+            31 => 0,
+            _ => panic!(
+                "ArithEq3: error on invalid icol:{} for equation:{}",
+                icol, eq_index
+            ),
         }
     }
 }
