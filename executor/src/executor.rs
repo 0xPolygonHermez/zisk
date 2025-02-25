@@ -683,7 +683,6 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
 
         global_ids.iter().for_each(|&global_id| {
             let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
-            println!("Calculating witness for instance: {:?} air_id: {:?}", global_id, air_id);
 
             if MAIN_AIR_IDS.contains(&air_id) {
                 let mut main_instances_guard = self.main_instances.write().unwrap();
