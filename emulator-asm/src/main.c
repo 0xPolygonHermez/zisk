@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <sys/mman.h>
 #include <bits/mman-linux.h>
@@ -5,6 +6,9 @@
 #include <string.h>
 #include <stdint.h>
 #include <sys/time.h>
+#include <bits/mman-shared.h>
+#include <stdlib.h>
+#include <errno.h>
 
 void emulator_start(void);
 
@@ -21,7 +25,7 @@ void emulator_start(void);
 #define MAX_INPUT_SIZE 0x08000000 // 128MB
 
 #define TRACE_ADDR 0xc0000000
-#define TRACE_SIZE 0x40000000 // 1GB
+#define INITIAL_TRACE_SIZE 0x40000000 // 1GB
 
 struct timeval start_time;
 
@@ -34,6 +38,8 @@ struct timeval keccak_start, keccak_stop;
 uint64_t keccak_counter = 0;
 uint64_t keccak_duration = 0;
 
+uint64_t realloc_counter = 0;
+
 extern void keccakf1600_generic(uint64_t state[25]);
 
 extern void zisk_keccakf(uint64_t state[25]);
@@ -41,7 +47,14 @@ extern void zisk_keccakf(uint64_t state[25]);
 #define CHUNK_SIZE 1024*1024
 uint64_t chunk_size = CHUNK_SIZE;
 uint64_t chunk_size_mask = CHUNK_SIZE - 1;
+
 uint64_t trace_address = TRACE_ADDR;
+uint64_t trace_size = INITIAL_TRACE_SIZE;
+
+// Worst case: every chunk instruction is a keccak operation, with an input data of 200 bytes
+#define MAX_CHUNK_TRACE_SIZE (CHUNK_SIZE * 200) + (44 * 8)
+uint64_t trace_size_threshold = INITIAL_TRACE_SIZE - MAX_CHUNK_TRACE_SIZE;
+uint64_t trace_address_threshold = TRACE_ADDR + INITIAL_TRACE_SIZE - MAX_CHUNK_TRACE_SIZE;
 
 uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime)
 {
@@ -72,78 +85,45 @@ uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime)
 
 void print_usage (void)
 {
-    printf("Usage: emu <input_file> [-v verbose on] [-o output off]  [-t trace on] [-h/--help print this]\n");
+#ifdef DEBUG
+    printf("Usage: emu <input_file> [-o output off] [-m metrics on] [-v verbose on] [-t trace on] [-tt trace on] [-k keccak trace on] [-h/--help print this]\n");
+#else
+    printf("Usage: emu <input_file> [-o output off] [-m metrics on] [-h/--help print this]\n");
+#endif
 }
 
 // Configuration
-bool verbose = false;
 bool output = true;
+bool metrics = false;
+#ifdef DEBUG
+bool verbose = false;
 bool trace = false;
 bool trace_trace = false;
-bool metrics = false;
 bool keccak_metrics = false;
+#endif
 char * input_file = NULL;
 
 int main(int argc, char *argv[])
 {
-    /*
-    {
-        uint64_t data[25] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-        keccakf1600_generic((uint64_t *)data);
-        for (uint64_t i=0; i<25; i++)
-        {
-            printf("data1[%d]=%016llx\n", i, data[i]);
-        }
-    }
-    {
-        uint64_t data[25] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-        zisk_keccakf((uint64_t *)data);
-        for (uint64_t i=0; i<25; i++)
-        {
-            printf("data2[%d]=%016llx\n", i, data[i]);
-        }
-    }
-    {
-        uint64_t data[25] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-        gettimeofday(&keccak_start, NULL);
-        for (uint64_t i=0; i<1000000; i++)
-        {
-            keccakf1600_generic((uint64_t *)data);
-        }
-        gettimeofday(&keccak_stop, NULL);
-        keccak_duration += TimeDiff(keccak_start, keccak_stop);
-        keccak_counter = 1000000;
-        uint64_t single_keccak_duration_ns = keccak_counter == 0 ? 0 : (keccak_duration * 1000) / keccak_counter;
-        printf("Keccak1 counter = %d, duration = %d us, single keccak duration = %d ns\n", keccak_counter, keccak_duration, single_keccak_duration_ns);
-    }
-    {
-        uint64_t data[25] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-        gettimeofday(&keccak_start, NULL);
-        for (uint64_t i=0; i<1000000; i++)
-        {
-            zisk_keccakf((uint64_t *)data);
-        }
-        gettimeofday(&keccak_stop, NULL);
-        keccak_duration += TimeDiff(keccak_start, keccak_stop);
-        keccak_counter = 1000000;
-        uint64_t single_keccak_duration_ns = keccak_counter == 0 ? 0 : (keccak_duration * 1000) / keccak_counter;
-        printf("Keccak2 counter = %d, duration = %d us, single keccak duration = %d ns\n", keccak_counter, keccak_duration, single_keccak_duration_ns);
-    }
-    return 0;*/
-
     // Parse arguments
     if (argc > 1)
     {
         for (int i = 1; i < argc; i++)
         {
-            if (strcmp(argv[i], "-v") == 0)
-            {
-                verbose = true;
-                continue;
-            }
             if (strcmp(argv[i], "-o") == 0)
             {
                 output = false;
+                continue;
+            }
+            if (strcmp(argv[i], "-m") == 0)
+            {
+                metrics = true;
+                continue;
+            }
+#ifdef DEBUG
+            if (strcmp(argv[i], "-v") == 0)
+            {
+                verbose = true;
                 continue;
             }
             if (strcmp(argv[i], "-t") == 0)
@@ -157,16 +137,12 @@ int main(int argc, char *argv[])
                 trace_trace = true;
                 continue;
             }
-            if (strcmp(argv[i], "-m") == 0)
-            {
-                metrics = true;
-                continue;
-            }
             if (strcmp(argv[i], "-k") == 0)
             {
                 keccak_metrics = true;
                 continue;
             }
+#endif
             if (strcmp(argv[i], "-h") == 0)
             {
                 print_usage();
@@ -187,7 +163,9 @@ int main(int argc, char *argv[])
             return -1;
         }
     }
+#ifdef DEBUG
     if (verbose) printf("Emulator C start\n");
+#endif
 
     // Allocate ram
     void * pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
@@ -201,7 +179,9 @@ int main(int argc, char *argv[])
         printf("Called mmap(pRam) but returned address = 0x%08x != 0x%08x\n", RAM_ADDR, ROM_ADDR);
         return -1;
     }
+#ifdef DEBUG
     if (verbose) printf("mmap(ram) returned %08x\n", pRam);
+#endif
 
     // Allocate rom
     void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
@@ -215,7 +195,9 @@ int main(int argc, char *argv[])
         printf("Called mmap(pRom) but returned address = 0x%08x != 0x%08x\n", pRom, ROM_ADDR);
         return -1;
     }
+#ifdef DEBUG
     if (verbose) printf("mmap(rom) returned %08x\n", pRom);
+#endif
 
     // Allocate input
 
@@ -269,7 +251,9 @@ int main(int argc, char *argv[])
         printf("Called mmap(pInput) but returned address = 0x%08x != 0x%08x\n", pInput, INPUT_ADDR);
         return -1;
     }
+#ifdef DEBUG
     if (verbose) printf("mmap(input) returned %08x\n", pInput);
+#endif
     *(uint64_t *)INPUT_ADDR = (uint64_t)input_file_size;
 
     if (input_file != NULL)
@@ -283,7 +267,7 @@ int main(int argc, char *argv[])
     }
 
     // Allocate trace
-    void * pTrace = mmap((void *)TRACE_ADDR, TRACE_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
     if (pTrace == NULL)
     {
         printf("Failed calling mmap(pTrace)\n");
@@ -294,15 +278,20 @@ int main(int argc, char *argv[])
         printf("Called mmap(pTrace) but returned address = 0x%08x != 0x%08x\n", pTrace, TRACE_ADDR);
         return -1;
     }
-
+#ifdef DEBUG
     if (verbose) printf("mmap(trace) returned %08x\n", pTrace);
+#endif
 
     // Call emulator assembly code
     gettimeofday(&start_time,NULL);
     emulator_start();
     struct timeval stop_time;
     gettimeofday(&stop_time,NULL);
-    if (keccak_metrics || metrics || verbose)
+    if ( metrics
+#ifdef DEBUG
+        || keccak_metrics
+#endif
+        )
     {
         uint64_t duration = TimeDiff(start_time, stop_time);
         uint64_t steps = MEM_STEP;
@@ -310,24 +299,27 @@ int main(int argc, char *argv[])
         uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
         uint64_t mem_trace_address = MEM_TRACE_ADDRESS;
         uint64_t mem_chunk_address = MEM_CHUNK_ADDRESS;
-        uint64_t trace_size = mem_chunk_address - mem_trace_address;
-        uint64_t trace_size_percentage = (trace_size * 100) / TRACE_SIZE;
-        printf("Duration = %d us, Keccak counter = %d, steps = %d, step duration = %d ns, tp = %d steps/s, trace size = 0x%08x - 0x%08x = %d B(%d%%)\n",
+        uint64_t final_trace_size = mem_chunk_address - mem_trace_address;
+        uint64_t final_trace_size_percentage = (final_trace_size * 100) / trace_size;
+        printf("Duration = %d us, Keccak counter = %d, realloc counter = %d, steps = %d, step duration = %d ns, tp = %d steps/s, trace size = 0x%08x - 0x%08x = %d B(%d%%)\n",
             duration,
             keccak_counter,
+            realloc_counter,
             steps,
             step_duration_ns,
             step_tp_sec,
             mem_chunk_address,
             mem_trace_address,
-            trace_size,
-            trace_size_percentage);
+            final_trace_size,
+            final_trace_size_percentage);
+#ifdef DEBUG
         if (keccak_metrics)
         {
             uint64_t keccak_percentage = duration == 0 ? 0 : (keccak_duration * 100) / duration;
             uint64_t single_keccak_duration_ns = keccak_counter == 0 ? 0 : (keccak_duration * 1000) / keccak_counter;
             printf("Keccak counter = %d, duration = %d us, single keccak duration = %d ns, percentage = %d \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
         }
+#endif
     }
 
     // Log output
@@ -335,7 +327,9 @@ int main(int argc, char *argv[])
     {
         unsigned int * pOutput = (unsigned int *)OUTPUT_ADDR;
         unsigned int output_size = *pOutput;
+#ifdef DEBUG
         if (verbose) printf("Output size=%d\n", output_size);
+#endif
 
         for (unsigned int i = 0; i < output_size; i++)
         {
@@ -378,6 +372,7 @@ int main(int argc, char *argv[])
     Offset to chunk C-1:
     …
     */
+#ifdef DEBUG
     if (trace)
     {
         printf("Trace content:\n");
@@ -457,6 +452,7 @@ int main(int argc, char *argv[])
     }
 
     if (verbose) printf("Emulator C end\n");
+#endif
 }
 
 extern int _print_abcflag(uint64_t a, uint64_t b, uint64_t c, uint64_t flag)
@@ -476,6 +472,7 @@ extern int _print_char(uint64_t param)
 uint64_t print_step_counter = 0;
 extern int _print_step(uint64_t step)
 {
+#ifdef DEBUG
     print_step_counter++;
     struct timeval stop_time;
     gettimeofday(&stop_time,NULL);
@@ -484,21 +481,43 @@ extern int _print_step(uint64_t step)
     if (duration_s == 0) duration_s = 1;
     uint64_t speed = step / duration_s;
     if (verbose) printf("print_step() Counter=%d Step=%d Duration=%dus Speed=%dsteps/ms\n", print_step_counter, step, duration, speed);
+#endif
     return 0;
 }
 
 extern int _opcode_keccak(uint64_t address)
 {
+#ifdef DEBUG
     if (keccak_metrics || verbose) gettimeofday(&keccak_start, NULL);
+#endif
     //if (verbose) printf("opcode_keccak() calling KeccakF1600() counter=%d step=%08llx address=%08llx\n", keccak_counter, /**(uint64_t *)*/MEM_STEP, address);
     keccakf1600_generic((uint64_t *)address);
     //zisk_keccakf((uint64_t *)address);
     //if (verbose) printf("opcode_keccak() called KeccakF1600()\n");
+#ifdef DEBUG
     keccak_counter++;
     if (keccak_metrics || verbose)
     {
         gettimeofday(&keccak_stop, NULL);
         keccak_duration += TimeDiff(keccak_start, keccak_stop);
     }
+#endif
     return 0;
+}
+
+extern void _realloc_trace (void)
+{
+    realloc_counter++;
+    //printf("realloc_trace() realloc counter=%d trace_address=0x%08x trace_size=%d\n", realloc_counter, trace_address, trace_size);
+
+    // Allocate trace
+    uint64_t new_trace_size = trace_size * 2;
+    void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
+    if ((uint64_t)new_address != trace_address)
+    {
+        printf("realloc_trace() failed calling mremap() from size=%d to %d got new_address=0x%08x errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
+        exit(-1);
+    }
+    trace_size = new_trace_size;
+    trace_address_threshold = TRACE_ADDR + trace_size - MAX_CHUNK_TRACE_SIZE;
 }

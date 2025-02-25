@@ -50,6 +50,7 @@ use crate::{
     STORE_NONE, STORE_REG,
 };
 
+// Registers rbx, rbp, and r12-r15 are saved across function calls
 const REG_A: &str = "rbx";
 const REG_A_W: &str = "ebx";
 const REG_B: &str = "rax";
@@ -64,8 +65,8 @@ const REG_FLAG: &str = "rdx";
 const REG_PC: &str = "r14";
 const REG_VALUE: &str = "r9";
 const REG_VALUE_W: &str = "r9d";
-//const REG_VALUE_H: &str = "r12w";
-//const REG_VALUE_B: &str = "r12b";
+//const REG_VALUE_H: &str = "r9w";
+//const REG_VALUE_B: &str = "r9b";
 const REG_ADDRESS: &str = "r10";
 const REG_MEM_READS_ADDRESS: &str = "r12";
 const REG_MEM_READS_SIZE: &str = "r13";
@@ -546,10 +547,12 @@ impl ZiskRom {
         *s += ".extern print_abcflag\n";
         *s += ".extern print_char\n";
         *s += ".extern print_step\n";
-        *s += ".extern opcode_keccak\n\n";
+        *s += ".extern opcode_keccak\n";
+        *s += ".extern realloc_trace\n\n";
 
         *s += ".extern chunk_size\n";
         *s += ".extern chunk_size_mask\n\n";
+        *s += ".extern trace_address_threshold\n";
 
         /* CHUNK START */
 
@@ -670,6 +673,17 @@ impl ZiskRom {
             MEM_CHUNK_ADDRESS, REG_ADDRESS
         );
 
+        *s += &format!(
+            "\tmov {}, qword ptr [trace_address_threshold] /* value = trace_address_threshold */\n",
+            REG_VALUE
+        );
+        *s += &format!(
+            "\tcmp {}, {} /* chunk_address ? trace_address_threshold */\n",
+            REG_ADDRESS, REG_VALUE
+        );
+        *s += "\tjb chunk_end_address_below_threshold\n";
+        *s += "\tcall _realloc_trace\n";
+        *s += "chunk_end_address_below_threshold:\n";
         *s += "\tret\n\n";
 
         *s += ".global emulator_start\n";
@@ -2045,10 +2059,10 @@ impl ZiskRom {
         *s += "execute_end:\n";
 
         // Used only to get the last log of step
-        *s += &format!("\tpush {}\n", REG_VALUE);
-        *s += &format!("\tmov rdi, {}\n", MEM_STEP);
-        *s += "\tcall _print_step\n";
-        *s += &format!("\tpop {}\n", REG_VALUE);
+        // *s += &format!("\tpush {}\n", REG_VALUE);
+        // *s += &format!("\tmov rdi, {}\n", MEM_STEP);
+        // *s += "\tcall _print_step\n";
+        // *s += &format!("\tpop {}\n", REG_VALUE);
 
         // *s += "\tmov rax, 60\n";
         // *s += "\tmov rdi, 0\n";
