@@ -4,8 +4,6 @@ name: release
 
 on:
   push:
-    branches:
-      - develop
     tags:
       - "v*.*.*"
   workflow_dispatch:
