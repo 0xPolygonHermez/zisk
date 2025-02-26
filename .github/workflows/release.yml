@@ -255,7 +255,7 @@ jobs:
           [[ "$target" == *windows* ]] && exe=".exe"
 
           # RUSTFLAGS with correct path and debugging
-          export RUSTFLAGS="-C target-feature=+crt-static -L${IOMP5_DIR} -liomp5"
+          export RUSTFLAGS="-L${IOMP5_DIR} -liomp5"
           echo "RUSTFLAGS set to: $RUSTFLAGS"
 
           # Debug: Check Rust and Cargo versions
@@ -265,8 +265,7 @@ jobs:
 
           # Build with debugging
           echo "🚀 Starting cargo build..."
-          cargo build --release -p cargo-zisk -p ziskemu -p riscv -p zisk-core \
-          --target "$target" "${flags[@]}"
+          cargo build --release --target "$target" "${flags[@]}"
 
           # Verify built binaries
           bins=(cargo-zisk ziskemu keccakf_fixed_gen riscv2zisk rom-merkle)
@@ -303,7 +302,7 @@ jobs:
         shell: bash
         run: |
           if [ "$PLATFORM_NAME" == "linux" ]; then
-            tar -czvf "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release cargo-zisk ziskemu riscv2zisk
+            tar -czvf "cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release cargo-zisk ziskemu riscv2zisk libzisk_witness.so
             echo "file_name=cargo_zisk_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
           elif [ "$PLATFORM_NAME" == "darwin" ]; then
             # We need to use gtar here otherwise the archive is corrupt.
