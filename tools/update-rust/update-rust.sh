@@ -130,5 +130,5 @@ log_info "Now test build Zisk tool chain using the rust code in the directory ${
 log_info "When successfully tested, execute the following command to commit/merge the changes to 'zisk' branch and generate the release:"
 echo
 log "./release-rust.sh ${TO_VERSION} <RELEASE_VERSION> <WORKING_DIR>"
-log "Example: ./release-rust.sh ${TO_VERSION} 0.2.0 $(realpath "$3")"
+log "Example: ./release-rust.sh ${TO_VERSION} 0.4.1 $(realpath "$3")"
 echo
