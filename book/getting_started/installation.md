@@ -40,7 +40,7 @@ sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev 
 
 4. Install Node.js:
     ```bash
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.4.0/install.sh | bash
     source $HOME/.bashrc
     nvm install 19
     nvm use 19
@@ -109,24 +109,24 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
 
     Download the proving key files:
     ```bash
-    curl -O https://storage.googleapis.com/zisk/zisk-provingkey-0.4.1.tar.gz
-    curl -O https://storage.googleapis.com/zisk/zisk-provingkey-0.4.1.tar.gz.md5
+    curl -O https://storage.googleapis.com/zisk/zisk-provingkey-0.4.0.tar.gz
+    curl -O https://storage.googleapis.com/zisk/zisk-provingkey-0.4.0.tar.gz.md5
     ```
 
     Verify the MD5 checksum:
     ```bash
-    md5sum -c zisk-provingkey-0.4.1.tar.gz.md5
+    md5sum -c zisk-provingkey-0.4.0.tar.gz.md5
     ```
 
     Extract the file to the `$HOME/.zisk` directory:
     ```bash
-    tar --overwrite -xvf zisk-provingkey-0.4.1.tar.gz -C $HOME/.zisk
+    tar --overwrite -xvf zisk-provingkey-0.4.0.tar.gz -C $HOME/.zisk
     ```
 
     Alternatively, if you only need to verify proofs, download and install the verify key files:
      ```bash
-    curl -O https://storage.googleapis.com/zisk/zisk-verifykey-0.4.1.tar.gz
-    curl -O https://storage.googleapis.com/zisk/zisk-verifykey-0.4.1.tar.gz.md5
+    curl -O https://storage.googleapis.com/zisk/zisk-verifykey-0.4.0.tar.gz
+    curl -O https://storage.googleapis.com/zisk/zisk-verifykey-0.4.0.tar.gz.md5
     ```    
 
     Then, follow the same verification and installation steps as for the proving key files.
