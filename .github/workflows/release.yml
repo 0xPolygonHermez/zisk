@@ -255,7 +255,7 @@ jobs:
           [[ "$target" == *windows* ]] && exe=".exe"
 
           # RUSTFLAGS with correct path and debugging
-          export RUSTFLAGS="-C target-feature=+crt-static -L${IOMP5_DIR} -liomp5"
+          export RUSTFLAGS="-L${IOMP5_DIR} -liomp5"
           echo "RUSTFLAGS set to: $RUSTFLAGS"
 
           # Debug: Check Rust and Cargo versions
