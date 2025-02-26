@@ -1,0 +1,12 @@
+[package]
+name = "ziskclib"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "ziskclib"
+# crate-type = ["cdylib"]      # Creates dynamic lib
+crate-type = ["staticlib"] # Creates static lib
+
+[dependencies]
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }

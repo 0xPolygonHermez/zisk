@@ -55,11 +55,13 @@
             "args": [
                 "-e",
                 "emulator/benches/data/my.elf",
+                //"zisk_block.elf",
                 "-i",
                 "emulator/benches/data/input.bin",
+                //"input.bin",
                 "-c",
                 "-m",
-                "-x",
+                //"-x",
             ],
             "cwd": "${workspaceFolder}"
         },
@@ -104,9 +106,12 @@
             },
             "args": [
                 "emulator/benches/data/my.elf",
-                "rom.json",
-                "rom.pil",
-                "rom.bin"],
+                //"../riscof/riscof_work/rv64i_m/M/src/mulhsu-01.S/dut/my.elf",
+                //"zisk_block.elf",
+                "none", //"rom.json",
+                "none", //"rom.pil",
+                "none", //"rom.bin",
+                "emulator-asm/src/emu.asm"],
             "cwd": "${workspaceFolder}"
         },
         {
@@ -123,6 +128,19 @@
                 }
             },
             "cwd": "${workspaceFolder}/emulator"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'emulator-asm'",
+            "program": "emulator-asm/build/emu",
+            "args": [
+                //"-v",
+                //"-o",
+                //"input.bin",
+                "emulator/benches/data/input.bin",
+            ],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
