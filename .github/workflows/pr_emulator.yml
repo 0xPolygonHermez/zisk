@@ -49,7 +49,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --all-features -p ziskemu
+          args: --release -p ziskemu # --all-features
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1

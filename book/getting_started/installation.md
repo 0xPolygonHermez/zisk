@@ -105,7 +105,31 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
     cargo-zisk --version
     ```
 
-5. Download and install setup files:
+5. Download and install setup files: 
+
+    Download the proving key files:
+    ```bash
+    curl -O https://storage.googleapis.com/zisk/zisk-provingkey-0.4.0.tar.gz
+    curl -O https://storage.googleapis.com/zisk/zisk-provingkey-0.4.0.tar.gz.md5
+    ```
+
+    Verify the MD5 checksum:
+    ```bash
+    md5sum -c zisk-provingkey-0.4.0.tar.gz.md5
+    ```
+
+    Extract the file to the `$HOME/.zisk` directory:
+    ```bash
+    tar --overwrite -xvf zisk-provingkey-0.4.0.tar.gz -C $HOME/.zisk
+    ```
+
+    Alternatively, if you only need to verify proofs, download and install the verify key files:
+     ```bash
+    curl -O https://storage.googleapis.com/zisk/zisk-verifykey-0.4.0.tar.gz
+    curl -O https://storage.googleapis.com/zisk/zisk-verifykey-0.4.0.tar.gz.md5
+    ```    
+
+    Then, follow the same verification and installation steps as for the proving key files.
 
 To update ZisK to the latest version, simply run again:
 ```bash
