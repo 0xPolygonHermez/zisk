@@ -40,7 +40,7 @@ sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev 
 
 4. Install Node.js:
     ```bash
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.4.0/install.sh | bash
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
     source $HOME/.bashrc
     nvm install 19
     nvm use 19
