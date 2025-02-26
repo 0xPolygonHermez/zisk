@@ -44,14 +44,14 @@ jobs:
             echo "IS_NIGHTLY=false" >> $GITHUB_ENV
           fi
 
-      # If it's a nightly release, tag with the release time. If the tag is `develop`, we want to use 
+      # If it's a nightly release, tag with the release time. If the tag is `develop`, we want to use
       # `latest` as the tag name. Else, use the tag name as is.
       - name: Compute release name and tag
         id: release_info
         run: |
           echo "IS_NIGHTLY=$IS_NIGHTLY"
           echo "GITHUB_REF_NAME=$GITHUB_REF_NAME"
-          
+
           if [[ $IS_NIGHTLY == "true" ]]; then
             echo "IS_NIGHTLY"
             echo "tag_name=nightly-${GITHUB_SHA}"
@@ -111,11 +111,11 @@ jobs:
             svm_target_platform: linux-amd64
             platform: linux
             arch: amd64
-         # - runner: warp-ubuntu-latest-arm64-4x
-         #   target: aarch64-unknown-linux-gnu
-         #   svm_target_platform: linux-aarch64
-         #   platform: linux
-         #   arch: arm64
+          # - runner: warp-ubuntu-latest-arm64-4x
+          #   target: aarch64-unknown-linux-gnu
+          #   svm_target_platform: linux-aarch64
+          #   platform: linux
+          #   arch: arm64
           # - runner: macos-13
           #   target: x86_64-apple-darwin
           #   svm_target_platform: macosx-amd64
@@ -141,7 +141,23 @@ jobs:
 
       - name: Install libraries
         shell: bash
-        run: sudo apt-get install -y clang nlohmann-json3-dev build-essential libbenchmark-dev libomp-dev libgmp-dev  nasm libsodium-dev cmake openmpi-bin openmpi-common libopenmpi-dev
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            clang nlohmann-json3-dev build-essential libbenchmark-dev \
+            libomp-dev libgmp-dev nasm libsodium-dev cmake openmpi-bin \
+            openmpi-common libopenmpi-dev
+
+      - name: Install Intel OpenMP
+        shell: bash
+        run: |
+          # download the key to system keyring
+          wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
+          | gpg --dearmor | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null
+
+          # add signed entry to apt sources and configure the APT client to use Intel repository:
+          echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" | sudo tee /etc/apt/sources.list.d/oneAPI.list
+          sudo apt-get update
+          sudo apt-get install -y intel-oneapi-openmp
 
       # - name: Verify libiomp5 installation
       #   run: |
@@ -172,8 +188,8 @@ jobs:
       - name: Install go
         uses: actions/setup-go@v5
         with:
-          go-version: '^1.22.1'
-        
+          go-version: "^1.22.1"
+
       - name: Check go installation
         run: |
           go version
@@ -196,7 +212,7 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
-      - name: Build binaries
+      - name: Build binaries with Debugging
         env:
           SVM_TARGET_PLATFORM: ${{ matrix.svm_target_platform }}
         shell: bash
@@ -205,18 +221,77 @@ jobs:
           target="${{ matrix.target }}"
           flags=()
 
+          echo "🔍 Starting build process with enhanced debugging..."
+
+          # Debug: Show system info
+          echo "🖥️  System Info:"
+          uname -a
+          lsb_release -a || true
+
+          # Debug: Check if libiomp5.so is installed
+          echo "🔍 Searching for libiomp5.so on the system..."
+          IOMP5_PATH=$(find / -name "libiomp5.so" -type f 2>/dev/null | head -n 1 || true)
+
+          if [ -z "$IOMP5_PATH" ]; then
+            echo "❌ libiomp5.so not found on the system!"
+            echo "Attempting to list Intel OpenMP installation..."
+            dpkg -l | grep intel || echo "Intel OpenMP package not found."
+            exit 1
+          else
+            echo "✅ Found libiomp5.so at: $IOMP5_PATH"
+          fi
+
+          # Extract directory path from found libiomp5.so
+          IOMP5_DIR=$(dirname "$IOMP5_PATH")
+          echo "Using IOMP5_DIR: $IOMP5_DIR"
+
+          # Set LD_LIBRARY_PATH
+          export LD_LIBRARY_PATH="$IOMP5_DIR:$LD_LIBRARY_PATH"
+          echo "LD_LIBRARY_PATH set to: $LD_LIBRARY_PATH"
+
+          # Debug: Check linker search paths
+          echo "🔍 Verifying linker search paths for libiomp5..."
+          ldconfig -p | grep libiomp5 || echo "libiomp5 not found in ldconfig cache."
+
+          # Handle Windows executable suffix
           [[ "$target" == *windows* ]] && exe=".exe"
 
-          RUSTFLAGS='-C target-feature=+crt-static' cargo build --release -p cargo-zisk -p ziskemu -p riscv -p zisk-core --target "$target" "${flags[@]}"
+          # RUSTFLAGS with correct path and debugging
+          export RUSTFLAGS="-C target-feature=+crt-static -L${IOMP5_DIR} -liomp5"
+          echo "RUSTFLAGS set to: $RUSTFLAGS"
 
-          bins=(cargo-zisk ziskemu)
+          # Debug: Check Rust and Cargo versions
+          echo "🔍 Rust and Cargo versions:"
+          rustc --version
+          cargo --version
+
+          # Build with debugging
+          echo "🚀 Starting cargo build..."
+          cargo build --release -p cargo-zisk -p ziskemu -p riscv -p zisk-core \
+          --target "$target" "${flags[@]}"
+
+          # Verify built binaries
+          bins=(cargo-zisk ziskemu keccakf_fixed_gen riscv2zisk rom-merkle)
           for name in "${bins[@]}"; do
             bin=./target/$target/release/$name$exe
-            file "$bin" || true
-            ldd "$bin" || true
-            $bin --version || true
+            echo "🔍 Verifying binary: $bin"
+            file "$bin" || echo "⚠️  file command failed on $bin"
+            ldd "$bin" || echo "⚠️  ldd command failed on $bin"
+            if [[ "$name" != "riscv2zisk" ]]; then
+              $bin --version || echo "⚠️  Running $bin --version failed"
+            fi
           done
-      
+
+          # libraries=(libzisk_witness.so)
+          # for name in "${libraries[@]}"; do
+          #   bin=./target/$target/release/$name
+          #   echo "🔍 Verifying binary library: $bin"
+          #   file "$bin" || echo "⚠️  file command failed on $bin"
+          #   ldd "$bin" || echo "⚠️  ldd command failed on $bin"
+          # done
+
+          echo "✅ Build process completed."
+
       - name: Set VERSION_NAME
         run: echo "VERSION_NAME=$([ \"$IS_NIGHTLY\" == 'true' ] && echo 'nightly' || echo '${{ needs.prepare.outputs.tag_name }}')" >> $GITHUB_ENV
 

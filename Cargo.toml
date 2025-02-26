@@ -18,6 +18,7 @@ members = [
     "ziskos/entrypoint",
     "precompiles/zisk_precompiles",
     "precompiles/common",
+    "precompiles/keccakf"
 ]
 
 resolver = "2"
