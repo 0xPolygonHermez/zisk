@@ -237,7 +237,7 @@ checksum = "f61dac84819c6588b558454b194026eb1f09c293b9036ae9b159e74e73ab6cf9"
 
 [[package]]
 name = "cargo-zisk"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -267,9 +267,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.2.14"
+version = "1.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c3d1b2e905a3a7b00a6141adb0e4c0bb941d11caf55349d863942a1cc44e3c9"
+checksum = "c736e259eea577f443d5c86c304f9f4ae0295c43f3ba05c21f1d66b5f06001af"
 dependencies = [
  "jobserver",
  "libc",
@@ -337,9 +337,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.30"
+version = "4.5.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92b7b18d71fad5313a1e320fa9897994228ce274b60faa4d694fe0ea89cd9e6d"
+checksum = "027bb0d98429ae334a8698531da7077bdf906419543a35a55c2cb1b66437d767"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -347,9 +347,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.30"
+version = "4.5.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a35db2071778a7344791a4fb4f95308b5673d219dee3ae348b86642574ecc90c"
+checksum = "5589e0cba072e0f3d23791efac0fd8627b49c829c196a492e88168e6a669d863"
 dependencies = [
  "anstream",
  "anstyle",
@@ -508,7 +508,7 @@ checksum = "ef8ae57c4978a2acd8b869ce6b9ca1dfe817bff704c220209fdef2c0b75a01b9"
 
 [[package]]
 name = "data-bus"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "zisk-core",
 ]
@@ -565,9 +565,9 @@ dependencies = [
 
 [[package]]
 name = "either"
-version = "1.13.0"
+version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
+checksum = "b7914353092ddf589ad78f25c5c1c21b7f80b0ff8621e7c814c3485b5306da9d"
 
 [[package]]
 name = "elf"
@@ -642,7 +642,7 @@ dependencies = [
 
 [[package]]
 name = "executor"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "data-bus",
  "itertools 0.14.0",
@@ -1264,9 +1264,9 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.169"
+version = "0.2.170"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5aba8db14291edd000dfcc4d620c7ebfb122c613afb886ca8803fa4e128a20a"
+checksum = "875b3680cb2f8f71bdcf9a30f38d48282f5d3c95cbf9b3fa57269bb5d5c06828"
 
 [[package]]
 name = "libffi"
@@ -1355,9 +1355,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.25"
+version = "0.4.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04cbf5b083de1c7e0222a7a51dbfdba1cbe1c6ab0b15e29fff3f6c077fd9cd9f"
+checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
 
 [[package]]
 name = "memchr"
@@ -1388,9 +1388,9 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
 name = "miniz_oxide"
-version = "0.8.4"
+version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3b1c9bd4fe1f0f8b387f6eb9eb3b4a1aa26185e5750efb9140301703f62cd1b"
+checksum = "8e3e04debbb59698c15bacbb6d93584a8c0ca9cc3213cb423d31f760d8843ce5"
 dependencies = [
  "adler2",
 ]
@@ -1699,8 +1699,8 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
 name = "pil-std-lib"
-version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#5e78020e985dbdcd7611fd678a4ba4b5146c03fc"
+version = "0.4.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#823b5ddd8b75ab37db52e3d79c2c6865a198d681"
 dependencies = [
  "colored",
  "log",
@@ -1763,9 +1763,9 @@ dependencies = [
 
 [[package]]
 name = "portable-atomic"
-version = "1.10.0"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "280dc24453071f1b63954171985a0b0d30058d287960968b9b2aca264c8d4ee6"
+checksum = "350e9b48cbc6b0e028b0473b114454c6316e57336ee184ceab6e53f72c178b3e"
 
 [[package]]
 name = "powerfmt"
@@ -1857,8 +1857,8 @@ dependencies = [
 
 [[package]]
 name = "proofman"
-version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#5e78020e985dbdcd7611fd678a4ba4b5146c03fc"
+version = "0.4.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#823b5ddd8b75ab37db52e3d79c2c6865a198d681"
 dependencies = [
  "colored",
  "env_logger",
@@ -1881,8 +1881,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-common"
-version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#5e78020e985dbdcd7611fd678a4ba4b5146c03fc"
+version = "0.4.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#823b5ddd8b75ab37db52e3d79c2c6865a198d681"
 dependencies = [
  "env_logger",
  "log",
@@ -1901,8 +1901,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-hints"
-version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#5e78020e985dbdcd7611fd678a4ba4b5146c03fc"
+version = "0.4.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#823b5ddd8b75ab37db52e3d79c2c6865a198d681"
 dependencies = [
  "log",
  "p3-field",
@@ -1913,8 +1913,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-macros"
-version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#5e78020e985dbdcd7611fd678a4ba4b5146c03fc"
+version = "0.4.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#823b5ddd8b75ab37db52e3d79c2c6865a198d681"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1924,16 +1924,16 @@ dependencies = [
 
 [[package]]
 name = "proofman-starks-lib-c"
-version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#5e78020e985dbdcd7611fd678a4ba4b5146c03fc"
+version = "0.4.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#823b5ddd8b75ab37db52e3d79c2c6865a198d681"
 dependencies = [
  "log",
 ]
 
 [[package]]
 name = "proofman-util"
-version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#5e78020e985dbdcd7611fd678a4ba4b5146c03fc"
+version = "0.4.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#823b5ddd8b75ab37db52e3d79c2c6865a198d681"
 dependencies = [
  "colored",
  "p3-field",
@@ -2028,7 +2028,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3779b94aeb87e8bd4e834cee3650289ee9e0d5677f976ecdb6d219e5f4f6cd94"
 dependencies = [
  "rand_chacha 0.9.0",
- "rand_core 0.9.1",
+ "rand_core 0.9.2",
  "zerocopy 0.8.20",
 ]
 
@@ -2049,7 +2049,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb"
 dependencies = [
  "ppv-lite86",
- "rand_core 0.9.1",
+ "rand_core 0.9.2",
 ]
 
 [[package]]
@@ -2063,9 +2063,9 @@ dependencies = [
 
 [[package]]
 name = "rand_core"
-version = "0.9.1"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a88e0da7a2c97baa202165137c158d0a2e824ac465d13d81046727b34cb247d3"
+checksum = "7a509b1a2ffbe92afab0e55c8fd99dea1c280e8171bd2d88682bb20bc41cbc2c"
 dependencies = [
  "getrandom 0.3.1",
  "zerocopy 0.8.20",
@@ -2093,9 +2093,9 @@ dependencies = [
 
 [[package]]
 name = "redox_syscall"
-version = "0.5.8"
+version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03a862b389f93e68874fbf580b9de08dd02facb9a788ebadaf4a3fd33cf58834"
+checksum = "82b568323e98e49e2a0899dcee453dd679fae22d69adf9b11dd508d1549b7e2f"
 dependencies = [
  "bitflags 2.8.0",
 ]
@@ -2196,9 +2196,9 @@ dependencies = [
 
 [[package]]
 name = "ring"
-version = "0.17.9"
+version = "0.17.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e75ec5e92c4d8aede845126adc388046234541629e76029599ed35a003c7ed24"
+checksum = "da5349ae27d3887ca812fb375b45a4fbb36d8d12d2df394968cd86e35683fe73"
 dependencies = [
  "cc",
  "cfg-if",
@@ -2210,14 +2210,14 @@ dependencies = [
 
 [[package]]
 name = "riscv"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "elf",
 ]
 
 [[package]]
 name = "rom-merkle"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "blake3",
@@ -2421,7 +2421,7 @@ dependencies = [
 
 [[package]]
 name = "sm-arith"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "data-bus",
  "log",
@@ -2440,7 +2440,7 @@ dependencies = [
 
 [[package]]
 name = "sm-binary"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "data-bus",
  "log",
@@ -2458,7 +2458,7 @@ dependencies = [
 
 [[package]]
 name = "sm-common"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "data-bus",
  "p3-field",
@@ -2470,7 +2470,7 @@ dependencies = [
 
 [[package]]
 name = "sm-main"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "data-bus",
  "log",
@@ -2490,7 +2490,7 @@ dependencies = [
 
 [[package]]
 name = "sm-mem"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "data-bus",
  "log",
@@ -2510,7 +2510,7 @@ dependencies = [
 
 [[package]]
 name = "sm-rom"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "data-bus",
  "itertools 0.14.0",
@@ -2549,8 +2549,8 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
 name = "stark"
-version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#5e78020e985dbdcd7611fd678a4ba4b5146c03fc"
+version = "0.4.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#823b5ddd8b75ab37db52e3d79c2c6865a198d681"
 dependencies = [
  "log",
  "p3-field",
@@ -2905,8 +2905,8 @@ dependencies = [
 
 [[package]]
 name = "transcript"
-version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#5e78020e985dbdcd7611fd678a4ba4b5146c03fc"
+version = "0.4.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#823b5ddd8b75ab37db52e3d79c2c6865a198d681"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -2976,9 +2976,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.13.2"
+version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c1f41ffb7cf259f1ecc2876861a17e7142e63ead296f671f81f6ae85903e0d6"
+checksum = "bd8dcafa1ca14750d8d7a05aa05988c17aab20886e1f3ae33a40223c58d92ef7"
 
 [[package]]
 name = "vcpkg"
@@ -3371,8 +3371,8 @@ dependencies = [
 
 [[package]]
 name = "witness"
-version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#5e78020e985dbdcd7611fd678a4ba4b5146c03fc"
+version = "0.4.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=develop#823b5ddd8b75ab37db52e3d79c2c6865a198d681"
 dependencies = [
  "colored",
  "env_logger",
@@ -3518,7 +3518,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-core"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "elf",
  "indexmap",
@@ -3532,7 +3532,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-pil"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "proofman-common",
  "proofman-macros",
@@ -3551,7 +3551,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-witness"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "env_logger",
  "executor",
@@ -3578,7 +3578,7 @@ dependencies = [
 
 [[package]]
 name = "ziskemu"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "clap",
  "criterion",
@@ -3596,7 +3596,7 @@ dependencies = [
 
 [[package]]
 name = "ziskos"
-version = "0.2.0"
+version = "0.4.1"
 dependencies = [
  "getrandom 0.2.15",
  "lazy_static",
