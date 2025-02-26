@@ -9,6 +9,8 @@
 #include <bits/mman-shared.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 void emulator_start(void);
 
@@ -47,6 +49,7 @@ extern void zisk_keccakf(uint64_t state[25]);
 #define CHUNK_SIZE 1024*1024
 uint64_t chunk_size = CHUNK_SIZE;
 uint64_t chunk_size_mask = CHUNK_SIZE - 1;
+uint64_t max_steps = 0xffffffffffffffff;
 
 uint64_t trace_address = TRACE_ADDR;
 uint64_t trace_size = INITIAL_TRACE_SIZE;
@@ -56,41 +59,11 @@ uint64_t trace_size = INITIAL_TRACE_SIZE;
 uint64_t trace_size_threshold = INITIAL_TRACE_SIZE - MAX_CHUNK_TRACE_SIZE;
 uint64_t trace_address_threshold = TRACE_ADDR + INITIAL_TRACE_SIZE - MAX_CHUNK_TRACE_SIZE;
 
-uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime)
-{
-    struct timeval diff;
-
-    // Calculate the time difference
-    diff.tv_sec = endTime.tv_sec - startTime.tv_sec;
-    if (endTime.tv_usec >= startTime.tv_usec)
-    {
-        diff.tv_usec = endTime.tv_usec - startTime.tv_usec;
-    }
-    else if (diff.tv_sec > 0)
-    {
-        diff.tv_usec = 1000000 + endTime.tv_usec - startTime.tv_usec;
-        diff.tv_sec--;
-    }
-    else
-    {
-        // gettimeofday() can go backwards under some circumstances: NTP, multithread...
-        //cerr << "Error: TimeDiff() got startTime > endTime: startTime.tv_sec=" << startTime.tv_sec << " startTime.tv_usec=" << startTime.tv_usec << " endTime.tv_sec=" << endTime.tv_sec << " endTime.tv_usec=" << endTime.tv_usec << endl;
-        return 0;
-    }
-
-    // Return the total number of us
-    return diff.tv_usec + 1000000 * diff.tv_sec;
-}
-
-
-void print_usage (void)
-{
+void parse_arguments(int argc, char *argv[]);
+uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime);
 #ifdef DEBUG
-    printf("Usage: emu <input_file> [-o output off] [-m metrics on] [-v verbose on] [-t trace on] [-tt trace on] [-k keccak trace on] [-h/--help print this]\n");
-#else
-    printf("Usage: emu <input_file> [-o output off] [-m metrics on] [-h/--help print this]\n");
+void log_trace(void);
 #endif
-}
 
 // Configuration
 bool output = true;
@@ -101,77 +74,290 @@ bool trace = false;
 bool trace_trace = false;
 bool keccak_metrics = false;
 #endif
-char * input_file = NULL;
+char * input_parameter = NULL;
+bool is_file = false;
+
+char * shmem_control_sufix = "_control";
+char shmem_control_name[128];
+int shmem_control_fd = -1;
+uint64_t shmem_control_size = 0;
+void * shmem_control_address = NULL;
+
+char * shmem_input_sufix = "_input";
+char shmem_input_name[128];
+int shmem_input_fd = -1;
+uint64_t shmem_input_size = 0;
+void * shmem_input_address = NULL;
+
+char * shmem_trace_sufix = "_trace";
+char shmem_trace_name[128];
+int shmem_trace_fd = -1;
+
+char shmem_sem_name[128];
+
+uint64_t input_size = 0;
 
 int main(int argc, char *argv[])
 {
+    int result;
+
     // Parse arguments
-    if (argc > 1)
+    parse_arguments(argc, argv);
+
+    // Check if the input parameter is a shared memory ID or a file name
+    if (strncmp(input_parameter, "SHM", 3) == 0)
     {
-        for (int i = 1; i < argc; i++)
+        // Shared memory
+        is_file = false;
+        uint64_t input_parameter_length = strlen(input_parameter);
+        if (input_parameter_length > 16)
         {
-            if (strcmp(argv[i], "-o") == 0)
-            {
-                output = false;
-                continue;
-            }
-            if (strcmp(argv[i], "-m") == 0)
-            {
-                metrics = true;
-                continue;
-            }
-#ifdef DEBUG
-            if (strcmp(argv[i], "-v") == 0)
-            {
-                verbose = true;
-                continue;
-            }
-            if (strcmp(argv[i], "-t") == 0)
-            {
-                trace = true;
-                continue;
-            }
-            if (strcmp(argv[i], "-tt") == 0)
-            {
-                trace = true;
-                trace_trace = true;
-                continue;
-            }
-            if (strcmp(argv[i], "-k") == 0)
-            {
-                keccak_metrics = true;
-                continue;
-            }
-#endif
-            if (strcmp(argv[i], "-h") == 0)
-            {
-                print_usage();
-                continue;
-            }
-            if (strcmp(argv[i], "--help") == 0)
-            {
-                print_usage();
-                continue;
-            }
-            if (input_file == NULL)
-            {
-                input_file = argv[i];
-                continue;
-            }
-            printf("Unrecognized argument: %s\n", argv[i]);
-            print_usage();
+            printf("Input parameter is too long: %s, size = %d\n", input_parameter, input_parameter_length);
             return -1;
         }
-    }
+        strcpy(shmem_control_name, input_parameter);
+        strcat(shmem_control_name, shmem_control_sufix);
+        strcpy(shmem_input_name, input_parameter);
+        strcat(shmem_input_name, shmem_input_sufix);
+        strcpy(shmem_trace_name, input_parameter);
+        strcat(shmem_trace_name, shmem_trace_sufix);
+        // strcpy(shmem_sem_name, input_parameter);
+        // strcat(shmem_sem_name, "_sem");
 #ifdef DEBUG
-    if (verbose) printf("Emulator C start\n");
+        if (verbose) printf("Emulator C start; input shared memory ID = %s\n", input_parameter);
+#endif        
+    }
+    else
+    {
+        // Input file
+        is_file = true;
+        input_parameter;
+#ifdef DEBUG
+        if (verbose) printf("Emulator C start; input file = %s\n", input_parameter);
+#endif
+    }
+
+    /***********/
+    /* CONTROL */
+    /***********/
+    if (!is_file)
+    {
+        // Open control shared memory
+        shmem_control_fd = shm_open(shmem_control_name, O_RDWR, 0644);
+        if (shmem_control_fd < 0)
+        {
+            printf("Failed calling shm_open(%d) errno=%d=%s\n", shmem_control_name, errno, strerror(errno));
+            return -1;
+        }
+
+        shmem_control_size = 64;
+
+        // Map the shared memory object into the process address space
+        shmem_control_address = mmap(NULL, shmem_control_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_control_fd, 0);
+        if (shmem_control_address == MAP_FAILED)
+        {
+            printf("Failed calling mmap(%s) errno=%d=%s\n", shmem_control_name, errno, strerror(errno));
+            return -1;
+        }
+
+        // Read data
+        uint64_t * control = (uint64_t *)shmem_control_address;
+        chunk_size = control[0];
+        max_steps = control[1];
+        trace_size = control[2];
+        shmem_input_size = control[3];
+    }
+
+    /*********/
+    /* INPUT */
+    /*********/
+    // Allocate input
+    if (is_file)
+    {
+        FILE * input_fp = fopen(input_parameter, "r");
+        if (input_fp == NULL)
+        {
+            printf("Failed calling fopen(%s) errno=%d=%s; does it exist?\n", input_parameter, errno, strerror(errno));
+            return -1;
+        }
+
+        if (fseek(input_fp, 0, SEEK_END) == -1)
+        {
+            printf("Failed calling fseek(%s) errno=%d=%s\n", input_parameter, errno, strerror(errno));
+            return -1;
+        }
+
+        long input_data_size = ftell(input_fp);
+        if (input_data_size == -1)
+        {
+            printf("Failed calling ftell(%s) errno=%d=%s\n", input_parameter, errno, strerror(errno));
+            return -1;
+        }
+        // Go back to the first byte
+        if (fseek(input_fp, 0, SEEK_SET) == -1)
+        {
+            printf("Failed calling fseek(%s, 0) errno=%d=%s\n", input_parameter, errno, strerror(errno));
+            return -1;
+        }
+
+        // Check the input data size is inside the proper range
+        if (input_data_size > (MAX_INPUT_SIZE - 8))
+        {
+            printf("Size of input file (%s) is too long (%d)\n", input_parameter, input_data_size);
+            return -1;
+        }
+
+        // Calculate input size
+        input_size = ((input_data_size + 8 + 1) >> 3) << 3;
+
+        // Map input address space
+        void * pInput = mmap((void *)INPUT_ADDR, input_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+        if (pInput == NULL)
+        {
+            printf("Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
+            return -1;
+        }
+        if ((uint64_t)pInput != INPUT_ADDR)
+        {
+            printf("Called mmap(pInput) but returned address = 0x%08x != 0x%08x\n", pInput, INPUT_ADDR);
+            return -1;
+        }
+    #ifdef DEBUG
+        if (verbose) printf("mmap(input) returned %08x\n", pInput);
+    #endif
+
+        // Write the input size in the first 64 bits
+        *(uint64_t *)INPUT_ADDR = (uint64_t)input_data_size;
+
+        // Copy input data into input memory
+        size_t input_read = fread((void *)(INPUT_ADDR + 8), 1, input_data_size, input_fp);
+        if (input_read != input_data_size)
+        {
+            printf("Input read (%d) != input file size (%d)\n", input_read, input_data_size);
+            return -1;
+        }
+
+        // Close the file pointer
+        fclose(input_fp);
+    }
+    else
+    {
+        // Open input shared memory
+        shmem_input_fd = shm_open(shmem_input_name, O_RDWR, 0644);
+        if (shmem_input_fd < 0)
+        {
+            printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            return -1;
+        }
+        
+        // Map the shared memory object into the process address space
+        shmem_input_address = mmap(NULL, shmem_input_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_input_fd, 0);
+        if (shmem_input_address == MAP_FAILED)
+        {
+            printf("Failed calling mmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            return -1;
+        }
+
+        // Calculate input size
+        input_size = ((shmem_input_size + 8 + 1) >> 3) << 3;
+
+        // Map input address space
+        void * pInput = mmap((void *)INPUT_ADDR, input_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+        if (pInput == NULL)
+        {
+            printf("Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
+            return -1;
+        }
+        if ((uint64_t)pInput != INPUT_ADDR)
+        {
+            printf("Called mmap(pInput) but returned address = 0x%08x != 0x%08x\n", pInput, INPUT_ADDR);
+            return -1;
+        }
+#ifdef DEBUG
+        if (verbose) printf("mmap(input) returned %08x\n", pInput);
 #endif
 
-    // Allocate ram
+        // Write the input size in the first 64 bits
+        *(uint64_t *)INPUT_ADDR = (uint64_t)shmem_input_size;
+
+        // Copy the input data
+        memcpy((void *)(INPUT_ADDR + 8), shmem_input_address, shmem_input_size);
+
+        // Unmap input
+        result = munmap((void *)INPUT_ADDR, shmem_input_size);
+        if (result == -1)
+        {
+            printf("Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
+            exit(-1);
+        }
+        
+        // Unlink input
+        result = shm_unlink(shmem_input_name);
+        if (result == -1)
+        {
+            printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_input_name, trace_size, errno, strerror(errno));
+            exit(-1);
+        }
+    }
+
+    /*********/
+    /* TRACE */
+    /*********/
+    if (is_file)
+    {
+        // Allocate trace
+        void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
+        if (pTrace == NULL)
+        {
+            printf("Failed calling mmap(pTrace) errno=%d=%s\n", errno, strerror(errno));
+            return -1;
+        }
+        if ((uint64_t)pTrace != TRACE_ADDR)
+        {
+            printf("Called mmap(pTrace) but returned address = 0x%08x != 0x%08x errno=%d=%s\n", pTrace, TRACE_ADDR);
+            return -1;
+        }
+#ifdef DEBUG
+        if (verbose) printf("mmap(trace) returned %08x\n", pTrace);
+#endif
+    }
+    else
+    {
+        // Create the trace shared memory
+        shmem_trace_fd = shm_open(shmem_trace_name, O_RDWR | O_CREAT, 0644);
+        if (shmem_trace_fd < 0)
+        {
+            printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_trace_name, errno, strerror(errno));
+            return -1;
+        }
+
+        // Size it
+        ftruncate(shmem_trace_fd, trace_size);
+
+        // Map it to the trace address
+        void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_trace_fd, 0);
+        if (pTrace == NULL)
+        {
+            printf("Failed calling mmap(pTrace) errno=%d=%s\n", errno, strerror(errno));
+            return -1;
+        }
+        if ((uint64_t)pTrace != TRACE_ADDR)
+        {
+            printf("Called mmap(pTrace) but returned address = 0x%08x != 0x%08x\n", pTrace, TRACE_ADDR);
+            return -1;
+        }
+#ifdef DEBUG
+        if (verbose) printf("mmap(trace) returned %08x\n", pTrace);
+#endif
+    }
+
+    /*******/
+    /* RAM */
+    /*******/
     void * pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
     if (pRam == NULL)
     {
-        printf("Failed calling mmap(ram)\n");
+        printf("Failed calling mmap(ram) errno=%d=%s\n", errno, strerror(errno));
         return -1;
     }
     if ((uint64_t)pRam != RAM_ADDR)
@@ -183,11 +369,13 @@ int main(int argc, char *argv[])
     if (verbose) printf("mmap(ram) returned %08x\n", pRam);
 #endif
 
-    // Allocate rom
+    /*******/
+    /* ROM */
+    /*******/
     void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
     if (pRom == NULL)
     {
-        printf("Failed calling mmap(rom)\n");
+        printf("Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
         return -1;
     }
     if ((uint64_t)pRom != ROM_ADDR)
@@ -199,89 +387,9 @@ int main(int argc, char *argv[])
     if (verbose) printf("mmap(rom) returned %08x\n", pRom);
 #endif
 
-    // Allocate input
-
-    FILE *input_fp;
-    long input_file_size = 0;
-    if (input_file != NULL)
-    {
-        input_fp = fopen(input_file, "r");
-        if (input_fp == NULL)
-        {
-            printf("Failed calling fopen(%s); does it exist?\n", input_file);
-            return -1;
-        }
-
-        if (fseek(input_fp, 0, SEEK_END) == -1)
-        {
-            printf("Failed calling fseek(%s)\n", input_file);
-            return -1;
-        }
-
-        input_file_size = ftell(input_fp);
-        if (input_file_size == -1)
-        {
-            printf("Failed calling ftell(%s)\n", input_file);
-            return -1;
-        }
-        // Go back to the first byte
-        if (fseek(input_fp, 0, SEEK_SET) == -1)
-        {
-            printf("Failed calling fseek(%s, 0)\n", input_file);
-            return -1;
-        }
-
-        // Check the input data size is inside the proper range
-        if (input_file_size > (MAX_INPUT_SIZE - 8))
-        {
-            printf("Size of input file (%s) is too long (%d)\n", input_file, input_file_size);
-            return -1;
-        }
-    }
-
-    long input_size = ((input_file_size + 8 + 1) >> 3) << 3;
-    void * pInput = mmap((void *)INPUT_ADDR, input_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-    if (pInput == NULL)
-    {
-        printf("Failed calling mmap(input)\n");
-        return -1;
-    }
-    if ((uint64_t)pInput != INPUT_ADDR)
-    {
-        printf("Called mmap(pInput) but returned address = 0x%08x != 0x%08x\n", pInput, INPUT_ADDR);
-        return -1;
-    }
-#ifdef DEBUG
-    if (verbose) printf("mmap(input) returned %08x\n", pInput);
-#endif
-    *(uint64_t *)INPUT_ADDR = (uint64_t)input_file_size;
-
-    if (input_file != NULL)
-    {
-        size_t input_read = fread((void *)(INPUT_ADDR + 8), 1, input_file_size, input_fp);
-        if (input_read != input_file_size)
-        {
-            printf("Input read (%d) != input file size (%d)\n", input_read, input_file_size);
-            return -1;
-        }
-    }
-
-    // Allocate trace
-    void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
-    if (pTrace == NULL)
-    {
-        printf("Failed calling mmap(pTrace)\n");
-        return -1;
-    }
-    if ((uint64_t)pTrace != TRACE_ADDR)
-    {
-        printf("Called mmap(pTrace) but returned address = 0x%08x != 0x%08x\n", pTrace, TRACE_ADDR);
-        return -1;
-    }
-#ifdef DEBUG
-    if (verbose) printf("mmap(trace) returned %08x\n", pTrace);
-#endif
-
+    /*******/
+    /* ASM */
+    /*******/
     // Call emulator assembly code
     gettimeofday(&start_time,NULL);
     emulator_start();
@@ -339,120 +447,82 @@ int main(int argc, char *argv[])
     }
 
     // Log trace
-    /* Trace data structure
-    [8B] Number of chunks: C
-
-    Offset to chunk 0:
-    Start state:
-        [8B] pc
-        [8B] sp
-        [8B] c
-        [8B] step
-        [8B] register[1]
-        …
-        [8B] register[31]
-        [8B] register[32]
-        [8B] register[33]
-    Last state:
-        [8B] pc
-        [8B] sp
-        [8B] c
-    End:
-        [8B] end
-    Steps:
-        [8B] steps = chunk size except for the last chunk
-        [8B] mem_reads_size
-        [8B] mem_reads[0]
-        [8B] mem_reads[1]
-        …
-        [8B] mem_reads[mem_reads_size - 1]
-
-    Offset to chunk 1:
-    …
-    Offset to chunk C-1:
-    …
-    */
 #ifdef DEBUG
     if (trace)
     {
-        printf("Trace content:\n");
-        uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
-        uint64_t number_of_chunks = trace[0];
-        printf("Number of chunks=%d\n", number_of_chunks);
-        if (number_of_chunks > 1000000)
-        {
-            printf("Number of chunks is too high=%d\n", number_of_chunks);
-            return -1;
-        }
-        uint64_t * chunk = trace + 1;
-        for (uint64_t c=0; c<number_of_chunks; c++)
-        {
-            uint64_t i=0;
-            printf("Chunk %d:\n", c);
-
-            // Log current chunk start state
-            printf("\tStart state:\n");
-            printf("\t\tpc=0x%08x:\n", chunk[i]);
-            i++;
-            printf("\t\tsp=0x%08x:\n", chunk[i]);
-            i++;
-            printf("\t\tc=0x%08x:\n", chunk[i]);
-            i++;
-            printf("\t\tstep=%d:\n", chunk[i]);
-            i++;
-            for (uint64_t r=1; r<34; r++)
-            {
-                printf("\t\tregister[%d]=0x%08x:\n", r, chunk[i]);
-                i++;
-            }
-
-            // Log current chunk last state
-            printf("\tLast state:\n");
-            printf("\t\tpc=0x%08x:\n", chunk[i]);
-            i++;
-            printf("\t\tsp=0x%08x:\n", chunk[i]);
-            i++;
-            printf("\t\tc=0x%08x:\n", chunk[i]);
-            i++;
-            
-            // Log current chunk end
-            printf("\tEnd:\n");
-            printf("\t\tend=%d:\n", chunk[i]);
-            i++;
-
-            // Log current chunk steps
-            printf("\tSteps:\n");
-            printf("\t\tsteps=%d:\n", chunk[i]);
-            i++;
-            uint64_t mem_reads_size = chunk[i];
-            printf("\t\tmem_reads_size=%d:\n", mem_reads_size);
-            i++;
-            if (mem_reads_size > 10000000)
-            {
-                printf("Mem reads size is too high=%d\n", mem_reads_size);
-                return -1;
-            }
-            if (trace_trace)
-            {
-                for (uint64_t m=0; m<mem_reads_size; m++)
-                {
-                    printf("\t\tchunk[%d].mem_reads[%d]=%08x:\n", c, m, chunk[i]);
-                    i++;
-                }
-            }
-            else
-            {
-                i += mem_reads_size;
-            }
-
-            //Set next chunk pointer
-            chunk = chunk + i;
-        }
-        printf("Trace=%08x chunk=%08x size=%d\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+        log_trace();
     }
 
     if (verbose) printf("Emulator C end\n");
 #endif
+
+    /************/
+    /* CLEAN UP */
+    /************/
+
+    // Cleanup ROM
+    result = munmap((void *)ROM_ADDR, ROM_SIZE);
+    if (result == -1)
+    {
+        printf("Failed calling munmap(rom) errno=%d=%s\n", errno, strerror(errno));
+        exit(-1);
+    }
+
+    // Cleanup RAM
+    result = munmap((void *)RAM_ADDR, RAM_SIZE);
+    if (result == -1)
+    {
+        printf("Failed calling munmap(ram) errno=%d=%s\n", errno, strerror(errno));
+        exit(-1);
+    }
+
+    // Cleanup INPUT
+    result = munmap((void *)INPUT_ADDR, input_size);
+    if (result == -1)
+    {
+        printf("Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
+        exit(-1);
+    }
+
+    // Cleanup CONTROL
+    if (!is_file)
+    {
+        result = munmap((void *)shmem_control_address, shmem_control_size);
+        if (result == -1)
+        {
+            printf("Failed calling munmap(control) errno=%d=%s\n", errno, strerror(errno));
+            exit(-1);
+        }
+        result = shm_unlink(shmem_control_name);
+        if (result == -1)
+        {
+            printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_control_name, errno, strerror(errno));
+            exit(-1);
+        }
+    }
+
+    // Cleanup trace
+    result = munmap((void *)TRACE_ADDR, trace_size);
+    if (result == -1)
+    {
+        printf("Failed calling munmap(trace) for size=%d errno=%d=%s\n", trace_size, errno, strerror(errno));
+        exit(-1);
+    }
+    if (!is_file)
+    {
+        result = close(shmem_trace_fd);
+        if (result == -1)
+        {
+            printf("Failed calling close(shmem_output_fd) for size=%d errno=%d=%s\n", trace_size, errno, strerror(errno));
+            exit(-1);
+        }
+        result = shm_unlink(shmem_trace_name);
+        if (result == -1)
+        {
+            printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_trace_name, errno, strerror(errno));
+            exit(-1);
+        }
+    }
 }
 
 extern int _print_abcflag(uint64_t a, uint64_t b, uint64_t c, uint64_t flag)
@@ -521,3 +591,214 @@ extern void _realloc_trace (void)
     trace_size = new_trace_size;
     trace_address_threshold = TRACE_ADDR + trace_size - MAX_CHUNK_TRACE_SIZE;
 }
+
+void print_usage (void)
+{
+#ifdef DEBUG
+    printf("Usage: ziskemuasm <input_file> [-o output off] [-m metrics on] [-v verbose on] [-t trace on] [-tt trace on] [-k keccak trace on] [-h/--help print this]\n");
+#else
+    printf("Usage: ziskemuasm <input_file> [-o output off] [-m metrics on] [-h/--help print this]\n");
+#endif
+}
+
+void parse_arguments(int argc, char *argv[])
+{
+    if (argc > 1)
+    {
+        for (int i = 1; i < argc; i++)
+        {
+            if (strcmp(argv[i], "-o") == 0)
+            {
+                output = false;
+                continue;
+            }
+            if (strcmp(argv[i], "-m") == 0)
+            {
+                metrics = true;
+                continue;
+            }
+#ifdef DEBUG
+            if (strcmp(argv[i], "-v") == 0)
+            {
+                verbose = true;
+                continue;
+            }
+            if (strcmp(argv[i], "-t") == 0)
+            {
+                trace = true;
+                continue;
+            }
+            if (strcmp(argv[i], "-tt") == 0)
+            {
+                trace = true;
+                trace_trace = true;
+                continue;
+            }
+            if (strcmp(argv[i], "-k") == 0)
+            {
+                keccak_metrics = true;
+                continue;
+            }
+#endif
+            if (strcmp(argv[i], "-h") == 0)
+            {
+                print_usage();
+                continue;
+            }
+            if (strcmp(argv[i], "--help") == 0)
+            {
+                print_usage();
+                continue;
+            }
+            // We accept only one input parameter (beyond the flags)
+            if (input_parameter == NULL)
+            {
+                input_parameter = argv[i];
+                continue;
+            }
+            printf("Unrecognized argument: %s\n", argv[i]);
+            print_usage();
+            exit(-1);
+        }
+    }
+}
+
+uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime)
+{
+    struct timeval diff;
+
+    // Calculate the time difference
+    diff.tv_sec = endTime.tv_sec - startTime.tv_sec;
+    if (endTime.tv_usec >= startTime.tv_usec)
+    {
+        diff.tv_usec = endTime.tv_usec - startTime.tv_usec;
+    }
+    else if (diff.tv_sec > 0)
+    {
+        diff.tv_usec = 1000000 + endTime.tv_usec - startTime.tv_usec;
+        diff.tv_sec--;
+    }
+    else
+    {
+        // gettimeofday() can go backwards under some circumstances: NTP, multithread...
+        //cerr << "Error: TimeDiff() got startTime > endTime: startTime.tv_sec=" << startTime.tv_sec << " startTime.tv_usec=" << startTime.tv_usec << " endTime.tv_sec=" << endTime.tv_sec << " endTime.tv_usec=" << endTime.tv_usec << endl;
+        return 0;
+    }
+
+    // Return the total number of us
+    return diff.tv_usec + 1000000 * diff.tv_sec;
+}
+
+#ifdef DEBUG
+
+/* Trace data structure
+    [8B] Number of chunks: C
+
+    Offset to chunk 0:
+    Start state:
+        [8B] pc
+        [8B] sp
+        [8B] c
+        [8B] step
+        [8B] register[1]
+        …
+        [8B] register[31]
+        [8B] register[32]
+        [8B] register[33]
+    Last state:
+        [8B] pc
+        [8B] sp
+        [8B] c
+    End:
+        [8B] end
+    Steps:
+        [8B] steps = chunk size except for the last chunk
+        [8B] mem_reads_size
+        [8B] mem_reads[0]
+        [8B] mem_reads[1]
+        …
+        [8B] mem_reads[mem_reads_size - 1]
+
+    Offset to chunk 1:
+    …
+    Offset to chunk C-1:
+    …
+*/
+void log_trace(void)
+{
+    printf("Trace content:\n");
+    uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
+    uint64_t number_of_chunks = trace[0];
+    printf("Number of chunks=%d\n", number_of_chunks);
+    if (number_of_chunks > 1000000)
+    {
+        printf("Number of chunks is too high=%d\n", number_of_chunks);
+        exit(-1);
+    }
+    uint64_t * chunk = trace + 1;
+    for (uint64_t c=0; c<number_of_chunks; c++)
+    {
+        uint64_t i=0;
+        printf("Chunk %d:\n", c);
+
+        // Log current chunk start state
+        printf("\tStart state:\n");
+        printf("\t\tpc=0x%08x:\n", chunk[i]);
+        i++;
+        printf("\t\tsp=0x%08x:\n", chunk[i]);
+        i++;
+        printf("\t\tc=0x%08x:\n", chunk[i]);
+        i++;
+        printf("\t\tstep=%d:\n", chunk[i]);
+        i++;
+        for (uint64_t r=1; r<34; r++)
+        {
+            printf("\t\tregister[%d]=0x%08x:\n", r, chunk[i]);
+            i++;
+        }
+
+        // Log current chunk last state
+        printf("\tLast state:\n");
+        printf("\t\tpc=0x%08x:\n", chunk[i]);
+        i++;
+        printf("\t\tsp=0x%08x:\n", chunk[i]);
+        i++;
+        printf("\t\tc=0x%08x:\n", chunk[i]);
+        i++;
+        
+        // Log current chunk end
+        printf("\tEnd:\n");
+        printf("\t\tend=%d:\n", chunk[i]);
+        i++;
+
+        // Log current chunk steps
+        printf("\tSteps:\n");
+        printf("\t\tsteps=%d:\n", chunk[i]);
+        i++;
+        uint64_t mem_reads_size = chunk[i];
+        printf("\t\tmem_reads_size=%d:\n", mem_reads_size);
+        i++;
+        if (mem_reads_size > 10000000)
+        {
+            printf("Mem reads size is too high=%d\n", mem_reads_size);
+            exit(-1);
+        }
+        if (trace_trace)
+        {
+            for (uint64_t m=0; m<mem_reads_size; m++)
+            {
+                printf("\t\tchunk[%d].mem_reads[%d]=%08x:\n", c, m, chunk[i]);
+                i++;
+            }
+        }
+        else
+        {
+            i += mem_reads_size;
+        }
+
+        //Set next chunk pointer
+        chunk = chunk + i;
+    }
+    printf("Trace=%08x chunk=%08x size=%d\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+}
+#endif
