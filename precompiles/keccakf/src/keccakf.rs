@@ -50,7 +50,7 @@ impl KeccakfSM {
     /// A new `KeccakfSM` instance.
     pub fn new(keccakf_table_sm: Arc<KeccakfTableSM>) -> Arc<Self> {
         // Parse the script
-        let script = fs::read_to_string("../zisk/precompiles/keccakf/src/keccakf_script.json")
+        let script = fs::read_to_string("precompiles/keccakf/src/keccakf_script.json")
             .expect("Failed to read keccakf_script.json");
         let script: Script =
             serde_json::from_str(&script).expect("Failed to parse keccakf_script.json");
