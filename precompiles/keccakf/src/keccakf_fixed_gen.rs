@@ -1,5 +1,6 @@
 use std::{error::Error, fs};
 
+use clap::{Arg, Command};
 use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
 use serde::de::DeserializeOwned;
@@ -17,12 +18,44 @@ use keccakf_types::{Connections, Script};
 type F = Goldilocks;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let matches = Command::new("keccakf_fixed_gen")
+        .version("1.0")
+        .arg(
+            Arg::new("script")
+                .short('s')
+                .long("script")
+                .value_name("script_path")
+                .help("Path to the script JSON file")
+                .default_value("precompiles/keccakf/src/keccakf_script.json"),
+        )
+        .arg(
+            Arg::new("connections")
+                .short('c')
+                .long("connections")
+                .value_name("connections_path")
+                .help("Path to the connections JSON file")
+                .default_value("precompiles/keccakf/src/keccakf_connections.json"),
+        )
+        .arg(
+            Arg::new("output")
+                .short('o')
+                .long("output")
+                .value_name("output_path")
+                .help("Path to the output binary file")
+                .default_value("precompiles/keccakf/src/keccakf_fixed.bin"),
+        )
+        .get_matches();
+
+    let script_path = matches.get_one::<String>("script").unwrap();
+    let connections_path = matches.get_one::<String>("connections").unwrap();
+    let output_file = matches.get_one::<String>("output").unwrap();
+
     let n: usize = KeccakfTrace::<usize>::NUM_ROWS;
     let bits = log2(n);
 
     // Get the script and connections
-    let script: Script = read_json("precompiles/keccakf/src/keccakf_script.json")?;
-    let connections: Connections = read_json("precompiles/keccakf/src/keccakf_connections.json")?;
+    let script: Script = read_json(script_path)?;
+    let connections: Connections = read_json(connections_path)?;
 
     // Get the subgroup generator and coset generator
     let subgroup_gen = GOLDILOCKS_GEN[bits];
@@ -38,7 +71,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let conn_c = FixedColsInfo::new("Keccakf.CONN_C", None, conn_c);
     let gate_op = FixedColsInfo::new("Keccakf.GATE_OP", None, gate_op);
 
-    let output_file = "precompiles/keccakf/src/keccakf_fixed.bin";
     write_fixed_cols_bin(
         output_file,
         "Zisk",

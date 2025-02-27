@@ -153,8 +153,12 @@ main() {
     fi
 
     # Compute the URL of the release tarball in the zisk repository.
-    RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/download/${ZISKUP_TAG}/"
-    BIN_ARCHIVE_URL="${RELEASE_URL}cargo_zisk_${ZISKUP_VERSION}_${PLATFORM}_${ARCHITECTURE}.$EXT"
+    if [ "${ZISKUP_TAG}" = "latest" ]; then
+      RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/latest/download/"
+    else 
+      RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/download/${ZISKUP_TAG}/"
+    fi
+    BIN_ARCHIVE_URL="${RELEASE_URL}cargo_zisk_${PLATFORM}_${ARCHITECTURE}.$EXT"
     #MAN_TARBALL_URL="${RELEASE_URL}cargo_zisk_man_${ZISKUP_VERSION}.tar.gz"
 
     # Download and extract the binaries archive
@@ -165,7 +169,14 @@ main() {
       ensure unzip "$tmp" -d "$ZISK_BIN_DIR"
       rm -f "$tmp"
     else
-      ensure download "$BIN_ARCHIVE_URL" | ensure tar -xzC "$ZISK_BIN_DIR"
+      tmp="$(mktemp -d)/cargo_zisk.tar.gz"
+      if check_cmd curl; then
+        curl -H "Accept: application/octet-stream" -L -#o "$tmp" "$BIN_ARCHIVE_URL"
+      else
+        wget --header="Accept: application/octet-stream" --show-progress -qO "$tmp" "$BIN_ARCHIVE_URL"
+      fi
+      ensure tar -xzf "$tmp" -C "$ZISK_BIN_DIR"
+      rm -f "$tmp"
     fi
 
     for bin in "${BINS[@]}"; do
