@@ -57,14 +57,14 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
 
 1. Follow the instructions to install [Nix](https://determinate.systems/nix/) on your system.
 
-2. Use the `flake.nix` file from the [ZisK repository](https://github.com/0xPolygonHermez/zisk/blob/develop/flake.nix) to set up the development environment:
+2. Use the `flake.nix` file from the [ZisK repository](https://github.com/0xPolygonHermez/zisk/blob/main/flake.nix) to set up the development environment:
     ```bash
-    nix develop
+    nix main
     ```
 
 3. To start a shell with ZisK’s environment:
     ```bash
-    nix develop -c zsh
+    nix main -c zsh
     ```
     This will open a shell with the `PATH` and `LD_LIBRARY_PATH` correctly configured for building the project. Exit the shell with `Ctrl+D`.
 
@@ -74,7 +74,7 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
 
 1. Install the ZisK installer `ziskup`:
     ```bash
-    curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/develop/ziskup/install.sh  | bash
+    curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh  | bash
     ```
     This will enable the `ziskup` command in your terminal. 
     
