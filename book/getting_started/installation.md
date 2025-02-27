@@ -135,10 +135,7 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
 
     Then, follow the same verification and installation steps as for the proving key files.
 
-To update ZisK to the latest version, simply run again:
-```bash
-ziskup
-```
+To update ZisK to the latest version, simply run again the previous steps.
 
 ### Option 2: Building from Source
 
