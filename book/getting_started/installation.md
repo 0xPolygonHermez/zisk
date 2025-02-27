@@ -107,6 +107,7 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
 
 5. Download and install setup files: 
 
+    Option 1:
     Download the proving key files:
     ```bash
     curl -O https://storage.googleapis.com/zisk/zisk-provingkey-0.4.0.tar.gz
@@ -123,6 +124,7 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
     tar --overwrite -xvf zisk-provingkey-0.4.0.tar.gz -C $HOME/.zisk
     ```
 
+    Option 2:
     Alternatively, if you only need to verify proofs, download and install the verify key files:
      ```bash
     curl -O https://storage.googleapis.com/zisk/zisk-verifykey-0.4.0.tar.gz
