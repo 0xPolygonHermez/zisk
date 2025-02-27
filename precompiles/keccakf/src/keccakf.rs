@@ -52,8 +52,7 @@ impl KeccakfSM {
         // Parse the script
         let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
         let script_path = format!("{}/.zisk/bin/keccakf_script.json", home_dir);
-        let script = fs::read_to_string(script_path)
-            .expect("Failed to read keccakf_script.json");
+        let script = fs::read_to_string(script_path).expect("Failed to read keccakf_script.json");
         let script: Script =
             serde_json::from_str(&script).expect("Failed to parse keccakf_script.json");
         let slot_size = script.maxref;

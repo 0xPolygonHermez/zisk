@@ -1,9 +1,9 @@
 use std::{error::Error, fs};
 
+use clap::{Arg, Command};
 use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
 use serde::de::DeserializeOwned;
-use clap::{Arg, Command};
 
 use zisk_pil::KeccakfTrace;
 
