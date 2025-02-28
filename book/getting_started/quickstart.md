@@ -87,7 +87,7 @@ You can generate and verify a proof using the `cargo-zisk prove` command by prov
 To generate and verify a proof for the previously built ELF and input files, execute:
 
 ```bash
-cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
+cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -o proof -a -y
 ```
 
 This command generates the proof in the `./proof directory`. If everything goes well, you will see a message similar to:
@@ -109,6 +109,13 @@ cargo-zisk build --release --features "distributed"
 Then the execution command will be:
 
 ```bash
-mpirun --bind-to none -np <number_processes> -x OMP_NUM_THREADS=<number_of_threads_per_process> target/release/cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
+mpirun --bind-to none -np <number_processes> -x OMP_NUM_THREADS=<number_of_threads_per_process> target/release/cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -o proof -a -y
 ```
 
+## Verify Proof
+
+To verify a generated proof, use the following command:
+
+```bash
+cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json -u ./proof/publics.json
+```

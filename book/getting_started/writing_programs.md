@@ -277,7 +277,7 @@ In this command:
 
 * `-e` (`--elf`) flag is used to specify the ELF file localtion.
 * `-i` (`--inputs`) flag is used specify the input file location.
-* `-w` (`--witness`) and `-k` (`--proving-key`) flags are used to specify the location of the witness library and proving key files required for proof generation (located in the `$HOME/.zisk` installation folder by default).
+* `-w` (`--witness`) and `-k` (`--proving-key`) flags are used to specify the location of the witness library and proving key files required for proof generation; they are optional, set by default to the paths found in the `$HOME/.zisk` installation folder.
 * `-o` (`--output`) flag determines the output directory (in this example `proof`).
 * `-a` (`--aggregation`) flag indicates that a final aggregated proof (containing all generated sub-proofs) should be produced.
 * `-y` (`--verify-proofs`) flag instructs the tool to verify the proof immediately after it is generated (verification can also be performed later using the `cargo-zisk verify` command).
@@ -303,6 +303,6 @@ In this command:
 
 * `-p` (`--proof`) flag specifies the final proof file generated with cargo-zisk prove.
 * `-u` (`--public_inputs`) flag provides the path to the public inputs associated with the proof.
-* The remaining flags specify the files required for verification, located in the `$HOME/.zisk` directory by default.
+* The remaining flags specify the files required for verification; they are optional, set by default to the files found in the `$HOME/.zisk` directory.
 
 
