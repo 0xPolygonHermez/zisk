@@ -7,13 +7,15 @@ use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo,
 use rom_merkle::{gen_elf_hash, get_elf_bin_file_path, get_rom_blowup_factor, DEFAULT_CACHE_PATH};
 use std::{collections::HashMap, fs, path::PathBuf};
 
+use super::{get_default_proving_key, get_default_witness_computation_lib};
+
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 pub struct ZiskProve {
     /// Witness computation dynamic library path
     #[clap(short = 'w', long)]
-    pub witness_lib: PathBuf,
+    pub witness_lib: Option<PathBuf>,
 
     /// ELF file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
@@ -31,7 +33,7 @@ pub struct ZiskProve {
 
     /// Setup folder path
     #[clap(short = 'k', long)]
-    pub proving_key: PathBuf,
+    pub proving_key: Option<PathBuf>,
 
     /// Output dir path
     #[clap(short = 'o', long, default_value = "tmp")]
@@ -87,7 +89,7 @@ impl ZiskProve {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
             Some(Some(debug_value)) => {
-                let proving_key: PathBuf = PathBuf::from(&self.proving_key);
+                let proving_key: PathBuf = PathBuf::from(&self.get_proving_key());
                 json_to_debug_instances_map(proving_key, debug_value.clone())
             }
         };
@@ -104,7 +106,7 @@ impl ZiskProve {
             }
         }
 
-        let blowup_factor = get_rom_blowup_factor(&self.proving_key);
+        let blowup_factor = get_rom_blowup_factor(&self.get_proving_key());
 
         let rom_bin_path =
             get_elf_bin_file_path(&self.elf.to_path_buf(), &default_cache_path, blowup_factor)?;
@@ -125,11 +127,11 @@ impl ZiskProve {
         match self.field {
             Field::Goldilocks => {
                 ProofMan::<Goldilocks>::generate_proof(
-                    self.witness_lib.clone(),
+                    self.get_witness_computation_lib(),
                     Some(self.elf.clone()),
                     self.public_inputs.clone(),
                     self.input.clone(),
-                    self.proving_key.clone(),
+                    self.get_proving_key(),
                     self.output_dir.clone(),
                     custom_commits_map,
                     ProofOptions::new(
@@ -146,5 +148,25 @@ impl ZiskProve {
         }
 
         Ok(())
+    }
+
+    /// Gets the witness computation library file location.
+    /// Uses the default one if not specified by user.
+    pub fn get_witness_computation_lib(&self) -> PathBuf {
+        if self.witness_lib.is_none() {
+            get_default_witness_computation_lib()
+        } else {
+            self.witness_lib.clone().unwrap()
+        }
+    }
+
+    /// Gets the proving key file location.
+    /// Uses the default one if not specified by user.
+    pub fn get_proving_key(&self) -> PathBuf {
+        if self.proving_key.is_none() {
+            get_default_proving_key()
+        } else {
+            self.proving_key.clone().unwrap()
+        }
     }
 }

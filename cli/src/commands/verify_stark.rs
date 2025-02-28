@@ -12,6 +12,8 @@ use proofman::verify_proof_from_file;
 
 use crate::ZISK_VERSION_MESSAGE;
 
+use super::{get_default_stark_info, get_default_verifier_bin, get_default_verkey};
+
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 #[command(propagate_version = true)]
@@ -20,13 +22,13 @@ pub struct ZiskVerify {
     pub proof: String,
 
     #[clap(short = 's', long)]
-    pub stark_info: String,
+    pub stark_info: Option<String>,
 
     #[clap(short = 'e', long)]
-    pub verifier_bin: String,
+    pub verifier_bin: Option<String>,
 
     #[clap(short = 'k', long)]
-    pub verkey: String,
+    pub verkey: Option<String>,
 
     #[clap(short = 'u', long)]
     pub public_inputs: Option<PathBuf>,
@@ -69,9 +71,9 @@ impl ZiskVerify {
 
         let valid = verify_proof_from_file::<Goldilocks>(
             self.proof.clone(),
-            self.stark_info.clone(),
-            self.verifier_bin.clone(),
-            self.verkey.clone(),
+            self.get_stark_info(),
+            self.get_verifier_bin(),
+            self.get_verkey(),
             publics,
             None,
             None,
@@ -91,6 +93,36 @@ impl ZiskVerify {
                 "\u{2713} Stark proof was verified".bright_green().bold()
             );
             Ok(())
+        }
+    }
+
+    /// Gets the stark info JSON file location.
+    /// Uses the default one if not specified by user.
+    pub fn get_stark_info(&self) -> String {
+        if self.stark_info.is_none() {
+            get_default_stark_info()
+        } else {
+            self.stark_info.clone().unwrap()
+        }
+    }
+
+    /// Gets the verifier binary file location.
+    /// Uses the default one if not specified by user.
+    pub fn get_verifier_bin(&self) -> String {
+        if self.verifier_bin.is_none() {
+            get_default_verifier_bin()
+        } else {
+            self.verifier_bin.clone().unwrap()
+        }
+    }
+
+    /// Gets the verification key JSON file location.
+    /// Uses the default one if not specified by user.
+    pub fn get_verkey(&self) -> String {
+        if self.verkey.is_none() {
+            get_default_verkey()
+        } else {
+            self.verkey.clone().unwrap()
         }
     }
 }
