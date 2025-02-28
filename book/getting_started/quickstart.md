@@ -117,5 +117,5 @@ mpirun --bind-to none -np <number_processes> -x OMP_NUM_THREADS=<number_of_threa
 To verify a generated proof, use the following command:
 
 ```bash
-cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json -u ./proof/publics.json
+cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json -u ./proof/publics.json -s $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.starkinfo.json -e $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verifier.bin -k $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.json
 ```
