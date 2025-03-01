@@ -57,7 +57,6 @@ pub struct MainSM {}
 
 impl MainSM {
     const MY_NAME: &'static str = "MainSM  ";
-    const BATCH_SIZE: usize = 1 << 12; // 2^12 rows per batch
 
     /// Computes the main witness trace for a given segment based on the provided proof context,
     /// ROM, and emulation traces.
@@ -233,25 +232,26 @@ impl MainSM {
         // Total number of rows to fill from the emu trace
         let total_rows = min_trace.steps.steps as usize;
 
+        const BATCH_SIZE: usize = 1 << 12; // 2^12 rows per batch
+
         // Process rows in batches
-        let mut batch_buffer = MainTrace::with_capacity(1 << 12);
+        let mut batch_buffer = MainTrace::with_capacity(BATCH_SIZE);
 
-        for batch_start in (0..total_rows).step_by(Self::BATCH_SIZE) {
-            // Determine the size of the current batch
-            let batch_size = (batch_start + Self::BATCH_SIZE).min(total_rows) - batch_start;
+        for batch_start in (0..total_rows).step_by(BATCH_SIZE) {
+            let batch_end = (batch_start + BATCH_SIZE).min(total_rows);
+            let batch_size = batch_end - batch_start;
 
-            // Fill the batch buffer
-            batch_buffer.buffer.iter_mut().take(batch_size).for_each(|row| {
-                *row = emu.step_slice_full_trace(
+            // Process the batch
+            for i in 0..batch_size {
+                batch_buffer.buffer[i] = emu.step_slice_full_trace(
                     &min_trace.steps,
                     &mut mem_reads_index,
                     reg_trace,
                     Some(&**step_range_check),
                 );
-            });
+            }
 
-            // Copy the processed batch into the main trace buffer
-            let batch_end = batch_start + batch_size;
+            // Copy processed batch into main trace buffer
             main_trace[batch_start..batch_end].copy_from_slice(&batch_buffer.buffer[..batch_size]);
         }
 
