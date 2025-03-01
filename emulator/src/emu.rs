@@ -1692,8 +1692,6 @@ impl<'a> Emu<'a> {
         reg_trace: &mut EmuRegTrace,
         step_range_check: Option<&[AtomicU32]>,
     ) -> EmuFullTraceStep<F> {
-        let last_pc = self.ctx.inst_ctx.pc;
-        let last_c = self.ctx.inst_ctx.c;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         reg_trace.clear_reg_step_ranges();
@@ -1742,22 +1740,9 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.end = instruction.end;
 
         // Build and store the full trace
-        let full_trace_step = Self::build_full_trace_step(
-            instruction,
-            &self.ctx.inst_ctx,
-            last_c,
-            last_pc,
-            reg_trace,
-        );
+        let full_trace_step =
+            Self::build_full_trace_step(instruction, &self.ctx.inst_ctx, reg_trace);
 
-        // if self.ctx.inst_ctx.step > 8070 && self.ctx.inst_ctx.step < 8395 {
-        //     println!(
-        //         "STEP step={} pc={:x} inst={:?} trace={:?}",
-        //         self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc, instruction, full_trace_step,
-        //     );
-        //     self.print_regs();
-        //     println!();
-        // }
         self.ctx.inst_ctx.step += 1;
 
         full_trace_step
@@ -1767,8 +1752,6 @@ impl<'a> Emu<'a> {
     pub fn build_full_trace_step<F: AbstractField>(
         inst: &ZiskInst,
         inst_ctx: &InstContext,
-        _last_c: u64, // TODO! Check if it's necessay
-        _last_pc: u64,
         reg_trace: &EmuRegTrace,
     ) -> EmuFullTraceStep<F> {
         // Calculate intermediate values
