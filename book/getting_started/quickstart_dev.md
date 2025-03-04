@@ -179,7 +179,7 @@ To generate the aggregated proofs, add `-a`
 Zisk can run proves using multiple processes in the same server or in multiple servers. To use zisk in distributed mode you need to have installed a mpi library. To use the distributed mode the compilation command is:
 
 ```bash
-cargo-zisk build --release --features "distributed"
+cargo-zisk build --release --features distributed
 ```
 
 Then the execution command will be:
