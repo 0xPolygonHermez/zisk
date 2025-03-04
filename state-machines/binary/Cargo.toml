@@ -23,3 +23,4 @@ num-bigint = { workspace = true }
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
 diagnostic = ["proofman-macros/diagnostic"]
+distributed = ["proofman-common/distributed"]
