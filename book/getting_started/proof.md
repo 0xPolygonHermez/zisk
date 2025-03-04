@@ -48,7 +48,7 @@ cargo-zisk sdk new hello_world
 cd hello_world
 ```
 
-Compile and execute in **riskv mode**:
+Compile and execute in **riscv mode**:
 `cargo-zisk run --release`
 
 Compile and execute in **zisk mode**:
