@@ -214,14 +214,14 @@ Please note that the process can be long, taking approximately 2–3 hours depen
     export NODE_OPTIONS="--max-old-space-size=230000"
     ```
 
-4. Compile ZisK PIL: (Note that this command may take 20-30 minutes to complete)
+5. Compile ZisK PIL: (Note that this command may take 20-30 minutes to complete)
     ```bash
     node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout
     ```
 
     This command will create the `pil/zisk.pilout` file
 
-5. Generate fixed data:
+6. Generate fixed data:
     ```bash
     cargo run --release --bin keccakf_fixed_gen
     mkdir -p build
@@ -230,14 +230,14 @@ Please note that the process can be long, taking approximately 2–3 hours depen
 
     These commands generates the `keccakf_fixed.bin` file in the `build` directory.
 
-6. Generate setup data: (Note that this command may take 2–3 hours to complete):
+7. Generate setup data: (Note that this command may take 2–3 hours to complete):
     ```bash
     node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -i ./build/keccakf_fixed.bin -r
     ```
 
     This command generates the `provingKey` directory.
 
-7. Copy (or move) the `provingKey` directory to `$HOME/.zisk` directory:
+8. Copy (or move) the `provingKey` directory to `$HOME/.zisk` directory:
 
     ```bash
     cp -R build/provingKey $HOME/.zisk
