@@ -1,7 +1,11 @@
 [package]
 name = "precomp-keccakf"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
 
 [[bin]]
 name = "keccakf_fixed_gen"
@@ -19,13 +23,12 @@ proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
 witness = { workspace = true }
 pil-std-lib = { workspace = true }
-
-p3-field = { workspace=true }
-p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 log = { workspace = true }
 rayon = { workspace = true }
 num-bigint = { workspace = true }
+p3-field = { workspace=true }
 
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
