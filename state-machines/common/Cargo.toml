@@ -12,3 +12,7 @@ proofman-util = { workspace = true }
 p3-field = { workspace = true }
 
 rayon = { workspace = true }
+
+[features]
+default = []
+distributed = ["proofman-common/distributed"]
