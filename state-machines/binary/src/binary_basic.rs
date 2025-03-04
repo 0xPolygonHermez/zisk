@@ -919,8 +919,8 @@ impl BinaryBasicSM {
 
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
         slices.into_par_iter().enumerate().for_each(|(i, slice)| {
-            slice.iter_mut().enumerate().for_each(|(j, cell)| {
-                *cell = Self::process_slice(
+            slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
+                *trace_row = Self::process_slice(
                     &inputs[i][j],
                     self.binary_basic_table_sm.detach_multiplicity(),
                 );

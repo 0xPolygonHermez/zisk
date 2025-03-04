@@ -78,7 +78,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
     const NUM_THREADS: usize = 16;
 
     /// The size in rows of the minimal traces
-    const MIN_TRACE_SIZE: u64 = 1 << 18;
+    const MIN_TRACE_SIZE: u64 = 1 << 15;
 
     const MAX_NUM_STEPS: u64 = 1 << 32;
 
@@ -500,20 +500,22 @@ impl<F: PrimeField> ZiskExecutor<F> {
                 let mut data_bus = DataBus::new();
 
                 if let Some(bus_device) = secn_instance.build_inputs_collector(chunk_id) {
-                    let bus_device = Box::new(BusDeviceWrapper::new(false, bus_device));
+                    let bus_device = Box::new(BusDeviceWrapper::new(bus_device));
                     data_bus.connect_device(bus_device.bus_id(), bus_device);
-                }
 
-                for sm in &self.secondary_sm {
-                    if let Some(inputs_generator) = sm.build_inputs_generator() {
-                        data_bus.connect_device(
-                            vec![OPERATION_BUS_ID],
-                            Box::new(BusDeviceWrapper::new(true, inputs_generator)),
-                        );
+                    for sm in &self.secondary_sm {
+                        if let Some(inputs_generator) = sm.build_inputs_generator() {
+                            data_bus.connect_device(
+                                vec![OPERATION_BUS_ID],
+                                Box::new(BusDeviceWrapper::new(inputs_generator)),
+                            );
+                        }
                     }
-                }
 
-                Some(data_bus)
+                    Some(data_bus)
+                } else {
+                    None
+                }
             })
             .collect()
     }
@@ -532,18 +534,15 @@ impl<F: PrimeField> ZiskExecutor<F> {
         mut data_buses: Vec<Option<DataBus<u64, BusDeviceWrapper<u64>>>>,
     ) -> Vec<(usize, Box<BusDeviceWrapper<u64>>)> {
         let mut collectors_by_instance = Vec::new();
-
         for (chunk_id, data_bus) in data_buses.iter_mut().enumerate() {
             if let Some(data_bus) = data_bus {
-                collectors_by_instance.extend(
-                    data_bus
-                        .detach_devices()
-                        .into_iter()
-                        .filter(|collector| !collector.is_input_generator())
-                        .map(|collector| (chunk_id, collector)),
-                );
+                let mut detached = data_bus.detach_devices();
+
+                let first_collector = detached.swap_remove(0);
+                collectors_by_instance.push((chunk_id, first_collector));
             }
         }
+
         collectors_by_instance
     }
 }
