@@ -54,14 +54,18 @@
             },
             "args": [
                 "-e",
-                "emulator/benches/data/my.elf",
+                //"emulator/benches/data/my.elf",
                 //"zisk_block.elf",
+                //"pessimistic-proof-program-keccak.elf",
+                "../fran/target/riscv64ima-polygon-ziskos-elf/debug/fran",
                 "-i",
-                "emulator/benches/data/input.bin",
-                //"input.bin",
+                //"emulator/benches/data/input.bin",
+                "input.bin",
+                //"pessimistic-proof.bin",
                 "-c",
                 "-m",
-                //"-x",
+                "-x",
+                "-l",
             ],
             "cwd": "${workspaceFolder}"
         },
@@ -105,9 +109,10 @@
                 }
             },
             "args": [
-                "emulator/benches/data/my.elf",
-                //"../riscof/riscof_work/rv64i_m/M/src/mulhsu-01.S/dut/my.elf",
+                //"emulator/benches/data/my.elf",
+                //"../riscof/riscof_work/rv64i_m/I/src/sraw-01.S/dut/my.elf",
                 //"zisk_block.elf",
+                "pessimistic-proof-program-keccak.elf",
                 "none", //"rom.json",
                 "none", //"rom.pil",
                 "none", //"rom.bin",
@@ -133,14 +138,45 @@
             "type": "lldb",
             "request": "launch",
             "name": "Debug executable 'emulator-asm'",
-            "program": "emulator-asm/build/emu",
+            "program": "emulator-asm/build/ziskemuasm",
             "args": [
-                //"-v",
+                "-v",
                 //"-o",
+                //"-t",
+                "-m",
+                "-k",
                 //"input.bin",
-                "emulator/benches/data/input.bin",
+                //"emulator/benches/data/input.bin",
+                //"pessimistic-proof.bin",
+                "SHM001",
             ],
             "cwd": "${workspaceFolder}"
-        }
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'asm-runner'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=asm-runner"
+                ],
+                "filter": {
+                    "name": "asm-runner",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                //"emulator/benches/data/my.elf",
+                //"../riscof/riscof_work/rv64i_m/I/src/sraw-01.S/dut/my.elf",
+                //"zisk_block.elf",
+                //"pessimistic-proof-program-keccak.elf",
+                //"none", //"rom.json",
+                //"none", //"rom.pil",
+                //"none", //"rom.bin",
+                //"emulator-asm/src/emu.asm"
+                ],
+            "cwd": "${workspaceFolder}"
+        },
     ]
 }

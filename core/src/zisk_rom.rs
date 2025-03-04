@@ -76,7 +76,7 @@ const MEM_STEP_DOWN: &str = "qword ptr [MEM_STEP_DOWN]";
 const MEM_SP: &str = "qword ptr [MEM_SP]";
 const MEM_END: &str = "qword ptr [MEM_END]";
 
-const TRACE_ADDR: &str = "0xc0000000";
+const TRACE_ADDR: &str = "0xc0000020";
 const MEM_TRACE_ADDRESS: &str = "qword ptr [MEM_TRACE_ADDRESS]";
 const MEM_CHUNK_ADDRESS: &str = "qword ptr [MEM_CHUNK_ADDRESS]";
 const MEM_CHUNK_START_STEP: &str = "qword ptr [MEM_CHUNK_START_STEP]";

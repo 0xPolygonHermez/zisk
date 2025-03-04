@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <assert.h>
 
 void emulator_start(void);
 
@@ -51,12 +52,13 @@ uint64_t chunk_size = CHUNK_SIZE;
 uint64_t chunk_size_mask = CHUNK_SIZE - 1;
 uint64_t max_steps = 0xffffffffffffffff;
 
+uint64_t initial_trace_size = INITIAL_TRACE_SIZE;
 uint64_t trace_address = TRACE_ADDR;
 uint64_t trace_size = INITIAL_TRACE_SIZE;
 
 // Worst case: every chunk instruction is a keccak operation, with an input data of 200 bytes
-#define MAX_CHUNK_TRACE_SIZE (CHUNK_SIZE * 200) + (44 * 8)
-uint64_t trace_size_threshold = INITIAL_TRACE_SIZE - MAX_CHUNK_TRACE_SIZE;
+#define MAX_CHUNK_TRACE_SIZE (CHUNK_SIZE * 200) + (44 * 8) + 32
+//uint64_t trace_size_threshold = INITIAL_TRACE_SIZE - MAX_CHUNK_TRACE_SIZE - 32;
 uint64_t trace_address_threshold = TRACE_ADDR + INITIAL_TRACE_SIZE - MAX_CHUNK_TRACE_SIZE;
 
 void parse_arguments(int argc, char *argv[]);
@@ -77,11 +79,11 @@ bool keccak_metrics = false;
 char * input_parameter = NULL;
 bool is_file = false;
 
-char * shmem_control_sufix = "_control";
-char shmem_control_name[128];
-int shmem_control_fd = -1;
-uint64_t shmem_control_size = 0;
-void * shmem_control_address = NULL;
+// char * shmem_control_sufix = "_control";
+// char shmem_control_name[128];
+// int shmem_control_fd = -1;
+// uint64_t shmem_control_size = 0;
+// void * shmem_control_address = NULL;
 
 char * shmem_input_sufix = "_input";
 char shmem_input_name[128];
@@ -89,9 +91,9 @@ int shmem_input_fd = -1;
 uint64_t shmem_input_size = 0;
 void * shmem_input_address = NULL;
 
-char * shmem_trace_sufix = "_trace";
-char shmem_trace_name[128];
-int shmem_trace_fd = -1;
+char * shmem_output_sufix = "_output";
+char shmem_output_name[128];
+int shmem_output_fd = -1;
 
 char shmem_sem_name[128];
 
@@ -115,13 +117,16 @@ int main(int argc, char *argv[])
             printf("Input parameter is too long: %s, size = %d\n", input_parameter, input_parameter_length);
             return -1;
         }
-        strcpy(shmem_control_name, input_parameter);
-        strcat(shmem_control_name, shmem_control_sufix);
-        strcpy(shmem_input_name, input_parameter);
+        char shmem_prefix[128];
+        strcpy(shmem_prefix, "/");
+        strcat(shmem_prefix, input_parameter);
+        // strcpy(shmem_control_name, shmem_prefix);
+        // strcat(shmem_control_name, shmem_control_sufix);
+        strcpy(shmem_input_name, shmem_prefix);
         strcat(shmem_input_name, shmem_input_sufix);
-        strcpy(shmem_trace_name, input_parameter);
-        strcat(shmem_trace_name, shmem_trace_sufix);
-        // strcpy(shmem_sem_name, input_parameter);
+        strcpy(shmem_output_name, shmem_prefix);
+        strcat(shmem_output_name, shmem_output_sufix);
+        // strcpy(shmem_sem_name, shmem_prefix);
         // strcat(shmem_sem_name, "_sem");
 #ifdef DEBUG
         if (verbose) printf("Emulator C start; input shared memory ID = %s\n", input_parameter);
@@ -135,37 +140,6 @@ int main(int argc, char *argv[])
 #ifdef DEBUG
         if (verbose) printf("Emulator C start; input file = %s\n", input_parameter);
 #endif
-    }
-
-    /***********/
-    /* CONTROL */
-    /***********/
-    if (!is_file)
-    {
-        // Open control shared memory
-        shmem_control_fd = shm_open(shmem_control_name, O_RDWR, 0644);
-        if (shmem_control_fd < 0)
-        {
-            printf("Failed calling shm_open(%d) errno=%d=%s\n", shmem_control_name, errno, strerror(errno));
-            return -1;
-        }
-
-        shmem_control_size = 64;
-
-        // Map the shared memory object into the process address space
-        shmem_control_address = mmap(NULL, shmem_control_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_control_fd, 0);
-        if (shmem_control_address == MAP_FAILED)
-        {
-            printf("Failed calling mmap(%s) errno=%d=%s\n", shmem_control_name, errno, strerror(errno));
-            return -1;
-        }
-
-        // Read data
-        uint64_t * control = (uint64_t *)shmem_control_address;
-        chunk_size = control[0];
-        max_steps = control[1];
-        trace_size = control[2];
-        shmem_input_size = control[3];
     }
 
     /*********/
@@ -243,15 +217,60 @@ int main(int argc, char *argv[])
     else
     {
         // Open input shared memory
-        shmem_input_fd = shm_open(shmem_input_name, O_RDWR, 0644);
+        shmem_input_fd = shm_open(shmem_input_name, /*O_RDWR*/ O_RDONLY, 0666);
         if (shmem_input_fd < 0)
         {
             printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             return -1;
         }
+        printf("shm_open(%s) succeeded\n", shmem_input_name);
+
+        // Map the shared memory object into the process address space
+        shmem_input_address = mmap(NULL, 32, PROT_READ /*| PROT_WRITE*/, MAP_SHARED, shmem_input_fd, 0);
+        if (shmem_input_address == MAP_FAILED)
+        {
+            printf("Failed calling mmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            return -1;
+        }
+        printf("mmap(%s) succeeded\n", shmem_input_name);
+
+        // Read data
+        uint64_t * control = (uint64_t *)shmem_input_address;
+        chunk_size = control[0];
+        assert(chunk_size > 0);
+        chunk_size_mask = chunk_size - 1;
+        max_steps = control[1];
+        assert(max_steps > 0);
+        initial_trace_size = control[2]; // Initial trace size
+        assert(initial_trace_size > 0);
+        trace_size = initial_trace_size;
+        //trace_size_threshold = trace_size - MAX_CHUNK_TRACE_SIZE - 32;
+        shmem_input_size = control[3];
+
+        result = munmap(shmem_input_address, 32);
+        if (result == -1)
+        {
+            printf("Failed calling munmap({}) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            exit(-1);
+        }
+
+        // result = shm_unlink(shmem_input_name);
+        // if (result == -1)
+        // {
+        //     printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+        //     exit(-1);
+        // }
+
+        // Open input shared memory
+        // shmem_input_fd = shm_open(shmem_input_name, O_RDWR, 0644);
+        // if (shmem_input_fd < 0)
+        // {
+        //     printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+        //     return -1;
+        // }
         
         // Map the shared memory object into the process address space
-        shmem_input_address = mmap(NULL, shmem_input_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_input_fd, 0);
+        shmem_input_address = mmap(NULL, shmem_input_size + 32, PROT_READ /*| PROT_WRITE*/, MAP_SHARED, shmem_input_fd, 0);
         if (shmem_input_address == MAP_FAILED)
         {
             printf("Failed calling mmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
@@ -281,15 +300,23 @@ int main(int argc, char *argv[])
         *(uint64_t *)INPUT_ADDR = (uint64_t)shmem_input_size;
 
         // Copy the input data
-        memcpy((void *)(INPUT_ADDR + 8), shmem_input_address, shmem_input_size);
+        memcpy((void *)(INPUT_ADDR + 8), shmem_input_address + 32, shmem_input_size);
 
         // Unmap input
-        result = munmap((void *)INPUT_ADDR, shmem_input_size);
+        result = munmap(shmem_input_address, shmem_input_size + 32);
         if (result == -1)
         {
-            printf("Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
+            printf("Failed calling munmap({}) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
+
+        // Unmap input
+        // result = munmap((void *)INPUT_ADDR, shmem_input_size + 32);
+        // if (result == -1)
+        // {
+        //     printf("Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
+        //     exit(-1);
+        // }
         
         // Unlink input
         result = shm_unlink(shmem_input_name);
@@ -323,19 +350,22 @@ int main(int argc, char *argv[])
     }
     else
     {
-        // Create the trace shared memory
-        shmem_trace_fd = shm_open(shmem_trace_name, O_RDWR | O_CREAT, 0644);
-        if (shmem_trace_fd < 0)
+        // Make sure the output shared memory is deleted
+        shm_unlink(shmem_output_name);
+        
+        // Create the output shared memory
+        shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT, 0644);
+        if (shmem_output_fd < 0)
         {
-            printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_trace_name, errno, strerror(errno));
+            printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
             return -1;
         }
 
         // Size it
-        ftruncate(shmem_trace_fd, trace_size);
+        ftruncate(shmem_output_fd, trace_size);
 
         // Map it to the trace address
-        void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_trace_fd, 0);
+        void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_output_fd, 0);
         if (pTrace == NULL)
         {
             printf("Failed calling mmap(pTrace) errno=%d=%s\n", errno, strerror(errno));
@@ -351,6 +381,15 @@ int main(int argc, char *argv[])
 #endif
     }
 
+    {
+        // Init output header data
+        uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
+        pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
+        pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+        // MT allocated size [8]
+        // MT used size [8]
+    }
+    
     /*******/
     /* RAM */
     /*******/
@@ -395,6 +434,9 @@ int main(int argc, char *argv[])
     emulator_start();
     struct timeval stop_time;
     gettimeofday(&stop_time,NULL);
+
+    uint64_t final_trace_size = MEM_CHUNK_ADDRESS - MEM_TRACE_ADDRESS;
+
     if ( metrics
 #ifdef DEBUG
         || keccak_metrics
@@ -405,9 +447,6 @@ int main(int argc, char *argv[])
         uint64_t steps = MEM_STEP;
         uint64_t step_duration_ns = steps == 0 ? 0 : (duration * 1000) / steps;
         uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
-        uint64_t mem_trace_address = MEM_TRACE_ADDRESS;
-        uint64_t mem_chunk_address = MEM_CHUNK_ADDRESS;
-        uint64_t final_trace_size = mem_chunk_address - mem_trace_address;
         uint64_t final_trace_size_percentage = (final_trace_size * 100) / trace_size;
         printf("Duration = %d us, Keccak counter = %d, realloc counter = %d, steps = %d, step duration = %d ns, tp = %d steps/s, trace size = 0x%08x - 0x%08x = %d B(%d%%)\n",
             duration,
@@ -416,8 +455,8 @@ int main(int argc, char *argv[])
             steps,
             step_duration_ns,
             step_tp_sec,
-            mem_chunk_address,
-            mem_trace_address,
+            MEM_CHUNK_ADDRESS,
+            MEM_TRACE_ADDRESS,
             final_trace_size,
             final_trace_size_percentage);
 #ifdef DEBUG
@@ -444,6 +483,16 @@ int main(int argc, char *argv[])
             pOutput++;
             printf("%08x\n", *pOutput);
         }
+    }
+
+    // Complete output header data
+    {
+        uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
+        pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
+        pOutput[1] = 0; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+        pOutput[2] = trace_size; // MT allocated size [8]
+        assert(final_trace_size > 32);
+        pOutput[3] = final_trace_size - 32; // MT used size [8]
     }
 
     // Log trace
@@ -484,22 +533,22 @@ int main(int argc, char *argv[])
         exit(-1);
     }
 
-    // Cleanup CONTROL
-    if (!is_file)
-    {
-        result = munmap((void *)shmem_control_address, shmem_control_size);
-        if (result == -1)
-        {
-            printf("Failed calling munmap(control) errno=%d=%s\n", errno, strerror(errno));
-            exit(-1);
-        }
-        result = shm_unlink(shmem_control_name);
-        if (result == -1)
-        {
-            printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_control_name, errno, strerror(errno));
-            exit(-1);
-        }
-    }
+    // // Cleanup CONTROL
+    // if (!is_file)
+    // {
+    //     result = munmap((void *)shmem_control_address, shmem_control_size);
+    //     if (result == -1)
+    //     {
+    //         printf("Failed calling munmap(control) errno=%d=%s\n", errno, strerror(errno));
+    //         exit(-1);
+    //     }
+    //     result = shm_unlink(shmem_control_name);
+    //     if (result == -1)
+    //     {
+    //         printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_control_name, errno, strerror(errno));
+    //         exit(-1);
+    //     }
+    // }
 
     // Cleanup trace
     result = munmap((void *)TRACE_ADDR, trace_size);
@@ -510,18 +559,18 @@ int main(int argc, char *argv[])
     }
     if (!is_file)
     {
-        result = close(shmem_trace_fd);
-        if (result == -1)
-        {
-            printf("Failed calling close(shmem_output_fd) for size=%d errno=%d=%s\n", trace_size, errno, strerror(errno));
-            exit(-1);
-        }
-        result = shm_unlink(shmem_trace_name);
-        if (result == -1)
-        {
-            printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_trace_name, errno, strerror(errno));
-            exit(-1);
-        }
+        // result = close(shmem_trace_fd);
+        // if (result == -1)
+        // {
+        //     printf("Failed calling close(shmem_output_fd) for size=%d errno=%d=%s\n", trace_size, errno, strerror(errno));
+        //     exit(-1);
+        // }
+        // result = shm_unlink(shmem_trace_name);
+        // if (result == -1)
+        // {
+        //     printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_trace_name, errno, strerror(errno));
+        //     exit(-1);
+        // }
     }
 }
 
@@ -726,6 +775,13 @@ uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime)
 */
 void log_trace(void)
 {
+
+    uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
+    printf("Version = 0x%06x\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
+    printf("Exit code = %d\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    printf("Allocated size = %d B\n", pOutput[2]); // MT allocated size [8]
+    printf("MT used size = %d B\n", pOutput[3]); // MT used size [8]
+
     printf("Trace content:\n");
     uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
     uint64_t number_of_chunks = trace[0];
