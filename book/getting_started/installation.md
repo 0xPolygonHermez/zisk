@@ -157,7 +157,7 @@ To update ZisK to the latest version, simply run again the previous steps.
 4. Copy the tools to `~/.zisk/bin` directory:
     ```bash
     mkdir -p $HOME/.zisk/bin
-    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so $HOME/.zisk/bin
+    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so precompiles/keccakf/src/keccakf_script.json $HOME/.zisk/bin
     ```
 
 5. Add `~/.zisk/bin` to your profile file, for example for `.bashrc` executing the following commands:
@@ -207,30 +207,37 @@ Please note that the process can be long, taking approximately 2–3 hours depen
 
 3. **Note:** All subsequent commands must be executed from the `zisk` folder created in the previous section.
 
-4. Compile ZisK PIL: (Note that this command may take 20-30 minutes to complete)
+4. Adjust memory mapped areas and JavaScript heap size:
+    ```bash
+    echo "vm.max_map_count=655300" | sudo tee -a /etc/sysctl.conf
+    sudo sysctl -w vm.max_map_count=655300
+    export NODE_OPTIONS="--max-old-space-size=230000"
+    ```
+
+5. Compile ZisK PIL: (Note that this command may take 20-30 minutes to complete)
     ```bash
     node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout
     ```
 
     This command will create the `pil/zisk.pilout` file
 
-5. Generate fixed data:
+6. Generate fixed data:
     ```bash
     cargo run --release --bin keccakf_fixed_gen
-    mkdir build
+    mkdir -p build
     mv precompiles/keccakf/src/keccakf_fixed.bin build
     ```
 
     These commands generates the `keccakf_fixed.bin` file in the `build` directory.
 
-6. Generate setup data: (Note that this command may take 2–3 hours to complete):
+7. Generate setup data: (Note that this command may take 2–3 hours to complete):
     ```bash
     node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -i ./build/keccakf_fixed.bin -r
     ```
 
     This command generates the `provingKey` directory.
 
-7. Copy (or move) the `provingKey` directory to `$HOME/.zisk` directory:
+8. Copy (or move) the `provingKey` directory to `$HOME/.zisk` directory:
 
     ```bash
     cp -R build/provingKey $HOME/.zisk
