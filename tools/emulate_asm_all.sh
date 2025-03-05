@@ -96,9 +96,11 @@ do
     make
 
     # Execute it and save output
-    build/emu 2>&1|tee output
+    touch empty_input.bin
+    build/ziskemuasm empty_input.bin 2>&1|tee output
 
     # Compare output vs reference
+    echo "Calling diff of output vs reference"
     ELF_FILE_DIRECTORY=${ELF_FILE%%my.elf}
     if diff output ../$ELF_FILE_DIRECTORY../ref/Reference-sail_c_simulator.signature; then
         DIFF_PASSED_COUNTER=$((DIFF_PASSED_COUNTER+1))
