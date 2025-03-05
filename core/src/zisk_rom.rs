@@ -826,7 +826,7 @@ impl ZiskRom {
             match instruction.a_src {
                 SRC_C => {
                     *s += "\t/* a=SRC_C */\n";
-                    if !ctx.store_a_in_c {
+                    if ctx.store_a_in_c {
                         // No need to copy c to a, since we need a to be stored in c
                         ctx.a.is_saved = false;
                     } else {
