@@ -43,6 +43,8 @@ uint64_t keccak_duration = 0;
 
 uint64_t realloc_counter = 0;
 
+uint64_t printed_chars_counter = 0;
+
 extern void keccakf1600_generic(uint64_t state[25]);
 
 extern void zisk_keccakf(uint64_t state[25]);
@@ -58,7 +60,6 @@ uint64_t trace_size = INITIAL_TRACE_SIZE;
 
 // Worst case: every chunk instruction is a keccak operation, with an input data of 200 bytes
 #define MAX_CHUNK_TRACE_SIZE (CHUNK_SIZE * 200) + (44 * 8) + 32
-//uint64_t trace_size_threshold = INITIAL_TRACE_SIZE - MAX_CHUNK_TRACE_SIZE - 32;
 uint64_t trace_address_threshold = TRACE_ADDR + INITIAL_TRACE_SIZE - MAX_CHUNK_TRACE_SIZE;
 
 void parse_arguments(int argc, char *argv[]);
@@ -79,28 +80,23 @@ bool keccak_metrics = false;
 char * input_parameter = NULL;
 bool is_file = false;
 
-// char * shmem_control_sufix = "_control";
-// char shmem_control_name[128];
-// int shmem_control_fd = -1;
-// uint64_t shmem_control_size = 0;
-// void * shmem_control_address = NULL;
-
+// Input shared memory
 char * shmem_input_sufix = "_input";
 char shmem_input_name[128];
 int shmem_input_fd = -1;
 uint64_t shmem_input_size = 0;
 void * shmem_input_address = NULL;
 
+// Output shared memory
 char * shmem_output_sufix = "_output";
 char shmem_output_name[128];
 int shmem_output_fd = -1;
-
-char shmem_sem_name[128];
 
 uint64_t input_size = 0;
 
 int main(int argc, char *argv[])
 {
+    // Result, to be used in calls to functions returning int
     int result;
 
     // Parse arguments
@@ -109,34 +105,34 @@ int main(int argc, char *argv[])
     // Check if the input parameter is a shared memory ID or a file name
     if (strncmp(input_parameter, "SHM", 3) == 0)
     {
-        // Shared memory
+        // Mark this is a shared memory, i.e. it is not a file
         is_file = false;
+
+        // Check the length of the input parameter, which is a prefix to be used to build
+        // shared memory region names
         uint64_t input_parameter_length = strlen(input_parameter);
         if (input_parameter_length > 16)
         {
             printf("Input parameter is too long: %s, size = %d\n", input_parameter, input_parameter_length);
             return -1;
         }
+
+        // Build shared memory region names
         char shmem_prefix[128];
         strcpy(shmem_prefix, "/");
         strcat(shmem_prefix, input_parameter);
-        // strcpy(shmem_control_name, shmem_prefix);
-        // strcat(shmem_control_name, shmem_control_sufix);
         strcpy(shmem_input_name, shmem_prefix);
         strcat(shmem_input_name, shmem_input_sufix);
         strcpy(shmem_output_name, shmem_prefix);
         strcat(shmem_output_name, shmem_output_sufix);
-        // strcpy(shmem_sem_name, shmem_prefix);
-        // strcat(shmem_sem_name, "_sem");
 #ifdef DEBUG
         if (verbose) printf("Emulator C start; input shared memory ID = %s\n", input_parameter);
 #endif        
     }
     else
     {
-        // Input file
+        // Mark this is an input file
         is_file = true;
-        input_parameter;
 #ifdef DEBUG
         if (verbose) printf("Emulator C start; input file = %s\n", input_parameter);
 #endif
@@ -145,9 +141,11 @@ int main(int argc, char *argv[])
     /*********/
     /* INPUT */
     /*********/
-    // Allocate input
+    // Allocate input memory region and initialize it with the data coming from the file
+    // of from the input shared memory region
     if (is_file)
     {
+        // Open input file
         FILE * input_fp = fopen(input_parameter, "r");
         if (input_fp == NULL)
         {
@@ -155,18 +153,19 @@ int main(int argc, char *argv[])
             return -1;
         }
 
+        // Get input file size
         if (fseek(input_fp, 0, SEEK_END) == -1)
         {
             printf("Failed calling fseek(%s) errno=%d=%s\n", input_parameter, errno, strerror(errno));
             return -1;
         }
-
         long input_data_size = ftell(input_fp);
         if (input_data_size == -1)
         {
             printf("Failed calling ftell(%s) errno=%d=%s\n", input_parameter, errno, strerror(errno));
             return -1;
         }
+
         // Go back to the first byte
         if (fseek(input_fp, 0, SEEK_SET) == -1)
         {
@@ -181,8 +180,9 @@ int main(int argc, char *argv[])
             return -1;
         }
 
-        // Calculate input size
-        input_size = ((input_data_size + 8 + 1) >> 3) << 3;
+        // Calculate input size = input file data size + 8B for size header + round up to higher 8B
+        // boundary
+        input_size = ((input_data_size + 8 + 7) >> 3) << 3;
 
         // Map input address space
         void * pInput = mmap((void *)INPUT_ADDR, input_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
@@ -223,18 +223,16 @@ int main(int argc, char *argv[])
             printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             return -1;
         }
-        printf("shm_open(%s) succeeded\n", shmem_input_name);
 
-        // Map the shared memory object into the process address space
-        shmem_input_address = mmap(NULL, 32, PROT_READ /*| PROT_WRITE*/, MAP_SHARED, shmem_input_fd, 0);
+        // Map the shared memory object into the process address space, but just the 32B header
+        shmem_input_address = mmap(NULL, 32, PROT_READ, MAP_SHARED, shmem_input_fd, 0);
         if (shmem_input_address == MAP_FAILED)
         {
             printf("Failed calling mmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             return -1;
         }
-        printf("mmap(%s) succeeded\n", shmem_input_name);
 
-        // Read data
+        // Read input header data
         uint64_t * control = (uint64_t *)shmem_input_address;
         chunk_size = control[0];
         assert(chunk_size > 0);
@@ -244,30 +242,15 @@ int main(int argc, char *argv[])
         initial_trace_size = control[2]; // Initial trace size
         assert(initial_trace_size > 0);
         trace_size = initial_trace_size;
-        //trace_size_threshold = trace_size - MAX_CHUNK_TRACE_SIZE - 32;
         shmem_input_size = control[3];
 
+        // Unmap input header
         result = munmap(shmem_input_address, 32);
         if (result == -1)
         {
             printf("Failed calling munmap({}) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
-
-        // result = shm_unlink(shmem_input_name);
-        // if (result == -1)
-        // {
-        //     printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-        //     exit(-1);
-        // }
-
-        // Open input shared memory
-        // shmem_input_fd = shm_open(shmem_input_name, O_RDWR, 0644);
-        // if (shmem_input_fd < 0)
-        // {
-        //     printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-        //     return -1;
-        // }
         
         // Map the shared memory object into the process address space
         shmem_input_address = mmap(NULL, shmem_input_size + 32, PROT_READ /*| PROT_WRITE*/, MAP_SHARED, shmem_input_fd, 0);
@@ -278,7 +261,7 @@ int main(int argc, char *argv[])
         }
 
         // Calculate input size
-        input_size = ((shmem_input_size + 8 + 1) >> 3) << 3;
+        input_size = ((shmem_input_size + 8 + 7) >> 3) << 3;
 
         // Map input address space
         void * pInput = mmap((void *)INPUT_ADDR, input_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
@@ -309,14 +292,6 @@ int main(int argc, char *argv[])
             printf("Failed calling munmap({}) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
-
-        // Unmap input
-        // result = munmap((void *)INPUT_ADDR, shmem_input_size + 32);
-        // if (result == -1)
-        // {
-        //     printf("Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
-        //     exit(-1);
-        // }
         
         // Unlink input
         result = shm_unlink(shmem_input_name);
@@ -381,8 +356,8 @@ int main(int argc, char *argv[])
 #endif
     }
 
+    // Init output header data
     {
-        // Init output header data
         uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
         pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
         pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
@@ -533,23 +508,6 @@ int main(int argc, char *argv[])
         exit(-1);
     }
 
-    // // Cleanup CONTROL
-    // if (!is_file)
-    // {
-    //     result = munmap((void *)shmem_control_address, shmem_control_size);
-    //     if (result == -1)
-    //     {
-    //         printf("Failed calling munmap(control) errno=%d=%s\n", errno, strerror(errno));
-    //         exit(-1);
-    //     }
-    //     result = shm_unlink(shmem_control_name);
-    //     if (result == -1)
-    //     {
-    //         printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_control_name, errno, strerror(errno));
-    //         exit(-1);
-    //     }
-    // }
-
     // Cleanup trace
     result = munmap((void *)TRACE_ADDR, trace_size);
     if (result == -1)
@@ -557,32 +515,28 @@ int main(int argc, char *argv[])
         printf("Failed calling munmap(trace) for size=%d errno=%d=%s\n", trace_size, errno, strerror(errno));
         exit(-1);
     }
-    if (!is_file)
-    {
-        // result = close(shmem_trace_fd);
-        // if (result == -1)
-        // {
-        //     printf("Failed calling close(shmem_output_fd) for size=%d errno=%d=%s\n", trace_size, errno, strerror(errno));
-        //     exit(-1);
-        // }
-        // result = shm_unlink(shmem_trace_name);
-        // if (result == -1)
-        // {
-        //     printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_trace_name, errno, strerror(errno));
-        //     exit(-1);
-        // }
-    }
 }
+
+uint64_t print_abcflag_counter = 0;
 
 extern int _print_abcflag(uint64_t a, uint64_t b, uint64_t c, uint64_t flag)
 {
-    printf("a=%08llx b=%08llx c=%08llx flag=%08llx\n", a, b, c, flag);
+    uint64_t * pMem = (uint64_t *)0xa0012118;
+    printf("counter=%d a=%08llx b=%08llx c=%08llx flag=%08llx mem=%08llx\n", print_abcflag_counter, a, b, c, flag, *pMem);
+    uint64_t *pRegs = (uint64_t *)RAM_ADDR;
+    for (int i=0; i<32; i++)
+    {
+        printf("r%d=%08llx ", i, pRegs[i]);
+    }
+    printf("\n");
     fflush(stdout);
+    print_abcflag_counter++;
     return 0;
 }
 
 extern int _print_char(uint64_t param)
 {
+    printed_chars_counter++;
     char c = param;
     printf("%c", c);
     return 0;
