@@ -1312,8 +1312,13 @@ impl<'a> Emu<'a> {
         let pc = self.ctx.inst_ctx.pc;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
-        //println!("Emu::step() executing step={} pc={:x} inst={}", ctx.step, ctx.pc,
-        // inst.i.to_string()); println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
+        // println!(
+        //     "Emu::step() executing step={} pc={:x} inst={}",
+        //     ctx.step,
+        //     ctx.pc,
+        //     inst.i.to_string()
+        // );
+        // println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
 
         //println!("PCLOG={}", instruction.to_text());
 
@@ -1327,13 +1332,18 @@ impl<'a> Emu<'a> {
         (instruction.func)(&mut self.ctx.inst_ctx);
 
         // println!(
-        //     "a={:08x} b={:08x} c={:08x} flag={:08x}",
+        //     "a={:08x} b={:08x} c={:08x} flag={:08x} step={}",
         //     self.ctx.inst_ctx.a,
         //     self.ctx.inst_ctx.b,
         //     self.ctx.inst_ctx.c,
-        //     //self.ctx.inst_ctx.flag as u64
+        //     self.ctx.inst_ctx.flag as u64,
         //     self.ctx.inst_ctx.step,
         // );
+
+        // for i in 0..32 {
+        //     print!("r{}={:08x} ", i, self.ctx.inst_ctx.regs[i]);
+        // }
+        // println!("");
 
         // Retrieve statistics data
         if self.ctx.do_stats {
