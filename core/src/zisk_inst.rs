@@ -168,18 +168,14 @@ impl ZiskInst {
         if !self.verbose.is_empty() {
             s += &format!(" verbose={}", self.verbose);
         }
-        if self.a_src != 0 {
-            s += &format!(" a_src={}={}", self.a_src, source_to_str(self.a_src));
-        }
+        s += &format!(" a_src={}={}", self.a_src, source_to_str(self.a_src));
         if self.a_use_sp_imm1 != 0 {
             s += &format!(" a_use_sp_imm1=0x{:x}", self.a_use_sp_imm1);
         }
         if self.a_offset_imm0 != 0 {
             s += &format!(" a_offset_imm0=0x{:x}", self.a_offset_imm0);
         }
-        if self.b_src != 0 {
-            s += &format!(" b_src={}={}", self.b_src, source_to_str(self.b_src));
-        }
+        s += &format!(" b_src={}={}", self.b_src, source_to_str(self.b_src));
         if self.b_use_sp_imm1 != 0 {
             s += &format!(" b_use_sp_imm1=0x{:x}", self.b_use_sp_imm1);
         }

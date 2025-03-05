@@ -1,4 +1,7 @@
-//! This module contains definitions used by other modules and crates.
+//! This module contains constant definitions used by other modules and crates.
+
+pub const DEFAULT_MAX_STEPS: u64 = 0xffffffff;
+pub const DEFAULT_MAX_STEPS_STR: &str = "4294967295"; // 2^32 - 1
 
 /// Power of 2 constant definitions, named P2_n, equivalent to 2 to the power of n, in u64 format
 pub const P2_0: u64 = 0x1;
