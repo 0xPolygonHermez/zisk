@@ -52,6 +52,7 @@ impl<'a> MemAlignPlanner<'a> {
         for index in 0..count {
             let chunk_id = self.counters[index].0;
             let counter = self.counters[index].1;
+            if counter.mem_align_rows == 0 { continue };
             self.set_current_chunk_id(chunk_id);
             self.add_to_current_instance(counter.mem_align_rows, &counter.mem_align);
         }
