@@ -166,7 +166,13 @@ impl RomSM {
         // Load and parse the ELF file, and transpile it into a ZisK ROM using Riscv2zisk
 
         // Create an instance of the RISCV -> ZisK program converter
-        let riscv2zisk = Riscv2zisk::new(elf_filename, String::new(), String::new(), String::new());
+        let riscv2zisk = Riscv2zisk::new(
+            elf_filename,
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+        );
 
         // Convert program to rom
         let rom = riscv2zisk.run().expect("RomSM::prover() failed converting elf to rom");

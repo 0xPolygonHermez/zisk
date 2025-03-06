@@ -2,6 +2,7 @@
 
 use clap::Parser;
 use std::fmt;
+use zisk_core::DEFAULT_MAX_STEPS_STR;
 
 pub const ZISK_VERSION_MESSAGE: &str = concat!(
     env!("CARGO_PKG_VERSION"),
@@ -31,7 +32,7 @@ pub struct EmuOptions {
     pub output: Option<String>,
     /// Sets the maximum number of steps to execute.  Default value is 1000000000.  Configured with
     /// `-n`.
-    #[clap(short = 'n', long, value_name = "MAX_STEPS", default_value = "1000000000")]
+    #[clap(short = 'n', long, value_name = "MAX_STEPS", default_value = DEFAULT_MAX_STEPS_STR)]
     pub max_steps: u64,
     /// Sets the print step period in number of steps
     #[clap(short, long, value_name = "PRINT_STEP", default_value = "0")]
