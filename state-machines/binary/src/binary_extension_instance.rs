@@ -9,7 +9,7 @@ use data_bus::{
     BusDevice, BusId, ExtOperationData, OperationBusData, OperationData, PayloadType,
     OPERATION_BUS_ID,
 };
-use p3_field::PrimeField;
+use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
     BusDeviceWrapper, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
@@ -23,7 +23,7 @@ use zisk_pil::BinaryExtensionTrace;
 ///
 /// It encapsulates the `BinaryExtensionSM` and its associated context, and it processes input data
 /// to compute witnesses for binary extension operations.
-pub struct BinaryExtensionInstance<F: PrimeField> {
+pub struct BinaryExtensionInstance<F: PrimeField64> {
     /// Binary Extension state machine.
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
 
@@ -31,7 +31,7 @@ pub struct BinaryExtensionInstance<F: PrimeField> {
     ictx: InstanceCtx,
 }
 
-impl<F: PrimeField> BinaryExtensionInstance<F> {
+impl<F: PrimeField64> BinaryExtensionInstance<F> {
     /// Creates a new `BinaryExtensionInstance`.
     ///
     /// # Arguments
@@ -47,7 +47,7 @@ impl<F: PrimeField> BinaryExtensionInstance<F> {
     }
 }
 
-impl<F: PrimeField> Instance<F> for BinaryExtensionInstance<F> {
+impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
     /// Computes the witness for the binary extension execution plan.
     ///
     /// This method leverages the `BinaryExtensionSM` to generate an `AirInstance` using the

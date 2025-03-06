@@ -226,28 +226,12 @@ trace!(KeccakfTableTrace<F> {
 },  0, 15, 2097152 );
 
 trace!(SpecifiedRangesFixed<F> {
- RANGE: [F; 2], __L1__: F,
-},  0, 16, 16777216 );
+ RANGE: [F; 10], __L1__: F,
+},  0, 16, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
- mul: [F; 2],
-},  0, 16, 16777216 );
-
-trace!(U8AirFixed<F> {
- U8: F, __L1__: F,
-},  0, 17, 256 );
-
-trace!(U8AirTrace<F> {
- mul: F,
-},  0, 17, 256 );
-
-trace!(U16AirFixed<F> {
- U16: F, __L1__: F,
-},  0, 18, 65536 );
-
-trace!(U16AirTrace<F> {
- mul: F,
-},  0, 18, 65536 );
+ mul: [F; 10],
+},  0, 16, 2097152 );
 
 pub const RomRomHash: &str = "aa8bf8c0f3757c69cac124f513b6b2a66653708e85300b9407effcff3b707190";
 trace!(RomRomTrace<F> {
@@ -335,13 +319,5 @@ values!(KeccakfTableAirGroupValues<F> {
 });
 
 values!(SpecifiedRangesAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(U8AirAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(U16AirAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });

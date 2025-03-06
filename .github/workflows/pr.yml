@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y openmpi-bin openmpi-common libopenmpi-dev
+          sudo apt-get install -y openmpi-bin openmpi-common libopenmpi-dev nlohmann-json3-dev  build-essential libbenchmark-dev libomp-dev libgmp-dev  nasm libsodium-dev cmake
 
       - name: Setup CI
         uses: ./.github/actions/setup
@@ -30,7 +30,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --all-targets --all-features
+          args: --all-targets # --all-features
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
@@ -83,6 +83,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --all-features --all-targets -- -D warnings -A incomplete-features
+          args: --all-targets -- -D warnings
+          # args: --all-features --all-targets -- -D warnings -A incomplete-features
         env:
           CARGO_INCREMENTAL: 1

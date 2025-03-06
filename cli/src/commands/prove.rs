@@ -3,9 +3,7 @@ use anyhow::Result;
 use colored::Colorize;
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
-use proofman_common::{
-    initialize_logger, json_to_debug_instances_map, DebugInfo, ModeName, ProofOptions,
-};
+use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ModeName, ProofOptions};
 use rom_merkle::{gen_elf_hash, get_elf_bin_file_path, get_rom_blowup_factor, DEFAULT_CACHE_PATH};
 use std::{collections::HashMap, fs, path::PathBuf};
 
