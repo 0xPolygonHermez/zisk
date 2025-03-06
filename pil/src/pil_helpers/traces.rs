@@ -58,14 +58,12 @@ pub const KECCAKF_TABLE_AIR_IDS: &[usize] = &[15];
 
 pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[16];
 
-pub const U_8_AIR_AIR_IDS: &[usize] = &[17];
-
-pub const U_16_AIR_AIR_IDS: &[usize] = &[18];
 
 //PUBLICS
 use serde::Deserialize;
 use serde::Serialize;
 use serde_arrays;
+
 
 fn default_array_rom_root() -> [u64; 4] {
     [0; 4]
@@ -75,17 +73,22 @@ fn default_array_inputs() -> [u64; 64] {
     [0; 64]
 }
 
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ZiskPublics {
     #[serde(default = "default_array_rom_root", with = "serde_arrays")]
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
-    }
+    
+}
 
 impl Default for ZiskPublics {
     fn default() -> Self {
-        Self { rom_root: [0; 4], inputs: [0; 64] }
+        Self {  
+            rom_root: [0; 4],  
+            inputs: [0; 64], 
+        }
     }
 }
 
@@ -226,28 +229,12 @@ trace!(KeccakfTableTrace<F> {
 },  0, 15, 2097152 );
 
 trace!(SpecifiedRangesFixed<F> {
- RANGE: [F; 2], __L1__: F,
-},  0, 16, 16777216 );
+ RANGE: [F; 10], __L1__: F,
+},  0, 16, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
- mul: [F; 2],
-},  0, 16, 16777216 );
-
-trace!(U8AirFixed<F> {
- U8: F, __L1__: F,
-},  0, 17, 256 );
-
-trace!(U8AirTrace<F> {
- mul: F,
-},  0, 17, 256 );
-
-trace!(U16AirFixed<F> {
- U16: F, __L1__: F,
-},  0, 18, 65536 );
-
-trace!(U16AirTrace<F> {
- mul: F,
-},  0, 18, 65536 );
+ mul: [F; 10],
+},  0, 16, 2097152 );
 
 pub const RomRomHash: &str = "aa8bf8c0f3757c69cac124f513b6b2a66653708e85300b9407effcff3b707190";
 trace!(RomRomTrace<F> {
@@ -335,13 +322,5 @@ values!(KeccakfTableAirGroupValues<F> {
 });
 
 values!(SpecifiedRangesAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(U8AirAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(U16AirAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });

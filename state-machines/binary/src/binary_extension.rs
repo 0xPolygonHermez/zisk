@@ -11,8 +11,8 @@ use std::sync::{
 use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM};
 use data_bus::{ExtOperationData, OperationBusData, OperationData};
 use log::info;
-use num_bigint::BigInt;
-use p3_field::PrimeField;
+
+use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
@@ -39,7 +39,7 @@ const SE_W_OP: u8 = 0x39;
 ///
 /// It processes binary extension-related operations and generates necessary traces and multiplicity
 /// tables for the operations. It also manages range checks through the PIL2 standard library.
-pub struct BinaryExtensionSM<F: PrimeField> {
+pub struct BinaryExtensionSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     std: Arc<Std<F>>,
 
@@ -49,7 +49,7 @@ pub struct BinaryExtensionSM<F: PrimeField> {
     range_id: usize,
 }
 
-impl<F: PrimeField> BinaryExtensionSM<F> {
+impl<F: PrimeField64> BinaryExtensionSM<F> {
     const MY_NAME: &'static str = "BinaryE ";
 
     /// Creates a new instance of the `BinaryExtensionSM`.
@@ -65,7 +65,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
         std: Arc<Std<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
     ) -> Arc<Self> {
-        let range_id = std.get_range(BigInt::from(0), BigInt::from(0xFFFFFF), None);
+        let range_id = std.get_range(1, 0x1000000, None);
 
         Arc::new(Self { std, binary_extension_table_sm, range_id })
     }
@@ -317,7 +317,7 @@ impl<F: PrimeField> BinaryExtensionSM<F> {
 
         // Store the range check
         if op_is_shift {
-            self.std.range_check(F::from_canonical_u64(in2_0), F::one(), self.range_id);
+            self.std.range_check(in2_0 as i64 + 1, 1, self.range_id);
         }
 
         // Return successfully
