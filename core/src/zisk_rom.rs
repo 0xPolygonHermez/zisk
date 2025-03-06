@@ -889,6 +889,7 @@ impl ZiskRom {
                     *s += &format!("\tjnz pc_{:x}_a_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
 
                     // a register memory address is fully alligned
+                    //////////////////////////////////////////////
 
                     // Copy read data into mem_reads_address and increment it
                     *s += &format!(
@@ -912,10 +913,12 @@ impl ZiskRom {
                         REG_MEM_READS_SIZE, REG_VALUE
                     );
 
-                    // // Jump to done
+                    // Jump to done
                     *s += &format!("\tjmp pc_{:x}_a_address_check_done\n", ctx.pc);
 
-                    // // a memory address is not aligned
+                    // a memory address is not aligned
+                    //////////////////////////////////
+
                     *s += &format!("pc_{:x}_a_address_not_aligned:\n", ctx.pc);
 
                     // Calculate previous aligned address
@@ -969,7 +972,10 @@ impl ZiskRom {
                         REG_MEM_READS_SIZE, REG_VALUE
                     );
 
-                    // // Check done
+                    // Check done
+                    /////////////
+
+                    *s += ".align 16\n";
                     *s += &format!("pc_{:x}_a_address_check_done:\n", ctx.pc);
 
                     ctx.a.is_saved = true;
@@ -1069,6 +1075,7 @@ impl ZiskRom {
                     *s += &format!("\tjnz pc_{:x}_b_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
 
                     // b register memory address is fully alligned
+                    //////////////////////////////////////////////
 
                     // Copy read data into mem_reads_address and increment it
                     *s += &format!(
@@ -1095,7 +1102,9 @@ impl ZiskRom {
                     // Jump to done
                     *s += &format!("\tjmp pc_{:x}_b_address_check_done\n", ctx.pc);
 
-                    // // b memory address is not aligned
+                    // b memory address is not aligned
+                    //////////////////////////////////
+
                     *s += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
 
                     // Calculate previous aligned address
@@ -1148,6 +1157,9 @@ impl ZiskRom {
                     );
 
                     // Check done
+                    /////////////
+
+                    *s += ".align 16\n";
                     *s += &format!("pc_{:x}_b_address_check_done:\n", ctx.pc);
 
                     ctx.b.is_saved = !ctx.store_b_in_c;
@@ -1246,6 +1258,7 @@ impl ZiskRom {
                             *s += &format!("\tjnz pc_{:x}_b_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
 
                             // b register memory address is fully alligned
+                            //////////////////////////////////////////////
 
                             // Copy read data into mem_reads_address and increment it
                             *s += &format!(
@@ -1272,7 +1285,9 @@ impl ZiskRom {
                             // Jump to done
                             *s += &format!("\tjmp pc_{:x}_b_address_check_done\n", ctx.pc);
 
-                            // // b memory address is not aligned
+                            // b memory address is not aligned
+                            //////////////////////////////////
+
                             *s += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
 
                             // Calculate previous aligned address
@@ -1327,6 +1342,9 @@ impl ZiskRom {
                             );
 
                             // Check done
+                            /////////////
+
+                            *s += ".align 16\n";
                             *s += &format!("pc_{:x}_b_address_check_done:\n", ctx.pc);
                         }
                         4 | 2 => {
@@ -1370,11 +1388,31 @@ impl ZiskRom {
                                 REG_VALUE, REG_ADDRESS
                             );
                             *s += &format!(
-                                "\tjz pc_{:x}_b_ind_same_address /* jump if they are the same */\n",
+                                "\tjnz pc_{:x}_b_ind_different_address /* jump if they are the same */\n",
                                 ctx.pc
                             );
 
+                            // Same address
+                            ///////////////
+
+                            // Increment chunk.steps.mem_reads_size
+                            *s += &format!(
+                                "\tmov {}, [{}] /* value = mem_reads_size */\n",
+                                REG_VALUE, REG_MEM_READS_SIZE
+                            );
+                            *s += &format!("\tinc {} /* increment value */\n", REG_VALUE);
+                            *s += &format!(
+                                "\tmov [{}], {} /* mem_reads_size = value */\n",
+                                REG_MEM_READS_SIZE, REG_VALUE
+                            );
+
+                            // Jump to done
+                            *s += &format!("\tjmp pc_{:x}_b_ind_address_done\n", ctx.pc);
+
                             // Different address
+                            ////////////////////
+
+                            *s += &format!("pc_{:x}_b_ind_different_address:\n", ctx.pc);
 
                             // Store next aligned address value in mem_reads
                             *s += &format!(
@@ -1405,20 +1443,10 @@ impl ZiskRom {
 
                             *s += &format!("\tjmp pc_{:x}_b_ind_address_done\n", ctx.pc);
 
-                            // Same address
-                            *s += &format!("pc_{:x}_b_ind_same_address:\n", ctx.pc);
+                            // Done
+                            ///////
 
-                            // Increment chunk.steps.mem_reads_size
-                            *s += &format!(
-                                "\tmov {}, [{}] /* value = mem_reads_size */\n",
-                                REG_VALUE, REG_MEM_READS_SIZE
-                            );
-                            *s += &format!("\tinc {} /* increment value */\n", REG_VALUE);
-                            *s += &format!(
-                                "\tmov [{}], {} /* mem_reads_size = value */\n",
-                                REG_MEM_READS_SIZE, REG_VALUE
-                            );
-
+                            *s += ".align 16\n";
                             *s += &format!("pc_{:x}_b_ind_address_done:\n", ctx.pc);
                         }
                         1 => {
@@ -1544,10 +1572,13 @@ impl ZiskRom {
 
                     // Check if address is aligned, i.e. it is a multiple of 8
                     *s += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
-                    *s += &format!(
-                        "\tjz pc_{:x}_c_address_aligned /* check if address is aligned */\n",
-                        ctx.pc
-                    );
+                    *s += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
+                    *s += &format!("\tjmp pc_{:x}_c_address_aligned\n", ctx.pc);
+
+                    // Address not aligned
+                    //////////////////////
+
+                    *s += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
 
                     // Calculate previous aligned address
                     *s += &format!(
@@ -1598,10 +1629,14 @@ impl ZiskRom {
                         REG_MEM_READS_SIZE, REG_VALUE
                     );
 
+                    // Address aligned
+                    //////////////////
+
+                    *s += ".align 16\n";
                     *s += &format!("pc_{:x}_c_address_aligned:\n", ctx.pc);
                 }
                 STORE_IND => {
-                    *s += "\t/* STORE_IND */\n";
+                    *s += &format!("\t/* STORE_IND width={} */\n", instruction.ind_width);
 
                     // Calculate memory address and store it in REG_ADDRESS
                     *s += &format!(
@@ -1729,7 +1764,16 @@ impl ZiskRom {
                         8 => {
                             // // Check if address is aligned, i.e. it is a multiple of 8
                             *s += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
-                            *s += &format!("\tjz pc_{:x}_c_address_aligned /* check if address is aligned */\n", ctx.pc);
+                            *s += &format!("\tjnz pc_{:x}_c_address_not_aligned /* check if address is aligned */\n", ctx.pc);
+                            *s += &format!(
+                                "\tjmp pc_{:x}_c_address_aligned /* address is aligned */\n",
+                                ctx.pc
+                            );
+
+                            // c address not aligned
+                            ////////////////////////
+
+                            *s += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
 
                             // Calculate previous aligned address
                             *s += &format!(
@@ -1783,6 +1827,9 @@ impl ZiskRom {
                             );
 
                             // Check done
+                            /////////////
+
+                            *s += ".align 16\n";
                             *s += &format!("pc_{:x}_c_address_aligned:\n", ctx.pc);
                         }
                         4 | 2 => {
@@ -1826,11 +1873,33 @@ impl ZiskRom {
                                 REG_VALUE, REG_ADDRESS
                             );
                             *s += &format!(
-                                "\tjz pc_{:x}_c_ind_same_address /* jump if they are the same */\n",
+                                "\tjnz pc_{:x}_c_ind_different_address /* jump if they are the same */\n",
+                                ctx.pc
+                            );
+
+                            // Same address
+                            ///////////////
+
+                            // Increment chunk.steps.mem_reads_size
+                            *s += &format!(
+                                "\tmov {}, [{}] /* value = mem_reads_size */\n",
+                                REG_VALUE, REG_MEM_READS_SIZE
+                            );
+                            *s += &format!("\tinc {} /* increment value */\n", REG_VALUE);
+                            *s += &format!(
+                                "\tmov [{}], {} /* mem_reads_size = value */\n",
+                                REG_MEM_READS_SIZE, REG_VALUE
+                            );
+
+                            *s += &format!(
+                                "\tjnz pc_{:x}_c_ind_address_done /* jump if they are the same */\n",
                                 ctx.pc
                             );
 
                             // Different address
+                            ////////////////////
+
+                            *s += &format!("pc_{:x}_c_ind_different_address:\n", ctx.pc);
 
                             // Store next aligned address value in mem_reads
                             *s += &format!(
@@ -1861,20 +1930,10 @@ impl ZiskRom {
 
                             *s += &format!("\tjmp pc_{:x}_c_ind_address_done\n", ctx.pc);
 
-                            // Same address
-                            *s += &format!("pc_{:x}_c_ind_same_address:\n", ctx.pc);
+                            // Done
+                            ///////
 
-                            // Increment chunk.steps.mem_reads_size
-                            *s += &format!(
-                                "\tmov {}, [{}] /* value = mem_reads_size */\n",
-                                REG_VALUE, REG_MEM_READS_SIZE
-                            );
-                            *s += &format!("\tinc {} /* increment value */\n", REG_VALUE);
-                            *s += &format!(
-                                "\tmov [{}], {} /* mem_reads_size = value */\n",
-                                REG_MEM_READS_SIZE, REG_VALUE
-                            );
-
+                            *s += ".align 16\n";
                             *s += &format!("pc_{:x}_c_ind_address_done:\n", ctx.pc);
                         }
                         1 => {
@@ -1961,10 +2020,13 @@ impl ZiskRom {
                 *s += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
                 *s += "\tcall chunk_end\n";
             } else {
-                *s += &format!("\tjnz pc_{:x}_check_step_done\n", ctx.pc);
+                *s += &format!("\tjz pc_{:x}_check_step_zero\n", ctx.pc);
+                *s += &format!("\tjmp pc_{:x}_check_step_done\n", ctx.pc);
+                *s += &format!("pc_{:x}_check_step_zero:\n", ctx.pc);
                 *s += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
                 *s += "\tcall chunk_end\n";
                 *s += "\tcall chunk_start\n";
+                *s += ".align 16\n";
                 *s += &format!("pc_{:x}_check_step_done:\n", ctx.pc);
             }
 
