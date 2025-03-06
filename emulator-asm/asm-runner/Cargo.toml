@@ -1,7 +1,14 @@
 [package]
 name = "asm-runner"
 version = "0.1.0"
-#edition = "2024"
+
+[lib]
+name = "asm_runner"
+path = "src/lib.rs"
+
+[[bin]]
+name = "asm-runner-main"
+path = "src/main.rs"
 
 [dependencies]
-libc = "0.2"  # Required for mmap and FFI
+libc = "0.2"
