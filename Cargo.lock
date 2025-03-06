@@ -236,7 +236,7 @@ checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
 
 [[package]]
 name = "cargo-zisk"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -507,7 +507,7 @@ checksum = "ef8ae57c4978a2acd8b869ce6b9ca1dfe817bff704c220209fdef2c0b75a01b9"
 
 [[package]]
 name = "data-bus"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "zisk-core",
 ]
@@ -641,7 +641,7 @@ dependencies = [
 
 [[package]]
 name = "executor"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "data-bus",
  "itertools 0.14.0",
@@ -1699,7 +1699,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#840f4d86aa38cb0cf9b20f96580fb375c08d3928"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
 dependencies = [
  "colored",
  "log",
@@ -1808,6 +1808,7 @@ dependencies = [
 name = "precomp-keccakf"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "data-bus",
  "log",
  "num-bigint",
@@ -1857,7 +1858,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#840f4d86aa38cb0cf9b20f96580fb375c08d3928"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
 dependencies = [
  "colored",
  "env_logger",
@@ -1882,7 +1883,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#840f4d86aa38cb0cf9b20f96580fb375c08d3928"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
 dependencies = [
  "env_logger",
  "log",
@@ -1902,7 +1903,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#840f4d86aa38cb0cf9b20f96580fb375c08d3928"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
 dependencies = [
  "log",
  "p3-field",
@@ -1914,7 +1915,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#840f4d86aa38cb0cf9b20f96580fb375c08d3928"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1925,7 +1926,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#840f4d86aa38cb0cf9b20f96580fb375c08d3928"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
 dependencies = [
  "log",
 ]
@@ -1933,7 +1934,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#840f4d86aa38cb0cf9b20f96580fb375c08d3928"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
 dependencies = [
  "colored",
  "p3-field",
@@ -2209,14 +2210,14 @@ dependencies = [
 
 [[package]]
 name = "riscv"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "elf",
 ]
 
 [[package]]
 name = "rom-merkle"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "anyhow",
  "blake3",
@@ -2420,7 +2421,7 @@ dependencies = [
 
 [[package]]
 name = "sm-arith"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "data-bus",
  "log",
@@ -2439,7 +2440,7 @@ dependencies = [
 
 [[package]]
 name = "sm-binary"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "data-bus",
  "log",
@@ -2457,7 +2458,7 @@ dependencies = [
 
 [[package]]
 name = "sm-common"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "data-bus",
  "p3-field",
@@ -2469,7 +2470,7 @@ dependencies = [
 
 [[package]]
 name = "sm-main"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "data-bus",
  "log",
@@ -2489,7 +2490,7 @@ dependencies = [
 
 [[package]]
 name = "sm-mem"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "data-bus",
  "log",
@@ -2509,7 +2510,7 @@ dependencies = [
 
 [[package]]
 name = "sm-rom"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "data-bus",
  "itertools 0.14.0",
@@ -2888,7 +2889,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#840f4d86aa38cb0cf9b20f96580fb375c08d3928"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -3354,7 +3355,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#840f4d86aa38cb0cf9b20f96580fb375c08d3928"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
 dependencies = [
  "colored",
  "env_logger",
@@ -3500,7 +3501,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-core"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "elf",
  "indexmap",
@@ -3514,7 +3515,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-pil"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "proofman-common",
  "proofman-macros",
@@ -3533,7 +3534,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-witness"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "env_logger",
  "executor",
@@ -3560,7 +3561,7 @@ dependencies = [
 
 [[package]]
 name = "ziskemu"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "clap",
  "criterion",
@@ -3578,7 +3579,7 @@ dependencies = [
 
 [[package]]
 name = "ziskos"
-version = "0.2.0"
+version = "0.4.3"
 dependencies = [
  "getrandom 0.2.15",
  "lazy_static",

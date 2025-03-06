@@ -16,6 +16,8 @@ Ensure the following tools are installed:
 
 ### Ubuntu
 
+Ubuntu 22.04 or higher is required.
+
 Install all required dependencies with:
 ```bash
 sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm
@@ -57,14 +59,14 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
 
 1. Follow the instructions to install [Nix](https://determinate.systems/nix/) on your system.
 
-2. Use the `flake.nix` file from the [ZisK repository](https://github.com/0xPolygonHermez/zisk/blob/develop/flake.nix) to set up the development environment:
+2. Use the `flake.nix` file from the [ZisK repository](https://github.com/0xPolygonHermez/zisk/blob/main/flake.nix) to set up the development environment:
     ```bash
-    nix develop
+    nix main
     ```
 
 3. To start a shell with ZisK’s environment:
     ```bash
-    nix develop -c zsh
+    nix main -c zsh
     ```
     This will open a shell with the `PATH` and `LD_LIBRARY_PATH` correctly configured for building the project. Exit the shell with `Ctrl+D`.
 
@@ -74,7 +76,7 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
 
 1. Install the ZisK installer `ziskup`:
     ```bash
-    curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/develop/ziskup/install.sh  | bash
+    curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh  | bash
     ```
     This will enable the `ziskup` command in your terminal. 
     
@@ -107,6 +109,7 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
 
 5. Download and install setup files: 
 
+    Option 1:
     Download the proving key files:
     ```bash
     curl -O https://storage.googleapis.com/zisk/zisk-provingkey-0.4.0.tar.gz
@@ -123,6 +126,7 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
     tar --overwrite -xvf zisk-provingkey-0.4.0.tar.gz -C $HOME/.zisk
     ```
 
+    Option 2:
     Alternatively, if you only need to verify proofs, download and install the verify key files:
      ```bash
     curl -O https://storage.googleapis.com/zisk/zisk-verifykey-0.4.0.tar.gz
@@ -131,10 +135,7 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
 
     Then, follow the same verification and installation steps as for the proving key files.
 
-To update ZisK to the latest version, simply run again:
-```bash
-ziskup
-```
+To update ZisK to the latest version, simply run again the previous steps.
 
 ### Option 2: Building from Source
 

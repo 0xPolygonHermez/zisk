@@ -58,14 +58,12 @@ pub const KECCAKF_TABLE_AIR_IDS: &[usize] = &[15];
 
 pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[16];
 
-pub const U_8_AIR_AIR_IDS: &[usize] = &[17];
-
-pub const U_16_AIR_AIR_IDS: &[usize] = &[18];
 
 //PUBLICS
 use serde::Deserialize;
 use serde::Serialize;
 use serde_arrays;
+
 
 fn default_array_rom_root() -> [u64; 4] {
     [0; 4]
@@ -75,17 +73,22 @@ fn default_array_inputs() -> [u64; 64] {
     [0; 64]
 }
 
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ZiskPublics {
     #[serde(default = "default_array_rom_root", with = "serde_arrays")]
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
-    }
+    
+}
 
 impl Default for ZiskPublics {
     fn default() -> Self {
-        Self { rom_root: [0; 4], inputs: [0; 64] }
+        Self {  
+            rom_root: [0; 4],  
+            inputs: [0; 64], 
+        }
     }
 }
 

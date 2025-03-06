@@ -1,5 +1,5 @@
 use core::panic;
-use std::{fs, sync::Arc};
+use std::{env, fs, sync::Arc};
 
 use log::info;
 use p3_field::PrimeField64;
@@ -50,8 +50,9 @@ impl KeccakfSM {
     /// A new `KeccakfSM` instance.
     pub fn new(keccakf_table_sm: Arc<KeccakfTableSM>) -> Arc<Self> {
         // Parse the script
-        let script = fs::read_to_string("../zisk/precompiles/keccakf/src/keccakf_script.json")
-            .expect("Failed to read keccakf_script.json");
+        let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
+        let script_path = format!("{}/zisk_release/zisk/precompiles/keccakf/src/keccakf_script.json", home_dir);
+        let script = fs::read_to_string(script_path).expect("Failed to read keccakf_script.json");
         let script: Script =
             serde_json::from_str(&script).expect("Failed to parse keccakf_script.json");
         let slot_size = script.maxref;
