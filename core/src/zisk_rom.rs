@@ -1184,10 +1184,12 @@ impl ZiskRom {
                         "\tmov {}, {} /* address = a */\n",
                         REG_ADDRESS, ctx.a.string_value
                     );
-                    *s += &format!(
-                        "\tadd {}, 0x{:x} /* address += i.b_offset_imm0 */\n",
-                        REG_ADDRESS, instruction.b_offset_imm0
-                    );
+                    if instruction.b_offset_imm0 != 0 {
+                        *s += &format!(
+                            "\tadd {}, 0x{:x} /* address += i.b_offset_imm0 */\n",
+                            REG_ADDRESS, instruction.b_offset_imm0
+                        );
+                    }
                     if instruction.b_use_sp_imm1 != 0 {
                         *s += &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, MEM_SP);
                     }
@@ -1981,10 +1983,12 @@ impl ZiskRom {
                         format!("\tjmp pc_{:x} /* jump to static pc */\n", new_pc);
                 } else {
                     *s += &format!("\tmov {}, {} /* pc = c */\n", REG_PC, ctx.c.string_value);
-                    *s += &format!(
-                        "\tadd {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
-                        REG_PC, instruction.jmp_offset1
-                    );
+                    if instruction.jmp_offset1 != 0 {
+                        *s += &format!(
+                            "\tadd {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
+                            REG_PC, instruction.jmp_offset1
+                        );
+                    }
                     ctx.jump_to_dynamic_pc = true;
                 }
             } else if ctx.flag_is_always_zero {
@@ -2287,7 +2291,11 @@ impl ZiskRom {
                 // DEBUG: Used only to preserve b value
                 // s +=
                 //     &format!("\tmov {}, {} /* AddW: value = b */\n", REG_VALUE, ctx.b.string_value);
-                s += &format!("\tadd {}, {} /* AddW: b += a */\n", REG_B, ctx.a.string_value);
+                if ctx.a.is_constant && (ctx.a.constant_value == 0) {
+                    s += "\t/* AddW: ignoring a since a = 0 */\n";
+                } else {
+                    s += &format!("\tadd {}, {} /* AddW: b += a */\n", REG_B, ctx.a.string_value);
+                }
                 s += "\tcdqe /* AddW: trunk b */\n";
                 s += &format!("\tmov {}, {} /* AddW: c = b */\n", REG_C, REG_B);
                 ctx.c.is_saved = true;
@@ -2297,10 +2305,14 @@ impl ZiskRom {
             }
             ZiskOp::Sub => {
                 assert!(ctx.store_a_in_c);
-                s += &format!(
-                    "\tsub {}, {} /* Sub: c = c - b = a - b */\n",
-                    REG_C, ctx.b.string_value
-                );
+                if ctx.b.is_constant && (ctx.b.constant_value == 0) {
+                    s += "\t/* Sub: ignoring b since b = 0 */\n";
+                } else {
+                    s += &format!(
+                        "\tsub {}, {} /* Sub: c = c - b = a - b */\n",
+                        REG_C, ctx.b.string_value
+                    );
+                }
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -2313,7 +2325,11 @@ impl ZiskRom {
                 // );
                 // s +=
                 //     &format!("\tmov {}, {} /* SubW: value = b */\n", REG_VALUE, ctx.b.string_value);
-                s += &format!("\tsub {}, {} /* SubW: a -= b */\n", REG_A, ctx.b.string_value);
+                if ctx.b.is_constant && (ctx.b.constant_value == 0) {
+                    s += "\t/* SubW: ignoring b since b = 0 */\n";
+                } else {
+                    s += &format!("\tsub {}, {} /* SubW: a -= b */\n", REG_A, ctx.b.string_value);
+                }
                 s += &format!("\tmov {}, {} /* SubW: b = a = a - b*/\n", REG_B, REG_A);
                 s += "\tcdqe /* SubW: trunk b */\n";
                 s += &format!("\tmov {}, {} /* SubW: c = b */\n", REG_C, REG_B);
@@ -2638,28 +2654,40 @@ impl ZiskRom {
             }
             ZiskOp::And => {
                 assert!(ctx.store_a_in_c);
-                s += &format!(
-                    "\tand {}, {} /* And: c = c AND b = a AND b */\n",
-                    REG_C, ctx.b.string_value
-                );
+                if ctx.b.is_constant && (ctx.b.constant_value == 0xffffffffffffffff) {
+                    s += "\t/* And: ignoring b since b = f's */\n";
+                } else {
+                    s += &format!(
+                        "\tand {}, {} /* And: c = c AND b = a AND b */\n",
+                        REG_C, ctx.b.string_value
+                    );
+                }
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Or => {
                 assert!(ctx.store_a_in_c);
-                s += &format!(
-                    "\tor {}, {} /* Or: c = c OR b = a OR b */\n",
-                    REG_C, ctx.b.string_value
-                );
+                if ctx.b.is_constant && (ctx.b.constant_value == 0) {
+                    s += "\t/* Or: ignoring b since b = 0 */\n";
+                } else {
+                    s += &format!(
+                        "\tor {}, {} /* Or: c = c OR b = a OR b */\n",
+                        REG_C, ctx.b.string_value
+                    );
+                }
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Xor => {
                 assert!(ctx.store_a_in_c);
-                s += &format!(
-                    "\txor {}, {} /* Xor: c = c XOR b = a XOR b */\n",
-                    REG_C, ctx.b.string_value
-                );
+                if ctx.b.is_constant && (ctx.b.constant_value == 0) {
+                    s += "\t/* Xor: ignoring b since b = 0 */\n";
+                } else {
+                    s += &format!(
+                        "\txor {}, {} /* Xor: c = c XOR b = a XOR b */\n",
+                        REG_C, ctx.b.string_value
+                    );
+                }
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
