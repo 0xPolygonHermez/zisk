@@ -27,8 +27,8 @@ void emulator_start(void);
 #define INPUT_ADDR 0x90000000
 #define MAX_INPUT_SIZE 0x08000000 // 128MB
 
-#define TRACE_ADDR 0xc0000000
-#define INITIAL_TRACE_SIZE 0x40000000 // 1GB
+#define TRACE_ADDR         (uint64_t)0xb0000000
+#define INITIAL_TRACE_SIZE (uint64_t)0x100000000 // 4GB
 
 struct timeval start_time;
 
@@ -423,7 +423,8 @@ int main(int argc, char *argv[])
         uint64_t step_duration_ns = steps == 0 ? 0 : (duration * 1000) / steps;
         uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
         uint64_t final_trace_size_percentage = (final_trace_size * 100) / trace_size;
-        printf("Duration = %d us, Keccak counter = %d, realloc counter = %d, steps = %d, step duration = %d ns, tp = %d steps/s, trace size = 0x%08x - 0x%08x = %d B(%d%%)\n",
+#ifdef DEBUG
+        printf("Duration = %d us, Keccak counter = %d, realloc counter = %d, steps = %d, step duration = %d ns, tp = %d steps/s, trace size = 0x%llx - 0x%llx = %d B(%d%%)\n",
             duration,
             keccak_counter,
             realloc_counter,
@@ -434,13 +435,23 @@ int main(int argc, char *argv[])
             MEM_TRACE_ADDRESS,
             final_trace_size,
             final_trace_size_percentage);
-#ifdef DEBUG
         if (keccak_metrics)
         {
             uint64_t keccak_percentage = duration == 0 ? 0 : (keccak_duration * 100) / duration;
             uint64_t single_keccak_duration_ns = keccak_counter == 0 ? 0 : (keccak_duration * 1000) / keccak_counter;
             printf("Keccak counter = %d, duration = %d us, single keccak duration = %d ns, percentage = %d \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
         }
+#else
+        printf("Duration = %d us, realloc counter = %d, steps = %d, step duration = %d ns, tp = %d steps/s, trace size = 0x%llx - 0x%llx = %d B(%d%%)\n",
+            duration,
+            realloc_counter,
+            steps,
+            step_duration_ns,
+            step_tp_sec,
+            MEM_CHUNK_ADDRESS,
+            MEM_TRACE_ADDRESS,
+            final_trace_size,
+            final_trace_size_percentage);
 #endif
     }
 
@@ -546,14 +557,15 @@ uint64_t print_step_counter = 0;
 extern int _print_step(uint64_t step)
 {
 #ifdef DEBUG
+    printf("step=%d\n", print_step_counter);
     print_step_counter++;
-    struct timeval stop_time;
-    gettimeofday(&stop_time,NULL);
-    uint64_t duration = TimeDiff(start_time, stop_time);
-    uint64_t duration_s = duration/1000;
-    if (duration_s == 0) duration_s = 1;
-    uint64_t speed = step / duration_s;
-    if (verbose) printf("print_step() Counter=%d Step=%d Duration=%dus Speed=%dsteps/ms\n", print_step_counter, step, duration, speed);
+    // struct timeval stop_time;
+    // gettimeofday(&stop_time,NULL);
+    // uint64_t duration = TimeDiff(start_time, stop_time);
+    // uint64_t duration_s = duration/1000;
+    // if (duration_s == 0) duration_s = 1;
+    // uint64_t speed = step / duration_s;
+    // if (verbose) printf("print_step() Counter=%d Step=%d Duration=%dus Speed=%dsteps/ms\n", print_step_counter, step, duration, speed);
 #endif
     return 0;
 }

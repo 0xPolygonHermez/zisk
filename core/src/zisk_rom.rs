@@ -50,7 +50,10 @@ use crate::{
     STORE_NONE, STORE_REG,
 };
 
-// Registers rbx, rbp, and r12-r15 are saved across function calls
+// Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
+// Reg rax is used to store a function’s return value.
+// Regs rbx, rbp, and r12-r15 are callee-save, saved across function calls.
+
 const REG_A: &str = "rbx";
 const REG_A_W: &str = "ebx";
 const REG_B: &str = "rax";
@@ -76,7 +79,7 @@ const MEM_STEP_DOWN: &str = "qword ptr [MEM_STEP_DOWN]";
 const MEM_SP: &str = "qword ptr [MEM_SP]";
 const MEM_END: &str = "qword ptr [MEM_END]";
 
-const TRACE_ADDR: &str = "0xc0000020";
+const TRACE_ADDR: &str = "0xb0000020";
 const MEM_TRACE_ADDRESS: &str = "qword ptr [MEM_TRACE_ADDRESS]";
 const MEM_CHUNK_ADDRESS: &str = "qword ptr [MEM_CHUNK_ADDRESS]";
 const MEM_CHUNK_START_STEP: &str = "qword ptr [MEM_CHUNK_START_STEP]";
@@ -688,6 +691,13 @@ impl ZiskRom {
 
         *s += ".global emulator_start\n";
         *s += "emulator_start:\n";
+
+        *s += "\tpush rbx\n";
+        *s += "\tpush rbp\n";
+        *s += "\tpush r12\n";
+        *s += "\tpush r13\n";
+        *s += "\tpush r14\n";
+        *s += "\tpush r15\n";
 
         // Registers initialization
         *s += &format!("\tmov {}, 0 /* Register initialization: a = 0 */\n", REG_A);
@@ -1683,9 +1693,27 @@ impl ZiskRom {
                             } else {
                                 *s += &format!("\tmov dil, {} /* width=1: rdi = c */\n", REG_C_B);
                             }
-                            *s += &format!("\tpush {}\n", REG_VALUE);
+                            *s += "\tpush rax\n";
+                            *s += "\tpush rcx\n";
+                            *s += "\tpush rdx\n";
+                            // *s += "\tpush rdi\n";
+                            // *s += "\tpush rsi\n";
+                            // *s += "\tpush rsp\n";
+                            // *s += "\tpush r8\n";
+                            *s += "\tpush r9\n";
+                            *s += "\tpush r10\n";
+                            //*s += "\tpush r11\n";
                             *s += "\tcall _print_char /* width=1: call print_char() */\n";
-                            *s += &format!("\tpop {}\n", REG_VALUE);
+                            //*s += "\tpop r11\n";
+                            *s += "\tpop r10\n";
+                            *s += "\tpop r9\n";
+                            // *s += "\tpop r8\n";
+                            // *s += "\tpop rsp\n";
+                            // *s += "\tpop rsi\n";
+                            // *s += "\tpop rdi\n";
+                            *s += "\tpop rdx\n";
+                            *s += "\tpop rcx\n";
+                            *s += "\tpop rax\n";
                             *s += &format!("pc_{:x}_store_c_not_uart:\n", ctx.pc);
                         }
                         _ => panic!(
@@ -2017,7 +2045,30 @@ impl ZiskRom {
             // *s += &format!("\tjne  pc_{:x}_inc_step_done /* value = step */\n", ctx.pc);
             // *s += &format!("\tpush {}\n", REG_VALUE);
             // *s += &format!("\tmov rdi, {}\n", MEM_STEP);
+
+            // *s += "\tpush rax\n";
+            // *s += "\tpush rcx\n";
+            // *s += "\tpush rdx\n";
+            // // *s += "\tpush rdi\n";
+            // // *s += "\tpush rsi\n";
+            // // *s += "\tpush rsp\n";
+            // // *s += "\tpush r8\n";
+            // *s += "\tpush r9\n";
+            // *s += "\tpush r10\n";
+            // //*s += "\tpush r11\n";
             // *s += &format!("\tcall _print_step\n");
+
+            // //*s += "\tpop r11\n";
+            // *s += "\tpop r10\n";
+            // *s += "\tpop r9\n";
+            // // *s += "\tpop r8\n";
+            // // *s += "\tpop rsp\n";
+            // // *s += "\tpop rsi\n";
+            // // *s += "\tpop rdi\n";
+            // *s += "\tpop rdx\n";
+            // *s += "\tpop rcx\n";
+            // *s += "\tpop rax\n";
+
             // *s += &format!("\tpop {}\n", REG_VALUE);
             // *s += &format!("pc_{:x}_inc_step_done:\n", ctx.pc);
 
@@ -2056,7 +2107,15 @@ impl ZiskRom {
         }
 
         *s += "\n";
+
         *s += "execute_end:\n";
+
+        *s += "\tpop r15\n";
+        *s += "\tpop r14\n";
+        *s += "\tpop r13\n";
+        *s += "\tpop r12\n";
+        *s += "\tpop rbp\n";
+        *s += "\tpop rbx\n";
 
         // Used only to get the last log of step
         // *s += &format!("\tpush {}\n", REG_VALUE);

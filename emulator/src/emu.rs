@@ -1314,9 +1314,9 @@ impl<'a> Emu<'a> {
 
         // println!(
         //     "Emu::step() executing step={} pc={:x} inst={}",
-        //     ctx.step,
-        //     ctx.pc,
-        //     inst.i.to_string()
+        //     self.ctx.inst_ctx.step,
+        //     self.ctx.inst_ctx.pc,
+        //     instruction.to_text()
         // );
         // println!("Emu::step() step={} pc={}", ctx.step, ctx.pc);
 
