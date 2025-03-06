@@ -92,12 +92,17 @@ char * shmem_output_sufix = "_output";
 char shmem_output_name[128];
 int shmem_output_fd = -1;
 
+int process_id = 0;
+
 uint64_t input_size = 0;
 
 int main(int argc, char *argv[])
 {
     // Result, to be used in calls to functions returning int
     int result;
+
+    // Get current process id
+    process_id = getpid();
 
     // Parse arguments
     parse_arguments(argc, argv);
@@ -133,8 +138,9 @@ int main(int argc, char *argv[])
     {
         // Mark this is an input file
         is_file = true;
+        sprintf(shmem_output_name, "SHM_%d_output", process_id);
 #ifdef DEBUG
-        if (verbose) printf("Emulator C start; input file = %s\n", input_parameter);
+        if (verbose) printf("Emulator C start; input file = %s shmem=%s\n", input_parameter, shmem_output_name);
 #endif
     }
 
@@ -305,65 +311,48 @@ int main(int argc, char *argv[])
     /*********/
     /* TRACE */
     /*********/
-    if (is_file)
-    {
-        // Allocate trace
-        void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
-        if (pTrace == NULL)
-        {
-            printf("Failed calling mmap(pTrace) errno=%d=%s\n", errno, strerror(errno));
-            return -1;
-        }
-        if ((uint64_t)pTrace != TRACE_ADDR)
-        {
-            printf("Called mmap(pTrace) but returned address = 0x%08x != 0x%08x errno=%d=%s\n", pTrace, TRACE_ADDR);
-            return -1;
-        }
-#ifdef DEBUG
-        if (verbose) printf("mmap(trace) returned %08x\n", pTrace);
-#endif
-    }
-    else
-    {
-        // Make sure the output shared memory is deleted
-        shm_unlink(shmem_output_name);
-        
-        // Create the output shared memory
-        shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT, 0644);
-        if (shmem_output_fd < 0)
-        {
-            printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
-            return -1;
-        }
 
-        // Size it
-        ftruncate(shmem_output_fd, trace_size);
-
-        // Map it to the trace address
-        void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_output_fd, 0);
-        if (pTrace == NULL)
-        {
-            printf("Failed calling mmap(pTrace) errno=%d=%s\n", errno, strerror(errno));
-            return -1;
-        }
-        if ((uint64_t)pTrace != TRACE_ADDR)
-        {
-            printf("Called mmap(pTrace) but returned address = 0x%08x != 0x%08x\n", pTrace, TRACE_ADDR);
-            return -1;
-        }
-#ifdef DEBUG
-        if (verbose) printf("mmap(trace) returned %08x\n", pTrace);
-#endif
+    // Make sure the output shared memory is deleted
+    shm_unlink(shmem_output_name);
+    
+    // Create the output shared memory
+    shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT, 0644);
+    if (shmem_output_fd < 0)
+    {
+        printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
+        return -1;
     }
+
+    // Size it
+    result = ftruncate(shmem_output_fd, trace_size);
+    if (result != 0)
+    {
+        printf("Failed calling ftruncate() errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
+        return -1;
+    }
+
+    // Map it to the trace address
+    void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_output_fd, 0);
+    if (pTrace == NULL)
+    {
+        printf("Failed calling mmap(pTrace) errno=%d=%s\n", errno, strerror(errno));
+        return -1;
+    }
+    if ((uint64_t)pTrace != TRACE_ADDR)
+    {
+        printf("Called mmap(pTrace) but returned address = 0x%08x != 0x%08x\n", pTrace, TRACE_ADDR);
+        return -1;
+    }
+#ifdef DEBUG
+    if (verbose) printf("mmap(trace) returned %08x\n", pTrace);
+#endif
 
     // Init output header data
-    {
-        uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
-        pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
-        pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-        // MT allocated size [8]
-        // MT used size [8]
-    }
+    uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
+    pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
+    pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    // MT allocated size [8] -> to be updated after completion
+    // MT used size [8] -> to be updated after completion
     
     /*******/
     /* RAM */
@@ -526,6 +515,12 @@ int main(int argc, char *argv[])
         printf("Failed calling munmap(trace) for size=%d errno=%d=%s\n", trace_size, errno, strerror(errno));
         exit(-1);
     }
+
+    if (is_file)
+    {
+        // Make sure the output shared memory is deleted
+        shm_unlink(shmem_output_name);
+    }
 }
 
 uint64_t print_abcflag_counter = 0;
@@ -595,14 +590,26 @@ extern void _realloc_trace (void)
     realloc_counter++;
     //printf("realloc_trace() realloc counter=%d trace_address=0x%08x trace_size=%d\n", realloc_counter, trace_address, trace_size);
 
-    // Allocate trace
+    // Calculate new trace size
     uint64_t new_trace_size = trace_size * 2;
+
+    // Extend the underlying file to the new size
+    int result = ftruncate(shmem_output_fd, new_trace_size);
+    if (result != 0)
+    {
+        printf("realloc_trace() failed calling ftruncate(%s) of new size=%lld errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
+        exit(-1);
+    }
+    
+    // Remap the memory
     void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
     if ((uint64_t)new_address != trace_address)
     {
         printf("realloc_trace() failed calling mremap() from size=%d to %d got new_address=0x%08x errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
         exit(-1);
     }
+
+    // Update trace global variables
     trace_size = new_trace_size;
     trace_address_threshold = TRACE_ADDR + trace_size - MAX_CHUNK_TRACE_SIZE;
 }
