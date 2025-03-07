@@ -731,6 +731,12 @@ uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime)
         [8B] pc
         [8B] sp
         [8B] c
+        [8B] step
+        [8B] register[1]
+        …
+        [8B] register[31]
+        [8B] register[32]
+        [8B] register[33]
     End:
         [8B] end
     Steps:
@@ -794,6 +800,13 @@ void log_trace(void)
         i++;
         printf("\t\tc=0x%08x:\n", chunk[i]);
         i++;
+        printf("\t\tstep=%d:\n", chunk[i]);
+        i++;
+        for (uint64_t r=1; r<34; r++)
+        {
+            printf("\t\tregister[%d]=0x%08x:\n", r, chunk[i]);
+            i++;
+        }
         
         // Log current chunk end
         printf("\tEnd:\n");
