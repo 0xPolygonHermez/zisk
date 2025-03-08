@@ -1,8 +1,8 @@
 use std::{mem, sync::atomic::AtomicU32};
 
 use crate::{
-    EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, EmuTrace, EmuTraceEnd, EmuTraceStart,
-    EmuTraceSteps, ParEmuOptions,
+    EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, EmuTrace, EmuTraceCheckPoint,
+    EmuTraceEnd, EmuTraceSteps, ParEmuOptions,
 };
 use data_bus::{
     BusDevice, ExtOperationData, OperationBusData, RomBusData, MEM_BUS_ID, OPERATION_BUS_ID,
@@ -41,7 +41,7 @@ impl<'a> Emu<'a> {
         Emu { rom, ctx: EmuContext::default() }
     }
 
-    pub fn from_emu_trace_start(rom: &'a ZiskRom, trace_start: &'a EmuTraceStart) -> Emu<'a> {
+    pub fn from_emu_trace_start(rom: &'a ZiskRom, trace_start: &'a EmuTraceCheckPoint) -> Emu<'a> {
         let mut emu = Emu::new(rom);
         emu.ctx.inst_ctx.pc = trace_start.pc;
         emu.ctx.inst_ctx.sp = trace_start.sp;
@@ -1278,7 +1278,7 @@ impl<'a> Emu<'a> {
                 // Check if is the first step of a new block
                 if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
                     emu_traces.push(EmuTrace {
-                        start_state: EmuTraceStart {
+                        start_state: EmuTraceCheckPoint {
                             pc: self.ctx.inst_ctx.pc,
                             sp: self.ctx.inst_ctx.sp,
                             c: self.ctx.inst_ctx.c,
@@ -1286,7 +1286,7 @@ impl<'a> Emu<'a> {
                             regs: self.ctx.inst_ctx.regs,
                             mem_reads_index: 0,
                         },
-                        last_state: EmuTraceStart::default(),
+                        last_state: EmuTraceCheckPoint::default(),
                         steps: EmuTraceSteps {
                             mem_reads: Vec::with_capacity(par_options.num_steps),
                             steps: 0,
@@ -1418,7 +1418,7 @@ impl<'a> Emu<'a> {
     /// Performs one single step of the emulation
     #[inline(always)]
     pub fn par_step_my_block<F: PrimeField>(&mut self, emu_full_trace_vec: &mut EmuTrace) {
-        emu_full_trace_vec.last_state = EmuTraceStart {
+        emu_full_trace_vec.last_state = EmuTraceCheckPoint {
             pc: self.ctx.inst_ctx.pc,
             sp: self.ctx.inst_ctx.sp,
             c: self.ctx.inst_ctx.c,

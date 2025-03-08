@@ -2,7 +2,7 @@
 
 /// Trace data at the beginning of the program execution: pc, sp, c and step.
 #[derive(Default, Debug, Clone)]
-pub struct EmuTraceStart {
+pub struct EmuTraceCheckPoint {
     /// Initial value of the program counter (ROM address)
     pub pc: u64,
     /// Initial value of the sp register
@@ -51,9 +51,10 @@ pub struct EmuTraceEnd {
 #[derive(Default, Debug, Clone)]
 pub struct EmuTrace {
     /// State at the begining of the execution
-    pub start_state: EmuTraceStart,
+    pub start_state: EmuTraceCheckPoint,
     /// State at the end of the execution
-    pub last_state: EmuTraceStart,
+    pub last_state: EmuTraceCheckPoint,
     pub steps: EmuTraceSteps,
+    /// State at the end of the execution
     pub end: EmuTraceEnd,
 }

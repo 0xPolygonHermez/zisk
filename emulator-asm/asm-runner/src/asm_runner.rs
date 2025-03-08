@@ -15,7 +15,7 @@ pub struct AsmMinimalTraces<'a> {
     pub vec_chunks: Vec<OutputChunk<'a>>,
 }
 
-impl<'a> Drop for AsmMinimalTraces<'a> {
+impl Drop for AsmMinimalTraces<'_> {
     fn drop(&mut self) {
         unsafe {
             // Unmap memory when the struct is dropped
@@ -30,12 +30,9 @@ impl<'a> Drop for AsmMinimalTraces<'a> {
     }
 }
 
-impl<'a> AsmMinimalTraces<'a> {
+impl AsmMinimalTraces<'_> {
     fn total_size(&self) -> usize {
-        self.vec_chunks
-            .iter()
-            .map(|chunk| chunk.mem_reads.len() * std::mem::size_of::<u64>())
-            .sum::<usize>()
+        self.vec_chunks.iter().map(|chunk| std::mem::size_of_val(chunk.mem_reads)).sum::<usize>()
             + std::mem::size_of::<OutputHeaderC>()
     }
 }

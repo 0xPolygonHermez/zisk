@@ -122,7 +122,7 @@ pub struct OutputChunk<'a> {
     pub mem_reads: &'a [u64],
 }
 
-impl<'a> From<OutputChunkC> for OutputChunk<'a> {
+impl From<OutputChunkC> for OutputChunk<'_> {
     fn from(chunk: OutputChunkC) -> Self {
         Self {
             pc: chunk.pc,
