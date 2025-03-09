@@ -3,7 +3,7 @@ ifeq ($(dbg),1)
       CFLAGS = -g -D DEBUG -no-pie
       ASMFLAGS = -g
 else
-      CFLAGS = -O3 -no-pie
+      CFLAGS = -O3 -D DEBUG -no-pie
 endif
 
 # Default EMU_PATH (can be overridden)
@@ -17,8 +17,8 @@ build/emu.o: $(EMU_PATH)
 	as $(ASMFLAGS) -o build/emu.o $<
 
 # Compile the final executable
-build/ziskemuasm: build/emu.o src/main.c src/asm_runner.c src/chfast/keccak.c
-	gcc $(CFLAGS) -no-pie src/main.c src/asm_runner.c src/chfast/keccak.c -lc build/emu.o -lc ../target/release/libziskclib.a -o build/ziskemuasm
+build/ziskemuasm: build/emu.o src/main.c src/chfast/keccak.c
+	gcc $(CFLAGS) -no-pie src/main.c src/chfast/keccak.c -lc build/emu.o -lc ../target/release/libziskclib.a -o build/ziskemuasm
 
 clean:
 	rm -rf build
