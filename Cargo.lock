@@ -128,6 +128,9 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 [[package]]
 name = "asm-runner"
 version = "0.1.0"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "autocfg"
@@ -3578,6 +3581,13 @@ dependencies = [
  "zisk-core",
  "zisk-pil",
  "ziskemu",
+]
+
+[[package]]
+name = "ziskclib"
+version = "0.1.0"
+dependencies = [
+ "tiny-keccak",
 ]
 
 [[package]]
