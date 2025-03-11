@@ -8,7 +8,7 @@ use data_bus::{
     BusDevice, ExtOperationData, OperationBusData, RomBusData, MEM_BUS_ID, OPERATION_BUS_ID,
     ROM_BUS_ID,
 };
-use p3_field::{AbstractField, PrimeField};
+use p3_field::PrimeField;
 use riscv::RiscVRegisters;
 use sm_mem::MemHelpers;
 // #[cfg(feature = "sp")]
@@ -1758,7 +1758,7 @@ impl<'a> Emu<'a> {
     }
 
     #[inline(always)]
-    pub fn build_full_trace_step<F: AbstractField>(
+    pub fn build_full_trace_step<F: PrimeField>(
         inst: &ZiskInst,
         inst_ctx: &InstContext,
         reg_trace: &EmuRegTrace,
@@ -1776,67 +1776,67 @@ impl<'a> Emu<'a> {
             + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u64;
 
         let jmp_offset1 = if inst.jmp_offset1 >= 0 {
-            F::from_canonical_u64(inst.jmp_offset1 as u64)
+            F::from_u64(inst.jmp_offset1 as u64)
         } else {
-            F::neg(F::from_canonical_u64((-inst.jmp_offset1) as u64))
+            F::neg(F::from_u64((-inst.jmp_offset1) as u64))
         };
 
         let jmp_offset2 = if inst.jmp_offset2 >= 0 {
-            F::from_canonical_u64(inst.jmp_offset2 as u64)
+            F::from_u64(inst.jmp_offset2 as u64)
         } else {
-            F::neg(F::from_canonical_u64((-inst.jmp_offset2) as u64))
+            F::neg(F::from_u64((-inst.jmp_offset2) as u64))
         };
 
         let store_offset = if inst.store_offset >= 0 {
-            F::from_canonical_u64(inst.store_offset as u64)
+            F::from_u64(inst.store_offset as u64)
         } else {
-            F::neg(F::from_canonical_u64((-inst.store_offset) as u64))
+            F::neg(F::from_u64((-inst.store_offset) as u64))
         };
 
         let a_offset_imm0 = if inst.a_offset_imm0 as i64 >= 0 {
-            F::from_canonical_u64(inst.a_offset_imm0)
+            F::from_u64(inst.a_offset_imm0)
         } else {
-            F::neg(F::from_canonical_u64((-(inst.a_offset_imm0 as i64)) as u64))
+            F::neg(F::from_u64((-(inst.a_offset_imm0 as i64)) as u64))
         };
 
         let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
-            F::from_canonical_u64(inst.b_offset_imm0)
+            F::from_u64(inst.b_offset_imm0)
         } else {
-            F::neg(F::from_canonical_u64((-(inst.b_offset_imm0 as i64)) as u64))
+            F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64))
         };
 
         EmuFullTraceStep {
-            a: [F::from_canonical_u64(a[0]), F::from_canonical_u64(a[1])],
-            b: [F::from_canonical_u64(b[0]), F::from_canonical_u64(b[1])],
-            c: [F::from_canonical_u64(c[0]), F::from_canonical_u64(c[1])],
+            a: [F::from_u64(a[0]), F::from_u64(a[1])],
+            b: [F::from_u64(b[0]), F::from_u64(b[1])],
+            c: [F::from_u64(c[0]), F::from_u64(c[1])],
 
             flag: F::from_bool(inst_ctx.flag),
-            pc: F::from_canonical_u64(inst.paddr),
+            pc: F::from_u64(inst.paddr),
             a_src_imm: F::from_bool(inst.a_src == SRC_IMM),
             a_src_mem: F::from_bool(inst.a_src == SRC_MEM),
             a_src_reg: F::from_bool(inst.a_src == SRC_REG),
             a_offset_imm0,
             // #[cfg(not(feature = "sp"))]
-            a_imm1: F::from_canonical_u64(inst.a_use_sp_imm1),
+            a_imm1: F::from_u64(inst.a_use_sp_imm1),
             // #[cfg(feature = "sp")]
-            // sp: F::from_canonical_u64(inst_ctx.sp),
+            // sp: F::from_u64(inst_ctx.sp),
             // #[cfg(feature = "sp")]
             // a_src_sp: F::from_bool(inst.a_src == SRC_SP),
             // #[cfg(feature = "sp")]
-            // a_use_sp_imm1: F::from_canonical_u64(inst.a_use_sp_imm1),
+            // a_use_sp_imm1: F::from_u64(inst.a_use_sp_imm1),
             a_src_step: F::from_bool(inst.a_src == SRC_STEP),
             b_src_imm: F::from_bool(inst.b_src == SRC_IMM),
             b_src_mem: F::from_bool(inst.b_src == SRC_MEM),
             b_src_reg: F::from_bool(inst.b_src == SRC_REG),
             b_offset_imm0,
             // #[cfg(not(feature = "sp"))]
-            b_imm1: F::from_canonical_u64(inst.b_use_sp_imm1),
+            b_imm1: F::from_u64(inst.b_use_sp_imm1),
             // #[cfg(feature = "sp")]
-            // b_use_sp_imm1: F::from_canonical_u64(inst.b_use_sp_imm1),
+            // b_use_sp_imm1: F::from_u64(inst.b_use_sp_imm1),
             b_src_ind: F::from_bool(inst.b_src == SRC_IND),
-            ind_width: F::from_canonical_u64(inst.ind_width),
+            ind_width: F::from_u64(inst.ind_width),
             is_external_op: F::from_bool(inst.is_external_op),
-            op: F::from_canonical_u8(inst.op),
+            op: F::from_u8(inst.op),
             store_ra: F::from_bool(inst.store_ra),
             store_mem: F::from_bool(inst.store == STORE_MEM),
             store_reg: F::from_bool(inst.store == STORE_REG),
@@ -1848,17 +1848,17 @@ impl<'a> Emu<'a> {
             // #[cfg(feature = "sp")]
             // set_sp: F::from_bool(inst.set_sp),
             // #[cfg(feature = "sp")]
-            // inc_sp: F::from_canonical_u64(inst.inc_sp),
+            // inc_sp: F::from_u64(inst.inc_sp),
             jmp_offset1,
             jmp_offset2,
             m32: F::from_bool(inst.m32),
-            addr1: F::from_canonical_u64(addr1),
-            a_reg_prev_mem_step: F::from_canonical_u64(reg_trace.reg_prev_steps[0]),
-            b_reg_prev_mem_step: F::from_canonical_u64(reg_trace.reg_prev_steps[1]),
-            store_reg_prev_mem_step: F::from_canonical_u64(reg_trace.reg_prev_steps[2]),
+            addr1: F::from_u64(addr1),
+            a_reg_prev_mem_step: F::from_u64(reg_trace.reg_prev_steps[0]),
+            b_reg_prev_mem_step: F::from_u64(reg_trace.reg_prev_steps[1]),
+            store_reg_prev_mem_step: F::from_u64(reg_trace.reg_prev_steps[2]),
             store_reg_prev_value: [
-                F::from_canonical_u64(store_prev_value[0]),
-                F::from_canonical_u64(store_prev_value[1]),
+                F::from_u64(store_prev_value[0]),
+                F::from_u64(store_prev_value[1]),
             ],
         }
     }

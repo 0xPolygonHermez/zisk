@@ -168,19 +168,19 @@ impl BinaryBasicSM {
         // Split a in bytes and store them in free_in_a
         let a_bytes: [u8; 8] = a.to_le_bytes();
         for (i, value) in a_bytes.iter().enumerate() {
-            row.free_in_a[i] = F::from_canonical_u8(*value);
+            row.free_in_a[i] = F::from_u8(*value);
         }
 
         // Split b in bytes and store them in free_in_b
         let b_bytes: [u8; 8] = b.to_le_bytes();
         for (i, value) in b_bytes.iter().enumerate() {
-            row.free_in_b[i] = F::from_canonical_u8(*value);
+            row.free_in_b[i] = F::from_u8(*value);
         }
 
         // Split c in bytes and store them in free_in_c
         let c_bytes: [u8; 8] = c.to_le_bytes();
         for (i, value) in c_bytes.iter().enumerate() {
-            row.free_in_c[i] = F::from_canonical_u8(*value);
+            row.free_in_c[i] = F::from_u8(*value);
         }
 
         // Set use last carry and carry[], based on operation
@@ -196,7 +196,7 @@ impl BinaryBasicSM {
         match opcode {
             MINU_OP | MINUW_OP | MIN_OP | MINW_OP => {
                 // Set opcode is min or max
-                row.op_is_min_max = F::one();
+                row.op_is_min_max = F::ONE;
 
                 let result_is_a: u64 = if (a == b) || (b == c_filtered) { 0 } else { 1 };
 
@@ -208,10 +208,10 @@ impl BinaryBasicSM {
                 };
 
                 // Set use last carry to zero
-                row.use_last_carry = F::zero();
+                row.use_last_carry = F::ZERO;
 
                 // Set has initial carry
-                row.has_initial_carry = F::zero();
+                row.has_initial_carry = F::ZERO;
 
                 // Apply the logic to every byte
                 for i in 0..8 {
@@ -240,7 +240,7 @@ impl BinaryBasicSM {
                         cout = 0;
                     }
                     cin = cout;
-                    row.carry[i] = F::from_canonical_u64(cin);
+                    row.carry[i] = F::from_u64(cin);
 
                     //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                     let flags = cout + 2 + 4 * result_is_a;
@@ -263,7 +263,7 @@ impl BinaryBasicSM {
             }
             MAXU_OP | MAXUW_OP | MAX_OP | MAXW_OP => {
                 // Set opcode is min or max
-                row.op_is_min_max = F::one();
+                row.op_is_min_max = F::ONE;
 
                 let result_is_a: u64 = if (a == b) || (b == c_filtered) { 0 } else { 1 };
 
@@ -275,10 +275,10 @@ impl BinaryBasicSM {
                 };
 
                 // Set use last carry to zero
-                row.use_last_carry = F::zero();
+                row.use_last_carry = F::ZERO;
 
                 // Set has initial carry
-                row.has_initial_carry = F::zero();
+                row.has_initial_carry = F::ZERO;
 
                 // Apply the logic to every byte
                 for i in 0..8 {
@@ -307,7 +307,7 @@ impl BinaryBasicSM {
                         cout = 0;
                     }
                     cin = cout;
-                    row.carry[i] = F::from_canonical_u64(cin);
+                    row.carry[i] = F::from_u64(cin);
 
                     //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                     let flags = cout + 2 + 4 * result_is_a;
@@ -330,16 +330,16 @@ impl BinaryBasicSM {
             }
             LT_ABS_NP_OP => {
                 // Set opcode is min or max
-                row.op_is_min_max = F::zero();
+                row.op_is_min_max = F::ZERO;
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::LtAbsNP;
 
                 // Set use last carry
-                row.use_last_carry = F::one();
+                row.use_last_carry = F::ONE;
 
                 // Set has initial carry
-                row.has_initial_carry = F::one();
+                row.has_initial_carry = F::ONE;
 
                 // Apply the logic to every byte
                 for i in 0..8 {
@@ -364,7 +364,7 @@ impl BinaryBasicSM {
                     }
 
                     cout += 2 * (_a >> 8);
-                    row.carry[i] = F::from_canonical_u64(cout);
+                    row.carry[i] = F::from_u64(cout);
 
                     // Set carry for next iteration
                     cin = cout;
@@ -386,16 +386,16 @@ impl BinaryBasicSM {
             }
             LT_ABS_PN_OP => {
                 // Set opcode is min or max
-                row.op_is_min_max = F::zero();
+                row.op_is_min_max = F::ZERO;
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::LtAbsPN;
 
                 // Set use last carry
-                row.use_last_carry = F::one();
+                row.use_last_carry = F::ONE;
 
                 // Set has initial carry
-                row.has_initial_carry = F::one();
+                row.has_initial_carry = F::ONE;
 
                 // Apply the logic to every byte
                 for i in 0..8 {
@@ -420,7 +420,7 @@ impl BinaryBasicSM {
                     }
 
                     cout += 2 * (_b >> 8);
-                    row.carry[i] = F::from_canonical_u64(cout);
+                    row.carry[i] = F::from_u64(cout);
 
                     // Set carry for next iteration
                     cin = cout;
@@ -442,7 +442,7 @@ impl BinaryBasicSM {
             }
             LTU_OP | LTUW_OP | LT_OP | LTW_OP => {
                 // Set opcode is min or max
-                row.op_is_min_max = F::zero();
+                row.op_is_min_max = F::ZERO;
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = if (opcode == LTU_OP) || (opcode == LTUW_OP) {
@@ -452,10 +452,10 @@ impl BinaryBasicSM {
                 };
 
                 // Set use last carry to one
-                row.use_last_carry = F::one();
+                row.use_last_carry = F::ONE;
 
                 // Set has initial carry
-                row.has_initial_carry = F::zero();
+                row.has_initial_carry = F::ZERO;
 
                 // Apply the logic to every byte
                 for i in 0..8 {
@@ -481,7 +481,7 @@ impl BinaryBasicSM {
                         cout = if a_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                     }
                     cin = cout;
-                    row.carry[i] = F::from_canonical_u64(cin);
+                    row.carry[i] = F::from_u64(cin);
 
                     //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                     let flags = cin + 8 * plast[i];
@@ -504,16 +504,16 @@ impl BinaryBasicSM {
             }
             GT_OP => {
                 // Set opcode is min or max
-                row.op_is_min_max = F::zero();
+                row.op_is_min_max = F::ZERO;
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Gt;
 
                 // Set use last carry to one
-                row.use_last_carry = F::one();
+                row.use_last_carry = F::ONE;
 
                 // Set has initial carry
-                row.has_initial_carry = F::zero();
+                row.has_initial_carry = F::ZERO;
 
                 // Apply the logic to every byte
                 for i in 0..8 {
@@ -535,7 +535,7 @@ impl BinaryBasicSM {
                     if (plast[i] == 1) && (a_bytes[i] & 0x80) != (b_bytes[i] & 0x80) {
                         cout = if b_bytes[i] & 0x80 != 0 { 1 } else { 0 };
                     }
-                    row.carry[i] = F::from_canonical_u64(cout);
+                    row.carry[i] = F::from_u64(cout);
 
                     // Set carry for next iteration
                     cin = cout;
@@ -557,16 +557,16 @@ impl BinaryBasicSM {
             }
             EQ_OP | EQW_OP => {
                 // Set opcode is min or max
-                row.op_is_min_max = F::zero();
+                row.op_is_min_max = F::ZERO;
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Eq;
 
                 // Set use last carry to one
-                row.use_last_carry = F::one();
+                row.use_last_carry = F::ONE;
 
                 // Set has initial carry
-                row.has_initial_carry = F::zero();
+                row.has_initial_carry = F::ZERO;
 
                 // Apply the logic to every byte
                 for i in 0..8 {
@@ -581,7 +581,7 @@ impl BinaryBasicSM {
                         cout = 1 - cout;
                     }
                     cin = cout;
-                    row.carry[i] = F::from_canonical_u64(cin);
+                    row.carry[i] = F::from_u64(cin);
 
                     //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                     let flags = cout + 8 * plast[i];
@@ -604,16 +604,16 @@ impl BinaryBasicSM {
             }
             ADD_OP | ADDW_OP => {
                 // Set opcode is min or max
-                row.op_is_min_max = F::zero();
+                row.op_is_min_max = F::ZERO;
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Add;
 
                 // Set use last carry to zero
-                row.use_last_carry = F::zero();
+                row.use_last_carry = F::ZERO;
 
                 // Set has initial carry
-                row.has_initial_carry = F::zero();
+                row.has_initial_carry = F::ZERO;
 
                 // Apply the logic to every byte
                 for i in 0..8 {
@@ -622,7 +622,7 @@ impl BinaryBasicSM {
                     let result = cin + a_bytes[i] as u64 + b_bytes[i] as u64;
                     cout = result >> 8;
                     cin = if i == carry_byte { 0 } else { cout };
-                    row.carry[i] = F::from_canonical_u64(cin);
+                    row.carry[i] = F::from_u64(cin);
 
                     //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                     let flags = cin;
@@ -649,16 +649,16 @@ impl BinaryBasicSM {
             }
             SUB_OP | SUBW_OP => {
                 // Set opcode is min or max
-                row.op_is_min_max = F::zero();
+                row.op_is_min_max = F::ZERO;
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Sub;
 
                 // Set use last carry to zero
-                row.use_last_carry = F::zero();
+                row.use_last_carry = F::ZERO;
 
                 // Set has initial carry
-                row.has_initial_carry = F::zero();
+                row.has_initial_carry = F::ZERO;
 
                 // Apply the logic to every byte
                 for i in 0..8 {
@@ -666,7 +666,7 @@ impl BinaryBasicSM {
                     let previous_cin = cin;
                     cout = if a_bytes[i] as u64 >= (b_bytes[i] as u64 + cin) { 0 } else { 1 };
                     cin = if i == carry_byte { 0 } else { cout };
-                    row.carry[i] = F::from_canonical_u64(cin);
+                    row.carry[i] = F::from_u64(cin);
 
                     //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                     let flags = cin;
@@ -693,7 +693,7 @@ impl BinaryBasicSM {
             }
             LEU_OP | LEUW_OP | LE_OP | LEW_OP => {
                 // Set opcode is min or max
-                row.op_is_min_max = F::zero();
+                row.op_is_min_max = F::ZERO;
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = if (opcode == LEU_OP) || (opcode == LEUW_OP) {
@@ -703,10 +703,10 @@ impl BinaryBasicSM {
                 };
 
                 // Set use last carry to one
-                row.use_last_carry = F::one();
+                row.use_last_carry = F::ONE;
 
                 // Set has initial carry
-                row.has_initial_carry = F::zero();
+                row.has_initial_carry = F::ZERO;
 
                 // Apply the logic to every byte
                 for i in 0..8 {
@@ -723,7 +723,7 @@ impl BinaryBasicSM {
                         cout = c;
                     }
                     cin = cout;
-                    row.carry[i] = F::from_canonical_u64(cin);
+                    row.carry[i] = F::from_u64(cin);
 
                     //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                     let flags = cin + 8 * plast[i];
@@ -746,19 +746,19 @@ impl BinaryBasicSM {
             }
             AND_OP => {
                 // Set opcode is min or max
-                row.op_is_min_max = F::zero();
+                row.op_is_min_max = F::ZERO;
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::And;
 
-                row.use_last_carry = F::zero();
+                row.use_last_carry = F::ZERO;
 
                 // Set has initial carry
-                row.has_initial_carry = F::zero();
+                row.has_initial_carry = F::ZERO;
 
                 // No carry
                 for i in 0..8 {
-                    row.carry[i] = F::zero();
+                    row.carry[i] = F::ZERO;
 
                     //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                     let flags = 0;
@@ -777,19 +777,19 @@ impl BinaryBasicSM {
             }
             OR_OP => {
                 // Set opcode is min or max
-                row.op_is_min_max = F::zero();
+                row.op_is_min_max = F::ZERO;
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Or;
 
-                row.use_last_carry = F::zero();
+                row.use_last_carry = F::ZERO;
 
                 // Set has initial carry
-                row.has_initial_carry = F::zero();
+                row.has_initial_carry = F::ZERO;
 
                 // No carry
                 for i in 0..8 {
-                    row.carry[i] = F::zero();
+                    row.carry[i] = F::ZERO;
 
                     //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                     let flags = 0;
@@ -808,20 +808,20 @@ impl BinaryBasicSM {
             }
             XOR_OP => {
                 // Set opcode is min or max
-                row.op_is_min_max = F::zero();
+                row.op_is_min_max = F::ZERO;
 
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Xor;
 
                 // Set use last carry to zero
-                row.use_last_carry = F::zero();
+                row.use_last_carry = F::ZERO;
 
                 // Set has initial carry
-                row.has_initial_carry = F::zero();
+                row.has_initial_carry = F::ZERO;
 
                 // No carry
                 for i in 0..8 {
-                    row.carry[i] = F::zero();
+                    row.carry[i] = F::ZERO;
 
                     //FLAGS[i] = cout + 2*op_is_min_max + 4*result_is_a + 8*USE_CARRY[i]*plast;
                     let flags = 0;
@@ -854,10 +854,10 @@ impl BinaryBasicSM {
         row.use_last_carry_mode64 = mode64 * row.use_last_carry;
 
         // Set micro opcode
-        row.m_op = F::from_canonical_u8(binary_basic_table_op as u8);
+        row.m_op = F::from_u8(binary_basic_table_op as u8);
 
         // Set m_op_or_ext
-        let ext_32_op = F::from_canonical_u8(BinaryBasicTableOp::Ext32 as u8);
+        let ext_32_op = F::from_u8(BinaryBasicTableOp::Ext32 as u8);
         row.m_op_or_ext = mode64 * (row.m_op - ext_32_op) + ext_32_op;
 
         // Set free_in_a_or_c and free_in_b_or_zero
@@ -868,14 +868,14 @@ impl BinaryBasicSM {
             row.free_in_b_or_zero[i] = mode64 * row.free_in_b[i + HALF_BYTES];
         }
 
-        if row.use_last_carry == F::one() {
+        if row.use_last_carry == F::ONE {
             // Set first and last elements
             row.free_in_c[7] = row.free_in_c[0];
-            row.free_in_c[0] = F::zero();
+            row.free_in_c[0] = F::ZERO;
         }
 
         // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
-        row.multiplicity = F::one();
+        row.multiplicity = F::ONE;
 
         // Return
         row
@@ -930,8 +930,8 @@ impl BinaryBasicSM {
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
         let padding_row = BinaryTraceRow::<F> {
-            m_op: F::from_canonical_u8(AND_OP),
-            m_op_or_ext: F::from_canonical_u8(AND_OP),
+            m_op: F::from_u8(AND_OP),
+            m_op_or_ext: F::from_u8(AND_OP),
             ..Default::default()
         };
 

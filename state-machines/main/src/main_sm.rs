@@ -179,16 +179,16 @@ impl MainSM {
             emu.step_slice_full_trace(&prev_trace.steps, &mut mem_reads_index, &mut reg_trace, None)
                 .c
         } else {
-            [F::zero(), F::zero()]
+            [F::ZERO, F::ZERO]
         };
 
         // Prepare main AIR values
         let mut air_values = MainAirValues::<F>::new();
 
-        air_values.main_segment = F::from_canonical_usize(segment_id);
+        air_values.main_segment = F::from_usize(segment_id);
         air_values.main_last_segment = F::from_bool(main_instance.is_last_segment);
         air_values.segment_initial_pc = main_trace.buffer[0].pc;
-        air_values.segment_next_pc = F::from_canonical_u64(next_pc);
+        air_values.segment_next_pc = F::from_u64(next_pc);
         air_values.segment_previous_c = prev_segment_last_c;
         air_values.segment_last_c = last_row.c;
 
@@ -297,15 +297,15 @@ impl MainSM {
                     match slot {
                         0 => {
                             main_trace.buffer[row].a_reg_prev_mem_step =
-                                F::from_canonical_u64(reg_prev_mem_step)
+                                F::from_u64(reg_prev_mem_step)
                         }
                         1 => {
                             main_trace.buffer[row].b_reg_prev_mem_step =
-                                F::from_canonical_u64(reg_prev_mem_step)
+                                F::from_u64(reg_prev_mem_step)
                         }
                         2 => {
                             main_trace.buffer[row].store_reg_prev_mem_step =
-                                F::from_canonical_u64(reg_prev_mem_step)
+                                F::from_u64(reg_prev_mem_step)
                         }
                         _ => panic!("Invalid slot {}", slot),
                     }
@@ -341,11 +341,11 @@ impl MainSM {
         for ireg in 0..REGS_IN_MAIN {
             let reg_value = last_reg_values[ireg];
             let values = [
-                F::from_canonical_u32(reg_value as u32),
-                F::from_canonical_u32((reg_value >> 32) as u32),
+                F::from_u32(reg_value as u32),
+                F::from_u32((reg_value >> 32) as u32),
             ];
             air_values.last_reg_value[ireg] = values;
-            air_values.last_reg_mem_step[ireg] = F::from_canonical_u64(reg_steps[ireg]);
+            air_values.last_reg_mem_step[ireg] = F::from_u64(reg_steps[ireg]);
             let range = (final_step - reg_steps[ireg]) as usize;
             if range > max_range as usize {
                 large_range_checks.push(range as u32);

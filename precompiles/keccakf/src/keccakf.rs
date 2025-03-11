@@ -119,7 +119,7 @@ impl KeccakfSM {
 
             // Update the multiplicity for the input
             let initial_pos = initial_offset + slot_offset + slot_pos;
-            trace[initial_pos].multiplicity = F::one(); // The pair (step_received, addr_received) is unique each time, so its multiplicity is 1
+            trace[initial_pos].multiplicity = F::ONE; // The pair (step_received, addr_received) is unique each time, so its multiplicity is 1
 
             // Process the keccakf input
             keccakf_input.iter().enumerate().for_each(|(j, &value)| {
@@ -127,9 +127,9 @@ impl KeccakfSM {
                 let pos = initial_pos + chunk_offset;
 
                 // At the beginning of each 64-bit chunk, we set the step and address
-                trace[pos].step = F::from_canonical_u64(step_received);
-                trace[pos].addr = F::from_canonical_u64(addr_received + 8 * j as u64);
-                trace[pos].is_val = F::one();
+                trace[pos].step = F::from_u64(step_received);
+                trace[pos].addr = F::from_u64(addr_received + 8 * j as u64);
+                trace[pos].is_val = F::ONE;
 
                 // Process the 64-bit chunk
                 for k in 0..64 {
@@ -159,9 +159,9 @@ impl KeccakfSM {
                 let pos = initial_pos + input_offset + chunk_offset;
 
                 // At the beginning of each 64-bit chunk, we set the step and address
-                trace[pos].step = F::from_canonical_u64(step_received);
-                trace[pos].addr = F::from_canonical_u64(addr_received + 8 * j as u64);
-                trace[pos].is_val = F::one();
+                trace[pos].step = F::from_u64(step_received);
+                trace[pos].addr = F::from_u64(addr_received + 8 * j as u64);
+                trace[pos].is_val = F::ONE;
 
                 // Process the 64-bit chunk
                 for k in 0..64 {
@@ -199,7 +199,7 @@ impl KeccakfSM {
                     for k in rem_inputs..Self::NUM_KECCAKF_PER_SLOT {
                         let pos = initial_offset + slot_offset + block_offset + k;
                         for l in 0..BITS_IN_PARALLEL_KECCAKF {
-                            // trace[pos+1].bit[l] = F::zero();
+                            // trace[pos+1].bit[l] = F::ZERO;
                             trace[pos + 1].val[l] = trace[pos].val[l];
                         }
                     }
@@ -377,11 +377,11 @@ impl KeccakfSM {
             slot_pos: usize,
             bit_pos: usize,
         ) {
-            trace[pos].bit[bit_pos] = F::from_canonical_u64(new_bit);
-            trace[pos + 1].val[bit_pos] = if fixed[pos].latch_num_keccakf == F::zero() {
-                trace[pos].val[bit_pos] + F::from_canonical_u64(new_bit << slot_pos)
+            trace[pos].bit[bit_pos] = F::from_u64(new_bit);
+            trace[pos + 1].val[bit_pos] = if fixed[pos].latch_num_keccakf == F::ZERO {
+                trace[pos].val[bit_pos] + F::from_u64(new_bit << slot_pos)
             } else {
-                F::from_canonical_u64(new_bit << slot_pos)
+                F::from_u64(new_bit << slot_pos)
             };
         }
 
@@ -395,7 +395,7 @@ impl KeccakfSM {
             let row = &mut trace[index];
             let cols = cols(row);
             for col in cols.iter_mut() {
-                *col = F::from_canonical_u64(_value & MASK_BITS_KECCAKF);
+                *col = F::from_u64(_value & MASK_BITS_KECCAKF);
                 _value >>= BITS_KECCAKF;
             }
         }
@@ -477,9 +477,9 @@ impl KeccakfSM {
             "Invalid initial dummy gate operation"
         );
         for i in 0..CHUNKS_KECCAKF {
-            row.free_in_a[i] = F::from_canonical_u64(zeros);
-            row.free_in_b[i] = F::from_canonical_u64(ones);
-            row.free_in_c[i] = F::from_canonical_u64(ones);
+            row.free_in_a[i] = F::from_u64(zeros);
+            row.free_in_b[i] = F::from_u64(ones);
+            row.free_in_c[i] = F::from_u64(ones);
         }
         // Update the multiplicity table
         let table_row = KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, zeros, ones);
