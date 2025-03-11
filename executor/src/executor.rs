@@ -599,7 +599,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         // Add public values to the proof context
         let mut publics = ZiskPublicValues::from_vec_guard(pctx.get_publics());
         for (index, value) in public_values.iter() {
-            publics.inputs[*index as usize] = F::from_canonical_u32(*value);
+            publics.inputs[*index as usize] = F::from_u32(*value);
         }
         drop(publics);
 

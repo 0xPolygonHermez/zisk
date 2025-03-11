@@ -689,6 +689,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "forward_ref"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8cbd1169bd7b4a0a20d92b9af7a7e0422888bd38a6f5ec29c1fd8c1558a272e"
+
+[[package]]
 name = "futures"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -776,12 +782,6 @@ dependencies = [
  "pin-utils",
  "slab",
 ]
-
-[[package]]
-name = "gcd"
-version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d758ba1b47b00caf47f24925c0074ecb20d6dfcffe7f6d53395c0465674841a"
 
 [[package]]
 name = "getrandom"
@@ -1190,15 +1190,6 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
@@ -1275,9 +1266,9 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.170"
+version = "0.2.171"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "875b3680cb2f8f71bdcf9a30f38d48282f5d3c95cbf9b3fa57269bb5d5c06828"
+checksum = "c19937216e9d3aa9956d9bb8dfc0b0c8beb6058fc4f7a4dc4d850edf86a237d6"
 
 [[package]]
 name = "libffi"
@@ -1581,8 +1572,9 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 [[package]]
 name = "p3-dft"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
+ "itertools 0.14.0",
  "p3-field",
  "p3-matrix",
  "p3-maybe-rayon",
@@ -1593,44 +1585,50 @@ dependencies = [
 [[package]]
 name = "p3-field"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
- "itertools 0.13.0",
+ "forward_ref",
+ "itertools 0.14.0",
  "num-bigint",
  "num-integer",
  "num-traits",
  "nums",
+ "p3-maybe-rayon",
  "p3-util",
- "rand 0.8.5",
+ "paste",
+ "rand 0.9.0",
  "serde",
+ "tracing",
 ]
 
 [[package]]
 name = "p3-goldilocks"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
  "num-bigint",
  "p3-dft",
  "p3-field",
  "p3-mds",
+ "p3-poseidon",
  "p3-poseidon2",
  "p3-symmetric",
  "p3-util",
- "rand 0.8.5",
+ "paste",
+ "rand 0.9.0",
  "serde",
 ]
 
 [[package]]
 name = "p3-matrix"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "p3-field",
  "p3-maybe-rayon",
  "p3-util",
- "rand 0.8.5",
+ "rand 0.9.0",
  "serde",
  "tracing",
  "transpose",
@@ -1639,40 +1637,51 @@ dependencies = [
 [[package]]
 name = "p3-maybe-rayon"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 
 [[package]]
 name = "p3-mds"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
- "itertools 0.12.1",
+ "itertools 0.14.0",
  "p3-dft",
  "p3-field",
  "p3-matrix",
  "p3-symmetric",
  "p3-util",
- "rand 0.8.5",
+ "rand 0.9.0",
+]
+
+[[package]]
+name = "p3-poseidon"
+version = "0.1.0"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
+dependencies = [
+ "p3-field",
+ "p3-mds",
+ "p3-symmetric",
+ "rand 0.9.0",
 ]
 
 [[package]]
 name = "p3-poseidon2"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
- "gcd",
  "p3-field",
  "p3-mds",
  "p3-symmetric",
- "rand 0.8.5",
+ "p3-util",
+ "rand 0.9.0",
 ]
 
 [[package]]
 name = "p3-symmetric"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "p3-field",
  "serde",
 ]
@@ -1680,7 +1689,7 @@ dependencies = [
 [[package]]
 name = "p3-util"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
  "serde",
 ]
@@ -1709,6 +1718,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1717,7 +1732,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#d085469f9bb337065ea7679e774e366db5a5052d"
 dependencies = [
  "colored",
  "log",
@@ -1885,7 +1900,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#d085469f9bb337065ea7679e774e366db5a5052d"
 dependencies = [
  "colored",
  "env_logger",
@@ -1910,7 +1925,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#d085469f9bb337065ea7679e774e366db5a5052d"
 dependencies = [
  "env_logger",
  "log",
@@ -1930,7 +1945,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#d085469f9bb337065ea7679e774e366db5a5052d"
 dependencies = [
  "log",
  "p3-field",
@@ -1942,7 +1957,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#d085469f9bb337065ea7679e774e366db5a5052d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1953,7 +1968,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#d085469f9bb337065ea7679e774e366db5a5052d"
 dependencies = [
  "log",
 ]
@@ -1961,7 +1976,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#d085469f9bb337065ea7679e774e366db5a5052d"
 dependencies = [
  "colored",
  "p3-field",
@@ -2929,7 +2944,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#d085469f9bb337065ea7679e774e366db5a5052d"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -3395,7 +3410,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#6b1bc0830aa188ee0b262ccb82cca51e009cfec0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=one-global-challenge-0.5.0#d085469f9bb337065ea7679e774e366db5a5052d"
 dependencies = [
  "colored",
  "env_logger",
