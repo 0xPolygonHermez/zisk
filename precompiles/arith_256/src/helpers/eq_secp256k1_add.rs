@@ -4,14 +4,15 @@
 //
 // p: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 // offset: 0x20000000000000000000000000000000000000000000000000000000000000000
+// (p*offset): 0x1FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFDFFFFF85E0000000000000000000000000000000000000000000000000000000000000000
 //
 // chunks:16
 // chunk_bits:16
 // terms_by_clock: 2
 
-struct ArithEq1 {}
+pub struct EqSecp256k1Add {}
 
-impl ArithEq1 {
+impl EqSecp256k1Add {
     pub fn calculate(
         icol: u8,
         x1: &[i64; 16],
@@ -520,6 +521,7 @@ impl ArithEq1 {
                     - 0xFFFF * q0[13]
                     - 0xFFFE * q0[14]
                     - 0xFFFF * q0[15]
+                    + 0xF85E
             }
             17 => {
                 s[15] * x2[2]
@@ -564,6 +566,7 @@ impl ArithEq1 {
                     - 0xFFFF * q0[13]
                     - 0xFFFF * q0[14]
                     - 0xFFFE * q0[15]
+                    + 0xFFFF
             }
             18 => {
                 s[15] * x2[3]
@@ -605,6 +608,7 @@ impl ArithEq1 {
                     - 0xFFFF * q0[13]
                     - 0xFFFF * q0[14]
                     - 0xFFFF * q0[15]
+                    + 0xFFFD
             }
             19 => {
                 s[15] * x2[4]
@@ -643,6 +647,7 @@ impl ArithEq1 {
                     - 0xFFFF * q0[13]
                     - 0xFFFF * q0[14]
                     - 0xFFFF * q0[15]
+                    + 0xFFFF
             }
             20 => {
                 s[15] * x2[5]
@@ -678,6 +683,7 @@ impl ArithEq1 {
                     - 0xFFFF * q0[13]
                     - 0xFFFF * q0[14]
                     - 0xFFFF * q0[15]
+                    + 0xFFFF
             }
             21 => {
                 s[15] * x2[6]
@@ -710,6 +716,7 @@ impl ArithEq1 {
                     - 0xFFFF * q0[13]
                     - 0xFFFF * q0[14]
                     - 0xFFFF * q0[15]
+                    + 0xFFFF
             }
             22 => {
                 s[15] * x2[7]
@@ -739,6 +746,7 @@ impl ArithEq1 {
                     - 0xFFFF * q0[13]
                     - 0xFFFF * q0[14]
                     - 0xFFFF * q0[15]
+                    + 0xFFFF
             }
             23 => {
                 s[15] * x2[8]
@@ -765,6 +773,7 @@ impl ArithEq1 {
                     - 0xFFFF * q0[13]
                     - 0xFFFF * q0[14]
                     - 0xFFFF * q0[15]
+                    + 0xFFFF
             }
             24 => {
                 s[15] * x2[9]
@@ -788,6 +797,7 @@ impl ArithEq1 {
                     - 0xFFFF * q0[13]
                     - 0xFFFF * q0[14]
                     - 0xFFFF * q0[15]
+                    + 0xFFFF
             }
             25 => {
                 s[15] * x2[10]
@@ -808,6 +818,7 @@ impl ArithEq1 {
                     - 0xFFFF * q0[13]
                     - 0xFFFF * q0[14]
                     - 0xFFFF * q0[15]
+                    + 0xFFFF
             }
             26 => {
                 s[15] * x2[11] + s[14] * x2[12] + s[13] * x2[13] + s[12] * x2[14] + s[11] * x2[15]
@@ -821,6 +832,7 @@ impl ArithEq1 {
                     - 0xFFFF * q0[13]
                     - 0xFFFF * q0[14]
                     - 0xFFFF * q0[15]
+                    + 0xFFFF
             }
             27 => {
                 s[15] * x2[12] + s[14] * x2[13] + s[13] * x2[14] + s[12] * x2[15]
@@ -832,6 +844,7 @@ impl ArithEq1 {
                     - 0xFFFF * q0[13]
                     - 0xFFFF * q0[14]
                     - 0xFFFF * q0[15]
+                    + 0xFFFF
             }
             28 => {
                 s[15] * x2[13] + s[14] * x2[14] + s[13] * x2[15]
@@ -841,6 +854,7 @@ impl ArithEq1 {
                     - 0xFFFF * q0[13]
                     - 0xFFFF * q0[14]
                     - 0xFFFF * q0[15]
+                    + 0xFFFF
             }
             29 => {
                 s[15] * x2[14] + s[14] * x2[15]
@@ -848,13 +862,11 @@ impl ArithEq1 {
                     - s[14] * x1[15]
                     - 0xFFFF * q0[14]
                     - 0xFFFF * q0[15]
+                    + 0xFFFF
             }
-            30 => s[15] * x2[15] - s[15] * x1[15] - 0xFFFF * q0[15],
-            31 => 0,
-            _ => panic!(
-                "ArithEq1: error on invalid icol:{} for equation:{}",
-                icol, eq_index
-            ),
+            30 => s[15] * x2[15] - s[15] * x1[15] - 0xFFFF * q0[15] + 0xFFFF,
+            31 => 0x1FFFF,
+            _ => 0,
         }
     }
 }

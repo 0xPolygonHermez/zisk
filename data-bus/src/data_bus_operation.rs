@@ -3,7 +3,7 @@
 //! and managing the format of operation data.
 
 use crate::PayloadType;
-use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
+use zisk_core::{zisk_ops::ZiskOp, InstContext, ZiskInst, ZiskOperationType};
 
 /// The unique bus ID for operation-related data communication.
 pub const OPERATION_BUS_ID: u16 = 5000;
@@ -11,6 +11,22 @@ pub const OPERATION_BUS_ID: u16 = 5000;
 /// The size of the operation data payload.
 pub const OPERATION_BUS_DATA_SIZE: usize = 4;
 pub const OPERATION_BUS_KECCAKF_DATA_SIZE: usize = 5;
+
+// worst case: 4 x 256 + 2 addr = 4 * 4 + 2 = 18 (secp256k1_add, arith_256_mod)
+// arith_256: 3 x 256 + 2 addr = 3 * 4 + 2 = 14
+// secp256k1_dbl: 2 x 256 + 1 addr = 2 * 4 + 1 = 9
+// TODO: optimize and send only one value 64 upto 32-bits addr
+
+const DATA_256_BITS_SIZE: usize = 4;
+
+pub const OPERATION_BUS_ARITH_256_DATA_SIZE: usize =
+    OPERATION_BUS_DATA_SIZE + 5 * DATA_256_BITS_SIZE;
+pub const OPERATION_BUS_ARITH_256_MOD_DATA_SIZE: usize =
+    OPERATION_BUS_DATA_SIZE + 5 * DATA_256_BITS_SIZE;
+pub const OPERATION_BUS_SECP256K1_ADD_DATA_SIZE: usize =
+    OPERATION_BUS_DATA_SIZE + 4 * DATA_256_BITS_SIZE;
+pub const OPERATION_BUS_SECP256K1_DBL_DATA_SIZE: usize =
+    OPERATION_BUS_DATA_SIZE + 2 * DATA_256_BITS_SIZE;
 
 /// Index of the operation value in the operation data payload.
 const OP: usize = 0;
@@ -29,28 +45,66 @@ pub type OperationData<D> = [D; OPERATION_BUS_DATA_SIZE];
 
 /// Type alias for Keccak operation data payload.
 pub type OperationKeccakData<D> = [D; OPERATION_BUS_KECCAKF_DATA_SIZE + 25];
+pub type OperationArith256Data<D> = [D; OPERATION_BUS_ARITH_256_DATA_SIZE];
+pub type OperationArith256ModData<D> = [D; OPERATION_BUS_ARITH_256_MOD_DATA_SIZE];
+pub type OperationSecp256k1AddData<D> = [D; OPERATION_BUS_SECP256K1_ADD_DATA_SIZE];
+pub type OperationSecp256k1DblData<D> = [D; OPERATION_BUS_SECP256K1_DBL_DATA_SIZE];
 
 pub enum ExtOperationData<D> {
     OperationData(OperationData<D>),
     OperationKeccakData(OperationKeccakData<D>),
+    OperationArith256Data(OperationArith256Data<D>),
+    OperationArith256ModData(OperationArith256ModData<D>),
+    OperationSecp256k1AddData(OperationSecp256k1AddData<D>),
+    OperationSecp256k1DblData(OperationSecp256k1DblData<D>),
 }
 
-impl<D: Copy> TryFrom<&[D]> for ExtOperationData<D> {
+const KECCAK_OP: u8 = ZiskOp::Keccak.code();
+const ARITH_256_OP: u8 = ZiskOp::Arith256Mod.code();
+const ARITH_256_MOD_OP: u8 = ZiskOp::Arith256.code();
+const SECP256K1_ADD_OP: u8 = ZiskOp::Secp256k1Add.code();
+const SECP256K1_DBL_OP: u8 = ZiskOp::Secp256k1Dbl.code();
+
+// impl<D: Copy + Into<u8>> TryFrom<&[D]> for ExtOperationData<D> {
+impl<D: Copy + Into<u64>> TryFrom<&[D]> for ExtOperationData<D> {
     type Error = &'static str;
 
     fn try_from(data: &[D]) -> Result<Self, Self::Error> {
-        match data.len() {
-            OPERATION_BUS_DATA_SIZE => {
-                let array: OperationData<D> =
-                    data.try_into().map_err(|_| "Invalid OperationData size")?;
-                Ok(ExtOperationData::OperationData(array))
-            }
-            val if val == OPERATION_BUS_KECCAKF_DATA_SIZE + 25 => {
+        if data.len() < 4 {
+            return Err("Invalid data length");
+        }
+        let op = data[OP].into();
+        match op as u8 {
+            KECCAK_OP => {
                 let array: OperationKeccakData<D> =
                     data.try_into().map_err(|_| "Invalid OperationKeccakData size")?;
                 Ok(ExtOperationData::OperationKeccakData(array))
             }
-            _ => Err("Unexpected data length"),
+            ARITH_256_OP => {
+                let array: OperationArith256Data<D> =
+                    data.try_into().map_err(|_| "Invalid OperationArith256Data size")?;
+                Ok(ExtOperationData::OperationArith256Data(array))
+            }
+            ARITH_256_MOD_OP => {
+                let array: OperationArith256ModData<D> =
+                    data.try_into().map_err(|_| "Invalid OperationArith256ModData size")?;
+                Ok(ExtOperationData::OperationArith256ModData(array))
+            }
+            SECP256K1_ADD_OP => {
+                let array: OperationSecp256k1AddData<D> =
+                    data.try_into().map_err(|_| "Invalid OperationSecp256k1AddData size")?;
+                Ok(ExtOperationData::OperationSecp256k1AddData(array))
+            }
+            SECP256K1_DBL_OP => {
+                let array: OperationSecp256k1DblData<D> =
+                    data.try_into().map_err(|_| "Invalid OperationSecp256k1DblData size")?;
+                Ok(ExtOperationData::OperationSecp256k1DblData(array))
+            }
+            _ => {
+                let array: OperationData<D> =
+                    data.try_into().map_err(|_| "Invalid OperationData size")?;
+                Ok(ExtOperationData::OperationData(array))
+            }
         }
     }
 }
@@ -123,6 +177,10 @@ impl OperationBusData<u64> {
         match data {
             ExtOperationData::OperationData(d) => d[OP] as u8,
             ExtOperationData::OperationKeccakData(d) => d[OP] as u8,
+            ExtOperationData::OperationArith256Data(d) => d[OP] as u8,
+            ExtOperationData::OperationArith256ModData(d) => d[OP] as u8,
+            ExtOperationData::OperationSecp256k1AddData(d) => d[OP] as u8,
+            ExtOperationData::OperationSecp256k1DblData(d) => d[OP] as u8,
         }
     }
 
@@ -138,6 +196,10 @@ impl OperationBusData<u64> {
         match data {
             ExtOperationData::OperationData(d) => d[OP_TYPE],
             ExtOperationData::OperationKeccakData(d) => d[OP_TYPE],
+            ExtOperationData::OperationArith256Data(d) => d[OP_TYPE],
+            ExtOperationData::OperationArith256ModData(d) => d[OP_TYPE],
+            ExtOperationData::OperationSecp256k1AddData(d) => d[OP_TYPE],
+            ExtOperationData::OperationSecp256k1DblData(d) => d[OP_TYPE],
         }
     }
 
@@ -153,6 +215,10 @@ impl OperationBusData<u64> {
         match data {
             ExtOperationData::OperationData(d) => d[A],
             ExtOperationData::OperationKeccakData(d) => d[A],
+            ExtOperationData::OperationArith256Data(d) => d[A],
+            ExtOperationData::OperationArith256ModData(d) => d[A],
+            ExtOperationData::OperationSecp256k1AddData(d) => d[A],
+            ExtOperationData::OperationSecp256k1DblData(d) => d[A],
         }
     }
 
@@ -168,6 +234,10 @@ impl OperationBusData<u64> {
         match data {
             ExtOperationData::OperationData(d) => d[B],
             ExtOperationData::OperationKeccakData(d) => d[B],
+            ExtOperationData::OperationArith256Data(d) => d[B],
+            ExtOperationData::OperationArith256ModData(d) => d[B],
+            ExtOperationData::OperationSecp256k1AddData(d) => d[B],
+            ExtOperationData::OperationSecp256k1DblData(d) => d[B],
         }
     }
 
@@ -182,6 +252,10 @@ impl OperationBusData<u64> {
     pub fn get_extra_data(data: &ExtOperationData<u64>) -> Vec<PayloadType> {
         match data {
             ExtOperationData::OperationKeccakData(d) => d[5..(5 + 25)].to_vec(),
+            ExtOperationData::OperationArith256Data(d) => d[4..].to_vec(),
+            ExtOperationData::OperationArith256ModData(d) => d[4..].to_vec(),
+            ExtOperationData::OperationSecp256k1AddData(d) => d[4..].to_vec(),
+            ExtOperationData::OperationSecp256k1DblData(d) => d[4..].to_vec(),
             _ => vec![],
         }
     }

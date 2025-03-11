@@ -62,4 +62,15 @@ impl MemBusHelpers {
             value,
         ]
     }
+    pub fn mem_aligned_op(addr: u32, step: u64, value: u64, is_write: bool) -> [u64; 7] {
+        [
+            MEMORY_STORE_OP,
+            addr as u64,
+            MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + if is_write { 3 } else { 2 },
+            8,
+            0,
+            0,
+            value,
+        ]
+    }
 }

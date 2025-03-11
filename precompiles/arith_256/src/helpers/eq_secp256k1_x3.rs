@@ -4,14 +4,15 @@
 //
 // p: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 // offset: 0x4
+// (p*offset): 0x3FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFBFFFFF0BC
 //
 // chunks:16
 // chunk_bits:16
 // terms_by_clock: 2
 
-struct ArithEq3 {}
+pub struct EqSecp256k1X3 {}
 
-impl ArithEq3 {
+impl EqSecp256k1X3 {
     pub fn calculate(
         icol: u8,
         x1: &[i64; 16],
@@ -21,10 +22,10 @@ impl ArithEq3 {
         q1: &[i64; 16],
     ) -> i64 {
         match icol {
-            0 => s[0] * s[0] - x1[0] - x2[0] - x3[0] - 0xFC2F * q1[0] + 0xFC2F * 0x4,
+            0 => s[0] * s[0] - x1[0] - x2[0] - x3[0] - 0xFC2F * q1[0] + 0xF0BC,
             1 => {
                 s[1] * s[0] + s[0] * s[1] - x1[1] - x2[1] - x3[1] - 0xFFFF * q1[0] - 0xFC2F * q1[1]
-                    + 0xFFFF * 0x4
+                    + 0xFFFF
             }
             2 => {
                 s[2] * s[0] + s[1] * s[1] + s[0] * s[2]
@@ -34,7 +35,7 @@ impl ArithEq3 {
                     - 0xFFFE * q1[0]
                     - 0xFFFF * q1[1]
                     - 0xFC2F * q1[2]
-                    + 0xFFFE * 0x4
+                    + 0xFFFB
             }
             3 => {
                 s[3] * s[0] + s[2] * s[1] + s[1] * s[2] + s[0] * s[3]
@@ -45,7 +46,7 @@ impl ArithEq3 {
                     - 0xFFFE * q1[1]
                     - 0xFFFF * q1[2]
                     - 0xFC2F * q1[3]
-                    + 0xFFFF * 0x4
+                    + 0xFFFF
             }
             4 => {
                 s[4] * s[0] + s[3] * s[1] + s[2] * s[2] + s[1] * s[3] + s[0] * s[4]
@@ -57,7 +58,7 @@ impl ArithEq3 {
                     - 0xFFFE * q1[2]
                     - 0xFFFF * q1[3]
                     - 0xFC2F * q1[4]
-                    + 0xFFFF * 0x4
+                    + 0xFFFF
             }
             5 => {
                 s[5] * s[0] + s[4] * s[1] + s[3] * s[2] + s[2] * s[3] + s[1] * s[4] + s[0] * s[5]
@@ -70,7 +71,7 @@ impl ArithEq3 {
                     - 0xFFFE * q1[3]
                     - 0xFFFF * q1[4]
                     - 0xFC2F * q1[5]
-                    + 0xFFFF * 0x4
+                    + 0xFFFF
             }
             6 => {
                 s[6] * s[0]
@@ -90,7 +91,7 @@ impl ArithEq3 {
                     - 0xFFFE * q1[4]
                     - 0xFFFF * q1[5]
                     - 0xFC2F * q1[6]
-                    + 0xFFFF * 0x4
+                    + 0xFFFF
             }
             7 => {
                 s[7] * s[0]
@@ -112,7 +113,7 @@ impl ArithEq3 {
                     - 0xFFFE * q1[5]
                     - 0xFFFF * q1[6]
                     - 0xFC2F * q1[7]
-                    + 0xFFFF * 0x4
+                    + 0xFFFF
             }
             8 => {
                 s[8] * s[0]
@@ -136,7 +137,7 @@ impl ArithEq3 {
                     - 0xFFFE * q1[6]
                     - 0xFFFF * q1[7]
                     - 0xFC2F * q1[8]
-                    + 0xFFFF * 0x4
+                    + 0xFFFF
             }
             9 => {
                 s[9] * s[0]
@@ -162,7 +163,7 @@ impl ArithEq3 {
                     - 0xFFFE * q1[7]
                     - 0xFFFF * q1[8]
                     - 0xFC2F * q1[9]
-                    + 0xFFFF * 0x4
+                    + 0xFFFF
             }
             10 => {
                 s[10] * s[0]
@@ -190,7 +191,7 @@ impl ArithEq3 {
                     - 0xFFFE * q1[8]
                     - 0xFFFF * q1[9]
                     - 0xFC2F * q1[10]
-                    + 0xFFFF * 0x4
+                    + 0xFFFF
             }
             11 => {
                 s[11] * s[0]
@@ -220,7 +221,7 @@ impl ArithEq3 {
                     - 0xFFFE * q1[9]
                     - 0xFFFF * q1[10]
                     - 0xFC2F * q1[11]
-                    + 0xFFFF * 0x4
+                    + 0xFFFF
             }
             12 => {
                 s[12] * s[0]
@@ -252,7 +253,7 @@ impl ArithEq3 {
                     - 0xFFFE * q1[10]
                     - 0xFFFF * q1[11]
                     - 0xFC2F * q1[12]
-                    + 0xFFFF * 0x4
+                    + 0xFFFF
             }
             13 => {
                 s[13] * s[0]
@@ -286,7 +287,7 @@ impl ArithEq3 {
                     - 0xFFFE * q1[11]
                     - 0xFFFF * q1[12]
                     - 0xFC2F * q1[13]
-                    + 0xFFFF * 0x4
+                    + 0xFFFF
             }
             14 => {
                 s[14] * s[0]
@@ -322,7 +323,7 @@ impl ArithEq3 {
                     - 0xFFFE * q1[12]
                     - 0xFFFF * q1[13]
                     - 0xFC2F * q1[14]
-                    + 0xFFFF * 0x4
+                    + 0xFFFF
             }
             15 => {
                 s[15] * s[0]
@@ -360,7 +361,7 @@ impl ArithEq3 {
                     - 0xFFFE * q1[13]
                     - 0xFFFF * q1[14]
                     - 0xFC2F * q1[15]
-                    + 0xFFFF * 0x4
+                    + 0xFFFF
             }
             16 => {
                 s[15] * s[1]
@@ -393,6 +394,7 @@ impl ArithEq3 {
                     - 0xFFFF * q1[13]
                     - 0xFFFE * q1[14]
                     - 0xFFFF * q1[15]
+                    + 0x3
             }
             17 => {
                 s[15] * s[2]
@@ -615,11 +617,7 @@ impl ArithEq3 {
             }
             29 => s[15] * s[14] + s[14] * s[15] - 0xFFFF * q1[14] - 0xFFFF * q1[15],
             30 => s[15] * s[15] - 0xFFFF * q1[15],
-            31 => 0,
-            _ => panic!(
-                "ArithEq3: error on invalid icol:{} for equation:{}",
-                icol, eq_index
-            ),
+            _ => 0,
         }
     }
 }

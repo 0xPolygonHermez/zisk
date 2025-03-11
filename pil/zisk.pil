@@ -1,4 +1,5 @@
 require "std_direct.pil"
+require "arith_256/pil/arith_256.pil"
 require "rom/pil/rom.pil"
 require "main/pil/main.pil"
 require "mem/pil/mem.pil"
@@ -23,6 +24,8 @@ public inputs[PUBLIC_INPUTS_64_BITS * 2]; // 2 x 32-bits = 64 bits
 const int PUBLIC_OP = 0x30;
 
 airgroup Zisk {
+    Arith256();
+
     Main(N: 2**21, RC: 2, operation_bus_id: OPERATION_BUS_ID);
     Rom(N: 2**21);
 

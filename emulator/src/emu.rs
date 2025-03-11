@@ -1546,6 +1546,18 @@ impl<'a> Emu<'a> {
             ExtOperationData::OperationKeccakData(data) => {
                 data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
             }
+            ExtOperationData::OperationArith256Data(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+            }
+            ExtOperationData::OperationArith256ModData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+            }
+            ExtOperationData::OperationSecp256k1AddData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+            }
+            ExtOperationData::OperationSecp256k1DblData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+            }
         }
 
         // Get rom bus data
@@ -1671,6 +1683,18 @@ impl<'a> Emu<'a> {
                 data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
             }
             ExtOperationData::OperationKeccakData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+            }
+            ExtOperationData::OperationArith256Data(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+            }
+            ExtOperationData::OperationArith256ModData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+            }
+            ExtOperationData::OperationSecp256k1AddData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
+            }
+            ExtOperationData::OperationSecp256k1DblData(data) => {
                 data_bus.write_to_bus(OPERATION_BUS_ID, data.to_vec());
             }
         }

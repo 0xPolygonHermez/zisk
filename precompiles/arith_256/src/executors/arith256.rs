@@ -1,0 +1,77 @@
+use super::{bigint_from_u64s, bigint_to_16_chunks, Arith256Data};
+use num_bigint::BigInt;
+
+use crate::EqArith256;
+
+const COLS: u8 = 32;
+
+pub struct Arith256 {
+    p2_256: BigInt,
+    p2_256_mask: BigInt,
+}
+impl Arith256 {
+    pub fn new() -> Self {
+        let p2_256 = BigInt::from(1) << 256;
+        let p2_256_mask = &p2_256 - BigInt::from(1);
+        Self { p2_256, p2_256_mask }
+    }
+    fn prepare(&self, a: &[u64; 4], b: &[u64; 4], c: &[u64; 4]) -> Arith256Data {
+        let a = bigint_from_u64s(a);
+        let b = bigint_from_u64s(b);
+        let c = bigint_from_u64s(c);
+
+        let res = &a * &b + &c;
+        let dh = &res >> 256;
+        let dl = &res & &self.p2_256_mask;
+
+        // y3|x3 = x1*y1+x2
+        // a:x1 b:y1 c:x2 dl: x3 dh: y3
+
+        let mut data = Arith256Data::default();
+        bigint_to_16_chunks(&a, &mut data.x1);
+        bigint_to_16_chunks(&b, &mut data.y1);
+        bigint_to_16_chunks(&c, &mut data.x2);
+        bigint_to_16_chunks(&dh, &mut data.y3);
+        bigint_to_16_chunks(&dl, &mut data.x3);
+        data
+    }
+    pub fn execute(&self, a: &[u64; 4], b: &[u64; 4], c: &[u64; 4]) -> Arith256Data {
+        let mut data = self.prepare(a, b, c);
+        for icol in 0..COLS {
+            let index = icol as usize;
+            data.eq[index][0] =
+                EqArith256::calculate(icol, &data.x1, &data.y1, &data.x2, &data.x3, &data.y3);
+
+            let cin = if index > 0 { data.cout[index - 1][0] } else { 0 };
+            let value = data.eq[index][0] + cin;
+            if icol != COLS - 1 {
+                data.cout[index][0] = value / 0x10000;
+            }
+            debug_assert!(
+                0 == if icol == COLS - 1 { value } else { value % 0x10000 },
+                "Arith256 residue ({}) #:{} cin:{}",
+                index,
+                value,
+                cin
+            );
+        }
+        data
+    }
+    pub fn verify(&self, a: &[u64; 4], b: &[u64; 4], c: &[u64; 4], dl: &[u64; 4], dh: &[u64; 4]) {
+        let data = self.execute(a, b, c);
+        data.check_ranges();
+        for i in 0..2 {
+            let offset = (i + 1) * 4 - 1;
+            let mut _x3 = data.x3[offset] as u64;
+            let mut _y3 = data.y3[offset] as u64;
+            for j in 1..4 {
+                _x3 = _x3 << 16;
+                _y3 = _y3 << 16;
+                _x3 += data.x3[offset - j] as u64;
+                _y3 += data.y3[offset - j] as u64;
+            }
+            assert!(dl[i] == _x3, "Arith256 dl not match dh[{}]:{} != x3:{}", i, dl[i], _x3);
+            assert!(dh[i] == _y3, "Arith256 dl not match dh[{}]:{} != y3:{}", i, dl[i], _y3);
+        }
+    }
+}

@@ -22,10 +22,10 @@ use crate::{
     REG_A0, SYS_ADDR,
 };
 
-/// Determines the type of a [`ZiskOp`].  
+/// Determines the type of a [`ZiskOp`].
 ///
 /// The type will be used to assign the proof generation of a main state machine operation result to
-/// the corresponding secondary state machine.  
+/// the corresponding secondary state machine.
 /// The type can be: internal (no proof required), arith, binary, etc.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum OpType {
@@ -37,6 +37,7 @@ pub enum OpType {
     BinaryE,
     Keccak,
     PubOut,
+    Arith256,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -48,6 +49,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::BinaryE => ZiskOperationType::BinaryE,
             OpType::Keccak => ZiskOperationType::Keccak,
             OpType::PubOut => ZiskOperationType::PubOut,
+            OpType::Arith256 => ZiskOperationType::Arith256,
         }
     }
 }
@@ -63,6 +65,7 @@ impl Display for OpType {
             Self::BinaryE => write!(f, "BinaryE"),
             Self::Keccak => write!(f, "Keccak"),
             Self::PubOut => write!(f, "PubOut"),
+            Self::Arith256 => write!(f, "Arith256"),
         }
     }
 }
@@ -297,6 +300,10 @@ define_ops! {
     (MaxW, "max_w", Binary, 77, 0x25, 0, opc_max_w, op_max_w),
     (Keccak, "keccak", Keccak, 77, 0xf1, 200, opc_keccak, op_keccak),
     (PubOut, "pubout", PubOut, 77, 0x30, 0, opc_pubout, op_pubout),
+    (Arith256, "arith_256", Arith256, 77, 0xf2, 160, opc_arith_256, op_arith_256),
+    (Arith256Mod, "arith_256_mod", Arith256, 77, 0xf3, 160, opc_arith_256_mod, op_arith_256_mod),
+    (Secp256k1Add, "secp256k1_add", Arith256, 77, 0xf4, 160, opc_secp256k1_add, op_secp256k1_add),
+    (Secp256k1Dbl, "secp256k1_dbl", Arith256, 77, 0xf5, 160, opc_secp256k1_dbl, op_secp256k1_add),
 }
 
 /* INTERNAL operations */
@@ -343,7 +350,7 @@ pub fn opc_signextend_b(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_signextend_b(ctx.a, ctx.b);
 }
 
-/// Sign extends an i16.  
+/// Sign extends an i16.
 ///
 /// Converts b from a signed 16-bits number in the range [-32768, 32767] into a signed 64-bit number
 /// of the same value, adding 0xFFFFFFFFFFFF0000 if negative, and stores the result in c as a u64
@@ -359,7 +366,7 @@ pub fn opc_signextend_h(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_signextend_h(ctx.a, ctx.b);
 }
 
-/// Sign extends an i32.  
+/// Sign extends an i32.
 ///
 /// Converts b from a signed 32-bits number in the range [-2147483648, 2147483647] into a signed
 /// 64-bit number of the same value, adding 0xFFFFFFFF00000000 if negative  and stores the result in
@@ -805,9 +812,9 @@ pub fn opc_divu(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_divu(ctx.a, ctx.b);
 }
 
-/// Sets c to a / b, as 64-bits signed values, and flag to false.  
+/// Sets c to a / b, as 64-bits signed values, and flag to false.
 ///
-/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.  
+/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
 /// If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should be -MIN_I64,
 /// which cannot be represented with 64 bits (overflow) and it returns c=a.
 #[inline(always)]
@@ -1143,6 +1150,135 @@ pub fn opc_keccak(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn op_keccak(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_keccak() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_arith_256(ctx: &mut InstContext) {
+    // Get address from register a0 = x10
+    /*
+       let address = ctx.regs[Mem::address_to_register_index(REG_A0)];
+       if address & 0x7 != 0 {
+           panic!("opc_arith_256() found address not aligned to 8 bytes");
+       }
+
+       // Allocate room for 25 u64 = 128 bytes = 1600 bits
+       const WORDS: usize = 20;
+       let mut data = [0u64; WORDS];
+
+       // Get input data from memory or from the precompiled context
+       match ctx.precompiled.emulation_mode {
+           PrecompiledEmulationMode::None => {
+               // Read data from the memory address
+               for i in 0..5  {
+                   data[i] = ctx.mem.read(address + (8 * i as u64), 8);
+               }
+               for i in 0..5 {
+                   for (i, d) in data.iter_mut().enumerate() {
+                       *d = ctx.mem.read(address + (8 * i as u64), 8);
+                   }
+               }
+           }
+           PrecompiledEmulationMode::GenerateMemReads => {
+               // Read data from the memory address
+               for (i, d) in data.iter_mut().enumerate() {
+                   *d = ctx.mem.read(address + (8 * i as u64), 8);
+               }
+               // Copy data to the precompiled context
+               ctx.precompiled.input_data.clear();
+               for (i, d) in data.iter_mut().enumerate() {
+                   ctx.precompiled.input_data.push(*d);
+               }
+               // Write the input data address to the precompiled context
+               ctx.precompiled.input_data_address = address;
+           }
+           PrecompiledEmulationMode::ConsumeMemReads => {
+               // Check input data has the expected length
+               if ctx.precompiled.input_data.len() != WORDS {
+                   panic!(
+                       "opc_keccak() found ctx.precompiled.input_data.len={} != {}",
+                       ctx.precompiled.input_data.len(),
+                       WORDS
+                   );
+               }
+               // Read data from the precompiled context
+               for (i, d) in data.iter_mut().enumerate() {
+                   *d = ctx.precompiled.input_data[i];
+               }
+               // Write the input data address to the precompiled context
+               ctx.precompiled.input_data_address = address;
+           }
+       }
+
+       // Call keccakf
+       keccakf(&mut data);
+
+       // Write data to the memory address
+       for (i, d) in data.iter().enumerate() {
+           ctx.mem.write(address + (8 * i as u64), *d, 8);
+       }
+
+       // Set input data to the precompiled context
+       match ctx.precompiled.emulation_mode {
+           PrecompiledEmulationMode::None => {}
+           PrecompiledEmulationMode::GenerateMemReads => {
+               // Write data to the precompiled context
+               ctx.precompiled.output_data.clear();
+               for (i, d) in data.iter_mut().enumerate() {
+                   ctx.precompiled.output_data.push(*d);
+               }
+               // Write the input data address to the precompiled context
+               ctx.precompiled.output_data_address = address;
+           }
+           PrecompiledEmulationMode::ConsumeMemReads => {}
+       }
+
+       ctx.c = 0;
+       ctx.flag = false;
+    */
+    unimplemented!("opc_arith_256() is not implemented");
+}
+
+/// Unimplemented.  Arith256 can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_arith_256(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_arith_256() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_arith_256_mod(ctx: &mut InstContext) {
+    unimplemented!("opc_arith_256_mod() is not implemented");
+}
+
+/// Unimplemented.  Arith256Mod can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_arith_256_mod(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_arith_256_mod() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_secp256k1_add(ctx: &mut InstContext) {
+    unimplemented!("op_secp256k1_add() is not implemented");
+}
+
+/// Unimplemented.  Secp256k1Add can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_secp256k1_add(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_secp256k1_add() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
+    unimplemented!("op_secp256k1_dbl() is not implemented");
+}
+
+/// Unimplemented.  Secp256k1Dbl can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_secp256k1_dbl(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_secp256k1_dbl() is not implemented");
 }
 
 impl From<ZiskRequiredOperation> for ZiskOp {
