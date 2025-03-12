@@ -80,7 +80,7 @@ main() {
   case $PLATFORM in
     linux) ;;
     darwin | mac*)
-      err "Error: macOS is currently not supported! We are actively working on adding support soon"
+      echo -e "\033[31mError: macOS is currently not supported! We are actively working on adding support soon.\033[0m" >&2
       exit 1
       ;;
     mingw* | win*)
