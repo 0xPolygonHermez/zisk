@@ -69,13 +69,14 @@ main() {
     shift
   done
 
+  # Print the banner after successfully parsing args
+  banner
+
   uname_s=$(uname -s)
   PLATFORM=$(tolower "${ZISKUP_PLATFORM:-$uname_s}")
 
   # DISCLAIMER:
-  # This script is intended for Linux environments. 
   # macOS (Darwin) is explicitly unsupported and will trigger an error.
-  say $PLATFORM
   case $PLATFORM in
     linux) ;;
     darwin | mac*)
@@ -89,9 +90,6 @@ main() {
       exit 1
       ;;
   esac
-
-  # Print the banner after successfully parsing args
-  banner
 
   if [ -n "$ZISKUP_PR" ]; then
     if [ -z "$ZISKUP_BRANCH" ]; then
