@@ -69,6 +69,27 @@ main() {
     shift
   done
 
+  uname_s=$(uname -s)
+  PLATFORM=$(tolower "${ZISKUP_PLATFORM:-$uname_s}")
+
+  # DISCLAIMER:
+  # This script is intended for Linux environments. 
+  # macOS (Darwin) is explicitly unsupported and will trigger an error.
+  say $PLATFORM
+  case $PLATFORM in
+    linux) ;;
+    darwin | mac*)
+      err "Error: macOS is currently not supported! We are actively working on adding support soon"
+      exit 1
+      ;;
+    mingw* | win*)
+      ;;
+    *)
+      err "unsupported platform: $PLATFORM"
+      exit 1
+      ;;
+  esac
+
   # Print the banner after successfully parsing args
   banner
 
