@@ -7,4 +7,5 @@
 /tmp
 *.log
 /cache
-/clib/build
+/lib-c/c/build
+/lib-c/c/lib
