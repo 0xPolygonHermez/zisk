@@ -25,23 +25,6 @@ Install all required dependencies with:
 sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm
 ```
 
-### Alternative: Using Nix Flake
-
-You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
-
-1. Follow the instructions to install [Nix](https://determinate.systems/nix/) on your system.
-
-2. Use the `flake.nix` file from the [ZisK repository](https://github.com/0xPolygonHermez/zisk/blob/main/flake.nix) to set up the development environment:
-    ```bash
-    nix main
-    ```
-
-3. To start a shell with ZisK’s environment:
-    ```bash
-    nix main -c zsh
-    ```
-    This will open a shell with the `PATH` and `LD_LIBRARY_PATH` correctly configured for building the project. Exit the shell with `Ctrl+D`.
-
 ## Installing ZisK
 
 ### Option 1: Prebuilt Binaries (Recommended)
