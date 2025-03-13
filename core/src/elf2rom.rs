@@ -1,6 +1,7 @@
 //! Reads RISC-V data from and ELF file and converts it to a ZiskRom
 
 use crate::{
+    add_end_jmp,
     riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
     RoData, ZiskInst, ZiskRom, RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
 };
@@ -34,6 +35,9 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
 
     // Create an empty ZiskRom instance
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
+
+    // Add the end instruction, jumping over it
+    add_end_jmp(&mut rom);
 
     // Iterate on the available section headers of the ELF parsed data
     if let Some(section_headers) = elf_bytes.section_headers() {
