@@ -7,6 +7,7 @@ Please be aware of the following:
 * **Do not use it in production environments** until a stable production release is available. 🚧
 * Additional functionalities and optimizations **are planned for future releases**.
 * Future updates may introduce breaking **backward compatible changes** as development progresses.
+* Mac is currently not supported.  We are working to support it soon.
 
 If you encounter any errors or unexpected behavior, please report them. Your feedback is highly appreciated in improving the software.
 
@@ -18,7 +19,7 @@ ZisK aims to provide a flexible and developer-friendly zkVM, with Rust as its pr
 
 ## Getting Started
 
-To start using ZisK, follow the [installation guide](https://0xpolygonhermez.github.io/zisk/getting_started/installation.html) and review the [quickstart](https://0xpolygonhermez.github.io/zisk/getting_started/quickstart.html).
+To start using ZisK, follow the [Quickstart](https://0xpolygonhermez.github.io/zisk/getting_started/quickstart.html) guide.
 
 📚 Complete Documentation: [ZisK Docs](https://0xpolygonhermez.github.io/zisk/)
 
