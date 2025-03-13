@@ -18,7 +18,7 @@ build/emu.o: $(EMU_PATH)
 
 # Compile the final executable
 build/ziskemuasm: build/emu.o src/main.c src/chfast/keccak.c
-	gcc $(CFLAGS) -no-pie src/main.c src/chfast/keccak.c -lc build/emu.o -lc ../target/release/libziskclib.a -o build/ziskemuasm
+	gcc $(CFLAGS) -no-pie src/main.c src/chfast/keccak.c -lc build/emu.o -o build/ziskemuasm
 
 clean:
 	rm -rf build

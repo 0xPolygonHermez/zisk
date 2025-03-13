@@ -2052,87 +2052,17 @@ impl ZiskRom {
                 *s += "\tcall chunk_end\n";
             } else {
                 *s += &format!("\tjz pc_{:x}_check_step_zero\n", ctx.pc);
-                *s += &format!("\tjmp pc_{:x}_check_step_done\n", ctx.pc);
+                *s += &format!("\tjmp pc_{:x}_check_step_not_zero\n", ctx.pc);
                 *s += &format!("pc_{:x}_check_step_zero:\n", ctx.pc);
                 *s += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
                 *s += "\tcall chunk_end\n";
+                Self::set_pc(&mut ctx, instruction, s, "z");
                 *s += "\tcall chunk_start\n";
+                *s += &format!("\tjmp pc_{:x}_check_step_done\n", ctx.pc);
                 *s += ".align 16\n";
+                *s += &format!("pc_{:x}_check_step_not_zero:\n", ctx.pc);
+                Self::set_pc(&mut ctx, instruction, s, "nz");
                 *s += &format!("pc_{:x}_check_step_done:\n", ctx.pc);
-            }
-
-            // Set pc
-            ctx.jump_to_dynamic_pc = false;
-            ctx.jump_to_static_pc = String::new();
-            if instruction.set_pc {
-                *s += "\t/* set pc */\n";
-                if ctx.c.is_constant {
-                    let new_pc = (ctx.c.constant_value as i64 + instruction.jmp_offset1) as u64;
-                    *s += &format!(
-                        "\tmov {}, 0x{:x} /* pc = c(const) + i.jmp_offset1 */\n",
-                        REG_PC, new_pc
-                    );
-                    ctx.jump_to_static_pc =
-                        format!("\tjmp pc_{:x} /* jump to static pc */\n", new_pc);
-                } else {
-                    *s += &format!("\tmov {}, {} /* pc = c */\n", REG_PC, ctx.c.string_value);
-                    if instruction.jmp_offset1 != 0 {
-                        *s += &format!(
-                            "\tadd {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
-                            REG_PC, instruction.jmp_offset1
-                        );
-                    }
-                    ctx.jump_to_dynamic_pc = true;
-                }
-            } else if ctx.flag_is_always_zero {
-                if ctx.pc as i64 + instruction.jmp_offset2 != ctx.next_pc as i64 {
-                    *s += &format!(
-                        "\tmov {}, 0x{:x} /* flag=0: pc += i.jmp_offset2 */\n",
-                        REG_PC,
-                        (ctx.pc as i64 + instruction.jmp_offset2) as u64
-                    );
-                    // *s += &format!(
-                    //     "\tadd {}, 0x{:x} /* set_pc 3: pc += i.jmp_offset2 */\n",
-                    //     REG_PC, instruction.jmp_offset2
-                    // );
-                    ctx.jump_to_dynamic_pc = true;
-                }
-            } else if ctx.flag_is_always_one {
-                if ctx.pc as i64 + instruction.jmp_offset1 != ctx.next_pc as i64 {
-                    *s += &format!(
-                        "\tmov {}, 0x{:x} /* flag=1: pc += i.jmp_offset1 */\n",
-                        REG_PC,
-                        (ctx.pc as i64 + instruction.jmp_offset1) as u64
-                    );
-                    // *s += &format!(
-                    //     "\tadd {}, 0x{:x} /* set_pc 4: pc += i.jmp_offset1 */\n",
-                    //     REG_PC, instruction.jmp_offset1
-                    // );
-                    ctx.jump_to_dynamic_pc = true;
-                }
-            } else {
-                *s += "\t/* pc = f(flag) */\n";
-                // Calculate the new pc
-                *s += &format!("\tcmp {}, 1 /* flag == 1 ? */\n", REG_FLAG);
-                *s += &format!("\tjne pc_{:x}_flag_false\n", ctx.pc);
-                *s += &format!(
-                    "\tmov {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
-                    REG_PC,
-                    (ctx.pc as i64 + instruction.jmp_offset1) as u64
-                );
-                *s += &format!("\tjmp pc_{:x}_flag_done\n", ctx.pc);
-                *s += &format!("pc_{:x}_flag_false:\n", ctx.pc);
-                *s += &format!(
-                    "\tmov {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
-                    REG_PC,
-                    (ctx.pc as i64 + instruction.jmp_offset2) as u64
-                );
-                *s += &format!("pc_{:x}_flag_done:\n", ctx.pc);
-                // *s += &format!(
-                //     "\tadd {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
-                //     REG_PC, instruction.jmp_offset2
-                // );
-                ctx.jump_to_dynamic_pc = true;
             }
 
             // Used only to get logs of step
@@ -3308,5 +3238,83 @@ impl ZiskRom {
             }
         }
         s
+    }
+
+    fn set_pc(ctx: &mut ZiskAsmContext, instruction: &ZiskInst, s: &mut String, id: &str) {
+        ctx.jump_to_dynamic_pc = false;
+        ctx.jump_to_static_pc = String::new();
+        if instruction.set_pc {
+            *s += "\t/* set pc */\n";
+            if ctx.c.is_constant {
+                let new_pc = (ctx.c.constant_value as i64 + instruction.jmp_offset1) as u64;
+                *s += &format!(
+                    "\tmov {}, 0x{:x} /* pc = c(const) + i.jmp_offset1 */\n",
+                    REG_PC, new_pc
+                );
+                ctx.jump_to_static_pc = format!("\tjmp pc_{:x} /* jump to static pc */\n", new_pc);
+            } else {
+                *s += &format!("\tmov {}, {} /* pc = c */\n", REG_PC, ctx.c.string_value);
+                if instruction.jmp_offset1 != 0 {
+                    *s += &format!(
+                        "\tadd {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
+                        REG_PC, instruction.jmp_offset1
+                    );
+                }
+                ctx.jump_to_dynamic_pc = true;
+            }
+        } else if ctx.flag_is_always_zero {
+            if ctx.pc as i64 + instruction.jmp_offset2 != ctx.next_pc as i64 {
+                *s += &format!(
+                    "\tmov {}, 0x{:x} /* flag=0: pc += i.jmp_offset2 */\n",
+                    REG_PC,
+                    (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                );
+                // *s += &format!(
+                //     "\tadd {}, 0x{:x} /* set_pc 3: pc += i.jmp_offset2 */\n",
+                //     REG_PC, instruction.jmp_offset2
+                // );
+                ctx.jump_to_dynamic_pc = true;
+            } else if id == "z" {
+                *s += &format!("\tmov {}, 0x{:x} /* flag=0: pc += 4 */\n", REG_PC, ctx.next_pc);
+            }
+        } else if ctx.flag_is_always_one {
+            if ctx.pc as i64 + instruction.jmp_offset1 != ctx.next_pc as i64 {
+                *s += &format!(
+                    "\tmov {}, 0x{:x} /* flag=1: pc += i.jmp_offset1 */\n",
+                    REG_PC,
+                    (ctx.pc as i64 + instruction.jmp_offset1) as u64
+                );
+                // *s += &format!(
+                //     "\tadd {}, 0x{:x} /* set_pc 4: pc += i.jmp_offset1 */\n",
+                //     REG_PC, instruction.jmp_offset1
+                // );
+                ctx.jump_to_dynamic_pc = true;
+            } else if id == "z" {
+                *s += &format!("\tmov {}, 0x{:x} /* flag=1: pc += 4 */\n", REG_PC, ctx.next_pc);
+            }
+        } else {
+            *s += "\t/* pc = f(flag) */\n";
+            // Calculate the new pc
+            *s += &format!("\tcmp {}, 1 /* flag == 1 ? */\n", REG_FLAG);
+            *s += &format!("\tjne pc_{:x}_{}_flag_false\n", ctx.pc, id);
+            *s += &format!(
+                "\tmov {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
+                REG_PC,
+                (ctx.pc as i64 + instruction.jmp_offset1) as u64
+            );
+            *s += &format!("\tjmp pc_{:x}_{}_flag_done\n", ctx.pc, id);
+            *s += &format!("pc_{:x}_{}_flag_false:\n", ctx.pc, id);
+            *s += &format!(
+                "\tmov {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
+                REG_PC,
+                (ctx.pc as i64 + instruction.jmp_offset2) as u64
+            );
+            *s += &format!("pc_{:x}_{}_flag_done:\n", ctx.pc, id);
+            // *s += &format!(
+            //     "\tadd {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
+            //     REG_PC, instruction.jmp_offset2
+            // );
+            ctx.jump_to_dynamic_pc = true;
+        }
     }
 }
