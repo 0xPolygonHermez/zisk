@@ -20,6 +20,7 @@ members = [
     "precompiles/common",
     "emulator-asm/asm-runner",
     "ziskclib",
+    "common",
 ]
 
 resolver = "2"

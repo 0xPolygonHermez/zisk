@@ -5,8 +5,8 @@
 
 use p3_field::PrimeField;
 use sm_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan};
+use zisk_common::EmuTrace;
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
-use ziskemu::EmuTrace;
 
 use crate::MainCounter;
 

@@ -17,6 +17,7 @@ riscv = { path = "../riscv" }
 zisk-pil = { path = "../pil" }
 data-bus = { path = "../data-bus" }
 rayon = { workspace = true }
+zisk-common = { path = "../common" }
 sm-mem = { path = "../state-machines/mem" }
 
 p3-field = { workspace=true }

@@ -1,8 +1,6 @@
 use std::{mem, sync::atomic::AtomicU32};
 
-use crate::{
-    EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, EmuTrace, EmuTraceStart, ParEmuOptions,
-};
+use crate::{EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, ParEmuOptions};
 use data_bus::{
     BusDevice, ExtOperationData, OperationBusData, RomBusData, MEM_BUS_ID, OPERATION_BUS_ID,
     ROM_BUS_ID,
@@ -13,6 +11,7 @@ use sm_mem::MemHelpers;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use data_bus::DataBus;
+use zisk_common::{EmuTrace, EmuTraceStart};
 use zisk_core::{
     InstContext, Mem, PrecompiledEmulationMode, ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C,
     SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
@@ -1284,10 +1283,9 @@ impl<'a> Emu<'a> {
                             step: self.ctx.inst_ctx.step,
                             regs: self.ctx.inst_ctx.regs,
                         },
-                        last_state: EmuTraceStart::default(),
+                        last_c: 0,
                         steps: 0,
                         mem_reads: Vec::with_capacity(par_options.num_steps),
-                        last_mem_reads_index: 0,
                         end: false,
                     });
                 }
@@ -1425,15 +1423,6 @@ impl<'a> Emu<'a> {
     /// Performs one single step of the emulation
     #[inline(always)]
     pub fn par_step_my_block<F: PrimeField>(&mut self, emu_full_trace_vec: &mut EmuTrace) {
-        emu_full_trace_vec.last_state = EmuTraceStart {
-            pc: self.ctx.inst_ctx.pc,
-            sp: self.ctx.inst_ctx.sp,
-            c: self.ctx.inst_ctx.c,
-            step: self.ctx.inst_ctx.step,
-            regs: self.ctx.inst_ctx.regs,
-        };
-        emu_full_trace_vec.last_mem_reads_index = emu_full_trace_vec.mem_reads.len();
-
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         // Build the 'a' register value  based on the source specified by the current instruction
@@ -1471,6 +1460,8 @@ impl<'a> Emu<'a> {
 
         // If this is the last instruction, stop executing
         self.ctx.inst_ctx.end = instruction.end;
+
+        emu_full_trace_vec.last_c = self.ctx.inst_ctx.c;
 
         // Increment step counter
         self.ctx.inst_ctx.step += 1;
@@ -1730,6 +1721,14 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step += 1;
 
         full_trace_step
+    }
+
+    #[inline(always)]
+    pub fn intermediate_value<F: AbstractField>(value: u64) -> [F; 2] {
+        [
+            F::from_canonical_u64(value & 0xFFFFFFFF),
+            F::from_canonical_u64((value >> 32) & 0xFFFFFFFF),
+        ]
     }
 
     #[inline(always)]

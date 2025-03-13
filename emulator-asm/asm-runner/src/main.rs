@@ -1,7 +1,5 @@
 extern crate libc;
 
-mod asm_input;
-mod asm_output;
 mod asm_runner;
 
 use std::path::Path;

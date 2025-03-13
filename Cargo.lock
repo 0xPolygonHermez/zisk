@@ -130,6 +130,7 @@ name = "asm-runner"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "zisk-common",
  "ziskemu",
 ]
 
@@ -658,6 +659,7 @@ dependencies = [
  "sm-main",
  "sm-rom",
  "witness",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
  "ziskemu",
@@ -2511,6 +2513,7 @@ dependencies = [
  "proofman-common",
  "proofman-util",
  "rayon",
+ "zisk-common",
  "zisk-core",
 ]
 
@@ -2529,6 +2532,7 @@ dependencies = [
  "rayon",
  "sm-common",
  "sm-mem",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
  "ziskemu",
@@ -3631,6 +3635,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-common"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "zisk-core"
 version = "0.2.0"
 dependencies = [
@@ -3711,6 +3722,7 @@ dependencies = [
  "sm-mem",
  "sysinfo",
  "vergen",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
