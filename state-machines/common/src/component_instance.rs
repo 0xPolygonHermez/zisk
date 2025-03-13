@@ -21,7 +21,7 @@ pub enum InstanceType {
 /// The `Instance` trait defines the interface for any computation instance used in proof systems.
 ///
 /// It provides methods to compute witnesses, retrieve checkpoints, and specify instance types.
-pub trait Instance<F: PrimeField>: Send {
+pub trait Instance<F: PrimeField>: Send + Sync {
     /// Computes the witness for the instance based on the proof context.
     ///
     /// # Arguments
@@ -128,13 +128,13 @@ macro_rules! table_instance {
                 let mut trace = $Trace::new();
 
                 let multiplicity = self.table_sm.detach_multiplicity();
+                self.table_sm.set_calculated();
 
                 pctx.dctx_distribute_multiplicity(multiplicity, self.ictx.global_id);
 
                 trace.buffer.par_iter_mut().enumerate().for_each(|(i, input)| {
-                    input.multiplicity = F::from_canonical_u64(
-                        multiplicity[i].load(std::sync::atomic::Ordering::Relaxed),
-                    )
+                    input.multiplicity =
+                        F::from_u64(multiplicity[i].swap(0, std::sync::atomic::Ordering::Relaxed))
                 });
 
                 Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
@@ -226,15 +226,15 @@ macro_rules! table_instance_array {
                 let mut trace = $Trace::new();
 
                 let multiplicities = self.table_sm.detach_multiplicities();
+                self.table_sm.set_calculated();
                 pctx.dctx_distribute_multiplicities(multiplicities, self.ictx.global_id);
 
                 let mut buffer = trace.get_buffer();
 
                 buffer.par_chunks_mut(trace.row_size).enumerate().for_each(|(row, chunk)| {
                     for (col, vec) in multiplicities.iter().enumerate() {
-                        chunk[col] = F::from_canonical_u64(
-                            vec[row].load(std::sync::atomic::Ordering::Relaxed),
-                        );
+                        chunk[col] =
+                            F::from_u64(vec[row].swap(0, std::sync::atomic::Ordering::Relaxed));
                     }
                 });
 

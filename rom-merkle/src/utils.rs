@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use zisk_pil::{RomRomHash, RomRomTrace};
 
-pub const DEFAULT_CACHE_PATH: &str = "cache";
+pub const DEFAULT_CACHE_PATH: &str = ".zisk/cache";
 
 pub fn gen_elf_hash(
     rom_path: &Path,

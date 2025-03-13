@@ -87,35 +87,35 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
                     internal_reads = (trace.num_rows - i) as u32;
                 }
 
-                trace[i].addr_changes = F::one();
+                trace[i].addr_changes = F::ONE;
                 last_addr += 1;
-                trace[i].addr = F::from_canonical_u32(last_addr);
-                trace[i].value = [F::zero(), F::zero()];
-                trace[i].sel = F::zero();
+                trace[i].addr = F::from_u32(last_addr);
+                trace[i].value = [F::ZERO, F::ZERO];
+                trace[i].sel = F::ZERO;
                 // the step, value of internal reads isn't relevant
-                trace[i].step = F::zero();
+                trace[i].step = F::ZERO;
                 i += 1;
 
                 for _j in 1..internal_reads {
                     trace[i] = trace[i - 1];
                     last_addr += 1;
-                    trace[i].addr = F::from_canonical_u32(last_addr);
+                    trace[i].addr = F::from_u32(last_addr);
                     i += 1;
                 }
                 if incomplete {
                     break;
                 }
             }
-            trace[i].addr = F::from_canonical_u32(mem_op.addr);
-            trace[i].step = F::from_canonical_u64(mem_op.step);
-            trace[i].sel = F::one();
+            trace[i].addr = F::from_u32(mem_op.addr);
+            trace[i].step = F::from_u64(mem_op.step);
+            trace[i].sel = F::ONE;
 
             let (low_val, high_val) = self.get_u32_values(mem_op.value);
-            trace[i].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
+            trace[i].value = [F::from_u32(low_val), F::from_u32(high_val)];
 
             let addr_changes = last_addr != mem_op.addr;
             trace[i].addr_changes =
-                if addr_changes || (i == 0 && segment_id == 0) { F::one() } else { F::zero() };
+                if addr_changes || (i == 0 && segment_id == 0) { F::ONE } else { F::ZERO };
 
             last_addr = mem_op.addr;
             last_step = mem_op.step;
@@ -129,8 +129,8 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         let last_row_idx = count - 1;
         if count < trace.num_rows() {
             trace[count] = trace[last_row_idx];
-            trace[count].addr_changes = F::zero();
-            trace[count].sel = F::zero();
+            trace[count].addr_changes = F::ZERO;
+            trace[count].sel = F::ZERO;
 
             for i in count + 1..trace.num_rows() {
                 trace[i] = trace[i - 1];
@@ -140,20 +140,19 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         self.std.range_check((ROM_DATA_W_ADDR_END - last_addr + 1) as i64, 1, range_id);
 
         let mut air_values = RomDataAirValues::<F>::new();
-        air_values.segment_id = F::from_canonical_usize(segment_id);
+        air_values.segment_id = F::from_usize(segment_id);
         air_values.is_first_segment = F::from_bool(segment_id == 0);
         air_values.is_last_segment = F::from_bool(is_last_segment);
-        air_values.previous_segment_step = F::from_canonical_u64(previous_segment.step);
-        air_values.previous_segment_addr = F::from_canonical_u32(previous_segment.addr);
-        air_values.segment_last_addr = F::from_canonical_u32(last_addr);
-        air_values.segment_last_step = F::from_canonical_u64(last_step);
+        air_values.previous_segment_step = F::from_u64(previous_segment.step);
+        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
+        air_values.segment_last_addr = F::from_u32(last_addr);
+        air_values.segment_last_step = F::from_u64(last_step);
 
-        air_values.previous_segment_value[0] = F::from_canonical_u32(previous_segment.value as u32);
-        air_values.previous_segment_value[1] =
-            F::from_canonical_u32((previous_segment.value >> 32) as u32);
+        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
+        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
 
-        air_values.segment_last_value[0] = F::from_canonical_u32(last_value as u32);
-        air_values.segment_last_value[1] = F::from_canonical_u32((last_value >> 32) as u32);
+        air_values.segment_last_value[0] = F::from_u32(last_value as u32);
+        air_values.segment_last_value[1] = F::from_u32((last_value >> 32) as u32);
 
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
     }

@@ -112,7 +112,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 
         let mut i = 0;
         let mut increment;
-        let f_max_increment = F::from_canonical_u64(STEP_MEMORY_MAX_DIFF);
+        let f_max_increment = F::from_u64(STEP_MEMORY_MAX_DIFF);
 
         #[cfg(feature = "debug_mem")]
         let mut _mem_op_done = 0;
@@ -125,9 +125,9 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             }
 
             // set the common values of trace between internal reads and regular memory operation
-            trace[i].addr = F::from_canonical_u32(mem_op.addr);
+            trace[i].addr = F::from_u32(mem_op.addr);
             let addr_changes = last_addr != mem_op.addr;
-            trace[i].addr_changes = if addr_changes { F::one() } else { F::zero() };
+            trace[i].addr_changes = if addr_changes { F::ONE } else { F::ZERO };
 
             if addr_changes {
                 increment = (mem_op.addr - last_addr) as u64;
@@ -146,23 +146,22 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                     // without address changes, the internal reads before write must use the last
                     // value, in the case of reads value and the last value are the same
                     let (low_val, high_val) = (last_value as u32, (last_value >> 32) as u32);
-                    trace[i].value =
-                        [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
+                    trace[i].value = [F::from_u32(low_val), F::from_u32(high_val)];
 
                     // it's intenal
-                    trace[i].sel = F::zero();
+                    trace[i].sel = F::ZERO;
 
                     // in internal reads the increment is always the max increment
                     trace[i].increment = f_max_increment;
 
                     // internal reads always must be read
-                    trace[i].wr = F::zero();
+                    trace[i].wr = F::ZERO;
 
                     // set step as max increment from last_step
                     step = last_step + STEP_MEMORY_MAX_DIFF;
 
                     // setting step on trace
-                    trace[i].step = F::from_canonical_u64(step);
+                    trace[i].step = F::from_u64(step);
 
                     // update last_step and increment step
                     last_step = step;
@@ -171,7 +170,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 
                     if internal_reads > 1 || !incomplete {
                         // set the address changes for the next row{}
-                        trace[i].addr_changes = F::zero();
+                        trace[i].addr_changes = F::ZERO;
                     }
 
                     // the trace values of the rest of internal reads are equal to previous, only
@@ -179,7 +178,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                     for _j in 1..internal_reads {
                         trace[i] = trace[i - 1];
                         step += STEP_MEMORY_MAX_DIFF;
-                        trace[i].step = F::from_canonical_u64(step);
+                        trace[i].step = F::from_u64(step);
                         last_step = step;
                         i += 1;
                     }
@@ -205,12 +204,12 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             }
             // set specific values of trace for regular memory operation
             let (low_val, high_val) = (mem_op.value as u32, (mem_op.value >> 32) as u32);
-            trace[i].value = [F::from_canonical_u32(low_val), F::from_canonical_u32(high_val)];
+            trace[i].value = [F::from_u32(low_val), F::from_u32(high_val)];
 
-            trace[i].step = F::from_canonical_u64(step);
-            trace[i].sel = F::one();
+            trace[i].step = F::from_u64(step);
+            trace[i].sel = F::ONE;
 
-            trace[i].increment = F::from_canonical_u64(increment);
+            trace[i].increment = F::from_u64(increment);
             trace[i].wr = F::from_bool(mem_op.is_write);
 
             #[cfg(feature = "debug_mem")]
@@ -252,17 +251,17 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         // allowed distance.
         let padding_size = trace.num_rows - count;
         let padding_step = if is_last_segment { 1 } else { STEP_MEMORY_MAX_DIFF };
-        let padding_increment = F::from_canonical_u64(padding_step);
+        let padding_increment = F::from_u64(padding_step);
         for i in count..trace.num_rows {
             last_step += padding_step;
             trace[i].addr = addr;
-            trace[i].step = F::from_canonical_u64(last_step);
-            trace[i].sel = F::zero();
-            trace[i].wr = F::zero();
+            trace[i].step = F::from_u64(last_step);
+            trace[i].sel = F::ZERO;
+            trace[i].wr = F::ZERO;
 
             trace[i].value = value;
 
-            trace[i].addr_changes = F::zero();
+            trace[i].addr_changes = F::ZERO;
             trace[i].increment = padding_increment;
         }
         if padding_size > 0 {
@@ -283,20 +282,19 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         self.std.range_check(STEP_MEMORY_MAX_DIFF as i64, range_check_data_max, range_id);
 
         let mut air_values = MemAirValues::<F>::new();
-        air_values.segment_id = F::from_canonical_usize(segment_id);
+        air_values.segment_id = F::from_usize(segment_id);
         air_values.is_first_segment = F::from_bool(segment_id == 0);
         air_values.is_last_segment = F::from_bool(is_last_segment);
-        air_values.previous_segment_step = F::from_canonical_u64(previous_segment.step);
-        air_values.previous_segment_addr = F::from_canonical_u32(previous_segment.addr);
-        air_values.segment_last_addr = F::from_canonical_u32(last_addr);
-        air_values.segment_last_step = F::from_canonical_u64(last_step);
+        air_values.previous_segment_step = F::from_u64(previous_segment.step);
+        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
+        air_values.segment_last_addr = F::from_u32(last_addr);
+        air_values.segment_last_step = F::from_u64(last_step);
 
-        air_values.previous_segment_value[0] = F::from_canonical_u32(previous_segment.value as u32);
-        air_values.previous_segment_value[1] =
-            F::from_canonical_u32((previous_segment.value >> 32) as u32);
+        air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
+        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
 
-        air_values.segment_last_value[0] = F::from_canonical_u32(last_value as u32);
-        air_values.segment_last_value[1] = F::from_canonical_u32((last_value >> 32) as u32);
+        air_values.segment_last_value[0] = F::from_u32(last_value as u32);
+        air_values.segment_last_value[1] = F::from_u32((last_value >> 32) as u32);
 
         #[cfg(feature = "debug_mem")]
         {
