@@ -3,11 +3,15 @@ use libc::shm_unlink;
 use std::ffi::{CString, c_void};
 use std::fmt::Debug;
 
+#[derive(Debug)]
 pub struct AsmMinimalTraces {
     shmem_output_name: String,
     mapped_ptr: *mut c_void,
     pub vec_chunks: Vec<EmuTrace>,
 }
+
+unsafe impl Send for AsmMinimalTraces {}
+unsafe impl Sync for AsmMinimalTraces {}
 
 impl Drop for AsmMinimalTraces {
     fn drop(&mut self) {
@@ -75,11 +79,7 @@ pub struct AsmOutputChunkC {
     pub c: u64,
     pub step: u64,
     pub registers: [u64; 33],
-    pub last_pc: u64,
-    pub last_sp: u64,
     pub last_c: u64,
-    pub last_step: u64,
-    pub last_registers: [u64; 33],
     pub end: u64,
     pub steps: u64,
     pub mem_reads_size: u64,
@@ -107,9 +107,6 @@ impl AsmOutputChunkC {
 
         let mut registers = [0u64; 32];
         registers[1..].copy_from_slice(&chunk.registers[..31]);
-
-        let mut last_registers = [0u64; 32];
-        last_registers[1..].copy_from_slice(&chunk.last_registers[..31]);
 
         // Return the parsed OutputChunk
         EmuTrace {

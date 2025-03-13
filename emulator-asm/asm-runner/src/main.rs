@@ -11,7 +11,7 @@ fn main() {
         Path::new("../zisk-testvectors/pessimistic-proof/inputs/pessimistic-proof.bin");
     let ziskemuasm_path = Path::new("emulator-asm/build/ziskemuasm");
 
-    let result = AsmRunner::run(inputs_path, ziskemuasm_path);
+    let result = AsmRunner::run(inputs_path, ziskemuasm_path, 1 << 32, 1 << 20);
 
     println!("Done!");
 

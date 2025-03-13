@@ -19,6 +19,7 @@
 //! By structuring these phases, the `ZiskExecutor` ensures high-performance execution while
 //! maintaining clarity and modularity in the computation process.
 
+use asm_runner::AsmRunner;
 use itertools::Itertools;
 use p3_field::PrimeField;
 use pil_std_lib::Std;
@@ -43,7 +44,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, RwLock},
 };
-use zisk_common::EmuTrace;
+use zisk_common::{EmuTrace, MinimalTraces};
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
 
@@ -56,13 +57,15 @@ pub struct ZiskExecutor<F: PrimeField> {
     /// Path to the input data file.
     pub input_data_path: Option<PathBuf>,
 
-    pub rom_path: Option<PathBuf>,
+    pub rom_path: PathBuf,
+
+    pub asm_path: Option<PathBuf>,
 
     /// Registered secondary state machines.
     secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,
 
     /// Planning information for main state machines.
-    pub min_traces: RwLock<Vec<EmuTrace>>,
+    pub min_traces: RwLock<MinimalTraces>,
     pub main_planning: RwLock<Vec<Plan>>,
     pub secn_planning: RwLock<Vec<Vec<Plan>>>,
     std: Arc<Std<F>>,
@@ -84,16 +87,18 @@ impl<F: PrimeField> ZiskExecutor<F> {
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
     pub fn new(
         input_data_path: Option<PathBuf>,
-        rom_path: Option<PathBuf>,
+        rom_path: PathBuf,
+        asm_path: Option<PathBuf>,
         zisk_rom: Arc<ZiskRom>,
         std: Arc<Std<F>>,
     ) -> Self {
         Self {
             input_data_path,
             rom_path,
+            asm_path,
             zisk_rom,
             secondary_sm: Vec::new(),
-            min_traces: RwLock::new(Vec::new()),
+            min_traces: RwLock::new(MinimalTraces::None),
             main_planning: RwLock::new(Vec::new()),
             secn_planning: RwLock::new(Vec::new()),
             std,
@@ -116,8 +121,32 @@ impl<F: PrimeField> ZiskExecutor<F> {
     ///
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
-    fn compute_minimal_traces(&self, input_data: Vec<u8>, num_threads: usize) -> Vec<EmuTrace> {
+    fn compute_minimal_traces(&self, num_threads: usize) -> MinimalTraces {
+        if self.asm_path.is_none() {
+            self.run_emulator(num_threads)
+        } else {
+            self.run_assembly()
+        }
+    }
+
+    fn run_assembly(&self) -> MinimalTraces {
+        MinimalTraces::AsmEmuTrace(AsmRunner::run(
+            self.input_data_path.as_ref().unwrap(),
+            self.asm_path.as_ref().unwrap(),
+            Self::MAX_NUM_STEPS,
+            Self::MIN_TRACE_SIZE,
+        ))
+    }
+
+    fn run_emulator(&self, num_threads: usize) -> MinimalTraces {
         assert!(Self::MIN_TRACE_SIZE.is_power_of_two());
+
+        // Call emulate with these options
+        let input_data = {
+            // Read inputs data from the provided inputs path
+            let path = PathBuf::from(self.input_data_path.as_ref().unwrap().display().to_string());
+            fs::read(path).expect("Could not read inputs file")
+        };
 
         // Settings for the emulator
         let emu_options = EmuOptions {
@@ -126,13 +155,27 @@ impl<F: PrimeField> ZiskExecutor<F> {
             ..EmuOptions::default()
         };
 
-        ZiskEmulator::compute_minimal_traces::<F>(
-            &self.zisk_rom,
-            &input_data,
-            &emu_options,
-            num_threads,
+        MinimalTraces::EmuTrace(
+            ZiskEmulator::compute_minimal_traces::<F>(
+                &self.zisk_rom,
+                &input_data,
+                &emu_options,
+                num_threads,
+            )
+            .expect("Error during emulator execution"),
         )
-        .expect("Error during emulator execution")
+
+        // let asm_min_traces = AsmRunner::run(
+        //     self.input_data_path.as_ref().unwrap(),
+        //     self.asm_path.as_ref().unwrap(),
+        //     Self::MAX_NUM_STEPS,
+        //     Self::MIN_TRACE_SIZE,
+        // );
+
+        // println!("Minimal traces: {} {}", min_traces.len(), asm_min_traces.vec_chunks.len());
+        // for i in 0..min_traces.len() {
+        //     println!("{}:\n{:?}\n{:?}", i, min_traces[i].start_state, asm_min_traces.vec_chunks[i].start_state);
+        // }
     }
 
     /// Adds main state machine instances to the proof context and assigns global IDs.
@@ -188,9 +231,15 @@ impl<F: PrimeField> ZiskExecutor<F> {
     #[allow(clippy::type_complexity)]
     fn count(
         &self,
-        min_traces: &[EmuTrace],
+        min_traces: &MinimalTraces,
     ) -> (Vec<(usize, Box<dyn BusDeviceMetrics>)>, Vec<Vec<(usize, Box<dyn BusDeviceMetrics>)>>)
     {
+        let min_traces = match min_traces {
+            MinimalTraces::EmuTrace(min_traces) => min_traces,
+            MinimalTraces::AsmEmuTrace(asm_min_traces) => &asm_min_traces.vec_chunks,
+            _ => unreachable!(),
+        };
+
         let (mut main_metrics_slices, mut secn_metrics_slices): (Vec<_>, Vec<_>) = min_traces
             .par_iter()
             .map(|minimal_trace| {
@@ -341,6 +390,12 @@ impl<F: PrimeField> ZiskExecutor<F> {
         let min_traces_guard = self.min_traces.read().unwrap();
         let min_traces = &*min_traces_guard;
 
+        let min_traces = match min_traces {
+            MinimalTraces::EmuTrace(min_traces) => min_traces,
+            MinimalTraces::AsmEmuTrace(asm_min_traces) => &asm_min_traces.vec_chunks,
+            _ => unreachable!(),
+        };
+
         main_instances.into_par_iter().for_each(|mut main_instance| {
             let air_instance = MainSM::compute_witness(
                 &self.zisk_rom,
@@ -368,6 +423,12 @@ impl<F: PrimeField> ZiskExecutor<F> {
     ) {
         let min_traces_guard = self.min_traces.read().unwrap();
         let min_traces = &*min_traces_guard;
+
+        let min_traces = match min_traces {
+            MinimalTraces::EmuTrace(min_traces) => min_traces,
+            MinimalTraces::AsmEmuTrace(asm_min_traces) => &asm_min_traces.vec_chunks,
+            _ => unreachable!(),
+        };
 
         // Group the instances by the chunk they need to process
         let instances_by_chunk = self.chunks_to_execute(min_traces, &secn_instances);
@@ -602,16 +663,9 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
     /// # Arguments
     /// * `pctx` - Proof context.
     fn execute(&self, pctx: Arc<ProofCtx<F>>) {
-        // Call emulate with these options
-        let input_data = {
-            // Read inputs data from the provided inputs path
-            let path = PathBuf::from(self.input_data_path.as_ref().unwrap().display().to_string());
-            fs::read(path).expect("Could not read inputs file")
-        };
-
         // PHASE 1. MINIMAL TRACES. Process the ROM super fast to collect the Minimal Traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
-        let min_traces = self.compute_minimal_traces(input_data, Self::NUM_THREADS);
+        let min_traces = self.compute_minimal_traces(Self::NUM_THREADS);
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
         timer_start_info!(COUNT_AND_PLAN);
@@ -709,7 +763,7 @@ impl<F: PrimeField> WitnessComponent<F> for ZiskExecutor<F> {
         let blowup_factor =
             1 << (setup.stark_info.stark_struct.n_bits_ext - setup.stark_info.stark_struct.n_bits);
 
-        gen_elf_hash(&self.rom_path.clone().unwrap(), file_name, blowup_factor, check)?;
+        gen_elf_hash(&self.rom_path, file_name, blowup_factor, check)?;
         Ok(())
     }
 }

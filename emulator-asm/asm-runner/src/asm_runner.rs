@@ -15,14 +15,19 @@ use std::{fs, ptr};
 pub struct AsmRunner;
 
 impl AsmRunner {
-    pub fn run(inputs_path: &Path, ziskemuasm_path: &Path) -> AsmMinimalTraces {
+    pub fn run(
+        inputs_path: &Path,
+        ziskemuasm_path: &Path,
+        max_steps: u64,
+        chunk_size: u64,
+    ) -> AsmMinimalTraces {
         let pid = unsafe { libc::getpid() };
 
         let shmem_prefix = format!("SHM{}", pid);
         let shmem_input_name = format!("/{}_input", shmem_prefix);
         let shmem_output_name = format!("/{}_output", shmem_prefix);
 
-        Self::write_input(inputs_path, &shmem_input_name);
+        Self::write_input(inputs_path, &shmem_input_name, max_steps, chunk_size);
 
         // Spawn child process
         if let Err(e) = Command::new(ziskemuasm_path)
@@ -41,15 +46,15 @@ impl AsmRunner {
         AsmMinimalTraces::new(shmem_output_name, mapped_ptr, vec_chunks)
     }
 
-    fn write_input(inputs_path: &Path, shmem_input_name: &str) {
+    fn write_input(inputs_path: &Path, shmem_input_name: &str, max_steps: u64, chunk_size: u64) {
         let shmem_input_name = CString::new(shmem_input_name).expect("CString::new failed");
         let shmem_input_name_ptr = shmem_input_name.as_ptr();
 
         let inputs = fs::read(inputs_path).expect("Could not read inputs file");
 
         let asm_input = AsmInputC {
-            chunk_size: 1 << 20,         // 1MB
-            max_steps: 1 << 32,          // 4 billion steps
+            chunk_size,
+            max_steps,
             initial_trace_size: 1 << 30, // 1GB
             input_data_size: inputs.len() as u64,
         };
