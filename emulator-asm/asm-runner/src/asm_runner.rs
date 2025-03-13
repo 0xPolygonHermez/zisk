@@ -1,9 +1,13 @@
-use crate::asm_output::{OutputChunk, OutputHeader};
+use crate::asm_output::{OutputChunkC, OutputHeader};
 use asm_input::AsmRunnerInputC;
 use libc::{
     close, ftruncate, mmap, munmap, shm_open, shm_unlink, MAP_SHARED, O_CREAT, PROT_READ,
     PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR,
 };
+
+extern crate ziskemu;
+use self::ziskemu::EmuTrace;
+
 use std::ffi::{c_void, CString};
 use std::path::Path;
 use std::process::Command;
@@ -12,7 +16,7 @@ use std::{fs, ptr};
 pub struct AsmMinimalTraces {
     shmem_output_name: String,
     mapped_ptr: *mut c_void,
-    pub vec_chunks: Vec<OutputChunk>,
+    pub vec_chunks: Vec<EmuTrace>,
 }
 
 impl Drop for AsmMinimalTraces {
@@ -128,7 +132,7 @@ impl AsmRunner {
         }
     }
 
-    fn map_output(shmem_output_name: String) -> (*mut c_void, Vec<OutputChunk>) {
+    fn map_output(shmem_output_name: String) -> (*mut c_void, Vec<EmuTrace>) {
         let shmem_output_name = CString::new(shmem_output_name).expect("CString::new failed");
         let shmem_output_name_ptr = shmem_output_name.as_ptr();
 
@@ -162,7 +166,7 @@ impl AsmRunner {
 
             vec_chunks = Vec::with_capacity(num_chunks as usize);
             for _ in 0..num_chunks {
-                let data = OutputChunk::from_ptr(&mut mapped_ptr);
+                let data = OutputChunkC::to_emu_trace(&mut mapped_ptr);
                 vec_chunks.push(data);
             }
         }

@@ -11,4 +11,5 @@ name = "asm-runner-main"
 path = "src/main.rs"
 
 [dependencies]
+ziskemu = { path = "../../emulator" }
 libc = "0.2"
