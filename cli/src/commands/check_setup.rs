@@ -4,6 +4,7 @@ use clap::Parser;
 use colored::Colorize;
 use proofman_common::{initialize_logger, DebugInfo};
 use std::path::PathBuf;
+use anyhow::Result;
 
 use p3_goldilocks::Goldilocks;
 
@@ -13,7 +14,7 @@ use proofman_common::{ProofOptions, VerboseMode};
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
-pub struct CheckSetupCmd {
+pub struct ZiskCheckSetup {
     /// Setup folder path
     #[clap(short = 'k', long)]
     pub proving_key: PathBuf,
@@ -28,8 +29,8 @@ pub struct CheckSetupCmd {
     pub final_snark: bool,
 }
 
-impl CheckSetupCmd {
-    pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
+impl ZiskCheckSetup {
+    pub fn run(&self) -> Result<()> {
         println!("{} CheckSetup", format!("{: >12}", "Command").bright_green().bold());
         println!();
 
@@ -48,7 +49,7 @@ impl CheckSetupCmd {
                     false,
                     DebugInfo::default(),
                 ),
-            )?,
+            ).map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
         };
 
         Ok(())
