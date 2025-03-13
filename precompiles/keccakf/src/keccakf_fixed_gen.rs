@@ -19,7 +19,7 @@ type F = Goldilocks;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let matches = Command::new("keccakf_fixed_gen")
-        .version("1.0")
+        .version(env!("CARGO_PKG_VERSION"))
         .arg(
             Arg::new("script")
                 .short('s')
