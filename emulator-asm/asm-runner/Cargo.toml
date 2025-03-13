@@ -13,4 +13,6 @@ path = "src/main.rs"
 
 [dependencies]
 ziskemu = { path = "../../emulator" }
+zisk-common = { path = "../../common" }
+
 libc = "0.2"

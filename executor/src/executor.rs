@@ -43,8 +43,9 @@ use std::{
     path::PathBuf,
     sync::{Arc, RwLock},
 };
+use zisk_common::EmuTrace;
 use zisk_core::ZiskRom;
-use ziskemu::{EmuOptions, EmuTrace, ZiskEmulator};
+use ziskemu::{EmuOptions, ZiskEmulator};
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.

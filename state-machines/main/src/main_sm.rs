@@ -24,8 +24,9 @@ use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 
+use zisk_common::EmuTrace;
 use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
-use ziskemu::{Emu, EmuRegTrace, EmuTrace};
+use ziskemu::{Emu, EmuRegTrace};
 
 use crate::MainCounter;
 
@@ -170,20 +171,9 @@ impl MainSM {
         let last_row = main_trace.buffer[filled_rows - 1];
         main_trace.buffer[filled_rows..num_rows].fill(last_row);
 
-        let mut reg_trace = EmuRegTrace::new();
-
         // Determine the last row of the previous segment
         let prev_segment_last_c = if start_idx > 0 {
-            let prev_trace = &min_traces[start_idx - 1];
-            let mut emu = Emu::from_emu_trace_start(zisk_rom, &prev_trace.last_state);
-            let mut mem_reads_index = prev_trace.last_mem_reads_index;
-            emu.step_slice_full_trace(
-                &prev_trace.mem_reads,
-                &mut mem_reads_index,
-                &mut reg_trace,
-                None,
-            )
-            .c
+            Emu::intermediate_value(min_traces[start_idx - 1].last_c)
         } else {
             [F::zero(), F::zero()]
         };

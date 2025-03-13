@@ -15,7 +15,7 @@
 //!             Emu::run()
 //! ```
 
-use crate::{Emu, EmuOptions, EmuTrace, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr};
+use crate::{Emu, EmuOptions, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr};
 
 use data_bus::{BusDevice, DataBus};
 use p3_field::PrimeField;
@@ -25,6 +25,7 @@ use std::{
     time::Instant,
 };
 use sysinfo::System;
+use zisk_common::EmuTrace;
 use zisk_core::{Riscv2zisk, ZiskRom};
 
 pub trait Emulator {

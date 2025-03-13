@@ -1,6 +1,6 @@
 use zisk_core::ZiskOperationType;
 
-use crate::EmuTraceStart;
+use zisk_common::EmuTraceStart;
 
 #[derive(Debug, Clone)]
 pub struct EmuStartingPoint {
