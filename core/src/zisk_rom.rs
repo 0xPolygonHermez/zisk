@@ -847,6 +847,16 @@ impl ZiskRom {
                 ZiskOp::Divu | ZiskOp::Remu => {
                     ctx.store_b_in_b = true;
                 }
+                ZiskOp::Add => {
+                    if (instruction.a_src == SRC_IMM)
+                        && (instruction.a_offset_imm0 == 0)
+                        && (instruction.a_use_sp_imm1 == 0)
+                    {
+                        ctx.store_b_in_c = true;
+                    } else {
+                        ctx.store_a_in_c = true;
+                    }
+                }
                 _ => {}
             };
 
@@ -2367,22 +2377,15 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Add => {
-                assert!(!ctx.store_a_in_a);
-                assert!(!ctx.store_a_in_c);
-                assert!(!ctx.store_b_in_b);
-                assert!(!ctx.store_b_in_c);
                 if ctx.a.is_constant && (ctx.a.constant_value == 0) {
-                    s += &format!(
-                        "\tmov {}, {} /* Add: c = a(0) + b = b */\n",
-                        REG_C, ctx.b.string_value
-                    );
+                    assert!(ctx.store_b_in_c);
+                    s += "\t/* Add: c = a(0) + b = b */\n";
                 } else if ctx.b.is_constant && (ctx.b.constant_value == 0) {
-                    s += &format!(
-                        "\tmov {}, {} /* Add: c = a + b(0) = a */\n",
-                        REG_C, ctx.a.string_value
-                    );
+                    assert!(ctx.store_a_in_c);
+                    s += "\t/* Add: c = a + b(0) = a */\n";
                 } else {
-                    s += &format!("\tmov {}, {} /* Add: c = a */\n", REG_C, ctx.a.string_value);
+                    assert!(ctx.store_a_in_c);
+                    s += "\t/* Add: c = a */\n";
                     s += &format!(
                         "\tadd {}, {} /* Add: c = c + b = a + b */\n",
                         REG_C, ctx.b.string_value
