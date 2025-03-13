@@ -1,7 +1,11 @@
 [package]
 name = "rom-merkle"
-version = "0.4.3"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
 
 [dependencies]
 sm-rom = { path = "../state-machines/rom" }
@@ -18,3 +22,7 @@ sysinfo = "0.33"
 colored = { workspace = true}
 blake3 = "1.3.1"
 anyhow = { version = "1.0.86", features = ["backtrace"] }
+
+[features]
+default = []
+distributed = ["proofman-common/distributed"]

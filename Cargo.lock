@@ -237,7 +237,7 @@ checksum = "f61dac84819c6588b558454b194026eb1f09c293b9036ae9b159e74e73ab6cf9"
 
 [[package]]
 name = "cargo-zisk"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -508,7 +508,7 @@ checksum = "ef8ae57c4978a2acd8b869ce6b9ca1dfe817bff704c220209fdef2c0b75a01b9"
 
 [[package]]
 name = "data-bus"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "zisk-core",
 ]
@@ -642,7 +642,7 @@ dependencies = [
 
 [[package]]
 name = "executor"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "data-bus",
  "itertools 0.14.0",
@@ -1807,8 +1807,9 @@ dependencies = [
 
 [[package]]
 name = "precomp-keccakf"
-version = "0.1.0"
+version = "0.4.4"
 dependencies = [
+ "clap",
  "data-bus",
  "log",
  "num-bigint",
@@ -1831,7 +1832,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-common"
-version = "0.1.0"
+version = "0.4.4"
 dependencies = [
  "zisk-core",
 ]
@@ -2210,14 +2211,14 @@ dependencies = [
 
 [[package]]
 name = "riscv"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "elf",
 ]
 
 [[package]]
 name = "rom-merkle"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "blake3",
@@ -2421,7 +2422,7 @@ dependencies = [
 
 [[package]]
 name = "sm-arith"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "data-bus",
  "log",
@@ -2440,7 +2441,7 @@ dependencies = [
 
 [[package]]
 name = "sm-binary"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "data-bus",
  "log",
@@ -2458,7 +2459,7 @@ dependencies = [
 
 [[package]]
 name = "sm-common"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "data-bus",
  "p3-field",
@@ -2470,7 +2471,7 @@ dependencies = [
 
 [[package]]
 name = "sm-main"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "data-bus",
  "log",
@@ -2490,7 +2491,7 @@ dependencies = [
 
 [[package]]
 name = "sm-mem"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "data-bus",
  "log",
@@ -2510,7 +2511,7 @@ dependencies = [
 
 [[package]]
 name = "sm-rom"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "data-bus",
  "itertools 0.14.0",
@@ -3518,7 +3519,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-core"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "elf",
  "indexmap",
@@ -3532,7 +3533,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-pil"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "proofman-common",
  "proofman-macros",
@@ -3543,7 +3544,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precompiles"
-version = "0.1.0"
+version = "0.4.4"
 dependencies = [
  "precomp-keccakf",
  "precompiles-common",
@@ -3551,7 +3552,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-witness"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "env_logger",
  "executor",
@@ -3578,7 +3579,7 @@ dependencies = [
 
 [[package]]
 name = "ziskemu"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "clap",
  "criterion",
@@ -3596,7 +3597,7 @@ dependencies = [
 
 [[package]]
 name = "ziskos"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "getrandom 0.2.15",
  "lazy_static",
