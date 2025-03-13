@@ -46,21 +46,16 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
 
 ### Option 1: Prebuilt Binaries (Recommended)
 
-1. Install the ZisK installer `ziskup`:
+1. To install ZisK using ziskup, run the following command in your terminal:
     ```bash
     curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh  | bash
     ```
-    This will enable the `ziskup` command in your terminal. 
-    
-    Restart your terminal session or run:
-    ```bash
-    source $HOME/.bashrc
-    ```
 
-2. Install the ZisK toolchain and CLI tools:
-    ```bash
-    ziskup
-    ```
+2. During the installation, you will be prompted to select a setup option. You can choose from the following:
+
+    1. **Install proving key (default)** – Required for generating and verifying proofs.
+    2. **Install verification key** – Needed only if you want to verify proofs.
+    3. **None** – Choose this if you only want to compile programs and execute them using the ZisK emulator.
 
 3. Verify the Rust toolchain: (which includes support for the `riscv64ima-polygon-ziskos` compilation target):
     ```bash
@@ -79,35 +74,15 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
     cargo-zisk --version
     ```
 
-5. Download and install setup files: 
+#### Updating ZisK
 
-    Option 1:
-    Download the proving key files:
+To update ZisK to the latest version, simply run:
     ```bash
-    curl -O https://storage.googleapis.com/zisk/zisk-provingkey-0.4.0.tar.gz
-    curl -O https://storage.googleapis.com/zisk/zisk-provingkey-0.4.0.tar.gz.md5
+    ziskup
     ```
 
-    Verify the MD5 checksum:
-    ```bash
-    md5sum -c zisk-provingkey-0.4.0.tar.gz.md5
-    ```
+You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the installation setup and skip the selection prompt.
 
-    Extract the file to the `$HOME/.zisk` directory:
-    ```bash
-    tar --overwrite -xvf zisk-provingkey-0.4.0.tar.gz -C $HOME/.zisk
-    ```
-
-    Option 2:
-    Alternatively, if you only need to verify proofs, download and install the verify key files:
-     ```bash
-    curl -O https://storage.googleapis.com/zisk/zisk-verifykey-0.4.0.tar.gz
-    curl -O https://storage.googleapis.com/zisk/zisk-verifykey-0.4.0.tar.gz.md5
-    ```    
-
-    Then, follow the same verification and installation steps as for the proving key files.
-
-To update ZisK to the latest version, simply run again the previous steps.
 
 ### Option 2: Building from Source
 
