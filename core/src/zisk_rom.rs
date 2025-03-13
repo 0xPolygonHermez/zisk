@@ -736,12 +736,18 @@ impl ZiskRom {
             MEM_CHUNK_ADDRESS, REG_VALUE
         );
 
-        *s += "\tcall chunk_start /* Call chunk_start the first time */\n";
-
         // For all program addresses in the vector, create an assembly set of instructions with an
         // instruction label
         for k in 0..keys.len() {
+            // Get pc
             ctx.pc = keys[k];
+
+            // Call chunk_start the first time, for the first chunk
+            if k == 0 {
+                *s += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
+                *s += "\tcall chunk_start /* Call chunk_start the first time */\n";
+            }
+
             ctx.next_pc = if (k + 1) < keys.len() { keys[k + 1] } else { M64 };
             let instruction = &self.insts[&ctx.pc].i;
 
