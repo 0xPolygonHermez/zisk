@@ -93,7 +93,7 @@ impl MainSM {
 
         // Calculate total filled rows
         let filled_rows: usize =
-            segment_min_traces.iter().map(|min_trace| min_trace.steps.steps as usize).sum();
+            segment_min_traces.iter().map(|min_trace| min_trace.steps as usize).sum();
 
         info!(
             "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
@@ -176,9 +176,14 @@ impl MainSM {
         let prev_segment_last_c = if start_idx > 0 {
             let prev_trace = &min_traces[start_idx - 1];
             let mut emu = Emu::from_emu_trace_start(zisk_rom, &prev_trace.last_state);
-            let mut mem_reads_index = prev_trace.last_state.mem_reads_index;
-            emu.step_slice_full_trace(&prev_trace.steps, &mut mem_reads_index, &mut reg_trace, None)
-                .c
+            let mut mem_reads_index = prev_trace.last_mem_reads_index;
+            emu.step_slice_full_trace(
+                &prev_trace.mem_reads,
+                &mut mem_reads_index,
+                &mut reg_trace,
+                None,
+            )
+            .c
         } else {
             [F::zero(), F::zero()]
         };
@@ -231,7 +236,7 @@ impl MainSM {
         let mut mem_reads_index: usize = 0;
 
         // Total number of rows to fill from the emu trace
-        let total_rows = min_trace.steps.steps as usize;
+        let total_rows = min_trace.steps as usize;
 
         // Process rows in batches
         let mut batch_buffer = MainTrace::with_capacity(1 << 12);
@@ -243,7 +248,7 @@ impl MainSM {
             // Fill the batch buffer
             batch_buffer.buffer.iter_mut().take(batch_size).for_each(|row| {
                 *row = emu.step_slice_full_trace(
-                    &min_trace.steps,
+                    &min_trace.mem_reads,
                     &mut mem_reads_index,
                     reg_trace,
                     Some(&**step_range_check),
