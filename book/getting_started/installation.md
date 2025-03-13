@@ -54,7 +54,7 @@ You can use [Nix](https://github.com/NixOS/nix) to install all dependencies.
 2. During the installation, you will be prompted to select a setup option. You can choose from the following:
 
     1. **Install proving key (default)** – Required for generating and verifying proofs.
-    2. **Install verification key** – Needed only if you want to verify proofs.
+    2. **Install verify key** – Needed only if you want to verify proofs.
     3. **None** – Choose this if you only want to compile programs and execute them using the ZisK emulator.
 
 3. Verify the Rust toolchain: (which includes support for the `riscv64ima-polygon-ziskos` compilation target):
