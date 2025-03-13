@@ -176,6 +176,35 @@ main() {
       ARCHITECTURE="amd64" # Amd.
     fi
 
+    # Ask user about key installation in case it was not provided as an argument
+    if [[ -z "$SETUP_KEY" ]]; then
+      echo
+      say "Setup installation options:"
+      say "1) Install proving key (default - just press enter)"
+      say "2) Install verify key"
+      say "3) None"
+
+      # Read user input with default option set to 1
+      read -p ">" user_choice && echo
+      user_choice=${user_choice:-1}
+
+      case $user_choice in
+          1)
+            SETUP_KEY="proving"
+            ;;
+          2)
+            SETUP_KEY="verify"
+            ;;
+          3)
+            SETUP_KEY="none"
+            ;;
+          *)
+            say "Invalid option, aborting installation"
+            exit 1
+            ;;
+      esac
+    fi
+
     # Compute the URL of the release tarball in the zisk repository
     if [ "${ZISKUP_TAG}" = "latest" ]; then
       RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/latest/download/"
@@ -218,35 +247,6 @@ EOF
     say "Installing rust toolchain"
     ensure "$bin_path" sdk install-toolchain
     say "Installed rust toolchain"
-
-    # Ask user about key installation in case it was not provided as an argument
-    if [[ -z "$SETUP_KEY" ]]; then
-      echo
-      say "Setup installation options:"
-      say "1) Install proving key (default - just press enter)"
-      say "2) Install verify key"
-      say "3) None"
-
-      # Read user input with default option set to 1
-      read -p ">" user_choice
-      user_choice=${user_choice:-1}
-
-      case $user_choice in
-          1)
-            SETUP_KEY="proving"
-            ;;
-          2)
-            SETUP_KEY="verify"
-            ;;
-          3)
-            SETUP_KEY="none"
-            ;;
-          *)
-            say "Invalid option, aborting installation"
-            exit 1
-            ;;
-      esac
-    fi
 
     # Install the proving/verify key
     case $SETUP_KEY in
@@ -390,6 +390,7 @@ install_setup() {
     say "Installing ${KEY_TYPE} key..."
     ensure tar --overwrite -xvf "${KEY_FILE}" -C "$HOME/.zisk"
     rm -f "${KEY_FILE}"
+    rm -f "${KEY_FILE}.md5"
 
     say "Installed ${KEY_TYPE} key ${SETUP_VERSION}"
 }
