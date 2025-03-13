@@ -431,7 +431,8 @@ impl KeccakfSM {
         // Get the fixed cols
         let airgroup_id = KeccakfTrace::<usize>::AIRGROUP_ID;
         let air_id = KeccakfTrace::<usize>::AIR_ID;
-        let fixed = KeccakfFixed::from_slice(sctx.get_fixed_slice(airgroup_id, air_id));
+        let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
+        let fixed = KeccakfFixed::from_slice(&fixed_pols);
 
         timer_start_trace!(KECCAKF_TRACE);
         let mut keccakf_trace = KeccakfTrace::new();

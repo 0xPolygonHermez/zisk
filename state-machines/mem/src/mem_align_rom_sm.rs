@@ -1,5 +1,5 @@
 use std::sync::{
-    atomic::{AtomicU64, AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
 
@@ -27,7 +27,10 @@ impl MemAlignRomSM {
     // const MY_NAME: &'static str = "MemAlignRom";
 
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { multiplicity: create_atomic_vec(MemAlignRomTrace::<usize>::NUM_ROWS), calculated: AtomicBool::new(false) })
+        Arc::new(Self {
+            multiplicity: create_atomic_vec(MemAlignRomTrace::<usize>::NUM_ROWS),
+            calculated: AtomicBool::new(false),
+        })
     }
 
     pub fn calculate_next_pc(&self, opcode: MemOp, offset: usize, width: usize) -> u64 {

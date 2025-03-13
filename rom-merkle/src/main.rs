@@ -9,13 +9,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(
             Arg::new("rom").long("rom").value_name("FILE").help("The ROM file path").required(true),
         )
-        .arg(
-            Arg::new("default-cache")
-                .long("default-cache")
-                .value_name("FILE")
-                .help("Default cache path")
-                .required(false),
-        )
         .arg(Arg::new("proving-key").long("proving-key").help("Proving Key path").required(true))
         .arg(
             Arg::new("check")
@@ -29,10 +22,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let proving_key_path =
         matches.get_one::<PathBuf>("proving-key").expect("Proving key path is required");
     let rom_path_str = matches.get_one::<String>("rom").expect("ROM path is required");
-    let default_cache_path = matches
-        .get_one::<String>("default-cache")
-        .map(PathBuf::from) // If provided, convert to PathBuf
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_CACHE_PATH)); // Otherwise, use default
+    let default_cache_path =
+        std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
 
     let check = *matches.get_one::<bool>("check").expect("Check is required");
 

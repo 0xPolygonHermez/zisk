@@ -4,7 +4,7 @@
 //! functionality to process inputs and manage multiplicity data.
 
 use std::sync::{
-    atomic::{AtomicU64, AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
 
@@ -28,7 +28,10 @@ impl ArithTableSM {
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithTableSM`.
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { multiplicity: create_atomic_vec(ArithTableTrace::<usize>::NUM_ROWS), calculated: AtomicBool::new(false) })
+        Arc::new(Self {
+            multiplicity: create_atomic_vec(ArithTableTrace::<usize>::NUM_ROWS),
+            calculated: AtomicBool::new(false),
+        })
     }
 
     /// Processes a slice of input data and updates the multiplicity table.

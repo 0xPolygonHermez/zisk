@@ -46,9 +46,6 @@ pub struct ZiskVerifyConstraints {
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
-
-    #[clap(short = 'c', long)]
-    pub default_cache: Option<PathBuf>,
 }
 
 impl ZiskVerifyConstraints {
@@ -67,7 +64,7 @@ impl ZiskVerifyConstraints {
         };
 
         let default_cache_path =
-            self.default_cache.clone().unwrap_or_else(|| PathBuf::from(DEFAULT_CACHE_PATH));
+            std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
 
         if !default_cache_path.exists() {
             if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {

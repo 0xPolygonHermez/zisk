@@ -5,7 +5,7 @@
 //! (`Srl`), arithmetic shifts, and sign extensions.
 
 use std::sync::{
-    atomic::{AtomicU64, AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
 
@@ -45,8 +45,10 @@ impl BinaryExtensionTableSM {
     /// An `Arc`-wrapped instance of `BinaryExtensionTableSM` with an initialized multiplicity
     /// table.
     pub fn new() -> Arc<Self> {
-        let binary_extension_table =
-            Self { multiplicity: create_atomic_vec(BinaryExtensionTableTrace::<usize>::NUM_ROWS), calculated: AtomicBool::new(false) };
+        let binary_extension_table = Self {
+            multiplicity: create_atomic_vec(BinaryExtensionTableTrace::<usize>::NUM_ROWS),
+            calculated: AtomicBool::new(false),
+        };
 
         Arc::new(binary_extension_table)
     }

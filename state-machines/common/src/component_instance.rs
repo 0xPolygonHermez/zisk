@@ -129,7 +129,7 @@ macro_rules! table_instance {
 
                 let multiplicity = self.table_sm.detach_multiplicity();
                 self.table_sm.set_calculated();
-                
+
                 pctx.dctx_distribute_multiplicity(multiplicity, self.ictx.global_id);
 
                 trace.buffer.par_iter_mut().enumerate().for_each(|(i, input)| {
