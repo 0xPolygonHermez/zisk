@@ -629,7 +629,7 @@ impl ZiskRom {
             "\tmov {}, {} /* mem_reads_size = chunk_size */\n",
             REG_MEM_READS_SIZE, MEM_CHUNK_ADDRESS
         );
-        *s += &format!("\tadd {}, 76*8 /* mem_reads_size += 76*8 */\n", REG_MEM_READS_SIZE);
+        *s += &format!("\tadd {}, 40*8 /* mem_reads_size += 40*8 */\n", REG_MEM_READS_SIZE);
         *s += &format!(
             "\tmov {}, {} /* mem_reads_address = mem_reads_size */\n",
             REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE
@@ -652,43 +652,15 @@ impl ZiskRom {
 
         *s += "\t/* Write chunk last data */\n";
 
-        // Write chunk.last.sp
+        // Search position of chunk.last
         *s += &format!(
             "\tmov {}, {} /* address = chunk_address */\n",
             REG_ADDRESS, MEM_CHUNK_ADDRESS
         );
         *s += &format!("\tadd {}, 37*8 /* address = chunk_address + 37*8 */\n", REG_ADDRESS);
-        *s += &format!("\tmov [{}], {} /* chunk.last.pc = pc */\n", REG_ADDRESS, REG_PC);
-        *s += &format!("\tmov {}, {} /* value = sp */\n", REG_VALUE, MEM_SP);
-
-        // Write chunk.last.sp
-        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-        *s += &format!("\tmov [{}], {} /* chunk.last.sp = value = sp */\n", REG_ADDRESS, REG_VALUE);
 
         // Write chunk.last.c
-        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
         *s += &format!("\tmov [{}], {} /* chunk.last.c = c */\n", REG_ADDRESS, REG_C);
-
-        // Write chunk.last.c
-        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
-        *s += &format!("\tmov [{}], {} /* chunk.last.step = step */\n", REG_ADDRESS, REG_VALUE);
-
-        // Write chunk.last.reg
-        for i in 1..34 {
-            *s += &format!(
-                "\tmov {}, 0x{:08x} /* value = reg_{}_address */\n",
-                REG_VALUE,
-                REG_FIRST + i * 8,
-                i
-            );
-            *s += &format!("\tmov {}, [{}] /* value = reg_{} */\n", REG_VALUE, REG_VALUE, i);
-            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-            *s += &format!(
-                "\tmov [{}], {} /* chunk.last.reg[{}] = value */\n",
-                REG_ADDRESS, REG_VALUE, i
-            );
-        }
 
         *s += "\t/* Write chunk end data */\n";
         *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);

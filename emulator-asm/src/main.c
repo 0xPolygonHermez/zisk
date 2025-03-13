@@ -199,7 +199,7 @@ int main(int argc, char *argv[])
         }
         if ((uint64_t)pInput != INPUT_ADDR)
         {
-            printf("Called mmap(pInput) but returned address = 0x%08x != 0x%08x\n", pInput, INPUT_ADDR);
+            printf("Called mmap(pInput) but returned address = 0x%llx != 0x%llx\n", pInput, INPUT_ADDR);
             return -1;
         }
     #ifdef DEBUG
@@ -278,7 +278,7 @@ int main(int argc, char *argv[])
         }
         if ((uint64_t)pInput != INPUT_ADDR)
         {
-            printf("Called mmap(pInput) but returned address = 0x%08x != 0x%08x\n", pInput, INPUT_ADDR);
+            printf("Called mmap(pInput) but returned address = 0x%llx != 0x%llx\n", pInput, INPUT_ADDR);
             return -1;
         }
 #ifdef DEBUG
@@ -340,7 +340,7 @@ int main(int argc, char *argv[])
     }
     if ((uint64_t)pTrace != TRACE_ADDR)
     {
-        printf("Called mmap(pTrace) but returned address = 0x%08x != 0x%08x\n", pTrace, TRACE_ADDR);
+        printf("Called mmap(pTrace) but returned address = 0x%llx != 0x%llx\n", pTrace, TRACE_ADDR);
         return -1;
     }
 #ifdef DEBUG
@@ -383,7 +383,7 @@ int main(int argc, char *argv[])
     }
     if ((uint64_t)pRom != ROM_ADDR)
     {
-        printf("Called mmap(pRom) but returned address = 0x%08x != 0x%08x\n", pRom, ROM_ADDR);
+        printf("Called mmap(pRom) but returned address = 0x%llx != 0x%llx\n", pRom, ROM_ADDR);
         return -1;
     }
 #ifdef DEBUG
@@ -605,7 +605,7 @@ extern void _realloc_trace (void)
     void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
     if ((uint64_t)new_address != trace_address)
     {
-        printf("realloc_trace() failed calling mremap() from size=%d to %d got new_address=0x%08x errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
+        printf("realloc_trace() failed calling mremap() from size=%d to %d got new_address=0x%llx errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
         exit(-1);
     }
 
@@ -728,15 +728,7 @@ uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime)
         [8B] register[32]
         [8B] register[33]
     Last state:
-        [8B] pc
-        [8B] sp
         [8B] c
-        [8B] step
-        [8B] register[1]
-        …
-        [8B] register[31]
-        [8B] register[32]
-        [8B] register[33]
     End:
         [8B] end
     Steps:
@@ -756,7 +748,7 @@ void log_trace(void)
 {
 
     uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
-    printf("Version = 0x%06x\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
+    printf("Version = 0x%06llx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
     printf("Exit code = %d\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
     printf("Allocated size = %d B\n", pOutput[2]); // MT allocated size [8]
     printf("MT used size = %d B\n", pOutput[3]); // MT used size [8]
@@ -778,35 +770,24 @@ void log_trace(void)
 
         // Log current chunk start state
         printf("\tStart state:\n");
-        printf("\t\tpc=0x%08x:\n", chunk[i]);
+        printf("\t\tpc=0x%llx:\n", chunk[i]);
         i++;
-        printf("\t\tsp=0x%08x:\n", chunk[i]);
+        printf("\t\tsp=0x%llx:\n", chunk[i]);
         i++;
-        printf("\t\tc=0x%08x:\n", chunk[i]);
+        printf("\t\tc=0x%llx:\n", chunk[i]);
         i++;
         printf("\t\tstep=%d:\n", chunk[i]);
         i++;
         for (uint64_t r=1; r<34; r++)
         {
-            printf("\t\tregister[%d]=0x%08x:\n", r, chunk[i]);
+            printf("\t\tregister[%d]=0x%llx:\n", r, chunk[i]);
             i++;
         }
 
         // Log current chunk last state
         printf("\tLast state:\n");
-        printf("\t\tpc=0x%08x:\n", chunk[i]);
+        printf("\t\tc=0x%llx:\n", chunk[i]);
         i++;
-        printf("\t\tsp=0x%08x:\n", chunk[i]);
-        i++;
-        printf("\t\tc=0x%08x:\n", chunk[i]);
-        i++;
-        printf("\t\tstep=%d:\n", chunk[i]);
-        i++;
-        for (uint64_t r=1; r<34; r++)
-        {
-            printf("\t\tregister[%d]=0x%08x:\n", r, chunk[i]);
-            i++;
-        }
         
         // Log current chunk end
         printf("\tEnd:\n");
@@ -841,6 +822,6 @@ void log_trace(void)
         //Set next chunk pointer
         chunk = chunk + i;
     }
-    printf("Trace=%08x chunk=%08x size=%d\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+    printf("Trace=%llx chunk=%llx size=%d\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
 }
 #endif
