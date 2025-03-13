@@ -184,6 +184,7 @@ main() {
       say "3) None"
 
       # Read user input with default option set to 1
+      read -t 0 < /dev/null # Flush stdin
       read -p ">" user_choice
       user_choice=${user_choice:-1}
 
