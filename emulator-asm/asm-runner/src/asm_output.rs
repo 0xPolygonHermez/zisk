@@ -1,8 +1,5 @@
 use std::{ffi::c_void, fmt::Debug};
-
-extern crate ziskemu;
-
-use self::ziskemu::{EmuTrace, EmuTraceStart};
+use ziskemu::{EmuTrace, EmuTraceStart};
 
 #[repr(C)]
 #[derive(Debug)]

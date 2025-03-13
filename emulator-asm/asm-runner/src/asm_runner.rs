@@ -1,12 +1,11 @@
+use crate::asm_input::AsmRunnerInputC;
 use crate::asm_output::{OutputChunkC, OutputHeader};
-use asm_input::AsmRunnerInputC;
 use libc::{
     close, ftruncate, mmap, munmap, shm_open, shm_unlink, MAP_SHARED, O_CREAT, PROT_READ,
     PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR,
 };
 
-extern crate ziskemu;
-use self::ziskemu::EmuTrace;
+use ziskemu::EmuTrace;
 
 use std::ffi::{c_void, CString};
 use std::path::Path;
