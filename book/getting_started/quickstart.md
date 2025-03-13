@@ -1,6 +1,19 @@
 # Quickstart
 
-In this guide, you will learn how to create and run a simple program using ZisK.
+In this guide, you will learn how to install ZisK, create a simple program and run it using ZisK.
+
+## Installation
+
+ZisK currently supports **Linux x86_64** systems.
+
+> **Note:** macOS is not yet supported, but we are actively working on adding support.
+
+Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
+
+To install ZisK using ziskup, run the following command in your terminal:
+```bash
+curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh | bash
+```
 
 ## Create a Project
 
@@ -97,19 +110,6 @@ This command generates the proof in the `./proof directory`. If everything goes 
 [INFO ] ProofMan:     ✓ Vadcop Final proof was verified
 [INFO ]      stop <<< GENERATING_VADCOP_PROOF 91706ms
 [INFO ] ProofMan: Proofs generated successfully
-```
-## Distributed prove
-
-Zisk can run proves using multiple processes in the same server or in multiple servers. To use zisk in distributed mode you need to have installed a mpi library. To use the distributed mode the compilation command is:
-
-```bash
-cargo build --release --features distributed
-```
-
-Then the execution command will be:
-
-```bash
-mpirun --bind-to none -np <number_processes> -x OMP_NUM_THREADS=<number_of_threads_per_process> target/release/cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -o proof -a -y
 ```
 
 ## Verify Proof
