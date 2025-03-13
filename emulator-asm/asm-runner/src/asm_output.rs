@@ -45,7 +45,7 @@ pub struct OutputChunkC {
 }
 
 #[repr(C)]
-pub struct OutputChunk<'a> {
+pub struct OutputChunk {
     pub pc: u64,
     pub sp: u64,
     pub c: u64,
@@ -60,10 +60,11 @@ pub struct OutputChunk<'a> {
 
     pub end: u64,
     pub steps: u64,
-    pub mem_reads: &'a [u64],
+
+    pub mem_reads: Vec<u64>,
 }
 
-impl From<OutputChunkC> for OutputChunk<'_> {
+impl From<OutputChunkC> for OutputChunk {
     fn from(chunk: OutputChunkC) -> Self {
         Self {
             pc: chunk.pc,
@@ -78,12 +79,12 @@ impl From<OutputChunkC> for OutputChunk<'_> {
             last_registers: chunk.last_registers,
             end: chunk.end,
             steps: chunk.steps,
-            mem_reads: &[],
+            mem_reads: Vec::new(),
         }
     }
 }
 
-impl Debug for OutputChunk<'_> {
+impl Debug for OutputChunk {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OutputChunk")
             .field("pc", &format_args!("{:#x}", self.pc))
@@ -103,23 +104,40 @@ impl Debug for OutputChunk<'_> {
     }
 }
 
-impl OutputChunk<'_> {
-    pub unsafe fn from_ptr<'a>(mapped_ptr: &mut *mut c_void) -> OutputChunk<'a> {
+impl OutputChunk {
+    /// Create an `OutputChunk` from a pointer.
+    ///
+    /// # Safety
+    /// This function is unsafe because it reads from a raw pointer in shared memory.
+    pub unsafe fn from_ptr(mapped_ptr: &mut *mut c_void) -> OutputChunk {
+        // Read chunk data
         let chunk = std::ptr::read(*mapped_ptr as *const OutputChunkC);
         *mapped_ptr =
             (*mapped_ptr as *mut u8).add(std::mem::size_of::<OutputChunkC>()) as *mut c_void;
 
-        // Create a slice over the memory without copying
-        let mem_reads_ptr = *mapped_ptr as *const u64;
+        // Convert mem_reads into a Vec<u64> without copying
+        let mem_reads_ptr = *mapped_ptr as *mut u64;
         let mem_reads_len = chunk.mem_reads_size as usize;
-        let mem_reads_slice = std::slice::from_raw_parts(mem_reads_ptr, mem_reads_len);
+        let mem_reads = Vec::from_raw_parts(mem_reads_ptr, mem_reads_len, mem_reads_len);
 
-        // Advance the pointer
+        // Advance the pointer after reading memory reads
         *mapped_ptr = (*mapped_ptr as *mut u64).add(mem_reads_len) as *mut c_void;
 
-        let mut output_chunk = OutputChunk::from(chunk);
-        output_chunk.mem_reads = mem_reads_slice;
-
-        output_chunk
+        // Return the parsed OutputChunk
+        OutputChunk {
+            pc: chunk.pc,
+            sp: chunk.sp,
+            c: chunk.c,
+            step: chunk.step,
+            registers: chunk.registers,
+            last_pc: chunk.last_pc,
+            last_sp: chunk.last_sp,
+            last_c: chunk.last_c,
+            last_step: chunk.last_step,
+            last_registers: chunk.last_registers,
+            end: chunk.end,
+            steps: chunk.steps,
+            mem_reads,
+        }
     }
 }

@@ -9,16 +9,21 @@ use std::path::Path;
 use std::process::Command;
 use std::{fs, ptr};
 
-pub struct AsmMinimalTraces<'a> {
+pub struct AsmMinimalTraces {
     shmem_output_name: String,
     mapped_ptr: *mut c_void,
-    pub vec_chunks: Vec<OutputChunk<'a>>,
+    pub vec_chunks: Vec<OutputChunk>,
 }
 
-impl Drop for AsmMinimalTraces<'_> {
+impl Drop for AsmMinimalTraces {
     fn drop(&mut self) {
         unsafe {
-            // Unmap memory when the struct is dropped
+            // Forget all mem_reads Vec<u64> before unmapping
+            for chunk in &mut self.vec_chunks {
+                std::mem::forget(std::mem::take(&mut chunk.mem_reads));
+            }
+
+            // Unmap shared memory
             libc::munmap(self.mapped_ptr, self.total_size());
 
             let shmem_output_name =
@@ -30,9 +35,9 @@ impl Drop for AsmMinimalTraces<'_> {
     }
 }
 
-impl AsmMinimalTraces<'_> {
+impl AsmMinimalTraces {
     fn total_size(&self) -> usize {
-        self.vec_chunks.iter().map(|chunk| std::mem::size_of_val(chunk.mem_reads)).sum::<usize>()
+        self.vec_chunks.iter().map(|chunk| std::mem::size_of_val(&chunk.mem_reads)).sum::<usize>()
             + std::mem::size_of::<OutputHeader>()
     }
 }
@@ -40,7 +45,7 @@ impl AsmMinimalTraces<'_> {
 pub struct AsmRunner;
 
 impl AsmRunner {
-    pub fn run<'a>(inputs_path: &Path, ziskemuasm_path: &Path) -> AsmMinimalTraces<'a> {
+    pub fn run(inputs_path: &Path, ziskemuasm_path: &Path) -> AsmMinimalTraces {
         let pid = unsafe { libc::getpid() };
 
         let shmem_prefix = format!("SHM{}", pid);
@@ -123,7 +128,7 @@ impl AsmRunner {
         }
     }
 
-    fn map_output<'a>(shmem_output_name: String) -> (*mut c_void, Vec<OutputChunk<'a>>) {
+    fn map_output(shmem_output_name: String) -> (*mut c_void, Vec<OutputChunk>) {
         let shmem_output_name = CString::new(shmem_output_name).expect("CString::new failed");
         let shmem_output_name_ptr = shmem_output_name.as_ptr();
 
