@@ -21,6 +21,9 @@ pub struct ZiskProve {
     #[clap(short = 'e', long)]
     pub elf: PathBuf,
 
+    #[clap(short = 'a', long)]
+    pub asm: Option<std::path::PathBuf>,
+
     /// Input path
     #[clap(short = 'i', long)]
     pub input: Option<PathBuf>,
@@ -127,6 +130,7 @@ impl ZiskProve {
                 ProofMan::<Goldilocks>::generate_proof(
                     self.witness_lib.clone(),
                     Some(self.elf.clone()),
+                    self.asm.clone(),
                     self.public_inputs.clone(),
                     self.input.clone(),
                     self.proving_key.clone(),
