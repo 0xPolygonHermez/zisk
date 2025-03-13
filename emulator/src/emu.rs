@@ -1743,7 +1743,6 @@ impl<'a> Emu<'a> {
         let full_trace_step =
             Self::build_full_trace_step(instruction, &self.ctx.inst_ctx, reg_trace);
 
-
         // if self.ctx.inst_ctx.step > 8070 && self.ctx.inst_ctx.step < 8395 {
         //     println!(
         //         "STEP step={} pc={:x} inst={:?} trace={:?}",

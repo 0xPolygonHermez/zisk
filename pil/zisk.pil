@@ -26,22 +26,22 @@ const int PUBLIC_OP = 0x30;
 set_max_std_tables_bits(21);
 
 airgroup Zisk {
-    Main(N: 2**21, RC: 2, operation_bus_id: OPERATION_BUS_ID);
+    Main(N: 2**22, RC: 2, operation_bus_id: OPERATION_BUS_ID);
     Rom(N: 2**21);
 
-    Mem(N: 2**21, RC: 2, base_address: 0xA000_0000);
+    Mem(N: 2**23, RC: 2, base_address: 0xA000_0000);
     Mem(N: 2**21, RC: 2, base_address: 0x8000_0000, immutable: 1) alias RomData;
     Mem(N: 2**21, RC: 2, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
 
-    MemAlign(N: 2**21, use_predefined_ranges: 0);
+    MemAlign(N: 2**22, use_predefined_ranges: 0);
     MemAlignRom();
 
     Arith(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
     ArithTable();
     ArithRangeTable();
-    Binary(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    Binary(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
     BinaryTable();
-    BinaryExtension(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    BinaryExtension(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
     BinaryExtensionTable();
 
     // Precompiles

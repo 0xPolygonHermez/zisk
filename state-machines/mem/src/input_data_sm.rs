@@ -199,8 +199,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         air_values.segment_last_step = F::from_u64(last_step);
 
         air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
-        air_values.previous_segment_value[1] =
-            F::from_u32((previous_segment.value >> 32) as u32);
+        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
 
         air_values.segment_last_value[0] = F::from_u32(last_value as u32);
         air_values.segment_last_value[1] = F::from_u32((last_value >> 32) as u32);

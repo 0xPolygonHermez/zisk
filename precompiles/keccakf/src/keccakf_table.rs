@@ -4,7 +4,7 @@
 //! and managing multiplicity tables for Keccakf table traces.
 
 use std::sync::{
-    atomic::{AtomicU64, AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
 

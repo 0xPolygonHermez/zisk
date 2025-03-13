@@ -340,10 +340,7 @@ impl MainSM {
         let max_range = step_range_check.len() as u64;
         for ireg in 0..REGS_IN_MAIN {
             let reg_value = last_reg_values[ireg];
-            let values = [
-                F::from_u32(reg_value as u32),
-                F::from_u32((reg_value >> 32) as u32),
-            ];
+            let values = [F::from_u32(reg_value as u32), F::from_u32((reg_value >> 32) as u32)];
             air_values.last_reg_value[ireg] = values;
             air_values.last_reg_mem_step[ireg] = F::from_u64(reg_steps[ireg]);
             let range = (final_step - reg_steps[ireg]) as usize;

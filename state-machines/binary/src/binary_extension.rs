@@ -125,8 +125,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         let opcode = ZiskOp::try_from_code(op).expect("Invalid ZiskOp opcode");
 
         // Create an empty trace
-        let mut row =
-            BinaryExtensionTraceRow::<F> { op: F::from_u8(op), ..Default::default() };
+        let mut row = BinaryExtensionTraceRow::<F> { op: F::from_u8(op), ..Default::default() };
 
         // Set if the opcode is a shift operation
         let op_is_shift = Self::opcode_is_shift(opcode);
@@ -369,10 +368,8 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
-        let padding_row = BinaryExtensionTraceRow::<F> {
-            op: F::from_u8(SE_W_OP),
-            ..Default::default()
-        };
+        let padding_row =
+            BinaryExtensionTraceRow::<F> { op: F::from_u8(SE_W_OP), ..Default::default() };
 
         binary_e_trace.buffer[total_inputs..num_rows].fill(padding_row);
 

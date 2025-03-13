@@ -129,13 +129,12 @@ macro_rules! table_instance {
 
                 let multiplicity = self.table_sm.detach_multiplicity();
                 self.table_sm.set_calculated();
-                
+
                 pctx.dctx_distribute_multiplicity(multiplicity, self.ictx.global_id);
 
                 trace.buffer.par_iter_mut().enumerate().for_each(|(i, input)| {
-                    input.multiplicity = F::from_u64(
-                        multiplicity[i].swap(0,std::sync::atomic::Ordering::Relaxed),
-                    )
+                    input.multiplicity =
+                        F::from_u64(multiplicity[i].swap(0, std::sync::atomic::Ordering::Relaxed))
                 });
 
                 Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
@@ -234,9 +233,8 @@ macro_rules! table_instance_array {
 
                 buffer.par_chunks_mut(trace.row_size).enumerate().for_each(|(row, chunk)| {
                     for (col, vec) in multiplicities.iter().enumerate() {
-                        chunk[col] = F::from_u64(
-                            vec[row].swap(0,std::sync::atomic::Ordering::Relaxed),
-                        );
+                        chunk[col] =
+                            F::from_u64(vec[row].swap(0, std::sync::atomic::Ordering::Relaxed));
                     }
                 });
 

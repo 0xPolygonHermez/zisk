@@ -248,7 +248,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     fn plan_sec(&self, vec_counters: NestedDeviceMetricsList) -> Vec<Vec<Plan>> {
         self.secondary_sm
             .iter()
-            .zip(vec_counters.into_iter())
+            .zip(vec_counters)
             .map(|(sm, counters)| sm.build_planner().plan(counters))
             .collect()
     }
@@ -412,7 +412,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     fn chunks_to_execute(
         &self,
         min_traces: &[EmuTrace],
-        secn_instance: &Box<dyn Instance<F>>,
+        secn_instance: &mut Box<dyn Instance<F>>,
     ) -> Vec<bool> {
         let mut chunks_to_execute = vec![false; min_traces.len()];
 
@@ -486,7 +486,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// A vector of data buses with attached collectors for each chunk to be executed
     fn get_data_bus_collectors(
         &self,
-        secn_instance: &Box<dyn Instance<F>>,
+        secn_instance: &mut Box<dyn Instance<F>>,
         chunks_to_execute: Vec<bool>,
     ) -> Vec<Option<DataBus<u64, BusDeviceWrapper<u64>>>> {
         chunks_to_execute
@@ -557,10 +557,12 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     /// A vector of global IDs for the instances to compute witness for.
     fn execute(&self, pctx: Arc<ProofCtx<F>>) -> Vec<usize> {
         // Call emulate with these options
-        let input_data = {
+        let input_data = if self.input_data_path.is_some() {
             // Read inputs data from the provided inputs path
             let path = PathBuf::from(self.input_data_path.as_ref().unwrap().display().to_string());
             fs::read(path).expect("Could not read inputs file")
+        } else {
+            Vec::new()
         };
 
         // Process the ROM to collect the Minimal Traces
@@ -594,7 +596,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             .iter()
             .map(|plans| plans.iter().map(|plan| plan.global_id.unwrap()).collect::<Vec<_>>())
             .collect::<Vec<_>>();
-        let secn_global_ids = secn_global_ids.iter().flatten().map(|x| *x).collect::<Vec<_>>();
+        let secn_global_ids_vec = secn_global_ids.iter().flatten().copied().collect::<Vec<_>>();
 
         // Add public values to the proof context
         let mut publics = ZiskPublicValues::from_vec_guard(pctx.get_publics());
@@ -608,7 +610,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         *self.main_planning.write().unwrap() = main_planning;
         *self.secn_planning.write().unwrap() = secn_planning;
 
-        [main_global_ids, secn_global_ids].concat()
+        [main_global_ids, secn_global_ids_vec].concat()
     }
 
     /// Computes the witness for the main and secondary state machines.

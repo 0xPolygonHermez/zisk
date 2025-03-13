@@ -146,8 +146,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                     // without address changes, the internal reads before write must use the last
                     // value, in the case of reads value and the last value are the same
                     let (low_val, high_val) = (last_value as u32, (last_value >> 32) as u32);
-                    trace[i].value =
-                        [F::from_u32(low_val), F::from_u32(high_val)];
+                    trace[i].value = [F::from_u32(low_val), F::from_u32(high_val)];
 
                     // it's intenal
                     trace[i].sel = F::ZERO;
@@ -292,8 +291,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         air_values.segment_last_step = F::from_u64(last_step);
 
         air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
-        air_values.previous_segment_value[1] =
-            F::from_u32((previous_segment.value >> 32) as u32);
+        air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
 
         air_values.segment_last_value[0] = F::from_u32(last_value as u32);
         air_values.segment_last_value[1] = F::from_u32((last_value >> 32) as u32);

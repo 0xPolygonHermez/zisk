@@ -3,7 +3,9 @@ use anyhow::Result;
 use colored::Colorize;
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
-use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ModeName, ProofOptions};
+use proofman_common::{
+    initialize_logger, json_to_debug_instances_map, DebugInfo, ModeName, ProofOptions,
+};
 use rom_merkle::{gen_elf_hash, get_elf_bin_file_path, get_rom_blowup_factor, DEFAULT_CACHE_PATH};
 use std::{collections::HashMap, fs, path::PathBuf};
 
@@ -95,7 +97,7 @@ impl ZiskProve {
         };
 
         let default_cache_path =
-            self.default_cache.clone().unwrap_or_else(|| PathBuf::from(DEFAULT_CACHE_PATH));
+            std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
 
         if !default_cache_path.exists() {
             if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {

@@ -162,8 +162,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                         read_row.sel[i] = F::from_bool(true);
                     }
 
-                    value_row.reg[i] =
-                        F::from_u64(Self::get_byte(value, i, CHUNK_NUM - offset));
+                    value_row.reg[i] = F::from_u64(Self::get_byte(value, i, CHUNK_NUM - offset));
                     if i == offset {
                         value_row.sel[i] = F::from_bool(true);
                     }
@@ -445,21 +444,18 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 };
 
                 for i in 0..CHUNK_NUM {
-                    first_read_row.reg[i] =
-                        F::from_u64(Self::get_byte(value_first_read, i, 0));
+                    first_read_row.reg[i] = F::from_u64(Self::get_byte(value_first_read, i, 0));
                     if i >= offset {
                         first_read_row.sel[i] = F::from_bool(true);
                     }
 
-                    value_row.reg[i] =
-                        F::from_u64(Self::get_byte(value, i, CHUNK_NUM - offset));
+                    value_row.reg[i] = F::from_u64(Self::get_byte(value, i, CHUNK_NUM - offset));
 
                     if i == offset {
                         value_row.sel[i] = F::from_bool(true);
                     }
 
-                    second_read_row.reg[i] =
-                        F::from_u64(Self::get_byte(value_second_read, i, 0));
+                    second_read_row.reg[i] = F::from_u64(Self::get_byte(value_second_read, i, 0));
                     if i < rem_bytes {
                         second_read_row.sel[i] = F::from_bool(true);
                     }
@@ -661,14 +657,12 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 };
 
                 for i in 0..CHUNK_NUM {
-                    first_read_row.reg[i] =
-                        F::from_u64(Self::get_byte(value_first_read, i, 0));
+                    first_read_row.reg[i] = F::from_u64(Self::get_byte(value_first_read, i, 0));
                     if i < offset {
                         first_read_row.sel[i] = F::from_bool(true);
                     }
 
-                    first_write_row.reg[i] =
-                        F::from_u64(Self::get_byte(value_first_write, i, 0));
+                    first_write_row.reg[i] = F::from_u64(Self::get_byte(value_first_write, i, 0));
                     if i >= offset {
                         first_write_row.sel[i] = F::from_bool(true);
                     }
@@ -686,14 +680,12 @@ impl<F: PrimeField64> MemAlignSM<F> {
                         value_row.sel[i] = F::from_bool(true);
                     }
 
-                    second_write_row.reg[i] =
-                        F::from_u64(Self::get_byte(value_second_write, i, 0));
+                    second_write_row.reg[i] = F::from_u64(Self::get_byte(value_second_write, i, 0));
                     if i < rem_bytes {
                         second_write_row.sel[i] = F::from_bool(true);
                     }
 
-                    second_read_row.reg[i] =
-                        F::from_u64(Self::get_byte(value_second_read, i, 0));
+                    second_read_row.reg[i] = F::from_u64(Self::get_byte(value_second_read, i, 0));
                     if i >= rem_bytes {
                         second_read_row.sel[i] = F::from_bool(true);
                     }
@@ -708,8 +700,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     first_read_row.value[i] = F::from_u64(_value_first_read & RC_MASK);
                     first_write_row.value[i] = F::from_u64(_value_first_write & RC_MASK);
                     value_row.value[i] = F::from_u64(_value & RC_MASK);
-                    second_write_row.value[i] =
-                        F::from_u64(_value_second_write & RC_MASK);
+                    second_write_row.value[i] = F::from_u64(_value_second_write & RC_MASK);
                     second_read_row.value[i] = F::from_u64(_value_second_read & RC_MASK);
                     _value_first_read >>= RC_BITS;
                     _value_first_write >>= RC_BITS;

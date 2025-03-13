@@ -4,7 +4,7 @@
 //! and managing multiplicity tables for binary table traces.
 
 use std::sync::{
-    atomic::{AtomicU64, AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
 
@@ -54,7 +54,10 @@ impl BinaryBasicTableSM {
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryBasicTableSM`.
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { multiplicity: create_atomic_vec(BinaryTableTrace::<usize>::NUM_ROWS), calculated: AtomicBool::new(false) })
+        Arc::new(Self {
+            multiplicity: create_atomic_vec(BinaryTableTrace::<usize>::NUM_ROWS),
+            calculated: AtomicBool::new(false),
+        })
     }
 
     /// Processes a slice of input data and updates the multiplicity table.
