@@ -1,6 +1,19 @@
 # Quickstart
 
-In this guide, you will learn how to create and run a simple program using ZisK.
+In this guide, you will learn how to install ZisK, create a simple program and run it using ZisK.
+
+## Installation
+
+ZisK currently supports **Linux x86_64** systems.
+
+> **Note:** macOS is not yet supported, but we are actively working on adding support.
+
+Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
+
+To install ZisK using ziskup, run the following command in your terminal:
+```bash
+curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh | bash
+```
 
 ## Create a Project
 

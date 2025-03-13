@@ -4,9 +4,11 @@ ZisK can be installed from prebuilt binaries (recommended) or by building ZisK t
 
 ## System Requirements
 
-ZisK currently supports Linux x86_64 systems. **Proof generation on macOS is not supported.**
+ZisK currently supports **Linux x86_64** systems.
 
-### Required Tools (Linux & macOS)
+> **Note:** macOS is not yet supported, but we are actively working on adding support.
+
+### Required Tools
 
 Ensure the following tools are installed:
 * [Rust](https://www.rust-lang.org/tools/install)
@@ -22,36 +24,6 @@ Install all required dependencies with:
 ```bash
 sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm
 ```
-
-### macOs
-
-1. Install Homebrew:
-    ```bash
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    ```
-
-2. Install protobuf (required for `cargo build`):
-    ```bash
-    brew install protobuf
-    ```
-
-3. Install libusb & jq (required for `ziskup`):
-    ```bash
-    brew install libusb jq
-    ```
-
-4. Install Node.js:
-    ```bash
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-    source $HOME/.bashrc
-    nvm install 19
-    nvm use 19
-    ```
-
-5. Install Circom:
-    ```bash
-    https://docs.circom.io/getting-started/installation/
-    ```
 
 ### Alternative: Using Nix Flake
 
