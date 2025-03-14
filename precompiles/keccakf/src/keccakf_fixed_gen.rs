@@ -1,7 +1,7 @@
 use std::{error::Error, fs};
 
 use clap::{Arg, Command};
-use p3_field::AbstractField;
+use p3_field::PrimeCharacteristicRing;
 use p3_goldilocks::Goldilocks;
 use serde::de::DeserializeOwned;
 
@@ -120,15 +120,15 @@ fn cols_gen(
     let num_slots = (subgroup_order - 1) / slot_size;
 
     // Get the coset generators "ks" and the generator "w"
-    let w = F::from_canonical_u64(subgroup_gen);
-    let k = F::from_canonical_u64(cosets_gen);
+    let w = F::from_u64(subgroup_gen);
+    let k = F::from_u64(cosets_gen);
     let ks = get_ks(k, 2);
 
     // Initialize the connections with the row identifiers
-    let mut wi = F::one();
-    let mut conn_a = vec![F::one(); subgroup_order];
-    let mut conn_b = vec![F::one(); subgroup_order];
-    let mut conn_c = vec![F::one(); subgroup_order];
+    let mut wi = F::ONE;
+    let mut conn_a = vec![F::ONE; subgroup_order];
+    let mut conn_b = vec![F::ONE; subgroup_order];
+    let mut conn_c = vec![F::ONE; subgroup_order];
     for i in 0..subgroup_order {
         conn_a[i] = wi;
         conn_b[i] = wi * ks[0];
@@ -137,7 +137,7 @@ fn cols_gen(
     }
 
     // Initialize the gate_op
-    let mut gate_op = vec![F::zero(); subgroup_order];
+    let mut gate_op = vec![F::ZERO; subgroup_order];
 
     // Compute the connections and gate_op
     for i in 0..num_slots {
@@ -212,8 +212,8 @@ fn cols_gen(
             }
 
             match line.op.as_str() {
-                "xor" => gate_op[ref_] = F::zero(),
-                "andp" => gate_op[ref_] = F::one(),
+                "xor" => gate_op[ref_] = F::ZERO,
+                "andp" => gate_op[ref_] = F::ONE,
                 _ => panic!("Invalid op: {}", line.op),
             }
         }

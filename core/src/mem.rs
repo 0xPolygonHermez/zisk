@@ -6,12 +6,13 @@
 //! * The addressable memory space is divided into several regions described in the following map:
 //!
 //! `|--------------- ROM_ENTRY: first BIOS instruction   (    0x1000)`
+//! `|--------------- ROM_EXIT: last BIOS instruction     (    0x1004)`
 //! `|`
 //! `| Performs memory initialization, calls program at ROM_ADDR,`
 //! `| and after returning it performs memory finalization.`
 //! `| Contains ecall/system call management code.`
 //! `|`
-//! `|--------------- ROM_EXIT: last BIOS instruction     (0x10000000)`
+//! `|---------------`
 //! `      ...`
 //! `|--------------- ROM_ADDR: first program instruction (0x80000000)`
 //! `|`
@@ -104,7 +105,7 @@ pub const AVAILABLE_MEM_SIZE: u64 = RAM_SIZE - OUTPUT_MAX_SIZE - SYS_SIZE;
 /// First BIOS instruction address, i.e. first instruction executed
 pub const ROM_ENTRY: u64 = 0x1000;
 /// Last BIOS instruction address, i.e. last instruction executed
-pub const ROM_EXIT: u64 = 0x10000000;
+pub const ROM_EXIT: u64 = 0x1004;
 /// First program ROM instruction address, i.e. first RISC-V transpiled instruction
 pub const ROM_ADDR: u64 = 0x80000000;
 /// Maximum program ROM instruction address

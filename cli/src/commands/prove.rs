@@ -3,7 +3,9 @@ use anyhow::Result;
 use colored::Colorize;
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
-use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ProofOptions};
+use proofman_common::{
+    initialize_logger, json_to_debug_instances_map, DebugInfo, ModeName, ProofOptions,
+};
 use rom_merkle::{gen_elf_hash, get_elf_bin_file_path, get_rom_blowup_factor, DEFAULT_CACHE_PATH};
 use std::{collections::HashMap, fs, path::PathBuf};
 
@@ -95,7 +97,7 @@ impl ZiskProve {
         };
 
         let default_cache_path =
-            self.default_cache.clone().unwrap_or_else(|| PathBuf::from(DEFAULT_CACHE_PATH));
+            std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
 
         if !default_cache_path.exists() {
             if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
@@ -124,9 +126,9 @@ impl ZiskProve {
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
-        match self.field {
-            Field::Goldilocks => {
-                ProofMan::<Goldilocks>::generate_proof(
+        if debug_info.std_mode.name == ModeName::Debug {
+            match self.field {
+                Field::Goldilocks => ProofMan::<Goldilocks>::verify_proof_constraints(
                     self.get_witness_computation_lib(),
                     Some(self.elf.clone()),
                     self.public_inputs.clone(),
@@ -143,8 +145,29 @@ impl ZiskProve {
                         debug_info,
                     ),
                 )
-                .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
-            }
+                .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?,
+            };
+        } else {
+            match self.field {
+                Field::Goldilocks => ProofMan::<Goldilocks>::generate_proof(
+                    self.get_witness_computation_lib(),
+                    Some(self.elf.clone()),
+                    self.public_inputs.clone(),
+                    self.input.clone(),
+                    self.get_proving_key(),
+                    self.output_dir.clone(),
+                    custom_commits_map,
+                    ProofOptions::new(
+                        false,
+                        self.verbose.into(),
+                        self.aggregation,
+                        self.final_snark,
+                        self.verify_proofs,
+                        debug_info,
+                    ),
+                )
+                .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?,
+            };
         }
 
         Ok(())

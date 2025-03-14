@@ -4,7 +4,7 @@
 //! and provides functionality to process inputs and manage multiplicity data.
 
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
 
@@ -19,6 +19,7 @@ use zisk_pil::ArithRangeTableTrace;
 pub struct ArithRangeTableSM {
     /// Multiplicity table shared across threads.
     multiplicity: Vec<AtomicU64>,
+    calculated: AtomicBool,
 }
 
 impl ArithRangeTableSM {
@@ -27,10 +28,16 @@ impl ArithRangeTableSM {
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithRangeTableSM`.
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { multiplicity: create_atomic_vec(ArithRangeTableTrace::<usize>::NUM_ROWS) })
+        Arc::new(Self {
+            multiplicity: create_atomic_vec(ArithRangeTableTrace::<usize>::NUM_ROWS),
+            calculated: AtomicBool::new(false),
+        })
     }
 
     pub fn process_slice(&self, inputs: &ArithRangeTableInputs) {
+        if self.calculated.load(Ordering::Relaxed) {
+            return;
+        }
         for (row, value) in inputs {
             self.multiplicity[row].fetch_add(value, Ordering::Relaxed);
         }
@@ -42,5 +49,9 @@ impl ArithRangeTableSM {
     /// A vector containing the multiplicity table.
     pub fn detach_multiplicity(&self) -> &[AtomicU64] {
         &self.multiplicity
+    }
+
+    pub fn set_calculated(&self) {
+        self.calculated.store(true, Ordering::Relaxed);
     }
 }

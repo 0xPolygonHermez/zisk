@@ -46,9 +46,6 @@ pub struct ZiskVerifyConstraints {
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
-
-    #[clap(short = 'c', long)]
-    pub default_cache: Option<PathBuf>,
 }
 
 impl ZiskVerifyConstraints {
@@ -67,7 +64,7 @@ impl ZiskVerifyConstraints {
         };
 
         let default_cache_path =
-            self.default_cache.clone().unwrap_or_else(|| PathBuf::from(DEFAULT_CACHE_PATH));
+            std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
 
         if !default_cache_path.exists() {
             if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
@@ -97,20 +94,18 @@ impl ZiskVerifyConstraints {
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
         match self.field {
-            Field::Goldilocks => {
-                ProofMan::<Goldilocks>::generate_proof(
-                    self.get_witness_computation_lib(),
-                    Some(self.elf.clone()),
-                    self.public_inputs.clone(),
-                    self.input.clone(),
-                    self.get_proving_key(),
-                    PathBuf::new(),
-                    custom_commits_map,
-                    ProofOptions::new(true, self.verbose.into(), false, false, false, debug_info),
-                )
-                .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
-            }
-        }
+            Field::Goldilocks => ProofMan::<Goldilocks>::verify_proof_constraints(
+                self.get_witness_computation_lib(),
+                Some(self.elf.clone()),
+                self.public_inputs.clone(),
+                self.input.clone(),
+                self.get_proving_key(),
+                PathBuf::new(),
+                custom_commits_map,
+                ProofOptions::new(true, self.verbose.into(), false, false, false, debug_info),
+            )
+            .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?,
+        };
 
         Ok(())
     }

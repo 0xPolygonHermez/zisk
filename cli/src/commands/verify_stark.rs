@@ -5,7 +5,7 @@ use proofman_common::initialize_logger;
 use std::io::Read;
 use std::{fs::File, path::PathBuf};
 
-use p3_field::AbstractField;
+use p3_field::PrimeCharacteristicRing;
 use p3_goldilocks::Goldilocks;
 
 use proofman::verify_proof_from_file;
@@ -59,12 +59,7 @@ impl ZiskVerify {
                 .iter()
                 .map(|s| s.parse::<u64>().expect("Failed to parse string as u64"))
                 .collect();
-            Some(
-                verkey_json
-                    .into_iter()
-                    .map(Goldilocks::from_canonical_u64)
-                    .collect::<Vec<Goldilocks>>(),
-            )
+            Some(verkey_json.into_iter().map(Goldilocks::from_u64).collect::<Vec<Goldilocks>>())
         } else {
             None
         };

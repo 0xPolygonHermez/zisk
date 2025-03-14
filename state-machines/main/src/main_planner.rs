@@ -3,6 +3,8 @@
 //! It generates execution plans for segments of the main trace, mapping each segment
 //! to a specific `Plan` instance.
 
+use std::any::Any;
+
 use p3_field::PrimeField;
 use sm_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan};
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
@@ -51,7 +53,7 @@ impl MainPlanner {
         let num_within = num_rows / min_traces_size;
         let num_instances = (min_traces.len() as f64 / num_within as f64).ceil() as usize;
 
-        let plans = (0..num_instances)
+        let plans: Vec<Plan> = (0..num_instances)
             .map(|segment_id| {
                 Plan::new(
                     ZISK_AIRGROUP_ID,
@@ -59,7 +61,7 @@ impl MainPlanner {
                     Some(segment_id),
                     InstanceType::Instance,
                     CheckPoint::Single(segment_id),
-                    None,
+                    Some(Box::new(segment_id == num_instances - 1) as Box<dyn Any>),
                 )
             })
             .collect();

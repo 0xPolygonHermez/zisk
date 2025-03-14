@@ -4,7 +4,7 @@
 //! and managing multiplicity tables for Keccakf table traces.
 
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
 
@@ -31,6 +31,7 @@ pub enum KeccakfTableGateOp {
 pub struct KeccakfTableSM {
     /// The multiplicity table, shared across threads.
     multiplicities: Vec<Vec<AtomicU64>>,
+    calculated: AtomicBool,
 }
 
 impl KeccakfTableSM {
@@ -43,7 +44,7 @@ impl KeccakfTableSM {
         for _ in 0..KeccakfTableTrace::<usize>::ROW_SIZE {
             multiplicities.push(create_atomic_vec(KeccakfTableTrace::<usize>::NUM_ROWS));
         }
-        Arc::new(Self { multiplicities })
+        Arc::new(Self { multiplicities, calculated: AtomicBool::new(false) })
     }
 
     /// Processes a slice of input data and updates the multiplicity table.
@@ -51,6 +52,9 @@ impl KeccakfTableSM {
     /// # Arguments
     /// * `input` - A slice of `u64` values representing the input data.
     pub fn update_input(&self, index: usize, value: u64) {
+        if self.calculated.load(Ordering::Relaxed) {
+            return;
+        }
         self.multiplicities[0][index].fetch_add(value, Ordering::Relaxed);
     }
 
@@ -60,6 +64,10 @@ impl KeccakfTableSM {
     /// A vector containing the multiplicity table.
     pub fn detach_multiplicities(&self) -> &[Vec<AtomicU64>] {
         &self.multiplicities
+    }
+
+    pub fn set_calculated(&self) {
+        self.calculated.store(true, Ordering::Relaxed);
     }
 
     /// Calculates the table row offset based on the provided parameters.

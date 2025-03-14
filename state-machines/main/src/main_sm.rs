@@ -13,8 +13,8 @@ use std::sync::{
 };
 
 use log::info;
-use num_bigint::BigInt;
-use p3_field::PrimeField;
+
+use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 use sm_common::{BusDeviceMetrics, InstanceCtx};
@@ -57,7 +57,6 @@ pub struct MainSM {}
 
 impl MainSM {
     const MY_NAME: &'static str = "MainSM  ";
-    const BATCH_SIZE: usize = 1 << 12; // 2^12 rows per batch
 
     /// Computes the main witness trace for a given segment based on the provided proof context,
     /// ROM, and emulation traces.
@@ -70,7 +69,7 @@ impl MainSM {
     /// * `main_instance` - Reference to the `MainInstance` representing the current segment.
     ///
     /// The computed trace is added to the proof context's air instance repository.
-    pub fn compute_witness<F: PrimeField>(
+    pub fn compute_witness<F: PrimeField64>(
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
         min_trace_size: u64,
@@ -180,16 +179,16 @@ impl MainSM {
             emu.step_slice_full_trace(&prev_trace.steps, &mut mem_reads_index, &mut reg_trace, None)
                 .c
         } else {
-            [F::zero(), F::zero()]
+            [F::ZERO, F::ZERO]
         };
 
         // Prepare main AIR values
         let mut air_values = MainAirValues::<F>::new();
 
-        air_values.main_segment = F::from_canonical_usize(segment_id);
+        air_values.main_segment = F::from_usize(segment_id);
         air_values.main_last_segment = F::from_bool(main_instance.is_last_segment);
         air_values.segment_initial_pc = main_trace.buffer[0].pc;
-        air_values.segment_next_pc = F::from_canonical_u64(next_pc);
+        air_values.segment_next_pc = F::from_u64(next_pc);
         air_values.segment_previous_c = prev_segment_last_c;
         air_values.segment_last_c = last_row.c;
 
@@ -218,7 +217,7 @@ impl MainSM {
     ///
     /// # Returns
     /// The next program counter value after processing the minimal trace.
-    fn fill_partial_trace<F: PrimeField>(
+    fn fill_partial_trace<F: PrimeField64>(
         zisk_rom: &ZiskRom,
         main_trace: &mut [MainTraceRow<F>],
         min_trace: &EmuTrace,
@@ -233,25 +232,26 @@ impl MainSM {
         // Total number of rows to fill from the emu trace
         let total_rows = min_trace.steps.steps as usize;
 
+        const BATCH_SIZE: usize = 1 << 12; // 2^12 rows per batch
+
         // Process rows in batches
-        let mut batch_buffer = MainTrace::with_capacity(1 << 12);
+        let mut batch_buffer = MainTrace::with_capacity(BATCH_SIZE);
 
-        for batch_start in (0..total_rows).step_by(Self::BATCH_SIZE) {
-            // Determine the size of the current batch
-            let batch_size = (batch_start + Self::BATCH_SIZE).min(total_rows) - batch_start;
+        for batch_start in (0..total_rows).step_by(BATCH_SIZE) {
+            let batch_end = (batch_start + BATCH_SIZE).min(total_rows);
+            let batch_size = batch_end - batch_start;
 
-            // Fill the batch buffer
-            batch_buffer.buffer.iter_mut().take(batch_size).for_each(|row| {
-                *row = emu.step_slice_full_trace(
+            // Process the batch
+            for i in 0..batch_size {
+                batch_buffer.buffer[i] = emu.step_slice_full_trace(
                     &min_trace.steps,
                     &mut mem_reads_index,
                     reg_trace,
                     Some(&**step_range_check),
                 );
-            });
+            }
 
-            // Copy the processed batch into the main trace buffer
-            let batch_end = batch_start + batch_size;
+            // Copy processed batch into main trace buffer
             main_trace[batch_start..batch_end].copy_from_slice(&batch_buffer.buffer[..batch_size]);
         }
 
@@ -265,7 +265,7 @@ impl MainSM {
         )
     }
 
-    fn complete_trace_with_initial_reg_steps_per_chunk<F: PrimeField>(
+    fn complete_trace_with_initial_reg_steps_per_chunk<F: PrimeField64>(
         num_rows: usize,
         fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace)],
         main_trace: &mut MainTrace<F>,
@@ -297,15 +297,15 @@ impl MainSM {
                     match slot {
                         0 => {
                             main_trace.buffer[row].a_reg_prev_mem_step =
-                                F::from_canonical_u64(reg_prev_mem_step)
+                                F::from_u64(reg_prev_mem_step)
                         }
                         1 => {
                             main_trace.buffer[row].b_reg_prev_mem_step =
-                                F::from_canonical_u64(reg_prev_mem_step)
+                                F::from_u64(reg_prev_mem_step)
                         }
                         2 => {
                             main_trace.buffer[row].store_reg_prev_mem_step =
-                                F::from_canonical_u64(reg_prev_mem_step)
+                                F::from_u64(reg_prev_mem_step)
                         }
                         _ => panic!("Invalid slot {}", slot),
                     }
@@ -329,7 +329,7 @@ impl MainSM {
             reg_steps[reg_index] = reg_prev_mem_step;
         }
     }
-    fn update_reg_airvalues<F: PrimeField>(
+    fn update_reg_airvalues<F: PrimeField64>(
         air_values: &mut MainAirValues<'_, F>,
         final_step: u64,
         last_reg_values: &[u64],
@@ -340,12 +340,9 @@ impl MainSM {
         let max_range = step_range_check.len() as u64;
         for ireg in 0..REGS_IN_MAIN {
             let reg_value = last_reg_values[ireg];
-            let values = [
-                F::from_canonical_u32(reg_value as u32),
-                F::from_canonical_u32((reg_value >> 32) as u32),
-            ];
+            let values = [F::from_u32(reg_value as u32), F::from_u32((reg_value >> 32) as u32)];
             air_values.last_reg_value[ireg] = values;
-            air_values.last_reg_mem_step[ireg] = F::from_canonical_u64(reg_steps[ireg]);
+            air_values.last_reg_mem_step[ireg] = F::from_u64(reg_steps[ireg]);
             let range = (final_step - reg_steps[ireg]) as usize;
             if range > max_range as usize {
                 large_range_checks.push(range as u32);
@@ -354,29 +351,25 @@ impl MainSM {
             }
         }
     }
-    fn update_std_range_checks<F: PrimeField>(
+    fn update_std_range_checks<F: PrimeField64>(
         std: Arc<Std<F>>,
         step_range_check: Arc<Vec<AtomicU32>>,
         large_range_checks: &[u32],
     ) {
-        let range_id = std.get_range(BigInt::from(1), BigInt::from(MEMORY_MAX_DIFF), None);
+        let range_id = std.get_range(1, MEMORY_MAX_DIFF as i64, None);
         for (value, _multiplicity) in step_range_check.iter().enumerate() {
             let multiplicity = _multiplicity.load(Ordering::Relaxed);
             if multiplicity != 0 {
-                std.range_check(
-                    F::from_canonical_usize(value + 1),
-                    F::from_canonical_u32(multiplicity),
-                    range_id,
-                );
+                std.range_check((value + 1) as i64, multiplicity as u64, range_id);
             }
         }
         for range in large_range_checks {
-            std.range_check(F::from_canonical_u32(*range), F::from_canonical_u32(1), range_id);
+            std.range_check(*range as i64, 1, range_id);
         }
     }
 
     /// Debug method for the main state machine.
-    pub fn debug<F: PrimeField>(_pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {
+    pub fn debug<F: PrimeField64>(_pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {
         // No debug information to display
     }
 

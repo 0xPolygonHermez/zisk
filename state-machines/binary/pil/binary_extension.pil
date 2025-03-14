@@ -102,5 +102,7 @@ airtemplate BinaryExtension(const int N = 2**18, const int operation_bus_id) {
         multiplicity
     );
 
-    range_check(expression: in2[0], min: 0, max: 2**24-1, sel: op_is_shift);
+    // To optimize performance, we perform a range check on [1, 2**24] instead of the natural range [0, 2**24-1].
+    // This is achieved by shifting the expression by 1, aligning with the memory's frequent range checks.
+    range_check(expression: in2[0] + 1, min: 1, max: 2**24, sel: op_is_shift);
 }
