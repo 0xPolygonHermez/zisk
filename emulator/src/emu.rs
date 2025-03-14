@@ -1454,16 +1454,6 @@ impl<'a> Emu<'a> {
         // Store the 'c' register value based on the storage specified by the current instruction
         self.store_c_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);
 
-        // if block_idx == 54 && emu_full_trace_vec.mem_reads.len() >= 5520 && emu_full_trace_vec.mem_reads.len() <= 5530 {
-        //     println!(
-        //         "{} --> Emu::par_step_my_block() block_idx={} pc={:x} inst={}",
-        //         emu_full_trace_vec.mem_reads.len(),
-        //         block_idx,
-        //         self.ctx.inst_ctx.pc,
-        //         instruction.to_text()
-        //     );
-        // }
-
         // Set SP, if specified by the current instruction
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
