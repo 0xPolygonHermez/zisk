@@ -63,6 +63,9 @@ pub struct InstContext {
     /// End flag, set to true only by the last instruction to execute
     pub end: bool,
 
+    /// Load address register
+    pub load_reg: u8,
+
     /// Registers
     pub regs: [u64; 32],
 
@@ -84,6 +87,7 @@ impl InstContext {
             pc: ROM_ENTRY,
             step: 0,
             end: false,
+            load_reg: 0,
             regs: [0; 32],
             precompiled: PrecompiledInstContext::default(),
         }

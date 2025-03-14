@@ -155,7 +155,7 @@ impl BusDevice<PayloadType> for ArithEqCollector {
         let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
-        if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::Arith256 as u32 {
+        if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::ArithEq as u32 {
             return None;
         }
 

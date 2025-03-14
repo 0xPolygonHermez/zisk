@@ -35,6 +35,7 @@ impl EmuContext {
                 pc: ROM_ENTRY,
                 step: 0,
                 end: false,
+                load_reg: 0,
                 regs: [0; 32],
                 precompiled: PrecompiledInstContext::default(),
             },

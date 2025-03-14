@@ -86,7 +86,7 @@ impl ArithEqCounterInputGen {
     /// # Returns
     /// Returns the count of instructions for the specified operation type.
     pub fn inst_count(&self, op_type: ZiskOperationType) -> Option<u64> {
-        (op_type == ZiskOperationType::Arith256).then_some(self.counter.inst_count)
+        (op_type == ZiskOperationType::ArithEq).then_some(self.counter.inst_count)
     }
 
     fn generate_mem_inputs(

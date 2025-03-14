@@ -52,7 +52,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager {
             ArithEqTrace::<usize>::AIRGROUP_ID,
             ArithEqTrace::<usize>::AIR_ID,
             num_available_ops,
-            ZiskOperationType::Arith256,
+            ZiskOperationType::ArithEq,
         )))
     }
 

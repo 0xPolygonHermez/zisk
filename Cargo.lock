@@ -4097,6 +4097,7 @@ dependencies = [
  "p3-field",
  "p3-goldilocks",
  "pil-std-lib",
+ "precomp-arith-eq",
  "precomp-keccakf",
  "proofman-common",
  "proofman-macros",

@@ -37,7 +37,7 @@ pub enum OpType {
     BinaryE,
     Keccak,
     PubOut,
-    Arith256,
+    ArithEq,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -49,7 +49,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::BinaryE => ZiskOperationType::BinaryE,
             OpType::Keccak => ZiskOperationType::Keccak,
             OpType::PubOut => ZiskOperationType::PubOut,
-            OpType::Arith256 => ZiskOperationType::Arith256,
+            OpType::ArithEq => ZiskOperationType::ArithEq,
         }
     }
 }
@@ -65,7 +65,7 @@ impl Display for OpType {
             Self::BinaryE => write!(f, "BinaryE"),
             Self::Keccak => write!(f, "Keccak"),
             Self::PubOut => write!(f, "PubOut"),
-            Self::Arith256 => write!(f, "Arith256"),
+            Self::ArithEq => write!(f, "Arith256"),
         }
     }
 }
@@ -82,6 +82,7 @@ impl FromStr for OpType {
             "b" => Ok(Self::Binary),
             "be" => Ok(Self::BinaryE),
             "k" => Ok(Self::Keccak),
+            "aeq" => Ok(Self::ArithEq),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -300,10 +301,10 @@ define_ops! {
     (MaxW, "max_w", Binary, 77, 0x25, 0, opc_max_w, op_max_w),
     (Keccak, "keccak", Keccak, 77, 0xf1, 200, opc_keccak, op_keccak),
     (PubOut, "pubout", PubOut, 77, 0x30, 0, opc_pubout, op_pubout),
-    (Arith256, "arith_256", Arith256, 77, 0xf2, 160, opc_arith_256, op_arith_256),
-    (Arith256Mod, "arith_256_mod", Arith256, 77, 0xf3, 160, opc_arith_256_mod, op_arith_256_mod),
-    (Secp256k1Add, "secp256k1_add", Arith256, 77, 0xf4, 160, opc_secp256k1_add, op_secp256k1_add),
-    (Secp256k1Dbl, "secp256k1_dbl", Arith256, 77, 0xf5, 160, opc_secp256k1_dbl, op_secp256k1_add),
+    (Arith256, "arith_256", ArithEq, 77, 0xf2, 160, opc_arith_256, op_arith_256),
+    (Arith256Mod, "arith_256_mod", ArithEq, 77, 0xf3, 160, opc_arith_256_mod, op_arith_256_mod),
+    (Secp256k1Add, "secp256k1_add", ArithEq, 77, 0xf4, 160, opc_secp256k1_add, op_secp256k1_add),
+    (Secp256k1Dbl, "secp256k1_dbl", ArithEq, 77, 0xf5, 160, opc_secp256k1_dbl, op_secp256k1_add),
 }
 
 /* INTERNAL operations */
@@ -1070,7 +1071,7 @@ pub fn opc_max_w(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn opc_keccak(ctx: &mut InstContext) {
     // Get address from register a0 = x10
-    let address = ctx.regs[Mem::address_to_register_index(REG_A0)];
+    let address = ctx.regs[ctx.load_reg as usize];
     if address & 0x7 != 0 {
         panic!("opc_keccak() found address not aligned to 8 bytes");
     }

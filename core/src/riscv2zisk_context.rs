@@ -12,7 +12,7 @@ use crate::{
 use std::collections::HashMap;
 
 const CAUSE_EXIT: u64 = 93;
-const CAUSE_KECCAK: u64 = 0x00_01_01_01;
+const CAUSE_KECCAK: u64 = 0x800;
 const CSR_ADDR: u64 = SYS_ADDR + 0x8000;
 const MTVEC: u64 = CSR_ADDR + 0x305;
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
@@ -835,12 +835,18 @@ impl Riscv2ZiskContext<'_> {
             }
         } else if i.rd == 0 {
             let mut zib = ZiskInstBuilder::new(self.s);
-            zib.src_a("mem", CSR_ADDR + i.csr as u64, false);
             zib.src_b("reg", i.rs1 as u64, false);
-            zib.op("or").unwrap();
-            zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
             zib.j(4, 4);
-            zib.verbose(&format!("{} r{}, 0x{:x}, r{} # rs!=rd=0", i.inst, i.rd, i.csr, i.rs1));
+            if i.csr >= 0x800 && i.csr <= 0x8FF {
+                zib.src_a("step", 0, false);
+                zib.op("keccak").unwrap();
+                zib.verbose("keccak");
+            } else {
+                zib.src_a("mem", CSR_ADDR + i.csr as u64, false);
+                zib.op("or").unwrap();
+                zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
+                zib.verbose(&format!("{} r{}, 0x{:x}, r{} # rs!=rd=0", i.inst, i.rd, i.csr, i.rs1));
+            }
             zib.build();
             self.insts.insert(self.s, zib);
             self.s += 4;

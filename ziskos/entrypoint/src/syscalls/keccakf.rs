@@ -21,11 +21,8 @@ pub extern "C" fn syscall_keccak_f(state: *mut [u64; 25]) {
     #[cfg(target_os = "ziskos")]
     unsafe {
         asm!(
-            "ecall",
-            in("a7") crate::syscalls::KECCAKF,
-            in("a0") state,
-            in("a1") 0,
-            out("ra") _,
+            "csrs 0x800, {ptr}",
+            ptr = in(reg) state
         );
     }
     #[cfg(not(target_os = "ziskos"))]

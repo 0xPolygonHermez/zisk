@@ -77,7 +77,7 @@ pub enum ZiskOperationType {
     BinaryE,
     Keccak,
     PubOut,
-    Arith256,
+    ArithEq,
 }
 
 pub const ZISK_OP_TYPE_COUNT: usize = 7;
