@@ -1627,7 +1627,7 @@ impl ZiskRom {
                     // Store previous aligned address value in mem_reads, and advance address
                     *s += &format!(
                         "\tmov {}, [{}] /* value = mem[prev_address] */\n",
-                        REG_VALUE, REG_ADDRESS
+                        REG_VALUE, REG_AUX
                     );
                     *s += &format!(
                         "\tmov [{}], {} /* [mem_reads_address] = prev_c */\n",
@@ -1644,7 +1644,7 @@ impl ZiskRom {
                     // Store next aligned address value in mem_reads, and advance address
                     *s += &format!(
                         "\tmov {}, [{}] /* value = mem[next_address] */\n",
-                        REG_VALUE, REG_ADDRESS
+                        REG_VALUE, REG_AUX
                     );
                     *s += &format!(
                         "\tmov [{}], {} /* [mem_reads_address] = next_c */\n",
