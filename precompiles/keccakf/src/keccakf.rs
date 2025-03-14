@@ -51,7 +51,7 @@ impl KeccakfSM {
     pub fn new(keccakf_table_sm: Arc<KeccakfTableSM>) -> Arc<Self> {
         // Parse the script
         let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-        let script_path = PathBuf::from(format!("{}/.zisk/bin/keccakf_script.json", home_dir));
+        let script_path = PathBuf::from(format!("./precompiles/keccakf/src/keccakf_script.json"));
         if !script_path.exists() {
             panic!("Keccakf script file not found at {:?}", script_path);
         }
@@ -431,7 +431,7 @@ impl KeccakfSM {
         // Get the fixed cols
         let airgroup_id = KeccakfTrace::<usize>::AIRGROUP_ID;
         let air_id = KeccakfTrace::<usize>::AIR_ID;
-        let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
+        let fixed_pols = sctx.get_fixed_slice(airgroup_id, air_id);
         let fixed = KeccakfFixed::from_slice(&fixed_pols);
 
         timer_start_trace!(KECCAKF_TRACE);

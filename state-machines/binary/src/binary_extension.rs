@@ -372,6 +372,11 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         let padding_row = BinaryExtensionTraceRow::<F> {
             op: F::from_canonical_u8(SE_W_OP),
             ..Default::default()
+        };
+
+        binary_e_trace.buffer[total_inputs..num_rows].fill(padding_row);
+
+        let padding_size = num_rows - total_inputs;
         for i in 0..8 {
             let multiplicity = padding_size as u64;
             let row = BinaryExtensionTableSM::calculate_table_row(

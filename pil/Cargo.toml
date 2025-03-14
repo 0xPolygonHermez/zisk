@@ -15,3 +15,4 @@ serde_arrays = "0.1"
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
 diagnostic = ["proofman-macros/diagnostic"]
+gpu = ["proofman-common/gpu"]

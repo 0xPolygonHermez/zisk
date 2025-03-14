@@ -37,7 +37,7 @@ impl CheckSetupCmd {
 
         initialize_logger(verbose_mode);
 
-        match self.field {
+        /*match self.field {
             Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
                 self.proving_key.clone(),
                 ProofOptions::new(
@@ -49,7 +49,7 @@ impl CheckSetupCmd {
                     DebugInfo::default(),
                 ),
             )?,
-        };
+        };*/
 
         Ok(())
     }
