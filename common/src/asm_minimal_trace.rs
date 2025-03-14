@@ -1,6 +1,6 @@
 use crate::{EmuTrace, EmuTraceStart};
 use libc::shm_unlink;
-use std::ffi::{CString, c_void};
+use std::ffi::{c_void, CString};
 use std::fmt::Debug;
 
 #[derive(Debug)]

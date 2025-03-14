@@ -14,12 +14,40 @@ use std::{fs, ptr};
 
 pub struct AsmRunner;
 
+#[allow(dead_code)]
+pub enum AsmTraceLevel {
+    None,
+    Trace,
+    ExtendedTrace,
+}
+
+pub struct AsmRunnerOptions {
+    pub log_output: bool,
+    pub metrics: bool,
+    pub verbose: bool,
+    pub trace_level: AsmTraceLevel,
+    pub keccak_trace: bool,
+}
+
+impl Default for AsmRunnerOptions {
+    fn default() -> Self {
+        Self {
+            log_output: false,
+            metrics: false,
+            verbose: false,
+            trace_level: AsmTraceLevel::None,
+            keccak_trace: false,
+        }
+    }
+}
+
 impl AsmRunner {
     pub fn run(
         inputs_path: &Path,
         ziskemuasm_path: &Path,
         max_steps: u64,
         chunk_size: u64,
+        options: AsmRunnerOptions,
     ) -> AsmMinimalTraces {
         let pid = unsafe { libc::getpid() };
 
@@ -29,15 +57,34 @@ impl AsmRunner {
 
         Self::write_input(inputs_path, &shmem_input_name, max_steps, chunk_size);
 
+        // Prepare command
+        let mut command = Command::new(ziskemuasm_path);
+        if !options.log_output {
+            command.arg("-o");
+        }
+        if options.metrics {
+            command.arg("-m");
+        }
+        if options.verbose {
+            command.arg("-v");
+        }
+        match options.trace_level {
+            AsmTraceLevel::None => {}
+            AsmTraceLevel::Trace => {
+                command.arg("-t");
+            }
+            AsmTraceLevel::ExtendedTrace => {
+                command.arg("-tt");
+            }
+        }
+        if options.keccak_trace {
+            command.arg("-k");
+        }
+
         // Spawn child process
-        if let Err(e) = Command::new(ziskemuasm_path)
-            .arg(&shmem_prefix)
-            // .arg("-t")
-            .spawn()
-            .and_then(|mut child| child.wait())
-        {
+        if let Err(e) = command.arg(&shmem_prefix).spawn().and_then(|mut child| child.wait()) {
             eprintln!("Child process failed: {:?}", e);
-        } else {
+        } else if options.verbose || options.log_output {
             println!("Child exited successfully");
         }
 
