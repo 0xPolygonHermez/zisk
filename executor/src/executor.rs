@@ -135,6 +135,7 @@ impl<F: PrimeField> ZiskExecutor<F> {
             self.asm_path.as_ref().unwrap(),
             Self::MAX_NUM_STEPS,
             Self::MIN_TRACE_SIZE,
+            asm_runner::AsmRunnerOptions::default(),
         ))
     }
 
@@ -155,15 +156,13 @@ impl<F: PrimeField> ZiskExecutor<F> {
             ..EmuOptions::default()
         };
 
-        MinimalTraces::EmuTrace(
-            ZiskEmulator::compute_minimal_traces::<F>(
-                &self.zisk_rom,
-                &input_data,
-                &emu_options,
-                num_threads,
-            )
-            .expect("Error during emulator execution"),
+        let min_traces = ZiskEmulator::compute_minimal_traces::<F>(
+            &self.zisk_rom,
+            &input_data,
+            &emu_options,
+            num_threads,
         )
+        .expect("Error during emulator execution");
 
         // let asm_min_traces = AsmRunner::run(
         //     self.input_data_path.as_ref().unwrap(),
@@ -174,8 +173,16 @@ impl<F: PrimeField> ZiskExecutor<F> {
 
         // println!("Minimal traces: {} {}", min_traces.len(), asm_min_traces.vec_chunks.len());
         // for i in 0..min_traces.len() {
-        //     println!("{}:\n{:?}\n{:?}", i, min_traces[i].start_state, asm_min_traces.vec_chunks[i].start_state);
+        //     println!("{}:\nemu {:?}\nasm {:?}", i, min_traces[i], asm_min_traces.vec_chunks[i]);
+        //     // Check mem reads
+        //     for j in 0..min_traces[i].mem_reads.len() {
+        //         if min_traces[i].mem_reads[j] != asm_min_traces.vec_chunks[i].mem_reads[j] {
+        //             println!("mem reads[{}]: {:#x?} {:#x?}", j, min_traces[i].mem_reads[j], asm_min_traces.vec_chunks[i].mem_reads[j]);
+        //         }
+        //     }
         // }
+
+        MinimalTraces::EmuTrace(min_traces)
     }
 
     /// Adds main state machine instances to the proof context and assigns global IDs.
