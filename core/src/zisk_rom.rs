@@ -1336,14 +1336,6 @@ impl ZiskRom {
                             *s += &format!("pc_{:x}_b_ind_address_done:\n", ctx.pc);
                         }
                         1 => {
-                            // Read 1-bytes value from address
-                            *s += &format!(
-                                "\tmovzx {}, byte ptr [{}] /* width=1: {} = mem[address] */\n",
-                                if ctx.store_b_in_c { REG_C } else { REG_B },
-                                REG_ADDRESS,
-                                if ctx.store_b_in_c { "c" } else { "b" }
-                            );
-
                             // Calculate previous aligned address
                             *s += &format!(
                                 "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
