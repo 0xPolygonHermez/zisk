@@ -1462,6 +1462,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.end = instruction.end;
 
         emu_full_trace_vec.last_c = self.ctx.inst_ctx.c;
+        emu_full_trace_vec.end = self.ctx.inst_ctx.end;
 
         // Increment step counter
         self.ctx.inst_ctx.step += 1;
