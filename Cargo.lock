@@ -2030,6 +2030,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
+name = "path-clean"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17359afc20d7ab31fdb42bb844c8b3bb1dabd7dcf7e68428492da7f16966fcef"
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2153,7 +2159,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "precomp-arith-256"
+name = "precomp-arith-eq"
 version = "0.1.0"
 dependencies = [
  "ark-ff",
@@ -2169,6 +2175,7 @@ dependencies = [
  "num-traits",
  "p3-field",
  "p3-goldilocks",
+ "path-clean",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4075,7 +4082,7 @@ dependencies = [
 name = "zisk-precompiles"
 version = "0.1.0"
 dependencies = [
- "precomp-arith-256",
+ "precomp-arith-eq",
  "precomp-keccakf",
  "precompiles-common",
 ]

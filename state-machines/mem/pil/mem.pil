@@ -325,6 +325,10 @@ function main_step_to_precompiled_mem_step(const expr step, const int is_write =
 
 // Helpers for precompiled memory operations
 
+function precompiled_mem_op(int id = MEMORY_ID, expr op, expr addr, expr main_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
+    mem_assumes(id, op, addr, main_step_to_precompiled_mem_step(main_step), 8, value, sel, name);
+}
+
 function precompiled_mem_load(int id = MEMORY_ID, expr addr, expr main_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     mem_assumes(id, MEMORY_LOAD_OP, addr, main_step_to_precompiled_mem_step(main_step), 8, value, sel, name);
 }
