@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use cargo_zisk::{
-    commands::{ZiskBuild, ZiskProve, ZiskRun, ZiskSdk, ZiskVerify, ZiskVerifyConstraints},
+    commands::{ZiskBuild, ZiskProve, ZiskRun, ZiskSdk, ZiskCheckSetup, ZiskVerify, ZiskVerifyConstraints},
     ZISK_VERSION_MESSAGE,
 };
 use clap::Parser;
@@ -19,6 +19,7 @@ pub enum Cargo {
     Run(ZiskRun),
     Build(ZiskBuild),
     Prove(ZiskProve),
+    CheckSetup(ZiskCheckSetup),
     VerifyConstraints(ZiskVerifyConstraints),
     Verify(ZiskVerify),
 }
@@ -36,6 +37,9 @@ fn main() -> Result<()> {
         }
         Cargo::Build(cmd) => {
             cmd.run().context("Error executing Build command")?;
+        }
+        Cargo::CheckSetup(cmd) => {
+            cmd.run().context("Error executing CheckSetup command")?;
         }
         Cargo::Prove(args) => {
             args.run().context("Error executing Prove command")?;

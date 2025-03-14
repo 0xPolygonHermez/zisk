@@ -43,8 +43,8 @@ impl Default for AsmRunnerOptions {
 
 impl AsmRunner {
     pub fn run(
-        inputs_path: &Path,
         ziskemuasm_path: &Path,
+        inputs_path: &Path,
         max_steps: u64,
         chunk_size: u64,
         options: AsmRunnerOptions,

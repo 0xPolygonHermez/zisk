@@ -4,7 +4,7 @@
 //! and managing multiplicity tables for binary table traces.
 
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
 
@@ -45,6 +45,7 @@ pub enum BinaryBasicTableOp {
 pub struct BinaryBasicTableSM {
     /// The multiplicity table, shared across threads.
     multiplicity: Vec<AtomicU64>,
+    calculated: AtomicBool,
 }
 
 impl BinaryBasicTableSM {
@@ -53,7 +54,10 @@ impl BinaryBasicTableSM {
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryBasicTableSM`.
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { multiplicity: create_atomic_vec(BinaryTableTrace::<usize>::NUM_ROWS) })
+        Arc::new(Self {
+            multiplicity: create_atomic_vec(BinaryTableTrace::<usize>::NUM_ROWS),
+            calculated: AtomicBool::new(false),
+        })
     }
 
     /// Processes a slice of input data and updates the multiplicity table.
@@ -61,6 +65,9 @@ impl BinaryBasicTableSM {
     /// # Arguments
     /// * `input` - A slice of `u64` values representing the input data.
     pub fn update_multiplicity(&self, row: u64, value: u64) {
+        if self.calculated.load(Ordering::Relaxed) {
+            return;
+        }
         self.multiplicity[row as usize].fetch_add(value, Ordering::Relaxed);
     }
 
@@ -70,6 +77,10 @@ impl BinaryBasicTableSM {
     /// A vector containing the multiplicity table.
     pub fn detach_multiplicity(&self) -> &[AtomicU64] {
         &self.multiplicity
+    }
+
+    pub fn set_calculated(&self) {
+        self.calculated.store(true, Ordering::Relaxed);
     }
 
     /// Calculates the table row offset based on the provided parameters.

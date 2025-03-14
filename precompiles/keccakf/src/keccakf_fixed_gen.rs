@@ -1,6 +1,7 @@
 use std::{error::Error, fs};
 
-use p3_field::AbstractField;
+use clap::{Arg, Command};
+use p3_field::PrimeCharacteristicRing;
 use p3_goldilocks::Goldilocks;
 use serde::de::DeserializeOwned;
 
@@ -17,12 +18,44 @@ use keccakf_types::{Connections, Script};
 type F = Goldilocks;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let matches = Command::new("keccakf_fixed_gen")
+        .version(env!("CARGO_PKG_VERSION"))
+        .arg(
+            Arg::new("script")
+                .short('s')
+                .long("script")
+                .value_name("script_path")
+                .help("Path to the script JSON file")
+                .default_value("precompiles/keccakf/src/keccakf_script.json"),
+        )
+        .arg(
+            Arg::new("connections")
+                .short('c')
+                .long("connections")
+                .value_name("connections_path")
+                .help("Path to the connections JSON file")
+                .default_value("precompiles/keccakf/src/keccakf_connections.json"),
+        )
+        .arg(
+            Arg::new("output")
+                .short('o')
+                .long("output")
+                .value_name("output_path")
+                .help("Path to the output binary file")
+                .default_value("precompiles/keccakf/src/keccakf_fixed.bin"),
+        )
+        .get_matches();
+
+    let script_path = matches.get_one::<String>("script").unwrap();
+    let connections_path = matches.get_one::<String>("connections").unwrap();
+    let output_file = matches.get_one::<String>("output").unwrap();
+
     let n: usize = KeccakfTrace::<usize>::NUM_ROWS;
     let bits = log2(n);
 
     // Get the script and connections
-    let script: Script = read_json("precompiles/keccakf/src/keccakf_script.json")?;
-    let connections: Connections = read_json("precompiles/keccakf/src/keccakf_connections.json")?;
+    let script: Script = read_json(script_path)?;
+    let connections: Connections = read_json(connections_path)?;
 
     // Get the subgroup generator and coset generator
     let subgroup_gen = GOLDILOCKS_GEN[bits];
@@ -38,7 +71,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let conn_c = FixedColsInfo::new("Keccakf.CONN_C", None, conn_c);
     let gate_op = FixedColsInfo::new("Keccakf.GATE_OP", None, gate_op);
 
-    let output_file = "precompiles/keccakf/src/keccakf_fixed.bin";
     write_fixed_cols_bin(
         output_file,
         "Zisk",
@@ -88,15 +120,15 @@ fn cols_gen(
     let num_slots = (subgroup_order - 1) / slot_size;
 
     // Get the coset generators "ks" and the generator "w"
-    let w = F::from_canonical_u64(subgroup_gen);
-    let k = F::from_canonical_u64(cosets_gen);
+    let w = F::from_u64(subgroup_gen);
+    let k = F::from_u64(cosets_gen);
     let ks = get_ks(k, 2);
 
     // Initialize the connections with the row identifiers
-    let mut wi = F::one();
-    let mut conn_a = vec![F::one(); subgroup_order];
-    let mut conn_b = vec![F::one(); subgroup_order];
-    let mut conn_c = vec![F::one(); subgroup_order];
+    let mut wi = F::ONE;
+    let mut conn_a = vec![F::ONE; subgroup_order];
+    let mut conn_b = vec![F::ONE; subgroup_order];
+    let mut conn_c = vec![F::ONE; subgroup_order];
     for i in 0..subgroup_order {
         conn_a[i] = wi;
         conn_b[i] = wi * ks[0];
@@ -105,7 +137,7 @@ fn cols_gen(
     }
 
     // Initialize the gate_op
-    let mut gate_op = vec![F::zero(); subgroup_order];
+    let mut gate_op = vec![F::ZERO; subgroup_order];
 
     // Compute the connections and gate_op
     for i in 0..num_slots {
@@ -180,8 +212,8 @@ fn cols_gen(
             }
 
             match line.op.as_str() {
-                "xor" => gate_op[ref_] = F::zero(),
-                "andp" => gate_op[ref_] = F::one(),
+                "xor" => gate_op[ref_] = F::ZERO,
+                "andp" => gate_op[ref_] = F::ONE,
                 _ => panic!("Invalid op: {}", line.op),
             }
         }

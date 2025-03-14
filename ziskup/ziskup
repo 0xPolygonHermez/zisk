@@ -11,6 +11,8 @@ mkdir -p $ZISK_BIN_DIR
 
 BINS=(cargo-zisk)
 
+SETUP_VERSION="0.4.0"
+
 export RUSTFLAGS="-C target-cpu=native"
 
 main() {
@@ -56,6 +58,15 @@ main() {
       shift
       ZISKUP_PLATFORM=$1
       ;;
+    --provingkey)
+      SETUP_KEY="proving"
+      ;;
+    --verifykey)
+      SETUP_KEY="verify"
+      ;;
+    --nokey)
+      SETUP_KEY="none"
+      ;;    
     -h | --help)
       usage
       exit 0
@@ -71,6 +82,23 @@ main() {
 
   # Print the banner after successfully parsing args
   banner
+
+  uname_s=$(uname -s)
+  PLATFORM=$(tolower "${ZISKUP_PLATFORM:-$uname_s}")
+
+  # DISCLAIMER:
+  # macOS (Darwin) is explicitly unsupported and will trigger an error.
+  case $PLATFORM in
+    linux) ;;
+    darwin | mac*)
+      echo -e "\033[31mError: macOS is currently not supported! We are actively working on adding support soon.\033[0m" >&2
+      exit 1
+      ;;
+    *)
+      err "unsupported platform: $PLATFORM"
+      exit 1
+      ;;
+  esac
 
   if [ -n "$ZISKUP_PR" ]; then
     if [ -z "$ZISKUP_BRANCH" ]; then
@@ -90,7 +118,7 @@ main() {
     fi
 
     # Enter local repo and build
-    say "installing from $ZISKUP_LOCAL_REPO"
+    say "Installing from $ZISKUP_LOCAL_REPO"
     cd "$ZISKUP_LOCAL_REPO"
     ensure cargo build --bins --release # need 4 speed
 
@@ -101,7 +129,7 @@ main() {
       ensure ln -s "$PWD/target/release/$bin" "$ZISK_BIN_DIR/$bin"
     done
 
-    say "done"
+    say "Done!"
     exit 0
   fi
 
@@ -118,7 +146,7 @@ main() {
       ZISKUP_TAG="${ZISKUP_VERSION}"
     fi
 
-    say "installing zisk (version ${ZISKUP_VERSION}, tag ${ZISKUP_TAG})"
+    say "Installing zisk (version ${ZISKUP_VERSION}, tag ${ZISKUP_TAG})"
 
     uname_s=$(uname -s)
     PLATFORM=$(tolower "${ZISKUP_PLATFORM:-$uname_s}")
@@ -127,10 +155,6 @@ main() {
     linux) ;;
     darwin | mac*)
       PLATFORM="darwin"
-      ;;
-    mingw* | win*)
-      EXT="zip"
-      PLATFORM="win32"
       ;;
     *)
       err "unsupported platform: $PLATFORM"
@@ -152,27 +176,58 @@ main() {
       ARCHITECTURE="amd64" # Amd.
     fi
 
-    # Compute the URL of the release tarball in the zisk repository.
-    RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/download/${ZISKUP_TAG}/"
-    BIN_ARCHIVE_URL="${RELEASE_URL}cargo_zisk_${ZISKUP_VERSION}_${PLATFORM}_${ARCHITECTURE}.$EXT"
-    #MAN_TARBALL_URL="${RELEASE_URL}cargo_zisk_man_${ZISKUP_VERSION}.tar.gz"
+    # Ask user about key installation in case it was not provided as an argument
+    if [[ -z "$SETUP_KEY" ]]; then
+      echo
+      say "Setup installation options:"
+      say "1) Install proving key (default - just press enter)"
+      say "2) Install verify key"
+      say "3) None"
+
+      # Read user input with default option set to 1
+      read -p ">" user_choice && echo
+      user_choice=${user_choice:-1}
+
+      case $user_choice in
+          1)
+            SETUP_KEY="proving"
+            ;;
+          2)
+            SETUP_KEY="verify"
+            ;;
+          3)
+            SETUP_KEY="none"
+            ;;
+          *)
+            say "Invalid option, aborting installation"
+            exit 1
+            ;;
+      esac
+    fi
+
+    # Compute the URL of the release tarball in the zisk repository
+    if [ "${ZISKUP_TAG}" = "latest" ]; then
+      RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/latest/download/"
+    else 
+      RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/download/${ZISKUP_TAG}/"
+    fi
+
+    BIN_ARCHIVE_URL="${RELEASE_URL}cargo_zisk_${PLATFORM}_${ARCHITECTURE}.$EXT"
 
     # Download and extract the binaries archive
-    say "downloading latest cargo-zisk"
-    if [ "$PLATFORM" = "win32" ]; then
-      tmp="$(mktemp -d 2>/dev/null || echo ".")/cargo-zisk.zip"
+    say "Downloading latest cargo-zisk"
+    if [ "$PLATFORM" = "linux" ]; then
+      tmp="$(mktemp -d)/cargo_zisk.tar.gz"
       ensure download "$BIN_ARCHIVE_URL" "$tmp"
-      ensure unzip "$tmp" -d "$ZISK_BIN_DIR"
+      ensure tar --overwrite -xzf "$tmp" -C "$ZISK_BIN_DIR"
       rm -f "$tmp"
-    else
-      ensure download "$BIN_ARCHIVE_URL" | ensure tar -xzC "$ZISK_BIN_DIR"
     fi
 
     for bin in "${BINS[@]}"; do
       bin_path="$ZISK_BIN_DIR/$bin"
 
       # Print installed msg
-      say "installed - $(ensure "$bin_path" sdk --version)"
+      say "Installed - $(ensure "$bin_path" sdk --version)"
 
       # Check if the default path of the binary is not in ZISK_BIN_DIR
       which_path="$(command -v "$bin" || true)"
@@ -189,11 +244,28 @@ EOF
       fi
     done
 
-    say "installing rust toolchain"
+    say "Installing rust toolchain"
     ensure "$bin_path" sdk install-toolchain
-    say "installed rust toolchain"
+    say "Installed rust toolchain"
 
-    say "done!"
+    # Install the proving/verify key
+    case $SETUP_KEY in
+      proving)
+        install_setup "proving"
+        ;;
+      verify)
+        install_setup "verify"
+        ;;
+      none)
+        # Do nothing
+        ;;
+      *)
+        say "Invalid key option, aborting installation"
+        exit 1
+        ;;
+    esac
+
+    say "Done!"
 
   # Install by cloning the repo with the provided branch/tag
   else
@@ -216,7 +288,7 @@ EOF
 
     # If set, checkout specific commit from branch
     if [ -n "$ZISKUP_COMMIT" ]; then
-      say "installing at commit $ZISKUP_COMMIT"
+      say "Installing at commit $ZISKUP_COMMIT"
       ensure git checkout "$ZISKUP_COMMIT"
     fi
 
@@ -231,7 +303,7 @@ EOF
       done
     done
 
-    say "done"
+    say "Done!"
   fi
 }
 
@@ -254,15 +326,18 @@ OPTIONS:
     -p, --path      Install a local repository
     --arch          Install a specific architecture (supports amd64 and arm64)
     --platform      Install a specific platform (supports win32, linux, and darwin)
+    --provingkey    Install the proving key
+    --verifykey     Install the verify key
+    --nokey         No proving/verify key installation
 EOF
 }
 
 say() {
-  printf "ziskup: %s\n" "$1"
+  printf "%s\n" "$1"
 }
 
 warn() {
-  say "warning: ${1}" >&2
+  say "Warning: ${1}" >&2
 }
 
 err() {
@@ -290,53 +365,34 @@ ensure() {
   if ! "$@"; then err "command failed: $*"; fi
 }
 
-# Downloads $1 into $2 or stdout
+# Downloads $1 into $2
 download() {
-  if [ -n "$2" ]; then
-
-    # Fetch the URL from the GitHub API
-    if check_cmd curl; then
-      API_RESPONSE=$(curl https://api.github.com/repos/0xPolygonHermez/zisk/releases)
-    else
-      API_RESPONSE=$(wget -qO- https://api.github.com/repos/0xPolygonHermez/zisk/releases)
-    fi
-
-    # Extract the browser_download_url for the given file name ($1)
-    URL=$(echo "$API_RESPONSE" | jq -r --arg FILENAME "$1" '.[] | .assets[] | select(.browser_download_url == $FILENAME) | .url')
-
-    if [ -z "$URL" ]; then
-      echo "No matching URL found for file name: $1"
-      return 1
-    fi
-
-    # output into $2
-    if check_cmd curl; then
-      curl -H "Accept: application/octet-stream" -#o "$2" -L "$URL"
-    else
-      wget --header="Accept: application/octet-stream" --show-progress -qO "$2" "$URL"
-    fi
+  if check_cmd curl; then
+    curl -H "Accept: application/octet-stream" -L -#o "$2" "$1"
   else
-    # Fetch the URL from the GitHub API
-    if check_cmd curl; then
-      API_RESPONSE=$(curl https://api.github.com/repos/0xPolygonHermez/zisk/releases)
-    else
-      API_RESPONSE=$(wget -qO- https://api.github.com/repos/0xPolygonHermez/zisk/releases)
-    fi
-    # Extract the browser_download_url for the given file name ($1)
-    URL=$(echo "$API_RESPONSE" | jq -r --arg FILENAME "$1" '.[] | .assets[] | select(.browser_download_url == $FILENAME) | .url')
-
-    if [ -z "$URL" ]; then
-      echo "No matching URL found for file name: $1"
-      return 1
-    fi
-
-    # output into $2
-    if check_cmd curl; then
-      curl -H "Accept: application/octet-stream" -L "$URL"
-    else
-      wget --header="Accept: application/octet-stream" --show-progress -qO- "$URL"
-    fi
+    wget --header="Accept: application/octet-stream" --show-progress -qO "$2" "$1"
   fi
+}
+
+# Install the proving or verify key
+install_setup() {
+    local KEY_TYPE=$1  # proving or verify
+    local KEY_FILE="zisk-${KEY_TYPE}key-${SETUP_VERSION}.tar.gz"
+
+    say "Downloading ${KEY_TYPE} key..."
+    ensure download "https://storage.googleapis.com/zisk/${KEY_FILE}" "${KEY_FILE}"
+    ensure download "https://storage.googleapis.com/zisk/${KEY_FILE}.md5" "${KEY_FILE}.md5"
+
+    # Verify the md5 checksum
+    ensure md5sum -c "${KEY_FILE}.md5"
+
+    # Extract the key
+    say "Installing ${KEY_TYPE} key..."
+    ensure tar --overwrite -xvf "${KEY_FILE}" -C "$HOME/.zisk"
+    rm -f "${KEY_FILE}"
+    rm -f "${KEY_FILE}.md5"
+
+    say "Installed ${KEY_TYPE} key ${SETUP_VERSION}"
 }
 
 # Banner Function for zisk

@@ -84,7 +84,7 @@ impl RomSM {
                     continue; // We skip those pc's that are not used in this execution
                 }
             }
-            rom_trace[i].multiplicity = F::from_canonical_u64(multiplicity);
+            rom_trace[i].multiplicity = F::from_u64(multiplicity);
         }
 
         AirInstance::new_from_trace(FromTrace::new(&mut rom_trace))
@@ -103,45 +103,45 @@ impl RomSM {
 
             // Convert the i64 offsets to F
             let jmp_offset1 = if inst.jmp_offset1 >= 0 {
-                F::from_canonical_u64(inst.jmp_offset1 as u64)
+                F::from_u64(inst.jmp_offset1 as u64)
             } else {
-                F::neg(F::from_canonical_u64((-inst.jmp_offset1) as u64))
+                F::neg(F::from_u64((-inst.jmp_offset1) as u64))
             };
             let jmp_offset2 = if inst.jmp_offset2 >= 0 {
-                F::from_canonical_u64(inst.jmp_offset2 as u64)
+                F::from_u64(inst.jmp_offset2 as u64)
             } else {
-                F::neg(F::from_canonical_u64((-inst.jmp_offset2) as u64))
+                F::neg(F::from_u64((-inst.jmp_offset2) as u64))
             };
             let store_offset = if inst.store_offset >= 0 {
-                F::from_canonical_u64(inst.store_offset as u64)
+                F::from_u64(inst.store_offset as u64)
             } else {
-                F::neg(F::from_canonical_u64((-inst.store_offset) as u64))
+                F::neg(F::from_u64((-inst.store_offset) as u64))
             };
             let a_offset_imm0 = if inst.a_offset_imm0 as i64 >= 0 {
-                F::from_canonical_u64(inst.a_offset_imm0)
+                F::from_u64(inst.a_offset_imm0)
             } else {
-                F::neg(F::from_canonical_u64((-(inst.a_offset_imm0 as i64)) as u64))
+                F::neg(F::from_u64((-(inst.a_offset_imm0 as i64)) as u64))
             };
             let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
-                F::from_canonical_u64(inst.b_offset_imm0)
+                F::from_u64(inst.b_offset_imm0)
             } else {
-                F::neg(F::from_canonical_u64((-(inst.b_offset_imm0 as i64)) as u64))
+                F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64))
             };
 
             // Fill the rom trace row fields
-            rom_custom_trace[i].line = F::from_canonical_u64(inst.paddr); // TODO: unify names: pc, paddr, line
+            rom_custom_trace[i].line = F::from_u64(inst.paddr); // TODO: unify names: pc, paddr, line
             rom_custom_trace[i].a_offset_imm0 = a_offset_imm0;
             rom_custom_trace[i].a_imm1 =
-                F::from_canonical_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 });
+                F::from_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 });
             rom_custom_trace[i].b_offset_imm0 = b_offset_imm0;
             rom_custom_trace[i].b_imm1 =
-                F::from_canonical_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
-            rom_custom_trace[i].ind_width = F::from_canonical_u64(inst.ind_width);
-            rom_custom_trace[i].op = F::from_canonical_u8(inst.op);
+                F::from_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
+            rom_custom_trace[i].ind_width = F::from_u64(inst.ind_width);
+            rom_custom_trace[i].op = F::from_u8(inst.op);
             rom_custom_trace[i].store_offset = store_offset;
             rom_custom_trace[i].jmp_offset1 = jmp_offset1;
             rom_custom_trace[i].jmp_offset2 = jmp_offset2;
-            rom_custom_trace[i].flags = F::from_canonical_u64(inst.get_flags());
+            rom_custom_trace[i].flags = F::from_u64(inst.get_flags());
         }
 
         // Padd with zeroes

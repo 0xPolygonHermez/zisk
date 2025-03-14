@@ -117,8 +117,9 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// # Arguments
     /// * `bus_id` - The ID of the bus receiving the data.
     /// * `payload` - The data payload to be sent.
-    pub fn write_to_bus(&mut self, bus_id: BusId, payload: Vec<D>) {
-        self.pending_transfers.push_back((bus_id, payload));
+    pub fn write_to_bus(&mut self, bus_id: BusId, payload: &[D]) {
+        self.route_data(bus_id, payload);
+
         while let Some((bus_id, payload)) = self.pending_transfers.pop_front() {
             self.route_data(bus_id, &payload)
         }

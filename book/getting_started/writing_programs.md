@@ -223,15 +223,6 @@ Total Cost: 12.81 sec
     Opcodes: 6.24 sec 1270 steps (81182 ops)
     Usual: 0.03 sec 4127 steps
     Memory: 135563 a reads + 1625 na1 reads + 10 na2 reads + 84328 a writes + 524 na1 writes + 2 na2 writes = 137198 reads + 84854 writes = 222052 r/w
-    Registy: reads=130928=95% writes=81236=95% total=212164=95% r/w
-        Reg 0 reads=0=0% writes=0=0% r/w=0=0%
-        Reg 1 reads=2772=2% writes=1253=3% r/w=4025=1%
-        Reg 2 reads=8275=6% writes=134=10% r/w=8409=3%
-        Reg 3 reads=1=0% writes=2=0% r/w=3=0%
-        ...
-        Reg 29 reads=2520=1% writes=1180=3% r/w=3700=1%
-        Reg 30 reads=2680=2% writes=1540=3% r/w=4220=1%
-        Reg 31 reads=2180=1% writes=980=2% r/w=3160=1%
 
 Opcodes:
     flag: 0.00 sec (0 steps/op) (89 ops)
@@ -277,7 +268,7 @@ In this command:
 
 * `-e` (`--elf`) flag is used to specify the ELF file localtion.
 * `-i` (`--inputs`) flag is used specify the input file location.
-* `-w` (`--witness`) and `-k` (`--proving-key`) flags are used to specify the location of the witness library and proving key files required for proof generation (located in the `$HOME/.zisk` installation folder by default).
+* `-w` (`--witness`) and `-k` (`--proving-key`) flags are used to specify the location of the witness library and proving key files required for proof generation; they are optional, set by default to the paths found in the `$HOME/.zisk` installation folder.
 * `-o` (`--output`) flag determines the output directory (in this example `proof`).
 * `-a` (`--aggregation`) flag indicates that a final aggregated proof (containing all generated sub-proofs) should be produced.
 * `-y` (`--verify-proofs`) flag instructs the tool to verify the proof immediately after it is generated (verification can also be performed later using the `cargo-zisk verify` command).
@@ -303,6 +294,6 @@ In this command:
 
 * `-p` (`--proof`) flag specifies the final proof file generated with cargo-zisk prove.
 * `-u` (`--public_inputs`) flag provides the path to the public inputs associated with the proof.
-* The remaining flags specify the files required for verification, located in the `$HOME/.zisk` directory by default.
+* The remaining flags specify the files required for verification; they are optional, set by default to the files found in the `$HOME/.zisk` directory.
 
 
