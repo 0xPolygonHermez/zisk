@@ -3233,6 +3233,7 @@ impl ZiskRom {
                 s += &format!("\tmov rdi, [{}]\n", REG_ADDRESS);
 
                 // Copy read data into mem_reads_address and advance it
+                s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
                 for k in 0..25 {
                     s += &format!(
                         "\tmov {}, [{}] /* value = mem[keccak_address[{}]] */\n",
