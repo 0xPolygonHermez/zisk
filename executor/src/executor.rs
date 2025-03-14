@@ -174,29 +174,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         )
         .expect("Error during emulator execution");
 
-        // let asm_min_traces = AsmRunner::run(
-        //     self.asm_runner_path.as_ref().unwrap(),
-        //     self.input_data_path.as_ref().unwrap(),
-        //     Self::MAX_NUM_STEPS,
-        //     Self::MIN_TRACE_SIZE,
-        //     asm_runner::AsmRunnerOptions::default(),
-        // );
-
-        // println!("Minimal traces: {} {}", min_traces.len(), asm_min_traces.vec_chunks.len());
-        // for i in 0..min_traces.len() {
-        //     println!("{}:\nemu {:?}\nasm {:?}", i, min_traces[i], asm_min_traces.vec_chunks[i]);
-        //     // Check mem reads
-        //     for j in 0..min_traces[i].mem_reads.len() {
-        //         if min_traces[i].mem_reads[j] != asm_min_traces.vec_chunks[i].mem_reads[j] {
-        //             println!(
-        //                 "mem reads[{}]: {:#x?} {:#x?}",
-        //                 j, min_traces[i].mem_reads[j], asm_min_traces.vec_chunks[i].mem_reads[j]
-        //             );
-        //         }
-        //     }
-        // }
-
-        // panic!("done");
         MinimalTraces::EmuTrace(min_traces)
     }
 
