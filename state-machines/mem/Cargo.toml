@@ -1,7 +1,11 @@
 [package]
 name = "sm-mem"
-version = "0.2.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
 
 [dependencies]
 sm-common = { path = "../common" }
@@ -25,6 +29,7 @@ num-bigint = { workspace = true }
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
 diagnostic = ["proofman-macros/diagnostic"]
+distributed = ["proofman-common/distributed", "witness/distributed"]
 debug_mem = []
 debug_mem_align = []
 trace_offset = []

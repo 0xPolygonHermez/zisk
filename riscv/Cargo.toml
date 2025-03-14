@@ -1,7 +1,11 @@
 [package]
 name = "riscv"
-version = "0.2.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
 
 [dependencies]
 elf = "0.7.4"

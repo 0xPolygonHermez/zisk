@@ -14,7 +14,7 @@ use crate::{
     BinaryExtensionSM, BinaryExtensionTableSM,
 };
 use data_bus::OPERATION_BUS_ID;
-use p3_field::PrimeField;
+use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use sm_common::{
     table_instance, BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, InstanceInfo,
@@ -26,7 +26,7 @@ use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace
 /// The `BinarySM` struct represents the Binary State Machine,
 /// managing both basic and extension binary operations.
 #[allow(dead_code)]
-pub struct BinarySM<F: PrimeField> {
+pub struct BinarySM<F: PrimeField64> {
     /// Binary Basic state machine
     binary_basic_sm: Arc<BinaryBasicSM>,
 
@@ -40,7 +40,7 @@ pub struct BinarySM<F: PrimeField> {
     binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
 }
 
-impl<F: PrimeField> BinarySM<F> {
+impl<F: PrimeField64> BinarySM<F> {
     /// Creates a new instance of the `BinarySM` state machine.
     ///
     /// # Arguments
@@ -64,7 +64,7 @@ impl<F: PrimeField> BinarySM<F> {
     }
 }
 
-impl<F: PrimeField> ComponentBuilder<F> for BinarySM<F> {
+impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
     /// Builds and returns a new counter for monitoring binary operations.
     ///
     /// # Returns

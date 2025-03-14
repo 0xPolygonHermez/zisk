@@ -5,7 +5,7 @@
 //! * Registers read/write counters (total and per register)
 //! * Operations counters (total and per opcode)
 
-use zisk_core::{zisk_ops::ZiskOp, ZiskInst, M3, REG_FIRST, REG_LAST};
+use zisk_core::{zisk_ops::ZiskOp, ZiskInst, M3};
 
 const AREA_PER_SEC: f64 = 1000000_f64;
 const COST_MEM: f64 = 10_f64 / AREA_PER_SEC;
@@ -36,46 +36,23 @@ pub struct MemoryOperations {
     mwrite_na2: u64,
 }
 
-/// Keeps counter for register read and write operations
-#[derive(Default, Debug, Clone)]
-pub struct RegistryOperations {
-    /// Counter of reads from registers
-    reads: u64,
-    /// Counter of writes to registers
-    writes: u64,
-}
-
 /// Keeps statistics of the emulator operations
 #[derive(Debug, Clone)]
 pub struct Stats {
     /// Counters of memory read/write operations, both aligned and non-aligned
     mops: MemoryOperations,
-    /// Counters of register read/write operations
-    rops: RegistryOperations,
     /// Counter of usual operations
     usual: u64,
     /// Counter of steps
     steps: u64,
     /// Counters of operations, one per possible u8 opcode (many remain unused)
     ops: [u64; 256],
-    /// Counters or register writes, split per register (32)
-    reg_writes: [u64; 32],
-    /// Counters or register reads, split per register (32)
-    reg_reads: [u64; 32],
 }
 
 impl Default for Stats {
     /// Default constructor for Stats structure.  Sets all counters to zero.
     fn default() -> Self {
-        Self {
-            mops: MemoryOperations::default(),
-            rops: RegistryOperations::default(),
-            usual: 0,
-            steps: 0,
-            ops: [0; 256],
-            reg_writes: [0; 32],
-            reg_reads: [0; 32],
-        }
+        Self { mops: MemoryOperations::default(), usual: 0, steps: 0, ops: [0; 256] }
     }
 }
 
@@ -98,15 +75,6 @@ impl Stats {
                 self.mops.mread_na1 += 1;
             }
         }
-
-        // If the address is within the range of register addresses, increase register counters
-        if (REG_FIRST..=REG_LAST).contains(&address) {
-            // Increase total register reads counter
-            self.rops.reads += 1;
-
-            // Increase the specific reads counter for this register
-            self.reg_reads[((address - REG_FIRST) / 8) as usize] += 1;
-        }
     }
 
     /// Called every time some data is writen to memory, is statistics are enabled
@@ -126,15 +94,6 @@ impl Stats {
             else {
                 self.mops.mwrite_na1 += 1;
             }
-        }
-
-        // If the address is within the range of register addresses, increase register counters
-        if (REG_FIRST..=REG_LAST).contains(&address) {
-            // Increase total register writes counter
-            self.rops.writes += 1;
-
-            // Increase the specific writes counter for this register
-            self.reg_writes[((address - REG_FIRST) / 8) as usize] += 1;
         }
     }
 
@@ -264,40 +223,6 @@ impl Stats {
             memory_writes,
             memory_total
         );
-        let reg_reads_percentage =
-            if memory_reads != 0 { (self.rops.reads * 100) / memory_reads } else { 0 };
-        let reg_writes_percentage =
-            if memory_writes != 0 { (self.rops.writes * 100) / memory_writes } else { 0 };
-        let reg_total = self.rops.reads + self.rops.writes;
-        let reg_total_percentage =
-            if memory_total != 0 { (reg_total * 100) / memory_total } else { 0 };
-
-        output += &format!(
-            "    Registy: reads={}={}% writes={}={}% total={}={}% r/w\n",
-            self.rops.reads,
-            reg_reads_percentage,
-            self.rops.writes,
-            reg_writes_percentage,
-            reg_total,
-            reg_total_percentage
-        );
-
-        // Build the registers usage counters and cost values
-        for reg in 0..32 {
-            let reads = self.reg_reads[reg];
-            let writes = self.reg_writes[reg];
-            let rw = reads + writes;
-            let reads_percentage =
-                if self.rops.reads != 0 { (reads * 100) / self.rops.reads } else { 0 };
-            let writes_percentage =
-                if self.rops.writes != 0 { (reads * 100) / self.rops.writes } else { 0 };
-            let total_rw = self.rops.reads + self.rops.writes;
-            let rw_percentage = if total_rw != 0 { (rw * 100) / total_rw } else { 0 };
-            output += &format!(
-                "        Reg {} reads={}={}% writes={}={}% r/w={}={}%\n",
-                reg, reads, reads_percentage, writes, writes_percentage, rw, rw_percentage
-            );
-        }
 
         // Build the operations usage counters and cost values
         output += "\nOpcodes:\n";

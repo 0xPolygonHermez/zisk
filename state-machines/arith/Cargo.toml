@@ -1,7 +1,11 @@
 [package]
 name = "sm-arith"
-version = "0.2.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
 
 [dependencies]
 zisk-core = { path = "../../core" }
@@ -26,3 +30,4 @@ default = []
 diagnostic = ["proofman-macros/diagnostic"]
 generate_code_arith_range_table = []
 no_lib_link = ["proofman-common/no_lib_link"]
+distributed = ["proofman-common/distributed"]

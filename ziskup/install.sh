@@ -10,7 +10,7 @@ BASE_DIR=${XDG_CONFIG_HOME:-$HOME}
 ZISK_DIR=${ZISK_DIR-"$BASE_DIR/.zisk"}
 ZISK_BIN_DIR="$ZISK_DIR/bin"
 
-BIN_URL="https://raw.githubusercontent.com/0xPolygonHermez/zisk/develop/ziskup/ziskup"
+BIN_URL="https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/ziskup"
 BIN_PATH="$ZISK_BIN_DIR/ziskup"
 
 # Create the .zisk bin directory and ziskup binary if it doesn't exist.
@@ -58,5 +58,8 @@ if [[ "$OSTYPE" =~ ^darwin ]] && [[ ! -f /usr/local/opt/openssl/lib/libssl.3.dyl
     echo && echo "warning: libusb not found. You may need to install it manually on MacOS via Homebrew (brew install openssl)."
 fi
 
-echo && echo "Detected your preferred shell is ${PREF_SHELL} and added ziskup to PATH. Run 'source ${PROFILE}' or start a new terminal session to use ziskup."
-echo "Then, simply run 'ziskup' to install ZISK."
+echo "Detected your preferred shell is ${PREF_SHELL} and added ziskup to PATH."
+
+echo && echo "Running ziskup..."
+$BIN_PATH
+

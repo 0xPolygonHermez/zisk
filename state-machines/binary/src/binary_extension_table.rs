@@ -5,7 +5,7 @@
 //! (`Srl`), arithmetic shifts, and sign extensions.
 
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
 
@@ -35,6 +35,7 @@ pub enum BinaryExtensionTableOp {
 pub struct BinaryExtensionTableSM {
     /// The multiplicity table
     multiplicity: Vec<AtomicU64>,
+    calculated: AtomicBool,
 }
 
 impl BinaryExtensionTableSM {
@@ -44,8 +45,10 @@ impl BinaryExtensionTableSM {
     /// An `Arc`-wrapped instance of `BinaryExtensionTableSM` with an initialized multiplicity
     /// table.
     pub fn new() -> Arc<Self> {
-        let binary_extension_table =
-            Self { multiplicity: create_atomic_vec(BinaryExtensionTableTrace::<usize>::NUM_ROWS) };
+        let binary_extension_table = Self {
+            multiplicity: create_atomic_vec(BinaryExtensionTableTrace::<usize>::NUM_ROWS),
+            calculated: AtomicBool::new(false),
+        };
 
         Arc::new(binary_extension_table)
     }
@@ -55,6 +58,9 @@ impl BinaryExtensionTableSM {
     /// # Arguments
     /// * `input` - A slice of `u64` values to process.
     pub fn update_multiplicity(&self, row: u64, value: u64) {
+        if self.calculated.load(Ordering::Relaxed) {
+            return;
+        }
         self.multiplicity[row as usize].fetch_add(value, Ordering::Relaxed);
     }
 
@@ -64,6 +70,10 @@ impl BinaryExtensionTableSM {
     /// A `Vec<u64>` containing the multiplicity table's current values.
     pub fn detach_multiplicity(&self) -> &[AtomicU64] {
         &self.multiplicity
+    }
+
+    pub fn set_calculated(&self) {
+        self.calculated.store(true, Ordering::Relaxed);
     }
 
     /// Calculates the row index in the Binary Extension Table based on the operation and its

@@ -127,8 +127,9 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
 name = "asm-runner"
-version = "0.1.0"
+version = "0.4.4"
 dependencies = [
+ "clap",
  "libc",
  "zisk-common",
  "ziskemu",
@@ -239,7 +240,7 @@ checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
 
 [[package]]
 name = "cargo-zisk"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -510,7 +511,7 @@ checksum = "ef8ae57c4978a2acd8b869ce6b9ca1dfe817bff704c220209fdef2c0b75a01b9"
 
 [[package]]
 name = "data-bus"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "zisk-core",
 ]
@@ -644,7 +645,7 @@ dependencies = [
 
 [[package]]
 name = "executor"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "asm-runner",
  "data-bus",
@@ -698,6 +699,12 @@ checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
  "percent-encoding",
 ]
+
+[[package]]
+name = "forward_ref"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8cbd1169bd7b4a0a20d92b9af7a7e0422888bd38a6f5ec29c1fd8c1558a272e"
 
 [[package]]
 name = "futures"
@@ -789,12 +796,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gcd"
-version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d758ba1b47b00caf47f24925c0074ecb20d6dfcffe7f6d53395c0465674841a"
-
-[[package]]
 name = "getrandom"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -846,9 +847,9 @@ checksum = "a8d1add55171497b4705a648c6b583acafb01d58050a51727785f0b2c8e0a2b2"
 
 [[package]]
 name = "half"
-version = "2.4.1"
+version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dd08c532ae367adf81c312a4580bc67f1d0fe8bc9c460520283f4c0ff277888"
+checksum = "7db2ff139bba50379da6aa0766b52fdcb62cb5b263009b09ed58ba604e14bbd1"
 dependencies = [
  "cfg-if",
  "crunchy",
@@ -1201,15 +1202,6 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
@@ -1483,6 +1475,15 @@ dependencies = [
 
 [[package]]
 name = "ntapi"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c28774a7fd2fbb4f0babd8237ce554b73af68021b5f695a3cebd6c59bac0980f"
+dependencies = [
+ "winapi",
+]
+
+[[package]]
+name = "ntapi"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8a3895c6391c39d7fe7ebc444a87eb2991b2a0bc718fdabd071eec617fc68e4"
@@ -1573,9 +1574,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.21.0"
+version = "1.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cde51589ab56b20a6f686b2c68f7a0bd6add753d697abf720d63f8db3ab7b1ad"
+checksum = "d75b0bedcc4fe52caa0e03d9f1151a323e4aa5e2d78ba3580400cd3c9e2bc4bc"
 
 [[package]]
 name = "oorandom"
@@ -1592,8 +1593,9 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 [[package]]
 name = "p3-dft"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
+ "itertools 0.14.0",
  "p3-field",
  "p3-matrix",
  "p3-maybe-rayon",
@@ -1604,44 +1606,50 @@ dependencies = [
 [[package]]
 name = "p3-field"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
- "itertools 0.13.0",
+ "forward_ref",
+ "itertools 0.14.0",
  "num-bigint",
  "num-integer",
  "num-traits",
  "nums",
+ "p3-maybe-rayon",
  "p3-util",
- "rand 0.8.5",
+ "paste",
+ "rand 0.9.0",
  "serde",
+ "tracing",
 ]
 
 [[package]]
 name = "p3-goldilocks"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
  "num-bigint",
  "p3-dft",
  "p3-field",
  "p3-mds",
+ "p3-poseidon",
  "p3-poseidon2",
  "p3-symmetric",
  "p3-util",
- "rand 0.8.5",
+ "paste",
+ "rand 0.9.0",
  "serde",
 ]
 
 [[package]]
 name = "p3-matrix"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "p3-field",
  "p3-maybe-rayon",
  "p3-util",
- "rand 0.8.5",
+ "rand 0.9.0",
  "serde",
  "tracing",
  "transpose",
@@ -1650,40 +1658,51 @@ dependencies = [
 [[package]]
 name = "p3-maybe-rayon"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 
 [[package]]
 name = "p3-mds"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
- "itertools 0.12.1",
+ "itertools 0.14.0",
  "p3-dft",
  "p3-field",
  "p3-matrix",
  "p3-symmetric",
  "p3-util",
- "rand 0.8.5",
+ "rand 0.9.0",
+]
+
+[[package]]
+name = "p3-poseidon"
+version = "0.1.0"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
+dependencies = [
+ "p3-field",
+ "p3-mds",
+ "p3-symmetric",
+ "rand 0.9.0",
 ]
 
 [[package]]
 name = "p3-poseidon2"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
- "gcd",
  "p3-field",
  "p3-mds",
  "p3-symmetric",
- "rand 0.8.5",
+ "p3-util",
+ "rand 0.9.0",
 ]
 
 [[package]]
 name = "p3-symmetric"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "p3-field",
  "serde",
 ]
@@ -1691,7 +1710,7 @@ dependencies = [
 [[package]]
 name = "p3-util"
 version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=c3d754ef77b9fce585b46b972af751fe6e7a9803#c3d754ef77b9fce585b46b972af751fe6e7a9803"
+source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
 dependencies = [
  "serde",
 ]
@@ -1718,6 +1737,12 @@ dependencies = [
  "smallvec",
  "windows-targets 0.52.6",
 ]
+
+[[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "percent-encoding"
@@ -1843,8 +1868,9 @@ dependencies = [
 
 [[package]]
 name = "precomp-keccakf"
-version = "0.1.0"
+version = "0.4.4"
 dependencies = [
+ "clap",
  "data-bus",
  "log",
  "num-bigint",
@@ -1867,16 +1893,16 @@ dependencies = [
 
 [[package]]
 name = "precompiles-common"
-version = "0.1.0"
+version = "0.4.4"
 dependencies = [
  "zisk-core",
 ]
 
 [[package]]
 name = "prettyplease"
-version = "0.2.30"
+version = "0.2.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1ccf34da56fc294e7d4ccf69a85992b7dfb826b7cf57bac6a70bba3494cc08a"
+checksum = "5316f57387668042f561aae71480de936257848f9c43ce528e311d89a07cadeb"
 dependencies = [
  "proc-macro2",
  "syn",
@@ -1900,6 +1926,8 @@ dependencies = [
  "libloading",
  "log",
  "mpi",
+ "num-bigint",
+ "num-traits",
  "p3-field",
  "p3-goldilocks",
  "proofman-common",
@@ -1909,7 +1937,6 @@ dependencies = [
  "proofman-util",
  "rayon",
  "serde_json",
- "stark",
  "transcript",
  "witness",
 ]
@@ -1930,6 +1957,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
+ "sysinfo 0.22.5",
  "transcript",
 ]
 
@@ -1967,7 +1995,7 @@ version = "0.4.0"
 dependencies = [
  "colored",
  "p3-field",
- "sysinfo",
+ "sysinfo 0.33.1",
 ]
 
 [[package]]
@@ -2239,14 +2267,14 @@ dependencies = [
 
 [[package]]
 name = "riscv"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "elf",
 ]
 
 [[package]]
 name = "rom-merkle"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "blake3",
@@ -2259,7 +2287,7 @@ dependencies = [
  "proofman-common",
  "proofman-util",
  "sm-rom",
- "sysinfo",
+ "sysinfo 0.33.1",
  "zisk-pil",
 ]
 
@@ -2463,7 +2491,7 @@ dependencies = [
 
 [[package]]
 name = "sm-arith"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "data-bus",
  "log",
@@ -2482,7 +2510,7 @@ dependencies = [
 
 [[package]]
 name = "sm-binary"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "data-bus",
  "log",
@@ -2500,7 +2528,7 @@ dependencies = [
 
 [[package]]
 name = "sm-common"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "data-bus",
  "p3-field",
@@ -2513,7 +2541,7 @@ dependencies = [
 
 [[package]]
 name = "sm-main"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "data-bus",
  "log",
@@ -2534,7 +2562,7 @@ dependencies = [
 
 [[package]]
 name = "sm-mem"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "data-bus",
  "log",
@@ -2554,7 +2582,7 @@ dependencies = [
 
 [[package]]
 name = "sm-rom"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "data-bus",
  "itertools 0.14.0",
@@ -2590,22 +2618,6 @@ name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
-
-[[package]]
-name = "stark"
-version = "0.4.0"
-dependencies = [
- "log",
- "p3-field",
- "p3-goldilocks",
- "proofman-common",
- "proofman-starks-lib-c",
- "proofman-util",
- "serde",
- "serde_derive",
- "serde_json",
- "transcript",
-]
 
 [[package]]
 name = "str_stack"
@@ -2687,6 +2699,21 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
+version = "0.22.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f1bfab07306a27332451a662ca9c8156e3a9986f82660ba9c8e744fe8455d43"
+dependencies = [
+ "cfg-if",
+ "core-foundation-sys",
+ "libc",
+ "ntapi 0.3.7",
+ "once_cell",
+ "rayon",
+ "winapi",
+]
+
+[[package]]
+name = "sysinfo"
 version = "0.33.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fc858248ea01b66f19d8e8a6d55f41deaf91e9d495246fd01368d99935c6c01"
@@ -2694,7 +2721,7 @@ dependencies = [
  "core-foundation-sys",
  "libc",
  "memchr",
- "ntapi",
+ "ntapi 0.4.1",
  "rayon",
  "windows",
 ]
@@ -2707,11 +2734,10 @@ checksum = "e502f78cdbb8ba4718f566c418c52bc729126ffd16baee5baa718cf25dd5a69a"
 
 [[package]]
 name = "tempfile"
-version = "3.18.0"
+version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c317e0a526ee6120d8dabad239c8dadca62b24b6f168914bbbc8e2fb1f0e567"
+checksum = "488960f40a3fd53d72c2a29a58722561dee8afdd175bd88e3db4677d7b2ba600"
 dependencies = [
- "cfg-if",
  "fastrand",
  "getrandom 0.3.1",
  "once_cell",
@@ -2838,9 +2864,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.44.0"
+version = "1.44.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9975ea0f48b5aa3972bf2d888c238182458437cc2a19374b81b25cdf1023fb3a"
+checksum = "f382da615b842244d4b8738c82ed1275e6c5dd90c459a30941cd07080b06c91a"
 dependencies = [
  "backtrace",
  "bytes",
@@ -2877,9 +2903,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.13"
+version = "0.7.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7fcaa8d55a2bdd6b83ace262b016eca0d79ee02818c5c1bcdf0305114081078"
+checksum = "6b9590b93e6fcc1739458317cccd391ad3955e2bde8913edf6f95f9e65a8f034"
 dependencies = [
  "bytes",
  "futures-core",
@@ -3018,9 +3044,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.15.1"
+version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0f540e3240398cce6128b64ba83fdbdd86129c16a3aa1a3a252efd66eb3d587"
+checksum = "458f7a779bf54acc9f347480ac654f68407d3aab21269a6e3c9f922acd9e2da9"
 
 [[package]]
 name = "vcpkg"
@@ -3627,14 +3653,14 @@ dependencies = [
 
 [[package]]
 name = "zisk-common"
-version = "0.1.0"
+version = "0.4.4"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "zisk-core"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "elf",
  "indexmap",
@@ -3648,7 +3674,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-pil"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "proofman-common",
  "proofman-macros",
@@ -3659,7 +3685,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precompiles"
-version = "0.1.0"
+version = "0.4.4"
 dependencies = [
  "precomp-keccakf",
  "precompiles-common",
@@ -3667,7 +3693,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-witness"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "env_logger",
  "executor",
@@ -3694,14 +3720,14 @@ dependencies = [
 
 [[package]]
 name = "ziskclib"
-version = "0.1.0"
+version = "0.4.4"
 dependencies = [
  "tiny-keccak",
 ]
 
 [[package]]
 name = "ziskemu"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "clap",
  "criterion",
@@ -3711,7 +3737,7 @@ dependencies = [
  "rayon",
  "riscv",
  "sm-mem",
- "sysinfo",
+ "sysinfo 0.33.1",
  "vergen",
  "zisk-common",
  "zisk-core",
@@ -3720,7 +3746,7 @@ dependencies = [
 
 [[package]]
 name = "ziskos"
-version = "0.2.0"
+version = "0.4.4"
 dependencies = [
  "getrandom 0.2.15",
  "lazy_static",
