@@ -1819,7 +1819,7 @@ impl ZiskRom {
                             // address in value
                             *s += &format!(
                                 "\tmov {}, {} /* value = copy of prev_address */\n",
-                                REG_VALUE, REG_ADDRESS
+                                REG_VALUE, REG_AUX
                             );
                             let address_increment = instruction.ind_width - 1;
                             *s += &format!(
