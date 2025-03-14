@@ -303,6 +303,8 @@ EOF
       done
     done
 
+    ensure cargo run --bin cargo-zisk check-setup -a
+
     say "Done!"
   fi
 }
@@ -393,6 +395,12 @@ install_setup() {
     rm -f "${KEY_FILE}.md5"
 
     say "Installed ${KEY_TYPE} key ${SETUP_VERSION}"
+
+    if [ "$KEY_TYPE" = "proving" ]; then
+      say "Generating const tree files..."
+      ensure cargo-zisk check-setup -a
+      say "Files generated"
+    fi
 }
 
 # Banner Function for zisk
