@@ -1,5 +1,7 @@
 use super::str_test_data;
 
+#[allow(clippy::type_complexity)]
+#[allow(dead_code)]
 pub fn get_arith256_mod_test_data(
     index: usize,
 ) -> Option<([u64; 4], [u64; 4], [u64; 4], [u64; 4], [u64; 4])> {
@@ -10,6 +12,8 @@ pub fn get_arith256_mod_test_data(
         None
     }
 }
+
+#[allow(dead_code)]
 pub fn get_arith256_mod_test_str_data(index: usize) -> Option<[&'static str; 5]> {
     match index {
         0 => Some(["0", "0", "0", "1", "0"]),

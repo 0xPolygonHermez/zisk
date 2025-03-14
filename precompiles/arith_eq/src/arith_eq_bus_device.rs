@@ -107,7 +107,7 @@ impl ArithEqCounterInputGen {
             };
             let param_addr = if config.indirect_params {
                 // read indirect parameters, means stored the address of parameter
-                let param_addr = data[OPERATION_BUS_DATA_SIZE + param_index as usize];
+                let param_addr = data[OPERATION_BUS_DATA_SIZE + param_index];
                 mem_inputs.push((
                     MEM_BUS_ID,
                     MemBusHelpers::mem_aligned_load(
@@ -129,7 +129,7 @@ impl ArithEqCounterInputGen {
                 mem_inputs.push((
                     MEM_BUS_ID,
                     MemBusHelpers::mem_aligned_op(
-                        param_addr as u32 + ichunk as u32 * 8,
+                        param_addr + ichunk as u32 * 8,
                         step_main,
                         chunk_data,
                         is_write,
@@ -218,7 +218,7 @@ impl BusDevice<u64> for ArithEqCounterInputGen {
             }
             ExtOperationData::OperationSecp256k1DblData(_) => {
                 if self.mode == BusDeviceMode::Counter {
-                    self.measure(&data);
+                    self.measure(data);
                 }
                 Self::generate_mem_inputs(addr_main, step_main, data, &SECP256K1_DBL_MEM_CONFIG)
             }

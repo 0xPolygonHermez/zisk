@@ -84,14 +84,14 @@ impl Arith256Mod {
     ) {
         let data = self.execute(a, b, c, module);
         data.check_ranges();
-        for i in 0..2 {
+        for (i, chunk_d) in d.iter().enumerate() {
             let offset = (i + 1) * 4 - 1;
             let mut x3 = data.x3[offset] as u64;
             for j in 1..4 {
-                x3 = x3 << 16;
+                x3 <<= 16;
                 x3 += data.x3[offset - j] as u64;
             }
-            assert!(d[i] == x3, "Arith256Mod dh[{}]:{} not match with x3:{}", i, d[i], x3);
+            assert!(*chunk_d == x3, "Arith256Mod dh[{}]:{} not match with x3:{}", i, chunk_d, x3);
         }
     }
 }

@@ -1,13 +1,12 @@
 use super::str_test_data;
 
 pub fn get_secp256k1_dbl_test_data(index: usize) -> Option<([u64; 8], [u64; 8])> {
-    let res = if let Some(sdata) = get_secp256k1_dbl_test_str_data(index) {
+    if let Some(sdata) = get_secp256k1_dbl_test_str_data(index) {
         let bdata = str_test_data::<4, 8>(index, "secp256k1_dbl_test", sdata);
         Some((bdata[0], bdata[1]))
     } else {
         None
-    };
-    res
+    }
 }
 
 pub fn get_secp256k1_dbl_test_str_data(index: usize) -> Option<[&'static str; 4]> {

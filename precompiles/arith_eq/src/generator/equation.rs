@@ -157,12 +157,12 @@ impl Equation {
 
     fn get_or_create_var_id(&mut self, name: &str) -> usize {
         let res = self.vars.iter().position(|_name| _name == name);
-        if res.is_none() {
+        if let Some(res) = res {
+            res
+        } else {
             let res = self.vars.len();
             self.vars.push(name.to_string());
             res
-        } else {
-            res.unwrap()
         }
     }
     fn join_two_ids(&mut self, id1: usize, id2: usize, op: &str, value: &BigInt) -> usize {
@@ -171,7 +171,7 @@ impl Equation {
         let res = self.constants.len();
         self.constants.push((
             name.to_string(),
-            ConstantValue::new(&value, &self.chunk_size, &self.config.chunks * 2, is_hex),
+            ConstantValue::new(value, &self.chunk_size, &self.config.chunks * 2, is_hex),
         ));
         res
     }
@@ -180,7 +180,7 @@ impl Equation {
             let res = self.constants.len();
             self.constants.push((
                 name.to_string(),
-                ConstantValue::new(&value, &self.chunk_size, &self.config.chunks * 2, is_hex),
+                ConstantValue::new(value, &self.chunk_size, &self.config.chunks * 2, is_hex),
             ));
             res
         })
@@ -267,7 +267,7 @@ impl Equation {
             })
             .collect::<Vec<usize>>()
     }
-    fn next_index(&self, indexes: &mut Vec<usize>, upto: &Vec<usize>) -> bool {
+    fn next_index(&self, indexes: &mut [usize], upto: &[usize]) -> bool {
         let carry = 1;
         for i in 0..indexes.len() {
             indexes[i] += carry;
@@ -280,7 +280,7 @@ impl Equation {
     }
     fn generate_terms(&mut self) {
         // Generate all terms, using stack of additions.
-        for term in self.stack.iter().filter(|t| t.terms.len() > 0) {
+        for term in self.stack.iter().filter(|t| !t.terms.is_empty()) {
             let count = term.terms.len();
 
             // init indexes structures
@@ -291,10 +291,9 @@ impl Equation {
             loop {
                 let mut col_index = 0;
                 let mut addt = AdditionTerm::new_empty_from_term(term);
-                for i in 0..count {
-                    let index = indexes[i];
+                for (i, index) in indexes.iter().enumerate() {
                     col_index += index;
-                    if !self.add_prod_term(&mut addt, &term.terms[i], index) {
+                    if !self.add_prod_term(&mut addt, &term.terms[i], *index) {
                         break;
                     }
                 }
@@ -368,7 +367,7 @@ impl Equation {
         for (icol, addition_cols) in self.terms.iter().enumerate() {
             let mut out = String::new();
             let clock = if terms_by_clock == 0 { 0 } else { icol / terms_by_clock };
-            if addition_cols.len() == 0 {
+            if addition_cols.is_empty() {
                 output.push(format!("{}{}", 0, last_end_of_line));
                 continue;
             }
@@ -409,7 +408,7 @@ impl Equation {
                                     Self::index_to_row_offset(*index, clock, terms_by_clock);
                                 let comment = format!("{}[{}]", self.vars[*id], index);
                                 let s_term = if row_offset == 0 {
-                                    format!("{}", self.vars[*id])
+                                    self.vars[*id].to_string()
                                 } else if row_offset == -1 {
                                     format!("'{}", self.vars[*id])
                                 } else if row_offset == 1 {
@@ -430,7 +429,7 @@ impl Equation {
                 }
                 out = out + &line.collect();
                 if j != last_j {
-                    out = out + end_of_line;
+                    out += end_of_line;
                 }
             }
             output.push(out);
@@ -441,16 +440,15 @@ impl Equation {
         let mut out = format!("// code generated\n//\n// equation: {}\n//\n", self.s_equation);
         for (label, value) in self.constants.iter() {
             if value.is_hex {
-                out = out + &format!("// {}: 0x{:X}\n", label, value.value);
+                out += &format!("// {}: 0x{:X}\n", label, value.value);
             } else {
-                out = out + &format!("// {}: {}\n", label, value.value);
+                out += &format!("// {}: {}\n", label, value.value);
             }
         }
-        out = out
-            + &format!(
-                "//\n// chunks:{}\n// chunk_bits:{}\n// terms_by_clock: {}\n\n",
-                self.config.chunks, self.config.chunk_bits, self.config.terms_by_clock
-            );
+        out += &format!(
+            "//\n// chunks:{}\n// chunk_bits:{}\n// terms_by_clock: {}\n\n",
+            self.config.chunks, self.config.chunk_bits, self.config.terms_by_clock
+        );
         out
     }
 
@@ -461,12 +459,12 @@ impl Equation {
 
         let mut out = self.generate_code_header()
             + &format!(
-                "\npub struct {0} {{}}\n\nimpl {0} {{\n\tpub fn calculate(icol: u8",
+                "\npub struct {0} {{}}\n\nimpl {0} {{\n\t#[allow(clippy::too_many_arguments)]\n\tpub fn calculate(icol: u8",
                 struct_name
             );
         if args_order.is_empty() {
             for var in self.vars.iter() {
-                out = out + &format!(", {}: &[i64;16]", var);
+                out += &format!(", {}: &[i64;16]", var);
             }
         } else {
             let mut used = vec![false; self.vars.len()];
@@ -490,22 +488,22 @@ impl Equation {
                         args_order, var, struct_name
                     ),
                 }
-                out = out + &format!(", {}: &[i64;16]", var);
+                out += &format!(", {}: &[i64;16]", var);
             }
             if count < self.vars.len() {
                 for (index, var) in self.vars.iter().enumerate() {
                     if used[index] {
                         continue;
                     }
-                    out = out + &format!(", {}: &[i64;16]", var);
+                    out += &format!(", {}: &[i64;16]", var);
                 }
             }
         }
-        out = out + ") -> i64 {\n\t\tmatch icol {\n";
+        out += ") -> i64 {\n\t\tmatch icol {\n";
         for (icol, col) in self.map_chunks(0, "\n", "").iter().enumerate() {
-            out = out + &format!("{} => ", icol) + &col + ",\n";
+            out = out + &format!("{} => ", icol) + col + ",\n";
         }
-        out = out + "\t\t\t_ => 0,\n\t\t}\n\t}\n}\n";
+        out += "\t\t\t_ => 0,\n\t\t}\n\t}\n}\n";
         // out = out
         //     + &format!("\t\t\t_ => panic!(\"{}:", struct_name)
         //     + " error on invalid icol:{} for equation:{}\", icol, eq_index),\n\t\t}\n\t}\n}\n";
@@ -526,7 +524,7 @@ impl Equation {
                 out = out + &format!("// clock #{}\n\n", icol / self.config.terms_by_clock);
             }
             let label = format!("{}_chunks[{:#2}]", const_name, icol);
-            out = out + &label + " = " + &col + "\n\n";
+            out = out + &label + " = " + col + "\n\n";
         }
         out
     }

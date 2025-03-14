@@ -31,8 +31,8 @@ impl ConstantValue {
         let mut available = max_chunks;
         while remaining != BigInt::ZERO && available > 0 {
             chunks.push(if available == 1 {
-                assert!(&remaining <= &(chunk_size * LAST_CHUNK_OVERLOAD_FACTOR));
-                &remaining + &0
+                assert!(remaining <= (chunk_size * LAST_CHUNK_OVERLOAD_FACTOR));
+                &remaining + 0
             } else {
                 &remaining % chunk_size
             });

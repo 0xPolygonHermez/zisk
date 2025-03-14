@@ -6,6 +6,7 @@ use num_traits::Zero;
 pub fn bigint_to_16_chunks(value: &BigInt, result: &mut [i64; 16]) {
     let (sign, chunks) = value.to_u64_digits();
     let chunks_count = chunks.len();
+    #[allow(clippy::needless_range_loop)]
     for i in 0..4 {
         let mut chunk64_value = if i >= chunks_count { 0 } else { chunks[i] };
         for j in 0..4 {
@@ -20,7 +21,7 @@ pub fn bigint_to_16_chunks(value: &BigInt, result: &mut [i64; 16]) {
     if chunks_count > 4 {
         assert_eq!(chunks_count, 5);
         let chunk16_value = (chunks[4] as i64) << 16;
-        result[15] += if sign == Sign::Minus { -chunk16_value } else { chunk16_value } as i64;
+        result[15] += if sign == Sign::Minus { -chunk16_value } else { chunk16_value };
     }
 }
 

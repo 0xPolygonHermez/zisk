@@ -145,8 +145,8 @@ impl Secp256k1 {
             let mut x3 = data.x3[offset] as u64;
             let mut y3 = data.y3[offset] as u64;
             for j in 1..4 {
-                x3 = x3 << 16;
-                y3 = y3 << 16;
+                x3 <<= 16;
+                y3 <<= 16;
                 x3 += data.x3[offset - j] as u64;
                 y3 += data.y3[offset - j] as u64;
             }

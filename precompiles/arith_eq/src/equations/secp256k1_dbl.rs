@@ -15,6 +15,7 @@
 pub struct Secp256k1Dbl {}
 
 impl Secp256k1Dbl {
+    #[allow(clippy::too_many_arguments)]
     pub fn calculate(
         icol: u8,
         x1: &[i64; 16],

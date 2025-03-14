@@ -67,8 +67,8 @@ impl Arith256 {
             let mut _x3 = data.x3[offset] as u64;
             let mut _y3 = data.y3[offset] as u64;
             for j in 1..4 {
-                _x3 = _x3 << 16;
-                _y3 = _y3 << 16;
+                _x3 <<= 16;
+                _y3 <<= 16;
                 _x3 += data.x3[offset - j] as u64;
                 _y3 += data.y3[offset - j] as u64;
             }

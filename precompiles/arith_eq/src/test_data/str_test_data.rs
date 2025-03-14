@@ -7,24 +7,23 @@ pub fn str_test_data<const N_IN: usize, const N_OUT: usize>(
     data: [&'static str; N_IN],
 ) -> Vec<[u64; N_OUT]> {
     data.iter()
-        .map(|x| {
-            let mut _data = if x.starts_with("0x") {
-                BigUint::from_str_radix(&x[2..], 16)
+        .flat_map(|x| {
+            let mut _data = if let Some(stripped) = x.strip_prefix("0x") {
+                BigUint::from_str_radix(stripped, 16)
             } else {
-                BigUint::from_str_radix(&x, 10)
+                BigUint::from_str_radix(x, 10)
             }
-            .expect(&format!("Failed to parse #{} {} string : '{}'", index, title, &x))
+            .unwrap_or_else(|_| panic!("Failed to parse #{} {} string : '{}'", index, title, &x))
             .to_u64_digits();
             _data.resize(4, 0);
             _data
         })
-        .flat_map(|arr| arr)
         .collect::<Vec<_>>()
         .chunks_exact(N_OUT)
         .map(|chunk| {
-            chunk
-                .try_into()
-                .expect(&format!("Failed to split #{} {} in {} elements", index, title, N_OUT))
+            chunk.try_into().unwrap_or_else(|_| {
+                panic!("Failed to split #{} {} in {} elements", index, title, N_OUT)
+            })
         })
         .collect::<Vec<[u64; N_OUT]>>()
 }
