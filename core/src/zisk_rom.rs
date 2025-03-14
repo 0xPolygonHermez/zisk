@@ -900,7 +900,6 @@ impl ZiskRom {
                     *s += "\t/* a=SRC_MEM */\n";
 
                     // Calculate memory address
-                    ///////////////////////////
                     *s += &format!(
                         "\tmov {}, 0x{:x} /* address = i.a_offset_imm0 */\n",
                         REG_ADDRESS, instruction.a_offset_imm0
@@ -909,10 +908,7 @@ impl ZiskRom {
                         *s += &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, MEM_SP);
                     }
 
-                    // Read value
-                    /////////////
-
-                    // Read from memory and store in the proper register: a or c
+                    // Read value from memory and store in the proper register: a or c
                     *s += &format!(
                         "\tmov {}, [{}] /* {} = mem[address] */\n",
                         if ctx.store_a_in_c { REG_C } else { REG_A },
@@ -921,101 +917,28 @@ impl ZiskRom {
                     );
 
                     // Mem reads
-                    ////////////
-
-                    // Check if address is aligned, i.e. it is a multiple of 8
-                    *s += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
-                    *s += &format!("\tjnz pc_{:x}_a_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
-
-                    // a register memory address is fully alligned
-                    //////////////////////////////////////////////
-
-                    // Copy read data into mem_reads_address and increment it
-                    *s += &format!(
-                        "\tmov [{}], {} /* [mem_reads_address]=a */\n",
-                        REG_MEM_READS_ADDRESS,
-                        if ctx.store_a_in_c { REG_C } else { REG_A }
-                    );
-                    *s += &format!(
-                        "\tadd {}, 8 /* advance mem_reads_address */\n",
-                        REG_MEM_READS_ADDRESS
-                    );
-
-                    // Increment chunk.steps.mem_reads_size
-                    *s += &format!(
-                        "\tmov {}, [{}] /* value = mem_reads_size */\n",
-                        REG_VALUE, REG_MEM_READS_SIZE
-                    );
-                    *s += &format!("\tinc {} /* increment value */\n", REG_VALUE);
-                    *s += &format!(
-                        "\tmov [{}], {} /* mem_reads_size = value */\n",
-                        REG_MEM_READS_SIZE, REG_VALUE
-                    );
-
-                    // Jump to done
-                    *s += &format!("\tjmp pc_{:x}_a_address_check_done\n", ctx.pc);
-
-                    // a memory address is not aligned
-                    //////////////////////////////////
-
-                    *s += &format!("pc_{:x}_a_address_not_aligned:\n", ctx.pc);
-
-                    // Calculate previous aligned address
-                    *s += &format!(
-                        "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
-                        REG_ADDRESS
-                    );
-
-                    // Store previous aligned address value in mem_reads
-                    *s += &format!(
-                        "\tmov {}, [{}] /* value = mem[prev_address] */\n",
-                        REG_VALUE, REG_ADDRESS
-                    );
-                    // Copy read data into mem_reads_address and increment it
-                    *s += &format!(
-                        "\tmov [{}], {} /* [mem_reads_address] = prev_a */\n",
-                        REG_MEM_READS_ADDRESS, REG_VALUE
-                    );
-                    *s += &format!(
-                        "\tadd {}, 8 /* advance mem_reads_address */\n",
-                        REG_MEM_READS_ADDRESS
-                    );
-
-                    // Calculate next aligned address
-                    *s +=
-                        &format!("\tadd {}, 8 /* address = next aligned address */\n", REG_ADDRESS);
-
-                    // Store next aligned address value in mem_reads
-                    *s += &format!(
-                        "\tmov {}, [{}] /* value = mem[next_address] */\n",
-                        REG_VALUE, REG_ADDRESS
-                    );
-                    // Copy read data into mem_reads_address and increment it
-                    *s += &format!(
-                        "\tmov [{}], {} /* [mem_reads_address] = next_a */\n",
-                        REG_MEM_READS_ADDRESS, REG_VALUE
-                    );
-                    *s += &format!(
-                        "\tadd {}, 8 /* advance mem_reads_address */\n",
-                        REG_MEM_READS_ADDRESS
-                    );
-
-                    // Increment chunk.steps.mem_reads_size twice
-                    *s += &format!(
-                        "\tmov {}, [{}] /* value = mem_reads_size */\n",
-                        REG_VALUE, REG_MEM_READS_SIZE
-                    );
-                    *s += &format!("\tadd {}, 2 /* value += 2*/\n", REG_VALUE);
-                    *s += &format!(
-                        "\tmov [{}], {} /* mem_reads_size = value */\n",
-                        REG_MEM_READS_SIZE, REG_VALUE
-                    );
-
-                    // Check done
-                    /////////////
-
-                    *s += ".align 16\n";
-                    *s += &format!("pc_{:x}_a_address_check_done:\n", ctx.pc);
+                    // If address is constant
+                    if instruction.a_use_sp_imm1 == 0 {
+                        // If address is constant and aligned
+                        if (instruction.a_offset_imm0 & 0x7) == 0 {
+                            Self::a_src_mem_aligned(&mut ctx, s);
+                        } else {
+                            Self::a_src_mem_not_aligned(&mut ctx, s);
+                        }
+                    }
+                    // If address is dynamic
+                    else {
+                        // Check if address is aligned, i.e. it is a multiple of 8, or not,
+                        // and insert code accordingly
+                        *s += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
+                        *s += &format!("\tjnz pc_{:x}_a_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
+                        Self::a_src_mem_aligned(&mut ctx, s);
+                        *s += &format!("\tjmp pc_{:x}_a_address_check_done\n", ctx.pc);
+                        *s += &format!("pc_{:x}_a_address_not_aligned:\n", ctx.pc);
+                        Self::a_src_mem_not_aligned(&mut ctx, s);
+                        *s += ".align 16\n";
+                        *s += &format!("pc_{:x}_a_address_check_done:\n", ctx.pc);
+                    }
 
                     ctx.a.is_saved = true;
                 }
@@ -1093,7 +1016,6 @@ impl ZiskRom {
                     *s += "\t/* b=SRC_MEM */\n";
 
                     // Calculate memory address
-                    ///////////////////////////
                     *s += &format!(
                         "\tmov {}, 0x{:x} /* address = i.b_offset_imm0 */\n",
                         REG_ADDRESS, instruction.b_offset_imm0
@@ -1102,10 +1024,7 @@ impl ZiskRom {
                         *s += &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, MEM_SP);
                     }
 
-                    // Read value
-                    /////////////
-
-                    // Read from memory and store in the proper register: b or c
+                    // Read value from memory and store in the proper register: b or c
                     *s += &format!(
                         "\tmov {}, [{}] /* {} = mem[address] */\n",
                         if ctx.store_b_in_c { REG_C } else { REG_B },
@@ -1114,99 +1033,27 @@ impl ZiskRom {
                     );
 
                     // Mem reads
-                    ////////////
-
-                    // Check if address is aligned, i.e. it is a multiple of 8
-                    *s += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
-                    *s += &format!("\tjnz pc_{:x}_b_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
-
-                    // b register memory address is fully alligned
-                    //////////////////////////////////////////////
-
-                    // Copy read data into mem_reads_address and increment it
-                    *s += &format!(
-                        "\tmov [{}], {} /* [mem_reads_address]=b */\n",
-                        REG_MEM_READS_ADDRESS,
-                        if ctx.store_b_in_c { REG_C } else { REG_B }
-                    );
-                    *s += &format!(
-                        "\tadd {}, 8 /* advance mem_reads_address */\n",
-                        REG_MEM_READS_ADDRESS
-                    );
-
-                    // Increment chunk.steps.mem_reads_size
-                    *s += &format!(
-                        "\tmov {}, [{}] /* value = mem_reads_size */\n",
-                        REG_VALUE, REG_MEM_READS_SIZE
-                    );
-                    *s += &format!("\tinc {} /* increment value */\n", REG_VALUE);
-                    *s += &format!(
-                        "\tmov [{}], {} /* mem_reads_size = value */\n",
-                        REG_MEM_READS_SIZE, REG_VALUE
-                    );
-
-                    // Jump to done
-                    *s += &format!("\tjmp pc_{:x}_b_address_check_done\n", ctx.pc);
-
-                    // b memory address is not aligned
-                    //////////////////////////////////
-
-                    *s += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
-
-                    // Calculate previous aligned address
-                    *s += &format!(
-                        "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
-                        REG_ADDRESS
-                    );
-
-                    // Store previous aligned address value in mem_reads, and advance address
-                    *s += &format!(
-                        "\tmov {}, [{}] /* value = mem[prev_address] */\n",
-                        REG_VALUE, REG_ADDRESS
-                    );
-                    *s += &format!(
-                        "\tmov [{}], {} /* [mem_reads_address] = prev_b */\n",
-                        REG_MEM_READS_ADDRESS, REG_VALUE
-                    );
-                    *s += &format!(
-                        "\tadd {}, 8 /* advance mem_reads_address */\n",
-                        REG_MEM_READS_ADDRESS
-                    );
-
-                    // Calculate next aligned address
-                    *s +=
-                        &format!("\tadd {}, 8 /* address = next aligned address */\n", REG_ADDRESS);
-
-                    // Store next aligned address value in mem_reads, and advance it
-                    *s += &format!(
-                        "\tmov {}, [{}] /* value = mem[next_address] */\n",
-                        REG_VALUE, REG_ADDRESS
-                    );
-                    *s += &format!(
-                        "\tmov [{}], {} /* [mem_reads_address] = next_b */\n",
-                        REG_MEM_READS_ADDRESS, REG_VALUE
-                    );
-                    *s += &format!(
-                        "\tadd {}, 8 /* advance mem_reads_address */\n",
-                        REG_MEM_READS_ADDRESS
-                    );
-
-                    // Increment chunk.steps.mem_reads_size twice
-                    *s += &format!(
-                        "\tmov {}, [{}] /* value = mem_reads_size */\n",
-                        REG_VALUE, REG_MEM_READS_SIZE
-                    );
-                    *s += &format!("\tadd {}, 2 /* value += 2*/\n", REG_VALUE);
-                    *s += &format!(
-                        "\tmov [{}], {} /* mem_reads_size = value */\n",
-                        REG_MEM_READS_SIZE, REG_VALUE
-                    );
-
-                    // Check done
-                    /////////////
-
-                    *s += ".align 16\n";
-                    *s += &format!("pc_{:x}_b_address_check_done:\n", ctx.pc);
+                    // If address is constant
+                    if instruction.b_use_sp_imm1 == 0 {
+                        // If address is constant and aligned
+                        if (instruction.b_offset_imm0 & 0x7) == 0 {
+                            Self::b_src_mem_aligned(&mut ctx, s);
+                        } else {
+                            Self::b_src_mem_not_aligned(&mut ctx, s);
+                        }
+                    }
+                    // If address is dynamic
+                    else {
+                        // Check if address is aligned, i.e. it is a multiple of 8
+                        *s += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
+                        *s += &format!("\tjnz pc_{:x}_b_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
+                        Self::b_src_mem_aligned(&mut ctx, s);
+                        *s += &format!("\tjmp pc_{:x}_b_address_check_done\n", ctx.pc);
+                        Self::b_src_mem_not_aligned(&mut ctx, s);
+                        *s += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
+                        *s += ".align 16\n";
+                        *s += &format!("pc_{:x}_b_address_check_done:\n", ctx.pc);
+                    }
 
                     ctx.b.is_saved = !ctx.store_b_in_c;
                 }
@@ -1304,7 +1151,6 @@ impl ZiskRom {
                             *s += &format!("\tjnz pc_{:x}_b_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
 
                             // b register memory address is fully alligned
-                            //////////////////////////////////////////////
 
                             // Copy read data into mem_reads_address and increment it
                             *s += &format!(
@@ -1332,7 +1178,6 @@ impl ZiskRom {
                             *s += &format!("\tjmp pc_{:x}_b_address_check_done\n", ctx.pc);
 
                             // b memory address is not aligned
-                            //////////////////////////////////
 
                             *s += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
 
@@ -1388,8 +1233,6 @@ impl ZiskRom {
                             );
 
                             // Check done
-                            /////////////
-
                             *s += ".align 16\n";
                             *s += &format!("pc_{:x}_b_address_check_done:\n", ctx.pc);
                         }
@@ -1439,7 +1282,6 @@ impl ZiskRom {
                             );
 
                             // Same address
-                            ///////////////
 
                             // Increment chunk.steps.mem_reads_size
                             *s += &format!(
@@ -1456,7 +1298,6 @@ impl ZiskRom {
                             *s += &format!("\tjmp pc_{:x}_b_ind_address_done\n", ctx.pc);
 
                             // Different address
-                            ////////////////////
 
                             *s += &format!("pc_{:x}_b_ind_different_address:\n", ctx.pc);
 
@@ -1490,7 +1331,6 @@ impl ZiskRom {
                             *s += &format!("\tjmp pc_{:x}_b_ind_address_done\n", ctx.pc);
 
                             // Done
-                            ///////
 
                             *s += ".align 16\n";
                             *s += &format!("pc_{:x}_b_ind_address_done:\n", ctx.pc);
@@ -1593,7 +1433,6 @@ impl ZiskRom {
                     *s += "\t/* STORE_MEM */\n";
 
                     // Calculate memory address and store it in REG_ADDRESS
-                    ///////////////////////////////////////////////////////
                     *s += &format!(
                         "\tmov {}, 0x{:x}/* address = i.store_offset */\n",
                         REG_ADDRESS, instruction.store_offset
@@ -1603,77 +1442,21 @@ impl ZiskRom {
                     }
 
                     // Mem reads
-                    ////////////
-
-                    // Check if address is aligned, i.e. it is a multiple of 8
-                    *s += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
-                    *s += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
-                    *s += &format!("\tjmp pc_{:x}_c_address_aligned\n", ctx.pc);
-
-                    // Address not aligned
-                    //////////////////////
-
-                    *s += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
-
-                    // Get a copy of the address to preserve it
-                    *s += &format!("\tmov {}, {} /* aux = address */\n", REG_AUX, REG_ADDRESS);
-
-                    // Calculate previous aligned address
-                    *s += &format!(
-                        "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
-                        REG_AUX
-                    );
-
-                    // Store previous aligned address value in mem_reads, and advance address
-                    *s += &format!(
-                        "\tmov {}, [{}] /* value = mem[prev_address] */\n",
-                        REG_VALUE, REG_AUX
-                    );
-                    *s += &format!(
-                        "\tmov [{}], {} /* [mem_reads_address] = prev_c */\n",
-                        REG_MEM_READS_ADDRESS, REG_VALUE
-                    );
-                    *s += &format!(
-                        "\tadd {}, 8 /* advance mem_reads_address */\n",
-                        REG_MEM_READS_ADDRESS
-                    );
-
-                    // Calculate next aligned address
-                    *s += &format!("\tadd {}, 8 /* address = next aligned address */\n", REG_AUX);
-
-                    // Store next aligned address value in mem_reads, and advance address
-                    *s += &format!(
-                        "\tmov {}, [{}] /* value = mem[next_address] */\n",
-                        REG_VALUE, REG_AUX
-                    );
-                    *s += &format!(
-                        "\tmov [{}], {} /* [mem_reads_address] = next_c */\n",
-                        REG_MEM_READS_ADDRESS, REG_VALUE
-                    );
-                    *s += &format!(
-                        "\tadd {}, 8 /* advance mem_reads_address */\n",
-                        REG_MEM_READS_ADDRESS
-                    );
-
-                    // Increment chunk.steps.mem_reads_size twice
-                    *s += &format!(
-                        "\tmov {}, [{}] /* value = mem_reads_size */\n",
-                        REG_VALUE, REG_MEM_READS_SIZE
-                    );
-                    *s += &format!("\tadd {}, 2 /* value += 2*/\n", REG_VALUE);
-                    *s += &format!(
-                        "\tmov [{}], {} /* mem_reads_size = value */\n",
-                        REG_MEM_READS_SIZE, REG_VALUE
-                    );
-
-                    // Address aligned
-                    //////////////////
-
-                    *s += ".align 16\n";
-                    *s += &format!("pc_{:x}_c_address_aligned:\n", ctx.pc);
+                    if !instruction.store_use_sp {
+                        if (instruction.store_offset & 0x7) != 0 {
+                            Self::c_store_mem_not_aligned(&mut ctx, s);
+                        }
+                    } else {
+                        *s += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
+                        *s += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
+                        *s += &format!("\tjmp pc_{:x}_c_address_aligned\n", ctx.pc);
+                        *s += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                        Self::c_store_mem_not_aligned(&mut ctx, s);
+                        *s += ".align 16\n";
+                        *s += &format!("pc_{:x}_c_address_aligned:\n", ctx.pc);
+                    }
 
                     // Store mem[address] = value
-                    /////////////////////////////
                     if instruction.store_ra {
                         *s += &format!(
                             "\tmov {}, 0x{:x} /* value = pc + jmp_offset2 */\n",
@@ -1693,7 +1476,6 @@ impl ZiskRom {
                     *s += &format!("\t/* STORE_IND width={} */\n", instruction.ind_width);
 
                     // Calculate memory address and store it in REG_ADDRESS
-                    ///////////////////////////////////////////////////////
                     *s += &format!(
                         "\tmov {}, {} /* address = a */\n",
                         REG_ADDRESS, ctx.a.string_value
@@ -1709,7 +1491,6 @@ impl ZiskRom {
                     }
 
                     // Save data in mem_reads
-                    /////////////////////////
                     match instruction.ind_width {
                         8 => {
                             // // Check if address is aligned, i.e. it is a multiple of 8
@@ -1721,7 +1502,6 @@ impl ZiskRom {
                             );
 
                             // c address not aligned
-                            ////////////////////////
 
                             *s += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
 
@@ -1783,7 +1563,6 @@ impl ZiskRom {
                             );
 
                             // Check done
-                            /////////////
 
                             *s += ".align 16\n";
                             *s += &format!("pc_{:x}_c_address_aligned:\n", ctx.pc);
@@ -1840,7 +1619,6 @@ impl ZiskRom {
                             );
 
                             // Same address
-                            ///////////////
 
                             // Increment chunk.steps.mem_reads_size
                             *s += &format!(
@@ -1856,7 +1634,6 @@ impl ZiskRom {
                             *s += &format!("\tjmp pc_{:x}_c_ind_address_done /* Done */\n", ctx.pc);
 
                             // Different address
-                            ////////////////////
 
                             *s += &format!("pc_{:x}_c_ind_different_address:\n", ctx.pc);
 
@@ -1890,7 +1667,6 @@ impl ZiskRom {
                             *s += &format!("\tjmp pc_{:x}_c_ind_address_done\n", ctx.pc);
 
                             // Done
-                            ///////
 
                             *s += ".align 16\n";
                             *s += &format!("pc_{:x}_c_ind_address_done:\n", ctx.pc);
@@ -1940,7 +1716,6 @@ impl ZiskRom {
                     }
 
                     // Store mem[address] = value
-                    /////////////////////////////
                     match instruction.ind_width {
                         8 => {
                             if instruction.store_ra {
@@ -3358,5 +3133,166 @@ impl ZiskRom {
             // );
             ctx.jump_to_dynamic_pc = true;
         }
+    }
+
+    fn a_src_mem_aligned(ctx: &mut ZiskAsmContext, s: &mut String) {
+        // Copy read data into mem_reads_address and increment it
+        *s += &format!(
+            "\tmov [{}], {} /* [mem_reads_address]=a */\n",
+            REG_MEM_READS_ADDRESS,
+            if ctx.store_a_in_c { REG_C } else { REG_A }
+        );
+        *s += &format!("\tadd {}, 8 /* advance mem_reads_address */\n", REG_MEM_READS_ADDRESS);
+
+        // Increment chunk.steps.mem_reads_size
+        *s += &format!(
+            "\tmov {}, [{}] /* value = mem_reads_size */\n",
+            REG_VALUE, REG_MEM_READS_SIZE
+        );
+        *s += &format!("\tinc {} /* increment value */\n", REG_VALUE);
+        *s += &format!(
+            "\tmov [{}], {} /* mem_reads_size = value */\n",
+            REG_MEM_READS_SIZE, REG_VALUE
+        );
+    }
+
+    fn a_src_mem_not_aligned(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        // Calculate previous aligned address
+        *s += &format!(
+            "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
+            REG_ADDRESS
+        );
+
+        // Store previous aligned address value in mem_reads
+        *s += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_ADDRESS);
+        // Copy read data into mem_reads_address and increment it
+        *s += &format!(
+            "\tmov [{}], {} /* [mem_reads_address] = prev_a */\n",
+            REG_MEM_READS_ADDRESS, REG_VALUE
+        );
+        *s += &format!("\tadd {}, 8 /* advance mem_reads_address */\n", REG_MEM_READS_ADDRESS);
+
+        // Calculate next aligned address
+        *s += &format!("\tadd {}, 8 /* address = next aligned address */\n", REG_ADDRESS);
+
+        // Store next aligned address value in mem_reads
+        *s += &format!("\tmov {}, [{}] /* value = mem[next_address] */\n", REG_VALUE, REG_ADDRESS);
+        // Copy read data into mem_reads_address and increment it
+        *s += &format!(
+            "\tmov [{}], {} /* [mem_reads_address] = next_a */\n",
+            REG_MEM_READS_ADDRESS, REG_VALUE
+        );
+        *s += &format!("\tadd {}, 8 /* advance mem_reads_address */\n", REG_MEM_READS_ADDRESS);
+
+        // Increment chunk.steps.mem_reads_size twice
+        *s += &format!(
+            "\tmov {}, [{}] /* value = mem_reads_size */\n",
+            REG_VALUE, REG_MEM_READS_SIZE
+        );
+        *s += &format!("\tadd {}, 2 /* value += 2*/\n", REG_VALUE);
+        *s += &format!(
+            "\tmov [{}], {} /* mem_reads_size = value */\n",
+            REG_MEM_READS_SIZE, REG_VALUE
+        );
+    }
+
+    fn b_src_mem_aligned(ctx: &mut ZiskAsmContext, s: &mut String) {
+        // Copy read data into mem_reads_address and increment it
+        *s += &format!(
+            "\tmov [{}], {} /* [mem_reads_address]=b */\n",
+            REG_MEM_READS_ADDRESS,
+            if ctx.store_b_in_c { REG_C } else { REG_B }
+        );
+        *s += &format!("\tadd {}, 8 /* advance mem_reads_address */\n", REG_MEM_READS_ADDRESS);
+
+        // Increment chunk.steps.mem_reads_size
+        *s += &format!(
+            "\tmov {}, [{}] /* value = mem_reads_size */\n",
+            REG_VALUE, REG_MEM_READS_SIZE
+        );
+        *s += &format!("\tinc {} /* increment value */\n", REG_VALUE);
+        *s += &format!(
+            "\tmov [{}], {} /* mem_reads_size = value */\n",
+            REG_MEM_READS_SIZE, REG_VALUE
+        );
+    }
+
+    fn b_src_mem_not_aligned(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        // Calculate previous aligned address
+        *s += &format!(
+            "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
+            REG_ADDRESS
+        );
+
+        // Store previous aligned address value in mem_reads, and advance address
+        *s += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_ADDRESS);
+        *s += &format!(
+            "\tmov [{}], {} /* [mem_reads_address] = prev_b */\n",
+            REG_MEM_READS_ADDRESS, REG_VALUE
+        );
+        *s += &format!("\tadd {}, 8 /* advance mem_reads_address */\n", REG_MEM_READS_ADDRESS);
+
+        // Calculate next aligned address
+        *s += &format!("\tadd {}, 8 /* address = next aligned address */\n", REG_ADDRESS);
+
+        // Store next aligned address value in mem_reads, and advance it
+        *s += &format!("\tmov {}, [{}] /* value = mem[next_address] */\n", REG_VALUE, REG_ADDRESS);
+        *s += &format!(
+            "\tmov [{}], {} /* [mem_reads_address] = next_b */\n",
+            REG_MEM_READS_ADDRESS, REG_VALUE
+        );
+        *s += &format!("\tadd {}, 8 /* advance mem_reads_address */\n", REG_MEM_READS_ADDRESS);
+
+        // Increment chunk.steps.mem_reads_size twice
+        *s += &format!(
+            "\tmov {}, [{}] /* value = mem_reads_size */\n",
+            REG_VALUE, REG_MEM_READS_SIZE
+        );
+        *s += &format!("\tadd {}, 2 /* value += 2*/\n", REG_VALUE);
+        *s += &format!(
+            "\tmov [{}], {} /* mem_reads_size = value */\n",
+            REG_MEM_READS_SIZE, REG_VALUE
+        );
+    }
+
+    fn c_store_mem_not_aligned(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        // Get a copy of the address to preserve it
+        *s += &format!("\tmov {}, {} /* aux = address */\n", REG_AUX, REG_ADDRESS);
+
+        // Calculate previous aligned address
+        *s += &format!(
+            "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
+            REG_AUX
+        );
+
+        // Store previous aligned address value in mem_reads, and advance address
+        *s += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_AUX);
+        *s += &format!(
+            "\tmov [{}], {} /* [mem_reads_address] = prev_c */\n",
+            REG_MEM_READS_ADDRESS, REG_VALUE
+        );
+        *s += &format!("\tadd {}, 8 /* advance mem_reads_address */\n", REG_MEM_READS_ADDRESS);
+
+        // Calculate next aligned address
+        *s += &format!("\tadd {}, 8 /* address = next aligned address */\n", REG_AUX);
+
+        // Store next aligned address value in mem_reads, and advance address
+        *s += &format!("\tmov {}, [{}] /* value = mem[next_address] */\n", REG_VALUE, REG_AUX);
+        *s += &format!(
+            "\tmov [{}], {} /* [mem_reads_address] = next_c */\n",
+            REG_MEM_READS_ADDRESS, REG_VALUE
+        );
+        *s += &format!("\tadd {}, 8 /* advance mem_reads_address */\n", REG_MEM_READS_ADDRESS);
+
+        // Increment chunk.steps.mem_reads_size twice
+        *s += &format!(
+            "\tmov {}, [{}] /* value = mem_reads_size */\n",
+            REG_VALUE, REG_MEM_READS_SIZE
+        );
+        *s += &format!("\tadd {}, 2 /* value += 2*/\n", REG_VALUE);
+        *s += &format!(
+            "\tmov [{}], {} /* mem_reads_size = value */\n",
+            REG_MEM_READS_SIZE, REG_VALUE
+        );
     }
 }
