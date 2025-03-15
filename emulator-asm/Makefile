@@ -1,9 +1,9 @@
 # Debug build flags
 ifeq ($(dbg),1)
-      CFLAGS = -g -D DEBUG -no-pie
+      CFLAGS = -g -D DEBUG
       ASMFLAGS = -g
 else
-      CFLAGS = -O3 -D DEBUG -no-pie
+      CFLAGS = -O3
 endif
 
 # Default EMU_PATH (can be overridden)
