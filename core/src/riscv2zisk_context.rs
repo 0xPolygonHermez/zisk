@@ -10,6 +10,13 @@ use crate::{
 };
 
 use std::collections::HashMap;
+// The CSR precompiled addresses are defined in the `ZiskOS` `ziskos/entrypoint/src` files
+// because legacy versions of Rust do not support constant parameters in `asm!` macros.
+
+const CSR_PRECOMPILED: [&str; 5] =
+    ["keccak", "arith256", "arith256_mod", "secp256k1_add", "secp256k1_dbl"];
+const CSR_PRECOMPILED_ADDR_START: u32 = 0x800;
+const CSR_PRECOMPILED_ADDR_END: u32 = CSR_PRECOMPILED_ADDR_START + CSR_PRECOMPILED.len() as u32;
 
 const CAUSE_EXIT: u64 = 93;
 const CAUSE_KECCAK: u64 = 0x800;
@@ -837,10 +844,11 @@ impl Riscv2ZiskContext<'_> {
             let mut zib = ZiskInstBuilder::new(self.s);
             zib.src_b("reg", i.rs1 as u64, false);
             zib.j(4, 4);
-            if i.csr >= 0x800 && i.csr <= 0x8FF {
+            if (CSR_PRECOMPILED_ADDR_START..=CSR_PRECOMPILED_ADDR_END).contains(&i.csr) {
                 zib.src_a("step", 0, false);
-                zib.op("keccak").unwrap();
-                zib.verbose("keccak");
+                let precompiled = CSR_PRECOMPILED[(i.csr - CSR_PRECOMPILED_ADDR_START) as usize];
+                zib.op(precompiled).unwrap();
+                zib.verbose(precompiled);
             } else {
                 zib.src_a("mem", CSR_ADDR + i.csr as u64, false);
                 zib.op("or").unwrap();

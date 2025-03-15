@@ -18,6 +18,18 @@ macro_rules! entrypoint {
     };
 }
 
+#[macro_export]
+macro_rules! ziskos_syscall {
+    ($csr_addr:literal, $addr:expr) => {{
+        unsafe {
+            asm!(
+                concat!("csrs ", stringify!($csr_addr), ", {value}"),
+                value = in(reg) $addr
+            );
+        }
+    }};
+}
+
 #[allow(unused_imports)]
 use crate::ziskos_definitions::ziskos_config::*;
 

@@ -3,28 +3,25 @@
 #[cfg(target_os = "ziskos")]
 use core::arch::asm;
 
+#[cfg(target_os = "ziskos")]
+use crate::ziskos_syscall;
 /// Executes the Keccak256 permutation on the given state.
 ///
-/// The keccak system call writes the KECCAKF constant to the A7 register, the address of the
-/// input/output memory buffer to the A0 register, and a 0 to the A1 register.
-/// The Zisk
-/// The Keccak-f code will get the input state data (1600 bits = 200 bytes) from that address, hash
-/// the bits, and write the output state data (same size) to the same address as a result.
+/// The keccak system call execute CSR set on custom port, when transpiling from riscv to zisk
+/// replace this instruction with precompiled operation, in this case keccak permutation.
+/// The address with the input state data (1600 bits = 200 bytes) is the value "set" to
+/// the CSR register, this address is store in one register, no always the same.
 ///
 /// ### Safety
 ///
-/// The caller must ensure that `state` is valid pointer to data that is aligned along a four
+/// The caller must ensure that `state` is valid pointer to data that is aligned along a eigth
 /// byte boundary.
+
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn syscall_keccak_f(state: *mut [u64; 25]) {
     #[cfg(target_os = "ziskos")]
-    unsafe {
-        asm!(
-            "csrs 0x800, {ptr}",
-            ptr = in(reg) state
-        );
-    }
+    ziskos_syscall!(0x800, state);
     #[cfg(not(target_os = "ziskos"))]
     unreachable!()
 }
