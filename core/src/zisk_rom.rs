@@ -159,6 +159,7 @@ pub struct ZiskAsmContext {
     flag_is_always_zero: bool,
     jump_to_dynamic_pc: bool,
     jump_to_static_pc: String,
+    log_output: bool,
 
     a: ZiskAsmRegister,
     b: ZiskAsmRegister,
@@ -514,7 +515,9 @@ impl ZiskRom {
         // Clear output data, just in case
         s.clear();
 
+        // Create context
         let mut ctx = ZiskAsmContext::default();
+        ctx.log_output = true;
 
         // Save instructions program addresses into a vector
         let mut keys: Vec<u64> = Vec::new();
@@ -1747,48 +1750,51 @@ impl ZiskRom {
                                     REG_ADDRESS, REG_C_B
                                 );
                             }
-                            *s += &format!(
-                                "\tmov {}, 0xa0000200 /* width=1: aux = UART */\n",
-                                REG_FLAG,
-                            );
-                            *s += &format!(
-                                "\tcmp {}, {} /* width=1: if address = USART then print char */\n",
-                                REG_ADDRESS, REG_FLAG
-                            );
-                            *s += &format!(
-                                "\tjne pc_{:x}_store_c_not_uart /* width=1: continue */\n",
-                                ctx.pc,
-                            );
-                            if instruction.store_ra {
+                            if ctx.log_output {
                                 *s += &format!(
-                                    "\tmov dil, 0x{:x} /* width=1: rdi = value */\n",
-                                    (ctx.pc as i64 + instruction.jmp_offset2) as u64 as u8
+                                    "\tmov {}, 0xa0000200 /* width=1: aux = UART */\n",
+                                    REG_FLAG,
                                 );
-                            } else {
-                                *s += &format!("\tmov dil, {} /* width=1: rdi = c */\n", REG_C_B);
+                                *s += &format!(
+                                    "\tcmp {}, {} /* width=1: if address = USART then print char */\n",
+                                    REG_ADDRESS, REG_FLAG
+                                );
+                                *s += &format!(
+                                    "\tjne pc_{:x}_store_c_not_uart /* width=1: continue */\n",
+                                    ctx.pc,
+                                );
+                                if instruction.store_ra {
+                                    *s += &format!(
+                                        "\tmov dil, 0x{:x} /* width=1: rdi = value */\n",
+                                        (ctx.pc as i64 + instruction.jmp_offset2) as u64 as u8
+                                    );
+                                } else {
+                                    *s +=
+                                        &format!("\tmov dil, {} /* width=1: rdi = c */\n", REG_C_B);
+                                }
+                                *s += "\tpush rax\n";
+                                *s += "\tpush rcx\n";
+                                *s += "\tpush rdx\n";
+                                // *s += "\tpush rdi\n";
+                                // *s += "\tpush rsi\n";
+                                // *s += "\tpush rsp\n";
+                                // *s += "\tpush r8\n";
+                                *s += "\tpush r9\n";
+                                *s += "\tpush r10\n";
+                                //*s += "\tpush r11\n";
+                                *s += "\tcall _print_char /* width=1: call print_char() */\n";
+                                //*s += "\tpop r11\n";
+                                *s += "\tpop r10\n";
+                                *s += "\tpop r9\n";
+                                // *s += "\tpop r8\n";
+                                // *s += "\tpop rsp\n";
+                                // *s += "\tpop rsi\n";
+                                // *s += "\tpop rdi\n";
+                                *s += "\tpop rdx\n";
+                                *s += "\tpop rcx\n";
+                                *s += "\tpop rax\n";
+                                *s += &format!("pc_{:x}_store_c_not_uart:\n", ctx.pc);
                             }
-                            *s += "\tpush rax\n";
-                            *s += "\tpush rcx\n";
-                            *s += "\tpush rdx\n";
-                            // *s += "\tpush rdi\n";
-                            // *s += "\tpush rsi\n";
-                            // *s += "\tpush rsp\n";
-                            // *s += "\tpush r8\n";
-                            *s += "\tpush r9\n";
-                            *s += "\tpush r10\n";
-                            //*s += "\tpush r11\n";
-                            *s += "\tcall _print_char /* width=1: call print_char() */\n";
-                            //*s += "\tpop r11\n";
-                            *s += "\tpop r10\n";
-                            *s += "\tpop r9\n";
-                            // *s += "\tpop r8\n";
-                            // *s += "\tpop rsp\n";
-                            // *s += "\tpop rsi\n";
-                            // *s += "\tpop rdi\n";
-                            *s += "\tpop rdx\n";
-                            *s += "\tpop rcx\n";
-                            *s += "\tpop rax\n";
-                            *s += &format!("pc_{:x}_store_c_not_uart:\n", ctx.pc);
                         }
                         _ => panic!(
                             "ZiskRom::save_to_asm() Invalid ind_width={} pc={}",
