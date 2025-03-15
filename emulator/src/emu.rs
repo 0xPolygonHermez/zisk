@@ -1289,7 +1289,7 @@ impl<'a> Emu<'a> {
                         end: false,
                     });
                 }
-                self.par_step_my_block::<F>(emu_traces.last_mut().unwrap(), block_idx);
+                self.par_step_my_block::<F>(emu_traces.last_mut().unwrap());
 
                 if self.ctx.inst_ctx.step >= options.max_steps {
                     panic!("Emu::par_run() reached max_steps");
@@ -1422,11 +1422,7 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn par_step_my_block<F: PrimeField>(
-        &mut self,
-        emu_full_trace_vec: &mut EmuTrace,
-        block_idx: u64,
-    ) {
+    pub fn par_step_my_block<F: PrimeField>(&mut self, emu_full_trace_vec: &mut EmuTrace) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
         // Build the 'a' register value  based on the source specified by the current instruction
         self.source_a_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);
