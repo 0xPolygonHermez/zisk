@@ -68,6 +68,8 @@ jobs:
         with:
           toolchain: stable
           profile: minimal
+          default: true
+          override: true
           components: rustfmt
 
       - name: Run cargo fmt

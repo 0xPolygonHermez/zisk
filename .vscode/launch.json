@@ -17,12 +17,12 @@
                     "verify-constraints",
                     "--witness-lib",
                     "../zisk/target/debug/libzisk_witness.so",
-                    "--rom",
-                    "../zisk/emulator/benches/data/my.elf",
+                    "--elf",
+                    "../zisk-testvectors/pessimistic-proof/program/pessimistic-proof-program-keccak.elf",
                     "-i",
-                    "../zisk/emulator/benches/data/input_two_segments.bin",
+                    "../zisk-testvectors/pessimistic-proof/inputs/pessimistic-proof.bin",
                     "--proving-key",
-                    "../zisk/build/provingKey"
+                    "../zisk/build/build_pre_050/provingKey"
                 ],
                 //"filter": {
                 //    "name": "proofman_cli",

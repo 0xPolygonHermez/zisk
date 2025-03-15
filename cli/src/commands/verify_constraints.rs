@@ -9,13 +9,15 @@ use std::{collections::HashMap, fs, path::PathBuf};
 
 use crate::{commands::Field, ZISK_VERSION_MESSAGE};
 
+use super::{get_default_proving_key, get_default_witness_computation_lib};
+
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 #[command(propagate_version = true)]
 pub struct ZiskVerifyConstraints {
     /// Witness computation dynamic library path
     #[clap(short = 'w', long)]
-    pub witness_lib: PathBuf,
+    pub witness_lib: Option<PathBuf>,
 
     /// ROM file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
@@ -36,7 +38,7 @@ pub struct ZiskVerifyConstraints {
 
     /// Setup folder path
     #[clap(short = 'k', long)]
-    pub proving_key: PathBuf,
+    pub proving_key: Option<PathBuf>,
 
     #[clap(long, default_value_t = Field::Goldilocks)]
     pub field: Field,
@@ -47,9 +49,6 @@ pub struct ZiskVerifyConstraints {
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
-
-    #[clap(short = 'c', long)]
-    pub default_cache: Option<PathBuf>,
 }
 
 impl ZiskVerifyConstraints {
@@ -63,12 +62,12 @@ impl ZiskVerifyConstraints {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
             Some(Some(debug_value)) => {
-                json_to_debug_instances_map(self.proving_key.clone(), debug_value.clone())
+                json_to_debug_instances_map(self.get_proving_key(), debug_value.clone())
             }
         };
 
         let default_cache_path =
-            self.default_cache.clone().unwrap_or_else(|| PathBuf::from(DEFAULT_CACHE_PATH));
+            std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
 
         if !default_cache_path.exists() {
             if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
@@ -79,7 +78,7 @@ impl ZiskVerifyConstraints {
             }
         }
 
-        let blowup_factor = get_rom_blowup_factor(&self.proving_key);
+        let blowup_factor = get_rom_blowup_factor(&self.get_proving_key());
 
         let rom_bin_path =
             get_elf_bin_file_path(&self.elf.to_path_buf(), &default_cache_path, blowup_factor)?;
@@ -98,22 +97,40 @@ impl ZiskVerifyConstraints {
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
         match self.field {
-            Field::Goldilocks => {
-                ProofMan::<Goldilocks>::generate_proof(
-                    self.witness_lib.clone(),
-                    Some(self.elf.clone()),
-                    self.asm.clone(),
-                    self.public_inputs.clone(),
-                    self.input.clone(),
-                    self.proving_key.clone(),
-                    PathBuf::new(),
-                    custom_commits_map,
-                    ProofOptions::new(true, self.verbose.into(), false, false, false, debug_info),
-                )
-                .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
-            }
-        }
+            Field::Goldilocks => ProofMan::<Goldilocks>::verify_proof_constraints(
+                self.get_witness_computation_lib(),
+                Some(self.elf.clone()),
+                self.asm.clone(),
+                self.public_inputs.clone(),
+                self.input.clone(),
+                self.get_proving_key(),
+                PathBuf::new(),
+                custom_commits_map,
+                ProofOptions::new(true, self.verbose.into(), false, false, false, debug_info),
+            )
+            .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?,
+        };
 
         Ok(())
+    }
+
+    /// Gets the witness computation library file location.
+    /// Uses the default one if not specified by user.
+    pub fn get_witness_computation_lib(&self) -> PathBuf {
+        if self.witness_lib.is_none() {
+            get_default_witness_computation_lib()
+        } else {
+            self.witness_lib.clone().unwrap()
+        }
+    }
+
+    /// Gets the proving key file location.
+    /// Uses the default one if not specified by user.
+    pub fn get_proving_key(&self) -> PathBuf {
+        if self.proving_key.is_none() {
+            get_default_proving_key()
+        } else {
+            self.proving_key.clone().unwrap()
+        }
     }
 }
