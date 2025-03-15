@@ -608,20 +608,24 @@ impl ZiskRom {
         );
 
         // Write chunk.start.reg
+        *s += &format!("\tmov {}, 0x{:08x} /* aux = reg_0_address */\n", REG_AUX, REG_FIRST);
         for i in 1..34 {
             *s += &format!(
-                "\tmov {}, 0x{:08x} /* value = reg_{}_address */\n",
+                "\tmov {}, [{} + {}] /* value = reg_{} */\n",
                 REG_VALUE,
-                REG_FIRST + i * 8,
+                REG_AUX,
+                i * 8,
                 i
             );
-            *s += &format!("\tmov {}, [{}] /* value = reg_{} */\n", REG_VALUE, REG_VALUE, i);
-            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
             *s += &format!(
-                "\tmov [{}], {} /* chunk.start.reg[{}] = value */\n",
-                REG_ADDRESS, REG_VALUE, i
+                "\tmov [{} + {}], {} /* chunk.start.reg[{}] = value */\n",
+                REG_ADDRESS,
+                i * 8,
+                REG_VALUE,
+                i
             );
         }
+        *s += &format!("\tadd {}, 33*8 /* address += 33*8 */\n", REG_ADDRESS);
 
         *s += "\t/* Reset step_down to chunk_size */\n";
         *s += &format!("\tmov {}, chunk_size /* value = chunk_size */\n", REG_VALUE);
@@ -2941,21 +2945,24 @@ impl ZiskRom {
                 s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
                 for k in 0..25 {
                     s += &format!(
-                        "\tmov {}, [{}] /* value = mem[keccak_address[{}]] */\n",
-                        REG_VALUE, REG_ADDRESS, k
+                        "\tmov {}, [{} + {}] /* value = mem[keccak_address[{}]] */\n",
+                        REG_VALUE,
+                        REG_ADDRESS,
+                        k * 8,
+                        k
                     );
                     s += &format!(
-                        "\tmov [{}], {} /* [mem_reads_address] = value */\n",
-                        REG_MEM_READS_ADDRESS, REG_VALUE
+                        "\tmov [{} + {}], {} /* mem_reads_address[{}] = value */\n",
+                        REG_MEM_READS_ADDRESS,
+                        k * 8,
+                        REG_VALUE,
+                        k
                     );
-                    s += &format!(
-                        "\tadd {}, 8 /* advance mem_reads_address */\n",
-                        REG_MEM_READS_ADDRESS
-                    );
-                    if k < 24 {
-                        s += &format!("\tadd {}, 8 /* advance address */\n", REG_ADDRESS);
-                    }
                 }
+                s += &format!(
+                    "\tadd {}, 25*8 /* advance mem_reads_address */\n",
+                    REG_MEM_READS_ADDRESS
+                );
 
                 // Increment chunk.steps.mem_reads_size in 25 units
                 s += &format!("\tadd {}, 25 /* mem_reads_size+=25 */\n", REG_MEM_READS_SIZE);
