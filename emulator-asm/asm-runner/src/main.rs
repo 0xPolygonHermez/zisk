@@ -26,11 +26,11 @@ fn main() {
         trace_level: asm_runner::AsmTraceLevel::None,
         keccak_trace: false,
     };
-    let result = AsmRunner::run(&args.asm_runner_path, &args.inputs_path, 1 << 32, 1 << 15, runner_options);
+    let _ = AsmRunner::run(&args.asm_runner_path, &args.inputs_path, 1 << 32, 1 << 15, runner_options);
 
     println!("Done!");
 
-    for i in 0..result.vec_chunks.len() {
-        println!("Chunk {}: {:#x?}", i, result.vec_chunks[i]);
-    }
+    // for i in 0..result.vec_chunks.len() {
+    //     println!("Chunk {}: {:#x?}", i, result.vec_chunks[i]);
+    // }
 }

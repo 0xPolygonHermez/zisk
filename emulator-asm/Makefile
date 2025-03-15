@@ -1,9 +1,10 @@
 # Debug build flags
 ifeq ($(dbg),1)
-      CFLAGS = -g -D DEBUG
-      ASMFLAGS = -g
+      CFLAGS = -g -D DEBUG -no-pie
+      ASMFLAGS = -g --noexecstack
 else
-      CFLAGS = -O3
+      CFLAGS = -O3 -no-pie
+	  ASMFLAGS = --noexecstack
 endif
 
 # Default EMU_PATH and OUT_PATH
@@ -23,7 +24,7 @@ build/emu.o: $(EMU_PATH)
 # Compile the final executable
 $(OUT_PATH): build/emu.o src/main.c src/chfast/keccak.c
 	mkdir -p $(OUT_DIR)
-	gcc $(CFLAGS) -no-pie src/main.c src/chfast/keccak.c -lc build/emu.o -o $@
+	gcc $(CFLAGS) src/main.c src/chfast/keccak.c -lc build/emu.o -o $@
 
 clean:
 	rm -rf build

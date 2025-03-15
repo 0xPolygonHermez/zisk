@@ -82,13 +82,19 @@ impl AsmRunner {
         }
 
         // Spawn child process
+        let start = std::time::Instant::now();
         if let Err(e) = command.arg(&shmem_prefix).spawn().and_then(|mut child| child.wait()) {
             eprintln!("Child process failed: {:?}", e);
         } else if options.verbose || options.log_output {
             println!("Child exited successfully");
         }
+        let stop = start.elapsed();
 
         let (mapped_ptr, vec_chunks) = Self::map_output(shmem_output_name.clone());
+
+        let total_steps = vec_chunks.iter().map(|x| x.steps).sum::<u64>();
+        let mhz = (total_steps as f64 / stop.as_secs_f64()) / 1_000_000.0;
+        println!("Assembly execution speed: {:.2} MHz", mhz);
 
         AsmMinimalTraces::new(shmem_output_name, mapped_ptr, vec_chunks)
     }
