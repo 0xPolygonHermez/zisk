@@ -30,6 +30,9 @@ void emulator_start(void);
 #define TRACE_ADDR         (uint64_t)0xb0000000
 #define INITIAL_TRACE_SIZE (uint64_t)0x100000000 // 4GB
 
+#define REG_ADDR 0x70000000
+#define REG_SIZE 0x1000 // 4kB
+
 struct timeval start_time;
 
 extern uint64_t MEM_STEP;
@@ -340,7 +343,7 @@ int main(int argc, char *argv[])
     }
     if ((uint64_t)pTrace != TRACE_ADDR)
     {
-        printf("Called mmap(pTrace) but returned address = 0x%llx != 0x%llx\n", pTrace, TRACE_ADDR);
+        printf("Called mmap(trace) but returned address = 0x%llx != 0x%llx\n", pTrace, TRACE_ADDR);
         return -1;
     }
 #ifdef DEBUG
@@ -365,7 +368,7 @@ int main(int argc, char *argv[])
     }
     if ((uint64_t)pRam != RAM_ADDR)
     {
-        printf("Called mmap(pRam) but returned address = 0x%08x != 0x%08x\n", RAM_ADDR, ROM_ADDR);
+        printf("Called mmap(ram) but returned address = 0x%08x != 0x%08x\n", pRam, RAM_ADDR);
         return -1;
     }
 #ifdef DEBUG
@@ -383,12 +386,30 @@ int main(int argc, char *argv[])
     }
     if ((uint64_t)pRom != ROM_ADDR)
     {
-        printf("Called mmap(pRom) but returned address = 0x%llx != 0x%llx\n", pRom, ROM_ADDR);
+        printf("Called mmap(rom) but returned address = 0x%llx != 0x%llx\n", pRom, ROM_ADDR);
         return -1;
     }
 #ifdef DEBUG
     if (verbose) printf("mmap(rom) returned %08x\n", pRom);
 #endif
+    
+    /*******/
+    /* REG */
+    /*******/
+    void * pReg = mmap((void *)REG_ADDR, REG_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    if (pReg == NULL)
+    {
+        printf("Failed calling mmap(reg) errno=%d=%s\n", errno, strerror(errno));
+        return -1;
+    }
+    if ((uint64_t)pReg != REG_ADDR)
+    {
+        printf("Called mmap(reg) but returned address = 0x%08x != 0x%08x\n", pReg, ROM_ADDR);
+        return -1;
+    }
+    #ifdef DEBUG
+    if (verbose) printf("mmap(reg) returned %08x\n", pReg);
+    #endif
 
     /*******/
     /* ASM */
@@ -483,6 +504,14 @@ int main(int argc, char *argv[])
     /************/
     /* CLEAN UP */
     /************/
+
+    // Cleanup REG
+    result = munmap((void *)REG_ADDR, REG_SIZE);
+    if (result == -1)
+    {
+        printf("Failed calling munmap(reg) errno=%d=%s\n", errno, strerror(errno));
+        exit(-1);
+    }
 
     // Cleanup ROM
     result = munmap((void *)ROM_ADDR, ROM_SIZE);

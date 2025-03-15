@@ -45,9 +45,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, M64, P2_32, RAM_ADDR, REG_A0, REG_FIRST, ROM_ADDR,
-    ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM,
-    STORE_NONE, STORE_REG,
+    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, M64, P2_32, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
+    SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -84,6 +83,9 @@ const TRACE_ADDR: &str = "0xb0000020";
 const MEM_TRACE_ADDRESS: &str = "qword ptr [MEM_TRACE_ADDRESS]";
 const MEM_CHUNK_ADDRESS: &str = "qword ptr [MEM_CHUNK_ADDRESS]";
 const MEM_CHUNK_START_STEP: &str = "qword ptr [MEM_CHUNK_START_STEP]";
+
+const REG_ADDR: u64 = 0x70000000;
+const REG_A0: u64 = REG_ADDR + 0x50;
 
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
@@ -608,13 +610,11 @@ impl ZiskRom {
         );
 
         // Write chunk.start.reg
-        *s += &format!("\tmov {}, 0x{:08x} /* aux = reg_0_address */\n", REG_AUX, REG_FIRST);
         for i in 1..34 {
             *s += &format!(
-                "\tmov {}, [{} + {}] /* value = reg_{} */\n",
+                "\tmov {}, qword ptr [0x{:x}] /* value = reg_{} */\n",
                 REG_VALUE,
-                REG_AUX,
-                i * 8,
+                REG_ADDR + i * 8,
                 i
             );
             *s += &format!(
@@ -892,21 +892,15 @@ impl ZiskRom {
                 SRC_REG => {
                     *s += &format!("\t/* a=SRC_REG reg={} */\n", instruction.a_offset_imm0);
 
-                    assert!(instruction.a_offset_imm0 <= 32);
-
-                    // Calculate memory address
-                    *s += &format!(
-                        "\tmov {}, 0x{:x} /* address = i.a_offset_imm0 */\n",
-                        REG_ADDRESS,
-                        RAM_ADDR + (instruction.a_offset_imm0 * 8)
-                    );
+                    assert!(instruction.a_offset_imm0 <= 34);
 
                     // Read from memory and store in the proper register: a or c
                     *s += &format!(
-                        "\tmov {}, [{}] /* {} = mem[address] */\n",
+                        "\tmov {}, qword ptr [0x{:x}] /* {} = reg[{}] */\n",
                         if ctx.store_a_in_c { REG_C } else { REG_A },
-                        REG_ADDRESS,
-                        if ctx.store_a_in_c { "c" } else { "a" }
+                        REG_ADDR + (instruction.a_offset_imm0 * 8),
+                        if ctx.store_a_in_c { "c" } else { "a" },
+                        instruction.a_offset_imm0
                     );
                 }
                 SRC_MEM => {
@@ -1008,21 +1002,15 @@ impl ZiskRom {
                 SRC_REG => {
                     *s += &format!("\t/* b=SRC_REG reg={} */\n", instruction.b_offset_imm0);
 
-                    assert!(instruction.b_offset_imm0 <= 32);
-
-                    // Calculate memory address
-                    *s += &format!(
-                        "\tmov {}, 0x{:x} /* address = i.b_offset_imm0 */\n",
-                        REG_ADDRESS,
-                        RAM_ADDR + (instruction.b_offset_imm0 * 8)
-                    );
+                    assert!(instruction.b_offset_imm0 <= 34);
 
                     // Read from memory and store in the proper register: b or c
                     *s += &format!(
-                        "\tmov {}, [{}] /* {} = mem[address] */\n",
+                        "\tmov {}, qword ptr [0x{:x}] /* {} = reg[{}] */\n",
                         if ctx.store_b_in_c { REG_C } else { REG_B },
-                        REG_ADDRESS,
-                        if ctx.store_b_in_c { "c" } else { "b" }
+                        REG_ADDR + (instruction.b_offset_imm0 * 8),
+                        if ctx.store_b_in_c { "c" } else { "b" },
+                        instruction.b_offset_imm0
                     );
                 }
                 SRC_MEM => {
@@ -1375,14 +1363,7 @@ impl ZiskRom {
                     *s += &format!("\t/* STORE_REG reg={} */\n", instruction.store_offset);
 
                     assert!(instruction.store_offset >= 0);
-                    assert!(instruction.store_offset <= 32);
-
-                    // Calculate memory address and store it in REG_ADDRESS
-                    *s += &format!(
-                        "\tmov {}, 0x{:x}/* address = i.store_offset */\n",
-                        REG_ADDRESS,
-                        RAM_ADDR + (instruction.store_offset as u64 * 8)
-                    );
+                    assert!(instruction.store_offset <= 34);
 
                     // Store in mem[address]
                     if instruction.store_ra {
@@ -1392,12 +1373,18 @@ impl ZiskRom {
                             (ctx.pc as i64 + instruction.jmp_offset2) as u64
                         );
                         *s += &format!(
-                            "\tmov [{}], {} /* mem[address] = value */\n",
-                            REG_ADDRESS, REG_VALUE
+                            "\tmov qword ptr [0x{:x}], {} /* reg[{}] = value */\n",
+                            REG_ADDR + (instruction.store_offset as u64 * 8),
+                            REG_VALUE,
+                            instruction.store_offset
                         );
                     } else {
-                        *s +=
-                            &format!("\tmov [{}], {} /* mem[address] = c */\n", REG_ADDRESS, REG_C);
+                        *s += &format!(
+                            "\tmov qword ptr [0x{:x}], {} /* reg[{}] = c */\n",
+                            REG_ADDR + (instruction.store_offset as u64 * 8),
+                            REG_C,
+                            instruction.store_offset
+                        );
                     }
                 }
                 STORE_MEM => {
@@ -2938,8 +2925,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Keccak => {
-                s += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, REG_A0);
-                s += &format!("\tmov rdi, [{}]\n", REG_ADDRESS);
+                s += &format!("\tmov rdi, qword ptr [0x{:x}]\n", REG_A0);
 
                 // Copy read data into mem_reads_address and advance it
                 s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
