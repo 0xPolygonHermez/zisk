@@ -14,7 +14,6 @@ use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
-use sm_common::i64_to_u64_field;
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 use zisk_pil::*;
 
@@ -93,20 +92,20 @@ impl ArithFullSM {
                 aop.calculate(opcode, a, b);
                 let mut t: ArithTraceRow<F> = Default::default();
                 for i in [0, 2] {
-                    t.a[i] = F::from_canonical_u64(aop.a[i]);
-                    t.b[i] = F::from_canonical_u64(aop.b[i]);
-                    t.c[i] = F::from_canonical_u64(aop.c[i]);
-                    t.d[i] = F::from_canonical_u64(aop.d[i]);
+                    t.a[i] = F::from_u64(aop.a[i]);
+                    t.b[i] = F::from_u64(aop.b[i]);
+                    t.c[i] = F::from_u64(aop.c[i]);
+                    t.d[i] = F::from_u64(aop.d[i]);
                     range_table_inputs.use_chunk_range_check(0, aop.a[i]);
                     range_table_inputs.use_chunk_range_check(0, aop.b[i]);
                     range_table_inputs.use_chunk_range_check(0, aop.c[i]);
                     range_table_inputs.use_chunk_range_check(0, aop.d[i]);
                 }
                 for i in [1, 3] {
-                    t.a[i] = F::from_canonical_u64(aop.a[i]);
-                    t.b[i] = F::from_canonical_u64(aop.b[i]);
-                    t.c[i] = F::from_canonical_u64(aop.c[i]);
-                    t.d[i] = F::from_canonical_u64(aop.d[i]);
+                    t.a[i] = F::from_u64(aop.a[i]);
+                    t.b[i] = F::from_u64(aop.b[i]);
+                    t.c[i] = F::from_u64(aop.c[i]);
+                    t.d[i] = F::from_u64(aop.d[i]);
                 }
                 range_table_inputs.use_chunk_range_check(aop.range_ab, aop.a[3]);
                 range_table_inputs.use_chunk_range_check(aop.range_ab + 26, aop.a[1]);
@@ -119,10 +118,10 @@ impl ArithFullSM {
                 range_table_inputs.use_chunk_range_check(aop.range_cd + 9, aop.d[1]);
 
                 for i in 0..7 {
-                    t.carry[i] = F::from_canonical_u64(i64_to_u64_field(aop.carry[i]));
+                    t.carry[i] = F::from_i64(aop.carry[i]);
                     range_table_inputs.use_carry_range_check(aop.carry[i]);
                 }
-                t.op = F::from_canonical_u8(aop.op);
+                t.op = F::from_u8(aop.op);
                 t.m32 = F::from_bool(aop.m32);
                 t.div = F::from_bool(aop.div);
                 t.na = F::from_bool(aop.na);
@@ -133,15 +132,15 @@ impl ArithFullSM {
                 t.main_mul = F::from_bool(aop.main_mul);
                 t.main_div = F::from_bool(aop.main_div);
                 t.sext = F::from_bool(aop.sext);
-                t.multiplicity = F::one();
-                t.range_ab = F::from_canonical_u8(aop.range_ab);
-                t.range_cd = F::from_canonical_u8(aop.range_cd);
+                t.multiplicity = F::ONE;
+                t.range_ab = F::from_u8(aop.range_ab);
+                t.range_cd = F::from_u8(aop.range_cd);
                 t.div_by_zero = F::from_bool(aop.div_by_zero);
                 t.div_overflow = F::from_bool(aop.div_overflow);
                 t.inv_sum_all_bs = if aop.div && !aop.div_by_zero {
-                    F::from_canonical_u64(aop.b[0] + aop.b[1] + aop.b[2] + aop.b[3]).inverse()
+                    F::from_u64(aop.b[0] + aop.b[1] + aop.b[2] + aop.b[3]).inverse()
                 } else {
-                    F::zero()
+                    F::ZERO
                 };
 
                 table_inputs.add_use(
@@ -155,27 +154,27 @@ impl ArithFullSM {
                     aop.div_overflow,
                 );
 
-                t.fab = if aop.na != aop.nb { F::neg_one() } else { F::one() };
+                t.fab = if aop.na != aop.nb { F::NEG_ONE } else { F::ONE };
                 //  na * (1 - 2 * nb);
                 t.na_fb = if aop.na {
                     if aop.nb {
-                        F::neg_one()
+                        F::NEG_ONE
                     } else {
-                        F::one()
+                        F::ONE
                     }
                 } else {
-                    F::zero()
+                    F::ZERO
                 };
                 t.nb_fa = if aop.nb {
                     if aop.na {
-                        F::neg_one()
+                        F::NEG_ONE
                     } else {
-                        F::one()
+                        F::ONE
                     }
                 } else {
-                    F::zero()
+                    F::ZERO
                 };
-                t.bus_res1 = F::from_canonical_u64(if aop.sext {
+                t.bus_res1 = F::from_u64(if aop.sext {
                     0xFFFFFFFF
                 } else if aop.m32 {
                     0
@@ -198,8 +197,8 @@ impl ArithFullSM {
         if padding_rows > 0 {
             let mut t: ArithTraceRow<F> = Default::default();
             let padding_opcode = ZiskOp::Muluh.code();
-            t.op = F::from_canonical_u8(padding_opcode);
-            t.fab = F::one();
+            t.op = F::from_u8(padding_opcode);
+            t.fab = F::ONE;
             for i in padding_offset..num_rows {
                 arith_trace[i] = t;
             }

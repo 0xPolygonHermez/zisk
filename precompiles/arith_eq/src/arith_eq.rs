@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use log::info;
 use p3_field::PrimeField64;
-use sm_common::i64_to_u64_field;
 
 use proofman_common::{AirInstance, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
@@ -80,29 +79,27 @@ impl ArithEqSM {
         for i in 0..ARITH_EQ_ROWS_BY_OP {
             let irow = row_offset + i;
             for j in 0..3 {
-                trace[irow].carry[j][0] =
-                    F::from_canonical_u64(i64_to_u64_field(data.cout[j][i * 2]));
-                trace[irow].carry[j][1] =
-                    F::from_canonical_u64(i64_to_u64_field(data.cout[j][i * 2 + 1]));
+                trace[irow].carry[j][0] = F::from_i64(data.cout[j][i * 2]);
+                trace[irow].carry[j][1] = F::from_i64(data.cout[j][i * 2 + 1]);
             }
-            trace[irow].x1 = F::from_canonical_u16(data.x1[i] as u16);
-            trace[irow].y1 = F::from_canonical_u16(data.y1[i] as u16);
-            trace[irow].x2 = F::from_canonical_u16(data.x2[i] as u16);
-            trace[irow].y2 = F::from_canonical_u16(data.y2[i] as u16);
-            trace[irow].x3 = F::from_canonical_u16(data.x3[i] as u16);
-            trace[irow].y3 = F::from_canonical_u16(data.y3[i] as u16);
-            trace[irow].q0 = F::from_canonical_u64(i64_to_u64_field(data.q0[i]));
-            trace[irow].q1 = F::from_canonical_u64(i64_to_u64_field(data.q1[i]));
-            trace[irow].q2 = F::from_canonical_u64(i64_to_u64_field(data.q2[i]));
-            trace[irow].s = F::from_canonical_u64(i64_to_u64_field(data.s[i]));
+            trace[irow].x1 = F::from_u16(data.x1[i] as u16);
+            trace[irow].y1 = F::from_u16(data.y1[i] as u16);
+            trace[irow].x2 = F::from_u16(data.x2[i] as u16);
+            trace[irow].y2 = F::from_u16(data.y2[i] as u16);
+            trace[irow].x3 = F::from_u16(data.x3[i] as u16);
+            trace[irow].y3 = F::from_u16(data.y3[i] as u16);
+            trace[irow].q0 = F::from_i64(data.q0[i]);
+            trace[irow].q1 = F::from_i64(data.q1[i]);
+            trace[irow].q2 = F::from_i64(data.q2[i]);
+            trace[irow].s = F::from_i64(data.s[i]);
             for j in 0..4 {
                 trace[irow].sel_op[j] = F::from_bool(j == sel_op);
             }
             // TODO:
-            trace[irow].x_are_different = F::zero();
-            trace[irow].x_delta_chunk_inv = F::zero();
-            trace[irow].lt_borrow = F::zero();
-            trace[irow].lt = F::zero();
+            trace[irow].x_are_different = F::ZERO;
+            trace[irow].x_delta_chunk_inv = F::ZERO;
+            trace[irow].lt_borrow = F::ZERO;
+            trace[irow].lt = F::ZERO;
             // if i == data.different_chunk {
             //     trace[irow].x_are_different = F::from_bool(true);
             //     trace[irow].x_delta_chunk_inv = data.delta_chunk_inv;

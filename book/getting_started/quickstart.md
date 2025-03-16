@@ -1,6 +1,19 @@
 # Quickstart
 
-In this guide, you will learn how to create and run a simple program using ZisK.
+In this guide, you will learn how to install ZisK, create a simple program and run it using ZisK.
+
+## Installation
+
+ZisK currently supports **Linux x86_64** systems.
+
+> **Note:** macOS is not yet supported, but we are actively working on adding support.
+
+Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
+
+To install ZisK using ziskup, run the following command in your terminal:
+```bash
+curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh | bash
+```
 
 ## Create a Project
 
@@ -75,7 +88,7 @@ abf6352a
 Alternatively, you can build and run the program with:
 
 ```bash
-cargo-zisk run
+cargo-zisk run --release
 ```
 
 This command uses the file located at `build/input.bin` as the input file.
@@ -87,7 +100,7 @@ You can generate and verify a proof using the `cargo-zisk prove` command by prov
 To generate and verify a proof for the previously built ELF and input files, execute:
 
 ```bash
-cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
+cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -o proof -a -y
 ```
 
 This command generates the proof in the `./proof directory`. If everything goes well, you will see a message similar to:
@@ -98,17 +111,11 @@ This command generates the proof in the `./proof directory`. If everything goes 
 [INFO ]      stop <<< GENERATING_VADCOP_PROOF 91706ms
 [INFO ] ProofMan: Proofs generated successfully
 ```
-## Distributed prove
 
-Zisk can run proves using multiple processes in the same server or in multiple servers. To use zisk in distributed mode you need to have installed a mpi library. To use the distributed mode the compilation command is:
+## Verify Proof
 
-```bash
-cargo-zisk build --release --features "distributed"
-```
-
-Then the execution command will be:
+To verify a generated proof, use the following command:
 
 ```bash
-mpirun --bind-to none -np <number_processes> -x OMP_NUM_THREADS=<number_of_threads_per_process> target/release/cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
+cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json -u ./proof/publics.json
 ```
-

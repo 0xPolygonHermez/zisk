@@ -5,8 +5,8 @@
 use riscv::{riscv_interpreter, RiscvInstruction};
 
 use crate::{
-    convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK, INPUT_ADDR, OUTPUT_ADDR, ROM_EXIT,
-    SYS_ADDR,
+    convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK, INPUT_ADDR, OUTPUT_ADDR, ROM_ENTRY,
+    ROM_EXIT, SYS_ADDR,
 };
 
 use std::collections::HashMap;
@@ -1705,11 +1705,28 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
+}
 
-    // END: all programs should exit here, regardless of the execution result
+/// Add the end jump program section to the rom instruction set.
+pub fn add_end_jmp(rom: &mut ZiskRom) {
+    //print!("add_entry_exit_jmp() rom.next_init_inst_addr={}\n", rom.next_init_inst_addr);
+
+    // :0000 we jump to the third instruction, leaving room for the end instruction
+    assert!(rom.next_init_inst_addr == ROM_ENTRY);
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", 0, false);
+    zib.src_b("imm", 0, false);
+    zib.op("copyb").unwrap();
+    zib.j(8, 8);
+    zib.verbose("Jump over end instruction");
+    zib.build();
+    rom.insts.insert(rom.next_init_inst_addr, zib);
+    rom.next_init_inst_addr += 4;
+
+    // :0004 END: all programs should exit here, regardless of the execution result
     // This is the last instruction to be executed.  The emulator must stop after the instruction
     // end flag is found to be true
-    rom.next_init_inst_addr = ROM_EXIT;
+    assert!(rom.next_init_inst_addr == ROM_EXIT);
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", 0, false);
@@ -1719,4 +1736,5 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.verbose("end");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
+    rom.next_init_inst_addr += 4;
 }
