@@ -36,6 +36,7 @@ void emulator_start(void);
 struct timeval start_time;
 
 extern uint64_t MEM_STEP;
+extern uint64_t MEM_END;
 extern uint64_t MEM_TRACE_ADDRESS;
 extern uint64_t MEM_CHUNK_ADDRESS;
 extern uint64_t MEM_CHUNK_START_STEP;
@@ -82,6 +83,7 @@ bool keccak_metrics = false;
 #endif
 char * input_parameter = NULL;
 bool is_file = false;
+bool generate_traces = true;
 
 // Input shared memory
 char * shmem_input_sufix = "_input";
@@ -315,47 +317,50 @@ int main(int argc, char *argv[])
     /* TRACE */
     /*********/
 
-    // Make sure the output shared memory is deleted
-    shm_unlink(shmem_output_name);
-    
-    // Create the output shared memory
-    shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT, 0644);
-    if (shmem_output_fd < 0)
+    if (generate_traces)
     {
-        printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
-        return -1;
-    }
+        // Make sure the output shared memory is deleted
+        shm_unlink(shmem_output_name);
+        
+        // Create the output shared memory
+        shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT, 0644);
+        if (shmem_output_fd < 0)
+        {
+            printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
+            return -1;
+        }
 
-    // Size it
-    result = ftruncate(shmem_output_fd, trace_size);
-    if (result != 0)
-    {
-        printf("Failed calling ftruncate() errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
-        return -1;
-    }
+        // Size it
+        result = ftruncate(shmem_output_fd, trace_size);
+        if (result != 0)
+        {
+            printf("Failed calling ftruncate() errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
+            return -1;
+        }
 
-    // Map it to the trace address
-    void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_output_fd, 0);
-    if (pTrace == NULL)
-    {
-        printf("Failed calling mmap(pTrace) errno=%d=%s\n", errno, strerror(errno));
-        return -1;
-    }
-    if ((uint64_t)pTrace != TRACE_ADDR)
-    {
-        printf("Called mmap(trace) but returned address = 0x%llx != 0x%llx\n", pTrace, TRACE_ADDR);
-        return -1;
-    }
-#ifdef DEBUG
-    if (verbose) printf("mmap(trace) returned %08x\n", pTrace);
-#endif
+        // Map it to the trace address
+        void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_output_fd, 0);
+        if (pTrace == NULL)
+        {
+            printf("Failed calling mmap(pTrace) errno=%d=%s\n", errno, strerror(errno));
+            return -1;
+        }
+        if ((uint64_t)pTrace != TRACE_ADDR)
+        {
+            printf("Called mmap(trace) but returned address = 0x%llx != 0x%llx\n", pTrace, TRACE_ADDR);
+            return -1;
+        }
+    #ifdef DEBUG
+        if (verbose) printf("mmap(trace) returned %08x\n", pTrace);
+    #endif
 
-    // Init output header data
-    uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
-    pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
-    pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    // MT allocated size [8] -> to be updated after completion
-    // MT used size [8] -> to be updated after completion
+        // Init output header data
+        uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
+        pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
+        pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+        // MT allocated size [8] -> to be updated after completion
+        // MT used size [8] -> to be updated after completion
+    }
     
     /*******/
     /* RAM */
@@ -430,11 +435,12 @@ int main(int argc, char *argv[])
     {
         uint64_t duration = TimeDiff(start_time, stop_time);
         uint64_t steps = MEM_STEP;
+        uint64_t end = MEM_END;
         uint64_t step_duration_ns = steps == 0 ? 0 : (duration * 1000) / steps;
         uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
         uint64_t final_trace_size_percentage = (final_trace_size * 100) / trace_size;
 #ifdef DEBUG
-        printf("Duration = %d us, Keccak counter = %d, realloc counter = %d, steps = %d, step duration = %d ns, tp = %d steps/s, trace size = 0x%llx - 0x%llx = %d B(%d%%)\n",
+        printf("Duration = %d us, Keccak counter = %d, realloc counter = %d, steps = %d, step duration = %d ns, tp = %d steps/s, trace size = 0x%llx - 0x%llx = %d B(%d%%), end=%d\n",
             duration,
             keccak_counter,
             realloc_counter,
@@ -444,7 +450,8 @@ int main(int argc, char *argv[])
             MEM_CHUNK_ADDRESS,
             MEM_TRACE_ADDRESS,
             final_trace_size,
-            final_trace_size_percentage);
+            final_trace_size_percentage,
+            end);
         if (keccak_metrics)
         {
             uint64_t keccak_percentage = duration == 0 ? 0 : (keccak_duration * 100) / duration;
@@ -452,7 +459,7 @@ int main(int argc, char *argv[])
             printf("Keccak counter = %d, duration = %d us, single keccak duration = %d ns, percentage = %d \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
         }
 #else
-        printf("Duration = %d us, realloc counter = %d, steps = %d, step duration = %d ns, tp = %d steps/s, trace size = 0x%llx - 0x%llx = %d B(%d%%)\n",
+        printf("Duration = %d us, realloc counter = %d, steps = %d, step duration = %d ns, tp = %d steps/s, trace size = 0x%llx - 0x%llx = %d B(%d%%), end=%d\n",
             duration,
             realloc_counter,
             steps,
@@ -461,7 +468,8 @@ int main(int argc, char *argv[])
             MEM_CHUNK_ADDRESS,
             MEM_TRACE_ADDRESS,
             final_trace_size,
-            final_trace_size_percentage);
+            final_trace_size_percentage,
+            end);
 #endif
     }
 
@@ -482,18 +490,19 @@ int main(int argc, char *argv[])
     }
 
     // Complete output header data
+    if (generate_traces)
     {
         uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
         pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
         pOutput[1] = 0; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
         pOutput[2] = trace_size; // MT allocated size [8]
-        assert(final_trace_size > 32);
+        //assert(final_trace_size > 32);
         pOutput[3] = final_trace_size - 32; // MT used size [8]
     }
 
     // Log trace
 #ifdef DEBUG
-    if (trace)
+    if (generate_traces && trace)
     {
         log_trace();
     }
@@ -538,17 +547,20 @@ int main(int argc, char *argv[])
     }
 
     // Cleanup trace
-    result = munmap((void *)TRACE_ADDR, trace_size);
-    if (result == -1)
+    if (generate_traces)
     {
-        printf("Failed calling munmap(trace) for size=%d errno=%d=%s\n", trace_size, errno, strerror(errno));
-        exit(-1);
-    }
+        result = munmap((void *)TRACE_ADDR, trace_size);
+        if (result == -1)
+        {
+            printf("Failed calling munmap(trace) for size=%d errno=%d=%s\n", trace_size, errno, strerror(errno));
+            exit(-1);
+        }
 
-    if (is_file)
-    {
-        // Make sure the output shared memory is deleted
-        shm_unlink(shmem_output_name);
+        if (is_file)
+        {
+            // Make sure the output shared memory is deleted
+            shm_unlink(shmem_output_name);
+        }
     }
 }
 
