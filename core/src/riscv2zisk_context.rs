@@ -40,14 +40,14 @@ impl Riscv2ZiskContext<'_> {
             "ld" => self.load_op(riscv_instruction, "copyb", 8),
             "fence" => self.nop(riscv_instruction),
             "fence.i" => self.nop(riscv_instruction),
-            "addi" => self.immediate_op(riscv_instruction, "add"),
+            "addi" => self.immediate_op_or_x0_copyb(riscv_instruction, "add"),
             "slli" => self.immediate_op(riscv_instruction, "sll"),
             "slti" => self.immediate_op(riscv_instruction, "lt"),
             "sltiu" => self.immediate_op(riscv_instruction, "ltu"),
-            "xori" => self.immediate_op(riscv_instruction, "xor"),
+            "xori" => self.immediate_op_or_x0_copyb(riscv_instruction, "xor"),
             "srli" => self.immediate_op(riscv_instruction, "srl"),
             "srai" => self.immediate_op(riscv_instruction, "sra"),
-            "ori" => self.immediate_op(riscv_instruction, "or"),
+            "ori" => self.immediate_op_or_x0_copyb(riscv_instruction, "or"),
             "andi" => self.immediate_op(riscv_instruction, "and"),
             "auipc" => self.auipc(riscv_instruction),
             "addiw" => self.immediate_op(riscv_instruction, "add_w"),
@@ -433,6 +433,30 @@ impl Riscv2ZiskContext<'_> {
         zib.store("reg", i.rd as i64, false, false);
         zib.j(4, 4);
         zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst, i.rd, i.rs1, i.imm));
+        zib.build();
+        self.insts.insert(self.s, zib);
+        self.s += 4;
+    }
+
+    // addi rd, rs1, imm
+    //      add([%rs1], imm) -> [%rd]
+
+    /// Creates a Zisk operation that loads a constant value using the specified operation and
+    /// stores the result in a register, if rs1 is x0, operation is replaced by copyb, only could
+    /// be use on operations that op(x0, imm) == imm (e.g. add, or, xor)
+    pub fn immediate_op_or_x0_copyb(&mut self, i: &RiscvInstruction, op: &str) {
+        let mut zib = ZiskInstBuilder::new(self.s);
+        zib.src_a("reg", i.rs1 as u64, false);
+        zib.src_b("imm", i.imm as u64, false);
+        if i.rs1 == 0 {
+            zib.op("copyb").unwrap();
+            zib.verbose(&format!("{} r{}, r{}, 0x{:x} => copyb", i.inst, i.rd, i.rs1, i.imm));
+        } else {
+            zib.op(op).unwrap();
+            zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst, i.rd, i.rs1, i.imm));
+        }
+        zib.store("reg", i.rd as i64, false, false);
+        zib.j(4, 4);
         zib.build();
         self.insts.insert(self.s, zib);
         self.s += 4;
