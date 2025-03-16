@@ -1203,7 +1203,7 @@ pub fn precompiled_load_data(
     let data_base = if indirections_count == 0 { 0 } else { 1 };
     for i in 0..loads_count {
         let param_address = data[data_base + i];
-        let data_offset = i * 4 + data_offset;
+        let data_offset = i * load_chunks + data_offset;
         for j in 0..load_chunks {
             let addr = param_address + (8 * j as u64);
             data[data_offset + j] = ctx.mem.read(addr, 8);
@@ -1299,13 +1299,17 @@ pub fn opc_secp256k1_add(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 2, 2, 8, &mut data);
 
-    let (_, rest) = data.split_at(2);
+    let (_, rest) = data.split_at(3);
     let (p1, p2) = rest.split_at(8);
-    let mut p1 = p1;
-    // arith256_mod(&a, &b, &c, &module, &mut d);
+
+    let p1: &[u64; 8] = p1.try_into().expect("opc_secp256k1_add: p1.len != 8");
+    let p2: &[u64; 8] = p2.try_into().expect("opc_secp256k1_add: p2.len != 8");
+    let mut p3 = [0u64; 8];
+
+    precompiles_helpers::secp256k1_add(&p1, &p2, &mut p3);
 
     // [struct,1:p1,p2]
-    for (i, d) in p1.iter().enumerate() {
+    for (i, d) in p3.iter().enumerate() {
         ctx.mem.write(data[1] + (8 * i as u64), *d, 8);
     }
 
@@ -1328,11 +1332,13 @@ pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
     precompiled_load_data(ctx, 0, 1, 8, &mut data);
 
     let (_, p1) = data.split_at(1);
-    let mut p1 = p1;
-    // arith256_mod(&a, &b, &c, &module, &mut d);
+    let p1: &[u64; 8] = p1.try_into().expect("opc_secp256k1_dbl: p1.len != 8");
+    let mut p3 = [0u64; 8];
+
+    precompiles_helpers::secp256k1_dbl(&p1, &mut p3);
 
     // [0:struct]
-    for (i, d) in p1.iter().enumerate() {
+    for (i, d) in p3.iter().enumerate() {
         ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
     }
 

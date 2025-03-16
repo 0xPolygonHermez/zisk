@@ -21,8 +21,8 @@ use crate::ziskos_syscall;
 ///
 /// The caller must ensure that the data is aligned to a 64-bit boundary.
 
+#[derive(Debug)]
 #[repr(C)]
-
 pub struct SyscallArith256Params<'a> {
     pub a: &'a [u64; 4],
     pub b: &'a [u64; 4],
@@ -33,7 +33,7 @@ pub struct SyscallArith256Params<'a> {
 
 #[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn syscall_arith256(params: &SyscallArith256Params) {
+pub extern "C" fn syscall_arith256(params: &mut SyscallArith256Params) {
     #[cfg(target_os = "ziskos")]
     ziskos_syscall!(0x801, params);
     #[cfg(not(target_os = "ziskos"))]

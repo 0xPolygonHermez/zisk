@@ -22,6 +22,7 @@ use super::point256::SyscallPoint256;
 ///
 /// The caller must ensure that `p1` is a valid pointer to data that is aligned to an eight-byte boundary.
 
+#[derive(Debug)]
 #[repr(C)]
 pub struct SyscallSecp256k1AddParams<'a> {
     pub p1: &'a mut SyscallPoint256,
