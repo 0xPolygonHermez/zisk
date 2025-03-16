@@ -1,5 +1,6 @@
 use ark_ff::PrimeField;
 use ark_secp256k1::Fq as Secp256k1Field;
+// use ark_std::Zero;
 use num_bigint::{BigInt, Sign};
 use num_traits::Zero;
 
@@ -29,20 +30,55 @@ pub fn bigint_from_u64s(words: &[u64]) -> BigInt {
     let mut result = BigInt::zero();
 
     for &word in words.iter().rev() {
-        // Cada u64 representa un bloc de 64 bits, és a dir, 8 bytes.
-        result <<= 64; // Shift per deixar lloc al següent word
+        result <<= 64;
         result += word;
     }
 
     result
 }
 
+pub fn bigint_to_4_u64(value: &BigInt, result: &mut [u64; 4]) {
+    let (sign, chunks) = value.to_u64_digits();
+    assert!(
+        sign == Sign::Plus || sign == Sign::NoSign,
+        "bigint_to_4_u64: with negative value {}",
+        value
+    );
+    let chunks_count = chunks.len();
+    assert!(chunks_count <= 4, "bigint_to_4_u64: with too big value 0x{:X}", value);
+    #[allow(clippy::needless_range_loop)]
+    for i in 0..4 {
+        result[i] = if i >= chunks_count { 0 } else { chunks[i] };
+    }
+}
+
+pub fn bigint_to_2x4_u64(value: &BigInt, lres: &mut [u64; 4], hres: &mut [u64; 4]) {
+    let (sign, chunks) = value.to_u64_digits();
+    assert!(
+        sign == Sign::Plus || sign == Sign::NoSign,
+        "bigint_to_4_u64: with negative value {}",
+        value
+    );
+    let chunks_count = chunks.len();
+    assert!(chunks_count <= 8, "bigint_to_2x4_u64: with too big value 0x{:X}", value);
+    #[allow(clippy::needless_range_loop)]
+    for i in 0..4 {
+        if i >= chunks_count {
+            lres[i] = 0;
+            hres[i] = 0;
+        } else {
+            lres[i] = chunks[i];
+            let hi = i + 4;
+            hres[i] = if hi >= chunks_count { 0 } else { chunks[hi] };
+        }
+    }
+}
+
 pub fn bigint_from_field(value: &Secp256k1Field) -> BigInt {
     let mut result = BigInt::zero();
 
     for &word in value.into_bigint().0.iter().rev() {
-        // Cada u64 representa un bloc de 64 bits, és a dir, 8 bytes.
-        result <<= 64; // Shift per deixar lloc al següent word
+        result <<= 64;
         result += word;
     }
 

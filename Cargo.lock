@@ -2178,6 +2178,7 @@ dependencies = [
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
+ "precompiles-helpers",
  "proofman-common",
  "proofman-macros",
  "proofman-util",
@@ -2222,6 +2223,17 @@ name = "precompiles-common"
 version = "0.1.0"
 dependencies = [
  "zisk-core",
+]
+
+[[package]]
+name = "precompiles-helpers"
+version = "0.1.0"
+dependencies = [
+ "ark-ff",
+ "ark-secp256k1",
+ "ark-std",
+ "num-bigint",
+ "num-traits",
 ]
 
 [[package]]
@@ -4060,6 +4072,7 @@ dependencies = [
  "elf",
  "indexmap",
  "json",
+ "precompiles-helpers",
  "rayon",
  "riscv",
  "serde",

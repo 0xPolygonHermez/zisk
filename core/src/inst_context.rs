@@ -24,11 +24,11 @@ pub struct PrecompiledInstContext {
     /// Precompiled emulation mode
     pub emulation_mode: PrecompiledEmulationMode,
     /// Precompiled input data address
-    pub input_data_address: u64,
+    // pub input_data_address: u64,
     /// Precompiled input data
     pub input_data: Vec<u64>,
     /// Precompiled output data address
-    pub output_data_address: u64,
+    // pub output_data_address: u64,
     /// Precompiled output data
     pub output_data: Vec<u64>,
 }

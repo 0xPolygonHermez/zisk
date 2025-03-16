@@ -1,5 +1,6 @@
-use super::{bigint_from_u64s, bigint_to_16_chunks, ArithEqData};
+use super::ArithEqData;
 use crate::equations;
+use precompiles_helpers::{bigint_from_u64s, bigint_to_16_chunks};
 
 use num_bigint::BigInt;
 const COLS: u8 = 32;

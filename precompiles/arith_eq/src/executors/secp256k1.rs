@@ -1,6 +1,7 @@
-use super::{bigint_from_field, bigint_to_16_chunks, ArithEqData};
+use super::ArithEqData;
 use num_bigint::BigInt;
 use num_traits::Zero;
+use precompiles_helpers::{bigint_from_field, bigint_to_16_chunks};
 
 use crate::equations;
 use ark_secp256k1::Fq as Secp256k1Field;

@@ -301,8 +301,8 @@ define_ops! {
     (MaxW, "max_w", Binary, 77, 0x25, 0, opc_max_w, op_max_w),
     (Keccak, "keccak", Keccak, 77, 0xf1, 200, opc_keccak, op_keccak),
     (PubOut, "pubout", PubOut, 77, 0x30, 0, opc_pubout, op_pubout),
-    (Arith256, "arith_256", ArithEq, 77, 0xf2, 160, opc_arith_256, op_arith_256),
-    (Arith256Mod, "arith_256_mod", ArithEq, 77, 0xf3, 160, opc_arith_256_mod, op_arith_256_mod),
+    (Arith256, "arith256", ArithEq, 77, 0xf2, 160, opc_arith256, op_arith256),
+    (Arith256Mod, "arith256_mod", ArithEq, 77, 0xf3, 160, opc_arith256_mod, op_arith256_mod),
     (Secp256k1Add, "secp256k1_add", ArithEq, 77, 0xf4, 160, opc_secp256k1_add, op_secp256k1_add),
     (Secp256k1Dbl, "secp256k1_dbl", ArithEq, 77, 0xf5, 160, opc_secp256k1_dbl, op_secp256k1_add),
 }
@@ -1099,7 +1099,7 @@ pub fn opc_keccak(ctx: &mut InstContext) {
                 ctx.precompiled.input_data.push(*d);
             }
             // Write the input data address to the precompiled context
-            ctx.precompiled.input_data_address = address;
+            // ctx.precompiled.input_data_address = address;
         }
         PrecompiledEmulationMode::ConsumeMemReads => {
             // Check input data has the expected length
@@ -1115,7 +1115,7 @@ pub fn opc_keccak(ctx: &mut InstContext) {
                 *d = ctx.precompiled.input_data[i];
             }
             // Write the input data address to the precompiled context
-            ctx.precompiled.input_data_address = address;
+            // ctx.precompiled.input_data_address = address;
         }
     }
 
@@ -1137,7 +1137,7 @@ pub fn opc_keccak(ctx: &mut InstContext) {
                 ctx.precompiled.output_data.push(*d);
             }
             // Write the input data address to the precompiled context
-            ctx.precompiled.output_data_address = address;
+            // ctx.precompiled.output_data_address = address;
         }
         PrecompiledEmulationMode::ConsumeMemReads => {}
     }
@@ -1154,113 +1154,156 @@ pub fn op_keccak(_a: u64, _b: u64) -> (u64, bool) {
 }
 
 #[inline(always)]
-pub fn opc_arith_256(ctx: &mut InstContext) {
-    // Get address from register a0 = x10
-    /*
-       let address = ctx.regs[Mem::address_to_register_index(REG_A0)];
-       if address & 0x7 != 0 {
-           panic!("opc_arith_256() found address not aligned to 8 bytes");
-       }
+pub fn precompiled_load_data(
+    ctx: &mut InstContext,
+    indirections_count: usize,
+    loads_count: usize,
+    load_chunks: usize,
+    data: &mut [u64],
+) {
+    let address = ctx.regs[ctx.load_reg as usize];
+    if address & 0x7 != 0 {
+        panic!("precompiled_check_address() found address not aligned to 8 bytes");
+    }
+    if let PrecompiledEmulationMode::ConsumeMemReads = ctx.precompiled.emulation_mode {
+        let expected_len = 1 + indirections_count + loads_count * load_chunks;
+        // Check input data has the expected length
+        if ctx.precompiled.input_data.len() != expected_len {
+            panic!(
+                "ctx.precompiled.input_data.len={} != {}",
+                ctx.precompiled.input_data.len(),
+                expected_len
+            );
+        }
+        // Read data from the precompiled context
+        for (i, d) in data.iter_mut().enumerate() {
+            *d = ctx.precompiled.input_data[i];
+        }
+        // Write the input data address to the precompiled context
+        // ctx.precompiled.input_data_address = address;
+        return;
+    }
 
-       // Allocate room for 25 u64 = 128 bytes = 1600 bits
-       const WORDS: usize = 20;
-       let mut data = [0u64; WORDS];
+    data[0] = address;
+    for i in 0..indirections_count {
+        let indirection = ctx.mem.read(address + (8 * i as u64), 8);
+        if address & 0x7 != 0 {
+            panic!("precompiled_check_address() found address[{}] not aligned to 8 bytes", i);
+        }
+        data[i + 1] = indirection;
+    }
+    let data_offset = indirections_count + 1;
+    let data_base = if indirections_count == 0 { 0 } else { 1 };
+    for i in 0..loads_count {
+        let param_address = data[data_base + i];
+        let data_offset = i * 4 + data_offset;
+        for j in 0..load_chunks {
+            let addr = param_address + (8 * j as u64);
+            data[data_offset + j] = ctx.mem.read(addr, 8);
+        }
+    }
+    if let PrecompiledEmulationMode::GenerateMemReads = ctx.precompiled.emulation_mode {
+        ctx.precompiled.input_data.clear();
+        for (i, d) in data.iter_mut().enumerate() {
+            ctx.precompiled.input_data.push(*d);
+        }
+    }
+}
 
-       // Get input data from memory or from the precompiled context
-       match ctx.precompiled.emulation_mode {
-           PrecompiledEmulationMode::None => {
-               // Read data from the memory address
-               for i in 0..5  {
-                   data[i] = ctx.mem.read(address + (8 * i as u64), 8);
-               }
-               for i in 0..5 {
-                   for (i, d) in data.iter_mut().enumerate() {
-                       *d = ctx.mem.read(address + (8 * i as u64), 8);
-                   }
-               }
-           }
-           PrecompiledEmulationMode::GenerateMemReads => {
-               // Read data from the memory address
-               for (i, d) in data.iter_mut().enumerate() {
-                   *d = ctx.mem.read(address + (8 * i as u64), 8);
-               }
-               // Copy data to the precompiled context
-               ctx.precompiled.input_data.clear();
-               for (i, d) in data.iter_mut().enumerate() {
-                   ctx.precompiled.input_data.push(*d);
-               }
-               // Write the input data address to the precompiled context
-               ctx.precompiled.input_data_address = address;
-           }
-           PrecompiledEmulationMode::ConsumeMemReads => {
-               // Check input data has the expected length
-               if ctx.precompiled.input_data.len() != WORDS {
-                   panic!(
-                       "opc_keccak() found ctx.precompiled.input_data.len={} != {}",
-                       ctx.precompiled.input_data.len(),
-                       WORDS
-                   );
-               }
-               // Read data from the precompiled context
-               for (i, d) in data.iter_mut().enumerate() {
-                   *d = ctx.precompiled.input_data[i];
-               }
-               // Write the input data address to the precompiled context
-               ctx.precompiled.input_data_address = address;
-           }
-       }
+#[inline(always)]
+pub fn opc_arith256(ctx: &mut InstContext) {
+    const WORDS: usize = 1 + 5 + 3 * 4;
+    let mut data = [0u64; WORDS];
 
-       // Call keccakf
-       keccakf(&mut data);
+    precompiled_load_data(ctx, 5, 3, 4, &mut data);
 
-       // Write data to the memory address
-       for (i, d) in data.iter().enumerate() {
-           ctx.mem.write(address + (8 * i as u64), *d, 8);
-       }
+    let (_addrs, rest) = data.split_at(6);
+    let (a, rest) = rest.split_at(4);
+    let (b, c) = rest.split_at(4);
 
-       // Set input data to the precompiled context
-       match ctx.precompiled.emulation_mode {
-           PrecompiledEmulationMode::None => {}
-           PrecompiledEmulationMode::GenerateMemReads => {
-               // Write data to the precompiled context
-               ctx.precompiled.output_data.clear();
-               for (i, d) in data.iter_mut().enumerate() {
-                   ctx.precompiled.output_data.push(*d);
-               }
-               // Write the input data address to the precompiled context
-               ctx.precompiled.output_data_address = address;
-           }
-           PrecompiledEmulationMode::ConsumeMemReads => {}
-       }
+    let a: &[u64; 4] = a.try_into().expect("opc_arith256: a.len != 4");
+    let b: &[u64; 4] = b.try_into().expect("opc_arith256: b.len != 4");
+    let c: &[u64; 4] = c.try_into().expect("opc_arith256: c.len != 4");
 
-       ctx.c = 0;
-       ctx.flag = false;
-    */
-    unimplemented!("opc_arith_256() is not implemented");
+    let mut dl = [0u64; 4];
+    let mut dh = [0u64; 4];
+
+    precompiles_helpers::arith256(a, b, c, &mut dl, &mut dh);
+
+    // [struct,a,b,c,4:dl,5:dh]
+    for i in 0..4 {
+        ctx.mem.write(data[4] + (8 * i as u64), dl[i], 8);
+        ctx.mem.write(data[5] + (8 * i as u64), dh[i], 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
 }
 
 /// Unimplemented.  Arith256 can only be called from the system call context via InstContext.
 /// This is provided just for completeness.
 #[inline(always)]
-pub fn op_arith_256(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_arith_256() is not implemented");
+pub fn op_arith256(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_arith256() is not implemented");
 }
 
 #[inline(always)]
-pub fn opc_arith_256_mod(ctx: &mut InstContext) {
-    unimplemented!("opc_arith_256_mod() is not implemented");
+pub fn opc_arith256_mod(ctx: &mut InstContext) {
+    const WORDS: usize = 1 + 5 + 4 * 4;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 5, 4, 4, &mut data);
+
+    let (_, rest) = data.split_at(6);
+    let (a, rest) = rest.split_at(4);
+    let (b, rest) = rest.split_at(4);
+    let (c, module) = rest.split_at(4);
+    let mut d = [0u64; 4];
+
+    let a: &[u64; 4] = a.try_into().expect("opc_arith256_mod: a.len != 4");
+    let b: &[u64; 4] = b.try_into().expect("opc_arith256_mod: b.len != 4");
+    let c: &[u64; 4] = c.try_into().expect("opc_arith256_mod: c.len != 4");
+    let module: &[u64; 4] = module.try_into().expect("opc_arith256_mod: module.len != 4");
+
+    let mut d = [0u64; 4];
+
+    precompiles_helpers::arith256_mod(a, b, c, module, &mut d);
+
+    // [struct,a,b,c,module,5:d]
+    for (i, d) in d.iter().enumerate() {
+        ctx.mem.write(data[5] + (8 * i as u64), *d, 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
 }
 
 /// Unimplemented.  Arith256Mod can only be called from the system call context via InstContext.
 /// This is provided just for completeness.
 #[inline(always)]
-pub fn op_arith_256_mod(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_arith_256_mod() is not implemented");
+pub fn op_arith256_mod(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_arith256_mod() is not implemented");
 }
 
 #[inline(always)]
 pub fn opc_secp256k1_add(ctx: &mut InstContext) {
-    unimplemented!("op_secp256k1_add() is not implemented");
+    const WORDS: usize = 1 + 2 + 2 * 8;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 8, &mut data);
+
+    let (_, rest) = data.split_at(2);
+    let (p1, p2) = rest.split_at(8);
+    let mut p1 = p1;
+    // arith256_mod(&a, &b, &c, &module, &mut d);
+
+    // [struct,1:p1,p2]
+    for (i, d) in p1.iter().enumerate() {
+        ctx.mem.write(data[1] + (8 * i as u64), *d, 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
 }
 
 /// Unimplemented.  Secp256k1Add can only be called from the system call context via InstContext.
@@ -1272,7 +1315,22 @@ pub fn op_secp256k1_add(_a: u64, _b: u64) -> (u64, bool) {
 
 #[inline(always)]
 pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
-    unimplemented!("op_secp256k1_dbl() is not implemented");
+    const WORDS: usize = 1 + 1 * 8;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 0, 1, 8, &mut data);
+
+    let (_, p1) = data.split_at(1);
+    let mut p1 = p1;
+    // arith256_mod(&a, &b, &c, &module, &mut d);
+
+    // [0:struct]
+    for (i, d) in p1.iter().enumerate() {
+        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
 }
 
 /// Unimplemented.  Secp256k1Dbl can only be called from the system call context via InstContext.

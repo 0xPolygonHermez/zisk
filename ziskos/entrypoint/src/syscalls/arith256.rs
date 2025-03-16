@@ -27,8 +27,8 @@ pub struct SyscallArith256Params<'a> {
     pub a: &'a [u64; 4],
     pub b: &'a [u64; 4],
     pub c: &'a [u64; 4],
-    pub dh: &'a mut [u64; 4],
     pub dl: &'a mut [u64; 4],
+    pub dh: &'a mut [u64; 4],
 }
 
 #[allow(unused_variables)]

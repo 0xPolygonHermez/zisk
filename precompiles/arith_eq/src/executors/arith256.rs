@@ -1,7 +1,7 @@
-use super::{bigint_from_u64s, bigint_to_16_chunks, ArithEqData};
-use num_bigint::BigInt;
-
+use super::ArithEqData;
 use crate::equations;
+use num_bigint::BigInt;
+use precompiles_helpers::{bigint_from_u64s, bigint_to_16_chunks};
 
 const COLS: u8 = 32;
 
