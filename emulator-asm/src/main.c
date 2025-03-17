@@ -397,24 +397,6 @@ int main(int argc, char *argv[])
 #ifdef DEBUG
     if (verbose) printf("mmap(rom) returned %08x\n", pRom);
 #endif
-    
-    /*******/
-    /* REG */
-    /*******/
-    void * pReg = mmap((void *)REG_ADDR, REG_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-    if (pReg == NULL)
-    {
-        printf("Failed calling mmap(reg) errno=%d=%s\n", errno, strerror(errno));
-        return -1;
-    }
-    if ((uint64_t)pReg != REG_ADDR)
-    {
-        printf("Called mmap(reg) but returned address = 0x%08x != 0x%08x\n", pReg, ROM_ADDR);
-        return -1;
-    }
-    #ifdef DEBUG
-    if (verbose) printf("mmap(reg) returned %08x\n", pReg);
-    #endif
 
     /*******/
     /* ASM */
@@ -440,7 +422,7 @@ int main(int argc, char *argv[])
         uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
         uint64_t final_trace_size_percentage = (final_trace_size * 100) / trace_size;
 #ifdef DEBUG
-        printf("Duration = %d us, Keccak counter = %d, realloc counter = %d, steps = %d, step duration = %d ns, tp = %d steps/s, trace size = 0x%llx - 0x%llx = %d B(%d%%), end=%d\n",
+        printf("Duration = %lld us, Keccak counter = %lld, realloc counter = %lld, steps = %lld, step duration = %lld ns, tp = %lld steps/s, trace size = 0x%llx - 0x%llx = %lld B(%d%%), end=%lld\n",
             duration,
             keccak_counter,
             realloc_counter,
@@ -456,10 +438,10 @@ int main(int argc, char *argv[])
         {
             uint64_t keccak_percentage = duration == 0 ? 0 : (keccak_duration * 100) / duration;
             uint64_t single_keccak_duration_ns = keccak_counter == 0 ? 0 : (keccak_duration * 1000) / keccak_counter;
-            printf("Keccak counter = %d, duration = %d us, single keccak duration = %d ns, percentage = %d \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
+            printf("Keccak counter = %lld, duration = %lld us, single keccak duration = %lld ns, percentage = %lld \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
         }
 #else
-        printf("Duration = %d us, realloc counter = %d, steps = %d, step duration = %d ns, tp = %d steps/s, trace size = 0x%llx - 0x%llx = %d B(%d%%), end=%d\n",
+        printf("Duration = %lld us, realloc counter = %lld, steps = %lld, step duration = %lld ns, tp = %lld steps/s, trace size = 0x%llx - 0x%llx = %lld B(%d%%), end=%lld\n",
             duration,
             realloc_counter,
             steps,
@@ -513,14 +495,6 @@ int main(int argc, char *argv[])
     /************/
     /* CLEAN UP */
     /************/
-
-    // Cleanup REG
-    result = munmap((void *)REG_ADDR, REG_SIZE);
-    if (result == -1)
-    {
-        printf("Failed calling munmap(reg) errno=%d=%s\n", errno, strerror(errno));
-        exit(-1);
-    }
 
     // Cleanup ROM
     result = munmap((void *)ROM_ADDR, ROM_SIZE);

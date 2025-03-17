@@ -84,9 +84,6 @@ const MEM_TRACE_ADDRESS: &str = "qword ptr [MEM_TRACE_ADDRESS]";
 const MEM_CHUNK_ADDRESS: &str = "qword ptr [MEM_CHUNK_ADDRESS]";
 const MEM_CHUNK_START_STEP: &str = "qword ptr [MEM_CHUNK_START_STEP]";
 
-const REG_ADDR: u64 = 0x70000000;
-const REG_A0: u64 = REG_ADDR + 0x50;
-
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
 
@@ -546,6 +543,11 @@ impl ZiskRom {
         *s += ".comm MEM_CHUNK_ADDRESS, 8, 8\n";
         *s += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
 
+        // Allocate space for the registers
+        for r in 0..35 {
+            *s += &format!(".comm reg_{}, 8, 8\n", r);
+        }
+
         // for k in 0..keys.len() {
         //     let pc = keys[k];
         //     let instruction = &self.insts[&pc].i;
@@ -621,10 +623,8 @@ impl ZiskRom {
             // Write chunk.start.reg
             for i in 1..34 {
                 *s += &format!(
-                    "\tmov {}, qword ptr [0x{:x}] /* value = reg_{} */\n",
-                    REG_VALUE,
-                    REG_ADDR + i * 8,
-                    i
+                    "\tmov {}, qword ptr [reg_{}] /* value = reg_{} */\n",
+                    REG_VALUE, i, i
                 );
                 *s += &format!(
                     "\tmov [{} + {}], {} /* chunk.start.reg[{}] = value */\n",
@@ -761,9 +761,14 @@ impl ZiskRom {
             );
             *s += &format!("\tadd {}, 8 /* Memory initialization: value += 8 */\n", REG_VALUE);
             *s += &format!(
-            "\tmov {}, {} /* Memory initialization: chunk_address = value = TRACE_ADDR + 8 */\n\n",
-            MEM_CHUNK_ADDRESS, REG_VALUE
-        );
+                "\tmov {}, {} /* Memory initialization: chunk_address = value = TRACE_ADDR + 8 */\n\n",
+                MEM_CHUNK_ADDRESS, REG_VALUE
+            );
+        }
+
+        // Initialize registers to zero
+        for r in 0..35 {
+            *s += &format!("\tmov qword ptr [reg_{}], 0 /* Init register {} */\n", r, r);
         }
 
         // For all program addresses in the vector, create an assembly set of instructions with an
@@ -912,9 +917,9 @@ impl ZiskRom {
 
                     // Read from memory and store in the proper register: a or c
                     *s += &format!(
-                        "\tmov {}, qword ptr [0x{:x}] /* {} = reg[{}] */\n",
+                        "\tmov {}, qword ptr [reg_{}] /* {} = reg[{}] */\n",
                         if ctx.store_a_in_c { REG_C } else { REG_A },
-                        REG_ADDR + (instruction.a_offset_imm0 * 8),
+                        instruction.a_offset_imm0,
                         if ctx.store_a_in_c { "c" } else { "a" },
                         instruction.a_offset_imm0
                     );
@@ -1026,9 +1031,9 @@ impl ZiskRom {
 
                     // Read from memory and store in the proper register: b or c
                     *s += &format!(
-                        "\tmov {}, qword ptr [0x{:x}] /* {} = reg[{}] */\n",
+                        "\tmov {}, qword ptr [reg_{}] /* {} = reg[{}] */\n",
                         if ctx.store_b_in_c { REG_C } else { REG_B },
-                        REG_ADDR + (instruction.b_offset_imm0 * 8),
+                        instruction.b_offset_imm0,
                         if ctx.store_b_in_c { "c" } else { "b" },
                         instruction.b_offset_imm0
                     );
@@ -1406,17 +1411,13 @@ impl ZiskRom {
                             (ctx.pc as i64 + instruction.jmp_offset2) as u64
                         );
                         *s += &format!(
-                            "\tmov qword ptr [0x{:x}], {} /* reg[{}] = value */\n",
-                            REG_ADDR + (instruction.store_offset as u64 * 8),
-                            REG_VALUE,
-                            instruction.store_offset
+                            "\tmov qword ptr [reg_{}], {} /* reg[{}] = value */\n",
+                            instruction.store_offset, REG_VALUE, instruction.store_offset
                         );
                     } else {
                         *s += &format!(
-                            "\tmov qword ptr [0x{:x}], {} /* reg[{}] = c */\n",
-                            REG_ADDR + (instruction.store_offset as u64 * 8),
-                            REG_C,
-                            instruction.store_offset
+                            "\tmov qword ptr [reg_{}], {} /* reg[{}] = c */\n",
+                            instruction.store_offset, REG_C, instruction.store_offset
                         );
                     }
                 }
@@ -2979,7 +2980,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Keccak => {
-                s += &format!("\tmov rdi, qword ptr [0x{:x}]\n", REG_A0);
+                s += &format!("\tmov rdi, qword ptr [reg_10] /* rdi = A0 */\n");
 
                 // Copy read data into mem_reads_address and advance it
                 if ctx.generate_traces {
