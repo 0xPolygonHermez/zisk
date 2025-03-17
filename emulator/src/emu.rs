@@ -92,7 +92,6 @@ impl<'a> Emu<'a> {
                 }
                 // get it from memory
                 self.ctx.inst_ctx.a = self.ctx.inst_ctx.mem.read(address, 8);
-                self.ctx.trace.steps.mem_reads.push(self.ctx.inst_ctx.a);
 
                 // Feed the stats
                 if self.ctx.do_stats {
@@ -330,7 +329,6 @@ impl<'a> Emu<'a> {
 
                 // Get it from memory
                 self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, 8);
-                self.ctx.trace.steps.mem_reads.push(self.ctx.inst_ctx.b);
 
                 if self.ctx.do_stats {
                     self.ctx.stats.on_memory_read(addr, 8);
@@ -350,7 +348,6 @@ impl<'a> Emu<'a> {
                 // get it from memory
                 self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, instruction.ind_width);
 
-                self.ctx.trace.steps.mem_reads.push(self.ctx.inst_ctx.b);
                 if self.ctx.do_stats {
                     self.ctx.stats.on_memory_read(addr, instruction.ind_width);
                 }
