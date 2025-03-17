@@ -404,7 +404,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         };
 
         // Group the instances by the chunk they need to process
-        let chunks_to_execute = self.chunks_to_execute(&min_traces, secn_instance);
+        let chunks_to_execute = self.chunks_to_execute(min_traces, secn_instance);
 
         // Create data buses for each chunk
         let mut data_buses = self.get_data_bus_collectors(secn_instance, chunks_to_execute);
@@ -414,7 +414,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             if let Some(data_bus) = data_bus {
                 ZiskEmulator::process_emu_traces::<F, BusDeviceWrapper<u64>>(
                     &self.zisk_rom,
-                    &min_traces,
+                    min_traces,
                     chunk_id,
                     data_bus,
                 );

@@ -519,9 +519,8 @@ impl ZiskRom {
         s.clear();
 
         // Create context
-        let mut ctx = ZiskAsmContext::default();
-        ctx.log_output = true;
-        ctx.generate_traces = true;
+        let mut ctx =
+            ZiskAsmContext { log_output: true, generate_traces: true, ..Default::default() };
 
         // Save instructions program addresses into a vector
         let mut keys: Vec<u64> = Vec::new();
@@ -774,11 +773,9 @@ impl ZiskRom {
             ctx.pc = keys[k];
 
             // Call chunk_start the first time, for the first chunk
-            if ctx.generate_traces {
-                if k == 0 {
-                    *s += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
-                    *s += "\tcall chunk_start /* Call chunk_start the first time */\n";
-                }
+            if ctx.generate_traces && k == 0 {
+                *s += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
+                *s += "\tcall chunk_start /* Call chunk_start the first time */\n";
             }
 
             ctx.next_pc = if (k + 1) < keys.len() { keys[k + 1] } else { M64 };
