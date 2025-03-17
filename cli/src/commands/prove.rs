@@ -1,4 +1,4 @@
-use crate::{commands::Field, ZISK_VERSION_MESSAGE};
+use crate::{commands::Field, ux::print_banner, ZISK_VERSION_MESSAGE};
 use anyhow::Result;
 use colored::Colorize;
 use p3_goldilocks::Goldilocks;
@@ -74,6 +74,32 @@ impl ZiskProve {
 
         initialize_logger(self.verbose.into());
 
+        let debug_info = match &self.debug {
+            None => DebugInfo::default(),
+            Some(None) => DebugInfo::new_debug(),
+            Some(Some(debug_value)) => {
+                let proving_key: PathBuf = PathBuf::from(&self.get_proving_key());
+                json_to_debug_instances_map(proving_key, debug_value.clone())
+            }
+        };
+
+        print_banner();
+
+        println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
+        let witness_lib = self.witness_lib.as_ref().unwrap().display();
+        println!("{}", format!("{: >12} {}", "Witness Lib".bright_green().bold(), witness_lib));
+        println!("{}", format!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display()));
+        // println!("{}", format!("{: >12} {}", "ASM runner".bright_green().bold(), self.asm_runner.as_ref().unwrap_or_else("None").display()));
+        let inputs_path = self.input.as_ref().unwrap().display();
+        println!("{}", format!("{: >12} {}", "Inputs".bright_green().bold(), inputs_path));
+        let proving_key = self.proving_key.as_ref().unwrap().display();
+        println!("{}", format!("{: >12} {}", "Proving key".bright_green().bold(), proving_key));
+        let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
+        println!("{}", format!("{: >12} {}", "STD".bright_green().bold(), std_mode));
+        // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
+
+        println!();
+        
         if self.output_dir.join("proofs").exists() {
             // In distributed mode two different processes may enter here at the same time and try to remove the same directory
             if let Err(e) = fs::remove_dir_all(self.output_dir.join("proofs")) {
@@ -89,15 +115,6 @@ impl ZiskProve {
                 panic!("Failed to create the proofs directory: {:?}", e);
             }
         }
-
-        let debug_info = match &self.debug {
-            None => DebugInfo::default(),
-            Some(None) => DebugInfo::new_debug(),
-            Some(Some(debug_value)) => {
-                let proving_key: PathBuf = PathBuf::from(&self.get_proving_key());
-                json_to_debug_instances_map(proving_key, debug_value.clone())
-            }
-        };
 
         let default_cache_path =
             std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);

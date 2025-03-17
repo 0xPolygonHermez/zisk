@@ -7,7 +7,7 @@ use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo,
 use rom_merkle::{gen_elf_hash, get_elf_bin_file_path, get_rom_blowup_factor, DEFAULT_CACHE_PATH};
 use std::{collections::HashMap, fs, path::PathBuf};
 
-use crate::{commands::Field, ZISK_VERSION_MESSAGE};
+use crate::{commands::Field, ux::print_banner, ZISK_VERSION_MESSAGE};
 
 use super::{get_default_proving_key, get_default_witness_computation_lib};
 
@@ -53,9 +53,6 @@ pub struct ZiskVerifyConstraints {
 
 impl ZiskVerifyConstraints {
     pub fn run(&self) -> Result<()> {
-        println!("{} VerifyConstraints", format!("{: >12}", "Command").bright_green().bold());
-        println!();
-
         initialize_logger(self.verbose.into());
 
         let debug_info = match &self.debug {
@@ -65,6 +62,23 @@ impl ZiskVerifyConstraints {
                 json_to_debug_instances_map(self.get_proving_key(), debug_value.clone())
             }
         };
+
+        print_banner();
+
+        println!("{} VerifyConstraints", format!("{: >12}", "Command").bright_green().bold());
+        let witness_lib = self.witness_lib.as_ref().unwrap().display();
+        println!("{}", format!("{: >12} {}", "Witness Lib".bright_green().bold(), witness_lib));
+        println!("{}", format!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display()));
+        // println!("{}", format!("{: >12} {}", "ASM runner".bright_green().bold(), self.asm_runner.as_ref().unwrap_or_else("None").display()));
+        let inputs_path = self.input.as_ref().unwrap().display();
+        println!("{}", format!("{: >12} {}", "Inputs".bright_green().bold(), inputs_path));
+        let proving_key = self.proving_key.as_ref().unwrap().display();
+        println!("{}", format!("{: >12} {}", "Proving key".bright_green().bold(), proving_key));
+        let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
+        println!("{}", format!("{: >12} {}", "STD".bright_green().bold(), std_mode));
+        // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
+
+        println!();
 
         let default_cache_path =
             std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);

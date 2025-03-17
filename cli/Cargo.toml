@@ -19,13 +19,14 @@ vergen = { version = "8", default-features = false, features = [
 ] }
 
 [dependencies]
+rom-merkle = { path = "../rom-merkle" }
+
+colored = { workspace = true }
+p3-field = { workspace = true }
+p3-goldilocks = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
-
-rom-merkle = { path = "../rom-merkle" }
-p3-goldilocks = { workspace = true }
-p3-field = { workspace = true }
-colored = { workspace = true }
+sysinfo = { workspace = true }
 
 anyhow = { version = "1.0.86", features = ["backtrace"] }
 clap = { version = "4.5.7", features = ["derive", "env"] }

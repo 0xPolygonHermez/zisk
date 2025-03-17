@@ -256,6 +256,7 @@ dependencies = [
  "reqwest",
  "rom-merkle",
  "serde_json",
+ "sysinfo 0.33.1",
  "target-lexicon",
  "tokio",
  "vergen",
