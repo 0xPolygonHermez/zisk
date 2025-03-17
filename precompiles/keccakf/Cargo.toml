@@ -1,7 +1,11 @@
 [package]
 name = "precomp-keccakf"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
 
 [[bin]]
 name = "keccakf_fixed_gen"
@@ -21,7 +25,7 @@ witness = { workspace = true }
 pil-std-lib = { workspace = true }
 
 p3-field = { workspace=true }
-p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
+p3-goldilocks = { workspace = true }
 log = { workspace = true }
 rayon = { workspace = true }
 num-bigint = { workspace = true }
@@ -35,3 +39,4 @@ clap = "4.0"
 [features]
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
+distributed = ["proofman-common/distributed", "witness/distributed"]

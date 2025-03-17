@@ -1,3 +1,11 @@
+[workspace.package]
+version = "0.4.4"
+edition = "2021"
+license = "Apache-2.0 or MIT"
+keywords = ["zisk", "zkvm", "zero-knowledge"]
+repository = "https://github.com/0xPolygonHermez/zisk"
+categories = ["cryptography"]
+
 [workspace]
 members = [
     "cli",
@@ -31,12 +39,12 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "develop" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.5.0" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.5.0" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.5.0" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.5.0" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.5.0" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.5.0" }
 # Local development
 # proofman = { path = "../pil2-proofman/proofman" }
 # proofman-common = { path = "../pil2-proofman/common" }
@@ -45,8 +53,8 @@ witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch
 # pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
 # witness = { path = "../pil2-proofman/witness" }
 
-p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
-p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "c3d754ef77b9fce585b46b972af751fe6e7a9803" }
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "f00191a5303f2ff6ec99b9889aa66bee9f1f66ac" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "f00191a5303f2ff6ec99b9889aa66bee9f1f66ac" }
 log = "0.4"
 rayon = "1.10"
 num-bigint = "0.4"

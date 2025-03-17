@@ -1,4 +1,5 @@
 mod build;
+mod check_setup;
 mod common;
 mod prove;
 mod run;
@@ -7,6 +8,7 @@ mod verify_constraints;
 mod verify_stark;
 
 pub use build::*;
+pub use check_setup::*;
 pub use common::*;
 pub use prove::*;
 pub use run::*;
