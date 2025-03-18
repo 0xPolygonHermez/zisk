@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Cleanup rustup
-        run: rm -f ~/.rustup
+        run: rm -rf ~/.rustup
 
       - name: Install rust
         uses: actions-rs/toolchain@v1
