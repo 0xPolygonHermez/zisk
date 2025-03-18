@@ -92,9 +92,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// * `input_data_path` - Path to the input data file.
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
     pub fn new(
-        input_data_path: Option<PathBuf>,
         rom_path: PathBuf,
         asm_path: Option<PathBuf>,
+        input_data_path: Option<PathBuf>,
         zisk_rom: Arc<ZiskRom>,
         std: Arc<Std<F>>,
     ) -> Self {
