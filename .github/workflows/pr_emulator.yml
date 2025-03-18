@@ -26,8 +26,8 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Update rustup  
-        run: rustup show && rustup override unset && rustup update
+      - name: Cleanup rustup
+        run: rm -f ~/.rustup
 
       - name: Install rust
         uses: actions-rs/toolchain@v1
