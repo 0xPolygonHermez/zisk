@@ -55,39 +55,33 @@ impl<F: PrimeField> MemModuleInstance<F> {
         let mut prev_segment = MemPreviousSegment {
             addr: mem_check_point.prev_addr,
             step: mem_check_point.prev_step,
-            value: mem_check_point.prev_value,
+            value: prev_last_value,
         };
         #[cfg(feature = "debug_mem")]
         let initial = (inputs[0].addr, inputs[0].step, inputs.len());
 
-        match mem_check_point.skip_rows.cmp(&1) {
-            std::cmp::Ordering::Equal => {
-                prev_segment.value = prev_last_value;
-            }
-            std::cmp::Ordering::Greater => {
-                let check_point_skip_rows = mem_check_point.skip_rows - 1;
-                let mut input_index = 0;
-                let mut skip_rows = 0;
-                loop {
-                    while inputs[input_index].addr == prev_segment.addr
-                        && (inputs[input_index].step - prev_segment.step) > STEP_MEMORY_MAX_DIFF
-                        && skip_rows < check_point_skip_rows as usize
-                    {
-                        prev_segment.step += STEP_MEMORY_MAX_DIFF;
-                        skip_rows += 1;
-                    }
-                    if skip_rows >= check_point_skip_rows as usize {
-                        break;
-                    }
-                    prev_segment.addr = inputs[input_index].addr;
-                    prev_segment.step = inputs[input_index].step;
-                    prev_segment.value = inputs[input_index].value;
-                    input_index += 1;
+        if mem_check_point.skip_rows > 1 {
+            let check_point_skip_rows = mem_check_point.skip_rows - 1;
+            let mut input_index = 0;
+            let mut skip_rows = 0;
+            loop {
+                while inputs[input_index].addr == prev_segment.addr
+                    && (inputs[input_index].step - prev_segment.step) > STEP_MEMORY_MAX_DIFF
+                    && skip_rows < check_point_skip_rows as usize
+                {
+                    prev_segment.step += STEP_MEMORY_MAX_DIFF;
                     skip_rows += 1;
                 }
-                inputs.drain(0..input_index);
+                if skip_rows >= check_point_skip_rows as usize {
+                    break;
+                }
+                prev_segment.addr = inputs[input_index].addr;
+                prev_segment.step = inputs[input_index].step;
+                prev_segment.value = inputs[input_index].value;
+                input_index += 1;
+                skip_rows += 1;
             }
-            std::cmp::Ordering::Less => {}
+            inputs.drain(0..input_index);
         }
 
         #[cfg(feature = "debug_mem")]

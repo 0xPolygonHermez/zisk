@@ -21,7 +21,6 @@ pub struct UsesCounter {
     pub first_step: u64,
     pub last_step: u64,
     pub count: u64,
-    pub last_value: u64,
     #[cfg(feature = "debug_mem")]
     pub debug: UsesCounterDebug,
 }
@@ -53,7 +52,6 @@ impl Metrics for MemCounters {
     #[inline(always)]
     fn measure(&mut self, data: &[u64]) {
         let op = MemBusData::get_op(data);
-        let is_write = MemHelpers::is_write(op);
         let addr = MemBusData::get_addr(data);
         let addr_w = MemHelpers::get_addr_w(addr);
         let step = MemBusData::get_step(data);
@@ -63,11 +61,6 @@ impl Metrics for MemCounters {
         // self.debug.log(addr, step, bytes, is_write, false);
 
         if MemHelpers::is_aligned(addr, bytes) {
-            let last_value = if is_write {
-                MemBusData::get_value(data)
-            } else {
-                MemBusData::get_mem_values(data)[0]
-            };
             self.addr
                 .entry(addr_w)
                 .and_modify(|value| {
@@ -79,31 +72,17 @@ impl Metrics for MemCounters {
                         value.debug.internal_reads += internal_reads as u32;
                     }
                     value.last_step = step;
-                    value.last_value = last_value;
                 })
                 .or_insert(UsesCounter {
                     first_step: step,
                     last_step: step,
                     count: 1,
-                    last_value,
                     #[cfg(feature = "debug_mem")]
                     debug: UsesCounterDebug { internal_reads: 0, mem_align_extra_rows: 0 },
                 });
         } else {
             let addr_count = if MemHelpers::is_double(addr, bytes) { 2 } else { 1 };
-            let (ops_by_addr, last_values) = if MemHelpers::is_write(op) {
-                (
-                    2,
-                    MemHelpers::get_write_values(
-                        addr,
-                        bytes,
-                        MemBusData::get_value(data),
-                        MemBusData::get_mem_values(data),
-                    ),
-                )
-            } else {
-                (1, MemBusData::get_mem_values(data))
-            };
+            let ops_by_addr = if MemHelpers::is_write(op) { 2 } else { 1 };
 
             let last_step = step + ops_by_addr - 1;
             for index in 0..addr_count {
@@ -118,7 +97,6 @@ impl Metrics for MemCounters {
                         );
                         value.count += ops_by_addr + internal_reads;
                         value.last_step = last_step;
-                        value.last_value = last_values[index as usize];
                         #[cfg(feature = "debug_mem")]
                         {
                             value.debug.internal_reads += internal_reads as u32;
@@ -129,7 +107,6 @@ impl Metrics for MemCounters {
                         first_step: step,
                         last_step,
                         count: ops_by_addr,
-                        last_value: last_values[index as usize],
                         #[cfg(feature = "debug_mem")]
                         debug: UsesCounterDebug {
                             internal_reads: 0,
