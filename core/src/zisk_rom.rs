@@ -570,166 +570,22 @@ impl ZiskRom {
         }
 
         if ctx.generate_traces {
-            /***************/
-            /* CHUNK START */
-            /***************/
+            *s += "\n";
 
+            // Chunk start
             *s += "chunk_start:\n";
-
-            *s += "\t/* Increment number of chunks (first position in trace) */\n";
-            *s += &format!(
-                "\tmov {}, {} /* address = trace_addr */\n",
-                REG_ADDRESS, MEM_TRACE_ADDRESS
-            );
-            *s += &format!("\tmov {}, [{}] /* value = trace_addr */\n", REG_VALUE, REG_ADDRESS);
-            *s += &format!("\tinc {} /* inc value */\n", REG_VALUE);
-            *s += &format!(
-                "\tmov [{}], {} /* trace_addr = value (trace_addr++) */\n",
-                REG_ADDRESS, REG_VALUE
-            );
-
-            *s += "\t/* Write chunk start data */\n";
-
-            // Write chunk.start.pc
-            *s += &format!(
-                "\tmov {}, {} /* address = chunk_address */\n",
-                REG_ADDRESS, MEM_CHUNK_ADDRESS
-            );
-            *s += &format!("\tmov [{}], {} /* chunk.start.pc = pc */\n", REG_ADDRESS, REG_PC);
-
-            // Write chunk.start.sp
-            *s += &format!("\tmov {}, {} /* value = sp */\n", REG_VALUE, MEM_SP);
-            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-            *s += &format!(
-                "\tmov [{}], {} /* chunk.start.sp = value = sp */\n",
-                REG_ADDRESS, REG_VALUE
-            );
-
-            // Write chunk.start.c
-            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-            *s += &format!("\tmov [{}], {} /* chunk.start.c = c */\n", REG_ADDRESS, REG_C);
-
-            // Write chunk.start.step
-            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-            *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
-            *s += &format!(
-                "\tmov [{}], {} /* chunk.start.step = value = step */\n",
-                REG_ADDRESS, REG_VALUE
-            );
-            *s += &format!(
-                "\tmov [{}], {} /* chunk_start_step = value = step */\n",
-                MEM_CHUNK_START_STEP, REG_VALUE
-            );
-
-            // Write chunk.start.reg
-            for i in 1..34 {
-                *s += &format!(
-                    "\tmov {}, qword ptr [reg_{}] /* value = reg_{} */\n",
-                    REG_VALUE, i, i
-                );
-                *s += &format!(
-                    "\tmov [{} + {}], {} /* chunk.start.reg[{}] = value */\n",
-                    REG_ADDRESS,
-                    i * 8,
-                    REG_VALUE,
-                    i
-                );
-            }
-            *s += &format!("\tadd {}, 33*8 /* address += 33*8 */\n", REG_ADDRESS);
-
-            *s += "\t/* Reset step_down to chunk_size */\n";
-            *s += &format!("\tmov {}, chunk_size /* value = chunk_size */\n", REG_VALUE);
-            *s += &format!("\tmov {}, {} /* step_down = chunk_size */\n", MEM_STEP_DOWN, REG_VALUE);
-
-            *s += "\t/* Write mem reads size */\n";
-            *s += &format!("\tmov {}, {} /* aux = chunk_size */\n", REG_AUX, MEM_CHUNK_ADDRESS);
-            *s += &format!("\tadd {}, 40*8 /* aux += 40*8 */\n", REG_AUX);
-            *s += &format!("\tadd {}, 8 /* aux += 8 */\n", REG_AUX);
-            *s += &format!(
-                "\tmov {}, {} /* mem_reads_address = aux */\n",
-                REG_MEM_READS_ADDRESS, REG_AUX
-            );
-            *s += "\t/* Reset mem_reads size */\n";
-            *s += &format!("\tmov {}, 0 /* mem_reads_size = 0 */\n", REG_MEM_READS_SIZE);
-
+            Self::chunk_start(&mut ctx, s);
             *s += "\tret\n\n";
 
-            /*************/
-            /* CHUNK END */
-            /*************/
-
+            // Chunk end
             *s += "chunk_end:\n";
+            Self::chunk_end(&mut ctx, s, "end");
+            *s += "\tret\n\n";
 
-            *s += "\t/* Update step from step_down */\n";
-            *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
-            *s += &format!("\tadd {}, chunk_size /* value += chunk_size */\n", REG_VALUE);
-            *s += &format!("\tsub {}, {} /* value -= step_down */\n", REG_VALUE, MEM_STEP_DOWN);
-            *s += &format!("\tmov {}, {} /* step = value */\n", MEM_STEP, REG_VALUE);
-
-            *s += "\t/* Write chunk last data */\n";
-
-            // Search position of chunk.last
-            *s += &format!(
-                "\tmov {}, {} /* address = chunk_address */\n",
-                REG_ADDRESS, MEM_CHUNK_ADDRESS
-            );
-            *s += &format!("\tadd {}, 37*8 /* address = chunk_address + 37*8 */\n", REG_ADDRESS);
-
-            // Write chunk.last.c
-            *s += &format!("\tmov [{}], {} /* chunk.last.c = c */\n", REG_ADDRESS, REG_C);
-
-            *s += "\t/* Write chunk end data */\n";
-            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-            *s += &format!("\tmov {}, {} /* value = end */\n", REG_VALUE, MEM_END);
-            *s +=
-                &format!("\tmov [{}], {} /* chunk.end = value = end */\n", REG_ADDRESS, REG_VALUE);
-
-            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS); // steps
-            *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
-            *s +=
-                &format!("\tsub {}, {} /* value = step_inc */\n", REG_VALUE, MEM_CHUNK_START_STEP);
-            *s += &format!(
-                "\tmov [{}], {} /* chunk.steps.step = value = step_inc */\n",
-                REG_ADDRESS, REG_VALUE
-            );
-
-            // Write mem_reads_size
-            *s += &format!("\tadd {}, 8 /* address += 8 = mem_reads_size */\n", REG_ADDRESS); // mem_reads_size
-
-            *s += &format!(
-                "\tmov [{}], {} /* mem_reads_size = size */\n",
-                REG_ADDRESS, REG_MEM_READS_SIZE
-            );
-
-            // Get value = mem_reads_size*8, i.e. memory size till next chunk
-            *s += &format!(
-                "\tmov {}, {} /* value = mem_reads_size */\n",
-                REG_VALUE, REG_MEM_READS_SIZE
-            );
-            *s += &format!("\tsal {}, 3 /* value <<= 3 */\n", REG_VALUE);
-
-            // Update chunk address
-            *s += &format!("\tadd {}, 8 /* address += 8 = new_chunk_address */\n", REG_ADDRESS); // new chunk
-            *s += &format!(
-                "\tadd {}, {} /* address += value = mem_reads_size*8 */\n",
-                REG_ADDRESS, REG_VALUE
-            ); // new chunk
-            *s += &format!(
-                "\tmov {}, {} /* chunk_address = new_chunk_address */\n",
-                MEM_CHUNK_ADDRESS, REG_ADDRESS
-            );
-
-            *s += &format!(
-                "\tmov {}, qword ptr [trace_address_threshold] /* value = trace_address_threshold */\n",
-                REG_VALUE
-            );
-            *s += &format!(
-                "\tcmp {}, {} /* chunk_address ? trace_address_threshold */\n",
-                REG_ADDRESS, REG_VALUE
-            );
-            *s += "\tjb chunk_end_address_below_threshold\n";
-            *s += "\tcall _realloc_trace\n";
-            *s += "chunk_end_address_below_threshold:\n";
+            // Chunk end and start
+            *s += "chunk_end_and_start:\n";
+            Self::chunk_end(&mut ctx, s, "end_and_start");
+            Self::chunk_start(&mut ctx, s);
             *s += "\tret\n\n";
         }
 
@@ -1186,13 +1042,10 @@ impl ZiskRom {
 
                                 // Copy read data into mem_reads_address and increment it
                                 *s += &format!(
-                                    "\tmov [{}], {} /* [mem_reads_address]=b */\n",
+                                    "\tmov [{} + {}*8], {} /* mem_reads[@+size*8]=b */\n",
                                     REG_MEM_READS_ADDRESS,
+                                    REG_MEM_READS_SIZE,
                                     if ctx.store_b_in_c { REG_C } else { REG_B }
-                                );
-                                *s += &format!(
-                                    "\tadd {}, 8 /* advance mem_reads_address */\n",
-                                    REG_MEM_READS_ADDRESS
                                 );
 
                                 // Increment chunk.steps.mem_reads_size
@@ -1220,12 +1073,8 @@ impl ZiskRom {
                                     REG_VALUE, REG_ADDRESS
                                 );
                                 *s += &format!(
-                                    "\tmov [{}], {} /* [mem_reads_address] = prev_b */\n",
-                                    REG_MEM_READS_ADDRESS, REG_VALUE
-                                );
-                                *s += &format!(
-                                    "\tadd {}, 8 /* advance mem_reads_address */\n",
-                                    REG_MEM_READS_ADDRESS
+                                    "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_b */\n",
+                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
                                 );
 
                                 // Calculate next aligned address
@@ -1240,12 +1089,10 @@ impl ZiskRom {
                                     REG_VALUE, REG_ADDRESS
                                 );
                                 *s += &format!(
-                                    "\tmov [{}], {} /* [mem_reads_address] = next_b */\n",
-                                    REG_MEM_READS_ADDRESS, REG_VALUE
-                                );
-                                *s += &format!(
-                                    "\tadd {}, 8 /* advance mem_reads_address */\n",
-                                    REG_MEM_READS_ADDRESS
+                                    "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_b */\n",
+                                    REG_MEM_READS_ADDRESS,
+                                    REG_MEM_READS_SIZE,
+                                    REG_VALUE
                                 );
 
                                 // Increment chunk.steps.mem_reads_size twice
@@ -1271,12 +1118,8 @@ impl ZiskRom {
                                     REG_VALUE, REG_ADDRESS
                                 );
                                 *s += &format!(
-                                    "\tmov [{}], {} /* [mem_reads_address] = value = mem[prev_address] */\n",
-                                    REG_MEM_READS_ADDRESS, REG_VALUE
-                                );
-                                *s += &format!(
-                                    "\tadd {}, 8 /* advance mem_reads_address */\n",
-                                    REG_MEM_READS_ADDRESS
+                                    "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_b */\n",
+                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
                                 );
 
                                 // Calculate next aligned address, keeping a copy of previous aligned
@@ -1326,12 +1169,8 @@ impl ZiskRom {
 
                                 // Copy read data into mem_reads_address and advance it
                                 *s += &format!(
-                                    "\tmov [{}], {} /* [mem_reads_address] = value = mem[mext_address] */\n",
-                                    REG_MEM_READS_ADDRESS, REG_VALUE
-                                );
-                                *s += &format!(
-                                    "\tadd {}, 8 /* advance mem_reads_address */\n",
-                                    REG_MEM_READS_ADDRESS
+                                    "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_b */\n",
+                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
                                 );
 
                                 // Increment chunk.steps.mem_reads_size
@@ -1360,12 +1199,8 @@ impl ZiskRom {
                                     REG_VALUE, REG_ADDRESS
                                 );
                                 *s += &format!(
-                                    "\tmov [{}], {} /* [mem_reads_address] = value = mem[prev_address] */\n",
-                                    REG_MEM_READS_ADDRESS, REG_VALUE
-                                );
-                                *s += &format!(
-                                    "\tadd {}, 8 /* advance mem_reads_address */\n",
-                                    REG_MEM_READS_ADDRESS
+                                    "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_b */\n",
+                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
                                 );
 
                                 // Increment chunk.steps.mem_reads_size
@@ -1540,12 +1375,8 @@ impl ZiskRom {
                                     REG_VALUE, REG_AUX
                                 );
                                 *s += &format!(
-                                    "\tmov [{}], {} /* [mem_reads_address] = value = mem[prev_address] */\n",
-                                    REG_MEM_READS_ADDRESS, REG_VALUE
-                                );
-                                *s += &format!(
-                                    "\tadd {}, 8 /* advance mem_reads_address */\n",
-                                    REG_MEM_READS_ADDRESS
+                                    "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
+                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
                                 );
 
                                 // Calculate next aligned address, keeping a copy of previous aligned
@@ -1597,12 +1428,8 @@ impl ZiskRom {
 
                                 // Copy read data into mem_reads_address and advance it
                                 *s += &format!(
-                                    "\tmov [{}], {} /* [mem_reads_address] = value = mem[mext_address] */\n",
-                                    REG_MEM_READS_ADDRESS, REG_VALUE
-                                );
-                                *s += &format!(
-                                    "\tadd {}, 8 /* advance mem_reads_address */\n",
-                                    REG_MEM_READS_ADDRESS
+                                    "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_c */\n",
+                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
                                 );
 
                                 // Increment chunk.steps.mem_reads_size
@@ -1629,12 +1456,8 @@ impl ZiskRom {
                                         REG_VALUE, REG_ADDRESS
                                     );
                                     *s += &format!(
-                                        "\tmov [{}], {} /* [mem_reads_address] = value = mem[prev_address] */\n",
-                                        REG_MEM_READS_ADDRESS, REG_VALUE
-                                    );
-                                    *s += &format!(
-                                        "\tadd {}, 8 /* advance mem_reads_address */\n",
-                                        REG_MEM_READS_ADDRESS
+                                        "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
+                                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
                                     );
 
                                     // Increment chunk.steps.mem_reads_size
@@ -1661,12 +1484,8 @@ impl ZiskRom {
                                         REG_VALUE, REG_AUX
                                     );
                                     *s += &format!(
-                                        "\tmov [{}], {} /* [mem_reads_address] = value = mem[prev_address] */\n",
-                                        REG_MEM_READS_ADDRESS, REG_VALUE
-                                    );
-                                    *s += &format!(
-                                        "\tadd {}, 8 /* advance mem_reads_address */\n",
-                                        REG_MEM_READS_ADDRESS
+                                        "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
+                                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
                                     );
 
                                     // Increment chunk.steps.mem_reads_size
@@ -1842,10 +1661,8 @@ impl ZiskRom {
                     *s += &format!("\tjz pc_{:x}_check_step_zero\n", ctx.pc);
                     *s += &format!("\tjmp pc_{:x}_check_step_not_zero\n", ctx.pc);
                     *s += &format!("pc_{:x}_check_step_zero:\n", ctx.pc);
-                    *s += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
-                    *s += "\tcall chunk_end\n";
                     Self::set_pc(&mut ctx, instruction, s, "z");
-                    *s += "\tcall chunk_start\n";
+                    *s += "\tcall chunk_end_and_start\n";
                     *s += &format!("\tjmp pc_{:x}_check_step_done\n", ctx.pc);
                     *s += ".align 16\n";
                     *s += &format!("pc_{:x}_check_step_not_zero:\n", ctx.pc);
@@ -2997,17 +2814,14 @@ impl ZiskRom {
                             k
                         );
                         s += &format!(
-                            "\tmov [{} + {}], {} /* mem_reads_address[{}] = value */\n",
+                            "\tmov [{} + {}*8 + {}], {} /* mem_reads[{}] = value */\n",
                             REG_MEM_READS_ADDRESS,
+                            REG_MEM_READS_SIZE,
                             k * 8,
                             REG_VALUE,
                             k
                         );
                     }
-                    s += &format!(
-                        "\tadd {}, 25*8 /* advance mem_reads_address */\n",
-                        REG_MEM_READS_ADDRESS
-                    );
 
                     // Increment chunk.steps.mem_reads_size in 25 units
                     s += &format!("\tadd {}, 25 /* mem_reads_size+=25 */\n", REG_MEM_READS_SIZE);
@@ -3112,11 +2926,11 @@ impl ZiskRom {
     fn a_src_mem_aligned(ctx: &mut ZiskAsmContext, s: &mut String) {
         // Copy read data into mem_reads_address and increment it
         *s += &format!(
-            "\tmov [{}], {} /* [mem_reads_address]=a */\n",
+            "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = a */\n",
             REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
             if ctx.store_a_in_c { REG_C } else { REG_A }
         );
-        *s += &format!("\tadd {}, 8 /* advance mem_reads_address */\n", REG_MEM_READS_ADDRESS);
 
         // Increment chunk.steps.mem_reads_size
         *s += &format!("\tinc {} /* mem_reads_size++ */\n", REG_MEM_READS_SIZE);
@@ -3131,23 +2945,20 @@ impl ZiskRom {
 
         // Store previous aligned address value in mem_reads
         *s += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_ADDRESS);
-        // Copy read data into mem_reads_address and increment it
         *s += &format!(
-            "\tmov [{}], {} /* [mem_reads_address] = prev_a */\n",
-            REG_MEM_READS_ADDRESS, REG_VALUE
+            "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_a */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
 
         // Store next aligned address value in mem_reads
         *s += &format!(
-            "\tmov {}, [{} + 8] /* value = mem[next_address] */\n",
+            "\tmov {}, [{} + 8] /* value = mem[prev_address] */\n",
             REG_VALUE, REG_ADDRESS
         );
-        // Copy read data into mem_reads_address and increment it
         *s += &format!(
-            "\tmov [{} + 8], {} /* [mem_reads_address] = next_a */\n",
-            REG_MEM_READS_ADDRESS, REG_VALUE
+            "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_a */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
-        *s += &format!("\tadd {}, 16 /* advance mem_reads_address */\n", REG_MEM_READS_ADDRESS);
 
         // Increment chunk.steps.mem_reads_size twice
         *s += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
@@ -3156,11 +2967,11 @@ impl ZiskRom {
     fn b_src_mem_aligned(ctx: &mut ZiskAsmContext, s: &mut String) {
         // Copy read data into mem_reads_address and increment it
         *s += &format!(
-            "\tmov [{}], {} /* [mem_reads_address]=b */\n",
+            "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = b */\n",
             REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
             if ctx.store_b_in_c { REG_C } else { REG_B }
         );
-        *s += &format!("\tadd {}, 8 /* advance mem_reads_address */\n", REG_MEM_READS_ADDRESS);
 
         // Increment chunk.steps.mem_reads_size
         *s += &format!("\tinc {} /* mem_reads_size++ */\n", REG_MEM_READS_SIZE);
@@ -3176,20 +2987,19 @@ impl ZiskRom {
         // Store previous aligned address value in mem_reads, and advance address
         *s += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_ADDRESS);
         *s += &format!(
-            "\tmov [{}], {} /* [mem_reads_address] = prev_b */\n",
-            REG_MEM_READS_ADDRESS, REG_VALUE
+            "\tmov [{} + {}*8], {} /* mem_address[@+size*8] = prev_b */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
 
-        // Store next aligned address value in mem_reads, and advance it
+        // Store next aligned address value in mem_reads, and advance address
         *s += &format!(
-            "\tmov {}, [{} + 8] /* value = mem[next_address] */\n",
+            "\tmov {}, [{} + 8] /* value = mem[prev_address] */\n",
             REG_VALUE, REG_ADDRESS
         );
         *s += &format!(
-            "\tmov [{} + 8], {} /* [mem_reads_address] = next_b */\n",
-            REG_MEM_READS_ADDRESS, REG_VALUE
+            "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_b */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
-        *s += &format!("\tadd {}, 16 /* advance mem_reads_address */\n", REG_MEM_READS_ADDRESS);
 
         // Increment chunk.steps.mem_reads_size twice
         *s += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
@@ -3208,17 +3018,16 @@ impl ZiskRom {
         // Store previous aligned address value in mem_reads, and advance address
         *s += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_AUX);
         *s += &format!(
-            "\tmov [{}], {} /* [mem_reads_address] = prev_c */\n",
-            REG_MEM_READS_ADDRESS, REG_VALUE
+            "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
 
         // Store next aligned address value in mem_reads, and advance address
         *s += &format!("\tmov {}, [{} + 8] /* value = mem[next_address] */\n", REG_VALUE, REG_AUX);
         *s += &format!(
-            "\tmov [{} + 8], {} /* [mem_reads_address] = next_c */\n",
-            REG_MEM_READS_ADDRESS, REG_VALUE
+            "\tmov [{} + {}*8 +  8], {} /* mem_reads[@+size*8+8] = next_c */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
-        *s += &format!("\tadd {}, 16 /* advance mem_reads_address */\n", REG_MEM_READS_ADDRESS);
 
         // Increment chunk.steps.mem_reads_size twice
         *s += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
@@ -3237,19 +3046,157 @@ impl ZiskRom {
         // Store previous aligned address value in mem_reads, and advance address
         *s += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_AUX);
         *s += &format!(
-            "\tmov [{}], {} /* [mem_reads_address] = prev_c */\n",
-            REG_MEM_READS_ADDRESS, REG_VALUE
+            "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
 
         // Store next aligned address value in mem_reads, and advance it
         *s += &format!("\tmov {}, [{} + 8] /* value = mem[next_address] */\n", REG_VALUE, REG_AUX);
         *s += &format!(
-            "\tmov [{} + 8], {} /* [mem_reads_address] = next_c */\n",
-            REG_MEM_READS_ADDRESS, REG_VALUE
+            "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_c */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
-        *s += &format!("\tadd {}, 16 /* advance mem_reads_address */\n", REG_MEM_READS_ADDRESS);
 
         // Increment chunk.steps.mem_reads_size twice
         *s += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
+    }
+
+    fn chunk_start(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        *s += "\t/* Increment number of chunks (first position in trace) */\n";
+        *s += &format!("\tmov {}, {} /* address = trace_addr */\n", REG_ADDRESS, MEM_TRACE_ADDRESS);
+        *s += &format!("\tmov {}, [{}] /* value = trace_addr */\n", REG_VALUE, REG_ADDRESS);
+        *s += &format!("\tinc {} /* inc value */\n", REG_VALUE);
+        *s += &format!(
+            "\tmov [{}], {} /* trace_addr = value (trace_addr++) */\n",
+            REG_ADDRESS, REG_VALUE
+        );
+
+        *s += "\t/* Write chunk start data */\n";
+
+        // Write chunk.start.pc
+        *s += &format!(
+            "\tmov {}, {} /* address = chunk_address */\n",
+            REG_ADDRESS, MEM_CHUNK_ADDRESS
+        );
+        *s += &format!("\tmov [{}], {} /* chunk.start.pc = pc */\n", REG_ADDRESS, REG_PC);
+
+        // Write chunk.start.sp
+        *s += &format!("\tmov {}, {} /* value = sp */\n", REG_VALUE, MEM_SP);
+        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+        *s +=
+            &format!("\tmov [{}], {} /* chunk.start.sp = value = sp */\n", REG_ADDRESS, REG_VALUE);
+
+        // Write chunk.start.c
+        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+        *s += &format!("\tmov [{}], {} /* chunk.start.c = c */\n", REG_ADDRESS, REG_C);
+
+        // Write chunk.start.step
+        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+        *s += &format!(
+            "\tmov [{}], {} /* chunk.start.step = value = step */\n",
+            REG_ADDRESS, REG_VALUE
+        );
+        *s += &format!(
+            "\tmov [{}], {} /* chunk_start_step = value = step */\n",
+            MEM_CHUNK_START_STEP, REG_VALUE
+        );
+
+        // Write chunk.start.reg
+        for i in 1..34 {
+            *s += &format!("\tmov {}, qword ptr [reg_{}] /* value = reg_{} */\n", REG_VALUE, i, i);
+            *s += &format!(
+                "\tmov [{} + {}], {} /* chunk.start.reg[{}] = value */\n",
+                REG_ADDRESS,
+                i * 8,
+                REG_VALUE,
+                i
+            );
+        }
+        *s += &format!("\tadd {}, 33*8 /* address += 33*8 */\n", REG_ADDRESS);
+
+        *s += "\t/* Reset step_down to chunk_size */\n";
+        *s += &format!("\tmov {}, chunk_size /* value = chunk_size */\n", REG_VALUE);
+        *s += &format!("\tmov {}, {} /* step_down = chunk_size */\n", MEM_STEP_DOWN, REG_VALUE);
+
+        *s += "\t/* Write mem reads size */\n";
+        *s += &format!("\tmov {}, {} /* aux = chunk_size */\n", REG_AUX, MEM_CHUNK_ADDRESS);
+        *s += &format!("\tadd {}, 40*8 /* aux += 40*8 */\n", REG_AUX);
+        *s += &format!("\tadd {}, 8 /* aux += 8 */\n", REG_AUX);
+        *s += &format!(
+            "\tmov {}, {} /* mem_reads_address = aux */\n",
+            REG_MEM_READS_ADDRESS, REG_AUX
+        );
+        *s += "\t/* Reset mem_reads size */\n";
+        *s += &format!("\tmov {}, 0 /* mem_reads_size = 0 */\n", REG_MEM_READS_SIZE);
+    }
+
+    fn chunk_end(_ctx: &mut ZiskAsmContext, s: &mut String, id: &str) {
+        *s += "\t/* Update step from step_down */\n";
+        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+        *s += &format!("\tadd {}, chunk_size /* value += chunk_size */\n", REG_VALUE);
+        *s += &format!("\tsub {}, {} /* value -= step_down */\n", REG_VALUE, MEM_STEP_DOWN);
+        *s += &format!("\tmov {}, {} /* step = value */\n", MEM_STEP, REG_VALUE);
+
+        *s += "\t/* Write chunk last data */\n";
+
+        // Search position of chunk.last
+        *s += &format!(
+            "\tmov {}, {} /* address = chunk_address */\n",
+            REG_ADDRESS, MEM_CHUNK_ADDRESS
+        );
+        *s += &format!("\tadd {}, 37*8 /* address = chunk_address + 37*8 */\n", REG_ADDRESS);
+
+        // Write chunk.last.c
+        *s += &format!("\tmov [{}], {} /* chunk.last.c = c */\n", REG_ADDRESS, REG_C);
+
+        *s += "\t/* Write chunk end data */\n";
+        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+        *s += &format!("\tmov {}, {} /* value = end */\n", REG_VALUE, MEM_END);
+        *s += &format!("\tmov [{}], {} /* chunk.end = value = end */\n", REG_ADDRESS, REG_VALUE);
+
+        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS); // steps
+        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+        *s += &format!("\tsub {}, {} /* value = step_inc */\n", REG_VALUE, MEM_CHUNK_START_STEP);
+        *s += &format!(
+            "\tmov [{}], {} /* chunk.steps.step = value = step_inc */\n",
+            REG_ADDRESS, REG_VALUE
+        );
+
+        // Write mem_reads_size
+        *s += &format!("\tadd {}, 8 /* address += 8 = mem_reads_size */\n", REG_ADDRESS); // mem_reads_size
+
+        *s += &format!(
+            "\tmov [{}], {} /* mem_reads_size = size */\n",
+            REG_ADDRESS, REG_MEM_READS_SIZE
+        );
+
+        // Get value = mem_reads_size*8, i.e. memory size till next chunk
+        *s +=
+            &format!("\tmov {}, {} /* value = mem_reads_size */\n", REG_VALUE, REG_MEM_READS_SIZE);
+        *s += &format!("\tsal {}, 3 /* value <<= 3 */\n", REG_VALUE);
+
+        // Update chunk address
+        *s += &format!("\tadd {}, 8 /* address += 8 = new_chunk_address */\n", REG_ADDRESS); // new chunk
+        *s += &format!(
+            "\tadd {}, {} /* address += value = mem_reads_size*8 */\n",
+            REG_ADDRESS, REG_VALUE
+        ); // new chunk
+        *s += &format!(
+            "\tmov {}, {} /* chunk_address = new_chunk_address */\n",
+            MEM_CHUNK_ADDRESS, REG_ADDRESS
+        );
+
+        *s += &format!(
+            "\tmov {}, qword ptr [trace_address_threshold] /* value = trace_address_threshold */\n",
+            REG_VALUE
+        );
+        *s += &format!(
+            "\tcmp {}, {} /* chunk_address ? trace_address_threshold */\n",
+            REG_ADDRESS, REG_VALUE
+        );
+        *s += &format!("\tjb chunk_{}_address_below_threshold\n", id);
+        *s += "\tcall _realloc_trace\n";
+        *s += &format!("chunk_{}_address_below_threshold:\n", id);
     }
 }
