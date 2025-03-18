@@ -30,6 +30,8 @@ jobs:
         with:
           components: rustfmt, clippy
           toolchain: stable
+          default: true
+          override: true
 
       - name: Set up git private repo access
         run: |
