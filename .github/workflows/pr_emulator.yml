@@ -14,6 +14,7 @@ on:
       - "emulator/**"
       - "riscv/**"
       - "core/**"
+  workflow_dispatch:    
 
 jobs:
   docker-ziskof-check:
@@ -25,11 +26,16 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
+      - name: Cleanup rustup
+        run: rm -rf ~/.rustup
+
       - name: Install rust
         uses: actions-rs/toolchain@v1
         with:
           components: rustfmt, clippy
           toolchain: stable
+          default: true
+          override: true
 
       - name: Set up git private repo access
         run: |
