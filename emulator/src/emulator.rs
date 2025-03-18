@@ -14,6 +14,7 @@
 //!            \
 //!             Emu::run()
 //! ```
+//!
 
 use crate::{Emu, EmuOptions, EmuTrace, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr};
 
