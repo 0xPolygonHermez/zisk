@@ -7,7 +7,7 @@
 use crate::{Mem, ROM_ENTRY};
 
 /// Zisk precompiled
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub enum PrecompiledEmulationMode {
     #[default]
     None,

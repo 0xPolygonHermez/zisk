@@ -9,10 +9,32 @@
 
 #![allow(unused)]
 
+pub struct MemOps<'a> {
+    pub get_mem_read: Option<Box<dyn FnMut() -> u64 + 'a>>,
+    pub read_reg_fn: Box<dyn Fn(u64) -> u64 + 'a>,
+    pub read_mem_fn: Box<dyn FnMut(u64, bool) -> u64 + 'a>,
+    pub write_mem_fn: Box<dyn Fn(u64, u64) + 'a>,
+    pub write_input_data: Box<dyn FnMut(Vec<u64>) + 'a>,
+}
+
+impl<'a> MemOps<'a> {
+    fn new(
+        get_mem_read: Option<Box<dyn FnMut() -> u64 + 'a>>,
+        read_reg_fn: Box<dyn Fn(u64) -> u64 + 'a>,
+        read_mem_fn: Box<dyn FnMut(u64, bool) -> u64 + 'a>,
+        write_mem_fn: Box<dyn Fn(u64, u64) + 'a>,
+        write_input_data: Box<dyn FnMut(Vec<u64>) + 'a>,
+    ) -> Self {
+        Self { get_mem_read, read_reg_fn, read_mem_fn, write_mem_fn, write_input_data }
+    }
+}
+
 use std::{
+    cell::RefCell,
     collections::HashMap,
     fmt::{Debug, Display},
     num::Wrapping,
+    rc::Rc,
     str::FromStr,
 };
 use tiny_keccak::keccakf;
@@ -1270,40 +1292,74 @@ pub fn opc_max_w(
 #[inline(always)]
 pub fn opc_keccak(
     ctx: &mut InstContext,
-    mut read: Option<&mut dyn FnMut() -> u64>,
-    mut write: Option<&mut dyn FnMut(u64)>,
+    mut get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    mut push_mem_read: Option<&mut dyn FnMut(u64)>,
 ) {
+    let emulation_mode = ctx.precompiled.emulation_mode.clone();
+    let mem = Rc::new(RefCell::new(&mut ctx.mem));
+
+    let read_reg_fn = |reg: u64| -> u64 { ctx.regs[Mem::address_to_register_index(reg)] };
+    let read_mem_fn = |address: u64, generate_mem_read: bool| -> u64 {
+        let value = mem.borrow().read(address, 8);
+        if generate_mem_read {
+            push_mem_read.as_mut().unwrap()(value);
+        }
+        value
+    };
+    let write_mem_fn = |address: u64, value: u64| {
+        mem.borrow_mut().write(address, value, 8);
+    };
+    let write_input_data = |input_data: Vec<u64>| {
+        ctx.precompiled.input_data = input_data;
+    };
+
+    let get_mem_read = get_mem_read.map(|f| Box::new(f) as Box<dyn FnMut() -> u64>);
+
+    let mem_ops = MemOps::new(
+        get_mem_read,
+        Box::new(read_reg_fn),
+        Box::new(read_mem_fn),
+        Box::new(write_mem_fn),
+        Box::new(write_input_data),
+    );
+
+    let (c, flag) = opc_keccak_precompile(0, 0, emulation_mode, mem_ops);
+
+    ctx.c = c;
+    ctx.flag = flag;
+}
+
+pub fn opc_keccak_precompile(
+    a: u64,
+    b: u64,
+    emulation_mode: PrecompiledEmulationMode,
+    mut mem_ops: MemOps,
+) -> (u64, bool) {
     // Get address from register a0 = x10
-    let address = ctx.regs[Mem::address_to_register_index(REG_A0)];
-    if address & 0x7 != 0 {
-        panic!("opc_keccak() found address not aligned to 8 bytes");
-    }
+    let address = (mem_ops.read_reg_fn)(REG_A0);
+    assert!(address & 0x7 == 0, "opc_keccak() found address not aligned to 8 bytes");
 
     // Allocate room for 25 u64 = 128 bytes = 1600 bits
     const WORDS: usize = 25;
     let mut data = [0u64; WORDS];
 
     // Get input data from memory or from the precompiled context
-    match ctx.precompiled.emulation_mode {
-        PrecompiledEmulationMode::None => {
-            // Read data from the memory address
+    match emulation_mode {
+        PrecompiledEmulationMode::None | PrecompiledEmulationMode::GenerateMemReads => {
             for (i, d) in data.iter_mut().enumerate() {
-                *d = ctx.mem.read(address + (8 * i as u64), 8);
-            }
-        }
-        PrecompiledEmulationMode::GenerateMemReads => {
-            // Read data from the memory address
-            for (i, d) in data.iter_mut().enumerate() {
-                *d = ctx.mem.read(address + (8 * i as u64), 8);
-                write.as_mut().unwrap()(*d);
+                *d = (mem_ops.read_mem_fn)(
+                    address + (8 * i as u64),
+                    emulation_mode == PrecompiledEmulationMode::GenerateMemReads,
+                );
             }
         }
         PrecompiledEmulationMode::ConsumeMemReads => {
-            ctx.precompiled.input_data.clear();
+            let mut input_data = Vec::new();
             for (i, d) in data.iter_mut().enumerate() {
-                *d = read.as_mut().unwrap()();
-                ctx.precompiled.input_data.push(*d);
+                *d = (mem_ops.get_mem_read).as_mut().unwrap()();
+                input_data.push(*d);
             }
+            (mem_ops.write_input_data)(input_data);
         }
     }
 
@@ -1312,11 +1368,10 @@ pub fn opc_keccak(
 
     // Write data to the memory address
     for (i, d) in data.iter().enumerate() {
-        ctx.mem.write(address + (8 * i as u64), *d, 8);
+        (mem_ops.write_mem_fn)(address + (8 * i as u64), *d);
     }
 
-    ctx.c = 0;
-    ctx.flag = false;
+    (0, false)
 }
 
 /// Unimplemented.  Keccak can only be called from the system call context via InstContext.
