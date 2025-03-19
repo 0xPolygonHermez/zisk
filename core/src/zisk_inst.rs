@@ -88,6 +88,7 @@ pub const ZISK_OP_TYPE_COUNT: usize = 7;
 /// a and b are loaded from the respective sources specified in the instruction.
 /// c is stored according to the destination specified in the instruction.
 /// flag meaning is operation-dependant.
+#[allow(clippy::type_complexity)]
 #[derive(Debug, Clone)]
 pub struct ZiskInst {
     pub paddr: u64,
@@ -112,7 +113,8 @@ pub struct ZiskInst {
     pub jmp_offset2: i64,
     pub is_external_op: bool,
     pub op: u8,
-    pub func: fn(&mut InstContext) -> (),
+    pub func:
+        fn(&mut InstContext, Option<&mut dyn FnMut() -> u64>, Option<&mut dyn FnMut(u64)>) -> (),
     pub op_str: &'static str,
     pub op_type: ZiskOperationType,
     pub verbose: String,
@@ -147,7 +149,7 @@ impl Default for ZiskInst {
             jmp_offset2: 0,
             is_external_op: false,
             op: 0,
-            func: |_| (),
+            func: |_, _, _| (),
             op_str: "",
             op_type: ZiskOperationType::None,
             verbose: String::new(),

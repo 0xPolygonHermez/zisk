@@ -29,6 +29,17 @@ pub struct PrecompileContext {}
 
 pub trait PrecompileCall: Send + Sync {
     fn execute(&self, opcode: PrecompileCode, ctx: &mut InstContext) -> Option<(u64, bool)>;
+    fn execute_experimental<MemReadFn, MemWriteFn>(
+        &self,
+        opcode: PrecompileCode,
+        a: u64,
+        b: u64,
+        mem_read: MemReadFn,
+        mem_write: MemWriteFn,
+    ) -> Option<(u64, bool)>
+    where
+        MemReadFn: Fn(u64) -> u64,
+        MemWriteFn: Fn(u64, u64);
 }
 
 pub struct MemBusHelpers {}

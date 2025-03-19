@@ -107,19 +107,16 @@ impl ZiskProve {
 
         println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
         let witness_lib = self.witness_lib.as_ref().unwrap().display();
-        println!("{}", format!("{: >12} {}", "Witness Lib".bright_green().bold(), witness_lib));
-        println!("{}", format!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display()));
+        println!("{: >12} {}", "Witness Lib".bright_green().bold(), witness_lib);
+        println!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display());
         // println!("{}", format!("{: >12} {}", "ASM runner".bright_green().bold(), self.asm_runner.as_ref().unwrap_or_else("None").display()));
         let inputs_path = self.input.as_ref().unwrap().display();
-        println!("{}", format!("{: >12} {}", "Inputs".bright_green().bold(), inputs_path));
+        println!("{: >12} {}", "Inputs".bright_green().bold(), inputs_path);
         let proving_key = self.proving_key.as_ref().unwrap().display();
-        println!("{}", format!("{: >12} {}", "Proving key".bright_green().bold(), proving_key));
+        println!("{: >12} {}", "Proving key".bright_green().bold(), proving_key);
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
-        println!("{}", format!("{: >12} {}", "STD".bright_green().bold(), std_mode));
-        println!(
-            "{}",
-            format!("{: >12} {}", "Keccak".bright_green().bold(), keccak_script.display())
-        );
+        println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
+        println!("{: >12} {}", "Keccak".bright_green().bold(), keccak_script.display());
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 
         println!();
@@ -173,7 +170,7 @@ impl ZiskProve {
         if debug_info.std_mode.name == ModeName::Debug {
             match self.field {
                 Field::Goldilocks => {
-                    let library = unsafe { Library::new(&self.get_witness_computation_lib())? };
+                    let library = unsafe { Library::new(self.get_witness_computation_lib())? };
                     let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
                         unsafe { library.get(b"init_library")? };
                     let witness_lib = witness_lib_constructor(
@@ -206,7 +203,7 @@ impl ZiskProve {
             match self.field {
                 Field::Goldilocks => {
                     println!("Generating proof...");
-                    let library = unsafe { Library::new(&self.get_witness_computation_lib())? };
+                    let library = unsafe { Library::new(self.get_witness_computation_lib())? };
                     let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
                         unsafe { library.get(b"init_library")? };
                     let witness_lib = witness_lib_constructor(

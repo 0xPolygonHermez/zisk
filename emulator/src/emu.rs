@@ -1121,7 +1121,7 @@ impl<'a> Emu<'a> {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
         self.source_a(instruction);
         self.source_b(instruction);
-        (instruction.func)(&mut self.ctx.inst_ctx);
+        (instruction.func)(&mut self.ctx.inst_ctx, None, None);
         self.store_c(instruction);
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
@@ -1268,6 +1268,7 @@ impl<'a> Emu<'a> {
                 block_idx % par_options.num_threads as u64 == par_options.thread_id as u64;
 
             if !is_my_block {
+                self.ctx.inst_ctx.precompiled.emulation_mode = PrecompiledEmulationMode::None;
                 self.par_step();
             } else {
                 // Check if is the first step of a new block
@@ -1285,6 +1286,8 @@ impl<'a> Emu<'a> {
                         mem_reads: Vec::with_capacity(par_options.num_steps),
                         end: false,
                     });
+                    self.ctx.inst_ctx.precompiled.emulation_mode =
+                        PrecompiledEmulationMode::GenerateMemReads;
                 }
                 self.par_step_my_block::<F>(emu_traces.last_mut().unwrap());
 
@@ -1321,7 +1324,7 @@ impl<'a> Emu<'a> {
         self.source_b(instruction);
 
         // Call the operation
-        (instruction.func)(&mut self.ctx.inst_ctx);
+        (instruction.func)(&mut self.ctx.inst_ctx, None, None);
 
         // println!(
         //     "a={:08x} b={:08x} c={:08x} flag={:08x} step={}",
@@ -1427,22 +1430,14 @@ impl<'a> Emu<'a> {
         // Build the 'b' register value  based on the source specified by the current instruction
         self.source_b_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);
 
-        // If this is a precompiled, get the required input data to copy it to mem_reads
-        if instruction.input_size > 0 {
-            self.ctx.inst_ctx.precompiled.emulation_mode =
-                PrecompiledEmulationMode::GenerateMemReads;
-            self.ctx.inst_ctx.precompiled.input_data.clear();
-            self.ctx.inst_ctx.precompiled.output_data.clear();
-        }
-
         // Call the operation
-        (instruction.func)(&mut self.ctx.inst_ctx);
-
-        // If this is a precompiled, copy input data to mem_reads
-        if instruction.input_size > 0 {
-            emu_full_trace_vec.mem_reads.append(&mut self.ctx.inst_ctx.precompiled.input_data);
-            self.ctx.inst_ctx.precompiled.emulation_mode = PrecompiledEmulationMode::None;
-        }
+        (instruction.func)(
+            &mut self.ctx.inst_ctx,
+            None,
+            Some(&mut |value: u64| {
+                emu_full_trace_vec.mem_reads.push(value);
+            }),
+        );
 
         // Store the 'c' register value based on the storage specified by the current instruction
         self.store_c_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);
@@ -1477,7 +1472,7 @@ impl<'a> Emu<'a> {
         self.source_b(instruction);
 
         // Call the operation
-        (instruction.func)(&mut self.ctx.inst_ctx);
+        (instruction.func)(&mut self.ctx.inst_ctx, None, None);
 
         // Store the 'c' register value based on the storage specified by the current instruction
         self.store_c(instruction);
@@ -1496,6 +1491,16 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step += 1;
     }
 
+    // fn test(read: Option<&mut dyn FnMut() -> u64>, write: Option<&dyn Fn(u64, u64)>) {
+    //     let mut value = 0;
+    //     if let Some(read) = read {
+    //         value = read();
+    //     }
+    //     if let Some(write) = write {
+    //         write(0, value);
+    //     }
+    // }
+
     /// Performs one single step of the emulation
     #[inline(always)]
     pub fn step_emu_trace<F: PrimeField, BD: BusDevice<u64>>(
@@ -1507,20 +1512,17 @@ impl<'a> Emu<'a> {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
         self.source_a_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         self.source_b_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
-        // If this is a precompiled, get the required input data from mem_reads
-        if instruction.input_size > 0 {
-            self.ctx.inst_ctx.precompiled.emulation_mode =
-                PrecompiledEmulationMode::ConsumeMemReads;
-            self.ctx.inst_ctx.precompiled.input_data.clear();
-            self.ctx.inst_ctx.precompiled.output_data.clear();
-            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
-            for _ in 0..number_of_mem_reads {
-                let mem_read = mem_reads[*mem_reads_index];
+
+        (instruction.func)(
+            &mut self.ctx.inst_ctx,
+            Some(&mut || {
+                let value = mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
-                self.ctx.inst_ctx.precompiled.input_data.push(mem_read);
-            }
-        }
-        (instruction.func)(&mut self.ctx.inst_ctx);
+                value
+            }),
+            None,
+        );
+
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
         // Get operation bus data
@@ -1570,6 +1572,8 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.regs = emu_trace.start_state.regs;
 
         let mut mem_reads_index: usize = 0;
+        self.ctx.inst_ctx.precompiled.emulation_mode = PrecompiledEmulationMode::ConsumeMemReads;
+
         for _ in 0..emu_trace.steps {
             self.step_emu_trace::<F, BD>(&emu_trace.mem_reads, &mut mem_reads_index, data_bus);
         }
@@ -1593,6 +1597,8 @@ impl<'a> Emu<'a> {
 
         let mut current_step_idx = 0;
         let mut mem_reads_index: usize = 0;
+        self.ctx.inst_ctx.precompiled.emulation_mode = PrecompiledEmulationMode::ConsumeMemReads;
+
         loop {
             self.step_emu_traces(&vec_traces[chunk_id].mem_reads, &mut mem_reads_index, data_bus);
 
@@ -1618,20 +1624,17 @@ impl<'a> Emu<'a> {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
         self.source_a_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         self.source_b_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
-        // If this is a precompiled, get the required input data from mem_reads
-        if instruction.input_size > 0 {
-            self.ctx.inst_ctx.precompiled.emulation_mode =
-                PrecompiledEmulationMode::ConsumeMemReads;
-            self.ctx.inst_ctx.precompiled.input_data.clear();
-            self.ctx.inst_ctx.precompiled.output_data.clear();
-            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
-            for _ in 0..number_of_mem_reads {
-                let mem_read = mem_reads[*mem_reads_index];
+
+        (instruction.func)(
+            &mut self.ctx.inst_ctx,
+            Some(&mut || {
+                let value = mem_reads[*mem_reads_index];
                 *mem_reads_index += 1;
-                self.ctx.inst_ctx.precompiled.input_data.push(mem_read);
-            }
-        }
-        (instruction.func)(&mut self.ctx.inst_ctx);
+                value
+            }),
+            None,
+        );
+
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
         // Get operation bus data
@@ -1670,21 +1673,19 @@ impl<'a> Emu<'a> {
 
         self.source_a_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
         self.source_b_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
-        // If this is a precompiled, get the required input data from mem_reads
-        if instruction.input_size > 0 {
-            self.ctx.inst_ctx.precompiled.emulation_mode =
-                PrecompiledEmulationMode::ConsumeMemReads;
-            self.ctx.inst_ctx.precompiled.input_data.clear();
-            self.ctx.inst_ctx.precompiled.output_data.clear();
-            let number_of_mem_reads = (instruction.input_size + 7) >> 3;
-            for _ in 0..number_of_mem_reads {
-                let mem_read = mem_reads[*mem_reads_index];
-                *mem_reads_index += 1;
-                self.ctx.inst_ctx.precompiled.input_data.push(mem_read);
-            }
-        }
 
-        (instruction.func)(&mut self.ctx.inst_ctx);
+        self.ctx.inst_ctx.precompiled.emulation_mode = PrecompiledEmulationMode::ConsumeMemReads;
+
+        (instruction.func)(
+            &mut self.ctx.inst_ctx,
+            Some(&mut || {
+                let value = mem_reads[*mem_reads_index];
+                *mem_reads_index += 1;
+                value
+            }),
+            None,
+        );
+
         self.store_c_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
 
         if let Some(step_range_check) = step_range_check {

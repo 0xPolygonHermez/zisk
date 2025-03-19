@@ -5,9 +5,33 @@ use tiny_keccak::keccakf;
 use crate::KeccakfSM;
 
 use zisk_core::{zisk_ops::ZiskOp, InstContext};
+// fn read_reg_fn(&self, reg:usize) -> u64 {
+//     self.ctx.regs[reg as usize]
+// }
+
+// fn read_mem_fn(&self, address:u64) -> u64 {
+//     self.ctx.mem.read(address, 8)
+// }
+
+// fn write_mem_fn(&self, address:u64, data:u64) {
+//     self.ctx.mem.write(address, data, 8);
+// }
+
+// fn read_mem_gen_mem_reads_fn(&self, address:u64) -> u64 {
+//     let value = self.ctx.mem.read(address, 8);
+//     self.ctx.mem_reads.append(value);
+
+//     value
+// }
+
+// fn read_mem_reads_fn(&self) -> u64 {
+//     self.ctx.mem_reads[index]
+//     self.ctx.mem_reads_index += 1;
+// }
 
 impl PrecompileCall for KeccakfSM {
     fn execute(&self, opcode: PrecompileCode, ctx: &mut InstContext) -> Option<(u64, bool)> {
+        println!("Executing Keccakf XXXXXXXXXXXXXX");
         if opcode.value() != ZiskOp::Keccak as u16 {
             panic!("Invalid opcode for Keccakf");
         }
@@ -29,6 +53,44 @@ impl PrecompileCall for KeccakfSM {
         // Write the modified data back to memory at the same address
         for (i, d) in data.iter().enumerate() {
             ctx.mem.write(address + (8 * i as u64), *d, 8);
+        }
+
+        Some((0, false))
+    }
+
+    fn execute_experimental<MemReadFn, MemWriteFn>(
+        &self,
+        opcode: PrecompileCode,
+        _a: u64,
+        b: u64,
+        mem_read: MemReadFn,
+        mem_write: MemWriteFn,
+    ) -> Option<(u64, bool)>
+    where
+        MemReadFn: Fn(u64) -> u64,
+        MemWriteFn: Fn(u64, u64),
+    {
+        if opcode.value() != ZiskOp::Keccak as u16 {
+            panic!("Invalid opcode for Keccakf");
+        }
+
+        let address = b;
+
+        // Allocate room for 25 u64 = 128 bytes = 1600 bits
+        const WORDS: usize = 25;
+        let mut data = [0u64; WORDS];
+
+        // Read data from memory
+        for (i, d) in data.iter_mut().enumerate() {
+            *d = mem_read(address + (8 * i as u64));
+        }
+
+        // Call keccakf
+        keccakf(&mut data);
+
+        // Write the modified data back to memory at the same address
+        for (i, d) in data.iter().enumerate() {
+            mem_write(address + (8 * i as u64), *d);
         }
 
         Some((0, false))
