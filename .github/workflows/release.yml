@@ -104,12 +104,12 @@ jobs:
         run: |
             sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev \
                 libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev \
-                libsecp256k1-dev libsodium-dev libpqxx-dev nasm
+                libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
 
       - name: Build binaries
         shell: bash
         run: |
-            cargo build --release --target "${{ matrix.target }}"
+            cargo build --release --features distributed --target "${{ matrix.target }}"
             
             # Verify built binaries
             bins=(cargo-zisk ziskemu riscv2zisk libzisk_witness.so)
