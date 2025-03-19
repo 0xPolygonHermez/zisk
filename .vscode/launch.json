@@ -8,7 +8,7 @@
             "type": "lldb",
             "request": "launch",
             "name": "Debug",
-            "program": "target/debug/proofman-cli",
+            "program": "target/debug/cargo-zisk",
             //"cargo": {
                 "args": [
                     //"run",
@@ -17,10 +17,10 @@
                     "verify-constraints",
                     "--witness-lib",
                     "../zisk/target/debug/libzisk_witness.so",
-                    "--rom",
-                    "../zisk/emulator/benches/data/my.elf",
+                    "--elf",
+                    "../zisk-testvectors/arith_eq/program/target/riscv64ima-polygon-ziskos-elf/release/arith_eq",
                     "-i",
-                    "../zisk/emulator/benches/data/input_two_segments.bin",
+                    "../zisk-testvectors/arith_eq/inputs/input_arith_eq_1.bin",
                     "--proving-key",
                     "../zisk/build/provingKey"
                 ],

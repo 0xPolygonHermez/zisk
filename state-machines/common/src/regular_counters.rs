@@ -62,8 +62,12 @@ impl Metrics for RegularCounters {
     /// An empty vector, as this implementation does not produce any derived inputs for the bus.
     #[inline(always)]
     fn measure(&mut self, data: &[u64]) {
-        let data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
+        let data: ExtOperationData<u64> = data.try_into().expect(&format!(
+            "Regular Metrics: Failed to convert data OP:0x{:X} len:{} data:{:?}",
+            data[0],
+            data.len(),
+            data
+        ));
 
         let inst_op_type = OperationBusData::get_op_type(&data);
 

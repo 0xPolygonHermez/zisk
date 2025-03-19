@@ -75,7 +75,8 @@ pub struct ZiskExecutor<F: PrimeField64> {
 
 impl<F: PrimeField64> ZiskExecutor<F> {
     /// The number of threads to use for parallel processing when computing minimal traces.
-    const NUM_THREADS: usize = 16;
+    // const NUM_THREADS: usize = 16;
+    const NUM_THREADS: usize = 1;
 
     /// The size in rows of the minimal traces
     const MIN_TRACE_SIZE: u64 = 1 << 15;

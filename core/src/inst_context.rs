@@ -22,6 +22,7 @@ pub enum PrecompiledEmulationMode {
 #[derive(Debug, Default)]
 pub struct PrecompiledInstContext {
     /// Precompiled emulation mode
+    pub step: u64,
     pub emulation_mode: PrecompiledEmulationMode,
     /// Precompiled input data address
     // pub input_data_address: u64,
@@ -63,9 +64,6 @@ pub struct InstContext {
     /// End flag, set to true only by the last instruction to execute
     pub end: bool,
 
-    /// Load address register
-    pub load_reg: u8,
-
     /// Registers
     pub regs: [u64; 32],
 
@@ -87,7 +85,6 @@ impl InstContext {
             pc: ROM_ENTRY,
             step: 0,
             end: false,
-            load_reg: 0,
             regs: [0; 32],
             precompiled: PrecompiledInstContext::default(),
         }

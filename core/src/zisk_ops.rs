@@ -308,10 +308,10 @@ define_ops! {
     (MaxW, "max_w", Binary, BINARY_COST, 0x25, 0, opc_max_w, op_max_w),
     (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, 200, opc_keccak, op_keccak),
     (PubOut, "pubout", PubOut, 0, 0x30, 0, opc_pubout, op_pubout),
-    (Arith256, "arith256", ArithEq, 77, 0xf2, 160, opc_arith256, op_arith256),
-    (Arith256Mod, "arith256_mod", ArithEq, 77, 0xf3, 160, opc_arith256_mod, op_arith256_mod),
-    (Secp256k1Add, "secp256k1_add", ArithEq, 77, 0xf4, 160, opc_secp256k1_add, op_secp256k1_add),
-    (Secp256k1Dbl, "secp256k1_dbl", ArithEq, 77, 0xf5, 160, opc_secp256k1_dbl, op_secp256k1_add),
+    (Arith256, "arith256", ArithEq, 77, 0xf2, 136, opc_arith256, op_arith256),
+    (Arith256Mod, "arith256_mod", ArithEq, 77, 0xf3, 168, opc_arith256_mod, op_arith256_mod),
+    (Secp256k1Add, "secp256k1_add", ArithEq, 77, 0xf4, 144, opc_secp256k1_add, op_secp256k1_add),
+    (Secp256k1Dbl, "secp256k1_dbl", ArithEq, 77, 0xf5, 64, opc_secp256k1_dbl, op_secp256k1_add),
 }
 
 /* INTERNAL operations */
@@ -1077,8 +1077,8 @@ pub fn opc_max_w(ctx: &mut InstContext) {
 /// specified by register A0, and stores the output state in the same memory address
 #[inline(always)]
 pub fn opc_keccak(ctx: &mut InstContext) {
-    // Get address from register a0 = x10
-    let address = ctx.regs[ctx.load_reg as usize];
+    // Get address from b (a = step)
+    let address = ctx.b;
     if address & 0x7 != 0 {
         panic!("opc_keccak() found address not aligned to 8 bytes");
     }
@@ -1168,18 +1168,31 @@ pub fn precompiled_load_data(
     load_chunks: usize,
     data: &mut [u64],
 ) {
-    let address = ctx.regs[ctx.load_reg as usize];
+    let address = ctx.b;
     if address & 0x7 != 0 {
         panic!("precompiled_check_address() found address not aligned to 8 bytes");
     }
     if let PrecompiledEmulationMode::ConsumeMemReads = ctx.precompiled.emulation_mode {
-        let expected_len = 1 + indirections_count + loads_count * load_chunks;
+        let expected_len = indirections_count + loads_count * load_chunks;
         // Check input data has the expected length
+        println!(
+            "CONSUME_MEM_READS {}/{} ctx.precompiled.input_data.len={} =? {} [{}+{}*{}]",
+            ctx.step,
+            ctx.precompiled.step,
+            ctx.precompiled.input_data.len(),
+            expected_len,
+            indirections_count,
+            load_chunks,
+            loads_count
+        );
         if ctx.precompiled.input_data.len() != expected_len {
             panic!(
-                "ctx.precompiled.input_data.len={} != {}",
+                "ctx.precompiled.input_data.len={} != {} [1+{}+{}*{}]",
                 ctx.precompiled.input_data.len(),
-                expected_len
+                expected_len,
+                indirections_count,
+                load_chunks,
+                loads_count
             );
         }
         // Read data from the precompiled context
@@ -1191,40 +1204,54 @@ pub fn precompiled_load_data(
         return;
     }
 
-    data[0] = address;
     for i in 0..indirections_count {
         let indirection = ctx.mem.read(address + (8 * i as u64), 8);
         if address & 0x7 != 0 {
             panic!("precompiled_check_address() found address[{}] not aligned to 8 bytes", i);
         }
-        data[i + 1] = indirection;
+        data[i] = indirection;
     }
-    let data_offset = indirections_count + 1;
-    let data_base = if indirections_count == 0 { 0 } else { 1 };
+    let data_offset = indirections_count;
     for i in 0..loads_count {
-        let param_address = data[data_base + i];
+        // if there aren't indirections, take directly from the address
         let data_offset = i * load_chunks + data_offset;
+        let param_address =
+            if indirections_count == 0 { address + data_offset as u64 } else { data[i] };
         for j in 0..load_chunks {
             let addr = param_address + (8 * j as u64);
             data[data_offset + j] = ctx.mem.read(addr, 8);
         }
     }
     if let PrecompiledEmulationMode::GenerateMemReads = ctx.precompiled.emulation_mode {
+        let expected_len = indirections_count + loads_count * load_chunks;
+
         ctx.precompiled.input_data.clear();
         for (i, d) in data.iter_mut().enumerate() {
             ctx.precompiled.input_data.push(*d);
         }
+        ctx.precompiled.step = ctx.step;
+        println!(
+            "GENERATE_MEM_READS {}/{} data.len={} =? {} [1+{}+{}*{}]",
+            ctx.step,
+            ctx.precompiled.step,
+            data.len(),
+            expected_len,
+            indirections_count,
+            load_chunks,
+            loads_count
+        );
     }
 }
 
 #[inline(always)]
 pub fn opc_arith256(ctx: &mut InstContext) {
-    const WORDS: usize = 1 + 5 + 3 * 4;
+    const WORDS: usize = 5 + 3 * 4;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 5, 3, 4, &mut data);
 
-    let (_addrs, rest) = data.split_at(6);
+    // ignore 5 indirections
+    let (_, rest) = data.split_at(5);
     let (a, rest) = rest.split_at(4);
     let (b, c) = rest.split_at(4);
 
@@ -1237,10 +1264,10 @@ pub fn opc_arith256(ctx: &mut InstContext) {
 
     precompiles_helpers::arith256(a, b, c, &mut dl, &mut dh);
 
-    // [struct,a,b,c,4:dl,5:dh]
+    // [a,b,c,3:dl,4:dh]
     for i in 0..4 {
-        ctx.mem.write(data[4] + (8 * i as u64), dl[i], 8);
-        ctx.mem.write(data[5] + (8 * i as u64), dh[i], 8);
+        ctx.mem.write(data[3] + (8 * i as u64), dl[i], 8);
+        ctx.mem.write(data[4] + (8 * i as u64), dh[i], 8);
     }
 
     ctx.c = 0;
@@ -1256,12 +1283,13 @@ pub fn op_arith256(_a: u64, _b: u64) -> (u64, bool) {
 
 #[inline(always)]
 pub fn opc_arith256_mod(ctx: &mut InstContext) {
-    const WORDS: usize = 1 + 5 + 4 * 4;
+    const WORDS: usize = 5 + 4 * 4;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 5, 4, 4, &mut data);
 
-    let (_, rest) = data.split_at(6);
+    // ignore 5 indirections
+    let (_, rest) = data.split_at(5);
     let (a, rest) = rest.split_at(4);
     let (b, rest) = rest.split_at(4);
     let (c, module) = rest.split_at(4);
@@ -1276,9 +1304,9 @@ pub fn opc_arith256_mod(ctx: &mut InstContext) {
 
     precompiles_helpers::arith256_mod(a, b, c, module, &mut d);
 
-    // [struct,a,b,c,module,5:d]
+    // [a,b,c,module,4:d]
     for (i, d) in d.iter().enumerate() {
-        ctx.mem.write(data[5] + (8 * i as u64), *d, 8);
+        ctx.mem.write(data[4] + (8 * i as u64), *d, 8);
     }
 
     ctx.c = 0;
@@ -1294,12 +1322,13 @@ pub fn op_arith256_mod(_a: u64, _b: u64) -> (u64, bool) {
 
 #[inline(always)]
 pub fn opc_secp256k1_add(ctx: &mut InstContext) {
-    const WORDS: usize = 1 + 2 + 2 * 8;
+    const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 2, 2, 8, &mut data);
 
-    let (_, rest) = data.split_at(3);
+    // ignore 2 indirections
+    let (_, rest) = data.split_at(2);
     let (p1, p2) = rest.split_at(8);
 
     let p1: &[u64; 8] = p1.try_into().expect("opc_secp256k1_add: p1.len != 8");
@@ -1308,9 +1337,9 @@ pub fn opc_secp256k1_add(ctx: &mut InstContext) {
 
     precompiles_helpers::secp256k1_add(&p1, &p2, &mut p3);
 
-    // [struct,1:p1,p2]
+    // [0:p1,p2]
     for (i, d) in p3.iter().enumerate() {
-        ctx.mem.write(data[1] + (8 * i as u64), *d, 8);
+        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
     }
 
     ctx.c = 0;
@@ -1326,20 +1355,18 @@ pub fn op_secp256k1_add(_a: u64, _b: u64) -> (u64, bool) {
 
 #[inline(always)]
 pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
-    const WORDS: usize = 1 + 1 * 8;
+    const WORDS: usize = 1 * 8;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 0, 1, 8, &mut data);
 
-    let (_, p1) = data.split_at(1);
-    let p1: &[u64; 8] = p1.try_into().expect("opc_secp256k1_dbl: p1.len != 8");
+    let p1: &[u64; 8] = &data.try_into().expect("opc_secp256k1_dbl: p1.len != 8");
     let mut p3 = [0u64; 8];
 
     precompiles_helpers::secp256k1_dbl(&p1, &mut p3);
 
-    // [0:struct]
     for (i, d) in p3.iter().enumerate() {
-        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
     }
 
     ctx.c = 0;

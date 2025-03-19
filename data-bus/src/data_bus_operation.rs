@@ -18,15 +18,18 @@ pub const OPERATION_BUS_KECCAKF_DATA_SIZE: usize = 5;
 // TODO: optimize and send only one value 64 upto 32-bits addr
 
 const DATA_256_BITS_SIZE: usize = 4;
+const POINT_256_BITS_SIZE: usize = 2 * DATA_256_BITS_SIZE;
+const INDIRECTION_SIZE: usize = 1;
 
+// use OPERATION_BUS_DATA_SIZE because a = step, b = addr
 pub const OPERATION_BUS_ARITH_256_DATA_SIZE: usize =
-    OPERATION_BUS_DATA_SIZE + 5 * DATA_256_BITS_SIZE;
+    OPERATION_BUS_DATA_SIZE + 5 * INDIRECTION_SIZE + 3 * DATA_256_BITS_SIZE;
 pub const OPERATION_BUS_ARITH_256_MOD_DATA_SIZE: usize =
-    OPERATION_BUS_DATA_SIZE + 5 * DATA_256_BITS_SIZE;
+    OPERATION_BUS_DATA_SIZE + 5 * INDIRECTION_SIZE + 4 * DATA_256_BITS_SIZE;
 pub const OPERATION_BUS_SECP256K1_ADD_DATA_SIZE: usize =
-    OPERATION_BUS_DATA_SIZE + 4 * DATA_256_BITS_SIZE;
+    OPERATION_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * POINT_256_BITS_SIZE;
 pub const OPERATION_BUS_SECP256K1_DBL_DATA_SIZE: usize =
-    OPERATION_BUS_DATA_SIZE + 2 * DATA_256_BITS_SIZE;
+    OPERATION_BUS_DATA_SIZE + POINT_256_BITS_SIZE;
 
 /// Index of the operation value in the operation data payload.
 const OP: usize = 0;
@@ -60,8 +63,8 @@ pub enum ExtOperationData<D> {
 }
 
 const KECCAK_OP: u8 = ZiskOp::Keccak.code();
-const ARITH_256_OP: u8 = ZiskOp::Arith256Mod.code();
-const ARITH_256_MOD_OP: u8 = ZiskOp::Arith256.code();
+const ARITH_256_OP: u8 = ZiskOp::Arith256.code();
+const ARITH_256_MOD_OP: u8 = ZiskOp::Arith256Mod.code();
 const SECP256K1_ADD_OP: u8 = ZiskOp::Secp256k1Add.code();
 const SECP256K1_DBL_OP: u8 = ZiskOp::Secp256k1Dbl.code();
 
@@ -81,21 +84,25 @@ impl<D: Copy + Into<u64>> TryFrom<&[D]> for ExtOperationData<D> {
                 Ok(ExtOperationData::OperationKeccakData(array))
             }
             ARITH_256_OP => {
+                println!("data.len={}", data.len());
                 let array: OperationArith256Data<D> =
                     data.try_into().map_err(|_| "Invalid OperationArith256Data size")?;
                 Ok(ExtOperationData::OperationArith256Data(array))
             }
             ARITH_256_MOD_OP => {
+                println!("data.len={}", data.len());
                 let array: OperationArith256ModData<D> =
                     data.try_into().map_err(|_| "Invalid OperationArith256ModData size")?;
                 Ok(ExtOperationData::OperationArith256ModData(array))
             }
             SECP256K1_ADD_OP => {
+                println!("data.len={}", data.len());
                 let array: OperationSecp256k1AddData<D> =
                     data.try_into().map_err(|_| "Invalid OperationSecp256k1AddData size")?;
                 Ok(ExtOperationData::OperationSecp256k1AddData(array))
             }
             SECP256K1_DBL_OP => {
+                println!("data.len={}", data.len());
                 let array: OperationSecp256k1DblData<D> =
                     data.try_into().map_err(|_| "Invalid OperationSecp256k1DblData size")?;
                 Ok(ExtOperationData::OperationSecp256k1DblData(array))
@@ -140,28 +147,83 @@ impl OperationBusData<u64> {
     ///
     /// # Returns
     /// An array representing the operation data payload.
+
+    const ARITH256_OP: u8 = ZiskOp::Arith256.code();
+    const ARITH256_MOD_OP: u8 = ZiskOp::Arith256Mod.code();
+    const SECP256K1_ADD_OP: u8 = ZiskOp::Secp256k1Add.code();
+
     #[inline(always)]
     pub fn from_instruction(inst: &ZiskInst, inst_ctx: &InstContext) -> ExtOperationData<u64> {
         let a = if inst.m32 { inst_ctx.a & 0xffffffff } else { inst_ctx.a };
         let b = if inst.m32 { inst_ctx.b & 0xffffffff } else { inst_ctx.b };
 
-        if inst.op_type == ZiskOperationType::Keccak {
-            assert!(inst_ctx.precompiled.input_data.len() == 25);
-            let mut data: OperationKeccakData<u64> = [0; OPERATION_BUS_KECCAKF_DATA_SIZE + 25];
-            data[0] = inst.op as u64; // OP
-            data[1] = inst.op_type as u64; // OP_TYPE
-            data[2] = a; // A
-            data[3] = b; // B
-            data[4] = inst_ctx.step; // STEP
-            data[5..(5 + 25)].copy_from_slice(&inst_ctx.precompiled.input_data[..25]);
-            ExtOperationData::OperationKeccakData(data)
-        } else {
-            ExtOperationData::OperationData([
-                inst.op as u64,      // OP
-                inst.op_type as u64, // OP_TYPE
-                a,                   // A
-                b,                   // B
-            ])
+        match inst.op_type {
+            ZiskOperationType::Keccak => {
+                assert!(inst_ctx.precompiled.input_data.len() == 25);
+                let mut data: OperationKeccakData<u64> = [0; OPERATION_BUS_KECCAKF_DATA_SIZE + 25];
+                data[0] = inst.op as u64; // OP
+                data[1] = inst.op_type as u64; // OP_TYPE
+                data[2] = a; // A
+                data[3] = b; // B
+                data[4] = inst_ctx.step; // STEP
+                data[5..(5 + 25)].copy_from_slice(&inst_ctx.precompiled.input_data[..25]);
+                ExtOperationData::OperationKeccakData(data)
+            }
+            ZiskOperationType::ArithEq => {
+                match inst.op {
+                    ARITH256_OP => {
+                        let mut data: OperationArith256Data<u64> =
+                            [0; OPERATION_BUS_ARITH_256_DATA_SIZE];
+                        data[0] = inst.op as u64; // OP
+                        data[1] = inst.op_type as u64; // OP_TYPE
+                        data[2] = a; // A step
+                        data[3] = b; // B addr
+                        data[4..].copy_from_slice(
+                            &inst_ctx.precompiled.input_data
+                                [..OPERATION_BUS_ARITH_256_DATA_SIZE - 4],
+                        );
+                        ExtOperationData::OperationArith256Data(data)
+                    }
+                    ARITH256_MOD_OP => {
+                        let mut data: OperationArith256ModData<u64> =
+                            [0; OPERATION_BUS_ARITH_256_MOD_DATA_SIZE];
+                        data[0] = inst.op as u64; // OP
+                        data[1] = inst.op_type as u64; // OP_TYPE
+                        data[2] = a; // A step
+                        data[3] = b; // B addr
+                        data[4..].copy_from_slice(
+                            &inst_ctx.precompiled.input_data
+                                [..OPERATION_BUS_ARITH_256_MOD_DATA_SIZE - 4],
+                        );
+                        ExtOperationData::OperationArith256ModData(data)
+                    }
+                    _ => {
+                        ExtOperationData::OperationData([
+                            inst.op as u64,      // OP
+                            inst.op_type as u64, // OP_TYPE
+                            a,                   // A
+                            b,                   // B
+                        ])
+                    }
+                }
+                // assert!(inst_ctx.precompiled.input_data.len() == 25);
+                // let mut data: OperationKeccakData<u64> = [0; OPERATION_BUS_KECCAKF_DATA_SIZE + 25];
+                // data[0] = inst.op as u64; // OP
+                // data[1] = inst.op_type as u64; // OP_TYPE
+                // data[2] = a; // A
+                // data[3] = b; // B
+                // data[4] = inst_ctx.step; // STEP
+                // data[5..(5 + 25)].copy_from_slice(&inst_ctx.precompiled.input_data[..25]);
+                // ExtOperationData::OperationKeccakData(data)
+            }
+            _ => {
+                ExtOperationData::OperationData([
+                    inst.op as u64,      // OP
+                    inst.op_type as u64, // OP_TYPE
+                    a,                   // A
+                    b,                   // B
+                ])
+            }
         }
     }
 

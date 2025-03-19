@@ -320,7 +320,6 @@ impl<'a> Emu<'a> {
             SRC_REG => {
                 // Calculate memory address
                 self.ctx.inst_ctx.b = self.get_reg(instruction.b_offset_imm0 as usize);
-                self.ctx.inst_ctx.load_reg = instruction.b_offset_imm0 as u8;
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -374,7 +373,6 @@ impl<'a> Emu<'a> {
             SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
             SRC_REG => {
                 self.ctx.inst_ctx.b = self.get_reg(instruction.b_offset_imm0 as usize);
-                self.ctx.inst_ctx.load_reg = instruction.b_offset_imm0 as u8;
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -461,7 +459,6 @@ impl<'a> Emu<'a> {
             SRC_REG => {
                 self.ctx.inst_ctx.b =
                     self.get_traced_reg(instruction.b_offset_imm0 as usize, 1, reg_trace);
-                self.ctx.inst_ctx.load_reg = instruction.b_offset_imm0 as u8;
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -577,7 +574,6 @@ impl<'a> Emu<'a> {
             SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
             SRC_REG => {
                 self.ctx.inst_ctx.b = self.get_reg(instruction.b_offset_imm0 as usize);
-                self.ctx.inst_ctx.load_reg = instruction.b_offset_imm0 as u8;
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -1128,6 +1124,8 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     pub fn step_fast(&mut self) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+        println!("EXECUTE 0x{:X} {}", self.ctx.inst_ctx.pc, instruction.verbose);
+
         self.source_a(instruction);
         self.source_b(instruction);
         (instruction.func)(&mut self.ctx.inst_ctx);
@@ -1524,6 +1522,8 @@ impl<'a> Emu<'a> {
                 PrecompiledEmulationMode::ConsumeMemReads;
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
+
+            // round_up => (size + 7) >> 3
             let number_of_mem_reads = (instruction.input_size + 7) >> 3;
             for _ in 0..number_of_mem_reads {
                 let mem_read = trace_step.mem_reads[*mem_reads_index];

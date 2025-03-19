@@ -25,6 +25,7 @@ pub struct ArithEqCounterInputGen {
     mode: BusDeviceMode,
 }
 
+#[derive(Debug)]
 struct ArithEqMemInputConfig {
     indirect_params: bool,
     rewrite_params: bool,
@@ -99,6 +100,10 @@ impl ArithEqCounterInputGen {
         let params_count = config.read_params + config.write_params;
         let params_offset =
             OPERATION_BUS_DATA_SIZE + if config.indirect_params { params_count } else { 0 };
+        println!(
+            "params_count:{} params_offset:{} config:{:?}",
+            params_count, params_offset, config
+        );
         for iparam in 0..params_count {
             let param_index = if config.rewrite_params && iparam >= config.read_params {
                 iparam - config.read_params
