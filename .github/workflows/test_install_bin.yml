@@ -1,0 +1,83 @@
+name: Test ZisK Installation from Binaries
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read    
+
+jobs:
+  install:
+    name: Install ZisK from Binaries
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rust toolchain
+        id: rustc-toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: default
+          override: true
+          target: x86_64-unknown-linux-gnu
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+            sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev \
+                libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev \
+                libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
+
+      - name: Install and run ziskup
+        shell: bash
+        run: |
+          curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh | bash
+
+  program:
+    name: Create and verify example program
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create program
+        shell: bash
+        run: |
+          cargo-zisk sdk new sha_hasher
+          cd sha_hasher
+
+      - name: Build program
+        shell: bash
+        run: |
+          cargo-zisk build --release
+
+      - name: Run program
+        shell: bash
+        run: |
+          cargo-zisk run --release | tee run_output.log
+          if ! grep -qE "98211882|bd13089b|6ccf1fca|81f7f0e4|abf6352a|0c39c9b1|1f142cac|233f1280" run_output.log; then
+            echo "❌ Run program failed"
+            exit 1
+          fi
+
+      - name: Prove program
+        shell: bash
+        run: |
+          cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -o proof -a -y | tee prove_output.log
+          if ! grep -q "Vadcop Final proof was verified" prove_output.log; then
+            echo "❌ Prove program failed"
+            exit 1
+          fi
+
+      - name: Verify proof
+        shell: bash
+        run: |
+          cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json -u ./proof/publics.json | tee verify_output.log
+          if ! grep -q "Vadcop Final proof was verified" verify_output.log; then
+            echo "❌ Verify proof failed"
+            exit 1
+          fi          
