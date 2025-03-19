@@ -16,7 +16,6 @@ SETUP_VERSION="0.4.0"
 export RUSTFLAGS="-C target-cpu=native"
 
 main() {
-  need_cmd git
   need_cmd curl
 
   while [[ -n $1 ]]; do
@@ -185,7 +184,7 @@ main() {
       say "3) None"
 
       # Read user input with default option set to 1
-      read -p ">" user_choice && echo
+      read -p ">" user_choice < /dev/tty
       user_choice=${user_choice:-1}
 
       case $user_choice in
@@ -215,6 +214,7 @@ main() {
     BIN_ARCHIVE_URL="${RELEASE_URL}cargo_zisk_${PLATFORM}_${ARCHITECTURE}.$EXT"
 
     # Download and extract the binaries archive
+    echo
     say "Downloading latest cargo-zisk"
     if [ "$PLATFORM" = "linux" ]; then
       tmp="$(mktemp -d)/cargo_zisk.tar.gz"
@@ -269,6 +269,7 @@ EOF
 
   # Install by cloning the repo with the provided branch/tag
   else
+    need_cmd git
     need_cmd cargo
     ZISKUP_BRANCH=${ZISKUP_BRANCH:-main}
     REPO_PATH="$ZISK_DIR/$ZISKUP_REPO"
