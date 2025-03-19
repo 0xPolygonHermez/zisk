@@ -35,6 +35,10 @@
 //! | STORE_MEM  | c        | Value is stored in memory at a constant address             |
 //! | STORE_IND  | c        | value is stored in memory at an indirect address a + offset |
 
+use std::collections::HashMap;
+
+use zisk_common::ZiskPrecompile;
+
 use crate::{source_to_str, store_to_str, InstContext};
 
 /// a or b registers source is the current value of the c register
@@ -113,8 +117,12 @@ pub struct ZiskInst {
     pub jmp_offset2: i64,
     pub is_external_op: bool,
     pub op: u8,
-    pub func:
-        fn(&mut InstContext, Option<&mut dyn FnMut() -> u64>, Option<&mut dyn FnMut(u64)>) -> (),
+    pub func: fn(
+        &mut InstContext,
+        Option<&mut dyn FnMut() -> u64>,
+        Option<&mut dyn FnMut(u64)>,
+        Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
+    ) -> (),
     pub op_str: &'static str,
     pub op_type: ZiskOperationType,
     pub verbose: String,
@@ -149,7 +157,7 @@ impl Default for ZiskInst {
             jmp_offset2: 0,
             is_external_op: false,
             op: 0,
-            func: |_, _, _| (),
+            func: |_, _, _, _| (),
             op_str: "",
             op_type: ZiskOperationType::None,
             verbose: String::new(),

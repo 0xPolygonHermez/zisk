@@ -4,28 +4,9 @@
 //! * The state includes: memory, registers (a, b, c, flag, sp), program counter (pc), step and a
 //!   flag to mark the end of the program execution.
 
+use zisk_common::PrecompiledInstContext;
+
 use crate::{Mem, ROM_ENTRY};
-
-/// Zisk precompiled
-#[derive(Debug, Default, Clone, PartialEq)]
-pub enum PrecompiledEmulationMode {
-    #[default]
-    None,
-    GenerateMemReads,
-    ConsumeMemReads,
-}
-
-/// Zisk precompiled instruction context.
-/// Stores the input data (of the size expected by the precompiled components) and the output data.
-/// If the precompiled component finds input_data not empty, it should use this data instead of
-/// reading it from memory
-#[derive(Debug, Default)]
-pub struct PrecompiledInstContext {
-    /// Precompiled emulation mode
-    pub emulation_mode: PrecompiledEmulationMode,
-    /// Precompiled input data
-    pub input_data: Vec<u64>,
-}
 
 #[derive(Debug)]
 /// ZisK instruction context data container, storing the state of the execution

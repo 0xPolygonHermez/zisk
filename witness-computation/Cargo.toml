@@ -22,6 +22,7 @@ precomp-keccakf = { path = "../precompiles/keccakf" }
 zisk-pil = { path = "../pil" }
 ziskemu = { path = "../emulator" }
 zisk-core = { path = "../core" }
+zisk-common = { path = "../common" }
 
 
 proofman-common = { workspace = true }

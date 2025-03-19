@@ -43,7 +43,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, RwLock},
 };
-use zisk_common::{EmuTrace, MinimalTraces};
+use zisk_common::{EmuTrace, MinimalTraces, ZiskPrecompile};
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
 
@@ -55,26 +55,28 @@ type NestedDeviceMetricsList = Vec<DeviceMetricsList>;
 /// machines, planning, and witness computation.
 pub struct ZiskExecutor<F: PrimeField64> {
     /// ZisK ROM, a binary file containing the ZisK program to be executed.
-    pub zisk_rom: Arc<ZiskRom>,
+    zisk_rom: Arc<ZiskRom>,
 
     /// Path to the input data file.
-    pub input_data_path: Option<PathBuf>,
+    input_data_path: Option<PathBuf>,
 
-    pub rom_path: PathBuf,
+    rom_path: PathBuf,
 
-    pub asm_runner_path: Option<PathBuf>,
+    asm_runner_path: Option<PathBuf>,
 
     /// Registered secondary state machines.
     secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,
 
     /// Planning information for main state machines.
-    pub min_traces: RwLock<MinimalTraces>,
-    pub main_planning: RwLock<Vec<Plan>>,
-    pub secn_planning: RwLock<Vec<Vec<Plan>>>,
+    min_traces: RwLock<MinimalTraces>,
+    main_planning: RwLock<Vec<Plan>>,
+    secn_planning: RwLock<Vec<Vec<Plan>>>,
 
-    pub main_instances: RwLock<HashMap<usize, MainInstance>>,
-    pub secn_instances: RwLock<HashMap<usize, Box<dyn Instance<F>>>>,
+    main_instances: RwLock<HashMap<usize, MainInstance>>,
+    secn_instances: RwLock<HashMap<usize, Box<dyn Instance<F>>>>,
     std: Arc<Std<F>>,
+
+    precompiles: HashMap<usize, Box<dyn ZiskPrecompile>>,
 }
 
 impl<F: PrimeField64> ZiskExecutor<F> {
@@ -97,6 +99,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         input_data_path: Option<PathBuf>,
         zisk_rom: Arc<ZiskRom>,
         std: Arc<Std<F>>,
+        precompiles: HashMap<usize, Box<dyn ZiskPrecompile>>,
     ) -> Self {
         Self {
             input_data_path,
@@ -110,6 +113,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             main_instances: RwLock::new(HashMap::new()),
             secn_instances: RwLock::new(HashMap::new()),
             std,
+            precompiles,
         }
     }
 
@@ -171,6 +175,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             &input_data,
             &emu_options,
             num_threads,
+            Some(&self.precompiles),
         )
         .expect("Error during emulator execution");
 
@@ -242,6 +247,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                     &self.zisk_rom,
                     minimal_trace,
                     &mut data_bus,
+                    Some(&self.precompiles),
                 );
 
                 let (mut main, mut secondary) = (Vec::new(), Vec::new());
@@ -374,6 +380,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             Self::MIN_TRACE_SIZE,
             main_instance,
             self.std.clone(),
+            Some(&self.precompiles),
         );
 
         pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
@@ -417,6 +424,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                     min_traces,
                     chunk_id,
                     data_bus,
+                    Some(&self.precompiles),
                 );
             }
         });

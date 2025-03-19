@@ -20,12 +20,13 @@ use crate::{Emu, EmuOptions, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr};
 use data_bus::{BusDevice, DataBus};
 use p3_field::PrimeField;
 use std::{
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
     time::Instant,
 };
 use sysinfo::System;
-use zisk_common::EmuTrace;
+use zisk_common::{EmuTrace, ZiskPrecompile};
 use zisk_core::{Riscv2zisk, ZiskRom};
 
 pub trait Emulator {
@@ -188,6 +189,7 @@ impl ZiskEmulator {
         inputs: &[u8],
         options: &EmuOptions,
         num_threads: usize,
+        precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
     ) -> Result<Vec<EmuTrace>, ZiskEmulatorErr> {
         let mut minimal_traces = vec![Vec::new(); num_threads];
 
@@ -197,7 +199,8 @@ impl ZiskEmulator {
 
             // Run the emulation
             let mut emu = Emu::new(rom);
-            let result = emu.par_run::<F>(inputs.to_owned(), options, &par_emu_options);
+            let result =
+                emu.par_run::<F>(inputs.to_owned(), options, &par_emu_options, precompiles);
 
             if !emu.terminated() {
                 panic!("Emulation did not complete");
@@ -229,12 +232,13 @@ impl ZiskEmulator {
         rom: &ZiskRom,
         emu_trace: &EmuTrace,
         data_bus: &mut DataBus<u64, BD>,
+        precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
     ) {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);
 
         // Run the emulation
-        emu.process_emu_trace::<F, BD>(emu_trace, data_bus);
+        emu.process_emu_trace::<F, BD>(emu_trace, data_bus, precompiles);
     }
 
     /// EXPAND phase
@@ -246,12 +250,13 @@ impl ZiskEmulator {
         min_traces: &[EmuTrace],
         chunk_id: usize,
         data_bus: &mut DataBus<u64, BD>,
+        precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
     ) {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);
 
         // Run the emulation
-        emu.process_emu_traces(min_traces, chunk_id, data_bus);
+        emu.process_emu_traces(min_traces, chunk_id, data_bus, precompiles);
     }
 
     /// Finds all files in a directory and returns a vector with their full paths

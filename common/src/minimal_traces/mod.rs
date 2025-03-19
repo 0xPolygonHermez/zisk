@@ -1,4 +1,8 @@
-use crate::{asm_minimal_trace::AsmMinimalTraces, EmuTrace};
+mod asm_minimal_trace;
+mod emu_minimal_trace;
+
+pub use asm_minimal_trace::*;
+pub use emu_minimal_trace::*;
 
 #[derive(Debug)]
 pub enum MinimalTraces {

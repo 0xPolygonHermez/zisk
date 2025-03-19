@@ -1,4 +1,4 @@
-use std::{mem, sync::atomic::AtomicU32};
+use std::{collections::HashMap, mem, sync::atomic::AtomicU32};
 
 use crate::{EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, ParEmuOptions};
 use data_bus::{
@@ -11,10 +11,10 @@ use sm_mem::MemHelpers;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use data_bus::DataBus;
-use zisk_common::{EmuTrace, EmuTraceStart};
+use zisk_common::{EmuTrace, EmuTraceStart, PrecompiledEmulationMode, ZiskPrecompile};
 use zisk_core::{
-    InstContext, Mem, PrecompiledEmulationMode, ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C,
-    SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    InstContext, Mem, ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
+    SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -1121,7 +1121,7 @@ impl<'a> Emu<'a> {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
         self.source_a(instruction);
         self.source_b(instruction);
-        (instruction.func)(&mut self.ctx.inst_ctx, None, None);
+        (instruction.func)(&mut self.ctx.inst_ctx, None, None, None);
         self.store_c(instruction);
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
@@ -1250,6 +1250,7 @@ impl<'a> Emu<'a> {
         inputs: Vec<u8>,
         options: &EmuOptions,
         par_options: &ParEmuOptions,
+        precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
     ) -> Vec<EmuTrace> {
         // Context, where the state of the execution is stored and modified at every execution step
         self.ctx = self.create_emu_context(inputs);
@@ -1269,7 +1270,7 @@ impl<'a> Emu<'a> {
 
             if !is_my_block {
                 self.ctx.inst_ctx.precompiled.emulation_mode = PrecompiledEmulationMode::None;
-                self.par_step();
+                self.par_step(precompiles);
             } else {
                 // Check if is the first step of a new block
                 if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
@@ -1289,7 +1290,7 @@ impl<'a> Emu<'a> {
                     self.ctx.inst_ctx.precompiled.emulation_mode =
                         PrecompiledEmulationMode::GenerateMemReads;
                 }
-                self.par_step_my_block::<F>(emu_traces.last_mut().unwrap());
+                self.par_step_my_block::<F>(emu_traces.last_mut().unwrap(), precompiles);
 
                 if self.ctx.inst_ctx.step >= options.max_steps {
                     panic!("Emu::par_run() reached max_steps");
@@ -1324,7 +1325,7 @@ impl<'a> Emu<'a> {
         self.source_b(instruction);
 
         // Call the operation
-        (instruction.func)(&mut self.ctx.inst_ctx, None, None);
+        (instruction.func)(&mut self.ctx.inst_ctx, None, None, None);
 
         // println!(
         //     "a={:08x} b={:08x} c={:08x} flag={:08x} step={}",
@@ -1422,7 +1423,11 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn par_step_my_block<F: PrimeField>(&mut self, emu_full_trace_vec: &mut EmuTrace) {
+    pub fn par_step_my_block<F: PrimeField>(
+        &mut self,
+        emu_full_trace_vec: &mut EmuTrace,
+        precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
+    ) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
         // Build the 'a' register value  based on the source specified by the current instruction
         self.source_a_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);
@@ -1437,6 +1442,7 @@ impl<'a> Emu<'a> {
             Some(&mut |value: u64| {
                 emu_full_trace_vec.mem_reads.push(value);
             }),
+            precompiles,
         );
 
         // Store the 'c' register value based on the storage specified by the current instruction
@@ -1462,7 +1468,7 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn par_step(&mut self) {
+    pub fn par_step(&mut self, precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         // Build the 'a' register value  based on the source specified by the current instruction
@@ -1472,7 +1478,7 @@ impl<'a> Emu<'a> {
         self.source_b(instruction);
 
         // Call the operation
-        (instruction.func)(&mut self.ctx.inst_ctx, None, None);
+        (instruction.func)(&mut self.ctx.inst_ctx, None, None, precompiles);
 
         // Store the 'c' register value based on the storage specified by the current instruction
         self.store_c(instruction);
@@ -1508,6 +1514,7 @@ impl<'a> Emu<'a> {
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
         data_bus: &mut DataBus<u64, BD>,
+        precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
     ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
         self.source_a_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
@@ -1521,6 +1528,7 @@ impl<'a> Emu<'a> {
                 value
             }),
             None,
+            precompiles,
         );
 
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
@@ -1563,6 +1571,7 @@ impl<'a> Emu<'a> {
         &mut self,
         emu_trace: &EmuTrace,
         data_bus: &mut DataBus<u64, BD>,
+        precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
     ) {
         // Set initial state
         self.ctx.inst_ctx.pc = emu_trace.start_state.pc;
@@ -1575,7 +1584,12 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.precompiled.emulation_mode = PrecompiledEmulationMode::ConsumeMemReads;
 
         for _ in 0..emu_trace.steps {
-            self.step_emu_trace::<F, BD>(&emu_trace.mem_reads, &mut mem_reads_index, data_bus);
+            self.step_emu_trace::<F, BD>(
+                &emu_trace.mem_reads,
+                &mut mem_reads_index,
+                data_bus,
+                precompiles,
+            );
         }
     }
 
@@ -1586,6 +1600,7 @@ impl<'a> Emu<'a> {
         vec_traces: &[EmuTrace],
         chunk_id: usize,
         data_bus: &mut DataBus<u64, BD>,
+        precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
     ) {
         // Set initial state
         let emu_trace_start = &vec_traces[chunk_id].start_state;
@@ -1600,7 +1615,12 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.precompiled.emulation_mode = PrecompiledEmulationMode::ConsumeMemReads;
 
         loop {
-            self.step_emu_traces(&vec_traces[chunk_id].mem_reads, &mut mem_reads_index, data_bus);
+            self.step_emu_traces(
+                &vec_traces[chunk_id].mem_reads,
+                &mut mem_reads_index,
+                data_bus,
+                precompiles,
+            );
 
             if self.ctx.inst_ctx.end {
                 break;
@@ -1620,6 +1640,7 @@ impl<'a> Emu<'a> {
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
         data_bus: &mut DataBus<u64, BD>,
+        precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
     ) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
         self.source_a_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
@@ -1633,6 +1654,7 @@ impl<'a> Emu<'a> {
                 value
             }),
             None,
+            precompiles,
         );
 
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
@@ -1666,6 +1688,7 @@ impl<'a> Emu<'a> {
         mem_reads_index: &mut usize,
         reg_trace: &mut EmuRegTrace,
         step_range_check: Option<&[AtomicU32]>,
+        precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
     ) -> EmuFullTraceStep<F> {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
@@ -1684,6 +1707,7 @@ impl<'a> Emu<'a> {
                 value
             }),
             None,
+            precompiles,
         );
 
         self.store_c_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);

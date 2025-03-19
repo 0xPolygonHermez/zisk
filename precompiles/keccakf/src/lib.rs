@@ -15,6 +15,6 @@ pub use keccakf_constants::*;
 pub use keccakf_instance::*;
 pub use keccakf_manager::*;
 pub use keccakf_planner::*;
-// pub use keccakf_precompile::*;
+pub use keccakf_precompile::*;
 pub use keccakf_table::*;
 pub use keccakf_types::*;

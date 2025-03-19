@@ -16,14 +16,13 @@ sm-common = { path = "../../state-machines/common" }
 zisk-core = { path = "../../core" }
 data-bus = { path = "../../data-bus" }
 zisk-pil = { path = "../../pil" }
-precompiles-common = { path = "../common" }
+zisk-common = { path = "../../common" }
 
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
 witness = { workspace = true }
 pil-std-lib = { workspace = true }
-
 p3-field = { workspace=true }
 p3-goldilocks = { workspace = true }
 log = { workspace = true }

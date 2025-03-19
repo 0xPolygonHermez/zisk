@@ -1,10 +1,7 @@
-use precompiles_common::{PrecompileCall, PrecompileCode};
-
 use tiny_keccak::keccakf;
+use zisk_common::{MemPrecompilesOps, PrecompiledEmulationMode, ZiskPrecompile};
 
-use crate::KeccakfSM;
-
-use zisk_core::{zisk_ops::ZiskOp, InstContext};
+use zisk_core::REG_A0;
 // fn read_reg_fn(&self, reg:usize) -> u64 {
 //     self.ctx.regs[reg as usize]
 // }
@@ -29,73 +26,123 @@ use zisk_core::{zisk_ops::ZiskOp, InstContext};
 //     self.ctx.mem_reads_index += 1;
 // }
 
-impl PrecompileCall for KeccakfSM {
-    fn execute(&self, opcode: PrecompileCode, ctx: &mut InstContext) -> Option<(u64, bool)> {
-        println!("Executing Keccakf XXXXXXXXXXXXXX");
-        if opcode.value() != ZiskOp::Keccak as u16 {
-            panic!("Invalid opcode for Keccakf");
-        }
+pub struct KeccakOp;
 
-        let address = ctx.b;
-
-        // Allocate room for 25 u64 = 128 bytes = 1600 bits
-        const WORDS: usize = 25;
-        let mut data = [0u64; WORDS];
-
-        // Read data from memory
-        for (i, d) in data.iter_mut().enumerate() {
-            *d = ctx.mem.read(address + (8 * i as u64), 8);
-        }
-
-        // Call keccakf
-        keccakf(&mut data);
-
-        // Write the modified data back to memory at the same address
-        for (i, d) in data.iter().enumerate() {
-            ctx.mem.write(address + (8 * i as u64), *d, 8);
-        }
-
-        Some((0, false))
-    }
-
-    fn execute_experimental<MemReadFn, MemWriteFn>(
+impl ZiskPrecompile for KeccakOp {
+    fn execute(
         &self,
-        opcode: PrecompileCode,
         _a: u64,
-        b: u64,
-        mem_read: MemReadFn,
-        mem_write: MemWriteFn,
-    ) -> Option<(u64, bool)>
-    where
-        MemReadFn: Fn(u64) -> u64,
-        MemWriteFn: Fn(u64, u64),
-    {
-        if opcode.value() != ZiskOp::Keccak as u16 {
-            panic!("Invalid opcode for Keccakf");
-        }
-
-        let address = b;
+        _b: u64,
+        emulation_mode: PrecompiledEmulationMode,
+        mut mem_ops: MemPrecompilesOps,
+    ) -> (u64, bool) {
+        // Get address from register a0 = x10
+        let address = (mem_ops.read_reg_fn)(REG_A0);
+        assert!(address & 0x7 == 0, "opc_keccak() found address not aligned to 8 bytes");
 
         // Allocate room for 25 u64 = 128 bytes = 1600 bits
         const WORDS: usize = 25;
         let mut data = [0u64; WORDS];
 
-        // Read data from memory
-        for (i, d) in data.iter_mut().enumerate() {
-            *d = mem_read(address + (8 * i as u64));
+        // Get input data from memory or from the precompiled context
+        match emulation_mode {
+            PrecompiledEmulationMode::None | PrecompiledEmulationMode::GenerateMemReads => {
+                for (i, d) in data.iter_mut().enumerate() {
+                    *d = (mem_ops.read_mem_fn)(
+                        address + (8 * i as u64),
+                        emulation_mode == PrecompiledEmulationMode::GenerateMemReads,
+                    );
+                }
+            }
+            PrecompiledEmulationMode::ConsumeMemReads => {
+                let mut input_data = Vec::new();
+                for d in data.iter_mut() {
+                    *d = (mem_ops.get_mem_read).as_mut().unwrap()();
+                    input_data.push(*d);
+                }
+                (mem_ops.write_input_data)(input_data);
+            }
         }
 
         // Call keccakf
         keccakf(&mut data);
 
-        // Write the modified data back to memory at the same address
+        // Write data to the memory address
         for (i, d) in data.iter().enumerate() {
-            mem_write(address + (8 * i as u64), *d);
+            (mem_ops.write_mem_fn)(address + (8 * i as u64), *d);
         }
 
-        Some((0, false))
+        (0, false)
     }
 }
+
+// impl PrecompileCall for KeccakfSM {
+//     fn execute(&self, opcode: PrecompileCode, ctx: &mut InstContext) -> Option<(u64, bool)> {
+//         println!("Executing Keccakf XXXXXXXXXXXXXX");
+//         if opcode.value() != ZiskOp::Keccak as u16 {
+//             panic!("Invalid opcode for Keccakf");
+//         }
+
+//         let address = ctx.b;
+
+//         // Allocate room for 25 u64 = 128 bytes = 1600 bits
+//         const WORDS: usize = 25;
+//         let mut data = [0u64; WORDS];
+
+//         // Read data from memory
+//         for (i, d) in data.iter_mut().enumerate() {
+//             *d = ctx.mem.read(address + (8 * i as u64), 8);
+//         }
+
+//         // Call keccakf
+//         keccakf(&mut data);
+
+//         // Write the modified data back to memory at the same address
+//         for (i, d) in data.iter().enumerate() {
+//             ctx.mem.write(address + (8 * i as u64), *d, 8);
+//         }
+
+//         Some((0, false))
+//     }
+
+//     fn execute_experimental<MemReadFn, MemWriteFn>(
+//         &self,
+//         opcode: PrecompileCode,
+//         _a: u64,
+//         b: u64,
+//         mem_read: MemReadFn,
+//         mem_write: MemWriteFn,
+//     ) -> Option<(u64, bool)>
+//     where
+//         MemReadFn: Fn(u64) -> u64,
+//         MemWriteFn: Fn(u64, u64),
+//     {
+//         if opcode.value() != ZiskOp::Keccak as u16 {
+//             panic!("Invalid opcode for Keccakf");
+//         }
+
+//         let address = b;
+
+//         // Allocate room for 25 u64 = 128 bytes = 1600 bits
+//         const WORDS: usize = 25;
+//         let mut data = [0u64; WORDS];
+
+//         // Read data from memory
+//         for (i, d) in data.iter_mut().enumerate() {
+//             *d = mem_read(address + (8 * i as u64));
+//         }
+
+//         // Call keccakf
+//         keccakf(&mut data);
+
+//         // Write the modified data back to memory at the same address
+//         for (i, d) in data.iter().enumerate() {
+//             mem_write(address + (8 * i as u64), *d);
+//         }
+
+//         Some((0, false))
+//     }
+// }
 
 // #[cfg(test)]
 // mod tests {

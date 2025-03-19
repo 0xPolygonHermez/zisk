@@ -1,9 +1,6 @@
 use crate::Stats;
-use zisk_common::EmuTrace;
-use zisk_core::{
-    InstContext, Mem, PrecompiledInstContext, INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE,
-    ROM_ENTRY,
-};
+use zisk_common::{EmuTrace, PrecompiledInstContext};
+use zisk_core::{InstContext, Mem, INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, ROM_ENTRY};
 
 /// ZisK emulator context data container, storing the state of the emulation
 pub struct EmuContext {

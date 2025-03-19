@@ -6,13 +6,14 @@
 
 use executor::ZiskExecutor;
 use pil_std_lib::Std;
-use precomp_keccakf::KeccakfManager;
+use precomp_keccakf::{KeccakOp, KeccakfManager};
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
-use std::{path::PathBuf, sync::Arc};
-use zisk_core::Riscv2zisk;
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use zisk_common::ZiskPrecompile;
+use zisk_core::{zisk_ops::KECCAK_CODE, Riscv2zisk};
 
 use p3_field::PrimeField64;
 use p3_goldilocks::Goldilocks;
@@ -76,6 +77,9 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib {
         // Step 4: Initialize the precompiles state machines
         let keccakf_sm = KeccakfManager::new::<F>(self.keccak_path.clone());
 
+        let precompiles: HashMap<usize, Box<dyn ZiskPrecompile>> =
+            HashMap::from([(KECCAK_CODE as usize, Box::new(KeccakOp) as Box<dyn ZiskPrecompile>)]);
+
         // Step 5: Create the executor and register the secondary state machines
         let mut executor: ZiskExecutor<F> = ZiskExecutor::new(
             self.elf_path.clone(),
@@ -83,6 +87,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib {
             self.input_data_path.clone(),
             zisk_rom,
             std,
+            precompiles,
         );
         executor.register_sm(mem_sm);
         executor.register_sm(rom_sm);

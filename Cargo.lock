@@ -1883,7 +1883,6 @@ dependencies = [
  "p3-field",
  "p3-goldilocks",
  "pil-std-lib",
- "precompiles-common",
  "proofman-common",
  "proofman-macros",
  "proofman-util",
@@ -1893,15 +1892,9 @@ dependencies = [
  "sm-common",
  "tiny-keccak",
  "witness",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
-]
-
-[[package]]
-name = "precompiles-common"
-version = "0.4.4"
-dependencies = [
- "zisk-core",
 ]
 
 [[package]]
@@ -3691,7 +3684,7 @@ dependencies = [
  "riscv",
  "serde",
  "serde_json",
- "tiny-keccak",
+ "zisk-common",
 ]
 
 [[package]]
@@ -3703,14 +3696,6 @@ dependencies = [
  "rayon",
  "serde",
  "serde_arrays",
-]
-
-[[package]]
-name = "zisk-precompiles"
-version = "0.4.4"
-dependencies = [
- "precomp-keccakf",
- "precompiles-common",
 ]
 
 [[package]]
@@ -3735,6 +3720,7 @@ dependencies = [
  "sm-mem",
  "sm-rom",
  "witness",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
  "ziskemu",

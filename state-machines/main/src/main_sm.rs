@@ -7,9 +7,12 @@
 //!   segment.
 //! - Methods for computing the witness and setting up trace rows.
 
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc,
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    },
 };
 
 use log::info;
@@ -24,7 +27,7 @@ use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 
-use zisk_common::EmuTrace;
+use zisk_common::{EmuTrace, ZiskPrecompile};
 use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
 use ziskemu::{Emu, EmuRegTrace};
 
@@ -76,6 +79,7 @@ impl MainSM {
         min_trace_size: u64,
         main_instance: &mut MainInstance,
         std: Arc<Std<F>>,
+        precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
     ) -> AirInstance<F> {
         // Create the main trace buffer
         let mut main_trace = MainTrace::new();
@@ -143,6 +147,7 @@ impl MainSM {
                     &mut reg_trace,
                     step_range_check.clone(),
                     chunk_id == (end_idx - start_idx - 1),
+                    precompiles,
                 );
                 (pc, regs, reg_trace)
             })
@@ -219,6 +224,7 @@ impl MainSM {
         reg_trace: &mut EmuRegTrace,
         step_range_check: Arc<Vec<AtomicU32>>,
         last_reg_values: bool,
+        precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
     ) -> (u64, Vec<u64>) {
         // Initialize the emulator with the start state of the emu trace
         let mut emu = Emu::from_emu_trace_start(zisk_rom, &min_trace.start_state);
@@ -243,6 +249,7 @@ impl MainSM {
                     &mut mem_reads_index,
                     reg_trace,
                     Some(&**step_range_check),
+                    precompiles,
                 );
             }
 

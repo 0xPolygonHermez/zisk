@@ -7,28 +7,7 @@
 //!   `InstContext` (instruction context) as input/output parameter, containg a, b, c and flag
 //!   attributes.
 
-#![allow(unused)]
-
-pub struct MemOps<'a> {
-    pub get_mem_read: Option<Box<dyn FnMut() -> u64 + 'a>>,
-    pub read_reg_fn: Box<dyn Fn(u64) -> u64 + 'a>,
-    pub read_mem_fn: Box<dyn FnMut(u64, bool) -> u64 + 'a>,
-    pub write_mem_fn: Box<dyn Fn(u64, u64) + 'a>,
-    pub write_input_data: Box<dyn FnMut(Vec<u64>) + 'a>,
-}
-
-impl<'a> MemOps<'a> {
-    fn new(
-        get_mem_read: Option<Box<dyn FnMut() -> u64 + 'a>>,
-        read_reg_fn: Box<dyn Fn(u64) -> u64 + 'a>,
-        read_mem_fn: Box<dyn FnMut(u64, bool) -> u64 + 'a>,
-        write_mem_fn: Box<dyn Fn(u64, u64) + 'a>,
-        write_input_data: Box<dyn FnMut(Vec<u64>) + 'a>,
-    ) -> Self {
-        Self { get_mem_read, read_reg_fn, read_mem_fn, write_mem_fn, write_input_data }
-    }
-}
-
+use crate::{InstContext, Mem, ZiskOperationType, ZiskRequiredOperation, M64};
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -37,12 +16,9 @@ use std::{
     rc::Rc,
     str::FromStr,
 };
-use tiny_keccak::keccakf;
+use zisk_common::{MemPrecompilesOps, ZiskPrecompile};
 
-use crate::{
-    InstContext, Mem, PrecompiledEmulationMode, ZiskOperationType, ZiskRequiredOperation, M64,
-    REG_A0, SYS_ADDR,
-};
+pub const KECCAK_CODE: u8 = 0xf1;
 
 /// Determines the type of a [`ZiskOp`].  
 ///
@@ -134,8 +110,12 @@ impl Display for InvalidCodeError {
 }
 
 /// Internal macro used to define all ops in the [`ZiskOp`] enum
+/// Table of Zisk opcode definitions: enum, name, type, cost, code and implementation functions
+/// This table is the backbone of the Zisk processor, it determines what functionality is supported,
+/// and what state machine is responsible of proving the execution of every opcode, based on its
+/// type.
 macro_rules! define_ops {
-    ( $( ($name:ident, $str_name:expr, $precompile:expr, $type:ident, $steps:expr, $code:expr, $input_size:expr, $call_fn:ident, $call_ab_fn:ident) ),* $(,)? ) => {
+    ( $( ($name:ident, $str_name:expr, $precompile:expr, $type:ident, $steps:expr, $code:expr, $call_fn:ident, $call_ab_fn:ident) ),* $(,)? ) => {
 		/// Represents an operation that can be executed in Zisk.
 		///
 		/// All relevant metadata associated with the operation can be efficiently accessed via
@@ -185,27 +165,19 @@ macro_rules! define_ops {
                 }
             }
 
-			/// Returns the input data size of the operation
-            pub const fn input_size(&self) -> u64 {
-                match self {
-                    $(
-                        Self::$name => $input_size,
-                    )*
-                }
-            }
-
 			/// Executes the operation on the given [`InstContext`]
 			#[inline(always)]
-            pub fn call(&self, ctx: &mut InstContext, read: Option<&mut dyn FnMut() -> u64>, write: Option<&mut dyn FnMut(u64)>) {
+            pub fn call(&self, ctx: &mut InstContext, get_mem_read: Option<&mut dyn FnMut() -> u64>, push_mem_read: Option<&mut dyn FnMut(u64)>, precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>
+        ) {
                 match self {
                     $(
-                        Self::$name => $call_fn(ctx, read, write),
+                        Self::$name => $call_fn(ctx, get_mem_read, push_mem_read, precompiles),
                     )*
                 }
             }
 
             /// Returns the call function of the operation
-            pub const fn get_call_function(&self) -> fn(&mut InstContext, Option<&mut dyn FnMut() -> u64>, Option<&mut dyn FnMut(u64)>) -> () {
+            pub const fn get_call_function(&self) -> fn(&mut InstContext, Option<&mut dyn FnMut() -> u64>, Option<&mut dyn FnMut(u64)>, Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>) -> () {
                 match self {
                     $(
                         Self::$name => $call_fn,
@@ -269,63 +241,59 @@ const ARITHA32_COST: u64 = 95;
 const ARITHAM32_COST: u64 = 95;
 const KECCAK_COST: u64 = 137221;
 
-/// Table of Zisk opcode definitions: enum, name, type, cost, code and implementation functions
-/// This table is the backbone of the Zisk processor, it determines what functionality is supported,
-/// and what state machine is responsible of proving the execution of every opcode, based on its
-/// type.
 define_ops! {
-    (Flag, "flag", false, Internal, 0, 0x00, 0, opc_flag, op_flag),
-    (CopyB, "copyb", false, Internal, 0, 0x01, 0, opc_copyb, op_copyb),
-    (SignExtendB, "signextend_b", false, BinaryE, BINARY_E_COST, 0x37, 0, opc_signextend_b, op_signextend_b),
-    (SignExtendH, "signextend_h", false, BinaryE, BINARY_E_COST, 0x38, 0, opc_signextend_h, op_signextend_h),
-    (SignExtendW, "signextend_w", false, BinaryE, BINARY_E_COST, 0x39, 0, opc_signextend_w, op_signextend_w),
-    (Add, "add", false, Binary, BINARY_COST, 0x0c, 0, opc_add, op_add),
-    (AddW, "add_w", false, Binary, BINARY_COST, 0x2c, 0, opc_add_w, op_add_w),
-    (Sub, "sub", false, Binary, BINARY_COST, 0x0d, 0, opc_sub, op_sub),
-    (SubW, "sub_w", false, Binary, BINARY_COST, 0x2d, 0, opc_sub_w, op_sub_w),
-    (Sll, "sll", false, BinaryE, BINARY_E_COST, 0x31, 0, opc_sll, op_sll),
-    (SllW, "sll_w", false, BinaryE, BINARY_E_COST, 0x34, 0, opc_sll_w, op_sll_w),
-    (Sra, "sra", false, BinaryE, BINARY_E_COST, 0x33, 0, opc_sra, op_sra),
-    (Srl, "srl", false, BinaryE, BINARY_E_COST, 0x32, 0, opc_srl, op_srl),
-    (SraW, "sra_w", false, BinaryE, BINARY_E_COST, 0x36, 0, opc_sra_w, op_sra_w),
-    (SrlW, "srl_w", false, BinaryE, BINARY_E_COST, 0x35, 0, opc_srl_w, op_srl_w),
-    (Eq, "eq", false, Binary, BINARY_COST, 0x0b, 0, opc_eq, op_eq),
-    (EqW, "eq_w", false, Binary, BINARY_COST, 0x2b, 0, opc_eq_w, op_eq_w),
-    (Ltu, "ltu", false, Binary, BINARY_COST, 0x08, 0, opc_ltu, op_ltu),
-    (Lt, "lt", false, Binary, BINARY_COST, 0x09, 0, opc_lt, op_lt),
-    (LtuW, "ltu_w", false, Binary, BINARY_COST, 0x28, 0, opc_ltu_w, op_ltu_w),
-    (LtW, "lt_w", false, Binary, BINARY_COST, 0x29, 0, opc_lt_w, op_lt_w),
-    (Leu, "leu", false, Binary, BINARY_COST, 0x0e, 0, opc_leu, op_leu),
-    (Le, "le", false, Binary, BINARY_COST, 0x0f, 0, opc_le, op_le),
-    (LeuW, "leu_w", false, Binary, BINARY_COST, 0x2e, 0, opc_leu_w, op_leu_w),
-    (LeW, "le_w", false, Binary, BINARY_COST, 0x2f, 0, opc_le_w, op_le_w),
-    (And, "and", false, Binary, BINARY_COST, 0x10, 0, opc_and, op_and),
-    (Or, "or", false, Binary, BINARY_COST, 0x11, 0, opc_or, op_or),
-    (Xor, "xor", false, Binary, BINARY_COST, 0x12, 0, opc_xor, op_xor),
-    (Mulu, "mulu", false, ArithAm32, ARITHAM32_COST, 0xb0, 0, opc_mulu, op_mulu),
-    (Muluh, "muluh", false, ArithAm32, ARITHAM32_COST, 0xb1, 0, opc_muluh, op_muluh),
-    (Mulsuh, "mulsuh", false, ArithAm32, ARITHAM32_COST, 0xb3, 0, opc_mulsuh, op_mulsuh),
-    (Mul, "mul", false, ArithAm32, ARITHAM32_COST, 0xb4, 0, opc_mul, op_mul),
-    (Mulh, "mulh", false, ArithAm32, ARITHAM32_COST, 0xb5, 0, opc_mulh, op_mulh),
-    (MulW, "mul_w", false, ArithAm32, ARITHAM32_COST, 0xb6, 0, opc_mul_w, op_mul_w),
-    (Divu, "divu", false, ArithAm32, ARITHAM32_COST, 0xb8, 0, opc_divu, op_divu),
-    (Remu, "remu", false, ArithAm32, ARITHAM32_COST, 0xb9, 0, opc_remu, op_remu),
-    (Div, "div", false, ArithAm32, ARITHAM32_COST, 0xba, 0, opc_div, op_div),
-    (Rem, "rem", false, ArithAm32, ARITHAM32_COST, 0xbb, 0, opc_rem, op_rem),
-    (DivuW, "divu_w", false, ArithA32, ARITHA32_COST, 0xbc, 0, opc_divu_w, op_divu_w),
-    (RemuW, "remu_w", false, ArithA32, ARITHA32_COST, 0xbd, 0, opc_remu_w, op_remu_w),
-    (DivW, "div_w", false, ArithA32, ARITHA32_COST, 0xbe, 0, opc_div_w, op_div_w),
-    (RemW, "rem_w", false, ArithA32, ARITHA32_COST, 0xbf, 0, opc_rem_w, op_rem_w),
-    (Minu, "minu", false, Binary, BINARY_COST, 0x02, 0, opc_minu, op_minu),
-    (Min, "min", false, Binary, BINARY_COST, 0x03, 0, opc_min, op_min),
-    (MinuW, "minu_w", false, Binary, BINARY_COST, 0x22, 0, opc_minu_w, op_minu_w),
-    (MinW, "min_w", false, Binary, BINARY_COST, 0x23, 0, opc_min_w, op_min_w),
-    (Maxu, "maxu", false, Binary, BINARY_COST, 0x04, 0, opc_maxu, op_maxu),
-    (Max, "max", false, Binary, BINARY_COST, 0x05, 0, opc_max, op_max),
-    (MaxuW, "maxu_w", false, Binary, BINARY_COST, 0x24, 0, opc_maxu_w, op_maxu_w),
-    (MaxW, "max_w", false, Binary, BINARY_COST, 0x25, 0, opc_max_w, op_max_w),
-    (Keccak, "keccak", true, Keccak, KECCAK_COST, 0xf1, 200, opc_keccak, op_keccak),
-    (PubOut, "pubout", false, PubOut, 0, 0x30, 0, opc_pubout, op_pubout),
+    (Flag, "flag", false, Internal, 0, 0x00, opc_flag, op_flag),
+    (CopyB, "copyb", false, Internal, 0, 0x01, opc_copyb, op_copyb),
+    (SignExtendB, "signextend_b", false, BinaryE, BINARY_E_COST, 0x37, opc_signextend_b, op_signextend_b),
+    (SignExtendH, "signextend_h", false, BinaryE, BINARY_E_COST, 0x38, opc_signextend_h, op_signextend_h),
+    (SignExtendW, "signextend_w", false, BinaryE, BINARY_E_COST, 0x39, opc_signextend_w, op_signextend_w),
+    (Add, "add", false, Binary, BINARY_COST, 0x0c, opc_add, op_add),
+    (AddW, "add_w", false, Binary, BINARY_COST, 0x2c, opc_add_w, op_add_w),
+    (Sub, "sub", false, Binary, BINARY_COST, 0x0d, opc_sub, op_sub),
+    (SubW, "sub_w", false, Binary, BINARY_COST, 0x2d, opc_sub_w, op_sub_w),
+    (Sll, "sll", false, BinaryE, BINARY_E_COST, 0x31, opc_sll, op_sll),
+    (SllW, "sll_w", false, BinaryE, BINARY_E_COST, 0x34, opc_sll_w, op_sll_w),
+    (Sra, "sra", false, BinaryE, BINARY_E_COST, 0x33, opc_sra, op_sra),
+    (Srl, "srl", false, BinaryE, BINARY_E_COST, 0x32, opc_srl, op_srl),
+    (SraW, "sra_w", false, BinaryE, BINARY_E_COST, 0x36, opc_sra_w, op_sra_w),
+    (SrlW, "srl_w", false, BinaryE, BINARY_E_COST, 0x35, opc_srl_w, op_srl_w),
+    (Eq, "eq", false, Binary, BINARY_COST, 0x0b, opc_eq, op_eq),
+    (EqW, "eq_w", false, Binary, BINARY_COST, 0x2b, opc_eq_w, op_eq_w),
+    (Ltu, "ltu", false, Binary, BINARY_COST, 0x08, opc_ltu, op_ltu),
+    (Lt, "lt", false, Binary, BINARY_COST, 0x09, opc_lt, op_lt),
+    (LtuW, "ltu_w", false, Binary, BINARY_COST, 0x28, opc_ltu_w, op_ltu_w),
+    (LtW, "lt_w", false, Binary, BINARY_COST, 0x29, opc_lt_w, op_lt_w),
+    (Leu, "leu", false, Binary, BINARY_COST, 0x0e, opc_leu, op_leu),
+    (Le, "le", false, Binary, BINARY_COST, 0x0f, opc_le, op_le),
+    (LeuW, "leu_w", false, Binary, BINARY_COST, 0x2e, opc_leu_w, op_leu_w),
+    (LeW, "le_w", false, Binary, BINARY_COST, 0x2f, opc_le_w, op_le_w),
+    (And, "and", false, Binary, BINARY_COST, 0x10, opc_and, op_and),
+    (Or, "or", false, Binary, BINARY_COST, 0x11, opc_or, op_or),
+    (Xor, "xor", false, Binary, BINARY_COST, 0x12, opc_xor, op_xor),
+    (Mulu, "mulu", false, ArithAm32, ARITHAM32_COST, 0xb0, opc_mulu, op_mulu),
+    (Muluh, "muluh", false, ArithAm32, ARITHAM32_COST, 0xb1, opc_muluh, op_muluh),
+    (Mulsuh, "mulsuh", false, ArithAm32, ARITHAM32_COST, 0xb3, opc_mulsuh, op_mulsuh),
+    (Mul, "mul", false, ArithAm32, ARITHAM32_COST, 0xb4, opc_mul, op_mul),
+    (Mulh, "mulh", false, ArithAm32, ARITHAM32_COST, 0xb5, opc_mulh, op_mulh),
+    (MulW, "mul_w", false, ArithAm32, ARITHAM32_COST, 0xb6, opc_mul_w, op_mul_w),
+    (Divu, "divu", false, ArithAm32, ARITHAM32_COST, 0xb8, opc_divu, op_divu),
+    (Remu, "remu", false, ArithAm32, ARITHAM32_COST, 0xb9, opc_remu, op_remu),
+    (Div, "div", false, ArithAm32, ARITHAM32_COST, 0xba, opc_div, op_div),
+    (Rem, "rem", false, ArithAm32, ARITHAM32_COST, 0xbb, opc_rem, op_rem),
+    (DivuW, "divu_w", false, ArithA32, ARITHA32_COST, 0xbc, opc_divu_w, op_divu_w),
+    (RemuW, "remu_w", false, ArithA32, ARITHA32_COST, 0xbd, opc_remu_w, op_remu_w),
+    (DivW, "div_w", false, ArithA32, ARITHA32_COST, 0xbe, opc_div_w, op_div_w),
+    (RemW, "rem_w", false, ArithA32, ARITHA32_COST, 0xbf, opc_rem_w, op_rem_w),
+    (Minu, "minu", false, Binary, BINARY_COST, 0x02, opc_minu, op_minu),
+    (Min, "min", false, Binary, BINARY_COST, 0x03, opc_min, op_min),
+    (MinuW, "minu_w", false, Binary, BINARY_COST, 0x22, opc_minu_w, op_minu_w),
+    (MinW, "min_w", false, Binary, BINARY_COST, 0x23, opc_min_w, op_min_w),
+    (Maxu, "maxu", false, Binary, BINARY_COST, 0x04, opc_maxu, op_maxu),
+    (Max, "max", false, Binary, BINARY_COST, 0x05, opc_max, op_max),
+    (MaxuW, "maxu_w", false, Binary, BINARY_COST, 0x24, opc_maxu_w, op_maxu_w),
+    (MaxW, "max_w", false, Binary, BINARY_COST, 0x25, opc_max_w, op_max_w),
+    (Keccak, "keccak", true, Keccak, KECCAK_COST, 0xf1, opc_keccak, op_keccak),
+    (PubOut, "pubout", false, PubOut, 0, 0x30, opc_pubout, op_pubout),
 }
 
 /* INTERNAL operations */
@@ -340,8 +308,9 @@ pub const fn op_flag(_a: u64, _b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_flag(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_flag(ctx.a, ctx.b);
 }
@@ -356,8 +325,9 @@ pub const fn op_copyb(_a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_copyb(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_copyb(ctx.a, ctx.b);
 }
@@ -378,8 +348,9 @@ pub const fn op_signextend_b(_a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_signextend_b(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_signextend_b(ctx.a, ctx.b);
 }
@@ -398,8 +369,9 @@ pub const fn op_signextend_h(_a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_signextend_h(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_signextend_h(ctx.a, ctx.b);
 }
@@ -418,8 +390,9 @@ pub const fn op_signextend_w(_a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_signextend_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_signextend_w(ctx.a, ctx.b);
 }
@@ -436,8 +409,9 @@ pub fn op_add(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_add(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_add(ctx.a, ctx.b);
 }
@@ -452,8 +426,9 @@ pub fn op_add_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_add_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_add_w(ctx.a, ctx.b);
 }
@@ -468,8 +443,9 @@ pub fn op_sub(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_sub(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_sub(ctx.a, ctx.b);
 }
@@ -484,8 +460,9 @@ pub fn op_sub_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_sub_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_sub_w(ctx.a, ctx.b);
 }
@@ -503,8 +480,9 @@ pub const fn op_sll(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_sll(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_sll(ctx.a, ctx.b);
 }
@@ -520,8 +498,9 @@ pub fn op_sll_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_sll_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_sll_w(ctx.a, ctx.b);
 }
@@ -537,8 +516,9 @@ pub const fn op_sra(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_sra(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_sra(ctx.a, ctx.b);
 }
@@ -554,8 +534,9 @@ pub const fn op_srl(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_srl(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_srl(ctx.a, ctx.b);
 }
@@ -571,8 +552,9 @@ pub fn op_sra_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_sra_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_sra_w(ctx.a, ctx.b);
 }
@@ -588,8 +570,9 @@ pub fn op_srl_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_srl_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_srl_w(ctx.a, ctx.b);
 }
@@ -610,8 +593,9 @@ pub const fn op_eq(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_eq(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_eq(ctx.a, ctx.b);
 }
@@ -631,8 +615,9 @@ pub const fn op_eq_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_eq_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_eq_w(ctx.a, ctx.b);
 }
@@ -652,8 +637,9 @@ pub const fn op_ltu(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_ltu(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_ltu(ctx.a, ctx.b);
 }
@@ -673,8 +659,9 @@ pub const fn op_lt(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_lt(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_lt(ctx.a, ctx.b);
 }
@@ -694,8 +681,9 @@ pub const fn op_ltu_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_ltu_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_ltu_w(ctx.a, ctx.b);
 }
@@ -715,8 +703,9 @@ pub const fn op_lt_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_lt_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_lt_w(ctx.a, ctx.b);
 }
@@ -736,8 +725,9 @@ pub const fn op_leu(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_leu(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_leu(ctx.a, ctx.b);
 }
@@ -757,8 +747,9 @@ pub const fn op_le(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_le(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_le(ctx.a, ctx.b);
 }
@@ -778,8 +769,9 @@ pub const fn op_leu_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_leu_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_leu_w(ctx.a, ctx.b);
 }
@@ -799,8 +791,9 @@ pub const fn op_le_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_le_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_le_w(ctx.a, ctx.b);
 }
@@ -817,8 +810,9 @@ pub const fn op_and(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_and(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_and(ctx.a, ctx.b);
 }
@@ -833,8 +827,9 @@ pub const fn op_or(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_or(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_or(ctx.a, ctx.b);
 }
@@ -849,8 +844,9 @@ pub const fn op_xor(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_xor(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_xor(ctx.a, ctx.b);
 }
@@ -867,8 +863,9 @@ pub fn op_mulu(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_mulu(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_mulu(ctx.a, ctx.b);
 }
@@ -883,8 +880,9 @@ pub fn op_mul(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_mul(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_mul(ctx.a, ctx.b);
 }
@@ -899,8 +897,9 @@ pub fn op_mul_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_mul_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_mul_w(ctx.a, ctx.b);
 }
@@ -915,8 +914,9 @@ pub const fn op_muluh(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_muluh(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_muluh(ctx.a, ctx.b);
 }
@@ -931,8 +931,9 @@ pub const fn op_mulh(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_mulh(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_mulh(ctx.a, ctx.b);
 }
@@ -947,8 +948,9 @@ pub const fn op_mulsuh(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_mulsuh(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_mulsuh(ctx.a, ctx.b);
 }
@@ -968,8 +970,9 @@ pub const fn op_divu(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_divu(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_divu(ctx.a, ctx.b);
 }
@@ -991,8 +994,9 @@ pub const fn op_div(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_div(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_div(ctx.a, ctx.b);
 }
@@ -1012,8 +1016,9 @@ pub const fn op_divu_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_divu_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_divu_w(ctx.a, ctx.b);
 }
@@ -1033,8 +1038,9 @@ pub const fn op_div_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_div_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_div_w(ctx.a, ctx.b);
 }
@@ -1054,8 +1060,9 @@ pub const fn op_remu(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_remu(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_remu(ctx.a, ctx.b);
 }
@@ -1075,8 +1082,9 @@ pub const fn op_rem(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_rem(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_rem(ctx.a, ctx.b);
 }
@@ -1096,8 +1104,9 @@ pub const fn op_remu_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_remu_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_remu_w(ctx.a, ctx.b);
 }
@@ -1117,8 +1126,9 @@ pub const fn op_rem_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_rem_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_rem_w(ctx.a, ctx.b);
 }
@@ -1139,8 +1149,9 @@ pub const fn op_minu(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_minu(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_minu(ctx.a, ctx.b);
 }
@@ -1159,8 +1170,9 @@ pub const fn op_min(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_min(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_min(ctx.a, ctx.b);
 }
@@ -1179,8 +1191,9 @@ pub const fn op_minu_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_minu_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_minu_w(ctx.a, ctx.b);
 }
@@ -1199,8 +1212,9 @@ pub const fn op_min_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_min_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_min_w(ctx.a, ctx.b);
 }
@@ -1219,8 +1233,9 @@ pub const fn op_maxu(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_maxu(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_maxu(ctx.a, ctx.b);
 }
@@ -1239,8 +1254,9 @@ pub const fn op_max(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_max(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_max(ctx.a, ctx.b);
 }
@@ -1259,8 +1275,9 @@ pub const fn op_maxu_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_maxu_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_maxu_w(ctx.a, ctx.b);
 }
@@ -1279,8 +1296,9 @@ pub const fn op_max_w(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_max_w(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_max_w(ctx.a, ctx.b);
 }
@@ -1292,9 +1310,14 @@ pub fn opc_max_w(
 #[inline(always)]
 pub fn opc_keccak(
     ctx: &mut InstContext,
-    mut get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    get_mem_read: Option<&mut dyn FnMut() -> u64>,
     mut push_mem_read: Option<&mut dyn FnMut(u64)>,
+    precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
+    let precompiles = precompiles.expect("Precompiles are required for opc_keccak");
+    let precompile =
+        precompiles.get(&(KECCAK_CODE as usize)).expect("Keccak precompile does not exist");
+
     let emulation_mode = ctx.precompiled.emulation_mode.clone();
     let mem = Rc::new(RefCell::new(&mut ctx.mem));
 
@@ -1315,7 +1338,7 @@ pub fn opc_keccak(
 
     let get_mem_read = get_mem_read.map(|f| Box::new(f) as Box<dyn FnMut() -> u64>);
 
-    let mem_ops = MemOps::new(
+    let mem_ops = MemPrecompilesOps::new(
         get_mem_read,
         Box::new(read_reg_fn),
         Box::new(read_mem_fn),
@@ -1323,55 +1346,10 @@ pub fn opc_keccak(
         Box::new(write_input_data),
     );
 
-    let (c, flag) = opc_keccak_precompile(0, 0, emulation_mode, mem_ops);
+    let (c, flag) = precompile.execute(0, 0, emulation_mode, mem_ops);
 
     ctx.c = c;
     ctx.flag = flag;
-}
-
-pub fn opc_keccak_precompile(
-    a: u64,
-    b: u64,
-    emulation_mode: PrecompiledEmulationMode,
-    mut mem_ops: MemOps,
-) -> (u64, bool) {
-    // Get address from register a0 = x10
-    let address = (mem_ops.read_reg_fn)(REG_A0);
-    assert!(address & 0x7 == 0, "opc_keccak() found address not aligned to 8 bytes");
-
-    // Allocate room for 25 u64 = 128 bytes = 1600 bits
-    const WORDS: usize = 25;
-    let mut data = [0u64; WORDS];
-
-    // Get input data from memory or from the precompiled context
-    match emulation_mode {
-        PrecompiledEmulationMode::None | PrecompiledEmulationMode::GenerateMemReads => {
-            for (i, d) in data.iter_mut().enumerate() {
-                *d = (mem_ops.read_mem_fn)(
-                    address + (8 * i as u64),
-                    emulation_mode == PrecompiledEmulationMode::GenerateMemReads,
-                );
-            }
-        }
-        PrecompiledEmulationMode::ConsumeMemReads => {
-            let mut input_data = Vec::new();
-            for (i, d) in data.iter_mut().enumerate() {
-                *d = (mem_ops.get_mem_read).as_mut().unwrap()();
-                input_data.push(*d);
-            }
-            (mem_ops.write_input_data)(input_data);
-        }
-    }
-
-    // Call keccakf
-    keccakf(&mut data);
-
-    // Write data to the memory address
-    for (i, d) in data.iter().enumerate() {
-        (mem_ops.write_mem_fn)(address + (8 * i as u64), *d);
-    }
-
-    (0, false)
 }
 
 /// Unimplemented.  Keccak can only be called from the system call context via InstContext.
@@ -1390,7 +1368,7 @@ impl From<ZiskRequiredOperation> for ZiskOp {
 /// Copies register b into c as a public output data record, where a contains the data index (and
 /// sets flag to false)
 #[inline(always)]
-pub const fn op_pubout(a: u64, b: u64) -> (u64, bool) {
+pub const fn op_pubout(_a: u64, b: u64) -> (u64, bool) {
     (b, false)
 }
 
@@ -1398,8 +1376,9 @@ pub const fn op_pubout(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub fn opc_pubout(
     ctx: &mut InstContext,
-    read: Option<&mut dyn FnMut() -> u64>,
-    write: Option<&mut dyn FnMut(u64)>,
+    _get_mem_read: Option<&mut dyn FnMut() -> u64>,
+    _push_mem_read: Option<&mut dyn FnMut(u64)>,
+    _precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     (ctx.c, ctx.flag) = op_pubout(ctx.a, ctx.b);
     //println!("public ${} = {:#018x}", ctx.a, ctx.b);
