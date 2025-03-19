@@ -6,7 +6,7 @@
 
 use executor::ZiskExecutor;
 use pil_std_lib::Std;
-use precomp_keccakf::{KeccakOp, KeccakfManager};
+use precomp_keccakf::{KeccakPrecompileOp, KeccakfManager};
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
@@ -77,8 +77,10 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib {
         // Step 4: Initialize the precompiles state machines
         let keccakf_sm = KeccakfManager::new::<F>(self.keccak_path.clone());
 
-        let precompiles: HashMap<usize, Box<dyn ZiskPrecompile>> =
-            HashMap::from([(KECCAK_CODE as usize, Box::new(KeccakOp) as Box<dyn ZiskPrecompile>)]);
+        let precompiles: HashMap<usize, Box<dyn ZiskPrecompile>> = HashMap::from([(
+            KECCAK_CODE as usize,
+            Box::new(KeccakPrecompileOp) as Box<dyn ZiskPrecompile>,
+        )]);
 
         // Step 5: Create the executor and register the secondary state machines
         let mut executor: ZiskExecutor<F> = ZiskExecutor::new(

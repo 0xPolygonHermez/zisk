@@ -16,7 +16,7 @@ use std::{
     rc::Rc,
     str::FromStr,
 };
-use zisk_common::{MemPrecompilesOps, ZiskPrecompile};
+use zisk_common::{MemPrecompileOps, ZiskPrecompile};
 
 pub const KECCAK_CODE: u8 = 0xf1;
 
@@ -1332,21 +1332,18 @@ pub fn opc_keccak(
     let write_mem_fn = |address: u64, value: u64| {
         mem.borrow_mut().write(address, value, 8);
     };
-    let write_input_data = |input_data: Vec<u64>| {
-        ctx.precompiled.input_data = input_data;
-    };
-
     let get_mem_read = get_mem_read.map(|f| Box::new(f) as Box<dyn FnMut() -> u64>);
 
-    let mem_ops = MemPrecompilesOps::new(
+    let mem_ops = MemPrecompileOps::new(
         get_mem_read,
         Box::new(read_reg_fn),
         Box::new(read_mem_fn),
         Box::new(write_mem_fn),
-        Box::new(write_input_data),
     );
 
-    let (c, flag) = precompile.execute(0, 0, emulation_mode, mem_ops);
+    let (c, flag, input_data) = precompile.execute(0, 0, emulation_mode, mem_ops);
+
+    ctx.precompiled.input_data = input_data;
 
     ctx.c = c;
     ctx.flag = flag;

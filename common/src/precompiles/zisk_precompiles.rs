@@ -1,4 +1,4 @@
-use super::MemPrecompilesOps;
+use super::MemPrecompileOps;
 
 /// Zisk precompiled
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -27,8 +27,8 @@ pub trait ZiskPrecompile: Send + Sync {
         a: u64,
         b: u64,
         emulation_mode: PrecompiledEmulationMode,
-        mem_ops: MemPrecompilesOps,
-    ) -> (u64, bool);
+        mem_ops: MemPrecompileOps,
+    ) -> (u64, bool, Vec<u64>);
 }
 
 pub struct MemBusHelpers {}
