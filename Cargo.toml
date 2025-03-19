@@ -26,7 +26,8 @@ members = [
     "ziskos/entrypoint",
     "precompiles/zisk_precompiles",
     "precompiles/common",
-    "precompiles/keccakf"
+    "precompiles/keccakf",
+    "lib-c"
 ]
 
 resolver = "2"
