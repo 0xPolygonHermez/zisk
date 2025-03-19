@@ -95,10 +95,8 @@ abf6352a
 Alternatively, you can build and run the program with:
 
 ```bash
-cargo-zisk run --release
+cargo-zisk run --release -i build/input.bin
 ```
-
-This command uses the file located at `build/input.bin` as the input file.
 
 ## Prove
 

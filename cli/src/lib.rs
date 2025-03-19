@@ -26,7 +26,6 @@ pub const ZISK_VERSION_MESSAGE: &str = concat!(
     ")"
 );
 
-const DEFAULT_INPUT_VALUE: &str = "build/input.bin";
 const ZISK_TARGET: &str = "riscv64ima-polygon-ziskos-elf";
 
 trait CommandExecutor {
