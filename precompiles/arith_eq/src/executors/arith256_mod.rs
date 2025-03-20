@@ -1,21 +1,29 @@
-use super::ArithEqData;
+use super::{ArithEqData, P_256_MASK};
 use crate::equations;
-use precompiles_helpers::{bigint_from_u64s, bigint_to_16_chunks};
+use precompiles_helpers::{bigint_from_u64s, bigint_to_16_chunks, bigint_to_4_u64};
 
 use num_bigint::BigInt;
 const COLS: u8 = 32;
 
-pub struct Arith256Mod {
-    p2_256_mask: BigInt,
-}
+pub struct Arith256Mod {}
 
 impl Arith256Mod {
-    pub fn new() -> Self {
-        let p2_256 = BigInt::from(1) << 256;
-        let p2_256_mask = &p2_256 - BigInt::from(1);
-        Self { p2_256_mask }
+    pub fn calculate(
+        a: &[u64; 4],
+        b: &[u64; 4],
+        c: &[u64; 4],
+        module: &[u64; 4],
+        d: &mut [u64; 4],
+    ) {
+        Self::prepare(a, b, c, module, Some(d));
     }
-    fn prepare(&self, a: &[u64; 4], b: &[u64; 4], c: &[u64; 4], module: &[u64; 4]) -> ArithEqData {
+    fn prepare(
+        a: &[u64; 4],
+        b: &[u64; 4],
+        c: &[u64; 4],
+        module: &[u64; 4],
+        d: Option<&mut [u64; 4]>,
+    ) -> Option<ArithEqData> {
         let a = bigint_from_u64s(a);
         let b = bigint_from_u64s(b);
         let c = bigint_from_u64s(c);
@@ -29,9 +37,13 @@ impl Arith256Mod {
 
         let q = &res / &module;
         let res = &res % &module;
-        let q0 = &q & &self.p2_256_mask;
+        let q0 = &q & &*P_256_MASK;
         let q1 = &q >> 256;
 
+        if let Some(d) = d {
+            bigint_to_4_u64(&res, d);
+            return None;
+        }
         // x3 = mod(x1*y1+x2, y2)
         // a:x1 b:y1 c:x2 d: x3 module: y2
         let mut data = ArithEqData::default();
@@ -42,16 +54,10 @@ impl Arith256Mod {
         bigint_to_16_chunks(&res, &mut data.x3);
         bigint_to_16_chunks(&q0, &mut data.q0);
         bigint_to_16_chunks(&q1, &mut data.q1);
-        data
+        Some(data)
     }
-    pub fn execute(
-        &self,
-        a: &[u64; 4],
-        b: &[u64; 4],
-        c: &[u64; 4],
-        module: &[u64; 4],
-    ) -> ArithEqData {
-        let mut data = self.prepare(a, b, c, module);
+    pub fn execute(a: &[u64; 4], b: &[u64; 4], c: &[u64; 4], module: &[u64; 4]) -> ArithEqData {
+        let mut data = Self::prepare(a, b, c, module, None).unwrap();
         for icol in 0..COLS {
             let index = icol as usize;
             data.eq[index][0] = equations::Arith256Mod::calculate(
@@ -75,15 +81,8 @@ impl Arith256Mod {
     }
     #[cfg(feature = "test_data")]
     #[allow(dead_code)]
-    pub fn verify(
-        &self,
-        a: &[u64; 4],
-        b: &[u64; 4],
-        c: &[u64; 4],
-        module: &[u64; 4],
-        d: &[u64; 4],
-    ) {
-        let data = self.execute(a, b, c, module);
+    pub fn verify(a: &[u64; 4], b: &[u64; 4], c: &[u64; 4], module: &[u64; 4], d: &[u64; 4]) {
+        let data = Self::execute(a, b, c, module);
         data.check_ranges();
         for (i, chunk_d) in d.iter().enumerate() {
             let offset = (i + 1) * 4 - 1;

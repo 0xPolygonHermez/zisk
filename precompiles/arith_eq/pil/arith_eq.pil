@@ -45,6 +45,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
 
     const int EQS = 6;
     const int OPS = 4;
+    const int MAX_CEQS = 3; // max concurrent equations
     const int QS = 3;
 
     col witness x1, y1, x2, y2, x3, y3, q0, q1, q2, s;
@@ -81,15 +82,34 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
     include "equations/secp256k1_x3.pil"
     include "equations/secp256k1_y3.pil"
 
-    col witness eq[EQS][CBC];
+    col witness sel_op_clk0[OPS];
+
+    const expr arith256_clk0 = sel_op_clk0[0];
+    const expr arith256_mod_clk0 = sel_op_clk0[1];
+    const expr secp256k1_add_clk0 = sel_op_clk0[2];
+    const expr secp256k1_dbl_clk0 = sel_op_clk0[3];
+    const expr secp256k1_clk0 = sel_op_clk0[2] + sel_op_clk0[3];
+
+    for (int i = 0; i < OPS; ++i) {
+        // binary selector
+        sel_op_clk0[i] * (1 - CLK_0) === 0;
+
+        // only could be one in CLK_0
+        (1 - CLK_0) * sel_op_clk0[i] === 0;
+
+        // clock of selector must be active if selector is active
+        CLK_0 * (sel_op[i] - sel_op_clk0[i]) === 0;
+    }
+
+    const expr eq[MAX_CEQS][CBC];
 
     for (int i = 0; i < CBC; ++i) {
-        eq[0][i] === expr_group_by_cbc(eq_arith256_chunks, i);
-        eq[1][i] === expr_group_by_cbc(eq_arith256_mod_chunks, i);
-        eq[2][i] === expr_group_by_cbc(eq_secp256k1_add_chunks, i);
-        eq[3][i] === expr_group_by_cbc(eq_secp256k1_dbl_chunks, i);
-        eq[4][i] === expr_group_by_cbc(eq_secp256k1_x3_chunks, i);
-        eq[5][i] === expr_group_by_cbc(eq_secp256k1_y3_chunks, i);
+        eq[0][i] = expr_group_by_cbc(arith256_clk0, eq_arith256_chunks, i)
+                 + expr_group_by_cbc(arith256_mod_clk0, eq_arith256_mod_chunks, i)
+                 + expr_group_by_cbc(secp256k1_add_clk0, eq_secp256k1_add_chunks, i)
+                 + expr_group_by_cbc(secp256k1_dbl_clk0, eq_secp256k1_dbl_chunks, i);
+        eq[1][i] = expr_group_by_cbc(secp256k1_clk0, eq_secp256k1_x3_chunks, i);
+        eq[2][i] = expr_group_by_cbc(secp256k1_clk0, eq_secp256k1_y3_chunks, i);
     }
 
     expr sum_sel_op = 0;
@@ -103,7 +123,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
             // selector must be binary
             sel_op[i] * (1 - sel_op[i]) === 0;
             // selector latch
-            (1 - CLK_0) * (sel_op[i] + 'sel_op[i]) === 0;
+            (1 - CLK_0) * (sel_op[i] - 'sel_op[i]) === 0;
             // only one selector could be enabled
             sum_sel_op = sum_sel_op + sel_op[i];
         }
@@ -261,17 +281,13 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
     lt_borrow * (1 - lt_borrow) === 0;
     lt * (1 - lt) === 0;
 
-    col witness carry[3][CBC];
-    const int eq2carry[EQS] = [0,0,0,0,1,1];
+    col witness carry[MAX_CEQS][CBC];
 
     for (int i = 0; i < CBC; ++i) {
-        for (int j = 0; j < 3; ++j) {
+        for (int j = 0; j < MAX_CEQS; ++j) {
             carry[j][i] * CLK_0 === 0;
             range_check(min:CARRY_MIN, max: CARRY_MAX, expression: carry[j][i]);
-        }
-        for (int j = 0; j < EQS; ++j) {
-            const int icarry = eq2carry[j];
-            eq_selectors[j] * (eq[j][i] + carry[icarry][i]) === eq_selectors[j] * carry[icarry][i]' * CHUNK_SIZE;
+            eq[j][i] + carry[j][i] === carry[j][i]' * CHUNK_SIZE;
         }
     }
 
@@ -483,12 +499,13 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
 
     lookup_assumes(operation_bus_id, [bus_op, step_addr'(MAIN_STEP), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], sel: CLK_0);
 
-    function expr_group_by_cbc(const expr chunks[], const int index ): const expr {
+    // selclk0 is the clock 0 for dedicated to one operation
+    function expr_group_by_cbc(const expr selclk0, const expr chunks[], const int index ): const expr {
         expr res = 0;
         int iclock = 0;
         for (int i = 0; i < length(chunks); ++i) {
             if (i % air.CBC == index) {
-                res += (iclock)'air.CLK_0 * chunks[i];
+                res += (iclock)'selclk0 * chunks[i];
                 ++iclock;
             }
         }

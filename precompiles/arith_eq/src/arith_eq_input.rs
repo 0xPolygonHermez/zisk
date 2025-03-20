@@ -1,3 +1,5 @@
+use data_bus::OperationArith256Data;
+
 #[derive(Debug)]
 pub enum ArithEqInput {
     Arith256(Arith256Input),
@@ -18,6 +20,23 @@ pub struct Arith256Input {
     pub a: [u64; 4],
     pub b: [u64; 4],
     pub c: [u64; 4],
+}
+
+impl Arith256Input {
+    pub fn from(values: &OperationArith256Data<u64>) -> Self {
+        Self {
+            addr: values[3] as u32,
+            a_addr: values[4] as u32,
+            b_addr: values[5] as u32,
+            c_addr: values[6] as u32,
+            dh_addr: values[7] as u32,
+            dl_addr: values[8] as u32,
+            step: values[2],
+            a: values[9..13].try_into().unwrap(),
+            b: values[13..17].try_into().unwrap(),
+            c: values[17..21].try_into().unwrap(),
+        }
+    }
 }
 
 #[derive(Debug)]

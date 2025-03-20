@@ -4,7 +4,7 @@
 //! It manages collected inputs and interacts with the `Arith256SM` to compute witnesses for
 //! execution plans.
 
-use crate::{ArithEqInput, ArithEqSM};
+use crate::{Arith256Input, ArithEqInput, ArithEqSM};
 use data_bus::{
     BusDevice, BusId, ExtOperationData, OperationBusData, PayloadType, OPERATION_BUS_ID,
 };
@@ -163,13 +163,22 @@ impl BusDevice<PayloadType> for ArithEqCollector {
             return None;
         }
 
-        if let ExtOperationData::OperationArith256Data(_) = data {
-            unimplemented!();
-            // self.inputs.push(data);
-            // None
-        } else {
-            panic!("Expected ExtOperationData::OperationData");
-        }
+        self.inputs.push(match data {
+            ExtOperationData::OperationArith256Data(bus_data) => {
+                ArithEqInput::Arith256(Arith256Input::from(&bus_data))
+            }
+            ExtOperationData::OperationArith256ModData(_) => {
+                unimplemented!()
+            }
+            ExtOperationData::OperationSecp256k1AddData(_) => {
+                unimplemented!()
+            }
+            ExtOperationData::OperationSecp256k1DblData(_) => {
+                unimplemented!()
+            }
+            _ => panic!("Expected ExtOperationData::OperationData"),
+        });
+        None
     }
 
     /// Returns the bus IDs associated with this instance.

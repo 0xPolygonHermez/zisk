@@ -58,6 +58,8 @@ pub const KECCAKF_TABLE_AIR_IDS: &[usize] = &[15];
 
 pub const ARITH_EQ_AIR_IDS: &[usize] = &[16];
 
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[17];
+
 //PUBLICS
 use serde::Deserialize;
 use serde::Serialize;
@@ -226,16 +228,16 @@ trace!(ArithEqFixed<F> {
 },  0, 16, 2097152 );
 
 trace!(ArithEqTrace<F> {
- x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 4], eq: [[F; 2]; 6], x_delta_chunk_inv: F, x_are_different: F, lt_borrow: F, lt: F, carry: [[F; 2]; 3], step_addr: F,
+ x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 4], sel_op_clk0: [F; 4], x_delta_chunk_inv: F, x_are_different: F, lt_borrow: F, lt: F, carry: [[F; 2]; 3], step_addr: F,
 },  0, 16, 2097152 );
 
 trace!(SpecifiedRangesFixed<F> {
- RANGE: [F; 10], __L1__: F,
-},  0, 16, 2097152 );
+ RANGE: [F; 14], __L1__: F,
+},  0, 17, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
- mul: [F; 10],
-},  0, 16, 2097152 );
+ mul: [F; 14],
+},  0, 17, 2097152 );
 
 pub const RomRomHash: &str = "aa8bf8c0f3757c69cac124f513b6b2a66653708e85300b9407effcff3b707190";
 trace!(RomRomTrace<F> {
