@@ -1,13 +1,18 @@
-use crate::{commands::Field, ZISK_VERSION_MESSAGE};
+use crate::{
+    commands::{Field, ZiskLibInitFn},
+    ux::print_banner,
+    ZISK_VERSION_MESSAGE,
+};
 use anyhow::Result;
 use colored::Colorize;
+use libloading::{Library, Symbol};
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::{
     initialize_logger, json_to_debug_instances_map, DebugInfo, ModeName, ProofOptions,
 };
 use rom_merkle::{gen_elf_hash, get_elf_bin_file_path, get_rom_blowup_factor, DEFAULT_CACHE_PATH};
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{collections::HashMap, env, fs, path::PathBuf};
 
 use super::{get_default_proving_key, get_default_witness_computation_lib};
 
@@ -24,6 +29,9 @@ pub struct ZiskProve {
     /// to generate the witness.
     #[clap(short = 'e', long)]
     pub elf: PathBuf,
+
+    #[clap(short = 's', long)]
+    pub asm: Option<std::path::PathBuf>,
 
     /// Input path
     #[clap(short = 'i', long)]
@@ -62,6 +70,10 @@ pub struct ZiskProve {
 
     #[clap(short = 'c', long)]
     pub default_cache: Option<PathBuf>,
+
+    // PRECOMPILES OPTIONS
+    /// Keccak script path
+    pub keccak_script: Option<PathBuf>,
 }
 
 impl ZiskProve {
@@ -70,6 +82,44 @@ impl ZiskProve {
         println!();
 
         initialize_logger(self.verbose.into());
+
+        let debug_info = match &self.debug {
+            None => DebugInfo::default(),
+            Some(None) => DebugInfo::new_debug(),
+            Some(Some(debug_value)) => {
+                let proving_key: PathBuf = PathBuf::from(&self.get_proving_key());
+                json_to_debug_instances_map(proving_key, debug_value.clone())
+            }
+        };
+
+        let keccak_script = if let Some(keccak_path) = &self.keccak_script {
+            keccak_path.clone()
+        } else {
+            let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
+            let script_path = PathBuf::from(format!("{}/.zisk/bin/keccakf_script.json", home_dir));
+            if !script_path.exists() {
+                panic!("Keccakf script file not found at {:?}", script_path);
+            }
+            script_path
+        };
+
+        print_banner();
+
+        println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
+        let witness_lib = self.witness_lib.as_ref().unwrap().display();
+        println!("{: >12} {}", "Witness Lib".bright_green().bold(), witness_lib);
+        println!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display());
+        // println!("{}", format!("{: >12} {}", "ASM runner".bright_green().bold(), self.asm_runner.as_ref().unwrap_or_else("None").display()));
+        let inputs_path = self.input.as_ref().unwrap().display();
+        println!("{: >12} {}", "Inputs".bright_green().bold(), inputs_path);
+        let proving_key = self.proving_key.as_ref().unwrap().display();
+        println!("{: >12} {}", "Proving key".bright_green().bold(), proving_key);
+        let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
+        println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
+        println!("{: >12} {}", "Keccak".bright_green().bold(), keccak_script.display());
+        // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
+
+        println!();
 
         if self.output_dir.join("proofs").exists() {
             // In distributed mode two different processes may enter here at the same time and try to remove the same directory
@@ -86,15 +136,6 @@ impl ZiskProve {
                 panic!("Failed to create the proofs directory: {:?}", e);
             }
         }
-
-        let debug_info = match &self.debug {
-            None => DebugInfo::default(),
-            Some(None) => DebugInfo::new_debug(),
-            Some(Some(debug_value)) => {
-                let proving_key: PathBuf = PathBuf::from(&self.get_proving_key());
-                json_to_debug_instances_map(proving_key, debug_value.clone())
-            }
-        };
 
         let default_cache_path =
             std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
@@ -128,45 +169,68 @@ impl ZiskProve {
 
         if debug_info.std_mode.name == ModeName::Debug {
             match self.field {
-                Field::Goldilocks => ProofMan::<Goldilocks>::verify_proof_constraints(
-                    self.get_witness_computation_lib(),
-                    Some(self.elf.clone()),
-                    self.public_inputs.clone(),
-                    self.input.clone(),
-                    self.get_proving_key(),
-                    self.output_dir.clone(),
-                    custom_commits_map,
-                    ProofOptions::new(
-                        false,
+                Field::Goldilocks => {
+                    let library = unsafe { Library::new(self.get_witness_computation_lib())? };
+                    let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
+                        unsafe { library.get(b"init_library")? };
+                    let witness_lib = witness_lib_constructor(
                         self.verbose.into(),
-                        self.aggregation,
-                        self.final_snark,
-                        self.verify_proofs,
-                        debug_info,
-                    ),
-                )
-                .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?,
+                        self.elf.clone(),
+                        self.asm.clone(),
+                        self.input.clone(),
+                        keccak_script,
+                    )
+                    .expect("Failed to initialize witness library");
+
+                    return ProofMan::<Goldilocks>::verify_proof_constraints_from_lib(
+                        witness_lib,
+                        self.get_proving_key(),
+                        self.output_dir.clone(),
+                        custom_commits_map,
+                        ProofOptions::new(
+                            false,
+                            self.verbose.into(),
+                            self.aggregation,
+                            self.final_snark,
+                            self.verify_proofs,
+                            debug_info,
+                        ),
+                    )
+                    .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e));
+                }
             };
         } else {
             match self.field {
-                Field::Goldilocks => ProofMan::<Goldilocks>::generate_proof(
-                    self.get_witness_computation_lib(),
-                    Some(self.elf.clone()),
-                    self.public_inputs.clone(),
-                    self.input.clone(),
-                    self.get_proving_key(),
-                    self.output_dir.clone(),
-                    custom_commits_map,
-                    ProofOptions::new(
-                        false,
+                Field::Goldilocks => {
+                    println!("Generating proof...");
+                    let library = unsafe { Library::new(self.get_witness_computation_lib())? };
+                    let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
+                        unsafe { library.get(b"init_library")? };
+                    let witness_lib = witness_lib_constructor(
                         self.verbose.into(),
-                        self.aggregation,
-                        self.final_snark,
-                        self.verify_proofs,
-                        debug_info,
-                    ),
-                )
-                .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?,
+                        self.elf.clone(),
+                        self.asm.clone(),
+                        self.input.clone(),
+                        keccak_script,
+                    )
+                    .expect("Failed to initialize witness library");
+
+                    ProofMan::<Goldilocks>::generate_proof_from_lib(
+                        witness_lib,
+                        self.get_proving_key(),
+                        self.output_dir.clone(),
+                        custom_commits_map,
+                        ProofOptions::new(
+                            false,
+                            self.verbose.into(),
+                            self.aggregation,
+                            self.final_snark,
+                            self.verify_proofs,
+                            debug_info,
+                        ),
+                    )
+                    .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
+                }
             };
         }
 

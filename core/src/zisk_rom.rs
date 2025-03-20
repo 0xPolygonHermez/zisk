@@ -44,7 +44,45 @@
 //!     index `(pc-ROM_ENTRY)/4`
 use std::collections::HashMap;
 
-use crate::{ZiskInst, ZiskInstBuilder, ROM_ADDR, ROM_ENTRY, SRC_IND, SRC_STEP};
+use crate::{
+    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, M64, P2_32, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
+    SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+};
+
+// Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
+// Reg rax is used to store a function’s return value.
+// Regs rbx, rbp, and r12-r15 are callee-save, saved across function calls.
+
+const REG_A: &str = "rbx";
+const REG_A_W: &str = "ebx";
+const REG_B: &str = "rax";
+const REG_B_W: &str = "eax";
+const REG_B_H: &str = "ax";
+const REG_B_B: &str = "al";
+const REG_C: &str = "r15";
+const REG_C_W: &str = "r15d";
+const REG_C_H: &str = "r15w";
+const REG_C_B: &str = "r15b";
+const REG_FLAG: &str = "rdx";
+const REG_PC: &str = "r14";
+const REG_VALUE: &str = "r9";
+const REG_VALUE_W: &str = "r9d";
+//const REG_VALUE_H: &str = "r9w";
+//const REG_VALUE_B: &str = "r9b";
+const REG_ADDRESS: &str = "r10";
+const REG_MEM_READS_ADDRESS: &str = "r12";
+const REG_MEM_READS_SIZE: &str = "r13";
+const REG_AUX: &str = "r11";
+
+const MEM_STEP: &str = "qword ptr [MEM_STEP]";
+const MEM_STEP_DOWN: &str = "qword ptr [MEM_STEP_DOWN]";
+const MEM_SP: &str = "qword ptr [MEM_SP]";
+const MEM_END: &str = "qword ptr [MEM_END]";
+
+const TRACE_ADDR: &str = "0xb0000020";
+const MEM_TRACE_ADDRESS: &str = "qword ptr [MEM_TRACE_ADDRESS]";
+const MEM_CHUNK_ADDRESS: &str = "qword ptr [MEM_CHUNK_ADDRESS]";
+const MEM_CHUNK_START_STEP: &str = "qword ptr [MEM_CHUNK_START_STEP]";
 
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
@@ -101,6 +139,36 @@ pub struct ZiskRom {
 
     /// ROM instructions with an address that is not alligned to 4 bytes
     pub rom_na_instructions: Vec<ZiskInst>,
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct ZiskAsmRegister {
+    is_constant: bool,   // register is a constant value known at compilation time
+    constant_value: u64, // register constant value, only valid if is_constant==true
+    is_saved: bool,      // register has been saved to memory/register
+    string_value: String, /* register string value: a constant value (e.g. "0x3f") or a register
+                          * (e.g. "rax") */
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct ZiskAsmContext {
+    pc: u64,
+    next_pc: u64,
+    flag_is_always_one: bool,
+    flag_is_always_zero: bool,
+    jump_to_dynamic_pc: bool,
+    jump_to_static_pc: String,
+    log_output: bool,
+    generate_traces: bool,
+
+    a: ZiskAsmRegister,
+    b: ZiskAsmRegister,
+    c: ZiskAsmRegister,
+
+    store_a_in_c: bool,
+    store_a_in_a: bool,
+    store_b_in_c: bool,
+    store_b_in_b: bool,
 }
 
 /// ZisK ROM implementation
@@ -253,7 +321,7 @@ impl ZiskRom {
             let mut ro_json = json::JsonValue::new_object();
             ro_json["start"] = ro.from.into();
             let mut data_json = json::JsonValue::new_object();
-            data_json["type"] = "Buffer".into(); // TODO: Ask Jordi
+            data_json["type"] = "Buffer".into();
             data_json["data"] = json::JsonValue::new_array();
             for d in 0..ro.data.len() {
                 let _ = data_json["data"].push(ro.data[d]);
@@ -425,5 +493,2707 @@ impl ZiskRom {
         if result.is_err() {
             panic!("ZiskRom::save_to_bin_file() failed writing to file={}", file_name);
         }
+    }
+
+    /// Saves ZisK rom into an i64-64 assembly file: first save to a string, then
+    /// save the string to the file
+    pub fn save_to_asm_file(&self, file_name: &str) {
+        // Get a string with the PIL data
+        let mut s = String::new();
+        self.save_to_asm(&mut s);
+
+        // Save to file
+        let path = std::path::PathBuf::from(file_name);
+        let result = std::fs::write(path, s);
+        if result.is_err() {
+            panic!("ZiskRom::save_to_asm_file() failed writing to file={}", file_name);
+        }
+    }
+
+    /// Saves ZisK rom into an i86-64 assembly data string
+    pub fn save_to_asm(&self, s: &mut String) {
+        // Clear output data, just in case
+        s.clear();
+
+        // Create context
+        let mut ctx =
+            ZiskAsmContext { log_output: true, generate_traces: true, ..Default::default() };
+
+        // Save instructions program addresses into a vector
+        let mut keys: Vec<u64> = Vec::new();
+        for key in self.insts.keys() {
+            keys.push(*key);
+        }
+
+        // Sort the vector
+        keys.sort();
+
+        *s += ".intel_syntax noprefix\n";
+        *s += ".code64\n";
+        *s += ".section .rodata\n";
+        *s += "msg: .ascii \"Zisk assembly emulator\\n\"\n";
+        *s += ".set msglen, (. - msg)\n\n";
+
+        *s += ".section .data\n";
+        *s += ".comm MEM_STEP, 8, 8\n";
+        *s += ".comm MEM_SP, 8, 8\n";
+        *s += ".comm MEM_END, 8, 8\n";
+        *s += ".comm MEM_STEP_DOWN, 8, 8\n";
+        *s += ".comm MEM_TRACE_ADDRESS, 8, 8\n";
+        *s += ".comm MEM_CHUNK_ADDRESS, 8, 8\n";
+        *s += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
+
+        // Allocate space for the registers
+        for r in 0..35 {
+            *s += &format!(".comm reg_{}, 8, 8\n", r);
+        }
+
+        // for k in 0..keys.len() {
+        //     let pc = keys[k];
+        //     let instruction = &self.insts[&pc].i;
+        //     *s += &format!("pc_{}_log: .ascii \"PCLOG={}\\n\"\n", pc, instruction.to_text());
+        //     *s += &format!(".set pc_{}_log_len, (. - pc_{}_log)\n", pc, pc);
+        // }
+
+        *s += ".section .text\n";
+        *s += ".extern print_abcflag\n";
+        *s += ".extern print_char\n";
+        *s += ".extern print_step\n";
+        *s += ".extern opcode_keccak\n";
+        *s += ".extern realloc_trace\n\n";
+
+        if ctx.generate_traces {
+            *s += ".extern chunk_size\n";
+            *s += ".extern chunk_size_mask\n\n";
+            *s += ".extern trace_address_threshold\n";
+        }
+
+        if ctx.generate_traces {
+            *s += "\n";
+
+            // Chunk start
+            *s += "chunk_start:\n";
+            Self::chunk_start(&mut ctx, s);
+            *s += "\tret\n\n";
+
+            // Chunk end
+            *s += "chunk_end:\n";
+            Self::chunk_end(&mut ctx, s, "end");
+            *s += "\tret\n\n";
+
+            // Chunk end and start
+            *s += "chunk_end_and_start:\n";
+            Self::chunk_end(&mut ctx, s, "end_and_start");
+            Self::chunk_start(&mut ctx, s);
+            *s += "\tret\n\n";
+        }
+
+        *s += ".global emulator_start\n";
+        *s += "emulator_start:\n";
+
+        *s += "\tpush rbx\n";
+        *s += "\tpush rbp\n";
+        *s += "\tpush r12\n";
+        *s += "\tpush r13\n";
+        *s += "\tpush r14\n";
+        *s += "\tpush r15\n";
+
+        // Registers initialization
+        *s += &format!("\tmov {}, 0 /* Register initialization: a = 0 */\n", REG_A);
+        *s += &format!("\tmov {}, 0 /* Register initialization: b = 0 */\n", REG_B);
+        *s += &format!("\tmov {}, 0 /* Register initialization: c = 0 */\n", REG_C);
+        *s += &format!("\tmov {}, 0 /* Register initialization: flag = 0 */\n", REG_FLAG);
+        *s += &format!("\tmov {}, 0 /* Memory initialization: step = 0 */\n", MEM_STEP);
+        *s += &format!("\tmov {}, 0 /* Memory initialization: sp = 0 */\n", MEM_SP);
+        *s += &format!("\tmov {}, 0 /* Memory initialization: end = 0 */\n", MEM_END);
+        if ctx.generate_traces {
+            *s += &format!(
+                "\tmov {}, {} /* Memory initialization: value = TRACE_ADDR */\n",
+                REG_VALUE, TRACE_ADDR
+            );
+            *s += &format!(
+                "\tmov {}, {} /* Memory initialization: trace_address = value = TRACE_ADDR */\n",
+                MEM_TRACE_ADDRESS, REG_VALUE
+            );
+            *s += &format!("\tadd {}, 8 /* Memory initialization: value += 8 */\n", REG_VALUE);
+            *s += &format!(
+                "\tmov {}, {} /* Memory initialization: chunk_address = value = TRACE_ADDR + 8 */\n\n",
+                MEM_CHUNK_ADDRESS, REG_VALUE
+            );
+        }
+
+        // Initialize registers to zero
+        for r in 0..35 {
+            *s += &format!("\tmov qword ptr [reg_{}], 0 /* Init register {} */\n", r, r);
+        }
+
+        // For all program addresses in the vector, create an assembly set of instructions with an
+        // instruction label
+        for k in 0..keys.len() {
+            // Get pc
+            ctx.pc = keys[k];
+
+            // Call chunk_start the first time, for the first chunk
+            if ctx.generate_traces && k == 0 {
+                *s += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
+                *s += "\tcall chunk_start /* Call chunk_start the first time */\n";
+            }
+
+            ctx.next_pc = if (k + 1) < keys.len() { keys[k + 1] } else { M64 };
+            let instruction = &self.insts[&ctx.pc].i;
+
+            // Instruction label
+            *s += "\n";
+            *s += &format!("pc_{:x}: /*{} */\n", ctx.pc, instruction.to_text().as_str());
+
+            //println!("ZiskRom::save_to_asm() instruction={}", instruction.to_text());
+
+            // Log instruction pc
+            // *s += &format!("\tlea rdi, instruction_format\n");
+            // *s += &format!("\tmov rsi, {}\n", ctx.pc);
+            // *s += &format!("\tmov rax, 0\n");
+            // *s += &format!("\tcall printf\n");
+
+            // *s += "\tmov rax, 1\n";
+            // *s += "\tmov rdi, 1\n";
+            // *s += &format!("\tlea rsi, pc_{}_log\n", ctx.pc);
+            // *s += &format!("\tmov rdx, pc_{}_log_len\n", ctx.pc);
+            // *s += "\tsyscall\n\n";
+
+            // Set special storage destinations for a and b registers, based on operations, in order
+            // to save instructions
+            let zisk_op = ZiskOp::try_from_code(instruction.op).unwrap();
+            ctx.store_a_in_c = false;
+            ctx.store_a_in_a = false;
+            ctx.store_b_in_c = false;
+            ctx.store_b_in_b = false;
+
+            match zisk_op {
+                ZiskOp::CopyB | ZiskOp::PubOut => ctx.store_b_in_c = true,
+                ZiskOp::Xor
+                | ZiskOp::And
+                | ZiskOp::Or
+                | ZiskOp::Sll
+                | ZiskOp::Srl
+                | ZiskOp::Sra
+                | ZiskOp::Sub
+                | ZiskOp::Min
+                | ZiskOp::Minu
+                | ZiskOp::Max
+                | ZiskOp::Maxu => ctx.store_a_in_c = true,
+                ZiskOp::MinuW | ZiskOp::MinW | ZiskOp::MaxuW | ZiskOp::MaxW => {
+                    ctx.store_a_in_c = true;
+                    ctx.store_b_in_b = true;
+                }
+                ZiskOp::SignExtendB | ZiskOp::SignExtendH | ZiskOp::SignExtendW | ZiskOp::AddW => {
+                    ctx.store_b_in_b = true
+                }
+                ZiskOp::SubW
+                | ZiskOp::Eq
+                | ZiskOp::Ltu
+                | ZiskOp::Lt
+                | ZiskOp::LtuW
+                | ZiskOp::LtW
+                | ZiskOp::Leu
+                | ZiskOp::Le
+                | ZiskOp::LeuW
+                | ZiskOp::LeW => ctx.store_a_in_a = true,
+                ZiskOp::Mulu
+                | ZiskOp::Muluh
+                | ZiskOp::Mulsuh
+                | ZiskOp::Mul
+                | ZiskOp::Mulh
+                | ZiskOp::MulW
+                | ZiskOp::Div
+                | ZiskOp::Rem
+                | ZiskOp::DivuW
+                | ZiskOp::RemuW
+                | ZiskOp::DivW
+                | ZiskOp::RemW => {
+                    ctx.store_a_in_a = true;
+                    ctx.store_b_in_b = true;
+                }
+                ZiskOp::Divu | ZiskOp::Remu => {
+                    ctx.store_b_in_b = true;
+                }
+                ZiskOp::Add => {
+                    if (instruction.a_src == SRC_IMM)
+                        && (instruction.a_offset_imm0 == 0)
+                        && (instruction.a_use_sp_imm1 == 0)
+                    {
+                        ctx.store_b_in_c = true;
+                    } else {
+                        ctx.store_a_in_c = true;
+                    }
+                }
+                _ => {}
+            };
+
+            // Make sure we don't store two registers in the same register
+            assert!(!(ctx.store_a_in_c && ctx.store_b_in_c));
+            assert!(!(ctx.store_a_in_c && ctx.store_a_in_a));
+            assert!(!(ctx.store_b_in_c && ctx.store_b_in_b));
+
+            // Set register b content: only SRC_C
+            // This is required because in case a must be stored in c, it would overwrite the
+            // previouse value of c
+            ctx.b.is_constant = false;
+            ctx.b.is_saved = false;
+            ctx.b.string_value = REG_B.to_string();
+            if instruction.b_src == SRC_C {
+                *s += "\t/* b=SRC_C */\n";
+                if ctx.store_b_in_c {
+                    // No need to copy c to b, since we need b to be stored in c
+                    ctx.b.is_saved = false;
+                } else {
+                    *s += &format!("\tmov {}, {} /* b = c */\n", REG_B, REG_C);
+                    ctx.b.is_saved = true;
+                }
+            }
+
+            // Set register a content based on instruction a_src
+            ctx.a.is_constant = false;
+            ctx.a.is_saved = false;
+            ctx.a.string_value = REG_A.to_string();
+            match instruction.a_src {
+                SRC_C => {
+                    *s += "\t/* a=SRC_C */\n";
+                    if ctx.store_a_in_c {
+                        // No need to copy c to a, since we need a to be stored in c
+                        ctx.a.is_saved = false;
+                    } else {
+                        *s += &format!("\tmov {}, {} /* a = c */\n", REG_A, REG_C);
+                        ctx.a.is_saved = true;
+                    }
+                }
+                SRC_REG => {
+                    *s += &format!("\t/* a=SRC_REG reg={} */\n", instruction.a_offset_imm0);
+
+                    assert!(instruction.a_offset_imm0 <= 34);
+
+                    // Read from memory and store in the proper register: a or c
+                    *s += &format!(
+                        "\tmov {}, qword ptr [reg_{}] /* {} = reg[{}] */\n",
+                        if ctx.store_a_in_c { REG_C } else { REG_A },
+                        instruction.a_offset_imm0,
+                        if ctx.store_a_in_c { "c" } else { "a" },
+                        instruction.a_offset_imm0
+                    );
+                }
+                SRC_MEM => {
+                    *s += "\t/* a=SRC_MEM */\n";
+
+                    // Calculate memory address
+                    *s += &format!(
+                        "\tmov {}, 0x{:x} /* address = i.a_offset_imm0 */\n",
+                        REG_ADDRESS, instruction.a_offset_imm0
+                    );
+                    if instruction.a_use_sp_imm1 != 0 {
+                        *s += &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, MEM_SP);
+                    }
+
+                    // Read value from memory and store in the proper register: a or c
+                    *s += &format!(
+                        "\tmov {}, [{}] /* {} = mem[address] */\n",
+                        if ctx.store_a_in_c { REG_C } else { REG_A },
+                        REG_ADDRESS,
+                        if ctx.store_a_in_c { "c" } else { "a" }
+                    );
+
+                    // Mem reads
+                    if ctx.generate_traces {
+                        // If address is constant
+                        if instruction.a_use_sp_imm1 == 0 {
+                            // If address is constant and aligned
+                            if (instruction.a_offset_imm0 & 0x7) == 0 {
+                                Self::a_src_mem_aligned(&mut ctx, s);
+                            } else {
+                                Self::a_src_mem_not_aligned(&mut ctx, s);
+                            }
+                        }
+                        // If address is dynamic
+                        else {
+                            // Check if address is aligned, i.e. it is a multiple of 8, or not,
+                            // and insert code accordingly
+                            *s += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
+                            *s += &format!("\tjnz pc_{:x}_a_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
+                            Self::a_src_mem_aligned(&mut ctx, s);
+                            *s += &format!("\tjmp pc_{:x}_a_address_check_done\n", ctx.pc);
+                            *s += &format!("pc_{:x}_a_address_not_aligned:\n", ctx.pc);
+                            Self::a_src_mem_not_aligned(&mut ctx, s);
+                            *s += ".align 16\n";
+                            *s += &format!("pc_{:x}_a_address_check_done:\n", ctx.pc);
+                        }
+                    }
+
+                    ctx.a.is_saved = true;
+                }
+                SRC_IMM => {
+                    *s += "\t/* a=SRC_IMM */\n";
+                    ctx.a.is_constant = true;
+                    ctx.a.constant_value =
+                        instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32);
+                    ctx.a.string_value = format!("0x{:x}", ctx.a.constant_value);
+                    if ctx.store_a_in_c {
+                        *s += &format!(
+                            "\tmov {}, {} /* c = constant */\n",
+                            REG_C, ctx.a.string_value
+                        );
+                        ctx.a.is_saved = false;
+                    } else if ctx.store_a_in_a {
+                        *s += &format!(
+                            "\tmov {}, {} /* a = constant */\n",
+                            REG_A, ctx.a.string_value
+                        );
+                        ctx.a.is_saved = true;
+                    } else {
+                        ctx.a.is_saved = false;
+                    }
+                    // DEBUG: Used only to get register traces:
+                    //*s += &format!("\tmov {}, {} /* a=a_value */\n", REG_A, ctx.a.string_value);
+                }
+                SRC_STEP => {
+                    *s += "\t/* a=SRC_STEP */\n";
+                    let store_a_reg = if ctx.store_a_in_c { REG_C } else { REG_A };
+                    let store_a_reg_name = if ctx.store_a_in_c { "c" } else { "a" };
+                    *s += &format!(
+                        "\tmov {}, {} /* {} = step */\n",
+                        store_a_reg, MEM_STEP, store_a_reg_name
+                    );
+                    if ctx.generate_traces {
+                        *s += &format!(
+                            "\tadd {}, chunk_size /* {} += chunk_size */\n",
+                            store_a_reg, store_a_reg_name
+                        );
+                        *s += &format!(
+                            "\tsub {}, {} /* {} -= step_down */\n",
+                            store_a_reg, MEM_STEP_DOWN, store_a_reg_name
+                        );
+                    }
+                    ctx.a.is_saved = !ctx.store_a_in_c;
+                }
+                _ => {
+                    panic!("ZiskRom::source_a() Invalid a_src={} pc={}", instruction.a_src, ctx.pc)
+                }
+            }
+
+            // Set register b content: all except SRC_C
+            match instruction.b_src {
+                SRC_C => {}
+                SRC_REG => {
+                    *s += &format!("\t/* b=SRC_REG reg={} */\n", instruction.b_offset_imm0);
+
+                    assert!(instruction.b_offset_imm0 <= 34);
+
+                    // Read from memory and store in the proper register: b or c
+                    *s += &format!(
+                        "\tmov {}, qword ptr [reg_{}] /* {} = reg[{}] */\n",
+                        if ctx.store_b_in_c { REG_C } else { REG_B },
+                        instruction.b_offset_imm0,
+                        if ctx.store_b_in_c { "c" } else { "b" },
+                        instruction.b_offset_imm0
+                    );
+                }
+                SRC_MEM => {
+                    *s += "\t/* b=SRC_MEM */\n";
+
+                    // Calculate memory address
+                    *s += &format!(
+                        "\tmov {}, 0x{:x} /* address = i.b_offset_imm0 */\n",
+                        REG_ADDRESS, instruction.b_offset_imm0
+                    );
+                    if instruction.b_use_sp_imm1 != 0 {
+                        *s += &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, MEM_SP);
+                    }
+
+                    // Read value from memory and store in the proper register: b or c
+                    *s += &format!(
+                        "\tmov {}, [{}] /* {} = mem[address] */\n",
+                        if ctx.store_b_in_c { REG_C } else { REG_B },
+                        REG_ADDRESS,
+                        if ctx.store_b_in_c { "c" } else { "b" }
+                    );
+
+                    // Mem reads
+                    if ctx.generate_traces {
+                        // If address is constant
+                        if instruction.b_use_sp_imm1 == 0 {
+                            // If address is constant and aligned
+                            if (instruction.b_offset_imm0 & 0x7) == 0 {
+                                Self::b_src_mem_aligned(&mut ctx, s);
+                            } else {
+                                Self::b_src_mem_not_aligned(&mut ctx, s);
+                            }
+                        }
+                        // If address is dynamic
+                        else {
+                            // Check if address is aligned, i.e. it is a multiple of 8
+                            *s += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
+                            *s += &format!("\tjnz pc_{:x}_b_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
+                            Self::b_src_mem_aligned(&mut ctx, s);
+                            *s += &format!("\tjmp pc_{:x}_b_address_check_done\n", ctx.pc);
+                            Self::b_src_mem_not_aligned(&mut ctx, s);
+                            *s += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
+                            *s += ".align 16\n";
+                            *s += &format!("pc_{:x}_b_address_check_done:\n", ctx.pc);
+                        }
+                    }
+
+                    ctx.b.is_saved = !ctx.store_b_in_c;
+                }
+                SRC_IMM => {
+                    *s += "\t/* b=SRC_IMM */\n";
+                    ctx.b.is_constant = true;
+                    ctx.b.constant_value =
+                        instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32);
+                    ctx.b.string_value = format!("0x{:x}", ctx.b.constant_value);
+                    if ctx.store_b_in_c {
+                        *s += &format!(
+                            "\tmov {}, {} /* c = constant */\n",
+                            REG_C, ctx.b.string_value
+                        );
+                        ctx.b.is_saved = false;
+                    } else if ctx.store_b_in_b {
+                        *s += &format!(
+                            "\tmov {}, {} /* b = constant */\n",
+                            REG_B, ctx.b.string_value
+                        );
+                        ctx.b.is_saved = true;
+                    } else {
+                        ctx.b.is_saved = false;
+                    }
+                    // DEBUG: Used only to get register traces:
+                    //*s += &format!("\tmov {}, {} /*b=b_value */\n", REG_B, ctx.b.string_value);
+                }
+                SRC_IND => {
+                    *s += &format!("\t/* b=SRC_IND width={}*/\n", instruction.ind_width);
+
+                    // Calculate memory address
+                    *s += &format!(
+                        "\tmov {}, {} /* address = a */\n",
+                        REG_ADDRESS, ctx.a.string_value
+                    );
+                    if instruction.b_offset_imm0 != 0 {
+                        *s += &format!(
+                            "\tadd {}, 0x{:x} /* address += i.b_offset_imm0 */\n",
+                            REG_ADDRESS, instruction.b_offset_imm0
+                        );
+                    }
+                    if instruction.b_use_sp_imm1 != 0 {
+                        *s += &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, MEM_SP);
+                    }
+
+                    // Read from memory and store in the proper register: b or c
+                    match instruction.ind_width {
+                        8 => {
+                            // Read 8-bytes value from address
+                            *s += &format!(
+                                "\tmov {}, qword ptr [{}] /* {} = mem[address] */\n",
+                                if ctx.store_b_in_c { REG_C } else { REG_B },
+                                REG_ADDRESS,
+                                if ctx.store_b_in_c { "c" } else { "b" }
+                            );
+                        }
+                        4 => {
+                            // Read 4-bytes value from address
+                            *s += &format!(
+                                "\tmov {}, [{}] /* {} = mem[address] */\n",
+                                if ctx.store_b_in_c { REG_C_W } else { REG_B_W },
+                                REG_ADDRESS,
+                                if ctx.store_b_in_c { "c" } else { "b" }
+                            );
+                        }
+                        2 => {
+                            // Read 2-bytes value from address
+                            *s += &format!(
+                                "\tmovzx {}, word ptr [{}] /* {} = mem[address] */\n",
+                                if ctx.store_b_in_c { REG_C } else { REG_B },
+                                REG_ADDRESS,
+                                if ctx.store_b_in_c { "c" } else { "b" }
+                            );
+                        }
+                        1 => {
+                            // Read 1-bytes value from address
+                            *s += &format!(
+                                "\tmovzx {}, byte ptr [{}] /* {} = mem[address] */\n",
+                                if ctx.store_b_in_c { REG_C } else { REG_B },
+                                REG_ADDRESS,
+                                if ctx.store_b_in_c { "c" } else { "b" }
+                            );
+                        }
+                        _ => panic!(
+                            "ZiskRom::save_to_asm() Invalid ind_width={} pc={}",
+                            instruction.ind_width, ctx.pc
+                        ),
+                    }
+
+                    // Store memory reads in minimal trace
+                    if ctx.generate_traces {
+                        match instruction.ind_width {
+                            8 => {
+                                // // Check if address is aligned, i.e. it is a multiple of 8
+                                *s += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
+                                *s += &format!("\tjnz pc_{:x}_b_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
+
+                                // b register memory address is fully alligned
+
+                                // Copy read data into mem_reads_address and increment it
+                                *s += &format!(
+                                    "\tmov [{} + {}*8], {} /* mem_reads[@+size*8]=b */\n",
+                                    REG_MEM_READS_ADDRESS,
+                                    REG_MEM_READS_SIZE,
+                                    if ctx.store_b_in_c { REG_C } else { REG_B }
+                                );
+
+                                // Increment chunk.steps.mem_reads_size
+                                *s += &format!(
+                                    "\tinc {} /* mem_reads_size++ */\n",
+                                    REG_MEM_READS_SIZE
+                                );
+
+                                // Jump to done
+                                *s += &format!("\tjmp pc_{:x}_b_address_check_done\n", ctx.pc);
+
+                                // b memory address is not aligned
+
+                                *s += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
+
+                                // Calculate previous aligned address
+                                *s += &format!(
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
+                                    REG_ADDRESS
+                                );
+
+                                // Store previous aligned address value in mem_reads, and advance address
+                                *s += &format!(
+                                    "\tmov {}, [{}] /* value = mem[prev_address] */\n",
+                                    REG_VALUE, REG_ADDRESS
+                                );
+                                *s += &format!(
+                                    "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_b */\n",
+                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                );
+
+                                // Calculate next aligned address
+                                *s += &format!(
+                                    "\tadd {}, 8 /* address = next aligned address */\n",
+                                    REG_ADDRESS
+                                );
+
+                                // Store next aligned address value in mem_reads, and advance it
+                                *s += &format!(
+                                    "\tmov {}, [{}] /* value = mem[next_address] */\n",
+                                    REG_VALUE, REG_ADDRESS
+                                );
+                                *s += &format!(
+                                    "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_b */\n",
+                                    REG_MEM_READS_ADDRESS,
+                                    REG_MEM_READS_SIZE,
+                                    REG_VALUE
+                                );
+
+                                // Increment chunk.steps.mem_reads_size twice
+                                *s += &format!(
+                                    "\tadd {}, 2 /* mem_reads_size += 2*/\n",
+                                    REG_MEM_READS_SIZE
+                                );
+
+                                // Check done
+                                *s += ".align 16\n";
+                                *s += &format!("pc_{:x}_b_address_check_done:\n", ctx.pc);
+                            }
+                            4 | 2 => {
+                                // Calculate previous aligned address
+                                *s += &format!(
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
+                                    REG_ADDRESS
+                                );
+
+                                // Store previous aligned address value in mem_reads, advancing address
+                                *s += &format!(
+                                    "\tmov {}, [{}] /* value = mem[prev_address] */\n",
+                                    REG_VALUE, REG_ADDRESS
+                                );
+                                *s += &format!(
+                                    "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_b */\n",
+                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                );
+
+                                // Calculate next aligned address, keeping a copy of previous aligned
+                                // address in value
+                                *s += &format!(
+                                    "\tmov {}, {} /* value = copy of prev_address */\n",
+                                    REG_VALUE, REG_ADDRESS
+                                );
+                                let address_increment = instruction.ind_width - 1;
+                                *s += &format!(
+                                    "\tadd {}, {} /* address += {} */\n",
+                                    REG_ADDRESS, address_increment, address_increment
+                                );
+                                *s += &format!(
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = next aligned address */\n",
+                                    REG_ADDRESS
+                                );
+                                *s += &format!(
+                                    "\tcmp {}, {} /* prev_address = next_address ? */\n",
+                                    REG_VALUE, REG_ADDRESS
+                                );
+                                *s += &format!(
+                                    "\tjnz pc_{:x}_b_ind_different_address /* jump if they are the same */\n",
+                                    ctx.pc
+                                );
+
+                                // Same address
+
+                                // Increment chunk.steps.mem_reads_size
+                                *s += &format!(
+                                    "\tinc {} /* mem_reads_size++ */\n",
+                                    REG_MEM_READS_SIZE
+                                );
+
+                                // Jump to done
+                                *s += &format!("\tjmp pc_{:x}_b_ind_address_done\n", ctx.pc);
+
+                                // Different address
+
+                                *s += &format!("pc_{:x}_b_ind_different_address:\n", ctx.pc);
+
+                                // Store next aligned address value in mem_reads
+                                *s += &format!(
+                                    "\tmov {}, [{}] /* value = mem[next_address] */\n",
+                                    REG_VALUE, REG_ADDRESS
+                                );
+
+                                // Copy read data into mem_reads_address and advance it
+                                *s += &format!(
+                                    "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_b */\n",
+                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                );
+
+                                // Increment chunk.steps.mem_reads_size
+                                *s += &format!(
+                                    "\tadd {}, 2 /* mem_reads_size+=2 */\n",
+                                    REG_MEM_READS_SIZE
+                                );
+
+                                *s += &format!("\tjmp pc_{:x}_b_ind_address_done\n", ctx.pc);
+
+                                // Done
+
+                                *s += ".align 16\n";
+                                *s += &format!("pc_{:x}_b_ind_address_done:\n", ctx.pc);
+                            }
+                            1 => {
+                                // Calculate previous aligned address
+                                *s += &format!(
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
+                                    REG_ADDRESS
+                                );
+
+                                // Store previous aligned address value in mem_reads, and increment address
+                                *s += &format!(
+                                    "\tmov {}, [{}] /* value = mem[prev_address] */\n",
+                                    REG_VALUE, REG_ADDRESS
+                                );
+                                *s += &format!(
+                                    "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_b */\n",
+                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                );
+
+                                // Increment chunk.steps.mem_reads_size
+                                *s += &format!(
+                                    "\tinc {} /* mem_reads_size++ */\n",
+                                    REG_MEM_READS_SIZE
+                                );
+                            }
+                            _ => panic!(
+                                "ZiskRom::save_to_asm() Invalid ind_width={} pc={}",
+                                instruction.ind_width, ctx.pc
+                            ),
+                        }
+                    }
+                    ctx.b.is_saved = !ctx.store_b_in_c;
+                }
+                _ => panic!(
+                    "ZiskRom::save_to_asm() Invalid b_src={} pc={}",
+                    instruction.b_src, ctx.pc
+                ),
+            }
+
+            // Execute operation, storing result is registers c and flag
+            //*s += &format!("\t/* operation: (c, flag) = op(a, b) */\n");
+            *s += Self::operation_to_asm(&mut ctx, instruction.op).as_str();
+
+            // At this point, REG_C must contain the value of c
+            assert!(ctx.c.is_saved);
+
+            // Store register c
+            match instruction.store {
+                STORE_NONE => {
+                    *s += "\t/* STORE_NONE */\n";
+                }
+                STORE_REG => {
+                    *s += &format!("\t/* STORE_REG reg={} */\n", instruction.store_offset);
+
+                    assert!(instruction.store_offset >= 0);
+                    assert!(instruction.store_offset <= 34);
+
+                    // Store in mem[address]
+                    if instruction.store_ra {
+                        *s += &format!(
+                            "\tmov {}, 0x{:x} /* value = pc + jmp_offset2 */\n",
+                            REG_VALUE,
+                            (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                        );
+                        *s += &format!(
+                            "\tmov qword ptr [reg_{}], {} /* reg[{}] = value */\n",
+                            instruction.store_offset, REG_VALUE, instruction.store_offset
+                        );
+                    } else {
+                        *s += &format!(
+                            "\tmov qword ptr [reg_{}], {} /* reg[{}] = c */\n",
+                            instruction.store_offset, REG_C, instruction.store_offset
+                        );
+                    }
+                }
+                STORE_MEM => {
+                    *s += "\t/* STORE_MEM */\n";
+
+                    // Calculate memory address and store it in REG_ADDRESS
+                    *s += &format!(
+                        "\tmov {}, 0x{:x}/* address = i.store_offset */\n",
+                        REG_ADDRESS, instruction.store_offset
+                    );
+                    if instruction.store_use_sp {
+                        *s += &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, MEM_SP);
+                    }
+
+                    // Mem reads
+                    if ctx.generate_traces {
+                        if !instruction.store_use_sp {
+                            if (instruction.store_offset & 0x7) != 0 {
+                                Self::c_store_mem_not_aligned(&mut ctx, s);
+                            }
+                        } else {
+                            *s += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
+                            *s += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
+                            *s += &format!("\tjmp pc_{:x}_c_address_aligned\n", ctx.pc);
+                            *s += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                            Self::c_store_mem_not_aligned(&mut ctx, s);
+                            *s += ".align 16\n";
+                            *s += &format!("pc_{:x}_c_address_aligned:\n", ctx.pc);
+                        }
+                    }
+
+                    // Store mem[address] = value
+                    if instruction.store_ra {
+                        *s += &format!(
+                            "\tmov {}, 0x{:x} /* value = pc + jmp_offset2 */\n",
+                            REG_VALUE,
+                            (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                        );
+                        *s += &format!(
+                            "\tmov [{}], {} /* mem[address] = value */\n",
+                            REG_ADDRESS, REG_VALUE
+                        );
+                    } else {
+                        *s +=
+                            &format!("\tmov [{}], {} /* mem[address] = c */\n", REG_ADDRESS, REG_C);
+                    }
+                }
+                STORE_IND => {
+                    *s += &format!("\t/* STORE_IND width={} */\n", instruction.ind_width);
+
+                    // Calculate memory address and store it in REG_ADDRESS
+                    *s += &format!(
+                        "\tmov {}, {} /* address = a */\n",
+                        REG_ADDRESS, ctx.a.string_value
+                    );
+                    if instruction.store_offset != 0 {
+                        *s += &format!(
+                            "\tadd {}, 0x{:x} /* address += i.store_offset */\n",
+                            REG_ADDRESS, instruction.store_offset as u64
+                        );
+                    }
+                    if instruction.store_use_sp {
+                        *s += &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, MEM_SP);
+                    }
+
+                    let address_is_constant = ctx.a.is_constant && !instruction.store_use_sp;
+                    let address_constant_value = if address_is_constant {
+                        (ctx.a.constant_value as i64 + instruction.store_offset) as u64
+                    } else {
+                        0
+                    };
+                    let address_is_aligned =
+                        address_is_constant && ((address_constant_value & 0x7) == 0);
+
+                    // Save data in mem_reads
+                    if ctx.generate_traces {
+                        match instruction.ind_width {
+                            8 => {
+                                // Check if address is aligned, i.e. it is a multiple of 8
+                                if address_is_constant {
+                                    if !address_is_aligned {
+                                        Self::c_store_ind_8_not_aligned(&mut ctx, s);
+                                    }
+                                } else {
+                                    *s += &format!(
+                                        "\ttest {}, 0x7 /* address &= 7 */\n",
+                                        REG_ADDRESS
+                                    );
+                                    *s += &format!("\tjnz pc_{:x}_c_address_not_aligned /* check if address is aligned */\n", ctx.pc);
+                                    *s += &format!(
+                                        "\tjmp pc_{:x}_c_address_done /* address is aligned; done */\n",
+                                        ctx.pc
+                                    );
+                                    *s += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                                    Self::c_store_ind_8_not_aligned(&mut ctx, s);
+                                    *s += ".align 16\n";
+                                    *s += &format!("pc_{:x}_c_address_done:\n", ctx.pc);
+                                }
+                            }
+                            4 | 2 => {
+                                // Get a copy of the address to preserve it
+                                *s += &format!(
+                                    "\tmov {}, {} /* aux = address */\n",
+                                    REG_AUX, REG_ADDRESS
+                                );
+
+                                // Calculate previous aligned address
+                                *s += &format!(
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
+                                    REG_AUX
+                                );
+
+                                // Store previous aligned address value in mem_reads, advancing address
+                                *s += &format!(
+                                    "\tmov {}, [{}] /* value = mem[prev_address] */\n",
+                                    REG_VALUE, REG_AUX
+                                );
+                                *s += &format!(
+                                    "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
+                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                );
+
+                                // Calculate next aligned address, keeping a copy of previous aligned
+                                // address in value
+                                *s += &format!(
+                                    "\tmov {}, {} /* value = copy of prev_address */\n",
+                                    REG_VALUE, REG_AUX
+                                );
+                                let address_increment = instruction.ind_width - 1;
+                                *s += &format!(
+                                    "\tadd {}, {} /* address += {} */\n",
+                                    REG_AUX, address_increment, address_increment
+                                );
+                                *s += &format!(
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = next aligned address */\n",
+                                    REG_AUX
+                                );
+                                *s += &format!(
+                                    "\tcmp {}, {} /* prev_address = next_address ? */\n",
+                                    REG_VALUE, REG_AUX
+                                );
+                                *s += &format!(
+                                    "\tjnz pc_{:x}_c_ind_different_address /* jump if they are the same */\n",
+                                    ctx.pc
+                                );
+
+                                // Same address
+
+                                // Increment chunk.steps.mem_reads_size
+                                *s += &format!(
+                                    "\tinc {} /* mem_reads_size++ */\n",
+                                    REG_MEM_READS_SIZE
+                                );
+
+                                *s += &format!(
+                                    "\tjmp pc_{:x}_c_ind_address_done /* Done */\n",
+                                    ctx.pc
+                                );
+
+                                // Different address
+
+                                *s += &format!("pc_{:x}_c_ind_different_address:\n", ctx.pc);
+
+                                // Store next aligned address value in mem_reads
+                                *s += &format!(
+                                    "\tmov {}, [{}] /* value = mem[next_address] */\n",
+                                    REG_VALUE, REG_AUX
+                                );
+
+                                // Copy read data into mem_reads_address and advance it
+                                *s += &format!(
+                                    "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_c */\n",
+                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                );
+
+                                // Increment chunk.steps.mem_reads_size
+                                *s += &format!(
+                                    "\tadd {}, 2 /* mem_reads_size+=2 */\n",
+                                    REG_MEM_READS_SIZE
+                                );
+
+                                *s += &format!("\tjmp pc_{:x}_c_ind_address_done\n", ctx.pc);
+
+                                // Done
+
+                                *s += ".align 16\n";
+                                *s += &format!("pc_{:x}_c_ind_address_done:\n", ctx.pc);
+                            }
+                            1 => {
+                                // Since 1 byte always fits into one alligned 8B chunk, we always
+                                // store the chunk in mem_reads
+
+                                if address_is_constant && address_is_aligned {
+                                    // Store  aligned address value in mem_reads, and increment address
+                                    *s += &format!(
+                                        "\tmov {}, [{}] /* value = mem[address] */\n",
+                                        REG_VALUE, REG_ADDRESS
+                                    );
+                                    *s += &format!(
+                                        "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
+                                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                    );
+
+                                    // Increment chunk.steps.mem_reads_size
+                                    *s += &format!(
+                                        "\tinc {} /* mem_reads_size++ */\n",
+                                        REG_MEM_READS_SIZE
+                                    );
+                                } else {
+                                    // Get a copy of the address to preserve it
+                                    *s += &format!(
+                                        "\tmov {}, {} /* aux = address */\n",
+                                        REG_AUX, REG_ADDRESS
+                                    );
+
+                                    // Calculate previous aligned address
+                                    *s += &format!(
+                                        "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
+                                        REG_AUX
+                                    );
+
+                                    // Store previous aligned address value in mem_reads, and increment address
+                                    *s += &format!(
+                                        "\tmov {}, [{}] /* value = mem[prev_address] */\n",
+                                        REG_VALUE, REG_AUX
+                                    );
+                                    *s += &format!(
+                                        "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
+                                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                    );
+
+                                    // Increment chunk.steps.mem_reads_size
+                                    *s += &format!(
+                                        "\tinc {} /* mem_reads_size++ */\n",
+                                        REG_MEM_READS_SIZE
+                                    );
+                                }
+                            }
+                            _ => panic!(
+                                "ZiskRom::save_to_asm() Invalid ind_width={} pc={}",
+                                instruction.ind_width, ctx.pc
+                            ),
+                        }
+                    }
+
+                    // Store mem[address] = value
+                    match instruction.ind_width {
+                        8 => {
+                            if instruction.store_ra {
+                                *s += &format!(
+                                    "\tmov qword ptr [{}], {} /* width=8: mem[address] = pc + jmp_offset2 */\n",
+                                    REG_ADDRESS,
+                                    (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                                );
+                            } else {
+                                *s += &format!(
+                                    "\tmov [{}], {} /* width=8: mem[address] = c */\n",
+                                    REG_ADDRESS, REG_C
+                                );
+                            }
+                        }
+                        4 => {
+                            if instruction.store_ra {
+                                *s += &format!(
+                                    "\tmov dword ptr [{}], {} /* width=4: mem[address] = pc + jmp_offset2 */\n",
+                                    REG_ADDRESS,
+                                    (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                                );
+                            } else {
+                                *s += &format!(
+                                    "\tmov [{}], {} /* width=4: mem[address] = c */\n",
+                                    REG_ADDRESS, REG_C_W
+                                );
+                            }
+                        }
+                        2 => {
+                            if instruction.store_ra {
+                                *s += &format!(
+                                    "\tmov word ptr [{}], {} /* width=2: mem[address] = pc + jmp_offset2 */\n",
+                                    REG_ADDRESS,
+                                    (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                                );
+                            } else {
+                                *s += &format!(
+                                    "\tmov [{}], {} /* width=2: mem[address] = c */\n",
+                                    REG_ADDRESS, REG_C_H
+                                );
+                            }
+                        }
+                        1 => {
+                            if instruction.store_ra {
+                                *s += &format!(
+                                    "\tmov word ptr [{}], {} /* width=1: mem[address] = pc + jmp_offset2 */\n",
+                                    REG_ADDRESS,
+                                    (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                                );
+                            } else {
+                                *s += &format!(
+                                    "\tmov [{}], {} /* width=1: mem[address] = c */\n",
+                                    REG_ADDRESS, REG_C_B
+                                );
+                            }
+                            if ctx.log_output {
+                                *s += &format!(
+                                    "\tmov {}, 0xa0000200 /* width=1: aux = UART */\n",
+                                    REG_FLAG,
+                                );
+                                *s += &format!(
+                                    "\tcmp {}, {} /* width=1: if address = USART then print char */\n",
+                                    REG_ADDRESS, REG_FLAG
+                                );
+                                *s += &format!(
+                                    "\tjne pc_{:x}_store_c_not_uart /* width=1: continue */\n",
+                                    ctx.pc,
+                                );
+                                if instruction.store_ra {
+                                    *s += &format!(
+                                        "\tmov dil, 0x{:x} /* width=1: rdi = value */\n",
+                                        (ctx.pc as i64 + instruction.jmp_offset2) as u64 as u8
+                                    );
+                                } else {
+                                    *s +=
+                                        &format!("\tmov dil, {} /* width=1: rdi = c */\n", REG_C_B);
+                                }
+                                *s += "\tpush rax\n";
+                                *s += "\tpush rcx\n";
+                                *s += "\tpush rdx\n";
+                                // *s += "\tpush rdi\n";
+                                // *s += "\tpush rsi\n";
+                                // *s += "\tpush rsp\n";
+                                // *s += "\tpush r8\n";
+                                *s += "\tpush r9\n";
+                                *s += "\tpush r10\n";
+                                //*s += "\tpush r11\n";
+                                *s += "\tcall _print_char /* width=1: call print_char() */\n";
+                                //*s += "\tpop r11\n";
+                                *s += "\tpop r10\n";
+                                *s += "\tpop r9\n";
+                                // *s += "\tpop r8\n";
+                                // *s += "\tpop rsp\n";
+                                // *s += "\tpop rsi\n";
+                                // *s += "\tpop rdi\n";
+                                *s += "\tpop rdx\n";
+                                *s += "\tpop rcx\n";
+                                *s += "\tpop rax\n";
+                                *s += &format!("pc_{:x}_store_c_not_uart:\n", ctx.pc);
+                            }
+                        }
+                        _ => panic!(
+                            "ZiskRom::save_to_asm() Invalid ind_width={} pc={}",
+                            instruction.ind_width, ctx.pc
+                        ),
+                    }
+                }
+                _ => panic!(
+                    "ZiskRom::save_to_asm() Invalid store={} pc={}",
+                    instruction.store, ctx.pc
+                ),
+            }
+
+            // if ctx.c.is_constant && !ctx.c.string_value.eq(REG_C) {
+            //     *s += &format!(
+            //         "\tmov {}, {} /* STORE: make sure c=value */\n",
+            //         REG_C, ctx.c.string_value
+            //     );
+            // }
+
+            // Used only to get traces of registers a, b, c and flag/step
+            // *s += &format!("\tpush {}\n", REG_FLAG);
+            // *s += &format!("\tpush {}\n", REG_FLAG);
+            // *s += &format!("\tpush {}\n", REG_C);
+            // *s += &format!("\tpush {}\n", REG_B);
+            // *s += &format!("\tpush {}\n", REG_A);
+            // *s += &format!("\tmov rdi, {}\n", REG_A);
+            // *s += &format!("\tmov rsi, {}\n", REG_B);
+            // *s += &format!("\tmov rdx, {}\n", REG_C);
+            // // if ctx.flag_is_always_one {
+            // //     *s += &format!("\tmov rcx, 1\n");
+            // // } else if ctx.flag_is_always_zero {4
+            // //     *s += &format!("\tmov rcx, 0\n");
+            // // } else {
+            // //     *s += &format!("\tmov rcx, {}\n", REG_FLAG);
+            // // }
+            // *s += &format!("\tmov rcx, {}\n", MEM_STEP);
+            // *s += &format!("\tmov rax, 0\n"); // NEW
+            // *s += &format!("\tcall _print_abcflag\n");
+            // *s += &format!("\tpop {}\n", REG_A);
+            // *s += &format!("\tpop {}\n", REG_B);
+            // *s += &format!("\tpop {}\n", REG_C);
+            // *s += &format!("\tpop {}\n", REG_FLAG);
+            // *s += &format!("\tpop {}\n", REG_FLAG);
+
+            // Decrement step counter
+            *s += "\t/* STEP */\n";
+            if ctx.generate_traces {
+                *s += &format!("\tdec {} /* decrement step_down */\n", MEM_STEP_DOWN);
+                if instruction.end {
+                    *s += &format!("\tmov {}, 1 /* end = 1 */\n", MEM_END);
+                    *s += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
+                    *s += "\tcall chunk_end\n";
+                } else {
+                    *s += &format!("\tjz pc_{:x}_check_step_zero\n", ctx.pc);
+                    *s += &format!("\tjmp pc_{:x}_check_step_not_zero\n", ctx.pc);
+                    *s += &format!("pc_{:x}_check_step_zero:\n", ctx.pc);
+                    Self::set_pc(&mut ctx, instruction, s, "z");
+                    *s += "\tcall chunk_end_and_start\n";
+                    *s += &format!("\tjmp pc_{:x}_check_step_done\n", ctx.pc);
+                    *s += ".align 16\n";
+                    *s += &format!("pc_{:x}_check_step_not_zero:\n", ctx.pc);
+                    Self::set_pc(&mut ctx, instruction, s, "nz");
+                    *s += &format!("pc_{:x}_check_step_done:\n", ctx.pc);
+                }
+            } else {
+                *s += &format!("\tinc {} /* increment step */\n", MEM_STEP);
+                if instruction.end {
+                    *s += &format!("\tmov {}, 1 /* end = 1 */\n", MEM_END);
+                }
+                Self::set_pc(&mut ctx, instruction, s, "nz");
+            }
+
+            // Used only to get logs of step
+            // *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+            // *s += &format!("\tand {}, 0xfffff /* value = step */\n", REG_VALUE);
+            // *s += &format!("\tcmp {}, 0 /* value = step */\n", REG_VALUE);
+            // *s += &format!("\tjne  pc_{:x}_inc_step_done /* value = step */\n", ctx.pc);
+            // *s += &format!("\tpush {}\n", REG_VALUE);
+            // *s += &format!("\tmov rdi, {}\n", MEM_STEP);
+
+            // *s += "\tpush rax\n";
+            // *s += "\tpush rcx\n";
+            // *s += "\tpush rdx\n";
+            // // *s += "\tpush rdi\n";
+            // // *s += "\tpush rsi\n";
+            // // *s += "\tpush rsp\n";
+            // // *s += "\tpush r8\n";
+            // *s += "\tpush r9\n";
+            // *s += "\tpush r10\n";
+            // //*s += "\tpush r11\n";
+            // *s += &format!("\tcall _print_step\n");
+
+            // //*s += "\tpop r11\n";
+            // *s += "\tpop r10\n";
+            // *s += "\tpop r9\n";
+            // // *s += "\tpop r8\n";
+            // // *s += "\tpop rsp\n";
+            // // *s += "\tpop rsi\n";
+            // // *s += "\tpop rdi\n";
+            // *s += "\tpop rdx\n";
+            // *s += "\tpop rcx\n";
+            // *s += "\tpop rax\n";
+
+            // *s += &format!("\tpop {}\n", REG_VALUE);
+            // *s += &format!("pc_{:x}_inc_step_done:\n", ctx.pc);
+
+            // If step % K == 0 then store data
+            // *s += &format!("\tmov {}, {} /* copy step into value */\n", REG_VALUE, MEM_STEP);
+            // *s += &format!("\tand {}, 0xffff /* value &= k */\n", REG_VALUE);
+            // *s += &format!(
+            //     "\tjnz pc_{:x}_no_store_data /* skip if storing is not required */\n",
+            //     ctx.pc
+            // );
+            // *s += &format!("\t/* Store data */\n");
+            // *s += &format!("pc_{:x}_no_store_data:\n", ctx.pc);
+
+            // Jump to new pc, if not the next one
+            if instruction.end {
+                *s += "\tjmp execute_end /* end */\n";
+            } else if !ctx.jump_to_static_pc.is_empty() {
+                *s += ctx.jump_to_static_pc.as_str();
+            } else if ctx.jump_to_dynamic_pc {
+                *s += "\t/* jump to dynamic pc */\n";
+                *s += &format!("\tmov {}, 0x80000000 /* is pc a low address? */\n", REG_ADDRESS);
+                *s += &format!("\tcmp {}, {}\n", REG_PC, REG_ADDRESS);
+                *s += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
+                *s += &format!("\tsub {}, {} /* pc -= 0x80000000 */\n", REG_PC, REG_ADDRESS);
+                *s += &format!("\tmov rax, {} /* rax = pc */\n", REG_PC);
+                *s += "\tlea rbx, [map_pc_80000000] /* rbx = index table base address */\n";
+                *s += "\tmov rax, [rbx + rax*2] /* rax = table entry address */\n";
+                *s += "\tjmp rax /* jump to table entry address */\n";
+                *s += &format!("pc_{:x}_jump_to_low_address:\n", ctx.pc);
+                *s += &format!("\tsub {}, 0x1000 /* pc -= 0x1000 */\n", REG_PC);
+                *s += &format!("\tmov rax, {} /* rax = pc */\n", REG_PC);
+                *s += "\tlea rbx, [map_pc_1000] /* rbx = index table base address */\n";
+                *s += "\tmov rax, [rbx + rax*2] /* rax = table entry address */\n";
+                *s += "\tjmp rax /* jump to table entry address */\n";
+            }
+        }
+
+        *s += "\n";
+
+        *s += "execute_end:\n";
+
+        *s += "\tpop r15\n";
+        *s += "\tpop r14\n";
+        *s += "\tpop r13\n";
+        *s += "\tpop r12\n";
+        *s += "\tpop rbp\n";
+        *s += "\tpop rbx\n";
+
+        // Used only to get the last log of step
+        // *s += &format!("\tpush {}\n", REG_VALUE);
+        // *s += &format!("\tmov rdi, {}\n", MEM_STEP);
+        // *s += "\tcall _print_step\n";
+        // *s += &format!("\tpop {}\n", REG_VALUE);
+
+        // *s += "\tmov rax, 60\n";
+        // *s += "\tmov rdi, 0\n";
+        // *s += "\tsyscall\n\n";
+
+        *s += "\tret\n\n";
+
+        // For all program addresses in the vector, create an assembly set of instructions with a
+        // map label
+        *s += "\n";
+        *s += ".section .rodata\n";
+        *s += ".align 64\n";
+        for key in &keys {
+            // Skip internal pc addresses
+            if (key & 0x03) != 0 {
+                continue;
+            }
+            // Map fixed-length pc labels to real variable-length instruction labels
+            // This is used to implement dynamic jumps, i.e. to jump to an address that is not
+            // a constant in the instruction, but dynamically built as part of the emulation
+
+            // Only use labels in boundary pc addresses
+            // match *key {
+            //     0x1000 | 0x10000000 | 0x80000000 => {
+            //         *s += &format!("\nmap_pc_{:x}: \t.quad pc_{:x}", key, key)
+            //     }
+            //     _ => *s += &format!(", pc_{:x}", key),
+            // }
+
+            // Use labels always
+            *s += &format!("map_pc_{:x}: \t.quad pc_{:x}\n", key, key);
+        }
+        *s += "\n";
+
+        let mut lines = s.lines();
+        //let mut empty_lines_counter = 0u64;
+        let mut map_label_lines_counter = 0u64;
+        let mut pc_label_lines_counter = 0u64;
+        let mut comment_lines_counter = 0u64;
+        let mut code_lines_counter = 0u64;
+
+        loop {
+            let line_option = lines.next();
+            if line_option.is_none() {
+                break;
+            }
+            let line = line_option.unwrap();
+            if line.is_empty() {
+                //empty_lines_counter += 1;
+                continue;
+            }
+            if line.starts_with("map_pc_") {
+                map_label_lines_counter += 1;
+                continue;
+            }
+            if line.starts_with("pc_") {
+                pc_label_lines_counter += 1;
+                continue;
+            }
+            if line.starts_with("\t/*") {
+                comment_lines_counter += 1;
+                continue;
+            }
+            code_lines_counter += 1;
+        }
+
+        println!(
+            "ZiskRom::save_to_asm() {} bytes, {} instructions, {:02} bytes/inst, {} map lines, {} label lines, {} comment lines, {} code lines, {:02} code lines/inst",
+            s.len(),
+            keys.len(),
+            s.len() as f64 / keys.len() as f64,
+            map_label_lines_counter,
+            pc_label_lines_counter,
+            comment_lines_counter,
+            code_lines_counter,
+            code_lines_counter as f64 / keys.len() as f64,
+        )
+    }
+
+    fn operation_to_asm(ctx: &mut ZiskAsmContext, opcode: u8) -> String {
+        // Set flags to false, by default
+        ctx.flag_is_always_one = false;
+        ctx.flag_is_always_zero = false;
+        ctx.c.string_value = REG_C.to_string();
+
+        // Declare a return string
+        let mut s = String::new();
+        let zisk_op = ZiskOp::try_from_code(opcode).unwrap();
+        ctx.c.is_constant = false;
+        ctx.c.constant_value = 0;
+        ctx.c.is_saved = false;
+        ctx.c.string_value = REG_C.to_string();
+        match zisk_op {
+            ZiskOp::Flag => {
+                s += &format!("\tmov {}, 0 /* Flag: c = 0 */\n", REG_C);
+                ctx.c.is_constant = true;
+                ctx.c.constant_value = 0;
+                ctx.c.string_value = "0".to_string();
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_one = true;
+            }
+            ZiskOp::CopyB => {
+                assert!(ctx.store_b_in_c);
+                ctx.c.is_constant = ctx.b.is_constant;
+                ctx.c.constant_value = ctx.b.constant_value;
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::SignExtendB => {
+                assert!(ctx.store_b_in_b);
+                s += &format!(
+                    "\tmovsx {}, {} /* SignExtendW: sign extend b(8b) to c(64b) */\n",
+                    REG_C, REG_B_B
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::SignExtendH => {
+                assert!(ctx.store_b_in_b);
+                s += &format!(
+                    "\tmovsx {}, {} /* SignExtendW: sign extend b(16b) to c(64b) */\n",
+                    REG_C, REG_B_H
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::SignExtendW => {
+                assert!(ctx.store_b_in_b);
+                s += &format!(
+                    "\tmovsxd {}, {} /* SignExtendW: sign extend b(32b) to c(64b) */\n",
+                    REG_C, REG_B_W
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Add => {
+                if ctx.a.is_constant && (ctx.a.constant_value == 0) {
+                    assert!(ctx.store_b_in_c);
+                    s += "\t/* Add: c = a(0) + b = b */\n";
+                } else if ctx.b.is_constant && (ctx.b.constant_value == 0) {
+                    assert!(ctx.store_a_in_c);
+                    s += "\t/* Add: c = a + b(0) = a */\n";
+                } else {
+                    assert!(ctx.store_a_in_c);
+                    s += "\t/* Add: c = a */\n";
+                    s += &format!(
+                        "\tadd {}, {} /* Add: c = c + b = a + b */\n",
+                        REG_C, ctx.b.string_value
+                    );
+                }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::AddW => {
+                assert!(ctx.store_b_in_b);
+                // DEBUG: Used only to preserve b value
+                // s +=
+                //     &format!("\tmov {}, {} /* AddW: value = b */\n", REG_VALUE, ctx.b.string_value);
+                if ctx.a.is_constant && (ctx.a.constant_value == 0) {
+                    s += "\t/* AddW: ignoring a since a = 0 */\n";
+                } else {
+                    s += &format!("\tadd {}, {} /* AddW: b += a */\n", REG_B, ctx.a.string_value);
+                }
+                s += "\tcdqe /* AddW: trunk b */\n";
+                s += &format!("\tmov {}, {} /* AddW: c = b */\n", REG_C, REG_B);
+                ctx.c.is_saved = true;
+                // DEBUG: Used only to preserve b value
+                //s += &format!("\tmov {}, {} /* AddW: b = value */\n", REG_B, REG_VALUE);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Sub => {
+                assert!(ctx.store_a_in_c);
+                if ctx.b.is_constant && (ctx.b.constant_value == 0) {
+                    s += "\t/* Sub: ignoring b since b = 0 */\n";
+                } else {
+                    s += &format!(
+                        "\tsub {}, {} /* Sub: c = c - b = a - b */\n",
+                        REG_C, ctx.b.string_value
+                    );
+                }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::SubW => {
+                assert!(ctx.store_a_in_a);
+                // DEBUG: Used only to preserve b value
+                // s += &format!(
+                //     "\tmov {}, {} /* SubW: address = a */\n",
+                //     REG_ADDRESS, ctx.a.string_value
+                // );
+                // s +=
+                //     &format!("\tmov {}, {} /* SubW: value = b */\n", REG_VALUE, ctx.b.string_value);
+                if ctx.b.is_constant && (ctx.b.constant_value == 0) {
+                    s += "\t/* SubW: ignoring b since b = 0 */\n";
+                } else {
+                    s += &format!("\tsub {}, {} /* SubW: a -= b */\n", REG_A, ctx.b.string_value);
+                }
+                s += &format!("\tmov {}, {} /* SubW: b = a = a - b*/\n", REG_B, REG_A);
+                s += "\tcdqe /* SubW: trunk b */\n";
+                s += &format!("\tmov {}, {} /* SubW: c = b */\n", REG_C, REG_B);
+                ctx.c.is_saved = true;
+                // DEBUG: Used only to preserver a,b values
+                // s += &format!("\tmov {}, {} /* SubW: a = address */\n", REG_A, REG_ADDRESS);
+                // s += &format!("\tmov {}, {} /* SubW: b = value */\n", REG_B, REG_VALUE);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Sll => {
+                assert!(ctx.store_a_in_c);
+                if ctx.b.is_constant {
+                    s += &format!(
+                        "\tshl {}, 0x{:x} /* Sll: c = a << b */\n",
+                        REG_C,
+                        ctx.b.constant_value & 0x3f
+                    );
+                } else {
+                    s += &format!("\tmov rcx, {} /* Sll: c = b */\n", REG_B);
+                    s += &format!("\tshl {}, cl /* Sll: c(value) = a << b */\n", REG_C);
+                }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::SllW => {
+                s +=
+                    &format!("\tmov {}, {} /* SllW: value = a */\n", REG_VALUE, ctx.a.string_value);
+                s += &format!("\tmov rcx, {} /* SllW: c = b */\n", ctx.b.string_value);
+                s += &format!("\tshl {}, cl /* SllW: value = a << b */\n", REG_VALUE_W);
+                s += &format!(
+                    "\tmovsxd {}, {} /* SllW: sign extend to quad value -> c */\n",
+                    REG_C, REG_VALUE_W
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Sra => {
+                assert!(ctx.store_a_in_c);
+                s += &format!("\tmov rcx, {} /* Sra: rcx = b */\n", ctx.b.string_value);
+                s += &format!("\tsar {}, cl /* Sra: c = c >> b(cl) */\n", REG_C);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Srl => {
+                assert!(ctx.store_a_in_c);
+                if ctx.b.is_constant {
+                    s += &format!(
+                        "\tshr {}, 0x{:x} /* Srl: c = a >> b */\n",
+                        REG_C,
+                        ctx.b.constant_value & 0x3f
+                    );
+                } else {
+                    s += &format!("\tmov rcx, {} /* Srl: b = value */\n", ctx.b.string_value);
+                    s += &format!("\tshr {}, cl /* Srl: c(value) = a >> b */\n", REG_C);
+                }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::SraW => {
+                if ctx.b.is_constant {
+                    s +=
+                        &format!("\tmov {}, {} /* SraW: c = a */\n", REG_VALUE, ctx.a.string_value);
+                    s += &format!(
+                        "\tsar {}, 0x{:x} /* SraW: c = a >> b */\n",
+                        REG_VALUE_W,
+                        ctx.b.constant_value & 0x3f
+                    );
+                    s += &format!(
+                        "\tmovsxd {}, {} /* SraW: sign extend to quad */\n",
+                        REG_C, REG_VALUE_W
+                    );
+                } else {
+                    s += &format!(
+                        "\tmov {}, {} /* SraW: c(value) = a */\n",
+                        REG_VALUE, ctx.a.string_value
+                    );
+                    s += &format!("\tmov rcx, {} /* SraW: rcx = b */\n", REG_B);
+                    s += &format!("\tsar {}, cl /* SraW: c(value) = a >> b */\n", REG_VALUE_W);
+                    s += &format!(
+                        "\tmovsxd {}, {} /* SraW: sign extend to quad */\n",
+                        REG_C, REG_VALUE_W
+                    );
+                }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::SrlW => {
+                if ctx.b.is_constant {
+                    s +=
+                        &format!("\tmov {}, {} /* SrlW: c = a */\n", REG_VALUE, ctx.a.string_value);
+                    s += &format!(
+                        "\tshr {}, 0x{:x} /* SrlW: c = a >> b */\n",
+                        REG_VALUE_W,
+                        ctx.b.constant_value & 0x3f
+                    );
+                    s += &format!(
+                        "\tmovsxd {}, {} /* SrlW: sign extend to quad */\n",
+                        REG_C, REG_VALUE_W
+                    );
+                } else {
+                    s +=
+                        &format!("\tmov {}, {} /* SrlW: c = a */\n", REG_VALUE, ctx.a.string_value);
+                    s += &format!("\tmov rcx, {} /* SrlW: b = value */\n", ctx.b.string_value);
+                    s += &format!("\tshr {}, cl /* SrlW: c(value) = a >> b */\n", REG_VALUE_W);
+                    s += &format!(
+                        "\tmovsxd {}, {} /* SlrW: sign extend to quad */\n",
+                        REG_C, REG_VALUE_W
+                    );
+                }
+                ctx.c.is_saved = true;
+                //s += &format!("\tmov {}, {} /* SrlW: c = value */\n", REG_C, REG_VALUE);
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Eq => {
+                assert!(ctx.store_a_in_a);
+                s += &format!("\tcmp {}, {} /* Eq: a == b ? */\n", REG_A, ctx.b.string_value);
+                s += &format!("\tje pc_{:x}_equal_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_equal_done\n", ctx.pc);
+                s += &format!("pc_{:x}_equal_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_equal_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+            }
+            ZiskOp::EqW => {
+                // Make sure a is in REG_A to compare it against b (constant, expression or reg)
+                if ctx.a.is_constant {
+                    s += &format!(
+                        "\tmov {}, 0x{:x} /* EqW: a = const_value */\n",
+                        REG_A,
+                        ctx.a.constant_value & 0xffffffff
+                    );
+                }
+                // Compare against b, either as a numeric constant or as a register
+                if ctx.b.is_constant {
+                    s += &format!(
+                        "\tcmp {}, 0x{:x} /* EqW: a == b ? */\n",
+                        REG_A_W,
+                        ctx.b.constant_value & 0xffffffff
+                    );
+                } else {
+                    s += &format!("\tcmp {}, {} /* EqW: a == b ? */\n", REG_A_W, REG_B_W);
+                }
+                s += &format!("\tje pc_{:x}_equal_w_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_equal_w_done\n", ctx.pc);
+                s += &format!("pc_{:x}_equal_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_equal_w_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+            }
+            ZiskOp::Ltu => {
+                assert!(ctx.store_a_in_a);
+                s += &format!("\tcmp {}, {} /* Ltu: a == b ? */\n", REG_A, ctx.b.string_value);
+                s += &format!("\tjb pc_{:x}_ltu_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_ltu_done\n", ctx.pc);
+                s += &format!("pc_{:x}_ltu_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_ltu_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+            }
+            ZiskOp::Lt => {
+                assert!(ctx.store_a_in_a);
+                // If b is constant and too big, move it to its register
+                if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
+                    s += &format!(
+                        "\tmov {}, {} /* Lt: b = const_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
+                    ctx.b.is_constant = false;
+                    ctx.b.string_value = REG_B.to_string();
+                }
+                s += &format!("\tcmp {}, {} /* Lt: a == b ? */\n", REG_A, ctx.b.string_value);
+                s += &format!("\tjl pc_{:x}_lt_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_lt_done\n", ctx.pc);
+                s += &format!("pc_{:x}_lt_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_lt_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+            }
+            ZiskOp::LtuW => {
+                assert!(ctx.store_a_in_a);
+                // Compare against b, either as a numeric constant or as a register
+                if ctx.b.is_constant {
+                    s += &format!(
+                        "\tcmp {}, 0x{:x} /* LtuW: a == b ? */\n",
+                        REG_A_W,
+                        ctx.b.constant_value & 0xffffffff
+                    );
+                } else {
+                    s += &format!("\tcmp {}, {} /* LtuW: a == b ? */\n", REG_A_W, REG_B_W);
+                }
+                s += &format!("\tjb pc_{:x}_ltuw_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_ltuw_done\n", ctx.pc);
+                s += &format!("pc_{:x}_ltuw_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_ltuw_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+            }
+            ZiskOp::LtW => {
+                assert!(ctx.store_a_in_a);
+                // Compare against b, either as a numeric constant or as a register
+                if ctx.b.is_constant {
+                    s += &format!(
+                        "\tcmp {}, 0x{:x} /* LtW: a == b ? */\n",
+                        REG_A_W,
+                        ctx.b.constant_value & 0xffffffff
+                    );
+                } else {
+                    s += &format!("\tcmp {}, {} /* LtW: a == b ? */\n", REG_A_W, REG_B_W);
+                }
+                s += &format!("\tjl pc_{:x}_ltw_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_ltw_done\n", ctx.pc);
+                s += &format!("pc_{:x}_ltw_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_ltw_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+            }
+            ZiskOp::Leu => {
+                assert!(ctx.store_a_in_a);
+                // If b is constant and too big, move it to its register
+                if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
+                    s += &format!(
+                        "\tmov {}, {} /* Leu: b = const_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
+                    ctx.b.is_constant = false;
+                    ctx.b.string_value = REG_B.to_string();
+                }
+                s += &format!("\tcmp {}, {} /* Leu: a == b ? */\n", REG_A, ctx.b.string_value);
+                s += &format!("\tpc_{:x}_jbe leu_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tpc_{:x}_jmp leu_done\n", ctx.pc);
+                s += &format!("pc_{:x}_leu_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_leu_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+            }
+            ZiskOp::Le => {
+                assert!(ctx.store_a_in_a);
+                // If b is constant and too big, move it to its register
+                if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
+                    s += &format!(
+                        "\tmov {}, {} /* Le: b = const_value */\n",
+                        REG_B, ctx.b.string_value
+                    );
+                    ctx.b.is_constant = false;
+                    ctx.b.string_value = REG_B.to_string();
+                }
+                s += &format!("\tcmp {}, {} /* Le: a == b ? */\n", REG_A, ctx.b.string_value);
+                s += &format!("\tjle pc_{:x}_lte_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_lte_done\n", ctx.pc);
+                s += &format!("pc_{:x}_lte_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_lte_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+            }
+            ZiskOp::LeuW => {
+                assert!(ctx.store_a_in_a);
+                // Compare against b, either as a numeric constant or as a register
+                if ctx.b.is_constant {
+                    s += &format!(
+                        "\tcmp {}, 0x{:x} /* LeuW: a == b ? */\n",
+                        REG_A_W,
+                        ctx.b.constant_value & 0xffffffff
+                    );
+                } else {
+                    s += &format!("\tcmp {}, {} /* LeuW: a == b ? */\n", REG_A_W, REG_B_W);
+                }
+                s += &format!("\tjbe pc_{:x}_leuw_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_leuw_done\n", ctx.pc);
+                s += &format!("pc_{:x}_leuw_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_leuw_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+            }
+            ZiskOp::LeW => {
+                assert!(ctx.store_a_in_a);
+                // Compare against b, either as a numeric constant or as a register
+                if ctx.b.is_constant {
+                    s += &format!(
+                        "\tcmp {}, 0x{:x} /* LeW: a == b ? */\n",
+                        REG_A_W,
+                        ctx.b.constant_value & 0xffffffff
+                    );
+                } else {
+                    s += &format!("\tcmp {}, {} /* LeW: a == b ? */\n", REG_A_W, REG_B_W);
+                }
+                s += &format!("\tjle pc_{:x}_lew_true\n", ctx.pc);
+                s += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                s += &format!("\tjmp pc_{:x}_lew_done\n", ctx.pc);
+                s += &format!("pc_{:x}_lew_true:\n", ctx.pc);
+                s += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
+                s += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                s += &format!("pc_{:x}_lew_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+            }
+            ZiskOp::And => {
+                assert!(ctx.store_a_in_c);
+                if ctx.b.is_constant && (ctx.b.constant_value == 0xffffffffffffffff) {
+                    s += "\t/* And: ignoring b since b = f's */\n";
+                } else {
+                    s += &format!(
+                        "\tand {}, {} /* And: c = c AND b = a AND b */\n",
+                        REG_C, ctx.b.string_value
+                    );
+                }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Or => {
+                assert!(ctx.store_a_in_c);
+                if ctx.b.is_constant && (ctx.b.constant_value == 0) {
+                    s += "\t/* Or: ignoring b since b = 0 */\n";
+                } else {
+                    s += &format!(
+                        "\tor {}, {} /* Or: c = c OR b = a OR b */\n",
+                        REG_C, ctx.b.string_value
+                    );
+                }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Xor => {
+                assert!(ctx.store_a_in_c);
+                if ctx.b.is_constant && (ctx.b.constant_value == 0) {
+                    s += "\t/* Xor: ignoring b since b = 0 */\n";
+                } else {
+                    s += &format!(
+                        "\txor {}, {} /* Xor: c = c XOR b = a XOR b */\n",
+                        REG_C, ctx.b.string_value
+                    );
+                }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Mulu => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
+                // RDX:RAX := RAX ∗ r/m64
+                s += &format!("\tmul {} /* Mulu: rax*reg -> rdx:rax */\n", REG_A);
+                s += &format!("\tmov {}, rax /* Mulu: c = result(rax) */\n", REG_C);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Muluh => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
+                // RDX:RAX := RAX ∗ r/m64
+                s += &format!("\tmul {} /* Muluh: rax*reg -> rdx:rax */\n", REG_A);
+                s += &format!("\tmov {}, rdx /* Muluh: c = high result(rdx) */\n", REG_C);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Mulsuh => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
+                // RDX:RAX := RAX ∗ r/m64
+                s += &format!("\tmov rsi, {} /* Mulsuh: rsi=b */\n", REG_B);
+                s += &format!("\tmov rax, {} /* Mulsuh: rax=a */\n", REG_A);
+                s += &format!("\tmov {}, rax /* Mulsuh: value=a */\n", REG_VALUE);
+                s += &format!("\tsar {}, 63 /* Mulsuh: value=a>>63=a_bit_63 */\n", REG_VALUE);
+                s += "\tmov rdx, 0 /* Mulsuh: rdx=0, rdx:rax=a */\n";
+                s += "\tmul rsi /* Mulsuh: rdx:rax=a*b (unsigned) */\n";
+                s += "\tmov rcx, rax /* Mulsuh: rax=a */\n";
+                s += &format!("\tmov rax, {} /* Mulsuh: rax=a_bit_63 */\n", REG_VALUE);
+                s += "\timul rax, rsi /* Mulsuh: rax=rax*b=a_bit_63*b */\n";
+                s += "\tadd rdx, rax /* Mulsuh: rdx=rdx+a_bit_63*b */\n";
+                s += &format!("\tmov {}, rdx /* Mulsuh: c=high result(rdx) */\n", REG_C);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Mul => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
+                // RDX:RAX := RAX ∗ r/m64
+                s += &format!("\timul {} /* Mul: rax*reg -> rdx:rax */\n", REG_A);
+                s += &format!("\tmov {}, rax /* Mul: c = result(rax) */\n", REG_C);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Mulh => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
+                // RDX:RAX := RAX ∗ r/m64
+                s += &format!("\timul {} /* Mulh: rax*reg -> rdx:rax */\n", REG_A);
+                s += &format!("\tmov {}, rdx /* Mulh: c = high result(rdx) */\n", REG_C);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::MulW => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
+                // RDX:RAX := RAX ∗ r/m64
+                s += &format!("\tmul {} /* MulW: rax*reg -> rdx:rax */\n", REG_A_W);
+                s += &format!("\tmovsxd {}, {} /* MulW: sign extend to quad */\n", REG_C, REG_B_W);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Divu => {
+                assert!(ctx.store_b_in_b);
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
+                // Remainder
+                // If b==0 return 0xffffffffffffffff
+                s += &format!("\tcmp {}, 0 /* Divu: if b == 0 return f's */\n", REG_B);
+                s += &format!(
+                    "\tjne pc_{:x}_divu_b_is_not_zero /* Divu: if b is not zero, divide */\n",
+                    ctx.pc
+                );
+                s +=
+                    &format!("\tmov {}, 0xffffffffffffffff /* Divu: set result to f's */\n", REG_C);
+                s += &format!("\tje pc_{:x}_divu_done\n", ctx.pc);
+                s += &format!("pc_{:x}_divu_b_is_not_zero:\n", ctx.pc);
+
+                s += &format!("\tmov {}, {} /* Divu: value = b backup */\n", REG_VALUE, REG_B);
+                s += "\tmov rdx, 0 /* Divu: rdx = 0 */\n";
+                s += &format!("\tmov rax, {} /* Divu: rax = a */\n", ctx.a.string_value);
+                s += &format!(
+                    "\tdiv {} /* Divu: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
+                    REG_VALUE
+                );
+                s += &format!("\tmov {}, rax /* Divu: c = quotient(rax) */\n", REG_C);
+                s += &format!("pc_{:x}_divu_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Remu => {
+                assert!(ctx.store_b_in_b);
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
+                // Remainder
+                // If b==0 return a
+                s += &format!("\tcmp {}, 0 /* Remu: if b == 0 return a */\n", REG_B);
+                s += &format!(
+                    "\tjne pc_{:x}_remu_b_is_not_zero /* Remu: if b is not zero, divide */\n",
+                    ctx.pc
+                );
+                s += &format!(
+                    "\tmov {}, {} /* Remu: set result to f's */\n",
+                    REG_C, ctx.a.string_value
+                );
+                s += &format!("\tje pc_{:x}_remu_done\n", ctx.pc);
+                s += &format!("pc_{:x}_remu_b_is_not_zero:\n", ctx.pc);
+
+                s += &format!("\tmov {}, {} /* Remu: value = b backup */\n", REG_VALUE, REG_B);
+                s += "\tmov rdx, 0 /* Remu: rdx = 0 */\n";
+                s += &format!("\tmov rax, {} /* Remu: rax = a */\n", ctx.a.string_value);
+                s += &format!(
+                    "\tdiv {} /* Remu: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
+                    REG_VALUE
+                );
+                s += &format!("\tmov {}, rdx /* Remu: c = remainder(rdx) */\n", REG_C);
+                s += &format!("pc_{:x}_remu_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+
+                // s += &format!("\tmov {}, 0 /* Remu: c = remainder(rdx) */\n", REG_ADDRESS);
+                // s += &format!(
+                //     "\tmov {}, [{}] /* Remu: c = remainder(rdx) */\n",
+                //     REG_ADDRESS, REG_ADDRESS
+                // );
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Div => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
+                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+                // If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should
+                // be -MIN_I64, which cannot be represented with 64 bits (overflow)
+                // and it returns c=a.
+
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
+                // Remainder
+
+                // Check divide by zero:
+                // If b==0 return 0xffffffffffffffff
+                s += &format!("\tcmp {}, 0 /* Div: if b == 0 return f's */\n", REG_B);
+                s += &format!(
+                    "\tjne pc_{:x}_div_check_underflow /* Div: if b is not zero, divide */\n",
+                    ctx.pc
+                );
+                s += &format!("\tmov {}, 0xffffffffffffffff /* Div: set result to f's */\n", REG_C);
+
+                s += &format!("\tje pc_{:x}_div_done\n", ctx.pc);
+
+                // Check underflow:
+                // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a
+                s += &format!("pc_{:x}_div_check_underflow:\n", ctx.pc);
+                s += &format!(
+                    "\tmov {}, 0x8000000000000000 /* Div: value == 0x8000000000000000 */\n",
+                    REG_VALUE
+                );
+                s += &format!(
+                    "\tcmp {}, {} /* Div: if a == value(0x8000000000000000), then check b */\n",
+                    REG_A, REG_VALUE
+                );
+                s += &format!(
+                    "\tjne pc_{:x}_div_divide /* Div: if a is not 0x8000000000000000, then divide */\n",
+                    ctx.pc
+                );
+                s += &format!(
+                    "\tmov {}, 0xffffffffffffffff /* Div: value == 0xffffffffffffffff */\n",
+                    REG_VALUE
+                );
+                s += &format!(
+                    "\tcmp {}, {} /* Div: if b == 0xffffffffffffffff, then return a */\n",
+                    REG_B, REG_VALUE
+                );
+                s += &format!(
+                    "\tjne pc_{:x}_div_divide /* Div: if b is not 0xffffffffffffffff, divide */\n",
+                    ctx.pc
+                );
+                s += &format!("\tmov {}, {} /* Div: set result to a */\n", REG_C, REG_A);
+
+                s += &format!("\tje pc_{:x}_div_done\n", ctx.pc);
+
+                // Divide
+                s += &format!("pc_{:x}_div_divide:\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* Div: value = b backup */\n", REG_VALUE, REG_B);
+                s += &format!("\tmov rax, {} /* Div: rax = a */\n", REG_A);
+                s += "\tbt rax, 63 /* Div: is a negative? */\n";
+                s += &format!("\tjnc pc_{:x}_a_is_positive\n", ctx.pc);
+                s += "\tmov rdx, 0xffffffffffffffff /* Div: a is negative, rdx = f's */\n";
+                s += &format!("\tjmp pc_{:x}_a_done\n", ctx.pc);
+                s += &format!("pc_{:x}_a_is_positive:\n", ctx.pc);
+                s += "\tmov rdx, 0 /* Div: a is positive, rdx = 0 */\n";
+                s += &format!("pc_{:x}_a_done:\n", ctx.pc);
+
+                s += &format!(
+                    "\tidiv {} /* Div: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
+                    REG_VALUE
+                );
+                s += &format!("\tmov {}, rax /* Div: c = quotient(rax) */\n", REG_C);
+                s += &format!("pc_{:x}_div_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Rem => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
+                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+                // If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should
+                // be -MIN_I64, which cannot be represented with 64 bits (overflow)
+                // and it returns c=a.
+
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
+                // Remainder
+
+                // Check divide by zero:
+                // If b==0 return 0xffffffffffffffff
+                s += &format!("\tcmp {}, 0 /* Rem: if b == 0 return f's */\n", REG_B);
+                s += &format!(
+                    "\tjne pc_{:x}_rem_check_underflow /* Rem: if b is not zero, divide */\n",
+                    ctx.pc
+                );
+                s += &format!("\tmov {}, {} /* Rem: set result to a */\n", REG_C, REG_A);
+
+                s += &format!("\tje pc_{:x}_rem_done\n", ctx.pc);
+
+                // Check underflow:
+                // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a
+                s += &format!("pc_{:x}_rem_check_underflow:\n", ctx.pc);
+                s += &format!(
+                    "\tmov {}, 0x8000000000000000 /* Rem: value == 0x8000000000000000 */\n",
+                    REG_VALUE
+                );
+                s += &format!(
+                    "\tcmp {}, {} /* Rem: if a == value(0x8000000000000000), then check b */\n",
+                    REG_A, REG_VALUE
+                );
+                s += &format!(
+                    "\tjne pc_{:x}_rem_divide /* Rem: if a is not 0x8000000000000000, then divide */\n",
+                    ctx.pc
+                );
+                s += &format!(
+                    "\tmov {}, 0xffffffffffffffff /* Rem: value == 0xffffffffffffffff */\n",
+                    REG_VALUE
+                );
+                s += &format!(
+                    "\tcmp {}, {} /* Rem: if b == 0xffffffffffffffff, then return a */\n",
+                    REG_B, REG_VALUE
+                );
+                s += &format!(
+                    "\tjne pc_{:x}_rem_divide /* Rem: if b is not 0xffffffffffffffff, divide */\n",
+                    ctx.pc
+                );
+                s += &format!("\tmov {}, 0 /* Rem: set result to 0 */\n", REG_C);
+
+                s += &format!("\tje pc_{:x}_rem_done\n", ctx.pc);
+
+                // Divide
+                s += &format!("pc_{:x}_rem_divide:\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* Rem: value = b backup */\n", REG_VALUE, REG_B);
+                s += &format!("\tmov rax, {} /* Rem: rax = a */\n", REG_A);
+                s += "\tbt rax, 63 /* Rem: is a negative? */\n";
+                s += &format!("\tjnc pc_{:x}_a_is_positive\n", ctx.pc);
+                s += "\tmov rdx, 0xffffffffffffffff /* Rem: a is negative, rdx = f's */\n";
+                s += &format!("\tjmp pc_{:x}_a_done\n", ctx.pc);
+                s += &format!("pc_{:x}_a_is_positive:\n", ctx.pc);
+                s += "\tmov rdx, 0 /* Rem: a is positive, rdx = 0 */\n";
+                s += &format!("pc_{:x}_a_done:\n", ctx.pc);
+
+                s += &format!(
+                    "\tidiv {} /* Rem: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
+                    REG_VALUE
+                );
+                s += &format!("\tmov {}, rdx /* Rem: c = remainder(rdx) */\n", REG_C);
+                s += &format!("pc_{:x}_rem_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::DivuW => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
+                s += &format!("\tcmp {}, 0 /* DivuW: if b==0 then return all f's */\n", REG_B_W);
+                s += &format!(
+                    "\tjne pc_{:x}_divuw_b_is_not_zero /* DivuW: if b is not zero, divide */\n",
+                    ctx.pc
+                );
+                s += &format!(
+                    "\tmov {}, 0xffffffffffffffff /* DivuW: set result to f's */\n",
+                    REG_C
+                );
+                s += &format!("\tjmp pc_{:x}_divuw_done\n", ctx.pc);
+                s += &format!("pc_{:x}_divuw_b_is_not_zero:\n", ctx.pc);
+
+                s += &format!("\tmov {}, {} /* DivuW: value = b backup */\n", REG_VALUE_W, REG_B_W);
+                s += "\tmov rdx, 0 /* DivuW: rdx = 0 */\n";
+                s += &format!("\tmov eax, {} /* DivuW: rax = a */\n", REG_A_W);
+                s += &format!(
+                    "\tdiv {} /* DivuW: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
+                    REG_VALUE_W
+                );
+                s += &format!("\tmovsxd {}, eax /* DivuW: sign extend 32 to 64 bits */\n", REG_C);
+                s += &format!("pc_{:x}_divuw_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::RemuW => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
+                s += &format!("\tcmp {}, 0 /* RemuW: if b==0 then return a */\n", REG_B_W);
+                s += &format!(
+                    "\tjne pc_{:x}_remuw_b_is_not_zero /* RemuW: if b is not zero, divide */\n",
+                    ctx.pc
+                );
+                s += &format!(
+                    "\tmovsxd {}, {} /* RemuW: return a, sign extend 32 to 64 bits */\n",
+                    REG_C, REG_A_W
+                );
+                s += &format!("\tjmp pc_{:x}_remuw_done\n", ctx.pc);
+                s += &format!("pc_{:x}_remuw_b_is_not_zero:\n", ctx.pc);
+
+                s += &format!("\tmov {}, {} /* RemuW: value = b backup */\n", REG_VALUE_W, REG_B_W);
+                s += "\tmov rdx, 0 /* RemuW: rdx = 0 */\n";
+                s += &format!("\tmov eax, {} /* RemuW: rax = a */\n", REG_A_W);
+                s += &format!(
+                    "\tdiv {} /* RemuW: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
+                    REG_VALUE_W
+                );
+                s += &format!("\tmovsxd {}, edx /* RemuW: sign extend 32 to 64 bits */\n", REG_C);
+                s += &format!("pc_{:x}_remuw_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::DivW => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
+                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
+                // Remainder
+
+                // Check divide by zero:
+                // If b==0 return 0xffffffffffffffff
+                s += &format!("\tcmp {}, 0 /* DivW: if b == 0 return f's */\n", REG_B_W);
+                s += &format!(
+                    "\tjne pc_{:x}_divw_divide /* DivW: if b is not zero, divide */\n",
+                    ctx.pc
+                );
+                s +=
+                    &format!("\tmov {}, 0xffffffffffffffff /* DivW: set result to f's */\n", REG_C);
+
+                s += &format!("\tje pc_{:x}_divw_done\n", ctx.pc);
+
+                // Divide
+                s += &format!("pc_{:x}_divw_divide:\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* DivW: value = b backup */\n", REG_VALUE_W, REG_B_W);
+                s += &format!("\tmov eax, {} /* DivW: rax = a */\n", REG_A_W);
+                s += "\tcdq /* DivW: EDX:EAX := sign-extend of EAX */\n";
+                s += &format!(
+                    "\tidiv {} /* DivW: edx:eax / value(b backup) -> eax (edx remainder)*/\n",
+                    REG_VALUE_W
+                );
+                s += &format!("\tmovsx {}, eax /* DivW: c = quotient(rax) */\n", REG_C);
+                s += &format!("pc_{:x}_divw_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::RemW => {
+                assert!(ctx.store_a_in_a);
+                assert!(ctx.store_b_in_b);
+                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+                // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
+                // Remainder.
+
+                // Check divide by zero:
+                // If b==0 return a
+                s += &format!("\tcmp {}, 0 /* RemW: if b == 0 return f's */\n", REG_B_W);
+                s += &format!(
+                    "\tjne pc_{:x}_remw_divide /* RemW: if b is not zero, divide */\n",
+                    ctx.pc
+                );
+                s += &format!("\tmovsx {}, {} /* RemW: set result to a */\n", REG_C, REG_A_W);
+
+                s += &format!("\tje pc_{:x}_remw_done\n", ctx.pc);
+
+                // Divide
+                s += &format!("pc_{:x}_remw_divide:\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* RemW: value = b backup */\n", REG_VALUE_W, REG_B_W);
+                s += &format!("\tmov eax, {} /* RemW: rax = a */\n", REG_A_W);
+                s += "\tcdq /* RemW: EDX:EAX := sign-extend of EAX */\n";
+                s += &format!(
+                    "\tidiv {} /* RemW: edx:eax / value(b backup) -> eax (edx remainder)*/\n",
+                    REG_VALUE_W
+                );
+                s += &format!("\tmovsx {}, edx /* RemW: c = remainder(edx) */\n", REG_C);
+                s += &format!("pc_{:x}_remw_done:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Minu => {
+                assert!(ctx.store_a_in_c);
+                s += &format!(
+                    "\tcmp {}, {} /* Minu: compare a and b */\n",
+                    REG_C, ctx.b.string_value
+                );
+                s += &format!("\tjb pc_{:x}_minu_a_is_below_b\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = b */\n", REG_C, ctx.b.string_value);
+                s += &format!("pc_{:x}_minu_a_is_below_b:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Min => {
+                assert!(ctx.store_a_in_c);
+                s += &format!(
+                    "\tcmp {}, {} /* Min: compare a and b */\n",
+                    REG_C, ctx.b.string_value
+                );
+                s += &format!("\tjl pc_{:x}_min_a_is_below_b\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* c = b */\n", REG_C, ctx.b.string_value);
+                s += &format!("pc_{:x}_min_a_is_below_b:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::MinuW => {
+                assert!(ctx.store_a_in_c);
+                assert!(ctx.store_b_in_b);
+                s += &format!("\tcmp {}, {} /* MinuW: compare a and b */\n", REG_C_W, REG_B_W);
+                s += &format!("\tjb pc_{:x}_minuw_a_is_below_b\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* MinuW: c = b */\n", REG_C, REG_B);
+                s += &format!("pc_{:x}_minuw_a_is_below_b:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::MinW => {
+                assert!(ctx.store_a_in_c);
+                assert!(ctx.store_b_in_b);
+                s += &format!("\tcmp {}, {} /* MinW: compare a and b */\n", REG_C_W, REG_B_W);
+                s += &format!("\tjl pc_{:x}_minw_a_is_below_b\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* MinW: c = b */\n", REG_C, REG_B);
+                s += &format!("pc_{:x}_minw_a_is_below_b:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Maxu => {
+                assert!(ctx.store_a_in_c);
+                s += &format!(
+                    "\tcmp {}, {} /* Maxu: compare a and b */\n",
+                    REG_C, ctx.b.string_value
+                );
+                s += &format!("\tja pc_{:x}_maxu_a_is_above_b\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* Maxu: c = b */\n", REG_C, ctx.b.string_value);
+                s += &format!("pc_{:x}_maxu_a_is_above_b:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Max => {
+                assert!(ctx.store_a_in_c);
+                s += &format!(
+                    "\tcmp {}, {} /* Max: compare a and b */\n",
+                    REG_C, ctx.b.string_value
+                );
+                s += &format!("\tjg pc_{:x}_max_a_is_above_b\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* Max: c = b */\n", REG_C, ctx.b.string_value);
+                s += &format!("pc_{:x}_max_a_is_above_b:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::MaxuW => {
+                assert!(ctx.store_a_in_c);
+                assert!(ctx.store_b_in_b);
+                s += &format!("\tcmp {}, {} /* MaxuW: compare a and b */\n", REG_C_W, REG_B_W);
+                s += &format!("\tja pc_{:x}_maxuw_a_is_above_b\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* MaxuW: c = b */\n", REG_C, REG_B);
+                s += &format!("pc_{:x}_maxuw_a_is_above_b:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::MaxW => {
+                assert!(ctx.store_a_in_c);
+                assert!(ctx.store_b_in_b);
+                s += &format!("\tcmp {}, {} /* MaxW: compare a and b */\n", REG_C_W, REG_B_W);
+                s += &format!("\tjg pc_{:x}_maxw_a_is_above_b\n", ctx.pc);
+                s += &format!("\tmov {}, {} /* MaxW: c = b */\n", REG_C, REG_B);
+                s += &format!("pc_{:x}_maxw_a_is_above_b:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Keccak => {
+                s += "\tmov rdi, qword ptr [reg_10] /* rdi = A0 */\n";
+
+                // Copy read data into mem_reads_address and advance it
+                if ctx.generate_traces {
+                    s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
+                    for k in 0..25 {
+                        s += &format!(
+                            "\tmov {}, [{} + {}] /* value = mem[keccak_address[{}]] */\n",
+                            REG_VALUE,
+                            REG_ADDRESS,
+                            k * 8,
+                            k
+                        );
+                        s += &format!(
+                            "\tmov [{} + {}*8 + {}], {} /* mem_reads[{}] = value */\n",
+                            REG_MEM_READS_ADDRESS,
+                            REG_MEM_READS_SIZE,
+                            k * 8,
+                            REG_VALUE,
+                            k
+                        );
+                    }
+
+                    // Increment chunk.steps.mem_reads_size in 25 units
+                    s += &format!("\tadd {}, 25 /* mem_reads_size+=25 */\n", REG_MEM_READS_SIZE);
+                }
+                // Call the keccak function
+                s += "\tcall _opcode_keccak\n";
+
+                // Set result
+                s += &format!("\tmov {}, 0 /* Keccak: c=0 */\n", REG_C);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::PubOut => {
+                assert!(ctx.store_b_in_c);
+                ctx.c.is_constant = ctx.b.is_constant;
+                ctx.c.constant_value = ctx.b.constant_value;
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+        }
+        s
+    }
+
+    fn set_pc(ctx: &mut ZiskAsmContext, instruction: &ZiskInst, s: &mut String, id: &str) {
+        ctx.jump_to_dynamic_pc = false;
+        ctx.jump_to_static_pc = String::new();
+        if instruction.set_pc {
+            *s += "\t/* set pc */\n";
+            if ctx.c.is_constant {
+                let new_pc = (ctx.c.constant_value as i64 + instruction.jmp_offset1) as u64;
+                *s += &format!(
+                    "\tmov {}, 0x{:x} /* pc = c(const) + i.jmp_offset1 */\n",
+                    REG_PC, new_pc
+                );
+                ctx.jump_to_static_pc = format!("\tjmp pc_{:x} /* jump to static pc */\n", new_pc);
+            } else {
+                *s += &format!("\tmov {}, {} /* pc = c */\n", REG_PC, ctx.c.string_value);
+                if instruction.jmp_offset1 != 0 {
+                    *s += &format!(
+                        "\tadd {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
+                        REG_PC, instruction.jmp_offset1
+                    );
+                }
+                ctx.jump_to_dynamic_pc = true;
+            }
+        } else if ctx.flag_is_always_zero {
+            if ctx.pc as i64 + instruction.jmp_offset2 != ctx.next_pc as i64 {
+                *s += &format!(
+                    "\tmov {}, 0x{:x} /* flag=0: pc += i.jmp_offset2 */\n",
+                    REG_PC,
+                    (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                );
+                // *s += &format!(
+                //     "\tadd {}, 0x{:x} /* set_pc 3: pc += i.jmp_offset2 */\n",
+                //     REG_PC, instruction.jmp_offset2
+                // );
+                ctx.jump_to_dynamic_pc = true;
+            } else if id == "z" {
+                *s += &format!("\tmov {}, 0x{:x} /* flag=0: pc += 4 */\n", REG_PC, ctx.next_pc);
+            }
+        } else if ctx.flag_is_always_one {
+            if ctx.pc as i64 + instruction.jmp_offset1 != ctx.next_pc as i64 {
+                *s += &format!(
+                    "\tmov {}, 0x{:x} /* flag=1: pc += i.jmp_offset1 */\n",
+                    REG_PC,
+                    (ctx.pc as i64 + instruction.jmp_offset1) as u64
+                );
+                // *s += &format!(
+                //     "\tadd {}, 0x{:x} /* set_pc 4: pc += i.jmp_offset1 */\n",
+                //     REG_PC, instruction.jmp_offset1
+                // );
+                ctx.jump_to_dynamic_pc = true;
+            } else if id == "z" {
+                *s += &format!("\tmov {}, 0x{:x} /* flag=1: pc += 4 */\n", REG_PC, ctx.next_pc);
+            }
+        } else {
+            *s += "\t/* pc = f(flag) */\n";
+            // Calculate the new pc
+            *s += &format!("\tcmp {}, 1 /* flag == 1 ? */\n", REG_FLAG);
+            *s += &format!("\tjne pc_{:x}_{}_flag_false\n", ctx.pc, id);
+            *s += &format!(
+                "\tmov {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
+                REG_PC,
+                (ctx.pc as i64 + instruction.jmp_offset1) as u64
+            );
+            *s += &format!("\tjmp pc_{:x}_{}_flag_done\n", ctx.pc, id);
+            *s += &format!("pc_{:x}_{}_flag_false:\n", ctx.pc, id);
+            *s += &format!(
+                "\tmov {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
+                REG_PC,
+                (ctx.pc as i64 + instruction.jmp_offset2) as u64
+            );
+            *s += &format!("pc_{:x}_{}_flag_done:\n", ctx.pc, id);
+            // *s += &format!(
+            //     "\tadd {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
+            //     REG_PC, instruction.jmp_offset2
+            // );
+            ctx.jump_to_dynamic_pc = true;
+        }
+    }
+
+    fn a_src_mem_aligned(ctx: &mut ZiskAsmContext, s: &mut String) {
+        // Copy read data into mem_reads_address and increment it
+        *s += &format!(
+            "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = a */\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            if ctx.store_a_in_c { REG_C } else { REG_A }
+        );
+
+        // Increment chunk.steps.mem_reads_size
+        *s += &format!("\tinc {} /* mem_reads_size++ */\n", REG_MEM_READS_SIZE);
+    }
+
+    fn a_src_mem_not_aligned(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        // Calculate previous aligned address
+        *s += &format!(
+            "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
+            REG_ADDRESS
+        );
+
+        // Store previous aligned address value in mem_reads
+        *s += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_ADDRESS);
+        *s += &format!(
+            "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_a */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+        );
+
+        // Store next aligned address value in mem_reads
+        *s += &format!(
+            "\tmov {}, [{} + 8] /* value = mem[prev_address] */\n",
+            REG_VALUE, REG_ADDRESS
+        );
+        *s += &format!(
+            "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_a */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+        );
+
+        // Increment chunk.steps.mem_reads_size twice
+        *s += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
+    }
+
+    fn b_src_mem_aligned(ctx: &mut ZiskAsmContext, s: &mut String) {
+        // Copy read data into mem_reads_address and increment it
+        *s += &format!(
+            "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = b */\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            if ctx.store_b_in_c { REG_C } else { REG_B }
+        );
+
+        // Increment chunk.steps.mem_reads_size
+        *s += &format!("\tinc {} /* mem_reads_size++ */\n", REG_MEM_READS_SIZE);
+    }
+
+    fn b_src_mem_not_aligned(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        // Calculate previous aligned address
+        *s += &format!(
+            "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
+            REG_ADDRESS
+        );
+
+        // Store previous aligned address value in mem_reads, and advance address
+        *s += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_ADDRESS);
+        *s += &format!(
+            "\tmov [{} + {}*8], {} /* mem_address[@+size*8] = prev_b */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+        );
+
+        // Store next aligned address value in mem_reads, and advance address
+        *s += &format!(
+            "\tmov {}, [{} + 8] /* value = mem[prev_address] */\n",
+            REG_VALUE, REG_ADDRESS
+        );
+        *s += &format!(
+            "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_b */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+        );
+
+        // Increment chunk.steps.mem_reads_size twice
+        *s += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
+    }
+
+    fn c_store_mem_not_aligned(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        // Get a copy of the address to preserve it
+        *s += &format!("\tmov {}, {} /* aux = address */\n", REG_AUX, REG_ADDRESS);
+
+        // Calculate previous aligned address
+        *s += &format!(
+            "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
+            REG_AUX
+        );
+
+        // Store previous aligned address value in mem_reads, and advance address
+        *s += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_AUX);
+        *s += &format!(
+            "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+        );
+
+        // Store next aligned address value in mem_reads, and advance address
+        *s += &format!("\tmov {}, [{} + 8] /* value = mem[next_address] */\n", REG_VALUE, REG_AUX);
+        *s += &format!(
+            "\tmov [{} + {}*8 +  8], {} /* mem_reads[@+size*8+8] = next_c */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+        );
+
+        // Increment chunk.steps.mem_reads_size twice
+        *s += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
+    }
+
+    fn c_store_ind_8_not_aligned(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        // Get a copy of the address to preserve it
+        *s += &format!("\tmov {}, {} /* aux = address */\n", REG_AUX, REG_ADDRESS);
+
+        // Calculate previous aligned address
+        *s += &format!(
+            "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
+            REG_AUX
+        );
+
+        // Store previous aligned address value in mem_reads, and advance address
+        *s += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_AUX);
+        *s += &format!(
+            "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+        );
+
+        // Store next aligned address value in mem_reads, and advance it
+        *s += &format!("\tmov {}, [{} + 8] /* value = mem[next_address] */\n", REG_VALUE, REG_AUX);
+        *s += &format!(
+            "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_c */\n",
+            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+        );
+
+        // Increment chunk.steps.mem_reads_size twice
+        *s += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
+    }
+
+    fn chunk_start(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        *s += "\t/* Increment number of chunks (first position in trace) */\n";
+        *s += &format!("\tmov {}, {} /* address = trace_addr */\n", REG_ADDRESS, MEM_TRACE_ADDRESS);
+        *s += &format!("\tmov {}, [{}] /* value = trace_addr */\n", REG_VALUE, REG_ADDRESS);
+        *s += &format!("\tinc {} /* inc value */\n", REG_VALUE);
+        *s += &format!(
+            "\tmov [{}], {} /* trace_addr = value (trace_addr++) */\n",
+            REG_ADDRESS, REG_VALUE
+        );
+
+        *s += "\t/* Write chunk start data */\n";
+
+        // Write chunk.start.pc
+        *s += &format!(
+            "\tmov {}, {} /* address = chunk_address */\n",
+            REG_ADDRESS, MEM_CHUNK_ADDRESS
+        );
+        *s += &format!("\tmov [{}], {} /* chunk.start.pc = pc */\n", REG_ADDRESS, REG_PC);
+
+        // Write chunk.start.sp
+        *s += &format!("\tmov {}, {} /* value = sp */\n", REG_VALUE, MEM_SP);
+        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+        *s +=
+            &format!("\tmov [{}], {} /* chunk.start.sp = value = sp */\n", REG_ADDRESS, REG_VALUE);
+
+        // Write chunk.start.c
+        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+        *s += &format!("\tmov [{}], {} /* chunk.start.c = c */\n", REG_ADDRESS, REG_C);
+
+        // Write chunk.start.step
+        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+        *s += &format!(
+            "\tmov [{}], {} /* chunk.start.step = value = step */\n",
+            REG_ADDRESS, REG_VALUE
+        );
+        *s += &format!(
+            "\tmov [{}], {} /* chunk_start_step = value = step */\n",
+            MEM_CHUNK_START_STEP, REG_VALUE
+        );
+
+        // Write chunk.start.reg
+        for i in 1..34 {
+            *s += &format!("\tmov {}, qword ptr [reg_{}] /* value = reg_{} */\n", REG_VALUE, i, i);
+            *s += &format!(
+                "\tmov [{} + {}], {} /* chunk.start.reg[{}] = value */\n",
+                REG_ADDRESS,
+                i * 8,
+                REG_VALUE,
+                i
+            );
+        }
+        *s += &format!("\tadd {}, 33*8 /* address += 33*8 */\n", REG_ADDRESS);
+
+        *s += "\t/* Reset step_down to chunk_size */\n";
+        *s += &format!("\tmov {}, chunk_size /* value = chunk_size */\n", REG_VALUE);
+        *s += &format!("\tmov {}, {} /* step_down = chunk_size */\n", MEM_STEP_DOWN, REG_VALUE);
+
+        *s += "\t/* Write mem reads size */\n";
+        *s += &format!("\tmov {}, {} /* aux = chunk_size */\n", REG_AUX, MEM_CHUNK_ADDRESS);
+        *s += &format!("\tadd {}, 40*8 /* aux += 40*8 */\n", REG_AUX);
+        *s += &format!("\tadd {}, 8 /* aux += 8 */\n", REG_AUX);
+        *s += &format!(
+            "\tmov {}, {} /* mem_reads_address = aux */\n",
+            REG_MEM_READS_ADDRESS, REG_AUX
+        );
+        *s += "\t/* Reset mem_reads size */\n";
+        *s += &format!("\tmov {}, 0 /* mem_reads_size = 0 */\n", REG_MEM_READS_SIZE);
+    }
+
+    fn chunk_end(_ctx: &mut ZiskAsmContext, s: &mut String, id: &str) {
+        *s += "\t/* Update step from step_down */\n";
+        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+        *s += &format!("\tadd {}, chunk_size /* value += chunk_size */\n", REG_VALUE);
+        *s += &format!("\tsub {}, {} /* value -= step_down */\n", REG_VALUE, MEM_STEP_DOWN);
+        *s += &format!("\tmov {}, {} /* step = value */\n", MEM_STEP, REG_VALUE);
+
+        *s += "\t/* Write chunk last data */\n";
+
+        // Search position of chunk.last
+        *s += &format!(
+            "\tmov {}, {} /* address = chunk_address */\n",
+            REG_ADDRESS, MEM_CHUNK_ADDRESS
+        );
+        *s += &format!("\tadd {}, 37*8 /* address = chunk_address + 37*8 */\n", REG_ADDRESS);
+
+        // Write chunk.last.c
+        *s += &format!("\tmov [{}], {} /* chunk.last.c = c */\n", REG_ADDRESS, REG_C);
+
+        *s += "\t/* Write chunk end data */\n";
+        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+        *s += &format!("\tmov {}, {} /* value = end */\n", REG_VALUE, MEM_END);
+        *s += &format!("\tmov [{}], {} /* chunk.end = value = end */\n", REG_ADDRESS, REG_VALUE);
+
+        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS); // steps
+        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+        *s += &format!("\tsub {}, {} /* value = step_inc */\n", REG_VALUE, MEM_CHUNK_START_STEP);
+        *s += &format!(
+            "\tmov [{}], {} /* chunk.steps.step = value = step_inc */\n",
+            REG_ADDRESS, REG_VALUE
+        );
+
+        // Write mem_reads_size
+        *s += &format!("\tadd {}, 8 /* address += 8 = mem_reads_size */\n", REG_ADDRESS); // mem_reads_size
+
+        *s += &format!(
+            "\tmov [{}], {} /* mem_reads_size = size */\n",
+            REG_ADDRESS, REG_MEM_READS_SIZE
+        );
+
+        // Get value = mem_reads_size*8, i.e. memory size till next chunk
+        *s +=
+            &format!("\tmov {}, {} /* value = mem_reads_size */\n", REG_VALUE, REG_MEM_READS_SIZE);
+        *s += &format!("\tsal {}, 3 /* value <<= 3 */\n", REG_VALUE);
+
+        // Update chunk address
+        *s += &format!("\tadd {}, 8 /* address += 8 = new_chunk_address */\n", REG_ADDRESS); // new chunk
+        *s += &format!(
+            "\tadd {}, {} /* address += value = mem_reads_size*8 */\n",
+            REG_ADDRESS, REG_VALUE
+        ); // new chunk
+        *s += &format!(
+            "\tmov {}, {} /* chunk_address = new_chunk_address */\n",
+            MEM_CHUNK_ADDRESS, REG_ADDRESS
+        );
+
+        *s += &format!(
+            "\tmov {}, qword ptr [trace_address_threshold] /* value = trace_address_threshold */\n",
+            REG_VALUE
+        );
+        *s += &format!(
+            "\tcmp {}, {} /* chunk_address ? trace_address_threshold */\n",
+            REG_ADDRESS, REG_VALUE
+        );
+        *s += &format!("\tjb chunk_{}_address_below_threshold\n", id);
+        *s += "\tcall _realloc_trace\n";
+        *s += &format!("chunk_{}_address_below_threshold:\n", id);
     }
 }

@@ -21,11 +21,12 @@ riscv = { path = "../riscv" }
 zisk-pil = { path = "../pil" }
 data-bus = { path = "../data-bus" }
 rayon = { workspace = true }
+zisk-common = { path = "../common" }
 sm-mem = { path = "../state-machines/mem" }
 
 p3-field = { workspace=true }
 clap = { version = "4.5.9", features = ["derive", "env"] }
-sysinfo = "0.33"
+sysinfo = { workspace = true }
 
 [build-dependencies]
 vergen = { version = "8", default-features = false, features = [

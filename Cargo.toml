@@ -26,7 +26,10 @@ members = [
     "ziskos/entrypoint",
     "precompiles/zisk_precompiles",
     "precompiles/common",
-    "precompiles/keccakf"
+    "precompiles/keccakf",
+    "emulator-asm/asm-runner",
+    "ziskclib",
+    "common",
 ]
 
 resolver = "2"
@@ -59,3 +62,4 @@ rayon = "1.10"
 num-bigint = "0.4"
 itertools = "0.14"
 colored = "3"
+sysinfo = "0.33"
