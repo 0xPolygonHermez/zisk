@@ -2797,7 +2797,7 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Keccak => {
-                s += &format!("\tmov rdi, qword ptr [reg_10] /* rdi = A0 */\n");
+                s += "\tmov rdi, qword ptr [reg_10] /* rdi = A0 */\n";
 
                 // Copy read data into mem_reads_address and advance it
                 if ctx.generate_traces {
