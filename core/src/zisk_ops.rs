@@ -7,7 +7,7 @@
 //!   `InstContext` (instruction context) as input/output parameter, containg a, b, c and flag
 //!   attributes.
 
-use crate::{InstContext, Mem, ZiskOperationType, ZiskRequiredOperation, M64};
+use crate::{InstContext, Mem, ZiskOperationType, ZiskRequiredOperation, M64, REG_A0};
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -1310,8 +1310,8 @@ pub fn opc_max_w(
 #[inline(always)]
 pub fn opc_keccak(
     ctx: &mut InstContext,
-    get_mem_read: Option<&mut dyn FnMut() -> u64>,
-    mut push_mem_read: Option<&mut dyn FnMut(u64)>,
+    consume_mread: Option<&mut dyn FnMut() -> u64>,
+    mut generate_mread: Option<&mut dyn FnMut(u64)>,
     precompiles: Option<&HashMap<usize, Box<dyn ZiskPrecompile>>>,
 ) {
     let precompiles = precompiles.expect("Precompiles are required for opc_keccak");
@@ -1325,25 +1325,28 @@ pub fn opc_keccak(
     let read_mem_fn = |address: u64, generate_mem_read: bool| -> u64 {
         let value = mem.borrow().read(address, 8);
         if generate_mem_read {
-            push_mem_read.as_mut().unwrap()(value);
+            generate_mread.as_mut().unwrap()(value);
         }
         value
     };
     let write_mem_fn = |address: u64, value: u64| {
         mem.borrow_mut().write(address, value, 8);
     };
-    let get_mem_read = get_mem_read.map(|f| Box::new(f) as Box<dyn FnMut() -> u64>);
+    let consume_mread = consume_mread.map(|f| Box::new(f) as Box<dyn FnMut() -> u64>);
 
     let mem_ops = MemPrecompileOps::new(
-        get_mem_read,
+        emulation_mode.clone(),
         Box::new(read_reg_fn),
         Box::new(read_mem_fn),
         Box::new(write_mem_fn),
+        consume_mread,
     );
 
-    let (c, flag, input_data) = precompile.execute(0, 0, emulation_mode, mem_ops);
+    // Inputs mem address is in register A0, we will pass it to the precompile as the a parameter
+    let input_address = mem_ops.read_reg(REG_A0);
+    let (c, flag, input_data) = precompile.execute(input_address, 0, emulation_mode, mem_ops);
 
-    ctx.precompiled.input_data = input_data;
+    ctx.precompiled.data = input_data;
 
     ctx.c = c;
     ctx.flag = flag;

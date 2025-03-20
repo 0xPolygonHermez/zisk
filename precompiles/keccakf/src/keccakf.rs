@@ -103,8 +103,10 @@ impl KeccakfSM {
             let addr_received = OperationBusData::get_b(&input_data);
 
             // Get the raw keccakf input as 25 u64 values
-            let keccakf_input: [u64; 25] =
+            let keccakf_data: [u64; 50] =
                 OperationBusData::get_extra_data(&input_data).try_into().unwrap();
+            let keccakf_input: [u64; 25] = keccakf_data[..25].try_into().unwrap();
+            let keccakf_output: [u64; 25] = keccakf_data[25..].try_into().unwrap();
 
             let slot = i / Self::NUM_KECCAKF_PER_SLOT;
             let slot_pos = i % Self::NUM_KECCAKF_PER_SLOT;
@@ -141,10 +143,6 @@ impl KeccakfSM {
                     update_bit_val(fixed, trace, pos + bit_offset, new_bit, slot_pos, bit_pos);
                 }
             });
-
-            // Apply the keccakf function and get the output
-            let mut keccakf_output = keccakf_input;
-            keccakf(&mut keccakf_output);
 
             // Process the output
             keccakf_output.iter().enumerate().for_each(|(j, &value)| {
@@ -517,12 +515,10 @@ impl KeccakfSM {
         let addr = OperationBusData::get_b(&input_data) as u32;
 
         // Get the raw keccakf input as 25 u64 values
-        let keccakf_input: [u64; 25] =
+        let keccakf_data: [u64; 50] =
             OperationBusData::get_extra_data(&input_data).try_into().unwrap();
-
-        // Apply the keccakf function and get the output
-        let mut keccakf_output = keccakf_input;
-        keccakf(&mut keccakf_output);
+        let keccakf_input: [u64; 25] = keccakf_data[..25].try_into().unwrap();
+        let keccakf_output: [u64; 25] = keccakf_data[25..].try_into().unwrap();
 
         let mut mem_data = vec![];
         // Compute the reads

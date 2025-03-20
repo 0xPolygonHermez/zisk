@@ -18,7 +18,7 @@ pub struct PrecompiledInstContext {
     /// Precompiled emulation mode
     pub emulation_mode: PrecompiledEmulationMode,
     /// Precompiled input data
-    pub input_data: Vec<u64>,
+    pub data: Vec<u64>,
 }
 
 pub trait ZiskPrecompile: Send + Sync {

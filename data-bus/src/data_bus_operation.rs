@@ -28,7 +28,7 @@ const B: usize = 3;
 pub type OperationData<D> = [D; OPERATION_BUS_DATA_SIZE];
 
 /// Type alias for Keccak operation data payload.
-pub type OperationKeccakData<D> = [D; OPERATION_BUS_KECCAKF_DATA_SIZE + 25];
+pub type OperationKeccakData<D> = [D; OPERATION_BUS_KECCAKF_DATA_SIZE + 50];
 
 pub enum ExtOperationData<D> {
     OperationData(OperationData<D>),
@@ -45,7 +45,7 @@ impl<D: Copy> TryFrom<&[D]> for ExtOperationData<D> {
                     data.try_into().map_err(|_| "Invalid OperationData size")?;
                 Ok(ExtOperationData::OperationData(array))
             }
-            val if val == OPERATION_BUS_KECCAKF_DATA_SIZE + 25 => {
+            val if val == OPERATION_BUS_KECCAKF_DATA_SIZE + 50 => {
                 let array: OperationKeccakData<D> =
                     data.try_into().map_err(|_| "Invalid OperationKeccakData size")?;
                 Ok(ExtOperationData::OperationKeccakData(array))
@@ -92,14 +92,14 @@ impl OperationBusData<u64> {
         let b = if inst.m32 { inst_ctx.b & 0xffffffff } else { inst_ctx.b };
 
         if inst.op_type == ZiskOperationType::Keccak {
-            assert!(inst_ctx.precompiled.input_data.len() == 25);
-            let mut data: OperationKeccakData<u64> = [0; OPERATION_BUS_KECCAKF_DATA_SIZE + 25];
+            assert!(inst_ctx.precompiled.data.len() == 50);
+            let mut data: OperationKeccakData<u64> = [0; OPERATION_BUS_KECCAKF_DATA_SIZE + 50];
             data[0] = inst.op as u64; // OP
             data[1] = inst.op_type as u64; // OP_TYPE
             data[2] = a; // A
             data[3] = b; // B
             data[4] = inst_ctx.step; // STEP
-            data[5..(5 + 25)].copy_from_slice(&inst_ctx.precompiled.input_data[..25]);
+            data[5..(5 + 50)].copy_from_slice(&inst_ctx.precompiled.data);
             ExtOperationData::OperationKeccakData(data)
         } else {
             ExtOperationData::OperationData([
@@ -181,7 +181,7 @@ impl OperationBusData<u64> {
     #[inline(always)]
     pub fn get_extra_data(data: &ExtOperationData<u64>) -> Vec<PayloadType> {
         match data {
-            ExtOperationData::OperationKeccakData(d) => d[5..(5 + 25)].to_vec(),
+            ExtOperationData::OperationKeccakData(d) => d[5..(5 + 50)].to_vec(),
             _ => vec![],
         }
     }
