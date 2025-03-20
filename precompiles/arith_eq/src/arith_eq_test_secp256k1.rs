@@ -1,11 +1,13 @@
 use ark_ff::{BigInt, PrimeField};
 use ark_secp256k1::Fq as Secp256k1Field;
 use ark_std::{One, Zero};
+use std::time::Instant;
 #[cfg(any(feature = "test_data", feature = "test_data_secp256k1"))]
 mod test_data;
 #[cfg(any(feature = "test_data", feature = "test_data_secp256k1"))]
+use precompiles_helpers::{secp256k1_add, secp256k1_dbl};
+#[cfg(any(feature = "test_data", feature = "test_data_secp256k1"))]
 use test_data::{get_secp256k1_add_test_data, get_secp256k1_dbl_test_data};
-
 fn verify_secp256k1_add(test_id: usize, p1: &[u64; 8], p2: &[u64; 8], p: &mut [u64; 8]) {
     let mut _p = [0u64; 8];
     secp256k1_add(p1, p2, &mut _p);
@@ -30,6 +32,18 @@ fn test() {
     while let Some((p1, mut p3)) = get_secp256k1_dbl_test_data(index) {
         verify_secp256k1_dbl(index, &p1, &mut p3);
         index += 1;
+    }
+
+    // Run the first test a million times to measure performance
+    if let Some((p1, p2, mut p3)) = get_secp256k1_add_test_data(0) {
+        let start = Instant::now();
+        for i in 0..1000000 {
+            secp256k1_add(&p1, &p2, &mut p3);
+        }
+        let duration = start.elapsed();
+        let secs = duration.as_secs_f64();
+        let tp = if secs == 0.0 { 1_f64 } else { 1_f64 / secs };
+        println!("Duration = {:.4} sec, TP = {:.4} M/sec", secs, tp);
     }
 }
 

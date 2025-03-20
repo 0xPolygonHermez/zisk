@@ -17,6 +17,11 @@ name = "arith_eq_test_bigint"
 path = "src/arith_eq_test_bigint.rs"
 required-features = ["test_data"]
 
+[[bin]]
+name = "arith_eq_test_c"
+path = "src/arith_eq_test_c.rs"
+required-features = ["test_data"]
+
 [dependencies]
 nom = "7"
 sm-common = { path = "../../state-machines/common" }
@@ -25,6 +30,7 @@ data-bus = { path = "../../data-bus" }
 zisk-pil = { path = "../../pil" }
 precompiles-common = { path = "../common" }
 precompiles-helpers = { path = "../helpers" }
+lib-c = { path = "../../lib-c" }
 
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }

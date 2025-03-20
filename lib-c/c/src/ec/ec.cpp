@@ -2,10 +2,46 @@
 #include "ec.hpp"
 #include "../ffiasm/fec.hpp"
 
+RawFec fec;
+
+inline void array2scalar (const uint64_t * a, mpz_class &s)
+{
+    s = a[3];
+    s <<= 64;
+    s += a[2];
+    s <<= 64;
+    s += a[1];
+    s <<= 64;
+    s += a[0];
+}
+
+inline void array2fe (const uint64_t * a, RawFec::Element &fe)
+{
+    mpz_class s;
+    array2scalar(a, s);
+    fec.fromMpz(fe, s.get_mpz_t());
+}
+
+inline void scalar2array (mpz_class &s, uint64_t * a)
+{
+    a[0] = s.get_ui();
+    s >>= 64;
+    a[1] = s.get_ui();
+    s >>= 64;
+    a[2] = s.get_ui();
+    s >>= 64;
+    a[3] = s.get_ui();
+}
+
+inline void fe2array (const RawFec::Element &fe, uint64_t * a)
+{
+    mpz_class s;
+    fec.toMpz(s.get_mpz_t(), fe);
+    scalar2array(s, a);
+}
+
 int inline AddPointEc (bool dbl, const RawFec::Element &x1, const RawFec::Element &y1, const RawFec::Element &x2, const RawFec::Element &y2, RawFec::Element &x3, RawFec::Element &y3)
 {
-    RawFec fec;
-
     // Check if results are buffered
 #ifdef ENABLE_EXPERIMENTAL_CODE
     if(ctx.ecRecoverPrecalcBuffer.filled == true){
@@ -65,45 +101,39 @@ int AddPointEc (uint64_t _dbl, const uint64_t * _x1, const uint64_t * _y1, const
 {
     bool dbl = _dbl;
 
-    RawFec::Element x1;
-    x1.v[0] = _x1[0];
-    x1.v[1] = _x1[1];
-    x1.v[2] = _x1[2];
-    x1.v[3] = _x1[3];
+    RawFec::Element x1, y1, x2, y2, x3, y3;
+    array2fe(_x1, x1);
+    array2fe(_y1, y1);
+    array2fe(_x2, x2);
+    array2fe(_y2, y2);
 
-    RawFec::Element y1;
-    y1.v[0] = _y1[0];
-    y1.v[1] = _y1[1];
-    y1.v[2] = _y1[2];
-    y1.v[3] = _y1[3];
+    int result = AddPointEc (dbl, x1, y1, x2, y2, x3, y3);
+    
+    fe2array(x3, _x3);
+    fe2array(y3, _y3);
 
-    RawFec::Element x2;
-    x2.v[0] = _x2[0];
-    x2.v[1] = _x2[1];
-    x2.v[2] = _x2[2];
-    x2.v[3] = _x2[3];
+    return result;
+}
 
-    RawFec::Element y2;
-    y2.v[0] = _y2[0];
-    y2.v[1] = _y2[1];
-    y2.v[2] = _y2[2];
-    y2.v[3] = _y2[3];
+int AddPointEcP (uint64_t _dbl, const uint64_t * p1, const uint64_t * p2, uint64_t * p3)
+{
+    bool dbl = _dbl;
 
-    RawFec::Element x3;
+    RawFec::Element x1, y1, x2, y2, x3, y3;
+    array2fe(p1, x1);
+    array2fe(p1 + 4, y1);
+    array2fe(p2, x2);
+    array2fe(p2 + 4, y2);
 
-    RawFec::Element y3;
+    // printf("AddPointEcP() x1=%s\n", fec.toString(x1, 16).c_str());
+    // printf("AddPointEcP() y1=%s\n", fec.toString(y1, 16).c_str());
+    // printf("AddPointEcP() x2=%s\n", fec.toString(x2, 16).c_str());
+    // printf("AddPointEcP() y2=%s\n", fec.toString(y2, 16).c_str());
 
     int result = AddPointEc (dbl, x1, y1, x2, y2, x3, y3);
 
-    _x3[0] = x3.v[0];
-    _x3[1] = x3.v[1];
-    _x3[2] = x3.v[2];
-    _x3[3] = x3.v[3];
-
-    _y3[0] = y3.v[0];
-    _y3[1] = y3.v[1];
-    _y3[2] = y3.v[2];
-    _y3[3] = y3.v[3];
+    fe2array(x3, p3);
+    fe2array(y3, p3 + 4);
 
     return result;
 }
