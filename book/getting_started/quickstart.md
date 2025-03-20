@@ -8,8 +8,6 @@ ZisK currently supports **Linux x86_64** systems.
 
 Ubuntu 22.04 or higher is required.
 
-Ubuntu 22.04 or higher is required.
-
 > **Note:** macOS is not yet supported, but we are actively working on adding support.
 
 1. Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
