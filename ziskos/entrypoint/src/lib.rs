@@ -37,7 +37,8 @@ pub fn read_input() -> Vec<u8> {
 pub fn read_input() -> Vec<u8> {
     use std::{fs::File, io::Read};
 
-    let mut file = File::open("build/input.bin").unwrap();
+    let mut file =
+        File::open("build/input.bin").expect("Error opening input file at: build/input.bin");
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).unwrap();
     buffer

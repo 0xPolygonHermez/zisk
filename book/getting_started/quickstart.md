@@ -8,8 +8,11 @@ ZisK currently supports **Linux x86_64** systems.
 
 Ubuntu 22.04 or higher is required.
 
+Ubuntu 22.04 or higher is required.
+
 > **Note:** macOS is not yet supported, but we are actively working on adding support.
 
+1. Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
 1. Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
 
 2. Install all required dependencies with:
@@ -95,10 +98,8 @@ abf6352a
 Alternatively, you can build and run the program with:
 
 ```bash
-cargo-zisk run --release
+cargo-zisk run --release -i build/input.bin
 ```
-
-This command uses the file located at `build/input.bin` as the input file.
 
 ## Prove
 

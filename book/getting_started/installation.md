@@ -135,7 +135,10 @@ Please note that the process can be long, taking approximately 2–3 hours depen
     (cd pil2-compiler && npm i)
     (cd pil2-proofman-js && npm i)
 
-3. **Note:** All subsequent commands must be executed from the `zisk` folder created in the previous section.
+3. All subsequent commands must be executed from the `zisk` folder created in the previous section:
+    ```bash
+    cd ~/zisk
+    ```
 
 4. Adjust memory mapped areas and JavaScript heap size:
     ```bash
@@ -171,6 +174,11 @@ Please note that the process can be long, taking approximately 2–3 hours depen
 
     ```bash
     cp -R build/provingKey $HOME/.zisk
+    ```
+
+9. Generate constant tree files:
+    ```bash
+    cargo-zisk check-setup -a
     ```
 
 ## Uninstall Zisk
