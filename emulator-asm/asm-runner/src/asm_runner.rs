@@ -12,6 +12,8 @@ use std::path::Path;
 use std::process::Command;
 use std::{fs, ptr};
 
+use log::info;
+
 pub struct AsmRunner;
 
 #[allow(dead_code)]
@@ -94,7 +96,7 @@ impl AsmRunner {
 
         let total_steps = vec_chunks.iter().map(|x| x.steps).sum::<u64>();
         let mhz = (total_steps as f64 / stop.as_secs_f64()) / 1_000_000.0;
-        println!("Assembly execution speed: {:.2} MHz", mhz);
+        info!("AsmRnner: ··· Assembly execution speed: {:.2} MHz", mhz);
 
         AsmMinimalTraces::new(shmem_output_name, mapped_ptr, vec_chunks)
     }

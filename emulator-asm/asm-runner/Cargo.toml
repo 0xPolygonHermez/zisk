@@ -16,8 +16,9 @@ name = "asm-runner-main"
 path = "src/main.rs"
 
 [dependencies]
+log = { workspace = true }
 ziskemu = { path = "../../emulator" }
 zisk-common = { path = "../../common" }
-clap = { version = "4", features = ["derive"] }
 
+clap = { version = "4", features = ["derive"] }
 libc = "0.2"
