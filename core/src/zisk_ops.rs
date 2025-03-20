@@ -1199,6 +1199,7 @@ pub fn precompiled_load_data(
         return;
     }
 
+    #[allow(clippy::needless_range_loop)]
     for i in 0..indirections_count {
         let indirection = ctx.mem.read(address + (8 * i as u64), 8);
         if address & 0x7 != 0 {
@@ -1251,11 +1252,11 @@ pub fn opc_arith256(ctx: &mut InstContext) {
     precompiles_helpers::arith256(a, b, c, &mut dl, &mut dh);
 
     // [a,b,c,3:dl,4:dh]
-    for i in 0..4 {
-        ctx.mem.write(data[3] + (8 * i as u64), dl[i], 8);
+    for (i, dl_item) in dl.iter().enumerate() {
+        ctx.mem.write(data[3] + (8 * i as u64), *dl_item, 8);
     }
-    for i in 0..4 {
-        ctx.mem.write(data[4] + (8 * i as u64), dh[i], 8);
+    for (i, dh_item) in dh.iter().enumerate() {
+        ctx.mem.write(data[4] + (8 * i as u64), *dh_item, 8);
     }
 
     ctx.c = 0;

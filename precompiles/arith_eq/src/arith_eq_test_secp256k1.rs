@@ -1,4 +1,4 @@
-use ark_ff::{BigInt, PrimeField};
+use ark_ff::BigInt;
 use ark_secp256k1::Fq as Secp256k1Field;
 use ark_std::{One, Zero};
 use std::time::Instant;
@@ -37,7 +37,7 @@ fn test() {
     // Run the first test a million times to measure performance
     if let Some((p1, p2, mut p3)) = get_secp256k1_add_test_data(0) {
         let start = Instant::now();
-        for i in 0..1000000 {
+        for _ in 0..1000000 {
             secp256k1_add(&p1, &p2, &mut p3);
         }
         let duration = start.elapsed();

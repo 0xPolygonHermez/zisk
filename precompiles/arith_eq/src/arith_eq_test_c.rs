@@ -1,8 +1,5 @@
 mod test_data;
-use test_data::{
-    get_arith256_mod_test_data, get_arith256_test_data, get_secp256k1_add_test_data,
-    get_secp256k1_dbl_test_data,
-};
+use test_data::{get_secp256k1_add_test_data, get_secp256k1_dbl_test_data};
 
 mod equations;
 mod executors;
@@ -12,8 +9,6 @@ use std::time::Instant;
 // cargo run --release --features="test_data" --bin arith_eq_test_c
 
 fn main() {
-    let verbose = false;
-
     // Test addition against expected results
     let mut index = 0;
     while let Some((p1, p2, p3)) = get_secp256k1_add_test_data(index) {
@@ -72,15 +67,15 @@ fn main() {
     }
 
     // Run the first test a million times to measure performance
-    if let Some((p1, p2, p3)) = get_secp256k1_add_test_data(0) {
+    if let Some((p1, p2, _p3)) = get_secp256k1_add_test_data(0) {
         let mut p4: [u64; 8] = [0; 8];
         let start = Instant::now();
-        for i in 0..1000000 {
-            let result = add_point_ec_p_c(0, &p1, &p2, &mut p4);
+        for _ in 0..1000000 {
+            let _result = add_point_ec_p_c(0, &p1, &p2, &mut p4);
         }
         let duration = start.elapsed();
         let secs = duration.as_secs_f64();
-        let tp = 1 as f64 / secs;
+        let tp = 1_f64 / secs;
         println!("Duration = {:.4} sec, TP = {:.4} M/sec", secs, tp);
     }
 }

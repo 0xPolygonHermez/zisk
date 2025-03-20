@@ -2,12 +2,12 @@ use super::{ArithEqData, P_256_MASK};
 use crate::equations;
 use precompiles_helpers::{bigint_from_u64s, bigint_to_16_chunks, bigint_to_4_u64};
 
-use num_bigint::BigInt;
 const COLS: u8 = 32;
 
 pub struct Arith256Mod {}
 
 impl Arith256Mod {
+    #[allow(dead_code)]
     pub fn calculate(
         a: &[u64; 4],
         b: &[u64; 4],
