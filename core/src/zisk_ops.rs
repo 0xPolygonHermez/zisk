@@ -308,6 +308,8 @@ define_ops! {
     (MaxW, "max_w", Binary, BINARY_COST, 0x25, 0, opc_max_w, op_max_w),
     (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, 200, opc_keccak, op_keccak),
     (PubOut, "pubout", PubOut, 0, 0x30, 0, opc_pubout, op_pubout),
+//     (Arith256, "arith256", ArithEq, 77, 0xf2, 136, opc_arith256, op_arith256),
+//     (Arith256Mod, "arith256_mod", ArithEq, 77, 0xf3, 168, opc_arith256_mod, op_arith256_mod),
     (Arith256, "arith256", ArithEq, 77, 0xf2, 136, opc_arith256, op_arith256),
     (Arith256Mod, "arith256_mod", ArithEq, 77, 0xf3, 168, opc_arith256_mod, op_arith256_mod),
     (Secp256k1Add, "secp256k1_add", ArithEq, 77, 0xf4, 144, opc_secp256k1_add, op_secp256k1_add),
@@ -1100,6 +1102,7 @@ pub fn opc_keccak(ctx: &mut InstContext) {
             for (i, d) in data.iter_mut().enumerate() {
                 *d = ctx.mem.read(address + (8 * i as u64), 8);
             }
+
             // Copy data to the precompiled context
             ctx.precompiled.input_data.clear();
             for (i, d) in data.iter_mut().enumerate() {
@@ -1167,6 +1170,7 @@ pub fn precompiled_load_data(
     loads_count: usize,
     load_chunks: usize,
     data: &mut [u64],
+    title: &str,
 ) {
     let address = ctx.b;
     if address & 0x7 != 0 {
@@ -1175,19 +1179,10 @@ pub fn precompiled_load_data(
     if let PrecompiledEmulationMode::ConsumeMemReads = ctx.precompiled.emulation_mode {
         let expected_len = indirections_count + loads_count * load_chunks;
         // Check input data has the expected length
-        println!(
-            "CONSUME_MEM_READS {}/{} ctx.precompiled.input_data.len={} =? {} [{}+{}*{}]",
-            ctx.step,
-            ctx.precompiled.step,
-            ctx.precompiled.input_data.len(),
-            expected_len,
-            indirections_count,
-            load_chunks,
-            loads_count
-        );
         if ctx.precompiled.input_data.len() != expected_len {
             panic!(
-                "ctx.precompiled.input_data.len={} != {} [1+{}+{}*{}]",
+                "[{}] ctx.precompiled.input_data.len={} != {} [1+{}+{}*{}]",
+                title,
                 ctx.precompiled.input_data.len(),
                 expected_len,
                 indirections_count,
@@ -1229,17 +1224,8 @@ pub fn precompiled_load_data(
         for (i, d) in data.iter_mut().enumerate() {
             ctx.precompiled.input_data.push(*d);
         }
+
         ctx.precompiled.step = ctx.step;
-        println!(
-            "GENERATE_MEM_READS {}/{} data.len={} =? {} [1+{}+{}*{}]",
-            ctx.step,
-            ctx.precompiled.step,
-            data.len(),
-            expected_len,
-            indirections_count,
-            load_chunks,
-            loads_count
-        );
     }
 }
 
@@ -1248,7 +1234,7 @@ pub fn opc_arith256(ctx: &mut InstContext) {
     const WORDS: usize = 5 + 3 * 4;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 5, 3, 4, &mut data);
+    precompiled_load_data(ctx, 5, 3, 4, &mut data, "arith256");
 
     // ignore 5 indirections
     let (_, rest) = data.split_at(5);
@@ -1267,6 +1253,8 @@ pub fn opc_arith256(ctx: &mut InstContext) {
     // [a,b,c,3:dl,4:dh]
     for i in 0..4 {
         ctx.mem.write(data[3] + (8 * i as u64), dl[i], 8);
+    }
+    for i in 0..4 {
         ctx.mem.write(data[4] + (8 * i as u64), dh[i], 8);
     }
 
@@ -1286,7 +1274,7 @@ pub fn opc_arith256_mod(ctx: &mut InstContext) {
     const WORDS: usize = 5 + 4 * 4;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 5, 4, 4, &mut data);
+    precompiled_load_data(ctx, 5, 4, 4, &mut data, "arith256_mod");
 
     // ignore 5 indirections
     let (_, rest) = data.split_at(5);
@@ -1325,7 +1313,7 @@ pub fn opc_secp256k1_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, &mut data);
+    precompiled_load_data(ctx, 2, 2, 8, &mut data, "secp256k1_add");
 
     // ignore 2 indirections
     let (_, rest) = data.split_at(2);
@@ -1358,7 +1346,7 @@ pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
     const WORDS: usize = 1 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 0, 1, 8, &mut data);
+    precompiled_load_data(ctx, 0, 1, 8, &mut data, "secp256k1_dbl");
 
     let p1: &[u64; 8] = &data.try_into().expect("opc_secp256k1_dbl: p1.len != 8");
     let mut p3 = [0u64; 8];

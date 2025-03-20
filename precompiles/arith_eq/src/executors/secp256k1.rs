@@ -1,44 +1,50 @@
 use super::ArithEqData;
+use lazy_static::lazy_static;
 use num_bigint::BigInt;
 use num_traits::Zero;
-use precompiles_helpers::{bigint_from_field, bigint_to_16_chunks};
+use precompiles_helpers::{bigint2_to_8_u64, bigint_from_field, bigint_to_16_chunks};
 
 use crate::equations;
 use ark_secp256k1::Fq as Secp256k1Field;
 
 const COLS: u8 = 32;
 
-pub struct Secp256k1 {
-    pub prime: BigInt,
-    pub q0_add_offset: BigInt,
-    pub q0_dbl_offset: BigInt,
-    pub q1_offset: BigInt,
-    pub q2_offset: BigInt,
+lazy_static! {
+    pub static ref SECP256K1_PRIME: BigInt = BigInt::parse_bytes(
+        b"fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
+        16
+    )
+    .unwrap();
+    pub static ref SECP256K1_ADD_Q0_OFFSET: BigInt = BigInt::from(1) << 257;
+    pub static ref SECP256K1_DBL_Q0_OFFSET: BigInt = BigInt::from(1) << 258;
+    pub static ref SECP256K1_Q1_OFFSET: BigInt = BigInt::from(4);
+    pub static ref SECP256K1_Q2_OFFSET: BigInt = BigInt::from(1) << 257;
 }
 
-impl Secp256k1 {
-    pub fn new() -> Self {
-        let prime = BigInt::parse_bytes(
-            b"fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
-            16,
-        )
-        .unwrap();
-        let q0_add_offset = BigInt::from(1) << 257;
-        let q0_dbl_offset = BigInt::from(1) << 258;
+pub struct Secp256k1 {}
 
-        let q1_offset = BigInt::from(4);
-        let q2_offset = BigInt::from(1) << 257;
-        Self { prime, q0_add_offset, q0_dbl_offset, q1_offset, q2_offset }
+impl Secp256k1 {
+    pub fn calculate_add(p1: &[u64; 8], p2: &[u64; 8], p3: &mut [u64; 8]) {
+        Self::prepare(false, p1, p2, Some(p3));
     }
-    fn point_from_8x64(&self, p: &[u64; 8]) -> (Secp256k1Field, Secp256k1Field) {
+    pub fn calculate_dbl(p1: &[u64; 8], p3: &mut [u64; 8]) {
+        Self::prepare(true, p1, p1, Some(p3));
+    }
+
+    fn point_from_8x64(p: &[u64; 8]) -> (Secp256k1Field, Secp256k1Field) {
         (
             Secp256k1Field::from(ark_ff::BigInt::<4>(p[0..4].try_into().unwrap())),
             Secp256k1Field::from(ark_ff::BigInt::<4>(p[4..8].try_into().unwrap())),
         )
     }
-    fn prepare(&self, is_dbl: bool, p1: &[u64; 8], p2: &[u64; 8]) -> ArithEqData {
-        let (x1, y1) = self.point_from_8x64(p1);
-        let (x2, y2) = if is_dbl { (x1, y1) } else { self.point_from_8x64(p2) };
+    fn prepare(
+        is_dbl: bool,
+        p1: &[u64; 8],
+        p2: &[u64; 8],
+        p3: Option<&mut [u64; 8]>,
+    ) -> Option<ArithEqData> {
+        let (x1, y1) = Self::point_from_8x64(p1);
+        let (x2, y2) = if is_dbl { (x1, y1) } else { Self::point_from_8x64(p2) };
 
         let s = if is_dbl {
             (Secp256k1Field::from(3u64) * x1 * x1) / (y1 + y1)
@@ -58,21 +64,26 @@ impl Secp256k1 {
 
         let q0 = if is_dbl {
             let _q0: BigInt = 2 * &s * &y1 - 3 * &x1 * &x1;
-            assert!((&_q0 % &self.prime).is_zero());
-            &self.q0_dbl_offset - (&_q0 / &self.prime)
+            assert!((&_q0 % &*SECP256K1_PRIME).is_zero());
+            &*SECP256K1_DBL_Q0_OFFSET - (&_q0 / &*SECP256K1_PRIME)
         } else {
             let _q0: BigInt = &s * (&x2 - &x1) - &y2 + &y1;
-            assert!((&_q0 % &self.prime).is_zero());
-            (&_q0 / &self.prime) + &self.q0_add_offset
+            assert!((&_q0 % &*SECP256K1_PRIME).is_zero());
+            (&_q0 / &*SECP256K1_PRIME) + &*SECP256K1_ADD_Q0_OFFSET
         };
 
         let _q1 = &s * &s - &x1 - &x2 - &x3;
-        assert!((&_q1 % &self.prime).is_zero());
-        let q1 = (&_q1 / &self.prime) + &self.q1_offset;
+        assert!((&_q1 % &*SECP256K1_PRIME).is_zero());
+        let q1 = (&_q1 / &*SECP256K1_PRIME) + &*SECP256K1_Q1_OFFSET;
 
         let _q2 = &s * &x1 - &s * &x3 - &y1 - &y3;
-        assert!((&_q2 % &self.prime).is_zero());
-        let q2 = &self.q2_offset - (&_q2 / &self.prime);
+        assert!((&_q2 % &*SECP256K1_PRIME).is_zero());
+        let q2 = &*SECP256K1_Q2_OFFSET - (&_q2 / &*SECP256K1_PRIME);
+
+        if let Some(p3) = p3 {
+            bigint2_to_8_u64(&x3, &y3, p3);
+            return None;
+        }
 
         let mut data = ArithEqData::default();
         bigint_to_16_chunks(&q0, &mut data.q0);
@@ -85,21 +96,21 @@ impl Secp256k1 {
         bigint_to_16_chunks(&y2, &mut data.y2);
         bigint_to_16_chunks(&x3, &mut data.x3);
         bigint_to_16_chunks(&y3, &mut data.y3);
-        data
+        Some(data)
     }
     #[inline(always)]
     #[allow(dead_code)]
-    pub fn execute_add(&self, p1: &[u64; 8], p2: &[u64; 8]) -> ArithEqData {
-        self.execute_add_dbl(false, p1, p2)
+    pub fn execute_add(p1: &[u64; 8], p2: &[u64; 8]) -> ArithEqData {
+        Self::execute_add_dbl(false, p1, p2)
     }
 
     #[inline(always)]
     #[allow(dead_code)]
-    pub fn execute_dbl(&self, p1: &[u64; 8]) -> ArithEqData {
-        self.execute_add_dbl(true, p1, p1)
+    pub fn execute_dbl(p1: &[u64; 8]) -> ArithEqData {
+        Self::execute_add_dbl(true, p1, p1)
     }
-    pub fn execute_add_dbl(&self, is_dbl: bool, p1: &[u64; 8], p2: &[u64; 8]) -> ArithEqData {
-        let mut data = self.prepare(is_dbl, p1, p2);
+    pub fn execute_add_dbl(is_dbl: bool, p1: &[u64; 8], p2: &[u64; 8]) -> ArithEqData {
+        let mut data = Self::prepare(is_dbl, p1, p2, None).unwrap();
         for icol in 0..COLS {
             let index = icol as usize;
             data.eq[index] = [
@@ -137,8 +148,8 @@ impl Secp256k1 {
     }
     #[cfg(feature = "test_data")]
     #[allow(dead_code)]
-    pub fn verify_add_dbl(&self, is_dbl: bool, p1: &[u64; 8], p2: &[u64; 8], p: &[u64; 8]) {
-        let data = self.execute_add_dbl(is_dbl, p1, p2);
+    pub fn verify_add_dbl(is_dbl: bool, p1: &[u64; 8], p2: &[u64; 8], p: &[u64; 8]) {
+        let data = Self::execute_add_dbl(is_dbl, p1, p2);
         data.check_ranges();
         let op = if is_dbl { "Secp256k1Dbl" } else { "Secp256k1Add" };
         for i in 0..2 {
@@ -157,12 +168,12 @@ impl Secp256k1 {
     }
     #[cfg(feature = "test_data")]
     #[allow(dead_code)]
-    pub fn verify_add(&self, p1: &[u64; 8], p2: &[u64; 8], p: &[u64; 8]) {
-        self.verify_add_dbl(false, p1, p2, p);
+    pub fn verify_add(p1: &[u64; 8], p2: &[u64; 8], p: &[u64; 8]) {
+        Self::verify_add_dbl(false, p1, p2, p);
     }
     #[cfg(feature = "test_data")]
     #[allow(dead_code)]
-    pub fn verify_dbl(&self, p1: &[u64; 8], p: &[u64; 8]) {
-        self.verify_add_dbl(true, p1, p1, p);
+    pub fn verify_dbl(p1: &[u64; 8], p: &[u64; 8]) {
+        Self::verify_add_dbl(true, p1, p1, p);
     }
 }

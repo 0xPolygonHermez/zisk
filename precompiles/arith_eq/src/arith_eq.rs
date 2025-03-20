@@ -3,7 +3,7 @@ use std::sync::Arc;
 use log::info;
 use p3_field::PrimeField64;
 
-use proofman_common::{AirInstance, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::ArithEqTrace;
 
@@ -33,40 +33,36 @@ impl ArithEqSM {
     }
 
     fn process_arith256<F: PrimeField64>(
-        executor: &executors::Arith256,
         input: &Arith256Input,
         trace: &mut ArithEqTrace<F>,
         row_offset: usize,
     ) {
-        let data = executor.execute(&input.a, &input.b, &input.c);
+        let data = executors::Arith256::execute(&input.a, &input.b, &input.c);
         Self::expand_data_on_trace(&data, row_offset, trace, 0);
     }
 
     fn process_arith256_mod<F: PrimeField64>(
-        executor: &executors::Arith256Mod,
         input: &Arith256ModInput,
         trace: &mut ArithEqTrace<F>,
         row_offset: usize,
     ) {
-        let data = executor.execute(&input.a, &input.b, &input.c, &input.module);
+        let data = executors::Arith256Mod::execute(&input.a, &input.b, &input.c, &input.module);
         Self::expand_data_on_trace(&data, row_offset, trace, 1);
     }
     fn process_secp256k1_add<F: PrimeField64>(
-        executor: &executors::Secp256k1,
         input: &Secp256k1AddInput,
         trace: &mut ArithEqTrace<F>,
         row_offset: usize,
     ) {
-        let data = executor.execute_add(&input.p1, &input.p2);
+        let data = executors::Secp256k1::execute_add(&input.p1, &input.p2);
         Self::expand_data_on_trace(&data, row_offset, trace, 2);
     }
     fn process_secp256k1_dbl<F: PrimeField64>(
-        executor: &executors::Secp256k1,
         input: &Secp256k1DblInput,
         trace: &mut ArithEqTrace<F>,
         row_offset: usize,
     ) {
-        let data = executor.execute_dbl(&input.p1);
+        let data = executors::Secp256k1::execute_dbl(&input.p1);
         Self::expand_data_on_trace(&data, row_offset, trace, 3);
     }
 
@@ -76,11 +72,15 @@ impl ArithEqSM {
         trace: &mut ArithEqTrace<F>,
         sel_op: usize,
     ) {
+        println!("sel_op: {}", sel_op);
         for i in 0..ARITH_EQ_ROWS_BY_OP {
             let irow = row_offset + i;
             for j in 0..3 {
-                trace[irow].carry[j][0] = F::from_i64(data.cout[j][i * 2]);
-                trace[irow].carry[j][1] = F::from_i64(data.cout[j][i * 2 + 1]);
+                trace[irow].carry[j][0] = F::from_i64(data.cout[i * 2][j]);
+                if i < 15 {
+                    // last position without carry
+                    trace[irow].carry[j][1] = F::from_i64(data.cout[i * 2 + 1][j]);
+                }
             }
             trace[irow].x1 = F::from_u16(data.x1[i] as u16);
             trace[irow].y1 = F::from_u16(data.y1[i] as u16);
@@ -93,7 +93,13 @@ impl ArithEqSM {
             trace[irow].q2 = F::from_i64(data.q2[i]);
             trace[irow].s = F::from_i64(data.s[i]);
             for j in 0..4 {
-                trace[irow].sel_op[j] = F::from_bool(j == sel_op);
+                let selected = j == sel_op;
+                trace[irow].sel_op[j] = F::from_bool(selected);
+                if i == 0 {
+                    trace[irow].sel_op_clk0[j] = F::from_bool(selected);
+                } else {
+                    trace[irow].sel_op_clk0[j] = F::ZERO;
+                }
             }
             // TODO:
             trace[irow].x_are_different = F::ZERO;
@@ -111,7 +117,7 @@ impl ArithEqSM {
             // trace[irow].lt = F::from_bool(data.eq[0][i * 4] as u16);
             // step_addr
         }
-        unimplemented!()
+        // unimplemented!()
     }
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
     ///
@@ -143,26 +149,22 @@ impl ArithEqSM {
 
         timer_start_trace!(ARITH_EQ_TRACE);
 
-        let arith256 = executors::Arith256::new();
-        let arith256_mod = executors::Arith256Mod::new();
-        let secp256k1 = executors::Secp256k1::new();
-
         let mut index = 0;
         for inputs in inputs.iter() {
             for input in inputs.iter() {
                 let row_offset = index * ARITH_EQ_ROWS_BY_OP;
                 match input {
                     ArithEqInput::Arith256(idata) => {
-                        Self::process_arith256(&arith256, idata, &mut trace, row_offset)
+                        Self::process_arith256(idata, &mut trace, row_offset)
                     }
                     ArithEqInput::Arith256Mod(idata) => {
-                        Self::process_arith256_mod(&arith256_mod, idata, &mut trace, row_offset)
+                        Self::process_arith256_mod(idata, &mut trace, row_offset)
                     }
                     ArithEqInput::Secp256k1Add(idata) => {
-                        Self::process_secp256k1_add(&secp256k1, idata, &mut trace, row_offset)
+                        Self::process_secp256k1_add(idata, &mut trace, row_offset)
                     }
                     ArithEqInput::Secp256k1Dbl(idata) => {
-                        Self::process_secp256k1_dbl(&secp256k1, idata, &mut trace, row_offset)
+                        Self::process_secp256k1_dbl(idata, &mut trace, row_offset)
                     }
                 }
                 index += 1;
@@ -170,6 +172,6 @@ impl ArithEqSM {
         }
         timer_stop_and_log_trace!(ARITH_EQ_TRACE);
 
-        unimplemented!()
+        AirInstance::new_from_trace(FromTrace::new(&mut trace))
     }
 }

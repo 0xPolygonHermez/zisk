@@ -52,6 +52,26 @@ pub fn bigint_to_4_u64(value: &BigInt, result: &mut [u64; 4]) {
     }
 }
 
+pub fn bigint2_to_8_u64(x: &BigInt, y: &BigInt, result: &mut [u64; 8]) {
+    let (x_sign, x_chunks) = x.to_u64_digits();
+    let (y_sign, y_chunks) = y.to_u64_digits();
+    assert!(
+        x_sign != Sign::Minus && y_sign != Sign::Minus,
+        "bigint2_to_8_u64: with negative value x:{} y:{}",
+        x,
+        y
+    );
+    let x_chunks_count = x_chunks.len();
+    let y_chunks_count = y_chunks.len();
+    assert!(x_chunks_count <= 4, "bigint_to_4_u64: with too big value x:0x{:X}", x);
+    assert!(y_chunks_count <= 4, "bigint_to_4_u64: with too big value y:0x{:X}", y);
+    #[allow(clippy::needless_range_loop)]
+    for i in 0..4 {
+        result[i] = if i >= x_chunks_count { 0 } else { x_chunks[i] };
+        result[4 + i] = if i >= y_chunks_count { 0 } else { y_chunks[i] };
+    }
+}
+
 pub fn bigint_to_2x4_u64(value: &BigInt, lres: &mut [u64; 4], hres: &mut [u64; 4]) {
     let (sign, chunks) = value.to_u64_digits();
     assert!(

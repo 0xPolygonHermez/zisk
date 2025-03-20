@@ -1,41 +1,63 @@
 use super::ArithEqData;
 use crate::equations;
+use lazy_static::lazy_static;
 use num_bigint::BigInt;
-use precompiles_helpers::{bigint_from_u64s, bigint_to_16_chunks};
+use precompiles_helpers::{bigint_from_u64s, bigint_to_16_chunks, bigint_to_4_u64};
 
 const COLS: u8 = 32;
 
-pub struct Arith256 {
-    p2_256_mask: BigInt,
+lazy_static! {
+    pub static ref P_256_MASK: BigInt = BigInt::parse_bytes(
+        b"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+        16
+    )
+    .unwrap();
 }
+
+pub struct Arith256 {}
 impl Arith256 {
-    pub fn new() -> Self {
-        let p2_256 = BigInt::from(1) << 256;
-        let p2_256_mask = &p2_256 - BigInt::from(1);
-        Self { p2_256_mask }
+    pub fn calculate(
+        a: &[u64; 4],
+        b: &[u64; 4],
+        c: &[u64; 4],
+        dh: &mut [u64; 4],
+        dl: &mut [u64; 4],
+    ) {
+        Self::prepare(a, b, c, Some(dh), Some(dl));
     }
-    fn prepare(&self, a: &[u64; 4], b: &[u64; 4], c: &[u64; 4]) -> ArithEqData {
+    fn prepare(
+        a: &[u64; 4],
+        b: &[u64; 4],
+        c: &[u64; 4],
+        dh: Option<&mut [u64; 4]>,
+        dl: Option<&mut [u64; 4]>,
+    ) -> Option<ArithEqData> {
         let a = bigint_from_u64s(a);
         let b = bigint_from_u64s(b);
         let c = bigint_from_u64s(c);
 
         let res = &a * &b + &c;
-        let dh = &res >> 256;
-        let dl = &res & &self.p2_256_mask;
+        let res_dh = &res >> 256;
+        let res_dl = &res & &*P_256_MASK;
 
         // y3|x3 = x1*y1+x2
         // a:x1 b:y1 c:x2 dl: x3 dh: y3
+        if let Some(dh) = dh {
+            bigint_to_4_u64(&res_dh, dh);
+            bigint_to_4_u64(&res_dl, dl.unwrap());
+            return None;
+        }
 
         let mut data = ArithEqData::default();
         bigint_to_16_chunks(&a, &mut data.x1);
         bigint_to_16_chunks(&b, &mut data.y1);
         bigint_to_16_chunks(&c, &mut data.x2);
-        bigint_to_16_chunks(&dh, &mut data.y3);
-        bigint_to_16_chunks(&dl, &mut data.x3);
-        data
+        bigint_to_16_chunks(&res_dh, &mut data.y3);
+        bigint_to_16_chunks(&res_dl, &mut data.x3);
+        Some(data)
     }
-    pub fn execute(&self, a: &[u64; 4], b: &[u64; 4], c: &[u64; 4]) -> ArithEqData {
-        let mut data = self.prepare(a, b, c);
+    pub fn execute(a: &[u64; 4], b: &[u64; 4], c: &[u64; 4]) -> ArithEqData {
+        let mut data = Self::prepare(a, b, c, None, None).unwrap();
         for icol in 0..COLS {
             let index = icol as usize;
             data.eq[index][0] = equations::Arith256::calculate(
@@ -59,8 +81,8 @@ impl Arith256 {
     }
     #[cfg(feature = "test_data")]
     #[allow(dead_code)]
-    pub fn verify(&self, a: &[u64; 4], b: &[u64; 4], c: &[u64; 4], dl: &[u64; 4], dh: &[u64; 4]) {
-        let data = self.execute(a, b, c);
+    pub fn verify(a: &[u64; 4], b: &[u64; 4], c: &[u64; 4], dl: &[u64; 4], dh: &[u64; 4]) {
+        let data = Self::execute(a, b, c);
         data.check_ranges();
         for i in 0..2 {
             let offset = (i + 1) * 4 - 1;
