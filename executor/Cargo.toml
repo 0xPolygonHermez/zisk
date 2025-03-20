@@ -27,5 +27,5 @@ rayon = { workspace = true }
 pil-std-lib = { workspace = true }
 
 [features]
-default = []
+default = ["distributed"]
 distributed = ["proofman-common/distributed", "witness/distributed"]
