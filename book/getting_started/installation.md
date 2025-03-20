@@ -176,7 +176,7 @@ Please note that the process can be long, taking approximately 2–3 hours depen
     cp -R build/provingKey $HOME/.zisk
     ```
 
-9. Generate constant setup files:
+9. Generate constant tree files:
     ```bash
     cargo-zisk check-setup -a
     ```
