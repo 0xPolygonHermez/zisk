@@ -248,12 +248,12 @@ cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i b
 ```
 In this command:
 
-* `-e` (`--elf`) flag is used to specify the ELF file localtion.
-* `-i` (`--inputs`) flag is used specify the input file location.
-* `-w` (`--witness`) and `-k` (`--proving-key`) flags are used to specify the location of the witness library and proving key files required for proof generation; they are optional, set by default to the paths found in the `$HOME/.zisk` installation folder.
-* `-o` (`--output`) flag determines the output directory (in this example `proof`).
-* `-a` (`--aggregation`) flag indicates that a final aggregated proof (containing all generated sub-proofs) should be produced.
-* `-y` (`--verify-proofs`) flag instructs the tool to verify the proof immediately after it is generated (verification can also be performed later using the `cargo-zisk verify` command).
+* `-e` (`--elf`) specifies the ELF file localtion.
+* `-i` (`--inputs`) specifies the input file location.
+* `-w` (`--witness`) and `-k` (`--proving-key`) are used to specify the location of the witness library and proving key files required for proof generation; they are optional, set by default to the paths found in the `$HOME/.zisk` installation folder.
+* `-o` (`--output`) determines the output directory (in this example `proof`).
+* `-a` (`--aggregation`) indicates that a final aggregated proof (containing all generated sub-proofs) should be produced.
+* `-y` (`--verify-proofs`) instructs the tool to verify the proof immediately after it is generated (verification can also be performed later using the `cargo-zisk verify` command).
 
 If the process is successful, you should see a message similar to:
 
@@ -265,25 +265,23 @@ If the process is successful, you should see a message similar to:
 ```
 
 ### Concurrent Proof Generation
+
 Zisk proofs can be generated using multiple processes concurrently to improve performance and scalability. The standard MPI (Message Passing Interface) approach is used to launch these processes, which can run either on the same server or across multiple servers.
 
 To execute a Zisk proof using multiple processes, use the following command:
 
 ```bash
-mpirun --bind-to none -np <number_processes> -x OMP_NUM_THREADS=<number_of_threads_per_process> target/release/cargo-zisk <zisk arguments>
+mpirun --bind-to none -np <num_processes> -x OMP_NUM_THREADS=<num_threads_per_process> target/release/cargo-zisk <zisk arguments>
 ```
-#### Command Options:
+In this command:
 
-* -np <number_of_processes>: Specifies the number of processes to launch.
-* -x OMP_NUM_THREADS=<number_of_threads_per_process>: Sets the number of threads used by each process via the OMP_NUM_THREADS environment variable.
-* --bind-to none: Prevents binding processes to specific cores, allowing the operating system to schedule them dynamically for better load balancing.
+* `-np <num_processes>` specifies the number of processes to launch.
+* `-x OMP_NUM_THREADS=<num_threads_per_process>` sets the number of threads used by each process via the `OMP_NUM_THREADS` environment variable.
+* `--bind-to none` prevents binding processes to specific cores, allowing the operating system to schedule them dynamically for better load balancing.
 
-Launching a Zisk proof with multiple processes allows efficient use of multiple servers by distributing the workload across them. **On a single server with many cores, distributing the execution into smaller subsets of cores generally improves performance by increasing concurrency**. As a rule of thumb, the <number_of_processes> * <number_of_threads_per_process> should equal 2 times the number of cores of the system if hyperthreading is available
+Running a Zisk proof with multiple processes enables efficient workload distribution across multiple servers. **On a single server with many cores, splitting execution into smaller subsets of cores generally improves performance by increasing concurrency**. As a general rule, `<number_of_processes>` * `<number_of_threads_per_process>` should match the number of available CPU cores or double that if hyperthreading is enabled.
 
-#### Memory Considerations:
-The total memory requirement increases proportionally with the number of processes.
-If each process requires ~25GB of memory, running P processes will require approximately 25P GB of memory.
-Ensure that the total available memory is sufficient to accommodate all allocated processes.
+The total memory requirement increases proportionally with the number of processes. If each process requires approximately 25GB of memory, running P processes will require roughly (25 * P)GB of memory. Ensure that the system has sufficient available memory to accommodate all running processes.
 
 ### Verify Proof
 
@@ -295,8 +293,8 @@ cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json -u ./proof/publics.j
 
 In this command:
 
-* `-p` (`--proof`) flag specifies the final proof file generated with cargo-zisk prove.
-* `-u` (`--public_inputs`) flag provides the path to the public inputs associated with the proof.
+* `-p` (`--proof`) specifies the final proof file generated with cargo-zisk prove.
+* `-u` (`--public-inputs`) provides the path to the public inputs associated with the proof.
 * The remaining flags specify the files required for verification; they are optional, set by default to the files found in the `$HOME/.zisk` directory.
 
 
