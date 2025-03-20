@@ -16,7 +16,6 @@ SETUP_VERSION="0.4.0"
 export RUSTFLAGS="-C target-cpu=native"
 
 main() {
-  need_cmd git
   need_cmd curl
 
   while [[ -n $1 ]]; do
@@ -146,7 +145,7 @@ main() {
       ZISKUP_TAG="${ZISKUP_VERSION}"
     fi
 
-    say "Installing zisk (version ${ZISKUP_VERSION}, tag ${ZISKUP_TAG})"
+    say "Installing ZisK (version ${ZISKUP_VERSION}, tag ${ZISKUP_TAG})"
 
     uname_s=$(uname -s)
     PLATFORM=$(tolower "${ZISKUP_PLATFORM:-$uname_s}")
@@ -185,7 +184,7 @@ main() {
       say "3) None"
 
       # Read user input with default option set to 1
-      read -p ">" user_choice && echo
+      read -p ">" user_choice < /dev/tty
       user_choice=${user_choice:-1}
 
       case $user_choice in
@@ -215,6 +214,7 @@ main() {
     BIN_ARCHIVE_URL="${RELEASE_URL}cargo_zisk_${PLATFORM}_${ARCHITECTURE}.$EXT"
 
     # Download and extract the binaries archive
+    echo
     say "Downloading latest cargo-zisk"
     if [ "$PLATFORM" = "linux" ]; then
       tmp="$(mktemp -d)/cargo_zisk.tar.gz"
@@ -269,6 +269,7 @@ EOF
 
   # Install by cloning the repo with the provided branch/tag
   else
+    need_cmd git
     need_cmd cargo
     ZISKUP_BRANCH=${ZISKUP_BRANCH:-main}
     REPO_PATH="$ZISK_DIR/$ZISKUP_REPO"
@@ -309,9 +310,9 @@ EOF
 
 usage() {
   cat 1>&2 <<EOF
-The installer for the ZISK.
+The installer for the ZisK.
 
-Update or revert to a specific zisk version with ease.
+Update or revert to a specific ZisK version with ease.
 
 USAGE:
     ziskup <OPTIONS>
@@ -386,16 +387,27 @@ install_setup() {
     # Verify the md5 checksum
     ensure md5sum -c "${KEY_FILE}.md5"
 
+    # Delete old provingKey, verifyKey and cache folders
+    rm -rf "$HOME/.zisk/provingKey"
+    rm -rf "$HOME/.zisk/verifyKey"
+    rm -rf "$HOME/.zisk/cache"
+
     # Extract the key
     say "Installing ${KEY_TYPE} key..."
     ensure tar --overwrite -xvf "${KEY_FILE}" -C "$HOME/.zisk"
     rm -f "${KEY_FILE}"
     rm -f "${KEY_FILE}.md5"
 
+    # Generate constant tree files for proving key
+    if [[ "${KEY_TYPE}" == "proving" ]]; then
+      say "Generating constant tree files..."
+      ensure cargo-zisk check-setup -a
+    fi
+
     say "Installed ${KEY_TYPE} key ${SETUP_VERSION}"
 }
 
-# Banner Function for zisk
+# Banner Function for ZisK
 banner() {
   printf "
 ########################################################################################
@@ -405,7 +417,7 @@ banner() {
  / /_| \__ \ . \ 
 /____|_|___/_|\_\
 
-Ziskup - The Zisk Installer
+Ziskup - The ZisK Installer
 
 ########################################################################################
 

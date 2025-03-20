@@ -6,14 +6,21 @@ In this guide, you will learn how to install ZisK, create a simple program and r
 
 ZisK currently supports **Linux x86_64** systems.
 
+Ubuntu 22.04 or higher is required.
+
 > **Note:** macOS is not yet supported, but we are actively working on adding support.
 
-Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
+1. Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
 
-To install ZisK using ziskup, run the following command in your terminal:
-```bash
-curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh | bash
-```
+2. Install all required dependencies with:
+    ```bash
+    sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm
+    ```
+
+3. To install ZisK using ziskup, run the following command in your terminal:
+    ```bash
+    curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh | bash
+    ```
 
 ## Create a Project
 
@@ -88,10 +95,8 @@ abf6352a
 Alternatively, you can build and run the program with:
 
 ```bash
-cargo-zisk run --release
+cargo-zisk run --release -i build/input.bin
 ```
-
-This command uses the file located at `build/input.bin` as the input file.
 
 ## Prove
 

@@ -136,25 +136,7 @@ ziskemu -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/inpu
 Alternatively, you can build and execute the program in the ZisK emulator with a single command:
 
 ```bash
-cargo-zisk run --release
-```
-
-This command builds the ELF file and executes it using `ziskemu` along with the `input.bin` file that must be located in the `.build` directory at the root of your Rust project:
-
-```
-.
-├── build
-|   └── input.bin
-├── src
-|   └── main.rs
-├── Cargo.lock
-├── Cargo.toml
-```
-
-Alternatively, you can specify the location of the input file using `-i` (`--input`) flag:
-
-```bash
-cargo-zisk run -i build/input.bin
+cargo-zisk run --release -i build/input.bin
 ```
 
 If the program requires a large number of ZisK steps, you might encounter the following error:
@@ -174,7 +156,7 @@ ziskemu -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/inpu
 You can get performance metrics related to the program execution in ZisK using the `-m` (`--log-metrics`) flag in the `cargo-zisk run` command or in `ziskemu` tool:
 
 ```bash
-cargo-zisk run --release -m
+cargo-zisk run --release -i build/input.bin -m
 ```
 
 Or
@@ -196,7 +178,7 @@ bd13089b
 You can get statistics related to the program execution in Zisk using the `-x` (`--stats`) flag in the `cargo-zisk run` command or in `ziskemu` tool:
 
 ```bash
-cargo-zisk run --release -x
+cargo-zisk run --release -i build/input.bin -x
 ```
 
 Or
