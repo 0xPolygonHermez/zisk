@@ -264,6 +264,27 @@ If the process is successful, you should see a message similar to:
 [INFO ] ProofMan: Proofs generated successfully
 ```
 
+### Concurrent Proof Generation
+Zisk proofs can be generated using multiple processes concurrently to improve performance and scalability. The standard MPI (Message Passing Interface) approach is used to launch these processes, which can run either on the same server or across multiple servers.
+
+To execute a Zisk proof using multiple processes, use the following command:
+
+```bash
+mpirun --bind-to none -np <number_processes> -x OMP_NUM_THREADS=<number_of_threads_per_process> target/release/cargo-zisk <zisk arguments>
+```
+#### Command Options:
+
+* -np <number_of_processes>: Specifies the number of processes to launch.
+* -x OMP_NUM_THREADS=<number_of_threads_per_process>: Sets the number of threads used by each process via the OMP_NUM_THREADS environment variable.
+* --bind-to none: Prevents binding processes to specific cores, allowing the operating system to schedule them dynamically for better load balancing.
+
+Launching a Zisk proof with multiple processes allows efficient use of multiple servers by distributing the workload across them. **Moreover, on a single server with many cores, splitting them into smaller sets using concurrent mode generally improves performance by increasing concurrency**.
+
+#### Memory Considerations:
+The total memory requirement increases proportionally with the number of processes.
+If each process requires ~25GB of memory, running P processes will require approximately 25P GB of memory.
+Ensure that the total available memory is sufficient to accommodate all allocated processes.
+
 ### Verify Proof
 
 To verify a generated proof, use the following command:
