@@ -278,7 +278,7 @@ mpirun --bind-to none -np <number_processes> -x OMP_NUM_THREADS=<number_of_threa
 * -x OMP_NUM_THREADS=<number_of_threads_per_process>: Sets the number of threads used by each process via the OMP_NUM_THREADS environment variable.
 * --bind-to none: Prevents binding processes to specific cores, allowing the operating system to schedule them dynamically for better load balancing.
 
-Launching a Zisk proof with multiple processes allows efficient use of multiple servers by distributing the workload across them. **Moreover, on a single server with many cores, splitting them into smaller sets using concurrent mode generally improves performance by increasing concurrency**.
+Launching a Zisk proof with multiple processes allows efficient use of multiple servers by distributing the workload across them. **On a single server with many cores, distributing the execution into smaller subsets of cores generally improves performance by increasing concurrency**. As a rule of thumb, the <number_of_processes> * <number_of_threads_per_process> should equal 2 times the number of cores of the system if hyperthreading is available
 
 #### Memory Considerations:
 The total memory requirement increases proportionally with the number of processes.
