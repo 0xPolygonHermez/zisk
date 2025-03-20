@@ -113,8 +113,7 @@ impl AsmRunner {
         };
 
         // Shared memory size (aligned to 8 bytes)
-        let shmem_input_size =
-            ((inputs.len() + std::mem::size_of::<AsmInputC>() + 7) & !7) as usize;
+        let shmem_input_size = (inputs.len() + std::mem::size_of::<AsmInputC>() + 7) & !7;
 
         let mut shmem_input_data = Vec::with_capacity(shmem_input_size);
         shmem_input_data.extend_from_slice(&asm_input.to_bytes());
