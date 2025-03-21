@@ -123,3 +123,47 @@ impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
         Some(Box::new(ArithCounterInputGen::new(BusDeviceMode::InputGenerator)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use data_bus::{DataBus, DataBusPlayer, OperationBusData};
+    use p3_goldilocks::Goldilocks;
+    use sm_common::BusDeviceMetricsWrapper;
+    use zisk_core::zisk_ops::ZiskOp::*;
+    use ZiskOperationType::*;
+
+    use super::*;
+
+    /// Tests the basic functionality of the `plan` function with multiple chunks.
+    #[test]
+    fn test_arith_data_player() {
+        let arith_sm = ArithSM::new();
+
+        let arith_bus_device =
+            <ArithSM as sm_common::ComponentBuilder<Goldilocks>>::build_counter(&arith_sm);
+
+        let mut data_bus = DataBus::<u64, BusDeviceMetricsWrapper>::new();
+        data_bus.connect_device(
+            vec![OPERATION_BUS_ID],
+            Box::new(BusDeviceMetricsWrapper::new(arith_bus_device, false)),
+        );
+
+        let data = vec![
+            (OPERATION_BUS_ID, OperationBusData::from_values(Mul as u8, Arith as u64, 1, 2).into()),
+            (OPERATION_BUS_ID, OperationBusData::from_values(Div as u8, Arith as u64, 1, 2).into()),
+            (OPERATION_BUS_ID, OperationBusData::from_values(Add as u8, Binary as u64, 1, 2).into()),
+            (OPERATION_BUS_ID, OperationBusData::from_values(Sub as u8, Binary as u64, 1, 2).into()),
+        ];
+
+        DataBusPlayer::play(&mut data_bus, data);
+
+        let arith_counter = data_bus.devices.remove(0).inner;
+
+        let arith_planner =
+            <ArithSM as sm_common::ComponentBuilder<Goldilocks>>::build_planner(&arith_sm);
+
+        let plan = arith_planner.plan(vec![(0, arith_counter)]);
+
+        println!("Plan: {:?}", plan);
+    }
+}

@@ -65,7 +65,6 @@ impl OperationBusData<u64> {
     /// Creates operation data from raw values.
     ///
     /// # Arguments
-    /// * `step` - The current step of the operation.
     /// * `op` - The operation code.
     /// * `op_type` - The type of operation payload.
     /// * `a` - The value of the `a` parameter.
@@ -74,7 +73,7 @@ impl OperationBusData<u64> {
     /// # Returns
     /// An array representing the operation data payload.
     #[inline(always)]
-    pub fn from_values(op: u8, op_type: PayloadType, a: u64, b: u64) -> OperationData<u64> {
+    pub fn from_values(op: u8, op_type: u64, a: u64, b: u64) -> OperationData<u64> {
         [op as u64, op_type, a, b]
     }
 
