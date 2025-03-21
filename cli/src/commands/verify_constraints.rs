@@ -82,14 +82,25 @@ impl ZiskVerifyConstraints {
         print_banner();
 
         println!("{} VerifyConstraints", format!("{: >12}", "Command").bright_green().bold());
-        let witness_lib = self.witness_lib.as_ref().unwrap().display();
-        println!("{: >12} {}", "Witness Lib".bright_green().bold(), witness_lib);
+        println!(
+            "{: >12} {}",
+            "Witness Lib".bright_green().bold(),
+            self.get_witness_computation_lib().display()
+        );
         println!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display());
-        // println!("{}", format!("{: >12} {}", "ASM runner".bright_green().bold(), self.asm_runner.as_ref().unwrap_or_else("None").display()));
-        let inputs_path = self.input.as_ref().unwrap().display();
-        println!("{: >12} {}", "Inputs".bright_green().bold(), inputs_path);
-        let proving_key = self.proving_key.as_ref().unwrap().display();
-        println!("{: >12} {}", "Proving key".bright_green().bold(), proving_key);
+        if self.asm.is_some() {
+            let asm_path = self.asm.as_ref().unwrap().display();
+            println!("{: >12} {}", "ASM runner".bright_green().bold(), asm_path);
+        }
+        if self.input.is_some() {
+            let inputs_path = self.input.as_ref().unwrap().display();
+            println!("{: >12} {}", "Inputs".bright_green().bold(), inputs_path);
+        }
+        println!(
+            "{: >12} {}",
+            "Proving key".bright_green().bold(),
+            self.get_proving_key().display()
+        );
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
         println!("{: >12} {}", "Keccak".bright_green().bold(), keccak_script.display());

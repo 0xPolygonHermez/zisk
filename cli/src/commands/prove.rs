@@ -37,10 +37,6 @@ pub struct ZiskProve {
     #[clap(short = 'i', long)]
     pub input: Option<PathBuf>,
 
-    /// Public inputs path
-    #[clap(short = 'u', long)]
-    pub public_inputs: Option<PathBuf>,
-
     /// Setup folder path
     #[clap(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
@@ -67,9 +63,6 @@ pub struct ZiskProve {
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
-
-    #[clap(short = 'c', long)]
-    pub default_cache: Option<PathBuf>,
 
     // PRECOMPILES OPTIONS
     /// Keccak script path
@@ -106,14 +99,25 @@ impl ZiskProve {
         print_banner();
 
         println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
-        let witness_lib = self.witness_lib.as_ref().unwrap().display();
-        println!("{: >12} {}", "Witness Lib".bright_green().bold(), witness_lib);
+        println!(
+            "{: >12} {}",
+            "Witness Lib".bright_green().bold(),
+            self.get_witness_computation_lib().display()
+        );
         println!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display());
-        // println!("{}", format!("{: >12} {}", "ASM runner".bright_green().bold(), self.asm_runner.as_ref().unwrap_or_else("None").display()));
-        let inputs_path = self.input.as_ref().unwrap().display();
-        println!("{: >12} {}", "Inputs".bright_green().bold(), inputs_path);
-        let proving_key = self.proving_key.as_ref().unwrap().display();
-        println!("{: >12} {}", "Proving key".bright_green().bold(), proving_key);
+        if self.asm.is_some() {
+            let asm_path = self.asm.as_ref().unwrap().display();
+            println!("{: >12} {}", "ASM runner".bright_green().bold(), asm_path);
+        }
+        if self.input.is_some() {
+            let inputs_path = self.input.as_ref().unwrap().display();
+            println!("{: >12} {}", "Inputs".bright_green().bold(), inputs_path);
+        }
+        println!(
+            "{: >12} {}",
+            "Proving key".bright_green().bold(),
+            self.get_proving_key().display()
+        );
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
         println!("{: >12} {}", "Keccak".bright_green().bold(), keccak_script.display());
