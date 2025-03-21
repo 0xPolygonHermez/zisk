@@ -6,13 +6,7 @@ RawFec fec;
 
 inline void array2scalar (const uint64_t * a, mpz_class &s)
 {
-    s = a[3];
-    s <<= 64;
-    s += a[2];
-    s <<= 64;
-    s += a[1];
-    s <<= 64;
-    s += a[0];
+    mpz_import(s.get_mpz_t(), 4, -1, 8, -1, 0, (const void *)a);
 }
 
 inline void array2fe (const uint64_t * a, RawFec::Element &fe)
@@ -24,13 +18,7 @@ inline void array2fe (const uint64_t * a, RawFec::Element &fe)
 
 inline void scalar2array (mpz_class &s, uint64_t * a)
 {
-    a[0] = s.get_ui();
-    s >>= 64;
-    a[1] = s.get_ui();
-    s >>= 64;
-    a[2] = s.get_ui();
-    s >>= 64;
-    a[3] = s.get_ui();
+    mpz_export((void *)a, NULL, -1, 8, -1, 0, s.get_mpz_t());
 }
 
 inline void fe2array (const RawFec::Element &fe, uint64_t * a)
