@@ -318,15 +318,15 @@ function mem_op(int id = MEMORY_ID, expr op, expr addr, expr mem_step, expr byte
 // Helpers for main memory operations
 
 // Functions to translate from main step send to bus, to memory step (used by precompiled memory operations)
-function main_step_to_precompiled_mem_step(const expr step, const int is_write = 0): expr {
-    const int write_inc = is_write ? 3 : 2;
-    return RESERVED_MEM_STEPS + MAX_MEM_STEPS_PER_MAIN_STEP * step + write_inc;
+function main_step_to_precompiled_mem_step(const expr step, const expr is_write = 0): expr {
+    return RESERVED_MEM_STEPS + MAX_MEM_STEPS_PER_MAIN_STEP * step + is_write + 2;
 }
 
 // Helpers for precompiled memory operations
 
-function precompiled_mem_op(int id = MEMORY_ID, expr op, expr addr, expr main_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
-    mem_assumes(id, op, addr, main_step_to_precompiled_mem_step(main_step), 8, value, sel, name);
+function precompiled_mem_op(int id = MEMORY_ID, expr addr, expr main_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT, const expr is_write = 0) {
+    const expr op = is_write * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
+    mem_assumes(id, op, addr, main_step_to_precompiled_mem_step(main_step, is_write), 8, value, sel, name);
 }
 
 function precompiled_mem_load(int id = MEMORY_ID, expr addr, expr main_step, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {

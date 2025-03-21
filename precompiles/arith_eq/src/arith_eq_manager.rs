@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use data_bus::{BusDevice, PayloadType};
-use p3_field::{PrimeField, PrimeField64};
+use p3_field::PrimeField64;
+use pil_std_lib::Std;
 
 use sm_common::{
     BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, Planner,
@@ -14,24 +15,24 @@ use crate::{ArithEqCounterInputGen, ArithEqInstance, ArithEqPlanner, ArithEqSM};
 /// The `Arith256Manager` struct represents the ArithEq manager,
 /// which is responsible for managing the ArithEq state machine.
 #[allow(dead_code)]
-pub struct ArithEqManager {
+pub struct ArithEqManager<F: PrimeField64> {
     /// ArithEq state machine
-    arith_eq_sm: Arc<ArithEqSM>,
+    arith_eq_sm: Arc<ArithEqSM<F>>,
 }
 
-impl ArithEqManager {
+impl<F: PrimeField64> ArithEqManager<F> {
     /// Creates a new instance of `ArithEqManager`.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithEqManager`.
-    pub fn new<F: PrimeField>() -> Arc<Self> {
-        let arith_eq_sm = ArithEqSM::new();
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+        let arith_eq_sm = ArithEqSM::new(std);
 
         Arc::new(Self { arith_eq_sm })
     }
 }
 
-impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager {
+impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager<F> {
     /// Builds and returns a new counter for monitoring arith256 operations.
     ///
     /// # Returns

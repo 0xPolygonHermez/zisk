@@ -21,15 +21,15 @@ use zisk_pil::ArithEqTrace;
 ///
 /// It encapsulates the `ArithEqSM` and its associated context, and it processes input data
 /// to compute witnesses for the ArithEq State Machine.
-pub struct ArithEqInstance {
+pub struct ArithEqInstance<F: PrimeField64> {
     /// ArithEq state machine.
-    arith_eq_sm: Arc<ArithEqSM>,
+    arith_eq_sm: Arc<ArithEqSM<F>>,
 
     /// Instance context.
     ictx: InstanceCtx,
 }
 
-impl ArithEqInstance {
+impl<F: PrimeField64> ArithEqInstance<F> {
     /// Creates a new `ArithEqInstance`.
     ///
     /// # Arguments
@@ -40,12 +40,12 @@ impl ArithEqInstance {
     /// # Returns
     /// A new `Arith256Instance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(arith_eq_sm: Arc<ArithEqSM>, ictx: InstanceCtx) -> Self {
+    pub fn new(arith_eq_sm: Arc<ArithEqSM<F>>, ictx: InstanceCtx) -> Self {
         Self { arith_eq_sm, ictx }
     }
 }
 
-impl<F: PrimeField64> Instance<F> for ArithEqInstance {
+impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
     /// Computes the witness for the arith_eq execution plan.
     ///
     /// This method leverages the `ArithEqSM` to generate an `AirInstance` using the collected
