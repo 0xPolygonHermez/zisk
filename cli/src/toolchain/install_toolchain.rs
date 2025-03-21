@@ -40,6 +40,9 @@ impl InstallToolchainCmd {
                             && entry_name != "bin"
                             && entry_name != "circuits"
                             && entry_name != "toolchains"
+                            && entry_name != "provingKey"
+                            && entry_name != "verifyKey"
+                            && entry_name != "cache"
                         {
                             if let Err(err) = fs::remove_dir_all(&entry_path) {
                                 println!("Failed to remove directory {:?}: {}", entry_path, err);

@@ -9,6 +9,7 @@ categories = { workspace = true }
 
 [dependencies]
 zisk-core = { path = "../../core" }
+zisk-common = { path = "../../common" }
 data-bus = { path = "../../data-bus" }
 
 proofman-common = { workspace = true }
@@ -18,5 +19,5 @@ p3-field = { workspace = true }
 rayon = { workspace = true }
 
 [features]
-default = []
+default = ["distributed"]
 distributed = ["proofman-common/distributed"]
