@@ -4,7 +4,7 @@ use proofman_common::{write_custom_commit_trace, GlobalInfo, ProofType, StarkInf
 use sm_rom::RomSM;
 use std::fs;
 use std::path::{Path, PathBuf};
-use zisk_pil::{RomRomHash, RomRomTrace};
+use zisk_pil::{RomRomTrace, PILOUT_HASH};
 
 pub const DEFAULT_CACHE_PATH: &str = ".zisk/cache";
 
@@ -31,12 +31,12 @@ pub fn get_elf_bin_file_path(
 
     let hash = blake3::hash(&elf_data).to_hex().to_string();
 
-    let rom_cols_hash = RomRomHash;
+    let pilout_hash = PILOUT_HASH;
 
     let n = RomRomTrace::<usize>::NUM_ROWS;
 
     let rom_cache_file_name =
-        format!("{}_{}_{}_{}.bin", hash, rom_cols_hash, &n.to_string(), &blowup_factor.to_string());
+        format!("{}_{}_{}_{}.bin", hash, pilout_hash, &n.to_string(), &blowup_factor.to_string());
 
     Ok(default_cache_path.join(rom_cache_file_name))
 }
