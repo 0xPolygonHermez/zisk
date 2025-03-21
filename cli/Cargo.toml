@@ -47,5 +47,5 @@ yansi = "1.0.1"
 libloading = "0.8.4"
 
 [features]
-default = []
+default = ["distributed"]
 distributed = ["proofman/distributed", "proofman-common/distributed"]
