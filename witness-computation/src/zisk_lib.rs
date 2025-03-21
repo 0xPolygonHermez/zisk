@@ -58,7 +58,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib {
 
         // Step 4: Initialize the precompiles state machines
         let keccakf_sm = KeccakfManager::new::<F>();
-        let arith_eq_sm = ArithEqManager::new::<F>();
+        let arith_eq_sm = ArithEqManager::new(std.clone());
 
         // Step 5: Create the executor and register the secondary state machines
         let mut executor =

@@ -5,9 +5,9 @@ mod arith_eq_input;
 mod arith_eq_instance;
 mod arith_eq_manager;
 mod arith_eq_planner;
-mod arith_eq_precompile;
 mod equations;
 mod executors;
+mod mem_inputs;
 
 pub use arith_eq::*;
 pub use arith_eq_bus_device::*;
