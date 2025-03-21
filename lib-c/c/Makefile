@@ -9,9 +9,11 @@ endif
 all:
 	mkdir -p build
 	nasm -felf64 src/ffiasm/fec.asm -o build/fec.o
+	nasm -felf64 src/ffiasm/fnec.asm -o build/fnec.o
 	gcc $(CFLAGS) -c src/ffiasm/fec.cpp -o build/fecc.o
+	gcc $(CFLAGS) -c src/ffiasm/fnec.cpp -o build/fnecc.o
 	gcc $(CFLAGS) -c src/ec/ec.cpp -o build/ec.o
-	ar rcs build/libziskc.a build/fec.o build/ec.o build/fecc.o
+	ar rcs build/libziskc.a build/fec.o build/fnec.o build/ec.o build/fecc.o build/fnecc.o
 	gcc $(CFLAGS) src/main.cpp -lc build/libziskc.a -o build/clib -lgmp -lstdc++ -lgmpxx
 	mkdir -p lib
 	cp build/libziskc.a lib/

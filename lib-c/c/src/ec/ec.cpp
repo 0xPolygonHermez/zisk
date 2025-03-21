@@ -1,12 +1,20 @@
+
 #include <gmpxx.h>
 #include "ec.hpp"
 #include "../ffiasm/fec.hpp"
+#include "../ffiasm/fnec.hpp"
 
 RawFec fec;
+RawFnec fnec;
 
 inline void array2scalar (const uint64_t * a, mpz_class &s)
 {
     mpz_import(s.get_mpz_t(), 4, -1, 8, -1, 0, (const void *)a);
+}
+
+inline void scalar2array (mpz_class &s, uint64_t * a)
+{
+    mpz_export((void *)a, NULL, -1, 8, -1, 0, s.get_mpz_t());
 }
 
 inline void array2fe (const uint64_t * a, RawFec::Element &fe)
@@ -16,15 +24,24 @@ inline void array2fe (const uint64_t * a, RawFec::Element &fe)
     fec.fromMpz(fe, s.get_mpz_t());
 }
 
-inline void scalar2array (mpz_class &s, uint64_t * a)
-{
-    mpz_export((void *)a, NULL, -1, 8, -1, 0, s.get_mpz_t());
-}
-
 inline void fe2array (const RawFec::Element &fe, uint64_t * a)
 {
     mpz_class s;
     fec.toMpz(s.get_mpz_t(), fe);
+    scalar2array(s, a);
+}
+
+inline void array2fe (const uint64_t * a, RawFnec::Element &fe)
+{
+    mpz_class s;
+    array2scalar(a, s);
+    fnec.fromMpz(fe, s.get_mpz_t());
+}
+
+inline void fe2array (const RawFnec::Element &fe, uint64_t * a)
+{
+    mpz_class s;
+    fnec.toMpz(s.get_mpz_t(), fe);
     scalar2array(s, a);
 }
 
@@ -124,4 +141,99 @@ int AddPointEcP (uint64_t _dbl, const uint64_t * p1, const uint64_t * p2, uint64
     fe2array(y3, p3 + 4);
 
     return result;
+}
+
+int InverseFpEc (
+    const unsigned long * _a,  // 8 x 64 bits
+    unsigned long * _r  // 8 x 64 bits
+)
+{
+    // TODO: call mpz_invert
+    RawFec::Element a;
+    array2fe(_a, a);
+    if (fec.isZero(a))
+    {
+        printf("InverseFpEc() Division by zero\n");
+        return -1;
+    }
+
+    RawFec::Element r;
+    fec.inv(r, a);
+
+    fe2array(r, _r);
+
+    return 0;
+}
+
+int InverseFnEc (
+    const unsigned long * _a,  // 8 x 64 bits
+    unsigned long * _r  // 8 x 64 bits
+)
+{
+    RawFnec::Element a;
+    array2fe(_a, a);
+    if (fnec.isZero(a))
+    {
+        printf("InverseFnEc() Division by zero\n");
+        return -1;
+    }
+
+    RawFnec::Element r;
+    fnec.inv(r, a);
+
+    fe2array(r, _r);
+
+    return 0;
+}
+
+mpz_class n("0x3fffffffffffffffffffffffffffffffffffffffffffffffffffffffbfffff0c");
+mpz_class p("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F");
+mpz_class ScalarMask256 ("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16);
+
+// We use that p = 3 mod 4 => r = a^((p+1)/4) is a square root of a
+// https://www.rieselprime.de/ziki/Modular_square_root
+// n = p+1/4
+
+inline void sqrtF3mod4(mpz_class &r, const mpz_class &a)
+{
+    mpz_class auxa = a;
+    mpz_powm(r.get_mpz_t(), a.get_mpz_t(), n.get_mpz_t(), p.get_mpz_t());
+    if ((r * r) % p != auxa)
+    {
+        r = ScalarMask256;
+    }
+}
+
+int SqrtFpEcParity (
+    const unsigned long * _a,  // 8 x 64 bits
+    const unsigned long _parity,  // 8 x 64 bits
+    unsigned long * _r  // 8 x 64 bits
+)
+{
+    mpz_class parity = _parity;
+    mpz_class a;
+    array2scalar(_a, a);
+
+    // Call the sqrt function
+    mpz_class r;
+    sqrtF3mod4(r, a);
+
+    // Post-process the result
+    if (r == ScalarMask256)
+    {
+        // This sqrt does not have a solution
+    }
+    else if ((r & 1) == parity)
+    {
+        // Return r as it is, since it has the requested parity
+    }
+    else
+    {
+        // Negate the result
+        RawFec::Element fe;
+        fec.fromMpz(fe, r.get_mpz_t());
+        fe = fec.neg(fe);
+        fec.toMpz(r.get_mpz_t(), fe);
+    }
+    return 0;
 }
