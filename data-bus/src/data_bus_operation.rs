@@ -143,7 +143,6 @@ impl OperationBusData<u64> {
     ///
     /// # Returns
     /// An array representing the operation data payload.
-
     #[inline(always)]
     pub fn from_instruction(inst: &ZiskInst, inst_ctx: &InstContext) -> ExtOperationData<u64> {
         let a = if inst.m32 { inst_ctx.a & 0xffffffff } else { inst_ctx.a };

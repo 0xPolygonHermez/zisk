@@ -16,6 +16,7 @@ lazy_static! {
 
 pub struct Arith256 {}
 impl Arith256 {
+    #[allow(dead_code)]
     pub fn calculate(
         a: &[u64; 4],
         b: &[u64; 4],

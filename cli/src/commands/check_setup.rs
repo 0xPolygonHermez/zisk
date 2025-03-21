@@ -1,10 +1,10 @@
 // extern crate env_logger;
 use crate::commands::Field;
+use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
 use proofman_common::{initialize_logger, DebugInfo};
 use std::path::PathBuf;
-use anyhow::Result;
 
 use p3_goldilocks::Goldilocks;
 
@@ -49,7 +49,8 @@ impl ZiskCheckSetup {
                     false,
                     DebugInfo::default(),
                 ),
-            ).map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
+            )
+            .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
         };
 
         Ok(())

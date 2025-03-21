@@ -19,7 +19,6 @@ const CSR_PRECOMPILED_ADDR_START: u32 = 0x800;
 const CSR_PRECOMPILED_ADDR_END: u32 = CSR_PRECOMPILED_ADDR_START + CSR_PRECOMPILED.len() as u32;
 
 const CAUSE_EXIT: u64 = 93;
-const CAUSE_KECCAK: u64 = 0x800;
 const CSR_ADDR: u64 = SYS_ADDR + 0x8000;
 const MTVEC: u64 = CSR_ADDR + 0x305;
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
@@ -1670,30 +1669,6 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     rom.next_init_inst_addr += 4;
 
     // :003c
-    // If register a7==CAUSE_KECCAK, then call the keccak opcode and return
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("reg", 17, false);
-    zib.src_b("imm", CAUSE_KECCAK, false);
-    zib.op("eq").unwrap();
-    zib.j(4, 8);
-    zib.verbose(&format!("beq r17, {} # Check if is keccak", CAUSE_KECCAK));
-    zib.build();
-    rom.insts.insert(rom.next_init_inst_addr, zib);
-    rom.next_init_inst_addr += 4;
-
-    // :0040
-    // Call the keccak precompiled opcode
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("step", 0, false);
-    zib.src_b("reg", 10, false);
-    zib.op("keccak").unwrap();
-    zib.j(4, 4);
-    zib.verbose("keccak");
-    zib.build();
-    rom.insts.insert(rom.next_init_inst_addr, zib);
-    rom.next_init_inst_addr += 4;
-
-    // :0044
     // Return to the instruction next to the one that made this ecall
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
