@@ -4,7 +4,7 @@ use proofman_common::{write_custom_commit_trace, GlobalInfo, ProofType, StarkInf
 use sm_rom::RomSM;
 use std::fs;
 use std::path::{Path, PathBuf};
-use zisk_pil::{RomRomHash, RomRomTrace, PILOUT_HASH};
+use zisk_pil::{RomRomTrace, PILOUT_HASH};
 
 pub const DEFAULT_CACHE_PATH: &str = ".zisk/cache";
 
