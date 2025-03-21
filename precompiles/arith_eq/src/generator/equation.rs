@@ -404,8 +404,10 @@ impl Equation {
                             if terms_by_clock == 0 {
                                 line.append(&format!("{}[{}]", self.vars[*id], index));
                             } else {
+                                // vars only has one value by clock
+                                let var_terms_by_clock = 1;
                                 let row_offset =
-                                    Self::index_to_row_offset(*index, clock, terms_by_clock);
+                                    Self::index_to_row_offset(*index, clock, var_terms_by_clock);
                                 let comment = format!("{}[{}]", self.vars[*id], index);
                                 let s_term = if row_offset == 0 {
                                     self.vars[*id].to_string()

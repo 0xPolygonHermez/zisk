@@ -27,6 +27,7 @@ const int PUBLIC_OP = 0x30;
 set_max_std_tables_bits(21);
 
 airgroup Zisk {
+    ArithEq(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
     Main(N: 2**22, RC: 2, operation_bus_id: OPERATION_BUS_ID);
     Rom(N: 2**21);
 
@@ -50,7 +51,6 @@ airgroup Zisk {
     Keccakf(N: 2**22, RC: 2, RB: 32, bits_in_parallel: 2, chunks: 6, bits: KECCAKF_BITS, bits_reduced: KECCAKF_BITS, operation_bus_id: OPERATION_BUS_ID);
     KeccakfTable(N: 2**21, chunks: 1, bits: KECCAKF_BITS, bits_reduced: KECCAKF_BITS);
 
-    ArithEq(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
 
     // public inputs
     for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {

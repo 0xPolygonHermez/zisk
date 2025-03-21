@@ -22,7 +22,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
 
     const int CLOCKS = 16;
     col fixed CLK_0 = [1, 0:(CLOCKS-1)]...;
-    const expr LAST_CLK = (CLOCKS - 1)'CLK_0;
+    const expr LAST_CLK = CLK_0';
 
     const int CHUNKS = CLOCKS;
     const int CBC = 2;
@@ -37,8 +37,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
         CLK[i] = (i)'CLK_0;
     }
 
-    const int Q_HSC_MIN = -(2**22 - 1);
-    const int Q_HSC_MAX = 2**22;
+    const int Q_HSC_MAX = 2**22-1;
 
     const int CARRY_MIN = -(2**22 - 1);
     const int CARRY_MAX = 2**22;
@@ -70,7 +69,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
     sel_secp256k1_dbl * (x1 - x2) === 0;
     sel_secp256k1_dbl * (y1 - y2) === 0;
 
-    const expr coordinates[6]= [x1, y1, x2, y2, x3, y3];
+    const expr chunk_cols[7]= [x1, y1, x2, y2, x3, y3, s];
     const expr qs[QS] = [q0, q1, q2];
 
     // TODO: explain concept of row_offset with x1, y1, x2, y2, x3, y3
@@ -90,9 +89,19 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
     const expr secp256k1_dbl_clk0 = sel_op_clk0[3];
     const expr secp256k1_clk0 = sel_op_clk0[2] + sel_op_clk0[3];
 
+    expr sum_sel_op = 0;
+    expr sum_sel_op_clk0 = 0;
     for (int i = 0; i < OPS; ++i) {
-        // binary selector
-        sel_op_clk0[i] * (1 - CLK_0) === 0;
+        // binary constraint
+        sel_op_clk0[i] * (1 - sel_op_clk0[i]) === 0;
+        sel_op[i] * (1 - sel_op[i]) === 0;
+
+        // selector latch
+        (1 - CLK_0) * (sel_op[i] - 'sel_op[i]) === 0;
+
+        // only one selector could be enabled
+        sum_sel_op = sum_sel_op + sel_op[i];
+        sum_sel_op_clk0 = sum_sel_op_clk0 + sel_op_clk0[i];
 
         // only could be one in CLK_0
         (1 - CLK_0) * sel_op_clk0[i] === 0;
@@ -100,6 +109,11 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
         // clock of selector must be active if selector is active
         CLK_0 * (sel_op[i] - sel_op_clk0[i]) === 0;
     }
+    const expr in_use = sum_sel_op;
+    in_use * (1 - in_use) === 0;
+
+    const expr in_use_clk0 = sum_sel_op_clk0;
+    in_use_clk0 * (1 - in_use_clk0) === 0;
 
     const expr eq[MAX_CEQS][CBC];
 
@@ -112,25 +126,15 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
         eq[2][i] = expr_group_by_cbc(secp256k1_clk0, eq_secp256k1_y3_chunks, i);
     }
 
-    expr sum_sel_op = 0;
-    for (int i = 0; i < length(coordinates); ++i) {
-        range_check(min: 0, max: CHUNK_MAX, expression: coordinates[i]);
+    for (int i = 0; i < length(chunk_cols); ++i) {
+        range_check(min: 0, max: CHUNK_MAX, expression: chunk_cols[i]);
         if (i < length(qs)) {
-            multi_range_check(min1: 0, max1: CHUNK_MAX, min2: Q_HSC_MIN, max2: Q_HSC_MAX,
-                              range_sel: 'CLK_0, expression: qs[i]);
-        }
-        if (i < length(sel_op)) {
-            // selector must be binary
-            sel_op[i] * (1 - sel_op[i]) === 0;
-            // selector latch
-            (1 - CLK_0) * (sel_op[i] - 'sel_op[i]) === 0;
-            // only one selector could be enabled
-            sum_sel_op = sum_sel_op + sel_op[i];
+            // range_sel = 1 => [0, CHUNK_MAX]
+            // range_sel = 0 => [0, Q_HSC_MAX]
+            multi_range_check(min1: 0, max1: CHUNK_MAX, min2: 0, max2: Q_HSC_MAX,
+                              range_sel: (1 - LAST_CLK), expression: qs[i]);
         }
     }
-    const expr in_use = sum_sel_op;
-    in_use * (1 - in_use) === 0;
-
 
     // FEATURE
     // Verify that the x1,x2 are different when adding different elliptic curve points.
@@ -283,11 +287,16 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
 
     col witness carry[MAX_CEQS][CBC];
 
-    for (int i = 0; i < CBC; ++i) {
-        for (int j = 0; j < MAX_CEQS; ++j) {
-            carry[j][i] * CLK_0 === 0;
-            range_check(min:CARRY_MIN, max: CARRY_MAX, expression: carry[j][i]);
-            eq[j][i] + carry[j][i] === carry[j][i]' * CHUNK_SIZE;
+    for (int i = 0; i < MAX_CEQS; ++i) {
+        carry[i][0] * CLK_0 === 0;
+        for (int j = 0; j < CBC; ++j) {
+            range_check(min:CARRY_MIN, max: CARRY_MAX, expression: carry[i][j]);
+            if (j == CBC - 1) {
+                // in last clock (CLK_0') carry belongs to next operation cycle
+                eq[i][j] + carry[i][j] === (1 - LAST_CLK) * carry[i][0]' * CHUNK_SIZE;
+            } else {
+                eq[i][j] + carry[i][j] === carry[i][j+1] * CHUNK_SIZE;
+            }
         }
     }
 
@@ -349,9 +358,9 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
     //  9  STEP + 1 | W | ADDR_X3 + 8   x3[4..7]    1         | ADDR_Y3 + 8   y3[4..7]    use_y3
     // 10  STEP + 1 | W | ADDR_X3 + 16  x3[8..11]   1         | ADDR_Y3 + 16  y3[8..11]   use_y3
     // 11  STEP + 1 | W | ADDR_X3 + 24  x3[12..15]  1         | ADDR_Y3 + 24  y3[12..15]  use_y3
-    // 12  STEP     | R | ADDR_OP + 1   ADDR_IND_0  use_ind_0 | ADDR_OP + 1   ADDR_IND_1  use_ind_1
-    // 13  STEP     | R | ADDR_OP + 3   ADDR_IND_2  use_ind_2 | ADDR_OP + 3   ADDR_IND_3  use_ind_3
-    // 14  STEP     | R | ADDR_OP + 5   ADDR_IND_4  use_ind_4 | ADDR_OP + 5   ADDR_IND_5  use_ind_5
+    // 12  STEP     | R | ADDR_OP + 0   ADDR_IND_0  use_ind_0 | ADDR_OP + 8   ADDR_IND_1  use_ind_1
+    // 13  STEP     | R | ADDR_OP + 16  ADDR_IND_2  use_ind_2 | ADDR_OP + 24  ADDR_IND_3  use_ind_3
+    // 14  STEP     | R | ADDR_OP + 32  ADDR_IND_4  use_ind_4 | ADDR_OP + 40  ADDR_IND_5  use_ind_5
     // 15  ---       ----------     -------                 ----------      ---------
 
     const expr use_y2 = sel_arith256_mod + sel_secp256k1_add + sel_secp256k1_dbl;
@@ -378,7 +387,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
     sel_secp256k1 * clock_eq(step_addr, ADDR_X1, ADDR_X3) === 0;
     sel_secp256k1 * clock_eq(step_addr, ADDR_Y1, ADDR_Y3) === 0;
 
-    sel_any_arith256 * clock_eq(step_addr, ADDR_X1, ADDR_OP) === 0;
+    sel_any_arith256 * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
 
     // [secp256k1_add] ADDR_X2 === ADDR_IND_1
     //                 ADDR_Y2 === ADDR_IND_1 + 32
@@ -422,20 +431,17 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
     mem_addr[0] = clock_map(step_addr, ADDR_X1, start: 0, end: 3, delta: 8) +
                   clock_map(step_addr, ADDR_X2, start: 4, end: 7, delta: 8) +
                   clock_map(step_addr, ADDR_X3, start: 8, end: 11, delta: 8) +
-                  clock_map(step_addr, ADDR_OP, start: 12, end: 14, delta: 2);
+                  clock_map(step_addr, ADDR_OP, start: 12, end: 14, delta: 16);
 
-    mem_addr[1] = clock_map(step_addr, ADDR_Y3, start: 0, end: 3, delta: 8) +
-                  clock_map(step_addr, ADDR_Y3, start: 4, end: 7, delta: 8) +
+    mem_addr[1] = clock_map(step_addr, ADDR_Y1, start: 0, end: 3, delta: 8) +
+                  clock_map(step_addr, ADDR_Y2, start: 4, end: 7, delta: 8) +
                   clock_map(step_addr, ADDR_Y3, start: 8, end: 11, delta: 8) +
-                  clock_map(step_addr, ADDR_OP, start: 12, end: 14, delta: 2, offset: 1);
+                  clock_map(step_addr, ADDR_OP, start: 12, end: 14, delta: 16, offset: 8);
 
-    const expr main_step = clock_map(step_addr, MAIN_STEP, start: 0, end: 7) +
-                           clock_map(step_addr, MAIN_STEP, start: 8, end: 11, offset: 1) +
-                           clock_map(step_addr, MAIN_STEP, start: 12, end: 14);
+    const expr main_step = clock_map(step_addr, MAIN_STEP, start: 0, end: 14);
 
-    const expr mem_op = clock_set(MEMORY_LOAD_OP, start: 0, end: 7) +
-                        clock_set(MEMORY_STORE_OP, start: 8, end: 11) +
-                        clock_set(MEMORY_LOAD_OP, start: 12, end: 14);
+
+    const expr mem_is_write = CLK[8] + CLK[9] + CLK[10] + CLK[11];
 
     const expr mem_value[2][2];
 
@@ -449,6 +455,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
     mem_value[0][1] =   map_chunks_to_m32(x1, index: 2, start:0, end: 3) +
                         map_chunks_to_m32(x2, index: 2, start:4, end: 7) +
                         map_chunks_to_m32(x3, index: 2, start:8, end: 11);
+                        // high bits of indirect addresses are 0.
 
     mem_value[1][0] =   map_chunks_to_m32(y1, start: 0, end: 3) +
                         map_chunks_to_m32(y2, start: 4, end: 7) +
@@ -460,6 +467,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
     mem_value[1][1] =   map_chunks_to_m32(y1, index: 2, start:0, end: 3) +
                         map_chunks_to_m32(y2, index: 2, start:4, end: 7) +
                         map_chunks_to_m32(y3, index: 2, start:8, end: 11);
+                        // high bits of indirect addresses are 0.
 
     const expr mem_sel[2];
 
@@ -477,7 +485,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
 
 
     precompiled_mem_op(
-            op: mem_op,
+            is_write: mem_is_write,
             sel: mem_sel[0],
             main_step: main_step,
             addr: mem_addr[0],
@@ -485,7 +493,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
     );
 
     precompiled_mem_op(
-            op: mem_op,
+            is_write: mem_is_write,
             sel: mem_sel[1],
             main_step: main_step,
             addr: mem_addr[1],
@@ -497,7 +505,7 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
                         sel_secp256k1_add * EC_ADD_SECP256K1_OP +
                         sel_secp256k1_dbl * EC_DBL_SECP256K1_OP;
 
-    lookup_assumes(operation_bus_id, [bus_op, step_addr'(MAIN_STEP), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], sel: CLK_0);
+    lookup_proves(operation_bus_id, [bus_op, step_addr'(MAIN_STEP), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], mul: in_use_clk0);
 
     // selclk0 is the clock 0 for dedicated to one operation
     function expr_group_by_cbc(const expr selclk0, const expr chunks[], const int index ): const expr {

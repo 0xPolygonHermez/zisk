@@ -20,17 +20,17 @@ impl Arith256 {
         a: &[u64; 4],
         b: &[u64; 4],
         c: &[u64; 4],
-        dh: &mut [u64; 4],
         dl: &mut [u64; 4],
+        dh: &mut [u64; 4],
     ) {
-        Self::prepare(a, b, c, Some(dh), Some(dl));
+        Self::prepare(a, b, c, Some(dl), Some(dh));
     }
     fn prepare(
         a: &[u64; 4],
         b: &[u64; 4],
         c: &[u64; 4],
-        dh: Option<&mut [u64; 4]>,
         dl: Option<&mut [u64; 4]>,
+        dh: Option<&mut [u64; 4]>,
     ) -> Option<ArithEqData> {
         let a = bigint_from_u64s(a);
         let b = bigint_from_u64s(b);
