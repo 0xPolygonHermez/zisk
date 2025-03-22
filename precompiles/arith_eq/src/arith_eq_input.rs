@@ -1,4 +1,7 @@
-use data_bus::OperationArith256Data;
+use data_bus::{
+    OperationArith256Data, OperationArith256ModData, OperationSecp256k1AddData,
+    OperationSecp256k1DblData,
+};
 
 #[derive(Debug)]
 pub enum ArithEqInput {
@@ -54,6 +57,24 @@ pub struct Arith256ModInput {
     pub module: [u64; 4],
 }
 
+impl Arith256ModInput {
+    pub fn from(values: &OperationArith256ModData<u64>) -> Self {
+        Self {
+            addr: values[3] as u32,
+            a_addr: values[4] as u32,
+            b_addr: values[5] as u32,
+            c_addr: values[6] as u32,
+            module_addr: values[7] as u32,
+            d_addr: values[8] as u32,
+            step: values[2],
+            a: values[9..13].try_into().unwrap(),
+            b: values[13..17].try_into().unwrap(),
+            c: values[17..21].try_into().unwrap(),
+            module: values[21..25].try_into().unwrap(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Secp256k1AddInput {
     pub addr: u32,
@@ -64,9 +85,28 @@ pub struct Secp256k1AddInput {
     pub p2: [u64; 8],
 }
 
+impl Secp256k1AddInput {
+    pub fn from(values: &OperationSecp256k1AddData<u64>) -> Self {
+        Self {
+            addr: values[3] as u32,
+            p1_addr: values[4] as u32,
+            p2_addr: values[5] as u32,
+            step: values[2],
+            p1: values[6..14].try_into().unwrap(),
+            p2: values[14..22].try_into().unwrap(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Secp256k1DblInput {
     pub addr: u32,
     pub step: u64,
     pub p1: [u64; 8],
+}
+
+impl Secp256k1DblInput {
+    pub fn from(values: &OperationSecp256k1DblData<u64>) -> Self {
+        Self { addr: values[3] as u32, step: values[2], p1: values[4..12].try_into().unwrap() }
+    }
 }
