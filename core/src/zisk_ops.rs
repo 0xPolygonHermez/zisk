@@ -1199,12 +1199,12 @@ pub fn precompiled_load_data(
         return;
     }
 
-    for i in 0..indirections_count {
+    for (i, data) in data.iter_mut().enumerate().take(indirections_count) {
         let indirection = ctx.mem.read(address + (8 * i as u64), 8);
         if address & 0x7 != 0 {
             panic!("precompiled_check_address() found address[{}] not aligned to 8 bytes", i);
         }
-        data[i] = indirection;
+        *data = indirection;
     }
     let data_offset = indirections_count;
     for i in 0..loads_count {
@@ -1251,11 +1251,11 @@ pub fn opc_arith256(ctx: &mut InstContext) {
     precompiles_helpers::arith256(a, b, c, &mut dl, &mut dh);
 
     // [a,b,c,3:dl,4:dh]
-    for i in 0..4 {
-        ctx.mem.write(data[3] + (8 * i as u64), dl[i], 8);
+    for (i, dl) in dl.iter().enumerate() {
+        ctx.mem.write(data[3] + (8 * i as u64), *dl, 8);
     }
-    for i in 0..4 {
-        ctx.mem.write(data[4] + (8 * i as u64), dh[i], 8);
+    for (i, dh) in dh.iter().enumerate() {
+        ctx.mem.write(data[4] + (8 * i as u64), *dh, 8);
     }
 
     ctx.c = 0;
@@ -1323,7 +1323,7 @@ pub fn opc_secp256k1_add(ctx: &mut InstContext) {
     let p2: &[u64; 8] = p2.try_into().expect("opc_secp256k1_add: p2.len != 8");
     let mut p3 = [0u64; 8];
 
-    precompiles_helpers::secp256k1_add(&p1, &p2, &mut p3);
+    precompiles_helpers::secp256k1_add(p1, p2, &mut p3);
 
     // [0:p1,p2]
     for (i, d) in p3.iter().enumerate() {
@@ -1343,15 +1343,15 @@ pub fn op_secp256k1_add(_a: u64, _b: u64) -> (u64, bool) {
 
 #[inline(always)]
 pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
-    const WORDS: usize = 1 * 8;
+    const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 0, 1, 8, &mut data, "secp256k1_dbl");
 
-    let p1: &[u64; 8] = &data.try_into().expect("opc_secp256k1_dbl: p1.len != 8");
+    let p1: &[u64; 8] = &data;
     let mut p3 = [0u64; 8];
 
-    precompiles_helpers::secp256k1_dbl(&p1, &mut p3);
+    precompiles_helpers::secp256k1_dbl(p1, &mut p3);
 
     for (i, d) in p3.iter().enumerate() {
         ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);

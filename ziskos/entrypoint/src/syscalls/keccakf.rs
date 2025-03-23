@@ -16,7 +16,6 @@ use crate::ziskos_syscall;
 ///
 /// The caller must ensure that `state` is valid pointer to data that is aligned along a eigth
 /// byte boundary.
-
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn syscall_keccak_f(state: *mut [u64; 25]) {

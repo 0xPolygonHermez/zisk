@@ -8,7 +8,6 @@ use std::sync::{
     Arc,
 };
 
-use p3_field::Field;
 use sm_common::create_atomic_vec;
 use zisk_pil::ArithEqLtTableTrace;
 
@@ -27,7 +26,7 @@ impl ArithEqLtTableSM {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithEqLtTableSM`.
-    pub fn new<F: Field>() -> Arc<Self> {
+    pub fn new() -> Arc<Self> {
         let mut multiplicities = Vec::new();
         for _ in 0..ArithEqLtTableTrace::<usize>::ROW_SIZE {
             multiplicities.push(create_atomic_vec(ArithEqLtTableTrace::<usize>::NUM_ROWS));
@@ -73,6 +72,9 @@ impl ArithEqLtTableSM {
             3 => 0x30000 + (-delta) as usize,
             _ => panic!("Invalid range type"),
         };
+        if index > 0x3FFFF {
+            panic!("Invalid index:{} prev_lt:{} lt:{} delta:{}", index, prev_lt, lt, delta);
+        }
         self.multiplicities[0][index].fetch_add(1, Ordering::Relaxed);
     }
 }

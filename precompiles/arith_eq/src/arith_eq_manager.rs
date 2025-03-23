@@ -28,7 +28,7 @@ impl<F: PrimeField64> ArithEqManager<F> {
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithEqManager`.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let arith_eq_lt_table_sm = ArithEqLtTableSM::new::<F>();
+        let arith_eq_lt_table_sm = ArithEqLtTableSM::new();
         let arith_eq_sm = ArithEqSM::new(std, arith_eq_lt_table_sm.clone());
 
         Arc::new(Self { arith_eq_sm, arith_eq_lt_table_sm })

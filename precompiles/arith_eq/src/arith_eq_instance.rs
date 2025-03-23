@@ -178,6 +178,7 @@ impl BusDevice<PayloadType> for ArithEqCollector {
             ExtOperationData::OperationSecp256k1DblData(bus_data) => {
                 ArithEqInput::Secp256k1Dbl(Secp256k1DblInput::from(&bus_data))
             }
+            // Add here new operations
             _ => panic!("Expected ExtOperationData::OperationData"),
         });
         None

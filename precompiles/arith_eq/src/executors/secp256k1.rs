@@ -24,9 +24,11 @@ lazy_static! {
 pub struct Secp256k1 {}
 
 impl Secp256k1 {
+    #[allow(dead_code)]
     pub fn calculate_add(p1: &[u64; 8], p2: &[u64; 8], p3: &mut [u64; 8]) {
         Self::prepare(false, p1, p2, Some(p3));
     }
+    #[allow(dead_code)]
     pub fn calculate_dbl(p1: &[u64; 8], p3: &mut [u64; 8]) {
         Self::prepare(true, p1, p1, Some(p3));
     }
