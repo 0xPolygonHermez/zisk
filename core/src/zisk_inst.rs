@@ -78,9 +78,12 @@ pub enum ZiskOperationType {
     Keccak,
     PubOut,
     ArithEq,
+    FcallParam,
+    Fcall,
+    FcallGet,
 }
 
-pub const ZISK_OP_TYPE_COUNT: usize = 7;
+pub const ZISK_OP_TYPE_COUNT: usize = 10;
 
 /// ZisK instruction definition
 ///

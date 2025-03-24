@@ -12,9 +12,10 @@ use sm_mem::MemHelpers;
 // use zisk_core::SRC_SP;
 use data_bus::DataBus;
 use zisk_common::{EmuTrace, EmuTraceStart};
+use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{
-    InstContext, Mem, PrecompiledEmulationMode, ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C,
-    SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    EmulationMode, InstContext, Mem, ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
+    SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -1260,6 +1261,9 @@ impl<'a> Emu<'a> {
         // Store the stats option into the emulator context
         self.ctx.do_stats = options.stats;
 
+        // Set emulation mode
+        self.ctx.inst_ctx.emulation_mode = EmulationMode::GenerateMemReads;
+
         let mut emu_traces = Vec::new();
 
         while !self.ctx.inst_ctx.end {
@@ -1429,8 +1433,6 @@ impl<'a> Emu<'a> {
 
         // If this is a precompiled, get the required input data to copy it to mem_reads
         if instruction.input_size > 0 {
-            self.ctx.inst_ctx.precompiled.emulation_mode =
-                PrecompiledEmulationMode::GenerateMemReads;
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
         }
@@ -1441,7 +1443,12 @@ impl<'a> Emu<'a> {
         // If this is a precompiled, copy input data to mem_reads
         if instruction.input_size > 0 {
             emu_full_trace_vec.mem_reads.append(&mut self.ctx.inst_ctx.precompiled.input_data);
-            self.ctx.inst_ctx.precompiled.emulation_mode = PrecompiledEmulationMode::None;
+        }
+
+        // Add fcallget result into mem reads
+        let opcode = ZiskOp::try_from_code(instruction.op).expect("Invalid ZiskOp opcode");
+        if opcode == ZiskOp::FcallGet {
+            emu_full_trace_vec.mem_reads.push(self.ctx.inst_ctx.c);
         }
 
         // Store the 'c' register value based on the storage specified by the current instruction
@@ -1509,8 +1516,6 @@ impl<'a> Emu<'a> {
         self.source_b_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         // If this is a precompiled, get the required input data from mem_reads
         if instruction.input_size > 0 {
-            self.ctx.inst_ctx.precompiled.emulation_mode =
-                PrecompiledEmulationMode::ConsumeMemReads;
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
 
@@ -1522,7 +1527,16 @@ impl<'a> Emu<'a> {
                 self.ctx.inst_ctx.precompiled.input_data.push(mem_read);
             }
         }
-        (instruction.func)(&mut self.ctx.inst_ctx);
+
+        // Add fcallget result into mem reads
+        let opcode = ZiskOp::try_from_code(instruction.op).expect("Invalid ZiskOp opcode");
+        if opcode == ZiskOp::FcallGet {
+            self.ctx.inst_ctx.c = mem_reads[*mem_reads_index];
+            *mem_reads_index += 1;
+        } else {
+            (instruction.func)(&mut self.ctx.inst_ctx);
+        }
+
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
         // Get operation bus data
@@ -1582,6 +1596,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step = emu_trace.start_state.step;
         self.ctx.inst_ctx.c = emu_trace.start_state.c;
         self.ctx.inst_ctx.regs = emu_trace.start_state.regs;
+        self.ctx.inst_ctx.emulation_mode = EmulationMode::ConsumeMemReads;
 
         let mut mem_reads_index: usize = 0;
         for _ in 0..emu_trace.steps {
@@ -1604,6 +1619,7 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.step = emu_trace_start.step;
         self.ctx.inst_ctx.c = emu_trace_start.c;
         self.ctx.inst_ctx.regs = emu_trace_start.regs;
+        self.ctx.inst_ctx.emulation_mode = EmulationMode::ConsumeMemReads;
 
         let mut current_step_idx = 0;
         let mut mem_reads_index: usize = 0;
@@ -1634,8 +1650,6 @@ impl<'a> Emu<'a> {
         self.source_b_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         // If this is a precompiled, get the required input data from mem_reads
         if instruction.input_size > 0 {
-            self.ctx.inst_ctx.precompiled.emulation_mode =
-                PrecompiledEmulationMode::ConsumeMemReads;
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             let number_of_mem_reads = (instruction.input_size + 7) >> 3;
@@ -1645,7 +1659,16 @@ impl<'a> Emu<'a> {
                 self.ctx.inst_ctx.precompiled.input_data.push(mem_read);
             }
         }
-        (instruction.func)(&mut self.ctx.inst_ctx);
+
+        // Add fcallget result into mem reads
+        let opcode = ZiskOp::try_from_code(instruction.op).expect("Invalid ZiskOp opcode");
+        if opcode == ZiskOp::FcallGet {
+            self.ctx.inst_ctx.c = mem_reads[*mem_reads_index];
+            *mem_reads_index += 1;
+        } else {
+            (instruction.func)(&mut self.ctx.inst_ctx);
+        }
+
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
         // Get operation bus data
@@ -1697,9 +1720,8 @@ impl<'a> Emu<'a> {
         self.source_a_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
         self.source_b_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
         // If this is a precompiled, get the required input data from mem_reads
+        self.ctx.inst_ctx.emulation_mode = EmulationMode::ConsumeMemReads;
         if instruction.input_size > 0 {
-            self.ctx.inst_ctx.precompiled.emulation_mode =
-                PrecompiledEmulationMode::ConsumeMemReads;
             self.ctx.inst_ctx.precompiled.input_data.clear();
             self.ctx.inst_ctx.precompiled.output_data.clear();
             let number_of_mem_reads = (instruction.input_size + 7) >> 3;
@@ -1710,7 +1732,15 @@ impl<'a> Emu<'a> {
             }
         }
 
-        (instruction.func)(&mut self.ctx.inst_ctx);
+        // Add fcallget result into mem reads
+        let opcode = ZiskOp::try_from_code(instruction.op).expect("Invalid ZiskOp opcode");
+        if opcode == ZiskOp::FcallGet {
+            self.ctx.inst_ctx.c = mem_reads[*mem_reads_index];
+            *mem_reads_index += 1;
+        } else {
+            (instruction.func)(&mut self.ctx.inst_ctx);
+        }
+
         self.store_c_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
 
         if let Some(step_range_check) = step_range_check {

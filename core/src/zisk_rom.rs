@@ -2842,6 +2842,9 @@ impl ZiskRom {
             ZiskOp::Arith256Mod => unimplemented!(),
             ZiskOp::Secp256k1Add => unimplemented!(),
             ZiskOp::Secp256k1Dbl => unimplemented!(),
+            ZiskOp::FcallParam => unimplemented!(),
+            ZiskOp::Fcall => unimplemented!(),
+            ZiskOp::FcallGet => unimplemented!(),
         }
         s
     }
