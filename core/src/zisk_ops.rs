@@ -1423,9 +1423,8 @@ pub fn opc_fcallparam(ctx: &mut InstContext) {
 
     // Do nothing when emulating in consume memory reads mode;
     // data will be directly obtained from mem_reads
-    match ctx.emulation_mode {
-        EmulationMode::ConsumeMemReads => return,
-        _ => {}
+    if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
+        return;
     }
 
     // Get param chunk from b
@@ -1459,9 +1458,8 @@ pub fn opc_fcall(ctx: &mut InstContext) {
 
     // Do nothing when emulating in consume memory reads mode;
     // data will be directly obtained from mem_reads
-    match ctx.emulation_mode {
-        EmulationMode::ConsumeMemReads => return,
-        _ => {}
+    if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
+        return;
     }
 
     // Get function id from a
