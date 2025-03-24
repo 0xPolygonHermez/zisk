@@ -1442,16 +1442,13 @@ impl<'a> Emu<'a> {
 
         // If this is a precompiled, copy input data to mem_reads
         if instruction.input_size > 0 {
-            emu_full_trace_vec
-                .steps
-                .mem_reads
-                .append(&mut self.ctx.inst_ctx.precompiled.input_data);
+            emu_full_trace_vec.mem_reads.append(&mut self.ctx.inst_ctx.precompiled.input_data);
         }
 
         // Add fcallget result into mem reads
         let opcode = ZiskOp::try_from_code(instruction.op).expect("Invalid ZiskOp opcode");
         if opcode == ZiskOp::FcallGet {
-            emu_full_trace_vec.steps.mem_reads.push(self.ctx.inst_ctx.c);
+            emu_full_trace_vec.mem_reads.push(self.ctx.inst_ctx.c);
         }
 
         // Store the 'c' register value based on the storage specified by the current instruction
@@ -1534,18 +1531,13 @@ impl<'a> Emu<'a> {
         // Add fcallget result into mem reads
         let opcode = ZiskOp::try_from_code(instruction.op).expect("Invalid ZiskOp opcode");
         if opcode == ZiskOp::FcallGet {
-            self.ctx.inst_ctx.c = trace_step.mem_reads[*mem_reads_index];
+            self.ctx.inst_ctx.c = mem_reads[*mem_reads_index];
             *mem_reads_index += 1;
         } else {
             (instruction.func)(&mut self.ctx.inst_ctx);
         }
 
-        self.store_c_mem_reads_consume_databus(
-            instruction,
-            &trace_step.mem_reads,
-            mem_reads_index,
-            data_bus,
-        );
+        self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
         // Get operation bus data
         let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
@@ -1671,18 +1663,13 @@ impl<'a> Emu<'a> {
         // Add fcallget result into mem reads
         let opcode = ZiskOp::try_from_code(instruction.op).expect("Invalid ZiskOp opcode");
         if opcode == ZiskOp::FcallGet {
-            self.ctx.inst_ctx.c = trace_step.mem_reads[*mem_reads_index];
+            self.ctx.inst_ctx.c = mem_reads[*mem_reads_index];
             *mem_reads_index += 1;
         } else {
             (instruction.func)(&mut self.ctx.inst_ctx);
         }
 
-        self.store_c_mem_reads_consume_databus(
-            instruction,
-            &trace_step.mem_reads,
-            mem_reads_index,
-            data_bus,
-        );
+        self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
         // Get operation bus data
         let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
@@ -1748,18 +1735,13 @@ impl<'a> Emu<'a> {
         // Add fcallget result into mem reads
         let opcode = ZiskOp::try_from_code(instruction.op).expect("Invalid ZiskOp opcode");
         if opcode == ZiskOp::FcallGet {
-            self.ctx.inst_ctx.c = trace_step.mem_reads[*trace_step_index];
-            *trace_step_index += 1;
+            self.ctx.inst_ctx.c = mem_reads[*mem_reads_index];
+            *mem_reads_index += 1;
         } else {
             (instruction.func)(&mut self.ctx.inst_ctx);
         }
 
-        self.store_c_mem_reads_consume(
-            instruction,
-            &trace_step.mem_reads,
-            trace_step_index,
-            reg_trace,
-        );
+        self.store_c_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
 
         if let Some(step_range_check) = step_range_check {
             reg_trace.update_step_range_check(step_range_check);
