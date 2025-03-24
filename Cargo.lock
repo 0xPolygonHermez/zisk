@@ -2230,6 +2230,7 @@ dependencies = [
  "generic-array",
  "k256",
  "lazy_static",
+ "lib-c",
  "log",
  "nom",
  "num-bigint",

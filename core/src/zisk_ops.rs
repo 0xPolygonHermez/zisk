@@ -1251,11 +1251,11 @@ pub fn opc_arith256(ctx: &mut InstContext) {
     precompiles_helpers::arith256(a, b, c, &mut dl, &mut dh);
 
     // [a,b,c,3:dl,4:dh]
-    for (i, dl) in dl.iter().enumerate() {
-        ctx.mem.write(data[3] + (8 * i as u64), *dl, 8);
+    for (i, dl_item) in dl.iter().enumerate() {
+        ctx.mem.write(data[3] + (8 * i as u64), *dl_item, 8);
     }
-    for (i, dh) in dh.iter().enumerate() {
-        ctx.mem.write(data[4] + (8 * i as u64), *dh, 8);
+    for (i, dh_item) in dh.iter().enumerate() {
+        ctx.mem.write(data[4] + (8 * i as u64), *dh_item, 8);
     }
 
     ctx.c = 0;

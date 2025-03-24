@@ -5,6 +5,7 @@ use core::arch::asm;
 
 #[cfg(target_os = "ziskos")]
 use crate::ziskos_syscall;
+
 /// Executes the Keccak256 permutation on the given state.
 ///
 /// The keccak system call execute CSR set on custom port, when transpiling from riscv to zisk

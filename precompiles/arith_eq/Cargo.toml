@@ -15,7 +15,17 @@ required-features = ["test_data"]
 [[bin]]
 name = "arith_eq_test_generator"
 path = "src/arith_eq_test_generator.rs"
+
+[[bin]]
+name = "arith_eq_test_c"
+path = "src/arith_eq_test_c.rs"
 required-features = ["test_data"]
+
+[[bin]]
+name = "arith_eq_test_secp256k1"
+path = "src/arith_eq_test_secp256k1.rs"
+required-features = ["test_data"]
+
 
 [dependencies]
 nom = "7"
@@ -25,6 +35,7 @@ data-bus = { path = "../../data-bus" }
 zisk-pil = { path = "../../pil" }
 precompiles-common = { path = "../common" }
 precompiles-helpers = { path = "../helpers" }
+lib-c = { path = "../../lib-c" }
 
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }

@@ -12,3 +12,13 @@ extern "C" {
         _y3: *mut ::std::os::raw::c_ulong,
     ) -> ::std::os::raw::c_int;
 }
+
+extern "C" {
+    #[link_name = "\u{1}_Z11AddPointEcPmPKmS0_Pm"]
+    pub fn AddPointEcP(
+        _dbl: ::std::os::raw::c_ulong,
+        _p1: *const ::std::os::raw::c_ulong,
+        _p2: *const ::std::os::raw::c_ulong,
+        _p3: *mut ::std::os::raw::c_ulong,
+    ) -> ::std::os::raw::c_int;
+}
