@@ -415,7 +415,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             if let Some(data_bus) = data_bus {
                 ZiskEmulator::process_emu_traces::<F, BusDeviceWrapper<u64>>(
                     &self.zisk_rom,
-                    &min_traces,
+                    min_traces,
                     chunk_id,
                     data_bus,
                 );

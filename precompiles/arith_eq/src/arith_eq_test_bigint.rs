@@ -10,8 +10,6 @@ use executors::arith256::Arith256;
 use executors::arith256_mod::Arith256Mod;
 use executors::secp256k1::Secp256k1;
 
-use std::time::Instant;
-
 // cargo run --release --features="test_data" --bin arith_eq_test_bigint
 
 fn main() {
