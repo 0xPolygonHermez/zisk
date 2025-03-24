@@ -1,7 +1,7 @@
 use crate::{EmuTrace, Stats};
 use zisk_core::{
-    EmulationMode, InstContext, Mem, PrecompiledInstContext, FcallInstContext, INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR,
-    RAM_SIZE, ROM_ENTRY,
+    EmulationMode, FcallInstContext, InstContext, Mem, PrecompiledInstContext, INPUT_ADDR,
+    MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, ROM_ENTRY,
 };
 
 /// ZisK emulator context data container, storing the state of the emulation
