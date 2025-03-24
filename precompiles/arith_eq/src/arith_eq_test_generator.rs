@@ -6,8 +6,6 @@ use test_data::{
 };
 
 mod arith_eq_constants;
-mod equations;
-mod executors;
 use arith_eq_constants::ARITH_EQ_ROWS_BY_OP;
 
 // cargo run --release --features="test_data" --bin arith_eq_test_generator
