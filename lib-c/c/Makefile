@@ -1,9 +1,9 @@
 # Debug build flags
 ifeq ($(dbg),1)
-      CFLAGS = -g -D DEBUG -fPIE
+      CFLAGS = -g -D DEBUG -fPIC
       ASMFLAGS = -g
 else
-      CFLAGS = -O3 -fPIE
+      CFLAGS = -O3 -fPIC
 endif
 
 all:
