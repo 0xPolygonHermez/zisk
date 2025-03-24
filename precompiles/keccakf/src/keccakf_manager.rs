@@ -1,7 +1,7 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use data_bus::{BusDevice, PayloadType, OPERATION_BUS_ID};
-use p3_field::{PrimeField, PrimeField64};
+use p3_field::PrimeField64;
 
 use sm_common::{
     table_instance_array, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
@@ -28,9 +28,9 @@ impl KeccakfManager {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `KeccakfManager`.
-    pub fn new<F: PrimeField>() -> Arc<Self> {
+    pub fn new<F: PrimeField64>(script_path: PathBuf) -> Arc<Self> {
         let keccakf_table_sm = KeccakfTableSM::new::<F>();
-        let keccakf_sm = KeccakfSM::new(keccakf_table_sm.clone());
+        let keccakf_sm = KeccakfSM::new(keccakf_table_sm.clone(), script_path);
 
         Arc::new(Self { keccakf_sm, keccakf_table_sm })
     }

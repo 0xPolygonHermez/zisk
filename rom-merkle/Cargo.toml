@@ -9,20 +9,21 @@ categories = { workspace = true }
 
 [dependencies]
 sm-rom = { path = "../state-machines/rom" }
-log = { workspace = true }
-proofman-common = { workspace = true }
-proofman-util = { workspace = true }
 zisk-pil = { path = "../pil" }
 
+colored = { workspace = true}
+log = { workspace = true }
 p3-goldilocks = { workspace = true }
 p3-field = { workspace = true }
+proofman-common = { workspace = true }
+proofman-util = { workspace = true }
+sysinfo = { workspace = true }
+
+anyhow = { version = "1.0.86", features = ["backtrace"] }
+blake3 = "1.3.1"
 clap = { version = "4.5.13", features = ["derive", "env"] }
 env_logger = "0.11"
-sysinfo = "0.33"
-colored = { workspace = true}
-blake3 = "1.3.1"
-anyhow = { version = "1.0.86", features = ["backtrace"] }
 
 [features]
-default = []
+default = ["distributed"]
 distributed = ["proofman-common/distributed"]

@@ -1,25 +1,25 @@
 use crate::{MemAlignCheckPoint, MemAlignInput, MemAlignSM, MemHelpers};
 use core::panic;
 use data_bus::{BusDevice, BusId, MemBusData, PayloadType, MEM_BUS_ID};
-use p3_field::PrimeField;
+use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 
-pub struct MemAlignInstance<F: PrimeField> {
+pub struct MemAlignInstance<F: PrimeField64> {
     /// Instance context
     ictx: InstanceCtx,
 
     mem_align_sm: Arc<MemAlignSM<F>>,
 }
 
-impl<F: PrimeField> MemAlignInstance<F> {
+impl<F: PrimeField64> MemAlignInstance<F> {
     pub fn new(mem_align_sm: Arc<MemAlignSM<F>>, ictx: InstanceCtx) -> Self {
         Self { ictx, mem_align_sm }
     }
 }
 
-impl<F: PrimeField> Instance<F> for MemAlignInstance<F> {
+impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
     fn compute_witness(
         &mut self,
         _pctx: &ProofCtx<F>,

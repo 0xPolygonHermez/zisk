@@ -5,7 +5,7 @@ use crate::{
     MemPlanner, MemSM, RomDataSM,
 };
 use data_bus::MEM_BUS_ID;
-use p3_field::PrimeField;
+use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
 use sm_common::{table_instance, BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan, Planner};
@@ -13,7 +13,7 @@ use zisk_pil::{
     InputDataTrace, MemAlignRomTrace, MemAlignTrace, MemTrace, RomDataTrace, ZiskProofValues,
 };
 
-pub struct Mem<F: PrimeField> {
+pub struct Mem<F: PrimeField64> {
     // Secondary State machines
     mem_sm: Arc<MemSM<F>>,
     mem_align_sm: Arc<MemAlignSM<F>>,
@@ -22,7 +22,7 @@ pub struct Mem<F: PrimeField> {
     rom_data_sm: Arc<RomDataSM<F>>,
 }
 
-impl<F: PrimeField> Mem<F> {
+impl<F: PrimeField64> Mem<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         let mem_align_rom_sm = MemAlignRomSM::new();
         let mem_align_sm = MemAlignSM::new(std.clone(), mem_align_rom_sm.clone());
@@ -34,7 +34,7 @@ impl<F: PrimeField> Mem<F> {
     }
 }
 
-impl<F: PrimeField> ComponentBuilder<F> for Mem<F> {
+impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
         Box::new(MemCounters::new())
     }

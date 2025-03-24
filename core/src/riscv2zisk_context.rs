@@ -5,8 +5,8 @@
 use riscv::{riscv_interpreter, RiscvInstruction};
 
 use crate::{
-    convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK, INPUT_ADDR, OUTPUT_ADDR, ROM_EXIT,
-    SYS_ADDR,
+    convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_ZISK, INPUT_ADDR, OUTPUT_ADDR, ROM_ENTRY,
+    ROM_EXIT, SYS_ADDR,
 };
 
 use std::collections::HashMap;
@@ -40,14 +40,14 @@ impl Riscv2ZiskContext<'_> {
             "ld" => self.load_op(riscv_instruction, "copyb", 8),
             "fence" => self.nop(riscv_instruction),
             "fence.i" => self.nop(riscv_instruction),
-            "addi" => self.immediate_op(riscv_instruction, "add"),
+            "addi" => self.immediate_op_or_x0_copyb(riscv_instruction, "add"),
             "slli" => self.immediate_op(riscv_instruction, "sll"),
             "slti" => self.immediate_op(riscv_instruction, "lt"),
             "sltiu" => self.immediate_op(riscv_instruction, "ltu"),
-            "xori" => self.immediate_op(riscv_instruction, "xor"),
+            "xori" => self.immediate_op_or_x0_copyb(riscv_instruction, "xor"),
             "srli" => self.immediate_op(riscv_instruction, "srl"),
             "srai" => self.immediate_op(riscv_instruction, "sra"),
-            "ori" => self.immediate_op(riscv_instruction, "or"),
+            "ori" => self.immediate_op_or_x0_copyb(riscv_instruction, "or"),
             "andi" => self.immediate_op(riscv_instruction, "and"),
             "auipc" => self.auipc(riscv_instruction),
             "addiw" => self.immediate_op(riscv_instruction, "add_w"),
@@ -438,6 +438,30 @@ impl Riscv2ZiskContext<'_> {
         self.s += 4;
     }
 
+    // addi rd, rs1, imm
+    //      add([%rs1], imm) -> [%rd]
+
+    /// Creates a Zisk operation that loads a constant value using the specified operation and
+    /// stores the result in a register, if rs1 is x0, operation is replaced by copyb, only could
+    /// be use on operations that op(x0, imm) == imm (e.g. add, or, xor)
+    pub fn immediate_op_or_x0_copyb(&mut self, i: &RiscvInstruction, op: &str) {
+        let mut zib = ZiskInstBuilder::new(self.s);
+        zib.src_a("reg", i.rs1 as u64, false);
+        zib.src_b("imm", i.imm as u64, false);
+        if i.rs1 == 0 {
+            zib.op("copyb").unwrap();
+            zib.verbose(&format!("{} r{}, r{}, 0x{:x} => copyb", i.inst, i.rd, i.rs1, i.imm));
+        } else {
+            zib.op(op).unwrap();
+            zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst, i.rd, i.rs1, i.imm));
+        }
+        zib.store("reg", i.rd as i64, false, false);
+        zib.j(4, 4);
+        zib.build();
+        self.insts.insert(self.s, zib);
+        self.s += 4;
+    }
+
     // auipc rd, upimm
     //     flag(0,0), j(pc+upimm<<12, pc+4) -> [%rd]    // 4 goes to jmp_offset2 and upimm << 12 to
     // jmp_offset1
@@ -666,8 +690,8 @@ impl Riscv2ZiskContext<'_> {
         if i.rd == i.rs1 {
             if i.rd == 0 {
                 let mut zib = ZiskInstBuilder::new(self.s);
-                zib.src_a("mem", 0, false);
-                zib.src_b("mem", 0, false);
+                zib.src_a("imm", 0, false);
+                zib.src_b("imm", 0, false);
                 zib.op("copyb").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
                 zib.j(4, 4);
@@ -786,8 +810,8 @@ impl Riscv2ZiskContext<'_> {
         if i.rd == i.rs1 {
             if i.rd == 0 {
                 let mut zib = ZiskInstBuilder::new(self.s);
-                zib.src_a("mem", 0, false);
-                zib.src_b("mem", 0, false);
+                zib.src_a("imm", 0, false);
+                zib.src_b("imm", 0, false);
                 zib.op("copyb").unwrap();
                 zib.j(4, 4);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} ## rd=rs=0", i.inst, i.rd, i.csr, i.rs1));
@@ -916,8 +940,8 @@ impl Riscv2ZiskContext<'_> {
         if i.rd == i.rs1 {
             if i.rd == 0 {
                 let mut zib = ZiskInstBuilder::new(self.s);
-                zib.src_a("mem", 0, false);
-                zib.src_b("mem", 0, false);
+                zib.src_a("imm", 0, false);
+                zib.src_b("imm", 0, false);
                 zib.op("copyb").unwrap();
                 zib.j(4, 4);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} ## rd=rs=0", i.inst, i.rd, i.csr, i.rs1));
@@ -1691,11 +1715,28 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
+}
 
-    // END: all programs should exit here, regardless of the execution result
+/// Add the end jump program section to the rom instruction set.
+pub fn add_end_jmp(rom: &mut ZiskRom) {
+    //print!("add_entry_exit_jmp() rom.next_init_inst_addr={}\n", rom.next_init_inst_addr);
+
+    // :0000 we jump to the third instruction, leaving room for the end instruction
+    assert!(rom.next_init_inst_addr == ROM_ENTRY);
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", 0, false);
+    zib.src_b("imm", 0, false);
+    zib.op("copyb").unwrap();
+    zib.j(8, 8);
+    zib.verbose("Jump over end instruction");
+    zib.build();
+    rom.insts.insert(rom.next_init_inst_addr, zib);
+    rom.next_init_inst_addr += 4;
+
+    // :0004 END: all programs should exit here, regardless of the execution result
     // This is the last instruction to be executed.  The emulator must stop after the instruction
     // end flag is found to be true
-    rom.next_init_inst_addr = ROM_EXIT;
+    assert!(rom.next_init_inst_addr == ROM_EXIT);
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
     zib.src_b("imm", 0, false);
@@ -1705,4 +1746,5 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.verbose("end");
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
+    rom.next_init_inst_addr += 4;
 }

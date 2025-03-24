@@ -1,4 +1,4 @@
-use crate::{DEFAULT_INPUT_VALUE, ZISK_TARGET, ZISK_VERSION_MESSAGE};
+use crate::{ZISK_TARGET, ZISK_VERSION_MESSAGE};
 use anyhow::{anyhow, Context, Result};
 use std::{
     env,
@@ -32,7 +32,7 @@ pub struct ZiskRun {
     #[clap(long)]
     gdb: bool,
 
-    #[clap(short = 'i', long, default_value =  DEFAULT_INPUT_VALUE)]
+    #[clap(short = 'i', long)]
     input: Option<String>,
 
     #[clap(long, short = 'm')]
@@ -75,7 +75,7 @@ impl ZiskRun {
             if self.input.is_some() {
                 let path = Path::new(self.input.as_ref().unwrap());
                 if !path.exists() {
-                    return Err(anyhow!("Input file does not exist at path: {}, please try to run a cargo-zisk build or cargo build before", path.display()));
+                    return Err(anyhow!("Input file does not exist at path: {}", path.display()));
                 }
                 input_command = format!("-i {}", self.input.as_ref().unwrap());
             }
@@ -89,7 +89,7 @@ impl ZiskRun {
             let input_path: &Path = Path::new(self.input.as_ref().unwrap());
 
             if !input_path.exists() {
-                return Err(anyhow!("Input file does not exist at path: {}, please try to run a cargo-zisk build or cargo build before", input_path.display()));
+                return Err(anyhow!("Input file does not exist at path: {}", input_path.display()));
             }
 
             let build_path = match input_path.parent() {

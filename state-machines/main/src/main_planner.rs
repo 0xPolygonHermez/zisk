@@ -3,10 +3,12 @@
 //! It generates execution plans for segments of the main trace, mapping each segment
 //! to a specific `Plan` instance.
 
+use std::any::Any;
+
 use p3_field::PrimeField;
 use sm_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan};
+use zisk_common::MinimalTraces;
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
-use ziskemu::EmuTrace;
 
 use crate::MainCounter;
 
@@ -30,10 +32,16 @@ impl MainPlanner {
     /// # Returns
     /// A vector of `Plan` instances, each corresponding to a segment of the main trace.
     pub fn plan<F: PrimeField>(
-        min_traces: &[EmuTrace],
+        min_traces: &MinimalTraces,
         main_counters: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>,
         min_traces_size: u64,
     ) -> (Vec<Plan>, Vec<(u64, u32)>) {
+        let min_traces = match min_traces {
+            MinimalTraces::EmuTrace(min_traces) => min_traces,
+            MinimalTraces::AsmEmuTrace(asm_min_traces) => &asm_min_traces.vec_chunks,
+            _ => unreachable!(),
+        };
+
         let num_rows = MainTrace::<F>::NUM_ROWS as u64;
 
         let mut publics = Vec::new();
@@ -51,7 +59,7 @@ impl MainPlanner {
         let num_within = num_rows / min_traces_size;
         let num_instances = (min_traces.len() as f64 / num_within as f64).ceil() as usize;
 
-        let plans = (0..num_instances)
+        let plans: Vec<Plan> = (0..num_instances)
             .map(|segment_id| {
                 Plan::new(
                     ZISK_AIRGROUP_ID,
@@ -59,7 +67,7 @@ impl MainPlanner {
                     Some(segment_id),
                     InstanceType::Instance,
                     CheckPoint::Single(segment_id),
-                    None,
+                    Some(Box::new(segment_id == num_instances - 1) as Box<dyn Any>),
                 )
             })
             .collect();

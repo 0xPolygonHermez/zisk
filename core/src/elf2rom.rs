@@ -1,6 +1,7 @@
 //! Reads RISC-V data from and ELF file and converts it to a ZiskRom
 
 use crate::{
+    add_end_jmp,
     riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
     RoData, ZiskInst, ZiskRom, RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
 };
@@ -34,6 +35,9 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
 
     // Create an empty ZiskRom instance
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
+
+    // Add the end instruction, jumping over it
+    add_end_jmp(&mut rom);
 
     // Iterate on the available section headers of the ELF parsed data
     if let Some(section_headers) = elf_bytes.section_headers() {
@@ -191,14 +195,20 @@ pub fn elf2romfile(
     rom_file: String,
     pil_file: String,
     bin_file: String,
+    asm_file: String,
 ) -> Result<(), Box<dyn Error>> {
     let rom = elf2rom(elf_file)?;
-    rom.save_to_json_file(&rom_file);
-    if !pil_file.is_empty() {
+    if !rom_file.is_empty() && !rom_file.eq("none") {
+        rom.save_to_json_file(&rom_file);
+    }
+    if !pil_file.is_empty() && !pil_file.eq("none") {
         rom.save_to_pil_file(&pil_file);
     }
-    if !bin_file.is_empty() {
+    if !bin_file.is_empty() && !bin_file.eq("none") {
         rom.save_to_bin_file(&bin_file);
+    }
+    if !asm_file.is_empty() && !asm_file.eq("none") {
+        rom.save_to_asm_file(&asm_file);
     }
     Ok(())
 }
