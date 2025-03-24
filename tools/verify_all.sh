@@ -60,18 +60,16 @@ verify_elf_with_inputs() {
 
         if [[ $debug -eq 1 ]]; then
             # Run with debug flag
-            (cargo build --release && cd ../pil2-proofman; \
-            cargo run --release --bin proofman-cli verify-constraints \
-            --witness-lib ../zisk/target/release/libzisk_witness.so \
-            --rom "$elf_file" -i "$default_input" \
-            --proving-key ../zisk/build/provingKey -d)
+            (cargo build --release && target/release/cargo-zisk verify-constraints \
+            --witness-lib target/release/libzisk_witness.so \
+            --elf "$elf_file" -i "$default_input" \
+            --proving-key build/provingKey -d)
         else
             # Run without debug flag
-            (cargo build --release && cd ../pil2-proofman; \
-            cargo run --release --bin proofman-cli verify-constraints \
-            --witness-lib ../zisk/target/release/libzisk_witness.so \
-            --rom "$elf_file" -i "$default_input" \
-            --proving-key ../zisk/build/provingKey)
+            (cargo build --release && target/release/cargo-zisk verify-constraints \
+            --witness-lib target/release/libzisk_witness.so \
+            --elf "$elf_file" -i "$default_input" \
+            --proving-key build/provingKey)
         fi
     elif [[ -f $input_path ]]; then
         # Single input file provided
@@ -79,18 +77,16 @@ verify_elf_with_inputs() {
 
         if [[ $debug -eq 1 ]]; then
             # Run with debug flag
-            (cargo build --release && cd ../pil2-proofman; \
-            cargo run --release --bin proofman-cli verify-constraints \
-            --witness-lib ../zisk/target/release/libzisk_witness.so \
-            --rom "$elf_file" -i "$input_path" \
-            --proving-key ../zisk/build/provingKey -d)
+            (cargo build --release && target/release/cargo-zisk verify-constraints \
+            --witness-lib target/release/libzisk_witness.so \
+            --elf "$elf_file" -i "$input_path" \
+            --proving-key build/provingKey -d)
         else
             # Run without debug flag
-            (cargo build --release && cd ../pil2-proofman; \
-            cargo run --release --bin proofman-cli verify-constraints \
-            --witness-lib ../zisk/target/release/libzisk_witness.so \
-            --rom "$elf_file" -i "$input_path" \
-            --proving-key ../zisk/build/provingKey)
+            (cargo build --release && target/release/cargo-zisk verify-constraints \
+            --witness-lib target/release/libzisk_witness.so \
+            --elf "$elf_file" -i "$input_path" \
+            --proving-key build/provingKey)
         fi
     elif [[ -d $input_path ]]; then
         # Directory of input files provided
@@ -107,18 +103,16 @@ verify_elf_with_inputs() {
 
             if [[ $debug -eq 1 ]]; then
                 # Run with debug flag
-                (cargo build --release && cd ../pil2-proofman; \
-                cargo run --release --bin proofman-cli verify-constraints \
-                --witness-lib ../zisk/target/release/libzisk_witness.so \
-                --rom "$elf_file" -i "$input_file" \
-                --proving-key ../zisk/build/provingKey -d)
+                (cargo build --release && target/release/cargo-zisk verify-constraints \
+                --witness-lib target/release/libzisk_witness.so \
+                --elf "$elf_file" -i "$input_file" \
+                --proving-key build/provingKey -d)
             else
                 # Run without debug flag
-                (cargo build --release && cd ../pil2-proofman; \
-                cargo run --release --bin proofman-cli verify-constraints \
-                --witness-lib ../zisk/target/release/libzisk_witness.so \
-                --rom "$elf_file" -i "$input_file" \
-                --proving-key ../zisk/build/provingKey)
+                (cargo build --release && target/release/cargo-zisk verify-constraints \
+                --witness-lib target/release/libzisk_witness.so \
+                --elf "$elf_file" -i "$input_file" \
+                --proving-key build/provingKey)
             fi
         done
     else
@@ -182,18 +176,17 @@ if [[ $elf_mode -eq 0 ]]; then
 
         if [ $debug -eq 1 ]; then
             # Run with debug flag
-            (cargo build --release && cd ../pil2-proofman; \
-            cargo run --release --bin proofman-cli verify-constraints \
-            --witness-lib ../zisk/target/release/libzisk_witness.so \
-            --rom "$elf_file" -i "$default_input" \
-            --proving-key ../zisk/build/provingKey -d)
+            (cargo build --release && target/release/cargo-zisk verify-constraints \
+            --witness-lib target/release/libzisk_witness.so \
+            --elf "$elf_file" -i "$default_input" \
+            --proving-key build/provingKey -d)
         else
             # Run without debug flag
-            (cargo build --release && cd ../pil2-proofman; \
-            cargo run --release --bin proofman-cli verify-constraints \
-            --witness-lib ../zisk/target/release/libzisk_witness.so \
-            --rom "$elf_file" -i "$default_input" \
-            --proving-key ../zisk/build/provingKey)
+            echo "Input($default_input)"
+            (cargo build --release && target/release/cargo-zisk verify-constraints \
+            --witness-lib target/release/libzisk_witness.so \
+            --elf "$elf_file" -i "$default_input" \
+            --proving-key build/provingKey)
         fi
     done
 else

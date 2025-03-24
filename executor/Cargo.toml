@@ -15,7 +15,9 @@ rom-merkle = { path = "../rom-merkle" }
 zisk-pil = { path = "../pil" }
 ziskemu = { path = "../emulator" }
 zisk-core = { path = "../core" }
+zisk-common = { path = "../common" }
 data-bus = { path = "../data-bus" }
+asm-runner = { path = "../emulator-asm/asm-runner" }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
@@ -27,5 +29,5 @@ rayon = { workspace = true }
 pil-std-lib = { workspace = true }
 
 [features]
-default = []
+default = ["distributed"]
 distributed = ["proofman-common/distributed", "witness/distributed"]

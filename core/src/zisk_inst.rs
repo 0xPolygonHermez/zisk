@@ -166,70 +166,66 @@ impl ZiskInst {
         if self.paddr != 0 {
             s += &format!(" paddr=0x{:x}", self.paddr);
         }
-        if self.store_ra {
-            s += &(" store_ra=".to_string() + &self.store_ra.to_string());
+        if !self.verbose.is_empty() {
+            s += &format!(" verbose={}", self.verbose);
         }
-        if self.store_use_sp {
-            s += &(" store_use_sp=".to_string() + &self.store_use_sp.to_string());
-        }
-        if self.store != 0 {
-            s += &format!(" store={}={}", self.store, store_to_str(self.store));
-        }
-        if self.store_offset != 0 {
-            s += &format!(" store_offset=0x{:x}", self.store_offset);
-        }
-        if self.set_pc {
-            s += &(" set_pc=".to_string() + &self.set_pc.to_string());
-        }
-        // #[cfg(feature = "sp")]
-        // if self.set_sp {
-        //     s += &(" set_sp=".to_string() + &self.set_sp.to_string());
-        // }
-        if self.ind_width != 0 {
-            s += &(" ind_width=".to_string() + &self.ind_width.to_string());
-        }
-        // #[cfg(feature = "sp")]
-        // if self.inc_sp != 0 {
-        //     s += &(" inc_sp=".to_string() + &self.inc_sp.to_string());
-        // }
-        if self.end {
-            s += &(" end=".to_string() + &self.end.to_string());
-        }
-        if self.a_src != 0 {
-            s += &format!(" a_src={}={}", self.a_src, source_to_str(self.a_src));
-        }
+        s += &format!(" a_src={}={}", self.a_src, source_to_str(self.a_src));
         if self.a_use_sp_imm1 != 0 {
             s += &format!(" a_use_sp_imm1=0x{:x}", self.a_use_sp_imm1);
         }
         if self.a_offset_imm0 != 0 {
             s += &format!(" a_offset_imm0=0x{:x}", self.a_offset_imm0);
         }
-        if self.b_src != 0 {
-            s += &format!(" b_src={}={}", self.b_src, source_to_str(self.b_src));
-        }
+        s += &format!(" b_src={}={}", self.b_src, source_to_str(self.b_src));
         if self.b_use_sp_imm1 != 0 {
             s += &format!(" b_use_sp_imm1=0x{:x}", self.b_use_sp_imm1);
         }
         if self.b_offset_imm0 != 0 {
             s += &format!(" b_offset_imm0=0x{:x}", self.b_offset_imm0);
         }
-        if self.jmp_offset1 != 0 {
-            s += &(" jmp_offset1=".to_string() + &self.jmp_offset1.to_string());
-        }
-        if self.jmp_offset2 != 0 {
-            s += &(" jmp_offset2=".to_string() + &self.jmp_offset2.to_string());
-        }
-        if self.is_external_op {
-            s += &(" is_external_op=".to_string() + &self.is_external_op.to_string());
+        if self.ind_width != 0 {
+            s += &format!(" ind_width={}", self.ind_width);
         }
         {
-            s += &(" op=".to_string() + &self.op.to_string() + "=" + self.op_str);
+            s += &format!(" op={}={}", self.op, self.op_str);
+        }
+        if self.store != 0 {
+            s += &format!(" store={}={}", self.store, store_to_str(self.store));
+        }
+        if self.store_offset != 0 {
+            s += &format!(" store_offset=0x{:x}", self.store_offset as u64);
+        }
+        if self.store_ra {
+            s += &format!(" store_ra={}", self.store_ra);
+        }
+        if self.store_use_sp {
+            s += &format!(" store_use_sp={}", self.store_use_sp);
+        }
+        if self.set_pc {
+            s += &format!(" set_pc={}", self.set_pc);
+        }
+        if self.jmp_offset1 != 0 {
+            s += &format!(" jmp_offset1={}", self.jmp_offset1);
+        }
+        if self.jmp_offset2 != 0 {
+            s += &format!(" jmp_offset2={}", self.jmp_offset2);
+        }
+        // #[cfg(feature = "sp")]
+        // if self.set_sp {
+        //     s += &(" set_sp=".to_string() + &self.set_sp.to_string());
+        // }
+        // #[cfg(feature = "sp")]
+        // if self.inc_sp != 0 {
+        //     s += &(" inc_sp=".to_string() + &self.inc_sp.to_string());
+        // }
+        if self.end {
+            s += &format!(" end={}", self.end);
+        }
+        if self.is_external_op {
+            s += &format!(" is_external_op={}", self.is_external_op);
         }
         if self.m32 {
-            s += &(" m32=".to_string() + &self.m32.to_string());
-        }
-        if !self.verbose.is_empty() {
-            s += &(" verbose=".to_string() + &self.verbose);
+            s += &format!(" m32={}", self.m32);
         }
         s
     }

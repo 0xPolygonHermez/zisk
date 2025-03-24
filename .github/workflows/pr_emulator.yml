@@ -14,6 +14,7 @@ on:
       - "emulator/**"
       - "riscv/**"
       - "core/**"
+  workflow_dispatch:    
 
 jobs:
   docker-ziskof-check:
@@ -21,16 +22,28 @@ jobs:
     runs-on: self-hosted
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      C_INCLUDE_PATH: /usr/lib/gcc/x86_64-linux-gnu/13/include
+      CPLUS_INCLUDE_PATH: /usr/lib/gcc/x86_64-linux-gnu/13/include
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+
+      - name: Cleanup rustup
+        run: rm -rf ~/.rustup
 
       - name: Install rust
         uses: actions-rs/toolchain@v1
         with:
           components: rustfmt, clippy
           toolchain: stable
+          default: true
+          override: true
 
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openmpi-bin openmpi-common libopenmpi-dev
+          
       - name: Set up git private repo access
         run: |
           git config --global url."https://${{ secrets.ZISK_CI_TOKEN }}@github.com/".insteadOf ssh://git@github.com

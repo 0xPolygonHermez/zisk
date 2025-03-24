@@ -256,6 +256,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
+name = "asm-runner"
+version = "0.5.0"
+dependencies = [
+ "clap",
+ "libc",
+ "log",
+ "zisk-common",
+ "ziskemu",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -381,7 +392,7 @@ checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
 
 [[package]]
 name = "cargo-zisk"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -389,6 +400,7 @@ dependencies = [
  "dirs",
  "futures",
  "indicatif",
+ "libloading",
  "p3-field",
  "p3-goldilocks",
  "proofman",
@@ -397,9 +409,11 @@ dependencies = [
  "reqwest",
  "rom-merkle",
  "serde_json",
+ "sysinfo 0.33.1",
  "target-lexicon",
  "tokio",
  "vergen",
+ "witness",
  "yansi",
 ]
 
@@ -689,7 +703,7 @@ checksum = "ef8ae57c4978a2acd8b869ce6b9ca1dfe817bff704c220209fdef2c0b75a01b9"
 
 [[package]]
 name = "data-bus"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "zisk-core",
 ]
@@ -910,8 +924,9 @@ dependencies = [
 
 [[package]]
 name = "executor"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
+ "asm-runner",
  "data-bus",
  "itertools 0.14.0",
  "log",
@@ -925,6 +940,7 @@ dependencies = [
  "sm-main",
  "sm-rom",
  "witness",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
  "ziskemu",
@@ -1535,9 +1551,9 @@ checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
 name = "jiff"
-version = "0.2.5"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c102670231191d07d37a35af3eb77f1f0dbf7a71be51a962dcd57ea607be7260"
+checksum = "d699bc6dfc879fb1bf9bdff0d4c56f0884fc6f0d0eb0fba397a6d00cd9a6b85e"
 dependencies = [
  "jiff-static",
  "log",
@@ -1548,9 +1564,9 @@ dependencies = [
 
 [[package]]
 name = "jiff-static"
-version = "0.2.5"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4cdde31a9d349f1b1f51a0b3714a5940ac022976f4b49485fc04be052b183b4c"
+checksum = "8d16e75759ee0aa64c57a56acbf43916987b20c77373cb7e808979e02b93c9f9"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2094,8 +2110,8 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
 name = "pil-std-lib"
-version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.5.0-arith-eq#044fcb8ff6633e6dedf88afa0961590a5a9fd8fa"
+version = "0.5.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.5.0#d63f38c58e08f278d6ca4d7583ea9d7826dda345"
 dependencies = [
  "colored",
  "log",
@@ -2216,7 +2232,7 @@ version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
 dependencies = [
- "zerocopy 0.8.24",
+ "zerocopy 0.8.23",
 ]
 
 [[package]]
@@ -2258,7 +2274,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-keccakf"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "clap",
  "data-bus",
@@ -2283,7 +2299,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-common"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "zisk-core",
 ]
@@ -2321,8 +2337,8 @@ dependencies = [
 
 [[package]]
 name = "proofman"
-version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.5.0-arith-eq#044fcb8ff6633e6dedf88afa0961590a5a9fd8fa"
+version = "0.5.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.5.0#d63f38c58e08f278d6ca4d7583ea9d7826dda345"
 dependencies = [
  "colored",
  "env_logger",
@@ -2346,8 +2362,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-common"
-version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.5.0-arith-eq#044fcb8ff6633e6dedf88afa0961590a5a9fd8fa"
+version = "0.5.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.5.0#d63f38c58e08f278d6ca4d7583ea9d7826dda345"
 dependencies = [
  "env_logger",
  "log",
@@ -2367,8 +2383,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-hints"
-version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.5.0-arith-eq#044fcb8ff6633e6dedf88afa0961590a5a9fd8fa"
+version = "0.5.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.5.0#d63f38c58e08f278d6ca4d7583ea9d7826dda345"
 dependencies = [
  "log",
  "p3-field",
@@ -2379,8 +2395,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-macros"
-version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.5.0-arith-eq#044fcb8ff6633e6dedf88afa0961590a5a9fd8fa"
+version = "0.5.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.5.0#d63f38c58e08f278d6ca4d7583ea9d7826dda345"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2390,16 +2406,16 @@ dependencies = [
 
 [[package]]
 name = "proofman-starks-lib-c"
-version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.5.0-arith-eq#044fcb8ff6633e6dedf88afa0961590a5a9fd8fa"
+version = "0.5.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.5.0#d63f38c58e08f278d6ca4d7583ea9d7826dda345"
 dependencies = [
  "log",
 ]
 
 [[package]]
 name = "proofman-util"
-version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.5.0-arith-eq#044fcb8ff6633e6dedf88afa0961590a5a9fd8fa"
+version = "0.5.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.5.0#d63f38c58e08f278d6ca4d7583ea9d7826dda345"
 dependencies = [
  "colored",
  "p3-field",
@@ -2503,7 +2519,7 @@ checksum = "3779b94aeb87e8bd4e834cee3650289ee9e0d5677f976ecdb6d219e5f4f6cd94"
 dependencies = [
  "rand_chacha 0.9.0",
  "rand_core 0.9.3",
- "zerocopy 0.8.24",
+ "zerocopy 0.8.23",
 ]
 
 [[package]]
@@ -2693,14 +2709,14 @@ dependencies = [
 
 [[package]]
 name = "riscv"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "elf",
 ]
 
 [[package]]
 name = "rom-merkle"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -2980,7 +2996,7 @@ dependencies = [
 
 [[package]]
 name = "sm-arith"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "data-bus",
  "log",
@@ -2999,7 +3015,7 @@ dependencies = [
 
 [[package]]
 name = "sm-binary"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "data-bus",
  "log",
@@ -3017,19 +3033,20 @@ dependencies = [
 
 [[package]]
 name = "sm-common"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "data-bus",
  "p3-field",
  "proofman-common",
  "proofman-util",
  "rayon",
+ "zisk-common",
  "zisk-core",
 ]
 
 [[package]]
 name = "sm-main"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "data-bus",
  "log",
@@ -3042,6 +3059,7 @@ dependencies = [
  "rayon",
  "sm-common",
  "sm-mem",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
  "ziskemu",
@@ -3049,7 +3067,7 @@ dependencies = [
 
 [[package]]
 name = "sm-mem"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "data-bus",
  "log",
@@ -3069,7 +3087,7 @@ dependencies = [
 
 [[package]]
 name = "sm-rom"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "data-bus",
  "itertools 0.14.0",
@@ -3518,8 +3536,8 @@ dependencies = [
 
 [[package]]
 name = "transcript"
-version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.5.0-arith-eq#044fcb8ff6633e6dedf88afa0961590a5a9fd8fa"
+version = "0.5.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.5.0#d63f38c58e08f278d6ca4d7583ea9d7826dda345"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -4068,8 +4086,8 @@ dependencies = [
 
 [[package]]
 name = "witness"
-version = "0.4.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.5.0-arith-eq#044fcb8ff6633e6dedf88afa0961590a5a9fd8fa"
+version = "0.5.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.5.0#d63f38c58e08f278d6ca4d7583ea9d7826dda345"
 dependencies = [
  "colored",
  "env_logger",
@@ -4134,11 +4152,11 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.24"
+version = "0.8.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2586fea28e186957ef732a5f8b3be2da217d65c5969d4b1e17f973ebbe876879"
+checksum = "fd97444d05a4328b90e75e503a34bad781f14e28a823ad3557f0750df1ebcbc6"
 dependencies = [
- "zerocopy-derive 0.8.24",
+ "zerocopy-derive 0.8.23",
 ]
 
 [[package]]
@@ -4154,9 +4172,9 @@ dependencies = [
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.24"
+version = "0.8.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a996a8f63c5c4448cd959ac1bab0aaa3306ccfd060472f85943ee0750f0169be"
+checksum = "6352c01d0edd5db859a63e2605f4ea3183ddbd15e2c4a9e7d32184df75e4f154"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4227,8 +4245,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-common"
+version = "0.5.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "zisk-core"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "elf",
  "indexmap",
@@ -4243,7 +4268,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-pil"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "proofman-common",
  "proofman-macros",
@@ -4254,7 +4279,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precompiles"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "precomp-arith-eq",
  "precomp-keccakf",
@@ -4263,7 +4288,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-witness"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "env_logger",
  "executor",
@@ -4290,8 +4315,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ziskclib"
+version = "0.5.0"
+dependencies = [
+ "tiny-keccak",
+]
+
+[[package]]
 name = "ziskemu"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "clap",
  "criterion",
@@ -4303,13 +4335,14 @@ dependencies = [
  "sm-mem",
  "sysinfo 0.33.1",
  "vergen",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
 
 [[package]]
 name = "ziskos"
-version = "0.4.4"
+version = "0.5.0"
 dependencies = [
  "getrandom 0.2.15",
  "lazy_static",

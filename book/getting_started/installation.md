@@ -22,7 +22,7 @@ Ubuntu 22.04 or higher is required.
 
 Install all required dependencies with:
 ```bash
-sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm
+sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
 ```
 
 ## Installing ZisK
@@ -71,42 +71,64 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
 
 #### Build ZisK
 
-1. Ensure all [dependencies](https://github.com/rust-lang/rust/blob/master/INSTALL.md#dependencies) required to build the Rust toolchain from source are installed.
-
-2. Clone the ZisK repository:
+1. Clone the ZisK repository:
     ```bash
     git clone https://github.com/0xPolygonHermez/zisk.git
     cd zisk
     ```
 
-3. Build ZisK tools:
+2. Build ZisK tools:
     ```bash
     cargo build --release
     ```
 
-4. Copy the tools to `~/.zisk/bin` directory:
+    **Note**: If you encounter the following error during compilation:
+    ```
+    --- stderr
+    /usr/lib/x86_64-linux-gnu/openmpi/include/mpi.h:237:10: fatal error: 'stddef.h' file not found
+    ```
+
+    Follow these steps to resolve it:
+
+    1. Locate the `stddef.h` file:
+        ```bash
+        find /usr -name "stddef.h"
+        ```
+    2. Set the environment variables to include the directory where `stddef.h` is located (e.g.):
+        ```bash
+        export C_INCLUDE_PATH=/usr/lib/gcc/x86_64-linux-gnu/13/include
+        export CPLUS_INCLUDE_PATH=$C_INCLUDE_PATH
+        ```
+    3. Try building again        
+
+3. Copy the tools to `~/.zisk/bin` directory:
     ```bash
     mkdir -p $HOME/.zisk/bin
     cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so precompiles/keccakf/src/keccakf_script.json $HOME/.zisk/bin
     ```
 
-5. Add `~/.zisk/bin` to your profile file, for example for `.bashrc` executing the following commands:
+4. Add `~/.zisk/bin` to your profile file, for example for `.bashrc` executing the following commands:
     ```bash
     echo >>$HOME/.bashrc && echo "export PATH=\"\$PATH:$HOME/.zisk/bin\"" >> $HOME/.bashrc
     source $HOME/.bashrc
     ```
 
-6. Build the Rust ZisK toolchain:
+5. Install the Rust ZisK toolchain:
     ```bash
-    cargo-zisk sdk build-toolchain
+    cargo-zisk sdk install-toolchain
     ```
 
-7. Install the Rust ZisK toolchain:
+    **Note**: This command installs the ZisK Rust toolchain from prebuilt binaries. If you prefer to build the toolchain from source, follow these steps:
+
+    1. Ensure all [dependencies](https://github.com/rust-lang/rust/blob/master/INSTALL.md#dependencies) required to build the Rust toolchain from source are installed.
+
+    2. Build and install the Rust ZisK toolchain:
     ```bash
+    cargo-zisk sdk build-toolchain
     ZISK_TOOLCHAIN_SOURCE_DIR=. cargo-zisk sdk install-toolchain
     ```
 
-8. Verify the installation:
+6. Verify the installation:
     ```bash
     rustup toolchain list
     ```
@@ -135,7 +157,10 @@ Please note that the process can be long, taking approximately 2–3 hours depen
     (cd pil2-compiler && npm i)
     (cd pil2-proofman-js && npm i)
 
-3. **Note:** All subsequent commands must be executed from the `zisk` folder created in the previous section.
+3. All subsequent commands must be executed from the `zisk` folder created in the previous section:
+    ```bash
+    cd ~/zisk
+    ```
 
 4. Adjust memory mapped areas and JavaScript heap size:
     ```bash
@@ -171,6 +196,11 @@ Please note that the process can be long, taking approximately 2–3 hours depen
 
     ```bash
     cp -R build/provingKey $HOME/.zisk
+    ```
+
+9. Generate constant tree files:
+    ```bash
+    cargo-zisk check-setup -a
     ```
 
 ## Uninstall Zisk

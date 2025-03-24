@@ -6,7 +6,6 @@
 *.pilout
 /tmp
 *.log
+/emulator-asm/build*
 /cache
-/lib-c/c/build
-/lib-c/c/lib
 precompiles/keccakf/src/keccakf_fixed.bin

@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
+pub const PILOUT_HASH: &str = "a5b6be6572c2b6a283605c8edf4557a5d3f9f087adcc0510e2f838b3c5ae0dc9";
 
 //AIRGROUP CONSTANTS
 
@@ -24,29 +24,29 @@ pub const ZISK_AIRGROUP_ID: usize = 0;
 
 //AIR CONSTANTS
 
-pub const ARITH_EQ_LT_TABLE_AIR_IDS: &[usize] = &[0];
+pub const MAIN_AIR_IDS: &[usize] = &[0];
 
-pub const ARITH_EQ_AIR_IDS: &[usize] = &[1];
+pub const ROM_AIR_IDS: &[usize] = &[1];
 
-pub const MAIN_AIR_IDS: &[usize] = &[2];
+pub const MEM_AIR_IDS: &[usize] = &[2];
 
-pub const ROM_AIR_IDS: &[usize] = &[3];
+pub const ROM_DATA_AIR_IDS: &[usize] = &[3];
 
-pub const MEM_AIR_IDS: &[usize] = &[4];
+pub const INPUT_DATA_AIR_IDS: &[usize] = &[4];
 
-pub const ROM_DATA_AIR_IDS: &[usize] = &[5];
+pub const MEM_ALIGN_AIR_IDS: &[usize] = &[5];
 
-pub const INPUT_DATA_AIR_IDS: &[usize] = &[6];
+pub const MEM_ALIGN_ROM_AIR_IDS: &[usize] = &[6];
 
-pub const MEM_ALIGN_AIR_IDS: &[usize] = &[7];
+pub const ARITH_AIR_IDS: &[usize] = &[7];
 
-pub const MEM_ALIGN_ROM_AIR_IDS: &[usize] = &[8];
+pub const ARITH_TABLE_AIR_IDS: &[usize] = &[8];
 
-pub const ARITH_AIR_IDS: &[usize] = &[9];
+pub const ARITH_RANGE_TABLE_AIR_IDS: &[usize] = &[9];
 
-pub const ARITH_TABLE_AIR_IDS: &[usize] = &[10];
+pub const ARITH_EQ_AIR_IDS: &[usize] = &[10];
 
-pub const ARITH_RANGE_TABLE_AIR_IDS: &[usize] = &[11];
+pub const ARITH_EQ_LT_TABLE_AIR_IDS: &[usize] = &[11];
 
 pub const BINARY_AIR_IDS: &[usize] = &[12];
 
@@ -104,101 +104,101 @@ values!(ZiskProofValues<F> {
  enable_input_data: F,
 });
  
-trace!(ArithEqLtTableFixed<F> {
- LT_T: F, DELTA: F, __L1__: F,
-},  0, 0, 262144 );
-
-trace!(ArithEqLtTableTrace<F> {
- multiplicity: F,
-},  0, 0, 262144 );
-
-trace!(ArithEqFixed<F> {
- CLK_0: F, CHUNK_ID: F, __L1__: F,
-},  0, 1, 2097152 );
-
-trace!(ArithEqTrace<F> {
- x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 4], sel_op_clk0: [F; 4], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
-},  0, 1, 2097152 );
-
 trace!(MainFixed<F> {
  SEGMENT_L1: F, SEGMENT_STEP: F, __L1__: F,
-},  0, 2, 4194304 );
+},  0, 0, 4194304 );
 
 trace!(MainTrace<F> {
  a: [F; 2], b: [F; 2], c: [F; 2], flag: F, pc: F, a_src_imm: F, a_src_mem: F, a_offset_imm0: F, a_imm1: F, a_src_step: F, b_src_imm: F, b_src_mem: F, b_offset_imm0: F, b_imm1: F, b_src_ind: F, ind_width: F, is_external_op: F, op: F, store_ra: F, store_mem: F, store_ind: F, store_offset: F, set_pc: F, jmp_offset1: F, jmp_offset2: F, m32: F, addr1: F, a_reg_prev_mem_step: F, b_reg_prev_mem_step: F, store_reg_prev_mem_step: F, store_reg_prev_value: [F; 2], a_src_reg: F, b_src_reg: F, store_reg: F,
-},  0, 2, 4194304 );
+},  0, 0, 4194304 );
 
 trace!(RomFixed<F> {
  __L1__: F,
-},  0, 3, 2097152 );
+},  0, 1, 2097152 );
 
 trace!(RomTrace<F> {
  multiplicity: F,
-},  0, 3, 2097152 );
+},  0, 1, 2097152 );
 
 trace!(MemFixed<F> {
  SEGMENT_L1: F, __L1__: F,
-},  0, 4, 8388608 );
+},  0, 2, 8388608 );
 
 trace!(MemTrace<F> {
  addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: F,
-},  0, 4, 8388608 );
+},  0, 2, 8388608 );
 
 trace!(RomDataFixed<F> {
  SEGMENT_L1: F, __L1__: F,
-},  0, 5, 2097152 );
+},  0, 3, 2097152 );
 
 trace!(RomDataTrace<F> {
  addr: F, step: F, sel: F, addr_changes: F, value: [F; 2],
-},  0, 5, 2097152 );
+},  0, 3, 2097152 );
 
 trace!(InputDataFixed<F> {
  SEGMENT_L1: F, __L1__: F,
-},  0, 6, 2097152 );
+},  0, 4, 2097152 );
 
 trace!(InputDataTrace<F> {
  addr: F, step: F, sel: F, addr_changes: F, value_word: [F; 4],
-},  0, 6, 2097152 );
+},  0, 4, 2097152 );
 
 trace!(MemAlignFixed<F> {
  L1: F, __L1__: F,
-},  0, 7, 4194304 );
+},  0, 5, 4194304 );
 
 trace!(MemAlignTrace<F> {
  addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], step: F, delta_addr: F, sel_prove: F, value: [F; 2],
-},  0, 7, 4194304 );
+},  0, 5, 4194304 );
 
 trace!(MemAlignRomFixed<F> {
  OFFSET: F, WIDTH: F, PC: F, DELTA_PC: F, DELTA_ADDR: F, FLAGS: F, __L1__: F,
-},  0, 8, 256 );
+},  0, 6, 256 );
 
 trace!(MemAlignRomTrace<F> {
  multiplicity: F,
-},  0, 8, 256 );
+},  0, 6, 256 );
 
 trace!(ArithFixed<F> {
  __L1__: F,
-},  0, 9, 2097152 );
+},  0, 7, 2097152 );
 
 trace!(ArithTrace<F> {
  carry: [F; 7], a: [F; 4], b: [F; 4], c: [F; 4], d: [F; 4], na: F, nb: F, nr: F, np: F, sext: F, m32: F, div: F, fab: F, na_fb: F, nb_fa: F, main_div: F, main_mul: F, signed: F, div_by_zero: F, div_overflow: F, inv_sum_all_bs: F, op: F, bus_res1: F, multiplicity: F, range_ab: F, range_cd: F,
-},  0, 9, 2097152 );
+},  0, 7, 2097152 );
 
 trace!(ArithTableFixed<F> {
  OP: F, FLAGS: F, RANGE_AB: F, RANGE_CD: F, __L1__: F,
-},  0, 10, 128 );
+},  0, 8, 128 );
 
 trace!(ArithTableTrace<F> {
  multiplicity: F,
-},  0, 10, 128 );
+},  0, 8, 128 );
 
 trace!(ArithRangeTableFixed<F> {
  RANGE_ID: F, RANGE_VALUES: F, __L1__: F,
-},  0, 11, 4194304 );
+},  0, 9, 4194304 );
 
 trace!(ArithRangeTableTrace<F> {
  multiplicity: F,
-},  0, 11, 4194304 );
+},  0, 9, 4194304 );
+
+trace!(ArithEqFixed<F> {
+ CLK_0: F, CHUNK_ID: F, __L1__: F,
+},  0, 10, 2097152 );
+
+trace!(ArithEqTrace<F> {
+ x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 4], sel_op_clk0: [F; 4], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
+},  0, 10, 2097152 );
+
+trace!(ArithEqLtTableFixed<F> {
+ LT_T: F, DELTA: F, __L1__: F,
+},  0, 11, 262144 );
+
+trace!(ArithEqLtTableTrace<F> {
+ multiplicity: F,
+},  0, 11, 262144 );
 
 trace!(BinaryFixed<F> {
  __L1__: F,
@@ -256,10 +256,9 @@ trace!(SpecifiedRangesTrace<F> {
  mul: [F; 16],
 },  0, 18, 2097152 );
 
-pub const RomRomHash: &str = "aa8bf8c0f3757c69cac124f513b6b2a66653708e85300b9407effcff3b707190";
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
-}, 0, 3, 2097152, 0 );
+}, 0, 1, 2097152, 0 );
 
 values!(MainAirValues<F> {
  main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 31], last_reg_mem_step: [F; 31], im_direct: [FieldExtension<F>; 95],
@@ -275,14 +274,6 @@ values!(RomDataAirValues<F> {
 
 values!(InputDataAirValues<F> {
  segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, im_direct: [FieldExtension<F>; 4],
-});
-
-values!(ArithEqLtTableAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(ArithEqAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
 });
 
 values!(MainAirGroupValues<F> {
@@ -322,6 +313,14 @@ values!(ArithTableAirGroupValues<F> {
 });
 
 values!(ArithRangeTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(ArithEqAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(ArithEqLtTableAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
