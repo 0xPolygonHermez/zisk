@@ -1,11 +1,11 @@
 require "std_lookup.pil"
 require "std_range_check.pil"
+require "arith_eq_lt_table.pil"
 
 const int ARITH_256_OP = 0xF2;
 const int ARITH_256_MOD_OP = 0xF3;
 const int EC_ADD_SECP256K1_OP = 0xF4;
 const int EC_DBL_SECP256K1_OP = 0xF5;
-
 
 airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
 
@@ -19,6 +19,8 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
     // EQ3: 2 * s * y1 - 3 * x1 * x1 + (q0 * p1)            lambda - DBL  EC_DBL_SECP256K1
     // EQ4: s * s - x1 - x2 - x3 + (q1 * p1)                x3            EC_ADD_SECP256K1, EC_DBL_SECP256K1
     // EQ5: s * x1 - s * x3 - y1 - y3 + (q2 * p1)           y3            EC_ADD_SECP256K1, EC_DBL_SECP256K1
+
+    const int SECP256K1_PRIME = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F;
 
     const int CLOCKS = 16;
     col fixed CLK_0 = [1, 0:(CLOCKS-1)]...;
@@ -234,13 +236,13 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
 
     // FEATURE:
     //
-    // Verify that the result of modular operation, y3 = mod(x1*y1+x2, y2) are free alias, i.e.
-    // that y3 ∊ [0, y2-1]
+    // Verify that the result of modular operation, x3 = mod(x1*y1+x2, y2) are free alias, i.e.
+    // that x3 ∊ [0, y2-1]
     //
     // Limitations: Chunks are ordered from least significant to most significant.
     //
     // Strategy: Simulate as substract, chunk by chunk. For readibility, we use x as result and
-    // z as module (X≡y3, Z≡y2), MAX = CHUNK_SIZE - 1;
+    // z as module (X≡x3, Z≡y2), MAX = CHUNK_SIZE - 1;
     //
     // case    X - Z           borrow
     // -----  ---------------  ------
@@ -279,11 +281,18 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
     // extra column, we replicate this table for all chunks, total size is 2^18 * 2^4 = 2^22 rows.
     // An extra column here is "pay" for each instance, but in a table is paid once.
 
-    col witness lt_borrow;
-    col witness lt;
+    col witness x3_lt;
+    col witness y3_lt;
 
-    lt_borrow * (1 - lt_borrow) === 0;
-    lt * (1 - lt) === 0;
+    x3_lt * (1 - x3_lt) === 0;
+    y3_lt * (1 - y3_lt) === 0;
+
+    const expr lt_cte = 0 + clk_cte_selector(secp256k1_clk0, SECP256K1_PRIME);
+    const expr delta_x3 = x3 - y2 * sel_arith256_mod - lt_cte;
+    const expr delta_y3 = y3 - lt_cte;
+
+    lookup_assumes(ARITH_EQ_LT_TABLE_ID, [2 * 'x3_lt * (1 - CLK_0) + x3_lt, delta_x3], sel: sel_secp256k1 + sel_arith256_mod);
+    lookup_assumes(ARITH_EQ_LT_TABLE_ID, [2 * 'y3_lt * (1 - CLK_0) + y3_lt, delta_y3], sel: sel_secp256k1);
 
     col witness carry[MAX_CEQS][CBC];
 
@@ -363,7 +372,8 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
     // 14  STEP     | R | ADDR_OP + 32  ADDR_IND_4  use_ind_4 | ADDR_OP + 40  ADDR_IND_5  use_ind_5
     // 15  ---       ----------     -------                 ----------      ---------
 
-    const expr use_y2 = sel_arith256_mod + sel_secp256k1_add + sel_secp256k1_dbl;
+    const expr use_x2 = sel_arith256 + sel_arith256_mod + sel_secp256k1_add;
+    const expr use_y2 = sel_arith256_mod + sel_secp256k1_add;
     const expr use_y3 = sel_arith256 + sel_secp256k1_add + sel_secp256k1_dbl;
 
     // [secp256k1_dbl] ADDR_X1 === ADDR_OP,
@@ -471,7 +481,9 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
 
     const expr mem_sel[2];
 
-    mem_sel[0] = clock_set(in_use, start:0, end: 11) +
+    mem_sel[0] = clock_set(in_use, start:0, end: 3) +
+                 clock_set(use_x2, start:4, end: 7) +
+                 clock_set(in_use, start:8, end: 11) +
                  clock_set(use_ind_0, 12) +
                  clock_set(use_ind_2, 13) +
                  clock_set(use_ind_4, 14);
@@ -572,5 +584,16 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
 
     function clock_eq(const expr mvcol, int pos1, int pos2, int pos2_offset = 0): const expr {
         return air.CLK_0 * (mvcol'(pos1) - mvcol'(pos2) - pos2_offset);
+    }
+
+    function clk_cte_selector(const expr selclk0, int value, int chunk_bits = 16, int chunks = 16): expr {
+        const int mask = (1 << chunk_bits) - 1;
+        expr result = 0;
+        for (int i_chunk = 0; i_chunk < chunks; ++i_chunk) {
+            result += (i_chunk)'selclk0 * (value & mask);
+            value = value >> chunk_bits;
+        }
+        println(result);
+        return result;
     }
 }

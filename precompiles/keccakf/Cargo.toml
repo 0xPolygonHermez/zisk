@@ -37,6 +37,6 @@ clap = "4.0"
 
 
 [features]
-default = []
+default = ["distributed"]
 no_lib_link = ["proofman-common/no_lib_link"]
 distributed = ["proofman-common/distributed", "witness/distributed"]

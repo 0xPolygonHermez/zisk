@@ -1,7 +1,9 @@
 use path_clean::PathClean;
 use std::path::Path;
 
+mod arith_eq_constants;
 mod generator;
+use arith_eq_constants::{ARITH_EQ_CHUNKS, ARITH_EQ_CHUNK_BITS};
 use generator::{Equation, EquationConfig};
 
 fn main() {
@@ -10,8 +12,12 @@ fn main() {
     let rust_code_path = current_dir.join("equations/");
     let pil_code_path = current_dir.join("../pil/equations/").clean();
 
-    let config =
-        EquationConfig { chunks: 16, chunk_bits: 16, terms_by_clock: 2, ..Default::default() };
+    let config = EquationConfig {
+        chunks: ARITH_EQ_CHUNKS,
+        chunk_bits: ARITH_EQ_CHUNK_BITS,
+        terms_by_clock: 2,
+        ..Default::default()
+    };
 
     let mut eq = Equation::new(&config);
     eq.parse(

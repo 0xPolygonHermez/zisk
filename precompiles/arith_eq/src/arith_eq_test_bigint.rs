@@ -10,8 +10,6 @@ use executors::arith256::Arith256;
 use executors::arith256_mod::Arith256Mod;
 use executors::secp256k1::Secp256k1;
 
-use std::time::Instant;
-
 // cargo run --release --features="test_data" --bin arith_eq_test_bigint
 
 fn main() {
@@ -32,18 +30,6 @@ fn main() {
         println!("p3: {:?}", p3);
         Secp256k1::verify_dbl(&p1, &p3);
         index += 1;
-    }
-
-    // Run the first test a million times to measure performance
-    if let Some((p1, p2, p3)) = get_secp256k1_add_test_data(0) {
-        let start = Instant::now();
-        for _ in 0..1000000 {
-            Secp256k1::verify_add(&p1, &p2, &p3);
-        }
-        let duration = start.elapsed();
-        let secs = duration.as_secs_f64();
-        let tp = if secs == 0.0 { 1_f64 } else { 1_f64 / secs };
-        println!("Duration = {:.4} sec, TP = {:.4} M/sec", secs, tp);
     }
 
     index = 0;

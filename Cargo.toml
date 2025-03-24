@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.4.4"
+version = "0.5.0"
 edition = "2021"
 license = "Apache-2.0 or MIT"
 keywords = ["zisk", "zkvm", "zero-knowledge"]
@@ -27,7 +27,10 @@ members = [
     "precompiles/zisk_precompiles",
     "precompiles/common",
     "precompiles/keccakf",
-    "lib-c"
+    "lib-c",
+    "emulator-asm/asm-runner",
+    "ziskclib",
+    "common",
 ]
 
 resolver = "2"
@@ -39,12 +42,12 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "044fcb8ff6633e6dedf88afa0961590a5a9fd8fa" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "044fcb8ff6633e6dedf88afa0961590a5a9fd8fa" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "044fcb8ff6633e6dedf88afa0961590a5a9fd8fa" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "044fcb8ff6633e6dedf88afa0961590a5a9fd8fa" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "044fcb8ff6633e6dedf88afa0961590a5a9fd8fa" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", rev = "044fcb8ff6633e6dedf88afa0961590a5a9fd8fa" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.5.0" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.5.0" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.5.0" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.5.0" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.5.0" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.5.0" }
 # Local development
 # proofman = { path = "../pil2-proofman/proofman" }
 # proofman-common = { path = "../pil2-proofman/common" }
@@ -64,3 +67,4 @@ colored = "3"
 ark-ff = "0.5.0"
 ark-std = "0.5.0"
 ark-secp256k1 = "0.5"
+sysinfo = "0.33"

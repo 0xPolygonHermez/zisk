@@ -9,7 +9,8 @@ use std::any::Any;
 use crate::ArithEqCounterInputGen;
 
 use sm_common::{
-    plan, BusDeviceMetrics, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics, Plan, Planner,
+    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics,
+    Plan, Planner, TableInfo,
 };
 
 /// The `ArithEqPlanner` struct organizes execution plans for arithmetic instances and tables.
@@ -20,6 +21,9 @@ use sm_common::{
 pub struct ArithEqPlanner {
     /// Arithmetic instances info to be planned.
     instances_info: Vec<InstanceInfo>,
+
+    /// Arithmetic table instances info to be planned.
+    tables_info: Vec<TableInfo>,
 }
 
 impl ArithEqPlanner {
@@ -28,7 +32,7 @@ impl ArithEqPlanner {
     /// # Returns
     /// A new `Arith256Planner` instance with no preconfigured instances or tables.
     pub fn new() -> Self {
-        Self { instances_info: Vec::new() }
+        Self { instances_info: Vec::new(), tables_info: Vec::new() }
     }
 
     /// Adds an arithmetic instance to the planner.
@@ -40,6 +44,18 @@ impl ArithEqPlanner {
     /// The updated `ArithEqPlanner` instance.
     pub fn add_instance(mut self, instance_info: InstanceInfo) -> Self {
         self.instances_info.push(instance_info);
+        self
+    }
+
+    /// Adds an arithmetic table instance to the planner.
+    ///
+    /// # Arguments
+    /// * `table_info` - The `TableInfo` describing the arithmetic table instance to be added.
+    ///
+    /// # Returns
+    /// The updated `ArithEqPlanner` instance.
+    pub fn add_table_instance(mut self, table_info: TableInfo) -> Self {
+        self.tables_info.push(table_info);
         self
     }
 }
@@ -102,6 +118,18 @@ impl Planner for ArithEqPlanner {
             plan_result.extend(plan);
         }
 
+        if !plan_result.is_empty() {
+            for table_instance in self.tables_info.iter() {
+                plan_result.push(Plan::new(
+                    table_instance.airgroup_id,
+                    table_instance.air_id,
+                    None,
+                    InstanceType::Table,
+                    CheckPoint::None,
+                    None,
+                ));
+            }
+        }
         plan_result
     }
 }

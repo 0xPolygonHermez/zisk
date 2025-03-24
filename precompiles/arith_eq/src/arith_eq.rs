@@ -10,7 +10,8 @@ use zisk_pil::ArithEqTrace;
 
 use crate::{
     arith_eq_constants::*, executors, Arith256Input, Arith256ModInput, ArithEqInput,
-    Secp256k1AddInput, Secp256k1DblInput,
+    ArithEqLtTableSM, Secp256k1AddInput, Secp256k1DblInput, SECP256K1_PRIME_CHUNKS,
+    SEL_OP_ARITH256, SEL_OP_ARITH256_MOD, SEL_OP_SECP256K1_ADD, SEL_OP_SECP256K1_DBL,
 };
 
 /// The `ArithEqSM` struct encapsulates the logic of the ArithEq State Machine.
@@ -20,6 +21,8 @@ pub struct ArithEqSM<F: PrimeField64> {
 
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,
+
+    pub arith_eq_lt_table_sm: Arc<ArithEqLtTableSM>,
 
     pub q_hsc_range_id: usize,
     pub chunk_range_id: usize,
@@ -45,26 +48,28 @@ impl<F: PrimeField64> ArithEqSM<F> {
     ///
     /// # Returns
     /// A new `ArithEqSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<Std<F>>, arith_eq_lt_table_sm: Arc<ArithEqLtTableSM>) -> Arc<Self> {
         // Compute some useful values
         let num_available_ops = ArithEqTrace::<usize>::NUM_ROWS / ARITH_EQ_ROWS_BY_OP;
         let p2_22 = 1 << 22;
         let q_hsc_range_id = std.get_range(0, p2_22 - 1, None);
         let chunk_range_id = std.get_range(0, 0xFFFF, None);
         let carry_range_id = std.get_range(-(p2_22 - 1), p2_22, None);
-        println!(
-            "q_hsc_range_id: {} chunk_range_id: {} carry_range_id: {}",
-            q_hsc_range_id, chunk_range_id, carry_range_id
-        );
 
-        Arc::new(Self { std, num_available_ops, q_hsc_range_id, chunk_range_id, carry_range_id })
+        Arc::new(Self {
+            std,
+            num_available_ops,
+            q_hsc_range_id,
+            chunk_range_id,
+            carry_range_id,
+            arith_eq_lt_table_sm,
+        })
     }
     fn expand_addr_step_on_trace(
         data: &ArithEqStepAddr,
         trace: &mut ArithEqTrace<F>,
         row_offset: usize,
     ) {
-        println!("EXPAND_ADDR_STEP_ON_TRACE {:?}", data);
         trace[row_offset].step_addr = F::from_u64(data.main_step);
         trace[row_offset + 1].step_addr = F::from_u32(data.addr_op);
         trace[row_offset + 2].step_addr = F::from_u32(data.addr_x1);
@@ -85,7 +90,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
         row_offset: usize,
     ) {
         let data = executors::Arith256::execute(&input.a, &input.b, &input.c);
-        self.expand_data_on_trace(&data, row_offset, trace, 0);
+        self.expand_data_on_trace(&data, row_offset, trace, SEL_OP_ARITH256);
         Self::expand_addr_step_on_trace(
             &ArithEqStepAddr {
                 main_step: input.step,
@@ -110,7 +115,28 @@ impl<F: PrimeField64> ArithEqSM<F> {
         row_offset: usize,
     ) {
         let data = executors::Arith256Mod::execute(&input.a, &input.b, &input.c, &input.module);
-        self.expand_data_on_trace(&data, row_offset, trace, 1);
+        self.expand_data_on_trace(&data, row_offset, trace, SEL_OP_ARITH256_MOD);
+        Self::expand_addr_step_on_trace(
+            &ArithEqStepAddr {
+                main_step: input.step,
+                addr_op: input.addr,
+                addr_x1: input.a_addr,
+                addr_y1: input.b_addr,
+                addr_x2: input.c_addr,
+                addr_y2: input.module_addr,
+                addr_x3: input.d_addr,
+                addr_y3: 0,
+                addr_ind: [
+                    input.a_addr,
+                    input.b_addr,
+                    input.c_addr,
+                    input.module_addr,
+                    input.d_addr,
+                ],
+            },
+            trace,
+            row_offset,
+        );
     }
     fn process_secp256k1_add(
         &self,
@@ -119,7 +145,22 @@ impl<F: PrimeField64> ArithEqSM<F> {
         row_offset: usize,
     ) {
         let data = executors::Secp256k1::execute_add(&input.p1, &input.p2);
-        self.expand_data_on_trace(&data, row_offset, trace, 2);
+        self.expand_data_on_trace(&data, row_offset, trace, SEL_OP_SECP256K1_ADD);
+        Self::expand_addr_step_on_trace(
+            &ArithEqStepAddr {
+                main_step: input.step,
+                addr_op: input.addr,
+                addr_x1: input.p1_addr,
+                addr_y1: input.p1_addr + 32,
+                addr_x2: input.p2_addr,
+                addr_y2: input.p2_addr + 32,
+                addr_x3: input.p1_addr,
+                addr_y3: input.p1_addr + 32,
+                addr_ind: [input.p1_addr, input.p2_addr, 0, 0, 0],
+            },
+            trace,
+            row_offset,
+        );
     }
     fn process_secp256k1_dbl(
         &self,
@@ -128,7 +169,22 @@ impl<F: PrimeField64> ArithEqSM<F> {
         row_offset: usize,
     ) {
         let data = executors::Secp256k1::execute_dbl(&input.p1);
-        self.expand_data_on_trace(&data, row_offset, trace, 3);
+        self.expand_data_on_trace(&data, row_offset, trace, SEL_OP_SECP256K1_DBL);
+        Self::expand_addr_step_on_trace(
+            &ArithEqStepAddr {
+                main_step: input.step,
+                addr_op: input.addr,
+                addr_x1: input.addr,
+                addr_y1: input.addr + 32,
+                addr_x2: input.addr,
+                addr_y2: input.addr + 32,
+                addr_x3: input.addr,
+                addr_y3: input.addr + 32,
+                addr_ind: [0, 0, 0, 0, 0],
+            },
+            trace,
+            row_offset,
+        );
     }
 
     #[inline(always)]
@@ -143,7 +199,11 @@ impl<F: PrimeField64> ArithEqSM<F> {
         trace: &mut ArithEqTrace<F>,
         sel_op: usize,
     ) {
-        println!("sel_op: {} {:?}", sel_op, data);
+        let mut x1_x2_different = false;
+        let mut prev_x3_lt = false;
+        let mut prev_y3_lt = false;
+
+        #[allow(clippy::needless_range_loop)]
         for i in 0..ARITH_EQ_ROWS_BY_OP {
             let irow = row_offset + i;
             for j in 0..3 {
@@ -179,27 +239,63 @@ impl<F: PrimeField64> ArithEqSM<F> {
                     trace[irow].sel_op_clk0[j] = F::ZERO;
                 }
             }
-            // TODO:
-            trace[irow].x_are_different = F::ZERO;
-            trace[irow].x_delta_chunk_inv = F::ZERO;
-            trace[irow].lt_borrow = F::ZERO;
-            trace[irow].lt = F::ZERO;
-            if irow == 0 {
-                println!("TRACE[0]: {:?}", trace[irow]);
-            }
+            match sel_op {
+                SEL_OP_ARITH256_MOD => {
+                    let x3_lt = data.x3[i] < data.y2[i] || (data.x3[i] == data.y2[i] && prev_x3_lt);
+                    trace[irow].x3_lt = F::from_bool(x3_lt);
+                    self.arith_eq_lt_table_sm.update_input(
+                        prev_x3_lt,
+                        x3_lt,
+                        data.x3[i] - data.y2[i],
+                    );
+                    prev_x3_lt = x3_lt;
 
-            // if i == data.different_chunk {
-            //     trace[irow].x_are_different = F::from_bool(true);
-            //     trace[irow].x_delta_chunk_inv = data.delta_chunk_inv;
-            // } else {
-            //     trace[irow].x_are_different = F::zero();
-            //     trace[irow].x_delta_chunk_inv = F::zero();
-            // }
-            // trace[irow].lt_borrow = F::from_bool(data.eq[0][i * 4] as u16);
-            // trace[irow].lt = F::from_bool(data.eq[0][i * 4] as u16);
-            // step_addr
+                    trace[irow].y3_lt = F::ZERO;
+                }
+                SEL_OP_SECP256K1_ADD | SEL_OP_SECP256K1_DBL => {
+                    let x3_lt = data.x3[i] < SECP256K1_PRIME_CHUNKS[i]
+                        || (data.x3[i] == SECP256K1_PRIME_CHUNKS[i] && prev_x3_lt);
+                    trace[irow].x3_lt = F::from_bool(x3_lt);
+                    self.arith_eq_lt_table_sm.update_input(
+                        prev_x3_lt,
+                        x3_lt,
+                        data.x3[i] - SECP256K1_PRIME_CHUNKS[i],
+                    );
+                    prev_x3_lt = x3_lt;
+
+                    let y3_lt = data.y3[i] < SECP256K1_PRIME_CHUNKS[i]
+                        || (data.y3[i] == SECP256K1_PRIME_CHUNKS[i] && prev_y3_lt);
+                    trace[irow].y3_lt = F::from_bool(y3_lt);
+                    self.arith_eq_lt_table_sm.update_input(
+                        prev_y3_lt,
+                        y3_lt,
+                        data.y3[i] - SECP256K1_PRIME_CHUNKS[i],
+                    );
+                    prev_y3_lt = y3_lt;
+                }
+                _ => {
+                    trace[irow].x3_lt = F::ZERO;
+                    trace[irow].y3_lt = F::ZERO;
+                }
+            }
+            if sel_op == SEL_OP_SECP256K1_ADD {
+                if x1_x2_different {
+                    trace[irow].x_are_different = F::ONE;
+                    trace[irow].x_delta_chunk_inv = F::ZERO;
+                } else if data.x1[i] != data.x2[i] {
+                    x1_x2_different = true;
+                    trace[irow].x_are_different = F::ONE;
+                    trace[irow].x_delta_chunk_inv =
+                        F::inverse(&F::from_i64(data.x2[i] - data.x1[i]));
+                } else {
+                    trace[irow].x_delta_chunk_inv = F::ZERO;
+                    trace[irow].x_are_different = F::ZERO;
+                }
+            } else {
+                trace[irow].x_are_different = F::ZERO;
+                trace[irow].x_delta_chunk_inv = F::ZERO;
+            }
         }
-        // unimplemented!()
     }
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
     ///
@@ -219,7 +315,8 @@ impl<F: PrimeField64> ArithEqSM<F> {
 
         let mut trace = ArithEqTrace::<F>::new();
         let num_rows = trace.num_rows();
-        let num_rows_needed = inputs.len() * ARITH_EQ_ROWS_BY_OP;
+        let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
+        let num_rows_needed = total_inputs * ARITH_EQ_ROWS_BY_OP;
 
         info!(
             "{}: ··· Creating ArithEq instance [{} / {} rows filled {:.2}%]",

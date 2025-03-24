@@ -21,8 +21,7 @@ pub struct MemModulePlanner<'a> {
     config: MemModulePlannerConfig,
     rows_available: u32,
     last_step: u64,
-    last_addr: u32,   // addr of last addr uses
-    _last_value: u64, // value of last addr uses
+    last_addr: u32, // addr of last addr uses
 
     segments: Vec<MemModuleSegment>,
     current_chunk_id: Option<ChunkId>,
@@ -72,7 +71,6 @@ impl<'a> MemModulePlanner<'a> {
             config,
             last_addr: config.from_addr,
             last_step: 0,
-            _last_value: 0,
             rows_available: config.rows,
             segments: Vec::new(),
             counters,
@@ -384,22 +382,6 @@ impl<'a> MemModulePlanner<'a> {
         self.segments[lindex].last_addr = last_addr;
         self.segments[lindex].last_step = last_step;
         self.rows_available = self.config.rows;
-    }
-    #[allow(dead_code)]
-    fn close_and_open_segment(&mut self, last_addr: u32, last_step: u64) {
-        self.close_segment(last_addr, last_step);
-
-        self.segments.push({
-            MemModuleSegment {
-                prev_addr: last_addr,
-                prev_step: last_step,
-                last_addr,
-                last_step,
-                skip_rows: 0,
-                rows: 0,
-                chunks: Vec::new(),
-            }
-        });
     }
     fn close_and_open_segment_with_skip(
         &mut self,
