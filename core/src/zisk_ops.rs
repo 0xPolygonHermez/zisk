@@ -1199,13 +1199,12 @@ pub fn precompiled_load_data(
         return;
     }
 
-    #[allow(clippy::needless_range_loop)]
-    for i in 0..indirections_count {
+    for (i, data) in data.iter_mut().enumerate().take(indirections_count) {
         let indirection = ctx.mem.read(address + (8 * i as u64), 8);
         if address & 0x7 != 0 {
             panic!("precompiled_check_address() found address[{}] not aligned to 8 bytes", i);
         }
-        data[i] = indirection;
+        *data = indirection;
     }
     let data_offset = indirections_count;
     for i in 0..loads_count {
@@ -1344,7 +1343,7 @@ pub fn op_secp256k1_add(_a: u64, _b: u64) -> (u64, bool) {
 
 #[inline(always)]
 pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
-    const WORDS: usize = 8;
+    const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 0, 1, 8, &mut data, "secp256k1_dbl");

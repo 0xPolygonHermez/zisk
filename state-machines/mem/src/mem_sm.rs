@@ -281,10 +281,6 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         }
         self.std.range_check(STEP_MEMORY_MAX_DIFF as i64, range_check_data_max, range_id);
 
-        for row in 110..131 {
-            println!("MEM row:{} {:?}", row, trace[row]);
-        }
-
         let mut air_values = MemAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id);
         air_values.is_first_segment = F::from_bool(segment_id == 0);

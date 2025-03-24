@@ -24,8 +24,9 @@ use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 
+use zisk_common::EmuTrace;
 use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
-use ziskemu::{Emu, EmuRegTrace, EmuTrace};
+use ziskemu::{Emu, EmuRegTrace};
 
 use crate::MainCounter;
 
@@ -92,7 +93,7 @@ impl MainSM {
 
         // Calculate total filled rows
         let filled_rows: usize =
-            segment_min_traces.iter().map(|min_trace| min_trace.steps.steps as usize).sum();
+            segment_min_traces.iter().map(|min_trace| min_trace.steps as usize).sum();
 
         info!(
             "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
@@ -169,15 +170,9 @@ impl MainSM {
         let last_row = main_trace.buffer[filled_rows - 1];
         main_trace.buffer[filled_rows..num_rows].fill(last_row);
 
-        let mut reg_trace = EmuRegTrace::new();
-
         // Determine the last row of the previous segment
         let prev_segment_last_c = if start_idx > 0 {
-            let prev_trace = &min_traces[start_idx - 1];
-            let mut emu = Emu::from_emu_trace_start(zisk_rom, &prev_trace.last_state);
-            let mut mem_reads_index = prev_trace.last_state.mem_reads_index;
-            emu.step_slice_full_trace(&prev_trace.steps, &mut mem_reads_index, &mut reg_trace, None)
-                .c
+            Emu::intermediate_value(min_traces[start_idx - 1].last_c)
         } else {
             [F::ZERO, F::ZERO]
         };
@@ -230,7 +225,7 @@ impl MainSM {
         let mut mem_reads_index: usize = 0;
 
         // Total number of rows to fill from the emu trace
-        let total_rows = min_trace.steps.steps as usize;
+        let total_rows = min_trace.steps as usize;
 
         const BATCH_SIZE: usize = 1 << 12; // 2^12 rows per batch
 
@@ -244,7 +239,7 @@ impl MainSM {
             // Process the batch
             for i in 0..batch_size {
                 batch_buffer.buffer[i] = emu.step_slice_full_trace(
-                    &min_trace.steps,
+                    &min_trace.mem_reads,
                     &mut mem_reads_index,
                     reg_trace,
                     Some(&**step_range_check),

@@ -11,6 +11,7 @@ categories = { workspace = true }
 sm-common = { path = "../common" }
 ziskemu = { path = "../../emulator" }
 zisk-core = { path = "../../core" }
+zisk-common = { path = "../../common" }
 data-bus = { path = "../../data-bus" }
 zisk-pil = { path = "../../pil" }
 sm-mem = { path = "../mem" }
@@ -25,7 +26,7 @@ num-bigint = { workspace = true }
 pil-std-lib = { workspace = true }
 
 [features]
-default = []
+default = ["distributed"]
 no_lib_link = ["proofman-common/no_lib_link"]
 diagnostic = ["proofman-macros/diagnostic"]
 distributed = ["proofman-common/distributed"]

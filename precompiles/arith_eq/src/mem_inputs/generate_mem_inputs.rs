@@ -20,8 +20,7 @@ pub fn generate_mem_inputs(
     let mut mem_inputs = Vec::new();
     let params_count = config.read_params + config.write_params;
     let params_offset = OPERATION_BUS_DATA_SIZE + config.indirect_params;
-    println!("DATA: {:?}", data);
-    println!("WRITE_DATA: {:?}", write_data);
+
     for iparam in 0..config.indirect_params {
         mem_inputs.push((
             MEM_BUS_ID,
@@ -59,31 +58,8 @@ pub fn generate_mem_inputs(
             let chunk_data = if only_counters && is_write {
                 0
             } else if is_write {
-                let wlen = write_data.unwrap().len();
-                if current_param_offset + ichunk >= wlen {
-                    println!(
-                            "params_offset:{} current_param_offset:{} iparam:{} ichunk:{} index:{} len:{} config:{:?}",
-                            params_offset, current_param_offset,
-                            iparam,
-                            ichunk,
-                            current_param_offset + ichunk,
-                            wlen,
-                            config
-                        );
-                }
                 write_data.unwrap()[current_param_offset + ichunk]
             } else {
-                if current_param_offset + ichunk >= data.len() {
-                    println!(
-                            "params_offset:{} current_param_offset:{} iparam:{} ichunk:{} index:{} len:{} config:{:?}",
-                            params_offset, current_param_offset,
-                            iparam,
-                            ichunk,
-                            current_param_offset + ichunk,
-                            data.len(),
-                            config
-                        );
-                }
                 data[current_param_offset + ichunk]
             };
             mem_inputs.push((
@@ -97,23 +73,6 @@ pub fn generate_mem_inputs(
                 .to_vec(),
             ));
         }
-    }
-    for (index, (_, mem_input)) in mem_inputs.iter().enumerate() {
-        // 0 MEMORY_LOAD_OP,
-        // 1 addr as u64,
-        // 2 MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + 2,
-        // 3 8,
-        // 4 mem_value,
-
-        println!(
-            "MEM_TO_BUS #{:2} {} 0x{:08X} {:10} {}{}",
-            index,
-            if mem_input[0] == 1 { "R" } else { "W" },
-            mem_input[1],
-            mem_input[2],
-            if mem_input[0] == 1 { mem_input[4] } else { mem_input[6] },
-            if only_counters { " (only counters)" } else { "" }
-        );
     }
     mem_inputs
 }

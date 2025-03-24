@@ -1,5 +1,5 @@
 use num_bigint::BigInt;
-const LAST_CHUNK_OVERLOAD_FACTOR: usize = 16;
+const LAST_CHUNK_OVERLOAD_FACTOR: usize = 16; // times chunk, no bits )2^16 => 2^20)
 
 pub struct ConstantValue {
     pub value: BigInt,

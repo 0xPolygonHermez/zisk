@@ -195,14 +195,20 @@ pub fn elf2romfile(
     rom_file: String,
     pil_file: String,
     bin_file: String,
+    asm_file: String,
 ) -> Result<(), Box<dyn Error>> {
     let rom = elf2rom(elf_file)?;
-    rom.save_to_json_file(&rom_file);
-    if !pil_file.is_empty() {
+    if !rom_file.is_empty() && !rom_file.eq("none") {
+        rom.save_to_json_file(&rom_file);
+    }
+    if !pil_file.is_empty() && !pil_file.eq("none") {
         rom.save_to_pil_file(&pil_file);
     }
-    if !bin_file.is_empty() {
+    if !bin_file.is_empty() && !bin_file.eq("none") {
         rom.save_to_bin_file(&bin_file);
+    }
+    if !asm_file.is_empty() && !asm_file.eq("none") {
+        rom.save_to_asm_file(&asm_file);
     }
     Ok(())
 }

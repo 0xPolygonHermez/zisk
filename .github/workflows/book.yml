@@ -1,7 +1,7 @@
 # Documentation and mdbook related jobs.
 # Reference: https://github.com/paradigmxyz/reth/blob/main/.github/workflows/book.yml
 
-name: book
+name: Book
 
 on:
   push:

@@ -4,7 +4,9 @@
 //! It manages collected inputs and interacts with the `Arith256SM` to compute witnesses for
 //! execution plans.
 
-use crate::{Arith256Input, ArithEqInput, ArithEqSM};
+use crate::{
+    Arith256Input, Arith256ModInput, ArithEqInput, ArithEqSM, Secp256k1AddInput, Secp256k1DblInput,
+};
 use data_bus::{
     BusDevice, BusId, ExtOperationData, OperationBusData, PayloadType, OPERATION_BUS_ID,
 };
@@ -167,15 +169,16 @@ impl BusDevice<PayloadType> for ArithEqCollector {
             ExtOperationData::OperationArith256Data(bus_data) => {
                 ArithEqInput::Arith256(Arith256Input::from(&bus_data))
             }
-            ExtOperationData::OperationArith256ModData(_) => {
-                unimplemented!()
+            ExtOperationData::OperationArith256ModData(bus_data) => {
+                ArithEqInput::Arith256Mod(Arith256ModInput::from(&bus_data))
             }
-            ExtOperationData::OperationSecp256k1AddData(_) => {
-                unimplemented!()
+            ExtOperationData::OperationSecp256k1AddData(bus_data) => {
+                ArithEqInput::Secp256k1Add(Secp256k1AddInput::from(&bus_data))
             }
-            ExtOperationData::OperationSecp256k1DblData(_) => {
-                unimplemented!()
+            ExtOperationData::OperationSecp256k1DblData(bus_data) => {
+                ArithEqInput::Secp256k1Dbl(Secp256k1DblInput::from(&bus_data))
             }
+            // Add here new operations
             _ => panic!("Expected ExtOperationData::OperationData"),
         });
         None
