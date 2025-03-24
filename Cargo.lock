@@ -2295,6 +2295,7 @@ dependencies = [
  "ark-ff",
  "ark-secp256k1",
  "ark-std",
+ "lib-c",
  "num-bigint",
  "num-traits",
 ]
