@@ -1,0 +1,11 @@
+[package]
+name = "precompiles"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.83"
+k256 = { version = "0.13.3", features = ["ecdsa", "std", "bits", "expose-field"] }
+alloy-primitives = { version = "0.8.11", default-features = false }
+cfg-if = "1.0.0"
+hex = "0.4.3"
