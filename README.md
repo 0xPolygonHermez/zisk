@@ -6,7 +6,7 @@ Please be aware of the following:
 * The software is **not fully tested**.
 * **Do not use it in production environments** until a stable production release is available. 🚧
 * Additional functionalities and optimizations **are planned for future releases**.
-* Future updates may introduce breaking **backward compatible changes** as development progresses.
+* Future updates may introduce breaking **backwards compatible changes** as development progresses.
 * Mac is currently not supported.  We are working to support it soon.
 
 If you encounter any errors or unexpected behavior, please report them. Your feedback is highly appreciated in improving the software.
