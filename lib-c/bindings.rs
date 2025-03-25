@@ -3,7 +3,6 @@
 // Execute "bindgen ec.hpp" and add the incremental output to this file
 
 extern "C" {
-    #[link_name = "\u{1}_Z10AddPointEcmPKmS0_S0_S0_PmS1_"]
     pub fn AddPointEc(
         _dbl: ::std::os::raw::c_ulong,
         _x1: *const ::std::os::raw::c_ulong,
@@ -16,7 +15,6 @@ extern "C" {
 }
 
 extern "C" {
-    #[link_name = "\u{1}_Z11AddPointEcPmPKmS0_Pm"]
     pub fn AddPointEcP(
         _dbl: ::std::os::raw::c_ulong,
         _p1: *const ::std::os::raw::c_ulong,
@@ -26,7 +24,6 @@ extern "C" {
 }
 
 extern "C" {
-    #[link_name = "\u{1}_Z11InverseFpEcPKmPm"]
     pub fn InverseFpEc(
         a: *const ::std::os::raw::c_ulong,
         r: *mut ::std::os::raw::c_ulong,
@@ -34,7 +31,6 @@ extern "C" {
 }
 
 extern "C" {
-    #[link_name = "\u{1}_Z11InverseFnEcPKmPm"]
     pub fn InverseFnEc(
         a: *const ::std::os::raw::c_ulong,
         r: *mut ::std::os::raw::c_ulong,
@@ -42,10 +38,29 @@ extern "C" {
 }
 
 extern "C" {
-    #[link_name = "\u{1}_Z14SqrtFpEcParityPKmmPm"]
     pub fn SqrtFpEcParity(
         a: *const ::std::os::raw::c_ulong,
         parity: ::std::os::raw::c_ulong,
         r: *mut ::std::os::raw::c_ulong,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    pub fn Arith256(
+        a: *const ::std::os::raw::c_ulong,
+        b: *const ::std::os::raw::c_ulong,
+        c: *const ::std::os::raw::c_ulong,
+        dl: *mut ::std::os::raw::c_ulong,
+        dh: *mut ::std::os::raw::c_ulong,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    pub fn Arith256Mod(
+        a: *const ::std::os::raw::c_ulong,
+        b: *const ::std::os::raw::c_ulong,
+        c: *const ::std::os::raw::c_ulong,
+        module: *const ::std::os::raw::c_ulong,
+        d: *mut ::std::os::raw::c_ulong,
     ) -> ::std::os::raw::c_int;
 }

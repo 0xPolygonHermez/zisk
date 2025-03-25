@@ -560,6 +560,10 @@ impl ZiskRom {
         *s += ".extern print_char\n";
         *s += ".extern print_step\n";
         *s += ".extern opcode_keccak\n";
+        *s += ".extern opcode_arith256\n";
+        *s += ".extern opcode_arith256_mod\n";
+        *s += ".extern opcode_secp256k1_add\n";
+        *s += ".extern opcode_secp256k1_dbl\n";
         *s += ".extern realloc_trace\n\n";
 
         if ctx.generate_traces {
@@ -591,6 +595,7 @@ impl ZiskRom {
         *s += ".global emulator_start\n";
         *s += "emulator_start:\n";
 
+        *s += "\tpush rsp\n";
         *s += "\tpush rbx\n";
         *s += "\tpush rbp\n";
         *s += "\tpush r12\n";
@@ -1752,6 +1757,7 @@ impl ZiskRom {
         *s += "\tpop r12\n";
         *s += "\tpop rbp\n";
         *s += "\tpop rbx\n";
+        *s += "\tpop rsp\n";
 
         // Used only to get the last log of step
         // *s += &format!("\tpush {}\n", REG_VALUE);
@@ -2797,7 +2803,8 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Keccak => {
-                s += "\tmov rdi, qword ptr [reg_10] /* rdi = A0 */\n";
+                // Use the memory address as the first and unique parameter */
+                s += "\tmov rdi, qword ptr [reg_10] /* Keccak: rdi = A0 */\n";
 
                 // Copy read data into mem_reads_address and advance it
                 if ctx.generate_traces {
@@ -2824,7 +2831,21 @@ impl ZiskRom {
                     s += &format!("\tadd {}, 25 /* mem_reads_size+=25 */\n", REG_MEM_READS_SIZE);
                 }
                 // Call the keccak function
+                s += "\tpop r15\n";
+                s += "\tpop r14\n";
+                s += "\tpop r13\n";
+                s += "\tpop r12\n";
+                s += "\tpop rbp\n";
+                s += "\tpop rbx\n";
+                s += "\tpop rsp\n";
                 s += "\tcall _opcode_keccak\n";
+                s += "\tpush rsp\n";
+                s += "\tpush rbx\n";
+                s += "\tpush rbp\n";
+                s += "\tpush r12\n";
+                s += "\tpush r13\n";
+                s += "\tpush r14\n";
+                s += "\tpush r15\n";
 
                 // Set result
                 s += &format!("\tmov {}, 0 /* Keccak: c=0 */\n", REG_C);
@@ -2838,10 +2859,204 @@ impl ZiskRom {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Arith256 => unimplemented!(),
-            ZiskOp::Arith256Mod => unimplemented!(),
-            ZiskOp::Secp256k1Add => unimplemented!(),
-            ZiskOp::Secp256k1Dbl => unimplemented!(),
+            ZiskOp::Arith256 => {
+                // Use the memory address as the first and unique parameter */
+                s += &format!(
+                    "\tmov rdi, {} /* Arith256: rdi = b = address */\n",
+                    ctx.b.string_value
+                );
+
+                // Copy read data into mem_reads
+                if ctx.generate_traces {
+                    s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
+                    for k in 0..17 {
+                        s += &format!(
+                            "\tmov {}, [{} + {}] /* value = mem[address[{}]] */\n",
+                            REG_VALUE,
+                            REG_ADDRESS,
+                            k * 8,
+                            k
+                        );
+                        s += &format!(
+                            "\tmov [{} + {}*8 + {}], {} /* mem_reads[{}] = value */\n",
+                            REG_MEM_READS_ADDRESS,
+                            REG_MEM_READS_SIZE,
+                            k * 8,
+                            REG_VALUE,
+                            k
+                        );
+                    }
+
+                    // Increment chunk.steps.mem_reads_size in 17 units
+                    s += &format!("\tadd {}, 17 /* mem_reads_size+=17 */\n", REG_MEM_READS_SIZE);
+                }
+                // Call the secp256k1_add function
+                s += "\tpop r15\n";
+                s += "\tpop r14\n";
+                s += "\tpop r13\n";
+                s += "\tpop r12\n";
+                s += "\tpop rbp\n";
+                s += "\tpop rbx\n";
+                s += "\tpop rsp\n";
+                s += "\tcall _opcode_arith256\n";
+                s += "\tpush rsp\n";
+                s += "\tpush rbx\n";
+                s += "\tpush rbp\n";
+                s += "\tpush r12\n";
+                s += "\tpush r13\n";
+                s += "\tpush r14\n";
+                s += "\tpush r15\n";
+
+                // Set result
+                s += &format!("\tmov {}, 0 /* Arith256: c=0 */\n", REG_C);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Arith256Mod => {
+                // Use the memory address as the first and unique parameter */
+                s += &format!(
+                    "\tmov rdi, {} /* Arith256Mod: rdi = b = address */\n",
+                    ctx.b.string_value
+                );
+
+                // Copy read data into mem_reads
+                if ctx.generate_traces {
+                    s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
+                    for k in 0..21 {
+                        s += &format!(
+                            "\tmov {}, [{} + {}] /* value = mem[address[{}]] */\n",
+                            REG_VALUE,
+                            REG_ADDRESS,
+                            k * 8,
+                            k
+                        );
+                        s += &format!(
+                            "\tmov [{} + {}*8 + {}], {} /* mem_reads[{}] = value */\n",
+                            REG_MEM_READS_ADDRESS,
+                            REG_MEM_READS_SIZE,
+                            k * 8,
+                            REG_VALUE,
+                            k
+                        );
+                    }
+
+                    // Increment chunk.steps.mem_reads_size in 21 units
+                    s += &format!("\tadd {}, 21 /* mem_reads_size+=21 */\n", REG_MEM_READS_SIZE);
+                }
+                // Call the secp256k1_add function
+                s += "\tpop r15\n";
+                s += "\tpop r14\n";
+                s += "\tpop r13\n";
+                s += "\tpop r12\n";
+                s += "\tpop rbp\n";
+                s += "\tpop rbx\n";
+                s += "\tpop rsp\n";
+                s += "\tcall _opcode_arith256_mod\n";
+                s += "\tpush rsp\n";
+                s += "\tpush rbx\n";
+                s += "\tpush rbp\n";
+                s += "\tpush r12\n";
+                s += "\tpush r13\n";
+                s += "\tpush r14\n";
+                s += "\tpush r15\n";
+
+                // Set result
+                s += &format!("\tmov {}, 0 /* Arith256Mod: c=0 */\n", REG_C);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Secp256k1Add => {
+                // Use the memory address as the first and unique parameter */
+                s += &format!(
+                    "\tmov rdi, {} /* Secp256k1Add: rdi = b = address */\n",
+                    ctx.b.string_value
+                );
+
+                // Copy read data into mem_reads
+                if ctx.generate_traces {
+                    s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
+                    for k in 0..18 {
+                        s += &format!(
+                            "\tmov {}, [{} + {}] /* value = mem[address[{}]] */\n",
+                            REG_VALUE,
+                            REG_ADDRESS,
+                            k * 8,
+                            k
+                        );
+                        s += &format!(
+                            "\tmov [{} + {}*8 + {}], {} /* mem_reads[{}] = value */\n",
+                            REG_MEM_READS_ADDRESS,
+                            REG_MEM_READS_SIZE,
+                            k * 8,
+                            REG_VALUE,
+                            k
+                        );
+                    }
+
+                    // Increment chunk.steps.mem_reads_size in 18 units
+                    s += &format!("\tadd {}, 18 /* mem_reads_size+=18 */\n", REG_MEM_READS_SIZE);
+                }
+                // Call the secp256k1_add function
+                s += "\tpop r15\n";
+                s += "\tpop r14\n";
+                s += "\tpop r13\n";
+                s += "\tpop r12\n";
+                s += "\tpop rbp\n";
+                s += "\tpop rbx\n";
+                s += "\tpop rsp\n";
+                s += "\tcall _opcode_secp256k1_add\n";
+                s += "\tpush rsp\n";
+                s += "\tpush rbx\n";
+                s += "\tpush rbp\n";
+                s += "\tpush r12\n";
+                s += "\tpush r13\n";
+                s += "\tpush r14\n";
+                s += "\tpush r15\n";
+
+                // Set result
+                s += &format!("\tmov {}, 0 /* Secp256k1Add: c=0 */\n", REG_C);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Secp256k1Dbl => {
+                // Use the memory address as the first and unique parameter */
+                s += &format!(
+                    "\tmov rdi, {} /* Secp256k1Dbl: rdi = b = address */\n",
+                    ctx.b.string_value
+                );
+
+                // Copy read data into mem_reads
+                if ctx.generate_traces {
+                    s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
+                    for k in 0..8 {
+                        s += &format!(
+                            "\tmov {}, [{} + {}] /* value = mem[address[{}]] */\n",
+                            REG_VALUE,
+                            REG_ADDRESS,
+                            k * 8,
+                            k
+                        );
+                        s += &format!(
+                            "\tmov [{} + {}*8 + {}], {} /* mem_reads[{}] = value */\n",
+                            REG_MEM_READS_ADDRESS,
+                            REG_MEM_READS_SIZE,
+                            k * 8,
+                            REG_VALUE,
+                            k
+                        );
+                    }
+
+                    // Increment chunk.steps.mem_reads_size in 8 units
+                    s += &format!("\tadd {}, 8 /* mem_reads_size+=8 */\n", REG_MEM_READS_SIZE);
+                }
+                // Call the secp256k1_dbl function
+                s += "\tcall _opcode_secp256k1_dbl\n";
+
+                // Set result
+                s += &format!("\tmov {}, 0 /* Secp256k1Dbl: c=0 */\n", REG_C);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
             ZiskOp::FcallParam => unimplemented!(),
             ZiskOp::Fcall => unimplemented!(),
             ZiskOp::FcallGet => unimplemented!(),

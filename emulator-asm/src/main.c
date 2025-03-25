@@ -12,26 +12,27 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <assert.h>
+#include "../../lib-c/c/src/ec/ec.hpp"
 
 void emulator_start(void);
 
-#define RAM_ADDR 0xa0000000
-#define RAM_SIZE 0x08000000 // 128MB
+#define RAM_ADDR (uint64_t)0xa0000000
+#define RAM_SIZE (uint64_t)0x08000000 // 128MB
 #define SYS_ADDR RAM_ADDR
-#define SYS_SIZE 0x10000
+#define SYS_SIZE (uint64_t)0x10000
 #define OUTPUT_ADDR (SYS_ADDR + SYS_SIZE)
 
-#define ROM_ADDR 0x80000000
-#define ROM_SIZE 0x08000000 // 128MB
+#define ROM_ADDR (uint64_t)0x80000000
+#define ROM_SIZE (uint64_t)0x08000000 // 128MB
 
-#define INPUT_ADDR 0x90000000
-#define MAX_INPUT_SIZE 0x08000000 // 128MB
+#define INPUT_ADDR (uint64_t)0x90000000
+#define MAX_INPUT_SIZE (uint64_t)0x08000000 // 128MB
 
 #define TRACE_ADDR         (uint64_t)0xb0000000
 #define INITIAL_TRACE_SIZE (uint64_t)0x100000000 // 4GB
 
-#define REG_ADDR 0x70000000
-#define REG_SIZE 0x1000 // 4kB
+#define REG_ADDR (uint64_t)0x70000000
+#define REG_SIZE (uint64_t)0x1000 // 4kB
 
 struct timeval start_time;
 
@@ -44,6 +45,22 @@ extern uint64_t MEM_CHUNK_START_STEP;
 struct timeval keccak_start, keccak_stop;
 uint64_t keccak_counter = 0;
 uint64_t keccak_duration = 0;
+
+struct timeval arith256_start, arith256_stop;
+uint64_t arith256_counter = 0;
+uint64_t arith256_duration = 0;
+
+struct timeval arith256_mod_start, arith256_mod_stop;
+uint64_t arith256_mod_counter = 0;
+uint64_t arith256_mod_duration = 0;
+
+struct timeval secp256k1_add_start, secp256k1_add_stop;
+uint64_t secp256k1_add_counter = 0;
+uint64_t secp256k1_add_duration = 0;
+
+struct timeval secp256k1_dbl_start, secp256k1_dbl_stop;
+uint64_t secp256k1_dbl_counter = 0;
+uint64_t secp256k1_dbl_duration = 0;
 
 uint64_t realloc_counter = 0;
 
@@ -80,6 +97,10 @@ bool verbose = false;
 bool trace = false;
 bool trace_trace = false;
 bool keccak_metrics = false;
+bool arith256_metrics = false;
+bool arith256_mod_metrics = false;
+bool secp256k1_add_metrics = false;
+bool secp256k1_dbl_metrics = false;
 #endif
 char * input_parameter = NULL;
 bool is_file = false;
@@ -123,7 +144,7 @@ int main(int argc, char *argv[])
         uint64_t input_parameter_length = strlen(input_parameter);
         if (input_parameter_length > 16)
         {
-            printf("Input parameter is too long: %s, size = %d\n", input_parameter, input_parameter_length);
+            printf("Input parameter is too long: %s, size = %ld\n", input_parameter, input_parameter_length);
             return -1;
         }
 
@@ -187,7 +208,7 @@ int main(int argc, char *argv[])
         // Check the input data size is inside the proper range
         if (input_data_size > (MAX_INPUT_SIZE - 8))
         {
-            printf("Size of input file (%s) is too long (%d)\n", input_parameter, input_data_size);
+            printf("Size of input file (%s) is too long (%ld)\n", input_parameter, input_data_size);
             return -1;
         }
 
@@ -204,11 +225,11 @@ int main(int argc, char *argv[])
         }
         if ((uint64_t)pInput != INPUT_ADDR)
         {
-            printf("Called mmap(pInput) but returned address = 0x%llx != 0x%llx\n", pInput, INPUT_ADDR);
+            printf("Called mmap(pInput) but returned address = 0x%p != 0x%lx\n", pInput, INPUT_ADDR);
             return -1;
         }
     #ifdef DEBUG
-        if (verbose) printf("mmap(input) returned %08x\n", pInput);
+        if (verbose) printf("mmap(input) returned 0x%p\n", pInput);
     #endif
 
         // Write the input size in the first 64 bits
@@ -218,7 +239,7 @@ int main(int argc, char *argv[])
         size_t input_read = fread((void *)(INPUT_ADDR + 8), 1, input_data_size, input_fp);
         if (input_read != input_data_size)
         {
-            printf("Input read (%d) != input file size (%d)\n", input_read, input_data_size);
+            printf("Input read (%ld) != input file size (%ld)\n", input_read, input_data_size);
             return -1;
         }
 
@@ -259,7 +280,7 @@ int main(int argc, char *argv[])
         result = munmap(shmem_input_address, 32);
         if (result == -1)
         {
-            printf("Failed calling munmap({}) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
         
@@ -283,11 +304,11 @@ int main(int argc, char *argv[])
         }
         if ((uint64_t)pInput != INPUT_ADDR)
         {
-            printf("Called mmap(pInput) but returned address = 0x%llx != 0x%llx\n", pInput, INPUT_ADDR);
+            printf("Called mmap(pInput) but returned address = 0x%p != 0x%lx\n", pInput, INPUT_ADDR);
             return -1;
         }
 #ifdef DEBUG
-        if (verbose) printf("mmap(input) returned %08x\n", pInput);
+        if (verbose) printf("mmap(input) returned 0x%p\n", pInput);
 #endif
 
         // Write the input size in the first 64 bits
@@ -300,7 +321,7 @@ int main(int argc, char *argv[])
         result = munmap(shmem_input_address, shmem_input_size + 32);
         if (result == -1)
         {
-            printf("Failed calling munmap({}) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
         
@@ -308,7 +329,7 @@ int main(int argc, char *argv[])
         result = shm_unlink(shmem_input_name);
         if (result == -1)
         {
-            printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_input_name, trace_size, errno, strerror(errno));
+            printf("Failed calling shm_unlink(%s) size=%ld errno=%d=%s\n", shmem_input_name, trace_size, errno, strerror(errno));
             exit(-1);
         }
     }
@@ -334,7 +355,7 @@ int main(int argc, char *argv[])
         result = ftruncate(shmem_output_fd, trace_size);
         if (result != 0)
         {
-            printf("Failed calling ftruncate() errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
+            printf("Failed calling ftruncate(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
             return -1;
         }
 
@@ -347,11 +368,11 @@ int main(int argc, char *argv[])
         }
         if ((uint64_t)pTrace != TRACE_ADDR)
         {
-            printf("Called mmap(trace) but returned address = 0x%llx != 0x%llx\n", pTrace, TRACE_ADDR);
+            printf("Called mmap(trace) but returned address = 0x%p != 0x%lx\n", pTrace, TRACE_ADDR);
             return -1;
         }
     #ifdef DEBUG
-        if (verbose) printf("mmap(trace) returned %08x\n", pTrace);
+        if (verbose) printf("mmap(trace) returned 0x%p\n", pTrace);
     #endif
 
         // Init output header data
@@ -373,11 +394,11 @@ int main(int argc, char *argv[])
     }
     if ((uint64_t)pRam != RAM_ADDR)
     {
-        printf("Called mmap(ram) but returned address = 0x%08x != 0x%08x\n", pRam, RAM_ADDR);
+        printf("Called mmap(ram) but returned address = 0x%p != 0x%08lx\n", pRam, RAM_ADDR);
         return -1;
     }
 #ifdef DEBUG
-    if (verbose) printf("mmap(ram) returned %08x\n", pRam);
+    if (verbose) printf("mmap(ram) returned 0x%p\n", pRam);
 #endif
 
     /*******/
@@ -391,11 +412,11 @@ int main(int argc, char *argv[])
     }
     if ((uint64_t)pRom != ROM_ADDR)
     {
-        printf("Called mmap(rom) but returned address = 0x%llx != 0x%llx\n", pRom, ROM_ADDR);
+        printf("Called mmap(rom) but returned address = 0x%p != 0x%lx\n", pRom, ROM_ADDR);
         return -1;
     }
 #ifdef DEBUG
-    if (verbose) printf("mmap(rom) returned %08x\n", pRom);
+    if (verbose) printf("mmap(rom) returned 0x%p\n", pRom);
 #endif
 
     /*******/
@@ -422,7 +443,7 @@ int main(int argc, char *argv[])
         uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
         uint64_t final_trace_size_percentage = (final_trace_size * 100) / trace_size;
 #ifdef DEBUG
-        printf("Duration = %lld us, Keccak counter = %lld, realloc counter = %lld, steps = %lld, step duration = %lld ns, tp = %lld steps/s, trace size = 0x%llx - 0x%llx = %lld B(%d%%), end=%lld\n",
+        printf("Duration = %ld us, Keccak counter = %ld, realloc counter = %ld, steps = %ld, step duration = %ld ns, tp = %ld steps/s, trace size = 0x%lx - 0x%lx = %ld B(%ld%%), end=%ld\n",
             duration,
             keccak_counter,
             realloc_counter,
@@ -438,10 +459,10 @@ int main(int argc, char *argv[])
         {
             uint64_t keccak_percentage = duration == 0 ? 0 : (keccak_duration * 100) / duration;
             uint64_t single_keccak_duration_ns = keccak_counter == 0 ? 0 : (keccak_duration * 1000) / keccak_counter;
-            printf("Keccak counter = %lld, duration = %lld us, single keccak duration = %lld ns, percentage = %lld \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
+            printf("Keccak counter = %ld, duration = %ld us, single keccak duration = %ld ns, percentage = %ld \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
         }
 #else
-        printf("Duration = %lld us, realloc counter = %lld, steps = %lld, step duration = %lld ns, tp = %lld steps/s, trace size = 0x%llx - 0x%llx = %lld B(%d%%), end=%lld\n",
+        printf("Duration = %ld us, realloc counter = %ld, steps = %ld, step duration = %ld ns, tp = %ld steps/s, trace size = 0x%lx - 0x%lx = %ld B(%ld%%), end=%ld\n",
             duration,
             realloc_counter,
             steps,
@@ -526,7 +547,7 @@ int main(int argc, char *argv[])
         result = munmap((void *)TRACE_ADDR, trace_size);
         if (result == -1)
         {
-            printf("Failed calling munmap(trace) for size=%d errno=%d=%s\n", trace_size, errno, strerror(errno));
+            printf("Failed calling munmap(trace) for size=%ld errno=%d=%s\n", trace_size, errno, strerror(errno));
             exit(-1);
         }
 
@@ -543,11 +564,11 @@ uint64_t print_abcflag_counter = 0;
 extern int _print_abcflag(uint64_t a, uint64_t b, uint64_t c, uint64_t flag)
 {
     uint64_t * pMem = (uint64_t *)0xa0012118;
-    printf("counter=%d a=%08llx b=%08llx c=%08llx flag=%08llx mem=%08llx\n", print_abcflag_counter, a, b, c, flag, *pMem);
+    printf("counter=%ld a=%08lx b=%08lx c=%08lx flag=%08lx mem=%08lx\n", print_abcflag_counter, a, b, c, flag, *pMem);
     uint64_t *pRegs = (uint64_t *)RAM_ADDR;
     for (int i=0; i<32; i++)
     {
-        printf("r%d=%08llx ", i, pRegs[i]);
+        printf("r%d=%08lx ", i, pRegs[i]);
     }
     printf("\n");
     fflush(stdout);
@@ -567,7 +588,7 @@ uint64_t print_step_counter = 0;
 extern int _print_step(uint64_t step)
 {
 #ifdef DEBUG
-    printf("step=%d\n", print_step_counter);
+    printf("step=%ld\n", print_step_counter);
     print_step_counter++;
     // struct timeval stop_time;
     // gettimeofday(&stop_time,NULL);
@@ -585,7 +606,7 @@ extern int _opcode_keccak(uint64_t address)
 #ifdef DEBUG
     if (keccak_metrics || verbose) gettimeofday(&keccak_start, NULL);
 #endif
-    //if (verbose) printf("opcode_keccak() calling KeccakF1600() counter=%d step=%08llx address=%08llx\n", keccak_counter, /**(uint64_t *)*/MEM_STEP, address);
+    //if (verbose) printf("opcode_keccak() calling KeccakF1600() counter=%d address=%08lx\n", keccak_counter, address);
     keccakf1600_generic((uint64_t *)address);
     //zisk_keccakf((uint64_t *)address);
     //if (verbose) printf("opcode_keccak() called KeccakF1600()\n");
@@ -595,6 +616,143 @@ extern int _opcode_keccak(uint64_t address)
     {
         gettimeofday(&keccak_stop, NULL);
         keccak_duration += TimeDiff(keccak_start, keccak_stop);
+    }
+#endif
+    return 0;
+}
+
+extern int _opcode_arith256(uint64_t address)
+{
+#ifdef DEBUG
+    if (arith256_metrics || verbose) gettimeofday(&arith256_start, NULL);
+#endif
+    uint64_t dl_address = *(uint64_t *)(address + 8*3);
+    uint64_t dh_address = *(uint64_t *)(address + 8*4);
+#ifdef DEBUG
+    //if (verbose) printf("opcode_arith256() calling Arith256() counter=%ld address=%08lx\n", arith256_counter, address);
+#endif
+
+    int result = Arith256 (
+        (unsigned long *)(address + 8*5), // a
+        (unsigned long *)(address + 8*9), // b
+        (unsigned long *)(address + 8*13), // c
+        (unsigned long *)dl_address, // dl
+        (unsigned long *)dh_address // dh
+    );
+    if (result != 0)
+    {
+        printf("_opcode_arith256_add() failed callilng Arith256() result=%d;", result);
+        exit(-1);
+    }
+
+    //if (verbose) printf("opcode_arith256() called Arith256()\n");
+#ifdef DEBUG
+    arith256_counter++;
+    if (arith256_metrics || verbose)
+    {
+        gettimeofday(&arith256_stop, NULL);
+        arith256_duration += TimeDiff(arith256_start, arith256_stop);
+    }
+#endif
+    return 0;
+}
+
+extern int _opcode_arith256_mod(uint64_t address)
+{
+#ifdef DEBUG
+    if (arith256_mod_metrics || verbose) gettimeofday(&arith256_mod_start, NULL);
+#endif
+    uint64_t d_address = *(uint64_t *)(address + 8*4);
+#ifdef DEBUG
+    //if (verbose) printf("opcode_arith256_mod() calling Arith256Mod() counter=%ld address=%08lx\n", arith256_mod_counter, address);
+#endif
+
+    int result = Arith256Mod (
+        (unsigned long *)(address + 8*5), // a
+        (unsigned long *)(address + 8*9), // b
+        (unsigned long *)(address + 8*13), // c
+        (unsigned long *)(address + 8*17), // module
+        (unsigned long *)d_address // d
+    );
+    if (result != 0)
+    {
+        printf("_opcode_arith256_mod() failed callilng Arith256Mod() result=%d;", result);
+        exit(-1);
+    }
+
+    //if (verbose) printf("opcode_arith256_mod() called Arith256Mod()\n");
+#ifdef DEBUG
+    arith256_mod_counter++;
+    if (arith256_mod_metrics || verbose)
+    {
+        gettimeofday(&arith256_mod_stop, NULL);
+        arith256_mod_duration += TimeDiff(arith256_mod_start, arith256_mod_stop);
+    }
+#endif
+    return 0;
+}
+
+extern int _opcode_secp256k1_add(uint64_t address)
+{
+#ifdef DEBUG
+    if (secp256k1_add_metrics || verbose) gettimeofday(&secp256k1_add_start, NULL);
+#endif
+    uint64_t p3_address = *(uint64_t *)address;
+#ifdef DEBUG
+    //if (verbose) printf("opcode_secp256k1_add() calling AddPointEcP() counter=%ld address=%08lx p3_address=%08lx\n", secp256k1_add_counter, address, p3_address);
+#endif
+    uint64_t p3[8];
+    int result = AddPointEcP (
+        1,
+        (unsigned long *)(address + 8 + 8), // p1 = [x1, y1] = 8x64bits
+        (unsigned long *)(address + 8 + 8 + 8*4), // p2 = [x2, y2] = 8x64bits
+        (unsigned long *)p3 // p3 = [x3, y3] = 8x64bits
+    );
+    if (result != 0)
+    {
+        printf("_opcode_secp256k1_add() failed callilng AddPointEcP() result=%d;", result);
+        exit(-1);
+    }
+    for (int i=0; i<8; i++)
+    {
+        *(uint64_t *)(p3_address + i*8) = p3[i];
+    }
+    //if (verbose) printf("opcode_secp256k1_add() called AddPointEcP()\n");
+#ifdef DEBUG
+    secp256k1_add_counter++;
+    if (secp256k1_add_metrics || verbose)
+    {
+        gettimeofday(&secp256k1_add_stop, NULL);
+        secp256k1_add_duration += TimeDiff(secp256k1_add_start, secp256k1_add_stop);
+    }
+#endif
+    return 0;
+}
+
+extern int _opcode_secp256k1_dbl(uint64_t address)
+{
+#ifdef DEBUG
+    if (secp256k1_dbl_metrics || verbose) gettimeofday(&secp256k1_dbl_start, NULL);
+#endif
+    //if (verbose) printf("opcode_secp256k1_dbl() calling AddPointEcP() counter=%d step=%08lx address=%08lx\n", secp256k1_dbl_counter, /**(uint64_t *)*/MEM_STEP, address);
+    int result = AddPointEcP (
+        1,
+        (unsigned long *)address, // p1 = [x1, y1] = 8x64bits
+        (unsigned long *)address, // p2 = [x2, y2] = 8x64bits
+        (unsigned long *)address // p3 = [x3, y3] = 8x64bits
+    );
+    if (result != 0)
+    {
+        printf("_opcode_secp256k1_dbl() failed callilng AddPointEcP() result=%d;", result);
+        exit(-1);
+    }
+    //if (verbose) printf("opcode_secp256k1_dbl() called AddPointEcP()\n");
+#ifdef DEBUG
+    secp256k1_dbl_counter++;
+    if (secp256k1_dbl_metrics || verbose)
+    {
+        gettimeofday(&secp256k1_dbl_stop, NULL);
+        secp256k1_dbl_duration += TimeDiff(secp256k1_dbl_start, secp256k1_dbl_stop);
     }
 #endif
     return 0;
@@ -612,7 +770,7 @@ extern void _realloc_trace (void)
     int result = ftruncate(shmem_output_fd, new_trace_size);
     if (result != 0)
     {
-        printf("realloc_trace() failed calling ftruncate(%s) of new size=%lld errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
+        printf("realloc_trace() failed calling ftruncate(%s) of new size=%ld errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
         exit(-1);
     }
     
@@ -620,7 +778,7 @@ extern void _realloc_trace (void)
     void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
     if ((uint64_t)new_address != trace_address)
     {
-        printf("realloc_trace() failed calling mremap() from size=%d to %d got new_address=0x%llx errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
+        printf("realloc_trace() failed calling mremap() from size=%ld to %ld got new_address=0x%p errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
         exit(-1);
     }
 
@@ -693,7 +851,7 @@ void parse_arguments(int argc, char *argv[])
                 input_parameter = argv[i];
                 continue;
             }
-            printf("Unrecognized argument: %s\n", argv[i]);
+            printf("Unrecognized argument: %s, current input=%s\n", argv[i], input_parameter);
             print_usage();
             exit(-1);
         }
@@ -763,69 +921,69 @@ void log_trace(void)
 {
 
     uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
-    printf("Version = 0x%06llx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %d\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %d B\n", pOutput[2]); // MT allocated size [8]
-    printf("MT used size = %d B\n", pOutput[3]); // MT used size [8]
+    printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
+    printf("Exit code = %ld\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    printf("Allocated size = %ld B\n", pOutput[2]); // MT allocated size [8]
+    printf("MT used size = %ld B\n", pOutput[3]); // MT used size [8]
 
     printf("Trace content:\n");
     uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
     uint64_t number_of_chunks = trace[0];
-    printf("Number of chunks=%d\n", number_of_chunks);
+    printf("Number of chunks=%ld\n", number_of_chunks);
     if (number_of_chunks > 1000000)
     {
-        printf("Number of chunks is too high=%d\n", number_of_chunks);
+        printf("Number of chunks is too high=%ld\n", number_of_chunks);
         exit(-1);
     }
     uint64_t * chunk = trace + 1;
     for (uint64_t c=0; c<number_of_chunks; c++)
     {
         uint64_t i=0;
-        printf("Chunk %d:\n", c);
+        printf("Chunk %ld:\n", c);
 
         // Log current chunk start state
         printf("\tStart state:\n");
-        printf("\t\tpc=0x%llx:\n", chunk[i]);
+        printf("\t\tpc=0x%lx:\n", chunk[i]);
         i++;
-        printf("\t\tsp=0x%llx:\n", chunk[i]);
+        printf("\t\tsp=0x%lx:\n", chunk[i]);
         i++;
-        printf("\t\tc=0x%llx:\n", chunk[i]);
+        printf("\t\tc=0x%lx:\n", chunk[i]);
         i++;
-        printf("\t\tstep=%d:\n", chunk[i]);
+        printf("\t\tstep=%ld:\n", chunk[i]);
         i++;
         for (uint64_t r=1; r<34; r++)
         {
-            printf("\t\tregister[%d]=0x%llx:\n", r, chunk[i]);
+            printf("\t\tregister[%ld]=0x%ld:\n", r, chunk[i]);
             i++;
         }
 
         // Log current chunk last state
         printf("\tLast state:\n");
-        printf("\t\tc=0x%llx:\n", chunk[i]);
+        printf("\t\tc=0x%lx:\n", chunk[i]);
         i++;
         
         // Log current chunk end
         printf("\tEnd:\n");
-        printf("\t\tend=%d:\n", chunk[i]);
+        printf("\t\tend=%ld:\n", chunk[i]);
         i++;
 
         // Log current chunk steps
         printf("\tSteps:\n");
-        printf("\t\tsteps=%d:\n", chunk[i]);
+        printf("\t\tsteps=%ld:\n", chunk[i]);
         i++;
         uint64_t mem_reads_size = chunk[i];
-        printf("\t\tmem_reads_size=%d:\n", mem_reads_size);
+        printf("\t\tmem_reads_size=%ld:\n", mem_reads_size);
         i++;
         if (mem_reads_size > 10000000)
         {
-            printf("Mem reads size is too high=%d\n", mem_reads_size);
+            printf("Mem reads size is too high=%ld\n", mem_reads_size);
             exit(-1);
         }
         if (trace_trace)
         {
             for (uint64_t m=0; m<mem_reads_size; m++)
             {
-                printf("\t\tchunk[%d].mem_reads[%d]=%08x:\n", c, m, chunk[i]);
+                printf("\t\tchunk[%ld].mem_reads[%ld]=%08lx:\n", c, m, chunk[i]);
                 i++;
             }
         }
@@ -837,6 +995,6 @@ void log_trace(void)
         //Set next chunk pointer
         chunk = chunk + i;
     }
-    printf("Trace=%llx chunk=%llx size=%d\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+    printf("Trace=0x%p chunk=0x%p size=%ld\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
 }
 #endif

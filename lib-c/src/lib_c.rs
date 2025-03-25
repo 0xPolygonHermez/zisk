@@ -27,3 +27,23 @@ pub fn inverse_fn_ec_c(params: &[u64; 32], result: &mut [u64; 32]) -> i32 {
 pub fn sqrt_fp_ec_parity_c(params: &[u64; 32], result: &mut [u64; 32]) -> i32 {
     unsafe { SqrtFpEcParity(&params[0], params[8], &mut result[0]) }
 }
+
+pub fn arith256_c(
+    a: &[u64; 4],
+    b: &[u64; 4],
+    c: &[u64; 4],
+    dl: &mut [u64; 4],
+    dh: &mut [u64; 4],
+) -> i32 {
+    unsafe { Arith256(&a[0], &b[0], &c[0], &mut dl[0], &mut dh[0]) }
+}
+
+pub fn arith256_mod_c(
+    a: &[u64; 4],
+    b: &[u64; 4],
+    c: &[u64; 4],
+    module: &mut [u64; 4],
+    d: &mut [u64; 4],
+) -> i32 {
+    unsafe { Arith256(&a[0], &b[0], &c[0], &mut module[0], &mut d[0]) }
+}

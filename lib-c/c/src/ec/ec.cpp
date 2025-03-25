@@ -45,7 +45,11 @@ inline void fe2array (const RawFnec::Element &fe, uint64_t * a)
     scalar2array(s, a);
 }
 
-int inline AddPointEc (bool dbl, const RawFec::Element &x1, const RawFec::Element &y1, const RawFec::Element &x2, const RawFec::Element &y2, RawFec::Element &x3, RawFec::Element &y3)
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+int inline AddPointEcFe (bool dbl, const RawFec::Element &x1, const RawFec::Element &y1, const RawFec::Element &x2, const RawFec::Element &y2, RawFec::Element &x3, RawFec::Element &y3)
 {
     // Check if results are buffered
 #ifdef ENABLE_EXPERIMENTAL_CODE
@@ -109,10 +113,13 @@ int AddPointEc (uint64_t _dbl, const uint64_t * _x1, const uint64_t * _y1, const
     RawFec::Element x1, y1, x2, y2, x3, y3;
     array2fe(_x1, x1);
     array2fe(_y1, y1);
-    array2fe(_x2, x2);
-    array2fe(_y2, y2);
+    if (!dbl)
+    {
+        array2fe(_x2, x2);
+        array2fe(_y2, y2);
+    }
 
-    int result = AddPointEc (dbl, x1, y1, x2, y2, x3, y3);
+    int result = AddPointEcFe (dbl, x1, y1, x2, y2, x3, y3);
     
     fe2array(x3, _x3);
     fe2array(y3, _y3);
@@ -127,15 +134,18 @@ int AddPointEcP (uint64_t _dbl, const uint64_t * p1, const uint64_t * p2, uint64
     RawFec::Element x1, y1, x2, y2, x3, y3;
     array2fe(p1, x1);
     array2fe(p1 + 4, y1);
-    array2fe(p2, x2);
-    array2fe(p2 + 4, y2);
+    if (!dbl)
+    {
+        array2fe(p2, x2);
+        array2fe(p2 + 4, y2);
+    }
 
     // printf("AddPointEcP() x1=%s\n", fec.toString(x1, 16).c_str());
     // printf("AddPointEcP() y1=%s\n", fec.toString(y1, 16).c_str());
     // printf("AddPointEcP() x2=%s\n", fec.toString(x2, 16).c_str());
     // printf("AddPointEcP() y2=%s\n", fec.toString(y2, 16).c_str());
 
-    int result = AddPointEc (dbl, x1, y1, x2, y2, x3, y3);
+    int result = AddPointEcFe (dbl, x1, y1, x2, y2, x3, y3);
 
     fe2array(x3, p3);
     fe2array(y3, p3 + 4);
@@ -237,3 +247,62 @@ int SqrtFpEcParity (
     }
     return 0;
 }
+
+int Arith256 (
+    const unsigned long * _a,  // 4 x 64 bits
+    const unsigned long * _b,  // 4 x 64 bits
+    const unsigned long * _c,  // 4 x 64 bits
+    unsigned long * _dl, // 4 x 64 bits
+    unsigned long * _dh // 4 x 64 bits
+)
+{
+    // Convert input parameters to scalars
+    mpz_class a, b, c;
+    array2scalar(_a, a);
+    array2scalar(_b, b);
+    array2scalar(_c, c);
+
+    // Calculate the result as a scalar
+    mpz_class d;
+    d = (a * b) + c;
+
+    // Decompose d = dl + dh<<256 (dh = d)
+    mpz_class dl;
+    dl = d & ScalarMask256;
+    d >>= 256;
+
+    // Convert scalars to output parameters
+    scalar2array(dl, _dl);
+    scalar2array(d, _dh);
+
+    return 0;
+}
+
+int Arith256Mod (
+    const unsigned long * _a,  // 4 x 64 bits
+    const unsigned long * _b,  // 4 x 64 bits
+    const unsigned long * _c,  // 4 x 64 bits
+    const unsigned long * _module,  // 4 x 64 bits
+    unsigned long * _d // 4 x 64 bits
+)
+{
+    // Convert input parameters to scalars
+    mpz_class a, b, c, module;
+    array2scalar(_a, a);
+    array2scalar(_b, b);
+    array2scalar(_c, c);
+    array2scalar(_module, module);
+
+    // Calculate the result as a scalar
+    mpz_class d;
+    d = ((a * b) + c) % module;
+
+    // Convert scalar to output parameter
+    scalar2array(d, _d);
+
+    return 0;
+}
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
