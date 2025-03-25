@@ -758,6 +758,49 @@ extern int _opcode_secp256k1_dbl(uint64_t address)
     return 0;
 }
 
+extern int _opcode_inverse_fp_ec(uint64_t params, uint64_t result)
+{
+    int iresult = InverseFpEc (
+        (unsigned long *)params, // a
+        (unsigned long *)result // r
+    );
+    if (iresult != 0)
+    {
+        printf("_opcode_inverse_fp_ec() failed callilng InverseFpEc() result=%d;", iresult);
+        exit(-1);
+    }
+    return 0;
+}
+
+extern int _opcode_inverse_fn_ec(uint64_t params, uint64_t result)
+{
+    int iresult = InverseFnEc (
+        (unsigned long *)params, // a
+        (unsigned long *)result // r
+    );
+    if (iresult != 0)
+    {
+        printf("_opcode_inverse_fn_ec() failed callilng InverseFnEc() result=%d;", iresult);
+        exit(-1);
+    }
+    return 0;
+}
+
+extern int _opcode_sqrt_fp_ec_parity(uint64_t params, uint64_t result)
+{
+    int iresult = SqrtFpEcParity (
+        (unsigned long *)params, // a
+        *(unsigned long *)(params + 4*8), // parity
+        (unsigned long *)result // r
+    );
+    if (iresult != 0)
+    {
+        printf("_opcode_sqrt_fp_ec_parity() failed callilng SqrtFpEcParity() result=%d;", iresult);
+        exit(-1);
+    }
+    return 0;
+}
+
 extern void _realloc_trace (void)
 {
     realloc_counter++;
