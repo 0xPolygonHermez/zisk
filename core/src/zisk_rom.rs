@@ -2858,30 +2858,11 @@ impl ZiskRom {
                     ctx.b.string_value
                 );
 
-                // Copy read data into mem_reads
+                // Save data into mem_reads
                 if ctx.generate_traces {
-                    s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
-                    for k in 0..17 {
-                        s += &format!(
-                            "\tmov {}, [{} + {}] /* value = mem[address[{}]] */\n",
-                            REG_VALUE,
-                            REG_ADDRESS,
-                            k * 8,
-                            k
-                        );
-                        s += &format!(
-                            "\tmov [{} + {}*8 + {}], {} /* mem_reads[{}] = value */\n",
-                            REG_MEM_READS_ADDRESS,
-                            REG_MEM_READS_SIZE,
-                            k * 8,
-                            REG_VALUE,
-                            k
-                        );
-                    }
-
-                    // Increment chunk.steps.mem_reads_size in 17 units
-                    s += &format!("\tadd {}, 17 /* mem_reads_size+=17 */\n", REG_MEM_READS_SIZE);
+                    Self::precompiled_save_mem_reads(ctx, &mut s, 5, 3, 4);
                 }
+
                 // Call the secp256k1_add function
                 Self::push_internal_registers(ctx, &mut s);
                 s += "\tcall _opcode_arith256\n";
@@ -2899,30 +2880,11 @@ impl ZiskRom {
                     ctx.b.string_value
                 );
 
-                // Copy read data into mem_reads
+                // Save data into mem_reads
                 if ctx.generate_traces {
-                    s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
-                    for k in 0..21 {
-                        s += &format!(
-                            "\tmov {}, [{} + {}] /* value = mem[address[{}]] */\n",
-                            REG_VALUE,
-                            REG_ADDRESS,
-                            k * 8,
-                            k
-                        );
-                        s += &format!(
-                            "\tmov [{} + {}*8 + {}], {} /* mem_reads[{}] = value */\n",
-                            REG_MEM_READS_ADDRESS,
-                            REG_MEM_READS_SIZE,
-                            k * 8,
-                            REG_VALUE,
-                            k
-                        );
-                    }
-
-                    // Increment chunk.steps.mem_reads_size in 21 units
-                    s += &format!("\tadd {}, 21 /* mem_reads_size+=21 */\n", REG_MEM_READS_SIZE);
+                    Self::precompiled_save_mem_reads(ctx, &mut s, 5, 4, 4);
                 }
+
                 // Call the secp256k1_add function
                 Self::push_internal_registers(ctx, &mut s);
                 s += "\tcall _opcode_arith256_mod\n";
@@ -2940,29 +2902,9 @@ impl ZiskRom {
                     ctx.b.string_value
                 );
 
-                // Copy read data into mem_reads
+                // Save data into mem_reads
                 if ctx.generate_traces {
-                    s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
-                    for k in 0..18 {
-                        s += &format!(
-                            "\tmov {}, [{} + {}] /* value = mem[address[{}]] */\n",
-                            REG_VALUE,
-                            REG_ADDRESS,
-                            k * 8,
-                            k
-                        );
-                        s += &format!(
-                            "\tmov [{} + {}*8 + {}], {} /* mem_reads[{}] = value */\n",
-                            REG_MEM_READS_ADDRESS,
-                            REG_MEM_READS_SIZE,
-                            k * 8,
-                            REG_VALUE,
-                            k
-                        );
-                    }
-
-                    // Increment chunk.steps.mem_reads_size in 18 units
-                    s += &format!("\tadd {}, 18 /* mem_reads_size+=18 */\n", REG_MEM_READS_SIZE);
+                    Self::precompiled_save_mem_reads(ctx, &mut s, 2, 2, 8);
                 }
 
                 // Call the secp256k1_add function
@@ -3006,6 +2948,7 @@ impl ZiskRom {
                     // Increment chunk.steps.mem_reads_size in 8 units
                     s += &format!("\tadd {}, 8 /* mem_reads_size+=8 */\n", REG_MEM_READS_SIZE);
                 }
+
                 // Call the secp256k1_dbl function
                 Self::push_internal_registers(ctx, &mut s);
                 s += "\tcall _opcode_secp256k1_dbl\n";
@@ -3522,5 +3465,66 @@ impl ZiskRom {
         *s += "\tpop rdx\n";
         *s += "\tpop rcx\n";
         *s += "\tpop rax\n";
+    }
+
+    fn precompiled_save_mem_reads(
+        _ctx: &mut ZiskAsmContext,
+        s: &mut String,
+        indirections_count: u64,
+        load_count: u64,
+        load_size: u64,
+    ) {
+        // This index will be incremented as we insert data into mem_reads
+        let mut mem_reads_index: u64 = 0;
+
+        // We get a copy of the precompiled data address
+        *s += &format!("\tmov {}, rdi /* address = rdi */\n", REG_ADDRESS);
+
+        // We make 2 rounds, a first one to store the indirection addresses, and a second one to
+        // store the load data, up to load_count
+        for j in 0..2 {
+            // For every indirection
+            for i in 0..indirections_count {
+                if i >= load_count {
+                    break;
+                }
+                // Store next aligned address value in mem_reads, and advance it
+                *s += &format!(
+                    "\tmov {}, [{} + {}*8] /* value = mem[address+{}] */\n",
+                    REG_VALUE, REG_ADDRESS, i, i
+                );
+
+                // During the first iteration, store the indirectionread value in mem_reads
+                if j == 0 {
+                    *s += &format!(
+                        "\tmov [{} + {}*8 + {}*8], {} /* mem_reads[@+size*8+ind*8] = ind */\n",
+                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, mem_reads_index, REG_VALUE
+                    );
+                    mem_reads_index += 1;
+                }
+
+                // During the second iteration, store the first load_count iterations
+                // load_size elements in mem_reads
+                if j == 1 {
+                    for l in 0..load_size {
+                        *s += &format!(
+                            "\tmov {}, [{} + {}*8] /* aux = mem[ind+{}] */\n",
+                            REG_AUX, REG_VALUE, l, l
+                        );
+                        *s += &format!(
+                            "\tmov [{} + {}*8 + {}*8], {} /* mem_reads[@+size*8+ind*8] = ind */\n",
+                            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, mem_reads_index, REG_AUX
+                        );
+                        mem_reads_index += 1;
+                    }
+                }
+            }
+        }
+
+        // Increment chunk.steps.mem_reads_size
+        *s += &format!(
+            "\tadd {}, {} /* mem_reads_size+={}*/\n",
+            REG_MEM_READS_SIZE, mem_reads_index, mem_reads_index
+        );
     }
 }
