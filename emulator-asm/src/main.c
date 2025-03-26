@@ -632,7 +632,13 @@ extern int _opcode_arith256(uint64_t * address)
     uint64_t * dl = (uint64_t *)address[3];
     uint64_t * dh = (uint64_t *)address[4];
 #ifdef DEBUG
-    //if (verbose) printf("opcode_arith256() calling Arith256() counter=%ld address=%p\n", arith256_counter, address);
+    if (verbose)
+    {
+        printf("opcode_arith256() calling Arith256() counter=%lu address=%p\n", arith256_counter, address);
+        printf("a = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", a[3], a[2], a[1], a[0], a[3], a[2], a[1], a[0]);
+        printf("b = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", b[3], b[2], b[1], b[0], b[3], b[2], b[1], b[0]);
+        printf("c = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0], c[3], c[2], c[1], c[0]);
+    }
 #endif
 
     int result = Arith256 (a, b, c, dl, dh);
@@ -644,6 +650,11 @@ extern int _opcode_arith256(uint64_t * address)
 
     //if (verbose) printf("opcode_arith256() called Arith256()\n");
 #ifdef DEBUG
+    if (verbose)
+    {
+        printf("dl = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", dl[3], dl[2], dl[1], dl[0], dl[3], dl[2], dl[1], dl[0]);
+        printf("dh = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", dh[3], dh[2], dh[1], dh[0], dh[3], dh[2], dh[1], dh[0]);
+    }
     arith256_counter++;
     if (arith256_metrics || verbose)
     {
@@ -665,7 +676,14 @@ extern int _opcode_arith256_mod(uint64_t * address)
     uint64_t * module = (uint64_t *)address[3];
     uint64_t * d = (uint64_t *)address[4];
 #ifdef DEBUG
-    //if (verbose) printf("opcode_arith256_mod() calling Arith256Mod() counter=%ld address=%p\n", arith256_mod_counter, address);
+    if (verbose)
+    {
+        printf("opcode_arith256_mod() calling Arith256Mod() counter=%lu address=%p\n", arith256_mod_counter, address);
+        printf("a = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", a[3], a[2], a[1], a[0], a[3], a[2], a[1], a[0]);
+        printf("b = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", b[3], b[2], b[1], b[0], b[3], b[2], b[1], b[0]);
+        printf("c = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0], c[3], c[2], c[1], c[0]);
+        printf("module = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", module[3], module[2], module[1], module[0], module[3], module[2], module[1], module[0]);
+    }
 #endif
 
     int result = Arith256Mod (a, b, c, module, d);
@@ -677,6 +695,10 @@ extern int _opcode_arith256_mod(uint64_t * address)
 
     //if (verbose) printf("opcode_arith256_mod() called Arith256Mod()\n");
 #ifdef DEBUG
+    if (verbose)
+    {
+        printf("d = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", d[3], d[2], d[1], d[0], d[3], d[2], d[1], d[0]);
+    }
     arith256_mod_counter++;
     if (arith256_mod_metrics || verbose)
     {

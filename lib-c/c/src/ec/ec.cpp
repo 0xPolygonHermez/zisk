@@ -14,6 +14,10 @@ inline void array2scalar (const uint64_t * a, mpz_class &s)
 
 inline void scalar2array (mpz_class &s, uint64_t * a)
 {
+    a[0] = 0;
+    a[1] = 0;
+    a[2] = 0;
+    a[3] = 0;
     mpz_export((void *)a, NULL, -1, 8, -1, 0, s.get_mpz_t());
 }
 
