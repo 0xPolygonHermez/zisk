@@ -79,6 +79,9 @@ int inline AddPointEcFe (bool dbl, const RawFec::Element &x1, const RawFec::Elem
             return -1;
         }
         fec.div(s, aux1, aux2);
+
+        // Required for x3 calculation
+        fec.add(aux2, x1, x1);
     }
     else
     {
@@ -91,11 +94,14 @@ int inline AddPointEcFe (bool dbl, const RawFec::Element &x1, const RawFec::Elem
             return -1;
         }
         fec.div(s, aux1, aux2);
+
+        // Required for x3 calculation
+        fec.add(aux2, x1, x2);
     }
 
     // x3 = s*s - (x1+x2)
     fec.mul(aux1, s, s);
-    fec.add(aux2, x1, x2);
+    // aux2 was calculated before
     fec.sub(x3, aux1, aux2);
 
     // y3 = s*(x1-x3) - y1

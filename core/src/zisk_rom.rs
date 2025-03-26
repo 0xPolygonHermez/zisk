@@ -612,13 +612,7 @@ impl ZiskRom {
         *s += ".global emulator_start\n";
         *s += "emulator_start:\n";
 
-        *s += "\tpush rsp\n";
-        *s += "\tpush rbx\n";
-        *s += "\tpush rbp\n";
-        *s += "\tpush r12\n";
-        *s += "\tpush r13\n";
-        *s += "\tpush r14\n";
-        *s += "\tpush r15\n";
+        Self::push_external_registers(&mut ctx, s);
 
         // Registers initialization
         *s += &format!("\tmov {}, 0 /* Register initialization: a = 0 */\n", REG_A);
@@ -1617,27 +1611,9 @@ impl ZiskRom {
                                     *s +=
                                         &format!("\tmov dil, {} /* width=1: rdi = c */\n", REG_C_B);
                                 }
-                                *s += "\tpush rax\n";
-                                *s += "\tpush rcx\n";
-                                *s += "\tpush rdx\n";
-                                // *s += "\tpush rdi\n";
-                                // *s += "\tpush rsi\n";
-                                // *s += "\tpush rsp\n";
-                                // *s += "\tpush r8\n";
-                                *s += "\tpush r9\n";
-                                *s += "\tpush r10\n";
-                                //*s += "\tpush r11\n";
+                                Self::push_internal_registers(&mut ctx, s);
                                 *s += "\tcall _print_char /* width=1: call print_char() */\n";
-                                //*s += "\tpop r11\n";
-                                *s += "\tpop r10\n";
-                                *s += "\tpop r9\n";
-                                // *s += "\tpop r8\n";
-                                // *s += "\tpop rsp\n";
-                                // *s += "\tpop rsi\n";
-                                // *s += "\tpop rdi\n";
-                                *s += "\tpop rdx\n";
-                                *s += "\tpop rcx\n";
-                                *s += "\tpop rax\n";
+                                Self::pop_internal_registers(&mut ctx, s);
                                 *s += &format!("pc_{:x}_store_c_not_uart:\n", ctx.pc);
                             }
                         }
@@ -1785,13 +1761,7 @@ impl ZiskRom {
 
         *s += "execute_end:\n";
 
-        *s += "\tpop r15\n";
-        *s += "\tpop r14\n";
-        *s += "\tpop r13\n";
-        *s += "\tpop r12\n";
-        *s += "\tpop rbp\n";
-        *s += "\tpop rbx\n";
-        *s += "\tpop rsp\n";
+        Self::pop_external_registers(&mut ctx, s);
 
         // Used only to get the last log of step
         // *s += &format!("\tpush {}\n", REG_VALUE);
@@ -2865,21 +2835,9 @@ impl ZiskRom {
                     s += &format!("\tadd {}, 25 /* mem_reads_size+=25 */\n", REG_MEM_READS_SIZE);
                 }
                 // Call the keccak function
-                s += "\tpop r15\n";
-                s += "\tpop r14\n";
-                s += "\tpop r13\n";
-                s += "\tpop r12\n";
-                s += "\tpop rbp\n";
-                s += "\tpop rbx\n";
-                s += "\tpop rsp\n";
+                Self::push_internal_registers(ctx, &mut s);
                 s += "\tcall _opcode_keccak\n";
-                s += "\tpush rsp\n";
-                s += "\tpush rbx\n";
-                s += "\tpush rbp\n";
-                s += "\tpush r12\n";
-                s += "\tpush r13\n";
-                s += "\tpush r14\n";
-                s += "\tpush r15\n";
+                Self::pop_internal_registers(ctx, &mut s);
 
                 // Set result
                 s += &format!("\tmov {}, 0 /* Keccak: c=0 */\n", REG_C);
@@ -2925,21 +2883,9 @@ impl ZiskRom {
                     s += &format!("\tadd {}, 17 /* mem_reads_size+=17 */\n", REG_MEM_READS_SIZE);
                 }
                 // Call the secp256k1_add function
-                s += "\tpop r15\n";
-                s += "\tpop r14\n";
-                s += "\tpop r13\n";
-                s += "\tpop r12\n";
-                s += "\tpop rbp\n";
-                s += "\tpop rbx\n";
-                s += "\tpop rsp\n";
+                Self::push_internal_registers(ctx, &mut s);
                 s += "\tcall _opcode_arith256\n";
-                s += "\tpush rsp\n";
-                s += "\tpush rbx\n";
-                s += "\tpush rbp\n";
-                s += "\tpush r12\n";
-                s += "\tpush r13\n";
-                s += "\tpush r14\n";
-                s += "\tpush r15\n";
+                Self::pop_internal_registers(ctx, &mut s);
 
                 // Set result
                 s += &format!("\tmov {}, 0 /* Arith256: c=0 */\n", REG_C);
@@ -2978,21 +2924,9 @@ impl ZiskRom {
                     s += &format!("\tadd {}, 21 /* mem_reads_size+=21 */\n", REG_MEM_READS_SIZE);
                 }
                 // Call the secp256k1_add function
-                s += "\tpop r15\n";
-                s += "\tpop r14\n";
-                s += "\tpop r13\n";
-                s += "\tpop r12\n";
-                s += "\tpop rbp\n";
-                s += "\tpop rbx\n";
-                s += "\tpop rsp\n";
+                Self::push_internal_registers(ctx, &mut s);
                 s += "\tcall _opcode_arith256_mod\n";
-                s += "\tpush rsp\n";
-                s += "\tpush rbx\n";
-                s += "\tpush rbp\n";
-                s += "\tpush r12\n";
-                s += "\tpush r13\n";
-                s += "\tpush r14\n";
-                s += "\tpush r15\n";
+                Self::pop_internal_registers(ctx, &mut s);
 
                 // Set result
                 s += &format!("\tmov {}, 0 /* Arith256Mod: c=0 */\n", REG_C);
@@ -3032,21 +2966,9 @@ impl ZiskRom {
                 }
 
                 // Call the secp256k1_add function
-                s += "\tpop r15\n";
-                s += "\tpop r14\n";
-                s += "\tpop r13\n";
-                s += "\tpop r12\n";
-                s += "\tpop rbp\n";
-                s += "\tpop rbx\n";
-                s += "\tpop rsp\n";
+                Self::push_internal_registers(ctx, &mut s);
                 s += "\tcall _opcode_secp256k1_add\n";
-                s += "\tpush rsp\n";
-                s += "\tpush rbx\n";
-                s += "\tpush rbp\n";
-                s += "\tpush r12\n";
-                s += "\tpush r13\n";
-                s += "\tpush r14\n";
-                s += "\tpush r15\n";
+                Self::pop_internal_registers(ctx, &mut s);
 
                 // Set result
                 s += &format!("\tmov {}, 0 /* Secp256k1Add: c=0 */\n", REG_C);
@@ -3085,7 +3007,9 @@ impl ZiskRom {
                     s += &format!("\tadd {}, 8 /* mem_reads_size+=8 */\n", REG_MEM_READS_SIZE);
                 }
                 // Call the secp256k1_dbl function
+                Self::push_internal_registers(ctx, &mut s);
                 s += "\tcall _opcode_secp256k1_dbl\n";
+                Self::pop_internal_registers(ctx, &mut s);
 
                 // Set result
                 s += &format!("\tmov {}, 0 /* Secp256k1Dbl: c=0 */\n", REG_C);
@@ -3120,21 +3044,9 @@ impl ZiskRom {
                         s += &format!("\tmov rsi, fcall_result_0 /* rsi = fcall_result */\n");
 
                         // Call the inverse_fp_ec function
-                        s += "\tpop r15\n";
-                        s += "\tpop r14\n";
-                        s += "\tpop r13\n";
-                        s += "\tpop r12\n";
-                        s += "\tpop rbp\n";
-                        s += "\tpop rbx\n";
-                        s += "\tpop rsp\n";
+                        Self::push_internal_registers(ctx, &mut s);
                         s += "\tcall _opcode_inverse_fp_ec\n";
-                        s += "\tpush rsp\n";
-                        s += "\tpush rbx\n";
-                        s += "\tpush rbp\n";
-                        s += "\tpush r12\n";
-                        s += "\tpush r13\n";
-                        s += "\tpush r14\n";
-                        s += "\tpush r15\n";
+                        Self::pop_internal_registers(ctx, &mut s);
 
                         // Update fcall counters
                         s += &format!("\tmov qword ptr [fcall_result_size], 8\n");
@@ -3149,21 +3061,9 @@ impl ZiskRom {
                         s += &format!("\tmov rsi, fcall_result_0 /* rsi = fcall_result */\n");
 
                         // Call the inverse_fp_ec function
-                        s += "\tpop r15\n";
-                        s += "\tpop r14\n";
-                        s += "\tpop r13\n";
-                        s += "\tpop r12\n";
-                        s += "\tpop rbp\n";
-                        s += "\tpop rbx\n";
-                        s += "\tpop rsp\n";
+                        Self::push_internal_registers(ctx, &mut s);
                         s += "\tcall _opcode_inverse_fn_ec\n";
-                        s += "\tpush rsp\n";
-                        s += "\tpush rbx\n";
-                        s += "\tpush rbp\n";
-                        s += "\tpush r12\n";
-                        s += "\tpush r13\n";
-                        s += "\tpush r14\n";
-                        s += "\tpush r15\n";
+                        Self::pop_internal_registers(ctx, &mut s);
 
                         // Update fcall counters
                         s += &format!("\tmov qword ptr [fcall_result_size], 8\n");
@@ -3178,21 +3078,9 @@ impl ZiskRom {
                         s += &format!("\tmov rsi, fcall_result_0 /* rsi = fcall_result */\n");
 
                         // Call the sqrt_fp_ec_parity function
-                        s += "\tpop r15\n";
-                        s += "\tpop r14\n";
-                        s += "\tpop r13\n";
-                        s += "\tpop r12\n";
-                        s += "\tpop rbp\n";
-                        s += "\tpop rbx\n";
-                        s += "\tpop rsp\n";
+                        Self::push_internal_registers(ctx, &mut s);
                         s += "\tcall _opcode_sqrt_fp_ec_parity\n";
-                        s += "\tpush rsp\n";
-                        s += "\tpush rbx\n";
-                        s += "\tpush rbp\n";
-                        s += "\tpush r12\n";
-                        s += "\tpush r13\n";
-                        s += "\tpush r14\n";
-                        s += "\tpush r15\n";
+                        Self::pop_internal_registers(ctx, &mut s);
 
                         // Update fcall counters
                         s += &format!("\tmov qword ptr [fcall_result_size], 8\n");
@@ -3217,7 +3105,7 @@ impl ZiskRom {
                 s += &format!("\tmov {}, qword ptr [fcall_result_0 + {}*8], 0\n", REG_C, REG_VALUE);
                 s += &format!("\tinc qword ptr [fcall_result_got]\n");
 
-                if (ctx.generate_traces) {
+                if ctx.generate_traces {
                     // Store previous aligned address value in mem_reads, and increment address
                     s += &format!(
                         "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = c */\n",
@@ -3588,5 +3476,51 @@ impl ZiskRom {
         *s += &format!("\tjb chunk_{}_address_below_threshold\n", id);
         *s += "\tcall _realloc_trace\n";
         *s += &format!("chunk_{}_address_below_threshold:\n", id);
+    }
+
+    fn push_external_registers(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        //*s += "\tpush rsp\n";
+        *s += "\tpush rbx\n";
+        *s += "\tpush rbp\n";
+        *s += "\tpush r12\n";
+        *s += "\tpush r13\n";
+        *s += "\tpush r14\n";
+        *s += "\tpush r15\n";
+    }
+
+    fn pop_external_registers(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        *s += "\tpop r15\n";
+        *s += "\tpop r14\n";
+        *s += "\tpop r13\n";
+        *s += "\tpop r12\n";
+        *s += "\tpop rbp\n";
+        *s += "\tpop rbx\n";
+        //*s += "\tpop rsp\n";
+    }
+
+    fn push_internal_registers(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        *s += "\tpush rax\n";
+        *s += "\tpush rcx\n";
+        *s += "\tpush rdx\n";
+        // *s += "\tpush rdi\n";
+        // *s += "\tpush rsi\n";
+        // *s += "\tpush rsp\n";
+        // *s += "\tpush r8\n";
+        *s += "\tpush r9\n";
+        *s += "\tpush r10\n";
+        //*s += "\tpush r11\n";
+    }
+
+    fn pop_internal_registers(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        //*s += "\tpop r11\n";
+        *s += "\tpop r10\n";
+        *s += "\tpop r9\n";
+        // *s += "\tpop r8\n";
+        // *s += "\tpop rsp\n";
+        // *s += "\tpop rsi\n";
+        // *s += "\tpop rdi\n";
+        *s += "\tpop rdx\n";
+        *s += "\tpop rcx\n";
+        *s += "\tpop rax\n";
     }
 }

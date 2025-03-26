@@ -692,33 +692,39 @@ extern int _opcode_arith256_mod(uint64_t address)
     return 0;
 }
 
-extern int _opcode_secp256k1_add(uint64_t address)
+extern int _opcode_secp256k1_add(uint64_t * address)
 {
 #ifdef DEBUG
     if (secp256k1_add_metrics || verbose) gettimeofday(&secp256k1_add_start, NULL);
 #endif
-    uint64_t p3_address = *(uint64_t *)address;
+    uint64_t * p1 = (uint64_t *)address[0];
+    uint64_t * p2 = (uint64_t *)address[1];
 #ifdef DEBUG
-    //if (verbose) printf("opcode_secp256k1_add() calling AddPointEcP() counter=%ld address=%08lx p3_address=%08lx\n", secp256k1_add_counter, address, p3_address);
+    if (verbose)
+    {
+        printf("opcode_secp256k1_add() calling AddPointEcP() counter=%ld address=%p p1_address=%p p2_address=%p\n", secp256k1_add_counter, address, p1, p2);
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+        printf("p2.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0], p2[3], p2[2], p2[1], p2[0]);
+        printf("p2.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4], p2[7], p2[6], p2[5], p2[4]);
+    }
 #endif
-    uint64_t p3[8];
     int result = AddPointEcP (
-        1,
-        (unsigned long *)(address + 8 + 8), // p1 = [x1, y1] = 8x64bits
-        (unsigned long *)(address + 8 + 8 + 8*4), // p2 = [x2, y2] = 8x64bits
-        (unsigned long *)p3 // p3 = [x3, y3] = 8x64bits
+        0,
+        p1, // p1 = [x1, y1] = 8x64bits
+        p2, // p2 = [x2, y2] = 8x64bits
+        p1 // p3 = [x3, y3] = 8x64bits
     );
     if (result != 0)
     {
         printf("_opcode_secp256k1_add() failed callilng AddPointEcP() result=%d;", result);
         exit(-1);
     }
-    for (int i=0; i<8; i++)
-    {
-        *(uint64_t *)(p3_address + i*8) = p3[i];
-    }
-    //if (verbose) printf("opcode_secp256k1_add() called AddPointEcP()\n");
 #ifdef DEBUG
+    if (verbose)
+    {
+        printf("p3 = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+    }
     secp256k1_add_counter++;
     if (secp256k1_add_metrics || verbose)
     {
@@ -729,17 +735,27 @@ extern int _opcode_secp256k1_add(uint64_t address)
     return 0;
 }
 
-extern int _opcode_secp256k1_dbl(uint64_t address)
+extern int _opcode_secp256k1_dbl(uint64_t * address)
 {
 #ifdef DEBUG
     if (secp256k1_dbl_metrics || verbose) gettimeofday(&secp256k1_dbl_start, NULL);
 #endif
-    //if (verbose) printf("opcode_secp256k1_dbl() calling AddPointEcP() counter=%d step=%08lx address=%08lx\n", secp256k1_dbl_counter, /**(uint64_t *)*/MEM_STEP, address);
+
+    uint64_t * p1 = address;
+
+#ifdef DEBUG
+    if (verbose)
+    {
+        printf("opcode_secp256k1_dbl() calling AddPointEcP() counter=%ld step=%08lx address=%p\n", secp256k1_dbl_counter, /**(uint64_t *)*/MEM_STEP, address);
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+    }
+#endif
     int result = AddPointEcP (
         1,
-        (unsigned long *)address, // p1 = [x1, y1] = 8x64bits
-        (unsigned long *)address, // p2 = [x2, y2] = 8x64bits
-        (unsigned long *)address // p3 = [x3, y3] = 8x64bits
+        p1, // p1 = [x1, y1] = 8x64bits
+        NULL, // p2 = [x2, y2] = 8x64bits
+        p1 // p3 = [x3, y3] = 8x64bits
     );
     if (result != 0)
     {
@@ -753,6 +769,11 @@ extern int _opcode_secp256k1_dbl(uint64_t address)
     {
         gettimeofday(&secp256k1_dbl_stop, NULL);
         secp256k1_dbl_duration += TimeDiff(secp256k1_dbl_start, secp256k1_dbl_stop);
+    }
+    if (verbose)
+    {
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
     }
 #endif
     return 0;
