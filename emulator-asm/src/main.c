@@ -621,24 +621,21 @@ extern int _opcode_keccak(uint64_t address)
     return 0;
 }
 
-extern int _opcode_arith256(uint64_t address)
+extern int _opcode_arith256(uint64_t * address)
 {
 #ifdef DEBUG
     if (arith256_metrics || verbose) gettimeofday(&arith256_start, NULL);
 #endif
-    uint64_t dl_address = *(uint64_t *)(address + 8*3);
-    uint64_t dh_address = *(uint64_t *)(address + 8*4);
+    uint64_t * a = (uint64_t *)address[0];
+    uint64_t * b = (uint64_t *)address[1];
+    uint64_t * c = (uint64_t *)address[2];
+    uint64_t * dl = (uint64_t *)address[3];
+    uint64_t * dh = (uint64_t *)address[4];
 #ifdef DEBUG
-    //if (verbose) printf("opcode_arith256() calling Arith256() counter=%ld address=%08lx\n", arith256_counter, address);
+    //if (verbose) printf("opcode_arith256() calling Arith256() counter=%ld address=%p\n", arith256_counter, address);
 #endif
 
-    int result = Arith256 (
-        (unsigned long *)(address + 8*5), // a
-        (unsigned long *)(address + 8*9), // b
-        (unsigned long *)(address + 8*13), // c
-        (unsigned long *)dl_address, // dl
-        (unsigned long *)dh_address // dh
-    );
+    int result = Arith256 (a, b, c, dl, dh);
     if (result != 0)
     {
         printf("_opcode_arith256_add() failed callilng Arith256() result=%d;", result);
@@ -657,23 +654,21 @@ extern int _opcode_arith256(uint64_t address)
     return 0;
 }
 
-extern int _opcode_arith256_mod(uint64_t address)
+extern int _opcode_arith256_mod(uint64_t * address)
 {
 #ifdef DEBUG
     if (arith256_mod_metrics || verbose) gettimeofday(&arith256_mod_start, NULL);
 #endif
-    uint64_t d_address = *(uint64_t *)(address + 8*4);
+    uint64_t * a = (uint64_t *)address[0];
+    uint64_t * b = (uint64_t *)address[1];
+    uint64_t * c = (uint64_t *)address[2];
+    uint64_t * module = (uint64_t *)address[3];
+    uint64_t * d = (uint64_t *)address[4];
 #ifdef DEBUG
-    //if (verbose) printf("opcode_arith256_mod() calling Arith256Mod() counter=%ld address=%08lx\n", arith256_mod_counter, address);
+    //if (verbose) printf("opcode_arith256_mod() calling Arith256Mod() counter=%ld address=%p\n", arith256_mod_counter, address);
 #endif
 
-    int result = Arith256Mod (
-        (unsigned long *)(address + 8*5), // a
-        (unsigned long *)(address + 8*9), // b
-        (unsigned long *)(address + 8*13), // c
-        (unsigned long *)(address + 8*17), // module
-        (unsigned long *)d_address // d
-    );
+    int result = Arith256Mod (a, b, c, module, d);
     if (result != 0)
     {
         printf("_opcode_arith256_mod() failed callilng Arith256Mod() result=%d;", result);
