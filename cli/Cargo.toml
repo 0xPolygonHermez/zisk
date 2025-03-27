@@ -29,7 +29,6 @@ proofman-common = { workspace = true }
 witness = { workspace = true }
 sysinfo = { workspace = true }
 log = { workspace = true }
-
 executor = { path = "../executor" }
 
 anyhow = { version = "1.0.86", features = ["backtrace"] }
