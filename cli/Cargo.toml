@@ -28,6 +28,9 @@ proofman = { workspace = true }
 proofman-common = { workspace = true }
 witness = { workspace = true }
 sysinfo = { workspace = true }
+log = { workspace = true }
+
+executor = { path = "../executor" }
 
 anyhow = { version = "1.0.86", features = ["backtrace"] }
 clap = { version = "4.5.7", features = ["derive", "env"] }
