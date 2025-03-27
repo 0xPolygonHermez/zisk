@@ -1,12 +1,18 @@
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
+use executor::ZiskExecutionResult;
 use libloading::{Library, Symbol};
+use log::info;
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ProofOptions};
 use rom_merkle::{gen_elf_hash, get_elf_bin_file_path, get_rom_blowup_factor, DEFAULT_CACHE_PATH};
-use std::{collections::HashMap, env, fs, path::PathBuf};
+use std::{
+    collections::HashMap,
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     commands::{Field, ZiskLibInitFn},
@@ -81,32 +87,9 @@ impl ZiskVerifyConstraints {
 
         print_banner();
 
-        println!("{} VerifyConstraints", format!("{: >12}", "Command").bright_green().bold());
-        println!(
-            "{: >12} {}",
-            "Witness Lib".bright_green().bold(),
-            self.get_witness_computation_lib().display()
-        );
-        println!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display());
-        if self.asm.is_some() {
-            let asm_path = self.asm.as_ref().unwrap().display();
-            println!("{: >12} {}", "ASM runner".bright_green().bold(), asm_path);
-        }
-        if self.input.is_some() {
-            let inputs_path = self.input.as_ref().unwrap().display();
-            println!("{: >12} {}", "Inputs".bright_green().bold(), inputs_path);
-        }
-        println!(
-            "{: >12} {}",
-            "Proving key".bright_green().bold(),
-            self.get_proving_key().display()
-        );
-        let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
-        println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
-        println!("{: >12} {}", "Keccak".bright_green().bold(), keccak_script.display());
-        // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
+        self.print_command_info(&keccak_script);
 
-        println!();
+        let start = std::time::Instant::now();
 
         let default_cache_path =
             std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
@@ -138,12 +121,13 @@ impl ZiskVerifyConstraints {
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
+        let mut witness_lib;
         match self.field {
             Field::Goldilocks => {
                 let library = unsafe { Library::new(self.get_witness_computation_lib())? };
                 let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
                     unsafe { library.get(b"init_library")? };
-                let witness_lib = witness_lib_constructor(
+                witness_lib = witness_lib_constructor(
                     self.verbose.into(),
                     self.elf.clone(),
                     self.asm.clone(),
@@ -153,7 +137,7 @@ impl ZiskVerifyConstraints {
                 .expect("Failed to initialize witness library");
 
                 ProofMan::<Goldilocks>::verify_proof_constraints_from_lib(
-                    witness_lib,
+                    &mut *witness_lib,
                     self.get_proving_key(),
                     PathBuf::new(),
                     custom_commits_map,
@@ -163,7 +147,59 @@ impl ZiskVerifyConstraints {
             }
         };
 
+        let elapsed = start.elapsed();
+
+        let result: ZiskExecutionResult = *witness_lib
+            .get_execution_result()
+            .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
+            .downcast::<ZiskExecutionResult>()
+            .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+
+        println!();
+        info!(
+            "{}",
+            "    Zisk: --- VERIFY CONSTRAINTS SUMMARY ------------------------"
+                .bright_green()
+                .bold()
+        );
+        info!("              ► Statistics");
+        info!(
+            "                time: {} seconds, steps: {}",
+            elapsed.as_secs_f32(),
+            result.executed_steps
+        );
+
         Ok(())
+    }
+
+    fn print_command_info(&self, keccak_script: &Path) {
+        // Print Verify Contraints command info
+        println!("{} VerifyConstraints", format!("{: >12}", "Command").bright_green().bold());
+        println!(
+            "{: >12} {}",
+            "Witness Lib".bright_green().bold(),
+            self.get_witness_computation_lib().display()
+        );
+        println!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display());
+        if self.asm.is_some() {
+            let asm_path = self.asm.as_ref().unwrap().display();
+            println!("{: >12} {}", "ASM runner".bright_green().bold(), asm_path);
+        }
+        if self.input.is_some() {
+            let inputs_path = self.input.as_ref().unwrap().display();
+            println!("{: >12} {}", "Inputs".bright_green().bold(), inputs_path);
+        }
+        println!(
+            "{: >12} {}",
+            "Proving key".bright_green().bold(),
+            self.get_proving_key().display()
+        );
+        let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
+        println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
+        println!("{: >12} {}", "Keccak".bright_green().bold(), keccak_script.display());
+        // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
+
+        println!();
     }
 
     /// Gets the witness computation library file location.
