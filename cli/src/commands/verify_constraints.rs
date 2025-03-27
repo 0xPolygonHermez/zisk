@@ -147,13 +147,14 @@ impl ZiskVerifyConstraints {
             }
         };
 
+        let elapsed = start.elapsed();
+
         let result: ZiskExecutionResult = *witness_lib
             .get_execution_result()
             .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
             .downcast::<ZiskExecutionResult>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
-        let elapsed = start.elapsed();
         println!();
         info!(
             "{}",
