@@ -49,3 +49,4 @@ libloading = "0.8.4"
 [features]
 default = ["distributed"]
 distributed = ["proofman/distributed", "proofman-common/distributed"]
+gpu = ["proofman/gpu", "proofman-common/gpu"]

@@ -21,3 +21,4 @@ rayon = { workspace = true }
 [features]
 default = ["distributed"]
 distributed = ["proofman-common/distributed"]
+gpu = ["proofman-common/gpu"]
