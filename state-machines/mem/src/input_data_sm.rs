@@ -81,7 +81,6 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
         let mut last_value: u64 = previous_segment.value;
-
         let mut i = 0;
 
         for mem_op in mem_ops.iter() {
@@ -155,6 +154,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         //PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0
         let last_row_idx = count - 1;
         let addr = trace[last_row_idx].addr;
+        let is_free_read = F::from_bool(last_addr == INPUT_DATA_W_ADDR_INIT);
         let value = trace[last_row_idx].value_word;
 
         let padding_size = trace.num_rows() - count;
@@ -168,8 +168,8 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             trace[i].addr = addr;
             trace[i].step = F::from_u64(last_step);
             trace[i].sel = F::ZERO;
-
             trace[i].value_word = value;
+            trace[i].is_free_read = is_free_read;
 
             trace[i].addr_changes = F::ZERO;
         }

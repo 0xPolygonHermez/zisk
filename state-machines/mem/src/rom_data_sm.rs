@@ -72,6 +72,12 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         let mut last_step: u64 = previous_segment.step;
         let mut last_value: u64 = previous_segment.value;
 
+        if segment_id == 0 && !mem_ops.is_empty() && mem_ops[0].addr > ROM_DATA_W_ADDR_INIT {
+            // In the pil, in first row of first segment, we use previous_segment less 1, to
+            // allow to use ROM_DATA_W_ADDR_INIT as address, and active address change flag
+            // to free the value, if not
+            last_addr = ROM_DATA_W_ADDR_INIT - 1;
+        }
         let mut i = 0;
         for mem_op in mem_ops.iter() {
             let distance = mem_op.addr - last_addr;
