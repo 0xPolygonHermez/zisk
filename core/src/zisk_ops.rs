@@ -1503,6 +1503,11 @@ pub fn opc_fcall(ctx: &mut InstContext) {
             function_id, iresult
         );
     }
+
+    // Copy result
+    ctx.fcall.result = fcall_ctx.result;
+    ctx.fcall.result_size = fcall_ctx.result_size;
+    ctx.fcall.result_got = 0;
 }
 
 /// Implements fcallget, fcall result
