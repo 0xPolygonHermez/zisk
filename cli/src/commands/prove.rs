@@ -131,7 +131,7 @@ impl ZiskProve {
             if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
                 if e.kind() != std::io::ErrorKind::AlreadyExists {
                     // prevent collision in distributed mode
-                    panic!("Failed to create the proofs directory: {:?}", e);
+                    panic!("Failed to create the cache directory: {:?}", e);
                 }
             }
         }

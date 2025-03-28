@@ -2315,6 +2315,7 @@ version = "0.6.0"
 dependencies = [
  "anyhow",
  "blake3",
+ "colored",
  "log",
  "p3-goldilocks",
  "proofman-common",

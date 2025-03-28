@@ -1,9 +1,16 @@
-use std::{path::PathBuf, process::Command};
+use std::{
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+};
 
 use anyhow::Result;
 use zisk_core::{is_elf_file, Riscv2zisk};
 
-pub fn assembly_setup(elf: &PathBuf, asm: Option<&PathBuf>) -> Result<(), anyhow::Error> {
+pub fn assembly_setup(
+    elf: &PathBuf,
+    output_path: &Path,
+    verbose: bool,
+) -> Result<(), anyhow::Error> {
     // Read the ELF file and check if it is a valid ELF file
     let elf_file_path = PathBuf::from(elf);
     let file_data = std::fs::read(&elf_file_path)?;
@@ -12,12 +19,12 @@ pub fn assembly_setup(elf: &PathBuf, asm: Option<&PathBuf>) -> Result<(), anyhow
         panic!("ROM file is not a valid ELF file");
     }
 
-    // Setup the assembly file name if not provided
-    let zisk_file = asm.cloned().unwrap_or_else(|| elf.with_extension("zsk"));
-    let asm_file = zisk_file.with_extension("asm");
+    let filename = elf.file_name().unwrap().to_string_lossy().into_owned();
 
-    println!("Zisk file: {}", zisk_file.to_str().unwrap());
-    println!("ASM file: {}", asm_file.to_str().unwrap());
+    let base_path = output_path.join(filename);
+
+    let zisk_file = base_path.with_extension("zisk");
+    let asm_file = base_path.with_extension("asm");
 
     // Convert the ELF file to Zisk format and generates an assembly file
     let rv2zk = Riscv2zisk::new(
@@ -27,22 +34,28 @@ pub fn assembly_setup(elf: &PathBuf, asm: Option<&PathBuf>) -> Result<(), anyhow
         "".to_string(),
         zisk_file.to_str().unwrap().to_string(),
     );
-    rv2zk.runfile().map_err(|e| anyhow::anyhow!("Error converting elf: {}", e))?;
+    rv2zk.runfile(verbose).map_err(|e| anyhow::anyhow!("Error converting elf: {}", e))?;
 
     // Build the emulator assembly
     let status = Command::new("make")
         .arg("clean")
         .current_dir("emulator-asm")
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
         .status()
         .expect("Failed to run make clean");
+
     if !status.success() {
         eprintln!("make clean failed");
         std::process::exit(1);
     }
+
     let status = Command::new("make")
-        .arg(format!("EMU_PATH=../{}", zisk_file.to_str().unwrap()))
-        .arg(format!("OUT_PATH=../{}", asm_file.to_str().unwrap()))
+        .arg(format!("EMU_PATH={}", zisk_file.to_str().unwrap()))
+        .arg(format!("OUT_PATH={}", asm_file.to_str().unwrap()))
         .current_dir("emulator-asm")
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
         .status()
         .expect("Failed to run make");
 
@@ -50,8 +63,6 @@ pub fn assembly_setup(elf: &PathBuf, asm: Option<&PathBuf>) -> Result<(), anyhow
         eprintln!("make failed");
         std::process::exit(1);
     }
-
-    println!("Runner built successfully at: {}", asm_file.display());
 
     Ok(())
 }

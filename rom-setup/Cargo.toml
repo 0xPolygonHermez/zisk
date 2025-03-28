@@ -11,6 +11,7 @@ categories.workspace = true
 log = { workspace = true }
 p3-goldilocks = { workspace = true }
 proofman-common = { workspace = true }
+colored = { workspace = true }
 
 sm-rom = { path = "../state-machines/rom" }
 zisk-core = { path = "../core" }

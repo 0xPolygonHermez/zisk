@@ -21,30 +21,30 @@ pub struct ZiskRomSetup {
     #[clap(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
-    /// Assembly file path, by default it will be the same as the ELF file with a .asm extension
-    #[clap(short = 's', long)]
-    pub asm: Option<PathBuf>,
+    /// Output dir path
+    #[clap(short = 'o', long)]
+    pub output_dir: Option<PathBuf>,
+
+    #[clap(short = 'v', long, default_value_t = false)]
+    pub verbose: bool,
 }
 
 impl ZiskRomSetup {
     pub fn run(&self) -> Result<()> {
         println!("{} Rom Setup", format!("{: >12}", "Command").bright_green().bold());
-        println!();
 
         initialize_logger(proofman_common::VerboseMode::Info);
 
         print_banner();
 
-        rom_setup::assembly_setup(&self.elf, self.asm.as_ref())?;
+        let proving_key = self.get_proving_key();
 
-        rom_setup::rom_merkle_setup(&self.elf, &self.get_proving_key(), true)?;
-
-        Ok(())
+        rom_setup::rom_full_setup(&self.elf, &proving_key, &self.output_dir, self.verbose)
     }
 
     /// Gets the proving key file location.
     /// Uses the default one if not specified by user.
-    pub fn get_proving_key(&self) -> PathBuf {
+    fn get_proving_key(&self) -> PathBuf {
         if self.proving_key.is_none() {
             get_default_proving_key()
         } else {
