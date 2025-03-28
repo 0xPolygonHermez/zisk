@@ -24,7 +24,7 @@ use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use rom_merkle::gen_elf_hash;
+use rom_setup::gen_elf_hash;
 use witness::WitnessComponent;
 
 use rayon::prelude::*;
@@ -767,7 +767,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         let blowup_factor =
             1 << (setup.stark_info.stark_struct.n_bits_ext - setup.stark_info.stark_struct.n_bits);
 
-        gen_elf_hash(&self.rom_path, file_name, blowup_factor, check)?;
+        gen_elf_hash(&self.rom_path, file_name.as_path(), blowup_factor, check)?;
         Ok(())
     }
 }

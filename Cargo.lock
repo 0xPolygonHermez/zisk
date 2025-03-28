@@ -258,7 +258,7 @@ dependencies = [
  "proofman-common",
  "rand 0.9.0",
  "reqwest",
- "rom-merkle",
+ "rom-setup",
  "serde_json",
  "sysinfo 0.33.1",
  "target-lexicon",
@@ -266,6 +266,7 @@ dependencies = [
  "vergen",
  "witness",
  "yansi",
+ "zisk-core",
 ]
 
 [[package]]
@@ -512,7 +513,7 @@ checksum = "43da5946c66ffcc7745f48db692ffbb10a83bfe0afd96235c5c2a4fb23994929"
 [[package]]
 name = "curves"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#29bf3af02fd34827e6c7d809e3e3f3a30ed19c4c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -674,7 +675,7 @@ dependencies = [
  "proofman-common",
  "proofman-util",
  "rayon",
- "rom-merkle",
+ "rom-setup",
  "sm-common",
  "sm-main",
  "sm-rom",
@@ -1773,7 +1774,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#29bf3af02fd34827e6c7d809e3e3f3a30ed19c4c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "colored",
  "log",
@@ -1941,7 +1942,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#29bf3af02fd34827e6c7d809e3e3f3a30ed19c4c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "colored",
  "curves",
@@ -1967,7 +1968,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#29bf3af02fd34827e6c7d809e3e3f3a30ed19c4c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "env_logger",
  "log",
@@ -1988,7 +1989,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#29bf3af02fd34827e6c7d809e3e3f3a30ed19c4c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "log",
  "p3-field",
@@ -2000,7 +2001,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#29bf3af02fd34827e6c7d809e3e3f3a30ed19c4c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2011,7 +2012,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#29bf3af02fd34827e6c7d809e3e3f3a30ed19c4c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "log",
 ]
@@ -2019,7 +2020,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#29bf3af02fd34827e6c7d809e3e3f3a30ed19c4c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "colored",
  "p3-field",
@@ -2309,21 +2310,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "rom-merkle"
+name = "rom-setup"
 version = "0.6.0"
 dependencies = [
  "anyhow",
  "blake3",
- "clap",
  "colored",
- "env_logger",
  "log",
- "p3-field",
  "p3-goldilocks",
  "proofman-common",
- "proofman-util",
  "sm-rom",
- "sysinfo 0.33.1",
+ "zisk-core",
  "zisk-pil",
 ]
 
@@ -3011,7 +3008,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#29bf3af02fd34827e6c7d809e3e3f3a30ed19c4c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -3546,7 +3543,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#29bf3af02fd34827e6c7d809e3e3f3a30ed19c4c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "colored",
  "env_logger",

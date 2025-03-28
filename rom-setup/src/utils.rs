@@ -10,19 +10,23 @@ pub const DEFAULT_CACHE_PATH: &str = ".zisk/cache";
 
 pub fn gen_elf_hash(
     rom_path: &Path,
-    rom_buffer_str: &str,
+    rom_buffer_path: &Path,
     blowup_factor: u64,
     check: bool,
-) -> Result<Vec<Goldilocks>, Box<dyn std::error::Error>> {
+) -> Result<Vec<Goldilocks>, anyhow::Error> {
     let mut custom_rom_trace: RomRomTrace<Goldilocks> = RomRomTrace::new();
 
     RomSM::compute_custom_trace_rom(rom_path.to_path_buf(), &mut custom_rom_trace);
 
-    write_custom_commit_trace(&mut custom_rom_trace, blowup_factor, rom_buffer_str, check)
+    let result =
+        write_custom_commit_trace(&mut custom_rom_trace, blowup_factor, rom_buffer_path, check)
+            .map_err(|e| anyhow::anyhow!("Error writing custom commit trace: {}", e))?;
+
+    Ok(result)
 }
 
 pub fn get_elf_bin_file_path(
-    elf_path: &PathBuf,
+    elf_path: &Path,
     default_cache_path: &Path,
     blowup_factor: u64,
 ) -> Result<PathBuf> {

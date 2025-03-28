@@ -15,7 +15,7 @@ members = [
     "executor",
     "pil",
     "riscv",
-    "rom-merkle",
+    "rom-setup",
     "state-machines/arith",
     "state-machines/binary",
     "state-machines/common",

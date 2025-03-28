@@ -123,7 +123,7 @@ int main(int argc, char *argv[])
         uint64_t input_parameter_length = strlen(input_parameter);
         if (input_parameter_length > 16)
         {
-            printf("Input parameter is too long: %s, size = %d\n", input_parameter, input_parameter_length);
+            printf("Input parameter is too long: %s, size = %ld\n", input_parameter, input_parameter_length);
             return -1;
         }
 
@@ -187,7 +187,7 @@ int main(int argc, char *argv[])
         // Check the input data size is inside the proper range
         if (input_data_size > (MAX_INPUT_SIZE - 8))
         {
-            printf("Size of input file (%s) is too long (%d)\n", input_parameter, input_data_size);
+            printf("Size of input file (%s) is too long (%ld)\n", input_parameter, input_data_size);
             return -1;
         }
 
@@ -204,7 +204,7 @@ int main(int argc, char *argv[])
         }
         if ((uint64_t)pInput != INPUT_ADDR)
         {
-            printf("Called mmap(pInput) but returned address = 0x%llx != 0x%llx\n", pInput, INPUT_ADDR);
+            printf("Called mmap(pInput) but returned address = 0x%p != 0x%x\n", pInput, INPUT_ADDR);
             return -1;
         }
     #ifdef DEBUG
@@ -218,7 +218,7 @@ int main(int argc, char *argv[])
         size_t input_read = fread((void *)(INPUT_ADDR + 8), 1, input_data_size, input_fp);
         if (input_read != input_data_size)
         {
-            printf("Input read (%d) != input file size (%d)\n", input_read, input_data_size);
+            printf("Input read (%ld) != input file size (%ld)\n", input_read, input_data_size);
             return -1;
         }
 
@@ -259,7 +259,7 @@ int main(int argc, char *argv[])
         result = munmap(shmem_input_address, 32);
         if (result == -1)
         {
-            printf("Failed calling munmap({}) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
         
@@ -283,7 +283,7 @@ int main(int argc, char *argv[])
         }
         if ((uint64_t)pInput != INPUT_ADDR)
         {
-            printf("Called mmap(pInput) but returned address = 0x%llx != 0x%llx\n", pInput, INPUT_ADDR);
+            printf("Called mmap(pInput) but returned address = 0x%p != 0x%x\n", pInput, INPUT_ADDR);
             return -1;
         }
 #ifdef DEBUG
@@ -300,7 +300,7 @@ int main(int argc, char *argv[])
         result = munmap(shmem_input_address, shmem_input_size + 32);
         if (result == -1)
         {
-            printf("Failed calling munmap({}) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
         
@@ -308,7 +308,7 @@ int main(int argc, char *argv[])
         result = shm_unlink(shmem_input_name);
         if (result == -1)
         {
-            printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_input_name, trace_size, errno, strerror(errno));
+            printf("Failed calling shm_unlink(%s) errno=%ld=%d=%s\n", shmem_input_name, trace_size, errno, strerror(errno));
             exit(-1);
         }
     }
@@ -334,7 +334,7 @@ int main(int argc, char *argv[])
         result = ftruncate(shmem_output_fd, trace_size);
         if (result != 0)
         {
-            printf("Failed calling ftruncate() errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
+            printf("Failed calling ftruncate() errno=%s=%d=%s\n", shmem_output_name, errno, strerror(errno));
             return -1;
         }
 
@@ -347,7 +347,7 @@ int main(int argc, char *argv[])
         }
         if ((uint64_t)pTrace != TRACE_ADDR)
         {
-            printf("Called mmap(trace) but returned address = 0x%llx != 0x%llx\n", pTrace, TRACE_ADDR);
+            printf("Called mmap(trace) but returned address = 0x%p != 0x%lx\n", pTrace, TRACE_ADDR);
             return -1;
         }
     #ifdef DEBUG
@@ -373,7 +373,7 @@ int main(int argc, char *argv[])
     }
     if ((uint64_t)pRam != RAM_ADDR)
     {
-        printf("Called mmap(ram) but returned address = 0x%08x != 0x%08x\n", pRam, RAM_ADDR);
+        printf("Called mmap(ram) but returned address = 0x%p != 0x%d\n", pRam, RAM_ADDR);
         return -1;
     }
 #ifdef DEBUG
@@ -391,7 +391,7 @@ int main(int argc, char *argv[])
     }
     if ((uint64_t)pRom != ROM_ADDR)
     {
-        printf("Called mmap(rom) but returned address = 0x%llx != 0x%llx\n", pRom, ROM_ADDR);
+        printf("Called mmap(rom) but returned address = 0x%p != 0x%x\n", pRom, ROM_ADDR);
         return -1;
     }
 #ifdef DEBUG
@@ -441,7 +441,7 @@ int main(int argc, char *argv[])
             printf("Keccak counter = %lld, duration = %lld us, single keccak duration = %lld ns, percentage = %lld \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
         }
 #else
-        printf("Duration = %lld us, realloc counter = %lld, steps = %lld, step duration = %lld ns, tp = %lld steps/s, trace size = 0x%llx - 0x%llx = %lld B(%d%%), end=%lld\n",
+        printf("Duration = %ld us, realloc counter = %ld, steps = %ld, step duration = %ld ns, tp = %ld steps/s, trace size = 0x%lx - 0x%lx = %ld B(%ld%%), end=%ld\n",
             duration,
             realloc_counter,
             steps,
@@ -526,7 +526,7 @@ int main(int argc, char *argv[])
         result = munmap((void *)TRACE_ADDR, trace_size);
         if (result == -1)
         {
-            printf("Failed calling munmap(trace) for size=%d errno=%d=%s\n", trace_size, errno, strerror(errno));
+            printf("Failed calling munmap(trace) for size=%ld errno=%d=%s\n", trace_size, errno, strerror(errno));
             exit(-1);
         }
 
@@ -543,11 +543,11 @@ uint64_t print_abcflag_counter = 0;
 extern int _print_abcflag(uint64_t a, uint64_t b, uint64_t c, uint64_t flag)
 {
     uint64_t * pMem = (uint64_t *)0xa0012118;
-    printf("counter=%d a=%08llx b=%08llx c=%08llx flag=%08llx mem=%08llx\n", print_abcflag_counter, a, b, c, flag, *pMem);
+    printf("counter=%ld a=%08lx b=%08lx c=%08lx flag=%08lx mem=%08lx\n", print_abcflag_counter, a, b, c, flag, *pMem);
     uint64_t *pRegs = (uint64_t *)RAM_ADDR;
     for (int i=0; i<32; i++)
     {
-        printf("r%d=%08llx ", i, pRegs[i]);
+        printf("r%d=%08lx ", i, pRegs[i]);
     }
     printf("\n");
     fflush(stdout);
@@ -612,7 +612,7 @@ extern void _realloc_trace (void)
     int result = ftruncate(shmem_output_fd, new_trace_size);
     if (result != 0)
     {
-        printf("realloc_trace() failed calling ftruncate(%s) of new size=%lld errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
+        printf("realloc_trace() failed calling ftruncate(%s) of new size=%ld errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
         exit(-1);
     }
     
@@ -620,7 +620,7 @@ extern void _realloc_trace (void)
     void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
     if ((uint64_t)new_address != trace_address)
     {
-        printf("realloc_trace() failed calling mremap() from size=%d to %d got new_address=0x%llx errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
+        printf("realloc_trace() failed calling mremap() from size=%ld to %ld got new_address=0x%p errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
         exit(-1);
     }
 

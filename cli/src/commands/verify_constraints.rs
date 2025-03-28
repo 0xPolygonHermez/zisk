@@ -7,7 +7,7 @@ use log::info;
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ProofOptions};
-use rom_merkle::{gen_elf_hash, get_elf_bin_file_path, get_rom_blowup_factor, DEFAULT_CACHE_PATH};
+use rom_setup::{gen_elf_hash, get_elf_bin_file_path, get_rom_blowup_factor, DEFAULT_CACHE_PATH};
 use std::{
     collections::HashMap,
     env, fs,
@@ -98,7 +98,7 @@ impl ZiskVerifyConstraints {
             if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
                 if e.kind() != std::io::ErrorKind::AlreadyExists {
                     // prevent collision in distributed mode
-                    panic!("Failed to create the proofs directory: {:?}", e);
+                    panic!("Failed to create the cache directory: {:?}", e);
                 }
             }
         }
@@ -109,13 +109,8 @@ impl ZiskVerifyConstraints {
             get_elf_bin_file_path(&self.elf.to_path_buf(), &default_cache_path, blowup_factor)?;
 
         if !rom_bin_path.exists() {
-            let _ = gen_elf_hash(
-                &self.elf.clone(),
-                rom_bin_path.clone().to_str().unwrap(),
-                blowup_factor,
-                false,
-            )
-            .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
+            let _ = gen_elf_hash(&self.elf.clone(), rom_bin_path.as_path(), blowup_factor, false)
+                .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
         }
 
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
