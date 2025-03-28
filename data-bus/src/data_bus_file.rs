@@ -33,7 +33,7 @@ impl DataBusFileReader {
     /// # Errors
     /// - Returns an error if the file cannot be opened or read.
     /// - Returns an error if any line is malformed (missing `BusId` or invalid payload values).
-    pub fn read_from_file<D: FromStr>(file_path: &str) -> Result<Vec<(u16, Vec<D>)>, io::Error>
+    pub fn read_from_file<D: FromStr>(file_path: &str) -> Result<Vec<(usize, Vec<D>)>, io::Error>
     where
         D::Err: std::fmt::Display,
     {
@@ -57,7 +57,7 @@ impl DataBusFileReader {
                         format!("Missing BusId on line {}", line_number + 1),
                     )
                 })?
-                .parse::<u16>()
+                .parse::<usize>()
                 .map_err(|err| {
                     io::Error::new(
                         io::ErrorKind::InvalidData,
