@@ -22,7 +22,7 @@ use crate::{
     SYS_ADDR,
 };
 
-use lib_c::{inverse_fn_ec_c, inverse_fp_ec_c, sqrt_fp_ec_parity_c};
+use lib_c::{inverse_fn_ec_c, inverse_fp_ec_c, sqrt_fp_ec_parity_c, Fcall, FcallContext};
 
 use crate::FCALL_ID_INVERSE_FN_EC;
 use crate::FCALL_ID_INVERSE_FP_EC;
@@ -1464,85 +1464,44 @@ pub fn opc_fcall(ctx: &mut InstContext) {
     // Get function id from a
     let function_id = ctx.a;
 
-    match function_id {
-        FCALL_ID_INVERSE_FP_EC => {
-            // Get memory address from b
-            let address = ctx.b;
-            if address & 0x7 != 0 {
-                panic!("opc_fcall() found address not aligned to 8 bytes address=0x{:x}", address);
-            }
+    // Get param chunk from b
+    let param = ctx.b;
 
-            // Read parameters data from the memory address
-            debug_assert!(ctx.fcall.parameters.len() >= 8);
-            for i in 0..8 {
-                ctx.fcall.parameters[i] = ctx.mem.read(address + (8 * i as u64), 8);
-            }
+    // Write param to ctx.fcall.parameters (same as in fcall_param())
 
-            // Call function
-            debug_assert!(ctx.fcall.result.len() >= 8);
-            let return_value = inverse_fp_ec_c(&ctx.fcall.parameters, &mut ctx.fcall.result);
-            if return_value != 0 {
-                panic!("opc_fcall() called inverse_fp_ec_c() but return_value={}", return_value);
-            }
+    // Check for consistency
+    if ctx.fcall.parameters_size >= 32 {
+        panic!(
+            "opc_fcallget() called with ctx.fcall.parameters_size=={}>=32",
+            ctx.fcall.parameters_size
+        );
+    }
 
-            // Update context
-            ctx.fcall.result_size = 8;
-            ctx.fcall.result_got = 0;
-        }
-        FCALL_ID_INVERSE_FN_EC => {
-            // Get memory address from b
-            let address = ctx.b;
-            if address & 0x7 != 0 {
-                panic!("opc_fcall() found address not aligned to 8 bytes address=0x{:x}", address);
-            }
+    // Store param in context
+    ctx.fcall.parameters[ctx.fcall.parameters_size as usize] = param;
+    ctx.fcall.parameters_size += 1;
 
-            // Read parameters data from the memory address
-            debug_assert!(ctx.fcall.parameters.len() >= 8);
-            for i in 0..8 {
-                ctx.fcall.parameters[i] = ctx.mem.read(address + (8 * i as u64), 8);
-            }
+    // Create an fcall context
+    let mut fcall_ctx = FcallContext {
+        function_id,
+        params_max_size: 32,
+        params_size: ctx.fcall.parameters_size,
+        params: ctx.fcall.parameters,
+        result_max_size: 32,
+        result_size: 0,
+        result: ctx.fcall.result,
+    };
 
-            // Call function
-            debug_assert!(ctx.fcall.result.len() >= 8);
-            let return_value = inverse_fn_ec_c(&ctx.fcall.parameters, &mut ctx.fcall.result);
-            if return_value != 0 {
-                panic!("opc_fcall() called inverse_fn_ec_c() but return_value={}", return_value);
-            }
-
-            // Update context
-            ctx.fcall.result_size = 8;
-            ctx.fcall.result_got = 0;
-        }
-        FCALL_ID_SQRT_FP_EC_PARITY => {
-            // Get memory address from b
-            let address = ctx.b;
-            if address & 0x7 != 0 {
-                panic!("opc_fcall() found address not aligned to 8 bytes address=0x{:x}", address);
-            }
-
-            // Read parameters data from the memory address
-            debug_assert!(ctx.fcall.parameters.len() >= 9);
-            for i in 0..8 {
-                ctx.fcall.parameters[i] = ctx.mem.read(address + (8 * i as u64), 8);
-            }
-
-            // Call function
-            debug_assert!(ctx.fcall.result.len() >= 8);
-            let return_value = sqrt_fp_ec_parity_c(&ctx.fcall.parameters, &mut ctx.fcall.result);
-            if return_value != 0 {
-                panic!(
-                    "opc_fcall() called sqrt_fp_ec_parity_c() but return_value={}",
-                    return_value
-                );
-            }
-
-            // Update context
-            ctx.fcall.result_size = 8;
-            ctx.fcall.result_got = 0;
-        }
-        _ => {
-            panic!("opc_fcall() found invalid function_id={}", function_id);
-        }
+    // Call fcall
+    let iresult: i32;
+    unsafe {
+        iresult = Fcall(&mut fcall_ctx);
+    }
+    if iresult != 0 {
+        panic!(
+            "opc_fcall() failed calling Fcall() function_id={} iresult={}",
+            function_id, iresult
+        );
     }
 }
 

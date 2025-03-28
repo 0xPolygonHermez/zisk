@@ -45,9 +45,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, FCALL_ID_INVERSE_FN_EC, FCALL_ID_INVERSE_FP_EC,
-    FCALL_ID_SQRT_FP_EC_PARITY, M64, P2_32, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
-    SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, M64, P2_32, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
+    SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -549,17 +548,19 @@ impl ZiskRom {
             *s += &format!(".comm reg_{}, 8, 8\n", r);
         }
 
-        // Allocate space for fcall parameters
+        // fcall_context
+        *s += "fcall_context:\n";
+        *s += &format!(".comm fcall_funcion_id, 8, 8\n");
+        *s += &format!(".comm fcall_params_max_size, 8, 8\n");
+        *s += &format!(".comm fcall_params_size, 8, 8\n");
         for i in 0..32 {
             *s += &format!(".comm fcall_params_{}, 8, 8\n", i);
         }
-        *s += &format!(".comm fcall_params_size, 8, 8\n");
-
-        // Allocate space for fcall result
+        *s += &format!(".comm fcall_result_max_size, 8, 8\n");
+        *s += &format!(".comm fcall_result_size, 8, 8\n");
         for i in 0..32 {
             *s += &format!(".comm fcall_result_{}, 8, 8\n", i);
         }
-        *s += &format!(".comm fcall_result_size, 8, 8\n");
         *s += &format!(".comm fcall_result_got, 8, 8\n");
 
         // for k in 0..keys.len() {
@@ -578,9 +579,7 @@ impl ZiskRom {
         *s += ".extern opcode_arith256_mod\n";
         *s += ".extern opcode_secp256k1_add\n";
         *s += ".extern opcode_secp256k1_dbl\n";
-        *s += ".extern opcode_inverse_fp_ec\n";
-        *s += ".extern opcode_inverse_fn_ec\n";
-        *s += ".extern opcode_sqrt_fp_ec_parity\n";
+        *s += ".extern opcode_fcall\n";
         *s += ".extern realloc_trace\n\n";
 
         if ctx.generate_traces {
@@ -639,24 +638,25 @@ impl ZiskRom {
         }
 
         // Initialize registers to zero
+        *s += "\t/* Init registers to zero */\n";
         for r in 0..35 {
-            *s += &format!("\tmov qword ptr [reg_{}], 0 /* Init register {} */\n", r, r);
+            *s += &format!("\tmov qword ptr [reg_{}], 0\n", r);
         }
 
-        // Initialize fcall parameters to zero
+        // Initialize fcall context
+        *s += "\t/* Init fcall context */\n";
+        *s += &format!("\tmov qword ptr [fcall_funcion_id], 0\n");
+        *s += &format!("\tmov qword ptr [fcall_params_max_size], 32\n");
+        *s += &format!("\tmov qword ptr [fcall_params_size], 0\n");
         for i in 0..32 {
-            *s +=
-                &format!("\tmov qword ptr [fcall_params_{}], 0 /* Init fcall param {} */\n", i, i);
+            *s += &format!("\tmov qword ptr [fcall_params_{}], 0\n", i);
         }
-        *s += &format!("\tmov qword ptr [fcall_params_size], 0 /* Init fcall param size */\n");
-
-        // Initialize fcall result to zero
+        *s += &format!("\tmov qword ptr [fcall_result_max_size], 32\n");
+        *s += &format!("\tmov qword ptr [fcall_result_size], 0\n");
         for i in 0..32 {
-            *s +=
-                &format!("\tmov qword ptr [fcall_result_{}], 0 /* Init fcall result {} */\n", i, i);
+            *s += &format!("\tmov qword ptr [fcall_result_{}], 0\n", i);
         }
-        *s += &format!("\tmov qword ptr [fcall_result_size], 0 /* Init fcall result size */\n");
-        *s += &format!("\tmov qword ptr [fcall_result_got], 0 /* Init fcall result got */\n");
+        *s += &format!("\tmov qword ptr [fcall_result_got], 0\n");
 
         // For all program addresses in the vector, create an assembly set of instructions with an
         // instruction label
@@ -2852,11 +2852,10 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Arith256 => {
+                s += "\t/* Arith256 */\n";
+
                 // Use the memory address as the first and unique parameter */
-                s += &format!(
-                    "\tmov rdi, {} /* Arith256: rdi = b = address */\n",
-                    ctx.b.string_value
-                );
+                s += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
 
                 // Save data into mem_reads
                 if ctx.generate_traces {
@@ -2869,16 +2868,15 @@ impl ZiskRom {
                 Self::pop_internal_registers(ctx, &mut s);
 
                 // Set result
-                s += &format!("\tmov {}, 0 /* Arith256: c=0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* c=0 */\n", REG_C);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Arith256Mod => {
+                s += "\t/* Arith256Mod */\n";
+
                 // Use the memory address as the first and unique parameter */
-                s += &format!(
-                    "\tmov rdi, {} /* Arith256Mod: rdi = b = address */\n",
-                    ctx.b.string_value
-                );
+                s += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
 
                 // Save data into mem_reads
                 if ctx.generate_traces {
@@ -2891,16 +2889,15 @@ impl ZiskRom {
                 Self::pop_internal_registers(ctx, &mut s);
 
                 // Set result
-                s += &format!("\tmov {}, 0 /* Arith256Mod: c=0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* c=0 */\n", REG_C);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Secp256k1Add => {
+                s += "\t/* Secp256k1Add */\n";
+
                 // Use the memory address as the first and unique parameter */
-                s += &format!(
-                    "\tmov rdi, {} /* Secp256k1Add: rdi = b = address */\n",
-                    ctx.b.string_value
-                );
+                s += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
 
                 // Save data into mem_reads
                 if ctx.generate_traces {
@@ -2913,16 +2910,15 @@ impl ZiskRom {
                 Self::pop_internal_registers(ctx, &mut s);
 
                 // Set result
-                s += &format!("\tmov {}, 0 /* Secp256k1Add: c=0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* c=0 */\n", REG_C);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Secp256k1Dbl => {
+                s += "\t/* Secp256k1Dbl */\n";
+
                 // Use the memory address as the first and unique parameter */
-                s += &format!(
-                    "\tmov rdi, {} /* Secp256k1Dbl: rdi = b = address */\n",
-                    ctx.b.string_value
-                );
+                s += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
 
                 // Copy read data into mem_reads
                 if ctx.generate_traces {
@@ -2955,108 +2951,84 @@ impl ZiskRom {
                 Self::pop_internal_registers(ctx, &mut s);
 
                 // Set result
-                s += &format!("\tmov {}, 0 /* Secp256k1Dbl: c=0 */\n", REG_C);
+                s += &format!("\tmov {}, 0 /* c=0 */\n", REG_C);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::FcallParam => {
                 assert!(ctx.store_b_in_c);
                 s += "\t/* FcallParam */\n";
+
+                // Store param in params
                 s += &format!(
-                    "\tmov {}, qword ptr [fcall_params_size] /* value = params size */\n",
-                    REG_VALUE
+                    "\tmov {}, qword ptr [fcall_params_size] /* aux = params size */\n",
+                    REG_AUX
                 );
-                s += &format!("\tmov qword ptr [fcall_params_0 + {}*8], {}\n", REG_C, REG_VALUE);
+                s += &format!(
+                    "\tmov qword ptr [fcall_params_0 + {}*8], {} /* params[aux] = param */\n",
+                    REG_AUX, REG_C
+                );
                 s += &format!("\tint qword ptr [fcall_params_size]\n");
+
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Fcall => {
                 s += "\t/* Fcall */\n";
+
                 assert!(ctx.store_b_in_c);
+
+                // Store b (last param) in params
+                s += &format!(
+                    "\tmov {}, qword ptr [fcall_params_size] /* aux = params size */\n",
+                    REG_AUX
+                );
+                s += &format!(
+                    "\tmov qword ptr [fcall_params_0 + {}*8], {} /* params[aux] = param */\n",
+                    REG_AUX, REG_C
+                );
+                s += &format!("\tint qword ptr [fcall_params_size]\n");
+
+                // Store a (function id) in context
                 assert!(ctx.a.is_constant);
-                let function_id: u64 = ctx.a.constant_value;
+                s += &format!(
+                    "\tmov qword ptr [fcall_funcion_id], {} /* function id */\n",
+                    ctx.a.constant_value
+                );
 
-                match function_id {
-                    FCALL_ID_INVERSE_FP_EC => {
-                        // Set the memory address as the first parameter */
-                        s +=
-                            &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
+                // Set the fcall context address as the first parameter */
+                s += "\tlea rdi, [fcall_context] /* rdi = fcall context */\n";
 
-                        // Set the memory address as the second parameter */
-                        s += &format!("\tmov rsi, fcall_result_0 /* rsi = fcall_result */\n");
+                // Call the fcall function
+                Self::push_internal_registers(ctx, &mut s);
+                s += "\tcall _opcode_fcall\n";
+                Self::pop_internal_registers(ctx, &mut s);
 
-                        // Call the inverse_fp_ec function
-                        Self::push_internal_registers(ctx, &mut s);
-                        s += "\tcall _opcode_inverse_fp_ec\n";
-                        Self::pop_internal_registers(ctx, &mut s);
+                // Update fcall counters
+                s += &format!("\tmov qword ptr [fcall_params_size], 0\n");
+                s += &format!("\tmov qword ptr [fcall_result_got], 0\n");
 
-                        // Update fcall counters
-                        s += &format!("\tmov qword ptr [fcall_result_size], 8\n");
-                        s += &format!("\tmov qword ptr [fcall_result_got], 0\n");
-                    }
-                    FCALL_ID_INVERSE_FN_EC => {
-                        // Set the memory address as the first parameter */
-                        s +=
-                            &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
-
-                        // Set the memory address as the second parameter */
-                        s += &format!("\tmov rsi, fcall_result_0 /* rsi = fcall_result */\n");
-
-                        // Call the inverse_fp_ec function
-                        Self::push_internal_registers(ctx, &mut s);
-                        s += "\tcall _opcode_inverse_fn_ec\n";
-                        Self::pop_internal_registers(ctx, &mut s);
-
-                        // Update fcall counters
-                        s += &format!("\tmov qword ptr [fcall_result_size], 8\n");
-                        s += &format!("\tmov qword ptr [fcall_result_got], 0\n");
-                    }
-                    FCALL_ID_SQRT_FP_EC_PARITY => {
-                        // Set the memory address as the first parameter */
-                        s +=
-                            &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
-
-                        // Set the memory address as the second parameter */
-                        s += &format!("\tmov rsi, fcall_result_0 /* rsi = fcall_result */\n");
-
-                        // Call the sqrt_fp_ec_parity function
-                        Self::push_internal_registers(ctx, &mut s);
-                        s += "\tcall _opcode_sqrt_fp_ec_parity\n";
-                        Self::pop_internal_registers(ctx, &mut s);
-
-                        // Update fcall counters
-                        s += &format!("\tmov qword ptr [fcall_result_size], 8\n");
-                        s += &format!("\tmov qword ptr [fcall_result_got], 0\n");
-                    }
-                    _ => {
-                        panic!(
-                            "ZiskRom::operation_to_asm(Fcall) found invalid function_id={}",
-                            function_id
-                        );
-                    }
-                }
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::FcallGet => {
                 s += "\tFcallGet\n";
+
+                // Get value from fcall result
+                s +=
+                    &format!("\tmov {}, qword ptr [fcall_result_got] /* value=got */\n", REG_VALUE);
                 s += &format!(
-                    "\tmov {}, qword ptr [fcall_result_got] /* value = fcall_result[got]\n",
-                    REG_VALUE
+                    "\tmov {}, qword ptr [fcall_result_0 + {}*8], 0 /* c=result[got] */\n",
+                    REG_C, REG_VALUE
                 );
-                s += &format!("\tmov {}, qword ptr [fcall_result_0 + {}*8], 0\n", REG_C, REG_VALUE);
                 s += &format!("\tinc qword ptr [fcall_result_got]\n");
 
+                // Store read value in mem_reads, overwriting the previous b value
                 if ctx.generate_traces {
-                    // Store previous aligned address value in mem_reads, and increment address
                     s += &format!(
-                        "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = c */\n",
+                        "\tmov [{} + {}*8 - 8], {} /* mem_reads[@+size*8-8] = c */\n",
                         REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_C
                     );
-
-                    // Increment chunk.steps.mem_reads_size
-                    s += &format!("\tinc {} /* mem_reads_size++ */\n", REG_MEM_READS_SIZE);
                 }
 
                 ctx.c.is_saved = true;

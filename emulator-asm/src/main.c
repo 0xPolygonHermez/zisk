@@ -796,6 +796,17 @@ extern int _opcode_secp256k1_dbl(uint64_t * address)
     return 0;
 }
 
+extern int _opcode_fcall(struct FcallContext * fcall_ctx)
+{
+    int iresult = Fcall(fcall_ctx);
+    if (iresult != 0)
+    {
+        printf("_opcode_fcall() failed callilng Fcall() result=%d;", iresult);
+        exit(-1);
+    }
+    return 0;
+}
+
 extern int _opcode_inverse_fp_ec(uint64_t params, uint64_t result)
 {
     int iresult = InverseFpEc (

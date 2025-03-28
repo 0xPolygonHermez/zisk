@@ -1448,7 +1448,9 @@ impl<'a> Emu<'a> {
         // Add fcallget result into mem reads
         let opcode = ZiskOp::try_from_code(instruction.op).expect("Invalid ZiskOp opcode");
         if opcode == ZiskOp::FcallGet {
-            emu_full_trace_vec.mem_reads.push(self.ctx.inst_ctx.c);
+            let mem_reads_len = emu_full_trace_vec.mem_reads.len();
+            assert!(mem_reads_len > 0);
+            emu_full_trace_vec.mem_reads[mem_reads_len - 1] = self.ctx.inst_ctx.c;
         }
 
         // Store the 'c' register value based on the storage specified by the current instruction

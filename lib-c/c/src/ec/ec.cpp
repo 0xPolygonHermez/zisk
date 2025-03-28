@@ -185,6 +185,15 @@ int InverseFpEc (
     return 0;
 }
 
+int InverseFpEcCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int iresult = InverseFpEc(ctx->params, ctx->result);
+    ctx->result_size = 8;
+    return iresult;
+}
+
 int InverseFnEc (
     const unsigned long * _a,  // 8 x 64 bits
     unsigned long * _r  // 8 x 64 bits
@@ -206,6 +215,15 @@ int InverseFnEc (
     return 0;
 }
 
+int InverseFnEcCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int iresult = InverseFnEc(ctx->params, ctx->result);
+    ctx->result_size = 8;
+    return iresult;
+}
+
 mpz_class n("0x3fffffffffffffffffffffffffffffffffffffffffffffffffffffffbfffff0c");
 mpz_class p("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F");
 mpz_class ScalarMask256 ("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16);
@@ -213,21 +231,24 @@ mpz_class ScalarMask256 ("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
 // We use that p = 3 mod 4 => r = a^((p+1)/4) is a square root of a
 // https://www.rieselprime.de/ziki/Modular_square_root
 // n = p+1/4
+// return true if sqrt exists, false otherwise
 
-inline void sqrtF3mod4(mpz_class &r, const mpz_class &a)
+inline bool sqrtF3mod4(mpz_class &r, const mpz_class &a)
 {
     mpz_class auxa = a;
     mpz_powm(r.get_mpz_t(), a.get_mpz_t(), n.get_mpz_t(), p.get_mpz_t());
     if ((r * r) % p != auxa)
     {
         r = ScalarMask256;
+        return false;
     }
+    return true;
 }
 
 int SqrtFpEcParity (
     const unsigned long * _a,  // 8 x 64 bits
     const unsigned long _parity,  // 8 x 64 bits
-    unsigned long * _r  // 8 x 64 bits
+    unsigned long * _r  // 1 x 64 bits (sqrt exists) + 8 x 64 bits
 )
 {
     mpz_class parity = _parity;
@@ -236,7 +257,8 @@ int SqrtFpEcParity (
 
     // Call the sqrt function
     mpz_class r;
-    sqrtF3mod4(r, a);
+    bool sqrt_exists = sqrtF3mod4(r, a);
+    _r[0] = sqrt_exists;
 
     // Post-process the result
     if (r == ScalarMask256)
@@ -255,7 +277,53 @@ int SqrtFpEcParity (
         fe = fec.neg(fe);
         fec.toMpz(r.get_mpz_t(), fe);
     }
+
+    scalar2array(r, &_r[1]);
+
     return 0;
+}
+
+int SqrtFpEcParityCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int iresult = SqrtFpEcParity(ctx->params, ctx->params[8], &ctx->result[1]);
+    ctx->result_size = 9;
+    ctx->result[0] = iresult;
+    return iresult;
+}
+
+int Fcall (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    // Switch based on function id
+    int iresult;
+    switch (ctx->function_id)
+    {
+        case FCALL_ID_INVERSE_FP_EC:
+        {
+            iresult = InverseFpEcCtx(ctx);
+            break;
+        }
+        case FCALL_ID_INVERSE_FN_EC:
+        {
+            iresult = InverseFnEcCtx(ctx);
+            break;
+        }
+        case FCALL_ID_SQRT_FP_EC_PARITY:
+        {
+            iresult = SqrtFpEcParityCtx(ctx);
+            break;
+        }
+        default:
+        {
+            printf("Fcall() found unsupported function_id=%lu\n", ctx->function_id);
+            return -1;
+        }
+    }
+
+    return iresult;
 }
 
 int Arith256 (
