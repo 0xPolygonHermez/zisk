@@ -1,0 +1,20 @@
+[package]
+name = "rom-setup"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+keywords.workspace = true
+repository.workspace = true
+categories.workspace = true
+
+[dependencies]
+log = { workspace = true }
+p3-goldilocks = { workspace = true }
+proofman-common = { workspace = true }
+
+sm-rom = { path = "../state-machines/rom" }
+zisk-core = { path = "../core" }
+zisk-pil = { path = "../pil" }
+
+anyhow = { version = "1.0.86", features = ["backtrace"] }
+blake3 = "1.3.1"

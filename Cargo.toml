@@ -15,7 +15,7 @@ members = [
     "executor",
     "pil",
     "riscv",
-    "rom-merkle",
+    "rom-setup",
     "state-machines/arith",
     "state-machines/binary",
     "state-machines/common",
@@ -41,12 +41,12 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.6.0" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.6.0" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.6.0" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.6.0" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.6.0" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.6.0" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "rom-setup" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "rom-setup" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "rom-setup" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "rom-setup" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "rom-setup" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "rom-setup" }
 # Local development
 # proofman = { path = "../pil2-proofman/proofman" }
 # proofman-common = { path = "../pil2-proofman/common" }
