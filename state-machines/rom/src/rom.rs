@@ -50,8 +50,8 @@ impl RomSM {
     pub fn new(zisk_rom: Arc<ZiskRom>) -> Arc<Self> {
         Arc::new(Self {
             zisk_rom,
-            prog_inst_count: Arc::new(create_atomic_vec((ROM_ADDR_MAX - ROM_ADDR) as usize)),
-            bios_inst_count: Arc::new(create_atomic_vec((ROM_ADDR - ROM_ENTRY) as usize)),
+            bios_inst_count: Arc::new(create_atomic_vec(((ROM_ADDR_MAX - ROM_ADDR) as usize) >> 2)),
+            prog_inst_count: Arc::new(create_atomic_vec(((ROM_ADDR_MAX - ROM_ADDR) as usize) >> 2)),
         })
     }
 
@@ -85,7 +85,6 @@ impl RomSM {
                 * 100.0
         );
         // For every instruction in the rom, fill its corresponding ROM trace
-        //for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
         for (i, key) in rom.insts.keys().sorted().enumerate() {
             // Get the Zisk instruction
             let inst = &rom.insts[key].i;
@@ -97,7 +96,8 @@ impl RomSM {
                 if metadata.rom.bios_inst_count.is_empty() {
                     multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
                 } else {
-                    multiplicity = metadata.rom.bios_inst_count[(inst.paddr - ROM_ENTRY) as usize]
+                    multiplicity = metadata.rom.bios_inst_count
+                        [((inst.paddr - ROM_ENTRY) as usize) >> 2]
                         .load(std::sync::atomic::Ordering::Relaxed)
                         as u64;
 
@@ -109,7 +109,7 @@ impl RomSM {
                     }
                 }
             } else {
-                multiplicity = metadata.rom.prog_inst_count[(inst.paddr - ROM_ADDR) as usize]
+                multiplicity = metadata.rom.prog_inst_count[((inst.paddr - ROM_ADDR) >> 2) as usize]
                     .load(std::sync::atomic::Ordering::Relaxed)
                     as u64;
                 if multiplicity == 0 {
