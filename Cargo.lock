@@ -513,7 +513,7 @@ checksum = "43da5946c66ffcc7745f48db692ffbb10a83bfe0afd96235c5c2a4fb23994929"
 [[package]]
 name = "curves"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=rom-setup#510fdc18d584c6287a0bb607460c58192a40f67b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -1774,7 +1774,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=rom-setup#510fdc18d584c6287a0bb607460c58192a40f67b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "colored",
  "log",
@@ -1942,7 +1942,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=rom-setup#510fdc18d584c6287a0bb607460c58192a40f67b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "colored",
  "curves",
@@ -1968,7 +1968,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=rom-setup#510fdc18d584c6287a0bb607460c58192a40f67b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "env_logger",
  "log",
@@ -1989,7 +1989,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=rom-setup#510fdc18d584c6287a0bb607460c58192a40f67b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "log",
  "p3-field",
@@ -2001,7 +2001,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=rom-setup#510fdc18d584c6287a0bb607460c58192a40f67b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2012,7 +2012,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=rom-setup#510fdc18d584c6287a0bb607460c58192a40f67b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "log",
 ]
@@ -2020,7 +2020,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=rom-setup#510fdc18d584c6287a0bb607460c58192a40f67b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "colored",
  "p3-field",
@@ -3008,7 +3008,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=rom-setup#510fdc18d584c6287a0bb607460c58192a40f67b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -3543,7 +3543,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.5.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=rom-setup#510fdc18d584c6287a0bb607460c58192a40f67b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#510fdc18d584c6287a0bb607460c58192a40f67b"
 dependencies = [
  "colored",
  "env_logger",
