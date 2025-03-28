@@ -3,13 +3,10 @@
 //! omnipresent devices that process all data sent to the bus. This module provides mechanisms to
 //! send data, route it to the appropriate subscribers, and manage device connections.
 
-use std::{
-    any::Any,
-    collections::{HashMap, VecDeque},
-};
+use std::{any::Any, collections::VecDeque};
 
 /// Type representing the unique identifier of a bus channel.
-pub type BusId = u16;
+pub type BusId = usize;
 
 /// Type representing the payload transmitted across the bus.
 pub type PayloadType = u64;
@@ -60,10 +57,7 @@ pub struct DataBus<D, BD: BusDevice<D>> {
     pub devices: Vec<Box<BD>>,
 
     /// Mapping from `BusId` to indices of devices listening to that ID.
-    devices_bus_id_map: HashMap<BusId, Vec<usize>>,
-
-    /// List of global (omni) devices that process all data.
-    omni_devices: Vec<usize>,
+    devices_bus_id_map: Vec<Vec<usize>>,
 
     /// Queue of pending data transfers to be processed.
     pending_transfers: VecDeque<(BusId, Vec<D>)>,
@@ -81,8 +75,7 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     pub fn new() -> Self {
         Self {
             devices: Vec::new(),
-            devices_bus_id_map: HashMap::new(),
-            omni_devices: Vec::new(),
+            devices_bus_id_map: vec![vec![], vec![], vec![]],
             pending_transfers: VecDeque::new(),
         }
     }
@@ -97,19 +90,8 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
         let device_idx = self.devices.len() - 1;
 
         for bus_id in bus_ids {
-            self.devices_bus_id_map.entry(bus_id).or_default().push(device_idx);
+            self.devices_bus_id_map[bus_id].push(device_idx);
         }
-    }
-
-    /// Connects a global (omni) device that processes all bus data.
-    ///
-    /// # Arguments
-    /// * `bus_device` - The global device to be added.
-    pub fn connect_omni_device(&mut self, bus_device: Box<BD>) {
-        self.devices.push(bus_device);
-        let device_idx = self.devices.len() - 1;
-
-        self.omni_devices.push(device_idx);
     }
 
     /// Writes data to the bus and processes it through the registered devices.
@@ -132,17 +114,9 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// * `payload` - A reference to the data payload being routed.
     fn route_data(&mut self, bus_id: BusId, payload: &[D]) {
         // Notify specific subscribers
-        if let Some(bus_id_devices) = self.devices_bus_id_map.get(&bus_id) {
-            for &device_idx in bus_id_devices {
-                if let Some(result) = self.devices[device_idx].process_data(&bus_id, payload) {
-                    self.pending_transfers.extend(result);
-                }
-            }
-        }
-
-        // Notify global (omni) subscribers
-        for &device_idx in &self.omni_devices {
-            if let Some(result) = self.devices[device_idx].process_data(&bus_id, payload) {
+        let bus_id_devices = &self.devices_bus_id_map[bus_id];
+        for device_idx in bus_id_devices {
+            if let Some(result) = self.devices[*device_idx].process_data(&bus_id, payload) {
                 self.pending_transfers.extend(result);
             }
         }
@@ -152,7 +126,6 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     pub fn debug_state(&self) {
         println!("Devices: {:?}", self.devices.len());
         println!("Devices by bus ID: {:?}", self.devices_bus_id_map);
-        println!("Global Devices: {:?}", self.omni_devices.len());
         println!("Pending Transfers: {:?}", self.pending_transfers.len());
     }
 

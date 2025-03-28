@@ -6,7 +6,7 @@ use crate::PayloadType;
 use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
 
 /// The unique bus ID for operation-related data communication.
-pub const OPERATION_BUS_ID: u16 = 5000;
+pub const OPERATION_BUS_ID: usize = 0;
 
 /// The size of the operation data payload.
 pub const OPERATION_BUS_DATA_SIZE: usize = 4;

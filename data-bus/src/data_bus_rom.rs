@@ -6,7 +6,7 @@ use crate::PayloadType;
 use zisk_core::{InstContext, ZiskInst};
 
 /// The unique bus ID for ROM-related data communication.
-pub const ROM_BUS_ID: u16 = 7890;
+pub const ROM_BUS_ID: usize = 1;
 
 /// The size of the ROM data payload.
 pub const ROM_BUS_DATA_SIZE: usize = 3;
