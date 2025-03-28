@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <cstdint>
 #include "ec/ec.hpp"
+#include "fcall/fcall.hpp"
 
 uint64_t TimeDiff(const struct timeval &startTime, const struct timeval &endTime)
 {
