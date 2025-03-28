@@ -623,24 +623,27 @@ extern int _opcode_keccak(uint64_t address)
     return 0;
 }
 
-extern int _opcode_arith256(uint64_t address)
+extern int _opcode_arith256(uint64_t * address)
 {
 #ifdef DEBUG
     if (arith256_metrics || verbose) gettimeofday(&arith256_start, NULL);
 #endif
-    uint64_t dl_address = *(uint64_t *)(address + 8*3);
-    uint64_t dh_address = *(uint64_t *)(address + 8*4);
+    uint64_t * a = (uint64_t *)address[0];
+    uint64_t * b = (uint64_t *)address[1];
+    uint64_t * c = (uint64_t *)address[2];
+    uint64_t * dl = (uint64_t *)address[3];
+    uint64_t * dh = (uint64_t *)address[4];
 #ifdef DEBUG
-    //if (verbose) printf("opcode_arith256() calling Arith256() counter=%ld address=%08lx\n", arith256_counter, address);
+    if (verbose)
+    {
+        printf("opcode_arith256() calling Arith256() counter=%lu address=%p\n", arith256_counter, address);
+        printf("a = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", a[3], a[2], a[1], a[0], a[3], a[2], a[1], a[0]);
+        printf("b = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", b[3], b[2], b[1], b[0], b[3], b[2], b[1], b[0]);
+        printf("c = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0], c[3], c[2], c[1], c[0]);
+    }
 #endif
 
-    int result = Arith256 (
-        (unsigned long *)(address + 8*5), // a
-        (unsigned long *)(address + 8*9), // b
-        (unsigned long *)(address + 8*13), // c
-        (unsigned long *)dl_address, // dl
-        (unsigned long *)dh_address // dh
-    );
+    int result = Arith256 (a, b, c, dl, dh);
     if (result != 0)
     {
         printf("_opcode_arith256_add() failed callilng Arith256() result=%d;", result);
@@ -649,6 +652,11 @@ extern int _opcode_arith256(uint64_t address)
 
     //if (verbose) printf("opcode_arith256() called Arith256()\n");
 #ifdef DEBUG
+    if (verbose)
+    {
+        printf("dl = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", dl[3], dl[2], dl[1], dl[0], dl[3], dl[2], dl[1], dl[0]);
+        printf("dh = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", dh[3], dh[2], dh[1], dh[0], dh[3], dh[2], dh[1], dh[0]);
+    }
     arith256_counter++;
     if (arith256_metrics || verbose)
     {
@@ -659,23 +667,28 @@ extern int _opcode_arith256(uint64_t address)
     return 0;
 }
 
-extern int _opcode_arith256_mod(uint64_t address)
+extern int _opcode_arith256_mod(uint64_t * address)
 {
 #ifdef DEBUG
     if (arith256_mod_metrics || verbose) gettimeofday(&arith256_mod_start, NULL);
 #endif
-    uint64_t d_address = *(uint64_t *)(address + 8*4);
+    uint64_t * a = (uint64_t *)address[0];
+    uint64_t * b = (uint64_t *)address[1];
+    uint64_t * c = (uint64_t *)address[2];
+    uint64_t * module = (uint64_t *)address[3];
+    uint64_t * d = (uint64_t *)address[4];
 #ifdef DEBUG
-    //if (verbose) printf("opcode_arith256_mod() calling Arith256Mod() counter=%ld address=%08lx\n", arith256_mod_counter, address);
+    if (verbose)
+    {
+        printf("opcode_arith256_mod() calling Arith256Mod() counter=%lu address=%p\n", arith256_mod_counter, address);
+        printf("a = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", a[3], a[2], a[1], a[0], a[3], a[2], a[1], a[0]);
+        printf("b = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", b[3], b[2], b[1], b[0], b[3], b[2], b[1], b[0]);
+        printf("c = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0], c[3], c[2], c[1], c[0]);
+        printf("module = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", module[3], module[2], module[1], module[0], module[3], module[2], module[1], module[0]);
+    }
 #endif
 
-    int result = Arith256Mod (
-        (unsigned long *)(address + 8*5), // a
-        (unsigned long *)(address + 8*9), // b
-        (unsigned long *)(address + 8*13), // c
-        (unsigned long *)(address + 8*17), // module
-        (unsigned long *)d_address // d
-    );
+    int result = Arith256Mod (a, b, c, module, d);
     if (result != 0)
     {
         printf("_opcode_arith256_mod() failed callilng Arith256Mod() result=%d;", result);
@@ -684,6 +697,10 @@ extern int _opcode_arith256_mod(uint64_t address)
 
     //if (verbose) printf("opcode_arith256_mod() called Arith256Mod()\n");
 #ifdef DEBUG
+    if (verbose)
+    {
+        printf("d = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", d[3], d[2], d[1], d[0], d[3], d[2], d[1], d[0]);
+    }
     arith256_mod_counter++;
     if (arith256_mod_metrics || verbose)
     {
@@ -694,33 +711,39 @@ extern int _opcode_arith256_mod(uint64_t address)
     return 0;
 }
 
-extern int _opcode_secp256k1_add(uint64_t address)
+extern int _opcode_secp256k1_add(uint64_t * address)
 {
 #ifdef DEBUG
     if (secp256k1_add_metrics || verbose) gettimeofday(&secp256k1_add_start, NULL);
 #endif
-    uint64_t p3_address = *(uint64_t *)address;
+    uint64_t * p1 = (uint64_t *)address[0];
+    uint64_t * p2 = (uint64_t *)address[1];
 #ifdef DEBUG
-    //if (verbose) printf("opcode_secp256k1_add() calling AddPointEcP() counter=%ld address=%08lx p3_address=%08lx\n", secp256k1_add_counter, address, p3_address);
+    if (verbose)
+    {
+        printf("opcode_secp256k1_add() calling AddPointEcP() counter=%ld address=%p p1_address=%p p2_address=%p\n", secp256k1_add_counter, address, p1, p2);
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+        printf("p2.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0], p2[3], p2[2], p2[1], p2[0]);
+        printf("p2.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4], p2[7], p2[6], p2[5], p2[4]);
+    }
 #endif
-    uint64_t p3[8];
     int result = AddPointEcP (
-        1,
-        (unsigned long *)(address + 8 + 8), // p1 = [x1, y1] = 8x64bits
-        (unsigned long *)(address + 8 + 8 + 8*4), // p2 = [x2, y2] = 8x64bits
-        (unsigned long *)p3 // p3 = [x3, y3] = 8x64bits
+        0,
+        p1, // p1 = [x1, y1] = 8x64bits
+        p2, // p2 = [x2, y2] = 8x64bits
+        p1 // p3 = [x3, y3] = 8x64bits
     );
     if (result != 0)
     {
         printf("_opcode_secp256k1_add() failed callilng AddPointEcP() result=%d;", result);
         exit(-1);
     }
-    for (int i=0; i<8; i++)
-    {
-        *(uint64_t *)(p3_address + i*8) = p3[i];
-    }
-    //if (verbose) printf("opcode_secp256k1_add() called AddPointEcP()\n");
 #ifdef DEBUG
+    if (verbose)
+    {
+        printf("p3 = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+    }
     secp256k1_add_counter++;
     if (secp256k1_add_metrics || verbose)
     {
@@ -731,17 +754,27 @@ extern int _opcode_secp256k1_add(uint64_t address)
     return 0;
 }
 
-extern int _opcode_secp256k1_dbl(uint64_t address)
+extern int _opcode_secp256k1_dbl(uint64_t * address)
 {
 #ifdef DEBUG
     if (secp256k1_dbl_metrics || verbose) gettimeofday(&secp256k1_dbl_start, NULL);
 #endif
-    //if (verbose) printf("opcode_secp256k1_dbl() calling AddPointEcP() counter=%d step=%08lx address=%08lx\n", secp256k1_dbl_counter, /**(uint64_t *)*/MEM_STEP, address);
+
+    uint64_t * p1 = address;
+
+#ifdef DEBUG
+    if (verbose)
+    {
+        printf("opcode_secp256k1_dbl() calling AddPointEcP() counter=%ld step=%08lx address=%p\n", secp256k1_dbl_counter, /**(uint64_t *)*/MEM_STEP, address);
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+    }
+#endif
     int result = AddPointEcP (
         1,
-        (unsigned long *)address, // p1 = [x1, y1] = 8x64bits
-        (unsigned long *)address, // p2 = [x2, y2] = 8x64bits
-        (unsigned long *)address // p3 = [x3, y3] = 8x64bits
+        p1, // p1 = [x1, y1] = 8x64bits
+        NULL, // p2 = [x2, y2] = 8x64bits
+        p1 // p3 = [x3, y3] = 8x64bits
     );
     if (result != 0)
     {
@@ -756,7 +789,23 @@ extern int _opcode_secp256k1_dbl(uint64_t address)
         gettimeofday(&secp256k1_dbl_stop, NULL);
         secp256k1_dbl_duration += TimeDiff(secp256k1_dbl_start, secp256k1_dbl_stop);
     }
+    if (verbose)
+    {
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+    }
 #endif
+    return 0;
+}
+
+extern int _opcode_fcall(struct FcallContext * fcall_ctx)
+{
+    int iresult = Fcall(fcall_ctx);
+    if (iresult != 0)
+    {
+        printf("_opcode_fcall() failed callilng Fcall() result=%d;", iresult);
+        exit(-1);
+    }
     return 0;
 }
 
