@@ -593,7 +593,6 @@ airtemplate ArithEq (int N = 2**18, const int operation_bus_id) {
             result += (i_chunk)'selclk0 * (value & mask);
             value = value >> chunk_bits;
         }
-        println(result);
         return result;
     }
 }

@@ -131,6 +131,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             trace[i].addr = F::from_u32(mem_op.addr);
             trace[i].step = F::from_u64(mem_op.step);
             trace[i].sel = F::ONE;
+            trace[i].is_free_read = F::from_bool(mem_op.addr == INPUT_DATA_W_ADDR_INIT);
 
             let value = mem_op.value;
             let value_words = self.get_u16_values(value);

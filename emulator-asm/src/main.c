@@ -158,7 +158,7 @@ int main(int argc, char *argv[])
         strcat(shmem_output_name, shmem_output_sufix);
 #ifdef DEBUG
         if (verbose) printf("Emulator C start; input shared memory ID = %s\n", input_parameter);
-#endif        
+#endif
     }
     else
     {
@@ -214,7 +214,7 @@ int main(int argc, char *argv[])
 
         // Calculate input size = input file data size + 8B for size header + round up to higher 8B
         // boundary
-        input_size = ((input_data_size + 8 + 7) >> 3) << 3;
+        input_size = ((input_data_size + 16 + 7) >> 3) << 3;
 
         // Map input address space
         void * pInput = mmap((void *)INPUT_ADDR, input_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
@@ -233,10 +233,11 @@ int main(int argc, char *argv[])
     #endif
 
         // Write the input size in the first 64 bits
-        *(uint64_t *)INPUT_ADDR = (uint64_t)input_data_size;
+        *(uint64_t *)INPUT_ADDR = (uint64_t)0; // free input
+        *(uint64_t *)(INPUT_ADDR + 8) = (uint64_t)input_data_size;
 
         // Copy input data into input memory
-        size_t input_read = fread((void *)(INPUT_ADDR + 8), 1, input_data_size, input_fp);
+        size_t input_read = fread((void *)(INPUT_ADDR + 16), 1, input_data_size, input_fp);
         if (input_read != input_data_size)
         {
             printf("Input read (%ld) != input file size (%ld)\n", input_read, input_data_size);
@@ -283,7 +284,7 @@ int main(int argc, char *argv[])
             printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
-        
+
         // Map the shared memory object into the process address space
         shmem_input_address = mmap(NULL, shmem_input_size + 32, PROT_READ /*| PROT_WRITE*/, MAP_SHARED, shmem_input_fd, 0);
         if (shmem_input_address == MAP_FAILED)
@@ -293,7 +294,7 @@ int main(int argc, char *argv[])
         }
 
         // Calculate input size
-        input_size = ((shmem_input_size + 8 + 7) >> 3) << 3;
+        input_size = ((shmem_input_size + 16 + 7) >> 3) << 3;
 
         // Map input address space
         void * pInput = mmap((void *)INPUT_ADDR, input_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
@@ -312,10 +313,11 @@ int main(int argc, char *argv[])
 #endif
 
         // Write the input size in the first 64 bits
-        *(uint64_t *)INPUT_ADDR = (uint64_t)shmem_input_size;
+        *(uint64_t *)INPUT_ADDR = (uint64_t)0; // free input
+        *(uint64_t *)(INPUT_ADDR + 8)= (uint64_t)shmem_input_size;
 
         // Copy the input data
-        memcpy((void *)(INPUT_ADDR + 8), shmem_input_address + 32, shmem_input_size);
+        memcpy((void *)(INPUT_ADDR + 16), shmem_input_address + 32, shmem_input_size);
 
         // Unmap input
         result = munmap(shmem_input_address, shmem_input_size + 32);
@@ -324,7 +326,7 @@ int main(int argc, char *argv[])
             printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
-        
+
         // Unlink input
         result = shm_unlink(shmem_input_name);
         if (result == -1)
@@ -342,7 +344,7 @@ int main(int argc, char *argv[])
     {
         // Make sure the output shared memory is deleted
         shm_unlink(shmem_output_name);
-        
+
         // Create the output shared memory
         shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT, 0644);
         if (shmem_output_fd < 0)
@@ -382,7 +384,7 @@ int main(int argc, char *argv[])
         // MT allocated size [8] -> to be updated after completion
         // MT used size [8] -> to be updated after completion
     }
-    
+
     /*******/
     /* RAM */
     /*******/
@@ -816,7 +818,7 @@ extern void _realloc_trace (void)
         printf("realloc_trace() failed calling ftruncate(%s) of new size=%ld errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
         exit(-1);
     }
-    
+
     // Remap the memory
     void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
     if ((uint64_t)new_address != trace_address)
@@ -1004,7 +1006,7 @@ void log_trace(void)
         printf("\tLast state:\n");
         printf("\t\tc=0x%lx:\n", chunk[i]);
         i++;
-        
+
         // Log current chunk end
         printf("\tEnd:\n");
         printf("\t\tend=%ld:\n", chunk[i]);

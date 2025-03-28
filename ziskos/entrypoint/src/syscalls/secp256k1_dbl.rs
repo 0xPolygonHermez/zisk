@@ -1,4 +1,4 @@
-//! Secp256k1Dbl system call interception
+//! syscall_secp256k1_dbl system call interception
 
 #[cfg(target_os = "ziskos")]
 use crate::ziskos_syscall;
@@ -10,10 +10,10 @@ use super::point256::SyscallPoint256;
 
 /// Executes the doubling of a point on the Secp256k1 curve.
 ///
-/// The `Secp256k1Dbl` system call executes a CSR set on a custom port. When transpiling from RISC-V to Zisk,
+/// The `syscall_secp256k1_dbl` system call executes a CSR set on a custom port. When transpiling from RISC-V to Zisk,
 /// this instruction is replaced with a precompiled operation—specifically, `Secp256k1Dbl`.
 ///
-/// `Secp256k1Dbl` operates on a point with two coordinates, each consisting of 256 bits.
+/// `syscall_secp256k1_dbl` operates on a point with two coordinates, each consisting of 256 bits.
 /// Each coordinate is represented as an array of four `u64` elements. The syscall takes as a parameter
 /// the address of the point, and the result of the doubling operation is stored at the same location.
 ///

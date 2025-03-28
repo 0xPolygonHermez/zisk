@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "a5b6be6572c2b6a283605c8edf4557a5d3f9f087adcc0510e2f838b3c5ae0dc9";
+pub const PILOUT_HASH: &str = "5e868c8ff888e73cb515d83414c0c136658e9b0b9e7bc4aca0fa0c0da369e2fc";
 
 //AIRGROUP CONSTANTS
 
@@ -141,7 +141,7 @@ trace!(InputDataFixed<F> {
 },  0, 4, 2097152 );
 
 trace!(InputDataTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, value_word: [F; 4],
+ addr: F, step: F, sel: F, addr_changes: F, value_word: [F; 4], is_free_read: F,
 },  0, 4, 2097152 );
 
 trace!(MemAlignFixed<F> {
