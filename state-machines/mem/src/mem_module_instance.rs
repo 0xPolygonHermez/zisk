@@ -6,7 +6,7 @@ use data_bus::{BusDevice, BusId, MemBusData, PayloadType, MEM_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
+use sm_common::{BusDeviceWrapper, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
 
 pub struct MemModuleInstance<F: PrimeField> {
@@ -171,7 +171,7 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
     ///
     /// # Returns
     /// An `Option` containing the input collector for the instance.
-    fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(&self, _chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         Some(Box::new(MemModuleCollector::new(self.mem_check_point.clone())))
     }
 

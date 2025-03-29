@@ -2,11 +2,11 @@
 //! data for communication over the operation bus. This includes data extraction from instructions
 //! and managing the format of operation data.
 
-use crate::PayloadType;
+use crate::{BusId, PayloadType};
 use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
 
 /// The unique bus ID for operation-related data communication.
-pub const OPERATION_BUS_ID: usize = 0;
+pub const OPERATION_BUS_ID: BusId = BusId(0);
 
 /// The size of the operation data payload.
 pub const OPERATION_BUS_DATA_SIZE: usize = 4;

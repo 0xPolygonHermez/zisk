@@ -89,7 +89,7 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance {
         InstanceType::Instance
     }
 
-    fn build_inputs_collector(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
             KeccakfTrace::<F>::AIR_ID,

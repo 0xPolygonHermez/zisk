@@ -2,12 +2,26 @@
 //! execution plans. It defines the `Plan` structure, `Planner` trait, and utility types
 //! like `CheckPoint` and `CollectSkipper` for efficient planning and execution flows.
 
-use std::any::Any;
+use std::{any::Any, ops::Deref};
 
 use crate::{BusDeviceMetrics, InstanceType};
 
-/// A type alias for identifying chunks in planning.
-pub type ChunkId = usize;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ChunkId(pub usize);
+
+impl PartialEq<usize> for ChunkId {
+    fn eq(&self, other: &usize) -> bool {
+        self.0 == *other
+    }
+}
+
+impl Deref for ChunkId {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 /// The `CollectSkipper` struct defines logic for skipping instructions during input collection.
 ///

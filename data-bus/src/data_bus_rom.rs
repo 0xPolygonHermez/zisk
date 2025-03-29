@@ -2,11 +2,11 @@
 //! for communication over the ROM bus. This includes extracting relevant details from instructions
 //! and formatting them for use with the ROM bus.
 
-use crate::PayloadType;
+use crate::{BusId, PayloadType};
 use zisk_core::{InstContext, ZiskInst};
 
 /// The unique bus ID for ROM-related data communication.
-pub const ROM_BUS_ID: usize = 1;
+pub const ROM_BUS_ID: BusId = BusId(1);
 
 /// The size of the ROM data payload.
 pub const ROM_BUS_DATA_SIZE: usize = 3;

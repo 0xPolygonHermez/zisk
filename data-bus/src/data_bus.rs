@@ -3,10 +3,27 @@
 //! omnipresent devices that process all data sent to the bus. This module provides mechanisms to
 //! send data, route it to the appropriate subscribers, and manage device connections.
 
-use std::{any::Any, collections::VecDeque};
+use std::{any::Any, collections::VecDeque, ops::Deref};
 
-/// Type representing the unique identifier of a bus channel.
-pub type BusId = usize;
+/// Type representing a bus ID.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BusId(pub usize);
+
+impl PartialEq<usize> for BusId {
+    fn eq(&self, other: &usize) -> bool {
+        self.0 == *other
+    }
+}
+
+
+impl Deref for BusId {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 
 /// Type representing the payload transmitted across the bus.
 pub type PayloadType = u64;
@@ -90,7 +107,7 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
         let device_idx = self.devices.len() - 1;
 
         for bus_id in bus_ids {
-            self.devices_bus_id_map[bus_id].push(device_idx);
+            self.devices_bus_id_map[*bus_id].push(device_idx);
         }
     }
 
@@ -116,7 +133,7 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     #[inline(always)]
     fn route_data(&mut self, bus_id: BusId, payload: &[D]) {
         // Notify specific subscribers
-        let bus_id_devices = &self.devices_bus_id_map[bus_id];
+        let bus_id_devices = &self.devices_bus_id_map[*bus_id];
         for device_idx in bus_id_devices {
             if let Some(result) = self.devices[*device_idx].process_data(&bus_id, payload) {
                 self.pending_transfers.extend(result);
