@@ -66,7 +66,7 @@ impl MainPlanner {
                     MAIN_AIR_IDS[0],
                     Some(segment_id),
                     InstanceType::Instance,
-                    CheckPoint::Single(segment_id),
+                    CheckPoint::Single(ChunkId(segment_id)),
                     Some(Box::new(segment_id == num_instances - 1) as Box<dyn Any>),
                 )
             })

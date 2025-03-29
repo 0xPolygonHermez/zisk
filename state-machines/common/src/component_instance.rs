@@ -6,7 +6,7 @@ use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 
-use crate::{BusDeviceWrapper, CheckPoint};
+use crate::{BusDeviceWrapper, CheckPoint, ChunkId};
 
 /// Represents the type of an instance, either a standalone instance or a table.
 #[derive(Debug, PartialEq)]
@@ -60,7 +60,7 @@ pub trait Instance<F: PrimeField>: Send + Sync {
     ///
     /// # Returns
     /// An `Option` containing the input collector for the instance.
-    fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(&self, _chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         None
     }
 
