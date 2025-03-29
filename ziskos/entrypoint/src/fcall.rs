@@ -1,7 +1,9 @@
+#[cfg(target_os = "ziskos")]
 use core::arch::asm;
 
 // fcall_get 0xFFE
 
+#[cfg(target_os = "ziskos")]
 pub fn ziskos_fcall_get() -> u64 {
     let value: u64;
     unsafe {
@@ -15,7 +17,7 @@ macro_rules! ziskos_fcall_param {
     ($addr:expr) => {{
         unsafe {
             asm!(
-                concat!("csrs 0x888, {value}"),
+                concat!("csrs 0x8FF, {value}"),
                 value = in(reg) $addr
             );
         }

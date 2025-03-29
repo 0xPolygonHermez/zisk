@@ -8,6 +8,7 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
+lib-c = { path = "../../lib-c" }
 lazy_static = "1.5.0"
 static_assertions = "1.1"
 rand = "0.8.5"

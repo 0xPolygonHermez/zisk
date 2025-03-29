@@ -1,6 +1,6 @@
 //! RISC-V instruction definition
 //!
-//! Contains RISCV instruction data, split by functionality.  
+//! Contains RISCV instruction data, split by functionality.
 //! RISC-V comprises of a base user-level 32-bit integer instruction set. Called RV32I, it includes
 //! 47 instructions, which can be grouped into six types:
 //! * R-type: register-register
@@ -20,20 +20,20 @@
 //! |                         imm[31:12]                        |      rd      |       opcode       | U-type
 //! |20|           imm[10:1]         |11|      imm[19:12]       |      rd      |       opcode       | J-type
 //! ```
-//! RV32I has x0 register hardwired to constant 0, plus x1-x31 general purpose registers.  
-//! All registers are 32 bits wide but in RV64I they become 64 bits wide.  
+//! RV32I has x0 register hardwired to constant 0, plus x1-x31 general purpose registers.
+//! All registers are 32 bits wide but in RV64I they become 64 bits wide.
 //! RV32I is a load-store architecture. This means that only load and store instructions access
-//! memory; arithmetic operations use only the registers.  
-//! User space is 32-bit byte addressable and little endian.  
+//! memory; arithmetic operations use only the registers.
+//! User space is 32-bit byte addressable and little endian.
 //!
 //! Correspondingly, RV64I is for 64-bit address space and RV128I is for 128-bit address space.  The
 //! need for RV128I is debatable and its specification is evolving. We also have RV32E for embedded
-//! systems. RV32E has only 16 32-bit registers and makes the counters of RV32I optional.  
+//! systems. RV32E has only 16 32-bit registers and makes the counters of RV32I optional.
 //!
 //! See <https://devopedia.org/risc-v-instruction-sets>
 
 /// RISC-V instruction data
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct RiscvInstruction {
     /// Original instruction content (32 bits)
     pub rvinst: u32,

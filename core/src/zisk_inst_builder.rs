@@ -192,7 +192,7 @@ impl ZiskInstBuilder {
     /// Sets the opcode, and other instruction attributes that depend on it
     pub fn op(&mut self, optxt: &str) -> Result<(), InvalidNameError> {
         let op = ZiskOp::try_from_name(optxt)?;
-        self.i.is_external_op = op.op_type() != OpType::Internal;
+        self.i.is_external_op = op.op_type() != OpType::Internal && op.op_type() != OpType::Fcall;
         self.i.op = op.code();
         self.i.op_str = op.name();
         self.i.m32 = optxt.contains("_w");

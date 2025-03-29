@@ -4271,6 +4271,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tiny-keccak",
+ "ziskos",
 ]
 
 [[package]]
@@ -4354,6 +4355,7 @@ dependencies = [
  "cfg-if",
  "getrandom 0.2.15",
  "lazy_static",
+ "lib-c",
  "rand 0.8.5",
  "static_assertions",
 ]

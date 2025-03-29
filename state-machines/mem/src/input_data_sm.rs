@@ -140,14 +140,17 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             }
 
             let addr_changes = last_addr != mem_op.addr;
-            trace[i].addr_changes =
-                if addr_changes || (i == 0 && segment_id == 0) { F::ONE } else { F::ZERO };
+            trace[i].addr_changes = F::from_bool(addr_changes);
 
             last_addr = mem_op.addr;
             last_step = mem_op.step;
             last_value = mem_op.value;
             i += 1;
         }
+        println!("TRACE_INPUT_DATA_COUNT = {}", i);
+        println!("TRACE_{}_INPUT_DATA = {:?}", 0, trace[0]);
+        println!("TRACE_{}_INPUT_DATA = {:?}", 1, trace[1]);
+        println!("TRACE_{}_INPUT_DATA = {:?}", 2, trace[2]);
         let count = i;
 
         // STEP3. Add dummy rows to the output vector to fill the remaining rows

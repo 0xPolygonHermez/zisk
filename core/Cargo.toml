@@ -26,6 +26,7 @@ riscv = { path = "../riscv" }
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 precompiles-helpers = { path = "../precompiles/helpers" }
 lib-c = { path = "../lib-c" }
+ziskos = { path = "../ziskos/entrypoint" }
 
 [features]
 default = []

@@ -16,6 +16,18 @@ pub fn add_point_ec_p_c(dbl: u64, p1: &[u64; 8], p2: &[u64; 8], p3: &mut [u64; 8
     unsafe { AddPointEcP(dbl, &p1[0], &p2[0], &mut p3[0]) }
 }
 
+pub fn secp256k1_fp_inv_c(params: &[u64], result: &mut [u64]) -> i32 {
+    unsafe { InverseFpEc(&params[0], &mut result[0]) }
+}
+
+pub fn secp256k1_fn_inv_c(params: &[u64], result: &mut [u64]) -> i32 {
+    unsafe { InverseFnEc(&params[0], &mut result[0]) }
+}
+
+pub fn secp256k1_fp_parity_sqrt_c(params: &[u64], parity: u64, result: &mut [u64]) -> i32 {
+    unsafe { SqrtFpEcParity(&params[0], parity, &mut result[0]) }
+}
+
 pub fn inverse_fp_ec_c(params: &[u64; 32], result: &mut [u64; 32]) -> i32 {
     unsafe { InverseFpEc(&params[0], &mut result[0]) }
 }

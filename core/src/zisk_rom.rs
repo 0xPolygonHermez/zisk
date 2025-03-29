@@ -186,7 +186,7 @@ impl ZiskRom {
                 let rom_index = ((pc - ROM_ADDR) >> 2) as usize;
                 if rom_index >= self.rom_instructions.len() {
                     panic!(
-                        "ZiskRom::get_instruction() pc={} is out of range rom_instructions (rom_index:{} >= {})",
+                        "ZiskRom::get_instruction() pc=0x{0:X} ({0}) is out of range rom_instructions (rom_index:{1:} >= {2:})",
                         pc,
                         rom_index,
                         self.rom_instructions.len()

@@ -111,6 +111,7 @@ fn bindgen_test_layout_FcallContext() {
 }
 
 extern "C" {
+    // pub fn Fcall(ctx: *mut FcallContext) -> ::std::os::raw::c_int;
     pub fn Fcall(ctx: *mut FcallContext) -> ::std::os::raw::c_int;
 }
 

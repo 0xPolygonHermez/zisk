@@ -1,7 +1,10 @@
 #![allow(unexpected_cfgs)]
 #![cfg_attr(target_os = "ziskos", feature(asm_const))]
+#[cfg(target_os = "ziskos")]
 use core::arch::asm;
+#[cfg(target_os = "ziskos")]
 mod fcall;
+#[cfg(target_os = "ziskos")]
 pub use fcall::*;
 mod zisklib;
 pub use zisklib::*;

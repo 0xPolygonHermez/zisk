@@ -9,6 +9,8 @@
 
 #![allow(unused)]
 
+use ziskos::fcall_proxy;
+
 use std::{
     collections::HashMap,
     fmt::{Debug, Display},
@@ -44,9 +46,7 @@ pub enum OpType {
     Keccak,
     PubOut,
     ArithEq,
-    FcallParam,
     Fcall,
-    FcallGet,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -59,9 +59,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::Keccak => ZiskOperationType::Keccak,
             OpType::PubOut => ZiskOperationType::PubOut,
             OpType::ArithEq => ZiskOperationType::ArithEq,
-            OpType::FcallParam => ZiskOperationType::FcallParam,
             OpType::Fcall => ZiskOperationType::Fcall,
-            OpType::FcallGet => ZiskOperationType::FcallGet,
         }
     }
 }
@@ -78,9 +76,7 @@ impl Display for OpType {
             Self::Keccak => write!(f, "Keccak"),
             Self::PubOut => write!(f, "PubOut"),
             Self::ArithEq => write!(f, "Arith256"),
-            Self::FcallParam => write!(f, "FcallParam"),
             Self::Fcall => write!(f, "Fcall"),
-            Self::FcallGet => write!(f, "FcallGet"),
         }
     }
 }
@@ -98,6 +94,7 @@ impl FromStr for OpType {
             "be" => Ok(Self::BinaryE),
             "k" => Ok(Self::Keccak),
             "aeq" => Ok(Self::ArithEq),
+            "fcall" => Ok(Self::Fcall),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -330,9 +327,9 @@ define_ops! {
     (Arith256Mod, "arith256_mod", ArithEq, ARITH_EQ_COST, 0xf3, 168, opc_arith256_mod, op_arith256_mod),
     (Secp256k1Add, "secp256k1_add", ArithEq, ARITH_EQ_COST, 0xf4, 144, opc_secp256k1_add, op_secp256k1_add),
     (Secp256k1Dbl, "secp256k1_dbl", ArithEq, ARITH_EQ_COST, 0xf5, 64, opc_secp256k1_dbl, op_secp256k1_add),
-    (FcallParam, "fcallparam", FcallParam, FCALL_COST, 0xf6, 64, opc_fcallparam, op_fcallparam),
-    (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 64, opc_fcall, op_fcall),
-    (FcallGet, "fcallget", FcallGet, FCALL_COST, 0xf8, 64, opc_fcallget, op_fcallget),
+    (FcallParam, "fcallparam", Fcall, FCALL_COST, 0xf6, 0, opc_fcallparam, op_fcallparam),
+    (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, opc_fcall, op_fcall),
+    (FcallGet, "fcallget", Fcall, FCALL_COST, 0xf8, 0, opc_fcallget, op_fcallget),
 }
 
 /* INTERNAL operations */
@@ -1438,6 +1435,10 @@ pub fn opc_fcallparam(ctx: &mut InstContext) {
     }
 
     // Store param in context
+    println!(
+        "storing param {} in ctx.fcall.parameters[{}] (fcall_param)",
+        param, ctx.fcall.parameters_size
+    );
     ctx.fcall.parameters[ctx.fcall.parameters_size as usize] = param;
     ctx.fcall.parameters_size += 1;
 }
@@ -1447,6 +1448,16 @@ pub fn opc_fcallparam(ctx: &mut InstContext) {
 pub fn op_fcall(a: u64, b: u64) -> (u64, bool) {
     unimplemented!("op_fcall() is not implemented");
 }
+
+/*
+pub fn fcall_proxy(fcall_ctx: FcallContext, mem_read: impl Fn(u64) -> u64) {
+    println!("fcall_proxy() {:?}", fcall_ctx);
+    let addr = fcall_ctx.params[0];
+    let value = mem_read(fcall_ctx.params[1]);
+    println!("@ 0x{:X}: 0x{:X}", addr, value);
+    panic!("STOP");
+}
+*/
 
 /// InstContext-based wrapper over op_fcall()
 #[inline(always)]
@@ -1467,8 +1478,6 @@ pub fn opc_fcall(ctx: &mut InstContext) {
     // Get param chunk from b
     let param = ctx.b;
 
-    // Write param to ctx.fcall.parameters (same as in fcall_param())
-
     // Check for consistency
     if ctx.fcall.parameters_size >= 32 {
         panic!(
@@ -1481,23 +1490,11 @@ pub fn opc_fcall(ctx: &mut InstContext) {
     ctx.fcall.parameters[ctx.fcall.parameters_size as usize] = param;
     ctx.fcall.parameters_size += 1;
 
-    // Create an fcall context
-    let mut fcall_ctx = FcallContext {
-        function_id,
-        params_max_size: 32,
-        params_size: ctx.fcall.parameters_size,
-        params: ctx.fcall.parameters,
-        result_max_size: 32,
-        result_size: 0,
-        result: ctx.fcall.result,
-    };
+    let mem_read_lambda = |addr: u64| ctx.mem.read(addr, 8);
+    let iresult =
+        fcall_proxy(function_id, &ctx.fcall.parameters, &mut ctx.fcall.result, mem_read_lambda);
 
-    // Call fcall
-    let iresult: i32;
-    unsafe {
-        iresult = Fcall(&mut fcall_ctx);
-    }
-    if iresult != 0 {
+    if iresult < 0 {
         panic!(
             "opc_fcall() failed calling Fcall() function_id={} iresult={}",
             function_id, iresult
@@ -1505,9 +1502,20 @@ pub fn opc_fcall(ctx: &mut InstContext) {
     }
 
     // Copy result
-    ctx.fcall.result = fcall_ctx.result;
-    ctx.fcall.result_size = fcall_ctx.result_size;
-    ctx.fcall.result_got = 0;
+    if (iresult > 0) {
+        print!("\x1B[1;35mfcall => {} words =>", iresult);
+        for (index, &value) in ctx.fcall.result.iter().take(iresult as usize).enumerate() {
+            print!(" {:}:0x{:X}", index, value);
+        }
+        println!(" \x1B[0m");
+        ctx.mem.free_input = ctx.fcall.result[0];
+    } else {
+        print!("\x1B[1;35mfcall => {}\x1B[0m", iresult);
+        ctx.mem.free_input = 0;
+    }
+    ctx.fcall.result_got = 1;
+    ctx.fcall.result_size = iresult as u64;
+    ctx.fcall.parameters_size = 0;
 }
 
 /// Implements fcallget, fcall result
@@ -1519,6 +1527,19 @@ pub fn op_fcallget(a: u64, b: u64) -> (u64, bool) {
 /// InstContext-based wrapper over op_fcallget()
 #[inline(always)]
 pub fn opc_fcallget(ctx: &mut InstContext) {
+    ctx.c = ctx.b;
+    ctx.flag = false;
+
+    // Do nothing when emulating in consume memory reads mode;
+    // data will be directly obtained from mem_reads
+    if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
+        println!(
+            "opc_fcallget() in consume memory reads mode b:0x{:X} c:0x{:X} step:{}",
+            ctx.b, ctx.c, ctx.step
+        );
+        return;
+    }
+    println!("fcallget() {:?}", ctx.fcall);
     // Check for consistency
     if ctx.fcall.result_size == 0 {
         panic!("opc_fcallget() called with ctx.fcall.result_size==0");
@@ -1526,7 +1547,7 @@ pub fn opc_fcallget(ctx: &mut InstContext) {
     if ctx.fcall.result_size > 32 {
         panic!("opc_fcallget() called with ctx.fcall.result_size=={}>32", ctx.fcall.result_size);
     }
-    if ctx.fcall.result_got >= ctx.fcall.result_size {
+    if ctx.fcall.result_got > ctx.fcall.result_size {
         panic!(
             "opc_fcallget() called with ctx.fcall.result_got({}) >= ctx.fcall.result_size {}",
             ctx.fcall.result_got, ctx.fcall.result_size
@@ -1534,7 +1555,12 @@ pub fn opc_fcallget(ctx: &mut InstContext) {
     }
 
     // Copy the data into c and advance counter
-    ctx.c = ctx.fcall.result[ctx.fcall.result_got as usize];
+    if ctx.fcall.result_got >= ctx.fcall.result_size {
+        ctx.mem.free_input = 0;
+    } else {
+        ctx.mem.free_input = ctx.fcall.result[ctx.fcall.result_got as usize];
+    }
+    println!("**** fcallget() [{}] = {}", ctx.fcall.result_got, ctx.c);
     ctx.fcall.result_got += 1;
     ctx.flag = false;
 }

@@ -329,6 +329,13 @@ impl<'a> Emu<'a> {
                 // Get it from memory
                 self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, 8);
 
+                if addr == 0x9000_0000 {
+                    println!(
+                        "\x1B[1;34mADDR 0x9000_0000 READ => 0x{:X} (step:{})\x1B[0m",
+                        self.ctx.inst_ctx.b, self.ctx.inst_ctx.step
+                    );
+                }
+
                 if self.ctx.do_stats {
                     self.ctx.stats.on_memory_read(addr, 8);
                 }
@@ -378,6 +385,12 @@ impl<'a> Emu<'a> {
                 }
                 if Mem::is_full_aligned(address, 8) {
                     self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(address, 8);
+                    if address == 0x9000_0000 {
+                        println!(
+                            "\x1B[1;34mADDR 0x9000_0000 READ => 0x{:X} [generate] (step:{}/mem_reads:{})\x1B[0m",
+                            self.ctx.inst_ctx.b, self.ctx.inst_ctx.step, mem_reads.len()
+                        );
+                    }
                     mem_reads.push(self.ctx.inst_ctx.b);
                 } else {
                     let mut additional_data: Vec<u64>;
@@ -467,6 +480,12 @@ impl<'a> Emu<'a> {
                 if Mem::is_full_aligned(address, 8) {
                     assert!(*mem_reads_index < mem_reads.len());
                     self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
+                    if address == 0x9000_0000 {
+                        println!(
+                            "\x1B[1;34mADDR 0x9000_0000 READ => 0x{:X} [consume] (step:{}/mem_reads:{})\x1B[0m",
+                            self.ctx.inst_ctx.b, self.ctx.inst_ctx.step, *mem_reads_index
+                        );
+                    }
                     *mem_reads_index += 1;
                 } else {
                     let (required_address_1, required_address_2) =
@@ -582,6 +601,13 @@ impl<'a> Emu<'a> {
                 if Mem::is_full_aligned(address, 8) {
                     assert!(*mem_reads_index < mem_reads.len());
                     self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
+                    if address == 0x9000_0000 {
+                        println!(
+                            "\x1B[1;34mADDR 0x9000_0000 READ => 0x{:X} [consume/bus] (step:{}/mem_reads:{})\x1B[0m",
+                            self.ctx.inst_ctx.b, self.ctx.inst_ctx.step, *mem_reads_index,
+                        );
+                    }
+
                     *mem_reads_index += 1;
                     let payload = MemHelpers::mem_load(
                         address as u32,
@@ -1120,15 +1146,69 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     pub fn step_fast(&mut self) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+        let debug = instruction.op >= 0xf6;
+        let initial_regs = if debug {
+            print!(
+                "\x1B[1;36m>==IN ==>\x1B[0m SF #{} 0x{:X} ({}) {}",
+                self.ctx.inst_ctx.step,
+                self.ctx.inst_ctx.pc,
+                instruction.op_str,
+                instruction.verbose
+            );
+            for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
+                print!(" {:}:0x{:X}", index, value);
+            }
+            println!("");
+            self.ctx.inst_ctx.regs.clone()
+        } else {
+            /* println!(
+                "#{} 0x{:X} ({}) {}",
+                self.ctx.inst_ctx.step,
+                self.ctx.inst_ctx.pc,
+                instruction.op_str,
+                instruction.verbose
+            );*/
+            [0u64; 32]
+        };
         self.source_a(instruction);
         self.source_b(instruction);
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c(instruction);
+        if debug {
+            println!(
+                ">==***==> #{} 0x{:X} ({}) {} @0 {:?} @1 {:?}",
+                self.ctx.inst_ctx.step,
+                self.ctx.inst_ctx.pc,
+                instruction.op_str,
+                instruction.verbose,
+                self.ctx.inst_ctx.regs,
+                instruction
+            );
+        }
+
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
         self.ctx.inst_ctx.step += 1;
+        if debug {
+            print!(
+                ">==OUT==> #{} 0x{:X} ({}) {} {:?}",
+                self.ctx.inst_ctx.step,
+                self.ctx.inst_ctx.pc,
+                instruction.op_str,
+                instruction.verbose,
+                self.ctx.inst_ctx.regs,
+            );
+            for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
+                if initial_regs[index] == value {
+                    print!(" {:}:0x{:X}", index, value);
+                } else {
+                    print!(" {:}:\x1B[1;31m0x{:X}\x1B[0m", index, value);
+                }
+            }
+            println!("");
+        }
     }
 
     /// Run the whole program
@@ -1348,6 +1428,10 @@ impl<'a> Emu<'a> {
 
         // Store the 'c' register value based on the storage specified by the current instruction
         self.store_c(instruction);
+        if instruction.op == 0xF8 {
+            println!("B instruction: {:?}", instruction);
+            println!("B inst_ctx: {:?}", self.ctx.inst_ctx);
+        }
 
         // Set SP, if specified by the current instruction
         // #[cfg(feature = "sp")]
@@ -1445,14 +1529,6 @@ impl<'a> Emu<'a> {
             emu_full_trace_vec.mem_reads.append(&mut self.ctx.inst_ctx.precompiled.input_data);
         }
 
-        // Add fcallget result into mem reads
-        let opcode = ZiskOp::try_from_code(instruction.op).expect("Invalid ZiskOp opcode");
-        if opcode == ZiskOp::FcallGet {
-            let mem_reads_len = emu_full_trace_vec.mem_reads.len();
-            assert!(mem_reads_len > 0);
-            emu_full_trace_vec.mem_reads[mem_reads_len - 1] = self.ctx.inst_ctx.c;
-        }
-
         // Store the 'c' register value based on the storage specified by the current instruction
         self.store_c_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);
 
@@ -1487,6 +1563,10 @@ impl<'a> Emu<'a> {
 
         // Call the operation
         (instruction.func)(&mut self.ctx.inst_ctx);
+        if instruction.op == 0xF8 {
+            println!("instruction: {:?}", instruction);
+            println!("inst_ctx: {:?}", self.ctx.inst_ctx);
+        }
 
         // Store the 'c' register value based on the storage specified by the current instruction
         self.store_c(instruction);
@@ -1514,6 +1594,34 @@ impl<'a> Emu<'a> {
         data_bus: &mut DataBus<u64, BD>,
     ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+        let debug = instruction.op >= 0xF6;
+        let initial_regs = if debug {
+            print!(
+                "\x1B[1;36m>==IN ==>\x1B[0m SE #{} 0x{:X} ({}) {}",
+                self.ctx.inst_ctx.step,
+                self.ctx.inst_ctx.pc,
+                instruction.op_str,
+                instruction.verbose
+            );
+            for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
+                print!(" {:}:0x{:X}", index, value);
+            }
+            println!(
+                " self.ctx.inst_ctx.emulation_mode={:?} instruction:{:?}",
+                self.ctx.inst_ctx.emulation_mode, instruction
+            );
+            self.ctx.inst_ctx.regs.clone()
+        } else {
+            /* println!(
+                "#{} 0x{:X} ({}) {}",
+                self.ctx.inst_ctx.step,
+                self.ctx.inst_ctx.pc,
+                instruction.op_str,
+                instruction.verbose
+            );*/
+            [0u64; 32]
+        };
+
         self.source_a_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         self.source_b_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         // If this is a precompiled, get the required input data from mem_reads
@@ -1530,17 +1638,28 @@ impl<'a> Emu<'a> {
             }
         }
 
-        // Add fcallget result into mem reads
-        let opcode = ZiskOp::try_from_code(instruction.op).expect("Invalid ZiskOp opcode");
-        if opcode == ZiskOp::FcallGet {
-            self.ctx.inst_ctx.c = mem_reads[*mem_reads_index];
-            *mem_reads_index += 1;
-        } else {
-            (instruction.func)(&mut self.ctx.inst_ctx);
-        }
+        (instruction.func)(&mut self.ctx.inst_ctx);
 
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
+        if debug {
+            print!(
+                ">==OUT==> #{} 0x{:X} ({}) {} {:?}",
+                self.ctx.inst_ctx.step,
+                self.ctx.inst_ctx.pc,
+                instruction.op_str,
+                instruction.verbose,
+                self.ctx.inst_ctx.regs,
+            );
+            for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
+                if initial_regs[index] == value {
+                    print!(" {:}:0x{:X}", index, value);
+                } else {
+                    print!(" {:}:\x1B[1;31m0x{:X}\x1B[0m", index, value);
+                }
+            }
+            println!("");
+        }
         // Get operation bus data
         let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
 
@@ -1601,6 +1720,10 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.emulation_mode = EmulationMode::ConsumeMemReads;
 
         let mut mem_reads_index: usize = 0;
+        println!(
+            "Emu::process_emu_trace() pc:0x{:X} step:{} steps:{}",
+            self.ctx.inst_ctx.pc, self.ctx.inst_ctx.step, emu_trace.steps
+        );
         for _ in 0..emu_trace.steps {
             self.step_emu_trace::<F, BD>(&emu_trace.mem_reads, &mut mem_reads_index, data_bus);
         }
@@ -1661,15 +1784,7 @@ impl<'a> Emu<'a> {
                 self.ctx.inst_ctx.precompiled.input_data.push(mem_read);
             }
         }
-
-        // Add fcallget result into mem reads
-        let opcode = ZiskOp::try_from_code(instruction.op).expect("Invalid ZiskOp opcode");
-        if opcode == ZiskOp::FcallGet {
-            self.ctx.inst_ctx.c = mem_reads[*mem_reads_index];
-            *mem_reads_index += 1;
-        } else {
-            (instruction.func)(&mut self.ctx.inst_ctx);
-        }
+        (instruction.func)(&mut self.ctx.inst_ctx);
 
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
@@ -1715,11 +1830,19 @@ impl<'a> Emu<'a> {
         reg_trace: &mut EmuRegTrace,
         step_range_check: Option<&[AtomicU32]>,
     ) -> EmuFullTraceStep<F> {
+        if self.ctx.inst_ctx.pc == 0 {
+            println!("PC=0 CRASH (step:{})", self.ctx.inst_ctx.step);
+        }
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         reg_trace.clear_reg_step_ranges();
 
         self.source_a_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
+        if instruction.op == 0xF8 {
+            println!("B instruction: {:?}", instruction);
+            println!("B inst_ctx: {:?}", self.ctx.inst_ctx);
+            println!("B mem_reads: 0x{:X}", mem_reads[*mem_reads_index]);
+        }
         self.source_b_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
         // If this is a precompiled, get the required input data from mem_reads
         self.ctx.inst_ctx.emulation_mode = EmulationMode::ConsumeMemReads;
@@ -1734,14 +1857,7 @@ impl<'a> Emu<'a> {
             }
         }
 
-        // Add fcallget result into mem reads
-        let opcode = ZiskOp::try_from_code(instruction.op).expect("Invalid ZiskOp opcode");
-        if opcode == ZiskOp::FcallGet {
-            self.ctx.inst_ctx.c = mem_reads[*mem_reads_index];
-            *mem_reads_index += 1;
-        } else {
-            (instruction.func)(&mut self.ctx.inst_ctx);
-        }
+        (instruction.func)(&mut self.ctx.inst_ctx);
 
         self.store_c_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
 
@@ -1752,6 +1868,16 @@ impl<'a> Emu<'a> {
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
         self.set_pc(instruction);
+        if self.ctx.inst_ctx.pc == 0 {
+            println!(
+                "PC=0 ALERT a:0x{:X} b:0x{:X} c:0x{:X} {:?} (step:{})",
+                self.ctx.inst_ctx.a,
+                self.ctx.inst_ctx.b,
+                self.ctx.inst_ctx.c,
+                instruction,
+                self.ctx.inst_ctx.step
+            );
+        }
         self.ctx.inst_ctx.end = instruction.end;
 
         // Build and store the full trace
@@ -1854,7 +1980,16 @@ impl<'a> Emu<'a> {
             b_src_ind: F::from_bool(inst.b_src == SRC_IND),
             ind_width: F::from_u64(inst.ind_width),
             is_external_op: F::from_bool(inst.is_external_op),
-            op: F::from_u8(inst.op),
+            // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
+            // of the copyb, use to get free-input information
+            op: if inst.op == ZiskOp::Fcall.code()
+                || inst.op == ZiskOp::FcallGet.code()
+                || inst.op == ZiskOp::FcallParam.code()
+            {
+                F::from_u8(ZiskOp::CopyB.code())
+            } else {
+                F::from_u8(inst.op)
+            },
             store_ra: F::from_bool(inst.store_ra),
             store_mem: F::from_bool(inst.store == STORE_MEM),
             store_reg: F::from_bool(inst.store == STORE_REG),

@@ -39,11 +39,15 @@ int Fcall (
 /***************/
 
 int InverseFpEc (
-    const unsigned long * _a, // 8 x 64 bits
-          unsigned long * _r  // 8 x 64 bits
+    const unsigned long * _a, // 4 x 64 bits
+          unsigned long * _r  // 4 x 64 bits
 )
 {
     // TODO: call mpz_invert
+    printf("InverseFpEc() _a[0]=%0X\n", _a[0]);
+    printf("InverseFpEc() _a[1]=%0X\n", _a[1]);
+    printf("InverseFpEc() _a[2]=%0X\n", _a[2]);
+    printf("InverseFpEc() _a[3]=%0X\n", _a[3]);
     RawFec::Element a;
     array2fe(_a, a);
     if (fec.isZero(a))
@@ -128,18 +132,23 @@ inline bool sqrtF3mod4(mpz_class &r, const mpz_class &a)
 }
 
 int SqrtFpEcParity (
-    const unsigned long * _a,  // 8 x 64 bits
-    const unsigned long _parity,  // 8 x 64 bits
-    unsigned long * _r  // 1 x 64 bits (sqrt exists) + 8 x 64 bits
+    const unsigned long * _a,  // 4 x 64 bits
+    const unsigned long _parity,  // 4 x 64 bits
+    unsigned long * _r  // 1 x 64 bits (sqrt exists) + 4 x 64 bits
 )
 {
     mpz_class parity = _parity;
+    gmp_printf("parity: %Zx\n", parity);
     mpz_class a;
     array2scalar(_a, a);
+    gmp_printf("a: %Zx\n", a);
 
     // Call the sqrt function
     mpz_class r;
     bool sqrt_exists = sqrtF3mod4(r, a);
+    printf("sqrt_exists: %d\n", sqrt_exists);
+    gmp_printf("r: %Zx\n", r);
+
     _r[0] = sqrt_exists;
 
     // Post-process the result
@@ -161,6 +170,8 @@ int SqrtFpEcParity (
     }
 
     scalar2array(r, &_r[1]);
+    gmp_printf("r: %Zx\n", r);
+    printf("_r: [%llx,%llx,%llx,%llx]\n", _r[1], _r[2], _r[3], _r[4]);
 
     return 0;
 }

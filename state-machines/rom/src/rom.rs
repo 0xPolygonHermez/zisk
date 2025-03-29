@@ -17,7 +17,7 @@ use proofman_common::{AirInstance, FromTrace};
 use sm_common::{BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan, Planner};
 
 use crate::{RomCounter, RomInstance, RomPlanner};
-use zisk_core::{Riscv2zisk, ZiskRom, SRC_IMM};
+use zisk_core::{zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, SRC_IMM};
 use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace};
 
 /// The `RomSM` struct represents the ROM State Machine
@@ -137,7 +137,16 @@ impl RomSM {
             rom_custom_trace[i].b_imm1 =
                 F::from_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
             rom_custom_trace[i].ind_width = F::from_u64(inst.ind_width);
-            rom_custom_trace[i].op = F::from_u8(inst.op);
+            // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
+            // of the copyb, use to get free-input information
+            rom_custom_trace[i].op = if inst.op == ZiskOp::Fcall.code()
+                || inst.op == ZiskOp::FcallGet.code()
+                || inst.op == ZiskOp::FcallParam.code()
+            {
+                F::from_u8(ZiskOp::CopyB.code())
+            } else {
+                F::from_u8(inst.op)
+            };
             rom_custom_trace[i].store_offset = store_offset;
             rom_custom_trace[i].jmp_offset1 = jmp_offset1;
             rom_custom_trace[i].jmp_offset2 = jmp_offset2;
