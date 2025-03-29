@@ -67,8 +67,10 @@ pub fn plan(
         while inst_count > 0 {
             let checkpoint_size = remaining_size.min(inst_count);
 
-            current_scope
-                .insert(ChunkId(current_chunk), (checkpoint_size, CollectSkipper::new(cumulative_offset)));
+            current_scope.insert(
+                ChunkId(current_chunk),
+                (checkpoint_size, CollectSkipper::new(cumulative_offset)),
+            );
 
             cumulative_offset += checkpoint_size;
             inst_count -= checkpoint_size;
@@ -115,7 +117,7 @@ mod tests {
         let size = 10;
         let expected = vec![(
             CheckPoint::Multiple(vec![ChunkId(0)]),
-            [(0, (10, CollectSkipper::new(0)))].into_iter().collect::<HashMap<_, _>>(),
+            [(ChunkId(0), (10, CollectSkipper::new(0)))].into_iter().collect::<HashMap<_, _>>(),
         )];
         let result = plan(&counts, size);
         assert_eq!(result, expected);
@@ -123,20 +125,22 @@ mod tests {
 
     #[test]
     fn test_single_count_larger_than_size() {
-        let counts = [InstCount::new(0, 25)];
+        let counts = [InstCount::new(ChunkId(0), 25)];
         let size = 10;
         let expected = vec![
             (
-                CheckPoint::Multiple(vec![0]),
-                [(0, (10, CollectSkipper::new(0)))].into_iter().collect::<HashMap<_, _>>(),
+                CheckPoint::Multiple(vec![ChunkId(0)]),
+                [(ChunkId(0), (10, CollectSkipper::new(0)))].into_iter().collect::<HashMap<_, _>>(),
             ),
             (
-                CheckPoint::Multiple(vec![0]),
-                [(0, (10, CollectSkipper::new(10)))].into_iter().collect::<HashMap<_, _>>(),
+                CheckPoint::Multiple(vec![ChunkId(0)]),
+                [(ChunkId(0), (10, CollectSkipper::new(10)))]
+                    .into_iter()
+                    .collect::<HashMap<_, _>>(),
             ),
             (
-                CheckPoint::Multiple(vec![0]),
-                [(0, (5, CollectSkipper::new(20)))].into_iter().collect::<HashMap<_, _>>(),
+                CheckPoint::Multiple(vec![ChunkId(0)]),
+                [(ChunkId(0), (5, CollectSkipper::new(20)))].into_iter().collect::<HashMap<_, _>>(),
             ),
         ];
         let result = plan(&counts, size);
@@ -145,18 +149,21 @@ mod tests {
 
     #[test]
     fn test_multiple_chunks() {
-        let counts = [InstCount::new(0, 15), InstCount::new(1, 5)];
+        let counts = [InstCount::new(ChunkId(0), 15), InstCount::new(ChunkId(1), 5)];
         let size = 10;
         let mut expected = vec![
             (
-                CheckPoint::Multiple(vec![0]),
-                [(0, (10, CollectSkipper::new(0)))].into_iter().collect::<HashMap<_, _>>(),
+                CheckPoint::Multiple(vec![ChunkId(0)]),
+                [(ChunkId(0), (10, CollectSkipper::new(0)))].into_iter().collect::<HashMap<_, _>>(),
             ),
             (
-                CheckPoint::Multiple(vec![0, 1]),
-                [(0, (5, CollectSkipper::new(10))), (1, (5, CollectSkipper::new(0)))]
-                    .into_iter()
-                    .collect::<HashMap<_, _>>(),
+                CheckPoint::Multiple(vec![ChunkId(0), ChunkId(1)]),
+                [
+                    (ChunkId(0), (5, CollectSkipper::new(10))),
+                    (ChunkId(1), (5, CollectSkipper::new(0))),
+                ]
+                .into_iter()
+                .collect::<HashMap<_, _>>(),
             ),
         ];
 
