@@ -5,9 +5,10 @@
 use std::any::Any;
 
 use crate::{
-    component_counter, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceType, Plan,
-    Planner, RegularCounters,
+    component_counter, BusDeviceMetrics, CheckPoint, InstCount, InstanceType, Plan, Planner,
+    RegularCounters,
 };
+use zisk_common::ChunkId;
 use zisk_core::ZiskOperationType;
 
 use super::plan;

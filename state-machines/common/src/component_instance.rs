@@ -5,8 +5,9 @@
 use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use zisk_common::ChunkId;
 
-use crate::{BusDeviceWrapper, CheckPoint, ChunkId};
+use crate::{BusDeviceWrapper, CheckPoint};
 
 /// Represents the type of an instance, either a standalone instance or a table.
 #[derive(Debug, PartialEq)]

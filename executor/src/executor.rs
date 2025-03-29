@@ -31,10 +31,11 @@ use rayon::prelude::*;
 
 use data_bus::{BusDevice, DataBus, PayloadType, OPERATION_BUS_ID};
 use sm_common::{
-    BusDeviceMetrics, BusDeviceMetricsWrapper, BusDeviceWrapper, CheckPoint, ChunkId,
-    ComponentBuilder, Instance, InstanceCtx, InstanceType, Plan,
+    BusDeviceMetrics, BusDeviceMetricsWrapper, BusDeviceWrapper, CheckPoint, ComponentBuilder,
+    Instance, InstanceCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
+use zisk_common::ChunkId;
 use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
 
 use std::{

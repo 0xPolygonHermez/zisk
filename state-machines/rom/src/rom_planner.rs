@@ -3,7 +3,8 @@
 
 use std::sync::{atomic::AtomicU32, Arc};
 
-use sm_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan, Planner};
+use sm_common::{BusDeviceMetrics, CheckPoint, InstanceType, Metrics, Plan, Planner};
+use zisk_common::ChunkId;
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::RomCounter;

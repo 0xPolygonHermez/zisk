@@ -6,8 +6,9 @@ use data_bus::{BusDevice, BusId, MemBusData, PayloadType, MEM_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use sm_common::{BusDeviceWrapper, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType};
+use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
+use zisk_common::ChunkId;
 
 pub struct MemModuleInstance<F: PrimeField> {
     /// Instance context

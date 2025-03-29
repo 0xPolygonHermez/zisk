@@ -1909,6 +1909,7 @@ dependencies = [
  "sm-common",
  "tiny-keccak",
  "witness",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -2538,6 +2539,7 @@ dependencies = [
  "rayon",
  "sm-binary",
  "sm-common",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -2556,6 +2558,7 @@ dependencies = [
  "proofman-util",
  "rayon",
  "sm-common",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -2610,6 +2613,7 @@ dependencies = [
  "rayon",
  "sm-common",
  "witness",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -2627,6 +2631,7 @@ dependencies = [
  "proofman-util",
  "rayon",
  "sm-common",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]

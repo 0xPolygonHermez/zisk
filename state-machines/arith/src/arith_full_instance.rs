@@ -12,9 +12,10 @@ use data_bus::{
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
-    BusDeviceWrapper, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
+    BusDeviceWrapper, CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType,
 };
 use std::{collections::HashMap, sync::Arc};
+use zisk_common::ChunkId;
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
 
