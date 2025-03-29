@@ -150,6 +150,7 @@ impl ZiskProve {
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
         let mut witness_lib;
+        let proof_id;
         if debug_info.std_mode.name == ModeName::Debug {
             match self.field {
                 Field::Goldilocks => {
@@ -185,7 +186,6 @@ impl ZiskProve {
         } else {
             match self.field {
                 Field::Goldilocks => {
-                    println!("Generating proof...");
                     let library = unsafe { Library::new(self.get_witness_computation_lib())? };
                     let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
                         unsafe { library.get(b"init_library")? };
@@ -198,7 +198,7 @@ impl ZiskProve {
                     )
                     .expect("Failed to initialize witness library");
 
-                    ProofMan::<Goldilocks>::generate_proof_from_lib(
+                    proof_id = ProofMan::<Goldilocks>::generate_proof_from_lib(
                         &mut *witness_lib,
                         self.get_proving_key(),
                         self.output_dir.clone(),
@@ -227,6 +227,9 @@ impl ZiskProve {
 
         println!();
         info!("{}", "    Zisk: --- PROVE SUMMARY ------------------------".bright_green().bold());
+        if let Some(proof_id) = proof_id {
+            info!("                Proof ID: {}", proof_id);
+        }
         info!("              ► Statistics");
         info!(
             "                time: {} seconds, steps: {}",
