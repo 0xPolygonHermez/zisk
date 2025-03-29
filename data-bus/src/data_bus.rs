@@ -99,6 +99,7 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// # Arguments
     /// * `bus_id` - The ID of the bus receiving the data.
     /// * `payload` - The data payload to be sent.
+    #[inline(always)]
     pub fn write_to_bus(&mut self, bus_id: BusId, payload: &[D]) {
         self.route_data(bus_id, payload);
 
@@ -112,6 +113,7 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// # Arguments
     /// * `bus_id` - The ID of the bus to route the data to.
     /// * `payload` - A reference to the data payload being routed.
+    #[inline(always)]
     fn route_data(&mut self, bus_id: BusId, payload: &[D]) {
         // Notify specific subscribers
         let bus_id_devices = &self.devices_bus_id_map[bus_id];
