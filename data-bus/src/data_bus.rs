@@ -15,7 +15,6 @@ impl PartialEq<usize> for BusId {
     }
 }
 
-
 impl Deref for BusId {
     type Target = usize;
 
@@ -23,7 +22,6 @@ impl Deref for BusId {
         &self.0
     }
 }
-
 
 /// Type representing the payload transmitted across the bus.
 pub type PayloadType = u64;
