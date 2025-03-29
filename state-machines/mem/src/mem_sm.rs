@@ -7,6 +7,7 @@ use std::{
     fs::File,
     io::{BufWriter, Write},
 };
+use zisk_common::SegmentId;
 
 use crate::{MemInput, MemModule, MEMORY_MAX_DIFF, MEM_BYTES_BITS, STEP_MEMORY_MAX_DIFF};
 use p3_field::PrimeField64;
@@ -78,7 +79,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
     fn compute_witness(
         &self,
         mem_ops: &[MemInput],
-        segment_id: usize,
+        segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
     ) -> AirInstance<F> {
@@ -282,7 +283,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         self.std.range_check(STEP_MEMORY_MAX_DIFF as i64, range_check_data_max, range_id);
 
         let mut air_values = MemAirValues::<F>::new();
-        air_values.segment_id = F::from_usize(segment_id);
+        air_values.segment_id = F::from_usize(*segment_id);
         air_values.is_first_segment = F::from_bool(segment_id == 0);
         air_values.is_last_segment = F::from_bool(is_last_segment);
         air_values.previous_segment_step = F::from_u64(previous_segment.step);

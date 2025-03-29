@@ -4,6 +4,7 @@ use crate::{MemInput, MemModule, MemPreviousSegment, MEMORY_MAX_DIFF, MEM_BYTES_
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
+use zisk_common::SegmentId;
 use zisk_core::{ROM_ADDR, ROM_ADDR_MAX};
 use zisk_pil::{RomDataAirValues, RomDataTrace};
 
@@ -46,7 +47,7 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
     fn compute_witness(
         &self,
         mem_ops: &[MemInput],
-        segment_id: usize,
+        segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
     ) -> AirInstance<F> {
@@ -140,7 +141,7 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         self.std.range_check((ROM_DATA_W_ADDR_END - last_addr + 1) as i64, 1, range_id);
 
         let mut air_values = RomDataAirValues::<F>::new();
-        air_values.segment_id = F::from_usize(segment_id);
+        air_values.segment_id = F::from_usize(*segment_id);
         air_values.is_first_segment = F::from_bool(segment_id == 0);
         air_values.is_last_segment = F::from_bool(is_last_segment);
         air_values.previous_segment_step = F::from_u64(previous_segment.step);
