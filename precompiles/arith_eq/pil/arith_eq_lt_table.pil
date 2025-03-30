@@ -27,8 +27,7 @@ airtemplate ArithEqLtTable (int N = 2**18) {
                       __,
                       2:P2_16_MINUS_1,
                       __,
-                      3:P2_16_MINUS_1,
-                      __];
+                      3:2**16];
 
     col fixed DELTA = [ 0..MAX16,
                        -1..MIN16, 0,

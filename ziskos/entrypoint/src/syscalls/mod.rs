@@ -4,8 +4,9 @@ pub mod keccakf;
 pub mod point256;
 pub mod secp256k1_add;
 pub mod secp256k1_dbl;
-pub mod syscall;
+mod syscall;
 
+pub use syscall::*;
 #[macro_export]
 macro_rules! ziskos_syscall {
     ($csr_addr:literal, $addr:expr) => {{

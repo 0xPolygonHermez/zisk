@@ -6,10 +6,13 @@ use core::arch::asm;
 mod fcall;
 #[cfg(target_os = "ziskos")]
 pub use fcall::*;
+
 mod zisklib;
 pub use zisklib::*;
 
-pub mod syscalls;
+mod syscalls;
+pub use syscalls::*;
+
 pub mod ziskos_definitions;
 
 #[macro_export]
