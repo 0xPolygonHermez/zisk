@@ -502,11 +502,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         match secn_instance.check_point() {
             CheckPoint::None => {}
             CheckPoint::Single(chunk_id) => {
-                chunks_to_execute[*chunk_id] = true;
+                chunks_to_execute[chunk_id.as_usize()] = true;
             }
             CheckPoint::Multiple(chunk_ids) => {
                 chunk_ids.iter().for_each(|&chunk_id| {
-                    chunks_to_execute[*chunk_id] = true;
+                    chunks_to_execute[chunk_id.as_usize()] = true;
                 });
             }
         };
