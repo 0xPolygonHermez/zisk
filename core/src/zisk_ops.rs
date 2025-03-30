@@ -328,9 +328,9 @@ define_ops! {
     (Arith256Mod, "arith256_mod", ArithEq, ARITH_EQ_COST, 0xf3, 168, opc_arith256_mod, op_arith256_mod),
     (Secp256k1Add, "secp256k1_add", ArithEq, ARITH_EQ_COST, 0xf4, 144, opc_secp256k1_add, op_secp256k1_add),
     (Secp256k1Dbl, "secp256k1_dbl", ArithEq, ARITH_EQ_COST, 0xf5, 64, opc_secp256k1_dbl, op_secp256k1_add),
-    (FcallParam, "fcallparam", Fcall, FCALL_COST, 0xf6, 0, opc_fcallparam, op_fcallparam),
+    (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xf6, 0, opc_fcall_param, op_fcall_param),
     (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, opc_fcall, op_fcall),
-    (FcallGet, "fcallget", Fcall, FCALL_COST, 0xf8, 0, opc_fcallget, op_fcallget),
+    (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, opc_fcall_get, op_fcall_get),
 }
 
 /* INTERNAL operations */
@@ -1405,15 +1405,15 @@ pub fn opc_pubout(ctx: &mut InstContext) {
     //println!("public ${} = {:#018x}", ctx.a, ctx.b);
 }
 
-/// Implements fcallparam, free input data call parameter
+/// Implements fcall_param, free input data call parameter
 #[inline(always)]
-pub fn op_fcallparam(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fcallparam() is not implemented");
+pub fn op_fcall_param(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fcall_param() is not implemented");
 }
 
-/// InstContext-based wrapper over op_fcallparam()
+/// InstContext-based wrapper over op_fcall_param()
 #[inline(always)]
-pub fn opc_fcallparam(ctx: &mut InstContext) {
+pub fn opc_fcall_param(ctx: &mut InstContext) {
     // Set c and flag according to the spec
     ctx.c = ctx.b;
     ctx.flag = false;
@@ -1433,7 +1433,7 @@ pub fn opc_fcallparam(ctx: &mut InstContext) {
     // Check for consistency
     if (ctx.fcall.parameters_size + words) as usize >= FCALL_PARAMS_MAX_SIZE {
         panic!(
-            "opc_fcallparam({0}) called with ctx.fcall.parameters_size({1}) + param({0})>={2}",
+            "opc_fcall_param({0}) called with ctx.fcall.parameters_size({1}) + param({0})>={2}",
             words, ctx.fcall.parameters_size, FCALL_PARAMS_MAX_SIZE
         );
     }
@@ -1523,15 +1523,15 @@ pub fn opc_fcall(ctx: &mut InstContext) {
     ctx.fcall.parameters_size = 0;
 }
 
-/// Implements fcallget, fcall result
+/// Implements fcall_get, fcall result
 #[inline(always)]
-pub fn op_fcallget(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fcallget() is not implemented");
+pub fn op_fcall_get(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fcall_get() is not implemented");
 }
 
-/// InstContext-based wrapper over op_fcallget()
+/// InstContext-based wrapper over op_fcall_get()
 #[inline(always)]
-pub fn opc_fcallget(ctx: &mut InstContext) {
+pub fn opc_fcall_get(ctx: &mut InstContext) {
     ctx.c = ctx.b;
     ctx.flag = false;
 
@@ -1539,22 +1539,22 @@ pub fn opc_fcallget(ctx: &mut InstContext) {
     // data will be directly obtained from mem_reads
     if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
         println!(
-            "opc_fcallget() in consume memory reads mode b:0x{:X} c:0x{:X} step:{}",
+            "opc_fcall_get() in consume memory reads mode b:0x{:X} c:0x{:X} step:{}",
             ctx.b, ctx.c, ctx.step
         );
         return;
     }
-    println!("fcallget() {:?}", ctx.fcall);
+    println!("fcall_get() {:?}", ctx.fcall);
     // Check for consistency
     if ctx.fcall.result_size == 0 {
-        panic!("opc_fcallget() called with ctx.fcall.result_size==0");
+        panic!("opc_fcall_get() called with ctx.fcall.result_size==0");
     }
     if ctx.fcall.result_size as usize > FCALL_RESULT_MAX_SIZE {
-        panic!("opc_fcallget() called with ctx.fcall.result_size=={}>32", ctx.fcall.result_size);
+        panic!("opc_fcall_get() called with ctx.fcall.result_size=={}>32", ctx.fcall.result_size);
     }
     if ctx.fcall.result_got > ctx.fcall.result_size {
         panic!(
-            "opc_fcallget() called with ctx.fcall.result_got({}) >= ctx.fcall.result_size {}",
+            "opc_fcall_get() called with ctx.fcall.result_got({}) >= ctx.fcall.result_size {}",
             ctx.fcall.result_got, ctx.fcall.result_size
         );
     }
@@ -1565,7 +1565,6 @@ pub fn opc_fcallget(ctx: &mut InstContext) {
     } else {
         ctx.mem.free_input = ctx.fcall.result[ctx.fcall.result_got as usize];
     }
-    println!("**** fcallget() [{}] = {}", ctx.fcall.result_got, ctx.c);
     ctx.fcall.result_got += 1;
     ctx.flag = false;
 }

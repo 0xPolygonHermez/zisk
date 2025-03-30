@@ -884,9 +884,9 @@ impl Riscv2ZiskContext<'_> {
                 let words =
                     CSR_FCALL_PARAM_OFFSET_TO_WORDS[(i.csr - CSR_FCALL_PARAM_ADDR_START) as usize];
                 zib.src_a("imm", words, false);
-                zib.op("fcallparam").unwrap();
+                zib.op("fcall_param").unwrap();
                 zib.verbose(&format!(
-                    "csrrs 0x{0:X}, rs1={1} => copyb[fcallparam(r{1},{2})]",
+                    "csrrs 0x{0:X}, rs1={1} => copyb[fcall_param(r{1},{2})]",
                     i.csr, i.rs1, words
                 ));
             } else {
@@ -903,10 +903,9 @@ impl Riscv2ZiskContext<'_> {
             zib.src_a("imm", 0, false);
             if i.csr == CSR_FCALL_GET_ADDR {
                 zib.src_b("mem", INPUT_ADDR, false);
-                zib.op("fcallget").unwrap();
-                println!("fcallget");
+                zib.op("fcall_get").unwrap();
                 zib.verbose(&format!(
-                    "csrrs rd={}, 0x{:X}, rs1={} => fcallget",
+                    "csrrs rd={}, 0x{:X}, rs1={} => copyb[fcall_get]",
                     i.rd, i.csr, i.rs1
                 ));
             } else {
