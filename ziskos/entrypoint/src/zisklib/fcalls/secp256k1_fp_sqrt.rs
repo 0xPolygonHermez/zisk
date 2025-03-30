@@ -29,8 +29,9 @@ pub fn fcall_secp256k1_fp_sqrt(p_value: &[u64; 4], parity: u64) -> Option<[u64; 
     unreachable!();
     #[cfg(target_os = "ziskos")]
     {
-        ziskos_fcall_param!(p_value);
-        ziskos_fcall!(FCALL_SECP256K1_FP_SQRT_ID, parity);
+        ziskos_fcall_param!(p_value, 4);
+        ziskos_fcall_param!(parity, 1);
+        ziskos_fcall!(FCALL_SECP256K1_FP_SQRT_ID);
         if ziskos_fcall_get() == 0 {
             return None;
         }
@@ -53,7 +54,8 @@ pub fn fcall2_secp256k1_fp_sqrt(p_value: &[u64; 4], parity: u64) {
     unreachable!();
     #[cfg(target_os = "ziskos")]
     {
-        ziskos_fcall_param!(p_value);
-        ziskos_fcall!(FCALL_SECP256K1_FP_SQRT_ID, parity);
+        ziskos_fcall_param!(p_value, 4);
+        ziskos_fcall_param!(parity, 1);
+        ziskos_fcall!(FCALL_SECP256K1_FP_SQRT_ID);
     }
 }

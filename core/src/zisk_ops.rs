@@ -26,9 +26,10 @@ use crate::{
 
 use lib_c::{inverse_fn_ec_c, inverse_fp_ec_c, sqrt_fp_ec_parity_c, Fcall, FcallContext};
 
-use crate::FCALL_ID_INVERSE_FN_EC;
-use crate::FCALL_ID_INVERSE_FP_EC;
-use crate::FCALL_ID_SQRT_FP_EC_PARITY;
+use crate::{
+    FCALL_ID_INVERSE_FN_EC, FCALL_ID_INVERSE_FP_EC, FCALL_ID_SQRT_FP_EC_PARITY,
+    FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE,
+};
 
 /// Determines the type of a [`ZiskOp`].
 ///
@@ -1423,24 +1424,45 @@ pub fn opc_fcallparam(ctx: &mut InstContext) {
         return;
     }
 
+    // Get param size from a
+    let words = ctx.a;
+
     // Get param chunk from b
     let param = ctx.b;
 
     // Check for consistency
-    if ctx.fcall.parameters_size >= 32 {
+    if (ctx.fcall.parameters_size + words) as usize >= FCALL_PARAMS_MAX_SIZE {
         panic!(
-            "opc_fcallget() called with ctx.fcall.parameters_size=={}>=32",
-            ctx.fcall.parameters_size
+            "opc_fcallparam({0}) called with ctx.fcall.parameters_size({1}) + param({0})>={2}",
+            words, ctx.fcall.parameters_size, FCALL_PARAMS_MAX_SIZE
         );
     }
 
     // Store param in context
-    println!(
-        "storing param {} in ctx.fcall.parameters[{}] (fcall_param)",
-        param, ctx.fcall.parameters_size
-    );
-    ctx.fcall.parameters[ctx.fcall.parameters_size as usize] = param;
-    ctx.fcall.parameters_size += 1;
+    if words == 1 {
+        println!(
+            "fcall_param: storing direct param ctx.fcall.parameters[{}] = 0x{:X}",
+            ctx.fcall.parameters_size, param
+        );
+        ctx.fcall.parameters[ctx.fcall.parameters_size as usize] = param;
+        ctx.fcall.parameters_size += 1;
+    } else {
+        print!(
+            "fcall_param: storing indirect params (@{:X},{}) in ctx.fcall.parameters[{}..{}] = [\x1B[1;36m",
+            param,
+            words,
+            ctx.fcall.parameters_size,
+            ctx.fcall.parameters_size + words
+        );
+        let addr = param;
+        for i in 0..words {
+            let value = ctx.mem.read(addr + i * 8, 8);
+            print!("{}0x{:X}", if i == 0 { "" } else { "," }, value);
+            ctx.fcall.parameters[(ctx.fcall.parameters_size + i) as usize] = value;
+        }
+        println!("\x1B[0m]");
+        ctx.fcall.parameters_size += words;
+    }
 }
 
 /// Implements fcall, free input data calls
@@ -1475,24 +1497,7 @@ pub fn opc_fcall(ctx: &mut InstContext) {
     // Get function id from a
     let function_id = ctx.a;
 
-    // Get param chunk from b
-    let param = ctx.b;
-
-    // Check for consistency
-    if ctx.fcall.parameters_size >= 32 {
-        panic!(
-            "opc_fcallget() called with ctx.fcall.parameters_size=={}>=32",
-            ctx.fcall.parameters_size
-        );
-    }
-
-    // Store param in context
-    ctx.fcall.parameters[ctx.fcall.parameters_size as usize] = param;
-    ctx.fcall.parameters_size += 1;
-
-    let mem_read_lambda = |addr: u64| ctx.mem.read(addr, 8);
-    let iresult =
-        fcall_proxy(function_id, &ctx.fcall.parameters, &mut ctx.fcall.result, mem_read_lambda);
+    let iresult = fcall_proxy(function_id, &ctx.fcall.parameters, &mut ctx.fcall.result);
 
     if iresult < 0 {
         panic!(
@@ -1544,7 +1549,7 @@ pub fn opc_fcallget(ctx: &mut InstContext) {
     if ctx.fcall.result_size == 0 {
         panic!("opc_fcallget() called with ctx.fcall.result_size==0");
     }
-    if ctx.fcall.result_size > 32 {
+    if ctx.fcall.result_size as usize > FCALL_RESULT_MAX_SIZE {
         panic!("opc_fcallget() called with ctx.fcall.result_size=={}>32", ctx.fcall.result_size);
     }
     if ctx.fcall.result_got > ctx.fcall.result_size {

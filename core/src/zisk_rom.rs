@@ -377,6 +377,7 @@ impl ZiskRom {
                     "romLine({},{},{},{},{},{},{},{},{}); // {}: {}\n",
                     key,
                     rom_flags,
+                    // TODO: fcall functions are really as copyb
                     i.op,
                     i.a_offset_imm0,
                     i.b_offset_imm0,

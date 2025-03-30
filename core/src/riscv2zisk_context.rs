@@ -17,10 +17,13 @@ const CSR_PRECOMPILED: [&str; 5] =
     ["keccak", "arith256", "arith256_mod", "secp256k1_add", "secp256k1_dbl"];
 const CSR_PRECOMPILED_ADDR_START: u32 = 0x800;
 const CSR_PRECOMPILED_ADDR_END: u32 = CSR_PRECOMPILED_ADDR_START + CSR_PRECOMPILED.len() as u32;
-const CSR_FCALL_ADDR_START: u32 = 0x860;
-const CSR_FCALL_ADDR_END: u32 = 0x8FD;
+const CSR_FCALL_ADDR_START: u32 = 0x8C0;
+const CSR_FCALL_ADDR_END: u32 = 0x8DF;
 const CSR_FCALL_GET_ADDR: u32 = 0xFFE;
-const CSR_FCALL_PARAM_ADDR: u32 = 0x8FF;
+const CSR_FCALL_PARAM_ADDR_START: u32 = 0x8F0;
+const CSR_FCALL_PARAM_ADDR_END: u32 = 0x8FF;
+const CSR_FCALL_PARAM_OFFSET_TO_WORDS: [u64; 16] =
+    [1, 2, 4, 8, 12, 16, 20, 24, 28, 32, 48, 64, 80, 96, 128, 256];
 
 const CAUSE_EXIT: u64 = 93;
 const CSR_ADDR: u64 = SYS_ADDR + 0x8000;
@@ -697,7 +700,6 @@ impl Riscv2ZiskContext<'_> {
     /// If rd=x0, then the instruction shall not read the CSR and shall not cause any of the side
     /// effects that might occur on a CSR read.
     pub fn csrrw(&mut self, i: &RiscvInstruction) {
-        println!("csrrw: 0x{:x} {:?}", i.csr, i);
         if i.rd == i.rs1 {
             if i.rd == 0 {
                 let mut zib = ZiskInstBuilder::new(self.s);
@@ -818,13 +820,13 @@ impl Riscv2ZiskContext<'_> {
     /// the CSR. Any bit that is high in rs1 will cause the corresponding bit to be set in the CSR,
     /// if that CSR bit is writable.
     pub fn csrrs(&mut self, i: &RiscvInstruction) {
-        println!("csrrs: 0x{:x} {:?}", i.csr, i);
         if i.rd == i.rs1 {
             if i.rd == 0 {
                 let mut zib = ZiskInstBuilder::new(self.s);
                 zib.src_a("imm", 0, false);
-                zib.src_b("imm", 0, false);
                 zib.op("copyb").unwrap();
+                zib.src_a("imm", 0, false);
+                zib.src_b("imm", 0, false);
                 zib.j(4, 4);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} ## rd=rs=0", i.inst, i.rd, i.csr, i.rs1));
                 zib.build();
@@ -878,15 +880,15 @@ impl Riscv2ZiskContext<'_> {
                 let precompiled = CSR_PRECOMPILED[(i.csr - CSR_PRECOMPILED_ADDR_START) as usize];
                 zib.op(precompiled).unwrap();
                 zib.verbose(precompiled);
-            } else if (CSR_FCALL_ADDR_START..=CSR_FCALL_ADDR_END).contains(&i.csr) {
-                let func_id = (i.csr - CSR_FCALL_ADDR_START) as u64 + 1;
-                zib.src_a("imm", func_id, false);
-                zib.op("fcall").unwrap();
-                zib.verbose(&format!("csrrs 0x{:X}, rs1={} => fcall {}", i.csr, i.rs1, func_id));
-            } else if i.csr == CSR_FCALL_PARAM_ADDR {
-                zib.src_a("imm", 0, false);
+            } else if (CSR_FCALL_PARAM_ADDR_START..=CSR_FCALL_PARAM_ADDR_END).contains(&i.csr) {
+                let words =
+                    CSR_FCALL_PARAM_OFFSET_TO_WORDS[(i.csr - CSR_FCALL_PARAM_ADDR_START) as usize];
+                zib.src_a("imm", words, false);
                 zib.op("fcallparam").unwrap();
-                zib.verbose(&format!("csrrs 0x{:X}, rs1={} => fcallparam", i.csr, i.rs1));
+                zib.verbose(&format!(
+                    "csrrs 0x{0:X}, rs1={1} => copyb[fcallparam(r{1},{2})]",
+                    i.csr, i.rs1, words
+                ));
             } else {
                 zib.src_a("mem", CSR_ADDR + i.csr as u64, false);
                 zib.op("or").unwrap();
@@ -975,7 +977,6 @@ impl Riscv2ZiskContext<'_> {
     /// in the CSR. Any bit that is high in rs1 will cause the corresponding bit to be cleared in
     /// the CSR, if that CSR bit is writable.
     pub fn csrrc(&mut self, i: &RiscvInstruction) {
-        println!("csrrc: 0x{:x} {:?}", i.csr, i);
         if i.rd == i.rs1 {
             if i.rd == 0 {
                 let mut zib = ZiskInstBuilder::new(self.s);
@@ -1124,15 +1125,34 @@ impl Riscv2ZiskContext<'_> {
     /// unsigned immediate (`uimm[4:0]`) field encoded in the rs1 field instead of a value from an
     /// integer register.
     pub fn csrrwi(&mut self, i: &RiscvInstruction) {
-        println!("csrrwi: 0x{:x} {:?}", i.csr, i);
         if i.rd == 0 {
             let mut zib = ZiskInstBuilder::new(self.s);
-            zib.src_a("imm", 0, false);
-            zib.src_b("imm", i.imme as u64, false);
-            zib.op("copyb").unwrap();
-            zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
+
+            if (CSR_FCALL_ADDR_START..=CSR_FCALL_ADDR_END).contains(&i.csr) {
+                let func_id = (((i.csr - CSR_FCALL_ADDR_START) as u64) << 5) + i.imme as u64;
+                zib.src_a("imm", func_id, false);
+                zib.src_b("imm", 0, false);
+                zib.op("fcall").unwrap();
+                println!(
+                    "******** csrrs 0x{:X}, imm={} => copyb[fcall({})]",
+                    i.csr, i.imme, func_id
+                );
+                zib.verbose(&format!(
+                    "csrrs 0x{:X}, imm={} => copyb[fcall({})]",
+                    i.csr, i.rs1, func_id
+                ));
+                // anything to store
+            } else {
+                zib.src_a("imm", 0, false);
+                zib.src_b("imm", i.imme as u64, false);
+                zib.op("copyb").unwrap();
+                zib.store("mem", CSR_ADDR as i64 + i.csr as i64, false, false);
+                zib.verbose(&format!(
+                    "{} r{}, 0x{:x}, 0x{:x} #rd = 0",
+                    i.inst, i.rd, i.csr, i.imme
+                ));
+            }
             zib.j(4, 4);
-            zib.verbose(&format!("{} r{}, 0x{:x}, 0x{:x} #rd = 0", i.inst, i.rd, i.csr, i.imme));
             zib.build();
             self.insts.insert(self.s, zib);
             self.s += 4;
@@ -1184,7 +1204,6 @@ impl Riscv2ZiskContext<'_> {
         }
     */
     pub fn csrrsi(&mut self, i: &RiscvInstruction) {
-        println!("csrrsi: 0x{:x} {:?}", i.csr, i);
         if i.rd == 0 {
             if i.imme == 0 {
                 let mut zib = ZiskInstBuilder::new(self.s);

@@ -3,7 +3,7 @@ use cfg_if::cfg_if;
 cfg_if! {
     if #[cfg(target_os = "ziskos")] {
         use core::arch::asm;
-        use crate::{ziskos_fcall, ziskos_fcall_get};
+        use crate::{ziskos_fcall, ziskos_fcall_get, ziskos_fcall_param};
         use crate::FCALL_SECP256K1_FP_INV_ID;
     }
 }
@@ -29,7 +29,8 @@ pub fn fcall_secp256k1_fp_inv(p_value: &[u64; 4]) -> [u64; 4] {
     unreachable!();
     #[cfg(target_os = "ziskos")]
     {
-        ziskos_fcall!(FCALL_SECP256K1_FP_INV_ID, p_value);
+        ziskos_fcall_param!(p_value, 4);
+        ziskos_fcall!(FCALL_SECP256K1_FP_INV_ID);
         [ziskos_fcall_get(), ziskos_fcall_get(), ziskos_fcall_get(), ziskos_fcall_get()]
     }
 }
@@ -40,6 +41,7 @@ pub fn fcall2_secp256k1_fp_inv(p_value: &[u64; 4]) {
     unreachable!();
     #[cfg(target_os = "ziskos")]
     {
-        ziskos_fcall!(FCALL_SECP256K1_FP_INV_ID, p_value);
+        ziskos_fcall_param!(p_value, 4);
+        ziskos_fcall!(FCALL_SECP256K1_FP_INV_ID);
     }
 }
