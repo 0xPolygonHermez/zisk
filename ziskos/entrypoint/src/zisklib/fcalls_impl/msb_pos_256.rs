@@ -1,8 +1,5 @@
 pub fn fcall_msb_pos_256(parameters: &[u64], results: &mut [u64]) -> i64 {
     // Check if the parameters are valid
-    if parameters.len() != 8 {
-        return -1;
-    }
     let x = &parameters[0..4].try_into().unwrap();
     let y = &parameters[4..8].try_into().unwrap();
 
