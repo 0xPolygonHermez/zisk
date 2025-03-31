@@ -69,7 +69,15 @@ int InverseFpEcCtx (
 )
 {
     int iresult = InverseFpEc(ctx->params, ctx->result);
-    ctx->result_size = 8;
+    if (iresult == 0)
+    {
+        iresult = 8;
+        ctx->result_size = 8;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
     return iresult;
 }
 
@@ -103,7 +111,15 @@ int InverseFnEcCtx (
 )
 {
     int iresult = InverseFnEc(ctx->params, ctx->result);
-    ctx->result_size = 8;
+    if (iresult == 0)
+    {
+        iresult = 8;
+        ctx->result_size = 8;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
     return iresult;
 }
 
@@ -133,7 +149,7 @@ inline bool sqrtF3mod4(mpz_class &r, const mpz_class &a)
 
 int SqrtFpEcParity (
     const unsigned long * _a,  // 4 x 64 bits
-    const unsigned long _parity,  // 4 x 64 bits
+    const unsigned long _parity,  // 1 x 64 bits
     unsigned long * _r  // 1 x 64 bits (sqrt exists) + 4 x 64 bits
 )
 {
@@ -180,8 +196,15 @@ int SqrtFpEcParityCtx (
     struct FcallContext * ctx  // fcall context
 )
 {
-    int iresult = SqrtFpEcParity(ctx->params, ctx->params[8], &ctx->result[1]);
-    ctx->result_size = 9;
-    ctx->result[0] = iresult;
+    int iresult = SqrtFpEcParity(ctx->params, ctx->params[4], &ctx->result[0]);
+    if (iresult == 0)
+    {
+        iresult = 5;
+        ctx->result_size = 5;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
     return iresult;
 }

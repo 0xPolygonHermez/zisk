@@ -13,6 +13,8 @@
 #include <unistd.h>
 #include <assert.h>
 #include "../../lib-c/c/src/ec/ec.hpp"
+#include "../../lib-c/c/src/fcall/fcall.hpp"
+#include "../../lib-c/c/src/arith256/arith256.hpp"
 
 void emulator_start(void);
 
@@ -158,7 +160,7 @@ int main(int argc, char *argv[])
         strcat(shmem_output_name, shmem_output_sufix);
 #ifdef DEBUG
         if (verbose) printf("Emulator C start; input shared memory ID = %s\n", input_parameter);
-#endif
+#endif        
     }
     else
     {
@@ -284,7 +286,7 @@ int main(int argc, char *argv[])
             printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
-
+        
         // Map the shared memory object into the process address space
         shmem_input_address = mmap(NULL, shmem_input_size + 32, PROT_READ /*| PROT_WRITE*/, MAP_SHARED, shmem_input_fd, 0);
         if (shmem_input_address == MAP_FAILED)
@@ -326,7 +328,7 @@ int main(int argc, char *argv[])
             printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
-
+        
         // Unlink input
         result = shm_unlink(shmem_input_name);
         if (result == -1)
@@ -344,7 +346,7 @@ int main(int argc, char *argv[])
     {
         // Make sure the output shared memory is deleted
         shm_unlink(shmem_output_name);
-
+        
         // Create the output shared memory
         shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT, 0644);
         if (shmem_output_fd < 0)
@@ -384,7 +386,7 @@ int main(int argc, char *argv[])
         // MT allocated size [8] -> to be updated after completion
         // MT used size [8] -> to be updated after completion
     }
-
+    
     /*******/
     /* RAM */
     /*******/
@@ -798,15 +800,120 @@ extern int _opcode_secp256k1_dbl(uint64_t * address)
     return 0;
 }
 
-extern int _opcode_fcall(struct FcallContext * fcall_ctx)
+extern uint64_t reg_0;
+extern uint64_t reg_1;
+extern uint64_t reg_2;
+extern uint64_t reg_3;
+extern uint64_t reg_4;
+extern uint64_t reg_5;
+extern uint64_t reg_6;
+extern uint64_t reg_7;
+extern uint64_t reg_8;
+extern uint64_t reg_9;
+extern uint64_t reg_10;
+extern uint64_t reg_11;
+extern uint64_t reg_12;
+extern uint64_t reg_13;
+extern uint64_t reg_14;
+extern uint64_t reg_15;
+extern uint64_t reg_16;
+extern uint64_t reg_17;
+extern uint64_t reg_18;
+extern uint64_t reg_19;
+extern uint64_t reg_20;
+extern uint64_t reg_21;
+extern uint64_t reg_22;
+extern uint64_t reg_23;
+extern uint64_t reg_24;
+extern uint64_t reg_25;
+extern uint64_t reg_26;
+extern uint64_t reg_27;
+extern uint64_t reg_28;
+extern uint64_t reg_29;
+extern uint64_t reg_30;
+extern uint64_t reg_31;
+extern uint64_t reg_32;
+extern uint64_t reg_33;
+extern uint64_t reg_34;
+
+extern int _print_regs()
 {
-    int iresult = Fcall(fcall_ctx);
-    if (iresult != 0)
+    printf("print_regs()\n");
+    printf("\treg[ 0]=%lu=0x%lx=@%p\n", reg_0,  reg_0,  &reg_0);
+    printf("\treg[ 1]=%lu=0x%lx=@%p\n", reg_1,  reg_1,  &reg_1);
+    printf("\treg[ 2]=%lu=0x%lx=@%p\n", reg_2,  reg_2,  &reg_2);
+    printf("\treg[ 3]=%lu=0x%lx=@%p\n", reg_3,  reg_3,  &reg_3);
+    printf("\treg[ 4]=%lu=0x%lx=@%p\n", reg_4,  reg_4,  &reg_4);
+    printf("\treg[ 5]=%lu=0x%lx=@%p\n", reg_5,  reg_5,  &reg_5);
+    printf("\treg[ 6]=%lu=0x%lx=@%p\n", reg_6,  reg_6,  &reg_6);
+    printf("\treg[ 7]=%lu=0x%lx=@%p\n", reg_7,  reg_7,  &reg_7);
+    printf("\treg[ 8]=%lu=0x%lx=@%p\n", reg_8,  reg_8,  &reg_8);
+    printf("\treg[ 9]=%lu=0x%lx=@%p\n", reg_9,  reg_9,  &reg_9);
+    printf("\treg[10]=%lu=0x%lx=@%p\n", reg_10, reg_10, &reg_10);
+    printf("\treg[11]=%lu=0x%lx=@%p\n", reg_11, reg_11, &reg_11);
+    printf("\treg[12]=%lu=0x%lx=@%p\n", reg_12, reg_12, &reg_12);
+    printf("\treg[13]=%lu=0x%lx=@%p\n", reg_13, reg_13, &reg_13);
+    printf("\treg[14]=%lu=0x%lx=@%p\n", reg_14, reg_14, &reg_14);
+    printf("\treg[15]=%lu=0x%lx=@%p\n", reg_15, reg_15, &reg_15);
+    printf("\treg[16]=%lu=0x%lx=@%p\n", reg_16, reg_16, &reg_16);
+    printf("\treg[17]=%lu=0x%lx=@%p\n", reg_17, reg_17, &reg_17);
+    printf("\treg[18]=%lu=0x%lx=@%p\n", reg_18, reg_18, &reg_18);
+    printf("\treg[19]=%lu=0x%lx=@%p\n", reg_19, reg_19, &reg_19);
+    printf("\treg[20]=%lu=0x%lx=@%p\n", reg_20, reg_20, &reg_20);
+    printf("\treg[21]=%lu=0x%lx=@%p\n", reg_21, reg_21, &reg_21);
+    printf("\treg[22]=%lu=0x%lx=@%p\n", reg_22, reg_22, &reg_22);
+    printf("\treg[23]=%lu=0x%lx=@%p\n", reg_23, reg_23, &reg_23);
+    printf("\treg[24]=%lu=0x%lx=@%p\n", reg_24, reg_24, &reg_24);
+    printf("\treg[25]=%lu=0x%lx=@%p\n", reg_25, reg_25, &reg_25);
+    printf("\treg[26]=%lu=0x%lx=@%p\n", reg_26, reg_26, &reg_26);
+    printf("\treg[27]=%lu=0x%lx=@%p\n", reg_27, reg_27, &reg_27);
+    printf("\treg[28]=%lu=0x%lx=@%p\n", reg_28, reg_28, &reg_28);
+    printf("\treg[29]=%lu=0x%lx=@%p\n", reg_29, reg_29, &reg_29);
+    printf("\treg[30]=%lu=0x%lx=@%p\n", reg_30, reg_30, &reg_30);
+    printf("\treg[31]=%lu=0x%lx=@%p\n", reg_31, reg_31, &reg_31);
+    printf("\treg[32]=%lu=0x%lx=@%p\n", reg_32, reg_32, &reg_32);
+    printf("\treg[33]=%lu=0x%lx=@%p\n", reg_33, reg_33, &reg_33);
+    printf("\treg[34]=%lu=0x%lx=@%p\n", reg_34, reg_34, &reg_34);
+    printf("\n");
+}
+
+uint64_t fcall_counter = 0;
+extern uint64_t MEM_TRACE_ADDRESS;
+extern uint64_t fcall_ctx;
+uint64_t print_fcall_ctx_counter = 0;
+
+extern int _print_fcall_ctx(void)
+{
+    struct FcallContext * ctx = (struct FcallContext *)&fcall_ctx;
+    printf("print_fcall_ctx(%lu) address=0x%p\n", print_fcall_ctx_counter, ctx);
+    printf("\tfunction_id=0x%lu\n", ctx->function_id);
+    printf("\tparams_max_size=%lu=0x%lx\n", ctx->params_max_size, ctx->params_max_size);
+    printf("\tparams_size=0x%lu\n", ctx->params_size);
+    for (int i=0; i<32; i++)
     {
-        printf("_opcode_fcall() failed callilng Fcall() result=%d;", iresult);
+        printf("\t\tparams[%d]=%lu=0x%lx\n", i, ctx->params[i], ctx->params[i]);
+    }
+    printf("\tresult_max_size=0x%lu\n", ctx->result_max_size);
+    printf("\tresult_size=0x%lu\n", ctx->result_size);
+    for (int i=0; i<32; i++)
+    {
+        printf("\t\tresult[%d]=%lu=0x%lx\n", i, ctx->result[i], ctx->result[i]);
+    }
+    printf("\n");
+    print_fcall_ctx_counter++;
+}
+
+extern int _opcode_fcall(struct FcallContext * ctx)
+{
+    fcall_counter++;
+    //printf("_opcode_fcall() counter=%lu\n", fcall_counter);
+    int iresult = Fcall(ctx);
+    if (iresult < 0)
+    {
+        printf("_opcode_fcall() failed callilng Fcall() result=%d\n", iresult);
         exit(-1);
     }
-    return 0;
+    return iresult;
 }
 
 extern int _opcode_inverse_fp_ec(uint64_t params, uint64_t result)
@@ -867,7 +974,7 @@ extern void _realloc_trace (void)
         printf("realloc_trace() failed calling ftruncate(%s) of new size=%ld errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
         exit(-1);
     }
-
+    
     // Remap the memory
     void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
     if ((uint64_t)new_address != trace_address)
@@ -1055,7 +1162,7 @@ void log_trace(void)
         printf("\tLast state:\n");
         printf("\t\tc=0x%lx:\n", chunk[i]);
         i++;
-
+        
         // Log current chunk end
         printf("\tEnd:\n");
         printf("\t\tend=%ld:\n", chunk[i]);
