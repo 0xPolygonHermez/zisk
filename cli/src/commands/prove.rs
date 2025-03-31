@@ -1,5 +1,6 @@
 use crate::{
     commands::{Field, ZiskLibInitFn},
+    proof_log,
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -225,17 +226,18 @@ impl ZiskProve {
             .downcast::<ZiskExecutionResult>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
+        let elapsed = elapsed.as_secs_f64();
         println!();
         info!("{}", "    Zisk: --- PROVE SUMMARY ------------------------".bright_green().bold());
         if let Some(proof_id) = proof_id {
             info!("                Proof ID: {}", proof_id);
         }
         info!("              ► Statistics");
-        info!(
-            "                time: {} seconds, steps: {}",
-            elapsed.as_secs_f32(),
-            result.executed_steps
-        );
+        info!("                time: {} seconds, steps: {}", elapsed, result.executed_steps);
+
+        let logs = proof_log::ProofLog::new(result.executed_steps, 1, elapsed);
+        proof_log::ProofLog::write_json_log("log.json", &logs)
+            .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
 
         Ok(())
     }
