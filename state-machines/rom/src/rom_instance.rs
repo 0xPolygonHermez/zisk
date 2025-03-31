@@ -31,6 +31,9 @@ pub struct RomInstance {
 
     /// Shared program instruction counter for monitoring ROM operations.
     prog_inst_count: Arc<Vec<AtomicU32>>,
+
+    /// Execution statistics counter for ROM instructions.
+    counter_stats: Option<CounterStats>,
 }
 
 impl RomInstance {
@@ -48,7 +51,7 @@ impl RomInstance {
         bios_inst_count: Arc<Vec<AtomicU32>>,
         prog_inst_count: Arc<Vec<AtomicU32>>,
     ) -> Self {
-        Self { zisk_rom, ictx, bios_inst_count, prog_inst_count }
+        Self { zisk_rom, ictx, bios_inst_count, prog_inst_count, counter_stats: None }
     }
 }
 
@@ -72,21 +75,25 @@ impl<F: PrimeField> Instance<F> for RomInstance {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
-        let collectors: Vec<_> = collectors
-            .into_iter()
-            .map(|(_, mut collector)| {
-                collector.detach_device().as_any().downcast::<RomCollector>().unwrap()
-            })
-            .collect();
+        if self.counter_stats.is_none() {
+            let collectors: Vec<_> = collectors
+                .into_iter()
+                .map(|(_, mut collector)| {
+                    collector.detach_device().as_any().downcast::<RomCollector>().unwrap()
+                })
+                .collect();
 
-        let mut counter_stats_total =
-            CounterStats::new(self.bios_inst_count.clone(), self.prog_inst_count.clone());
+            let mut counter_stats =
+                CounterStats::new(self.bios_inst_count.clone(), self.prog_inst_count.clone());
 
-        for collector in collectors {
-            counter_stats_total += &collector.rom_counter.counter_stats;
+            for collector in collectors {
+                counter_stats += &collector.rom_counter.counter_stats;
+            }
+
+            self.counter_stats = Some(counter_stats);
         }
 
-        Some(RomSM::compute_witness(&self.zisk_rom, &counter_stats_total))
+        Some(RomSM::compute_witness(&self.zisk_rom, self.counter_stats.as_ref().unwrap()))
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -114,9 +121,10 @@ impl<F: PrimeField> Instance<F> for RomInstance {
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(
         &self,
-        _chunk_id: ChunkId,
+        _: ChunkId,
     ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         Some(Box::new(RomCollector::new(
+            self.counter_stats.is_some(),
             self.bios_inst_count.clone(),
             self.prog_inst_count.clone(),
         )))
@@ -124,7 +132,10 @@ impl<F: PrimeField> Instance<F> for RomInstance {
 }
 
 pub struct RomCollector {
-    /// Execution statistics counter for ROM instructions.
+    /// Flag indicating if the table has been already computed.
+    already_computed: bool,
+
+    /// Execution statistics counter for the ROM.
     pub rom_counter: RomCounter,
 }
 
@@ -133,9 +144,13 @@ impl RomCollector {
     ///
     /// # Returns
     /// A new `RomCounter` instance.
-    pub fn new(bios_inst_count: Arc<Vec<AtomicU32>>, prog_inst_count: Arc<Vec<AtomicU32>>) -> Self {
+    pub fn new(
+        computed: bool,
+        bios_inst_count: Arc<Vec<AtomicU32>>,
+        prog_inst_count: Arc<Vec<AtomicU32>>,
+    ) -> Self {
         let rom_counter = RomCounter::new(bios_inst_count, prog_inst_count);
-        Self { rom_counter }
+        Self { already_computed: computed, rom_counter }
     }
 }
 
@@ -154,7 +169,9 @@ impl BusDevice<u64> for RomCollector {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == ROM_BUS_ID);
 
-        self.rom_counter.measure(data);
+        if !self.already_computed {
+            self.rom_counter.measure(data);
+        }
 
         None
     }
