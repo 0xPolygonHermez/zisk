@@ -6,8 +6,7 @@
 
 use crate::BinaryExtensionSM;
 use data_bus::{
-    BusDevice, BusId, ExtOperationData, OperationBusData, OperationData, PayloadType,
-    OPERATION_BUS_ID,
+    BusDevice, BusId, ExtOperationData, OperationData, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
@@ -156,18 +155,16 @@ impl BusDevice<u64> for BinaryExtensionCollector {
             return None;
         }
 
-        let data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-
-        let op_type = OperationBusData::get_op_type(&data);
-
-        if op_type as u32 != ZiskOperationType::BinaryE as u32 {
+        if data[OP_TYPE] as u32 != ZiskOperationType::BinaryE as u32 {
             return None;
         }
 
         if self.collect_skipper.should_skip() {
             return None;
         }
+
+        let data: ExtOperationData<u64> =
+            data.try_into().expect("Regular Metrics: Failed to convert data");
 
         if let ExtOperationData::OperationData(data) = data {
             self.inputs.push(data);

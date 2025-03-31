@@ -6,8 +6,7 @@
 
 use crate::KeccakfSM;
 use data_bus::{
-    BusDevice, BusId, ExtOperationData, OperationBusData, OperationKeccakData, PayloadType,
-    OPERATION_BUS_ID,
+    BusDevice, BusId, ExtOperationData, OperationKeccakData, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
@@ -154,10 +153,7 @@ impl BusDevice<PayloadType> for KeccakfCollector {
             return None;
         }
 
-        let data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-
-        if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::Keccak as u32 {
+        if data[OP_TYPE] as u32 != ZiskOperationType::Keccak as u32 {
             return None;
         }
 
@@ -165,6 +161,8 @@ impl BusDevice<PayloadType> for KeccakfCollector {
             return None;
         }
 
+        let data: ExtOperationData<u64> =
+            data.try_into().expect("Regular Metrics: Failed to convert data");
         if let ExtOperationData::OperationKeccakData(data) = data {
             self.inputs.push(data);
             None

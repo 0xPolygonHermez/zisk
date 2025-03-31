@@ -381,8 +381,6 @@ impl BusDevice<u64> for MemModuleCollector {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
-        assert!(*bus_id == MEM_BUS_ID);
-
         // decoding information in bus
 
         let addr = MemBusData::get_addr(data);

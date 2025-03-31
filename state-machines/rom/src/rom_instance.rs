@@ -119,10 +119,7 @@ impl<F: PrimeField> Instance<F> for RomInstance {
     ///
     /// # Returns
     /// An `Option` containing the input collector for the instance.
-    fn build_inputs_collector(
-        &self,
-        _: ChunkId,
-    ) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(&self, _: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         Some(Box::new(RomCollector::new(
             self.counter_stats.is_some(),
             self.bios_inst_count.clone(),
