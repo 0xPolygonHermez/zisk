@@ -1,6 +1,6 @@
 pub mod commands;
-pub mod toolchain;
 mod proof_log;
+pub mod toolchain;
 pub mod ux;
 
 use anyhow::{Context, Result};

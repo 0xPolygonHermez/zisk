@@ -229,15 +229,18 @@ impl ZiskProve {
         let elapsed = elapsed.as_secs_f64();
         println!();
         info!("{}", "    Zisk: --- PROVE SUMMARY ------------------------".bright_green().bold());
-        if let Some(proof_id) = proof_id {
+        if let Some(proof_id) = &proof_id {
             info!("                Proof ID: {}", proof_id);
         }
         info!("              ► Statistics");
         info!("                time: {} seconds, steps: {}", elapsed, result.executed_steps);
 
-        let logs = proof_log::ProofLog::new(result.executed_steps, 1, elapsed);
-        proof_log::ProofLog::write_json_log("log.json", &logs)
-            .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
+        if let Some(proof_id) = proof_id {
+            let logs = proof_log::ProofLog::new(result.executed_steps, proof_id, elapsed);
+            let log_path = self.output_dir.join("proofs").join("result.json");
+            proof_log::ProofLog::write_json_log(&log_path, &logs)
+                .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
+        }
 
         Ok(())
     }
