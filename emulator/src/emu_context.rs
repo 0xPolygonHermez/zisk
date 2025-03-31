@@ -54,14 +54,16 @@ impl EmuContext {
         };
 
         // Check the input data size is inside the proper range
-        if input.len() > (MAX_INPUT_SIZE - 8) as usize {
+        if input.len() > (MAX_INPUT_SIZE - 16) as usize {
             panic!("EmuContext::new() input size too big size={}", input.len());
         }
 
         // Add the length and input data read sections
         let input_len = input.len() as u64;
-        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR, &input_len.to_le_bytes());
-        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 8, &input);
+        let free_input = 0u64;
+        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR, &free_input.to_le_bytes());
+        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 8, &input_len.to_le_bytes());
+        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 16, &input);
 
         // Add the write section
         ctx.inst_ctx.mem.add_write_section(RAM_ADDR, RAM_SIZE);

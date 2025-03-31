@@ -2,8 +2,11 @@
 
 // Execute "bindgen ec.hpp" and add the incremental output to this file
 
+pub const FCALL_ID_INVERSE_FP_EC: u32 = 1;
+pub const FCALL_ID_INVERSE_FN_EC: u32 = 2;
+pub const FCALL_ID_SQRT_FP_EC_PARITY: u32 = 3;
+
 extern "C" {
-    #[link_name = "\u{1}_Z10AddPointEcmPKmS0_S0_S0_PmS1_"]
     pub fn AddPointEc(
         _dbl: ::std::os::raw::c_ulong,
         _x1: *const ::std::os::raw::c_ulong,
@@ -16,7 +19,6 @@ extern "C" {
 }
 
 extern "C" {
-    #[link_name = "\u{1}_Z11AddPointEcPmPKmS0_Pm"]
     pub fn AddPointEcP(
         _dbl: ::std::os::raw::c_ulong,
         _p1: *const ::std::os::raw::c_ulong,
@@ -26,7 +28,6 @@ extern "C" {
 }
 
 extern "C" {
-    #[link_name = "\u{1}_Z11InverseFpEcPKmPm"]
     pub fn InverseFpEc(
         a: *const ::std::os::raw::c_ulong,
         r: *mut ::std::os::raw::c_ulong,
@@ -34,7 +35,6 @@ extern "C" {
 }
 
 extern "C" {
-    #[link_name = "\u{1}_Z11InverseFnEcPKmPm"]
     pub fn InverseFnEc(
         a: *const ::std::os::raw::c_ulong,
         r: *mut ::std::os::raw::c_ulong,
@@ -42,10 +42,107 @@ extern "C" {
 }
 
 extern "C" {
-    #[link_name = "\u{1}_Z14SqrtFpEcParityPKmmPm"]
     pub fn SqrtFpEcParity(
         a: *const ::std::os::raw::c_ulong,
         parity: ::std::os::raw::c_ulong,
         r: *mut ::std::os::raw::c_ulong,
+    ) -> ::std::os::raw::c_int;
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct FcallContext {
+    pub function_id: ::std::os::raw::c_ulong,
+    pub params_max_size: ::std::os::raw::c_ulong,
+    pub params_size: ::std::os::raw::c_ulong,
+    pub params: [::std::os::raw::c_ulong; 32usize],
+    pub result_max_size: ::std::os::raw::c_ulong,
+    pub result_size: ::std::os::raw::c_ulong,
+    pub result: [::std::os::raw::c_ulong; 32usize],
+}
+
+#[test]
+fn bindgen_test_layout_FcallContext() {
+    assert_eq!(
+        ::std::mem::size_of::<FcallContext>(),
+        552usize,
+        concat!("Size of: ", stringify!(FcallContext))
+    );
+    assert_eq!(
+        ::std::mem::align_of::<FcallContext>(),
+        8usize,
+        concat!("Alignment of ", stringify!(FcallContext))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<FcallContext>())).function_id as *const _ as usize },
+        0usize,
+        concat!("Offset of field: ", stringify!(FcallContext), "::", stringify!(function_id))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<FcallContext>())).params_max_size as *const _ as usize },
+        8usize,
+        concat!("Offset of field: ", stringify!(FcallContext), "::", stringify!(params_max_size))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<FcallContext>())).params_size as *const _ as usize },
+        16usize,
+        concat!("Offset of field: ", stringify!(FcallContext), "::", stringify!(params_size))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<FcallContext>())).params as *const _ as usize },
+        24usize,
+        concat!("Offset of field: ", stringify!(FcallContext), "::", stringify!(params))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<FcallContext>())).result_max_size as *const _ as usize },
+        280usize,
+        concat!("Offset of field: ", stringify!(FcallContext), "::", stringify!(result_max_size))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<FcallContext>())).result_size as *const _ as usize },
+        288usize,
+        concat!("Offset of field: ", stringify!(FcallContext), "::", stringify!(result_size))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<FcallContext>())).result as *const _ as usize },
+        296usize,
+        concat!("Offset of field: ", stringify!(FcallContext), "::", stringify!(result))
+    );
+}
+
+extern "C" {
+    // pub fn Fcall(ctx: *mut FcallContext) -> ::std::os::raw::c_int;
+    pub fn Fcall(ctx: *mut FcallContext) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    pub fn InverseFpEcCtx(ctx: *mut FcallContext) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    pub fn InverseFnEcCtx(ctx: *mut FcallContext) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    pub fn SqrtFpEcParityCtx(ctx: *mut FcallContext) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    pub fn Arith256(
+        a: *const ::std::os::raw::c_ulong,
+        b: *const ::std::os::raw::c_ulong,
+        c: *const ::std::os::raw::c_ulong,
+        dl: *mut ::std::os::raw::c_ulong,
+        dh: *mut ::std::os::raw::c_ulong,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    pub fn Arith256Mod(
+        a: *const ::std::os::raw::c_ulong,
+        b: *const ::std::os::raw::c_ulong,
+        c: *const ::std::os::raw::c_ulong,
+        module: *const ::std::os::raw::c_ulong,
+        d: *mut ::std::os::raw::c_ulong,
     ) -> ::std::os::raw::c_int;
 }

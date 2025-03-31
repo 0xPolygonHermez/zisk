@@ -105,6 +105,14 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     if (free_input_mem) {
         immutable = 1;
         col witness air.value_word[RC*2];
+
+        // free read for free input, means an specific address (offset = 0) that could be read
+        // many times with different well formed 64-bit values. Used for fcalls and other free-inputs
+
+        col witness air.is_free_read;
+        air.is_free_read * (1 - air.is_free_read) === 0;
+        air.is_free_read * (internal_base_address - addr) === 0;
+
         const expr air.value[RC];
         for (int index = 0; index < RC; ++index) {
             value[index] = value_word[index*2] +  MAX_RANGE_CHECK_CHUNK * value_word[index*2 + 1];
@@ -227,11 +235,25 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         // `previous_addr` is `previous_segment_addr` in row 0 and the `addr` of the previous row
         // for all other rows.
 
-        // In the case of immutable memory, the first row must be "different" to force `address_change`.
-        // For this reason, we subtract one from `previous_segment_addr`, which in the first segment is equal
-        // to the first address of the memory area.
+        if (free_input_mem) {
 
-        const expr air.previous_addr = SEGMENT_L1 * (previous_segment_addr - is_first_segment - 'addr) + 'addr;
+            // In the case of free-input memory, in first segment, if the first row is equal to
+            // previous addr, means that is_free_read is active, value is free. In case of the first
+            // row is different, the `address_change` is active, and value could change.
+            // With this consideration,  the first value of first row is always free, and we could
+            // use 0 as previous value on global constraint of first segment.
+
+            const expr air.previous_addr = SEGMENT_L1 * (previous_segment_addr - 'addr) + 'addr;
+
+        } else {
+
+            // In the case of immutable, no free-input memory, the first row must be "different" to
+            // force `address_change`. For this reason, we subtract one from `previous_segment_addr`,
+            // which in the first segment is equal to the first address of the memory area.
+
+            const expr air.previous_addr = SEGMENT_L1 * (previous_segment_addr - is_first_segment - 'addr) + 'addr;
+        }
+
         const expr delta_addr = addr - previous_addr;
 
         // If the address changes, the difference must be one
@@ -254,7 +276,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         // SEGMENT_L1 * (x + is_first_segment * SEGMENT_L1) === SEGMENT_L1 * (x + is_first_segment)
 
         const expr previous_step = SEGMENT_L1 * (previous_segment_step - 'step) + 'step;
-        const expr delta_step = step - previous_step;
+        const expr delta_step = step - previous_step + (1 - wr);
 
         col witness increment;
         increment === addr_changes * (delta_addr - delta_step) + delta_step;
@@ -273,7 +295,12 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
     for (int index = 0; index < length(value); index++) {
         const expr previous_value = SEGMENT_L1 * (previous_segment_value[index] - 'value[index]) + 'value[index];
-        if (immutable) {
+        if (free_input_mem) {
+            // if address not change value must be equal to previous value, when is_free_read
+            // is active the value not change, so value must be equal to previous value
+            (1 - addr_changes) * (1 - is_free_read) * (value[index] - previous_value)  ===  0;
+
+        } else if (immutable) {
             // if address not change value must be equal to previous value
             (1 - addr_changes) * (value[index] - previous_value)  ===  0;
 

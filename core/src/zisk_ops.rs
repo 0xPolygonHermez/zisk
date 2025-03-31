@@ -9,6 +9,8 @@
 
 #![allow(unused)]
 
+use ziskos::fcall_proxy;
+
 use std::{
     collections::HashMap,
     fmt::{Debug, Display},
@@ -22,11 +24,12 @@ use crate::{
     SYS_ADDR,
 };
 
-use lib_c::{inverse_fn_ec_c, inverse_fp_ec_c, sqrt_fp_ec_parity_c};
+use lib_c::{inverse_fn_ec_c, inverse_fp_ec_c, sqrt_fp_ec_parity_c, Fcall, FcallContext};
 
-use crate::FCALL_ID_INVERSE_FN_EC;
-use crate::FCALL_ID_INVERSE_FP_EC;
-use crate::FCALL_ID_SQRT_FP_EC_PARITY;
+use crate::{
+    FCALL_ID_INVERSE_FN_EC, FCALL_ID_INVERSE_FP_EC, FCALL_ID_SQRT_FP_EC_PARITY,
+    FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE,
+};
 
 /// Determines the type of a [`ZiskOp`].
 ///
@@ -44,9 +47,7 @@ pub enum OpType {
     Keccak,
     PubOut,
     ArithEq,
-    FcallParam,
     Fcall,
-    FcallGet,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -59,9 +60,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::Keccak => ZiskOperationType::Keccak,
             OpType::PubOut => ZiskOperationType::PubOut,
             OpType::ArithEq => ZiskOperationType::ArithEq,
-            OpType::FcallParam => ZiskOperationType::FcallParam,
             OpType::Fcall => ZiskOperationType::Fcall,
-            OpType::FcallGet => ZiskOperationType::FcallGet,
         }
     }
 }
@@ -78,9 +77,7 @@ impl Display for OpType {
             Self::Keccak => write!(f, "Keccak"),
             Self::PubOut => write!(f, "PubOut"),
             Self::ArithEq => write!(f, "Arith256"),
-            Self::FcallParam => write!(f, "FcallParam"),
             Self::Fcall => write!(f, "Fcall"),
-            Self::FcallGet => write!(f, "FcallGet"),
         }
     }
 }
@@ -98,6 +95,7 @@ impl FromStr for OpType {
             "be" => Ok(Self::BinaryE),
             "k" => Ok(Self::Keccak),
             "aeq" => Ok(Self::ArithEq),
+            "fcall" => Ok(Self::Fcall),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -330,9 +328,9 @@ define_ops! {
     (Arith256Mod, "arith256_mod", ArithEq, ARITH_EQ_COST, 0xf3, 168, opc_arith256_mod, op_arith256_mod),
     (Secp256k1Add, "secp256k1_add", ArithEq, ARITH_EQ_COST, 0xf4, 144, opc_secp256k1_add, op_secp256k1_add),
     (Secp256k1Dbl, "secp256k1_dbl", ArithEq, ARITH_EQ_COST, 0xf5, 64, opc_secp256k1_dbl, op_secp256k1_add),
-    (FcallParam, "fcallparam", FcallParam, FCALL_COST, 0xf6, 64, opc_fcallparam, op_fcallparam),
-    (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 64, opc_fcall, op_fcall),
-    (FcallGet, "fcallget", FcallGet, FCALL_COST, 0xf8, 64, opc_fcallget, op_fcallget),
+    (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xf6, 0, opc_fcall_param, op_fcall_param),
+    (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, opc_fcall, op_fcall),
+    (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, opc_fcall_get, op_fcall_get),
 }
 
 /* INTERNAL operations */
@@ -1407,15 +1405,15 @@ pub fn opc_pubout(ctx: &mut InstContext) {
     //println!("public ${} = {:#018x}", ctx.a, ctx.b);
 }
 
-/// Implements fcallparam, free input data call parameter
+/// Implements fcall_param, free input data call parameter
 #[inline(always)]
-pub fn op_fcallparam(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fcallparam() is not implemented");
+pub fn op_fcall_param(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fcall_param() is not implemented");
 }
 
-/// InstContext-based wrapper over op_fcallparam()
+/// InstContext-based wrapper over op_fcall_param()
 #[inline(always)]
-pub fn opc_fcallparam(ctx: &mut InstContext) {
+pub fn opc_fcall_param(ctx: &mut InstContext) {
     // Set c and flag according to the spec
     ctx.c = ctx.b;
     ctx.flag = false;
@@ -1426,20 +1424,45 @@ pub fn opc_fcallparam(ctx: &mut InstContext) {
         return;
     }
 
+    // Get param size from a
+    let words = ctx.a;
+
     // Get param chunk from b
     let param = ctx.b;
 
     // Check for consistency
-    if ctx.fcall.parameters_size >= 32 {
+    if (ctx.fcall.parameters_size + words) as usize >= FCALL_PARAMS_MAX_SIZE {
         panic!(
-            "opc_fcallget() called with ctx.fcall.parameters_size=={}>=32",
-            ctx.fcall.parameters_size
+            "opc_fcall_param({0}) called with ctx.fcall.parameters_size({1}) + param({0})>={2}",
+            words, ctx.fcall.parameters_size, FCALL_PARAMS_MAX_SIZE
         );
     }
 
     // Store param in context
-    ctx.fcall.parameters[ctx.fcall.parameters_size as usize] = param;
-    ctx.fcall.parameters_size += 1;
+    if words == 1 {
+        println!(
+            "fcall_param: storing direct param ctx.fcall.parameters[{}] = 0x{:X}",
+            ctx.fcall.parameters_size, param
+        );
+        ctx.fcall.parameters[ctx.fcall.parameters_size as usize] = param;
+        ctx.fcall.parameters_size += 1;
+    } else {
+        print!(
+            "fcall_param: storing indirect params (@{:X},{}) in ctx.fcall.parameters[{}..{}] = [\x1B[1;36m",
+            param,
+            words,
+            ctx.fcall.parameters_size,
+            ctx.fcall.parameters_size + words
+        );
+        let addr = param;
+        for i in 0..words {
+            let value = ctx.mem.read(addr + i * 8, 8);
+            print!("{}0x{:X}", if i == 0 { "" } else { "," }, value);
+            ctx.fcall.parameters[(ctx.fcall.parameters_size + i) as usize] = value;
+        }
+        println!("\x1B[0m]");
+        ctx.fcall.parameters_size += words;
+    }
 }
 
 /// Implements fcall, free input data calls
@@ -1447,6 +1470,16 @@ pub fn opc_fcallparam(ctx: &mut InstContext) {
 pub fn op_fcall(a: u64, b: u64) -> (u64, bool) {
     unimplemented!("op_fcall() is not implemented");
 }
+
+/*
+pub fn fcall_proxy(fcall_ctx: FcallContext, mem_read: impl Fn(u64) -> u64) {
+    println!("fcall_proxy() {:?}", fcall_ctx);
+    let addr = fcall_ctx.params[0];
+    let value = mem_read(fcall_ctx.params[1]);
+    println!("@ 0x{:X}: 0x{:X}", addr, value);
+    panic!("STOP");
+}
+*/
 
 /// InstContext-based wrapper over op_fcall()
 #[inline(always)]
@@ -1464,113 +1497,74 @@ pub fn opc_fcall(ctx: &mut InstContext) {
     // Get function id from a
     let function_id = ctx.a;
 
-    match function_id {
-        FCALL_ID_INVERSE_FP_EC => {
-            // Get memory address from b
-            let address = ctx.b;
-            if address & 0x7 != 0 {
-                panic!("opc_fcall() found address not aligned to 8 bytes address=0x{:x}", address);
-            }
+    let iresult = fcall_proxy(function_id, &ctx.fcall.parameters, &mut ctx.fcall.result);
 
-            // Read parameters data from the memory address
-            debug_assert!(ctx.fcall.parameters.len() >= 8);
-            for i in 0..8 {
-                ctx.fcall.parameters[i] = ctx.mem.read(address + (8 * i as u64), 8);
-            }
-
-            // Call function
-            debug_assert!(ctx.fcall.result.len() >= 8);
-            let return_value = inverse_fp_ec_c(&ctx.fcall.parameters, &mut ctx.fcall.result);
-            if return_value != 0 {
-                panic!("opc_fcall() called inverse_fp_ec_c() but return_value={}", return_value);
-            }
-
-            // Update context
-            ctx.fcall.result_size = 8;
-            ctx.fcall.result_got = 0;
-        }
-        FCALL_ID_INVERSE_FN_EC => {
-            // Get memory address from b
-            let address = ctx.b;
-            if address & 0x7 != 0 {
-                panic!("opc_fcall() found address not aligned to 8 bytes address=0x{:x}", address);
-            }
-
-            // Read parameters data from the memory address
-            debug_assert!(ctx.fcall.parameters.len() >= 8);
-            for i in 0..8 {
-                ctx.fcall.parameters[i] = ctx.mem.read(address + (8 * i as u64), 8);
-            }
-
-            // Call function
-            debug_assert!(ctx.fcall.result.len() >= 8);
-            let return_value = inverse_fn_ec_c(&ctx.fcall.parameters, &mut ctx.fcall.result);
-            if return_value != 0 {
-                panic!("opc_fcall() called inverse_fn_ec_c() but return_value={}", return_value);
-            }
-
-            // Update context
-            ctx.fcall.result_size = 8;
-            ctx.fcall.result_got = 0;
-        }
-        FCALL_ID_SQRT_FP_EC_PARITY => {
-            // Get memory address from b
-            let address = ctx.b;
-            if address & 0x7 != 0 {
-                panic!("opc_fcall() found address not aligned to 8 bytes address=0x{:x}", address);
-            }
-
-            // Read parameters data from the memory address
-            debug_assert!(ctx.fcall.parameters.len() >= 9);
-            for i in 0..8 {
-                ctx.fcall.parameters[i] = ctx.mem.read(address + (8 * i as u64), 8);
-            }
-
-            // Call function
-            debug_assert!(ctx.fcall.result.len() >= 8);
-            let return_value = sqrt_fp_ec_parity_c(&ctx.fcall.parameters, &mut ctx.fcall.result);
-            if return_value != 0 {
-                panic!(
-                    "opc_fcall() called sqrt_fp_ec_parity_c() but return_value={}",
-                    return_value
-                );
-            }
-
-            // Update context
-            ctx.fcall.result_size = 8;
-            ctx.fcall.result_got = 0;
-        }
-        _ => {
-            panic!("opc_fcall() found invalid function_id={}", function_id);
-        }
+    if iresult < 0 {
+        panic!(
+            "opc_fcall() failed calling Fcall() function_id={} iresult={}",
+            function_id, iresult
+        );
     }
+
+    // Copy result
+    if (iresult > 0) {
+        print!("\x1B[1;35mfcall => {} words =>", iresult);
+        for (index, &value) in ctx.fcall.result.iter().take(iresult as usize).enumerate() {
+            print!(" {:}:0x{:X}", index, value);
+        }
+        println!(" \x1B[0m");
+        ctx.mem.free_input = ctx.fcall.result[0];
+    } else {
+        print!("\x1B[1;35mfcall => {}\x1B[0m", iresult);
+        ctx.mem.free_input = 0;
+    }
+    ctx.fcall.result_got = 1;
+    ctx.fcall.result_size = iresult as u64;
+    ctx.fcall.parameters_size = 0;
 }
 
-/// Implements fcallget, fcall result
+/// Implements fcall_get, fcall result
 #[inline(always)]
-pub fn op_fcallget(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_fcallget() is not implemented");
+pub fn op_fcall_get(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fcall_get() is not implemented");
 }
 
-/// InstContext-based wrapper over op_fcallget()
+/// InstContext-based wrapper over op_fcall_get()
 #[inline(always)]
-pub fn opc_fcallget(ctx: &mut InstContext) {
+pub fn opc_fcall_get(ctx: &mut InstContext) {
+    ctx.c = ctx.b;
+    ctx.flag = false;
+
+    // Do nothing when emulating in consume memory reads mode;
+    // data will be directly obtained from mem_reads
+    if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
+        println!(
+            "opc_fcall_get() in consume memory reads mode b:0x{:X} c:0x{:X} step:{}",
+            ctx.b, ctx.c, ctx.step
+        );
+        return;
+    }
+    println!("fcall_get() {:?}", ctx.fcall);
     // Check for consistency
     if ctx.fcall.result_size == 0 {
-        panic!("opc_fcallget() called with ctx.fcall.result_size==0");
+        panic!("opc_fcall_get() called with ctx.fcall.result_size==0");
     }
-    if ctx.fcall.result_size > 32 {
-        panic!("opc_fcallget() called with ctx.fcall.result_size=={}>32", ctx.fcall.result_size);
+    if ctx.fcall.result_size as usize > FCALL_RESULT_MAX_SIZE {
+        panic!("opc_fcall_get() called with ctx.fcall.result_size=={}>32", ctx.fcall.result_size);
     }
-    if ctx.fcall.result_got >= ctx.fcall.result_size {
+    if ctx.fcall.result_got > ctx.fcall.result_size {
         panic!(
-            "opc_fcallget() called with ctx.fcall.result_got({}) >= ctx.fcall.result_size {}",
+            "opc_fcall_get() called with ctx.fcall.result_got({}) >= ctx.fcall.result_size {}",
             ctx.fcall.result_got, ctx.fcall.result_size
         );
     }
 
     // Copy the data into c and advance counter
-    ctx.c = ctx.fcall.result[ctx.fcall.result_got as usize];
+    if ctx.fcall.result_got >= ctx.fcall.result_size {
+        ctx.mem.free_input = 0;
+    } else {
+        ctx.mem.free_input = ctx.fcall.result[ctx.fcall.result_got as usize];
+    }
     ctx.fcall.result_got += 1;
     ctx.flag = false;
 }

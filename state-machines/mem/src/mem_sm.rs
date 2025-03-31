@@ -112,7 +112,10 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 
         let mut i = 0;
         let mut increment;
-        let f_max_increment = F::from_u64(STEP_MEMORY_MAX_DIFF);
+
+        // f_max_increment it's plus 1 because on read operations we increment the step
+        // difference in one, to allow read the same address with "same" step
+        let f_max_increment = F::from_u64(STEP_MEMORY_MAX_DIFF + 1);
 
         #[cfg(feature = "debug_mem")]
         let mut _mem_op_done = 0;
@@ -209,6 +212,11 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             trace[i].step = F::from_u64(step);
             trace[i].sel = F::ONE;
 
+            if !addr_changes && !mem_op.is_write {
+                // in case of read operations of same address, add one to allow many reads
+                // over same address and step
+                increment += 1;
+            }
             trace[i].increment = F::from_u64(increment);
             trace[i].wr = F::from_bool(mem_op.is_write);
 
@@ -251,7 +259,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         // allowed distance.
         let padding_size = trace.num_rows - count;
         let padding_step = if is_last_segment { 1 } else { STEP_MEMORY_MAX_DIFF };
-        let padding_increment = F::from_u64(padding_step);
+        let padding_increment = F::from_u64(padding_step + 1);
         for i in count..trace.num_rows {
             last_step += padding_step;
             trace[i].addr = addr;
@@ -266,7 +274,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         }
         if padding_size > 0 {
             // Store the padding range checks
-            self.std.range_check(padding_step as i64, padding_size as u64, range_id);
+            self.std.range_check((padding_step + 1) as i64, padding_size as u64, range_id);
         }
 
         // no add extra +1 because index = value - 1

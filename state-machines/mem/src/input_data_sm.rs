@@ -81,7 +81,6 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
         let mut last_value: u64 = previous_segment.value;
-
         let mut i = 0;
 
         for mem_op in mem_ops.iter() {
@@ -131,6 +130,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             trace[i].addr = F::from_u32(mem_op.addr);
             trace[i].step = F::from_u64(mem_op.step);
             trace[i].sel = F::ONE;
+            trace[i].is_free_read = F::from_bool(mem_op.addr == INPUT_DATA_W_ADDR_INIT);
 
             let value = mem_op.value;
             let value_words = self.get_u16_values(value);
@@ -140,20 +140,24 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             }
 
             let addr_changes = last_addr != mem_op.addr;
-            trace[i].addr_changes =
-                if addr_changes || (i == 0 && segment_id == 0) { F::ONE } else { F::ZERO };
+            trace[i].addr_changes = F::from_bool(addr_changes);
 
             last_addr = mem_op.addr;
             last_step = mem_op.step;
             last_value = mem_op.value;
             i += 1;
         }
+        println!("TRACE_INPUT_DATA_COUNT = {}", i);
+        println!("TRACE_{}_INPUT_DATA = {:?}", 0, trace[0]);
+        println!("TRACE_{}_INPUT_DATA = {:?}", 1, trace[1]);
+        println!("TRACE_{}_INPUT_DATA = {:?}", 2, trace[2]);
         let count = i;
 
         // STEP3. Add dummy rows to the output vector to fill the remaining rows
         //PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0
         let last_row_idx = count - 1;
         let addr = trace[last_row_idx].addr;
+        let is_free_read = F::from_bool(last_addr == INPUT_DATA_W_ADDR_INIT);
         let value = trace[last_row_idx].value_word;
 
         let padding_size = trace.num_rows() - count;
@@ -167,8 +171,8 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             trace[i].addr = addr;
             trace[i].step = F::from_u64(last_step);
             trace[i].sel = F::ZERO;
-
             trace[i].value_word = value;
+            trace[i].is_free_read = is_free_read;
 
             trace[i].addr_changes = F::ZERO;
         }
