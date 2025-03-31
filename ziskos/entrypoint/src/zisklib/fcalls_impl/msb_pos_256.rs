@@ -9,6 +9,7 @@ pub fn fcall_msb_pos_256(parameters: &[u64], results: &mut [u64]) -> i64 {
     2
 }
 
+// Q: Do we prefer constant time functions?
 fn msb_pos_256(x: &[u64; 4], y: &[u64; 4]) -> (usize, usize) {
     for i in (0..4).rev() {
         if x[i] != 0 || y[i] != 0 {
