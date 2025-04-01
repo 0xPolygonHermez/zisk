@@ -24,6 +24,11 @@ int Fcall (
             iresult = SqrtFpEcParityCtx(ctx);
             break;
         }
+        case FCALL_ID_MSB_POS_256:
+        {
+            iresult = MsbPos256Ctx(ctx);
+            break;
+        }
         default:
         {
             printf("Fcall() found unsupported function_id=%lu\n", ctx->function_id);
@@ -201,6 +206,61 @@ int SqrtFpEcParityCtx (
     {
         iresult = 5;
         ctx->result_size = 5;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
+    return iresult;
+}
+
+/***************/
+/* MSB POS 256 */
+/***************/
+
+uint64_t msb_pos(uint64_t x)
+{
+    uint64_t pos = 0;
+    if (x >= (1UL << 32)) { x >>= 32; pos += 32; }
+    if (x >= (1UL << 16)) { x >>= 16; pos += 16; }
+    if (x >= (1UL << 8 )) { x >>= 8;  pos += 8;  }
+    if (x >= (1UL << 4 )) { x >>= 4;  pos += 4;  }
+    if (x >= (1UL << 2 )) { x >>= 2;  pos += 2;  }
+    if (x >= (1UL << 1 )) {           pos += 1;  }
+    return pos;
+}
+
+int MsbPos256 (
+    const unsigned long * a, // 8 x 64 bits
+          unsigned long * r  // 2 x 64 bits
+)
+{
+    const uint64_t * x = a;
+    const uint64_t * y = &a[4];
+
+    for (int i=3; i>=0; i--)
+    {
+        if ((x[i] != 0) || (y[i] != 0))
+        {
+            uint64_t word = x[i] > y[i] ? x[i] : y[i];
+            r[0] = i;
+            r[1] = msb_pos(word);
+            return 0;
+        }
+    }
+    printf("MsbPos256() error: both x and y are zero\n");
+    exit(-1);
+}
+
+int MsbPos256Ctx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int iresult = MsbPos256(ctx->params, ctx->result);
+    if (iresult == 0)
+    {
+        iresult = 2;
+        ctx->result_size = 2;
     }
     else
     {

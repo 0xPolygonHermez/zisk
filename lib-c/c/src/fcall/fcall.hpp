@@ -9,6 +9,7 @@ extern "C" {
 #define FCALL_ID_INVERSE_FP_EC 1
 #define FCALL_ID_INVERSE_FN_EC 2
 #define FCALL_ID_SQRT_FP_EC_PARITY 3
+#define FCALL_ID_MSB_POS_256 4
 
 // Fcall context
 struct FcallContext
@@ -37,6 +38,9 @@ int InverseFnEcCtx (
 int SqrtFpEcParityCtx (
     struct FcallContext * ctx  // fcall context
 );
+int MsbPos256Ctx (
+    struct FcallContext * ctx  // fcall context
+);
 
 // Functions supported by fcall, in u64 array format
 int InverseFpEc (
@@ -51,6 +55,10 @@ int SqrtFpEcParity (
     const unsigned long * a,  // 8 x 64 bits
     const unsigned long   parity,
           unsigned long * r  // 8 x 64 bits
+);
+int MsbPos256 (
+    const unsigned long * a, // 8 x 64 bits
+          unsigned long * r  // 2 x 64 bits
 );
 
 #ifdef __cplusplus
