@@ -10,18 +10,21 @@
 use std::sync::Arc;
 
 use crate::{
-    BinaryBasicInstance, BinaryBasicSM, BinaryBasicTableSM, BinaryExtensionInstance,
-    BinaryExtensionSM, BinaryExtensionTableSM,
+    binary_add_instance::BinaryAddInstance, BinaryAddSM, BinaryBasicInstance, BinaryBasicSM,
+    BinaryBasicTableSM, BinaryCounterInputGen, BinaryExtensionInstance, BinaryExtensionSM,
+    BinaryExtensionTableSM, ADD_OP,
 };
 use data_bus::OPERATION_BUS_ID;
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use sm_common::{
-    table_instance, BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, InstanceInfo,
-    Planner, RegularCounters, RegularPlanner, TableInfo,
+    table_instance, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
+    InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::{BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace};
+use zisk_pil::{
+    BinaryAddTrace, BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace,
+};
 
 /// The `BinarySM` struct represents the Binary State Machine,
 /// managing both basic and extension binary operations.
@@ -38,6 +41,9 @@ pub struct BinarySM<F: PrimeField64> {
 
     /// Binary Extension Table state machine
     binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
+
+    /// Binary Add state machine (optimal only for addition)
+    binary_add_sm: Arc<BinaryAddSM<F>>,
 }
 
 impl<F: PrimeField64> BinarySM<F> {
@@ -53,14 +59,21 @@ impl<F: PrimeField64> BinarySM<F> {
         let binary_basic_sm = BinaryBasicSM::new(binary_basic_table_sm.clone());
 
         let binary_extension_table_sm = BinaryExtensionTableSM::new();
-        let binary_extension_sm = BinaryExtensionSM::new(std, binary_extension_table_sm.clone());
+        let binary_extension_sm =
+            BinaryExtensionSM::new(std.clone(), binary_extension_table_sm.clone());
+
+        let binary_add_sm = BinaryAddSM::new(std);
 
         Arc::new(Self {
             binary_basic_sm,
             binary_basic_table_sm,
             binary_extension_sm,
             binary_extension_table_sm,
+            binary_add_sm,
         })
+    }
+    fn filter_non_add(op: &u8) -> bool {
+        *op != ADD_OP
     }
 }
 
@@ -71,10 +84,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
     /// A boxed implementation of `RegularCounters` configured for binary and extension binary
     /// operations.
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(RegularCounters::new(
-            OPERATION_BUS_ID,
-            vec![ZiskOperationType::Binary, ZiskOperationType::BinaryE],
-        ))
+        Box::new(BinaryCounterInputGen::new(BusDeviceMode::Counter))
     }
 
     /// Builds a planner to plan binary-related instances.
@@ -118,6 +128,9 @@ impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
         match ictx.plan.air_id {
             BinaryTrace::<usize>::AIR_ID => {
                 Box::new(BinaryBasicInstance::new(self.binary_basic_sm.clone(), ictx))
+            }
+            BinaryAddTrace::<usize>::AIR_ID => {
+                Box::new(BinaryAddInstance::new(self.binary_add_sm.clone(), ictx))
             }
             BinaryExtensionTrace::<usize>::AIR_ID => {
                 Box::new(BinaryExtensionInstance::new(self.binary_extension_sm.clone(), ictx))

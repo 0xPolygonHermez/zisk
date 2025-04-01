@@ -1,15 +1,15 @@
-//! The `BinaryBasicInstance` module defines an instance to perform witness computations
+//! The `BinaryAddInstance` module defines an instance to perform witness computations
 //! for binary-related operations using the Binary Basic State Machine.
 //!
-//! It manages collected inputs and interacts with the `BinaryBasicSM` to compute witnesses for
+//! It manages collected inputs and interacts with the `BinaryAddSM` to compute witnesses for
 //! execution plans.
 
-use crate::BinaryBasicSM;
+use crate::BinaryAddSM;
 use data_bus::{
     BusDevice, BusId, ExtOperationData, OperationBusData, OperationData, PayloadType,
     OPERATION_BUS_ID,
 };
-use p3_field::PrimeField;
+use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
     BusDeviceWrapper, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
@@ -18,37 +18,37 @@ use std::{collections::HashMap, sync::Arc};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 use zisk_pil::BinaryTrace;
 
-/// The `BinaryBasicInstance` struct represents an instance for binary-related witness computations.
+/// The `BinaryAddInstance` struct represents an instance for binary-related witness computations.
 ///
-/// It encapsulates the `BinaryBasicSM` and its associated context, and it processes input data
+/// It encapsulates the `BinaryAddSM` and its associated context, and it processes input data
 /// to compute witnesses for binary operations.
-pub struct BinaryBasicInstance {
+pub struct BinaryAddInstance<F: PrimeField64> {
     /// Binary Basic state machine.
-    binary_basic_sm: Arc<BinaryBasicSM>,
+    binary_basic_sm: Arc<BinaryAddSM<F>>,
 
     /// Instance context.
     ictx: InstanceCtx,
 }
 
-impl BinaryBasicInstance {
-    /// Creates a new `BinaryBasicInstance`.
+impl<F: PrimeField64> BinaryAddInstance<F> {
+    /// Creates a new `BinaryAddInstance`.
     ///
     /// # Arguments
     /// * `binary_basic_sm` - An `Arc`-wrapped reference to the Binary Basic State Machine.
     /// * `ictx` - The `InstanceCtx` associated with this instance, containing the execution plan.
     ///
     /// # Returns
-    /// A new `BinaryBasicInstance` instance initialized with the provided state machine and
+    /// A new `BinaryAddInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, ictx: InstanceCtx) -> Self {
+    pub fn new(binary_basic_sm: Arc<BinaryAddSM<F>>, ictx: InstanceCtx) -> Self {
         Self { binary_basic_sm, ictx }
     }
 }
 
-impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
+impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
     /// Computes the witness for the binary execution plan.
     ///
-    /// This method leverages the `BinaryBasicSM` to generate an `AirInstance` using the collected
+    /// This method leverages the `BinaryAddSM` to generate an `AirInstance` using the collected
     /// inputs.
     ///
     /// # Arguments
@@ -67,12 +67,7 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, mut collector)| {
-                collector
-                    .detach_device()
-                    .as_any()
-                    .downcast::<BinaryBasicCollector>()
-                    .unwrap()
-                    .inputs
+                collector.detach_device().as_any().downcast::<BinaryAddCollector>().unwrap().inputs
             })
             .collect();
 
@@ -106,21 +101,19 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
         assert_eq!(
             self.ictx.plan.air_id,
             BinaryTrace::<F>::AIR_ID,
-            "BinaryBasicInstance: Unsupported air_id: {:?}",
+            "BinaryAddInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
 
         let meta = self.ictx.plan.meta.as_ref().unwrap();
-        let collect_info =
-            meta.downcast_ref::<(bool, HashMap<ChunkId, (u64, CollectSkipper)>)>().unwrap();
-        let ignore_adds = collect_info.0;
-        let (num_ops, collect_skipper) = collect_info.1[&chunk_id];
-        Some(Box::new(BinaryBasicCollector::new(num_ops, collect_skipper, ignore_adds)))
+        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
+        let (num_ops, collect_skipper) = collect_info[&chunk_id];
+        Some(Box::new(BinaryAddCollector::new(num_ops, collect_skipper)))
     }
 }
 
-/// The `BinaryBasicCollector` struct represents an input collector for binary-related operations.
-pub struct BinaryBasicCollector {
+/// The `BinaryAddCollector` struct represents an input collector for binary-related operations.
+pub struct BinaryAddCollector {
     /// Collected inputs for witness computation.
     inputs: Vec<OperationData<u64>>,
 
@@ -129,26 +122,23 @@ pub struct BinaryBasicCollector {
 
     /// Helper to skip instructions based on the plan's configuration.
     collect_skipper: CollectSkipper,
-
-    /// Flag to ignore add operations.
-    ignore_adds: bool,
 }
 
-impl BinaryBasicCollector {
-    /// Creates a new `BinaryBasicCollector`.
+impl BinaryAddCollector {
+    /// Creates a new `BinaryAddCollector`.
     ///
     /// # Arguments
     /// * `num_operations` - The number of operations to collect.
     /// * `collect_skipper` - Helper to skip instructions based on the plan's configuration.
     ///
     /// # Returns
-    /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
-    pub fn new(num_operations: u64, collect_skipper: CollectSkipper, ignore_adds: bool) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper, ignore_adds }
+    /// A new `BinaryAddCollector` instance initialized with the provided parameters.
+    pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
+        Self { inputs: Vec::new(), num_operations, collect_skipper }
     }
 }
 
-impl BusDevice<u64> for BinaryBasicCollector {
+impl BusDevice<u64> for BinaryAddCollector {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -175,7 +165,7 @@ impl BusDevice<u64> for BinaryBasicCollector {
             return None;
         }
 
-        if self.ignore_adds && OperationBusData::get_op(&data) != ZiskOp::Add.code() {
+        if OperationBusData::get_op(&data) != ZiskOp::Add.code() {
             return None;
         }
 
