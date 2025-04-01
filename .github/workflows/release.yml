@@ -130,31 +130,24 @@ jobs:
           TARGET: ${{ matrix.target }}
           ARCH: ${{ matrix.arch }}
         shell: bash
-        run: |
-          if [ "$PLATFORM_NAME" == "linux" ] || [ "$PLATFORM_NAME" == "darwin" ]; then
-            ARCHIVE_FILE="cargo_zisk_${PLATFORM_NAME}_${ARCH}.tar.gz"
+        run: 
+          mkdir -p zisk-dist/bin
+          mkdir -p zisk-dist/zisk/emulator-asm/src
+          cp ./target/${TARGET}/release/cargo-zisk           zisk-dist/bin/
+          cp ./target/${TARGET}/release/ziskemu              zisk-dist/bin/
+          cp ./target/${TARGET}/release/riscv2zisk           zisk-dist/bin/
+          cp ./target/${TARGET}/release/libzisk_witness.so   zisk-dist/bin/
+          cp ./precompiles/keccakf/src/keccakf_script.json   zisk-dist/bin/
+          cp ./ziskup/ziskup                                 zisk-dist/bin/
+          cp -r ./emulator-asm/src                           zisk-dist/zisk/emulator-asm/
+          cp ./emulator-asm/Makefile                         zisk-dist/zisk/emulator-asm/
 
-            TAR_CMD="tar"
-            [ "$PLATFORM_NAME" == "darwin" ] && TAR_CMD="gtar"
+          ARCHIVE_FILE="cargo_zisk_${PLATFORM_NAME}_${ARCH}.tar.gz"
 
-            $TAR_CMD -czvf "$ARCHIVE_FILE" --transform 's/.*\///' \
-              ./target/${TARGET}/release/cargo-zisk \
-              ./target/${TARGET}/release/ziskemu \
-              ./target/${TARGET}/release/riscv2zisk \
-              ./target/${TARGET}/release/libzisk_witness.so \
-              ./precompiles/keccakf/src/keccakf_script.json \
-              ./ziskup/ziskup
-          else
-            ARCHIVE_FILE="cargo_zisk_${PLATFORM_NAME}_${ARCH}.zip"
-            7z a -tzip -ep1 "$ARCHIVE_FILE" \
-              ./target/${TARGET}/release/cargo-zisk.exe \
-              ./target/${TARGET}/releaseziskemu.exe \
-              ./target/${TARGET}/release/riscv2zisk.exe \
-              ./precompiles/keccakf/src/keccakf_script.json \
-              ./ziskup/ziskup
+          TAR_CMD="tar"
+          [ "$PLATFORM_NAME" == "darwin" ] && TAR_CMD="gtar"
 
-            mv "$ARCHIVE_FILE" ../../../
-          fi
+          tar -czvf zisk.tar.gz -C zisk-dist .
 
           echo "file_name=$ARCHIVE_FILE" >> $GITHUB_OUTPUT       
         
