@@ -125,7 +125,6 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
     2. Build and install the Rust ZisK toolchain:
     ```bash
     cargo-zisk sdk build-toolchain
-    ZISK_TOOLCHAIN_SOURCE_DIR=. cargo-zisk sdk install-toolchain
     ```
 
 6. Verify the installation:
@@ -204,8 +203,13 @@ Please note that the process can be long, taking approximately 2–3 hours depen
     ```
 
 ## Uninstall Zisk
-To uninstall ZisK, run:
 
-```bash
-rm -rf $HOME/.zisk
-```
+1. Uninstall ZisK toolchain:
+    ```bash
+    rustup uninstall zisk
+    ```
+
+2. Delete ZisK folder
+    ```bash
+    rm -rf $HOME/.zisk
+    ```
