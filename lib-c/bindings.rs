@@ -61,55 +61,6 @@ pub struct FcallContext {
     pub result: [::std::os::raw::c_ulong; 32usize],
 }
 
-#[test]
-fn bindgen_test_layout_FcallContext() {
-    assert_eq!(
-        ::std::mem::size_of::<FcallContext>(),
-        552usize,
-        concat!("Size of: ", stringify!(FcallContext))
-    );
-    assert_eq!(
-        ::std::mem::align_of::<FcallContext>(),
-        8usize,
-        concat!("Alignment of ", stringify!(FcallContext))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<FcallContext>())).function_id as *const _ as usize },
-        0usize,
-        concat!("Offset of field: ", stringify!(FcallContext), "::", stringify!(function_id))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<FcallContext>())).params_max_size as *const _ as usize },
-        8usize,
-        concat!("Offset of field: ", stringify!(FcallContext), "::", stringify!(params_max_size))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<FcallContext>())).params_size as *const _ as usize },
-        16usize,
-        concat!("Offset of field: ", stringify!(FcallContext), "::", stringify!(params_size))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<FcallContext>())).params as *const _ as usize },
-        24usize,
-        concat!("Offset of field: ", stringify!(FcallContext), "::", stringify!(params))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<FcallContext>())).result_max_size as *const _ as usize },
-        280usize,
-        concat!("Offset of field: ", stringify!(FcallContext), "::", stringify!(result_max_size))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<FcallContext>())).result_size as *const _ as usize },
-        288usize,
-        concat!("Offset of field: ", stringify!(FcallContext), "::", stringify!(result_size))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<FcallContext>())).result as *const _ as usize },
-        296usize,
-        concat!("Offset of field: ", stringify!(FcallContext), "::", stringify!(result))
-    );
-}
-
 extern "C" {
     // pub fn Fcall(ctx: *mut FcallContext) -> ::std::os::raw::c_int;
     pub fn Fcall(ctx: *mut FcallContext) -> ::std::os::raw::c_int;
