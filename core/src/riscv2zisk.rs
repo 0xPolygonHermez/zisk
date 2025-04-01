@@ -33,13 +33,14 @@ impl Riscv2zisk {
     }
 
     /// Executes the file conversion process by calling elf2romfile()
-    pub fn runfile(&self) -> Result<(), Box<dyn Error>> {
+    pub fn runfile(&self, verbose: bool) -> Result<(), Box<dyn Error>> {
         elf2romfile(
             self.elf_file.clone(),
             self.zisk_file.clone(),
             self.pil_file.clone(),
             self.bin_file.clone(),
             self.asm_file.clone(),
+            verbose,
         )
     }
 

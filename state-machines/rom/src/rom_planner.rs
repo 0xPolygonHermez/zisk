@@ -1,6 +1,8 @@
 //! The `RomPlanner` module defines a planner for organizing execution plans for ROM-related
 //! operations. It aggregates ROM metrics and generates a plan for the execution flow.
 
+use std::sync::{atomic::AtomicU32, Arc};
+
 use sm_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan, Planner};
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
@@ -10,7 +12,23 @@ use crate::RomCounter;
 ///
 /// It processes metrics collected by `RomCounter` instances, combines them,
 /// and generates a single `Plan` for execution.
-pub struct RomPlanner {}
+pub struct RomPlanner {
+    /// Shared biod instruction counter for monitoring ROM operations.
+    bios_inst_count: Arc<Vec<AtomicU32>>,
+
+    /// Shared program instruction counter for monitoring ROM operations.
+    prog_inst_count: Arc<Vec<AtomicU32>>,
+}
+
+impl RomPlanner {
+    /// Creates a new instance of `RomPlanner`.
+    ///
+    /// # Returns
+    /// A new `RomPlanner` instance.
+    pub fn new(bios_inst_count: Arc<Vec<AtomicU32>>, prog_inst_count: Arc<Vec<AtomicU32>>) -> Self {
+        Self { bios_inst_count, prog_inst_count }
+    }
+}
 
 impl Planner for RomPlanner {
     /// Creates an execution plan based on ROM metrics.
@@ -34,7 +52,7 @@ impl Planner for RomPlanner {
             panic!("RomPlanner::plan() No metrics found");
         }
 
-        let mut total = RomCounter::new();
+        let mut total = RomCounter::new(self.bios_inst_count.clone(), self.prog_inst_count.clone());
 
         for (_, metric) in metrics {
             let metric = Metrics::as_any(&*metric).downcast_ref::<RomCounter>().unwrap();

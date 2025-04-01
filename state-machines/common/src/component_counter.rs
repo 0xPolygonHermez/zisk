@@ -4,10 +4,12 @@
 
 use std::{
     any::Any,
-    collections::HashMap,
     fmt::Debug,
     ops::{Add, AddAssign},
+    sync::{atomic::AtomicU32, Arc},
 };
+
+use zisk_core::{ROM_ADDR, ROM_ENTRY};
 
 /// Enumeration representing different types of counters for metrics collection.
 #[derive(Debug)]
@@ -93,10 +95,13 @@ impl AddAssign<&Counter> for Counter {
 
 /// The `CounterStats` struct provides detailed metrics for instruction execution,
 /// tracking counts by program counter (PC) and execution steps.
-#[derive(Default, Debug, Clone)]
+#[derive(Debug)]
 pub struct CounterStats {
-    /// A hash map of instruction counts by PC (key: PC, value: count).
-    pub inst_count: HashMap<u64, u64>,
+    /// Shared biod instruction counter for monitoring ROM operations.
+    pub bios_inst_count: Arc<Vec<AtomicU32>>,
+
+    /// Shared program instruction counter for monitoring ROM operations.
+    pub prog_inst_count: Arc<Vec<AtomicU32>>,
 
     /// The PC of the last executed instruction.
     pub end_pc: u64,
@@ -106,6 +111,15 @@ pub struct CounterStats {
 }
 
 impl CounterStats {
+    pub fn new(entry_inst_count: Arc<Vec<AtomicU32>>, inst_count: Arc<Vec<AtomicU32>>) -> Self {
+        CounterStats {
+            bios_inst_count: entry_inst_count,
+            prog_inst_count: inst_count,
+            end_pc: 0,
+            steps: 0,
+        }
+    }
+
     /// Updates the counter statistics with information about the current instruction execution.
     ///
     /// # Arguments
@@ -114,39 +128,19 @@ impl CounterStats {
     /// * `num` - The number of instructions executed at the given PC.
     /// * `end` - A flag indicating if this is the final instruction in the execution.
     #[inline(always)]
-    pub fn update(&mut self, pc: u64, step: u64, num: usize, end: bool) {
-        let count = self.inst_count.entry(pc).or_default();
-        *count += num as u64;
+    pub fn update(&mut self, pc: u64, step: u64, num: u32, end: bool) {
+        if pc < ROM_ADDR {
+            let addr = (pc - ROM_ENTRY) as usize;
+            self.bios_inst_count[addr].fetch_add(num, std::sync::atomic::Ordering::Relaxed);
+        } else {
+            let addr = (pc - ROM_ADDR) as usize;
+            self.prog_inst_count[addr].fetch_add(num, std::sync::atomic::Ordering::Relaxed);
+        }
 
         if end {
             self.end_pc = pc;
             self.steps = step + 1;
         }
-    }
-}
-
-impl Add for &CounterStats {
-    type Output = CounterStats;
-
-    /// Merges two `CounterStats` instances into a new instance with combined metrics.
-    ///
-    /// # Arguments
-    /// * `self` - The first `CounterStats` instance.
-    /// * `other` - The second `CounterStats` instance to merge.
-    ///
-    /// # Returns
-    /// A new `CounterStats` instance with merged metrics.
-    fn add(self, other: Self) -> CounterStats {
-        let mut inst_count = self.inst_count.clone();
-        for (k, v) in &other.inst_count {
-            let count = inst_count.entry(*k).or_default();
-            *count += v;
-        }
-
-        let end_pc = if other.end_pc != 0 { other.end_pc } else { self.end_pc };
-        let steps = if other.steps != 0 { other.steps } else { self.steps };
-
-        CounterStats { inst_count, end_pc, steps }
     }
 }
 
@@ -156,11 +150,6 @@ impl AddAssign<&CounterStats> for CounterStats {
     /// # Arguments
     /// * `other` - The `CounterStats` instance to merge.
     fn add_assign(&mut self, other: &CounterStats) {
-        for (k, v) in &other.inst_count {
-            let count = self.inst_count.entry(*k).or_default();
-            *count += v;
-        }
-
         if other.end_pc != 0 {
             self.end_pc = other.end_pc;
         }

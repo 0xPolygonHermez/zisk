@@ -55,3 +55,15 @@ pub fn store_to_str(store: u64) -> &'static str {
         _ => panic!("store_to_str() unknown store({})", store),
     }
 }
+
+pub fn is_elf_file(file_data: &[u8]) -> std::io::Result<bool> {
+    if file_data.len() < 4 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "File data is too short to be a valid ELF file",
+        ));
+    }
+
+    // Check if the first 4 bytes match the ELF magic number
+    Ok(file_data[0..4] == [0x7F, b'E', b'L', b'F'])
+}

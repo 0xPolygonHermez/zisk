@@ -1,4 +1,5 @@
 pub mod commands;
+mod proof_log;
 pub mod toolchain;
 pub mod ux;
 

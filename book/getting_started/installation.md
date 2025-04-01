@@ -107,13 +107,21 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
     cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so precompiles/keccakf/src/keccakf_script.json $HOME/.zisk/bin
     ```
 
-4. Add `~/.zisk/bin` to your profile file, for example for `.bashrc` executing the following commands:
+4. Copy required files to support `cargo-zisk rom-setup` command:
+    ```bash
+    mkdir -p $HOME/.zisk/zisk/emulator-asm
+    cp -r ./emulator-asm/src $HOME/.zisk/zisk/emulator-asm
+    cp ./emulator-asm/Makefile $HOME/.zisk/zisk/emulator-asm
+    ```
+
+5. Add `~/.zisk/bin` to your system PATH:
+    For example, if you are using `bash`:
     ```bash
     echo >>$HOME/.bashrc && echo "export PATH=\"\$PATH:$HOME/.zisk/bin\"" >> $HOME/.bashrc
     source $HOME/.bashrc
     ```
 
-5. Install the Rust ZisK toolchain:
+6. Install the ZisK Rust toolchain:
     ```bash
     cargo-zisk sdk install-toolchain
     ```
@@ -125,14 +133,13 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
     2. Build and install the Rust ZisK toolchain:
     ```bash
     cargo-zisk sdk build-toolchain
-    ZISK_TOOLCHAIN_SOURCE_DIR=. cargo-zisk sdk install-toolchain
     ```
 
-6. Verify the installation:
+7. Verify the installation:
     ```bash
     rustup toolchain list
     ```
-    Ensure `zisk` appears in the list of installed toolchains.
+    Confirm taht `zisk` appears in the list of installed toolchains.
 
 #### Build Setup
 
@@ -204,8 +211,13 @@ Please note that the process can be long, taking approximately 2–3 hours depen
     ```
 
 ## Uninstall Zisk
-To uninstall ZisK, run:
 
-```bash
-rm -rf $HOME/.zisk
-```
+1. Uninstall ZisK toolchain:
+    ```bash
+    rustup uninstall zisk
+    ```
+
+2. Delete ZisK folder
+    ```bash
+    rm -rf $HOME/.zisk
+    ```

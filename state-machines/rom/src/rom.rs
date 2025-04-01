@@ -8,22 +8,33 @@
 //! - `ComponentBuilder` trait implementations for creating counters, planners, and input
 //!   collectors.
 
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::PathBuf,
+    sync::{atomic::AtomicU32, Arc},
+};
 
 use itertools::Itertools;
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
-use sm_common::{BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan, Planner};
+use sm_common::{
+    create_atomic_vec, BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan, Planner,
+};
 
 use crate::{RomCounter, RomInstance, RomPlanner};
-use zisk_core::{Riscv2zisk, ZiskRom, SRC_IMM};
+use zisk_core::{Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SRC_IMM};
 use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace};
 
 /// The `RomSM` struct represents the ROM State Machine
 pub struct RomSM {
     /// Zisk Rom
     zisk_rom: Arc<ZiskRom>,
+
+    /// Shared biod instruction counter for monitoring ROM operations.
+    bios_inst_count: Arc<Vec<AtomicU32>>,
+
+    /// Shared program instruction counter for monitoring ROM operations.
+    prog_inst_count: Arc<Vec<AtomicU32>>,
 }
 
 impl RomSM {
@@ -37,7 +48,11 @@ impl RomSM {
     /// # Returns
     /// An `Arc`-wrapped instance of `RomSM`.
     pub fn new(zisk_rom: Arc<ZiskRom>) -> Arc<Self> {
-        Arc::new(Self { zisk_rom })
+        Arc::new(Self {
+            zisk_rom,
+            prog_inst_count: Arc::new(create_atomic_vec((ROM_ADDR_MAX - ROM_ADDR) as usize)),
+            bios_inst_count: Arc::new(create_atomic_vec((ROM_ADDR - ROM_ENTRY) as usize)),
+        })
     }
 
     /// Computes the witness for the provided plan using the given ROM.
@@ -55,12 +70,19 @@ impl RomSM {
 
         let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
+        let mut len = 0;
+        for i in 0..metadata.rom.prog_inst_count.len() {
+            if metadata.rom.prog_inst_count[i].load(std::sync::atomic::Ordering::Relaxed) != 0 {
+                len += 1;
+            }
+        }
         info!(
             "{}: ··· Creating Rom instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
-            metadata.rom.inst_count.len(),
+            metadata.rom.bios_inst_count.len() + len,
             main_trace_len,
-            metadata.rom.inst_count.len() as f64 / main_trace_len as f64 * 100.0
+            ((metadata.rom.bios_inst_count.len() as f64) + len as f64) / main_trace_len as f64
+                * 100.0
         );
         // For every instruction in the rom, fill its corresponding ROM trace
         //for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
@@ -71,17 +93,30 @@ impl RomSM {
             // Calculate the multiplicity, i.e. the number of times this pc is used in this
             // execution
             let mut multiplicity: u64;
-            if metadata.rom.inst_count.is_empty() {
-                multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
-            } else {
-                let counter = metadata.rom.inst_count.get(&inst.paddr);
-                if counter.is_some() {
-                    multiplicity = *counter.unwrap();
+            if inst.paddr < ROM_ADDR {
+                if metadata.rom.bios_inst_count.is_empty() {
+                    multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
+                } else {
+                    multiplicity = metadata.rom.bios_inst_count[(inst.paddr - ROM_ENTRY) as usize]
+                        .load(std::sync::atomic::Ordering::Relaxed)
+                        as u64;
+
+                    if multiplicity == 0 {
+                        continue;
+                    }
                     if inst.paddr == metadata.rom.end_pc {
                         multiplicity += main_trace_len - metadata.rom.steps % main_trace_len;
                     }
-                } else {
-                    continue; // We skip those pc's that are not used in this execution
+                }
+            } else {
+                multiplicity = metadata.rom.prog_inst_count[(inst.paddr - ROM_ADDR) as usize]
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                    as u64;
+                if multiplicity == 0 {
+                    continue;
+                }
+                if inst.paddr == metadata.rom.end_pc {
+                    multiplicity += main_trace_len - metadata.rom.steps % main_trace_len;
                 }
             }
             rom_trace[i].multiplicity = F::from_u64(multiplicity);
@@ -161,7 +196,7 @@ impl RomSM {
     ) {
         // Get the ELF file path as a string
         let elf_filename: String = rom_path.to_str().unwrap().into();
-        println!("Proving ROM for ELF file={}", elf_filename);
+        info!("Computing custom trace ROM");
 
         // Load and parse the ELF file, and transpile it into a ZisK ROM using Riscv2zisk
 
@@ -187,7 +222,7 @@ impl<F: PrimeField> ComponentBuilder<F> for RomSM {
     /// # Returns
     /// A boxed implementation of `RomCounter`.
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(RomCounter::new())
+        Box::new(RomCounter::new(self.bios_inst_count.clone(), self.prog_inst_count.clone()))
     }
 
     /// Builds a planner for ROM-related instances.
@@ -195,7 +230,7 @@ impl<F: PrimeField> ComponentBuilder<F> for RomSM {
     /// # Returns
     /// A boxed implementation of `RomPlanner`.
     fn build_planner(&self) -> Box<dyn Planner> {
-        Box::new(RomPlanner {})
+        Box::new(RomPlanner::new(self.bios_inst_count.clone(), self.prog_inst_count.clone()))
     }
 
     /// Builds an instance of the ROM state machine.

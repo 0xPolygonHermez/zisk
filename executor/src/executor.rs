@@ -24,7 +24,7 @@ use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use rom_merkle::gen_elf_hash;
+use rom_setup::gen_elf_hash;
 use witness::WitnessComponent;
 
 use rayon::prelude::*;
@@ -41,7 +41,7 @@ use std::{
     collections::HashMap,
     fs,
     path::PathBuf,
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex, RwLock},
 };
 use zisk_common::{EmuTrace, MinimalTraces};
 use zisk_core::ZiskRom;
@@ -50,6 +50,11 @@ use ziskemu::{EmuOptions, ZiskEmulator};
 type DeviceMetricsByChunk = (usize, Box<dyn BusDeviceMetrics>); // (chunk_id, metrics)
 type DeviceMetricsList = Vec<DeviceMetricsByChunk>;
 type NestedDeviceMetricsList = Vec<DeviceMetricsList>;
+
+#[derive(Debug, Default, Clone)]
+pub struct ZiskExecutionResult {
+    pub executed_steps: u64,
+}
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
@@ -75,6 +80,8 @@ pub struct ZiskExecutor<F: PrimeField64> {
     pub main_instances: RwLock<HashMap<usize, MainInstance>>,
     pub secn_instances: RwLock<HashMap<usize, Box<dyn Instance<F>>>>,
     std: Arc<Std<F>>,
+
+    execution_result: Mutex<ZiskExecutionResult>,
 }
 
 impl<F: PrimeField64> ZiskExecutor<F> {
@@ -82,7 +89,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     const NUM_THREADS: usize = 16;
 
     /// The size in rows of the minimal traces
-    const MIN_TRACE_SIZE: u64 = 1 << 15;
+    const MIN_TRACE_SIZE: u64 = 1 << 18;
 
     const MAX_NUM_STEPS: u64 = 1 << 32;
 
@@ -110,7 +117,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             main_instances: RwLock::new(HashMap::new()),
             secn_instances: RwLock::new(HashMap::new()),
             std,
+            execution_result: Mutex::new(ZiskExecutionResult::default()),
         }
+    }
+
+    pub fn get_execution_result(&self) -> ZiskExecutionResult {
+        self.execution_result.lock().unwrap().clone()
     }
 
     /// Registers a secondary state machine with the executor.
@@ -130,11 +142,28 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
     fn compute_minimal_traces(&self, num_threads: usize) -> MinimalTraces {
-        if self.asm_runner_path.is_none() {
+        let min_traces = if self.asm_runner_path.is_none() {
             self.run_emulator(num_threads)
         } else {
             self.run_assembly()
-        }
+        };
+
+        // Store execute steps
+        let steps = match &min_traces {
+            MinimalTraces::None => {
+                panic!("Error during minimal traces computation");
+            }
+            MinimalTraces::EmuTrace(min_traces) => {
+                min_traces.iter().map(|trace| trace.steps).sum::<u64>()
+            }
+            MinimalTraces::AsmEmuTrace(asm_min_traces) => {
+                asm_min_traces.vec_chunks.iter().map(|trace| trace.steps).sum::<u64>()
+            }
+        };
+
+        self.execution_result.lock().unwrap().executed_steps = steps;
+
+        min_traces
     }
 
     fn run_assembly(&self) -> MinimalTraces {
@@ -738,7 +767,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         let blowup_factor =
             1 << (setup.stark_info.stark_struct.n_bits_ext - setup.stark_info.stark_struct.n_bits);
 
-        gen_elf_hash(&self.rom_path, file_name, blowup_factor, check)?;
+        gen_elf_hash(&self.rom_path, file_name.as_path(), blowup_factor, check)?;
         Ok(())
     }
 }

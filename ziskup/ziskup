@@ -11,7 +11,7 @@ mkdir -p $ZISK_BIN_DIR
 
 BINS=(cargo-zisk)
 
-SETUP_VERSION="0.5.0"
+SETUP_VERSION="0.6.0"
 
 export RUSTFLAGS="-C target-cpu=native"
 
@@ -219,7 +219,7 @@ main() {
     if [ "$PLATFORM" = "linux" ]; then
       tmp="$(mktemp -d)/cargo_zisk.tar.gz"
       ensure download "$BIN_ARCHIVE_URL" "$tmp"
-      ensure tar --overwrite -xzf "$tmp" -C "$ZISK_BIN_DIR"
+      ensure tar --overwrite -xzf "$tmp" -C "$ZISK_DIR"
       rm -f "$tmp"
     fi
 

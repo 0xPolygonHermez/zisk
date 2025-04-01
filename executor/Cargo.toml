@@ -11,7 +11,7 @@ categories = { workspace = true }
 sm-common = { path = "../state-machines/common" }
 sm-main = { path = "../state-machines/main" }
 sm-rom = { path = "../state-machines/rom" }
-rom-merkle = { path = "../rom-merkle" }
+rom-setup = { path = "../rom-setup" }
 zisk-pil = { path = "../pil" }
 ziskemu = { path = "../emulator" }
 zisk-core = { path = "../core" }
@@ -31,3 +31,4 @@ pil-std-lib = { workspace = true }
 [features]
 default = ["distributed"]
 distributed = ["proofman-common/distributed", "witness/distributed"]
+gpu = ["proofman-common/gpu"]
