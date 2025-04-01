@@ -30,7 +30,7 @@ const N_HALF: [u64; 4] =
 /// - 2: r should be less than `N_MINUS_ONE`
 /// - 3: s should be greater than 0
 /// - 4: s should be less than `N_MINUS_ONE` or `N_HALF`
-/// - 5: v should be either 27 or 28
+/// - 5: The recovery id should be either 0 or 1
 /// - 6: No square root found for `y_sq`
 /// - 7: The public key is the point at infinity
 pub fn ecrecover(sig: &[u8; 65], msg: &[u8; 32], mode: bool) -> ([u8; 20], u8) {
