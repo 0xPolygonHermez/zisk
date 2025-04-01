@@ -224,8 +224,19 @@ bd13089b
 
 ## Prove
 
+### Program Setup
+
+Before generating a proof (or verifying the constraints), you need to generate the program setup files. This must be done the first time after building the program ELF file, or any time it changes:
+
+```bash
+cargo-zisk rom-setup
+```
+
+The program setup files will be generated in the `cache` directory located at `$HOME/.zisk`
+
 ### Verify Constraints
-Before to generate a proof (that can take some time) you can verify that all the constraints are satisfied:
+
+Before generating a proof (which can take some time), you can verify that all constraints are satisfied:
 
 ```bash
 cargo-zisk verify-constraints -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey
@@ -249,7 +260,7 @@ cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i b
 In this command:
 
 * `-e` (`--elf`) specifies the ELF file localtion.
-* `-i` (`--inputs`) specifies the input file location.
+* `-i` (`--input`) specifies the input file location.
 * `-w` (`--witness`) and `-k` (`--proving-key`) are used to specify the location of the witness library and proving key files required for proof generation; they are optional, set by default to the paths found in the `$HOME/.zisk` installation folder.
 * `-o` (`--output`) determines the output directory (in this example `proof`).
 * `-a` (`--aggregation`) indicates that a final aggregated proof (containing all generated sub-proofs) should be produced.

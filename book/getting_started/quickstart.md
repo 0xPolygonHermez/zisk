@@ -11,7 +11,6 @@ Ubuntu 22.04 or higher is required.
 > **Note:** macOS is not yet supported, but we are actively working on adding support.
 
 1. Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
-1. Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
 
 2. Install all required dependencies with:
     ```bash
@@ -101,7 +100,13 @@ cargo-zisk run --release -i build/input.bin
 
 ## Prove
 
-You can generate and verify a proof using the `cargo-zisk prove` command by providing the ELF file (with the `-e` or `--elf` flag) and the input file (with the `-i` or `--input-data` flag).
+Before generating a proof, you need to generate the program setup files. Execute:
+
+```bash
+cargo-zisk rom-setup
+```
+
+Once the program setup is complete, you can generate and verify a proof using the `cargo-zisk prove` command by providing the ELF file (with the `-e` or `--elf` flag) and the input file (with the `-i` or `--input` flag).
 
 To generate and verify a proof for the previously built ELF and input files, execute:
 
@@ -109,7 +114,7 @@ To generate and verify a proof for the previously built ELF and input files, exe
 cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -o proof -a -y
 ```
 
-This command generates the proof in the `./proof directory`. If everything goes well, you will see a message similar to:
+This command generates the proof in the `./proof` directory. If everything goes well, you will see a message similar to:
 
 ```
 ...
