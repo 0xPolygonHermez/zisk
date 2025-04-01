@@ -8,6 +8,7 @@ use zisk_core::{is_elf_file, Riscv2zisk};
 
 pub fn assembly_setup(
     elf: &PathBuf,
+    zisk_path: &Path,
     output_path: &Path,
     verbose: bool,
 ) -> Result<(), anyhow::Error> {
@@ -23,8 +24,8 @@ pub fn assembly_setup(
 
     let base_path = output_path.join(filename);
 
-    let zisk_file = base_path.with_extension("zisk");
-    let asm_file = base_path.with_extension("asm");
+    let zisk_file = base_path.with_extension("asm");
+    let asm_file = base_path.with_extension("bin");
 
     // Convert the ELF file to Zisk format and generates an assembly file
     let rv2zk = Riscv2zisk::new(
@@ -36,10 +37,13 @@ pub fn assembly_setup(
     );
     rv2zk.runfile(verbose).map_err(|e| anyhow::anyhow!("Error converting elf: {}", e))?;
 
+    let emulator_asm_path = zisk_path.join("emulator-asm");
+    let emulator_asm_path = emulator_asm_path.to_str().unwrap();
+
     // Build the emulator assembly
     let status = Command::new("make")
         .arg("clean")
-        .current_dir("emulator-asm")
+        .current_dir(emulator_asm_path)
         .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
         .status()
@@ -53,7 +57,7 @@ pub fn assembly_setup(
     let status = Command::new("make")
         .arg(format!("EMU_PATH={}", zisk_file.to_str().unwrap()))
         .arg(format!("OUT_PATH={}", asm_file.to_str().unwrap()))
-        .current_dir("emulator-asm")
+        .current_dir(emulator_asm_path)
         .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
         .status()

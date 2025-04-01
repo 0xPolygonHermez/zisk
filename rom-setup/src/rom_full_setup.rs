@@ -11,6 +11,7 @@ use crate::DEFAULT_CACHE_PATH;
 pub fn rom_full_setup(
     elf: &PathBuf,
     proving_key: &Path,
+    zisk_path: &Path,
     output_dir: &Option<PathBuf>,
     verbose: bool,
 ) -> std::result::Result<(), anyhow::Error> {
@@ -35,7 +36,7 @@ pub fn rom_full_setup(
     info!("Computing setup for ROM {}", elf.display());
 
     info!("Computing assembly setup");
-    crate::assembly_setup(elf, output_path.as_path(), verbose)?;
+    crate::assembly_setup(elf, zisk_path, output_path.as_path(), verbose)?;
 
     info!("Computing merkle root");
     crate::rom_merkle_setup(elf, output_path.as_path(), proving_key, false)?;

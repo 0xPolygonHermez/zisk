@@ -259,8 +259,9 @@ dependencies = [
  "rand 0.9.0",
  "reqwest",
  "rom-setup",
+ "serde",
  "serde_json",
- "sysinfo 0.33.1",
+ "sysinfo 0.34.1",
  "target-lexicon",
  "tokio",
  "vergen",
@@ -513,7 +514,7 @@ checksum = "43da5946c66ffcc7745f48db692ffbb10a83bfe0afd96235c5c2a4fb23994929"
 [[package]]
 name = "curves"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#e06d8f14c18c6329f1983225bb50aaace9c2ccce"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#66b3313c3d49e634eb7c6778567fbdaafe75c815"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -1586,6 +1587,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-core-foundation"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daeaf60f25471d26948a1c2f840e3f7d86f4109e3af4e8e4b5cd70c39690d925"
+dependencies = [
+ "bitflags 2.9.0",
+]
+
+[[package]]
 name = "object"
 version = "0.36.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1775,7 +1785,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#e06d8f14c18c6329f1983225bb50aaace9c2ccce"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#66b3313c3d49e634eb7c6778567fbdaafe75c815"
 dependencies = [
  "colored",
  "log",
@@ -1943,7 +1953,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#e06d8f14c18c6329f1983225bb50aaace9c2ccce"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#66b3313c3d49e634eb7c6778567fbdaafe75c815"
 dependencies = [
  "blake3",
  "colored",
@@ -1970,7 +1980,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#e06d8f14c18c6329f1983225bb50aaace9c2ccce"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#66b3313c3d49e634eb7c6778567fbdaafe75c815"
 dependencies = [
  "env_logger",
  "log",
@@ -1991,7 +2001,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#e06d8f14c18c6329f1983225bb50aaace9c2ccce"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#66b3313c3d49e634eb7c6778567fbdaafe75c815"
 dependencies = [
  "log",
  "p3-field",
@@ -2003,7 +2013,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#e06d8f14c18c6329f1983225bb50aaace9c2ccce"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#66b3313c3d49e634eb7c6778567fbdaafe75c815"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2014,7 +2024,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#e06d8f14c18c6329f1983225bb50aaace9c2ccce"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#66b3313c3d49e634eb7c6778567fbdaafe75c815"
 dependencies = [
  "log",
 ]
@@ -2022,7 +2032,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#e06d8f14c18c6329f1983225bb50aaace9c2ccce"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#66b3313c3d49e634eb7c6778567fbdaafe75c815"
 dependencies = [
  "colored",
  "p3-field",
@@ -2359,9 +2369,9 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a04a32fb43fcdef85b977ce7f77a150805e4b2ea1f2656898d4a547dde78df6"
+checksum = "d97817398dd4bb2e6da002002db259209759911da105da92bec29ccb12cf58bf"
 dependencies = [
  "bitflags 2.9.0",
  "errno",
@@ -2451,9 +2461,9 @@ dependencies = [
 
 [[package]]
 name = "serde_arrays"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38636132857f68ec3d5f3eb121166d2af33cb55174c4d5ff645db6165cbef0fd"
+checksum = "94a16b99c5ea4fe3daccd14853ad260ec00ea043b2708d1fd1da3106dcd8d9df"
 dependencies = [
  "serde",
 ]
@@ -2762,6 +2772,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sysinfo"
+version = "0.34.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "927fa32067cbb22b8a91987d84c0ff94c7441ccf3f767165a58d77a656d6267c"
+dependencies = [
+ "libc",
+ "memchr",
+ "ntapi 0.4.1",
+ "objc2-core-foundation",
+ "windows",
+]
+
+[[package]]
 name = "target-lexicon"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2776,7 +2799,7 @@ dependencies = [
  "fastrand",
  "getrandom 0.3.2",
  "once_cell",
- "rustix 1.0.4",
+ "rustix 1.0.5",
  "windows-sys 0.59.0",
 ]
 
@@ -3010,7 +3033,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#e06d8f14c18c6329f1983225bb50aaace9c2ccce"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#66b3313c3d49e634eb7c6778567fbdaafe75c815"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -3545,7 +3568,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#e06d8f14c18c6329f1983225bb50aaace9c2ccce"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.6.0#66b3313c3d49e634eb7c6778567fbdaafe75c815"
 dependencies = [
  "colored",
  "env_logger",
@@ -3774,7 +3797,7 @@ dependencies = [
  "rayon",
  "riscv",
  "sm-mem",
- "sysinfo 0.33.1",
+ "sysinfo 0.34.1",
  "vergen",
  "zisk-common",
  "zisk-core",
