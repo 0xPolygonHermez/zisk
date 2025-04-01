@@ -229,8 +229,12 @@ bd13089b
 Before generating a proof (or verifying the constraints), you need to generate the program setup files. This must be done the first time after building the program ELF file, or any time it changes:
 
 ```bash
-cargo-zisk rom-setup
+cargo-zisk rom-setup -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -k $HOME/.zisk/provingKey
 ```
+In this command:
+
+* `-e` (`--elf`) specifies the ELF file localtion.
+* `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
 
 The program setup files will be generated in the `cache` directory located at `$HOME/.zisk`
 
@@ -241,6 +245,12 @@ Before generating a proof (which can take some time), you can verify that all co
 ```bash
 cargo-zisk verify-constraints -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey
 ```
+In this command:
+
+* `-e` (`--elf`) specifies the ELF file localtion.
+* `-i` (`--input`) specifies the input file location.
+* `-w` (`--witness`) specifies the location of the witness library. This is optional and defaults to `$HOME/.zisk/bin/libzisk_witness.so`.
+* `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
 
 If everything is correct, you will see an output similar to:
 
@@ -261,7 +271,8 @@ In this command:
 
 * `-e` (`--elf`) specifies the ELF file localtion.
 * `-i` (`--input`) specifies the input file location.
-* `-w` (`--witness`) and `-k` (`--proving-key`) are used to specify the location of the witness library and proving key files required for proof generation; they are optional, set by default to the paths found in the `$HOME/.zisk` installation folder.
+* `-w` (`--witness`) specifies the location of the witness library. This is optional and defaults to `$HOME/.zisk/bin/libzisk_witness.so`.
+* `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
 * `-o` (`--output`) determines the output directory (in this example `proof`).
 * `-a` (`--aggregation`) indicates that a final aggregated proof (containing all generated sub-proofs) should be produced.
 * `-y` (`--verify-proofs`) instructs the tool to verify the proof immediately after it is generated (verification can also be performed later using the `cargo-zisk verify` command).

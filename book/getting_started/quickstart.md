@@ -103,7 +103,7 @@ cargo-zisk run --release -i build/input.bin
 Before generating a proof, you need to generate the program setup files. Execute:
 
 ```bash
-cargo-zisk rom-setup
+cargo-zisk rom-setup -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher
 ```
 
 Once the program setup is complete, you can generate and verify a proof using the `cargo-zisk prove` command by providing the ELF file (with the `-e` or `--elf` flag) and the input file (with the `-i` or `--input` flag).
