@@ -31,3 +31,4 @@ pil-std-lib = { workspace = true }
 [features]
 default = ["distributed"]
 distributed = ["proofman-common/distributed", "witness/distributed"]
+gpu = ["proofman-common/gpu"]
