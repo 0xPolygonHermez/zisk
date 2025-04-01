@@ -11,6 +11,7 @@ pub(super) fn gt(x: &[u64; 4], y: &[u64; 4]) -> bool {
 }
 
 /// Given two 256-bit unsigned integers `x` and `y`, computes the subtraction `x - y`.
+/// It assumes that `x >= y`.
 pub(super) fn sub(x: &[u64; 4], y: &[u64; 4]) -> [u64; 4] {
     let mut result = [0u64; 4];
     let mut borrow = 0u64;

@@ -22,6 +22,7 @@ const N_HALF: [u64; 4] =
 
 /// Given a hash `hash`, a recovery parity `v`, a signature (`r`, `s`), and a signature mode `mode`,
 /// this function computes the address that signed the hash.
+/// The `mode` indicates whether ecrecover is called as a precompiled contract (true) or as a transaction (false).
 ///
 /// It also returns an error code:
 /// - 0: No error
@@ -33,20 +34,12 @@ const N_HALF: [u64; 4] =
 /// - 6: No square root found for `y_sq`
 /// - 7: The public key is the point at infinity
 pub fn ecrecover(sig: &[u8; 65], msg: &[u8; 32], mode: bool) -> ([u8; 20], u8) {
-    // Extract the signature components, the recovery id.
-    // Adapt to our API
+    // Extract the signature components
     let mut r = [0u64; 4];
     let mut s = [0u64; 4];
     for i in 0..32 {
-        r[3 - i / 8] |= (sig[i] as u64) << (8 * (i % 8));
-        s[3 - i / 8] |= (sig[32 + i] as u64) << (8 * (i % 8));
-    }
-    let v = sig[64] as u64;
-
-    // Adapat hash to our API
-    let mut hash = [0u64; 4];
-    for i in 0..32 {
-        hash[3 - i / 8] |= (msg[i] as u64) << (8 * (i % 8));
+        r[3 - i / 8] |= (sig[i] as u64) << (8 * (7 - (i % 8)));
+        s[3 - i / 8] |= (sig[32 + i] as u64) << (8 * (7 - (i % 8)));
     }
 
     // Check r is in the range [1, n-1]
@@ -76,16 +69,22 @@ pub fn ecrecover(sig: &[u8; 65], msg: &[u8; 32], mode: bool) -> ([u8; 20], u8) {
         return ([0u8; 20], 4);
     }
 
-    // Check v is either 27 or 28
-    if v != 27 && v != 28 {
+    // Extract the parity: 0 indicates that y is even, 1 indicates that y is odd
+    let parity = sig[64] as u64;
+
+    // Check the recovery id is a bit
+    if parity > 1 {
         #[cfg(debug_assertions)]
-        println!("v should be either 27 or 28, but got {}", v);
+        println!("parity should be either 0 or 1, but got {:?}", parity);
 
         return ([0u8; 20], 5);
     }
 
-    // Calculate the recovery id
-    let parity = v - 27;
+    // Get the hash
+    let mut hash = [0u64; 4];
+    for i in 0..32 {
+        hash[3 - i / 8] |= (msg[i] as u64) << (8 * (7 - (i % 8)));
+    }
 
     // In Ethereum, signatures where the x-coordinate of the resulting point is
     // greater than N are considered invalid. Hence, r = x as integers
@@ -104,7 +103,7 @@ pub fn ecrecover(sig: &[u8; 65], msg: &[u8; 32], mode: bool) -> ([u8; 20], u8) {
     // Hint the sqrt and verify it
     let y = match fcall_secp256k1_fp_sqrt(&y_sq, parity) {
         Some(y) => {
-            // Check the recevied y is the sqrt
+            // Check the received y is the sqrt
             params.a = &y;
             params.b = &y;
             params.c = &[0, 0, 0, 0];
@@ -178,10 +177,10 @@ pub fn ecrecover(sig: &[u8; 65], msg: &[u8; 32], mode: bool) -> ([u8; 20], u8) {
     keccak.update(&buf);
     keccak.finalize(&mut pk_hash);
 
-    // Return the least significant 20 bytes of the hash
+    // Return the right-most 20 bytes of the hash
     let mut addr = [0u8; 20];
     for i in 0..20 {
-        addr[i] = pk_hash[i];
+        addr[i] = pk_hash[12 + i];
     }
     (addr, 0)
 }
