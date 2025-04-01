@@ -11,15 +11,32 @@ use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 use zisk_core::Riscv2zisk;
 
 use p3_field::PrimeField64;
 use p3_goldilocks::Goldilocks;
-use witness::{witness_library, WitnessLibrary, WitnessManager};
+use witness::{WitnessLibrary, WitnessManager};
 
-// Macro invocation to generate the core `WitnessLibrary` implementation for the ZisK system.
-witness_library!(WitnessLib, Goldilocks);
+pub struct WitnessLib {
+    elf_path: PathBuf,
+    asm_path: Option<PathBuf>,
+    input_data_path: Option<PathBuf>,
+    keccak_path: PathBuf,
+}
+
+#[no_mangle]
+fn init_library(
+    verbose_mode: proofman_common::VerboseMode,
+    elf_path: PathBuf,
+    asm_path: Option<PathBuf>,
+    input_data_path: Option<PathBuf>,
+    keccak_path: PathBuf,
+) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
+    proofman_common::initialize_logger(verbose_mode);
+    let result = Box::new(WitnessLib { elf_path, asm_path, input_data_path, keccak_path });
+    Ok(result)
+}
 
 impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib {
     /// Registers the witness components and initializes the execution pipeline.
@@ -38,7 +55,8 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib {
     fn register_witness(&mut self, wcm: Arc<WitnessManager<F>>) {
         // Step 1: Create an instance of the RISCV -> ZisK program converter
         let rv2zk = Riscv2zisk::new(
-            wcm.get_rom_path().unwrap().display().to_string(),
+            self.elf_path.display().to_string(),
+            String::new(),
             String::new(),
             String::new(),
             String::new(),
@@ -56,11 +74,16 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib {
         let mem_sm = Mem::new(std.clone());
 
         // Step 4: Initialize the precompiles state machines
-        let keccakf_sm = KeccakfManager::new::<F>();
+        let keccakf_sm = KeccakfManager::new::<F>(self.keccak_path.clone());
 
         // Step 5: Create the executor and register the secondary state machines
-        let mut executor =
-            ZiskExecutor::new(wcm.get_input_data_path(), wcm.get_rom_path(), zisk_rom, std);
+        let mut executor: ZiskExecutor<F> = ZiskExecutor::new(
+            self.elf_path.clone(),
+            self.asm_path.clone(),
+            self.input_data_path.clone(),
+            zisk_rom,
+            std,
+        );
         executor.register_sm(mem_sm);
         executor.register_sm(rom_sm);
         executor.register_sm(binary_sm);

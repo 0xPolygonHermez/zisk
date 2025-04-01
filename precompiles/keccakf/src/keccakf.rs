@@ -1,5 +1,5 @@
 use core::panic;
-use std::{env, fs, path::PathBuf, sync::Arc};
+use std::{fs, path::PathBuf, sync::Arc};
 
 use log::info;
 use p3_field::PrimeField64;
@@ -48,14 +48,7 @@ impl KeccakfSM {
     ///
     /// # Returns
     /// A new `KeccakfSM` instance.
-    pub fn new(keccakf_table_sm: Arc<KeccakfTableSM>) -> Arc<Self> {
-        // Parse the script
-        let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-        let script_path = PathBuf::from(format!("{}/.zisk/bin/keccakf_script.json", home_dir));
-        if !script_path.exists() {
-            panic!("Keccakf script file not found at {:?}", script_path);
-        }
-
+    pub fn new(keccakf_table_sm: Arc<KeccakfTableSM>, script_path: PathBuf) -> Arc<Self> {
         let script = fs::read_to_string(script_path).expect("Failed to read keccakf_script.json");
         let script: Script =
             serde_json::from_str(&script).expect("Failed to parse keccakf_script.json");

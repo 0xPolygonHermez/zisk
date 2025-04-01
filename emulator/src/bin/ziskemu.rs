@@ -1,6 +1,7 @@
 use clap::Parser;
 use std::{fmt::Write, process};
-use ziskemu::{EmuOptions, EmuTrace, Emulator, ZiskEmulator};
+use zisk_common::EmuTrace;
+use ziskemu::{EmuOptions, Emulator, ZiskEmulator};
 
 fn main() {
     // Create a emulator options instance based on arguments or default values

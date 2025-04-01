@@ -1,8 +1,10 @@
 use clap::{Parser, ValueEnum};
+use proofman_common::VerboseMode;
 use std::env;
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::str::FromStr;
+use witness::WitnessLibrary;
 
 #[derive(Parser, Debug, Clone, ValueEnum)]
 pub enum Field {
@@ -69,3 +71,11 @@ pub fn get_default_verkey() -> String {
         format!("{}/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.json", get_home_dir());
     verkey
 }
+
+pub type ZiskLibInitFn<F> = fn(
+    VerboseMode,
+    PathBuf,         // Rom path
+    Option<PathBuf>, // Asm path
+    Option<PathBuf>, // Inputs path
+    PathBuf,         // Keccak path
+) -> Result<Box<dyn WitnessLibrary<F>>, Box<dyn std::error::Error>>;

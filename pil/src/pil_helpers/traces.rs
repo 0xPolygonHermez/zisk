@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &[u8] = b"Zisk-hash";
+pub const PILOUT_HASH: &str = "ec0346cec94a794eec547e3c39ec3a055cca09702f926c08715d4144b4d61bcc";
 
 //AIRGROUP CONSTANTS
 
@@ -246,7 +246,6 @@ trace!(SpecifiedRangesTrace<F> {
  mul: [F; 10],
 },  0, 17, 2097152 );
 
-pub const RomRomHash: &str = "aa8bf8c0f3757c69cac124f513b6b2a66653708e85300b9407effcff3b707190";
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
 }, 0, 2, 2097152, 0 );

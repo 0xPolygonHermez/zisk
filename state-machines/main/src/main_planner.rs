@@ -7,8 +7,8 @@ use std::any::Any;
 
 use p3_field::PrimeField;
 use sm_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan};
+use zisk_common::MinimalTraces;
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
-use ziskemu::EmuTrace;
 
 use crate::MainCounter;
 
@@ -32,10 +32,16 @@ impl MainPlanner {
     /// # Returns
     /// A vector of `Plan` instances, each corresponding to a segment of the main trace.
     pub fn plan<F: PrimeField>(
-        min_traces: &[EmuTrace],
+        min_traces: &MinimalTraces,
         main_counters: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>,
         min_traces_size: u64,
     ) -> (Vec<Plan>, Vec<(u64, u32)>) {
+        let min_traces = match min_traces {
+            MinimalTraces::EmuTrace(min_traces) => min_traces,
+            MinimalTraces::AsmEmuTrace(asm_min_traces) => &asm_min_traces.vec_chunks,
+            _ => unreachable!(),
+        };
+
         let num_rows = MainTrace::<F>::NUM_ROWS as u64;
 
         let mut publics = Vec::new();

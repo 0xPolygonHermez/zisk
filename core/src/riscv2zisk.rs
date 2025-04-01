@@ -16,6 +16,8 @@ pub struct Riscv2zisk {
     pub pil_file: String,
     /// Binary ZISK file name (output) (optional)
     pub bin_file: String,
+    /// Assembly i86-64 file name (output) (optional)
+    pub asm_file: String,
 }
 
 impl Riscv2zisk {
@@ -25,8 +27,9 @@ impl Riscv2zisk {
         zisk_file: String,
         pil_file: String,
         bin_file: String,
+        asm_file: String,
     ) -> Riscv2zisk {
-        Riscv2zisk { elf_file, zisk_file, pil_file, bin_file }
+        Riscv2zisk { elf_file, zisk_file, pil_file, bin_file, asm_file }
     }
 
     /// Executes the file conversion process by calling elf2romfile()
@@ -36,6 +39,7 @@ impl Riscv2zisk {
             self.zisk_file.clone(),
             self.pil_file.clone(),
             self.bin_file.clone(),
+            self.asm_file.clone(),
         )
     }
 
