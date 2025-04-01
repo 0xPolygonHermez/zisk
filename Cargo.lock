@@ -259,8 +259,9 @@ dependencies = [
  "rand 0.9.0",
  "reqwest",
  "rom-setup",
+ "serde",
  "serde_json",
- "sysinfo 0.33.1",
+ "sysinfo 0.34.1",
  "target-lexicon",
  "tokio",
  "vergen",
@@ -1586,6 +1587,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-core-foundation"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daeaf60f25471d26948a1c2f840e3f7d86f4109e3af4e8e4b5cd70c39690d925"
+dependencies = [
+ "bitflags 2.9.0",
+]
+
+[[package]]
 name = "object"
 version = "0.36.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2451,9 +2461,9 @@ dependencies = [
 
 [[package]]
 name = "serde_arrays"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38636132857f68ec3d5f3eb121166d2af33cb55174c4d5ff645db6165cbef0fd"
+checksum = "94a16b99c5ea4fe3daccd14853ad260ec00ea043b2708d1fd1da3106dcd8d9df"
 dependencies = [
  "serde",
 ]
@@ -2758,6 +2768,19 @@ dependencies = [
  "memchr",
  "ntapi 0.4.1",
  "rayon",
+ "windows",
+]
+
+[[package]]
+name = "sysinfo"
+version = "0.34.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "927fa32067cbb22b8a91987d84c0ff94c7441ccf3f767165a58d77a656d6267c"
+dependencies = [
+ "libc",
+ "memchr",
+ "ntapi 0.4.1",
+ "objc2-core-foundation",
  "windows",
 ]
 
@@ -3774,7 +3797,7 @@ dependencies = [
  "rayon",
  "riscv",
  "sm-mem",
- "sysinfo 0.33.1",
+ "sysinfo 0.34.1",
  "vergen",
  "zisk-common",
  "zisk-core",
