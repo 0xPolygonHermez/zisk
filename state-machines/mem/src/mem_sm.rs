@@ -287,7 +287,10 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             }
             self.std.range_check((value + 1) as i64, multiplicity as u64, range_id);
         }
-        self.std.range_check(STEP_MEMORY_MAX_DIFF as i64, range_check_data_max, range_id);
+        // Add one in range_check_data_max because it's used by intermediate reads, and reads
+        // add one to distance to allow same step on read operations.
+
+        self.std.range_check((STEP_MEMORY_MAX_DIFF + 1) as i64, range_check_data_max, range_id);
 
         let mut air_values = MemAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id);
