@@ -86,6 +86,8 @@ use core::fmt;
 pub const INPUT_ADDR: u64 = 0x90000000;
 /// Maximum size of the input data
 pub const MAX_INPUT_SIZE: u64 = 0x08000000; // 128M,
+/// Free input data memory address = first input address
+pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
 /// First globa RW memory address
 pub const RAM_ADDR: u64 = 0xa0000000;
 /// Size of the global RW memory

@@ -45,8 +45,9 @@
 use std::collections::HashMap;
 
 use crate::{
-    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, M64, P2_32, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
-    SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, FREE_INPUT_ADDR, M64, P2_32, ROM_ADDR, ROM_ENTRY,
+    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
+    STORE_REG,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -83,6 +84,16 @@ const TRACE_ADDR: &str = "0xb0000020";
 const MEM_TRACE_ADDRESS: &str = "qword ptr [MEM_TRACE_ADDRESS]";
 const MEM_CHUNK_ADDRESS: &str = "qword ptr [MEM_CHUNK_ADDRESS]";
 const MEM_CHUNK_START_STEP: &str = "qword ptr [MEM_CHUNK_START_STEP]";
+
+// Fcall context offsets of the different fields
+const FCALL_FUNCTION_ID: u64 = 0;
+const FCALL_PARAMS_CAPACITY: u64 = 1;
+const FCALL_PARAMS_SIZE: u64 = 2;
+const FCALL_PARAMS: u64 = 3;
+const FCALL_RESULT_CAPACITY: u64 = 35;
+const FCALL_RESULT_SIZE: u64 = 36;
+const FCALL_RESULT: u64 = 37;
+const FCALL_RESULT_GOT: u64 = 69;
 
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
@@ -549,20 +560,16 @@ impl ZiskRom {
             *s += &format!(".comm reg_{}, 8, 8\n", r);
         }
 
-        // fcall_context
-        *s += "fcall_context:\n";
-        *s += &format!(".comm fcall_funcion_id, 8, 8\n");
-        *s += &format!(".comm fcall_params_max_size, 8, 8\n");
-        *s += &format!(".comm fcall_params_size, 8, 8\n");
-        for i in 0..32 {
-            *s += &format!(".comm fcall_params_{}, 8, 8\n", i);
-        }
-        *s += &format!(".comm fcall_result_max_size, 8, 8\n");
-        *s += &format!(".comm fcall_result_size, 8, 8\n");
-        for i in 0..32 {
-            *s += &format!(".comm fcall_result_{}, 8, 8\n", i);
-        }
-        *s += &format!(".comm fcall_result_got, 8, 8\n");
+        // fcall_context =
+        //     function_id
+        //     params_max_size
+        //     params_size
+        //     params[32]
+        //     result_max_size
+        //     result_size
+        //     result[32]
+        //     result_got
+        *s += ".comm fcall_ctx, 8*70, 8\n";
 
         // for k in 0..keys.len() {
         //     let pc = keys[k];
@@ -581,6 +588,7 @@ impl ZiskRom {
         *s += ".extern opcode_secp256k1_add\n";
         *s += ".extern opcode_secp256k1_dbl\n";
         *s += ".extern opcode_fcall\n";
+        *s += ".extern print_fcall_ctx\n";
         *s += ".extern realloc_trace\n\n";
 
         if ctx.generate_traces {
@@ -644,20 +652,15 @@ impl ZiskRom {
             *s += &format!("\tmov qword ptr [reg_{}], 0\n", r);
         }
 
-        // Initialize fcall context
-        *s += "\t/* Init fcall context */\n";
-        *s += &format!("\tmov qword ptr [fcall_funcion_id], 0\n");
-        *s += &format!("\tmov qword ptr [fcall_params_max_size], 32\n");
-        *s += &format!("\tmov qword ptr [fcall_params_size], 0\n");
-        for i in 0..32 {
-            *s += &format!("\tmov qword ptr [fcall_params_{}], 0\n", i);
+        *s += "\t/* Init fcall_context to zero */\n";
+        *s += &format!("\tlea {}, fcall_ctx /* address = fcall context */\n", REG_ADDRESS);
+        for i in 0..70 {
+            if (i == FCALL_PARAMS_CAPACITY) || (i == FCALL_RESULT_CAPACITY) {
+                *s += &format!("\tmov qword ptr [{} + {}*8], 32\n", REG_ADDRESS, i);
+            } else {
+                *s += &format!("\tmov qword ptr [{} + {}*8], 0\n", REG_ADDRESS, i);
+            }
         }
-        *s += &format!("\tmov qword ptr [fcall_result_max_size], 32\n");
-        *s += &format!("\tmov qword ptr [fcall_result_size], 0\n");
-        for i in 0..32 {
-            *s += &format!("\tmov qword ptr [fcall_result_{}], 0\n", i);
-        }
-        *s += &format!("\tmov qword ptr [fcall_result_got], 0\n");
 
         // For all program addresses in the vector, create an assembly set of instructions with an
         // instruction label
@@ -701,9 +704,11 @@ impl ZiskRom {
             ctx.store_b_in_b = false;
 
             match zisk_op {
-                ZiskOp::CopyB | ZiskOp::PubOut | ZiskOp::FcallParam | ZiskOp::Fcall => {
-                    ctx.store_b_in_c = true
-                }
+                ZiskOp::CopyB
+                | ZiskOp::PubOut
+                | ZiskOp::FcallParam
+                | ZiskOp::Fcall
+                | ZiskOp::FcallGet => ctx.store_b_in_c = true,
                 ZiskOp::Xor
                 | ZiskOp::And
                 | ZiskOp::Or
@@ -2958,18 +2963,47 @@ impl ZiskRom {
             }
             ZiskOp::FcallParam => {
                 assert!(ctx.store_b_in_c);
+                assert!(ctx.a.is_constant);
+                assert!(ctx.a.constant_value <= 32);
                 s += "\t/* FcallParam */\n";
 
-                // Store param in params
-                s += &format!(
-                    "\tmov {}, qword ptr [fcall_params_size] /* aux = params size */\n",
-                    REG_AUX
-                );
-                s += &format!(
-                    "\tmov qword ptr [fcall_params_0 + {}*8], {} /* params[aux] = param */\n",
-                    REG_AUX, REG_C
-                );
-                s += &format!("\tint qword ptr [fcall_params_size]\n");
+                if ctx.a.constant_value == 1 {
+                    // Store param in params
+                    s += &format!(
+                        "\tmov {}, qword ptr [fcall_ctx + {}*8] /* aux = params size */\n",
+                        REG_AUX, FCALL_PARAMS_SIZE
+                    );
+                    s += &format!(
+                        "\tmov qword ptr [fcall_ctx + {}*8 + {}*8], {} /* ctx.params[size] = b */\n",
+                        REG_AUX, FCALL_PARAMS, REG_C
+                    );
+                    s += &format!(
+                        "\tinc qword ptr [fcall_ctx + {}*8] /* inc ctx.params_size */\n",
+                        FCALL_PARAMS_SIZE
+                    );
+                } else {
+                    // Store params in params
+                    s += &format!(
+                        "\tmov {}, qword ptr [fcall_ctx + {}*8] /* aux = params size */\n",
+                        REG_AUX, FCALL_PARAMS_SIZE
+                    );
+                    for i in 0..ctx.a.constant_value {
+                        s += &format!(
+                            "\tmov {}, qword ptr [{} + {}*8] /* value=params[b] */\n",
+                            REG_VALUE, REG_C, i
+                        );
+
+                        s += &format!(
+                            "\tmov qword ptr [fcall_ctx + {}*8 + {}*8], {} /* params[aux] = param */\n",
+                            REG_AUX, FCALL_PARAMS, REG_VALUE
+                        );
+                        s += &format!("\tinc {} /* inc aux */\n", REG_AUX);
+                    }
+                    s += &format!(
+                        "\tmov qword ptr [fcall_ctx + {}*8], {} /* ctx.params_size = aux */\n",
+                        FCALL_PARAMS_SIZE, REG_AUX
+                    );
+                }
 
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2979,58 +3013,83 @@ impl ZiskRom {
 
                 assert!(ctx.store_b_in_c);
 
-                // Store b (last param) in params
-                s += &format!(
-                    "\tmov {}, qword ptr [fcall_params_size] /* aux = params size */\n",
-                    REG_AUX
-                );
-                s += &format!(
-                    "\tmov qword ptr [fcall_params_0 + {}*8], {} /* params[aux] = param */\n",
-                    REG_AUX, REG_C
-                );
-                s += &format!("\tint qword ptr [fcall_params_size]\n");
-
                 // Store a (function id) in context
                 assert!(ctx.a.is_constant);
                 s += &format!(
-                    "\tmov qword ptr [fcall_funcion_id], {} /* function id */\n",
-                    ctx.a.constant_value
+                    "\tmov qword ptr [fcall_ctx + {}*8], {} /* ctx.function id = a */\n",
+                    FCALL_FUNCTION_ID, ctx.a.constant_value
                 );
 
                 // Set the fcall context address as the first parameter */
-                s += "\tlea rdi, [fcall_context] /* rdi = fcall context */\n";
+                s += "\tlea rdi, fcall_ctx /* rdi = fcall context */\n";
 
                 // Call the fcall function
                 Self::push_internal_registers(ctx, &mut s);
                 s += "\tcall _opcode_fcall\n";
                 Self::pop_internal_registers(ctx, &mut s);
 
+                // Get free input address
+                s += &format!(
+                    "\tmov {}, {} /* address=free_input */\n",
+                    REG_ADDRESS, FREE_INPUT_ADDR
+                );
+
+                // Copy ctx.result[0] or 0 into free input
+                s += &format!(
+                    "\tmov {}, qword ptr [fcall_ctx + {}*8] /* aux=ctx.result_size */\n",
+                    REG_AUX, FCALL_RESULT_SIZE
+                );
+                s += &format!("\tcmp {}, 0 /* aux vs 0 */\n", REG_AUX);
+                s += &format!("\tjz pc_{:x}_fcall_result_zero\n", ctx.pc);
+                s += &format!(
+                    "\tmov {}, qword ptr [fcall_ctx + {}*8] /* value=ctx.result[0] */\n",
+                    REG_VALUE, FCALL_RESULT
+                );
+                s += &format!("\tmov [{}], {} /* free_input=value */\n", REG_ADDRESS, REG_VALUE);
+                s += &format!("\tjmp pc_{:x}_fcall_result_done\n", ctx.pc);
+                s += &format!("pc_{:x}_fcall_result_zero:\n", ctx.pc);
+                s += &format!("\tmov qword ptr [{}], 0 /* free_input=0 */\n", REG_ADDRESS);
+                s += &format!("pc_{:x}_fcall_result_done:\n", ctx.pc);
+
                 // Update fcall counters
-                s += &format!("\tmov qword ptr [fcall_params_size], 0\n");
-                s += &format!("\tmov qword ptr [fcall_result_got], 0\n");
+                s += &format!(
+                    "\tmov qword ptr [fcall_ctx + {}*8], 0 /* ctx.params_size=0 */\n",
+                    FCALL_PARAMS_SIZE
+                );
+                s += &format!(
+                    "\tmov qword ptr [fcall_ctx + {}*8], 1 /* ctx.result_got=1 */\n",
+                    FCALL_RESULT_GOT
+                );
 
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::FcallGet => {
-                s += "\tFcallGet\n";
+                s += "\t/* FcallGet */\n";
 
-                // Get value from fcall result
-                s +=
-                    &format!("\tmov {}, qword ptr [fcall_result_got] /* value=got */\n", REG_VALUE);
+                assert!(ctx.store_b_in_c);
+
+                // Get value from fcall_ctx.result[got] and store it in free input address
                 s += &format!(
-                    "\tmov {}, qword ptr [fcall_result_0 + {}*8], 0 /* c=result[got] */\n",
-                    REG_C, REG_VALUE
+                    "\tmov {}, qword ptr [fcall_ctx + {}*8] /* aux=ctx.result_got */\n",
+                    REG_AUX, FCALL_RESULT_GOT
                 );
-                s += &format!("\tinc qword ptr [fcall_result_got]\n");
-
-                // Store read value in mem_reads, overwriting the previous b value
-                if ctx.generate_traces {
-                    s += &format!(
-                        "\tmov [{} + {}*8 - 8], {} /* mem_reads[@+size*8-8] = c */\n",
-                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_C
-                    );
-                }
+                s += &format!(
+                    "\tmov {}, qword ptr [fcall_ctx + {}*8 + {}*8] /* value=ctx.result[got] */\n",
+                    REG_VALUE, REG_AUX, FCALL_RESULT
+                );
+                s += &format!(
+                    "\tmov {}, {} /* address=free_input */\n",
+                    REG_ADDRESS, FREE_INPUT_ADDR
+                );
+                s += &format!(
+                    "\tmov qword ptr [{}], {} /* free_input=value */\n",
+                    REG_ADDRESS, REG_VALUE
+                );
+                s += &format!(
+                    "\tinc qword ptr [fcall_ctx + {}*8] /* inc ctx.result_got */\n",
+                    FCALL_RESULT_GOT
+                );
 
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;

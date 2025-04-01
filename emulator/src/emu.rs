@@ -1158,8 +1158,8 @@ impl<'a> Emu<'a> {
             for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
                 print!(" {:}:0x{:X}", index, value);
             }
-            println!("");
-            self.ctx.inst_ctx.regs.clone()
+            println!();
+            self.ctx.inst_ctx.regs
         } else {
             /* println!(
                 "#{} 0x{:X} ({}) {}",
@@ -1207,7 +1207,7 @@ impl<'a> Emu<'a> {
                     print!(" {:}:\x1B[1;31m0x{:X}\x1B[0m", index, value);
                 }
             }
-            println!("");
+            println!();
         }
     }
 
@@ -1610,7 +1610,7 @@ impl<'a> Emu<'a> {
                 " self.ctx.inst_ctx.emulation_mode={:?} instruction:{:?}",
                 self.ctx.inst_ctx.emulation_mode, instruction
             );
-            self.ctx.inst_ctx.regs.clone()
+            self.ctx.inst_ctx.regs
         } else {
             /* println!(
                 "#{} 0x{:X} ({}) {}",
@@ -1658,7 +1658,7 @@ impl<'a> Emu<'a> {
                     print!(" {:}:\x1B[1;31m0x{:X}\x1B[0m", index, value);
                 }
             }
-            println!("");
+            println!();
         }
         // Get operation bus data
         let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
