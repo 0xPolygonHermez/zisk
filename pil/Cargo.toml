@@ -10,9 +10,9 @@ categories = { workspace = true }
 [dependencies]
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
-serde = { version = "1.0.204", features = ["derive"] }
+serde = { workspace = true }
 rayon = { workspace = true }
-serde_arrays = "0.1"
+serde_arrays = "0.2"
 
 
 [features]

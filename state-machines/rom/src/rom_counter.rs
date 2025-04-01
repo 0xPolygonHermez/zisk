@@ -2,7 +2,11 @@
 //! sent over the data bus. It collects statistics such as program counter (PC),
 //! executed instruction steps, and the PC of the last executed instruction.
 
-use std::{any::Any, ops::AddAssign};
+use std::{
+    any::Any,
+    ops::AddAssign,
+    sync::{atomic::AtomicU32, Arc},
+};
 
 use data_bus::{BusDevice, BusId, RomBusData, RomData, ROM_BUS_ID};
 use sm_common::{CounterStats, Metrics};
@@ -22,14 +26,15 @@ impl RomCounter {
     ///
     /// # Returns
     /// A new `RomCounter` instance.
-    pub fn new() -> Self {
-        Self { rom: CounterStats::default() }
+    pub fn new(bios_inst_count: Arc<Vec<AtomicU32>>, prog_inst_count: Arc<Vec<AtomicU32>>) -> Self {
+        let counter_stats = CounterStats::new(bios_inst_count, prog_inst_count);
+        Self { rom: counter_stats }
     }
 }
 
 impl AddAssign<&RomCounter> for RomCounter {
     fn add_assign(&mut self, other: &Self) {
-        self.rom += &other.rom; // Directly add `other.rom` to `self.rom`
+        self.rom += &other.rom;
     }
 }
 

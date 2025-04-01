@@ -11,18 +11,19 @@ use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
-use std::{path::PathBuf, sync::Arc};
+use std::{any::Any, path::PathBuf, sync::Arc};
 use zisk_core::Riscv2zisk;
 
 use p3_field::PrimeField64;
 use p3_goldilocks::Goldilocks;
 use witness::{WitnessLibrary, WitnessManager};
 
-pub struct WitnessLib {
+pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     input_data_path: Option<PathBuf>,
     keccak_path: PathBuf,
+    executor: Option<Arc<ZiskExecutor<F>>>,
 }
 
 #[no_mangle]
@@ -34,11 +35,13 @@ fn init_library(
     keccak_path: PathBuf,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode);
-    let result = Box::new(WitnessLib { elf_path, asm_path, input_data_path, keccak_path });
+    let result =
+        Box::new(WitnessLib { elf_path, asm_path, input_data_path, keccak_path, executor: None });
+
     Ok(result)
 }
 
-impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib {
+impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
     /// Registers the witness components and initializes the execution pipeline.
     ///
     /// # Arguments
@@ -92,7 +95,22 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib {
         // Step 6: Register the precompiles state machines
         executor.register_sm(keccakf_sm);
 
+        let executor = Arc::new(executor);
+
         // Step 7: Register the executor as a component in the Witness Manager
-        wcm.register_component(Arc::new(executor));
+        wcm.register_component(executor.clone());
+
+        self.executor = Some(executor);
+    }
+
+    /// Returns the execution result of the witness computation.
+    ///
+    /// # Returns
+    /// * `u16` - The execution result code.
+    fn get_execution_result(&self) -> Option<Box<dyn std::any::Any>> {
+        match &self.executor {
+            None => Some(Box::new(0u64) as Box<dyn Any>),
+            Some(executor) => Some(Box::new(executor.get_execution_result()) as Box<dyn Any>),
+        }
     }
 }
