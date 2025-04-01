@@ -32,38 +32,48 @@ const N_HALF: [u64; 4] =
 /// - 5: v should be either 27 or 28
 /// - 6: No square root found for `y_sq`
 /// - 7: The public key is the point at infinity
-pub fn ecrecover(
-    hash: &[u64; 4],
-    v: u64,
-    r: &[u64; 4],
-    s: &[u64; 4],
-    mode: bool,
-) -> ([u64; 3], u8) {
+pub fn ecrecover(sig: &[u8; 65], msg: &[u8; 32], mode: bool) -> ([u8; 20], u8) {
+    // Extract the signature components, the recovery id.
+    // Adapt to our API
+    let mut r = [0u64; 4];
+    let mut s = [0u64; 4];
+    for i in 0..32 {
+        r[3 - i / 8] |= (sig[i] as u64) << (8 * (i % 8));
+        s[3 - i / 8] |= (sig[32 + i] as u64) << (8 * (i % 8));
+    }
+    let v = sig[64] as u64;
+
+    // Adapat hash to our API
+    let mut hash = [0u64; 4];
+    for i in 0..32 {
+        hash[3 - i / 8] |= (msg[i] as u64) << (8 * (i % 8));
+    }
+
     // Check r is in the range [1, n-1]
-    if r == &[0, 0, 0, 0] {
+    if r == [0, 0, 0, 0] {
         #[cfg(debug_assertions)]
         println!("r should be greater than 0");
 
-        return ([0u64; 3], 1);
-    } else if gt(r, &N_MINUS_ONE) {
+        return ([0u8; 20], 1);
+    } else if gt(&r, &N_MINUS_ONE) {
         #[cfg(debug_assertions)]
         println!("r should be less than N_MINUS_ONE: {:?}, but got {:?}", N_MINUS_ONE, r);
 
-        return ([0u64; 3], 2);
+        return ([0u8; 20], 2);
     }
 
     // Check s is either in the range [1, n-1] (precompiled) or [1, (n-1)/2] (tx):
     let s_limit = if mode { N_MINUS_ONE } else { N_HALF };
-    if s == &[0, 0, 0, 0] {
+    if s == [0, 0, 0, 0] {
         #[cfg(debug_assertions)]
         println!("s should be greater than 0");
 
-        return ([0u64; 3], 3);
-    } else if gt(s, &s_limit) {
+        return ([0u8; 20], 3);
+    } else if gt(&s, &s_limit) {
         #[cfg(debug_assertions)]
         println!("s should be less than s_limit: {:?}, but got {:?}", s_limit, s);
 
-        return ([0u64; 3], 4);
+        return ([0u8; 20], 4);
     }
 
     // Check v is either 27 or 28
@@ -71,7 +81,7 @@ pub fn ecrecover(
         #[cfg(debug_assertions)]
         println!("v should be either 27 or 28, but got {}", v);
 
-        return ([0u64; 3], 5);
+        return ([0u8; 20], 5);
     }
 
     // Calculate the recovery id
@@ -82,11 +92,11 @@ pub fn ecrecover(
 
     // Calculate the y-coordinate of the point: y = sqrt(x³ + 7)
     let mut params =
-        SyscallArith256ModParams { a: r, b: r, c: &[0, 0, 0, 0], module: &P, d: &mut [0, 0, 0, 0] };
+        SyscallArith256ModParams { a: &r, b: &r, c: &[0, 0, 0, 0], module: &P, d: &mut [0, 0, 0, 0] };
     syscall_arith256_mod(&mut params);
     let r_sq = *params.d;
     params.a = &r_sq;
-    params.b = r;
+    params.b = &r;
     params.c = &[7, 0, 0, 0];
     syscall_arith256_mod(&mut params);
     let y_sq = *params.d;
@@ -109,7 +119,7 @@ pub fn ecrecover(
             // Check that y_sq is a non-quadratic residue
             secp256k1_fp_assert_nqr(&y_sq);
 
-            return ([0u64; 3], 6);
+            return ([0u8; 20], 6);
         }
     };
 
@@ -120,9 +130,9 @@ pub fn ecrecover(
     // Calculate the public key
 
     // Hint the inverse and verify it
-    let r_inv = fcall_secp256k1_fn_inv(r);
+    let r_inv = fcall_secp256k1_fn_inv(&r);
     let mut params = SyscallArith256ModParams {
-        a: r,
+        a: &r,
         b: &r_inv,
         c: &[0, 0, 0, 0],
         module: &N,
@@ -132,23 +142,26 @@ pub fn ecrecover(
     assert_eq!(*params.d, [0x1, 0x0, 0x0, 0x0]);
 
     // Compute k1 = (-hash * r_inv) % N
-    params.a = hash;
+    params.a = &hash;
     params.b = &r_inv;
     params.c = &[0, 0, 0, 0];
     syscall_arith256_mod(&mut params);
     let k1 = sub(&N, params.d);
 
     // Compute k2 = (s * r_inv) % N
-    params.a = s;
+    params.a = &s;
     params.b = &r_inv;
     syscall_arith256_mod(&mut params);
     let k2 = params.d;
 
     // Calculate the public key
-    let p = SyscallPoint256 { x: *r, y };
+    let p = SyscallPoint256 { x: r, y };
     let (pk_is_infinity, pk) = secp256k1_double_scalar_mul_with_g(&k1, k2, &p);
     if pk_is_infinity {
-        return ([0u64; 3], 7);
+        #[cfg(debug_assertions)]
+        println!("The public key is the point at infinity");
+
+        return ([0u8; 20], 7);
     }
 
     // Compute the hash of the public key
@@ -166,9 +179,9 @@ pub fn ecrecover(
     keccak.finalize(&mut pk_hash);
 
     // Return the least significant 20 bytes of the hash
-    let mut addr = [0u64; 3];
+    let mut addr = [0u8; 20];
     for i in 0..20 {
-        addr[i / 8] |= (pk_hash[31 - i] as u64) << (8 * (i % 8));
+        addr[i] = pk_hash[i];
     }
     (addr, 0)
 }
