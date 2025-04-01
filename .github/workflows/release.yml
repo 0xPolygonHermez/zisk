@@ -130,7 +130,7 @@ jobs:
           TARGET: ${{ matrix.target }}
           ARCH: ${{ matrix.arch }}
         shell: bash
-        run: 
+        run: |
           mkdir -p zisk-dist/bin
           mkdir -p zisk-dist/zisk/emulator-asm/src
           cp ./target/${TARGET}/release/cargo-zisk           zisk-dist/bin/
