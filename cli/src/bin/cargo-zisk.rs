@@ -40,7 +40,7 @@ fn main() -> Result<()> {
             cmd.run().context("Error executing Run command")?;
         }
         Cargo::Build(cmd) => {
-            cmd.run().context("Error executing Build command")?;
+            cmd.run().map_err(|e| anyhow!("Error executing Build command: {}", e))?;
         }
         Cargo::CheckSetup(cmd) => {
             cmd.run().context("Error executing CheckSetup command")?;

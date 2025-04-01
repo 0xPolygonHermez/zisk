@@ -1,10 +1,36 @@
+use anyhow::{anyhow, Result};
 use clap::{Parser, ValueEnum};
 use proofman_common::VerboseMode;
+use serde::Deserialize;
 use std::env;
 use std::fmt::Display;
 use std::path::PathBuf;
+use std::process::Command;
 use std::str::FromStr;
 use witness::WitnessLibrary;
+
+#[derive(Deserialize)]
+struct Metadata {
+    target_directory: String,
+    packages: Vec<Package>,
+    workspace_members: Vec<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct Package {
+    name: String,
+    id: String,
+    targets: Vec<Target>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct Target {
+    name: String,
+    kind: Vec<String>,
+    crate_types: Vec<String>,
+}
 
 #[derive(Parser, Debug, Clone, ValueEnum)]
 pub enum Field {
@@ -70,6 +96,43 @@ pub fn get_default_verkey() -> String {
     let verkey =
         format!("{}/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.json", get_home_dir());
     verkey
+}
+
+/// Gets the main compiled elf path for the current project and target.
+pub fn get_compiled_elf_path(target_triple: &str, release: bool) -> Result<PathBuf> {
+    let output = Command::new("cargo")
+        .args(["metadata", "--format-version=1", "--no-deps"])
+        .output()
+        .map_err(|e| anyhow!("Failed to run cargo metadata: {}", e))?;
+
+    let metadata: Metadata = serde_json::from_slice(&output.stdout)
+        .map_err(|e| anyhow!("Failed to parse cargo metadata output: {}", e))?;
+
+    let root_package_id =
+        metadata.workspace_members.first().ok_or_else(|| anyhow!("No workspace members found"))?;
+
+    let package = metadata
+        .packages
+        .iter()
+        .find(|p| &p.id == root_package_id)
+        .ok_or_else(|| anyhow!("Failed to find root package in metadata"))?;
+
+    let target = package
+        .targets
+        .iter()
+        .find(|t| t.kind.contains(&"bin".to_string()))
+        .ok_or_else(|| anyhow!("Failed to find binary target in package"))?;
+
+    let mut path = PathBuf::from(&metadata.target_directory);
+    path.push(target_triple);
+    path.push(if release { "release" } else { "debug" });
+    path.push(&target.name);
+
+    if !path.exists() {
+        return Err(anyhow!("Compiled binary not found at expected path: {}", path.display()));
+    }
+
+    Ok(path)
 }
 
 pub type ZiskLibInitFn<F> = fn(
