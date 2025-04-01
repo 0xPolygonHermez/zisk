@@ -147,7 +147,7 @@ jobs:
           TAR_CMD="tar"
           [ "$PLATFORM_NAME" == "darwin" ] && TAR_CMD="gtar"
 
-          tar -czvf zisk.tar.gz -C zisk-dist .
+          tar -czvf "$ARCHIVE_FILE" -C zisk-dist .
 
           echo "file_name=$ARCHIVE_FILE" >> $GITHUB_OUTPUT       
         
