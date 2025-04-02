@@ -305,6 +305,30 @@ Running a Zisk proof with multiple processes enables efficient workload distribu
 
 The total memory requirement increases proportionally with the number of processes. If each process requires approximately 25GB of memory, running P processes will require roughly (25 * P)GB of memory. Ensure that the system has sufficient available memory to accommodate all running processes.
 
+### GPU proof generation
+
+Zisk proofs can also be generated using GPUs to significantly improve performance and scalability. 
+Follow these steps to enable GPU support:
+
+1. GPU support is only available for NVIDIA GPUs.
+
+2. Build Zisk with GPU support enabled. 
+    GPU support must be enabled at compile time. Follow the instructions in the **Build ZisK** section under **Option 2: Building from source** in the [Installation](./installation.md) guide, but replace the build command with:
+    ```bash
+    cargo build --release --features gpu
+    ```
+
+3. Build Zisk on the target GPU server.
+    It is recommended to compile Zisk directly on the server where it will be executed. The binary will be optimized for the local GPU architecture, which can lead to better runtime performance.
+
+You can combine GPU-based execution with concurrent proof generation using multiple processes, as described in the **Concurrent Proof Generation** section. For better performance in this setup, it is recommended to enable [NVIDIA’s Multi-Process Service (MPS)](https://docs.nvidia.com/deploy/mps/index.html). You can activate it by running:
+```bash
+nvidia-cuda-mps-control -d
+```
+
+> **Note:** GPU memory is typically more limited than CPU memory. When combining GPU execution with concurrent proof generation, ensure that each process has sufficient memory available on the GPU to avoid out-of-memory errors.
+
+
 ### Verify Proof
 
 To verify a generated proof, use the following command:
