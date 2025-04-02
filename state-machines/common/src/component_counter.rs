@@ -133,7 +133,7 @@ impl CounterStats {
             let addr = ((pc - ROM_ENTRY) as usize) >> 2;
             self.bios_inst_count[addr].fetch_add(num, std::sync::atomic::Ordering::Relaxed);
         } else {
-            let addr = ((pc - ROM_ADDR) as usize) >> 2;
+            let addr = (pc - ROM_ADDR) as usize;
             self.prog_inst_count[addr].fetch_add(num, std::sync::atomic::Ordering::Relaxed);
         }
 

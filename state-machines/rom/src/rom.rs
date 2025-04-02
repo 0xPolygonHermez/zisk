@@ -50,8 +50,10 @@ impl RomSM {
     pub fn new(zisk_rom: Arc<ZiskRom>) -> Arc<Self> {
         Arc::new(Self {
             zisk_rom,
-            bios_inst_count: Arc::new(create_atomic_vec(((ROM_ADDR_MAX - ROM_ADDR) as usize) >> 2)),
-            prog_inst_count: Arc::new(create_atomic_vec(((ROM_ADDR_MAX - ROM_ADDR) as usize) >> 2)),
+            // No atomics, we can fivide by 4
+            bios_inst_count: Arc::new(create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2)),
+            // Cannot be dividede by 4
+            prog_inst_count: Arc::new(create_atomic_vec((ROM_ADDR_MAX - ROM_ADDR) as usize)),
         })
     }
 
@@ -111,7 +113,7 @@ impl RomSM {
                 }
             } else {
                 multiplicity =
-                    counter_stats.prog_inst_count[((inst.paddr - ROM_ADDR) >> 2) as usize]
+                    counter_stats.prog_inst_count[(inst.paddr - ROM_ADDR) as usize]
                         .load(std::sync::atomic::Ordering::Relaxed) as u64;
                 if multiplicity == 0 {
                     continue;
