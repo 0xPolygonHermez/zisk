@@ -12,19 +12,17 @@ permissions:
 
 jobs:
   check-latest-release:
+    name: Check if release published
     runs-on: ubuntu-latest
     steps:
-      - name: Install GitHub CLI
-        if: github.event_name == 'release'
-        run: |
-          sudo apt update
-          sudo apt install -y gh
-
       - name: Check if the release is latest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         if: github.event_name == 'release'
         run: |
+          sudo apt update
+          sudo apt install -y gh
+
           LATEST_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
           CURRENT_TAG="${{ github.event.release.tag_name }}"
 
