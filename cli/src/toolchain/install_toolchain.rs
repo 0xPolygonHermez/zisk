@@ -97,7 +97,7 @@ impl InstallToolchainCmd {
                     ));
                 }
 
-                let mut file = fs::File::create(toolchain_archive_path)?;
+                let mut file = fs::File::create(&toolchain_archive_path)?;
                 rt.block_on(download_file(&client, toolchain_download_url.as_str(), &mut file))
                     .unwrap();
             }
@@ -160,6 +160,9 @@ impl InstallToolchainCmd {
                 fs::set_permissions(entry.path(), perms)?;
             }
         }
+
+        // Delete the downloaded archive.
+        fs::remove_file(&toolchain_archive_path)?;
 
         Ok(())
     }
