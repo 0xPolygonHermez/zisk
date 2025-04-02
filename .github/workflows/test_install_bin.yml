@@ -12,9 +12,14 @@ permissions:
 
 jobs:
   check-latest-release:
-    if: github.event_name == 'release' # Only run on release events
     runs-on: ubuntu-latest
     steps:
+      - name: Skip job if not release
+        if: github.event_name != 'release'
+        run: |
+          echo "Not a release event. Skipping..."
+          exit 0
+
       - name: Install GitHub CLI
         run: |
           sudo apt update
