@@ -14,13 +14,8 @@ jobs:
   check-latest-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Skip job if not release
-        if: github.event_name != 'release'
-        run: |
-          echo "Not a release event. Skipping..."
-          exit 0
-
       - name: Install GitHub CLI
+        if: github.event_name != 'release'
         run: |
           sudo apt update
           sudo apt install -y gh
@@ -28,6 +23,7 @@ jobs:
       - name: Check if the release is latest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: github.event_name != 'release'
         run: |
           LATEST_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
           CURRENT_TAG="${{ github.event.release.tag_name }}"
