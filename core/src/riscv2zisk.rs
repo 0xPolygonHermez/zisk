@@ -10,37 +10,21 @@ use std::error::Error;
 pub struct Riscv2zisk {
     /// ELF RISC-V file name (input)
     pub elf_file: String,
-    /// JSON ZISK file name (output)
-    pub zisk_file: String,
-    /// PIL ZISK file name (output) (optional)
-    pub pil_file: String,
-    /// Binary ZISK file name (output) (optional)
-    pub bin_file: String,
-    /// Assembly i86-64 file name (output) (optional)
+    /// Assembly i86-64 file name (output)
     pub asm_file: String,
+    /// Assembly generation method (input)
+    pub generation_method: String,
 }
 
 impl Riscv2zisk {
     /// Creates a new Riscv2zisk struct with the provided input and output file names
-    pub fn new(
-        elf_file: String,
-        zisk_file: String,
-        pil_file: String,
-        bin_file: String,
-        asm_file: String,
-    ) -> Riscv2zisk {
-        Riscv2zisk { elf_file, zisk_file, pil_file, bin_file, asm_file }
+    pub fn new(elf_file: String, asm_file: String, generation_method: String) -> Riscv2zisk {
+        Riscv2zisk { elf_file, asm_file, generation_method }
     }
 
     /// Executes the file conversion process by calling elf2romfile()
     pub fn runfile(&self) -> Result<(), Box<dyn Error>> {
-        elf2romfile(
-            self.elf_file.clone(),
-            self.zisk_file.clone(),
-            self.pil_file.clone(),
-            self.bin_file.clone(),
-            self.asm_file.clone(),
-        )
+        elf2romfile(self.elf_file.clone(), self.asm_file.clone(), self.generation_method.clone())
     }
 
     /// Executes the file conversion process by calling elf2rom()

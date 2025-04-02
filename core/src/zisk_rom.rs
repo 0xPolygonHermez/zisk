@@ -45,9 +45,9 @@
 use std::collections::HashMap;
 
 use crate::{
-    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, FREE_INPUT_ADDR, M64, P2_32, ROM_ADDR, ROM_ENTRY,
-    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
-    STORE_REG,
+    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, FREE_INPUT_ADDR, M64, P2_32, ROM_ADDR,
+    ROM_ADDR_MAX, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND,
+    STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -81,6 +81,8 @@ const MEM_SP: &str = "qword ptr [MEM_SP]";
 const MEM_END: &str = "qword ptr [MEM_END]";
 
 const TRACE_ADDR: &str = "0xb0000020";
+const TRACE_ADDR_NUMBER: u64 = 0xb0000020;
+
 const MEM_TRACE_ADDRESS: &str = "qword ptr [MEM_TRACE_ADDRESS]";
 const MEM_CHUNK_ADDRESS: &str = "qword ptr [MEM_CHUNK_ADDRESS]";
 const MEM_CHUNK_START_STEP: &str = "qword ptr [MEM_CHUNK_START_STEP]";
@@ -150,6 +152,12 @@ pub struct ZiskRom {
 
     /// ROM instructions with an address that is not alligned to 4 bytes
     pub rom_na_instructions: Vec<ZiskInst>,
+
+    /// Maximum rom entry PC
+    pub max_bios_pc: u64,
+
+    /// Maximum rom instruction PC
+    pub max_program_pc: u64,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -170,7 +178,8 @@ pub struct ZiskAsmContext {
     jump_to_dynamic_pc: bool,
     jump_to_static_pc: String,
     log_output: bool,
-    generate_traces: bool,
+    generate_minimal_trace: bool,
+    generate_rom_histogram: bool,
 
     a: ZiskAsmRegister,
     b: ZiskAsmRegister,
@@ -509,10 +518,10 @@ impl ZiskRom {
 
     /// Saves ZisK rom into an i64-64 assembly file: first save to a string, then
     /// save the string to the file
-    pub fn save_to_asm_file(&self, file_name: &str) {
-        // Get a string with the PIL data
+    pub fn save_to_asm_file(&self, file_name: &str, generation_method: &str) {
+        // Get a string with the ASM data
         let mut s = String::new();
-        self.save_to_asm(&mut s);
+        self.save_to_asm(&mut s, generation_method);
 
         // Save to file
         let path = std::path::PathBuf::from(file_name);
@@ -523,13 +532,28 @@ impl ZiskRom {
     }
 
     /// Saves ZisK rom into an i86-64 assembly data string
-    pub fn save_to_asm(&self, s: &mut String) {
+    pub fn save_to_asm(&self, s: &mut String, generation_method: &str) {
+        // Select the ASM generation method
+        let mut generate_minimal_trace = false;
+        let mut generate_rom_histogram = false;
+        if generation_method == "--gen=1" {
+            generate_minimal_trace = true;
+        } else if generation_method == "--gen=2" {
+            generate_rom_histogram = true;
+        } else {
+            panic!("ZiskRom::save_to_asm() got invalid generation method={}", generation_method)
+        }
+
         // Clear output data, just in case
         s.clear();
 
         // Create context
-        let mut ctx =
-            ZiskAsmContext { log_output: true, generate_traces: true, ..Default::default() };
+        let mut ctx = ZiskAsmContext {
+            log_output: true,
+            generate_minimal_trace,
+            generate_rom_histogram,
+            ..Default::default()
+        };
 
         // Save instructions program addresses into a vector
         let mut keys: Vec<u64> = Vec::new();
@@ -591,15 +615,13 @@ impl ZiskRom {
         *s += ".extern print_fcall_ctx\n";
         *s += ".extern realloc_trace\n\n";
 
-        if ctx.generate_traces {
+        if ctx.generate_minimal_trace {
             *s += ".extern chunk_size\n";
             *s += ".extern chunk_size_mask\n\n";
-            *s += ".extern trace_address_threshold\n";
+            *s += ".extern trace_address_threshold\n\n";
         }
 
-        if ctx.generate_traces {
-            *s += "\n";
-
+        if ctx.generate_minimal_trace {
             // Chunk start
             *s += "chunk_start:\n";
             Self::chunk_start(&mut ctx, s);
@@ -617,6 +639,26 @@ impl ZiskRom {
             *s += "\tret\n\n";
         }
 
+        // Functions to let C know about ASM generation
+        *s += ".global get_max_bios_pc\n";
+        *s += "get_max_bios_pc:\n";
+        *s += &format!("\tmov rax, 0x{:08x}\n", self.max_bios_pc);
+        *s += "\tret\n\n";
+
+        *s += ".global get_max_program_pc\n";
+        *s += "get_max_program_pc:\n";
+        *s += &format!("\tmov rax, 0x{:08x}\n", self.max_program_pc);
+        *s += "\tret\n\n";
+
+        *s += ".global get_gen_method\n";
+        *s += "get_gen_method:\n";
+        if ctx.generate_minimal_trace {
+            *s += "\tmov rax, 1\n";
+        } else if ctx.generate_rom_histogram {
+            *s += "\tmov rax, 2\n";
+        }
+        *s += "\tret\n\n";
+
         *s += ".global emulator_start\n";
         *s += "emulator_start:\n";
 
@@ -630,7 +672,7 @@ impl ZiskRom {
         *s += &format!("\tmov {}, 0 /* Memory initialization: step = 0 */\n", MEM_STEP);
         *s += &format!("\tmov {}, 0 /* Memory initialization: sp = 0 */\n", MEM_SP);
         *s += &format!("\tmov {}, 0 /* Memory initialization: end = 0 */\n", MEM_END);
-        if ctx.generate_traces {
+        if ctx.generate_minimal_trace {
             *s += &format!(
                 "\tmov {}, {} /* Memory initialization: value = TRACE_ADDR */\n",
                 REG_VALUE, TRACE_ADDR
@@ -669,7 +711,7 @@ impl ZiskRom {
             ctx.pc = keys[k];
 
             // Call chunk_start the first time, for the first chunk
-            if ctx.generate_traces && k == 0 {
+            if ctx.generate_minimal_trace && k == 0 {
                 *s += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
                 *s += "\tcall chunk_start /* Call chunk_start the first time */\n";
             }
@@ -694,6 +736,14 @@ impl ZiskRom {
             // *s += &format!("\tlea rsi, pc_{}_log\n", ctx.pc);
             // *s += &format!("\tmov rdx, pc_{}_log_len\n", ctx.pc);
             // *s += "\tsyscall\n\n";
+
+            // Update the rom histogram
+            if ctx.generate_rom_histogram {
+                let address = self.get_rom_histogram_trace_address(ctx.pc);
+                *s += "\t/* rom histogram */\n";
+                *s += &format!("\tmov {}, 0x{:08x}\n", REG_ADDRESS, address);
+                *s += &format!("\tinc qword ptr [{}]\n", REG_ADDRESS);
+            }
 
             // Set special storage destinations for a and b registers, based on operations, in order
             // to save instructions
@@ -840,7 +890,7 @@ impl ZiskRom {
                     );
 
                     // Mem reads
-                    if ctx.generate_traces {
+                    if ctx.generate_minimal_trace {
                         // If address is constant
                         if instruction.a_use_sp_imm1 == 0 {
                             // If address is constant and aligned
@@ -899,7 +949,7 @@ impl ZiskRom {
                         "\tmov {}, {} /* {} = step */\n",
                         store_a_reg, MEM_STEP, store_a_reg_name
                     );
-                    if ctx.generate_traces {
+                    if ctx.generate_minimal_trace {
                         *s += &format!(
                             "\tadd {}, chunk_size /* {} += chunk_size */\n",
                             store_a_reg, store_a_reg_name
@@ -954,7 +1004,7 @@ impl ZiskRom {
                     );
 
                     // Mem reads
-                    if ctx.generate_traces {
+                    if ctx.generate_minimal_trace {
                         // If address is constant
                         if instruction.b_use_sp_imm1 == 0 {
                             // If address is constant and aligned
@@ -1067,7 +1117,7 @@ impl ZiskRom {
                     }
 
                     // Store memory reads in minimal trace
-                    if ctx.generate_traces {
+                    if ctx.generate_minimal_trace {
                         match instruction.ind_width {
                             8 => {
                                 // // Check if address is aligned, i.e. it is a multiple of 8
@@ -1308,7 +1358,7 @@ impl ZiskRom {
                     }
 
                     // Mem reads
-                    if ctx.generate_traces {
+                    if ctx.generate_minimal_trace {
                         if !instruction.store_use_sp {
                             if (instruction.store_offset & 0x7) != 0 {
                                 Self::c_store_mem_not_aligned(&mut ctx, s);
@@ -1368,7 +1418,7 @@ impl ZiskRom {
                         address_is_constant && ((address_constant_value & 0x7) == 0);
 
                     // Save data in mem_reads
-                    if ctx.generate_traces {
+                    if ctx.generate_minimal_trace {
                         match instruction.ind_width {
                             8 => {
                                 // Check if address is aligned, i.e. it is a multiple of 8
@@ -1669,7 +1719,7 @@ impl ZiskRom {
 
             // Decrement step counter
             *s += "\t/* STEP */\n";
-            if ctx.generate_traces {
+            if ctx.generate_minimal_trace {
                 *s += &format!("\tdec {} /* decrement step_down */\n", MEM_STEP_DOWN);
                 if instruction.end {
                     *s += &format!("\tmov {}, 1 /* end = 1 */\n", MEM_END);
@@ -2817,7 +2867,7 @@ impl ZiskRom {
                 s += "\tmov rdi, qword ptr [reg_10] /* Keccak: rdi = A0 */\n";
 
                 // Copy read data into mem_reads_address and advance it
-                if ctx.generate_traces {
+                if ctx.generate_minimal_trace {
                     s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
                     for k in 0..25 {
                         s += &format!(
@@ -2864,7 +2914,7 @@ impl ZiskRom {
                 s += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
 
                 // Save data into mem_reads
-                if ctx.generate_traces {
+                if ctx.generate_minimal_trace {
                     Self::precompiled_save_mem_reads(ctx, &mut s, 5, 3, 4);
                 }
 
@@ -2885,7 +2935,7 @@ impl ZiskRom {
                 s += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
 
                 // Save data into mem_reads
-                if ctx.generate_traces {
+                if ctx.generate_minimal_trace {
                     Self::precompiled_save_mem_reads(ctx, &mut s, 5, 4, 4);
                 }
 
@@ -2906,7 +2956,7 @@ impl ZiskRom {
                 s += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
 
                 // Save data into mem_reads
-                if ctx.generate_traces {
+                if ctx.generate_minimal_trace {
                     Self::precompiled_save_mem_reads(ctx, &mut s, 2, 2, 8);
                 }
 
@@ -2927,7 +2977,7 @@ impl ZiskRom {
                 s += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
 
                 // Copy read data into mem_reads
-                if ctx.generate_traces {
+                if ctx.generate_minimal_trace {
                     s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
                     for k in 0..8 {
                         s += &format!(
@@ -3558,5 +3608,39 @@ impl ZiskRom {
             "\tadd {}, {} /* mem_reads_size+={}*/\n",
             REG_MEM_READS_SIZE, mem_reads_index, mem_reads_index
         );
+    }
+
+    /// This function calculates the address of the rom histogram for the provided pc
+    ///
+    /// ROM histogram structure:
+    ///
+    /// ROM trace control:
+    /// 	[8B] version
+    /// 	[8B] exit_code (0=success, 1=not completed)
+    ///     [8B] allocated_size = xxx (bytes)
+    ///     [8B] used_size = xxx (bytes)
+    /// BIOS histogram: (TRACE_ADDR_NUMBER)
+    ///     [8B] multiplicity_size = B
+    /// 	[8B] multiplicity[0] → 4096
+    /// 	[8B] multiplicity[1] → 4096 + 4
+    /// 	…
+    /// 	[8B] multiplicity[B-1] → 4096 + 4*(B-1)
+    /// Program histogram:
+    ///     [8B] multiplicity_size = P
+    /// 	[8B] multiplicity[0] → 0x80000000
+    /// 	[8B] multiplicity[1] → 0x80000000 + 1
+    /// 	…
+    /// 	[8B] multiplicity[P-1] → 0x80000000 + (P-1)
+    ///
+    fn get_rom_histogram_trace_address(&self, pc: u64) -> u64 {
+        assert!(self.max_bios_pc >= ROM_ENTRY);
+        assert!(self.max_bios_pc < ROM_ADDR);
+        assert!(self.max_program_pc >= ROM_ADDR);
+        assert!(self.max_program_pc <= ROM_ADDR_MAX);
+        if pc < ROM_ADDR {
+            TRACE_ADDR_NUMBER + (1 + ((pc - ROM_ENTRY) >> 2)) * 8
+        } else {
+            TRACE_ADDR_NUMBER + (1 + ((self.max_bios_pc - ROM_ENTRY) >> 2) + 1 + pc - ROM_ADDR) * 8
+        }
     }
 }
