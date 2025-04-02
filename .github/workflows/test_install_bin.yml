@@ -1,0 +1,137 @@
+name: Test ZisK Installation (binaries)
+
+on:
+  release:
+    types:
+      - published  
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read    
+
+jobs:
+  check-latest-release:
+    name: Check if release published
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if the release is latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: github.event_name == 'release'
+        run: |
+          sudo apt update
+          sudo apt install -y gh
+
+          LATEST_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
+          CURRENT_TAG="${{ github.event.release.tag_name }}"
+
+          echo "Latest release tag: $LATEST_TAG"
+          echo "Current release tag: $CURRENT_TAG"
+
+          if [[ "$CURRENT_TAG" == "$LATEST_TAG" ]]; then
+            echo "This is the latest release!"
+          else
+            echo "This is NOT the latest release. Exiting..."
+            exit 0
+          fi
+
+  install-from-binaries:
+    name: Install ZisK from binaries
+    needs: check-latest-release
+    runs-on: self-hosted
+    container:
+      image: ubuntu:22.04
+      options: --memory=56g --cpus=16
+    timeout-minutes: 60
+    steps:
+      - name: Clean home directory
+        run: |
+          find $HOME -mindepth 1 -delete || true
+          ls -la $HOME
+          rm -rf refs/heads/feature/gha-test-install-bin
+
+      - name: Check resources
+        run: |
+          echo "CPUs: $(nproc)"
+          free -h
+
+      - name: Install tools
+        run: apt-get update && apt-get install -y curl && apt-get install -y git
+
+      - name: Install Rust toolchain
+        id: rustc-toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: default
+          override: true
+          target: x86_64-unknown-linux-gnu
+
+      - name: Install ZisK dependencies
+        shell: bash
+        run: |
+            apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev \
+                libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev \
+                libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
+
+      - name: Install and run ziskup
+        run: |
+          curl -s -o install.sh https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh
+          chmod +x install.sh
+          export GH_RUNNER=1
+          ./install.sh
+
+      - name: Add ZisK bin directory to PATH
+        run: echo "$HOME/.zisk/bin" >> $GITHUB_PATH
+
+      - name: Create program
+        shell: bash
+        run: |
+          cargo-zisk sdk new $HOME/sha_hasher
+
+      - name: Build program
+        shell: bash
+        run: |
+          cd $HOME/sha_hasher
+          cargo-zisk build --release
+
+      - name: Run program
+        shell: bash
+        run: |
+          cd $HOME/sha_hasher
+          cargo-zisk run --release -i build/input.bin | tee run_output.log
+          if ! grep -qE "98211882|bd13089b|6ccf1fca|81f7f0e4|abf6352a|0c39c9b1|1f142cac|233f1280" run_output.log; then
+            echo "❌ Run program failed"
+            exit 1
+          fi
+
+      - name: Program setup
+        shell: bash
+        run: |
+          cd $HOME/sha_hasher
+          cargo-zisk rom-setup -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher 2>&1 | tee romsetup_output.log
+          if ! grep -F "ROM setup successfully completed" romsetup_output.log; then
+            echo "❌ Program setup failed"
+            exit 1
+          fi
+  
+      - name: Prove program
+        shell: bash
+        run: |
+          cd $HOME/sha_hasher
+          cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -o proof -a -y 2>&1 | tee prove_output.log
+          if ! grep -F "Vadcop Final proof was verified" prove_output.log; then
+            echo "❌ Prove program failed"
+            exit 1
+          fi
+
+      - name: Verify proof
+        shell: bash
+        run: |
+          cd $HOME/sha_hasher
+          cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json -u ./proof/publics.json 2>&1 | tee verify_output.log
+          if ! grep -F "Stark proof was verified" verify_output.log; then
+            echo "❌ Verify proof failed"
+            exit 1
+          fi          
