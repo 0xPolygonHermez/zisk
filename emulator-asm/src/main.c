@@ -253,6 +253,7 @@ int main(int argc, char *argv[])
         initial_trace_size = control[2]; // Initial trace size
         assert(initial_trace_size > 0);
         trace_size = initial_trace_size;
+        trace_address_threshold = TRACE_ADDR + initial_trace_size - MAX_CHUNK_TRACE_SIZE;
         shmem_input_size = control[3];
 
         // Unmap input header

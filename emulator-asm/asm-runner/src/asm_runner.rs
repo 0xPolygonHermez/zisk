@@ -110,7 +110,7 @@ impl AsmRunner {
         let asm_input = AsmInputC {
             chunk_size,
             max_steps,
-            initial_trace_size: 1 << 30, // 1GB
+            initial_trace_size: 1u64 << 32, // 4GB
             input_data_size: inputs.len() as u64,
         };
 
