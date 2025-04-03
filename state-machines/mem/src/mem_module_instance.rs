@@ -25,7 +25,6 @@ pub struct MemModuleInstance<F: PrimeField> {
 #[derive(Debug, Clone, Copy)]
 pub struct MemLastValue {
     pub segment_id: usize,
-    pub chunk_id: usize,
     pub checkpoint_addr: u32,
     pub checkpoint_step: u64,
     pub value: u64,
@@ -34,41 +33,23 @@ pub struct MemLastValue {
 }
 
 impl MemLastValue {
-    pub fn new(
-        segment_id: usize,
-        chunk_id: usize,
-        checkpoint_addr: u32,
-        checkpoint_step: u64,
-    ) -> Self {
-        Self { segment_id, chunk_id, checkpoint_addr, checkpoint_step, value: 0, step: 0, addr: 0 }
+    pub fn new(segment_id: usize, checkpoint_addr: u32, checkpoint_step: u64) -> Self {
+        Self { segment_id, checkpoint_addr, checkpoint_step, value: 0, step: 0, addr: 0 }
     }
     pub fn update(&mut self, value: u64, addr_w: u32, step: u64) {
         if addr_w > self.checkpoint_addr {
             return;
         }
-
+        #[allow(clippy::comparison_chain)]
         if addr_w > self.addr {
             if addr_w < self.checkpoint_addr || step <= self.checkpoint_step {
                 self.set(value, addr_w, step);
             }
-        } else if addr_w == self.addr {
-            if step > self.step && step <= self.checkpoint_step {
-                self.set(value, addr_w, step);
-            }
+        } else if addr_w == self.addr && step > self.step && step <= self.checkpoint_step {
+            self.set(value, addr_w, step);
         }
     }
     pub fn set(&mut self, value: u64, addr_w: u32, step: u64) {
-        // println!(
-        //     "update[{}:{}] addr: 0x{:X} step:{} value:{} self:[addr: 0x{:X} step:{} value:{}]",
-        //     self.segment_id,
-        //     self.chunk_id,
-        //     addr_w * 8,
-        //     step,
-        //     value,
-        //     self.addr * 8,
-        //     self.step,
-        //     self.value
-        // );
         self.value = value;
         self.step = step;
         self.addr = addr_w;
@@ -224,7 +205,7 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         // Collect inputs from all collectors. At most, one of them has `prev_last_value` non zero,
         // we take this `prev_last_value`, which represents the last value of the previous segment.
 
-        let mut last_value = MemLastValue::new(0, 0, 0, 0);
+        let mut last_value = MemLastValue::new(0, 0, 0);
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, mut collector)| {
@@ -267,12 +248,11 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
     ///
     /// # Returns
     /// An `Option` containing the input collector for the instance.
-    fn build_inputs_collector(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         Some(Box::new(MemModuleCollector::new(
             self.mem_check_point.clone(),
             self.min_addr,
             self.ictx.plan.segment_id.unwrap(),
-            chunk_id,
         )))
     }
 
@@ -295,8 +275,6 @@ pub struct MemModuleCollector {
     last_value: MemLastValue,
 
     min_addr: u32,
-    segment_id: usize,
-    chunk_id: usize,
 }
 
 impl MemModuleCollector {
@@ -304,17 +282,14 @@ impl MemModuleCollector {
         mem_check_point: MemModuleSegmentCheckPoint,
         min_addr: u32,
         segment_id: usize,
-        chunk_id: usize,
     ) -> Self {
         let prev_addr = mem_check_point.prev_addr;
         let prev_step = mem_check_point.prev_step;
         Self {
             inputs: Vec::new(),
             mem_check_point,
-            last_value: MemLastValue::new(segment_id, chunk_id, prev_addr, prev_step),
+            last_value: MemLastValue::new(segment_id, prev_addr, prev_step),
             min_addr,
-            segment_id,
-            chunk_id,
         }
     }
 

@@ -310,7 +310,6 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         air_values.segment_last_value[0] = F::from_u32(last_value as u32);
         air_values.segment_last_value[1] = F::from_u32((last_value >> 32) as u32);
 
-        println!("AIRVALUES {:?}", air_values);
         #[cfg(feature = "debug_mem")]
         {
             self.save_to_file(&trace, &format!("/tmp/mem_trace_{}.txt", segment_id));
