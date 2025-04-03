@@ -219,19 +219,9 @@ impl<'a> MemModulePlanner<'a> {
                     self.consume_rows(pending_rows as u32, 1);
                     break;
                 }
-                // std::cmp::Ordering::Equal => {
-                //     self.consume_rows(pending_rows as u32, 2);
-                //     self.close_and_open_segment(
-                //         addr,
-                //         // if the block fit inside current segment, the last step is last_step,
-                //         // means the previous step of last segment was last_step
-                //         addr_uses.last_step,
-                //         // addr_uses.last_value,
-                //     );
-                //     break;
-                // }
                 std::cmp::Ordering::Less | std::cmp::Ordering::Equal => {
                     // if equal, pending rows = rows_available
+
                     let rows_applied = self.rows_available;
                     self.consume_rows(rows_applied, 3);
                     pending_rows -= rows_applied as u64;

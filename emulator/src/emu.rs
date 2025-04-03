@@ -378,12 +378,6 @@ impl<'a> Emu<'a> {
                 }
                 if Mem::is_full_aligned(address, 8) {
                     self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(address, 8);
-                    if address == 0x9000_0000 {
-                        println!(
-                            "\x1B[1;34mADDR 0x9000_0000 READ => 0x{:X} [generate] (step:{}/mem_reads:{})\x1B[0m",
-                            self.ctx.inst_ctx.b, self.ctx.inst_ctx.step, mem_reads.len()
-                        );
-                    }
                     mem_reads.push(self.ctx.inst_ctx.b);
                 } else {
                     let mut additional_data: Vec<u64>;
@@ -473,12 +467,6 @@ impl<'a> Emu<'a> {
                 if Mem::is_full_aligned(address, 8) {
                     assert!(*mem_reads_index < mem_reads.len());
                     self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
-                    if address == 0x9000_0000 {
-                        println!(
-                            "\x1B[1;34mADDR 0x9000_0000 READ => 0x{:X} [consume] (step:{}/mem_reads:{})\x1B[0m",
-                            self.ctx.inst_ctx.b, self.ctx.inst_ctx.step, *mem_reads_index
-                        );
-                    }
                     *mem_reads_index += 1;
                 } else {
                     let (required_address_1, required_address_2) =
@@ -1133,69 +1121,18 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     pub fn step_fast(&mut self) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        let debug = instruction.op >= 0xf6;
-        let initial_regs = if debug {
-            print!(
-                "\x1B[1;36m>==IN ==>\x1B[0m SF #{} 0x{:X} ({}) {}",
-                self.ctx.inst_ctx.step,
-                self.ctx.inst_ctx.pc,
-                instruction.op_str,
-                instruction.verbose
-            );
-            for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
-                print!(" {:}:0x{:X}", index, value);
-            }
-            println!();
-            self.ctx.inst_ctx.regs
-        } else {
-            /* println!(
-                "#{} 0x{:X} ({}) {}",
-                self.ctx.inst_ctx.step,
-                self.ctx.inst_ctx.pc,
-                instruction.op_str,
-                instruction.verbose
-            );*/
-            [0u64; 32]
-        };
+        let debug = false;
         self.source_a(instruction);
         self.source_b(instruction);
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c(instruction);
-        if debug {
-            println!(
-                ">==***==> #{} 0x{:X} ({}) {} @0 {:?} @1 {:?}",
-                self.ctx.inst_ctx.step,
-                self.ctx.inst_ctx.pc,
-                instruction.op_str,
-                instruction.verbose,
-                self.ctx.inst_ctx.regs,
-                instruction
-            );
-        }
 
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
+
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
         self.ctx.inst_ctx.step += 1;
-        if debug {
-            print!(
-                ">==OUT==> #{} 0x{:X} ({}) {} {:?}",
-                self.ctx.inst_ctx.step,
-                self.ctx.inst_ctx.pc,
-                instruction.op_str,
-                instruction.verbose,
-                self.ctx.inst_ctx.regs,
-            );
-            for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
-                if initial_regs[index] == value {
-                    print!(" {:}:0x{:X}", index, value);
-                } else {
-                    print!(" {:}:\x1B[1;31m0x{:X}\x1B[0m", index, value);
-                }
-            }
-            println!();
-        }
     }
 
     /// Run the whole program
@@ -1394,20 +1331,6 @@ impl<'a> Emu<'a> {
         // Call the operation
         (instruction.func)(&mut self.ctx.inst_ctx);
 
-        // println!(
-        //     "a={:08x} b={:08x} c={:08x} flag={:08x} step={}",
-        //     self.ctx.inst_ctx.a,
-        //     self.ctx.inst_ctx.b,
-        //     self.ctx.inst_ctx.c,
-        //     self.ctx.inst_ctx.flag as u64,
-        //     self.ctx.inst_ctx.step,
-        // );
-
-        // for i in 0..32 {
-        //     print!("r{}={:08x} ", i, self.ctx.inst_ctx.regs[i]);
-        // }
-        // println!("");
-
         // Retrieve statistics data
         if self.ctx.do_stats {
             self.ctx.stats.on_op(instruction, self.ctx.inst_ctx.a, self.ctx.inst_ctx.b);
@@ -1415,10 +1338,6 @@ impl<'a> Emu<'a> {
 
         // Store the 'c' register value based on the storage specified by the current instruction
         self.store_c(instruction);
-        if instruction.op == 0xF8 {
-            println!("B instruction: {:?}", instruction);
-            println!("B inst_ctx: {:?}", self.ctx.inst_ctx);
-        }
 
         // Set SP, if specified by the current instruction
         // #[cfg(feature = "sp")]
@@ -1798,30 +1717,12 @@ impl<'a> Emu<'a> {
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
         self.set_pc(instruction);
-        if self.ctx.inst_ctx.pc == 0 {
-            println!(
-                "PC=0 ALERT a:0x{:X} b:0x{:X} c:0x{:X} {:?} (step:{})",
-                self.ctx.inst_ctx.a,
-                self.ctx.inst_ctx.b,
-                self.ctx.inst_ctx.c,
-                instruction,
-                self.ctx.inst_ctx.step
-            );
-        }
         self.ctx.inst_ctx.end = instruction.end;
 
         // Build and store the full trace
         let full_trace_step =
             Self::build_full_trace_step(instruction, &self.ctx.inst_ctx, reg_trace);
 
-        // if self.ctx.inst_ctx.step > 8070 && self.ctx.inst_ctx.step < 8395 {
-        //     println!(
-        //         "STEP step={} pc={:x} inst={:?} trace={:?}",
-        //         self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc, instruction, full_trace_step,
-        //     );
-        //     self.print_regs();
-        //     println!();
-        // }
         self.ctx.inst_ctx.step += 1;
 
         full_trace_step

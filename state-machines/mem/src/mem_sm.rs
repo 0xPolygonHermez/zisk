@@ -68,6 +68,9 @@ impl<F: PrimeField64> MemSM<F> {
 }
 
 impl<F: PrimeField64> MemModule<F> for MemSM<F> {
+    fn get_addr_range(&self) -> (u32, u32) {
+        (RAM_W_ADDR_INIT, RAM_W_ADDR_END)
+    }
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///
     /// This method is invoked by the executor when no further witness data remains to be added.
@@ -307,6 +310,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         air_values.segment_last_value[0] = F::from_u32(last_value as u32);
         air_values.segment_last_value[1] = F::from_u32((last_value >> 32) as u32);
 
+        println!("AIRVALUES {:?}", air_values);
         #[cfg(feature = "debug_mem")]
         {
             self.save_to_file(&trace, &format!("/tmp/mem_trace_{}.txt", segment_id));
