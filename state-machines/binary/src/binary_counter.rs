@@ -1,42 +1,40 @@
-//! The `ArithCounter` module defines a device for tracking and processing arithmetic-related operations
-//! sent over the data bus. It serves a dual purpose:
-//! - Counting arithmetic-related instructions (`ZiskOperationType::Arith`) and gathering metrics.
-//! - Generating binary inputs derived from arithmetic operations for the `ArithFullSM` state machine.
+//! The `BinaryCounter` module defines a device for tracking and processing binary-related operations
+//! sent over the data bus. It serves a purpose:
+//! - Counting different types of binary operations, to decide if uses specific add instances or not.
 //!
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
-use data_bus::{
-    BusDevice, BusId, ExtOperationData, MemBusData, OperationBusData, OPERATION_BUS_ID,
-};
+use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OPERATION_BUS_ID};
 use sm_common::{BusDeviceMode, Counter, Metrics};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
-use crate::{BinaryAddSM, BinaryBasicSM};
-
-/// The `ArithCounter` struct represents a counter that monitors and measures
-/// arithmetic-related operations on the data bus.
+/// The `BinaryCounter` struct represents a counter that monitors and measures
+/// binary-related operations on the data bus.
 ///
-/// It tracks specific operation types (`ZiskOperationType`) and updates counters for each
-/// accepted operation type whenever data is processed on the bus.
-pub struct BinaryCounterInputGen {
-    /// Vector of counters, one for each accepted `ZiskOperationType`.
+/// It tracks specific operations and types and updates differents counters for each
+/// accepted operation whenever data is processed on the bus.
+
+pub struct BinaryCounter {
+    /// Counter for binary add operations (only add, no addw)
     pub counter_add: Counter,
+    /// Counter for basic binary operations, but not considering add operations
     pub counter_basic_wo_add: Counter,
+    /// Counter for binary extension operations
     pub counter_extension: Counter,
 
     /// Bus device mode (counter or input generator).
     pub mode: BusDeviceMode,
 }
 
-impl BinaryCounterInputGen {
-    /// Creates a new instance of `ArithCounter`.
+impl BinaryCounter {
+    /// Creates a new instance of `BinaryCounter`.
     ///
     /// # Arguments
     /// * `mode` - The mode of the bus device.
     ///
     /// # Returns
-    /// A new `ArithCounter` instance.
+    /// A new `BinaryCounter` instance.
     pub fn new(mode: BusDeviceMode) -> Self {
         Self {
             counter_add: Counter::default(),
@@ -47,7 +45,7 @@ impl BinaryCounterInputGen {
     }
 }
 
-impl Metrics for BinaryCounterInputGen {
+impl Metrics for BinaryCounter {
     /// Tracks activity on the connected bus and updates counters for recognized operations.
     ///
     /// # Arguments
@@ -61,7 +59,6 @@ impl Metrics for BinaryCounterInputGen {
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
         let op_type = OperationBusData::get_op_type(&data);
-
         if op_type == ZiskOperationType::Binary as u64 {
             if OperationBusData::get_op(&data) == ZiskOp::Add.code() {
                 self.counter_add.update(1);
@@ -82,7 +79,7 @@ impl Metrics for BinaryCounterInputGen {
     }
 }
 
-impl BusDevice<u64> for BinaryCounterInputGen {
+impl BusDevice<u64> for BinaryCounter {
     /// Processes data received on the bus, updating counters and generating inputs when applicable.
     ///
     /// # Arguments
@@ -94,21 +91,10 @@ impl BusDevice<u64> for BinaryCounterInputGen {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
-        let data: ExtOperationData<u64> = data.try_into().ok()?;
-
-        if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::Arith as u32 {
+        if self.mode == BusDeviceMode::Counter {
+            self.measure(&data);
             return None;
         }
-
-        if let ExtOperationData::OperationData(data) = data {
-            if self.mode == BusDeviceMode::Counter {
-                self.measure(&data);
-            }
-
-            // let bin_inputs = ArithFullSM::generate_inputs(&data);
-            // return Some(bin_inputs.into_iter().map(|x| (OPERATION_BUS_ID, x)).collect());
-        }
-
         None
     }
 

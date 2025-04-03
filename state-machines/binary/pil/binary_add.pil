@@ -1,7 +1,7 @@
 require "std_lookup.pil"
 require "std_range_check.pil"
 
-const int ADD_OP = 0x06;
+const int ADD_OP = 0x0C;
 
 airtemplate BinaryAdd(const int N = 2**21, const int operation_bus_id, const int RC = 2, const int operation_code = ADD_OP) {
 
@@ -17,12 +17,12 @@ airtemplate BinaryAdd(const int N = 2**21, const int operation_bus_id, const int
         if (i > 0) {
             left = left + cout[i-1];
         }
-        a[i] + b[i] === cout[i] * 2 ** 32 + c_chunks[i * 2 + 1] * 2 ** 16 + c_chunks[i * 2];
+        left === cout[i] * 2 ** 32 + c_chunks[i * 2 + 1] * 2 ** 16 + c_chunks[i * 2];
         c[i] = c_chunks[i * 2 + 1] * 2 ** 16 + c_chunks[i * 2];
         range_check(expression: c_chunks[i * 2], min: 0, max: 2**16 - 1);
         range_check(expression: c_chunks[i * 2 + 1], min: 0, max: 2**16 - 1);
     }
 
     col witness multiplicity;
-    lookup_proves(operation_bus_id, [operation_code, ...a, ...b, ...c, cout[RC-1]], multiplicity);
+    lookup_proves(operation_bus_id, [operation_code, ...a, ...b, ...c, 0], multiplicity);
 }

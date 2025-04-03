@@ -1,10 +1,9 @@
-//! The `BinaryAddSM` module implements the logic for the Binary Basic State Machine.
+//! The `BinaryAddSM` module implements the logic for the Binary Add State Machine.
 //!
 //! This state machine processes binary-related operations.
 
 use std::sync::Arc;
 
-use data_bus::{ExtOperationData, OperationBusData, OperationData};
 use log::info;
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
@@ -12,12 +11,9 @@ use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow};
 
-const BYTES: usize = 8;
-const HALF_BYTES: usize = BYTES / 2;
-const MASK_U64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
 const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;
 
-/// The `BinaryAddSM` struct encapsulates the logic of the Binary Basic State Machine.
+/// The `BinaryAddSM` struct encapsulates the logic of the Binary Add State Machine.
 pub struct BinaryAddSM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     std: Arc<Std<F>>,
@@ -37,6 +33,8 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// A new `BinaryAddSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         let range_id = std.get_range(0, 0xFFFF, None);
+        println!("range_id: {}", range_id);
+        // Create the BinaryAdd state machine
 
         Arc::new(Self { std, range_id })
     }
@@ -50,32 +48,36 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// # Returns
     /// A `BinaryAddTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice(&self, input: &OperationData<u64>) -> BinaryAddTraceRow<F> {
+    pub fn process_slice(&self, input: &[u64; 2]) -> BinaryAddTraceRow<F> {
         // Create an empty trace
         let mut row: BinaryAddTraceRow<F> = Default::default();
 
-        let input_data = ExtOperationData::OperationData(*input);
-
         // Execute the opcode
-        let mut a = OperationBusData::get_a(&input_data);
-        let mut b = OperationBusData::get_b(&input_data);
-        let mut c = a + b;
+        let mut a = input[0];
+        let mut b = input[1];
+        let mut cin = 0;
 
         for i in 0..2 {
             let _a = a & 0xFFFF_FFFF;
             let _b = b & 0xFFFF_FFFF;
+            let c = _a + _b + cin;
             let _c = c & 0xFFFF_FFFF;
             row.a[i] = F::from_u64(_a);
             row.b[i] = F::from_u64(_b);
-            let c_chunks = [c & 0xFFFF, c >> 16];
+            let c_chunks = [_c & 0xFFFF, _c >> 16];
             row.c_chunks[i * 2] = F::from_u64(c_chunks[0]);
             row.c_chunks[i * 2 + 1] = F::from_u64(c_chunks[1]);
-            row.cout[i] = if (_a + _b) > MASK_U32 { F::ONE } else { F::ZERO };
+            if c > MASK_U32 {
+                row.cout[i] = F::ONE;
+                cin = 1
+            } else {
+                row.cout[i] = F::ZERO;
+                cin = 0
+            };
             self.std.range_check(c_chunks[0] as i64, 1, self.range_id);
             self.std.range_check(c_chunks[1] as i64, 1, self.range_id);
             a >>= 32;
             b >>= 32;
-            c >>= 32;
         }
         // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
         row.multiplicity = F::ONE;
@@ -91,7 +93,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(&self, inputs: &[Vec<OperationData<u64>>]) -> AirInstance<F> {
+    pub fn compute_witness(&self, inputs: &[Vec<[u64; 2]>]) -> AirInstance<F> {
         let mut add_trace = BinaryAddTrace::new();
 
         let num_rows = add_trace.num_rows();
@@ -124,7 +126,6 @@ impl<F: PrimeField64> BinaryAddSM<F> {
                 *trace_row = self.process_slice(&inputs[i][j]);
             });
         });
-
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
         let padding_row = BinaryAddTraceRow::<F> { ..Default::default() };

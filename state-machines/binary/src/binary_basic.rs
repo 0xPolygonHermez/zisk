@@ -7,8 +7,7 @@ use std::sync::{
     Arc,
 };
 
-use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM};
-use data_bus::{ExtOperationData, OperationBusData, OperationData};
+use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput};
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
@@ -142,20 +141,18 @@ impl BinaryBasicSM {
     /// A `BinaryTraceRow` representing the operation's result.
     #[inline(always)]
     pub fn process_slice<F: PrimeField>(
-        input: &OperationData<u64>,
+        input: &BinaryInput,
         multiplicity: &[AtomicU64],
     ) -> BinaryTraceRow<F> {
         // Create an empty trace
         let mut row: BinaryTraceRow<F> = Default::default();
 
-        let input_data = ExtOperationData::OperationData(*input);
-
         // Execute the opcode
-        let opcode = OperationBusData::get_op(&input_data);
-        let a = OperationBusData::get_a(&input_data);
-        let b = OperationBusData::get_b(&input_data);
+        let opcode = input.op;
+        let a = input.a;
+        let b = input.b;
 
-        let (c, _) = Self::execute(opcode, a, b);
+        let (c, _) = Self::execute(input.op, input.a, input.b);
 
         // Set mode32
         let mode32 = Self::opcode_is_32_bits(opcode);
@@ -888,10 +885,7 @@ impl BinaryBasicSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<F: PrimeField>(
-        &self,
-        inputs: &[Vec<OperationData<u64>>],
-    ) -> AirInstance<F> {
+    pub fn compute_witness<F: PrimeField>(&self, inputs: &[Vec<BinaryInput>]) -> AirInstance<F> {
         let mut binary_trace = BinaryTrace::new();
 
         let num_rows = binary_trace.num_rows();

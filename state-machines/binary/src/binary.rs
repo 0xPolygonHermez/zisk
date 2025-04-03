@@ -10,24 +10,23 @@
 use std::sync::Arc;
 
 use crate::{
-    binary_add_instance::BinaryAddInstance, BinaryAddSM, BinaryBasicInstance, BinaryBasicSM,
-    BinaryBasicTableSM, BinaryCounterInputGen, BinaryExtensionInstance, BinaryExtensionSM,
-    BinaryExtensionTableSM, ADD_OP,
+    BinaryAddInstance, BinaryAddSM, BinaryBasicInstance, BinaryBasicSM, BinaryBasicTableSM,
+    BinaryCounter, BinaryExtensionInstance, BinaryExtensionSM, BinaryExtensionTableSM,
+    BinaryPlanner,
 };
 use data_bus::OPERATION_BUS_ID;
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use sm_common::{
     table_instance, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
-    InstanceInfo, Planner, RegularCounters, RegularPlanner, TableInfo,
+    Planner,
 };
-use zisk_core::ZiskOperationType;
 use zisk_pil::{
     BinaryAddTrace, BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace,
 };
 
 /// The `BinarySM` struct represents the Binary State Machine,
-/// managing both basic and extension binary operations.
+/// managing basic, extension and specific add binary operations.
 #[allow(dead_code)]
 pub struct BinarySM<F: PrimeField64> {
     /// Binary Basic state machine
@@ -72,9 +71,6 @@ impl<F: PrimeField64> BinarySM<F> {
             binary_add_sm,
         })
     }
-    fn filter_non_add(op: &u8) -> bool {
-        *op != ADD_OP
-    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
@@ -84,7 +80,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
     /// A boxed implementation of `RegularCounters` configured for binary and extension binary
     /// operations.
     fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(BinaryCounterInputGen::new(BusDeviceMode::Counter))
+        Box::new(BinaryCounter::new(BusDeviceMode::Counter))
     }
 
     /// Builds a planner to plan binary-related instances.
@@ -92,29 +88,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
     /// # Returns
     /// A boxed implementation of `RegularPlanner`.
     fn build_planner(&self) -> Box<dyn Planner> {
-        Box::new(
-            RegularPlanner::new()
-                .add_instance(InstanceInfo::new(
-                    BinaryTrace::<usize>::AIRGROUP_ID,
-                    BinaryTrace::<usize>::AIR_ID,
-                    BinaryTrace::<usize>::NUM_ROWS,
-                    ZiskOperationType::Binary,
-                ))
-                .add_instance(InstanceInfo::new(
-                    BinaryExtensionTrace::<usize>::AIRGROUP_ID,
-                    BinaryExtensionTrace::<usize>::AIR_ID,
-                    BinaryExtensionTrace::<usize>::NUM_ROWS,
-                    ZiskOperationType::BinaryE,
-                ))
-                .add_table_instance(TableInfo::new(
-                    BinaryTableTrace::<usize>::AIRGROUP_ID,
-                    BinaryTableTrace::<usize>::AIR_ID,
-                ))
-                .add_table_instance(TableInfo::new(
-                    BinaryExtensionTableTrace::<usize>::AIRGROUP_ID,
-                    BinaryExtensionTableTrace::<usize>::AIR_ID,
-                )),
-        )
+        Box::new(BinaryPlanner::new())
     }
 
     /// Builds an instance for binary operations.

@@ -1,30 +1,26 @@
-//! The `BinaryAddInstance` module defines an instance to perform witness computations
-//! for binary-related operations using the Binary Basic State Machine.
+//! The `BinaryAddInstance` module defines an specific instance to perform witness computations
+//! for binary add operations using the Binary Add State Machine.
 //!
 //! It manages collected inputs and interacts with the `BinaryAddSM` to compute witnesses for
 //! execution plans.
 
-use crate::BinaryAddSM;
-use data_bus::{
-    BusDevice, BusId, ExtOperationData, OperationBusData, OperationData, PayloadType,
-    OPERATION_BUS_ID,
-};
+use crate::{BinaryAddCollector, BinaryAddSM};
+use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
     BusDeviceWrapper, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
 };
 use std::{collections::HashMap, sync::Arc};
-use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
-use zisk_pil::BinaryTrace;
+use zisk_pil::BinaryAddTrace;
 
-/// The `BinaryAddInstance` struct represents an instance for binary-related witness computations.
+/// The `BinaryAddInstance` struct represents an instance for binary add witness computations.
 ///
 /// It encapsulates the `BinaryAddSM` and its associated context, and it processes input data
 /// to compute witnesses for binary operations.
 pub struct BinaryAddInstance<F: PrimeField64> {
-    /// Binary Basic state machine.
-    binary_basic_sm: Arc<BinaryAddSM<F>>,
+    /// Binary Add state machine.
+    binary_add_sm: Arc<BinaryAddSM<F>>,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -34,14 +30,14 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
     /// Creates a new `BinaryAddInstance`.
     ///
     /// # Arguments
-    /// * `binary_basic_sm` - An `Arc`-wrapped reference to the Binary Basic State Machine.
+    /// * `binary_add_sm` - An `Arc`-wrapped reference to the Binary Add State Machine.
     /// * `ictx` - The `InstanceCtx` associated with this instance, containing the execution plan.
     ///
     /// # Returns
     /// A new `BinaryAddInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(binary_basic_sm: Arc<BinaryAddSM<F>>, ictx: InstanceCtx) -> Self {
-        Self { binary_basic_sm, ictx }
+    pub fn new(binary_add_sm: Arc<BinaryAddSM<F>>, ictx: InstanceCtx) -> Self {
+        Self { binary_add_sm, ictx }
     }
 }
 
@@ -71,7 +67,7 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
             })
             .collect();
 
-        Some(self.binary_basic_sm.compute_witness(&inputs))
+        Some(self.binary_add_sm.compute_witness(&inputs))
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -100,96 +96,13 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
     fn build_inputs_collector(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
-            BinaryTrace::<F>::AIR_ID,
+            BinaryAddTrace::<F>::AIR_ID,
             "BinaryAddInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
-
         let meta = self.ictx.plan.meta.as_ref().unwrap();
         let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
         let (num_ops, collect_skipper) = collect_info[&chunk_id];
-        Some(Box::new(BinaryAddCollector::new(num_ops, collect_skipper)))
-    }
-}
-
-/// The `BinaryAddCollector` struct represents an input collector for binary-related operations.
-pub struct BinaryAddCollector {
-    /// Collected inputs for witness computation.
-    inputs: Vec<OperationData<u64>>,
-
-    /// The number of operations to collect.
-    num_operations: u64,
-
-    /// Helper to skip instructions based on the plan's configuration.
-    collect_skipper: CollectSkipper,
-}
-
-impl BinaryAddCollector {
-    /// Creates a new `BinaryAddCollector`.
-    ///
-    /// # Arguments
-    /// * `num_operations` - The number of operations to collect.
-    /// * `collect_skipper` - Helper to skip instructions based on the plan's configuration.
-    ///
-    /// # Returns
-    /// A new `BinaryAddCollector` instance initialized with the provided parameters.
-    pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
-    }
-}
-
-impl BusDevice<u64> for BinaryAddCollector {
-    /// Processes data received on the bus, collecting the inputs necessary for witness computation.
-    ///
-    /// # Arguments
-    /// * `_bus_id` - The ID of the bus (unused in this implementation).
-    /// * `data` - The data received from the bus.
-    ///
-    /// # Returns
-    /// An optional vector of tuples where:
-    /// - The first element is the bus ID.
-    /// - The second element is always empty indicating there are no derived inputs.
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
-        debug_assert!(*bus_id == OPERATION_BUS_ID);
-
-        if self.inputs.len() == self.num_operations as usize {
-            return None;
-        }
-
-        let data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-
-        let op_type = OperationBusData::get_op_type(&data);
-
-        if op_type as u32 != ZiskOperationType::Binary as u32 {
-            return None;
-        }
-
-        if OperationBusData::get_op(&data) != ZiskOp::Add.code() {
-            return None;
-        }
-
-        if self.collect_skipper.should_skip() {
-            return None;
-        }
-
-        if let ExtOperationData::OperationData(data) = data {
-            self.inputs.push(data);
-        }
-
-        None
-    }
-
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![OPERATION_BUS_ID]
-    }
-
-    /// Provides a dynamic reference for downcasting purposes.
-    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
-        self
+        Some(Box::new(BinaryAddCollector::new(num_ops as usize, collect_skipper)))
     }
 }
