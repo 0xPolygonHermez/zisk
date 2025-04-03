@@ -1500,8 +1500,6 @@ impl<'a> Emu<'a> {
         data_bus: &mut DataBus<u64, BD>,
     ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        let debug = false;
-
         self.source_a_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         self.source_b_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         // If this is a precompiled, get the required input data from mem_reads
@@ -1643,7 +1641,6 @@ impl<'a> Emu<'a> {
             }
         }
         (instruction.func)(&mut self.ctx.inst_ctx);
-
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
         // Get operation bus data
@@ -1711,7 +1708,6 @@ impl<'a> Emu<'a> {
         }
 
         (instruction.func)(&mut self.ctx.inst_ctx);
-
         self.store_c_mem_reads_consume(instruction, mem_reads, mem_reads_index, reg_trace);
 
         if let Some(step_range_check) = step_range_check {

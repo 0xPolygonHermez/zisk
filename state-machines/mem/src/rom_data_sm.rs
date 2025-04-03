@@ -54,12 +54,12 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         previous_segment: &MemPreviousSegment,
     ) -> AirInstance<F> {
         let mut trace = RomDataTrace::<F>::new();
-
+        let mut num_rows = RomDataTrace::<F>::NUM_ROWS;
         assert!(
             !mem_ops.is_empty() && mem_ops.len() <= trace.num_rows(),
             "RomDataSM: mem_ops.len()={} out of range {}",
             mem_ops.len(),
-            trace.num_rows()
+            num_rows
         );
 
         // range of instance
@@ -84,16 +84,16 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         let mut i = 0;
         for mem_op in mem_ops.iter() {
             let distance = mem_op.addr - last_addr;
-            if i >= trace.num_rows {
+            if i >= num_rows {
                 break;
             }
             if distance > 1 {
                 let mut internal_reads = distance - 1;
 
                 // check if has enough rows to complete the internal reads + regular memory
-                let incomplete = (i + internal_reads as usize) >= trace.num_rows;
+                let incomplete = (i + internal_reads as usize) >= num_rows;
                 if incomplete {
-                    internal_reads = (trace.num_rows - i) as u32;
+                    internal_reads = (num_rows - i) as u32;
                 }
 
                 trace[i].addr_changes = F::ONE;
@@ -136,14 +136,23 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd
         // = 1, wr = 0
         let last_row_idx = count - 1;
-        if count < trace.num_rows() {
+        if count < num_rows {
             trace[count] = trace[last_row_idx];
             trace[count].addr_changes = F::ZERO;
             trace[count].sel = F::ZERO;
 
-            for i in count + 1..trace.num_rows() {
+            for i in count + 1..num_rows {
                 trace[i] = trace[i - 1];
             }
+        }
+        if segment_id == 0 {
+            println!("ROM-DATA[0,{}]: {:?}", num_rows - 3, trace[num_rows - 3]);
+            println!("ROM-DATA[0,{}]: {:?}", num_rows - 2, trace[num_rows - 2]);
+            println!("ROM-DATA[0,{}]: {:?}", num_rows - 1, trace[num_rows - 1]);
+        } else {
+            println!("ROM-DATA[1,0]: {:?}", trace[0]);
+            println!("ROM-DATA[1,1]: {:?}", trace[1]);
+            println!("ROM-DATA[1,2]: {:?}", trace[2]);
         }
 
         self.std.range_check((ROM_DATA_W_ADDR_END - last_addr + 1) as i64, 1, range_id);
@@ -162,6 +171,8 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
 
         air_values.segment_last_value[0] = F::from_u32(last_value as u32);
         air_values.segment_last_value[1] = F::from_u32((last_value >> 32) as u32);
+
+        println!("AIRVALUE ROM-DATA: {:?}", air_values);
 
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
     }

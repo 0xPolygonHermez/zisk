@@ -8,8 +8,7 @@ use std::sync::{
     Arc,
 };
 
-use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM};
-use data_bus::{ExtOperationData, OperationBusData, OperationData};
+use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
 use log::info;
 
 use p3_field::PrimeField64;
@@ -113,19 +112,15 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     /// A `BinaryExtensionTraceRow` representing the processed trace.
     pub fn process_slice(
         &self,
-        operation: &OperationData<u64>,
+        input: &BinaryInput,
         multiplicity: &[AtomicU64],
     ) -> BinaryExtensionTraceRow<F> {
-        // Get the opcode
-        let op = OperationBusData::get_op(&ExtOperationData::OperationData(*operation));
-        let a = OperationBusData::get_a(&ExtOperationData::OperationData(*operation));
-        let b = OperationBusData::get_b(&ExtOperationData::OperationData(*operation));
-
         // Get a ZiskOp from the code
-        let opcode = ZiskOp::try_from_code(op).expect("Invalid ZiskOp opcode");
+        let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
 
         // Create an empty trace
-        let mut row = BinaryExtensionTraceRow::<F> { op: F::from_u8(op), ..Default::default() };
+        let mut row =
+            BinaryExtensionTraceRow::<F> { op: F::from_u8(input.op), ..Default::default() };
 
         // Set if the opcode is a shift operation
         let op_is_shift = Self::opcode_is_shift(opcode);
@@ -135,8 +130,8 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         let op_is_shift_word = Self::opcode_is_shift_word(opcode);
 
         // Detect if this is a sign extend operation
-        let a_val = if op_is_shift { a } else { b };
-        let b_val = if op_is_shift { b } else { a };
+        let a_val = if op_is_shift { input.a } else { input.b };
+        let b_val = if op_is_shift { input.b } else { input.a };
 
         // Split a in bytes and store them in in1
         let a_bytes: [u8; 8] = a_val.to_le_bytes();
@@ -292,7 +287,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                     t_out[j][1] = (out >> 32) & 0xffffffff;
                 }
             }
-            _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", op),
+            _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", input.op),
         }
 
         // Convert the trace output to field elements
@@ -330,13 +325,19 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` representing the computed witness.
-    pub fn compute_witness(&self, inputs: &[Vec<OperationData<u64>>]) -> AirInstance<F> {
+    pub fn compute_witness(&self, inputs: &[Vec<BinaryInput>]) -> AirInstance<F> {
         let mut binary_e_trace = BinaryExtensionTrace::new();
 
         let num_rows = binary_e_trace.num_rows();
 
         let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
-        assert!(total_inputs <= num_rows);
+        assert!(
+            total_inputs <= num_rows,
+            "{} <= {} ({})",
+            total_inputs,
+            num_rows,
+            BinaryExtensionTrace::<usize>::NUM_ROWS
+        );
 
         info!(
             "{}: ··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",

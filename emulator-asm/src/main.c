@@ -160,7 +160,7 @@ int main(int argc, char *argv[])
         strcat(shmem_output_name, shmem_output_sufix);
 #ifdef DEBUG
         if (verbose) printf("Emulator C start; input shared memory ID = %s\n", input_parameter);
-#endif        
+#endif
     }
     else
     {
@@ -286,7 +286,7 @@ int main(int argc, char *argv[])
             printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
-        
+
         // Map the shared memory object into the process address space
         shmem_input_address = mmap(NULL, shmem_input_size + 32, PROT_READ /*| PROT_WRITE*/, MAP_SHARED, shmem_input_fd, 0);
         if (shmem_input_address == MAP_FAILED)
@@ -328,7 +328,7 @@ int main(int argc, char *argv[])
             printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
-        
+
         // Unlink input
         result = shm_unlink(shmem_input_name);
         if (result == -1)
@@ -346,7 +346,7 @@ int main(int argc, char *argv[])
     {
         // Make sure the output shared memory is deleted
         shm_unlink(shmem_output_name);
-        
+
         // Create the output shared memory
         shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT, 0644);
         if (shmem_output_fd < 0)
@@ -386,7 +386,7 @@ int main(int argc, char *argv[])
         // MT allocated size [8] -> to be updated after completion
         // MT used size [8] -> to be updated after completion
     }
-    
+
     /*******/
     /* RAM */
     /*******/
@@ -974,7 +974,7 @@ extern void _realloc_trace (void)
         printf("realloc_trace() failed calling ftruncate(%s) of new size=%ld errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
         exit(-1);
     }
-    
+
     // Remap the memory
     void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
     if ((uint64_t)new_address != trace_address)
@@ -1162,7 +1162,7 @@ void log_trace(void)
         printf("\tLast state:\n");
         printf("\t\tc=0x%lx:\n", chunk[i]);
         i++;
-        
+
         // Log current chunk end
         printf("\tEnd:\n");
         printf("\t\tend=%ld:\n", chunk[i]);
