@@ -1440,27 +1440,14 @@ pub fn opc_fcall_param(ctx: &mut InstContext) {
 
     // Store param in context
     if words == 1 {
-        println!(
-            "fcall_param: storing direct param ctx.fcall.parameters[{}] = 0x{:X}",
-            ctx.fcall.parameters_size, param
-        );
         ctx.fcall.parameters[ctx.fcall.parameters_size as usize] = param;
         ctx.fcall.parameters_size += 1;
     } else {
-        print!(
-            "fcall_param: storing indirect params (@{:X},{}) in ctx.fcall.parameters[{}..{}] = [\x1B[1;36m",
-            param,
-            words,
-            ctx.fcall.parameters_size,
-            ctx.fcall.parameters_size + words
-        );
         let addr = param;
         for i in 0..words {
             let value = ctx.mem.read(addr + i * 8, 8);
-            print!("{}0x{:X}", if i == 0 { "" } else { "," }, value);
             ctx.fcall.parameters[(ctx.fcall.parameters_size + i) as usize] = value;
         }
-        println!("\x1B[0m]");
         ctx.fcall.parameters_size += words;
     }
 }
@@ -1470,16 +1457,6 @@ pub fn opc_fcall_param(ctx: &mut InstContext) {
 pub fn op_fcall(a: u64, b: u64) -> (u64, bool) {
     unimplemented!("op_fcall() is not implemented");
 }
-
-/*
-pub fn fcall_proxy(fcall_ctx: FcallContext, mem_read: impl Fn(u64) -> u64) {
-    println!("fcall_proxy() {:?}", fcall_ctx);
-    let addr = fcall_ctx.params[0];
-    let value = mem_read(fcall_ctx.params[1]);
-    println!("@ 0x{:X}: 0x{:X}", addr, value);
-    panic!("STOP");
-}
-*/
 
 /// InstContext-based wrapper over op_fcall()
 #[inline(always)]
@@ -1508,14 +1485,8 @@ pub fn opc_fcall(ctx: &mut InstContext) {
 
     // Copy result
     if (iresult > 0) {
-        print!("\x1B[1;35mfcall => {} words =>", iresult);
-        for (index, &value) in ctx.fcall.result.iter().take(iresult as usize).enumerate() {
-            print!(" {:}:0x{:X}", index, value);
-        }
-        println!(" \x1B[0m");
         ctx.mem.free_input = ctx.fcall.result[0];
     } else {
-        print!("\x1B[1;35mfcall => {}\x1B[0m", iresult);
         ctx.mem.free_input = 0;
     }
     ctx.fcall.result_got = 1;
@@ -1538,13 +1509,8 @@ pub fn opc_fcall_get(ctx: &mut InstContext) {
     // Do nothing when emulating in consume memory reads mode;
     // data will be directly obtained from mem_reads
     if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
-        println!(
-            "opc_fcall_get() in consume memory reads mode b:0x{:X} c:0x{:X} step:{}",
-            ctx.b, ctx.c, ctx.step
-        );
         return;
     }
-    println!("fcall_get() {:?}", ctx.fcall);
     // Check for consistency
     if ctx.fcall.result_size == 0 {
         panic!("opc_fcall_get() called with ctx.fcall.result_size==0");
