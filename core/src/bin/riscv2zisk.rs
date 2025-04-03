@@ -31,11 +31,20 @@ fn main() {
     println!("ASM file: {asm_file}");
     println!("Generation method: {generation_method}");
 
+    let generation_method = if generation_method == "--gen=1" {
+        zisk_core::AsmGenerationMethod::AsmMinimalTraces
+    } else if generation_method == "--gen=2" {
+        zisk_core::AsmGenerationMethod::AsmRomHistogram
+    } else {
+        eprintln!("Error parsing arguments: invalid generation method.  Usage: riscv2zisk <elf_riscv_file> <i86-64_asm_file> <generation_method>");
+        process::exit(1);
+    };
+
     // Create an instance of the program converter
-    let rv2zk = Riscv2zisk::new(elf_file, asm_file, generation_method);
+    let rv2zk = Riscv2zisk::new(elf_file, asm_file);
 
     // Convert program
-    if let Err(e) = rv2zk.runfile() {
+    if let Err(e) = rv2zk.runfile(generation_method) {
         println!("Application error: {e}");
         process::exit(1);
     }

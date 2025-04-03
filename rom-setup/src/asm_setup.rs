@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::Result;
-use zisk_core::{Riscv2zisk, is_elf_file};
+use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
 
 pub fn assembly_setup(
     elf: &PathBuf,
@@ -32,9 +32,10 @@ pub fn assembly_setup(
     let rv2zk = Riscv2zisk::new(
         elf_file_path.to_str().unwrap().to_string(),
         zisk_file.to_str().unwrap().to_string(),
-        "--gen=1".into(),
     );
-    rv2zk.runfile().map_err(|e| anyhow::anyhow!("Error converting elf: {}", e))?;
+    rv2zk
+        .runfile(AsmGenerationMethod::AsmMinimalTraces)
+        .map_err(|e| anyhow::anyhow!("Error converting elf: {}", e))?;
 
     let emulator_asm_path = zisk_path.join("emulator-asm");
     let emulator_asm_path = emulator_asm_path.to_str().unwrap();

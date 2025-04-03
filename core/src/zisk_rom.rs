@@ -45,9 +45,9 @@
 use std::collections::HashMap;
 
 use crate::{
-    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, FREE_INPUT_ADDR, M64, P2_32, ROM_ADDR,
-    ROM_ADDR_MAX, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND,
-    STORE_MEM, STORE_NONE, STORE_REG,
+    zisk_ops::ZiskOp, AsmGenerationMethod, ZiskInst, ZiskInstBuilder, FREE_INPUT_ADDR, M64, P2_32,
+    ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
+    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -238,7 +238,7 @@ impl ZiskRom {
 
     /// Saves ZisK rom into an i64-64 assembly file: first save to a string, then
     /// save the string to the file
-    pub fn save_to_asm_file(&self, file_name: &str, generation_method: &str) {
+    pub fn save_to_asm_file(&self, file_name: &str, generation_method: AsmGenerationMethod) {
         // Get a string with the ASM data
         let mut s = String::new();
         self.save_to_asm(&mut s, generation_method);
@@ -252,16 +252,14 @@ impl ZiskRom {
     }
 
     /// Saves ZisK rom into an i86-64 assembly data string
-    pub fn save_to_asm(&self, s: &mut String, generation_method: &str) {
+    pub fn save_to_asm(&self, s: &mut String, generation_method: AsmGenerationMethod) {
         // Select the ASM generation method
         let mut generate_minimal_trace = false;
         let mut generate_rom_histogram = false;
-        if generation_method == "--gen=1" {
-            generate_minimal_trace = true;
-        } else if generation_method == "--gen=2" {
-            generate_rom_histogram = true;
-        } else {
-            panic!("ZiskRom::save_to_asm() got invalid generation method={}", generation_method)
+
+        match generation_method {
+            AsmGenerationMethod::AsmMinimalTraces => generate_minimal_trace = true,
+            AsmGenerationMethod::AsmRomHistogram => generate_rom_histogram = true,
         }
 
         // Clear output data, just in case
@@ -3335,22 +3333,22 @@ impl ZiskRom {
     /// ROM histogram structure:
     ///
     /// ROM trace control:
-    /// 	[8B] version
-    /// 	[8B] exit_code (0=success, 1=not completed)
+    ///     [8B] version
+    ///     [8B] exit_code (0=success, 1=not completed)
     ///     [8B] allocated_size = xxx (bytes)
     ///     [8B] used_size = xxx (bytes)
     /// BIOS histogram: (TRACE_ADDR_NUMBER)
     ///     [8B] multiplicity_size = B
-    /// 	[8B] multiplicity[0] → 4096
-    /// 	[8B] multiplicity[1] → 4096 + 4
-    /// 	…
-    /// 	[8B] multiplicity[B-1] → 4096 + 4*(B-1)
+    ///     [8B] multiplicity[0] → 4096
+    ///     [8B] multiplicity[1] → 4096 + 4
+    ///     …
+    ///     [8B] multiplicity[B-1] → 4096 + 4*(B-1)
     /// Program histogram:
     ///     [8B] multiplicity_size = P
-    /// 	[8B] multiplicity[0] → 0x80000000
-    /// 	[8B] multiplicity[1] → 0x80000000 + 1
-    /// 	…
-    /// 	[8B] multiplicity[P-1] → 0x80000000 + (P-1)
+    ///     [8B] multiplicity[0] → 0x80000000
+    ///     [8B] multiplicity[1] → 0x80000000 + 1
+    ///     …
+    ///     [8B] multiplicity[P-1] → 0x80000000 + (P-1)
     ///
     fn get_rom_histogram_trace_address(&self, pc: u64) -> u64 {
         assert!(self.max_bios_pc >= ROM_ENTRY);

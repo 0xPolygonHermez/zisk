@@ -3,7 +3,8 @@
 use crate::{
     add_end_jmp, is_elf_file,
     riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
-    RoData, ZiskInst, ZiskRom, RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
+    AsmGenerationMethod, RoData, ZiskInst, ZiskRom, RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ADDR_MAX,
+    ROM_ENTRY,
 };
 use elf::{
     abi::{SHF_EXECINSTR, SHF_WRITE, SHT_PROGBITS},
@@ -195,11 +196,11 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
 pub fn elf2romfile(
     elf_file: String,
     asm_file: String,
-    generation_method: String,
+    generation_method: AsmGenerationMethod,
 ) -> Result<(), Box<dyn Error>> {
     let rom = elf2rom(elf_file)?;
     if !asm_file.is_empty() && !asm_file.eq("none") {
-        rom.save_to_asm_file(&asm_file, &generation_method);
+        rom.save_to_asm_file(&asm_file, generation_method);
     }
     Ok(())
 }
