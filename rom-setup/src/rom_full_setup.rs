@@ -6,7 +6,7 @@ use std::{
 use colored::Colorize;
 use log::info;
 
-use crate::DEFAULT_CACHE_PATH;
+use crate::{get_elf_data_hash, DEFAULT_CACHE_PATH};
 
 pub fn rom_full_setup(
     elf: &PathBuf,
@@ -35,11 +35,14 @@ pub fn rom_full_setup(
 
     info!("Computing setup for ROM {}", elf.display());
 
+    info!("Computing ELF hash");
+    let elf_hash = get_elf_data_hash(elf)?;
+
     info!("Computing assembly setup");
-    crate::assembly_setup(elf, zisk_path, output_path.as_path(), verbose)?;
+    crate::assembly_setup(elf, &elf_hash,  zisk_path, output_path.as_path(), verbose)?;
 
     info!("Computing merkle root");
-    crate::rom_merkle_setup(elf, output_path.as_path(), proving_key, false)?;
+    crate::rom_merkle_setup(elf, &elf_hash, output_path.as_path(), proving_key, false)?;
 
     info!("Computing Verification key");
 

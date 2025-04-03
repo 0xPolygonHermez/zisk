@@ -8,6 +8,7 @@ use zisk_core::{is_elf_file, Riscv2zisk};
 
 pub fn assembly_setup(
     elf: &PathBuf,
+    elf_hash: &str,
     zisk_path: &Path,
     output_path: &Path,
     verbose: bool,
@@ -20,9 +21,9 @@ pub fn assembly_setup(
         panic!("ROM file is not a valid ELF file");
     }
 
-    let filename = elf.file_name().unwrap().to_string_lossy().into_owned();
-
-    let base_path = output_path.join(filename);
+    let stem = elf.file_stem().unwrap().to_str().unwrap();
+    let new_filename = format!("{}-{}", stem, elf_hash);
+    let base_path = output_path.join(new_filename);
 
     let zisk_file = base_path.with_extension("asm");
     let asm_file = base_path.with_extension("bin");
