@@ -87,7 +87,7 @@ impl BinaryPlanner {
                 InstCount::new(
                     *chunk_id,
                     c.counter_basic_wo_add.inst_count
-                        + if with_adds { 0 } else { c.counter_add.inst_count },
+                        + if with_adds { c.counter_add.inst_count } else { 0 },
                 )
             })
             .collect();
@@ -128,7 +128,7 @@ impl BinaryPlanner {
             .map(|(chunk_id, c)| InstCount::new(*chunk_id, c.counter_add.inst_count))
             .collect();
 
-        let add_num_rows = BinaryTrace::<usize>::NUM_ROWS;
+        let add_num_rows = BinaryAddTrace::<usize>::NUM_ROWS;
 
         plan(&add_counters, add_num_rows as u64)
             .into_iter()
