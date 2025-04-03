@@ -90,8 +90,13 @@ pub fn ecrecover(sig: &[u8; 65], msg: &[u8; 32], mode: bool) -> ([u8; 20], u8) {
     // greater than N are considered invalid. Hence, r = x as integers
 
     // Calculate the y-coordinate of the point: y = sqrt(x³ + 7)
-    let mut params =
-        SyscallArith256ModParams { a: &r, b: &r, c: &[0, 0, 0, 0], module: &P, d: &mut [0, 0, 0, 0] };
+    let mut params = SyscallArith256ModParams {
+        a: &r,
+        b: &r,
+        c: &[0, 0, 0, 0],
+        module: &P,
+        d: &mut [0, 0, 0, 0],
+    };
     syscall_arith256_mod(&mut params);
     let r_sq = *params.d;
     params.a = &r_sq;
