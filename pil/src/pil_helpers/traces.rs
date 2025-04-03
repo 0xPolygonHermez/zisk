@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "c04726b8cebe748af7f37455a2bcaf30a31d869b7b852ee082dfa3787120d5ba";
+pub const PILOUT_HASH: &str = "d0faa8aaa2d0e2c06c4b0cd3c589fae8151098f84e54977bf838d54e3d52686e";
 
 //AIRGROUP CONSTANTS
 
@@ -124,11 +124,11 @@ trace!(RomTrace<F> {
 
 trace!(MemFixed<F> {
  SEGMENT_L1: F, __L1__: F,
-},  0, 2, 8388608 );
+},  0, 2, 4194304 );
 
 trace!(MemTrace<F> {
  addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: F,
-},  0, 2, 8388608 );
+},  0, 2, 4194304 );
 
 trace!(RomDataFixed<F> {
  SEGMENT_L1: F, __L1__: F,
@@ -212,11 +212,11 @@ trace!(BinaryTrace<F> {
 
 trace!(BinaryAddFixed<F> {
  __L1__: F,
-},  0, 13, 8388608 );
+},  0, 13, 4194304 );
 
 trace!(BinaryAddTrace<F> {
  a: [F; 2], b: [F; 2], c_chunks: [F; 4], cout: [F; 2], multiplicity: F,
-},  0, 13, 8388608 );
+},  0, 13, 4194304 );
 
 trace!(BinaryTableFixed<F> {
  A: F, B: F, LAST: F, CIN: F, OP: F, C: F, FLAGS: F, __L1__: F,
