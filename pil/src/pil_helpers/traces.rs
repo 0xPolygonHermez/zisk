@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "5e57c53e7e483b0140efe3b2fa80ddf6af794a5ebf5499ae93f60d5e4d2e53bd";
+pub const PILOUT_HASH: &str = "45fafcd0cd505088fcac9925f10161527902f324d7368d857b48bc776b75540a";
 
 //AIRGROUP CONSTANTS
 
@@ -44,28 +44,30 @@ pub const ARITH_TABLE_AIR_IDS: &[usize] = &[8];
 
 pub const ARITH_RANGE_TABLE_AIR_IDS: &[usize] = &[9];
 
-pub const BINARY_AIR_IDS: &[usize] = &[10];
+pub const ARITH_EQ_AIR_IDS: &[usize] = &[10];
+
+pub const ARITH_EQ_LT_TABLE_AIR_IDS: &[usize] = &[11];
+
+pub const BINARY_AIR_IDS: &[usize] = &[12];
 
 pub const BINARY_ADD_AIR_IDS: &[usize] = &[11];
 
-pub const BINARY_TABLE_AIR_IDS: &[usize] = &[12];
+pub const BINARY_TABLE_AIR_IDS: &[usize] = &[13];
 
-pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[13];
+pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[14];
 
-pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[14];
+pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[15];
 
-pub const KECCAKF_AIR_IDS: &[usize] = &[15];
+pub const KECCAKF_AIR_IDS: &[usize] = &[16];
 
-pub const KECCAKF_TABLE_AIR_IDS: &[usize] = &[16];
+pub const KECCAKF_TABLE_AIR_IDS: &[usize] = &[17];
 
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[17];
-
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[18];
 
 //PUBLICS
 use serde::Deserialize;
 use serde::Serialize;
 use serde_arrays;
-
 
 fn default_array_rom_root() -> [u64; 4] {
     [0; 4]
@@ -75,33 +77,28 @@ fn default_array_inputs() -> [u64; 64] {
     [0; 64]
 }
 
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ZiskPublics {
     #[serde(default = "default_array_rom_root", with = "serde_arrays")]
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
-    
 }
 
 impl Default for ZiskPublics {
     fn default() -> Self {
-        Self {  
-            rom_root: [0; 4],  
-            inputs: [0; 64], 
-        }
+        Self { rom_root: [0; 4], inputs: [0; 64] }
     }
 }
 
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],
 });
- 
+
 values!(ZiskProofValues<F> {
  enable_input_data: F,
 });
- 
+
 trace!(MainFixed<F> {
  SEGMENT_L1: F, SEGMENT_STEP: F, __L1__: F,
 },  0, 0, 4194304 );
@@ -139,7 +136,7 @@ trace!(InputDataFixed<F> {
 },  0, 4, 2097152 );
 
 trace!(InputDataTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, value_word: [F; 4],
+ addr: F, step: F, sel: F, addr_changes: F, value_word: [F; 4], is_free_read: F,
 },  0, 4, 2097152 );
 
 trace!(MemAlignFixed<F> {
@@ -182,13 +179,29 @@ trace!(ArithRangeTableTrace<F> {
  multiplicity: F,
 },  0, 9, 4194304 );
 
+trace!(ArithEqFixed<F> {
+ CLK_0: F, CHUNK_ID: F, __L1__: F,
+},  0, 10, 2097152 );
+
+trace!(ArithEqTrace<F> {
+ x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 4], sel_op_clk0: [F; 4], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
+},  0, 10, 2097152 );
+
+trace!(ArithEqLtTableFixed<F> {
+ LT_T: F, DELTA: F, __L1__: F,
+},  0, 11, 262144 );
+
+trace!(ArithEqLtTableTrace<F> {
+ multiplicity: F,
+},  0, 11, 262144 );
+
 trace!(BinaryFixed<F> {
  __L1__: F,
-},  0, 10, 4194304 );
+},  0, 12, 4194304 );
 
 trace!(BinaryTrace<F> {
  m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, has_initial_carry: F, cout: F, result_is_a: F, use_last_carry_mode32: F, use_last_carry_mode64: F, m_op_or_ext: F, free_in_a_or_c: [F; 4], free_in_b_or_zero: [F; 4], multiplicity: F,
-},  0, 10, 4194304 );
+},  0, 12, 4194304 );
 
 trace!(BinaryAddFixed<F> {
  __L1__: F,
@@ -200,51 +213,51 @@ trace!(BinaryAddTrace<F> {
 
 trace!(BinaryTableFixed<F> {
  A: F, B: F, LAST: F, CIN: F, OP: F, C: F, FLAGS: F, __L1__: F,
-},  0, 12, 8388608 );
+},  0, 13, 8388608 );
 
 trace!(BinaryTableTrace<F> {
  multiplicity: F,
-},  0, 12, 8388608 );
+},  0, 13, 8388608 );
 
 trace!(BinaryExtensionFixed<F> {
  __L1__: F,
-},  0, 13, 4194304 );
+},  0, 14, 4194304 );
 
 trace!(BinaryExtensionTrace<F> {
  op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], multiplicity: F,
-},  0, 13, 4194304 );
+},  0, 14, 4194304 );
 
 trace!(BinaryExtensionTableFixed<F> {
  A: F, OFFSET: F, B: F, OP_IS_SHIFT: F, OP: F, C0: F, C1: F, __L1__: F,
-},  0, 14, 4194304 );
+},  0, 15, 4194304 );
 
 trace!(BinaryExtensionTableTrace<F> {
  multiplicity: F,
-},  0, 14, 4194304 );
+},  0, 15, 4194304 );
 
 trace!(KeccakfFixed<F> {
  L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, ID: F, latch_num_keccakf: F, factor_num_keccakf: F, latch_in_out: F, addr_inc: F, latch_in: F, latch_out: F, __L1__: F,
-},  0, 15, 4194304 );
+},  0, 16, 4194304 );
 
 trace!(KeccakfTrace<F> {
  free_in_a: [F; 6], free_in_b: [F; 6], free_in_c: [F; 6], step: F, addr: F, multiplicity: F, bit: [F; 2], val: [F; 2], is_val: F,
-},  0, 15, 4194304 );
+},  0, 16, 4194304 );
 
 trace!(KeccakfTableFixed<F> {
  A: [F; 1], B: F, GATE_OP: F, C: [F; 1], __L1__: F,
-},  0, 16, 2097152 );
+},  0, 17, 2097152 );
 
 trace!(KeccakfTableTrace<F> {
  multiplicity: [F; 1],
-},  0, 16, 2097152 );
+},  0, 17, 2097152 );
 
 trace!(SpecifiedRangesFixed<F> {
- RANGE: [F; 10], __L1__: F,
-},  0, 17, 2097152 );
+ RANGE: [F; 16], __L1__: F,
+},  0, 18, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
- mul: [F; 10],
-},  0, 17, 2097152 );
+ mul: [F; 16],
+},  0, 18, 2097152 );
 
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
@@ -303,6 +316,14 @@ values!(ArithTableAirGroupValues<F> {
 });
 
 values!(ArithRangeTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(ArithEqAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(ArithEqLtTableAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 

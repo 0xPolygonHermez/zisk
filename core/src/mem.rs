@@ -86,6 +86,8 @@ use core::fmt;
 pub const INPUT_ADDR: u64 = 0x90000000;
 /// Maximum size of the input data
 pub const MAX_INPUT_SIZE: u64 = 0x08000000; // 128M,
+/// Free input data memory address = first input address
+pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
 /// First globa RW memory address
 pub const RAM_ADDR: u64 = 0xa0000000;
 /// Size of the global RW memory
@@ -162,13 +164,14 @@ impl MemSection {
 pub struct Mem {
     pub read_sections: Vec<MemSection>,
     pub write_section: MemSection,
+    pub free_input: u64,
 }
 
 impl Mem {
     /// Memory structue constructor
     pub fn new() -> Mem {
         //println!("Mem::new()");
-        Mem { read_sections: Vec::new(), write_section: MemSection::new() }
+        Mem { read_sections: Vec::new(), write_section: MemSection::new(), free_input: 0 }
     }
 
     /// Adds a read section to the memory structure
@@ -318,6 +321,11 @@ impl Mem {
 
         // Calculate the buffer relative read position
         let read_position: usize = (addr - section.start) as usize;
+        if addr == INPUT_ADDR && width == 8 {
+            // increment of pointer is done by the fcall_get
+            println!("\x1B[1;32mADDR 0x9000_0000 READ => 0x{:X}\x1B[0m", self.free_input);
+            return self.free_input;
+        }
 
         // Read the requested data based on the provided width
         match width {
