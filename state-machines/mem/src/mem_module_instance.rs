@@ -197,7 +197,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
             addr: mem_check_point.prev_addr,
             step: last_step,
             value: last_value.value,
-        };
+        }
     }
 }
 
