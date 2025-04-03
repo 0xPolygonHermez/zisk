@@ -47,6 +47,7 @@ use std::collections::HashMap;
 use crate::{
     zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, FREE_INPUT_ADDR, M64, P2_32, ROM_ADDR, ROM_ENTRY,
     SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
+    STORE_REG,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.

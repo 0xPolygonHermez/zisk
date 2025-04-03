@@ -14,7 +14,6 @@ use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 ///
 /// It tracks specific operations and types and updates differents counters for each
 /// accepted operation whenever data is processed on the bus.
-
 pub struct BinaryCounter {
     /// Counter for binary add operations (only add, no addw)
     pub counter_add: Counter,
@@ -92,7 +91,7 @@ impl BusDevice<u64> for BinaryCounter {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.mode == BusDeviceMode::Counter {
-            self.measure(&data);
+            self.measure(data);
             return None;
         }
         None

@@ -64,7 +64,7 @@ impl BinaryPlanner {
             })
             .collect();
 
-        if plans.len() > 0 {
+        if !plans.is_empty() {
             plans.push(Plan::new(
                 BinaryExtensionTableTrace::<usize>::AIRGROUP_ID,
                 BinaryExtensionTableTrace::<usize>::AIR_ID,
@@ -109,7 +109,7 @@ impl BinaryPlanner {
             })
             .collect();
 
-        if plans.len() > 0 {
+        if !plans.is_empty() {
             plans.push(Plan::new(
                 BinaryTableTrace::<usize>::AIRGROUP_ID,
                 BinaryTableTrace::<usize>::AIR_ID,

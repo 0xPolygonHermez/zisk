@@ -1601,24 +1601,6 @@ impl<'a> Emu<'a> {
 
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
-        if debug {
-            print!(
-                ">==OUT==> #{} 0x{:X} ({}) {} {:?}",
-                self.ctx.inst_ctx.step,
-                self.ctx.inst_ctx.pc,
-                instruction.op_str,
-                instruction.verbose,
-                self.ctx.inst_ctx.regs,
-            );
-            for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
-                if initial_regs[index] == value {
-                    print!(" {:}:0x{:X}", index, value);
-                } else {
-                    print!(" {:}:\x1B[1;31m0x{:X}\x1B[0m", index, value);
-                }
-            }
-            println!();
-        }
         // Get operation bus data
         let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
 
