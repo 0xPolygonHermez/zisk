@@ -45,13 +45,13 @@ fn main() -> Result<()> {
         Cargo::CheckSetup(cmd) => {
             cmd.run().context("Error executing CheckSetup command")?;
         }
-        Cargo::Prove(args) => {
-            args.run().context("Error executing Prove command")?;
+        Cargo::Prove(mut cmd) => {
+            cmd.run().context("Error executing Prove command")?;
         }
         Cargo::RomSetup(cmd) => {
             cmd.run().context("Error executing RomSetup command")?;
         }
-        Cargo::VerifyConstraints(cmd) => {
+        Cargo::VerifyConstraints(mut cmd) => {
             cmd.run().context("Error executing VerifyConstraints command")?;
         }
         Cargo::Verify(cmd) => {

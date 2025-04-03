@@ -39,7 +39,7 @@ pub fn rom_full_setup(
     let elf_hash = get_elf_data_hash(elf)?;
 
     info!("Computing assembly setup");
-    crate::assembly_setup(elf, &elf_hash,  zisk_path, output_path.as_path(), verbose)?;
+    crate::assembly_setup(elf, &elf_hash, zisk_path, output_path.as_path(), verbose)?;
 
     info!("Computing merkle root");
     crate::rom_merkle_setup(elf, &elf_hash, output_path.as_path(), proving_key, false)?;

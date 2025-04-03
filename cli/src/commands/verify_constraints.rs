@@ -7,7 +7,10 @@ use log::info;
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ProofOptions};
-use rom_setup::{gen_elf_hash, get_elf_bin_file_path, get_rom_blowup_factor, DEFAULT_CACHE_PATH};
+use rom_setup::{
+    gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
+    DEFAULT_CACHE_PATH,
+};
 use std::{
     collections::HashMap,
     env, fs,
@@ -25,6 +28,12 @@ use super::{get_default_proving_key, get_default_witness_computation_lib};
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 #[command(propagate_version = true)]
+#[command(group(
+    clap::ArgGroup::new("input_mode")
+        .args(["asm", "emulator"])
+        .multiple(false)
+        .required(false)
+))]
 pub struct ZiskVerifyConstraints {
     /// Witness computation dynamic library path
     #[clap(short = 'w', long)]
@@ -36,8 +45,14 @@ pub struct ZiskVerifyConstraints {
     #[clap(short = 'e', long)]
     pub elf: PathBuf,
 
+    /// ASM file path
+    /// Optional, mutually exclusive with `--emulator`
     #[clap(short = 's', long)]
-    pub asm: Option<std::path::PathBuf>,
+    pub asm: Option<PathBuf>,
+
+    /// Use prebuilt emulator (mutually exclusive with `--asm`)
+    #[clap(short = 'l', long, action = clap::ArgAction::SetTrue)]
+    pub emulator: bool,
 
     /// Input path
     #[clap(short = 'i', long)]
@@ -63,7 +78,7 @@ pub struct ZiskVerifyConstraints {
 }
 
 impl ZiskVerifyConstraints {
-    pub fn run(&self) -> Result<()> {
+    pub fn run(&mut self) -> Result<()> {
         initialize_logger(self.verbose.into());
 
         let debug_info = match &self.debug {
@@ -87,8 +102,6 @@ impl ZiskVerifyConstraints {
 
         print_banner();
 
-        self.print_command_info(&keccak_script);
-
         let start = std::time::Instant::now();
 
         let default_cache_path =
@@ -103,6 +116,17 @@ impl ZiskVerifyConstraints {
             }
         }
 
+        self.asm = if self.emulator {
+            None
+        } else {
+            self.asm.clone().or_else(|| {
+                let stem = self.elf.file_stem()?.to_str()?;
+                let hash = get_elf_data_hash(&self.elf).ok()?;
+                let new_filename = format!("{stem}-{hash}.asm");
+                Some(default_cache_path.join(new_filename))
+            })
+        };
+
         let blowup_factor = get_rom_blowup_factor(&self.get_proving_key());
 
         let rom_bin_path =
@@ -112,6 +136,8 @@ impl ZiskVerifyConstraints {
             let _ = gen_elf_hash(&self.elf.clone(), rom_bin_path.as_path(), blowup_factor, false)
                 .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
         }
+
+        self.print_command_info(&keccak_script);
 
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
@@ -175,20 +201,31 @@ impl ZiskVerifyConstraints {
             "Witness Lib".bright_green().bold(),
             self.get_witness_computation_lib().display()
         );
+
         println!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display());
+
         if self.asm.is_some() {
             let asm_path = self.asm.as_ref().unwrap().display();
             println!("{: >12} {}", "ASM runner".bright_green().bold(), asm_path);
+        } else {
+            println!(
+                "{: >12} {}",
+                "Emulator".bright_green().bold(),
+                "Running in emulator mode".bright_yellow()
+            );
         }
+
         if self.input.is_some() {
             let inputs_path = self.input.as_ref().unwrap().display();
             println!("{: >12} {}", "Inputs".bright_green().bold(), inputs_path);
         }
+
         println!(
             "{: >12} {}",
             "Proving key".bright_green().bold(),
             self.get_proving_key().display()
         );
+
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
         println!("{: >12} {}", "Keccak".bright_green().bold(), keccak_script.display());
