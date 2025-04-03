@@ -323,7 +323,6 @@ impl Mem {
         let read_position: usize = (addr - section.start) as usize;
         if addr == INPUT_ADDR && width == 8 {
             // increment of pointer is done by the fcall_get
-            println!("\x1B[1;32mADDR 0x9000_0000 READ => 0x{:X}\x1B[0m", self.free_input);
             return self.free_input;
         }
 

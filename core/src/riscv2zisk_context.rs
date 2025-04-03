@@ -1132,10 +1132,6 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_a("imm", func_id, false);
                 zib.src_b("imm", 0, false);
                 zib.op("fcall").unwrap();
-                println!(
-                    "******** csrrs 0x{:X}, imm={} => copyb[fcall({})]",
-                    i.csr, i.imme, func_id
-                );
                 zib.verbose(&format!(
                     "csrrs 0x{:X}, imm={} => copyb[fcall({})]",
                     i.csr, i.rs1, func_id

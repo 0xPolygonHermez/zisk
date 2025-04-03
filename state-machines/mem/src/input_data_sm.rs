@@ -41,6 +41,10 @@ impl<F: PrimeField64> InputDataSM<F> {
 }
 
 impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
+    fn get_addr_range(&self) -> (u32, u32) {
+        (INPUT_DATA_W_ADDR_INIT, INPUT_DATA_W_ADDR_END)
+    }
+
     // TODO PRE: proxy calculate if exists jmp on step out-of-range, adding internal inputs
     // memory only need to process these special inputs, but inputs no change. At end of
     // inputs proxy add an extra internal input to jump to last address
