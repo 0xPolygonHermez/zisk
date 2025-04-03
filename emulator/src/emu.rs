@@ -1121,7 +1121,6 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     pub fn step_fast(&mut self) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        let debug = false;
         self.source_a(instruction);
         self.source_b(instruction);
         (instruction.func)(&mut self.ctx.inst_ctx);
