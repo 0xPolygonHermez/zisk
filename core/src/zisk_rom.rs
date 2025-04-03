@@ -42,7 +42,7 @@
 //!       as index `(pc-ROM_ADDR)`
 //!   * If the address is < ROM_ADDR, then get it from the vector `rom_entry_instructions`, using as
 //!     index `(pc-ROM_ENTRY)/4`
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 use crate::{
     zisk_ops::ZiskOp, AsmGenerationMethod, ZiskInst, ZiskInstBuilder, FREE_INPUT_ADDR, M64, P2_32,
@@ -238,7 +238,7 @@ impl ZiskRom {
 
     /// Saves ZisK rom into an i64-64 assembly file: first save to a string, then
     /// save the string to the file
-    pub fn save_to_asm_file(&self, file_name: &str, generation_method: AsmGenerationMethod) {
+    pub fn save_to_asm_file(&self, file_name: &Path, generation_method: AsmGenerationMethod) {
         // Get a string with the ASM data
         let mut s = String::new();
         self.save_to_asm(&mut s, generation_method);
@@ -247,7 +247,7 @@ impl ZiskRom {
         let path = std::path::PathBuf::from(file_name);
         let result = std::fs::write(path, s);
         if result.is_err() {
-            panic!("ZiskRom::save_to_asm_file() failed writing to file={}", file_name);
+            panic!("ZiskRom::save_to_asm_file() failed writing to file={}", file_name.display());
         }
     }
 

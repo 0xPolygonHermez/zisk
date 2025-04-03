@@ -16,28 +16,27 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     // Check program arguments length
-    if args.len() != 4 {
-        eprintln!("Error parsing arguments: invalid number of arguments.  Usage: riscv2zisk <elf_riscv_file> <i86-64_asm_file> <generation_method>");
+    if args.len() < 3 || args.len() > 4 {
+        eprintln!("Error parsing arguments: invalid number of arguments.  Usage: riscv2zisk <elf_riscv_file> [<i86-64_asm_file>] <generation_method>");
         process::exit(1);
     }
 
     // Get the 2 input parameters: ELF (RISCV) file name (input data) and ZisK file name (output
     // data)
     let elf_file = args[1].clone();
-    let asm_file = args[2].clone();
-    let generation_method = args[3].clone();
-
-    println!("ELF file: {elf_file}");
-    println!("ASM file: {asm_file}");
-    println!("Generation method: {generation_method}");
-
-    let generation_method = if generation_method == "--gen=1" {
-        zisk_core::AsmGenerationMethod::AsmMinimalTraces
-    } else if generation_method == "--gen=2" {
-        zisk_core::AsmGenerationMethod::AsmRomHistogram
+    let (asm_file, gen_arg) = if args.len() == 4 {
+        (Some(args[2].clone()), args[3].clone())
     } else {
-        eprintln!("Error parsing arguments: invalid generation method.  Usage: riscv2zisk <elf_riscv_file> <i86-64_asm_file> <generation_method>");
-        process::exit(1);
+        (None, args[2].clone())
+    };
+
+    let generation_method = match gen_arg.as_str() {
+        "--gen=1" => zisk_core::AsmGenerationMethod::AsmMinimalTraces,
+        "--gen=2" => zisk_core::AsmGenerationMethod::AsmRomHistogram,
+        _ => {
+            eprintln!("Invalid generation method. Use --gen=1 or --gen=2.");
+            process::exit(1);
+        }
     };
 
     // Create an instance of the program converter

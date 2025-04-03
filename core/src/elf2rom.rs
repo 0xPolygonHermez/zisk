@@ -12,10 +12,10 @@ use elf::{
     ElfBytes,
 };
 use rayon::prelude::*;
-use std::error::Error;
+use std::{error::Error, path::Path};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
-pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
+pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
     // Get all data from the ELF file copied to a memory buffer
     let elf_file_path = std::path::PathBuf::from(elf_file);
     let file_data = std::fs::read(elf_file_path)?;
@@ -194,13 +194,14 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
 /// Executes the ELF file data transpilation process into a Zisk ROM, and saves the result into a
 /// file.  The file format can be JSON, PIL-based or binary.
 pub fn elf2romfile(
-    elf_file: String,
-    asm_file: String,
+    elf_file: &Path,
+    asm_file: Option<&Path>,
     generation_method: AsmGenerationMethod,
 ) -> Result<(), Box<dyn Error>> {
     let rom = elf2rom(elf_file)?;
-    if !asm_file.is_empty() && !asm_file.eq("none") {
-        rom.save_to_asm_file(&asm_file, generation_method);
+
+    if let Some(asm_file) = asm_file {
+        rom.save_to_asm_file(asm_file, generation_method);
     }
     Ok(())
 }

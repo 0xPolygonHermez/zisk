@@ -31,7 +31,7 @@ pub fn assembly_setup(
     // Convert the ELF file to Zisk format and generates an assembly file
     let rv2zk = Riscv2zisk::new(
         elf_file_path.to_str().unwrap().to_string(),
-        zisk_file.to_str().unwrap().to_string(),
+        Some(zisk_file.to_str().unwrap().to_string()),
     );
     rv2zk
         .runfile(AsmGenerationMethod::AsmMinimalTraces)
