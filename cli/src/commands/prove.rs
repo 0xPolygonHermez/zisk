@@ -151,16 +151,15 @@ impl ZiskProve {
             }
         }
 
-        self.asm = if self.emulator {
-            None
-        } else {
-            self.asm.clone().or_else(|| {
-                let stem = self.elf.file_stem()?.to_str()?;
-                let hash = get_elf_data_hash(&self.elf).ok()?;
-                let new_filename = format!("{stem}-{hash}.asm");
-                Some(default_cache_path.join(new_filename))
-            })
-        };
+        if self.emulator {
+            self.asm = None;
+        } else if self.asm.is_none() {
+            let stem = self.elf.file_stem().unwrap().to_str().unwrap();
+            let hash = get_elf_data_hash(&self.elf)
+                .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
+            let new_filename = format!("{stem}-{hash}.asm");
+            self.asm = Some(default_cache_path.join(new_filename));
+        }
 
         if let Some(asm_path) = &self.asm {
             if !asm_path.exists() {
