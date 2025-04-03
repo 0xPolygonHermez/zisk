@@ -509,10 +509,10 @@ impl ZiskRom {
 
     /// Saves ZisK rom into an i64-64 assembly file: first save to a string, then
     /// save the string to the file
-    pub fn save_to_asm_file(&self, file_name: &str) {
+    pub fn save_to_asm_file(&self, file_name: &str, verbose: bool) {
         // Get a string with the PIL data
         let mut s = String::new();
-        self.save_to_asm(&mut s);
+        self.save_to_asm(&mut s, verbose);
 
         // Save to file
         let path = std::path::PathBuf::from(file_name);
@@ -523,7 +523,7 @@ impl ZiskRom {
     }
 
     /// Saves ZisK rom into an i86-64 assembly data string
-    pub fn save_to_asm(&self, s: &mut String) {
+    pub fn save_to_asm(&self, s: &mut String, verbose: bool) {
         // Clear output data, just in case
         s.clear();
 
@@ -1840,7 +1840,8 @@ impl ZiskRom {
             code_lines_counter += 1;
         }
 
-        println!(
+        if verbose {
+            println!(
             "ZiskRom::save_to_asm() {} bytes, {} instructions, {:02} bytes/inst, {} map lines, {} label lines, {} comment lines, {} code lines, {:02} code lines/inst",
             s.len(),
             keys.len(),
@@ -1850,7 +1851,8 @@ impl ZiskRom {
             comment_lines_counter,
             code_lines_counter,
             code_lines_counter as f64 / keys.len() as f64,
-        )
+        );
+        }
     }
 
     fn operation_to_asm(ctx: &mut ZiskAsmContext, opcode: u8) -> String {
