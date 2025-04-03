@@ -9,9 +9,10 @@ use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
-    BusDeviceWrapper, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
+    BusDeviceWrapper, CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType,
 };
 use std::{collections::HashMap, sync::Arc};
+use zisk_common::ChunkId;
 use zisk_pil::BinaryExtensionTrace;
 
 /// The `BinaryExtensionInstance` struct represents an instance for binary extension-related witness
@@ -100,7 +101,7 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
     ///
     /// # Returns
     /// An `Option` containing the input collector for the instance.
-    fn build_inputs_collector(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
             BinaryExtensionTrace::<F>::AIR_ID,

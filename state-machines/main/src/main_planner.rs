@@ -6,8 +6,10 @@
 use std::any::Any;
 
 use p3_field::PrimeField;
-use sm_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan};
+use sm_common::{BusDeviceMetrics, CheckPoint, InstanceType, Metrics, Plan};
+use zisk_common::ChunkId;
 use zisk_common::MinimalTraces;
+use zisk_common::SegmentId;
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::MainCounter;
@@ -64,9 +66,9 @@ impl MainPlanner {
                 Plan::new(
                     ZISK_AIRGROUP_ID,
                     MAIN_AIR_IDS[0],
-                    Some(segment_id),
+                    Some(SegmentId(segment_id)),
                     InstanceType::Instance,
-                    CheckPoint::Single(segment_id),
+                    CheckPoint::Single(ChunkId(segment_id)),
                     Some(Box::new(segment_id == num_instances - 1) as Box<dyn Any>),
                 )
             })

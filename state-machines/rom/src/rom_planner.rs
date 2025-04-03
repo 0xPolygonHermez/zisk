@@ -1,34 +1,15 @@
 //! The `RomPlanner` module defines a planner for organizing execution plans for ROM-related
 //! operations. It aggregates ROM metrics and generates a plan for the execution flow.
 
-use std::sync::{atomic::AtomicU32, Arc};
-
-use sm_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan, Planner};
+use sm_common::{BusDeviceMetrics, CheckPoint, InstanceType, Plan, Planner};
+use zisk_common::ChunkId;
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
-
-use crate::RomCounter;
 
 /// The `RomPlanner` struct creates an execution plan from aggregated ROM metrics.
 ///
 /// It processes metrics collected by `RomCounter` instances, combines them,
 /// and generates a single `Plan` for execution.
-pub struct RomPlanner {
-    /// Shared biod instruction counter for monitoring ROM operations.
-    bios_inst_count: Arc<Vec<AtomicU32>>,
-
-    /// Shared program instruction counter for monitoring ROM operations.
-    prog_inst_count: Arc<Vec<AtomicU32>>,
-}
-
-impl RomPlanner {
-    /// Creates a new instance of `RomPlanner`.
-    ///
-    /// # Returns
-    /// A new `RomPlanner` instance.
-    pub fn new(bios_inst_count: Arc<Vec<AtomicU32>>, prog_inst_count: Arc<Vec<AtomicU32>>) -> Self {
-        Self { bios_inst_count, prog_inst_count }
-    }
-}
+pub struct RomPlanner;
 
 impl Planner for RomPlanner {
     /// Creates an execution plan based on ROM metrics.
@@ -52,20 +33,15 @@ impl Planner for RomPlanner {
             panic!("RomPlanner::plan() No metrics found");
         }
 
-        let mut total = RomCounter::new(self.bios_inst_count.clone(), self.prog_inst_count.clone());
-
-        for (_, metric) in metrics {
-            let metric = Metrics::as_any(&*metric).downcast_ref::<RomCounter>().unwrap();
-            total += metric;
-        }
+        let vec_chunk_ids = metrics.iter().map(|(chunk_id, _)| *chunk_id).collect::<Vec<_>>();
 
         vec![Plan::new(
             ZISK_AIRGROUP_ID,
             ROM_AIR_IDS[0],
             None,
             InstanceType::Instance,
-            CheckPoint::None,
-            Some(Box::new(total)),
+            CheckPoint::Multiple(vec_chunk_ids),
+            None,
         )]
     }
 }

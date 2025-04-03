@@ -1544,14 +1544,6 @@ impl<'a> Emu<'a> {
             }
         }
 
-        // Get rom bus data
-        let rom_payload = RomBusData::from_instruction(instruction, &self.ctx.inst_ctx);
-
-        // Write rom bus data to rom bus
-        data_bus.write_to_bus(ROM_BUS_ID, &rom_payload);
-
-        // let finished = inst_observer.on_instruction(instruction, &self.ctx.inst_ctx);
-
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
         self.set_pc(instruction);
@@ -1666,6 +1658,12 @@ impl<'a> Emu<'a> {
                 data_bus.write_to_bus(OPERATION_BUS_ID, &data);
             }
         }
+
+        // Get rom bus data
+        let rom_payload = RomBusData::from_instruction(instruction, &self.ctx.inst_ctx);
+
+        // Write rom bus data to rom bus
+        data_bus.write_to_bus(ROM_BUS_ID, &rom_payload);
 
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);

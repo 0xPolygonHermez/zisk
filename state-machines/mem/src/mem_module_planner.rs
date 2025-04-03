@@ -2,7 +2,8 @@ use rayon::{prelude::*, ThreadPoolBuilder};
 use std::sync::Arc;
 
 use crate::{MemCounters, MemPlanCalculator, UsesCounter, STEP_MEMORY_MAX_DIFF};
-use sm_common::{CheckPoint, ChunkId, InstanceType, Plan};
+use sm_common::{CheckPoint, InstanceType, Plan};
+use zisk_common::{ChunkId, SegmentId};
 
 const REGISTERS_COUNT: usize = 32;
 
@@ -429,7 +430,7 @@ impl MemPlanCalculator for MemModulePlanner<'_> {
             plans.push(Plan::new(
                 self.config.airgroup_id,
                 self.config.air_id,
-                Some(segment_id),
+                Some(SegmentId(segment_id)),
                 InstanceType::Instance,
                 CheckPoint::Multiple(segment.chunks.clone()),
                 Some(Box::new(check_point)),

@@ -87,7 +87,7 @@ impl MainSM {
         let num_rows = MainTrace::<F>::NUM_ROWS;
 
         // Determine trace slice for the current segment
-        let start_idx = segment_id * num_within;
+        let start_idx = segment_id.as_usize() * num_within;
         let end_idx = (start_idx + num_within).min(min_traces.len());
         let segment_min_traces = &min_traces[start_idx..end_idx];
 
@@ -108,12 +108,13 @@ impl MainSM {
         // first segment, for the rest is the final_step of the previous segment
 
         let last_row_previous_segment =
-            if segment_id == 0 { 0 } else { (segment_id * num_rows) as u64 - 1 };
+            if segment_id == 0 { 0 } else { (segment_id.as_usize() * num_rows) as u64 - 1 };
 
         let initial_step = MemHelpers::main_step_to_special_mem_step(last_row_previous_segment);
 
-        let final_step =
-            MemHelpers::main_step_to_special_mem_step(((segment_id + 1) * num_rows) as u64 - 1);
+        let final_step = MemHelpers::main_step_to_special_mem_step(
+            ((segment_id.as_usize() + 1) * num_rows) as u64 - 1,
+        );
 
         // To reduce memory used, only take memory for the maximum range of mem_step inside the
         // minimal trace.
@@ -180,7 +181,7 @@ impl MainSM {
         // Prepare main AIR values
         let mut air_values = MainAirValues::<F>::new();
 
-        air_values.main_segment = F::from_usize(segment_id);
+        air_values.main_segment = F::from_usize(segment_id.into());
         air_values.main_last_segment = F::from_bool(main_instance.is_last_segment);
         air_values.segment_initial_pc = main_trace.buffer[0].pc;
         air_values.segment_next_pc = F::from_u64(next_pc);
