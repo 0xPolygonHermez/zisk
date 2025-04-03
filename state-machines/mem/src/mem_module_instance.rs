@@ -7,8 +7,9 @@ use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
+use std::ops::Add;
 use std::sync::Arc;
-use zisk_common::ChunkId;
+use zisk_common::{ChunkId, SegmentId};
 
 pub struct MemModuleInstance<F: PrimeField> {
     /// Instance context
@@ -17,14 +18,80 @@ pub struct MemModuleInstance<F: PrimeField> {
     module: Arc<dyn MemModule<F>>,
 
     mem_check_point: MemModuleSegmentCheckPoint,
+    min_addr: u32,
+    #[allow(dead_code)]
+    max_addr: u32,
+    limited_step_distance: bool,
+}
+#[derive(Debug, Clone, Copy)]
+pub struct MemLastValue {
+    pub segment_id: SegmentId,
+    pub checkpoint_addr: u32,
+    pub checkpoint_step: u64,
+    pub value: u64,
+    pub step: u64,
+    pub addr: u32,
+}
+
+impl MemLastValue {
+    pub fn new(segment_id: SegmentId, checkpoint_addr: u32, checkpoint_step: u64) -> Self {
+        Self { segment_id, checkpoint_addr, checkpoint_step, value: 0, step: 0, addr: 0 }
+    }
+    pub fn update(&mut self, value: u64, addr_w: u32, step: u64) {
+        if addr_w > self.checkpoint_addr {
+            return;
+        }
+        #[allow(clippy::comparison_chain)]
+        if addr_w > self.addr {
+            if addr_w < self.checkpoint_addr || step <= self.checkpoint_step {
+                self.set(value, addr_w, step);
+            }
+        } else if addr_w == self.addr && step > self.step && step <= self.checkpoint_step {
+            self.set(value, addr_w, step);
+        }
+    }
+    pub fn set(&mut self, value: u64, addr_w: u32, step: u64) {
+        self.value = value;
+        self.step = step;
+        self.addr = addr_w;
+    }
+}
+
+impl Add for MemLastValue {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        if self.checkpoint_addr != 0 {
+            assert_eq!(self.checkpoint_addr, other.checkpoint_addr);
+            assert_eq!(self.checkpoint_step, other.checkpoint_step);
+            assert_eq!(self.segment_id, other.segment_id);
+        }
+        if self.addr > other.addr || (self.addr == other.addr && self.step > other.step) {
+            self
+        } else {
+            other
+        }
+    }
 }
 
 impl<F: PrimeField> MemModuleInstance<F> {
-    pub fn new(module: Arc<dyn MemModule<F>>, ictx: InstanceCtx) -> Self {
+    pub fn new(
+        module: Arc<dyn MemModule<F>>,
+        ictx: InstanceCtx,
+        limited_step_distance: bool,
+    ) -> Self {
         let meta = ictx.plan.meta.as_ref().unwrap();
         let mem_check_point = meta.downcast_ref::<MemModuleSegmentCheckPoint>().unwrap().clone();
 
-        Self { ictx, module: module.clone(), mem_check_point }
+        let (min_addr, max_addr) = module.get_addr_range();
+        Self {
+            ictx,
+            module: module.clone(),
+            mem_check_point,
+            min_addr,
+            max_addr,
+            limited_step_distance,
+        }
     }
 
     fn prepare_inputs(&mut self, inputs: &mut [MemInput]) {
@@ -51,44 +118,52 @@ impl<F: PrimeField> MemModuleInstance<F> {
         &mut self,
         inputs: &mut Vec<MemInput>,
         mem_check_point: MemModuleSegmentCheckPoint,
-        prev_last_value: u64,
+        last_value: &mut MemLastValue,
     ) -> MemPreviousSegment {
-        let mut prev_segment = MemPreviousSegment {
-            addr: mem_check_point.prev_addr,
-            step: mem_check_point.prev_step,
-            value: mem_check_point.prev_value,
-        };
+        let mut last_step = mem_check_point.prev_step;
         #[cfg(feature = "debug_mem")]
         let initial = (inputs[0].addr, inputs[0].step, inputs.len());
 
-        match mem_check_point.skip_rows.cmp(&1) {
-            std::cmp::Ordering::Equal => {
-                prev_segment.value = prev_last_value;
-            }
-            std::cmp::Ordering::Greater => {
-                let check_point_skip_rows = mem_check_point.skip_rows - 1;
-                let mut input_index = 0;
-                let mut skip_rows = 0;
-                loop {
-                    while inputs[input_index].addr == prev_segment.addr
-                        && (inputs[input_index].step - prev_segment.step) > STEP_MEMORY_MAX_DIFF
-                        && skip_rows < check_point_skip_rows as usize
-                    {
-                        prev_segment.step += STEP_MEMORY_MAX_DIFF;
-                        skip_rows += 1;
-                    }
-                    if skip_rows >= check_point_skip_rows as usize {
-                        break;
-                    }
-                    prev_segment.addr = inputs[input_index].addr;
-                    prev_segment.step = inputs[input_index].step;
-                    prev_segment.value = inputs[input_index].value;
-                    input_index += 1;
-                    skip_rows += 1;
+        if mem_check_point.skip_rows > 1 {
+            // rows to be skipped
+            let check_point_skip_rows = mem_check_point.skip_rows - 1;
+            let mut input_index = 0;
+
+            // rows skipped at the moment
+            let mut skipped_rows = 0;
+
+            // at this point we need to skip at least one row, this
+            // row value could be prev_segment.value(last), we update it
+            last_value.set(
+                inputs[input_index].value,
+                inputs[input_index].addr,
+                inputs[input_index].step,
+            );
+
+            loop {
+                // we interested only in segment addr, but we need to check
+                // if there are intermidate accesses
+
+                while self.limited_step_distance
+                    && inputs[input_index].addr == mem_check_point.prev_addr
+                    && (inputs[input_index].step - last_step) > STEP_MEMORY_MAX_DIFF
+                    && skipped_rows < check_point_skip_rows as usize
+                {
+                    // we skip an intermediate row
+                    last_step += STEP_MEMORY_MAX_DIFF;
+                    skipped_rows += 1;
                 }
-                inputs.drain(0..input_index);
+                if skipped_rows >= check_point_skip_rows as usize {
+                    break;
+                }
+
+                assert_eq!(mem_check_point.prev_addr, inputs[input_index].addr);
+                last_step = inputs[input_index].step;
+                last_value.set(inputs[input_index].value, inputs[input_index].addr, last_step);
+                input_index += 1;
+                skipped_rows += 1;
             }
-            std::cmp::Ordering::Less => {}
+            inputs.drain(0..input_index);
         }
 
         #[cfg(feature = "debug_mem")]
@@ -113,7 +188,11 @@ impl<F: PrimeField> MemModuleInstance<F> {
             self.mem_check_point.last_addr,
             self.mem_check_point.last_step,
         );
-        prev_segment
+        MemPreviousSegment {
+            addr: mem_check_point.prev_addr,
+            step: last_step,
+            value: last_value.value,
+        }
     }
 }
 
@@ -127,16 +206,14 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         // Collect inputs from all collectors. At most, one of them has `prev_last_value` non zero,
         // we take this `prev_last_value`, which represents the last value of the previous segment.
 
-        let mut prev_last_value = 0;
+        let mut last_value = MemLastValue::new(SegmentId::new(0), 0, 0);
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, mut collector)| {
                 let mem_module_collector =
                     collector.detach_device().as_any().downcast::<MemModuleCollector>().unwrap();
 
-                if mem_module_collector.prev_last_value != 0 {
-                    prev_last_value = mem_module_collector.prev_last_value;
-                }
+                last_value = last_value + mem_module_collector.last_value;
                 mem_module_collector.inputs
             })
             .collect();
@@ -155,7 +232,7 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         let prev_segment = self.fit_inputs_and_get_prev_segment(
             &mut inputs,
             self.mem_check_point.clone(),
-            prev_last_value,
+            &mut last_value,
         );
 
         // Extract segment id from instance context
@@ -176,7 +253,11 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         &self,
         _chunk_id: ChunkId,
     ) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(MemModuleCollector::new(self.mem_check_point.clone())))
+        Some(Box::new(MemModuleCollector::new(
+            self.mem_check_point.clone(),
+            self.min_addr,
+            self.ictx.plan.segment_id.unwrap(),
+        )))
     }
 
     fn check_point(&self) -> CheckPoint {
@@ -195,14 +276,25 @@ pub struct MemModuleCollector {
     /// Collected inputs
     inputs: Vec<MemInput>,
 
-    /// Edge case for the previous last value, also known as the cutting value (the last value of
-    /// the previous segment).
-    prev_last_value: u64,
+    last_value: MemLastValue,
+
+    min_addr: u32,
 }
 
 impl MemModuleCollector {
-    pub fn new(mem_check_point: MemModuleSegmentCheckPoint) -> Self {
-        Self { inputs: Vec::new(), mem_check_point, prev_last_value: 0 }
+    pub fn new(
+        mem_check_point: MemModuleSegmentCheckPoint,
+        min_addr: u32,
+        segment_id: SegmentId,
+    ) -> Self {
+        let prev_addr = mem_check_point.prev_addr;
+        let prev_step = mem_check_point.prev_step;
+        Self {
+            inputs: Vec::new(),
+            mem_check_point,
+            last_value: MemLastValue::new(segment_id, prev_addr, prev_step),
+            min_addr,
+        }
     }
 
     /// Processes an unaligned memory access.
@@ -330,8 +422,13 @@ impl MemModuleCollector {
     ///
     /// # Returns
     /// `true` if the access should be discarded, `false` otherwise.
-    fn discart_addr_step(&mut self, addr: u32, step: u64, value: u64) -> bool {
-        if addr < self.mem_check_point.prev_addr || addr > self.mem_check_point.last_addr {
+    fn discart_addr_step(&mut self, addr_w: u32, step: u64, value: u64) -> bool {
+        if addr_w > self.mem_check_point.last_addr || addr_w < self.min_addr {
+            return true;
+        }
+
+        self.last_value.update(value, addr_w, step);
+        if addr_w < self.mem_check_point.prev_addr {
             return true;
         }
 
@@ -339,20 +436,19 @@ impl MemModuleCollector {
         // is unknown. This value must be saved because it is needed for memory continuations,
         // it represents the last value of the previous segment.
 
-        if addr == self.mem_check_point.prev_addr {
+        if addr_w == self.mem_check_point.prev_addr {
             match step.cmp(&self.mem_check_point.prev_step) {
                 std::cmp::Ordering::Less => {
                     return true;
                 }
                 std::cmp::Ordering::Equal => {
-                    self.prev_last_value = value;
                     return true;
                 }
                 std::cmp::Ordering::Greater => {}
             }
         }
 
-        if addr == self.mem_check_point.last_addr && step > self.mem_check_point.last_step {
+        if addr_w == self.mem_check_point.last_addr && step > self.mem_check_point.last_step {
             return true;
         }
 

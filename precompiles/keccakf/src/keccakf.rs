@@ -509,13 +509,36 @@ impl KeccakfSM {
     }
 
     /// Generates memory inputs.
-    pub fn generate_inputs(input: &OperationKeccakData<u64>) -> Vec<Vec<PayloadType>> {
+    pub fn generate_inputs(
+        input: &OperationKeccakData<u64>,
+        counters_mode: bool,
+    ) -> Vec<Vec<PayloadType>> {
         // Get the basic data from the input
         let input_data = ExtOperationData::OperationKeccakData(*input);
 
         let step_main = OperationBusData::get_a(&input_data);
         let addr = OperationBusData::get_b(&input_data) as u32;
 
+        let mut mem_data = vec![];
+        if counters_mode {
+            // On counter phase we don't need final values, we only need the
+            // address and step
+            // Compute the reads
+            for i in 0..25 {
+                let new_addr = addr + 8 * i as u32;
+                let read = MemBusHelpers::mem_aligned_load(new_addr, step_main, 0);
+                mem_data.push(read.to_vec());
+            }
+
+            // Compute the writes
+            for i in 0..25 {
+                let new_addr = addr + 8 * i as u32;
+                let write = MemBusHelpers::mem_aligned_write(new_addr, step_main, 0);
+                mem_data.push(write.to_vec());
+            }
+
+            return mem_data;
+        }
         // Get the raw keccakf input as 25 u64 values
         let keccakf_input: [u64; 25] =
             OperationBusData::get_extra_data(&input_data).try_into().unwrap();
@@ -524,7 +547,6 @@ impl KeccakfSM {
         let mut keccakf_output = keccakf_input;
         keccakf(&mut keccakf_output);
 
-        let mut mem_data = vec![];
         // Compute the reads
         for (i, &input) in keccakf_input.iter().enumerate() {
             let new_addr = addr + 8 * i as u32;

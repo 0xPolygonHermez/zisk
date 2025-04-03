@@ -26,6 +26,9 @@ indexmap = { version = "2.2.6", features = ["serde"] }
 json = "0.12.4"
 elf = "0.7.4"
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
+precompiles-helpers = { path = "../precompiles/helpers" }
+lib-c = { path = "../lib-c" }
+ziskos = { path = "../ziskos/entrypoint" }
 
 [features]
 default = []

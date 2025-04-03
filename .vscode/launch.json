@@ -8,7 +8,7 @@
             "type": "lldb",
             "request": "launch",
             "name": "Debug",
-            "program": "target/debug/proofman-cli",
+            "program": "target/debug/cargo-zisk",
             //"cargo": {
                 "args": [
                     //"run",

@@ -9,6 +9,8 @@
 
 #![allow(unused)]
 
+use ziskos::fcall_proxy;
+
 use std::{
     collections::HashMap,
     fmt::{Debug, Display},
@@ -18,14 +20,21 @@ use std::{
 use tiny_keccak::keccakf;
 
 use crate::{
-    InstContext, Mem, PrecompiledEmulationMode, ZiskOperationType, ZiskRequiredOperation, M64,
-    REG_A0, SYS_ADDR,
+    EmulationMode, InstContext, Mem, ZiskOperationType, ZiskRequiredOperation, M64, REG_A0,
+    SYS_ADDR,
 };
 
-/// Determines the type of a [`ZiskOp`].  
+use lib_c::{inverse_fn_ec_c, inverse_fp_ec_c, sqrt_fp_ec_parity_c, Fcall, FcallContext};
+
+use crate::{
+    FCALL_ID_INVERSE_FN_EC, FCALL_ID_INVERSE_FP_EC, FCALL_ID_SQRT_FP_EC_PARITY,
+    FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE,
+};
+
+/// Determines the type of a [`ZiskOp`].
 ///
 /// The type will be used to assign the proof generation of a main state machine operation result to
-/// the corresponding secondary state machine.  
+/// the corresponding secondary state machine.
 /// The type can be: internal (no proof required), arith, binary, etc.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum OpType {
@@ -37,6 +46,8 @@ pub enum OpType {
     BinaryE,
     Keccak,
     PubOut,
+    ArithEq,
+    Fcall,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -48,6 +59,8 @@ impl From<OpType> for ZiskOperationType {
             OpType::BinaryE => ZiskOperationType::BinaryE,
             OpType::Keccak => ZiskOperationType::Keccak,
             OpType::PubOut => ZiskOperationType::PubOut,
+            OpType::ArithEq => ZiskOperationType::ArithEq,
+            OpType::Fcall => ZiskOperationType::Fcall,
         }
     }
 }
@@ -63,6 +76,8 @@ impl Display for OpType {
             Self::BinaryE => write!(f, "BinaryE"),
             Self::Keccak => write!(f, "Keccak"),
             Self::PubOut => write!(f, "PubOut"),
+            Self::ArithEq => write!(f, "Arith256"),
+            Self::Fcall => write!(f, "Fcall"),
         }
     }
 }
@@ -79,6 +94,8 @@ impl FromStr for OpType {
             "b" => Ok(Self::Binary),
             "be" => Ok(Self::BinaryE),
             "k" => Ok(Self::Keccak),
+            "aeq" => Ok(Self::ArithEq),
+            "fcall" => Ok(Self::Fcall),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -241,19 +258,22 @@ macro_rules! define_ops {
 }
 
 // Cost definitions
+const INTERNAL_COST: u64 = 0;
 const BINARY_COST: u64 = 75;
 const BINARY_E_COST: u64 = 54;
 const ARITHA32_COST: u64 = 95;
 const ARITHAM32_COST: u64 = 95;
-const KECCAK_COST: u64 = 137221;
+const KECCAK_COST: u64 = 145000;
+const ARITH_EQ_COST: u64 = 1200;
+const FCALL_COST: u64 = INTERNAL_COST;
 
 /// Table of Zisk opcode definitions: enum, name, type, cost, code and implementation functions
 /// This table is the backbone of the Zisk processor, it determines what functionality is supported,
 /// and what state machine is responsible of proving the execution of every opcode, based on its
 /// type.
 define_ops! {
-    (Flag, "flag", Internal, 0, 0x00, 0, opc_flag, op_flag),
-    (CopyB, "copyb", Internal, 0, 0x01, 0, opc_copyb, op_copyb),
+    (Flag, "flag", Internal, INTERNAL_COST, 0x00, 0, opc_flag, op_flag),
+    (CopyB, "copyb", Internal, INTERNAL_COST, 0x01, 0, opc_copyb, op_copyb),
     (SignExtendB, "signextend_b", BinaryE, BINARY_E_COST, 0x37, 0, opc_signextend_b, op_signextend_b),
     (SignExtendH, "signextend_h", BinaryE, BINARY_E_COST, 0x38, 0, opc_signextend_h, op_signextend_h),
     (SignExtendW, "signextend_w", BinaryE, BINARY_E_COST, 0x39, 0, opc_signextend_w, op_signextend_w),
@@ -304,6 +324,13 @@ define_ops! {
     (MaxW, "max_w", Binary, BINARY_COST, 0x25, 0, opc_max_w, op_max_w),
     (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, 200, opc_keccak, op_keccak),
     (PubOut, "pubout", PubOut, 0, 0x30, 0, opc_pubout, op_pubout),
+    (Arith256, "arith256", ArithEq, ARITH_EQ_COST, 0xf2, 136, opc_arith256, op_arith256),
+    (Arith256Mod, "arith256_mod", ArithEq, ARITH_EQ_COST, 0xf3, 168, opc_arith256_mod, op_arith256_mod),
+    (Secp256k1Add, "secp256k1_add", ArithEq, ARITH_EQ_COST, 0xf4, 144, opc_secp256k1_add, op_secp256k1_add),
+    (Secp256k1Dbl, "secp256k1_dbl", ArithEq, ARITH_EQ_COST, 0xf5, 64, opc_secp256k1_dbl, op_secp256k1_add),
+    (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xf6, 0, opc_fcall_param, op_fcall_param),
+    (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, opc_fcall, op_fcall),
+    (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, opc_fcall_get, op_fcall_get),
 }
 
 /* INTERNAL operations */
@@ -350,7 +377,7 @@ pub fn opc_signextend_b(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_signextend_b(ctx.a, ctx.b);
 }
 
-/// Sign extends an i16.  
+/// Sign extends an i16.
 ///
 /// Converts b from a signed 16-bits number in the range [-32768, 32767] into a signed 64-bit number
 /// of the same value, adding 0xFFFFFFFFFFFF0000 if negative, and stores the result in c as a u64
@@ -366,7 +393,7 @@ pub fn opc_signextend_h(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_signextend_h(ctx.a, ctx.b);
 }
 
-/// Sign extends an i32.  
+/// Sign extends an i32.
 ///
 /// Converts b from a signed 32-bits number in the range [-2147483648, 2147483647] into a signed
 /// 64-bit number of the same value, adding 0xFFFFFFFF00000000 if negative  and stores the result in
@@ -812,9 +839,9 @@ pub fn opc_divu(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_divu(ctx.a, ctx.b);
 }
 
-/// Sets c to a / b, as 64-bits signed values, and flag to false.  
+/// Sets c to a / b, as 64-bits signed values, and flag to false.
 ///
-/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.  
+/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
 /// If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should be -MIN_I64,
 /// which cannot be represented with 64 bits (overflow) and it returns c=a.
 #[inline(always)]
@@ -1069,8 +1096,8 @@ pub fn opc_max_w(ctx: &mut InstContext) {
 /// specified by register A0, and stores the output state in the same memory address
 #[inline(always)]
 pub fn opc_keccak(ctx: &mut InstContext) {
-    // Get address from register a0 = x10
-    let address = ctx.regs[Mem::address_to_register_index(REG_A0)];
+    // Get address from b (a = step)
+    let address = ctx.b;
     if address & 0x7 != 0 {
         panic!("opc_keccak() found address not aligned to 8 bytes");
     }
@@ -1080,27 +1107,28 @@ pub fn opc_keccak(ctx: &mut InstContext) {
     let mut data = [0u64; WORDS];
 
     // Get input data from memory or from the precompiled context
-    match ctx.precompiled.emulation_mode {
-        PrecompiledEmulationMode::None => {
+    match ctx.emulation_mode {
+        EmulationMode::Mem => {
             // Read data from the memory address
             for (i, d) in data.iter_mut().enumerate() {
                 *d = ctx.mem.read(address + (8 * i as u64), 8);
             }
         }
-        PrecompiledEmulationMode::GenerateMemReads => {
+        EmulationMode::GenerateMemReads => {
             // Read data from the memory address
             for (i, d) in data.iter_mut().enumerate() {
                 *d = ctx.mem.read(address + (8 * i as u64), 8);
             }
+
             // Copy data to the precompiled context
             ctx.precompiled.input_data.clear();
             for (i, d) in data.iter_mut().enumerate() {
                 ctx.precompiled.input_data.push(*d);
             }
             // Write the input data address to the precompiled context
-            ctx.precompiled.input_data_address = address;
+            // ctx.precompiled.input_data_address = address;
         }
-        PrecompiledEmulationMode::ConsumeMemReads => {
+        EmulationMode::ConsumeMemReads => {
             // Check input data has the expected length
             if ctx.precompiled.input_data.len() != WORDS {
                 panic!(
@@ -1114,7 +1142,7 @@ pub fn opc_keccak(ctx: &mut InstContext) {
                 *d = ctx.precompiled.input_data[i];
             }
             // Write the input data address to the precompiled context
-            ctx.precompiled.input_data_address = address;
+            // ctx.precompiled.input_data_address = address;
         }
     }
 
@@ -1127,18 +1155,18 @@ pub fn opc_keccak(ctx: &mut InstContext) {
     }
 
     // Set input data to the precompiled context
-    match ctx.precompiled.emulation_mode {
-        PrecompiledEmulationMode::None => {}
-        PrecompiledEmulationMode::GenerateMemReads => {
+    match ctx.emulation_mode {
+        EmulationMode::Mem => {}
+        EmulationMode::GenerateMemReads => {
             // Write data to the precompiled context
             ctx.precompiled.output_data.clear();
             for (i, d) in data.iter_mut().enumerate() {
                 ctx.precompiled.output_data.push(*d);
             }
             // Write the input data address to the precompiled context
-            ctx.precompiled.output_data_address = address;
+            // ctx.precompiled.output_data_address = address;
         }
-        PrecompiledEmulationMode::ConsumeMemReads => {}
+        EmulationMode::ConsumeMemReads => {}
     }
 
     ctx.c = 0;
@@ -1150,6 +1178,211 @@ pub fn opc_keccak(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn op_keccak(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_keccak() is not implemented");
+}
+
+#[inline(always)]
+pub fn precompiled_load_data(
+    ctx: &mut InstContext,
+    indirections_count: usize,
+    loads_count: usize,
+    load_chunks: usize,
+    data: &mut [u64],
+    title: &str,
+) {
+    let address = ctx.b;
+    if address & 0x7 != 0 {
+        panic!("precompiled_check_address() found address not aligned to 8 bytes");
+    }
+    if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
+        let expected_len = indirections_count + loads_count * load_chunks;
+        // Check input data has the expected length
+        if ctx.precompiled.input_data.len() != expected_len {
+            panic!(
+                "[{}] ctx.precompiled.input_data.len={} != {} [1+{}+{}*{}]",
+                title,
+                ctx.precompiled.input_data.len(),
+                expected_len,
+                indirections_count,
+                load_chunks,
+                loads_count
+            );
+        }
+        // Read data from the precompiled context
+        for (i, d) in data.iter_mut().enumerate() {
+            *d = ctx.precompiled.input_data[i];
+        }
+        // Write the input data address to the precompiled context
+        // ctx.precompiled.input_data_address = address;
+        return;
+    }
+
+    for (i, data) in data.iter_mut().enumerate().take(indirections_count) {
+        let indirection = ctx.mem.read(address + (8 * i as u64), 8);
+        if address & 0x7 != 0 {
+            panic!("precompiled_check_address() found address[{}] not aligned to 8 bytes", i);
+        }
+        *data = indirection;
+    }
+    let data_offset = indirections_count;
+    for i in 0..loads_count {
+        // if there aren't indirections, take directly from the address
+        let data_offset = i * load_chunks + data_offset;
+        let param_address =
+            if indirections_count == 0 { address + data_offset as u64 } else { data[i] };
+        for j in 0..load_chunks {
+            let addr = param_address + (8 * j as u64);
+            data[data_offset + j] = ctx.mem.read(addr, 8);
+        }
+    }
+    if let EmulationMode::GenerateMemReads = ctx.emulation_mode {
+        let expected_len = indirections_count + loads_count * load_chunks;
+
+        ctx.precompiled.input_data.clear();
+        for (i, d) in data.iter_mut().enumerate() {
+            ctx.precompiled.input_data.push(*d);
+        }
+
+        ctx.precompiled.step = ctx.step;
+    }
+}
+
+#[inline(always)]
+pub fn opc_arith256(ctx: &mut InstContext) {
+    const WORDS: usize = 5 + 3 * 4;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 5, 3, 4, &mut data, "arith256");
+
+    // ignore 5 indirections
+    let (_, rest) = data.split_at(5);
+    let (a, rest) = rest.split_at(4);
+    let (b, c) = rest.split_at(4);
+
+    let a: &[u64; 4] = a.try_into().expect("opc_arith256: a.len != 4");
+    let b: &[u64; 4] = b.try_into().expect("opc_arith256: b.len != 4");
+    let c: &[u64; 4] = c.try_into().expect("opc_arith256: c.len != 4");
+
+    let mut dl = [0u64; 4];
+    let mut dh = [0u64; 4];
+
+    precompiles_helpers::arith256(a, b, c, &mut dl, &mut dh);
+
+    // [a,b,c,3:dl,4:dh]
+    for (i, dl_item) in dl.iter().enumerate() {
+        ctx.mem.write(data[3] + (8 * i as u64), *dl_item, 8);
+    }
+    for (i, dh_item) in dh.iter().enumerate() {
+        ctx.mem.write(data[4] + (8 * i as u64), *dh_item, 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Arith256 can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_arith256(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_arith256() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_arith256_mod(ctx: &mut InstContext) {
+    const WORDS: usize = 5 + 4 * 4;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 5, 4, 4, &mut data, "arith256_mod");
+
+    // ignore 5 indirections
+    let (_, rest) = data.split_at(5);
+    let (a, rest) = rest.split_at(4);
+    let (b, rest) = rest.split_at(4);
+    let (c, module) = rest.split_at(4);
+    let mut d = [0u64; 4];
+
+    let a: &[u64; 4] = a.try_into().expect("opc_arith256_mod: a.len != 4");
+    let b: &[u64; 4] = b.try_into().expect("opc_arith256_mod: b.len != 4");
+    let c: &[u64; 4] = c.try_into().expect("opc_arith256_mod: c.len != 4");
+    let module: &[u64; 4] = module.try_into().expect("opc_arith256_mod: module.len != 4");
+
+    let mut d = [0u64; 4];
+
+    precompiles_helpers::arith256_mod(a, b, c, module, &mut d);
+
+    // [a,b,c,module,4:d]
+    for (i, d) in d.iter().enumerate() {
+        ctx.mem.write(data[4] + (8 * i as u64), *d, 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Arith256Mod can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_arith256_mod(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_arith256_mod() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_secp256k1_add(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 8;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 8, &mut data, "secp256k1_add");
+
+    // ignore 2 indirections
+    let (_, rest) = data.split_at(2);
+    let (p1, p2) = rest.split_at(8);
+
+    let p1: &[u64; 8] = p1.try_into().expect("opc_secp256k1_add: p1.len != 8");
+    let p2: &[u64; 8] = p2.try_into().expect("opc_secp256k1_add: p2.len != 8");
+    let mut p3 = [0u64; 8];
+
+    precompiles_helpers::secp256k1_add(p1, p2, &mut p3);
+
+    // [0:p1,p2]
+    for (i, d) in p3.iter().enumerate() {
+        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Secp256k1Add can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_secp256k1_add(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_secp256k1_add() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
+    const WORDS: usize = 8; // one input of 8 64-bit words
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 0, 1, 8, &mut data, "secp256k1_dbl");
+
+    let p1: &[u64; 8] = &data;
+    let mut p3 = [0u64; 8];
+
+    precompiles_helpers::secp256k1_dbl(p1, &mut p3);
+
+    for (i, d) in p3.iter().enumerate() {
+        ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Secp256k1Dbl can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_secp256k1_dbl(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_secp256k1_dbl() is not implemented");
 }
 
 impl From<ZiskRequiredOperation> for ZiskOp {
@@ -1170,4 +1403,134 @@ pub const fn op_pubout(a: u64, b: u64) -> (u64, bool) {
 pub fn opc_pubout(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_pubout(ctx.a, ctx.b);
     //println!("public ${} = {:#018x}", ctx.a, ctx.b);
+}
+
+/// Implements fcall_param, free input data call parameter
+#[inline(always)]
+pub fn op_fcall_param(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fcall_param() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fcall_param()
+#[inline(always)]
+pub fn opc_fcall_param(ctx: &mut InstContext) {
+    // Set c and flag according to the spec
+    ctx.c = ctx.b;
+    ctx.flag = false;
+
+    // Do nothing when emulating in consume memory reads mode;
+    // data will be directly obtained from mem_reads
+    if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
+        return;
+    }
+
+    // Get param size from a
+    let words = ctx.a;
+
+    // Get param chunk from b
+    let param = ctx.b;
+
+    // Check for consistency
+    if (ctx.fcall.parameters_size + words) as usize >= FCALL_PARAMS_MAX_SIZE {
+        panic!(
+            "opc_fcall_param({0}) called with ctx.fcall.parameters_size({1}) + param({0})>={2}",
+            words, ctx.fcall.parameters_size, FCALL_PARAMS_MAX_SIZE
+        );
+    }
+
+    // Store param in context
+    if words == 1 {
+        ctx.fcall.parameters[ctx.fcall.parameters_size as usize] = param;
+        ctx.fcall.parameters_size += 1;
+    } else {
+        let addr = param;
+        for i in 0..words {
+            let value = ctx.mem.read(addr + i * 8, 8);
+            ctx.fcall.parameters[(ctx.fcall.parameters_size + i) as usize] = value;
+        }
+        ctx.fcall.parameters_size += words;
+    }
+}
+
+/// Implements fcall, free input data calls
+#[inline(always)]
+pub fn op_fcall(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fcall() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fcall()
+#[inline(always)]
+pub fn opc_fcall(ctx: &mut InstContext) {
+    // Set c and flag according to the spec
+    ctx.c = ctx.b;
+    ctx.flag = false;
+
+    // Do nothing when emulating in consume memory reads mode;
+    // data will be directly obtained from mem_reads
+    if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
+        return;
+    }
+
+    // Get function id from a
+    let function_id = ctx.a;
+
+    let iresult = fcall_proxy(function_id, &ctx.fcall.parameters, &mut ctx.fcall.result);
+
+    if iresult < 0 {
+        panic!(
+            "opc_fcall() failed calling Fcall() function_id={} iresult={}",
+            function_id, iresult
+        );
+    }
+
+    // Copy result
+    if (iresult > 0) {
+        ctx.mem.free_input = ctx.fcall.result[0];
+    } else {
+        ctx.mem.free_input = 0;
+    }
+    ctx.fcall.result_got = 1;
+    ctx.fcall.result_size = iresult as u64;
+    ctx.fcall.parameters_size = 0;
+}
+
+/// Implements fcall_get, fcall result
+#[inline(always)]
+pub fn op_fcall_get(a: u64, b: u64) -> (u64, bool) {
+    unimplemented!("op_fcall_get() is not implemented");
+}
+
+/// InstContext-based wrapper over op_fcall_get()
+#[inline(always)]
+pub fn opc_fcall_get(ctx: &mut InstContext) {
+    ctx.c = ctx.b;
+    ctx.flag = false;
+
+    // Do nothing when emulating in consume memory reads mode;
+    // data will be directly obtained from mem_reads
+    if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
+        return;
+    }
+    // Check for consistency
+    if ctx.fcall.result_size == 0 {
+        panic!("opc_fcall_get() called with ctx.fcall.result_size==0");
+    }
+    if ctx.fcall.result_size as usize > FCALL_RESULT_MAX_SIZE {
+        panic!("opc_fcall_get() called with ctx.fcall.result_size=={}>32", ctx.fcall.result_size);
+    }
+    if ctx.fcall.result_got > ctx.fcall.result_size {
+        panic!(
+            "opc_fcall_get() called with ctx.fcall.result_got({}) >= ctx.fcall.result_size {}",
+            ctx.fcall.result_got, ctx.fcall.result_size
+        );
+    }
+
+    // Copy the data into c and advance counter
+    if ctx.fcall.result_got >= ctx.fcall.result_size {
+        ctx.mem.free_input = 0;
+    } else {
+        ctx.mem.free_input = ctx.fcall.result[ctx.fcall.result_got as usize];
+    }
+    ctx.fcall.result_got += 1;
+    ctx.flag = false;
 }

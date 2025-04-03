@@ -15,15 +15,14 @@ struct MemModuleSegment {
     pub rows: u32,
     pub prev_step: u64,
     pub last_step: u64,
-    pub prev_value: u64,
+    // pub prev_value: u64,
     pub chunks: Vec<ChunkId>,
 }
 pub struct MemModulePlanner<'a> {
     config: MemModulePlannerConfig,
     rows_available: u32,
     last_step: u64,
-    last_addr: u32,  // addr of last addr uses
-    last_value: u64, // value of last addr uses
+    last_addr: u32, // addr of last addr uses
 
     segments: Vec<MemModuleSegment>,
     current_chunk_id: Option<ChunkId>,
@@ -45,7 +44,6 @@ pub struct MemModuleSegmentCheckPoint {
     pub is_last_segment: bool,
     pub prev_step: u64,
     pub last_step: u64,
-    pub prev_value: u64,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -74,7 +72,6 @@ impl<'a> MemModulePlanner<'a> {
             config,
             last_addr: config.from_addr,
             last_step: 0,
-            last_value: 0,
             rows_available: config.rows,
             segments: Vec::new(),
             counters,
@@ -223,18 +220,9 @@ impl<'a> MemModulePlanner<'a> {
                     self.consume_rows(pending_rows as u32, 1);
                     break;
                 }
-                std::cmp::Ordering::Equal => {
-                    self.consume_rows(pending_rows as u32, 2);
-                    self.close_and_open_segment(
-                        addr,
-                        // if the block fit inside current segment, the last step is last_step,
-                        // means the previous step of last segment was last_step
-                        addr_uses.last_step,
-                        addr_uses.last_value,
-                    );
-                    break;
-                }
-                std::cmp::Ordering::Less => {
+                std::cmp::Ordering::Less | std::cmp::Ordering::Equal => {
+                    // if equal, pending rows = rows_available
+
                     let rows_applied = self.rows_available;
                     self.consume_rows(rows_applied, 3);
                     pending_rows -= rows_applied as u64;
@@ -244,7 +232,6 @@ impl<'a> MemModulePlanner<'a> {
                         addr_uses.first_step,
                         addr,
                         addr_uses.last_step,
-                        0,
                         // when we skipping inputs, the previous addr/step is naturally discarted
                         // because it belongs to the previous segment, for this reason we skip 1
                         // row
@@ -255,7 +242,6 @@ impl<'a> MemModulePlanner<'a> {
                 }
             }
         }
-        self.last_value = addr_uses.last_value;
         self.last_step = addr_uses.last_step;
         self.last_addr = addr;
         self.update_segment();
@@ -314,9 +300,16 @@ impl<'a> MemModulePlanner<'a> {
                 pending -= rows_applied;
                 let segment_last_addr = addr + (count - pending) * addr_inc;
                 let segment_last_step = self.last_step + step_inc as u64 * (count - pending) as u64;
-                // with informatio we don't need to skip anything, we skip only when we don't
+                // with information we don't need to skip anything, we skip only when we don't
                 // have information (addr, step) of previous instance
-                self.close_and_open_segment(segment_last_addr, segment_last_step, self.last_value);
+                self.close_and_open_segment_with_skip(
+                    segment_last_addr,
+                    segment_last_step,
+                    segment_last_addr,
+                    segment_last_step,
+                    // we need skip one to take last value of previous segment
+                    1,
+                );
             }
             if pending == 0 {
                 break;
@@ -362,7 +355,6 @@ impl<'a> MemModulePlanner<'a> {
             MemModuleSegment {
                 prev_addr: self.config.from_addr,
                 prev_step: 0,
-                prev_value: 0,
                 last_addr: 0,
                 last_step: 0,
                 skip_rows: 0,
@@ -382,29 +374,13 @@ impl<'a> MemModulePlanner<'a> {
         self.segments[lindex].last_step = last_step;
         self.rows_available = self.config.rows;
     }
-    fn close_and_open_segment(&mut self, last_addr: u32, last_step: u64, last_value: u64) {
-        self.close_segment(last_addr, last_step);
-
-        self.segments.push({
-            MemModuleSegment {
-                prev_addr: last_addr,
-                prev_step: last_step,
-                prev_value: last_value,
-                last_addr,
-                last_step,
-                skip_rows: 0,
-                rows: 0,
-                chunks: Vec::new(),
-            }
-        });
-    }
     fn close_and_open_segment_with_skip(
         &mut self,
         prev_addr: u32,
         prev_step: u64,
         last_addr: u32,
         last_step: u64,
-        prev_value: u64,
+        // prev_value: u64,
         skip_rows: u32,
     ) {
         self.close_segment(last_addr, last_step);
@@ -413,7 +389,7 @@ impl<'a> MemModulePlanner<'a> {
             MemModuleSegment {
                 prev_addr,
                 prev_step,
-                prev_value,
+                // prev_value,
                 last_addr,
                 last_step,
                 skip_rows,
@@ -449,7 +425,6 @@ impl MemPlanCalculator for MemModulePlanner<'_> {
                 is_last_segment: segment_id == last_segment_id,
                 prev_step: segment.prev_step,
                 last_step: segment.last_step,
-                prev_value: segment.prev_value,
             };
 
             plans.push(Plan::new(

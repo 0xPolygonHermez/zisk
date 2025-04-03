@@ -10,3 +10,4 @@ categories = { workspace = true }
 [dependencies]
 precompiles-common = { path = "../common" }
 precomp-keccakf = { path = "../keccakf" }
+precomp-arith-eq = { path = "../arith_eq" }

@@ -12,6 +12,12 @@ BINS=(cargo-zisk ziskemu)
 
 mkdir -p $ZISK_BIN_DIR
 
+BINS=(cargo-zisk)
+
+SETUP_VERSION="0.6.0"
+
+export RUSTFLAGS="-C target-cpu=native"
+
 main() {
   need_cmd curl
 
