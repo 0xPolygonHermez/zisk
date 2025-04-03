@@ -20,6 +20,7 @@ pub struct MemModuleInstance<F: PrimeField> {
     min_addr: u32,
     #[allow(dead_code)]
     max_addr: u32,
+    limited_step_distance: bool,
 }
 #[derive(Debug, Clone, Copy)]
 pub struct MemLastValue {
@@ -92,12 +93,23 @@ impl Add for MemLastValue {
 }
 
 impl<F: PrimeField> MemModuleInstance<F> {
-    pub fn new(module: Arc<dyn MemModule<F>>, ictx: InstanceCtx) -> Self {
+    pub fn new(
+        module: Arc<dyn MemModule<F>>,
+        ictx: InstanceCtx,
+        limited_step_distance: bool,
+    ) -> Self {
         let meta = ictx.plan.meta.as_ref().unwrap();
         let mem_check_point = meta.downcast_ref::<MemModuleSegmentCheckPoint>().unwrap().clone();
 
         let (min_addr, max_addr) = module.get_addr_range();
-        Self { ictx, module: module.clone(), mem_check_point, min_addr, max_addr }
+        Self {
+            ictx,
+            module: module.clone(),
+            mem_check_point,
+            min_addr,
+            max_addr,
+            limited_step_distance,
+        }
     }
 
     fn prepare_inputs(&mut self, inputs: &mut [MemInput]) {
@@ -150,7 +162,8 @@ impl<F: PrimeField> MemModuleInstance<F> {
                 // we interested only in segment addr, but we need to check
                 // if there are intermidate accesses
 
-                while inputs[input_index].addr == mem_check_point.prev_addr
+                while self.limited_step_distance
+                    && inputs[input_index].addr == mem_check_point.prev_addr
                     && (inputs[input_index].step - last_step) > STEP_MEMORY_MAX_DIFF
                     && skipped_rows < check_point_skip_rows as usize
                 {
