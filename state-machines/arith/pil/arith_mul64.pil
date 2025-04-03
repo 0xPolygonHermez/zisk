@@ -1,0 +1,251 @@
+require "std_lookup.pil"
+require "std_range_check.pil"
+require "operations.pil"
+require "arith_table.pil"
+require "arith_range_table.pil"
+
+//          full   mul_64  full_32  mul_32
+// TOTAL      88       77       57      44
+
+airtemplate ArithMul64(int N = 2**18, const int operation_bus_id, const int dual_result = 0) {
+
+    const int CHUNK_SIZE = 2**16;
+    const int CHUNKS_INPUT = 4;
+    const int CHUNKS_OP = CHUNKS_INPUT * 2;
+
+    col witness carry[CHUNKS_OP - 1];
+    col witness a[CHUNKS_INPUT];
+    col witness b[CHUNKS_INPUT];
+    col witness c[CHUNKS_INPUT];
+    col witness d[CHUNKS_INPUT];
+
+    col witness na;     // a is negative
+    col witness nb;     // b is negative
+    col witness np;     // prod is negative
+
+    col witness fab;    // fab, to decrease degree of intermediate products a * b
+                        // fab = 1  if sign of a,b are the same
+                        // fab = -1 if sign of a,b are different
+
+    col witness na_fb;
+    col witness nb_fa;
+
+    col witness main_mul;
+    col witness signed;
+
+    main_mul * (main_mul - 1) === 0;
+    main_mul * main_div === 0;
+    signed * (1 - signed) === 0;
+
+    // factor ab € {-1, 1}
+    fab === 1 - 2 * na - 2 * nb + 4 * na * nb;
+    na_fb === na * (1 - 2 * nb);
+    nb_fa === nb * (1 - 2 * na);
+
+    expr sum_all_bs = 0;
+    for (int i = 0; i < length(b); ++i) {
+        div_by_zero * b[i] === 0;               // forces b must be zero when div_by_zero
+        sum_all_bs = sum_all_bs + b[i];                 // all b are values of 16 bits (verified by range_check)
+    }
+
+    // b != 0 <==> sum_all_bs != 0
+    col witness inv_sum_all_bs;
+
+    const expr eq[CHUNKS_OP];
+
+    // NOTE: Equations with m32 for multiplication not exists, because mul m32 it's an unsigned operation.
+    //       In internal equations, it's same than unsigned mul 64 where high part of a and b are zero
+
+    // abs(x)  x >= 0 ➜ nx == 0 ➜ x
+    //         x < 0  ➜ nx == 1 ➜ 2^64 - x
+    //
+    // abs(x,nx) = nx * (2^64 - 2 * x) + x = 2^64 * nx - 2 * nx * x + x
+    //
+    //    chunk[0] = x[0] - 2 * nx + x[0]  // 2^0
+    //    chunk[1] = x[1] - 2 * nx + x[1]  // 2^16
+    //    chunk[2] = x[2] - 2 * nx + x[2]  // 2^24
+    //    chunk[3] = x[3] - 2 * nx + x[3]  // 2^48
+    //    chunk[4] = nx                    // 2^64
+    //
+    //    or chunk[3] = x[3] - 2 * nx + x[3] + 2^16 * nx
+    //       chunk[4] = 0
+    //
+    //    dual use of d, on multiplication d is high part of result, while in division d
+    //    is the remainder. Selector of these two uses is div or nr (because nr = 0 for div = 0)
+    //
+    //    div = 0  ➜   a * b = 2^64 * d + c ➜  a * b - 2^64 * d - c === 0
+    //    div = 1  ➜   a * b + d = c ➜  a * b - c + d === 0
+    //
+    //    eq = a * b + c - div * d - (1 - div) * 2^64 * d
+
+    eq[0] = fab * a[0] * b[0]
+            - c[0]              // ⎫ np == 0 ➜ - c
+            + 2 * np * c[0]     // ⎭ np == 1 ➜ - c + 2c = c
+            + div * d[0]        // ⎫ div == 0 ➜ nr = 0  ➜ 0
+            - 2 * nr * d[0];    // ⎥ div == 1 and nr == 0 ➜ d
+                                // ⎭ div == 1 and nr == 1 ➜ d - 2d = -d
+
+    eq[1] = fab * a[1] * b[0]
+            + fab * a[0] * b[1]
+            - c[1]              // ⎫ np == 0 ➜ - c
+            + 2 * np * c[1]     // ⎭ np == 1 ➜ c
+            + div * d[1]        // ⎫ div == 1 ➜ d or -d
+            - 2 * nr * d[1];    // ⎭ div == 0 ➜ 0
+
+    eq[2] = fab * a[2] * b[0]
+            + fab * a[1] * b[1]
+            + fab * a[0] * b[2]
+            + a[0] * nb_fa * m32 // ⎫ sign contribution when m32
+            + b[0] * na_fb * m32 // ⎭
+            - c[2]               // ⎫ np == 0 ➜ - c
+            + 2 * np * c[2]      // ⎭ np == 1 ➜ c
+            + div * d[2]         // ⎫ div == 1 ➜ d or -d
+            - 2 * nr * d[2]      // ⎭ div == 0 ➜ 0
+            - np * div * m32     // m32 == 1 and np == 1 ➜ -2^32 (global) or -1 (in 3rd chunk)
+            + nr * m32;          // m32 == 1 and nr == 1 ➜ div == 1 ➜ 2^32 (global) or 1 (in 3rd chunk)
+
+    eq[3] = fab * a[3] * b[0]
+            + fab * a[2] * b[1]
+            + fab * a[1] * b[2]
+            + fab * a[0] * b[3]  // NOTE: m32 => high part is 0
+            + a[1] * nb_fa * m32 // ⎫ sign contribution when m32
+            + b[1] * na_fb * m32 // ⎭
+            - c[3]               // ⎫ np == 0 ➜ - c
+            + 2 * np * c[3]      // ⎭ np == 1 ➜ c
+            + div * d[3]         // ⎫ div == 1 ➜ d or -d
+            - 2 * nr * d[3];     // ⎭ div == 0 ➜ 0
+
+    eq[4] = fab * a[3] * b[1]
+            + fab * a[2] * b[2]
+            + fab * a[1] * b[3]
+            + na * nb * m32
+            // + b[0] * na * (1 - 2 * nb)
+            // + a[0] * nb * (1 - 2 * na)
+            + b[0] * na_fb * (1 - m32)
+            + a[0] * nb_fa * (1 - m32)
+
+            - np * m32 * (1 - div)  //
+            - np * (1 - m32) * div // 2^64 (np)
+            + nr * (1 - m32)  // 2^64 (nr)
+
+            - d[0] * (1 - div)           // 3 degree
+            + 2 * np * d[0] * (1 - div); // 3 degree
+
+    eq[5] = fab * a[3] * b[2]       // 3 degree
+            + fab * a[2] * b[3]     // 3 degree
+            + a[1] * nb_fa * (1 - m32)
+            + b[1] * na_fb * (1 - m32)
+            - d[1] * (1 - div)
+            + d[1] * 2 * np * (1 - div);
+
+    eq[6] = fab * a[3] * b[3]            // 3 degree
+            + a[2] * nb_fa * (1 - m32)
+            + b[2] * na_fb * (1 - m32)
+            - d[2] * (1 - div)
+            + 2 * np * d[2] * (1 - div); // 3 degree
+
+    eq[7] = CHUNK_SIZE * na * nb * (1 - m32)
+            + a[3] * nb_fa * (1 - m32)
+            + b[3] * na_fb * (1 - m32)
+            - CHUNK_SIZE * np * (1 - div) * (1 - m32) // 3 degree
+            // - CHUNK_SIZE * np * (1 - div)
+            - d[3] * (1 - div)
+            + 2 * np * d[3] * (1 - div); // 3 degree
+
+    eq[0] - carry[0] * CHUNK_SIZE === 0;
+    for (int index = 1; index < (CHUNKS_OP - 1); ++index) {
+        eq[index] + carry[index-1] - carry[index] * CHUNK_SIZE === 0;
+    }
+    eq[CHUNKS_OP-1] + carry[CHUNKS_OP-2] === 0;
+
+    // binary contraint
+    na * (1 - na) === 0;
+    nb * (1 - nb) === 0;
+    np * (1 - np) === 0;
+
+    col witness op;
+
+    // div m32 sa  sb  primary  secondary  opcodes              na   nb   np   nr   sext(c)
+    // -------------------------------------------------------------------------------------
+    //  0   0   0   0  mulu     muluh      0xb0 176  0xb1 177   =0   =0   =0   =0   =0   =0
+    //  0   0   1   0  *n/a*    mulsuh     0xb2  -   0xb3 179   a3   =0   d3   =0   =0   =0  a3,      d3
+    //  0   0   1   1  mul      mulh       0xb4 180  0xb5 181   a3   b3   d3   =0   =0   =0  a3,b3,   d3
+
+    // (*) removed combinations of flags div,m32,sa,sb did allow combinations div, m32, sa, sb
+    // (*2) sext affects to 32 bits result (bus), but in divisions a is used as result
+    // see 5 previous constraints.
+    // =0 means forced to zero by previous constraints
+
+    // bus result     primary  secondary
+    // ----------------------------------
+    // mul (mulh)           c       d
+    // div (remu)           a       d
+
+    const expr secondary = 1 - main_mul - main_div;
+    const expr bus_a0 = div * (c[0] + c[1] * CHUNK_SIZE) + (1 - div) * (a[0] + a[1] * CHUNK_SIZE);
+    const expr bus_a1 = div * (c[2] + c[3] * CHUNK_SIZE) + (1 - div) * (a[2] + a[3] * CHUNK_SIZE);
+
+    const expr bus_b0 = b[0] + b[1] * CHUNK_SIZE;
+    const expr bus_b1 = b[2] + b[3] * CHUNK_SIZE;
+
+    const expr bus_res0 = secondary * (d[0] + d[1] * CHUNK_SIZE) +
+                          main_mul * (c[0] + c[1] * CHUNK_SIZE) +
+                          main_div * (a[0] + a[1] * CHUNK_SIZE);
+
+    const expr bus_res1_64 = (secondary * (d[2] + d[3] * CHUNK_SIZE) +
+                              main_mul * (c[2] + c[3] * CHUNK_SIZE) +
+                              main_div * (a[2] + a[3] * CHUNK_SIZE));
+    col witness bus_res1;
+
+    bus_res1 === sext * 0xFFFF_FFFF + (1 - m32) * bus_res1_64;
+
+    m32 * bus_a1 === 0;
+    m32 * bus_b1 === 0;
+
+    col witness multiplicity;
+
+    // Check that remainder (d) is lower than divisor (b) when division is performed
+    // Specifically, we ensure that 0 <= |d| < |b|
+    lookup_assumes(operation_bus_id, [(1 - nr) * (1 - nb) * LTU_OP + nr * (1 - nb) * LT_ABS_NP_OP + (1 - nr) * nb * LT_ABS_PN_OP + nr * nb * GT_OP,
+                                      (d[0] + CHUNK_SIZE * d[1]), (d[2] + CHUNK_SIZE * d[3]) + m32 * nr * 0xFFFFFFFF, // remainder
+                                      (b[0] + CHUNK_SIZE * b[1]), (b[2] + CHUNK_SIZE * b[3]) + m32 * nb * 0xFFFFFFFF, // divisor
+                                      1, 0,
+                                      1], sel: div * (1 - div_by_zero));
+
+    for (int index = 0; index < length(carry); ++index) {
+         arith_range_table_assumes(ARITH_RANGE_CARRY, carry[index]);     // TODO: review carry range
+    }
+
+    col witness range_ab;
+    col witness range_cd;
+
+    arith_table_assumes(op, m32, div, na, nb, np, nr, sext, div_by_zero, div_overflow, main_mul,
+                        main_div, signed, range_ab, range_cd);
+
+    const expr range_a3 = range_ab;
+    const expr range_a1 = range_ab + 26;
+    const expr range_b3 = range_ab + 17;
+    const expr range_b1 = range_ab + 9;
+
+    const expr range_c3 = range_cd;
+    const expr range_c1 = range_cd + 26;
+    const expr range_d3 = range_cd + 17;
+    const expr range_d1 = range_cd + 9;
+
+    arith_range_table_assumes(range_a1, a[1]);
+    arith_range_table_assumes(range_b1, b[1]);
+    arith_range_table_assumes(range_c1, c[1]);
+    arith_range_table_assumes(range_d1, d[1]);
+    arith_range_table_assumes(range_a3, a[3]);
+    arith_range_table_assumes(range_b3, b[3]);
+    arith_range_table_assumes(range_c3, c[3]);
+    arith_range_table_assumes(range_d3, d[3]);
+
+    // loop for range checks index 0, 2
+    for (int index = 0; index < 2; ++index) {
+        arith_range_table_assumes(ARITH_RANGE_16_BITS, a[2 * index]);
+        arith_range_table_assumes(ARITH_RANGE_16_BITS, b[2 * index]);
+        arith_range_table_assumes(ARITH_RANGE_16_BITS, c[2 * index]);
+        arith_range_table_assumes(ARITH_RANGE_16_BITS, d[2 * index]);
+    }
+}

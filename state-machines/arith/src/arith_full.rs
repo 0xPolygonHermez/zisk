@@ -14,7 +14,6 @@ use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
-use sm_common::i64_to_u64_field;
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 use zisk_pil::*;
 
@@ -119,7 +118,7 @@ impl ArithFullSM {
                 range_table_inputs.use_chunk_range_check(aop.range_cd + 9, aop.d[1]);
 
                 for i in 0..7 {
-                    t.carry[i] = F::from_u64(i64_to_u64_field(aop.carry[i]));
+                    t.carry[i] = F::from_i64(aop.carry[i]);
                     range_table_inputs.use_carry_range_check(aop.carry[i]);
                 }
                 t.op = F::from_u8(aop.op);

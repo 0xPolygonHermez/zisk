@@ -36,6 +36,9 @@ impl<F: PrimeField64> RomDataSM<F> {
 }
 
 impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
+    fn get_addr_range(&self) -> (u32, u32) {
+        (ROM_DATA_W_ADDR_INIT, ROM_DATA_W_ADDR_END)
+    }
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///
     /// This method is invoked by the executor when no further witness data remains to be added.
@@ -51,12 +54,12 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         previous_segment: &MemPreviousSegment,
     ) -> AirInstance<F> {
         let mut trace = RomDataTrace::<F>::new();
-
+        let num_rows = RomDataTrace::<F>::NUM_ROWS;
         assert!(
-            !mem_ops.is_empty() && mem_ops.len() <= trace.num_rows(),
+            !mem_ops.is_empty() && mem_ops.len() <= num_rows,
             "RomDataSM: mem_ops.len()={} out of range {}",
             mem_ops.len(),
-            trace.num_rows()
+            num_rows
         );
 
         // range of instance
@@ -72,19 +75,25 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         let mut last_step: u64 = previous_segment.step;
         let mut last_value: u64 = previous_segment.value;
 
+        if segment_id == 0 && !mem_ops.is_empty() && mem_ops[0].addr > ROM_DATA_W_ADDR_INIT {
+            // In the pil, in first row of first segment, we use previous_segment less 1, to
+            // allow to use ROM_DATA_W_ADDR_INIT as address, and active address change flag
+            // to free the value, if not
+            last_addr = ROM_DATA_W_ADDR_INIT - 1;
+        }
         let mut i = 0;
         for mem_op in mem_ops.iter() {
             let distance = mem_op.addr - last_addr;
-            if i >= trace.num_rows {
+            if i >= num_rows {
                 break;
             }
             if distance > 1 {
                 let mut internal_reads = distance - 1;
 
                 // check if has enough rows to complete the internal reads + regular memory
-                let incomplete = (i + internal_reads as usize) >= trace.num_rows;
+                let incomplete = (i + internal_reads as usize) >= num_rows;
                 if incomplete {
-                    internal_reads = (trace.num_rows - i) as u32;
+                    internal_reads = (num_rows - i) as u32;
                 }
 
                 trace[i].addr_changes = F::ONE;
@@ -127,12 +136,12 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd
         // = 1, wr = 0
         let last_row_idx = count - 1;
-        if count < trace.num_rows() {
+        if count < num_rows {
             trace[count] = trace[last_row_idx];
             trace[count].addr_changes = F::ZERO;
             trace[count].sel = F::ZERO;
 
-            for i in count + 1..trace.num_rows() {
+            for i in count + 1..num_rows {
                 trace[i] = trace[i - 1];
             }
         }

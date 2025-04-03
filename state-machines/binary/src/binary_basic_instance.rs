@@ -4,18 +4,14 @@
 //! It manages collected inputs and interacts with the `BinaryBasicSM` to compute witnesses for
 //! execution plans.
 
-use crate::BinaryBasicSM;
-use data_bus::{
-    BusDevice, BusId, ExtOperationData, OperationBusData, OperationData, PayloadType,
-    OPERATION_BUS_ID,
-};
+use crate::{BinaryBasicCollector, BinaryBasicSM};
+use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
     BusDeviceWrapper, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
 };
 use std::{collections::HashMap, sync::Arc};
-use zisk_core::ZiskOperationType;
 use zisk_pil::BinaryTrace;
 
 /// The `BinaryBasicInstance` struct represents an instance for binary-related witness computations.
@@ -111,86 +107,9 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
         );
 
         let meta = self.ictx.plan.meta.as_ref().unwrap();
-        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
+        let (with_adds, collect_info) =
+            meta.downcast_ref::<(bool, HashMap<ChunkId, (u64, CollectSkipper)>)>().unwrap();
         let (num_ops, collect_skipper) = collect_info[&chunk_id];
-        Some(Box::new(BinaryBasicCollector::new(num_ops, collect_skipper)))
-    }
-}
-
-/// The `BinaryBasicCollector` struct represents an input collector for binary-related operations.
-pub struct BinaryBasicCollector {
-    /// Collected inputs for witness computation.
-    inputs: Vec<OperationData<u64>>,
-
-    /// The number of operations to collect.
-    num_operations: u64,
-
-    /// Helper to skip instructions based on the plan's configuration.
-    collect_skipper: CollectSkipper,
-}
-
-impl BinaryBasicCollector {
-    /// Creates a new `BinaryBasicCollector`.
-    ///
-    /// # Arguments
-    /// * `num_operations` - The number of operations to collect.
-    /// * `collect_skipper` - Helper to skip instructions based on the plan's configuration.
-    ///
-    /// # Returns
-    /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
-    pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
-    }
-}
-
-impl BusDevice<u64> for BinaryBasicCollector {
-    /// Processes data received on the bus, collecting the inputs necessary for witness computation.
-    ///
-    /// # Arguments
-    /// * `_bus_id` - The ID of the bus (unused in this implementation).
-    /// * `data` - The data received from the bus.
-    ///
-    /// # Returns
-    /// An optional vector of tuples where:
-    /// - The first element is the bus ID.
-    /// - The second element is always empty indicating there are no derived inputs.
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
-        debug_assert!(*bus_id == OPERATION_BUS_ID);
-
-        if self.inputs.len() == self.num_operations as usize {
-            return None;
-        }
-
-        let data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-
-        let op_type = OperationBusData::get_op_type(&data);
-
-        if op_type as u32 != ZiskOperationType::Binary as u32 {
-            return None;
-        }
-
-        if self.collect_skipper.should_skip() {
-            return None;
-        }
-
-        if let ExtOperationData::OperationData(data) = data {
-            self.inputs.push(data);
-        }
-
-        None
-    }
-
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId> {
-        vec![OPERATION_BUS_ID]
-    }
-
-    /// Provides a dynamic reference for downcasting purposes.
-    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
-        self
+        Some(Box::new(BinaryBasicCollector::new(num_ops as usize, collect_skipper, *with_adds)))
     }
 }

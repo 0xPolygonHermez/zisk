@@ -1,0 +1,70 @@
+[package]
+name = "precomp-arith-eq"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "arith_eq_generator"
+path = "src/arith_eq_generator.rs"
+
+[[bin]]
+name = "arith_eq_test_bigint"
+path = "src/arith_eq_test_bigint.rs"
+required-features = ["test_data"]
+
+[[bin]]
+name = "arith_eq_test_generator"
+path = "src/arith_eq_test_generator.rs"
+
+[[bin]]
+name = "arith_eq_test_c"
+path = "src/arith_eq_test_c.rs"
+required-features = ["test_data"]
+
+[[bin]]
+name = "arith_eq_test_secp256k1"
+path = "src/arith_eq_test_secp256k1.rs"
+required-features = ["test_data"]
+
+
+[dependencies]
+nom = "7"
+sm-common = { path = "../../state-machines/common" }
+zisk-core = { path = "../../core" }
+data-bus = { path = "../../data-bus" }
+zisk-pil = { path = "../../pil" }
+precompiles-common = { path = "../common" }
+precompiles-helpers = { path = "../helpers" }
+lib-c = { path = "../../lib-c" }
+
+proofman-common = { workspace = true }
+proofman-macros = { workspace = true }
+proofman-util = { workspace = true }
+witness = { workspace = true }
+pil-std-lib = { workspace = true }
+
+p3-field = { workspace=true }
+p3-goldilocks = { workspace=true }
+log = { workspace = true }
+rayon = { workspace = true }
+ark-ff = { workspace = true }
+ark-std = { workspace = true }
+ark-secp256k1 = { workspace = true }
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+regex = "1.11.1"
+rustfmt-wrapper = "0.2.1"
+k256 = {version = "0.13", features = ["arithmetic"] }
+generic-array = "0.14"
+typenum = "1.16"
+lazy_static = "1.4"
+path-clean = "1.0"
+
+[features]
+default = []
+no_lib_link = ["proofman-common/no_lib_link"]
+test_data = []
+test_data_secp256k1 = []
