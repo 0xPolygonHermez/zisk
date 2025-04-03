@@ -127,6 +127,12 @@ impl ZiskVerifyConstraints {
             })
         };
 
+        if let Some(asm_path) = &self.asm {
+            if !asm_path.exists() {
+                return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_path.display()));
+            }
+        }
+
         let blowup_factor = get_rom_blowup_factor(&self.get_proving_key());
 
         let rom_bin_path =
