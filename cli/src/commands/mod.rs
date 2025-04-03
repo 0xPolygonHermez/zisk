@@ -1,5 +1,6 @@
 mod build;
 mod check_setup;
+mod clean;
 mod common;
 mod prove;
 mod rom_setup;
@@ -10,6 +11,7 @@ mod verify_stark;
 
 pub use build::*;
 pub use check_setup::*;
+pub use clean::*;
 pub use common::*;
 pub use prove::*;
 pub use rom_setup::*;
