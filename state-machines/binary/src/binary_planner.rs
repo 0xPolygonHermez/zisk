@@ -177,8 +177,6 @@ impl Planner for BinaryPlanner {
             })
             .collect();
 
-        println!("plan binary counters:{}", binary_counters.len());
-
         let mut plans = self.plan_for_extensions(&binary_counters);
 
         let size_without_adds = Self::size_basic_of(total_add + total_basic_wo_add);

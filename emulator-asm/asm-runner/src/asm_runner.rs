@@ -61,6 +61,9 @@ impl AsmRunner {
 
         // Prepare command
         let mut command = Command::new(ziskemuasm_path);
+
+        command.arg("--generate_minimal_trace");
+
         if !options.log_output {
             command.arg("-o");
         }

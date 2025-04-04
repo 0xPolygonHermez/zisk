@@ -33,9 +33,8 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// A new `BinaryAddSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         let range_id = std.get_range(0, 0xFFFF, None);
-        println!("range_id: {}", range_id);
-        // Create the BinaryAdd state machine
 
+        // Create the BinaryAdd state machine
         Arc::new(Self { std, range_id })
     }
 

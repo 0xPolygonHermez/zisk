@@ -122,7 +122,7 @@ impl ZiskVerifyConstraints {
             let stem = self.elf.file_stem().unwrap().to_str().unwrap();
             let hash = get_elf_data_hash(&self.elf)
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
-            let new_filename = format!("{stem}-{hash}.asm");
+            let new_filename = format!("{stem}-{hash}.bin");
             self.asm = Some(default_cache_path.join(new_filename));
         }
 
