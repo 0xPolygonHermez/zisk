@@ -22,7 +22,7 @@ pub fn assembly_setup(
     }
 
     let stem = elf.file_stem().unwrap().to_str().unwrap();
-    let new_filename = format!("{}-{}", stem, elf_hash);
+    let new_filename = format!("{}-{}.tmp", stem, elf_hash);
     let base_path = output_path.join(new_filename);
 
     let zisk_file = base_path.with_extension("asm");
