@@ -241,7 +241,7 @@ impl KeccakfSM {
         // Set the values of free_in_a, free_in_b, free_in_c using the script
         let script = self.script.clone();
 
-        let row0 = trace.buffer[0].clone();
+        let row0 = trace.buffer[0];
 
         let mut trace_slice = &mut trace.buffer[1..];
         let mut par_traces = Vec::new();
@@ -265,12 +265,7 @@ impl KeccakfSM {
                 let a = &line.a;
                 match a {
                     ValueType::Input(a) => {
-                        set_col(
-                            par_trace,
-                            |row| &mut row.free_in_a,
-                            row,
-                            inputs_bits[i][a.bit],
-                        );
+                        set_col(par_trace, |row| &mut row.free_in_a, row, inputs_bits[i][a.bit]);
                     }
                     ValueType::Wired(b) => {
                         let gate = b.gate;
@@ -278,14 +273,14 @@ impl KeccakfSM {
                         let pin = &b.pin;
                         if pin == "a" {
                             let pinned_value = if gate > 0 {
-                                get_col(&par_trace, |row| &row.free_in_a, gate - 1)
+                                get_col(par_trace, |row| &row.free_in_a, gate - 1)
                             } else {
                                 get_col_row(&row0, |row| &row.free_in_a)
                             };
                             set_col(par_trace, |row| &mut row.free_in_a, row, pinned_value);
                         } else if pin == "b" {
                             let pinned_value = if gate > 0 {
-                                get_col(&par_trace, |row| &row.free_in_b, gate - 1)
+                                get_col(par_trace, |row| &row.free_in_b, gate - 1)
                             } else {
                                 get_col_row(&row0, |row| &row.free_in_b)
                             };
@@ -293,7 +288,7 @@ impl KeccakfSM {
                             set_col(par_trace, |row| &mut row.free_in_a, row, pinned_value);
                         } else if pin == "c" {
                             let pinned_value = if gate > 0 {
-                                get_col(&par_trace, |row| &row.free_in_c, gate - 1)
+                                get_col(par_trace, |row| &row.free_in_c, gate - 1)
                             } else {
                                 get_col_row(&row0, |row| &row.free_in_c)
                             };
@@ -308,12 +303,7 @@ impl KeccakfSM {
                 let b = &line.b;
                 match b {
                     ValueType::Input(b) => {
-                        set_col(
-                            par_trace,
-                            |row| &mut row.free_in_b,
-                            row,
-                            inputs_bits[i][b.bit],
-                        );
+                        set_col(par_trace, |row| &mut row.free_in_b, row, inputs_bits[i][b.bit]);
                     }
                     ValueType::Wired(b) => {
                         let gate = b.gate;
@@ -321,7 +311,7 @@ impl KeccakfSM {
                         let pin = &b.pin;
                         if pin == "a" {
                             let pinned_value = if gate > 0 {
-                                get_col(&par_trace, |row| &row.free_in_a, gate - 1)
+                                get_col(par_trace, |row| &row.free_in_a, gate - 1)
                             } else {
                                 get_col_row(&row0, |row| &row.free_in_a)
                             };
@@ -329,7 +319,7 @@ impl KeccakfSM {
                             set_col(par_trace, |row| &mut row.free_in_b, row, pinned_value);
                         } else if pin == "b" {
                             let pinned_value = if gate > 0 {
-                                get_col(&par_trace, |row| &row.free_in_b, gate - 1)
+                                get_col(par_trace, |row| &row.free_in_b, gate - 1)
                             } else {
                                 get_col_row(&row0, |row| &row.free_in_b)
                             };
@@ -337,7 +327,7 @@ impl KeccakfSM {
                             set_col(par_trace, |row| &mut row.free_in_b, row, pinned_value);
                         } else if pin == "c" {
                             let pinned_value = if gate > 0 {
-                                get_col(&par_trace, |row| &row.free_in_c, gate - 1)
+                                get_col(par_trace, |row| &row.free_in_c, gate - 1)
                             } else {
                                 get_col_row(&row0, |row| &row.free_in_c)
                             };
@@ -350,9 +340,9 @@ impl KeccakfSM {
                 }
 
                 let a_val =
-                    get_col(&par_trace, |row| &row.free_in_a, row) & MASK_CHUNK_BITS_KECCAKF;
+                    get_col(par_trace, |row| &row.free_in_a, row) & MASK_CHUNK_BITS_KECCAKF;
                 let b_val =
-                    get_col(&par_trace, |row| &row.free_in_b, row) & MASK_CHUNK_BITS_KECCAKF;
+                    get_col(par_trace, |row| &row.free_in_b, row) & MASK_CHUNK_BITS_KECCAKF;
                 let op = &line.op;
                 let c_val;
                 if op == "xor" {
