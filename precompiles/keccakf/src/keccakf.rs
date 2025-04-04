@@ -339,10 +339,8 @@ impl KeccakfSM {
                     }
                 }
 
-                let a_val =
-                    get_col(par_trace, |row| &row.free_in_a, row) & MASK_CHUNK_BITS_KECCAKF;
-                let b_val =
-                    get_col(par_trace, |row| &row.free_in_b, row) & MASK_CHUNK_BITS_KECCAKF;
+                let a_val = get_col(par_trace, |row| &row.free_in_a, row) & MASK_CHUNK_BITS_KECCAKF;
+                let b_val = get_col(par_trace, |row| &row.free_in_b, row) & MASK_CHUNK_BITS_KECCAKF;
                 let op = &line.op;
                 let c_val;
                 if op == "xor" {
