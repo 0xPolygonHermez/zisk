@@ -140,6 +140,7 @@ jobs:
           cp ./precompiles/keccakf/src/keccakf_script.json   zisk-dist/bin/
           cp ./ziskup/ziskup                                 zisk-dist/bin/
           cp -r ./emulator-asm/src                           zisk-dist/zisk/emulator-asm/
+          cp -r ./lib-c/                                     zisk-dist/zisk
           cp ./emulator-asm/Makefile                         zisk-dist/zisk/emulator-asm/
 
           ARCHIVE_FILE="cargo_zisk_${PLATFORM_NAME}_${ARCH}.tar.gz"
