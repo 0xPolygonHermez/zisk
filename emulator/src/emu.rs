@@ -1121,30 +1121,30 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     pub fn step_fast(&mut self) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        let debug = instruction.op >= 0xf6;
-        let initial_regs = if debug {
-            print!(
-                "\x1B[1;36m>==IN ==>\x1B[0m SF #{} 0x{:X} ({}) {}",
-                self.ctx.inst_ctx.step,
-                self.ctx.inst_ctx.pc,
-                instruction.op_str,
-                instruction.verbose
-            );
-            for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
-                print!(" {:}:0x{:X}", index, value);
-            }
-            println!();
-            self.ctx.inst_ctx.regs
-        } else {
-            /* println!(
-                "#{} 0x{:X} ({}) {}",
-                self.ctx.inst_ctx.step,
-                self.ctx.inst_ctx.pc,
-                instruction.op_str,
-                instruction.verbose
-            );*/
-            [0u64; 32]
-        };
+        // let debug = instruction.op >= 0xf6;
+        // let initial_regs = if debug {
+        //     print!(
+        //         "\x1B[1;36m>==IN ==>\x1B[0m SF #{} 0x{:X} ({}) {}",
+        //         self.ctx.inst_ctx.step,
+        //         self.ctx.inst_ctx.pc,
+        //         instruction.op_str,
+        //         instruction.verbose
+        //     );
+        //     for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
+        //         print!(" {:}:0x{:X}", index, value);
+        //     }
+        //     println!();
+        //     self.ctx.inst_ctx.regs
+        // } else {
+        //     /* println!(
+        //         "#{} 0x{:X} ({}) {}",
+        //         self.ctx.inst_ctx.step,
+        //         self.ctx.inst_ctx.pc,
+        //         instruction.op_str,
+        //         instruction.verbose
+        //     );*/
+        //     [0u64; 32]
+        // };
         self.source_a(instruction);
         self.source_b(instruction);
         (instruction.func)(&mut self.ctx.inst_ctx);
@@ -1156,24 +1156,24 @@ impl<'a> Emu<'a> {
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
         self.ctx.inst_ctx.step += 1;
-        if debug {
-            print!(
-                ">==OUT==> #{} 0x{:X} ({}) {} {:?}",
-                self.ctx.inst_ctx.step,
-                self.ctx.inst_ctx.pc,
-                instruction.op_str,
-                instruction.verbose,
-                self.ctx.inst_ctx.regs,
-            );
-            for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
-                if initial_regs[index] == value {
-                    print!(" {:}:0x{:X}", index, value);
-                } else {
-                    print!(" {:}:\x1B[1;31m0x{:X}\x1B[0m", index, value);
-                }
-            }
-            println!();
-        }
+        // if debug {
+        //     print!(
+        //         ">==OUT==> #{} 0x{:X} ({}) {} {:?}",
+        //         self.ctx.inst_ctx.step,
+        //         self.ctx.inst_ctx.pc,
+        //         instruction.op_str,
+        //         instruction.verbose,
+        //         self.ctx.inst_ctx.regs,
+        //     );
+        //     for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
+        //         if initial_regs[index] == value {
+        //             print!(" {:}:0x{:X}", index, value);
+        //         } else {
+        //             print!(" {:}:\x1B[1;31m0x{:X}\x1B[0m", index, value);
+        //         }
+        //     }
+        //     println!();
+        // }
     }
 
     /// Run the whole program
@@ -1541,33 +1541,33 @@ impl<'a> Emu<'a> {
         data_bus: &mut DataBus<u64, BD>,
     ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        let debug = instruction.op >= 0xF6;
-        let initial_regs = if debug {
-            print!(
-                "\x1B[1;36m>==IN ==>\x1B[0m SE #{} 0x{:X} ({}) {}",
-                self.ctx.inst_ctx.step,
-                self.ctx.inst_ctx.pc,
-                instruction.op_str,
-                instruction.verbose
-            );
-            for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
-                print!(" {:}:0x{:X}", index, value);
-            }
-            println!(
-                " self.ctx.inst_ctx.emulation_mode={:?} instruction:{:?}",
-                self.ctx.inst_ctx.emulation_mode, instruction
-            );
-            self.ctx.inst_ctx.regs
-        } else {
-            /* println!(
-                "#{} 0x{:X} ({}) {}",
-                self.ctx.inst_ctx.step,
-                self.ctx.inst_ctx.pc,
-                instruction.op_str,
-                instruction.verbose
-            );*/
-            [0u64; 32]
-        };
+        // let debug = instruction.op >= 0xF6;
+        // let initial_regs = if debug {
+        //     print!(
+        //         "\x1B[1;36m>==IN ==>\x1B[0m SE #{} 0x{:X} ({}) {}",
+        //         self.ctx.inst_ctx.step,
+        //         self.ctx.inst_ctx.pc,
+        //         instruction.op_str,
+        //         instruction.verbose
+        //     );
+        //     for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
+        //         print!(" {:}:0x{:X}", index, value);
+        //     }
+        //     println!(
+        //         " self.ctx.inst_ctx.emulation_mode={:?} instruction:{:?}",
+        //         self.ctx.inst_ctx.emulation_mode, instruction
+        //     );
+        //     self.ctx.inst_ctx.regs
+        // } else {
+        //     /* println!(
+        //         "#{} 0x{:X} ({}) {}",
+        //         self.ctx.inst_ctx.step,
+        //         self.ctx.inst_ctx.pc,
+        //         instruction.op_str,
+        //         instruction.verbose
+        //     );*/
+        //     [0u64; 32]
+        // };
 
         self.source_a_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         self.source_b_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
@@ -1589,24 +1589,24 @@ impl<'a> Emu<'a> {
 
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
-        if debug {
-            print!(
-                ">==OUT==> #{} 0x{:X} ({}) {} {:?}",
-                self.ctx.inst_ctx.step,
-                self.ctx.inst_ctx.pc,
-                instruction.op_str,
-                instruction.verbose,
-                self.ctx.inst_ctx.regs,
-            );
-            for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
-                if initial_regs[index] == value {
-                    print!(" {:}:0x{:X}", index, value);
-                } else {
-                    print!(" {:}:\x1B[1;31m0x{:X}\x1B[0m", index, value);
-                }
-            }
-            println!();
-        }
+        // if debug {
+        //     print!(
+        //         ">==OUT==> #{} 0x{:X} ({}) {} {:?}",
+        //         self.ctx.inst_ctx.step,
+        //         self.ctx.inst_ctx.pc,
+        //         instruction.op_str,
+        //         instruction.verbose,
+        //         self.ctx.inst_ctx.regs,
+        //     );
+        //     for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
+        //         if initial_regs[index] == value {
+        //             print!(" {:}:0x{:X}", index, value);
+        //         } else {
+        //             print!(" {:}:\x1B[1;31m0x{:X}\x1B[0m", index, value);
+        //         }
+        //     }
+        //     println!();
+        // }
         // Get operation bus data
         let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
 
