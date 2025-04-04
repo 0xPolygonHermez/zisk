@@ -2,7 +2,7 @@
 
 use std::{io, str::FromStr};
 
-use crate::{BusDevice, DataBus, DataBusFileReader};
+use crate::{BusDevice, BusId, DataBus, DataBusFileReader};
 
 pub struct DataBusPlayer;
 
@@ -12,7 +12,7 @@ impl DataBusPlayer {
     /// # Arguments
     /// * `data_bus` - The `DataBus` to which the data is sent.
     /// * `data` - A vector of `(BusId, Payload)` tuples.
-    pub fn play<D, BD: BusDevice<D>>(data_bus: &mut DataBus<D, BD>, data: Vec<(u16, Vec<D>)>) {
+    pub fn play<D, BD: BusDevice<D>>(data_bus: &mut DataBus<D, BD>, data: Vec<(BusId, Vec<D>)>) {
         for (bus_id, payload) in data {
             data_bus.write_to_bus(bus_id, &payload);
         }

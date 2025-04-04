@@ -9,6 +9,7 @@ use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::ops::Add;
 use std::sync::Arc;
+use zisk_common::{ChunkId, SegmentId};
 
 pub struct MemModuleInstance<F: PrimeField> {
     /// Instance context
@@ -24,7 +25,7 @@ pub struct MemModuleInstance<F: PrimeField> {
 }
 #[derive(Debug, Clone, Copy)]
 pub struct MemLastValue {
-    pub segment_id: usize,
+    pub segment_id: SegmentId,
     pub checkpoint_addr: u32,
     pub checkpoint_step: u64,
     pub value: u64,
@@ -33,7 +34,7 @@ pub struct MemLastValue {
 }
 
 impl MemLastValue {
-    pub fn new(segment_id: usize, checkpoint_addr: u32, checkpoint_step: u64) -> Self {
+    pub fn new(segment_id: SegmentId, checkpoint_addr: u32, checkpoint_step: u64) -> Self {
         Self { segment_id, checkpoint_addr, checkpoint_step, value: 0, step: 0, addr: 0 }
     }
     pub fn update(&mut self, value: u64, addr_w: u32, step: u64) {
@@ -205,7 +206,7 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         // Collect inputs from all collectors. At most, one of them has `prev_last_value` non zero,
         // we take this `prev_last_value`, which represents the last value of the previous segment.
 
-        let mut last_value = MemLastValue::new(0, 0, 0);
+        let mut last_value = MemLastValue::new(SegmentId::new(0), 0, 0);
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, mut collector)| {
@@ -248,7 +249,10 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
     ///
     /// # Returns
     /// An `Option` containing the input collector for the instance.
-    fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(
+        &self,
+        _chunk_id: ChunkId,
+    ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         Some(Box::new(MemModuleCollector::new(
             self.mem_check_point.clone(),
             self.min_addr,
@@ -281,7 +285,7 @@ impl MemModuleCollector {
     pub fn new(
         mem_check_point: MemModuleSegmentCheckPoint,
         min_addr: u32,
-        segment_id: usize,
+        segment_id: SegmentId,
     ) -> Self {
         let prev_addr = mem_check_point.prev_addr;
         let prev_step = mem_check_point.prev_step;
@@ -472,8 +476,6 @@ impl MemModuleCollector {
 impl BusDevice<u64> for MemModuleCollector {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == MEM_BUS_ID);
-
-        assert!(*bus_id == MEM_BUS_ID);
 
         // decoding information in bus
 

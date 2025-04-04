@@ -35,6 +35,7 @@ use sm_common::{
     Instance, InstanceCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
+use zisk_common::ChunkId;
 use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
 
 use std::{
@@ -47,7 +48,7 @@ use zisk_common::{EmuTrace, MinimalTraces};
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
 
-type DeviceMetricsByChunk = (usize, Box<dyn BusDeviceMetrics>); // (chunk_id, metrics)
+type DeviceMetricsByChunk = (ChunkId, Box<dyn BusDeviceMetrics>); // (chunk_id, metrics)
 type DeviceMetricsList = Vec<DeviceMetricsByChunk>;
 type NestedDeviceMetricsList = Vec<DeviceMetricsList>;
 
@@ -294,7 +295,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         secn_metrics_slices.into_iter().enumerate().for_each(|(chunk_id, counter_slice)| {
             counter_slice.into_iter().enumerate().for_each(|(i, counter)| {
-                secn_vec_counters[i].push((chunk_id, counter));
+                secn_vec_counters[i].push((ChunkId(chunk_id), counter));
             });
         });
 
@@ -302,7 +303,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             .into_iter()
             .enumerate()
             .flat_map(|(chunk_id, counters)| {
-                counters.into_iter().map(move |counter| (chunk_id, counter))
+                counters.into_iter().map(move |counter| (ChunkId(chunk_id), counter))
             })
             .collect();
 
@@ -502,11 +503,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         match secn_instance.check_point() {
             CheckPoint::None => {}
             CheckPoint::Single(chunk_id) => {
-                chunks_to_execute[chunk_id] = true;
+                chunks_to_execute[chunk_id.as_usize()] = true;
             }
             CheckPoint::Multiple(chunk_ids) => {
                 chunk_ids.iter().for_each(|&chunk_id| {
-                    chunks_to_execute[chunk_id] = true;
+                    chunks_to_execute[chunk_id.as_usize()] = true;
                 });
             }
         };
@@ -582,7 +583,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
                 let mut data_bus = DataBus::new();
 
-                if let Some(bus_device) = secn_instance.build_inputs_collector(chunk_id) {
+                if let Some(bus_device) = secn_instance.build_inputs_collector(ChunkId(chunk_id)) {
                     let bus_device = Box::new(BusDeviceWrapper::new(bus_device));
                     data_bus.connect_device(bus_device.bus_id(), bus_device);
 

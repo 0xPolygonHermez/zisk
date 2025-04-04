@@ -2,11 +2,12 @@
 //! data for communication over the operation bus. This includes data extraction from instructions
 //! and managing the format of operation data.
 
-use crate::PayloadType;
-use zisk_core::{zisk_ops::ZiskOp, InstContext, ZiskInst, ZiskOperationType};
+use crate::{BusId, PayloadType};
+use zisk_core::zisk_ops::ZiskOp;
+use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
 
 /// The unique bus ID for operation-related data communication.
-pub const OPERATION_BUS_ID: u16 = 5000;
+pub const OPERATION_BUS_ID: BusId = BusId(0);
 
 /// The size of the operation data payload.
 pub const OPERATION_BUS_DATA_SIZE: usize = 4;
@@ -32,16 +33,16 @@ pub const OPERATION_BUS_SECP256K1_DBL_DATA_SIZE: usize =
     OPERATION_BUS_DATA_SIZE + POINT_256_BITS_SIZE;
 
 /// Index of the operation value in the operation data payload.
-const OP: usize = 0;
+pub const OP: usize = 0;
 
 /// Index of the operation type in the operation data payload.
-const OP_TYPE: usize = 1;
+pub const OP_TYPE: usize = 1;
 
 /// Index of the `a` value in the operation data payload.
-const A: usize = 2;
+pub const A: usize = 2;
 
 /// Index of the `b` value in the operation data payload.
-const B: usize = 3;
+pub const B: usize = 3;
 
 /// Type alias for operation data payload.
 pub type OperationData<D> = [D; OPERATION_BUS_DATA_SIZE];

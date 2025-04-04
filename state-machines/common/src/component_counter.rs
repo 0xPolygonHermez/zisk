@@ -130,7 +130,7 @@ impl CounterStats {
     #[inline(always)]
     pub fn update(&mut self, pc: u64, step: u64, num: u32, end: bool) {
         if pc < ROM_ADDR {
-            let addr = (pc - ROM_ENTRY) as usize;
+            let addr = ((pc - ROM_ENTRY) as usize) >> 2;
             self.bios_inst_count[addr].fetch_add(num, std::sync::atomic::Ordering::Relaxed);
         } else {
             let addr = (pc - ROM_ADDR) as usize;

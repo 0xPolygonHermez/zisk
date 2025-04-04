@@ -8,8 +8,9 @@ use std::any::Any;
 
 use crate::BinaryCounter;
 use sm_common::{
-    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner,
+    plan, BusDeviceMetrics, CheckPoint, InstCount, InstanceType, Metrics, Plan, Planner,
 };
+use zisk_common::ChunkId;
 use zisk_pil::{
     BinaryAddTrace, BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace,
 };
@@ -175,8 +176,6 @@ impl Planner for BinaryPlanner {
                 (*chunk_id, counter)
             })
             .collect();
-
-        println!("plan binary counters:{}", binary_counters.len());
 
         let mut plans = self.plan_for_extensions(&binary_counters);
 

@@ -28,13 +28,13 @@ required-features = ["test_data"]
 
 
 [dependencies]
-nom = "7"
 sm-common = { path = "../../state-machines/common" }
 zisk-core = { path = "../../core" }
 data-bus = { path = "../../data-bus" }
 zisk-pil = { path = "../../pil" }
 precompiles-common = { path = "../common" }
 precompiles-helpers = { path = "../helpers" }
+zisk-common = { path = "../../common" }
 lib-c = { path = "../../lib-c" }
 
 proofman-common = { workspace = true }
@@ -62,6 +62,7 @@ generic-array = "0.14"
 typenum = "1.16"
 lazy_static = "1.4"
 path-clean = "1.0"
+nom = "7"
 
 [features]
 default = []

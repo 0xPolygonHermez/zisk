@@ -2,10 +2,11 @@ use std::path::Path;
 
 use log::info;
 
-use crate::{gen_elf_hash, get_elf_bin_file_path, get_rom_blowup_factor};
+use crate::{gen_elf_hash, get_elf_bin_file_path_with_hash, get_rom_blowup_factor};
 
 pub fn rom_merkle_setup(
     elf: &Path,
+    elf_hash: &str,
     output_path: &Path,
     proving_key: &Path,
     mut check: bool,
@@ -18,7 +19,7 @@ pub fn rom_merkle_setup(
 
     let blowup_factor = get_rom_blowup_factor(proving_key);
 
-    let elf_bin_path = get_elf_bin_file_path(elf, output_path, blowup_factor)?;
+    let elf_bin_path = get_elf_bin_file_path_with_hash(elf, elf_hash, output_path, blowup_factor)?;
 
     if !elf_bin_path.exists() {
         check = false;

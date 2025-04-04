@@ -16,7 +16,11 @@
 #include "../../lib-c/c/src/fcall/fcall.hpp"
 #include "../../lib-c/c/src/arith256/arith256.hpp"
 
+// Assembly-provided functions
 void emulator_start(void);
+uint64_t get_max_bios_pc(void);
+uint64_t get_max_program_pc(void);
+uint64_t get_gen_method(void);
 
 #define RAM_ADDR (uint64_t)0xa0000000
 #define RAM_SIZE (uint64_t)0x08000000 // 128MB
@@ -89,6 +93,7 @@ void parse_arguments(int argc, char *argv[]);
 uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime);
 #ifdef DEBUG
 void log_trace(void);
+void log_histogram(void);
 #endif
 
 // Configuration
@@ -106,7 +111,13 @@ bool secp256k1_dbl_metrics = false;
 #endif
 char * input_parameter = NULL;
 bool is_file = false;
-bool generate_traces = true;
+bool generate_minimal_trace = false;
+
+// ROM histogram
+bool generate_rom_histogram = false;
+uint64_t histogram_size = 0;
+uint64_t bios_size = 0;
+uint64_t program_size = 0;
 
 // Input shared memory
 char * shmem_input_sufix = "_input";
@@ -160,7 +171,7 @@ int main(int argc, char *argv[])
         strcat(shmem_output_name, shmem_output_sufix);
 #ifdef DEBUG
         if (verbose) printf("Emulator C start; input shared memory ID = %s\n", input_parameter);
-#endif
+#endif        
     }
     else
     {
@@ -277,6 +288,7 @@ int main(int argc, char *argv[])
         initial_trace_size = control[2]; // Initial trace size
         assert(initial_trace_size > 0);
         trace_size = initial_trace_size;
+        trace_address_threshold = TRACE_ADDR + initial_trace_size - MAX_CHUNK_TRACE_SIZE;
         shmem_input_size = control[3];
 
         // Unmap input header
@@ -286,7 +298,7 @@ int main(int argc, char *argv[])
             printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
-
+        
         // Map the shared memory object into the process address space
         shmem_input_address = mmap(NULL, shmem_input_size + 32, PROT_READ /*| PROT_WRITE*/, MAP_SHARED, shmem_input_fd, 0);
         if (shmem_input_address == MAP_FAILED)
@@ -328,7 +340,7 @@ int main(int argc, char *argv[])
             printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
-
+        
         // Unlink input
         result = shm_unlink(shmem_input_name);
         if (result == -1)
@@ -342,11 +354,29 @@ int main(int argc, char *argv[])
     /* TRACE */
     /*********/
 
-    if (generate_traces)
+    if (generate_rom_histogram)
+    {
+        // Get max PC values for low and high addresses
+        uint64_t max_bios_pc = get_max_bios_pc(); 
+        uint64_t max_program_pc = get_max_program_pc();
+        assert(max_bios_pc >= 0x1000);
+        assert((max_bios_pc & 0x3) == 0);
+        assert(max_program_pc >= 0x80000000);
+
+        // Calculate sizes
+        bios_size = (max_bios_pc - 0x1000) >> 2;
+        program_size = max_program_pc - 0x80000000;
+        histogram_size = (4 + 1 + bios_size + 1 + program_size)*8;
+#define TRACE_SIZE_GRANULARITY (1014*1014)
+        initial_trace_size = ((histogram_size/TRACE_SIZE_GRANULARITY) + 1) * TRACE_SIZE_GRANULARITY;
+        trace_size = initial_trace_size;
+    }
+
+    if (generate_minimal_trace || generate_rom_histogram)
     {
         // Make sure the output shared memory is deleted
         shm_unlink(shmem_output_name);
-
+        
         // Create the output shared memory
         shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT, 0644);
         if (shmem_output_fd < 0)
@@ -386,7 +416,7 @@ int main(int argc, char *argv[])
         // MT allocated size [8] -> to be updated after completion
         // MT used size [8] -> to be updated after completion
     }
-
+    
     /*******/
     /* RAM */
     /*******/
@@ -497,21 +527,34 @@ int main(int argc, char *argv[])
     }
 
     // Complete output header data
-    if (generate_traces)
+    if (generate_minimal_trace || generate_rom_histogram)
     {
         uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
         pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
         pOutput[1] = 0; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
         pOutput[2] = trace_size; // MT allocated size [8]
         //assert(final_trace_size > 32);
-        pOutput[3] = final_trace_size - 32; // MT used size [8]
+        if (generate_minimal_trace)
+        {
+            pOutput[3] = final_trace_size - 32; // MT used size [8]
+        }
+        else
+        {
+            pOutput[3] = histogram_size;
+            pOutput[4] = bios_size;
+            pOutput[4 + bios_size + 1] = program_size;
+        }
     }
 
     // Log trace
 #ifdef DEBUG
-    if (generate_traces && trace)
+    if (generate_minimal_trace && trace)
     {
         log_trace();
+    }
+    if (generate_rom_histogram && trace)
+    {
+        log_histogram();
     }
 
     if (verbose) printf("Emulator C end\n");
@@ -546,7 +589,7 @@ int main(int argc, char *argv[])
     }
 
     // Cleanup trace
-    if (generate_traces)
+    if (generate_minimal_trace || generate_rom_histogram)
     {
         result = munmap((void *)TRACE_ADDR, trace_size);
         if (result == -1)
@@ -974,7 +1017,7 @@ extern void _realloc_trace (void)
         printf("realloc_trace() failed calling ftruncate(%s) of new size=%ld errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
         exit(-1);
     }
-
+    
     // Remap the memory
     void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
     if ((uint64_t)new_address != trace_address)
@@ -991,18 +1034,31 @@ extern void _realloc_trace (void)
 void print_usage (void)
 {
 #ifdef DEBUG
-    printf("Usage: ziskemuasm <input_file> [-o output off] [-m metrics on] [-v verbose on] [-t trace on] [-tt trace on] [-k keccak trace on] [-h/--help print this]\n");
+    printf("Usage: ziskemuasm <input_file> [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [-o output off] [-m metrics on] [-v verbose on] [-t trace on] [-tt trace on] [-k keccak trace on] [-h/--help print this]\n");
 #else
-    printf("Usage: ziskemuasm <input_file> [-o output off] [-m metrics on] [-h/--help print this]\n");
+    printf("Usage: ziskemuasm <input_file> [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [-o output off] [-m metrics on] [-h/--help print this]\n");
 #endif
 }
 
 void parse_arguments(int argc, char *argv[])
 {
+    uint64_t number_of_selected_generation_methods = 0;
     if (argc > 1)
     {
         for (int i = 1; i < argc; i++)
         {
+            if ( (strcmp(argv[i], "--gen=1") == 0) || (strcmp(argv[i], "--generate_minimal_trace") == 0))
+            {
+                generate_minimal_trace = true;
+                number_of_selected_generation_methods++;
+                continue;
+            }
+            if ( (strcmp(argv[i], "--gen=2") == 0) || (strcmp(argv[i], "--generate_rom_histogram") == 0))
+            {
+                generate_rom_histogram = true;
+                number_of_selected_generation_methods++;
+                continue;
+            }
             if (strcmp(argv[i], "-o") == 0)
             {
                 output = false;
@@ -1056,6 +1112,32 @@ void parse_arguments(int argc, char *argv[])
             print_usage();
             exit(-1);
         }
+    }
+    
+    if (number_of_selected_generation_methods != 1)
+    {
+        printf("Invalid arguments: select 1 generation method, and only one\n");
+        print_usage();
+        exit(-1);
+    }
+
+    uint64_t asm_gen_method = get_gen_method();
+    if ((asm_gen_method == 1) && generate_minimal_trace)
+    {
+        // Good
+    }
+    else if ((asm_gen_method == 2) && generate_rom_histogram)
+    {
+        // Good
+    }
+    else
+    {
+        // Bad
+        printf("Inconsistency: C generation method is %lu but ASM generation method is %lu\n",
+            generate_minimal_trace ? 1UL : 2UL,
+            asm_gen_method);
+        print_usage();
+        exit(-1);
     }
 }
 
@@ -1162,7 +1244,7 @@ void log_trace(void)
         printf("\tLast state:\n");
         printf("\t\tc=0x%lx:\n", chunk[i]);
         i++;
-
+        
         // Log current chunk end
         printf("\tEnd:\n");
         printf("\t\tend=%ld:\n", chunk[i]);
@@ -1197,5 +1279,57 @@ void log_trace(void)
         chunk = chunk + i;
     }
     printf("Trace=0x%p chunk=0x%p size=%ld\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+}
+
+void log_histogram(void)
+{
+
+    uint64_t *  pOutput = (uint64_t *)TRACE_ADDR;
+    printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
+    printf("Exit code = %ld\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    printf("Allocated size = %ld B\n", pOutput[2]); // MT allocated size [8]
+    printf("Used size = %ld B\n", pOutput[3]); // MT used size [8]
+
+    printf("BIOS histogram:\n");
+    uint64_t * trace = (uint64_t *)(TRACE_ADDR + 0x20);
+
+    // BIOS
+    uint64_t bios_size = trace[0];
+    printf("BIOS size=%ld\n", bios_size);
+    if (bios_size > 100000000)
+    {
+        printf("Bios size is too high=%ld\n", bios_size);
+        exit(-1);
+    }
+    if (trace_trace)
+    {
+        uint64_t * bios = trace + 1;
+        for (uint64_t i=0; i<bios_size; i++)
+        {
+            printf("%lu: pc=0x%lx multiplicity=%lu:\n", i, 0x1000 + (i*4), bios[i] );
+        }
+    }
+
+    // Program
+    uint64_t program_size = trace[bios_size + 1];
+    printf("Program size=%lu\n", program_size);
+    if (program_size > 100000000)
+    {
+        printf("Program size is too high=%ld\n", program_size);
+        exit(-1);
+    }
+    if (trace_trace)
+    {
+        uint64_t * program = trace + 1 + bios_size + 1;
+        for (uint64_t i=0; i<program_size; i++)
+        {
+            if (program[i] != 0)
+            {
+                printf("%lu: pc=0x%lx multiplicity=%lu:\n", i, 0x80000000 + i, program[i]);
+            }
+        }
+    }
+
+    printf("Histogram bios_size=%lu program_size=%lu\n", bios_size, program_size);
 }
 #endif
