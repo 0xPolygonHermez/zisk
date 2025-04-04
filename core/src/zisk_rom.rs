@@ -1608,6 +1608,7 @@ impl ZiskRom {
             code_lines_counter += 1;
         }
 
+        #[cfg(debug_assertions)]
         println!(
             "ZiskRom::save_to_asm() {} bytes, {} instructions, {:02} bytes/inst, {} map lines, {} label lines, {} comment lines, {} code lines, {:02} code lines/inst",
             s.len(),
