@@ -19,6 +19,7 @@ zisk-common = { path = "../common" }
 data-bus = { path = "../data-bus" }
 asm-runner = { path = "../emulator-asm/asm-runner" }
 
+proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 witness = { workspace = true }
@@ -31,4 +32,4 @@ pil-std-lib = { workspace = true }
 [features]
 default = ["distributed"]
 distributed = ["proofman-common/distributed", "witness/distributed"]
-gpu = ["proofman-common/gpu"]
+gpu = ["proofman-common/gpu", "proofman/gpu" ]
