@@ -15,9 +15,8 @@ You can see [here](https://github.com/0xPolygonHermez/zisk-patch-tiny-keccak/tre
 ### Available Precompiles in ZisK
 
 Below is a summary of the precompiles currently available in ZisK:
-
-- [syscall_keccak_f](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/keccakf.rs): Executes a Keccak permutation function.
-- [syscall_arith25](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/arith256.rs): Executes a 256-bit multiplication and addition.
-- [syscall_arith256_mod](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/arith256_mod.rs): Executes a modular 256-bit multiplication and addition.
-- [secp256k1_add](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/secp256k1_add.rs): Executes the addition of two points on the Secp256k1 curve.
-- [secp256k1_dbl](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/secp256k1_dbl.rs): Executes the doubling of a point on the Secp256k1 curve.
+- [syscall_arith256_mod](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/arith256_mod.rs): Modular multiplication followed by addition over 256-bit non-negative integers.
+- [syscall_arith256](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/arith256.rs): Multiplication followed by addition over 256-bit non-negative integers.
+- [syscall_keccak_f](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/keccakf.rs): Keccak-f[1600] permutation function from the [Keccak](https://keccak.team/files/Keccak-reference-3.0.pdf) cryptographic sponge construction.
+- [secp256k1_add](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/secp256k1_add.rs): Elliptic curve point addition over the [Secp256k1](https://en.bitcoin.it/wiki/Secp256k1) curve.
+- [secp256k1_dbl](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/secp256k1_dbl.rs): Elliptic curve point doubling over the [Secp256k1](https://en.bitcoin.it/wiki/Secp256k1) curve.
