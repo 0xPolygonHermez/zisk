@@ -18,11 +18,13 @@ use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use sm_common::{
-    create_atomic_vec, BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan, Planner,
+    create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, InstanceCtx, Planner,
 };
 
 use crate::{RomCounter, RomInstance, RomPlanner};
-use zisk_core::{Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SRC_IMM};
+use zisk_core::{
+    zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SRC_IMM,
+};
 use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace};
 
 /// The `RomSM` struct represents the ROM State Machine
@@ -50,8 +52,10 @@ impl RomSM {
     pub fn new(zisk_rom: Arc<ZiskRom>) -> Arc<Self> {
         Arc::new(Self {
             zisk_rom,
+            // No atomics, we can fivide by 4
+            bios_inst_count: Arc::new(create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2)),
+            // Cannot be dividede by 4
             prog_inst_count: Arc::new(create_atomic_vec((ROM_ADDR_MAX - ROM_ADDR) as usize)),
-            bios_inst_count: Arc::new(create_atomic_vec((ROM_ADDR - ROM_ENTRY) as usize)),
         })
     }
 
@@ -63,29 +67,29 @@ impl RomSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness trace data.
-    pub fn compute_witness<F: PrimeField>(rom: &ZiskRom, plan: &Plan) -> AirInstance<F> {
+    pub fn compute_witness<F: PrimeField>(
+        rom: &ZiskRom,
+        counter_stats: &CounterStats,
+    ) -> AirInstance<F> {
         let mut rom_trace = RomTrace::new_zeroes();
-
-        let metadata = plan.meta.as_ref().unwrap().downcast_ref::<RomCounter>().unwrap();
 
         let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
         let mut len = 0;
-        for i in 0..metadata.rom.prog_inst_count.len() {
-            if metadata.rom.prog_inst_count[i].load(std::sync::atomic::Ordering::Relaxed) != 0 {
+        for i in 0..counter_stats.prog_inst_count.len() {
+            if counter_stats.prog_inst_count[i].load(std::sync::atomic::Ordering::Relaxed) != 0 {
                 len += 1;
             }
         }
         info!(
             "{}: ··· Creating Rom instance [{} / {} rows filled {:.2}%]",
             Self::MY_NAME,
-            metadata.rom.bios_inst_count.len() + len,
+            counter_stats.bios_inst_count.len() + len,
             main_trace_len,
-            ((metadata.rom.bios_inst_count.len() as f64) + len as f64) / main_trace_len as f64
+            ((counter_stats.bios_inst_count.len() as f64) + len as f64) / main_trace_len as f64
                 * 100.0
         );
         // For every instruction in the rom, fill its corresponding ROM trace
-        //for (i, inst_builder) in rom.insts.clone().into_iter().enumerate() {
         for (i, key) in rom.insts.keys().sorted().enumerate() {
             // Get the Zisk instruction
             let inst = &rom.insts[key].i;
@@ -94,29 +98,30 @@ impl RomSM {
             // execution
             let mut multiplicity: u64;
             if inst.paddr < ROM_ADDR {
-                if metadata.rom.bios_inst_count.is_empty() {
+                if counter_stats.bios_inst_count.is_empty() {
                     multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
                 } else {
-                    multiplicity = metadata.rom.bios_inst_count[(inst.paddr - ROM_ENTRY) as usize]
+                    multiplicity = counter_stats.bios_inst_count
+                        [((inst.paddr - ROM_ENTRY) as usize) >> 2]
                         .load(std::sync::atomic::Ordering::Relaxed)
                         as u64;
 
                     if multiplicity == 0 {
                         continue;
                     }
-                    if inst.paddr == metadata.rom.end_pc {
-                        multiplicity += main_trace_len - metadata.rom.steps % main_trace_len;
+                    if inst.paddr == counter_stats.end_pc {
+                        multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
                     }
                 }
             } else {
-                multiplicity = metadata.rom.prog_inst_count[(inst.paddr - ROM_ADDR) as usize]
+                multiplicity = counter_stats.prog_inst_count[(inst.paddr - ROM_ADDR) as usize]
                     .load(std::sync::atomic::Ordering::Relaxed)
                     as u64;
                 if multiplicity == 0 {
                     continue;
                 }
-                if inst.paddr == metadata.rom.end_pc {
-                    multiplicity += main_trace_len - metadata.rom.steps % main_trace_len;
+                if inst.paddr == counter_stats.end_pc {
+                    multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
                 }
             }
             rom_trace[i].multiplicity = F::from_u64(multiplicity);
@@ -172,7 +177,16 @@ impl RomSM {
             rom_custom_trace[i].b_imm1 =
                 F::from_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
             rom_custom_trace[i].ind_width = F::from_u64(inst.ind_width);
-            rom_custom_trace[i].op = F::from_u8(inst.op);
+            // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
+            // of the copyb, use to get free-input information
+            rom_custom_trace[i].op = if inst.op == ZiskOp::Fcall.code()
+                || inst.op == ZiskOp::FcallGet.code()
+                || inst.op == ZiskOp::FcallParam.code()
+            {
+                F::from_u8(ZiskOp::CopyB.code())
+            } else {
+                F::from_u8(inst.op)
+            };
             rom_custom_trace[i].store_offset = store_offset;
             rom_custom_trace[i].jmp_offset1 = jmp_offset1;
             rom_custom_trace[i].jmp_offset2 = jmp_offset2;
@@ -201,13 +215,7 @@ impl RomSM {
         // Load and parse the ELF file, and transpile it into a ZisK ROM using Riscv2zisk
 
         // Create an instance of the RISCV -> ZisK program converter
-        let riscv2zisk = Riscv2zisk::new(
-            elf_filename,
-            String::new(),
-            String::new(),
-            String::new(),
-            String::new(),
-        );
+        let riscv2zisk = Riscv2zisk::new(elf_filename, None);
 
         // Convert program to rom
         let rom = riscv2zisk.run().expect("RomSM::prover() failed converting elf to rom");
@@ -230,7 +238,7 @@ impl<F: PrimeField> ComponentBuilder<F> for RomSM {
     /// # Returns
     /// A boxed implementation of `RomPlanner`.
     fn build_planner(&self) -> Box<dyn Planner> {
-        Box::new(RomPlanner::new(self.bios_inst_count.clone(), self.prog_inst_count.clone()))
+        Box::new(RomPlanner)
     }
 
     /// Builds an instance of the ROM state machine.
@@ -241,6 +249,11 @@ impl<F: PrimeField> ComponentBuilder<F> for RomSM {
     /// # Returns
     /// A boxed implementation of `RomInstance`.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn sm_common::Instance<F>> {
-        Box::new(RomInstance::new(self.zisk_rom.clone(), ictx))
+        Box::new(RomInstance::new(
+            self.zisk_rom.clone(),
+            ictx,
+            self.bios_inst_count.clone(),
+            self.prog_inst_count.clone(),
+        ))
     }
 }

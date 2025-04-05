@@ -5,6 +5,7 @@ use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
+use zisk_common::ChunkId;
 
 pub struct MemAlignInstance<F: PrimeField64> {
     /// Instance context
@@ -56,7 +57,7 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
     ///
     /// # Returns
     /// An `Option` containing the input collector for the instance.
-    fn build_inputs_collector(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         let meta = self.ictx.plan.meta.as_ref().unwrap();
         let checkpoint = meta.downcast_ref::<Vec<MemAlignCheckPoint>>().unwrap();
 

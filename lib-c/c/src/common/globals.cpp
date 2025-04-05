@@ -1,0 +1,6 @@
+#include "globals.hpp"
+
+RawFec fec;
+RawFnec fnec;
+
+mpz_class ScalarMask256 ("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16);

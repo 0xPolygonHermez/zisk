@@ -181,7 +181,7 @@ EOF
     fi
   done
 
-  step "Installing Zisk Rust toolchain..."
+  step "Installing ZisK Rust toolchain..."
   ensure "$CARGO_ZISK" sdk install-toolchain
 
   # Install the proving/verify key setup

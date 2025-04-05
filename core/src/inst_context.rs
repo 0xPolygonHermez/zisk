@@ -8,9 +8,9 @@ use crate::{Mem, ROM_ENTRY};
 
 /// Zisk precompiled
 #[derive(Debug, Default)]
-pub enum PrecompiledEmulationMode {
+pub enum EmulationMode {
     #[default]
-    None,
+    Mem,
     GenerateMemReads,
     ConsumeMemReads,
 }
@@ -21,16 +21,40 @@ pub enum PrecompiledEmulationMode {
 /// reading it from memory
 #[derive(Debug, Default)]
 pub struct PrecompiledInstContext {
-    /// Precompiled emulation mode
-    pub emulation_mode: PrecompiledEmulationMode,
+    /// Step
+    pub step: u64,
+
     /// Precompiled input data address
-    pub input_data_address: u64,
+    // pub input_data_address: u64,
     /// Precompiled input data
     pub input_data: Vec<u64>,
+
     /// Precompiled output data address
-    pub output_data_address: u64,
+    // pub output_data_address: u64,
     /// Precompiled output data
     pub output_data: Vec<u64>,
+}
+
+/// Zisk fcall instruction context.
+/// Stores the fcall arguments data and the result data.
+#[derive(Debug, Default)]
+pub struct FcallInstContext {
+    /// Fcall parameters data
+    /// Maximum size is 32 u64's
+    pub parameters: [u64; 32],
+
+    /// Indicates how many parameters u64's contain valid data
+    pub parameters_size: u64,
+
+    /// Fcall result data
+    /// Maximum size is 32 u64's
+    pub result: [u64; 32],
+
+    /// Indicates how many result u64's contain valid data
+    pub result_size: u64,
+
+    /// Indicates how many result u64's have been read using fcall_get()
+    pub result_got: u64,
 }
 
 #[derive(Debug)]
@@ -66,8 +90,14 @@ pub struct InstContext {
     /// Registers
     pub regs: [u64; 32],
 
+    /// Precompiled emulation mode
+    pub emulation_mode: EmulationMode,
+
     /// Precompiled data
     pub precompiled: PrecompiledInstContext,
+
+    /// Fcall data
+    pub fcall: FcallInstContext,
 }
 
 /// RisK instruction context implementation
@@ -85,7 +115,9 @@ impl InstContext {
             step: 0,
             end: false,
             regs: [0; 32],
+            emulation_mode: EmulationMode::default(),
             precompiled: PrecompiledInstContext::default(),
+            fcall: FcallInstContext::default(),
         }
     }
 

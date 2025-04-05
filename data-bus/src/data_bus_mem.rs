@@ -1,4 +1,6 @@
-pub const MEM_BUS_ID: u16 = 10;
+use crate::BusId;
+
+pub const MEM_BUS_ID: BusId = BusId(2);
 
 pub const MEM_BUS_DATA_SIZE: usize = 7;
 
