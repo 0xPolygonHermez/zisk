@@ -8,15 +8,15 @@ use crate::ziskos_syscall;
 
 /// Executes the Keccak256 permutation on the given state.
 ///
-/// The keccak system call execute CSR set on custom port, when transpiling from riscv to zisk
-/// replace this instruction with precompiled operation, in this case keccak permutation.
-/// The address with the input state data (1600 bits = 200 bytes) is the value "set" to
-/// the CSR register, this address is store in one register, no always the same.
+/// The `Keccak` system call executes a CSR set on a custom port. When transpiling from RISC-V to Zisk,
+/// this instruction is replaced with a precompiled operation—specifically, `Keccak`.
+///
+/// The syscall takes as a parameter the address of a state data (1600 bits = 200 bytes)
+/// and the result of the keccakf operation is stored at the same location
 ///
 /// ### Safety
 ///
-/// The caller must ensure that `state` is valid pointer to data that is aligned along a eigth
-/// byte boundary.
+/// The caller must ensure that the data is aligned to a 64-bit boundary.
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn syscall_keccak_f(state: *mut [u64; 25]) {

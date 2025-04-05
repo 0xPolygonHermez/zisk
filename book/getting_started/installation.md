@@ -112,6 +112,7 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
     mkdir -p $HOME/.zisk/zisk/emulator-asm
     cp -r ./emulator-asm/src $HOME/.zisk/zisk/emulator-asm
     cp ./emulator-asm/Makefile $HOME/.zisk/zisk/emulator-asm
+    cp -r ./lib-c $HOME/.zisk/zisk
     ```
 
 5. Add `~/.zisk/bin` to your system PATH:
