@@ -6,15 +6,15 @@
 
 use crate::KeccakfSM;
 use data_bus::{
-    BusDevice, BusId, ExtOperationData, OperationBusData, OperationKeccakData, PayloadType,
-    OPERATION_BUS_ID,
+    BusDevice, BusId, ExtOperationData, OperationKeccakData, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
-    BusDeviceWrapper, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
+    BusDeviceWrapper, CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType,
 };
 use std::{any::Any, collections::HashMap, sync::Arc};
+use zisk_common::ChunkId;
 use zisk_core::ZiskOperationType;
 use zisk_pil::KeccakfTrace;
 
@@ -89,7 +89,7 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance {
         InstanceType::Instance
     }
 
-    fn build_inputs_collector(&self, chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
             KeccakfTrace::<F>::AIR_ID,
@@ -153,10 +153,7 @@ impl BusDevice<PayloadType> for KeccakfCollector {
             return None;
         }
 
-        let data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-
-        if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::Keccak as u32 {
+        if data[OP_TYPE] as u32 != ZiskOperationType::Keccak as u32 {
             return None;
         }
 
@@ -164,6 +161,8 @@ impl BusDevice<PayloadType> for KeccakfCollector {
             return None;
         }
 
+        let data: ExtOperationData<u64> =
+            data.try_into().expect("Regular Metrics: Failed to convert data");
         if let ExtOperationData::OperationKeccakData(data) = data {
             self.inputs.push(data);
             None

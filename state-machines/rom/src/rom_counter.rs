@@ -18,7 +18,7 @@ use sm_common::{CounterStats, Metrics};
 /// the total number of executed steps, and the PC of the last executed instruction.
 pub struct RomCounter {
     /// Execution statistics counter for ROM instructions.
-    pub rom: CounterStats,
+    pub counter_stats: CounterStats,
 }
 
 impl RomCounter {
@@ -28,13 +28,13 @@ impl RomCounter {
     /// A new `RomCounter` instance.
     pub fn new(bios_inst_count: Arc<Vec<AtomicU32>>, prog_inst_count: Arc<Vec<AtomicU32>>) -> Self {
         let counter_stats = CounterStats::new(bios_inst_count, prog_inst_count);
-        Self { rom: counter_stats }
+        Self { counter_stats }
     }
 }
 
 impl AddAssign<&RomCounter> for RomCounter {
     fn add_assign(&mut self, other: &Self) {
-        self.rom += &other.rom;
+        self.counter_stats += &other.counter_stats;
     }
 }
 
@@ -51,7 +51,7 @@ impl Metrics for RomCounter {
     fn measure(&mut self, data: &[u64]) {
         let data: RomData<u64> = data.try_into().expect("Rom Metrics: Failed to convert data");
 
-        self.rom.update(
+        self.counter_stats.update(
             RomBusData::get_pc(&data),
             RomBusData::get_step(&data),
             1,
@@ -80,11 +80,7 @@ impl BusDevice<u64> for RomCounter {
     /// - The first element is the bus ID.
     /// - The second element is always empty indicating there are no derived inputs.
     #[inline]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
-        debug_assert!(*bus_id == ROM_BUS_ID);
-
-        self.measure(data);
-
+    fn process_data(&mut self, _bus_id: &BusId, _data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         None
     }
 

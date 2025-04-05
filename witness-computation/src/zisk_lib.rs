@@ -6,6 +6,7 @@
 
 use executor::ZiskExecutor;
 use pil_std_lib::Std;
+use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
@@ -57,13 +58,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
     /// Panics if the `Riscv2zisk` conversion fails or if required paths cannot be resolved.
     fn register_witness(&mut self, wcm: Arc<WitnessManager<F>>) {
         // Step 1: Create an instance of the RISCV -> ZisK program converter
-        let rv2zk = Riscv2zisk::new(
-            self.elf_path.display().to_string(),
-            String::new(),
-            String::new(),
-            String::new(),
-            String::new(),
-        );
+        let rv2zk = Riscv2zisk::new(self.elf_path.display().to_string(), None);
 
         // Step 2: Convert program to ROM
         let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {}", e));
@@ -78,6 +73,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         // Step 4: Initialize the precompiles state machines
         let keccakf_sm = KeccakfManager::new::<F>(self.keccak_path.clone());
+        let arith_eq_sm = ArithEqManager::new(std.clone());
 
         // Step 5: Create the executor and register the secondary state machines
         let mut executor: ZiskExecutor<F> = ZiskExecutor::new(
@@ -94,6 +90,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         // Step 6: Register the precompiles state machines
         executor.register_sm(keccakf_sm);
+        executor.register_sm(arith_eq_sm);
 
         let executor = Arc::new(executor);
 

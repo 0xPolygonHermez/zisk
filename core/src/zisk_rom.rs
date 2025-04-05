@@ -42,11 +42,12 @@
 //!       as index `(pc-ROM_ADDR)`
 //!   * If the address is < ROM_ADDR, then get it from the vector `rom_entry_instructions`, using as
 //!     index `(pc-ROM_ENTRY)/4`
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 use crate::{
-    zisk_ops::ZiskOp, ZiskInst, ZiskInstBuilder, M64, P2_32, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
-    SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    zisk_ops::ZiskOp, AsmGenerationMethod, ZiskInst, ZiskInstBuilder, FREE_INPUT_ADDR, M64, P2_32,
+    ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
+    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -80,9 +81,21 @@ const MEM_SP: &str = "qword ptr [MEM_SP]";
 const MEM_END: &str = "qword ptr [MEM_END]";
 
 const TRACE_ADDR: &str = "0xb0000020";
+const TRACE_ADDR_NUMBER: u64 = 0xb0000020;
+
 const MEM_TRACE_ADDRESS: &str = "qword ptr [MEM_TRACE_ADDRESS]";
 const MEM_CHUNK_ADDRESS: &str = "qword ptr [MEM_CHUNK_ADDRESS]";
 const MEM_CHUNK_START_STEP: &str = "qword ptr [MEM_CHUNK_START_STEP]";
+
+// Fcall context offsets of the different fields
+const FCALL_FUNCTION_ID: u64 = 0;
+const FCALL_PARAMS_CAPACITY: u64 = 1;
+const FCALL_PARAMS_SIZE: u64 = 2;
+const FCALL_PARAMS: u64 = 3;
+const FCALL_RESULT_CAPACITY: u64 = 35;
+const FCALL_RESULT_SIZE: u64 = 36;
+const FCALL_RESULT: u64 = 37;
+const FCALL_RESULT_GOT: u64 = 69;
 
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
@@ -139,6 +152,12 @@ pub struct ZiskRom {
 
     /// ROM instructions with an address that is not alligned to 4 bytes
     pub rom_na_instructions: Vec<ZiskInst>,
+
+    /// Maximum rom entry PC
+    pub max_bios_pc: u64,
+
+    /// Maximum rom instruction PC
+    pub max_program_pc: u64,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -159,7 +178,8 @@ pub struct ZiskAsmContext {
     jump_to_dynamic_pc: bool,
     jump_to_static_pc: String,
     log_output: bool,
-    generate_traces: bool,
+    generate_minimal_trace: bool,
+    generate_rom_histogram: bool,
 
     a: ZiskAsmRegister,
     b: ZiskAsmRegister,
@@ -186,7 +206,7 @@ impl ZiskRom {
                 let rom_index = ((pc - ROM_ADDR) >> 2) as usize;
                 if rom_index >= self.rom_instructions.len() {
                     panic!(
-                        "ZiskRom::get_instruction() pc={} is out of range rom_instructions (rom_index:{} >= {})",
+                        "ZiskRom::get_instruction() pc=0x{0:X} ({0}) is out of range rom_instructions (rom_index:{1:} >= {2:})",
                         pc,
                         rom_index,
                         self.rom_instructions.len()
@@ -216,308 +236,42 @@ impl ZiskRom {
         }
     }
 
-    /// Saves ZisK rom into a JSON object
-    pub fn save_to_json(&self, j: &mut json::JsonValue) {
-        // Clear output data, just in case
-        j.clear();
-
-        // Save next init inst addr
-        j["nextInitInstAddr"] = self.next_init_inst_addr.into();
-
-        // Create the insts JSON object
-        j["insts"] = json::JsonValue::new_object();
-
-        // Save instructions program addresses into a vector
-        let mut keys: Vec<u64> = Vec::new();
-        for key in self.insts.keys() {
-            keys.push(*key);
-        }
-
-        // Sort the vector
-        keys.sort();
-
-        // For all program addresses in the vector, create a new JSON object describing the ZisK
-        // instruction
-        for key in keys {
-            let i = &self.insts[&key].i;
-            let mut inst_json = json::JsonValue::new_object();
-            inst_json["paddr"] = i.paddr.into();
-            if i.store_ra {
-                inst_json["store_ra"] = i.store_ra.into();
-            }
-            // #[cfg(feature = "sp")]
-            // if i.store_use_sp {
-            //     inst_json["store_use_sp"] = i.store_use_sp.into();
-            // }
-            inst_json["store"] = i.store.into();
-            if i.store_offset != 0 {
-                inst_json["store_offset"] = i.store_offset.into();
-            }
-            if i.set_pc {
-                inst_json["set_pc"] = i.set_pc.into();
-            }
-            // #[cfg(feature = "sp")]
-            // if i.set_sp {
-            //     inst_json["set_sp"] = i.set_sp.into();
-            // }
-            if i.ind_width != 0 {
-                inst_json["ind_width"] = i.ind_width.into();
-            }
-            // #[cfg(feature = "sp")]
-            // if i.inc_sp != 0 {
-            //     inst_json["inc_sp"] = i.inc_sp.into();
-            // }
-            if i.end {
-                inst_json["end"] = i.end.into();
-            }
-            if i.a_src != 0 {
-                inst_json["a_src"] = i.a_src.into();
-            }
-            if i.a_src == SRC_STEP {
-                inst_json["a_src_step"] = json::JsonValue::from(1);
-            }
-            // #[cfg(feature = "sp")]
-            // if i.a_src == SRC_SP {
-            //     inst_json["a_src_sp"] = json::JsonValue::from(1);
-            // }
-            // #[cfg(feature = "sp")]
-            // if i.a_use_sp_imm1 != 0 {
-            //     inst_json["a_use_sp_imm1"] = i.a_use_sp_imm1.into();
-            // }
-            if i.a_offset_imm0 != 0 {
-                inst_json["a_offset_imm0"] = i.a_offset_imm0.into();
-            }
-            if i.b_src != 0 {
-                inst_json["b_src"] = i.b_src.into();
-            }
-            if i.b_src == SRC_IND {
-                inst_json["b_src_ind"] = json::JsonValue::from(1);
-            }
-            // #[cfg(feature = "sp")]
-            // if i.b_use_sp_imm1 != 0 {
-            //     inst_json["b_use_sp_imm1"] = i.b_use_sp_imm1.into();
-            // }
-            if i.b_offset_imm0 != 0 {
-                inst_json["b_offset_imm0"] = i.b_offset_imm0.into();
-            }
-            inst_json["is_external_op"] = i.is_external_op.into();
-            inst_json["op"] = i.op.into();
-            inst_json["opStr"] = i.op_str.into();
-            if i.jmp_offset1 != 0 {
-                inst_json["jmp_offset1"] = i.jmp_offset1.into();
-            }
-            if i.jmp_offset2 != 0 {
-                inst_json["jmp_offset2"] = i.jmp_offset2.into();
-            }
-            if !i.verbose.is_empty() {
-                inst_json["verbose"] = i.verbose.clone().into();
-            }
-            j["insts"][i.paddr.to_string()] = inst_json;
-        }
-
-        // Save RO data
-        j["roData"] = json::JsonValue::new_array();
-        for ro in &self.ro_data {
-            let mut ro_json = json::JsonValue::new_object();
-            ro_json["start"] = ro.from.into();
-            let mut data_json = json::JsonValue::new_object();
-            data_json["type"] = "Buffer".into();
-            data_json["data"] = json::JsonValue::new_array();
-            for d in 0..ro.data.len() {
-                let _ = data_json["data"].push(ro.data[d]);
-            }
-            ro_json["data"] = data_json;
-            let _ = j["roData"].push(ro_json);
-        }
-    }
-
-    /// Saves ZisK rom into a PIL data string
-    pub fn save_to_pil(&self, s: &mut String) {
-        // Clear output data, just in case
-        s.clear();
-
-        // Save instructions program addresses into a vector
-        let mut keys: Vec<u64> = Vec::new();
-        for key in self.insts.keys() {
-            keys.push(*key);
-        }
-
-        // Sort the vector
-        keys.sort();
-
-        // For all program addresses in the vector, create a new PIL line describing the ZisK
-        // instruction
-        for key in &keys {
-            let i = &self.insts[key].i;
-            let rom_flags = i.get_flags();
-
-            // #[cfg(feature = "sp")]
-            // {
-            //     *s += &format!(
-            //         "romLine({},{},{},{},{},{},{},{},{},{},{}); // {}: {}\n",
-            //         key,
-            //         rom_flags,
-            //         i.op,
-            //         i.a_offset_imm0,
-            //         i.b_offset_imm0,
-            //         i.ind_width,
-            //         i.store_offset,
-            //         i.jmp_offset1,
-            //         i.jmp_offset2,
-            //         i.inc_sp,
-            //         i.b_use_sp_imm1,
-            //         i.op_str,
-            //         i.verbose,
-            //     );
-            // }
-
-            // #[cfg(not(feature = "sp"))]
-            {
-                *s += &format!(
-                    "romLine({},{},{},{},{},{},{},{},{}); // {}: {}\n",
-                    key,
-                    rom_flags,
-                    i.op,
-                    i.a_offset_imm0,
-                    i.b_offset_imm0,
-                    i.ind_width,
-                    i.store_offset,
-                    i.jmp_offset1,
-                    i.jmp_offset2,
-                    i.op_str,
-                    i.verbose,
-                );
-            }
-        }
-        println!(
-            "ZiskRom::save_to_pil() {} bytes, {} instructions, {:02} bytes/inst",
-            s.len(),
-            keys.len(),
-            s.len() as f64 / keys.len() as f64,
-        )
-    }
-
-    /// Saves ZisK rom into a binary data vector
-    pub fn save_to_bin(&self, v: &mut Vec<u8>) {
-        // Clear output data, just in case
-        v.clear();
-
-        // Save instructions program addresses into a vector
-        let mut keys: Vec<u64> = Vec::new();
-        for key in self.insts.keys() {
-            keys.push(*key);
-        }
-
-        // Sort the vector
-        keys.sort();
-
-        // For all program addresses in the vector, create a new binary slice describing the ZisK
-        // instruction
-        for key in &keys {
-            let mut aux: [u8; 8];
-            let i = &self.insts[key].i;
-            let rom_flags = i.get_flags();
-            aux = key.to_le_bytes();
-            v.extend(aux);
-            aux = rom_flags.to_le_bytes();
-            v.extend(aux);
-            v.push(i.op);
-            aux = i.a_offset_imm0.to_le_bytes();
-            v.extend(aux);
-            aux = i.b_offset_imm0.to_le_bytes();
-            v.extend(aux);
-            aux = i.ind_width.to_le_bytes();
-            v.extend(aux);
-            aux = i.store_offset.to_le_bytes();
-            v.extend(aux);
-            aux = i.jmp_offset1.to_le_bytes();
-            v.extend(aux);
-            aux = i.jmp_offset2.to_le_bytes();
-            v.extend(aux);
-            // #[cfg(feature = "sp")]
-            // {
-            //     aux = i.inc_sp.to_le_bytes();
-            //     v.extend(aux);
-            //     aux = i.b_use_sp_imm1.to_le_bytes();
-            //     v.extend(aux);
-            // }
-        }
-        println!(
-            "ZiskRom::save_to_bin() {} bytes, {} instructions, {:02} bytes/inst",
-            v.len(),
-            keys.len(),
-            v.len() as f64 / keys.len() as f64,
-        )
-    }
-
-    /// Saves ZisK rom into a file: first save to a JSON object, then convert it to string, then
-    /// save the string to the file
-    pub fn save_to_json_file(&self, file_name: &str) {
-        let mut j = json::JsonValue::new_object();
-        self.save_to_json(&mut j);
-        let s = json::stringify_pretty(j, 1);
-        let s_len = s.len();
-        let path = std::path::PathBuf::from(file_name);
-        let result = std::fs::write(path, s);
-        if result.is_err() {
-            panic!("ZiskRom::save_to_json_file() failed writing to file={}", file_name);
-        }
-        println!("ZiskRom::save_to_json_file() {} bytes", s_len);
-    }
-
-    /// Saves ZisK rom into a PIL file: first save to a string, then
-    /// save the string to the file
-    pub fn save_to_pil_file(&self, file_name: &str) {
-        // Get a string with the PIL data
-        let mut s = String::new();
-        self.save_to_pil(&mut s);
-
-        // Save to file
-        let path = std::path::PathBuf::from(file_name);
-        let result = std::fs::write(path, s);
-        if result.is_err() {
-            panic!("ZiskRom::save_to_pil_file() failed writing to file={}", file_name);
-        }
-    }
-
-    /// Saves ZisK rom into a binary file: first save to a vector, then
-    /// save the vector to the file
-    pub fn save_to_bin_file(&self, file_name: &str) {
-        // Get a vector with the ROM data
-        let mut v: Vec<u8> = Vec::new();
-        self.save_to_bin(&mut v);
-
-        // Save to file
-        let path = std::path::PathBuf::from(file_name);
-        let result = std::fs::write(path, v);
-        if result.is_err() {
-            panic!("ZiskRom::save_to_bin_file() failed writing to file={}", file_name);
-        }
-    }
-
     /// Saves ZisK rom into an i64-64 assembly file: first save to a string, then
     /// save the string to the file
-    pub fn save_to_asm_file(&self, file_name: &str, verbose: bool) {
-        // Get a string with the PIL data
+    pub fn save_to_asm_file(&self, file_name: &Path, generation_method: AsmGenerationMethod) {
+        // Get a string with the ASM data
         let mut s = String::new();
-        self.save_to_asm(&mut s, verbose);
+        self.save_to_asm(&mut s, generation_method);
 
         // Save to file
         let path = std::path::PathBuf::from(file_name);
         let result = std::fs::write(path, s);
         if result.is_err() {
-            panic!("ZiskRom::save_to_asm_file() failed writing to file={}", file_name);
+            panic!("ZiskRom::save_to_asm_file() failed writing to file={}", file_name.display());
         }
     }
 
     /// Saves ZisK rom into an i86-64 assembly data string
-    pub fn save_to_asm(&self, s: &mut String, verbose: bool) {
+    pub fn save_to_asm(&self, s: &mut String, generation_method: AsmGenerationMethod) {
+        // Select the ASM generation method
+        let mut generate_minimal_trace = false;
+        let mut generate_rom_histogram = false;
+
+        match generation_method {
+            AsmGenerationMethod::AsmMinimalTraces => generate_minimal_trace = true,
+            AsmGenerationMethod::AsmRomHistogram => generate_rom_histogram = true,
+        }
+
         // Clear output data, just in case
         s.clear();
 
         // Create context
-        let mut ctx =
-            ZiskAsmContext { log_output: true, generate_traces: true, ..Default::default() };
+        let mut ctx = ZiskAsmContext {
+            log_output: true,
+            generate_minimal_trace,
+            generate_rom_histogram,
+            ..Default::default()
+        };
 
         // Save instructions program addresses into a vector
         let mut keys: Vec<u64> = Vec::new();
@@ -548,6 +302,17 @@ impl ZiskRom {
             *s += &format!(".comm reg_{}, 8, 8\n", r);
         }
 
+        // fcall_context =
+        //     function_id
+        //     params_max_size
+        //     params_size
+        //     params[32]
+        //     result_max_size
+        //     result_size
+        //     result[32]
+        //     result_got
+        *s += ".comm fcall_ctx, 8*70, 8\n";
+
         // for k in 0..keys.len() {
         //     let pc = keys[k];
         //     let instruction = &self.insts[&pc].i;
@@ -560,17 +325,21 @@ impl ZiskRom {
         *s += ".extern print_char\n";
         *s += ".extern print_step\n";
         *s += ".extern opcode_keccak\n";
+        *s += ".extern opcode_arith256\n";
+        *s += ".extern opcode_arith256_mod\n";
+        *s += ".extern opcode_secp256k1_add\n";
+        *s += ".extern opcode_secp256k1_dbl\n";
+        *s += ".extern opcode_fcall\n";
+        *s += ".extern print_fcall_ctx\n";
         *s += ".extern realloc_trace\n\n";
 
-        if ctx.generate_traces {
+        if ctx.generate_minimal_trace {
             *s += ".extern chunk_size\n";
             *s += ".extern chunk_size_mask\n\n";
-            *s += ".extern trace_address_threshold\n";
+            *s += ".extern trace_address_threshold\n\n";
         }
 
-        if ctx.generate_traces {
-            *s += "\n";
-
+        if ctx.generate_minimal_trace {
             // Chunk start
             *s += "chunk_start:\n";
             Self::chunk_start(&mut ctx, s);
@@ -588,15 +357,30 @@ impl ZiskRom {
             *s += "\tret\n\n";
         }
 
+        // Functions to let C know about ASM generation
+        *s += ".global get_max_bios_pc\n";
+        *s += "get_max_bios_pc:\n";
+        *s += &format!("\tmov rax, 0x{:08x}\n", self.max_bios_pc);
+        *s += "\tret\n\n";
+
+        *s += ".global get_max_program_pc\n";
+        *s += "get_max_program_pc:\n";
+        *s += &format!("\tmov rax, 0x{:08x}\n", self.max_program_pc);
+        *s += "\tret\n\n";
+
+        *s += ".global get_gen_method\n";
+        *s += "get_gen_method:\n";
+        if ctx.generate_minimal_trace {
+            *s += "\tmov rax, 1\n";
+        } else if ctx.generate_rom_histogram {
+            *s += "\tmov rax, 2\n";
+        }
+        *s += "\tret\n\n";
+
         *s += ".global emulator_start\n";
         *s += "emulator_start:\n";
 
-        *s += "\tpush rbx\n";
-        *s += "\tpush rbp\n";
-        *s += "\tpush r12\n";
-        *s += "\tpush r13\n";
-        *s += "\tpush r14\n";
-        *s += "\tpush r15\n";
+        Self::push_external_registers(&mut ctx, s);
 
         // Registers initialization
         *s += &format!("\tmov {}, 0 /* Register initialization: a = 0 */\n", REG_A);
@@ -606,7 +390,7 @@ impl ZiskRom {
         *s += &format!("\tmov {}, 0 /* Memory initialization: step = 0 */\n", MEM_STEP);
         *s += &format!("\tmov {}, 0 /* Memory initialization: sp = 0 */\n", MEM_SP);
         *s += &format!("\tmov {}, 0 /* Memory initialization: end = 0 */\n", MEM_END);
-        if ctx.generate_traces {
+        if ctx.generate_minimal_trace {
             *s += &format!(
                 "\tmov {}, {} /* Memory initialization: value = TRACE_ADDR */\n",
                 REG_VALUE, TRACE_ADDR
@@ -623,8 +407,19 @@ impl ZiskRom {
         }
 
         // Initialize registers to zero
+        *s += "\t/* Init registers to zero */\n";
         for r in 0..35 {
-            *s += &format!("\tmov qword ptr [reg_{}], 0 /* Init register {} */\n", r, r);
+            *s += &format!("\tmov qword ptr [reg_{}], 0\n", r);
+        }
+
+        *s += "\t/* Init fcall_context to zero */\n";
+        *s += &format!("\tlea {}, fcall_ctx /* address = fcall context */\n", REG_ADDRESS);
+        for i in 0..70 {
+            if (i == FCALL_PARAMS_CAPACITY) || (i == FCALL_RESULT_CAPACITY) {
+                *s += &format!("\tmov qword ptr [{} + {}*8], 32\n", REG_ADDRESS, i);
+            } else {
+                *s += &format!("\tmov qword ptr [{} + {}*8], 0\n", REG_ADDRESS, i);
+            }
         }
 
         // For all program addresses in the vector, create an assembly set of instructions with an
@@ -634,7 +429,7 @@ impl ZiskRom {
             ctx.pc = keys[k];
 
             // Call chunk_start the first time, for the first chunk
-            if ctx.generate_traces && k == 0 {
+            if ctx.generate_minimal_trace && k == 0 {
                 *s += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
                 *s += "\tcall chunk_start /* Call chunk_start the first time */\n";
             }
@@ -660,6 +455,14 @@ impl ZiskRom {
             // *s += &format!("\tmov rdx, pc_{}_log_len\n", ctx.pc);
             // *s += "\tsyscall\n\n";
 
+            // Update the rom histogram
+            if ctx.generate_rom_histogram {
+                let address = self.get_rom_histogram_trace_address(ctx.pc);
+                *s += "\t/* rom histogram */\n";
+                *s += &format!("\tmov {}, 0x{:08x}\n", REG_ADDRESS, address);
+                *s += &format!("\tinc qword ptr [{}]\n", REG_ADDRESS);
+            }
+
             // Set special storage destinations for a and b registers, based on operations, in order
             // to save instructions
             let zisk_op = ZiskOp::try_from_code(instruction.op).unwrap();
@@ -669,7 +472,11 @@ impl ZiskRom {
             ctx.store_b_in_b = false;
 
             match zisk_op {
-                ZiskOp::CopyB | ZiskOp::PubOut => ctx.store_b_in_c = true,
+                ZiskOp::CopyB
+                | ZiskOp::PubOut
+                | ZiskOp::FcallParam
+                | ZiskOp::Fcall
+                | ZiskOp::FcallGet => ctx.store_b_in_c = true,
                 ZiskOp::Xor
                 | ZiskOp::And
                 | ZiskOp::Or
@@ -801,7 +608,7 @@ impl ZiskRom {
                     );
 
                     // Mem reads
-                    if ctx.generate_traces {
+                    if ctx.generate_minimal_trace {
                         // If address is constant
                         if instruction.a_use_sp_imm1 == 0 {
                             // If address is constant and aligned
@@ -860,7 +667,7 @@ impl ZiskRom {
                         "\tmov {}, {} /* {} = step */\n",
                         store_a_reg, MEM_STEP, store_a_reg_name
                     );
-                    if ctx.generate_traces {
+                    if ctx.generate_minimal_trace {
                         *s += &format!(
                             "\tadd {}, chunk_size /* {} += chunk_size */\n",
                             store_a_reg, store_a_reg_name
@@ -915,7 +722,7 @@ impl ZiskRom {
                     );
 
                     // Mem reads
-                    if ctx.generate_traces {
+                    if ctx.generate_minimal_trace {
                         // If address is constant
                         if instruction.b_use_sp_imm1 == 0 {
                             // If address is constant and aligned
@@ -1028,7 +835,7 @@ impl ZiskRom {
                     }
 
                     // Store memory reads in minimal trace
-                    if ctx.generate_traces {
+                    if ctx.generate_minimal_trace {
                         match instruction.ind_width {
                             8 => {
                                 // // Check if address is aligned, i.e. it is a multiple of 8
@@ -1269,7 +1076,7 @@ impl ZiskRom {
                     }
 
                     // Mem reads
-                    if ctx.generate_traces {
+                    if ctx.generate_minimal_trace {
                         if !instruction.store_use_sp {
                             if (instruction.store_offset & 0x7) != 0 {
                                 Self::c_store_mem_not_aligned(&mut ctx, s);
@@ -1329,7 +1136,7 @@ impl ZiskRom {
                         address_is_constant && ((address_constant_value & 0x7) == 0);
 
                     // Save data in mem_reads
-                    if ctx.generate_traces {
+                    if ctx.generate_minimal_trace {
                         match instruction.ind_width {
                             8 => {
                                 // Check if address is aligned, i.e. it is a multiple of 8
@@ -1578,27 +1385,9 @@ impl ZiskRom {
                                     *s +=
                                         &format!("\tmov dil, {} /* width=1: rdi = c */\n", REG_C_B);
                                 }
-                                *s += "\tpush rax\n";
-                                *s += "\tpush rcx\n";
-                                *s += "\tpush rdx\n";
-                                // *s += "\tpush rdi\n";
-                                // *s += "\tpush rsi\n";
-                                // *s += "\tpush rsp\n";
-                                // *s += "\tpush r8\n";
-                                *s += "\tpush r9\n";
-                                *s += "\tpush r10\n";
-                                //*s += "\tpush r11\n";
+                                Self::push_internal_registers(&mut ctx, s);
                                 *s += "\tcall _print_char /* width=1: call print_char() */\n";
-                                //*s += "\tpop r11\n";
-                                *s += "\tpop r10\n";
-                                *s += "\tpop r9\n";
-                                // *s += "\tpop r8\n";
-                                // *s += "\tpop rsp\n";
-                                // *s += "\tpop rsi\n";
-                                // *s += "\tpop rdi\n";
-                                *s += "\tpop rdx\n";
-                                *s += "\tpop rcx\n";
-                                *s += "\tpop rax\n";
+                                Self::pop_internal_registers(&mut ctx, s);
                                 *s += &format!("pc_{:x}_store_c_not_uart:\n", ctx.pc);
                             }
                         }
@@ -1648,7 +1437,7 @@ impl ZiskRom {
 
             // Decrement step counter
             *s += "\t/* STEP */\n";
-            if ctx.generate_traces {
+            if ctx.generate_minimal_trace {
                 *s += &format!("\tdec {} /* decrement step_down */\n", MEM_STEP_DOWN);
                 if instruction.end {
                     *s += &format!("\tmov {}, 1 /* end = 1 */\n", MEM_END);
@@ -1746,12 +1535,7 @@ impl ZiskRom {
 
         *s += "execute_end:\n";
 
-        *s += "\tpop r15\n";
-        *s += "\tpop r14\n";
-        *s += "\tpop r13\n";
-        *s += "\tpop r12\n";
-        *s += "\tpop rbp\n";
-        *s += "\tpop rbx\n";
+        Self::pop_external_registers(&mut ctx, s);
 
         // Used only to get the last log of step
         // *s += &format!("\tpush {}\n", REG_VALUE);
@@ -1824,8 +1608,8 @@ impl ZiskRom {
             code_lines_counter += 1;
         }
 
-        if verbose {
-            println!(
+        #[cfg(debug_assertions)]
+        println!(
             "ZiskRom::save_to_asm() {} bytes, {} instructions, {:02} bytes/inst, {} map lines, {} label lines, {} comment lines, {} code lines, {:02} code lines/inst",
             s.len(),
             keys.len(),
@@ -1836,7 +1620,6 @@ impl ZiskRom {
             code_lines_counter,
             code_lines_counter as f64 / keys.len() as f64,
         );
-        }
     }
 
     fn operation_to_asm(ctx: &mut ZiskAsmContext, opcode: u8) -> String {
@@ -2799,10 +2582,11 @@ impl ZiskRom {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Keccak => {
-                s += "\tmov rdi, qword ptr [reg_10] /* rdi = A0 */\n";
+                // Use the memory address as the first and unique parameter */
+                s += "\tmov rdi, qword ptr [reg_10] /* Keccak: rdi = A0 */\n";
 
                 // Copy read data into mem_reads_address and advance it
-                if ctx.generate_traces {
+                if ctx.generate_minimal_trace {
                     s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
                     for k in 0..25 {
                         s += &format!(
@@ -2826,7 +2610,9 @@ impl ZiskRom {
                     s += &format!("\tadd {}, 25 /* mem_reads_size+=25 */\n", REG_MEM_READS_SIZE);
                 }
                 // Call the keccak function
+                Self::push_internal_registers(ctx, &mut s);
                 s += "\tcall _opcode_keccak\n";
+                Self::pop_internal_registers(ctx, &mut s);
 
                 // Set result
                 s += &format!("\tmov {}, 0 /* Keccak: c=0 */\n", REG_C);
@@ -2837,6 +2623,243 @@ impl ZiskRom {
                 assert!(ctx.store_b_in_c);
                 ctx.c.is_constant = ctx.b.is_constant;
                 ctx.c.constant_value = ctx.b.constant_value;
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Arith256 => {
+                s += "\t/* Arith256 */\n";
+
+                // Use the memory address as the first and unique parameter */
+                s += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
+
+                // Save data into mem_reads
+                if ctx.generate_minimal_trace {
+                    Self::precompiled_save_mem_reads(ctx, &mut s, 5, 3, 4);
+                }
+
+                // Call the secp256k1_add function
+                Self::push_internal_registers(ctx, &mut s);
+                s += "\tcall _opcode_arith256\n";
+                Self::pop_internal_registers(ctx, &mut s);
+
+                // Set result
+                s += &format!("\tmov {}, 0 /* c=0 */\n", REG_C);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Arith256Mod => {
+                s += "\t/* Arith256Mod */\n";
+
+                // Use the memory address as the first and unique parameter */
+                s += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
+
+                // Save data into mem_reads
+                if ctx.generate_minimal_trace {
+                    Self::precompiled_save_mem_reads(ctx, &mut s, 5, 4, 4);
+                }
+
+                // Call the secp256k1_add function
+                Self::push_internal_registers(ctx, &mut s);
+                s += "\tcall _opcode_arith256_mod\n";
+                Self::pop_internal_registers(ctx, &mut s);
+
+                // Set result
+                s += &format!("\tmov {}, 0 /* c=0 */\n", REG_C);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Secp256k1Add => {
+                s += "\t/* Secp256k1Add */\n";
+
+                // Use the memory address as the first and unique parameter */
+                s += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
+
+                // Save data into mem_reads
+                if ctx.generate_minimal_trace {
+                    Self::precompiled_save_mem_reads(ctx, &mut s, 2, 2, 8);
+                }
+
+                // Call the secp256k1_add function
+                Self::push_internal_registers(ctx, &mut s);
+                s += "\tcall _opcode_secp256k1_add\n";
+                Self::pop_internal_registers(ctx, &mut s);
+
+                // Set result
+                s += &format!("\tmov {}, 0 /* c=0 */\n", REG_C);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Secp256k1Dbl => {
+                s += "\t/* Secp256k1Dbl */\n";
+
+                // Use the memory address as the first and unique parameter */
+                s += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
+
+                // Copy read data into mem_reads
+                if ctx.generate_minimal_trace {
+                    s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
+                    for k in 0..8 {
+                        s += &format!(
+                            "\tmov {}, [{} + {}] /* value = mem[address[{}]] */\n",
+                            REG_VALUE,
+                            REG_ADDRESS,
+                            k * 8,
+                            k
+                        );
+                        s += &format!(
+                            "\tmov [{} + {}*8 + {}], {} /* mem_reads[{}] = value */\n",
+                            REG_MEM_READS_ADDRESS,
+                            REG_MEM_READS_SIZE,
+                            k * 8,
+                            REG_VALUE,
+                            k
+                        );
+                    }
+
+                    // Increment chunk.steps.mem_reads_size in 8 units
+                    s += &format!("\tadd {}, 8 /* mem_reads_size+=8 */\n", REG_MEM_READS_SIZE);
+                }
+
+                // Call the secp256k1_dbl function
+                Self::push_internal_registers(ctx, &mut s);
+                s += "\tcall _opcode_secp256k1_dbl\n";
+                Self::pop_internal_registers(ctx, &mut s);
+
+                // Set result
+                s += &format!("\tmov {}, 0 /* c=0 */\n", REG_C);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::FcallParam => {
+                assert!(ctx.store_b_in_c);
+                assert!(ctx.a.is_constant);
+                assert!(ctx.a.constant_value <= 32);
+                s += "\t/* FcallParam */\n";
+
+                if ctx.a.constant_value == 1 {
+                    // Store param in params
+                    s += &format!(
+                        "\tmov {}, qword ptr [fcall_ctx + {}*8] /* aux = params size */\n",
+                        REG_AUX, FCALL_PARAMS_SIZE
+                    );
+                    s += &format!(
+                        "\tmov qword ptr [fcall_ctx + {}*8 + {}*8], {} /* ctx.params[size] = b */\n",
+                        REG_AUX, FCALL_PARAMS, REG_C
+                    );
+                    s += &format!(
+                        "\tinc qword ptr [fcall_ctx + {}*8] /* inc ctx.params_size */\n",
+                        FCALL_PARAMS_SIZE
+                    );
+                } else {
+                    // Store params in params
+                    s += &format!(
+                        "\tmov {}, qword ptr [fcall_ctx + {}*8] /* aux = params size */\n",
+                        REG_AUX, FCALL_PARAMS_SIZE
+                    );
+                    for i in 0..ctx.a.constant_value {
+                        s += &format!(
+                            "\tmov {}, qword ptr [{} + {}*8] /* value=params[b] */\n",
+                            REG_VALUE, REG_C, i
+                        );
+
+                        s += &format!(
+                            "\tmov qword ptr [fcall_ctx + {}*8 + {}*8], {} /* params[aux] = param */\n",
+                            REG_AUX, FCALL_PARAMS, REG_VALUE
+                        );
+                        s += &format!("\tinc {} /* inc aux */\n", REG_AUX);
+                    }
+                    s += &format!(
+                        "\tmov qword ptr [fcall_ctx + {}*8], {} /* ctx.params_size = aux */\n",
+                        FCALL_PARAMS_SIZE, REG_AUX
+                    );
+                }
+
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Fcall => {
+                s += "\t/* Fcall */\n";
+
+                assert!(ctx.store_b_in_c);
+
+                // Store a (function id) in context
+                assert!(ctx.a.is_constant);
+                s += &format!(
+                    "\tmov qword ptr [fcall_ctx + {}*8], {} /* ctx.function id = a */\n",
+                    FCALL_FUNCTION_ID, ctx.a.constant_value
+                );
+
+                // Set the fcall context address as the first parameter */
+                s += "\tlea rdi, fcall_ctx /* rdi = fcall context */\n";
+
+                // Call the fcall function
+                Self::push_internal_registers(ctx, &mut s);
+                s += "\tcall _opcode_fcall\n";
+                Self::pop_internal_registers(ctx, &mut s);
+
+                // Get free input address
+                s += &format!(
+                    "\tmov {}, {} /* address=free_input */\n",
+                    REG_ADDRESS, FREE_INPUT_ADDR
+                );
+
+                // Copy ctx.result[0] or 0 into free input
+                s += &format!(
+                    "\tmov {}, qword ptr [fcall_ctx + {}*8] /* aux=ctx.result_size */\n",
+                    REG_AUX, FCALL_RESULT_SIZE
+                );
+                s += &format!("\tcmp {}, 0 /* aux vs 0 */\n", REG_AUX);
+                s += &format!("\tjz pc_{:x}_fcall_result_zero\n", ctx.pc);
+                s += &format!(
+                    "\tmov {}, qword ptr [fcall_ctx + {}*8] /* value=ctx.result[0] */\n",
+                    REG_VALUE, FCALL_RESULT
+                );
+                s += &format!("\tmov [{}], {} /* free_input=value */\n", REG_ADDRESS, REG_VALUE);
+                s += &format!("\tjmp pc_{:x}_fcall_result_done\n", ctx.pc);
+                s += &format!("pc_{:x}_fcall_result_zero:\n", ctx.pc);
+                s += &format!("\tmov qword ptr [{}], 0 /* free_input=0 */\n", REG_ADDRESS);
+                s += &format!("pc_{:x}_fcall_result_done:\n", ctx.pc);
+
+                // Update fcall counters
+                s += &format!(
+                    "\tmov qword ptr [fcall_ctx + {}*8], 0 /* ctx.params_size=0 */\n",
+                    FCALL_PARAMS_SIZE
+                );
+                s += &format!(
+                    "\tmov qword ptr [fcall_ctx + {}*8], 1 /* ctx.result_got=1 */\n",
+                    FCALL_RESULT_GOT
+                );
+
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::FcallGet => {
+                s += "\t/* FcallGet */\n";
+
+                assert!(ctx.store_b_in_c);
+
+                // Get value from fcall_ctx.result[got] and store it in free input address
+                s += &format!(
+                    "\tmov {}, qword ptr [fcall_ctx + {}*8] /* aux=ctx.result_got */\n",
+                    REG_AUX, FCALL_RESULT_GOT
+                );
+                s += &format!(
+                    "\tmov {}, qword ptr [fcall_ctx + {}*8 + {}*8] /* value=ctx.result[got] */\n",
+                    REG_VALUE, REG_AUX, FCALL_RESULT
+                );
+                s += &format!(
+                    "\tmov {}, {} /* address=free_input */\n",
+                    REG_ADDRESS, FREE_INPUT_ADDR
+                );
+                s += &format!(
+                    "\tmov qword ptr [{}], {} /* free_input=value */\n",
+                    REG_ADDRESS, REG_VALUE
+                );
+                s += &format!(
+                    "\tinc qword ptr [fcall_ctx + {}*8] /* inc ctx.result_got */\n",
+                    FCALL_RESULT_GOT
+                );
+
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -3197,5 +3220,146 @@ impl ZiskRom {
         *s += &format!("\tjb chunk_{}_address_below_threshold\n", id);
         *s += "\tcall _realloc_trace\n";
         *s += &format!("chunk_{}_address_below_threshold:\n", id);
+    }
+
+    fn push_external_registers(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        //*s += "\tpush rsp\n";
+        *s += "\tpush rbx\n";
+        *s += "\tpush rbp\n";
+        *s += "\tpush r12\n";
+        *s += "\tpush r13\n";
+        *s += "\tpush r14\n";
+        *s += "\tpush r15\n";
+    }
+
+    fn pop_external_registers(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        *s += "\tpop r15\n";
+        *s += "\tpop r14\n";
+        *s += "\tpop r13\n";
+        *s += "\tpop r12\n";
+        *s += "\tpop rbp\n";
+        *s += "\tpop rbx\n";
+        //*s += "\tpop rsp\n";
+    }
+
+    fn push_internal_registers(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        *s += "\tpush rax\n";
+        *s += "\tpush rcx\n";
+        *s += "\tpush rdx\n";
+        // *s += "\tpush rdi\n";
+        // *s += "\tpush rsi\n";
+        // *s += "\tpush rsp\n";
+        // *s += "\tpush r8\n";
+        *s += "\tpush r9\n";
+        *s += "\tpush r10\n";
+        //*s += "\tpush r11\n";
+    }
+
+    fn pop_internal_registers(_ctx: &mut ZiskAsmContext, s: &mut String) {
+        //*s += "\tpop r11\n";
+        *s += "\tpop r10\n";
+        *s += "\tpop r9\n";
+        // *s += "\tpop r8\n";
+        // *s += "\tpop rsp\n";
+        // *s += "\tpop rsi\n";
+        // *s += "\tpop rdi\n";
+        *s += "\tpop rdx\n";
+        *s += "\tpop rcx\n";
+        *s += "\tpop rax\n";
+    }
+
+    fn precompiled_save_mem_reads(
+        _ctx: &mut ZiskAsmContext,
+        s: &mut String,
+        indirections_count: u64,
+        load_count: u64,
+        load_size: u64,
+    ) {
+        // This index will be incremented as we insert data into mem_reads
+        let mut mem_reads_index: u64 = 0;
+
+        // We get a copy of the precompiled data address
+        *s += &format!("\tmov {}, rdi /* address = rdi */\n", REG_ADDRESS);
+
+        // We make 2 rounds, a first one to store the indirection addresses, and a second one to
+        // store the load data, up to load_count
+        for j in 0..2 {
+            // For every indirection
+            for i in 0..indirections_count {
+                if i >= load_count {
+                    break;
+                }
+                // Store next aligned address value in mem_reads, and advance it
+                *s += &format!(
+                    "\tmov {}, [{} + {}*8] /* value = mem[address+{}] */\n",
+                    REG_VALUE, REG_ADDRESS, i, i
+                );
+
+                // During the first iteration, store the indirectionread value in mem_reads
+                if j == 0 {
+                    *s += &format!(
+                        "\tmov [{} + {}*8 + {}*8], {} /* mem_reads[@+size*8+ind*8] = ind */\n",
+                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, mem_reads_index, REG_VALUE
+                    );
+                    mem_reads_index += 1;
+                }
+
+                // During the second iteration, store the first load_count iterations
+                // load_size elements in mem_reads
+                if j == 1 {
+                    for l in 0..load_size {
+                        *s += &format!(
+                            "\tmov {}, [{} + {}*8] /* aux = mem[ind+{}] */\n",
+                            REG_AUX, REG_VALUE, l, l
+                        );
+                        *s += &format!(
+                            "\tmov [{} + {}*8 + {}*8], {} /* mem_reads[@+size*8+ind*8] = ind */\n",
+                            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, mem_reads_index, REG_AUX
+                        );
+                        mem_reads_index += 1;
+                    }
+                }
+            }
+        }
+
+        // Increment chunk.steps.mem_reads_size
+        *s += &format!(
+            "\tadd {}, {} /* mem_reads_size+={}*/\n",
+            REG_MEM_READS_SIZE, mem_reads_index, mem_reads_index
+        );
+    }
+
+    /// This function calculates the address of the rom histogram for the provided pc
+    ///
+    /// ROM histogram structure:
+    ///
+    /// ROM trace control:
+    ///     [8B] version
+    ///     [8B] exit_code (0=success, 1=not completed)
+    ///     [8B] allocated_size = xxx (bytes)
+    ///     [8B] used_size = xxx (bytes)
+    /// BIOS histogram: (TRACE_ADDR_NUMBER)
+    ///     [8B] multiplicity_size = B
+    ///     [8B] multiplicity[0] → 4096
+    ///     [8B] multiplicity[1] → 4096 + 4
+    ///     …
+    ///     [8B] multiplicity[B-1] → 4096 + 4*(B-1)
+    /// Program histogram:
+    ///     [8B] multiplicity_size = P
+    ///     [8B] multiplicity[0] → 0x80000000
+    ///     [8B] multiplicity[1] → 0x80000000 + 1
+    ///     …
+    ///     [8B] multiplicity[P-1] → 0x80000000 + (P-1)
+    ///
+    fn get_rom_histogram_trace_address(&self, pc: u64) -> u64 {
+        assert!(self.max_bios_pc >= ROM_ENTRY);
+        assert!(self.max_bios_pc < ROM_ADDR);
+        assert!(self.max_program_pc >= ROM_ADDR);
+        assert!(self.max_program_pc <= ROM_ADDR_MAX);
+        if pc < ROM_ADDR {
+            TRACE_ADDR_NUMBER + (1 + ((pc - ROM_ENTRY) >> 2)) * 8
+        } else {
+            TRACE_ADDR_NUMBER + (1 + ((self.max_bios_pc - ROM_ENTRY) >> 2) + 1 + pc - ROM_ADDR) * 8
+        }
     }
 }

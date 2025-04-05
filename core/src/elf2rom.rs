@@ -3,7 +3,8 @@
 use crate::{
     add_end_jmp, is_elf_file,
     riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
-    RoData, ZiskInst, ZiskRom, RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
+    AsmGenerationMethod, RoData, ZiskInst, ZiskRom, RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ADDR_MAX,
+    ROM_ENTRY,
 };
 use elf::{
     abi::{SHF_EXECINSTR, SHF_WRITE, SHT_PROGBITS},
@@ -11,10 +12,10 @@ use elf::{
     ElfBytes,
 };
 use rayon::prelude::*;
-use std::error::Error;
+use std::{error::Error, path::Path};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
-pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
+pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
     // Get all data from the ELF file copied to a memory buffer
     let elf_file_path = std::path::PathBuf::from(elf_file);
     let file_data = std::fs::read(elf_file_path)?;
@@ -151,6 +152,8 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
             return Err(format!("Address out of range: {}", addr).into());
         }
     }
+    rom.max_bios_pc = max_rom_entry;
+    rom.max_program_pc = max_rom_instructions;
 
     let num_rom_entry = (max_rom_entry - ROM_ENTRY) / 4 + 1;
     let num_rom_instructions = (max_rom_instructions - ROM_ADDR) / 4 + 1;
@@ -191,25 +194,14 @@ pub fn elf2rom(elf_file: String) -> Result<ZiskRom, Box<dyn Error>> {
 /// Executes the ELF file data transpilation process into a Zisk ROM, and saves the result into a
 /// file.  The file format can be JSON, PIL-based or binary.
 pub fn elf2romfile(
-    elf_file: String,
-    rom_file: String,
-    pil_file: String,
-    bin_file: String,
-    asm_file: String,
-    verbose: bool,
+    elf_file: &Path,
+    asm_file: Option<&Path>,
+    generation_method: AsmGenerationMethod,
 ) -> Result<(), Box<dyn Error>> {
     let rom = elf2rom(elf_file)?;
-    if !rom_file.is_empty() && !rom_file.eq("none") {
-        rom.save_to_json_file(&rom_file);
-    }
-    if !pil_file.is_empty() && !pil_file.eq("none") {
-        rom.save_to_pil_file(&pil_file);
-    }
-    if !bin_file.is_empty() && !bin_file.eq("none") {
-        rom.save_to_bin_file(&bin_file);
-    }
-    if !asm_file.is_empty() && !asm_file.eq("none") {
-        rom.save_to_asm_file(&asm_file, verbose);
+
+    if let Some(asm_file) = asm_file {
+        rom.save_to_asm_file(asm_file, generation_method);
     }
     Ok(())
 }

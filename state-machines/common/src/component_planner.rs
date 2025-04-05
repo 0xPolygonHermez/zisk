@@ -5,9 +5,7 @@
 use std::any::Any;
 
 use crate::{BusDeviceMetrics, InstanceType};
-
-/// A type alias for identifying chunks in planning.
-pub type ChunkId = usize;
+use zisk_common::{ChunkId, SegmentId};
 
 /// The `CollectSkipper` struct defines logic for skipping instructions during input collection.
 ///
@@ -80,7 +78,7 @@ pub struct Plan {
     pub air_id: usize,
 
     /// The segment ID associated with this plan.
-    pub segment_id: Option<usize>,
+    pub segment_id: Option<SegmentId>,
 
     /// The type of instance associated with this plan.
     pub instance_type: InstanceType,
@@ -111,7 +109,7 @@ impl Plan {
     pub fn new(
         airgroup_id: usize,
         air_id: usize,
-        segment_id: Option<usize>,
+        segment_id: Option<SegmentId>,
         instance_type: InstanceType,
         check_point: CheckPoint,
         meta: Option<Box<dyn Any>>,

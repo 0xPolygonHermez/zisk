@@ -1,8 +1,8 @@
 use crate::Stats;
 use zisk_common::EmuTrace;
 use zisk_core::{
-    InstContext, Mem, PrecompiledInstContext, INPUT_ADDR, MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE,
-    ROM_ENTRY,
+    EmulationMode, FcallInstContext, InstContext, Mem, PrecompiledInstContext, INPUT_ADDR,
+    MAX_INPUT_SIZE, RAM_ADDR, RAM_SIZE, ROM_ENTRY,
 };
 
 /// ZisK emulator context data container, storing the state of the emulation
@@ -37,7 +37,9 @@ impl EmuContext {
                 step: 0,
                 end: false,
                 regs: [0; 32],
+                emulation_mode: EmulationMode::default(),
                 precompiled: PrecompiledInstContext::default(),
+                fcall: FcallInstContext::default(),
             },
             tracerv: Vec::new(),
             tracerv_step: 0,
@@ -52,14 +54,16 @@ impl EmuContext {
         };
 
         // Check the input data size is inside the proper range
-        if input.len() > (MAX_INPUT_SIZE - 8) as usize {
+        if input.len() > (MAX_INPUT_SIZE - 16) as usize {
             panic!("EmuContext::new() input size too big size={}", input.len());
         }
 
         // Add the length and input data read sections
         let input_len = input.len() as u64;
-        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR, &input_len.to_le_bytes());
-        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 8, &input);
+        let free_input = 0u64;
+        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR, &free_input.to_le_bytes());
+        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 8, &input_len.to_le_bytes());
+        ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 16, &input);
 
         // Add the write section
         ctx.inst_ctx.mem.add_write_section(RAM_ADDR, RAM_SIZE);

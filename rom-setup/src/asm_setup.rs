@@ -4,10 +4,11 @@ use std::{
 };
 
 use anyhow::Result;
-use zisk_core::{is_elf_file, Riscv2zisk};
+use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
 
 pub fn assembly_setup(
     elf: &PathBuf,
+    elf_hash: &str,
     zisk_path: &Path,
     output_path: &Path,
     verbose: bool,
@@ -20,9 +21,9 @@ pub fn assembly_setup(
         panic!("ROM file is not a valid ELF file");
     }
 
-    let filename = elf.file_name().unwrap().to_string_lossy().into_owned();
-
-    let base_path = output_path.join(filename);
+    let stem = elf.file_stem().unwrap().to_str().unwrap();
+    let new_filename = format!("{}-{}.tmp", stem, elf_hash);
+    let base_path = output_path.join(new_filename);
 
     let zisk_file = base_path.with_extension("asm");
     let asm_file = base_path.with_extension("bin");
@@ -30,12 +31,11 @@ pub fn assembly_setup(
     // Convert the ELF file to Zisk format and generates an assembly file
     let rv2zk = Riscv2zisk::new(
         elf_file_path.to_str().unwrap().to_string(),
-        "".to_string(),
-        "".to_string(),
-        "".to_string(),
-        zisk_file.to_str().unwrap().to_string(),
+        Some(zisk_file.to_str().unwrap().to_string()),
     );
-    rv2zk.runfile(verbose).map_err(|e| anyhow::anyhow!("Error converting elf: {}", e))?;
+    rv2zk
+        .runfile(AsmGenerationMethod::AsmMinimalTraces)
+        .map_err(|e| anyhow::anyhow!("Error converting elf: {}", e))?;
 
     let emulator_asm_path = zisk_path.join("emulator-asm");
     let emulator_asm_path = emulator_asm_path.to_str().unwrap();

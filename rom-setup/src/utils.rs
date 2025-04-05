@@ -25,6 +25,15 @@ pub fn gen_elf_hash(
     Ok(result)
 }
 
+pub fn get_elf_data_hash(elf_path: &Path) -> Result<String> {
+    let elf_data =
+        fs::read(elf_path).with_context(|| format!("Error reading ELF file: {:?}", elf_path))?;
+
+    let hash = blake3::hash(&elf_data).to_hex().to_string();
+
+    Ok(hash)
+}
+
 pub fn get_elf_bin_file_path(
     elf_path: &Path,
     default_cache_path: &Path,
@@ -35,6 +44,21 @@ pub fn get_elf_bin_file_path(
 
     let hash = blake3::hash(&elf_data).to_hex().to_string();
 
+    get_elf_bin_file_path_with_hash(elf_path, &hash, default_cache_path, blowup_factor)
+}
+
+pub fn get_elf_bin_file_path_with_hash(
+    elf_path: &Path,
+    hash: &str,
+    default_cache_path: &Path,
+    blowup_factor: u64,
+) -> Result<PathBuf> {
+    if !elf_path.is_file() {
+        return Err(anyhow::anyhow!(
+            "Error: The specified ROM path is not a file: {}",
+            elf_path.display()
+        ));
+    }
     let pilout_hash = PILOUT_HASH;
 
     let n = RomRomTrace::<usize>::NUM_ROWS;
