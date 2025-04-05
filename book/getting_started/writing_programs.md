@@ -305,7 +305,7 @@ Running a Zisk proof with multiple processes enables efficient workload distribu
 
 The total memory requirement increases proportionally with the number of processes. If each process requires approximately 25GB of memory, running P processes will require roughly (25 * P)GB of memory. Ensure that the system has sufficient available memory to accommodate all running processes.
 
-### GPU proof generation
+### GPU Proof Generation
 
 Zisk proofs can also be generated using GPUs to significantly improve performance and scalability. 
 Follow these steps to enable GPU support:

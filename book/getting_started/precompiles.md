@@ -12,18 +12,12 @@ Typically, precompiles are used to patch third-party crates that implement these
 
 You can see [here](https://github.com/0xPolygonHermez/zisk-patch-tiny-keccak/tree/zisk) an example of the patched `tiny-keccak` crate.
 
-## Supported Precompiles
-
-⚠️ Currently, ZisK only supports the keccak precompile, but work is underway to introduce additional cryptographic primitives, including:
-- Secp256k1 group operations.
-- BN254 group operations.
-- SHA2-256.
-
 ### Available Precompiles in ZisK
 
-```rust
-extern "C" {
-    pub fn syscall_keccak_f(state: *mut [u64; 25]);
-}
-```
-- `syscall_keccak_f`: Executes a Keccak permutation function on a 25-element state array.
+Below is a summary of the precompiles currently available in ZisK:
+
+- [syscall_keccak_f](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/keccakf.rs): Executes a Keccak permutation function.
+- [syscall_arith25](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/arith256.rs): Executes a 256-bit multiplication and addition.
+- [syscall_arith256_mod](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/arith256_mod.rs): Executes a modular 256-bit multiplication and addition.
+- [secp256k1_add](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/secp256k1_add.rs): Executes the addition of two points on the Secp256k1 curve.
+- [secp256k1_dbl](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/secp256k1_dbl.rs): Executes the doubling of a point on the Secp256k1 curve.
