@@ -236,7 +236,12 @@ In this command:
 * `-e` (`--elf`) specifies the ELF file localtion.
 * `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
 
-The program setup files will be generated in the `cache` directory located at `$HOME/.zisk`
+The program setup files will be generated in the `cache` directory located at `$HOME/.zisk`.
+
+To clean the `cache` directory content, use the following command:
+```bash
+cargo-zisk clean
+```
 
 ### Verify Constraints
 
