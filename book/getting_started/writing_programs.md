@@ -233,7 +233,7 @@ cargo-zisk rom-setup -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher 
 ```
 In this command:
 
-* `-e` (`--elf`) specifies the ELF file localtion.
+* `-e` (`--elf`) specifies the ELF file location.
 * `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
 
 The program setup files will be generated in the `cache` directory located at `$HOME/.zisk`.
@@ -252,7 +252,7 @@ cargo-zisk verify-constraints -e target/riscv64ima-polygon-ziskos-elf/release/sh
 ```
 In this command:
 
-* `-e` (`--elf`) specifies the ELF file localtion.
+* `-e` (`--elf`) specifies the ELF file location.
 * `-i` (`--input`) specifies the input file location.
 * `-w` (`--witness`) specifies the location of the witness library. This is optional and defaults to `$HOME/.zisk/bin/libzisk_witness.so`.
 * `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
@@ -267,14 +267,14 @@ If everything is correct, you will see an output similar to:
 
 ### Generate Proof
 
-To generate a proof, run following command:
+To generate a proof, run the following command:
 
 ```bash
 cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
 ```
 In this command:
 
-* `-e` (`--elf`) specifies the ELF file localtion.
+* `-e` (`--elf`) specifies the ELF file location.
 * `-i` (`--input`) specifies the input file location.
 * `-w` (`--witness`) specifies the location of the witness library. This is optional and defaults to `$HOME/.zisk/bin/libzisk_witness.so`.
 * `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
@@ -317,13 +317,15 @@ Follow these steps to enable GPU support:
 
 1. GPU support is only available for NVIDIA GPUs.
 
+2. Make sure the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) is installed.
+
 2. Build Zisk with GPU support enabled. 
     GPU support must be enabled at compile time. Follow the instructions in the **Build ZisK** section under **Option 2: Building from source** in the [Installation](./installation.md) guide, but replace the build command with:
     ```bash
     cargo build --release --features gpu
     ```
 
-3. Build Zisk on the target GPU server.
+3. Build Zisk on the target GPU server. 
     It is recommended to compile Zisk directly on the server where it will be executed. The binary will be optimized for the local GPU architecture, which can lead to better runtime performance.
 
 You can combine GPU-based execution with concurrent proof generation using multiple processes, as described in the **Concurrent Proof Generation** section. For better performance in this setup, it is recommended to enable [NVIDIA’s Multi-Process Service (MPS)](https://docs.nvidia.com/deploy/mps/index.html). You can activate it by running:
@@ -332,7 +334,6 @@ nvidia-cuda-mps-control -d
 ```
 
 > **Note:** GPU memory is typically more limited than CPU memory. When combining GPU execution with concurrent proof generation, ensure that each process has sufficient memory available on the GPU to avoid out-of-memory errors.
-
 
 ### Verify Proof
 
