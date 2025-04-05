@@ -319,13 +319,13 @@ Follow these steps to enable GPU support:
 
 2. Make sure the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) is installed.
 
-2. Build Zisk with GPU support enabled. 
+3. Build Zisk with GPU support enabled. 
     GPU support must be enabled at compile time. Follow the instructions in the **Build ZisK** section under **Option 2: Building from source** in the [Installation](./installation.md) guide, but replace the build command with:
     ```bash
     cargo build --release --features gpu
     ```
 
-3. Build Zisk on the target GPU server. 
+4. Build Zisk on the target GPU server. 
     It is recommended to compile Zisk directly on the server where it will be executed. The binary will be optimized for the local GPU architecture, which can lead to better runtime performance.
 
 You can combine GPU-based execution with concurrent proof generation using multiple processes, as described in the **Concurrent Proof Generation** section. For better performance in this setup, it is recommended to enable [NVIDIA’s Multi-Process Service (MPS)](https://docs.nvidia.com/deploy/mps/index.html). You can activate it by running:
