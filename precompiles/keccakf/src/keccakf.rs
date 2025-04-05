@@ -94,86 +94,130 @@ impl KeccakfSM {
         let mut inputs_bits: Vec<KeccakfInput> =
             vec![[0u64; INPUT_DATA_SIZE_BITS]; self.num_available_slots];
 
+        let mut trace_slice = &mut trace.buffer[1..];
+        let mut par_traces = Vec::new();
+
+        let mut inputs_bits_slice = &mut inputs_bits[0..];
+        let mut par_inputs_bits = Vec::new();
+
+        let num_filled_slots = inputs.len().div_ceil(Self::NUM_KECCAKF_PER_SLOT);
+        for _ in 0..num_filled_slots {
+            let take = self.slot_size.min(trace_slice.len());
+            let (head, tail) = trace_slice.split_at_mut(take);
+            par_traces.push(head);
+            trace_slice = tail;
+
+            // let take = self.slot_size.min(inputs_bits_slice.len());
+            let (head, tail) = inputs_bits_slice.split_at_mut(1);
+            par_inputs_bits.push(head);
+            inputs_bits_slice = tail;
+        }
+
         // Process the inputs
         let initial_offset = num_rows_constants;
         let input_offset = Self::BLOCKS_PER_SLOT / BITS_IN_PARALLEL_KECCAKF; // Length of the input data
-        inputs.iter().enumerate().for_each(|(i, input)| {
-            let input_data = ExtOperationData::OperationKeccakData(*input);
 
-            // Get the basic data from the input
-            let step_received = OperationBusData::get_a(&input_data);
-            let addr_received = OperationBusData::get_b(&input_data);
+        par_traces.into_par_iter().zip(par_inputs_bits).enumerate().for_each(
+            |(slot_idx, (par_trace, par_input_bits))| {
+                let inputs = &inputs[slot_idx * Self::NUM_KECCAKF_PER_SLOT
+                    ..inputs
+                        .len()
+                        .min(slot_idx * Self::NUM_KECCAKF_PER_SLOT + Self::NUM_KECCAKF_PER_SLOT)];
+                let global_idx = initial_offset + slot_idx * self.slot_size;
 
-            // Get the raw keccakf input as 25 u64 values
-            let keccakf_input: [u64; 25] =
-                OperationBusData::get_extra_data(&input_data).try_into().unwrap();
+                inputs.iter().enumerate().for_each(|(slot_pos, input)| {
+                    let input_data = ExtOperationData::OperationKeccakData(*input);
 
-            let slot = i / Self::NUM_KECCAKF_PER_SLOT;
-            let slot_pos = i % Self::NUM_KECCAKF_PER_SLOT;
-            let slot_offset = slot * self.slot_size;
+                    // Get the basic data from the input
+                    let step_received = OperationBusData::get_a(&input_data);
+                    let addr_received = OperationBusData::get_b(&input_data);
 
-            // Update the multiplicity for the input
-            let initial_pos = initial_offset + slot_offset + slot_pos;
-            trace[initial_pos].multiplicity = F::ONE; // The pair (step_received, addr_received) is unique each time, so its multiplicity is 1
+                    // Get the raw keccakf input as 25 u64 values
+                    let keccakf_input: [u64; 25] =
+                        OperationBusData::get_extra_data(&input_data).try_into().unwrap();
 
-            // Process the keccakf input
-            keccakf_input.iter().enumerate().for_each(|(j, &value)| {
-                let chunk_offset = j * Self::RB_SIZE;
-                let pos = initial_pos + chunk_offset;
+                    // Update the multiplicity for the input
+                    let initial_pos = slot_pos; // initial_offset + slot_offset + slot_pos;
 
-                // At the beginning of each 64-bit chunk, we set the step and address
-                trace[pos].step = F::from_u64(step_received);
-                trace[pos].addr = F::from_u64(addr_received + 8 * j as u64);
-                trace[pos].is_val = F::ONE;
+                    par_trace[initial_pos].multiplicity = F::ONE; // The pair (step_received, addr_received) is unique each time, so its multiplicity is 1
 
-                // Process the 64-bit chunk
-                for k in 0..64 {
-                    // Divide the value in bits:
-                    //    (slot i) [0b1011,  0b0011,  0b1000,  0b0010]
-                    //    (slot i) [1,1,0,1, 1,1,0,0, 0,0,0,1, 0,0,1,0]
-                    let bit_pos = k + 64 * j;
-                    let old_value = inputs_bits[slot][bit_pos];
-                    let new_bit = (value >> k) & 1;
-                    inputs_bits[slot][bit_pos] = (new_bit << slot_pos) | old_value;
+                    // Process the keccakf input
+                    keccakf_input.iter().enumerate().for_each(|(j, &value)| {
+                        let chunk_offset = j * Self::RB_SIZE;
+                        let pos = initial_pos + chunk_offset;
 
-                    // We update bit[i] and val[i]
-                    let bit_pos = k % BITS_IN_PARALLEL_KECCAKF;
-                    let bit_offset =
-                        (k - bit_pos) * Self::NUM_KECCAKF_PER_SLOT / BITS_IN_PARALLEL_KECCAKF;
-                    update_bit_val(fixed, trace, pos + bit_offset, new_bit, slot_pos, bit_pos);
-                }
-            });
+                        // At the beginning of each 64-bit chunk, we set the step and address
+                        par_trace[pos].step = F::from_u64(step_received);
+                        par_trace[pos].addr = F::from_u64(addr_received + 8 * j as u64);
+                        par_trace[pos].is_val = F::ONE;
 
-            // Apply the keccakf function and get the output
-            let mut keccakf_output = keccakf_input;
-            keccakf(&mut keccakf_output);
+                        // Process the 64-bit chunk
+                        for k in 0..64 {
+                            // Divide the value in bits:
+                            //    (slot i) [0b1011,  0b0011,  0b1000,  0b0010]
+                            //    (slot i) [1,1,0,1, 1,1,0,0, 0,0,0,1, 0,0,1,0]
+                            let bit_pos = k + 64 * j;
+                            let old_value = par_input_bits[0][bit_pos];
+                            let new_bit = (value >> k) & 1;
+                            par_input_bits[0][bit_pos] = (new_bit << slot_pos) | old_value;
 
-            // Process the output
-            keccakf_output.iter().enumerate().for_each(|(j, &value)| {
-                let chunk_offset = j * Self::RB_SIZE;
-                let pos = initial_pos + input_offset + chunk_offset;
+                            // We update bit[i] and val[i]
+                            let bit_pos = k % BITS_IN_PARALLEL_KECCAKF;
+                            let bit_offset = (k - bit_pos) * Self::NUM_KECCAKF_PER_SLOT
+                                / BITS_IN_PARALLEL_KECCAKF;
+                            update_bit_val_row(
+                                fixed,
+                                par_trace,
+                                pos + bit_offset,
+                                global_idx,
+                                new_bit,
+                                slot_pos,
+                                bit_pos,
+                            );
+                        }
+                    });
 
-                // At the beginning of each 64-bit chunk, we set the step and address
-                trace[pos].step = F::from_u64(step_received);
-                trace[pos].addr = F::from_u64(addr_received + 8 * j as u64);
-                trace[pos].is_val = F::ONE;
+                    // Apply the keccakf function and get the output
+                    let mut keccakf_output = keccakf_input;
+                    keccakf(&mut keccakf_output);
 
-                // Process the 64-bit chunk
-                for k in 0..64 {
-                    // We update bit[i] and val[i]
-                    let new_bit = (value >> k) & 1;
-                    let bit_pos = k % BITS_IN_PARALLEL_KECCAKF;
-                    let bit_offset =
-                        (k - bit_pos) * Self::NUM_KECCAKF_PER_SLOT / BITS_IN_PARALLEL_KECCAKF;
-                    update_bit_val(fixed, trace, pos + bit_offset, new_bit, slot_pos, bit_pos);
-                }
-            });
+                    // Process the output
+                    keccakf_output.iter().enumerate().for_each(|(j, &value)| {
+                        let chunk_offset = j * Self::RB_SIZE;
+                        let pos = initial_pos + input_offset + chunk_offset;
 
-            // At the end of the outputs, we set the next step and address for the constraints to be satisfied
-            let final_pos = initial_pos + input_offset + (keccakf_output.len() - 1) * Self::RB_SIZE;
-            trace[final_pos + Self::RB_SIZE].step = trace[final_pos].step;
-            trace[final_pos + Self::RB_SIZE].addr = trace[final_pos].addr
-        });
+                        // At the beginning of each 64-bit chunk, we set the step and address
+                        par_trace[pos].step = F::from_u64(step_received);
+                        par_trace[pos].addr = F::from_u64(addr_received + 8 * j as u64);
+                        par_trace[pos].is_val = F::ONE;
+
+                        // Process the 64-bit chunk
+                        for k in 0..64 {
+                            // We update bit[i] and val[i]
+                            let new_bit = (value >> k) & 1;
+                            let bit_pos = k % BITS_IN_PARALLEL_KECCAKF;
+                            let bit_offset = (k - bit_pos) * Self::NUM_KECCAKF_PER_SLOT
+                                / BITS_IN_PARALLEL_KECCAKF;
+                            update_bit_val_row(
+                                fixed,
+                                par_trace,
+                                pos + bit_offset,
+                                global_idx,
+                                new_bit,
+                                slot_pos,
+                                bit_pos,
+                            );
+                        }
+                    });
+
+                    // At the end of the outputs, we set the next step and address for the constraints to be satisfied
+                    let final_pos =
+                        initial_pos + input_offset + (keccakf_output.len() - 1) * Self::RB_SIZE;
+                    par_trace[final_pos + Self::RB_SIZE].step = par_trace[final_pos].step;
+                    par_trace[final_pos + Self::RB_SIZE].addr = par_trace[final_pos].addr
+                });
+            },
+        );
 
         // It the number of inputs is less than the available keccakfs, we need to fill the remaining inputs
         if num_inputs < self.num_available_keccakfs {
@@ -243,7 +287,7 @@ impl KeccakfSM {
 
         let row0 = trace.buffer[0];
 
-        let mut trace_slice = &mut trace.buffer[1..];
+        let mut trace_slice = &mut trace.buffer[num_rows_constants..];
         let mut par_traces = Vec::new();
 
         for _ in 0..inputs_bits.len() {
@@ -379,7 +423,7 @@ impl KeccakfSM {
             }
 
             // Update the multiplicity table for the slot
-            for k in 0..self.slot_size {
+            (0..self.slot_size).into_par_iter().for_each(|k| {
                 let a = par_trace[k].free_in_a;
                 let b = par_trace[k].free_in_b;
                 let gate_op = fixed[k + 1 + i * self.slot_size].GATE_OP;
@@ -394,7 +438,7 @@ impl KeccakfSM {
                     let table_row = KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val);
                     self.keccakf_table_sm.update_input(table_row, 1);
                 }
-            }
+            });
         });
 
         fn update_bit_val<F: PrimeField64>(
@@ -407,6 +451,23 @@ impl KeccakfSM {
         ) {
             trace[pos].bit[bit_pos] = F::from_u64(new_bit);
             trace[pos + 1].val[bit_pos] = if fixed[pos].latch_num_keccakf == F::ZERO {
+                trace[pos].val[bit_pos] + F::from_u64(new_bit << slot_pos)
+            } else {
+                F::from_u64(new_bit << slot_pos)
+            };
+        }
+
+        fn update_bit_val_row<F: PrimeField64>(
+            fixed: &KeccakfFixed<F>,
+            trace: &mut [KeccakfTraceRow<F>],
+            pos: usize,
+            xxx: usize,
+            new_bit: u64,
+            slot_pos: usize,
+            bit_pos: usize,
+        ) {
+            trace[pos].bit[bit_pos] = F::from_u64(new_bit);
+            trace[pos + 1].val[bit_pos] = if fixed[pos + xxx].latch_num_keccakf == F::ZERO {
                 trace[pos].val[bit_pos] + F::from_u64(new_bit << slot_pos)
             } else {
                 F::from_u64(new_bit << slot_pos)
