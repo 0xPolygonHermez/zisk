@@ -1,7 +1,7 @@
 /// Converts a byte to 8 individual bits (LSB first)
 pub fn byte_to_bits(byte: u8, bits: &mut [u8; 8]) {
-    for i in 0..8 {
-        bits[i] = (byte >> i) & 1;
+    for (i, bit) in bits.iter_mut().enumerate() {
+        *bit = (byte >> i) & 1;
     }
 }
 

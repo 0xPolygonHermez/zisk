@@ -23,6 +23,12 @@ pub enum GateOperation {
     Add = 7,  // Add(a,b,c) := a + b + c
 }
 
+impl Default for Gate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Gate {
     pub fn new() -> Self {
         // Default gate is XOR(0,0), where 0 is externally set

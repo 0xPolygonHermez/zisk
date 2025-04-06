@@ -3,39 +3,37 @@ use circuit::{GateConfig, GateState, PinId};
 use super::{keccak_f::keccak_f, KeccakInput, BITRATE};
 
 // Keccak Configuration
-pub static KECCAK_GATE_CONFIG: GateConfig = GateConfig {
-    zero_ref: 0,
-    slot_size: 155286,
-    max_refs: 160000,
-    first_next_ref: 1,
-    sin_ref0: 61,
-    sin_ref_group_by: 2,
-    sin_ref_number: 1600,
-    sin_ref_distance: 60,
-    sout_ref0: 61 + 1600 * 30,
-    sout_ref_group_by: 2,
-    sout_ref_number: 1600,
-    sout_ref_distance: 60,
-    pol_length: 1 << 22,
-};
+pub static KECCAK_GATE_CONFIG: GateConfig = GateConfig::with_values(
+    0,
+    155286,
+    160000,
+    1,
+    61,
+    2,
+    1600,
+    60,
+    61 + 1600 * 30,
+    2,
+    1600,
+    60,
+    1 << 22,
+);
 
 // Main Keccak function
 // Input is a buffer of any length, including 0
 // Output is a 256 bits long buffer
 pub fn keccak(input: &[u8], output: &mut [u8; 32]) {
     let mut input_state = KeccakInput::new(input);
-    println!("Input: {:?}", input_state);
     let mut state = GateState::new(KECCAK_GATE_CONFIG.clone());
     let mut r = [0u8; BITRATE];
     while input_state.get_next_bits(&mut r) {
-        println!("Input bits: {:?}", r);
         // Copy input bits to the state
         let mut ref_idx = 0;
         for (i, &bit) in r.iter().enumerate() {
             let rel_pos = i % KECCAK_GATE_CONFIG.sin_ref_group_by as usize;
             // let ref_idx = KECCAK_GATE_CONFIG.sin_ref0 + i as u64 * KECCAK_GATE_CONFIG.sin_ref_distance;
             ref_idx = if rel_pos == 0 {
-                KECCAK_GATE_CONFIG.sin_ref0
+                KECCAK_GATE_CONFIG.sin_first_ref
                     + i as u64 * KECCAK_GATE_CONFIG.sin_ref_distance
                         / KECCAK_GATE_CONFIG.sin_ref_group_by as u64
             } else {
@@ -45,7 +43,10 @@ pub fn keccak(input: &[u8], output: &mut [u8; 32]) {
         }
 
         keccak_f(&mut state);
-        state.print_counters();
+
+        #[cfg(debug_assertions)]
+        state.print_circuit_topology();
+
         state.copy_sout_to_sin_and_reset_refs();
     }
 
@@ -55,8 +56,7 @@ pub fn keccak(input: &[u8], output: &mut [u8; 32]) {
 // Unit tests
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use circuit::{GateConfig, GateState};
+    use super::keccak;
 
     #[test]
     fn test_empty_input() {

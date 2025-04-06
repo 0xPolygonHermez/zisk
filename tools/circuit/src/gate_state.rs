@@ -32,7 +32,7 @@ impl GateState {
         // Preallocate vectors with appropriate sizes
         let sin_refs = vec![0; gate_config.sin_ref_number as usize];
         let sout_refs = vec![0; gate_config.sout_ref_number as usize];
-        let gates = vec![Gate::new(); gate_config.max_refs as usize];
+        let gates = vec![Gate::default(); gate_config.max_refs as usize];
 
         let mut state = Self {
             gate_config,
@@ -62,28 +62,24 @@ impl GateState {
 
         // Initialize SinRefs
         for i in 0..self.gate_config.sin_ref_number {
-            let rel_dis = i % self.gate_config.sin_ref_group_by;
-            self.sin_refs[i as usize] = if rel_dis == 0 {
-                self.gate_config.sin_ref0
-                    + self.gate_config.sin_ref_distance * i / self.gate_config.sin_ref_group_by
-            } else {
-                self.sin_refs[(i - 1) as usize] + rel_dis
-            };
+            let group = i / self.gate_config.sin_ref_group_by;
+            let group_pos = i % self.gate_config.sin_ref_group_by;
+            self.sin_refs[i as usize] = self.gate_config.sin_first_ref
+                + group * self.gate_config.sin_ref_distance
+                + group_pos;
         }
 
         // Initialize SoutRefs
         for i in 0..self.gate_config.sout_ref_number {
-            let rel_dis = i % self.gate_config.sout_ref_group_by;
-            self.sout_refs[i as usize] = if rel_dis == 0 {
-                self.gate_config.sout_ref0
-                    + self.gate_config.sout_ref_distance * i / self.gate_config.sin_ref_group_by
-            } else {
-                self.sout_refs[(i - 1) as usize] + rel_dis
-            };
+            let group = i / self.gate_config.sout_ref_group_by;
+            let group_pos = i % self.gate_config.sout_ref_group_by;
+            self.sout_refs[i as usize] = self.gate_config.sout_first_ref
+                + group * self.gate_config.sout_ref_distance
+                + group_pos;
         }
 
         // Calculate the next reference (the first free slot)
-        self.next_ref = self.gate_config.first_next_ref;
+        self.next_ref = self.gate_config.first_usable_ref;
 
         // Reset counters
         self.xors = 0;
@@ -106,15 +102,12 @@ impl GateState {
     pub fn set_rin(&mut self, p_rin: &[u8]) {
         assert!(self.gate_config.sin_ref_number >= BITRATE);
 
-        let mut ref_idx = 0;
         for i in 0..BITRATE {
-            let rel_dis = i % self.gate_config.sin_ref_group_by;
-            ref_idx = if rel_dis == 0 {
-                self.gate_config.sin_ref0
-                    + self.gate_config.sin_ref_distance * i / self.gate_config.sin_ref_group_by
-            } else {
-                ref_idx + rel_dis
-            };
+            let group = i / self.gate_config.sin_ref_group_by;
+            let group_pos = i % self.gate_config.sin_ref_group_by;
+            let ref_idx = self.gate_config.sin_first_ref
+                + group * self.gate_config.sin_ref_distance
+                + group_pos;
             self.gates[ref_idx as usize].pins[PinId::B].bit = p_rin[i as usize];
             self.gates[ref_idx as usize].pins[PinId::B].source = PinSource::External;
         }
@@ -124,15 +117,12 @@ impl GateState {
     pub fn mix_rin(&mut self) {
         assert!(self.gate_config.sin_ref_number >= BITRATE);
 
-        let mut ref_idx = 0;
         for i in 0..BITRATE {
-            let rel_dis = i % self.gate_config.sin_ref_group_by;
-            ref_idx = if rel_dis == 0 {
-                self.gate_config.sin_ref0
-                    + self.gate_config.sin_ref_distance * i / self.gate_config.sin_ref_group_by
-            } else {
-                ref_idx + rel_dis
-            };
+            let group = i / self.gate_config.sin_ref_group_by;
+            let group_pos = i % self.gate_config.sin_ref_group_by;
+            let ref_idx = self.gate_config.sin_first_ref
+                + group * self.gate_config.sin_ref_distance
+                + group_pos;
             self.xor(ref_idx, PinId::A, ref_idx, PinId::B, ref_idx);
         }
     }
@@ -145,19 +135,14 @@ impl GateState {
             self.gate_config.sin_ref_number
         );
 
-        let mut ref_idx = 0;
         for i in 0..32 {
             let mut bytes = [0u8; 8];
             for j in 0..8 {
-                // let ref_idx = self.gate_config.sin_ref0 + (i * 8 + j) * self.gate_config.sin_ref_distance;
-                let rel_dis = (i * 8 + j) % self.gate_config.sin_ref_group_by;
-                ref_idx = if rel_dis == 0 {
-                    self.gate_config.sin_ref0
-                        + self.gate_config.sin_ref_distance * (i * 8 + j)
-                            / self.gate_config.sin_ref_group_by
-                } else {
-                    ref_idx + rel_dis
-                };
+                let group = (i * 8 + j) / self.gate_config.sin_ref_group_by;
+                let group_pos = (i * 8 + j) % self.gate_config.sin_ref_group_by;
+                let ref_idx = self.gate_config.sin_first_ref
+                    + group * self.gate_config.sin_ref_distance
+                    + group_pos;
                 bytes[j as usize] = self.gates[ref_idx as usize].pins[PinId::A].bit;
             }
             bits_to_byte(&bytes, &mut p_output[i as usize]);
@@ -171,38 +156,33 @@ impl GateState {
         let result = self.next_ref;
         self.next_ref += 1;
         loop {
-            // Skip ZeroRef
+            // Skip constant-filled gates
             if self.next_ref == self.gate_config.zero_ref {
                 self.next_ref += 1;
                 continue;
             }
 
-            // Skip Sin gates
-            if (self.next_ref >= self.gate_config.sin_ref0)
-                && (self.next_ref
-                    <= self.gate_config.sin_ref0
-                        + (self.gate_config.sin_ref_number - self.gate_config.sin_ref_group_by)
-                            * self.gate_config.sin_ref_distance
-                            / self.gate_config.sin_ref_group_by
-                        + (self.gate_config.sin_ref_group_by - 1))
-                && ((self.next_ref - self.gate_config.sin_ref0) % self.gate_config.sin_ref_distance
-                    < self.gate_config.sin_ref_group_by)
+            // Skip input gates
+            let sin_ref0 = self.gate_config.sin_first_ref;
+            let sin_ref_distance = self.gate_config.sin_ref_distance;
+            let sin_ref_group_by = self.gate_config.sin_ref_group_by;
+            let sin_last_ref = self.gate_config.sin_last_ref;
+            if (self.next_ref >= sin_ref0)
+                && (self.next_ref <= sin_last_ref)
+                && ((self.next_ref - sin_ref0) % sin_ref_distance < sin_ref_group_by)
             {
                 self.next_ref += 1;
                 continue;
             }
 
-            // Skip Sout gates
-            if (self.next_ref >= self.gate_config.sout_ref0)
-                && (self.next_ref
-                    <= self.gate_config.sout_ref0
-                        + (self.gate_config.sout_ref_number - self.gate_config.sout_ref_group_by)
-                            * self.gate_config.sout_ref_distance
-                            / self.gate_config.sout_ref_group_by
-                        + (self.gate_config.sout_ref_group_by - 1))
-                && ((self.next_ref - self.gate_config.sout_ref0)
-                    % self.gate_config.sout_ref_distance
-                    < self.gate_config.sout_ref_group_by)
+            // Skip output gates
+            let sout_ref0 = self.gate_config.sout_first_ref;
+            let sout_ref_distance = self.gate_config.sout_ref_distance;
+            let sout_ref_group_by = self.gate_config.sout_ref_group_by;
+            let sout_last_ref = self.gate_config.sout_last_ref;
+            if (self.next_ref >= sout_ref0)
+                && (self.next_ref <= sout_last_ref)
+                && ((self.next_ref - sout_ref0) % sout_ref_distance < sout_ref_group_by)
             {
                 self.next_ref += 1;
                 continue;
@@ -240,15 +220,12 @@ impl GateState {
         self.reset_bits_and_counters();
 
         // Restore to Sin
-        let mut idx = 0;
         for i in 0..self.gate_config.sin_ref_number {
-            let rel_dis = i % self.gate_config.sin_ref_group_by;
-            idx = if rel_dis == 0 {
-                self.gate_config.sin_ref0
-                    + self.gate_config.sin_ref_distance * i / self.gate_config.sin_ref_group_by
-            } else {
-                idx + rel_dis
-            };
+            let group = i / self.gate_config.sin_ref_group_by;
+            let group_pos = i % self.gate_config.sin_ref_group_by;
+            let idx = self.gate_config.sin_first_ref
+                + group * self.gate_config.sin_ref_distance
+                + group_pos;
 
             self.gates[idx as usize].pins[PinId::A].bit = local_sout[i as usize];
         }
@@ -287,7 +264,7 @@ impl GateState {
         self.gates[ref_c as usize].pins[PinId::B].wired_pin_id = pin_b;
         self.gates[ref_c as usize].pins[PinId::B].bit = self.gates[ref_b as usize].pins[pin_b].bit;
 
-        // Update output R
+        // Update output C
         self.gates[ref_c as usize].pins[PinId::C].source = PinSource::Gated;
         self.gates[ref_c as usize].pins[PinId::C].wired_ref = ref_c;
 
@@ -342,7 +319,7 @@ impl GateState {
                 self.adds += 1;
             }
             _ => {
-                panic!("GateState::op() called with unknown operation");
+                panic!("op called with unknown operation");
             }
         }
 
@@ -378,22 +355,45 @@ impl GateState {
     }
 
     /// Prints operation statistics (development purposes)
-    pub fn print_counters(&self) {
+    pub fn print_circuit_topology(&self) {
+        println!("Number of gates: {}", self.gate_config.max_refs - 1);
+        println!("Number of inputs: {}", self.gate_config.sin_ref_number);
+        println!("Number of outputs: {}\n", self.gate_config.sout_ref_number);
+
         let total_operations =
             self.xors + self.ors + self.andps + self.ands + self.chs + self.majs + self.adds;
         let total_f = total_operations as f64;
 
         println!("Operation statistics:");
         println!("==========================");
-        println!("\txors      = {} = {:.2}%", self.xors, (self.xors as f64 * 100.0) / total_f);
-        println!("\tors       = {} = {:.2}%", self.ors, (self.ors as f64 * 100.0) / total_f);
-        println!("\tandps     = {} = {:.2}%", self.andps, (self.andps as f64 * 100.0) / total_f);
-        println!("\tands      = {} = {:.2}%", self.ands, (self.ands as f64 * 100.0) / total_f);
-        println!("\tchs       = {} = {:.2}%", self.chs, (self.chs as f64 * 100.0) / total_f);
-        println!("\tmajs      = {} = {:.2}%", self.majs, (self.majs as f64 * 100.0) / total_f);
-        println!("\tadds      = {} = {:.2}%", self.adds, (self.adds as f64 * 100.0) / total_f);
+        if self.xors > 0 {
+            println!("   xors      = {} = {:.2}%", self.xors, (self.xors as f64 * 100.0) / total_f);
+        }
+        if self.ors > 0 {
+            println!("   ors       = {} = {:.2}%", self.ors, (self.ors as f64 * 100.0) / total_f);
+        }
+        if self.andps > 0 {
+            println!(
+                "   andps     = {} = {:.2}%",
+                self.andps,
+                (self.andps as f64 * 100.0) / total_f
+            );
+        }
+        if self.ands > 0 {
+            println!("   ands      = {} = {:.2}%", self.ands, (self.ands as f64 * 100.0) / total_f);
+        }
+        if self.chs > 0 {
+            println!("   chs       = {} = {:.2}%", self.chs, (self.chs as f64 * 100.0) / total_f);
+        }
+        if self.majs > 0 {
+            println!("   majs      = {} = {:.2}%", self.majs, (self.majs as f64 * 100.0) / total_f);
+        }
+        if self.adds > 0 {
+            println!("   adds      = {} = {:.2}%", self.adds, (self.adds as f64 * 100.0) / total_f);
+        }
+        println!("--------------------------");
+        println!("   Total     = {}", total_operations);
         println!("==========================");
-        println!("Total       = {} = 100.00%", total_operations);
     }
 
     /// Prints reference bits (development purposes)
