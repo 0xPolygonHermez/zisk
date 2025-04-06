@@ -29,8 +29,7 @@ pub fn keccak_f_rho(s: &mut GateState) {
         // Process all z bits at current (x,y) position
         for z in 0..64 {
             // Calculate source z position with mod 64 arithmetic
-            let shift = ((t + 1) * (t + 2)) / 2;
-            let src_z = (z + 64 - (shift % 64)) % 64;
+            let src_z = (z + 64 - (offset % 64)) % 64;
             let src_pos = bit_position(x, y, src_z);
             let dst_pos = bit_position(x, y, z);
 

@@ -128,7 +128,7 @@ impl GateState {
     }
 
     // Get 32-bytes output from SinRef0
-    pub fn get_output(&self, p_output: &mut [u8]) {
+    pub fn get_output(&self, output: &mut [u8]) {
         assert!(
             self.gate_config.sin_ref_number >= 32 * 8,
             "get_output called with insufficient sin_ref_number: {} < 256",
@@ -145,7 +145,7 @@ impl GateState {
                     + group_pos;
                 bytes[j as usize] = self.gates[ref_idx as usize].pins[PinId::A].bit;
             }
-            bits_to_byte(&bytes, &mut p_output[i as usize]);
+            bits_to_byte(&bytes, &mut output[i as usize]);
         }
     }
 
@@ -344,6 +344,10 @@ impl GateState {
 
     pub fn xor_res(&mut self, ref_a: u64, ref_b: u64, ref_c: u64) {
         self.xor(ref_a, PinId::C, ref_b, PinId::C, ref_c);
+    }
+
+    pub fn and(&mut self, ref_a: u64, pin_a: PinId, ref_b: u64, pin_b: PinId, ref_c: u64) {
+        self.op(GateOperation::And, ref_a, pin_a, ref_b, pin_b, ref_c);
     }
 
     pub fn andp(&mut self, ref_a: u64, pin_a: PinId, ref_b: u64, pin_b: PinId, ref_c: u64) {

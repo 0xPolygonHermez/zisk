@@ -3,11 +3,11 @@ use circuit::{GateConfig, GateState, PinId};
 use super::{keccak_f::keccak_f, KeccakInput, BITRATE};
 
 // Keccak Configuration
+#[rustfmt::skip]
 pub static KECCAK_GATE_CONFIG: GateConfig = GateConfig::with_values(
-    0,
     155286,
     160000,
-    1,
+    0,
     61,
     2,
     1600,
@@ -16,7 +16,6 @@ pub static KECCAK_GATE_CONFIG: GateConfig = GateConfig::with_values(
     2,
     1600,
     60,
-    1 << 22,
 );
 
 // Main Keccak function
@@ -28,17 +27,12 @@ pub fn keccak(input: &[u8], output: &mut [u8; 32]) {
     let mut r = [0u8; BITRATE];
     while input_state.get_next_bits(&mut r) {
         // Copy input bits to the state
-        let mut ref_idx = 0;
         for (i, &bit) in r.iter().enumerate() {
-            let rel_pos = i % KECCAK_GATE_CONFIG.sin_ref_group_by as usize;
-            // let ref_idx = KECCAK_GATE_CONFIG.sin_ref0 + i as u64 * KECCAK_GATE_CONFIG.sin_ref_distance;
-            ref_idx = if rel_pos == 0 {
-                KECCAK_GATE_CONFIG.sin_first_ref
-                    + i as u64 * KECCAK_GATE_CONFIG.sin_ref_distance
-                        / KECCAK_GATE_CONFIG.sin_ref_group_by as u64
-            } else {
-                ref_idx + rel_pos as u64
-            };
+            let group = i as u64 / KECCAK_GATE_CONFIG.sin_ref_group_by;
+            let group_pos = i as u64 % KECCAK_GATE_CONFIG.sin_ref_group_by;
+            let ref_idx = KECCAK_GATE_CONFIG.sin_first_ref
+                + group * KECCAK_GATE_CONFIG.sin_ref_distance
+                + group_pos;
             state.gates[ref_idx as usize].pins[PinId::A].bit ^= bit;
         }
 
@@ -53,7 +47,6 @@ pub fn keccak(input: &[u8], output: &mut [u8; 32]) {
     state.get_output(output);
 }
 
-// Unit tests
 #[cfg(test)]
 mod tests {
     use super::keccak;
