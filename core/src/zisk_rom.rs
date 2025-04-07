@@ -3286,16 +3286,13 @@ impl ZiskRom {
         for j in 0..2 {
             // For every indirection
             for i in 0..indirections_count {
-                if i >= load_count {
-                    break;
-                }
                 // Store next aligned address value in mem_reads, and advance it
                 *s += &format!(
                     "\tmov {}, [{} + {}*8] /* value = mem[address+{}] */\n",
                     REG_VALUE, REG_ADDRESS, i, i
                 );
 
-                // During the first iteration, store the indirectionread value in mem_reads
+                // During the first iteration, store the indirection read value in mem_reads
                 if j == 0 {
                     *s += &format!(
                         "\tmov [{} + {}*8 + {}*8], {} /* mem_reads[@+size*8+ind*8] = ind */\n",
@@ -3307,6 +3304,12 @@ impl ZiskRom {
                 // During the second iteration, store the first load_count iterations
                 // load_size elements in mem_reads
                 if j == 1 {
+                    // Only store the first load_count indirections
+                    if i >= load_count {
+                        break;
+                    }
+
+                    // For each chunk of the indirection, store it in mem_reads
                     for l in 0..load_size {
                         *s += &format!(
                             "\tmov {}, [{} + {}*8] /* aux = mem[ind+{}] */\n",

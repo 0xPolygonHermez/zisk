@@ -197,7 +197,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             ..EmuOptions::default()
         };
 
-        let min_traces = ZiskEmulator::compute_minimal_traces::<F>(
+        let min_traces = ZiskEmulator::compute_minimal_traces(
             &self.zisk_rom,
             &input_data,
             &emu_options,
