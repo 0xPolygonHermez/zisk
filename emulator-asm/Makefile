@@ -19,7 +19,6 @@ all: $(OUT_PATH)
 # Main target
 $(OUT_PATH): $(EMU_PATH) src/main.c src/chfast/keccak.c
 	@TMPDIR=$$(mktemp -d /tmp/ziskemu_build_XXXXXX) && \
-	echo "Using temp build dir: $$TMPDIR" && \
 	as $(ASMFLAGS) -o $$TMPDIR/emu.o $(EMU_PATH) && \
 	gcc $(CFLAGS) src/main.c src/chfast/keccak.c -lc $$TMPDIR/emu.o -lc ../lib-c/c/lib/libziskc.a -lgmp -lstdc++ -lgmpxx -o $$TMPDIR/ziskemu_bin && \
 	mkdir -p $(OUT_DIR) && \
