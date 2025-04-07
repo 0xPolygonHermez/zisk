@@ -1226,36 +1226,36 @@ void log_trace(void)
 
         // Log current chunk start state
         printf("\tStart state:\n");
-        printf("\t\tpc=0x%lx:\n", chunk[i]);
+        printf("\t\tpc=0x%lx\n", chunk[i]);
         i++;
-        printf("\t\tsp=0x%lx:\n", chunk[i]);
+        printf("\t\tsp=0x%lx\n", chunk[i]);
         i++;
-        printf("\t\tc=0x%lx:\n", chunk[i]);
+        printf("\t\tc=0x%lx\n", chunk[i]);
         i++;
-        printf("\t\tstep=%ld:\n", chunk[i]);
+        printf("\t\tstep=%ld\n", chunk[i]);
         i++;
         for (uint64_t r=1; r<34; r++)
         {
-            printf("\t\tregister[%ld]=0x%ld:\n", r, chunk[i]);
+            printf("\t\tregister[%ld]=0x%lx\n", r, chunk[i]);
             i++;
         }
 
         // Log current chunk last state
         printf("\tLast state:\n");
-        printf("\t\tc=0x%lx:\n", chunk[i]);
+        printf("\t\tc=0x%lx\n", chunk[i]);
         i++;
         
         // Log current chunk end
         printf("\tEnd:\n");
-        printf("\t\tend=%ld:\n", chunk[i]);
+        printf("\t\tend=%ld\n", chunk[i]);
         i++;
 
         // Log current chunk steps
         printf("\tSteps:\n");
-        printf("\t\tsteps=%ld:\n", chunk[i]);
+        printf("\t\tsteps=%ld\n", chunk[i]);
         i++;
         uint64_t mem_reads_size = chunk[i];
-        printf("\t\tmem_reads_size=%ld:\n", mem_reads_size);
+        printf("\t\tmem_reads_size=%ld\n", mem_reads_size);
         i++;
         if (mem_reads_size > 10000000)
         {
@@ -1266,7 +1266,7 @@ void log_trace(void)
         {
             for (uint64_t m=0; m<mem_reads_size; m++)
             {
-                printf("\t\tchunk[%ld].mem_reads[%ld]=%08lx:\n", c, m, chunk[i]);
+                printf("\t\tchunk[%ld].mem_reads[%ld]=%08lx\n", c, m, chunk[i]);
                 i++;
             }
         }
