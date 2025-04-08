@@ -1184,7 +1184,7 @@ impl<'a> Emu<'a> {
         callback: Option<impl Fn(EmuTrace)>,
     ) {
         // Context, where the state of the execution is stored and modified at every execution step
-        self.ctx = self.create_emu_context(inputs.clone());
+        self.ctx = self.create_emu_context(inputs);
 
         // Check that callback is provided if trace_steps is specified
         if options.trace_steps.is_some() {
@@ -1216,7 +1216,7 @@ impl<'a> Emu<'a> {
         if options.generate_minimal_traces {
             let par_emu_options =
                 ParEmuOptions { num_steps: 1024 * 1024, num_threads: 1, thread_id: 0 };
-            let minimal_trace = self.run_gen_trace(inputs, options, &par_emu_options);
+            let minimal_trace = self.run_gen_trace(options, &par_emu_options);
 
             for (c, chunk) in minimal_trace.iter().enumerate() {
                 println!("Chunk {}:", c);
@@ -1378,13 +1378,9 @@ impl<'a> Emu<'a> {
     /// Run the whole program
     pub fn run_gen_trace(
         &mut self,
-        inputs: Vec<u8>,
         options: &EmuOptions,
         par_options: &ParEmuOptions,
     ) -> Vec<EmuTrace> {
-        // Context, where the state of the execution is stored and modified at every execution step
-        self.ctx = self.create_emu_context(inputs);
-
         // Init pc to the rom entry address
         self.ctx.trace.start_state.pc = ROM_ENTRY;
 
