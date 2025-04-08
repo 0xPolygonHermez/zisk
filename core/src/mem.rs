@@ -47,7 +47,7 @@
 //! * The first instructions do the basic program setup, including writing the input data into
 //!   memory, configuring the ecall (system call) program address, and configuring the program
 //!   completion return address.
-//! * After the program set1, the program counter jumps to `ROM_ADDR`, executing the actual program.
+//! * After the program setup, the program counter jumps to `ROM_ADDR`, executing the actual program.
 //! * During the execution, the program can make system calls that will jump to the configured ecall
 //!   program address, and return once the task has completed. The precompiled are implemented via
 //!   ecall.
@@ -77,7 +77,7 @@
 //! * The second RW memory region going from `OUTPUT_ADDR` to `AVAILABLE_MEM_ADDR` is reserved to
 //!   copy the output data during the program execution.
 //! * The third RW memory region going from `AVAILABLE_MEM_ADDR` onwards can be used during the
-//!   program execution a general purpose memory.
+//!   program execution as a general purpose memory.
 
 use crate::{M16, M3, M32, M8, REG_FIRST, REG_LAST};
 use core::fmt;
@@ -88,7 +88,7 @@ pub const INPUT_ADDR: u64 = 0x90000000;
 pub const MAX_INPUT_SIZE: u64 = 0x08000000; // 128M,
 /// Free input data memory address = first input address
 pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
-/// First globa RW memory address
+/// First global RW memory address
 pub const RAM_ADDR: u64 = 0xa0000000;
 /// Size of the global RW memory
 pub const RAM_SIZE: u64 = 0x08000000; // 128M
