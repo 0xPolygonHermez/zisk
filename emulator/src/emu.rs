@@ -1218,16 +1218,14 @@ impl<'a> Emu<'a> {
                 ParEmuOptions { num_steps: 1024 * 1024, num_threads: 1, thread_id: 0 };
             let minimal_trace = self.run_gen_trace(inputs, options, &par_emu_options);
 
-            for c in 0..minimal_trace.len() {
+            for (c, chunk) in minimal_trace.iter().enumerate() {
                 println!("Chunk {}:", c);
-                let chunk = minimal_trace[c].clone();
                 println!("\tStart state:");
                 println!("\t\tpc=0x{:x}", chunk.start_state.pc);
                 println!("\t\tsp=0x{:x}", chunk.start_state.sp);
                 println!("\t\tc=0x{:x}", chunk.start_state.c);
                 println!("\t\tstep={}", chunk.start_state.step);
-                for i in 1..32 {
-                    // TODO: 34
+                for i in 1..chunk.start_state.regs.len() {
                     println!("\t\tregister[{}]=0x{:x}", i, chunk.start_state.regs[i]);
                 }
                 println!("\tLast state:");

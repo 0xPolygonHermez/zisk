@@ -88,7 +88,7 @@ pub struct InstContext {
     pub end: bool,
 
     /// Registers
-    pub regs: [u64; 32],
+    pub regs: [u64; 34],
 
     /// Precompiled emulation mode
     pub emulation_mode: EmulationMode,
@@ -114,7 +114,7 @@ impl InstContext {
             pc: ROM_ENTRY,
             step: 0,
             end: false,
-            regs: [0; 32],
+            regs: [0; 34],
             emulation_mode: EmulationMode::default(),
             precompiled: PrecompiledInstContext::default(),
             fcall: FcallInstContext::default(),

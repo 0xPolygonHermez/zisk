@@ -105,8 +105,8 @@ impl AsmOutputChunkC {
         // Advance the pointer after reading memory reads
         *mapped_ptr = unsafe { (*mapped_ptr as *mut u64).add(mem_reads_len) as *mut c_void };
 
-        let mut registers = [0u64; 32];
-        registers[1..].copy_from_slice(&chunk.registers[..31]);
+        let mut registers = [0u64; 34];
+        registers[1..].copy_from_slice(&chunk.registers[..33]);
 
         // Return the parsed OutputChunk
         EmuTrace {
