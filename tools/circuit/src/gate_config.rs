@@ -37,6 +37,8 @@ impl GateConfig {
         sout_ref_number: u64,
         sout_ref_distance: u64,
     ) -> Self {
+        assert!(max_refs >= gate_number);
+
         let sin_last_ref = sin_first_ref
             + (sin_ref_number - sin_ref_group_by) * sin_ref_distance / sin_ref_group_by
             + (sin_ref_group_by - 1);
@@ -72,8 +74,7 @@ impl GateConfig {
 
             break;
         }
-        assert!(first_usable_ref < max_refs);
-
+        assert!(first_usable_ref <= max_refs);
 
         Self {
             gate_number,

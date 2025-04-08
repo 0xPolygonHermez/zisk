@@ -154,6 +154,8 @@ impl GateState {
         assert!(self.next_ref < self.gate_config.max_refs);
 
         let result = self.next_ref;
+
+        // Update next reference for the next call
         self.next_ref += 1;
         loop {
             // Skip constant-filled gates
@@ -191,7 +193,6 @@ impl GateState {
             break;
         }
 
-        assert!(self.next_ref < self.gate_config.max_refs);
         result
     }
 
@@ -360,7 +361,6 @@ impl GateState {
 
     /// Prints operation statistics (development purposes)
     pub fn print_circuit_topology(&self) {
-        println!("Number of gates: {}", self.gate_config.max_refs - 1);
         println!("Number of inputs: {}", self.gate_config.sin_ref_number);
         println!("Number of outputs: {}\n", self.gate_config.sout_ref_number);
 
@@ -368,7 +368,7 @@ impl GateState {
             self.xors + self.ors + self.andps + self.ands + self.chs + self.majs + self.adds;
         let total_f = total_operations as f64;
 
-        println!("Operation statistics:");
+        println!("Gates statistics:");
         println!("==========================");
         if self.xors > 0 {
             println!("   xors      = {} = {:.2}%", self.xors, (self.xors as f64 * 100.0) / total_f);
