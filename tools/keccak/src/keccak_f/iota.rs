@@ -32,11 +32,11 @@ pub fn keccak_f_iota(s: &mut GateState, ir: u64) {
         match KECCAK_F_RC[ir as usize][z as usize] {
             1 => {
                 // XOR with zeroRef's pin_b
-                s.xor(s.gate_config.zero_ref, PinId::B, s.sout_refs[pos], PinId::C, aux);
+                s.xor(s.gate_config.zero_ref.unwrap(), PinId::B, s.sout_refs[pos], PinId::C, aux);
             }
             _ => {
                 // XOR with zeroRef's pin_a
-                s.xor(s.gate_config.zero_ref, PinId::A, s.sout_refs[pos], PinId::C, aux);
+                s.xor(s.gate_config.zero_ref.unwrap(), PinId::A, s.sout_refs[pos], PinId::C, aux);
             }
         }
 
