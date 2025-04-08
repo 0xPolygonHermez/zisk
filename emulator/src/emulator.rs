@@ -177,7 +177,7 @@ impl ZiskEmulator {
     /// First phase of the witness computation
     /// 8 threads in waterfall (# threads to be re-calibrated after memory reads refactor)
     /// Must be fast
-    pub fn compute_minimal_traces<F: PrimeField>(
+    pub fn compute_minimal_traces(
         rom: &ZiskRom,
         inputs: &[u8],
         options: &EmuOptions,
@@ -191,7 +191,7 @@ impl ZiskEmulator {
 
             // Run the emulation
             let mut emu = Emu::new(rom);
-            let result = emu.par_run::<F>(inputs.to_owned(), options, &par_emu_options);
+            let result = emu.par_run(inputs.to_owned(), options, &par_emu_options);
 
             if !emu.terminated() {
                 panic!("Emulation did not complete");
