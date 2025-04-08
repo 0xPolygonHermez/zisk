@@ -2,6 +2,7 @@ use crate::{EmuTrace, EmuTraceStart};
 use libc::shm_unlink;
 use std::ffi::{c_void, CString};
 use std::fmt::Debug;
+use zisk_core::{REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO, REGS_IN_MAIN_TOTAL_NUMBER};
 
 #[derive(Debug)]
 pub struct AsmMinimalTraces {
@@ -105,8 +106,8 @@ impl AsmOutputChunkC {
         // Advance the pointer after reading memory reads
         *mapped_ptr = unsafe { (*mapped_ptr as *mut u64).add(mem_reads_len) as *mut c_void };
 
-        let mut registers = [0u64; 34];
-        registers[1..].copy_from_slice(&chunk.registers[..33]);
+        let mut registers = [0u64; REGS_IN_MAIN_TOTAL_NUMBER];
+        registers[REGS_IN_MAIN_FROM..].copy_from_slice(&chunk.registers[..REGS_IN_MAIN_TO]);
 
         // Return the parsed OutputChunk
         EmuTrace {

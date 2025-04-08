@@ -4,7 +4,7 @@
 //! * The state includes: memory, registers (a, b, c, flag, sp), program counter (pc), step and a
 //!   flag to mark the end of the program execution.
 
-use crate::{Mem, ROM_ENTRY};
+use crate::{Mem, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY};
 
 /// Zisk precompiled
 #[derive(Debug, Default)]
@@ -88,7 +88,7 @@ pub struct InstContext {
     pub end: bool,
 
     /// Registers
-    pub regs: [u64; 34],
+    pub regs: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
 
     /// Precompiled emulation mode
     pub emulation_mode: EmulationMode,
@@ -114,7 +114,7 @@ impl InstContext {
             pc: ROM_ENTRY,
             step: 0,
             end: false,
-            regs: [0; 34],
+            regs: [0; REGS_IN_MAIN_TOTAL_NUMBER],
             emulation_mode: EmulationMode::default(),
             precompiled: PrecompiledInstContext::default(),
             fcall: FcallInstContext::default(),

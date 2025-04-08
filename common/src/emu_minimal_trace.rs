@@ -2,6 +2,8 @@
 
 use std::fmt::{Debug, Formatter};
 
+use zisk_core::REGS_IN_MAIN_TOTAL_NUMBER;
+
 /// Trace data at the beginning of the program execution: pc, sp, c and step.
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -15,12 +17,12 @@ pub struct EmuTraceStart {
     /// Value of the step
     pub step: u64,
     /// Value of the registers
-    pub regs: [u64; 34],
+    pub regs: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
 }
 
 impl Default for EmuTraceStart {
     fn default() -> EmuTraceStart {
-        EmuTraceStart { pc: 0, sp: 0, c: 0, step: 0, regs: [0; 34] }
+        EmuTraceStart { pc: 0, sp: 0, c: 0, step: 0, regs: [0; REGS_IN_MAIN_TOTAL_NUMBER] }
     }
 }
 
