@@ -1213,6 +1213,34 @@ impl<'a> Emu<'a> {
         if options.is_fast() {
             return self.run_fast(options);
         }
+        if options.generate_minimal_traces {
+            let par_emu_options =
+                ParEmuOptions { num_steps: 1024 * 1024, num_threads: 1, thread_id: 0 };
+            let minimal_trace = self.run_gen_trace(options, &par_emu_options);
+
+            for (c, chunk) in minimal_trace.iter().enumerate() {
+                println!("Chunk {}:", c);
+                println!("\tStart state:");
+                println!("\t\tpc=0x{:x}", chunk.start_state.pc);
+                println!("\t\tsp=0x{:x}", chunk.start_state.sp);
+                println!("\t\tc=0x{:x}", chunk.start_state.c);
+                println!("\t\tstep={}", chunk.start_state.step);
+                for i in 1..chunk.start_state.regs.len() {
+                    println!("\t\tregister[{}]=0x{:x}", i, chunk.start_state.regs[i]);
+                }
+                println!("\tLast state:");
+                println!("\t\tc=0x{:x}", chunk.last_c);
+                println!("\tEnd:");
+                println!("\t\tend={}", if chunk.end { 1 } else { 0 });
+                println!("\tSteps:");
+                println!("\t\tsteps={}", chunk.steps);
+                println!("\t\tmem_reads_size={}", chunk.mem_reads.len());
+                for i in 0..chunk.mem_reads.len() {
+                    println!("\t\tchunk[{}].mem_reads[{}]={:08x}", c, i, chunk.mem_reads[i]);
+                }
+            }
+            return;
+        }
         //println!("Emu::run() full-equipe");
 
         // Store the stats option into the emulator context
@@ -1291,7 +1319,7 @@ impl<'a> Emu<'a> {
     }
 
     /// Run the whole program
-    pub fn par_run<F: PrimeField>(
+    pub fn par_run(
         &mut self,
         inputs: Vec<u8>,
         options: &EmuOptions,
@@ -1335,11 +1363,57 @@ impl<'a> Emu<'a> {
                         end: false,
                     });
                 }
-                self.par_step_my_block::<F>(emu_traces.last_mut().unwrap());
+
+                self.par_step_my_block(emu_traces.last_mut().unwrap());
 
                 if self.ctx.inst_ctx.step >= options.max_steps {
                     panic!("Emu::par_run() reached max_steps");
                 }
+            }
+        }
+
+        emu_traces
+    }
+
+    /// Run the whole program
+    pub fn run_gen_trace(
+        &mut self,
+        options: &EmuOptions,
+        par_options: &ParEmuOptions,
+    ) -> Vec<EmuTrace> {
+        // Init pc to the rom entry address
+        self.ctx.trace.start_state.pc = ROM_ENTRY;
+
+        // Store the stats option into the emulator context
+        self.ctx.do_stats = options.stats;
+
+        // Set emulation mode
+        self.ctx.inst_ctx.emulation_mode = EmulationMode::GenerateMemReads;
+
+        let mut emu_traces = Vec::new();
+
+        while !self.ctx.inst_ctx.end {
+            // Check if is the first step of a new block
+            if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
+                emu_traces.push(EmuTrace {
+                    start_state: EmuTraceStart {
+                        pc: self.ctx.inst_ctx.pc,
+                        sp: self.ctx.inst_ctx.sp,
+                        c: self.ctx.inst_ctx.c,
+                        step: self.ctx.inst_ctx.step,
+                        regs: self.ctx.inst_ctx.regs,
+                    },
+                    last_c: 0,
+                    steps: 0,
+                    mem_reads: Vec::with_capacity(par_options.num_steps),
+                    end: false,
+                });
+            }
+
+            self.par_step_my_block(emu_traces.last_mut().unwrap());
+
+            if self.ctx.inst_ctx.step >= options.max_steps {
+                panic!("Emu::par_run() reached max_steps");
             }
         }
 
@@ -1454,7 +1528,7 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn par_step_my_block<F: PrimeField>(&mut self, emu_full_trace_vec: &mut EmuTrace) {
+    pub fn par_step_my_block(&mut self, emu_full_trace_vec: &mut EmuTrace) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
         // Build the 'a' register value  based on the source specified by the current instruction
         self.source_a_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);

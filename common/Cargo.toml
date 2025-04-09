@@ -9,3 +9,4 @@ categories = { workspace = true }
 
 [dependencies]
 libc = "0.2"
+zisk-core = { path = "../core" }

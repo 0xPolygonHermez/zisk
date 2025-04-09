@@ -115,6 +115,7 @@ pub const REG_T4: u64 = REG_X29; // Temporary register 4
 pub const REG_T5: u64 = REG_X30; // Temporary register 5
 pub const REG_T6: u64 = REG_X31; // Temporary register 6
 
-pub const REGS_IN_MAIN_FROM: usize = 1;
-pub const REGS_IN_MAIN_TO: usize = 31;
+pub const REGS_IN_MAIN_FROM: usize = 1; // First non-zero register in main trace
+pub const REGS_IN_MAIN_TO: usize = 31; // Last non-zero register in main trace
 pub const REGS_IN_MAIN: usize = REGS_IN_MAIN_TO - REGS_IN_MAIN_FROM + 1;
+pub const REGS_IN_MAIN_TOTAL_NUMBER: usize = 32; // Total number of registers in main, including the zero register
