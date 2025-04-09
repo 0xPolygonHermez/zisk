@@ -81,9 +81,11 @@ fi
 
 # List cherry picks
 log_info "List of cherry picks to apply:"
-exec_git \
-    "git log --oneline --no-decorate --reverse ${FROM_VERSION}..HEAD" \
-    "Failed to list cherry picks"
+commits_array=($(git log --oneline --no-decorate --reverse ${FROM_VERSION}..HEAD 2>&1))
+if [[ $? -ne 0 ]]; then
+    log_err "Failed to list cherry picks: ${commits_array}"
+    exit 1
+fi
 # Store the list of cherry-pick commits to apply in an array
 commits_array=$(exec_git \
     "git log --oneline --no-decorate --reverse ${FROM_VERSION}..HEAD" \
