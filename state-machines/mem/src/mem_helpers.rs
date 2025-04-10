@@ -1,24 +1,50 @@
 use crate::{
-    MemAlignResponse, MEMORY_LOAD_OP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS,
-    MEM_STEPS_BY_MAIN_STEP, MEM_STEP_BASE, RAM_W_ADDR_INIT, STEP_MEMORY_MAX_DIFF,
+    MemAlignResponse, CHUNK_SIZE_STEPS, MEMORY_LOAD_OP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK,
+    MEM_BYTES_BITS, MEM_STEPS_BY_MAIN_STEP, MEM_STEP_BASE, RAM_W_ADDR_INIT, STEP_MEMORY_MAX_DIFF,
 };
+use sm_common::ChunkId;
 use std::fmt;
 use zisk_core::RAM_ADDR;
 pub struct MemHelpers {}
 
 impl MemHelpers {
+    #[inline(always)]
     pub fn main_step_to_mem_step(step: u64, slot: u8) -> u64 {
         MEM_STEP_BASE + MEM_STEPS_BY_MAIN_STEP * step + slot as u64
     }
+    #[inline(always)]
     pub fn main_step_to_precompiled_mem_step(step: u64, is_write: bool) -> u64 {
         MEM_STEP_BASE + MEM_STEPS_BY_MAIN_STEP * step + if is_write { 3 } else { 2 }
     }
+    #[inline(always)]
+    pub fn mem_step_to_chunk(step: u64) -> ChunkId {
+        (step / (CHUNK_SIZE_STEPS as u64)) as ChunkId
+    }
+    #[inline(always)]
+    pub fn first_chunk_mem_step(chunk: ChunkId) -> u64 {
+        (chunk as u64) * (CHUNK_SIZE_STEPS as u64) + MEM_STEP_BASE
+    }
+    #[inline(always)]
+    pub fn last_chunk_mem_step(chunk: ChunkId, is_write: bool) -> u64 {
+        (chunk as u64) * (CHUNK_SIZE_STEPS as u64) + MEM_STEP_BASE + CHUNK_SIZE_STEPS as u64
+            - if is_write { 1 } else { 2 }
+    }
+    #[inline(always)]
+    pub fn max_distance_between_chunks(from_chunk: ChunkId, to_chunk: ChunkId) -> u64 {
+        let from_step = MemHelpers::first_chunk_mem_step(from_chunk);
+        let to_step = MemHelpers::last_chunk_mem_step(to_chunk, true);
+        return to_step - from_step;
+    }
+
+    #[inline(always)]
     pub fn is_aligned(addr: u32, width: u8) -> bool {
         (addr & MEM_ADDR_ALIGN_MASK) == 0 && width == 8
     }
+    #[inline(always)]
     pub fn get_addr_w(addr: u32) -> u32 {
         addr >> MEM_BYTES_BITS
     }
+    #[inline(always)]
     pub fn get_addr(addr_w: u32) -> u32 {
         addr_w << MEM_BYTES_BITS
     }
@@ -186,6 +212,31 @@ impl MemHelpers {
     pub fn main_step_to_mem_step(step: u64, step_offset: u8) -> u64 {
         MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + step_offset as u64
     }*/
+
+    #[inline(always)]
+    pub fn get_distance_by_chunks(from_step: u64, to_step: u64) -> u64 {
+        let from_chunk = Self::mem_step_to_chunk(from_step);
+        let to_chunk = Self::mem_step_to_chunk(to_step);
+        Self::max_distance_between_chunks(from_chunk, to_chunk)
+    }
+    #[inline(always)]
+    pub fn get_intermediate_rows(last_step: u64, step: u64) -> Option<(u64, u64)> {
+        let distance_by_chunks = Self::get_distance_by_chunks(last_step, step);
+        if distance_by_chunks > STEP_MEMORY_MAX_DIFF {
+            let intermediate_rows = distance_by_chunks / STEP_MEMORY_MAX_DIFF;
+            let distance_by_steps = step - last_step;
+            let distance_with_intermediates = intermediate_rows * STEP_MEMORY_MAX_DIFF as u64;
+            if distance_by_steps < distance_with_intermediates {
+                // exists an unncessary intermediate row, but needed to obtains same results
+                // as counters, last step is zero
+                Some((intermediate_rows - 1, 1))
+            } else {
+                Some((intermediate_rows, 0))
+            }
+        } else {
+            None
+        }
+    }
 }
 impl fmt::Debug for MemAlignResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

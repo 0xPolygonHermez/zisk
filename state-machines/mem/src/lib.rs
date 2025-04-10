@@ -6,6 +6,9 @@ mod mem_align_rom_sm;
 mod mem_align_sm;
 mod mem_constants;
 mod mem_counters;
+mod mem_counters_cursor;
+#[cfg(feature = "debug_mem")]
+mod mem_debug;
 mod mem_helpers;
 mod mem_inputs;
 mod mem_module;
@@ -13,10 +16,8 @@ mod mem_module_instance;
 mod mem_module_planner;
 mod mem_planner;
 mod mem_sm;
+mod mem_test;
 mod rom_data_sm;
-
-#[cfg(feature = "debug_mem")]
-mod mem_debug;
 
 use input_data_sm::*;
 pub use mem::*;
@@ -26,6 +27,7 @@ use mem_align_rom_sm::*;
 use mem_align_sm::*;
 pub use mem_constants::*;
 use mem_counters::*;
+use mem_counters_cursor::*;
 pub use mem_helpers::*;
 use mem_inputs::*;
 use mem_module::*;

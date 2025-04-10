@@ -1,6 +1,6 @@
 use crate::{
     MemHelpers, MemInput, MemModule, MemModuleSegmentCheckPoint, MemPreviousSegment,
-    STEP_MEMORY_MAX_DIFF,
+    CHUNK_MAX_DISTANCE, STEP_MEMORY_MAX_DIFF,
 };
 use data_bus::{BusDevice, BusId, MemBusData, PayloadType, MEM_BUS_ID};
 use p3_field::PrimeField;
@@ -16,7 +16,7 @@ pub struct MemModuleInstance<F: PrimeField> {
 
     module: Arc<dyn MemModule<F>>,
 
-    mem_check_point: MemModuleSegmentCheckPoint,
+    check_point: MemModuleSegmentCheckPoint,
     min_addr: u32,
     #[allow(dead_code)]
     max_addr: u32,
@@ -86,7 +86,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
         Self {
             ictx,
             module: module.clone(),
-            mem_check_point,
+            check_point: mem_check_point,
             min_addr,
             max_addr,
             limited_step_distance,
@@ -119,7 +119,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
         mem_check_point: MemModuleSegmentCheckPoint,
         last_value: &mut MemLastValue,
     ) -> MemPreviousSegment {
-        let mut last_step = mem_check_point.prev_step;
+        let mut last_step = last_value.step;
         #[cfg(feature = "debug_mem")]
         let initial = (inputs[0].addr, inputs[0].step, inputs.len());
 
@@ -141,22 +141,32 @@ impl<F: PrimeField> MemModuleInstance<F> {
 
             loop {
                 // we interested only in segment addr, but we need to check
-                // if there are intermidate accesses
+                // if there are intermediate accesses
 
-                while self.limited_step_distance
-                    && inputs[input_index].addr == mem_check_point.prev_addr
-                    && (inputs[input_index].step - last_step) > STEP_MEMORY_MAX_DIFF
+                if self.limited_step_distance
+                    && inputs[input_index].addr == mem_check_point.reference_addr
                     && skipped_rows < check_point_skip_rows as usize
                 {
-                    // we skip an intermediate row
-                    last_step += STEP_MEMORY_MAX_DIFF;
-                    skipped_rows += 1;
+                    if let Some((full_rows, zero_row)) =
+                        MemHelpers::get_intermediate_rows(last_step, inputs[input_index].step)
+                    {
+                        let total_rows = full_rows + zero_row;
+                        let pending_skips = check_point_skip_rows as u64 - skipped_rows as u64;
+                        if full_rows <= pending_skips {
+                            last_step += full_rows * STEP_MEMORY_MAX_DIFF;
+                            skipped_rows += total_rows as usize;
+                        } else {
+                            // max value of pending_skips is full_rows - 1, this implies that
+                            // pending_skips are full rows.
+                            last_step += pending_skips as u64 * STEP_MEMORY_MAX_DIFF;
+                            skipped_rows += pending_skips as usize;
+                        }
+                    }
                 }
                 if skipped_rows >= check_point_skip_rows as usize {
                     break;
                 }
 
-                assert_eq!(mem_check_point.prev_addr, inputs[input_index].addr);
                 last_step = inputs[input_index].step;
                 last_value.set(inputs[input_index].value, inputs[input_index].addr, last_step);
                 input_index += 1;
@@ -188,7 +198,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
             self.mem_check_point.last_step,
         );
         MemPreviousSegment {
-            addr: mem_check_point.prev_addr,
+            addr: mem_check_point.reference_addr,
             step: last_step,
             value: last_value.value,
         }
@@ -230,14 +240,14 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         // Additionally, it computes the necessary information for memory continuations.
         let prev_segment = self.fit_inputs_and_get_prev_segment(
             &mut inputs,
-            self.mem_check_point.clone(),
+            self.check_point.clone(),
             &mut last_value,
         );
 
         // Extract segment id from instance context
         let segment_id = self.ictx.plan.segment_id.unwrap();
 
-        let is_last_segment = self.mem_check_point.is_last_segment;
+        let is_last_segment = self.check_point.is_last_segment;
         Some(self.module.compute_witness(&inputs, segment_id, is_last_segment, &prev_segment))
     }
 
@@ -250,7 +260,7 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
         Some(Box::new(MemModuleCollector::new(
-            self.mem_check_point.clone(),
+            self.check_point.clone(),
             self.min_addr,
             self.ictx.plan.segment_id.unwrap(),
         )))
@@ -283,8 +293,8 @@ impl MemModuleCollector {
         min_addr: u32,
         segment_id: usize,
     ) -> Self {
-        let prev_addr = mem_check_point.prev_addr;
-        let prev_step = mem_check_point.prev_step;
+        let prev_addr = mem_check_point.reference_addr;
+        let prev_step = MemHelpers::first_chunk_mem_step(mem_check_point.reference_addr_chunk);
         Self {
             inputs: Vec::new(),
             mem_check_point,
@@ -424,7 +434,7 @@ impl MemModuleCollector {
         }
 
         self.last_value.update(value, addr_w, step);
-        if addr_w < self.mem_check_point.prev_addr {
+        if addr_w < self.mem_check_point.reference_addr {
             return true;
         }
 
@@ -432,19 +442,17 @@ impl MemModuleCollector {
         // is unknown. This value must be saved because it is needed for memory continuations,
         // it represents the last value of the previous segment.
 
-        if addr_w == self.mem_check_point.prev_addr {
-            match step.cmp(&self.mem_check_point.prev_step) {
-                std::cmp::Ordering::Less => {
-                    return true;
-                }
-                std::cmp::Ordering::Equal => {
-                    return true;
-                }
-                std::cmp::Ordering::Greater => {}
-            }
+        let addr_chunk = MemHelpers::mem_step_to_chunk(step);
+
+        if addr_w == self.mem_check_point.reference_addr
+            && addr_chunk < self.mem_check_point.reference_addr_chunk
+        {
+            return true;
         }
 
-        if addr_w == self.mem_check_point.last_addr && step > self.mem_check_point.last_step {
+        if addr_w == self.mem_check_point.last_addr
+            && addr_chunk > self.mem_check_point.last_addr_chunk
+        {
             return true;
         }
 

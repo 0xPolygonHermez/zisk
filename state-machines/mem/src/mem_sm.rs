@@ -8,7 +8,10 @@ use std::{
     io::{BufWriter, Write},
 };
 
-use crate::{MemInput, MemModule, MEMORY_MAX_DIFF, MEM_BYTES_BITS, STEP_MEMORY_MAX_DIFF};
+use crate::{
+    MemHelpers, MemInput, MemModule, MEMORY_MAX_DIFF, MEM_BYTES_BITS, STEP_MEMORY_LIMIT_TO_VERIFY,
+    STEP_MEMORY_MAX_DIFF,
+};
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
@@ -105,10 +108,19 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 
         // use special counter for internal reads
         let mut range_check_data_max = 0u64;
+        let mut range_check_data_min = 0u64;
 
         // index it's value - 1, for this reason no add +1
         range_check_data[(previous_segment.addr - RAM_W_ADDR_INIT) as usize] += 1;
 
+        println!(
+            "[MemSM] segment_id:{} mem_ops:{} rows:{}  [0]{:?} previous_segment:{:?}",
+            segment_id,
+            mem_ops.len(),
+            trace.num_rows,
+            mem_ops[0],
+            previous_segment
+        );
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
         let mut last_value: u64 = previous_segment.value;
@@ -139,69 +151,86 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                 increment = (mem_op.addr - last_addr) as u64;
             } else {
                 increment = step - last_step;
-                if increment > STEP_MEMORY_MAX_DIFF {
-                    // calculate the number of internal reads
-                    let mut internal_reads = (increment - 1) / STEP_MEMORY_MAX_DIFF;
+                if increment as usize >= STEP_MEMORY_LIMIT_TO_VERIFY {
+                    // could be that no has internal reads, but need to check.
+                    if let Some((mut full_rows, mut zero_row)) =
+                        MemHelpers::get_intermediate_rows(last_step, step)
+                    {
+                        let internal_reads = full_rows + zero_row;
+                        let incomplete = (i + internal_reads as usize) >= trace.num_rows;
 
-                    // check if has enough rows to complete the internal reads + regular memory
-                    let incomplete = (i + internal_reads as usize) >= trace.num_rows;
-                    if incomplete {
-                        internal_reads = (trace.num_rows - i) as u64;
-                    }
+                        // check if has enough rows to complete the internal reads + regular memory
+                        if (i + internal_reads as usize) > trace.num_rows {
+                            full_rows = (trace.num_rows - i) as u64;
+                            zero_row = 0;
+                        }
 
-                    // without address changes, the internal reads before write must use the last
-                    // value, in the case of reads value and the last value are the same
-                    let (low_val, high_val) = (last_value as u32, (last_value >> 32) as u32);
-                    trace[i].value = [F::from_u32(low_val), F::from_u32(high_val)];
+                        // without address changes, the internal reads before write must use the last
+                        // value, in the case of reads value and the last value are the same
+                        let (low_val, high_val) = (last_value as u32, (last_value >> 32) as u32);
+                        trace[i].value = [F::from_u32(low_val), F::from_u32(high_val)];
 
-                    // it's intenal
-                    trace[i].sel = F::ZERO;
+                        // it's intenal
+                        trace[i].sel = F::ZERO;
 
-                    // in internal reads the increment is always the max increment
-                    trace[i].increment = f_max_increment;
+                        // in internal reads the increment is always the max increment
+                        if full_rows > 0 {
+                            trace[i].increment = f_max_increment;
+                            // set step as max increment from last_step
+                            step = last_step + STEP_MEMORY_MAX_DIFF;
+                        } else {
+                            // in case of zero_row = 1, full_rows = 0
+                            trace[i].increment = F::ZERO;
+                            step = last_step;
+                        }
 
-                    // internal reads always must be read
-                    trace[i].wr = F::ZERO;
+                        // internal reads always must be read
+                        trace[i].wr = F::ZERO;
 
-                    // set step as max increment from last_step
-                    step = last_step + STEP_MEMORY_MAX_DIFF;
-
-                    // setting step on trace
-                    trace[i].step = F::from_u64(step);
-
-                    // update last_step and increment step
-                    last_step = step;
-
-                    i += 1;
-
-                    if internal_reads > 1 || !incomplete {
-                        // set the address changes for the next row{}
-                        trace[i].addr_changes = F::ZERO;
-                    }
-
-                    // the trace values of the rest of internal reads are equal to previous, only
-                    // change the value of step
-                    for _j in 1..internal_reads {
-                        trace[i] = trace[i - 1];
-                        step += STEP_MEMORY_MAX_DIFF;
+                        // setting step on trace
                         trace[i].step = F::from_u64(step);
+
+                        // update last_step and increment step
                         last_step = step;
+
                         i += 1;
+
+                        // the trace values of the rest of internal reads are equal to previous, only
+                        // change the value of step
+                        for _j in 1..full_rows {
+                            trace[i] = trace[i - 1];
+                            step += STEP_MEMORY_MAX_DIFF;
+                            trace[i].step = F::from_u64(step);
+                            last_step = step;
+                            i += 1;
+                        }
+                        if zero_row > 0 {
+                            // row with zero increment, step was the same, necessary extra row added
+                            // because counters don't has information about previous or last step for
+                            // each address
+                            trace[i] = trace[i - 1];
+                            // increment zero is allowed, because when operation is a read, increase
+                            // in one the increment. With this feature a mem position can be read multiple
+                            // times in same mem-step (timestamp)
+                            trace[i].increment = F::ZERO;
+                            range_check_data_min += 1;
+                            i += 1;
+                        }
+
+                        range_check_data_max += full_rows;
+
+                        // control the edge case when there aren't enough rows to complete the internal
+                        // reads or regular memory operation
+                        if incomplete {
+                            last_addr = mem_op.addr;
+                            break;
+                        }
+                        step = mem_op.step;
+                        increment = step - last_step;
+
+                        // copy last trace for the regular memory operation (addr, addr_changes)
+                        trace[i] = trace[i - 1];
                     }
-
-                    range_check_data_max += internal_reads;
-
-                    // control the edge case when there aren't enough rows to complete the internal
-                    // reads or regular memory operation
-                    if incomplete {
-                        last_addr = mem_op.addr;
-                        break;
-                    }
-                    step = mem_op.step;
-                    increment = step - last_step;
-
-                    // copy last trace for the regular memory operation (addr, addr_changes)
-                    trace[i] = trace[i - 1];
                 }
             }
 
@@ -293,7 +322,12 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         // Add one in range_check_data_max because it's used by intermediate reads, and reads
         // add one to distance to allow same step on read operations.
 
-        self.std.range_check((STEP_MEMORY_MAX_DIFF + 1) as i64, range_check_data_max, range_id);
+        if range_check_data_max > 0 {
+            self.std.range_check((STEP_MEMORY_MAX_DIFF + 1) as i64, range_check_data_max, range_id);
+        }
+        if range_check_data_min > 0 {
+            self.std.range_check(1, range_check_data_min, range_id);
+        }
 
         let mut air_values = MemAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id);
@@ -309,6 +343,8 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 
         air_values.segment_last_value[0] = F::from_u32(last_value as u32);
         air_values.segment_last_value[1] = F::from_u32((last_value >> 32) as u32);
+
+        println!("MEM air_values: {:?}", air_values);
 
         #[cfg(feature = "debug_mem")]
         {

@@ -1,38 +1,46 @@
 use rayon::prelude::*;
 use std::collections::HashMap;
 
+use crate::MemHelpers;
 use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
 use sm_common::Metrics;
+use std::fmt;
 
-use crate::MemHelpers;
+// TODO: static compilation assert chunk max size = 2^22 to avoid intermediate
+// accesses inside the chunk (counters)
 
 #[cfg(feature = "debug_mem")]
 use crate::MemDebug;
 
-#[cfg(feature = "debug_mem")]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct UsesCounterDebug {
-    pub internal_reads: u32,
-    pub mem_align_extra_rows: u32,
-}
+// inside a chunk no more than 2^32 access by one address
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct UsesCounter {
-    pub first_step: u64,
-    pub last_step: u64,
-    pub count: u64,
-    #[cfg(feature = "debug_mem")]
-    pub debug: UsesCounterDebug,
-}
-
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct MemCounters {
-    pub addr: HashMap<u32, UsesCounter>,
-    pub addr_sorted: [Vec<(u32, UsesCounter)>; 3],
+    pub addr: HashMap<u32, u32>,
+    pub addr_sorted: [Vec<(u32, u32)>; 3],
     pub mem_align: Vec<u8>,
     pub mem_align_rows: u32,
-    #[cfg(feature = "debug_mem")]
-    pub debug: MemDebug,
+}
+
+impl fmt::Debug for MemCounters {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.addr.is_empty() {
+            for (mem_index, mem_area) in self.addr_sorted.iter().enumerate() {
+                write!(f, "[MEM_{},#:{} =>", mem_index, mem_area.len())?;
+                for (addr, count) in mem_area {
+                    write!(f, " 0x{:08X}:{}", addr * 8, count)?;
+                }
+                write!(f, "]")?;
+            }
+        } else {
+            write!(f, "[HASH,#:{} =>", self.addr.len())?;
+            for (addr, count) in self.addr.iter() {
+                write!(f, " 0x{:08X}:{}", addr * 8, count)?;
+            }
+            write!(f, "]")?;
+        }
+        Ok(())
+    }
 }
 
 impl MemCounters {
@@ -46,84 +54,10 @@ impl MemCounters {
             debug: MemDebug::new(),
         }
     }
-}
 
-impl Metrics for MemCounters {
-    #[inline(always)]
-    fn measure(&mut self, data: &[u64]) {
-        let op = MemBusData::get_op(data);
-        let addr = MemBusData::get_addr(data);
-        let addr_w = MemHelpers::get_addr_w(addr);
-        let step = MemBusData::get_step(data);
-        let bytes = MemBusData::get_bytes(data);
-
-        // #[cfg(feature = "debug_mem")]
-        // self.debug.log(addr, step, bytes, is_write, false);
-
-        if MemHelpers::is_aligned(addr, bytes) {
-            self.addr
-                .entry(addr_w)
-                .and_modify(|value| {
-                    let internal_reads =
-                        MemHelpers::get_extra_internal_reads_by_addr(addr_w, value.last_step, step);
-                    value.count += 1 + internal_reads;
-                    #[cfg(feature = "debug_mem")]
-                    {
-                        value.debug.internal_reads += internal_reads as u32;
-                    }
-                    value.last_step = step;
-                })
-                .or_insert(UsesCounter {
-                    first_step: step,
-                    last_step: step,
-                    count: 1,
-                    #[cfg(feature = "debug_mem")]
-                    debug: UsesCounterDebug { internal_reads: 0, mem_align_extra_rows: 0 },
-                });
-        } else {
-            let addr_count = if MemHelpers::is_double(addr, bytes) { 2 } else { 1 };
-            let ops_by_addr = if MemHelpers::is_write(op) { 2 } else { 1 };
-
-            let last_step = step + ops_by_addr - 1;
-            for index in 0..addr_count {
-                let _addr_w = addr_w + index; // addr_w, addr_w + 1
-                self.addr
-                    .entry(_addr_w)
-                    .and_modify(|value| {
-                        let internal_reads = MemHelpers::get_extra_internal_reads_by_addr(
-                            _addr_w,
-                            value.last_step,
-                            step,
-                        );
-                        value.count += ops_by_addr + internal_reads;
-                        value.last_step = last_step;
-                        #[cfg(feature = "debug_mem")]
-                        {
-                            value.debug.internal_reads += internal_reads as u32;
-                            value.debug.mem_align_extra_rows += ops_by_addr as u32 - 1;
-                        }
-                    })
-                    .or_insert(UsesCounter {
-                        first_step: step,
-                        last_step,
-                        count: ops_by_addr,
-                        #[cfg(feature = "debug_mem")]
-                        debug: UsesCounterDebug {
-                            internal_reads: 0,
-                            mem_align_extra_rows: ops_by_addr as u32 - 1,
-                        },
-                    });
-            }
-            let mem_align_op_rows = 1 + addr_count * ops_by_addr as u32;
-            self.mem_align.push(mem_align_op_rows as u8);
-            self.mem_align_rows += mem_align_op_rows;
-        }
-    }
-
-    fn on_close(&mut self) {
+    pub fn close(&mut self) {
         // address must be ordered
-        let mut addr_vector: Vec<(u32, UsesCounter)> =
-            std::mem::take(&mut self.addr).into_iter().collect();
+        let mut addr_vector: Vec<(u32, u32)> = std::mem::take(&mut self.addr).into_iter().collect();
         addr_vector.par_sort_by_key(|(key, _)| *key);
 
         // Divideix el vector original en tres parts
@@ -134,6 +68,40 @@ impl Metrics for MemCounters {
         self.addr_sorted[1] = addr_vector.split_off(point);
 
         self.addr_sorted[0] = addr_vector;
+    }
+}
+
+impl Metrics for MemCounters {
+    #[inline(always)]
+    fn measure(&mut self, data: &[u64]) {
+        let addr = MemBusData::get_addr(data);
+        let addr_w = MemHelpers::get_addr_w(addr);
+        let bytes = MemBusData::get_bytes(data);
+
+        // #[cfg(feature = "debug_mem")]
+        // self.debug.log(addr, step, bytes, is_write, false);
+
+        if MemHelpers::is_aligned(addr, bytes) {
+            self.addr.entry(addr_w).and_modify(|count| *count += 1).or_insert(1);
+        } else {
+            let op = MemBusData::get_op(data);
+            let addr_count = if MemHelpers::is_double(addr, bytes) { 2 } else { 1 };
+            let ops_by_addr = if MemHelpers::is_write(op) { 2 } else { 1 };
+
+            for index in 0..addr_count {
+                self.addr
+                    .entry(addr_w + index)
+                    .and_modify(|count| *count += ops_by_addr)
+                    .or_insert(ops_by_addr);
+            }
+            let mem_align_op_rows = 1 + addr_count * ops_by_addr as u32;
+            self.mem_align.push(mem_align_op_rows as u8);
+            self.mem_align_rows += mem_align_op_rows;
+        }
+    }
+
+    fn on_close(&mut self) {
+        self.close();
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
