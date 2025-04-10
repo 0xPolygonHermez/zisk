@@ -7,13 +7,10 @@ set -eo pipefail
 BASE_DIR=${XDG_CONFIG_HOME:-$HOME}
 ZISK_DIR=${ZISK_DIR:-"$BASE_DIR/.zisk"}
 ZISK_BIN_DIR="$ZISK_DIR/bin"
+CARGO_ZISK="$ZISK_BIN_DIR/cargo-zisk"
+BINS=(cargo-zisk ziskemu)
+
 mkdir -p $ZISK_BIN_DIR
-
-BINS=(cargo-zisk)
-
-SETUP_VERSION="0.6.0"
-
-export RUSTFLAGS="-C target-cpu=native"
 
 main() {
   need_cmd curl
@@ -24,31 +21,10 @@ main() {
       shift
       break
       ;;
-
-    -r | --repo)
-      shift
-      ZISKUP_REPO=$1
-      ;;
-    -b | --branch)
-      shift
-      ZISKUP_BRANCH=$1
-      ;;
     -v | --version)
       shift
-      ZISKUP_VERSION=$1
-      ;;
-    -p | --path)
-      shift
-      ZISKUP_LOCAL_REPO=$1
-      ;;
-    -P | --pr)
-      shift
-      ZISKUP_PR=$1
-      ;;
-    -C | --commit)
-      shift
-      ZISKUP_COMMIT=$1
-      ;;
+      ZISK_VERSION=$1
+      ;;    
     --arch)
       shift
       ZISKUP_ARCH=$1
@@ -71,16 +47,14 @@ main() {
       exit 0
       ;;
     *)
-      warn "unknown option: $1"
+      err "unknown option: $1"
+      echo
       usage
       exit 1
       ;;
     esac
     shift
   done
-
-  # Print the banner after successfully parsing args
-  banner
 
   uname_s=$(uname -s)
   PLATFORM=$(tolower "${ZISKUP_PLATFORM:-$uname_s}")
@@ -90,150 +64,113 @@ main() {
   case $PLATFORM in
     linux) ;;
     darwin | mac*)
-      echo -e "\033[31mError: macOS is currently not supported! We are actively working on adding support soon.\033[0m" >&2
+      err "macOS is currently not supported! We are actively working on adding support soon" >&2
       exit 1
       ;;
     *)
-      err "unsupported platform: $PLATFORM"
+      err "unsupported platform $PLATFORM"
       exit 1
       ;;
   esac
 
-  if [ -n "$ZISKUP_PR" ]; then
-    if [ -z "$ZISKUP_BRANCH" ]; then
-      ZISKUP_BRANCH="refs/pull/$ZISKUP_PR/head"
-    else
-      err "can't use --pr and --branch at the same time"
-    fi
+  # Print the banner after successfully parsing args
+  banner
+
+  # Check if the user provided a version
+  if [[ -z "$ZISK_VERSION" ]]; then
+    ZISK_VERSION="latest"
+  else
+    ZISK_VERSION="v${ZISK_VERSION}"
   fi
 
-  # Installs zisk from a local repository if --path parameter is provided
-  if [[ -n "$ZISKUP_LOCAL_REPO" ]]; then
-    need_cmd cargo
+  ZISKUP_REPO="0xPolygonHermez/zisk"
+  EXT="tar.gz"
+  
+  step "Installing ZisK ${ZISK_VERSION} version..."
 
-    # Ignore branches/versions as we do not want to modify local git state
-    if [ -n "$ZISKUP_REPO" ] || [ -n "$ZISKUP_BRANCH" ] || [ -n "$ZISKUP_VERSION" ]; then
-      warn "--branch, --version, and --repo arguments are ignored during local install"
+  uname_m=$(uname -m)
+  ARCHITECTURE=$(tolower "${ZISKUP_ARCH:-$uname_m}")
+  if [ "${ARCHITECTURE}" = "x86_64" ]; then
+    # Redirect stderr to /dev/null to avoid printing errors if non Rosetta.
+    if [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = "1" ]; then
+      ARCHITECTURE="arm64" # Rosetta.
+    else
+      ARCHITECTURE="amd64" # Intel.
     fi
-
-    # Enter local repo and build
-    say "Installing from $ZISKUP_LOCAL_REPO"
-    cd "$ZISKUP_LOCAL_REPO"
-    ensure cargo build --bins --release # need 4 speed
-
-    for bin in "${BINS[@]}"; do
-      # Remove prior installations if they exist
-      rm -f "$ZISK_BIN_DIR/$bin"
-      # Symlink from local repo binaries to bin dir
-      ensure ln -s "$PWD/target/release/$bin" "$ZISK_BIN_DIR/$bin"
-    done
-
-    say "Done!"
-    exit 0
+  elif [ "${ARCHITECTURE}" = "arm64" ] || [ "${ARCHITECTURE}" = "aarch64" ]; then
+    ARCHITECTURE="arm64" # Arm.
+  else
+    ARCHITECTURE="amd64" # Amd.
   fi
 
-  ZISKUP_REPO=${ZISKUP_REPO:-0xPolygonHermez/zisk}
+  # Ask user about key installation in case it was not provided as an argument
+  if [[ -z "$SETUP_KEY" ]]; then
+    step "Setup installation options:"
+    say "1) Install proving key (default - just press enter)"
+    say "2) Install verify key"
+    say "3) None"
 
-  # Install by downloading binaries
-  if [[ "$ZISKUP_REPO" == "0xPolygonHermez/zisk" && -z "$ZISKUP_BRANCH" && -z "$ZISKUP_COMMIT" ]]; then
-    ZISKUP_VERSION=${ZISKUP_VERSION:-latest}
-    ZISKUP_TAG=$ZISKUP_VERSION
-
-    if [[ "$ZISKUP_VERSION" == [[:digit:]]* ]]; then
-      # Add v prefix
-      ZISKUP_VERSION="v${ZISKUP_VERSION}"
-      ZISKUP_TAG="${ZISKUP_VERSION}"
-    fi
-
-    say "Installing ZisK (version ${ZISKUP_VERSION}, tag ${ZISKUP_TAG})"
-
-    uname_s=$(uname -s)
-    PLATFORM=$(tolower "${ZISKUP_PLATFORM:-$uname_s}")
-    EXT="tar.gz"
-    case $PLATFORM in
-    linux) ;;
-    darwin | mac*)
-      PLATFORM="darwin"
-      ;;
-    *)
-      err "unsupported platform: $PLATFORM"
-      ;;
-    esac
-
-    uname_m=$(uname -m)
-    ARCHITECTURE=$(tolower "${ZISKUP_ARCH:-$uname_m}")
-    if [ "${ARCHITECTURE}" = "x86_64" ]; then
-      # Redirect stderr to /dev/null to avoid printing errors if non Rosetta.
-      if [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = "1" ]; then
-        ARCHITECTURE="arm64" # Rosetta.
-      else
-        ARCHITECTURE="amd64" # Intel.
-      fi
-    elif [ "${ARCHITECTURE}" = "arm64" ] || [ "${ARCHITECTURE}" = "aarch64" ]; then
-      ARCHITECTURE="arm64" # Arm.
+    # Check if we are running in a GitHub runner, in that case we use the default option
+    if [[ -n "$GH_RUNNER" ]]; then
+      warn "Running from GitHub action, using default option 1"
+      user_choice=1
     else
-      ARCHITECTURE="amd64" # Amd.
-    fi
-
-    # Ask user about key installation in case it was not provided as an argument
-    if [[ -z "$SETUP_KEY" ]]; then
-      echo
-      say "Setup installation options:"
-      say "1) Install proving key (default - just press enter)"
-      say "2) Install verify key"
-      say "3) None"
-
       # Read user input with default option set to 1
       read -p ">" user_choice < /dev/tty
       user_choice=${user_choice:-1}
-
-      case $user_choice in
-          1)
-            SETUP_KEY="proving"
-            ;;
-          2)
-            SETUP_KEY="verify"
-            ;;
-          3)
-            SETUP_KEY="none"
-            ;;
-          *)
-            say "Invalid option, aborting installation"
-            exit 1
-            ;;
-      esac
     fi
 
-    # Compute the URL of the release tarball in the zisk repository
-    if [ "${ZISKUP_TAG}" = "latest" ]; then
-      RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/latest/download/"
-    else 
-      RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/download/${ZISKUP_TAG}/"
-    fi
+    case $user_choice in
+        1)
+          SETUP_KEY="proving"
+          ;;
+        2)
+          SETUP_KEY="verify"
+          ;;
+        3)
+          SETUP_KEY="none"
+          ;;
+        *)
+          err "invalid option, aborting installation"
+          exit 1
+          ;;
+    esac
+  fi
 
-    BIN_ARCHIVE_URL="${RELEASE_URL}cargo_zisk_${PLATFORM}_${ARCHITECTURE}.$EXT"
+  # Compute the URL of the release tarball in the zisk repository
+  if [ "${ZISK_VERSION}" = "latest" ]; then
+    RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/latest/download/"
+  else 
+    RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/download/${ZISK_VERSION}/"
+  fi
 
-    # Download and extract the binaries archive
-    echo
-    say "Downloading latest cargo-zisk"
-    if [ "$PLATFORM" = "linux" ]; then
-      tmp="$(mktemp -d)/cargo_zisk.tar.gz"
-      ensure download "$BIN_ARCHIVE_URL" "$tmp"
-      ensure tar --overwrite -xzf "$tmp" -C "$ZISK_DIR"
-      rm -f "$tmp"
-    fi
+  BIN_ARCHIVE_URL="${RELEASE_URL}cargo_zisk_${PLATFORM}_${ARCHITECTURE}.$EXT"
 
-    for bin in "${BINS[@]}"; do
-      bin_path="$ZISK_BIN_DIR/$bin"
+  # Download and extract the binaries archive
+  if [ "$PLATFORM" = "linux" ]; then
+    tmp="$(mktemp -d)/cargo_zisk.tar.gz"
 
-      # Print installed msg
-      say "Installed - $(ensure "$bin_path" sdk --version)"
+    step "Downloading ZisK ${ZISK_VERSION} version..."
+    ensure download "$BIN_ARCHIVE_URL" "$tmp"
 
-      # Check if the default path of the binary is not in ZISK_BIN_DIR
-      which_path="$(command -v "$bin" || true)"
-      if [ -n "$which_path" ] && [ "$which_path" != "$bin_path" ]; then
-        warn ""
-        cat 1>&2 <<EOF
+    step "Installing ZisK ${ZISK_VERSION} version..."
+    ensure tar --overwrite -xzf "$tmp" -C "$ZISK_DIR"
+
+    rm -f "$tmp"
+  fi
+
+  # Print installed version message
+  ZISK_VERSION=$(echo "$(ensure "${CARGO_ZISK}" --version)" | awk '{print $2}')
+  say "Installed ZisK version ${ZISK_VERSION}"
+
+  for bin in "${BINS[@]}"; do
+    bin_path="$ZISK_BIN_DIR/$bin"
+
+    # Check if the default path of the binary is not in ZISK_BIN_DIR
+    which_path="$(command -v "$bin" || true)"
+    if [ -n "$which_path" ] && [ "$which_path" != "$bin_path" ]; then
+      warn ""
+      cat 1>&2 <<EOF
 There are multiple binaries with the name '$bin' present in your 'PATH'.
 This may be the result of installing '$bin' using another method,
 like Cargo or other package managers.
@@ -241,71 +178,56 @@ You may need to run 'rm $which_path' or move '$ZISK_BIN_DIR'
 in your 'PATH' to allow the newly installed version to take precedence!
 
 EOF
-      fi
-    done
-
-    say "Installing rust toolchain"
-    ensure "$bin_path" sdk install-toolchain
-    say "Installed rust toolchain"
-
-    # Install the proving/verify key
-    case $SETUP_KEY in
-      proving)
-        install_setup "proving"
-        ;;
-      verify)
-        install_setup "verify"
-        ;;
-      none)
-        # Do nothing
-        ;;
-      *)
-        say "Invalid key option, aborting installation"
-        exit 1
-        ;;
-    esac
-
-    say "Done!"
-
-  # Install by cloning the repo with the provided branch/tag
-  else
-    need_cmd git
-    need_cmd cargo
-    ZISKUP_BRANCH=${ZISKUP_BRANCH:-main}
-    REPO_PATH="$ZISK_DIR/$ZISKUP_REPO"
-
-    # If repo path does not exist, grab the author from the repo, make a directory in .foundry, cd to it and clone.
-    if [ ! -d "$REPO_PATH" ]; then
-      AUTHOR="$(echo "$ZISKUP_REPO" | cut -d'/' -f1 -)"
-      ensure mkdir -p "$ZISK_DIR/$AUTHOR"
-      cd "$ZISK_DIR/$AUTHOR"
-      ensure git clone "https://github.com/$ZISKUP_REPO"
     fi
+  done
 
-    # Force checkout, discarding any local changes
-    cd "$REPO_PATH"
-    ensure git fetch origin "${ZISKUP_BRANCH}:remotes/origin/${ZISKUP_BRANCH}"
-    ensure git checkout "origin/${ZISKUP_BRANCH}"
+  step "Installing ZisK Rust toolchain..."
+  ensure "$CARGO_ZISK" sdk install-toolchain
 
-    # If set, checkout specific commit from branch
-    if [ -n "$ZISKUP_COMMIT" ]; then
-      say "Installing at commit $ZISKUP_COMMIT"
-      ensure git checkout "$ZISKUP_COMMIT"
-    fi
+  # Install the proving/verify key setup
+  IFS='.' read -r major minor patch <<< "$ZISK_VERSION"
+  SETUP_VERSION="${major}.${minor}.0"
+  case $SETUP_KEY in
+    proving)
+      install_setup "proving"
+      ;;
+    verify)
+      install_setup "verify"
+      ;;
+    none)
+      # Do nothing
+      ;;
+    *)
+      err "invalid key option, aborting installation"
+      exit 1
+      ;;
+  esac
 
-    # Build the repo and install the binaries locally to the .zisk bin directory.
-    ensure cargo build --bins --release
-    for bin in "${BINS[@]}"; do
-      for try_path in target/release/$bin target/release/$bin.exe; do
-        if [ -f "$try_path" ]; then
-          [ -e "$ZISK_BIN_DIR/$bin" ] && warn "overwriting existing $bin in $ZISK_BIN_DIR"
-          mv -f "$try_path" "$ZISK_BIN_DIR"
-        fi
-      done
-    done
-
-    say "Done!"
+  # Only add ziskup if it isn't already in PATH.
+  if [[ ":$PATH:" != *":${ZISK_BIN_DIR}:"* ]]; then
+      # Add the ziskup directory to the path and ensure the old PATH variables remain.
+      echo >>$PROFILE && echo "export PATH=\"\$PATH:$ZISK_BIN_DIR\"" >>$PROFILE
   fi
+
+  # Warn MacOS users that they may need to manually install libusb via Homebrew:
+  if [[ "$OSTYPE" =~ ^darwin ]] && [[ ! -f /usr/local/opt/libusb/lib/libusb-1.0.0.dylib && ! -f /opt/homebrew/opt/libusb/lib/libusb-1.0.0.dylib ]]; then
+      echo
+      warn "libusb not found. You may need to install it manually on macOS via Homebrew (brew install libusb)."
+  fi
+
+  # Warn MacOS users that they may need to manually install opensll via Homebrew:
+  if [[ "$OSTYPE" =~ ^darwin ]] && [[ ! -f /usr/local/opt/openssl/lib/libssl.3.dylib && ! -f /opt/homebrew/opt/openssl/lib/libssl.3.dylib ]]; then
+      echo
+      warn "libusb not found. You may need to install it manually on macOS via Homebrew (brew install openssl)."
+  fi
+
+  results=($(get_profile_and_shell))
+  PROFILE="${results[0]}"
+  PREF_SHELL="${results[1]}"
+
+  step "Done! ZisK version ${ZISK_VERSION} has been installed."
+  say "Your preferred shell '${PREF_SHELL}' was detected and ZisK has been added to your PATH. To start using the ZisK CLI tools, run 'source ${PROFILE}' or open a new terminal session."
+  echo
 }
 
 usage() {
@@ -320,11 +242,6 @@ USAGE:
 OPTIONS:
     -h, --help      Print help information
     -v, --version   Install a specific version
-    -b, --branch    Install a specific branch
-    -P, --pr        Install a specific Pull Request
-    -C, --commit    Install a specific commit
-    -r, --repo      Install from a remote GitHub repo (uses default branch if no other options are set)
-    -p, --path      Install a local repository
     --arch          Install a specific architecture (supports amd64 and arm64)
     --platform      Install a specific platform (supports win32, linux, and darwin)
     --provingkey    Install the proving key
@@ -337,13 +254,17 @@ say() {
   printf "%s\n" "$1"
 }
 
+step() {
+  echo
+  printf "\033[0;32m%s\033[0m\n" "$1"
+}
+
 warn() {
-  say "Warning: ${1}" >&2
+  printf "\033[0;33mWarning: %s\033[0m\n" "$1"
 }
 
 err() {
-  say "$1" >&2
-  exit 1
+  printf "\033[0;31mError: %s\033[0m\n" "$1" >&2
 }
 
 tolower() {
@@ -363,11 +284,24 @@ check_cmd() {
 # Run a command that should never fail. If the command fails execution
 # will immediately terminate with an error showing the failing command.
 ensure() {
-  if ! "$@"; then err "command failed: $*"; fi
+  if ! "$@"; then 
+    err "command failed: $*"; 
+    exit 1
+  fi
+}
+
+# Run a command that should never fail and suppress the output. If the command fails execution
+# will immediately terminate with an error showing the failing command.
+ensure_silent() {
+  if ! "$@" >/dev/null 2>&1; then
+    err "command failed: $*"
+    exit 1
+  fi
 }
 
 # Downloads $1 into $2
 download() {
+  say $1
   if check_cmd curl; then
     curl -H "Accept: application/octet-stream" -L -#o "$2" "$1"
   else
@@ -380,7 +314,7 @@ install_setup() {
     local KEY_TYPE=$1  # proving or verify
     local KEY_FILE="zisk-${KEY_TYPE}key-${SETUP_VERSION}.tar.gz"
 
-    say "Downloading ${KEY_TYPE} key..."
+    step "Downloading ${KEY_TYPE} key version ${SETUP_VERSION}..."
     ensure download "https://storage.googleapis.com/zisk/${KEY_FILE}" "${KEY_FILE}"
     ensure download "https://storage.googleapis.com/zisk/${KEY_FILE}.md5" "${KEY_FILE}.md5"
 
@@ -393,18 +327,48 @@ install_setup() {
     rm -rf "$HOME/.zisk/cache"
 
     # Extract the key
-    say "Installing ${KEY_TYPE} key..."
-    ensure tar --overwrite -xvf "${KEY_FILE}" -C "$HOME/.zisk"
+    step "Installing ${KEY_TYPE} key version ${SETUP_VERSION}..."
+    ensure tar --overwrite -xf "${KEY_FILE}" -C "$HOME/.zisk"
     rm -f "${KEY_FILE}"
     rm -f "${KEY_FILE}.md5"
+    say "Installed ${KEY_TYPE} key version ${SETUP_VERSION}"
 
     # Generate constant tree files for proving key
     if [[ "${KEY_TYPE}" == "proving" ]]; then
-      say "Generating constant tree files..."
-      ensure cargo-zisk check-setup -a
+      step "Generating constant tree files. This may take a while..."
+      ensure_silent "${CARGO_ZISK}" check-setup -a
+      say "Constant tree files generated successfully."
     fi
+}
 
-    say "Installed ${KEY_TYPE} key ${SETUP_VERSION}"
+get_profile_and_shell() {
+  local profile=""
+  local pref_shell=""
+  # Determine the profile file and preferred shell based on the current shell
+  case $SHELL in
+    */zsh)
+      profile=${ZDOTDIR:-$HOME}/.zshenv
+      pref_shell="zsh"
+      ;;
+    */bash)
+      profile=$HOME/.bashrc
+      pref_shell="bash"
+      ;;
+    */fish)
+      profile=$HOME/.config/fish/config.fish
+      pref_shell="fish"
+      ;;
+    */ash)
+      profile=$HOME/.profile
+      pref_shell="ash"
+      ;;
+    *)
+      warn "could not detect shell, manually add ${ZISK_BIN_DIR} to your PATH"
+      exit 1
+      ;;
+  esac
+  echo "$profile"
+  echo "$pref_shell"
 }
 
 # Banner Function for ZisK
@@ -420,7 +384,6 @@ banner() {
 Ziskup - The ZisK Installer
 
 ########################################################################################
-
 "
 }
 

@@ -6,7 +6,7 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
-use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OPERATION_BUS_ID};
+use data_bus::{BusDevice, BusId, ExtOperationData, OPERATION_BUS_ID, OP_TYPE};
 use sm_common::{BusDeviceMode, Counter, Metrics};
 use zisk_core::ZiskOperationType;
 
@@ -83,12 +83,11 @@ impl BusDevice<u64> for ArithCounterInputGen {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
-        let data: ExtOperationData<u64> = data.try_into().ok()?;
-
-        if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::Arith as u32 {
+        if data[OP_TYPE] as u32 != ZiskOperationType::Arith as u32 {
             return None;
         }
 
+        let data: ExtOperationData<u64> = data.try_into().ok()?;
         if let ExtOperationData::OperationData(data) = data {
             if self.mode == BusDeviceMode::Counter {
                 self.measure(&data);

@@ -16,36 +16,34 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     // Check program arguments length
-    if args.len() < 3 || args.len() > 6 {
-        eprintln!("Error parsing arguments: invalid number of arguments.  Usage: riscv2zisk <elf_riscv_file> <zisk_asm_file> [<zisk_pil_file>] [<zisk_bin_file>] [<i86-64_asm_file>]");
+    if args.len() < 3 || args.len() > 4 {
+        eprintln!("Error parsing arguments: invalid number of arguments.  Usage: riscv2zisk <elf_riscv_file> [<i86-64_asm_file>] <generation_method>");
         process::exit(1);
     }
 
     // Get the 2 input parameters: ELF (RISCV) file name (input data) and ZisK file name (output
     // data)
     let elf_file = args[1].clone();
-    let zisk_file = args[2].clone();
-    let pil_file = if args.len() >= 4 { args[3].clone() } else { String::new() };
-    let bin_file = if args.len() >= 5 { args[4].clone() } else { String::new() };
-    let asm_file = if args.len() >= 6 { args[5].clone() } else { String::new() };
+    let (asm_file, gen_arg) = if args.len() == 4 {
+        (Some(args[2].clone()), args[3].clone())
+    } else {
+        (None, args[2].clone())
+    };
 
-    println!("ELF file: {elf_file}");
-    println!("ZISK file: {zisk_file}");
-    if !pil_file.is_empty() {
-        println!("PIL file: {pil_file}");
-    }
-    if !bin_file.is_empty() {
-        println!("BIN file: {bin_file}");
-    }
-    if !asm_file.is_empty() {
-        println!("ASM file: {asm_file}");
-    }
+    let generation_method = match gen_arg.as_str() {
+        "--gen=1" => zisk_core::AsmGenerationMethod::AsmMinimalTraces,
+        "--gen=2" => zisk_core::AsmGenerationMethod::AsmRomHistogram,
+        _ => {
+            eprintln!("Invalid generation method. Use --gen=1 or --gen=2.");
+            process::exit(1);
+        }
+    };
 
     // Create an instance of the program converter
-    let rv2zk = Riscv2zisk::new(elf_file, zisk_file, pil_file, bin_file, asm_file);
+    let rv2zk = Riscv2zisk::new(elf_file, asm_file);
 
     // Convert program
-    if let Err(e) = rv2zk.runfile(true) {
+    if let Err(e) = rv2zk.runfile(generation_method) {
         println!("Application error: {e}");
         process::exit(1);
     }

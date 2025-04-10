@@ -9,6 +9,7 @@ use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::ops::Add;
 use std::sync::Arc;
+use zisk_common::{ChunkId, SegmentId};
 
 pub struct MemModuleInstance<F: PrimeField> {
     /// Instance context
@@ -258,7 +259,10 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
     ///
     /// # Returns
     /// An `Option` containing the input collector for the instance.
-    fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(
+        &self,
+        _chunk_id: ChunkId,
+    ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         Some(Box::new(MemModuleCollector::new(
             self.check_point.clone(),
             self.min_addr,
@@ -480,8 +484,6 @@ impl MemModuleCollector {
 impl BusDevice<u64> for MemModuleCollector {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == MEM_BUS_ID);
-
-        assert!(*bus_id == MEM_BUS_ID);
 
         // decoding information in bus
 

@@ -14,7 +14,16 @@ use crate::MemDebug;
 
 // inside a chunk no more than 2^32 access by one address
 
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct UsesCounter {
+    pub first_step: u64,
+    pub last_step: u64,
+    pub count: u64,
+    #[cfg(feature = "debug_mem")]
+    pub debug: UsesCounterDebug,
+}
+
+#[derive(Default, Debug)]
 pub struct MemCounters {
     pub addr: HashMap<u32, u32>,
     pub addr_sorted: [Vec<(u32, u32)>; 3],

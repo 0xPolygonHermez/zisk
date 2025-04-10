@@ -5,6 +5,7 @@
 use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use zisk_common::ChunkId;
 
 use crate::{BusDeviceWrapper, CheckPoint};
 
@@ -60,7 +61,10 @@ pub trait Instance<F: PrimeField>: Send + Sync {
     ///
     /// # Returns
     /// An `Option` containing the input collector for the instance.
-    fn build_inputs_collector(&self, _chunk_id: usize) -> Option<Box<dyn BusDevice<PayloadType>>> {
+    fn build_inputs_collector(
+        &self,
+        _chunk_id: ChunkId,
+    ) -> Option<Box<dyn BusDevice<PayloadType>>> {
         None
     }
 

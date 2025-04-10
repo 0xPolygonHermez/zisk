@@ -238,7 +238,7 @@ impl MemPlanCalculator for MemModulePlanner {
             plans.push(Plan::new(
                 self.config.airgroup_id,
                 self.config.air_id,
-                Some(segment_id),
+                Some(SegmentId(segment_id)),
                 InstanceType::Instance,
                 CheckPoint::Multiple(chunks),
                 Some(Box::new(checkpoint)),

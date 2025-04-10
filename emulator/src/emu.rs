@@ -1121,6 +1121,30 @@ impl<'a> Emu<'a> {
     #[inline(always)]
     pub fn step_fast(&mut self) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+        // let debug = instruction.op >= 0xf6;
+        // let initial_regs = if debug {
+        //     print!(
+        //         "\x1B[1;36m>==IN ==>\x1B[0m SF #{} 0x{:X} ({}) {}",
+        //         self.ctx.inst_ctx.step,
+        //         self.ctx.inst_ctx.pc,
+        //         instruction.op_str,
+        //         instruction.verbose
+        //     );
+        //     for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
+        //         print!(" {:}:0x{:X}", index, value);
+        //     }
+        //     println!();
+        //     self.ctx.inst_ctx.regs
+        // } else {
+        //     /* println!(
+        //         "#{} 0x{:X} ({}) {}",
+        //         self.ctx.inst_ctx.step,
+        //         self.ctx.inst_ctx.pc,
+        //         instruction.op_str,
+        //         instruction.verbose
+        //     );*/
+        //     [0u64; 32]
+        // };
         self.source_a(instruction);
         self.source_b(instruction);
         (instruction.func)(&mut self.ctx.inst_ctx);
@@ -1132,6 +1156,24 @@ impl<'a> Emu<'a> {
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
         self.ctx.inst_ctx.step += 1;
+        // if debug {
+        //     print!(
+        //         ">==OUT==> #{} 0x{:X} ({}) {} {:?}",
+        //         self.ctx.inst_ctx.step,
+        //         self.ctx.inst_ctx.pc,
+        //         instruction.op_str,
+        //         instruction.verbose,
+        //         self.ctx.inst_ctx.regs,
+        //     );
+        //     for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
+        //         if initial_regs[index] == value {
+        //             print!(" {:}:0x{:X}", index, value);
+        //         } else {
+        //             print!(" {:}:\x1B[1;31m0x{:X}\x1B[0m", index, value);
+        //         }
+        //     }
+        //     println!();
+        // }
     }
 
     /// Run the whole program
@@ -1170,6 +1212,34 @@ impl<'a> Emu<'a> {
         // Call run_fast if only essential work is needed
         if options.is_fast() {
             return self.run_fast(options);
+        }
+        if options.generate_minimal_traces {
+            let par_emu_options =
+                ParEmuOptions { num_steps: 1024 * 1024, num_threads: 1, thread_id: 0 };
+            let minimal_trace = self.run_gen_trace(options, &par_emu_options);
+
+            for (c, chunk) in minimal_trace.iter().enumerate() {
+                println!("Chunk {}:", c);
+                println!("\tStart state:");
+                println!("\t\tpc=0x{:x}", chunk.start_state.pc);
+                println!("\t\tsp=0x{:x}", chunk.start_state.sp);
+                println!("\t\tc=0x{:x}", chunk.start_state.c);
+                println!("\t\tstep={}", chunk.start_state.step);
+                for i in 1..chunk.start_state.regs.len() {
+                    println!("\t\tregister[{}]=0x{:x}", i, chunk.start_state.regs[i]);
+                }
+                println!("\tLast state:");
+                println!("\t\tc=0x{:x}", chunk.last_c);
+                println!("\tEnd:");
+                println!("\t\tend={}", if chunk.end { 1 } else { 0 });
+                println!("\tSteps:");
+                println!("\t\tsteps={}", chunk.steps);
+                println!("\t\tmem_reads_size={}", chunk.mem_reads.len());
+                for i in 0..chunk.mem_reads.len() {
+                    println!("\t\tchunk[{}].mem_reads[{}]={:08x}", c, i, chunk.mem_reads[i]);
+                }
+            }
+            return;
         }
         //println!("Emu::run() full-equipe");
 
@@ -1249,7 +1319,7 @@ impl<'a> Emu<'a> {
     }
 
     /// Run the whole program
-    pub fn par_run<F: PrimeField>(
+    pub fn par_run(
         &mut self,
         inputs: Vec<u8>,
         options: &EmuOptions,
@@ -1293,11 +1363,57 @@ impl<'a> Emu<'a> {
                         end: false,
                     });
                 }
-                self.par_step_my_block::<F>(emu_traces.last_mut().unwrap());
+
+                self.par_step_my_block(emu_traces.last_mut().unwrap());
 
                 if self.ctx.inst_ctx.step >= options.max_steps {
                     panic!("Emu::par_run() reached max_steps");
                 }
+            }
+        }
+
+        emu_traces
+    }
+
+    /// Run the whole program
+    pub fn run_gen_trace(
+        &mut self,
+        options: &EmuOptions,
+        par_options: &ParEmuOptions,
+    ) -> Vec<EmuTrace> {
+        // Init pc to the rom entry address
+        self.ctx.trace.start_state.pc = ROM_ENTRY;
+
+        // Store the stats option into the emulator context
+        self.ctx.do_stats = options.stats;
+
+        // Set emulation mode
+        self.ctx.inst_ctx.emulation_mode = EmulationMode::GenerateMemReads;
+
+        let mut emu_traces = Vec::new();
+
+        while !self.ctx.inst_ctx.end {
+            // Check if is the first step of a new block
+            if self.ctx.inst_ctx.step % par_options.num_steps as u64 == 0 {
+                emu_traces.push(EmuTrace {
+                    start_state: EmuTraceStart {
+                        pc: self.ctx.inst_ctx.pc,
+                        sp: self.ctx.inst_ctx.sp,
+                        c: self.ctx.inst_ctx.c,
+                        step: self.ctx.inst_ctx.step,
+                        regs: self.ctx.inst_ctx.regs,
+                    },
+                    last_c: 0,
+                    steps: 0,
+                    mem_reads: Vec::with_capacity(par_options.num_steps),
+                    end: false,
+                });
+            }
+
+            self.par_step_my_block(emu_traces.last_mut().unwrap());
+
+            if self.ctx.inst_ctx.step >= options.max_steps {
+                panic!("Emu::par_run() reached max_steps");
             }
         }
 
@@ -1412,7 +1528,7 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn par_step_my_block<F: PrimeField>(&mut self, emu_full_trace_vec: &mut EmuTrace) {
+    pub fn par_step_my_block(&mut self, emu_full_trace_vec: &mut EmuTrace) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
         // Build the 'a' register value  based on the source specified by the current instruction
         self.source_a_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);
@@ -1499,6 +1615,34 @@ impl<'a> Emu<'a> {
         data_bus: &mut DataBus<u64, BD>,
     ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+        // let debug = instruction.op >= 0xF6;
+        // let initial_regs = if debug {
+        //     print!(
+        //         "\x1B[1;36m>==IN ==>\x1B[0m SE #{} 0x{:X} ({}) {}",
+        //         self.ctx.inst_ctx.step,
+        //         self.ctx.inst_ctx.pc,
+        //         instruction.op_str,
+        //         instruction.verbose
+        //     );
+        //     for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
+        //         print!(" {:}:0x{:X}", index, value);
+        //     }
+        //     println!(
+        //         " self.ctx.inst_ctx.emulation_mode={:?} instruction:{:?}",
+        //         self.ctx.inst_ctx.emulation_mode, instruction
+        //     );
+        //     self.ctx.inst_ctx.regs
+        // } else {
+        //     /* println!(
+        //         "#{} 0x{:X} ({}) {}",
+        //         self.ctx.inst_ctx.step,
+        //         self.ctx.inst_ctx.pc,
+        //         instruction.op_str,
+        //         instruction.verbose
+        //     );*/
+        //     [0u64; 32]
+        // };
+
         self.source_a_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         self.source_b_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         // If this is a precompiled, get the required input data from mem_reads
@@ -1519,6 +1663,24 @@ impl<'a> Emu<'a> {
 
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
+        // if debug {
+        //     print!(
+        //         ">==OUT==> #{} 0x{:X} ({}) {} {:?}",
+        //         self.ctx.inst_ctx.step,
+        //         self.ctx.inst_ctx.pc,
+        //         instruction.op_str,
+        //         instruction.verbose,
+        //         self.ctx.inst_ctx.regs,
+        //     );
+        //     for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
+        //         if initial_regs[index] == value {
+        //             print!(" {:}:0x{:X}", index, value);
+        //         } else {
+        //             print!(" {:}:\x1B[1;31m0x{:X}\x1B[0m", index, value);
+        //         }
+        //     }
+        //     println!();
+        // }
         // Get operation bus data
         let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
 
@@ -1543,14 +1705,6 @@ impl<'a> Emu<'a> {
                 data_bus.write_to_bus(OPERATION_BUS_ID, &data);
             }
         }
-
-        // Get rom bus data
-        let rom_payload = RomBusData::from_instruction(instruction, &self.ctx.inst_ctx);
-
-        // Write rom bus data to rom bus
-        data_bus.write_to_bus(ROM_BUS_ID, &rom_payload);
-
-        // let finished = inst_observer.on_instruction(instruction, &self.ctx.inst_ctx);
 
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
@@ -1666,6 +1820,12 @@ impl<'a> Emu<'a> {
                 data_bus.write_to_bus(OPERATION_BUS_ID, &data);
             }
         }
+
+        // Get rom bus data
+        let rom_payload = RomBusData::from_instruction(instruction, &self.ctx.inst_ctx);
+
+        // Write rom bus data to rom bus
+        data_bus.write_to_bus(ROM_BUS_ID, &rom_payload);
 
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);

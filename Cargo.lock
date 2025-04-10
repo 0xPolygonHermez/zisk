@@ -429,9 +429,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.2.17"
+version = "1.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fcb57c740ae1daf453ae85f16e37396f672b039e00d9d866e07ddb24e328e3a"
+checksum = "525046617d8376e3db1deffb079e91cef90a89fc3ca5c185bbf8c9ecdd15cd5c"
 dependencies = [
  "jobserver",
  "libc",
@@ -702,7 +702,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#4254760e927ae1b70c026e371e85ce4214a36e23"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -930,9 +930,9 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "errno"
-version = "0.3.10"
+version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
+checksum = "976dd42dc7e85965fe702eb8164f21f450704bdde31faefd6471dba214cb594e"
 dependencies = [
  "libc",
  "windows-sys 0.59.0",
@@ -948,6 +948,7 @@ dependencies = [
  "log",
  "p3-field",
  "pil-std-lib",
+ "proofman",
  "proofman-common",
  "proofman-util",
  "rayon",
@@ -1778,9 +1779,9 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
 name = "miniz_oxide"
-version = "0.8.5"
+version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e3e04debbb59698c15bacbb6d93584a8c0ca9cc3213cb423d31f760d8843ce5"
+checksum = "ff70ce3e48ae43fa075863cef62e8b43b71a4f2382229920e0df362592919430"
 dependencies = [
  "adler2",
 ]
@@ -2137,8 +2138,8 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
 name = "pil-std-lib"
-version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#4254760e927ae1b70c026e371e85ce4214a36e23"
+version = "0.7.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
 dependencies = [
  "colored",
  "log",
@@ -2295,6 +2296,7 @@ dependencies = [
  "sm-common",
  "typenum",
  "witness",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -2320,6 +2322,7 @@ dependencies = [
  "sm-common",
  "tiny-keccak 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "witness",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -2364,8 +2367,8 @@ dependencies = [
 
 [[package]]
 name = "proofman"
-version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#4254760e927ae1b70c026e371e85ce4214a36e23"
+version = "0.7.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
 dependencies = [
  "blake3",
  "colored",
@@ -2391,8 +2394,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-common"
-version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#4254760e927ae1b70c026e371e85ce4214a36e23"
+version = "0.7.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
 dependencies = [
  "env_logger",
  "libloading",
@@ -2413,8 +2416,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-hints"
-version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#4254760e927ae1b70c026e371e85ce4214a36e23"
+version = "0.7.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
 dependencies = [
  "log",
  "p3-field",
@@ -2425,8 +2428,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-macros"
-version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#4254760e927ae1b70c026e371e85ce4214a36e23"
+version = "0.7.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2436,16 +2439,16 @@ dependencies = [
 
 [[package]]
 name = "proofman-starks-lib-c"
-version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#4254760e927ae1b70c026e371e85ce4214a36e23"
+version = "0.7.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
 dependencies = [
  "log",
 ]
 
 [[package]]
 name = "proofman-util"
-version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#4254760e927ae1b70c026e371e85ce4214a36e23"
+version = "0.7.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
 dependencies = [
  "colored",
  "p3-field",
@@ -3035,6 +3038,7 @@ dependencies = [
  "rayon",
  "sm-binary",
  "sm-common",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -3053,6 +3057,7 @@ dependencies = [
  "proofman-util",
  "rayon",
  "sm-common",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -3107,6 +3112,7 @@ dependencies = [
  "rayon",
  "sm-common",
  "witness",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -3124,6 +3130,7 @@ dependencies = [
  "proofman-util",
  "rayon",
  "sm-common",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -3590,8 +3597,8 @@ dependencies = [
 
 [[package]]
 name = "transcript"
-version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#4254760e927ae1b70c026e371e85ce4214a36e23"
+version = "0.7.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -4140,8 +4147,8 @@ dependencies = [
 
 [[package]]
 name = "witness"
-version = "0.6.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#4254760e927ae1b70c026e371e85ce4214a36e23"
+version = "0.7.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
 dependencies = [
  "colored",
  "env_logger",
