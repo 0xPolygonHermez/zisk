@@ -1,5 +1,4 @@
 extern crate libc;
-mod asm_min_traces;
 
 use asm_runner::{AsmRunnerMT, AsmRunnerOptionsBuilder};
 use clap::Parser;
