@@ -44,21 +44,23 @@ impl AsmRHData {
     ///
     /// # Safety
     /// This function is unsafe because it reads from a raw pointer in shared memory.
-    pub unsafe fn from_ptr(mapped_ptr: &mut *mut c_void, header: AsmRHHeader) -> AsmRHData {
-        // BIOS chunk data
-        let bios_data_ptr = *mapped_ptr as *mut u64;
-        let bios_len = std::ptr::read(bios_data_ptr) as usize;
-        let bios_data_ptr = bios_data_ptr.add(1);
-        let bios_inst_count = Vec::from_raw_parts(bios_data_ptr as *mut u64, bios_len, bios_len);
+    pub fn from_ptr(mapped_ptr: &mut *mut c_void, header: AsmRHHeader) -> AsmRHData {
+        unsafe {
+            // BIOS chunk data
+            let bios_data_ptr = *mapped_ptr as *mut u64;
+            let bios_len = std::ptr::read(bios_data_ptr) as usize;
+            let bios_data_ptr = bios_data_ptr.add(1);
+            let bios_inst_count = Vec::from_raw_parts(bios_data_ptr, bios_len, bios_len);
 
-        // Advance pointer after BIOS
-        let prog_data_ptr = bios_data_ptr.add(bios_len);
+            // Advance pointer after BIOS
+            let prog_data_ptr = bios_data_ptr.add(bios_len);
 
-        // Program chunk data
-        let prog_len = std::ptr::read(prog_data_ptr) as usize;
-        let prog_data_ptr = prog_data_ptr.add(1);
-        let prog_inst_count = Vec::from_raw_parts(prog_data_ptr as *mut u64, prog_len, prog_len);
+            // Program chunk data
+            let prog_len = std::ptr::read(prog_data_ptr) as usize;
+            let prog_data_ptr = prog_data_ptr.add(1);
+            let prog_inst_count = Vec::from_raw_parts(prog_data_ptr, prog_len, prog_len);
 
-        AsmRHData { header, bios_inst_count, prog_inst_count }
+            AsmRHData { header, bios_inst_count, prog_inst_count }
+        }
     }
 }

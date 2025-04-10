@@ -12,10 +12,7 @@ use std::{fs, ptr};
 
 use log::info;
 
-use crate::{
-    AsmInputC, AsmMTOutputChunkC, AsmOutputHeader, AsmRunnerOptions,
-    AsmRunnerTraceLevel,
-};
+use crate::{AsmInputC, AsmMTChunk, AsmMTHeader, AsmRunnerOptions, AsmRunnerTraceLevel};
 
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
 #[derive(Debug)]
@@ -59,7 +56,7 @@ impl AsmRunnerMT {
 
     fn total_size(&self) -> usize {
         self.vec_chunks.iter().map(|chunk| std::mem::size_of_val(&chunk.mem_reads)).sum::<usize>()
-            + std::mem::size_of::<AsmOutputHeader>()
+            + std::mem::size_of::<AsmMTHeader>()
     }
 
     pub fn run(
@@ -188,12 +185,12 @@ impl AsmRunnerMT {
         Self::check_shm_open(shm_fd, shmem_output_name_ptr);
 
         // Read Output Header
-        let output_header_size = size_of::<AsmOutputHeader>();
+        let output_header_size = size_of::<AsmMTHeader>();
         let mapped_ptr =
             unsafe { mmap(ptr::null_mut(), output_header_size, PROT_READ, MAP_SHARED, shm_fd, 0) };
         Self::check_mmap(mapped_ptr, output_header_size, file!(), line!());
 
-        let output_header = AsmOutputHeader::from_ptr(mapped_ptr);
+        let output_header = AsmMTHeader::from_ptr(mapped_ptr);
 
         // Read Output
         let output_size = output_header_size + output_header.mt_used_size as usize;
@@ -212,7 +209,7 @@ impl AsmRunnerMT {
 
             vec_chunks = Vec::with_capacity(num_chunks as usize);
             for _ in 0..num_chunks {
-                let data = AsmMTOutputChunkC::to_emu_trace(&mut mapped_ptr);
+                let data = AsmMTChunk::to_emu_trace(&mut mapped_ptr);
                 vec_chunks.push(data);
             }
         }

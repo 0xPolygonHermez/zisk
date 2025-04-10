@@ -31,7 +31,8 @@ use rayon::prelude::*;
 
 use data_bus::{BusDevice, DataBus, PayloadType, OPERATION_BUS_ID};
 use sm_common::{
-    BusDeviceMetrics, BusDeviceMetricsWrapper, BusDeviceWrapper, CheckPoint, ComponentBuilder, Instance, InstanceCtx, InstanceType, MinimalTraces, Plan
+    BusDeviceMetrics, BusDeviceMetricsWrapper, BusDeviceWrapper, CheckPoint, ComponentBuilder,
+    Instance, InstanceCtx, InstanceType, MinimalTraces, Plan,
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::ChunkId;

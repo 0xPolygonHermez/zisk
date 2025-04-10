@@ -5,18 +5,18 @@ use zisk_common::EmuTraceStart;
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct AsmOutputHeader {
+pub struct AsmMTHeader {
     pub version: u64,
     pub exit_code: u64,
     pub mt_allocated_size: u64,
     pub mt_used_size: u64,
 }
 
-impl AsmOutputHeader {
-    pub fn from_ptr(mapped_ptr: *mut c_void) -> AsmOutputHeader {
+impl AsmMTHeader {
+    pub fn from_ptr(mapped_ptr: *mut c_void) -> AsmMTHeader {
         let output_header;
         unsafe {
-            output_header = std::ptr::read(mapped_ptr as *const AsmOutputHeader);
+            output_header = std::ptr::read(mapped_ptr as *const AsmMTHeader);
         }
 
         assert!(output_header.mt_allocated_size > 0);
@@ -28,7 +28,7 @@ impl AsmOutputHeader {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct AsmMTOutputChunkC {
+pub struct AsmMTChunk {
     pub pc: u64,
     pub sp: u64,
     pub c: u64,
@@ -40,16 +40,16 @@ pub struct AsmMTOutputChunkC {
     pub mem_reads_size: u64,
 }
 
-impl AsmMTOutputChunkC {
+impl AsmMTChunk {
     /// Create an `OutputChunk` from a pointer.
     ///
     /// # Safety
     /// This function is unsafe because it reads from a raw pointer in shared memory.
-    pub unsafe fn to_emu_trace(mapped_ptr: &mut *mut c_void) -> EmuTrace {
+    pub fn to_emu_trace(mapped_ptr: &mut *mut c_void) -> EmuTrace {
         // Read chunk data
-        let chunk = unsafe { std::ptr::read(*mapped_ptr as *const AsmMTOutputChunkC) };
+        let chunk = unsafe { std::ptr::read(*mapped_ptr as *const AsmMTChunk) };
         *mapped_ptr = unsafe {
-            (*mapped_ptr as *mut u8).add(std::mem::size_of::<AsmMTOutputChunkC>()) as *mut c_void
+            (*mapped_ptr as *mut u8).add(std::mem::size_of::<AsmMTChunk>()) as *mut c_void
         };
 
         // Convert mem_reads into a Vec<u64> without copying
