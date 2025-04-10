@@ -364,8 +364,8 @@ int main(int argc, char *argv[])
         assert(max_program_pc >= 0x80000000);
 
         // Calculate sizes
-        bios_size = (max_bios_pc - 0x1000) >> 2;
-        program_size = max_program_pc - 0x80000000;
+        bios_size = ((max_bios_pc - 0x1000) >> 2) + 1;
+        program_size = max_program_pc - 0x80000000 + 1;
         histogram_size = (4 + 1 + bios_size + 1 + program_size)*8;
 #define TRACE_SIZE_GRANULARITY (1014*1014)
         initial_trace_size = ((histogram_size/TRACE_SIZE_GRANULARITY) + 1) * TRACE_SIZE_GRANULARITY;
@@ -540,7 +540,7 @@ int main(int argc, char *argv[])
         }
         else
         {
-            pOutput[3] = histogram_size;
+            pOutput[3] = MEM_STEP;
             pOutput[4] = bios_size;
             pOutput[4 + bios_size + 1] = program_size;
         }
@@ -1288,7 +1288,7 @@ void log_histogram(void)
     printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
     printf("Exit code = %ld\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
     printf("Allocated size = %ld B\n", pOutput[2]); // MT allocated size [8]
-    printf("Used size = %ld B\n", pOutput[3]); // MT used size [8]
+    printf("Steps = %ld B\n", pOutput[3]); // MT used size [8]
 
     printf("BIOS histogram:\n");
     uint64_t * trace = (uint64_t *)(TRACE_ADDR + 0x20);

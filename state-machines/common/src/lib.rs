@@ -10,6 +10,7 @@ mod regular_counters;
 mod regular_planner;
 mod utils;
 
+use asm_runner::AsmRunnerMT;
 pub use bus_device_metrics::*;
 pub use bus_device_wrapper::*;
 pub use component_builder::*;
@@ -21,3 +22,12 @@ pub use planner_helpers::*;
 pub use regular_counters::*;
 pub use regular_planner::*;
 pub use utils::*;
+
+use zisk_common::EmuTrace;
+
+#[derive(Debug)]
+pub enum MinimalTraces {
+    None,
+    EmuTrace(Vec<EmuTrace>),
+    AsmEmuTrace(AsmRunnerMT),
+}

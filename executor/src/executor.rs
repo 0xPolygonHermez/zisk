@@ -19,7 +19,7 @@
 //! By structuring these phases, the `ZiskExecutor` ensures high-performance execution while
 //! maintaining clarity and modularity in the computation process.
 
-use asm_runner::AsmRunner;
+use asm_runner::AsmRunnerMT;
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{ProofCtx, SetupCtx};
@@ -31,8 +31,7 @@ use rayon::prelude::*;
 
 use data_bus::{BusDevice, DataBus, PayloadType, OPERATION_BUS_ID};
 use sm_common::{
-    BusDeviceMetrics, BusDeviceMetricsWrapper, BusDeviceWrapper, CheckPoint, ComponentBuilder,
-    Instance, InstanceCtx, InstanceType, Plan,
+    BusDeviceMetrics, BusDeviceMetricsWrapper, BusDeviceWrapper, CheckPoint, ComponentBuilder, Instance, InstanceCtx, InstanceType, MinimalTraces, Plan
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::ChunkId;
@@ -44,7 +43,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex, RwLock},
 };
-use zisk_common::{EmuTrace, MinimalTraces};
+use zisk_common::EmuTrace;
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
 
@@ -69,6 +68,7 @@ pub struct ZiskExecutor<F: PrimeField64> {
     pub rom_path: PathBuf,
 
     pub asm_runner_path: Option<PathBuf>,
+    pub asm_rom_path: Option<PathBuf>,
 
     /// Registered secondary state machines.
     secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,
@@ -103,6 +103,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     pub fn new(
         rom_path: PathBuf,
         asm_path: Option<PathBuf>,
+        asm_rom_path: Option<PathBuf>,
         input_data_path: Option<PathBuf>,
         zisk_rom: Arc<ZiskRom>,
         std: Arc<Std<F>>,
@@ -111,6 +112,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             input_data_path,
             rom_path,
             asm_runner_path: asm_path,
+            asm_rom_path,
             zisk_rom,
             secondary_sm: Vec::new(),
             min_traces: RwLock::new(MinimalTraces::None),
@@ -169,7 +171,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     }
 
     fn run_assembly(&self) -> MinimalTraces {
-        MinimalTraces::AsmEmuTrace(AsmRunner::run(
+        MinimalTraces::AsmEmuTrace(AsmRunnerMT::run(
             self.asm_runner_path.as_ref().unwrap(),
             self.input_data_path.as_ref().unwrap(),
             Self::MAX_NUM_STEPS,
