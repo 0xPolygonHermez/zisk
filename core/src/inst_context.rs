@@ -93,9 +93,6 @@ pub struct InstContext {
     /// Precompiled emulation mode
     pub emulation_mode: EmulationMode,
 
-    /// Precompiled emulation mode
-    pub emulation_mode: EmulationMode,
-
     /// Precompiled data
     pub precompiled: PrecompiledInstContext,
 
