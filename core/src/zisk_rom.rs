@@ -44,6 +44,9 @@
 //!     index `(pc-ROM_ENTRY)/4`
 use std::{collections::HashMap, path::Path};
 
+use p3_field::PrimeField;
+use zisk_pil::MainTraceRow;
+
 use crate::{
     zisk_ops::ZiskOp, AsmGenerationMethod, ZiskInst, ZiskInstBuilder, FREE_INPUT_ADDR, M64, P2_32,
     ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
@@ -158,6 +161,10 @@ pub struct ZiskRom {
 
     /// Maximum rom instruction PC
     pub max_program_pc: u64,
+
+    /// List of instruction program counter (address) in incremental order:
+    /// 0x1000, 0x1004, ..., 0x80000000, 0x80000004, ...
+    pub sorted_pc_list: Vec<u64>,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -236,6 +243,49 @@ impl ZiskRom {
         }
     }
 
+    /// Gets the ROM instruction corresponding to the provided pc address, as a mutable reference.
+    /// Depending on the range and allignment of the address, the function searches for it in the
+    /// corresponding vector.
+    #[inline(always)]
+    pub fn get_mut_instruction(&mut self, pc: u64) -> &mut ZiskInst {
+        // If the address is a program address...
+        if pc >= ROM_ADDR {
+            // If the address is alligned, take it from the proper vector
+            if pc & 0b11 == 0 {
+                // pc is aligned to a 4-byte boundary
+                let rom_index = ((pc - ROM_ADDR) >> 2) as usize;
+                if rom_index >= self.rom_instructions.len() {
+                    panic!(
+                        "ZiskRom::get_mut_instruction() pc=0x{0:X} ({0}) is out of range rom_instructions (rom_index:{1:} >= {2:})",
+                        pc,
+                        rom_index,
+                        self.rom_instructions.len()
+                    );
+                }
+                &mut self.rom_instructions[rom_index]
+                // Otherwise, take it from the non alligned vector, using the the difference of the pc
+                // vs. the offset as the index
+            } else {
+                // pc is not aligned to a 4-byte boundary
+                let rom_index = (pc - self.offset_rom_na_unstructions) as usize;
+                if rom_index >= self.rom_na_instructions.len() {
+                    panic!(
+                        "ZiskRom::get_mut_instruction() pc={} is out of range rom_na_instructions (rom_index:{} >= {})",
+                        pc,
+                        rom_index,
+                        self.rom_na_instructions.len()
+                    );
+                }
+                &mut self.rom_na_instructions[rom_index]
+            }
+        } else if pc >= ROM_ENTRY {
+            // pc is in the ROM_ENTRY range (always alligned)
+            &mut self.rom_entry_instructions[((pc - ROM_ENTRY) >> 2) as usize]
+        } else {
+            panic!("ZiskRom::get_mut_instruction() pc={} is out of range", pc);
+        }
+    }
+
     /// Saves ZisK rom into an i64-64 assembly file: first save to a string, then
     /// save the string to the file
     pub fn save_to_asm_file(&self, file_name: &Path, generation_method: AsmGenerationMethod) {
@@ -272,15 +322,6 @@ impl ZiskRom {
             generate_rom_histogram,
             ..Default::default()
         };
-
-        // Save instructions program addresses into a vector
-        let mut keys: Vec<u64> = Vec::new();
-        for key in self.insts.keys() {
-            keys.push(*key);
-        }
-
-        // Sort the vector
-        keys.sort();
 
         *s += ".intel_syntax noprefix\n";
         *s += ".code64\n";
@@ -424,9 +465,9 @@ impl ZiskRom {
 
         // For all program addresses in the vector, create an assembly set of instructions with an
         // instruction label
-        for k in 0..keys.len() {
+        for k in 0..self.sorted_pc_list.len() {
             // Get pc
-            ctx.pc = keys[k];
+            ctx.pc = self.sorted_pc_list[k];
 
             // Call chunk_start the first time, for the first chunk
             if ctx.generate_minimal_trace && k == 0 {
@@ -434,7 +475,8 @@ impl ZiskRom {
                 *s += "\tcall chunk_start /* Call chunk_start the first time */\n";
             }
 
-            ctx.next_pc = if (k + 1) < keys.len() { keys[k + 1] } else { M64 };
+            ctx.next_pc =
+                if (k + 1) < self.sorted_pc_list.len() { self.sorted_pc_list[k + 1] } else { M64 };
             let instruction = &self.insts[&ctx.pc].i;
 
             // Instruction label
@@ -1554,7 +1596,7 @@ impl ZiskRom {
         *s += "\n";
         *s += ".section .rodata\n";
         *s += ".align 64\n";
-        for key in &keys {
+        for key in &self.sorted_pc_list {
             // Skip internal pc addresses
             if (key & 0x03) != 0 {
                 continue;
@@ -1612,13 +1654,13 @@ impl ZiskRom {
         println!(
             "ZiskRom::save_to_asm() {} bytes, {} instructions, {:02} bytes/inst, {} map lines, {} label lines, {} comment lines, {} code lines, {:02} code lines/inst",
             s.len(),
-            keys.len(),
-            s.len() as f64 / keys.len() as f64,
+            self.sorted_pc_list.len(),
+            s.len() as f64 / self.sorted_pc_list.len() as f64,
             map_label_lines_counter,
             pc_label_lines_counter,
             comment_lines_counter,
             code_lines_counter,
-            code_lines_counter as f64 / keys.len() as f64,
+            code_lines_counter as f64 / self.sorted_pc_list.len() as f64,
         );
     }
 
@@ -3364,5 +3406,18 @@ impl ZiskRom {
         } else {
             TRACE_ADDR_NUMBER + (1 + ((self.max_bios_pc - ROM_ENTRY) >> 2) + 1 + pc - ROM_ADDR) * 8
         }
+    }
+
+    /// Saves ZisK rom into an i86-64 assembly data string
+    pub fn build_constant_trace<F: PrimeField>(&self) -> Vec<MainTraceRow<F>> {
+        let mut result: Vec<MainTraceRow<F>> = Vec::with_capacity(self.sorted_pc_list.len());
+        unsafe { result.set_len(self.sorted_pc_list.len()) };
+
+        // For all program addresses in the vector
+        for (i, pc) in self.sorted_pc_list.iter().enumerate() {
+            let instruction = &self.get_instruction(*pc);
+            instruction.write_constant_trace(result.get_mut(i).unwrap());
+        }
+        result
     }
 }

@@ -22,3 +22,4 @@ zisk-common = { path = "../../common" }
 
 clap = { version = "4", features = ["derive"] }
 libc = "0.2"
+named-sem = "0.2.2"

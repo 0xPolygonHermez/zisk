@@ -123,8 +123,15 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
     let mut max_rom_instructions = 0;
     let mut min_rom_na_unstructions = u64::MAX;
     let mut max_rom_na_unstructions = 0;
+
+    // Prepare sorted pc list
+    rom.sorted_pc_list.reserve(rom.insts.len());
+
     for instruction in &rom.insts {
         let addr = *instruction.0;
+
+        // Add to pc list (still unsorted)
+        rom.sorted_pc_list.push(addr);
 
         if addr < ROM_ENTRY {
             return Err(format!("Address out of range: {}", addr).into());
@@ -172,6 +179,9 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
         (0..num_rom_na_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
     rom.offset_rom_na_unstructions = min_rom_na_unstructions;
 
+    // Sort pc list
+    rom.sorted_pc_list.sort();
+
     for instruction in &rom.insts {
         let addr = *instruction.0;
 
@@ -184,6 +194,13 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
         } else {
             rom.rom_instructions[((addr - ROM_ADDR) >> 2) as usize] = instruction.1.i.clone();
         }
+    }
+
+    // Link every instruction with the position they occupy in the sorted pc list
+    for i in 0..rom.sorted_pc_list.len() {
+        let pc = rom.sorted_pc_list[i];
+        let inst = rom.get_mut_instruction(pc);
+        inst.sorted_pc_list_index = i;
     }
 
     //println! {"elf2rom() got rom.insts.len={}", rom.insts.len()};

@@ -15,6 +15,7 @@
 #include "../../lib-c/c/src/ec/ec.hpp"
 #include "../../lib-c/c/src/fcall/fcall.hpp"
 #include "../../lib-c/c/src/arith256/arith256.hpp"
+#include <semaphore.h>
 
 // Assembly-provided functions
 void emulator_start(void);
@@ -119,6 +120,9 @@ uint64_t histogram_size = 0;
 uint64_t bios_size = 0;
 uint64_t program_size = 0;
 
+// Maximum length of the shared memory prefix, e.g. SHMZISK12345678
+#define MAX_SHM_PREFIX_LENGTH 32
+
 // Input shared memory
 char * shmem_input_sufix = "_input";
 char shmem_input_name[128];
@@ -126,10 +130,20 @@ int shmem_input_fd = -1;
 uint64_t shmem_input_size = 0;
 void * shmem_input_address = NULL;
 
+// Input semaphore: notifies the caller when the trace is ready to be consumed
+char * sem_input_sufix = "_semin";
+char sem_input_name[128];
+sem_t * sem_input = NULL;
+
 // Output shared memory
 char * shmem_output_sufix = "_output";
 char shmem_output_name[128];
 int shmem_output_fd = -1;
+
+// Output semaphore: lets the caller notify that the trace has been consumed and it can be unlinked
+char * sem_output_sufix = "_semout";
+char sem_output_name[128];
+sem_t * sem_output = NULL;
 
 int process_id = 0;
 
@@ -155,7 +169,7 @@ int main(int argc, char *argv[])
         // Check the length of the input parameter, which is a prefix to be used to build
         // shared memory region names
         uint64_t input_parameter_length = strlen(input_parameter);
-        if (input_parameter_length > 16)
+        if (input_parameter_length > MAX_SHM_PREFIX_LENGTH)
         {
             printf("Input parameter is too long: %s, size = %ld\n", input_parameter, input_parameter_length);
             return -1;
@@ -169,6 +183,28 @@ int main(int argc, char *argv[])
         strcat(shmem_input_name, shmem_input_sufix);
         strcpy(shmem_output_name, shmem_prefix);
         strcat(shmem_output_name, shmem_output_sufix);
+
+        // Build the inout and output semaphore names
+        strcpy(sem_input_name, shmem_prefix);
+        strcat(sem_input_name, sem_input_sufix);
+        strcpy(sem_output_name, shmem_prefix);
+        strcat(sem_output_name, sem_output_sufix);
+
+        // Create (or open if existing) input and output semaphores
+        sem_input = sem_open(sem_input_name, O_CREAT);
+        if (sem_input == SEM_FAILED)
+        {
+            printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_input_name, errno, strerror(errno));
+            return -1;
+        }
+        sem_output = sem_open(sem_output_name, O_CREAT);
+        if (sem_input == SEM_FAILED)
+        {
+            printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_output_name, errno, strerror(errno));
+            return -1;
+        }
+        //printf("C sem_open(%s)\n", sem_output_name);
+
 #ifdef DEBUG
         if (verbose) printf("Emulator C start; input shared memory ID = %s\n", input_parameter);
 #endif        
@@ -546,6 +582,19 @@ int main(int argc, char *argv[])
         }
     }
 
+    // Notify the caller that the trace is ready to be consumed
+    if (!is_file)
+    {
+        //printf("C sem_post(%s)...\n", sem_input_name);
+        result = sem_post(sem_input);
+        //printf("C sem_wait(%s) done\n", sem_input_name);
+        if (result == -1)
+        {
+            printf("Failed calling sem_wait(%s) errno=%d=%s\n", sem_input_name, errno, strerror(errno));
+            exit(-1);
+        }
+    }
+
     // Log trace
 #ifdef DEBUG
     if (generate_minimal_trace && trace)
@@ -598,10 +647,45 @@ int main(int argc, char *argv[])
             exit(-1);
         }
 
-        if (is_file)
+        // Wait for caller to notify when the trace has been totally consumed
+        if (!is_file)
         {
-            // Make sure the output shared memory is deleted
-            shm_unlink(shmem_output_name);
+            //printf("C sem_wait(%s)...\n", sem_output_name);
+            result = sem_wait(sem_output);
+            //printf("C sem_wait(%s) done\n", sem_output_name);
+            if (result == -1)
+            {
+                printf("Failed calling sem_wait(%s) errno=%d=%s\n", sem_output_name, errno, strerror(errno));
+                exit(-1);
+            }
+        }
+
+        // Make sure the output shared memory is deleted
+        shm_unlink(shmem_output_name);
+    }
+
+    // Cleanup semaphores
+    if (!is_file)
+    {
+        result = sem_close(sem_input);
+        if (result == -1)
+        {
+            printf("Failed calling sem_close(%s) errno=%d=%s\n", sem_input_name, errno, strerror(errno));
+        }
+        result = sem_unlink(sem_input_name);
+        if (result == -1)
+        {
+            printf("Failed calling sem_unlink(%s) errno=%d=%s\n", sem_input_name, errno, strerror(errno));
+        }
+        result = sem_close(sem_output);
+        if (result == -1)
+        {
+            printf("Failed calling sem_close(%s) errno=%d=%s\n", sem_output_name, errno, strerror(errno));
+        }
+        result = sem_unlink(sem_output_name);
+        if (result == -1)
+        {
+            printf("Failed calling sem_unlink(%s) errno=%d=%s\n", sem_output_name, errno, strerror(errno));
         }
     }
 }
