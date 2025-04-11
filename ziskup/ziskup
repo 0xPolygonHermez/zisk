@@ -203,6 +203,10 @@ EOF
       ;;
   esac
 
+  results=($(get_profile_and_shell))
+  PROFILE="${results[0]}"
+  PREF_SHELL="${results[1]}"
+
   # Only add ziskup if it isn't already in PATH.
   if [[ ":$PATH:" != *":${ZISK_BIN_DIR}:"* ]]; then
       # Add the ziskup directory to the path and ensure the old PATH variables remain.
@@ -220,10 +224,6 @@ EOF
       echo
       warn "libusb not found. You may need to install it manually on macOS via Homebrew (brew install openssl)."
   fi
-
-  results=($(get_profile_and_shell))
-  PROFILE="${results[0]}"
-  PREF_SHELL="${results[1]}"
 
   step "Done! ZisK version ${ZISK_VERSION} has been installed."
   say "Your preferred shell '${PREF_SHELL}' was detected and ZisK has been added to your PATH. To start using the ZisK CLI tools, run 'source ${PROFILE}' or open a new terminal session."
