@@ -3362,7 +3362,8 @@ impl ZiskRom {
         if pc < ROM_ADDR {
             TRACE_ADDR_NUMBER + (1 + ((pc - ROM_ENTRY) >> 2)) * 8
         } else {
-            TRACE_ADDR_NUMBER + (1 + ((self.max_bios_pc - ROM_ENTRY) >> 2) + 1 + pc - ROM_ADDR) * 8
+            TRACE_ADDR_NUMBER
+                + (1 + ((self.max_bios_pc - ROM_ENTRY) >> 2) + 1 + 1 + pc - ROM_ADDR) * 8
         }
     }
 }

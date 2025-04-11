@@ -151,19 +151,28 @@ impl ZiskProve {
             }
         }
 
+        let mut asm_rom = None;
         if self.emulator {
             self.asm = None;
         } else if self.asm.is_none() {
             let stem = self.elf.file_stem().unwrap().to_str().unwrap();
             let hash = get_elf_data_hash(&self.elf)
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
-            let new_filename = format!("{stem}-{hash}.bin");
+            let new_filename = format!("{stem}-{hash}-mt.bin");
+            let asm_rom_filename = format!("{stem}-{hash}-rom.bin");
+            asm_rom = Some(default_cache_path.join(asm_rom_filename));
             self.asm = Some(default_cache_path.join(new_filename));
         }
 
         if let Some(asm_path) = &self.asm {
             if !asm_path.exists() {
                 return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_path.display()));
+            }
+        }
+
+        if let Some(asm_rom) = &asm_rom {
+            if !asm_rom.exists() {
+                return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_rom.display()));
             }
         }
 
@@ -194,6 +203,7 @@ impl ZiskProve {
                         self.verbose.into(),
                         self.elf.clone(),
                         self.asm.clone(),
+                        asm_rom,
                         self.input.clone(),
                         keccak_script,
                     )
@@ -226,6 +236,7 @@ impl ZiskProve {
                         self.verbose.into(),
                         self.elf.clone(),
                         self.asm.clone(),
+                        asm_rom,
                         self.input.clone(),
                         keccak_script,
                     )

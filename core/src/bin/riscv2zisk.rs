@@ -40,10 +40,10 @@ fn main() {
     };
 
     // Create an instance of the program converter
-    let rv2zk = Riscv2zisk::new(elf_file, asm_file);
+    let rv2zk = Riscv2zisk::new(elf_file);
 
     // Convert program
-    if let Err(e) = rv2zk.runfile(generation_method) {
+    if let Err(e) = rv2zk.runfile(asm_file.unwrap(), generation_method) {
         println!("Application error: {e}");
         process::exit(1);
     }

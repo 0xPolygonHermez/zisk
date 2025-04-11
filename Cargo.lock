@@ -263,7 +263,7 @@ dependencies = [
  "libc",
  "log",
  "zisk-common",
- "ziskemu",
+ "zisk-core",
 ]
 
 [[package]]
@@ -702,7 +702,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.7.0#adce199434a40917309a7ddf1251af404f0c8191"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -2139,7 +2139,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.7.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.7.0#adce199434a40917309a7ddf1251af404f0c8191"
 dependencies = [
  "colored",
  "log",
@@ -2368,7 +2368,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.7.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.7.0#adce199434a40917309a7ddf1251af404f0c8191"
 dependencies = [
  "blake3",
  "colored",
@@ -2395,7 +2395,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.7.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.7.0#adce199434a40917309a7ddf1251af404f0c8191"
 dependencies = [
  "env_logger",
  "libloading",
@@ -2417,7 +2417,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.7.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.7.0#adce199434a40917309a7ddf1251af404f0c8191"
 dependencies = [
  "log",
  "p3-field",
@@ -2429,7 +2429,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.7.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.7.0#adce199434a40917309a7ddf1251af404f0c8191"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2440,7 +2440,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.7.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.7.0#adce199434a40917309a7ddf1251af404f0c8191"
 dependencies = [
  "log",
 ]
@@ -2448,7 +2448,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.7.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.7.0#adce199434a40917309a7ddf1251af404f0c8191"
 dependencies = [
  "colored",
  "p3-field",
@@ -3066,6 +3066,7 @@ dependencies = [
 name = "sm-common"
 version = "0.7.0"
 dependencies = [
+ "asm-runner",
  "data-bus",
  "p3-field",
  "proofman-common",
@@ -3121,6 +3122,7 @@ dependencies = [
 name = "sm-rom"
 version = "0.7.0"
 dependencies = [
+ "asm-runner",
  "data-bus",
  "itertools 0.14.0",
  "log",
@@ -3598,7 +3600,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.7.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.7.0#adce199434a40917309a7ddf1251af404f0c8191"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -4148,7 +4150,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.7.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.7.0#2e244453db8ab3b86cfe900a8e8fe6c2404629fa"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.7.0#adce199434a40917309a7ddf1251af404f0c8191"
 dependencies = [
  "colored",
  "env_logger",
@@ -4310,6 +4312,7 @@ name = "zisk-common"
 version = "0.7.0"
 dependencies = [
  "libc",
+ "zisk-core",
 ]
 
 [[package]]
