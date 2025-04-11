@@ -91,20 +91,8 @@ impl RomSM {
 
         let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
-        let mut len = 0;
-        for i in 0..counter_stats.prog_inst_count.len() {
-            if counter_stats.prog_inst_count[i].load(std::sync::atomic::Ordering::Relaxed) != 0 {
-                len += 1;
-            }
-        }
-        info!(
-            "{}: ··· Creating Rom instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
-            counter_stats.bios_inst_count.len() + len,
-            main_trace_len,
-            ((counter_stats.bios_inst_count.len() as f64) + len as f64) / main_trace_len as f64
-                * 100.0
-        );
+        info!("{}: ··· Creating Rom instance [{} rows]", Self::MY_NAME, rom_trace.num_rows());
+
         // For every instruction in the rom, fill its corresponding ROM trace
         for (i, key) in rom.insts.keys().sorted().enumerate() {
             // Get the Zisk instruction
@@ -141,15 +129,6 @@ impl RomSM {
                 }
             }
             rom_trace[i].multiplicity = F::from_u64(multiplicity);
-        }
-
-        let mut acc = F::ZERO;
-        for i in 0..rom_trace.num_rows() {
-            acc += rom_trace[i].multiplicity;
-            if i % 1000 == 0 {
-                println!("rom_trace[{}] = {:?}", i, acc);
-                acc = F::ZERO;
-            }
         }
 
         AirInstance::new_from_trace(FromTrace::new(&mut rom_trace))
