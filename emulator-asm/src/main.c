@@ -280,9 +280,11 @@ int main(int argc, char *argv[])
 
         // Read input header data
         uint64_t * control = (uint64_t *)shmem_input_address;
-        chunk_size = control[0];
-        assert(chunk_size > 0);
-        chunk_size_mask = chunk_size - 1;
+        if (generate_minimal_trace) {
+            chunk_size = control[0];
+            assert(chunk_size > 0);
+            chunk_size_mask = chunk_size - 1;
+        }
         max_steps = control[1];
         assert(max_steps > 0);
         initial_trace_size = control[2]; // Initial trace size

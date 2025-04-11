@@ -62,7 +62,7 @@ impl AsmRunnerMT {
     pub fn run(
         ziskemuasm_path: &Path,
         inputs_path: &Path,
-        max_steps: u64,
+        shm_size: u64,
         chunk_size: u64,
         options: AsmRunnerOptions,
     ) -> AsmRunnerMT {
@@ -72,7 +72,7 @@ impl AsmRunnerMT {
         let shmem_input_name = format!("/{}_input", shmem_prefix);
         let shmem_output_name = format!("/{}_output", shmem_prefix);
 
-        Self::write_input(inputs_path, &shmem_input_name, max_steps, chunk_size);
+        Self::write_input(inputs_path, &shmem_input_name, shm_size, chunk_size);
 
         // Prepare command
         let mut command = Command::new(ziskemuasm_path);

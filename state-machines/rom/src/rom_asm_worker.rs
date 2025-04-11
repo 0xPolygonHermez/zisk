@@ -10,6 +10,8 @@ pub struct RomAsmWorker {
 }
 
 impl RomAsmWorker {
+    const SHM_DEFAULT_SIZE: u64 = 1 << 30; // 1 GiB
+
     pub fn new() -> Self {
         Self { handle: None }
     }
@@ -19,8 +21,7 @@ impl RomAsmWorker {
             AsmRunnerRomH::run(
                 &asm_path,
                 input_data_path.as_deref(),
-                1 << 30, //Self::MAX_NUM_STEPS,
-                1 << 18, //Self::MIN_TRACE_SIZE,
+                Self::SHM_DEFAULT_SIZE,
                 asm_runner::AsmRunnerOptions::default(),
             )
         });
