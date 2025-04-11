@@ -538,7 +538,7 @@ int main(int argc, char *argv[])
         //assert(final_trace_size > 32);
         if (generate_minimal_trace)
         {
-            pOutput[3] = final_trace_size - 32; // MT used size [8]
+            pOutput[3] = final_trace_size; // MT used size [8]
         }
         else
         {
