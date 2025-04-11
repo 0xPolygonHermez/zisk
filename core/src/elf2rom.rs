@@ -212,13 +212,11 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
 /// file.  The file format can be JSON, PIL-based or binary.
 pub fn elf2romfile(
     elf_file: &Path,
-    asm_file: Option<&Path>,
+    asm_file: &Path,
     generation_method: AsmGenerationMethod,
 ) -> Result<(), Box<dyn Error>> {
     let rom = elf2rom(elf_file)?;
+    rom.save_to_asm_file(asm_file, generation_method);
 
-    if let Some(asm_file) = asm_file {
-        rom.save_to_asm_file(asm_file, generation_method);
-    }
     Ok(())
 }

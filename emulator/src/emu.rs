@@ -1184,7 +1184,7 @@ impl<'a> Emu<'a> {
         callback: Option<impl Fn(EmuTrace)>,
     ) {
         // Context, where the state of the execution is stored and modified at every execution step
-        self.ctx = self.create_emu_context(inputs);
+        self.ctx = self.create_emu_context(inputs.clone());
 
         // Check that callback is provided if trace_steps is specified
         if options.trace_steps.is_some() {
