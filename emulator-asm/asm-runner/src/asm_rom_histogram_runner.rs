@@ -4,6 +4,7 @@ use libc::{
 };
 
 use crate::AsmInputC;
+use named_sem::NamedSemaphore;
 
 use std::ffi::{c_void, CString};
 use std::path::Path;
@@ -67,6 +68,26 @@ impl AsmRunnerRomH {
         let shmem_input_name = format!("/{}_input", shmem_prefix);
         let shmem_output_name = format!("/{}_output", shmem_prefix);
 
+        // Build semaphores names, and create them (if they don not already exist)
+        let sem_output_name = format!("/{}_semout", shmem_prefix);
+        let sem_input_name = format!("/{}_semin", shmem_prefix);
+        let result = NamedSemaphore::create(sem_input_name.clone(), 0);
+        if result.is_err() {
+            panic!(
+                "AsmRunnerRomH::run() failed calling NamedSemaphore::create({})",
+                sem_input_name
+            );
+        }
+        let mut semin = result.unwrap();
+        let result = NamedSemaphore::create(sem_output_name.clone(), 0);
+        if result.is_err() {
+            panic!(
+                "AsmRunnerRomH::run() failed calling NamedSemaphore::create({})",
+                sem_output_name
+            );
+        }
+        let mut semout = result.unwrap();
+
         Self::write_input(inputs_path, &shmem_input_name, shm_size, 0);
 
         // Prepare command
@@ -97,13 +118,25 @@ impl AsmRunnerRomH {
         }
 
         // Spawn child process
-        if let Err(e) = command.arg(&shmem_prefix).spawn().and_then(|mut child| child.wait()) {
+        if let Err(e) = command.arg(&shmem_prefix).spawn() {
             eprintln!("Child process failed: {:?}", e);
         } else if options.verbose || options.log_output {
             println!("Child exited successfully");
         }
 
+        // Wait for the assembly emulator to complete writing the trace
+        let result = semin.wait();
+        if result.is_err() {
+            panic!("AsmRunnerRomH::run() failed calling semout.wait({})", sem_input_name);
+        }
+
         let (mapped_ptr, asm_rowh_output) = Self::map_output(shmem_output_name.clone());
+
+        // Tell the assembly that we are done reading the trace
+        let result = semout.post();
+        if result.is_err() {
+            panic!("AsmRunnerRomH::run() failed calling semout.post({})", sem_output_name);
+        }
 
         AsmRunnerRomH::new(shmem_output_name, mapped_ptr, asm_rowh_output)
     }

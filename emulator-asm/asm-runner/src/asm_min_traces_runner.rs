@@ -3,6 +3,7 @@ use libc::{
     PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR,
 };
 
+use named_sem::NamedSemaphore;
 use zisk_common::EmuTrace;
 
 use std::ffi::{c_void, CString};
@@ -72,6 +73,20 @@ impl AsmRunnerMT {
         let shmem_input_name = format!("/{}_input", shmem_prefix);
         let shmem_output_name = format!("/{}_output", shmem_prefix);
 
+        // Build semaphores names, and create them (if they don not already exist)
+        let sem_output_name = format!("/{}_semout", shmem_prefix);
+        let sem_input_name = format!("/{}_semin", shmem_prefix);
+        let result = NamedSemaphore::create(sem_input_name.clone(), 0);
+        if result.is_err() {
+            panic!("AsmRunnerMT::run() failed calling NamedSemaphore::create({})", sem_input_name);
+        }
+        let mut semin = result.unwrap();
+        let result = NamedSemaphore::create(sem_output_name.clone(), 0);
+        if result.is_err() {
+            panic!("AsmRunnerMT::run() failed calling NamedSemaphore::create({})", sem_output_name);
+        }
+        let mut semout = result.unwrap();
+
         Self::write_input(inputs_path, &shmem_input_name, shm_size, chunk_size);
 
         // Prepare command
@@ -103,11 +118,18 @@ impl AsmRunnerMT {
 
         // Spawn child process
         let start = std::time::Instant::now();
-        if let Err(e) = command.arg(&shmem_prefix).spawn().and_then(|mut child| child.wait()) {
+        if let Err(e) = command.arg(&shmem_prefix).spawn() {
             eprintln!("Child process failed: {:?}", e);
         } else if options.verbose || options.log_output {
             println!("Child exited successfully");
         }
+
+        // Wait for the assembly emulator to complete writing the trace
+        let result = semin.wait();
+        if result.is_err() {
+            panic!("AsmRunnerMT::run() failed calling semout.wait({})", sem_input_name);
+        }
+
         let stop = start.elapsed();
 
         let (mapped_ptr, vec_chunks) = Self::map_output(shmem_output_name.clone());
@@ -115,6 +137,12 @@ impl AsmRunnerMT {
         let total_steps = vec_chunks.iter().map(|x| x.steps).sum::<u64>();
         let mhz = (total_steps as f64 / stop.as_secs_f64()) / 1_000_000.0;
         info!("AsmRnner: ··· Assembly execution speed: {:.2} MHz", mhz);
+
+        // Tell the assembly that we are done reading the trace
+        let result = semout.post();
+        if result.is_err() {
+            panic!("AsmRunnerMT::run() failed calling semout.post({})", sem_output_name);
+        }
 
         AsmRunnerMT::new(shmem_output_name, mapped_ptr, vec_chunks)
     }
