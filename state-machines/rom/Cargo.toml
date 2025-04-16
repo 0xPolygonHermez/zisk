@@ -13,6 +13,7 @@ zisk-common = { path = "../../common" }
 data-bus = { path = "../../data-bus" }
 sm-common = { path = "../common" }
 zisk-pil = { path = "../../pil" }
+asm-runner = { path = "../../emulator-asm/asm-runner" }
 
 p3-field = { workspace=true }
 proofman-common = { workspace = true }

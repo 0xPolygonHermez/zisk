@@ -263,7 +263,6 @@ dependencies = [
  "libc",
  "log",
  "zisk-common",
- "ziskemu",
 ]
 
 [[package]]
@@ -3066,6 +3065,7 @@ dependencies = [
 name = "sm-common"
 version = "0.7.0"
 dependencies = [
+ "asm-runner",
  "data-bus",
  "p3-field",
  "proofman-common",
@@ -3121,6 +3121,7 @@ dependencies = [
 name = "sm-rom"
 version = "0.7.0"
 dependencies = [
+ "asm-runner",
  "data-bus",
  "itertools 0.14.0",
  "log",

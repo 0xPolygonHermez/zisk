@@ -4,7 +4,7 @@
 
 use std::sync::{atomic::AtomicU32, Arc};
 
-use crate::{rom_counter::RomCounter, RomSM};
+use crate::{rom_asm_worker::RomAsmWorker, rom_counter::RomCounter, RomSM};
 use data_bus::{BusDevice, BusId, PayloadType, ROM_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
@@ -34,6 +34,8 @@ pub struct RomInstance {
 
     /// Execution statistics counter for ROM instructions.
     counter_stats: Option<CounterStats>,
+
+    rom_asm_worker: Option<RomAsmWorker>,
 }
 
 impl RomInstance {
@@ -50,8 +52,16 @@ impl RomInstance {
         ictx: InstanceCtx,
         bios_inst_count: Arc<Vec<AtomicU32>>,
         prog_inst_count: Arc<Vec<AtomicU32>>,
+        rom_asm_worker: Option<RomAsmWorker>,
     ) -> Self {
-        Self { zisk_rom, ictx, bios_inst_count, prog_inst_count, counter_stats: None }
+        Self {
+            zisk_rom,
+            ictx,
+            bios_inst_count,
+            prog_inst_count,
+            counter_stats: None,
+            rom_asm_worker,
+        }
     }
 }
 
@@ -75,6 +85,17 @@ impl<F: PrimeField> Instance<F> for RomInstance {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        let worker = self.rom_asm_worker.take();
+        if let Some(mut worker) = worker {
+            let asm_runner_romh = worker.wait_for_task();
+            return Some(RomSM::compute_witness_from_asm(
+                &self.zisk_rom,
+                &asm_runner_romh.asm_rowh_output,
+            ));
+        }
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
         if self.counter_stats.is_none() {
             let collectors: Vec<_> = collectors
                 .into_iter()
