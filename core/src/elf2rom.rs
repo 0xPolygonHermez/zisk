@@ -199,6 +199,7 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
     // Link every instruction with the position they occupy in the sorted pc list
     for i in 0..rom.sorted_pc_list.len() {
         let pc = rom.sorted_pc_list[i];
+        rom.insts.get_mut(&pc).unwrap().i.sorted_pc_list_index = i;
         let inst = rom.get_mut_instruction(pc);
         inst.sorted_pc_list_index = i;
     }
