@@ -31,10 +31,13 @@ fn main() {
     };
 
     let generation_method = match gen_arg.as_str() {
+        "--gen=0" => zisk_core::AsmGenerationMethod::AsmFast,
         "--gen=1" => zisk_core::AsmGenerationMethod::AsmMinimalTraces,
         "--gen=2" => zisk_core::AsmGenerationMethod::AsmRomHistogram,
+        "--gen=3" => zisk_core::AsmGenerationMethod::AsmMainTrace,
+        "--gen=4" => zisk_core::AsmGenerationMethod::AsmChunks,
         _ => {
-            eprintln!("Invalid generation method. Use --gen=1 or --gen=2.");
+            eprintln!("Invalid generation method. Use --gen=0 (fast), --gen=1 (minimal trace), --gen=2 (rom histogram), --gen=3 (main trace) or --gen=4 (chunks).");
             process::exit(1);
         }
     };

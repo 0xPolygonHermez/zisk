@@ -8,10 +8,16 @@ use std::{error::Error, path::PathBuf};
 
 #[derive(Clone, Copy, Debug)]
 pub enum AsmGenerationMethod {
+    /// Generate assembly code to not even stop at chunks, nor generate trace, i.e. fast
+    AsmFast,
     /// Generate assembly code to compute the minimal traces
     AsmMinimalTraces,
     /// Generate assembly code to compute the ROM histogram
     AsmRomHistogram,
+    /// Generate assembly code to compute the main SM trace
+    AsmMainTrace,
+    /// Generate assembly code to stop at chunks, but do not generate any trace
+    AsmChunks,
 }
 /// RISCV-to-ZisK struct containing the input ELF RISCV file name and the output ZISK ASM file name
 pub struct Riscv2zisk {

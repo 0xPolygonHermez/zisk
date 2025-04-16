@@ -185,8 +185,11 @@ pub struct ZiskAsmContext {
     jump_to_dynamic_pc: bool,
     jump_to_static_pc: String,
     log_output: bool,
-    generate_minimal_trace: bool,
-    generate_rom_histogram: bool,
+    generate_fast: bool,          // 0
+    generate_minimal_trace: bool, // 1
+    generate_rom_histogram: bool, // 2
+    generate_main_trace: bool,    // 3
+    generate_chunks: bool,        // 4
 
     a: ZiskAsmRegister,
     b: ZiskAsmRegister,
@@ -304,12 +307,18 @@ impl ZiskRom {
     /// Saves ZisK rom into an i86-64 assembly data string
     pub fn save_to_asm(&self, s: &mut String, generation_method: AsmGenerationMethod) {
         // Select the ASM generation method
+        let mut generate_fast = false;
         let mut generate_minimal_trace = false;
         let mut generate_rom_histogram = false;
+        let mut generate_main_trace = false;
+        let mut generate_chunks = false;
 
         match generation_method {
+            AsmGenerationMethod::AsmFast => generate_fast = true,
             AsmGenerationMethod::AsmMinimalTraces => generate_minimal_trace = true,
             AsmGenerationMethod::AsmRomHistogram => generate_rom_histogram = true,
+            AsmGenerationMethod::AsmMainTrace => generate_main_trace = true,
+            AsmGenerationMethod::AsmChunks => generate_chunks = true,
         }
 
         // Clear output data, just in case
@@ -318,8 +327,11 @@ impl ZiskRom {
         // Create context
         let mut ctx = ZiskAsmContext {
             log_output: true,
+            generate_fast,
             generate_minimal_trace,
             generate_rom_histogram,
+            generate_main_trace,
+            generate_chunks,
             ..Default::default()
         };
 
@@ -341,6 +353,21 @@ impl ZiskRom {
         // Allocate space for the registers
         for r in 0..35 {
             *s += &format!(".comm reg_{}, 8, 8\n", r);
+        }
+
+        if ctx.generate_main_trace {
+            for i in 0..3 {
+                *s += &format!(".comm reg_steps_{}, 8, 8\n", i);
+            }
+            for i in 0..3 {
+                *s += &format!(".comm reg_prev_steps_{}, 8, 8\n", i);
+            }
+            for i in 0..3 {
+                *s += &format!(".comm reg_step_ranges_{}, 8, 8\n", i);
+            }
+            for i in 0..35 {
+                *s += &format!(".comm first_step_uses_{}, 8, 8\n", i);
+            }
         }
 
         // fcall_context =
@@ -374,13 +401,12 @@ impl ZiskRom {
         *s += ".extern print_fcall_ctx\n";
         *s += ".extern realloc_trace\n\n";
 
-        if ctx.generate_minimal_trace {
+        if ctx.generate_minimal_trace || ctx.generate_main_trace {
             *s += ".extern chunk_size\n";
-            *s += ".extern chunk_size_mask\n\n";
             *s += ".extern trace_address_threshold\n\n";
         }
 
-        if ctx.generate_minimal_trace {
+        if ctx.generate_chunks || ctx.generate_minimal_trace || ctx.generate_main_trace {
             // Chunk start
             *s += "chunk_start:\n";
             Self::chunk_start(&mut ctx, s);
@@ -411,10 +437,16 @@ impl ZiskRom {
 
         *s += ".global get_gen_method\n";
         *s += "get_gen_method:\n";
-        if ctx.generate_minimal_trace {
+        if ctx.generate_fast {
+            *s += "\tmov rax, 0\n";
+        } else if ctx.generate_minimal_trace {
             *s += "\tmov rax, 1\n";
         } else if ctx.generate_rom_histogram {
             *s += "\tmov rax, 2\n";
+        } else if ctx.generate_main_trace {
+            *s += "\tmov rax, 3\n";
+        } else if ctx.generate_chunks {
+            *s += "\tmov rax, 4\n";
         }
         *s += "\tret\n\n";
 
@@ -431,7 +463,7 @@ impl ZiskRom {
         *s += &format!("\tmov {}, 0 /* Memory initialization: step = 0 */\n", MEM_STEP);
         *s += &format!("\tmov {}, 0 /* Memory initialization: sp = 0 */\n", MEM_SP);
         *s += &format!("\tmov {}, 0 /* Memory initialization: end = 0 */\n", MEM_END);
-        if ctx.generate_minimal_trace {
+        if ctx.generate_minimal_trace || ctx.generate_main_trace {
             *s += &format!(
                 "\tmov {}, {} /* Memory initialization: value = TRACE_ADDR */\n",
                 REG_VALUE, TRACE_ADDR
@@ -470,7 +502,7 @@ impl ZiskRom {
             ctx.pc = self.sorted_pc_list[k];
 
             // Call chunk_start the first time, for the first chunk
-            if ctx.generate_minimal_trace && k == 0 {
+            if (ctx.generate_minimal_trace || ctx.generate_main_trace) && (k == 0) {
                 *s += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
                 *s += "\tcall chunk_start /* Call chunk_start the first time */\n";
             }
@@ -598,7 +630,14 @@ impl ZiskRom {
                     *s += &format!("\tmov {}, {} /* b = c */\n", REG_B, REG_C);
                     ctx.b.is_saved = true;
                 }
+                if ctx.generate_main_trace {
+                    Self::clear_reg_step_ranges(&mut ctx, s, 1);
+                }
             }
+
+            /************/
+            /* A SOURCE */
+            /************/
 
             // Set register a content based on instruction a_src
             ctx.a.is_constant = false;
@@ -614,6 +653,9 @@ impl ZiskRom {
                         *s += &format!("\tmov {}, {} /* a = c */\n", REG_A, REG_C);
                         ctx.a.is_saved = true;
                     }
+                    if ctx.generate_main_trace {
+                        Self::clear_reg_step_ranges(&mut ctx, s, 0);
+                    }
                 }
                 SRC_REG => {
                     *s += &format!("\t/* a=SRC_REG reg={} */\n", instruction.a_offset_imm0);
@@ -628,6 +670,10 @@ impl ZiskRom {
                         if ctx.store_a_in_c { "c" } else { "a" },
                         instruction.a_offset_imm0
                     );
+
+                    if ctx.generate_main_trace {
+                        Self::trace_reg_access(&mut ctx, s, instruction.a_offset_imm0, 0);
+                    }
                 }
                 SRC_MEM => {
                     *s += "\t/* a=SRC_MEM */\n";
@@ -675,6 +721,10 @@ impl ZiskRom {
                         }
                     }
 
+                    if ctx.generate_main_trace {
+                        Self::clear_reg_step_ranges(&mut ctx, s, 0);
+                    }
+
                     ctx.a.is_saved = true;
                 }
                 SRC_IMM => {
@@ -700,6 +750,10 @@ impl ZiskRom {
                     }
                     // DEBUG: Used only to get register traces:
                     //*s += &format!("\tmov {}, {} /* a=a_value */\n", REG_A, ctx.a.string_value);
+
+                    if ctx.generate_main_trace {
+                        Self::clear_reg_step_ranges(&mut ctx, s, 0);
+                    }
                 }
                 SRC_STEP => {
                     *s += "\t/* a=SRC_STEP */\n";
@@ -720,11 +774,110 @@ impl ZiskRom {
                         );
                     }
                     ctx.a.is_saved = !ctx.store_a_in_c;
+
+                    if ctx.generate_main_trace {
+                        Self::clear_reg_step_ranges(&mut ctx, s, 0);
+                    }
                 }
                 _ => {
                     panic!("ZiskRom::source_a() Invalid a_src={} pc={}", instruction.a_src, ctx.pc)
                 }
             }
+
+            // Copy a value to main trace
+            if ctx.generate_main_trace {
+                *s += "\t/* Main[1]=a */\n";
+                if ctx.store_a_in_c {
+                    *s += &format!(
+                        "\tmov [{} + {}*8 + 1*8], {}\n",
+                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_C
+                    );
+                } else if ctx.a.is_constant && !ctx.store_a_in_a {
+                    *s += &format!(
+                        "\tmov {}, 0x{:x} /* value=a_const */\n",
+                        REG_A, ctx.a.constant_value
+                    );
+                    *s += &format!(
+                        "\tmov [{} + {}*8 + 1*8], {}\n",
+                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_A
+                    );
+                } else {
+                    *s += &format!(
+                        "\tmov [{} + {}*8 + 1*8], {}\n",
+                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_A
+                    );
+                }
+            }
+
+            // Copy rom_index<<32 + addr1 to main trace
+            // where addr1 = b_offset_imm0 + REG_A(if b=SRC_IND)
+            if ctx.generate_main_trace {
+                *s += "\t/* Main[0]=rom_index<<32+addr1 */\n";
+                let rom_index = instruction.sorted_pc_list_index as u64;
+                assert!(rom_index <= 0xffffffff);
+                // if instruction.b_offset_imm0 > 0xffffffff {
+                //     println!("instruction.b_offset_imm0={}", instruction.b_offset_imm0);
+                // }
+                // assert!(instruction.b_offset_imm0 <= 0xffffffff);
+                if (instruction.b_src != SRC_IND) || ctx.a.is_constant {
+                    // In this case the value to store is constant
+                    let addr1 = (instruction.b_offset_imm0 as i64
+                        + if instruction.b_src == SRC_IND {
+                            ctx.a.constant_value as i64
+                        } else {
+                            0
+                        }) as u64;
+                    assert!(addr1 <= 0xffffffff);
+                    let value = (rom_index << 32) + addr1;
+                    *s += &format!(
+                        "\tmov {}, {} /* value=rom_index<<32+addr1 (const) */\n",
+                        REG_VALUE, value
+                    );
+                } else {
+                    // In this case the value to store is not constant
+                    assert!(instruction.b_src == SRC_IND);
+                    *s += &format!(
+                        "\tmov {}, {} /* value=a */\n",
+                        REG_VALUE,
+                        if ctx.store_a_in_c { REG_C } else { REG_A }
+                    );
+                    if instruction.b_offset_imm0 as i64 >= 0 {
+                        *s += &format!(
+                            "\tmov {}, 0x{:x} /* aux=rom_index<<32+b_offset_imm0 */\n",
+                            REG_AUX,
+                            instruction.b_offset_imm0 + ((rom_index & 0xffffffff) << 32)
+                        );
+                        *s += &format!("\tadd {}, {} /* value+=aux */\n", REG_VALUE, REG_AUX);
+                    } else {
+                        *s += &format!(
+                            "\tmov {}, 0x{:x} /* aux=-b_offset_imm0 */\n",
+                            REG_AUX,
+                            -(instruction.b_offset_imm0 as i64)
+                        );
+                        *s += &format!(
+                            "\tsub {}, {} /* value-=b_offset_imm0 */\n",
+                            REG_VALUE, REG_AUX
+                        );
+                        *s += &format!(
+                            "\tmov {}, 0x{:x} /* aux+=rom_index<<32 */\n",
+                            REG_AUX,
+                            (rom_index & 0xffffffff) << 32
+                        );
+                        *s += &format!(
+                            "\tadd {}, {} /* value+=aux=rom_index<<32+b_offset_imm0 */\n",
+                            REG_VALUE, REG_AUX
+                        );
+                    }
+                }
+                *s += &format!(
+                    "\tmov [{} + {}*8 + 0*8], {}\n",
+                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                );
+            }
+
+            /************/
+            /* B SOURCE */
+            /************/
 
             // Set register b content: all except SRC_C
             match instruction.b_src {
@@ -742,6 +895,10 @@ impl ZiskRom {
                         if ctx.store_b_in_c { "c" } else { "b" },
                         instruction.b_offset_imm0
                     );
+
+                    if ctx.generate_main_trace {
+                        Self::trace_reg_access(&mut ctx, s, instruction.b_offset_imm0, 1);
+                    }
                 }
                 SRC_MEM => {
                     *s += "\t/* b=SRC_MEM */\n";
@@ -789,6 +946,10 @@ impl ZiskRom {
                     }
 
                     ctx.b.is_saved = !ctx.store_b_in_c;
+
+                    if ctx.generate_main_trace {
+                        Self::clear_reg_step_ranges(&mut ctx, s, 1);
+                    }
                 }
                 SRC_IMM => {
                     *s += "\t/* b=SRC_IMM */\n";
@@ -813,6 +974,10 @@ impl ZiskRom {
                     }
                     // DEBUG: Used only to get register traces:
                     //*s += &format!("\tmov {}, {} /*b=b_value */\n", REG_B, ctx.b.string_value);
+
+                    if ctx.generate_main_trace {
+                        Self::clear_reg_step_ranges(&mut ctx, s, 1);
+                    }
                 }
                 SRC_IND => {
                     *s += &format!("\t/* b=SRC_IND width={}*/\n", instruction.ind_width);
@@ -1062,12 +1227,45 @@ impl ZiskRom {
                         }
                     }
                     ctx.b.is_saved = !ctx.store_b_in_c;
+
+                    if ctx.generate_main_trace {
+                        Self::clear_reg_step_ranges(&mut ctx, s, 1);
+                    }
                 }
                 _ => panic!(
                     "ZiskRom::save_to_asm() Invalid b_src={} pc={}",
                     instruction.b_src, ctx.pc
                 ),
             }
+
+            // Copy b value to main trace
+            if ctx.generate_main_trace {
+                *s += "\t/* Main[2]=b */\n";
+                if ctx.store_b_in_c {
+                    *s += &format!(
+                        "\tmov [{} + {}*8 + 2*8], {} /* b=c */\n",
+                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_C
+                    );
+                } else if ctx.b.is_constant && !ctx.store_b_in_b {
+                    *s += &format!(
+                        "\tmov {}, 0x{:x} /* value=b_const */\n",
+                        REG_B, ctx.b.constant_value
+                    );
+                    *s += &format!(
+                        "\tmov [{} + {}*8 + 2*8], {} /* b=const */\n",
+                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_B
+                    );
+                } else {
+                    *s += &format!(
+                        "\tmov [{} + {}*8 + 2*8], {} /* b */\n",
+                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_B
+                    );
+                }
+            }
+
+            /*************/
+            /* Operation */
+            /*************/
 
             // Execute operation, storing result is registers c and flag
             //*s += &format!("\t/* operation: (c, flag) = op(a, b) */\n");
@@ -1076,16 +1274,46 @@ impl ZiskRom {
             // At this point, REG_C must contain the value of c
             assert!(ctx.c.is_saved);
 
+            // Copy c value to main trace
+            if ctx.generate_main_trace {
+                *s += "\t/* Main[3]=c */\n";
+                *s += &format!(
+                    "\tmov [{} + {}*8 + 3*8], {}\n",
+                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_C
+                );
+            }
+
+            /***********/
+            /* STORE C */
+            /***********/
+
             // Store register c
             match instruction.store {
                 STORE_NONE => {
                     *s += "\t/* STORE_NONE */\n";
+
+                    if ctx.generate_main_trace {
+                        Self::clear_reg_step_ranges(&mut ctx, s, 2);
+                    }
                 }
                 STORE_REG => {
-                    *s += &format!("\t/* STORE_REG reg={} */\n", instruction.store_offset);
-
                     assert!(instruction.store_offset >= 0);
                     assert!(instruction.store_offset <= 34);
+
+                    // Copy previous reg value to main trace
+                    if ctx.generate_main_trace {
+                        *s += "\t/* Main[4]=prev_reg_c */\n";
+                        *s += &format!(
+                            "\tmov {}, qword ptr [reg_{}] /* value=reg[{}] */\n",
+                            REG_VALUE, instruction.store_offset, instruction.store_offset
+                        );
+                        *s += &format!(
+                            "\tmov [{} + {}*8 + 4*8], {} /* main[@+size*8+4*8]=prev_reg */\n",
+                            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                        );
+                    }
+
+                    *s += &format!("\t/* STORE_REG reg={} */\n", instruction.store_offset);
 
                     // Store in mem[address]
                     if instruction.store_ra {
@@ -1103,6 +1331,10 @@ impl ZiskRom {
                             "\tmov qword ptr [reg_{}], {} /* reg[{}] = c */\n",
                             instruction.store_offset, REG_C, instruction.store_offset
                         );
+                    }
+
+                    if ctx.generate_main_trace {
+                        Self::trace_reg_access(&mut ctx, s, instruction.store_offset as u64, 2);
                     }
                 }
                 STORE_MEM => {
@@ -1148,6 +1380,10 @@ impl ZiskRom {
                     } else {
                         *s +=
                             &format!("\tmov [{}], {} /* mem[address] = c */\n", REG_ADDRESS, REG_C);
+                    }
+
+                    if ctx.generate_main_trace {
+                        Self::clear_reg_step_ranges(&mut ctx, s, 2);
                     }
                 }
                 STORE_IND => {
@@ -1438,6 +1674,10 @@ impl ZiskRom {
                             instruction.ind_width, ctx.pc
                         ),
                     }
+
+                    if ctx.generate_main_trace {
+                        Self::clear_reg_step_ranges(&mut ctx, s, 2);
+                    }
                 }
                 _ => panic!(
                     "ZiskRom::save_to_asm() Invalid store={} pc={}",
@@ -1477,9 +1717,49 @@ impl ZiskRom {
             // *s += &format!("\tpop {}\n", REG_FLAG);
             // *s += &format!("\tpop {}\n", REG_FLAG);
 
+            if ctx.generate_main_trace {
+                *s += "\t/* Main[5] = prev_reg_mem[0] + (prev_reg_mem[1] & 0xfffff ) << 40 */\n";
+                *s += &format!("\tmov {}, qword ptr [reg_prev_steps_1]\n", REG_VALUE);
+                *s += &format!("\tshl {}, 40\n", REG_VALUE); // 64-40=24 bits
+                *s += &format!("\tmov {}, qword ptr [reg_prev_steps_0]\n", REG_AUX);
+                *s += &format!("\tadd {}, {}\n", REG_VALUE, REG_AUX);
+                *s += &format!(
+                    "\tmov [{} + {}*8 + 5*8], {} /* main[@+size*8+5*8]=value */\n",
+                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                );
+
+                *s += "\t/* Main[6] = prev_reg_mem[2] + (prev_reg_mem[1] & 0xfffff00000 ) << 21 + flag<<24 */\n";
+                *s += &format!("\tmov {}, qword ptr [reg_prev_steps_1]\n", REG_VALUE);
+                *s += &format!("\tmov {}, 0xfffff00000\n", REG_AUX);
+                *s += &format!("\tand {}, {}\n", REG_VALUE, REG_AUX);
+                *s += &format!("\tshl {}, 21\n", REG_VALUE);
+                *s += &format!("\tmov {}, qword ptr [reg_prev_steps_2]\n", REG_AUX);
+                *s += &format!("\tadd {}, {}\n", REG_VALUE, REG_AUX);
+                if ctx.flag_is_always_one {
+                    *s += &format!("\tmov {}, 0x10000000000\n", REG_AUX);
+                    *s += &format!("\tadd {}, {}\n", REG_VALUE, REG_AUX);
+                } else if ctx.flag_is_always_zero {
+                    // Nothing to add
+                } else {
+                    *s += &format!("\tmov {}, {}\n", REG_AUX, REG_FLAG);
+                    *s += &format!("\tshl {}, 24\n", REG_AUX);
+                    *s += &format!("\tadd {}, {}\n", REG_VALUE, REG_AUX);
+                }
+                *s += &format!(
+                    "\tmov [{} + {}*8 + 6*8], {} /* main[@+size*8+6*8]=value */\n",
+                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                );
+
+                // Increment chunk.steps.mem_reads_size in 7 u64 slots
+                *s += &format!("\tadd {}, 7 /* mem_reads_size += 7 */\n", REG_MEM_READS_SIZE);
+            }
+
             // Decrement step counter
             *s += "\t/* STEP */\n";
-            if ctx.generate_minimal_trace {
+            if ctx.generate_fast || ctx.generate_rom_histogram || ctx.generate_main_trace {
+                *s += &format!("\tinc {} /* increment step */\n", MEM_STEP);
+            }
+            if ctx.generate_chunks || ctx.generate_minimal_trace || ctx.generate_main_trace {
                 *s += &format!("\tdec {} /* decrement step_down */\n", MEM_STEP_DOWN);
                 if instruction.end {
                     *s += &format!("\tmov {}, 1 /* end = 1 */\n", MEM_END);
@@ -1497,8 +1777,8 @@ impl ZiskRom {
                     Self::set_pc(&mut ctx, instruction, s, "nz");
                     *s += &format!("pc_{:x}_check_step_done:\n", ctx.pc);
                 }
-            } else {
-                *s += &format!("\tinc {} /* increment step */\n", MEM_STEP);
+            }
+            if ctx.generate_fast || ctx.generate_rom_histogram {
                 if instruction.end {
                     *s += &format!("\tmov {}, 1 /* end = 1 */\n", MEM_END);
                 }
@@ -3125,7 +3405,7 @@ impl ZiskRom {
         *s += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
     }
 
-    fn chunk_start(_ctx: &mut ZiskAsmContext, s: &mut String) {
+    fn chunk_start(ctx: &mut ZiskAsmContext, s: &mut String) {
         *s += "\t/* Increment number of chunks (first position in trace) */\n";
         *s += &format!("\tmov {}, {} /* address = trace_addr */\n", REG_ADDRESS, MEM_TRACE_ADDRESS);
         *s += &format!("\tmov {}, [{}] /* value = trace_addr */\n", REG_VALUE, REG_ADDRESS);
@@ -3135,133 +3415,181 @@ impl ZiskRom {
             REG_ADDRESS, REG_VALUE
         );
 
-        *s += "\t/* Write chunk start data */\n";
+        if ctx.generate_minimal_trace {
+            *s += "\t/* Write chunk start data */\n";
 
-        // Write chunk.start.pc
-        *s += &format!(
-            "\tmov {}, {} /* address = chunk_address */\n",
-            REG_ADDRESS, MEM_CHUNK_ADDRESS
-        );
-        *s += &format!("\tmov [{}], {} /* chunk.start.pc = pc */\n", REG_ADDRESS, REG_PC);
-
-        // Write chunk.start.sp
-        *s += &format!("\tmov {}, {} /* value = sp */\n", REG_VALUE, MEM_SP);
-        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-        *s +=
-            &format!("\tmov [{}], {} /* chunk.start.sp = value = sp */\n", REG_ADDRESS, REG_VALUE);
-
-        // Write chunk.start.c
-        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-        *s += &format!("\tmov [{}], {} /* chunk.start.c = c */\n", REG_ADDRESS, REG_C);
-
-        // Write chunk.start.step
-        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
-        *s += &format!(
-            "\tmov [{}], {} /* chunk.start.step = value = step */\n",
-            REG_ADDRESS, REG_VALUE
-        );
-        *s += &format!(
-            "\tmov [{}], {} /* chunk_start_step = value = step */\n",
-            MEM_CHUNK_START_STEP, REG_VALUE
-        );
-
-        // Write chunk.start.reg
-        for i in 1..34 {
-            *s += &format!("\tmov {}, qword ptr [reg_{}] /* value = reg_{} */\n", REG_VALUE, i, i);
+            // Write chunk.start.pc
             *s += &format!(
-                "\tmov [{} + {}], {} /* chunk.start.reg[{}] = value */\n",
-                REG_ADDRESS,
-                i * 8,
-                REG_VALUE,
-                i
+                "\tmov {}, {} /* address = chunk_address */\n",
+                REG_ADDRESS, MEM_CHUNK_ADDRESS
             );
+            *s += &format!("\tmov [{}], {} /* chunk.start.pc = pc */\n", REG_ADDRESS, REG_PC);
+
+            // Write chunk.start.sp
+            *s += &format!("\tmov {}, {} /* value = sp */\n", REG_VALUE, MEM_SP);
+            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+            *s += &format!(
+                "\tmov [{}], {} /* chunk.start.sp = value = sp */\n",
+                REG_ADDRESS, REG_VALUE
+            );
+
+            // Write chunk.start.c
+            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+            *s += &format!("\tmov [{}], {} /* chunk.start.c = c */\n", REG_ADDRESS, REG_C);
+
+            // Write chunk.start.step
+            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+            *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+            *s += &format!(
+                "\tmov [{}], {} /* chunk.start.step = value = step */\n",
+                REG_ADDRESS, REG_VALUE
+            );
+            *s += &format!(
+                "\tmov [{}], {} /* chunk_start_step = value = step */\n",
+                MEM_CHUNK_START_STEP, REG_VALUE
+            );
+
+            // Write chunk.start.reg
+            for i in 1..34 {
+                *s += &format!(
+                    "\tmov {}, qword ptr [reg_{}] /* value = reg_{} */\n",
+                    REG_VALUE, i, i
+                );
+                *s += &format!(
+                    "\tmov [{} + {}], {} /* chunk.start.reg[{}] = value */\n",
+                    REG_ADDRESS,
+                    i * 8,
+                    REG_VALUE,
+                    i
+                );
+            }
+            *s += &format!("\tadd {}, 33*8 /* address += 33*8 */\n", REG_ADDRESS);
         }
-        *s += &format!("\tadd {}, 33*8 /* address += 33*8 */\n", REG_ADDRESS);
 
         *s += "\t/* Reset step_down to chunk_size */\n";
         *s += &format!("\tmov {}, chunk_size /* value = chunk_size */\n", REG_VALUE);
         *s += &format!("\tmov {}, {} /* step_down = chunk_size */\n", MEM_STEP_DOWN, REG_VALUE);
 
-        *s += "\t/* Write mem reads size */\n";
-        *s += &format!("\tmov {}, {} /* aux = chunk_size */\n", REG_AUX, MEM_CHUNK_ADDRESS);
-        *s += &format!("\tadd {}, 40*8 /* aux += 40*8 */\n", REG_AUX);
-        *s += &format!("\tadd {}, 8 /* aux += 8 */\n", REG_AUX);
-        *s += &format!(
-            "\tmov {}, {} /* mem_reads_address = aux */\n",
-            REG_MEM_READS_ADDRESS, REG_AUX
-        );
-        *s += "\t/* Reset mem_reads size */\n";
-        *s += &format!("\tmov {}, 0 /* mem_reads_size = 0 */\n", REG_MEM_READS_SIZE);
+        if ctx.generate_minimal_trace || ctx.generate_main_trace {
+            *s += "\t/* Write mem reads size */\n";
+            *s += &format!("\tmov {}, {} /* aux = chunk_size */\n", REG_AUX, MEM_CHUNK_ADDRESS);
+            if ctx.generate_minimal_trace {
+                *s += &format!("\tadd {}, 40*8 /* aux += 40*8 */\n", REG_AUX);
+            }
+            *s += &format!("\tadd {}, 8 /* aux += 8 */\n", REG_AUX);
+            *s += &format!(
+                "\tmov {}, {} /* mem_reads_address = aux */\n",
+                REG_MEM_READS_ADDRESS, REG_AUX
+            );
+            *s += "\t/* Reset mem_reads size */\n";
+            *s += &format!("\tmov {}, 0 /* mem_reads_size = 0 */\n", REG_MEM_READS_SIZE);
+        }
     }
 
-    fn chunk_end(_ctx: &mut ZiskAsmContext, s: &mut String, id: &str) {
+    fn chunk_end(ctx: &mut ZiskAsmContext, s: &mut String, id: &str) {
         *s += "\t/* Update step from step_down */\n";
         *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
         *s += &format!("\tadd {}, chunk_size /* value += chunk_size */\n", REG_VALUE);
         *s += &format!("\tsub {}, {} /* value -= step_down */\n", REG_VALUE, MEM_STEP_DOWN);
         *s += &format!("\tmov {}, {} /* step = value */\n", MEM_STEP, REG_VALUE);
 
-        *s += "\t/* Write chunk last data */\n";
+        if ctx.generate_minimal_trace {
+            *s += "\t/* Write chunk last data */\n";
 
-        // Search position of chunk.last
-        *s += &format!(
-            "\tmov {}, {} /* address = chunk_address */\n",
-            REG_ADDRESS, MEM_CHUNK_ADDRESS
-        );
-        *s += &format!("\tadd {}, 37*8 /* address = chunk_address + 37*8 */\n", REG_ADDRESS);
+            // Search position of chunk.last
+            *s += &format!(
+                "\tmov {}, {} /* address = chunk_address */\n",
+                REG_ADDRESS, MEM_CHUNK_ADDRESS
+            );
+            *s += &format!("\tadd {}, 37*8 /* address = chunk_address + 37*8 */\n", REG_ADDRESS);
 
-        // Write chunk.last.c
-        *s += &format!("\tmov [{}], {} /* chunk.last.c = c */\n", REG_ADDRESS, REG_C);
+            // Write chunk.last.c
+            *s += &format!("\tmov [{}], {} /* chunk.last.c = c */\n", REG_ADDRESS, REG_C);
 
-        *s += "\t/* Write chunk end data */\n";
-        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-        *s += &format!("\tmov {}, {} /* value = end */\n", REG_VALUE, MEM_END);
-        *s += &format!("\tmov [{}], {} /* chunk.end = value = end */\n", REG_ADDRESS, REG_VALUE);
+            *s += "\t/* Write chunk end data */\n";
+            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+            *s += &format!("\tmov {}, {} /* value = end */\n", REG_VALUE, MEM_END);
+            *s +=
+                &format!("\tmov [{}], {} /* chunk.end = value = end */\n", REG_ADDRESS, REG_VALUE);
 
-        *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS); // steps
-        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
-        *s += &format!("\tsub {}, {} /* value = step_inc */\n", REG_VALUE, MEM_CHUNK_START_STEP);
-        *s += &format!(
-            "\tmov [{}], {} /* chunk.steps.step = value = step_inc */\n",
-            REG_ADDRESS, REG_VALUE
-        );
+            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS); // steps
+            *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+            *s +=
+                &format!("\tsub {}, {} /* value = step_inc */\n", REG_VALUE, MEM_CHUNK_START_STEP);
+            *s += &format!(
+                "\tmov [{}], {} /* chunk.steps.step = value = step_inc */\n",
+                REG_ADDRESS, REG_VALUE
+            );
 
-        // Write mem_reads_size
-        *s += &format!("\tadd {}, 8 /* address += 8 = mem_reads_size */\n", REG_ADDRESS); // mem_reads_size
+            // Write mem_reads_size
+            *s += &format!("\tadd {}, 8 /* address += 8 = mem_reads_size */\n", REG_ADDRESS); // mem_reads_size
 
-        *s += &format!(
-            "\tmov [{}], {} /* mem_reads_size = size */\n",
-            REG_ADDRESS, REG_MEM_READS_SIZE
-        );
+            *s += &format!(
+                "\tmov [{}], {} /* mem_reads_size = size */\n",
+                REG_ADDRESS, REG_MEM_READS_SIZE
+            );
 
-        // Get value = mem_reads_size*8, i.e. memory size till next chunk
-        *s +=
-            &format!("\tmov {}, {} /* value = mem_reads_size */\n", REG_VALUE, REG_MEM_READS_SIZE);
-        *s += &format!("\tsal {}, 3 /* value <<= 3 */\n", REG_VALUE);
+            // Get value = mem_reads_size*8, i.e. memory size till next chunk
+            *s += &format!(
+                "\tmov {}, {} /* value = mem_reads_size */\n",
+                REG_VALUE, REG_MEM_READS_SIZE
+            );
+            *s += &format!("\tsal {}, 3 /* value <<= 3 */\n", REG_VALUE);
 
-        // Update chunk address
-        *s += &format!("\tadd {}, 8 /* address += 8 = new_chunk_address */\n", REG_ADDRESS); // new chunk
-        *s += &format!(
-            "\tadd {}, {} /* address += value = mem_reads_size*8 */\n",
-            REG_ADDRESS, REG_VALUE
-        ); // new chunk
-        *s += &format!(
-            "\tmov {}, {} /* chunk_address = new_chunk_address */\n",
-            MEM_CHUNK_ADDRESS, REG_ADDRESS
-        );
+            // Update chunk address
+            *s += &format!("\tadd {}, 8 /* address += 8 = new_chunk_address */\n", REG_ADDRESS); // new chunk
+            *s += &format!(
+                "\tadd {}, {} /* address += value = mem_reads_size*8 */\n",
+                REG_ADDRESS, REG_VALUE
+            ); // new chunk
+            *s += &format!(
+                "\tmov {}, {} /* chunk_address = new_chunk_address */\n",
+                MEM_CHUNK_ADDRESS, REG_ADDRESS
+            );
+        }
 
-        *s += &format!(
-            "\tmov {}, qword ptr [trace_address_threshold] /* value = trace_address_threshold */\n",
-            REG_VALUE
-        );
-        *s += &format!(
-            "\tcmp {}, {} /* chunk_address ? trace_address_threshold */\n",
-            REG_ADDRESS, REG_VALUE
-        );
-        *s += &format!("\tjb chunk_{}_address_below_threshold\n", id);
-        *s += "\tcall _realloc_trace\n";
-        *s += &format!("chunk_{}_address_below_threshold:\n", id);
+        if ctx.generate_main_trace {
+            // Write size
+            *s += &format!(
+                "\tmov {}, {} /* address = chunk_address */\n",
+                REG_ADDRESS, MEM_CHUNK_ADDRESS
+            );
+            *s += &format!(
+                "\tmov [{}], {} /* mem_reads_size = size */\n",
+                REG_ADDRESS, REG_MEM_READS_SIZE
+            );
+            *s += &format!("\tadd {}, 8 /* address += 8 = new_chunk_address */\n", REG_ADDRESS); // new chunk
+
+            // Increase chunk address
+            *s += &format!(
+                "\tmov {}, {} /* value = mem_reads_size */\n",
+                REG_VALUE, REG_MEM_READS_SIZE
+            );
+            *s += &format!("\tsal {}, 3 /* value <<= 3 */\n", REG_VALUE);
+            *s += &format!(
+                "\tadd {}, {} /* address += value = mem_reads_size*8 */\n",
+                REG_ADDRESS, REG_VALUE
+            ); // new chunk
+            *s += &format!(
+                "\tmov {}, {} /* chunk_address = new_chunk_address */\n",
+                MEM_CHUNK_ADDRESS, REG_ADDRESS
+            );
+        }
+
+        if ctx.generate_minimal_trace || ctx.generate_main_trace {
+            *s += "\t/* Realloc trace if threshold is passed */\n";
+            *s += &format!(
+                "\tmov {}, qword ptr [trace_address_threshold] /* value = trace_address_threshold */\n",
+                REG_VALUE
+            );
+            *s += &format!(
+                "\tcmp {}, {} /* chunk_address ? trace_address_threshold */\n",
+                REG_ADDRESS, REG_VALUE
+            );
+            *s += &format!("\tjb chunk_{}_address_below_threshold\n", id);
+            *s += "\tcall _realloc_trace\n";
+            *s += &format!("chunk_{}_address_below_threshold:\n", id);
+        }
     }
 
     fn push_external_registers(_ctx: &mut ZiskAsmContext, s: &mut String) {
@@ -3371,6 +3699,63 @@ impl ZiskRom {
         *s += &format!(
             "\tadd {}, {} /* mem_reads_size+={}*/\n",
             REG_MEM_READS_SIZE, mem_reads_index, mem_reads_index
+        );
+    }
+
+    fn trace_reg_access(ctx: &mut ZiskAsmContext, s: &mut String, reg: u64, slot: u64) {
+        // REG_VALUE is reg_step = STEP << 4 + 1 + slot
+        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+        *s += &format!("\tsal {}, 3 /* value <<= 2 */\n", REG_VALUE);
+        *s += &format!("\tadd {}, {} /* value += {} */\n", REG_VALUE, slot + 1, slot + 1);
+
+        // REG_ADDRESS is reg_steps[slot], i.e. prev_reg_steps
+        *s += &format!(
+            "\tmov {}, qword ptr [reg_steps_{}] /* address=reg_steps[slot] */\n",
+            REG_ADDRESS, slot
+        );
+
+        // reg_prev_steps[slot] = pref_reg_steps
+        *s += &format!(
+            "\tmov qword ptr [reg_prev_steps_{}], {} /* reg_prev_steps[slot]=address */\n",
+            slot, REG_ADDRESS
+        );
+
+        // Check if is first_reference==0
+        *s += &format!(
+            "\tmov {}, qword ptr [first_step_uses_{}] /* aux=first_step_uses[reg] */\n",
+            REG_AUX, reg
+        );
+        *s += &format!("\tjz pc_{:x}_{}_first_reference\n", ctx.pc, slot);
+        // Not first reference
+        *s += &format!("pc_{:x}_{}_not_first_reference:\n", ctx.pc, slot);
+        *s += &format!(
+            "\tmov qword ptr [reg_step_ranges_{}], {} /* reg_step_ranges[slot]=reg_step */\n",
+            slot, REG_VALUE
+        );
+        *s += &format!(
+            "\tsub qword ptr [reg_step_ranges_{}], {} /* reg_step_ranges[slot]-=prev_reg_step */\n",
+            slot, REG_VALUE
+        );
+        *s += &format!("\tjmp pc_{:x}_{}_first_reference_done\n", ctx.pc, slot);
+        // First reference
+        *s += &format!("pc_{:x}_{}_first_reference:\n", ctx.pc, slot);
+        *s += &format!(
+            "\tmov qword ptr [first_step_uses_{}], {} /* first_step_uses[reg]= */\n",
+            reg, REG_VALUE
+        );
+        *s += &format!("pc_{:x}_{}_first_reference_done:\n", ctx.pc, slot);
+
+        // Store reg_steps
+        *s += &format!(
+            "\tmov qword ptr [reg_steps_{}], {} /* reg_steps[slot]=reg_step */\n",
+            slot, REG_VALUE
+        );
+    }
+
+    fn clear_reg_step_ranges(_ctx: &mut ZiskAsmContext, s: &mut String, slot: u64) {
+        *s += &format!(
+            "\tmov qword ptr [reg_step_ranges_{}], 0 /* reg_step_ranges[slot]=0 */\n",
+            slot
         );
     }
 

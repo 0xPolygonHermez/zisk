@@ -92,18 +92,18 @@ uint64_t trace_address_threshold = TRACE_ADDR + INITIAL_TRACE_SIZE - MAX_CHUNK_T
 
 void parse_arguments(int argc, char *argv[]);
 uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime);
-#ifdef DEBUG
-void log_trace(void);
+
+void log_minimal_trace(void);
 void log_histogram(void);
-#endif
+void log_main_trace(void);
 
 // Configuration
 bool output = true;
 bool metrics = false;
-#ifdef DEBUG
-bool verbose = false;
 bool trace = false;
 bool trace_trace = false;
+#ifdef DEBUG
+bool verbose = false;
 bool keccak_metrics = false;
 bool arith256_metrics = false;
 bool arith256_mod_metrics = false;
@@ -119,6 +119,15 @@ bool generate_rom_histogram = false;
 uint64_t histogram_size = 0;
 uint64_t bios_size = 0;
 uint64_t program_size = 0;
+
+// Main trace
+bool generate_main_trace = false;
+
+// Chunks
+bool generate_chunks = false;
+
+// Fast
+bool generate_fast = false;
 
 // Maximum length of the shared memory prefix, e.g. SHMZISK12345678
 #define MAX_SHM_PREFIX_LENGTH 32
@@ -410,7 +419,7 @@ int main(int argc, char *argv[])
         trace_size = initial_trace_size;
     }
 
-    if (generate_minimal_trace || generate_rom_histogram)
+    if (generate_minimal_trace || generate_rom_histogram || generate_main_trace)
     {
         // Make sure the output shared memory is deleted
         shm_unlink(shmem_output_name);
@@ -598,16 +607,20 @@ int main(int argc, char *argv[])
     }
 
     // Log trace
-#ifdef DEBUG
     if (generate_minimal_trace && trace)
     {
-        log_trace();
+        log_minimal_trace();
     }
     if (generate_rom_histogram && trace)
     {
         log_histogram();
     }
+    if (generate_main_trace && trace)
+    {
+        log_main_trace();
+    }
 
+#ifdef DEBUG
     if (verbose) printf("Emulator C end\n");
 #endif
 
@@ -661,10 +674,10 @@ int main(int argc, char *argv[])
                 exit(-1);
             }
         }
-
-        // Make sure the output shared memory is deleted
-        shm_unlink(shmem_output_name);
     }
+
+    // Make sure the output shared memory is deleted
+    shm_unlink(shmem_output_name);
 
     // Cleanup semaphores
     if (!is_file)
@@ -1120,12 +1133,22 @@ extern void _realloc_trace (void)
 void print_usage (void)
 {
 #ifdef DEBUG
-    printf("Usage: ziskemuasm <input_file> [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [-o output off] [-m metrics on] [-v verbose on] [-t trace on] [-tt trace on] [-k keccak trace on] [-h/--help print this]\n");
+    printf("Usage: ziskemuasm <input_file> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-v verbose on] [-k keccak trace on] [-h/--help print this]\n");
 #else
-    printf("Usage: ziskemuasm <input_file> [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [-o output off] [-m metrics on] [-h/--help print this]\n");
+    printf("Usage: ziskemuasm <input_file> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-h/--help print this]\n");
 #endif
 }
 
+uint64_t get_c_gen_method(void)
+{
+    if (generate_fast) return 0;
+    if (generate_minimal_trace) return 1;
+    if (generate_rom_histogram) return 2;
+    if (generate_main_trace) return 3;
+    if (generate_chunks) return 4;
+    printf("get_c_gen_method() called without any generation method active\n");
+    exit(-1);
+}
 void parse_arguments(int argc, char *argv[])
 {
     uint64_t number_of_selected_generation_methods = 0;
@@ -1133,6 +1156,12 @@ void parse_arguments(int argc, char *argv[])
     {
         for (int i = 1; i < argc; i++)
         {
+            if ( (strcmp(argv[i], "--gen=0") == 0) || (strcmp(argv[i], "--generate_fast") == 0))
+            {
+                generate_fast = true;
+                number_of_selected_generation_methods++;
+                continue;
+            }
             if ( (strcmp(argv[i], "--gen=1") == 0) || (strcmp(argv[i], "--generate_minimal_trace") == 0))
             {
                 generate_minimal_trace = true;
@@ -1142,6 +1171,18 @@ void parse_arguments(int argc, char *argv[])
             if ( (strcmp(argv[i], "--gen=2") == 0) || (strcmp(argv[i], "--generate_rom_histogram") == 0))
             {
                 generate_rom_histogram = true;
+                number_of_selected_generation_methods++;
+                continue;
+            }
+            if ( (strcmp(argv[i], "--gen=3") == 0) || (strcmp(argv[i], "--generate_main_trace") == 0))
+            {
+                generate_main_trace = true;
+                number_of_selected_generation_methods++;
+                continue;
+            }
+            if ( (strcmp(argv[i], "--gen=4") == 0) || (strcmp(argv[i], "--generate_chunks") == 0))
+            {
+                generate_chunks = true;
                 number_of_selected_generation_methods++;
                 continue;
             }
@@ -1155,12 +1196,6 @@ void parse_arguments(int argc, char *argv[])
                 metrics = true;
                 continue;
             }
-#ifdef DEBUG
-            if (strcmp(argv[i], "-v") == 0)
-            {
-                verbose = true;
-                continue;
-            }
             if (strcmp(argv[i], "-t") == 0)
             {
                 trace = true;
@@ -1172,12 +1207,28 @@ void parse_arguments(int argc, char *argv[])
                 trace_trace = true;
                 continue;
             }
-            if (strcmp(argv[i], "-k") == 0)
+            if (strcmp(argv[i], "-v") == 0)
             {
-                keccak_metrics = true;
+#ifdef DEBUG
+                verbose = true;
+#else
+                printf("Verbose option -v is only available in debug compilation\n");
+                print_usage();
+                exit(-1);
+#endif
                 continue;
             }
+            if (strcmp(argv[i], "-k") == 0)
+            {
+#ifdef DEBUG
+                keccak_metrics = true;
+#else
+                printf("Keccak metrics option -k is only available in debug compilation\n");
+                print_usage();
+                exit(-1);
 #endif
+                continue;
+            }
             if (strcmp(argv[i], "-h") == 0)
             {
                 print_usage();
@@ -1208,19 +1259,11 @@ void parse_arguments(int argc, char *argv[])
     }
 
     uint64_t asm_gen_method = get_gen_method();
-    if ((asm_gen_method == 1) && generate_minimal_trace)
+    uint64_t c_gen_method = get_c_gen_method();
+    if (asm_gen_method != c_gen_method)
     {
-        // Good
-    }
-    else if ((asm_gen_method == 2) && generate_rom_histogram)
-    {
-        // Good
-    }
-    else
-    {
-        // Bad
         printf("Inconsistency: C generation method is %lu but ASM generation method is %lu\n",
-            generate_minimal_trace ? 1UL : 2UL,
+            c_gen_method,
             asm_gen_method);
         print_usage();
         exit(-1);
@@ -1253,47 +1296,45 @@ uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime)
     return diff.tv_usec + 1000000 * diff.tv_sec;
 }
 
-#ifdef DEBUG
-
 /* Trace data structure
     [8B] Number of chunks: C
 
-    Offset to chunk 0:
-    Start state:
-        [8B] pc
-        [8B] sp
-        [8B] c
-        [8B] step
-        [8B] register[1]
-        …
-        [8B] register[31]
-        [8B] register[32]
-        [8B] register[33]
-    Last state:
-        [8B] c
-    End:
-        [8B] end
-    Steps:
-        [8B] steps = chunk size except for the last chunk
-        [8B] mem_reads_size
-        [8B] mem_reads[0]
-        [8B] mem_reads[1]
-        …
-        [8B] mem_reads[mem_reads_size - 1]
+    Chunk 0:
+        Start state:
+            [8B] pc
+            [8B] sp
+            [8B] c
+            [8B] step
+            [8B] register[1]
+            …
+            [8B] register[31]
+            [8B] register[32]
+            [8B] register[33]
+        Last state:
+            [8B] c
+        End:
+            [8B] end
+        Steps:
+            [8B] steps = chunk size except for the last chunk
+            [8B] mem_reads_size
+            [8B] mem_reads[0]
+            [8B] mem_reads[1]
+            …
+            [8B] mem_reads[mem_reads_size - 1]
 
-    Offset to chunk 1:
+    Chunk 1:
     …
-    Offset to chunk C-1:
+    Chunk C-1:
     …
 */
-void log_trace(void)
+void log_minimal_trace(void)
 {
 
     uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
     printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
     printf("Exit code = %ld\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %ld B\n", pOutput[2]); // MT allocated size [8]
-    printf("MT used size = %ld B\n", pOutput[3]); // MT used size [8]
+    printf("Allocated size = %ld B\n", pOutput[2]); // Allocated size [8]
+    printf("Minimal trace used size = %ld B\n", pOutput[3]); // Minimal trace used size [8]
 
     printf("Trace content:\n");
     uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
@@ -1418,4 +1459,81 @@ void log_histogram(void)
 
     printf("Histogram bios_size=%lu program_size=%lu\n", bios_size, program_size);
 }
-#endif
+
+/* Trace data structure
+    [8B] Number of chunks = C
+
+    Chunk 0:
+        [8B] mem_trace_size
+        [7x8B] mem_trace[0]
+        [7x8B] mem_trace[1]
+        …
+        [7x8B] mem_trace[mem_trace_size - 1]
+
+    Chunk 1:
+    …
+    Chunk C-1:
+    …
+*/
+void log_main_trace(void)
+{
+
+    uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
+    printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
+    printf("Exit code = %ld\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    printf("Allocated size = %ld B\n", pOutput[2]); // Allocated size [8]
+    printf("Main trace used size = %ld B\n", pOutput[3]); // Main trace used size [8]
+
+    printf("Trace content:\n");
+    uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
+    uint64_t number_of_chunks = trace[0];
+    printf("Number of chunks=%ld\n", number_of_chunks);
+    if (number_of_chunks > 1000000)
+    {
+        printf("Number of chunks is too high=%ld\n", number_of_chunks);
+        exit(-1);
+    }
+    uint64_t * chunk = trace + 1;
+    for (uint64_t c=0; c<number_of_chunks; c++)
+    {
+        uint64_t i=0;
+        printf("Chunk %ld:\n", c);
+
+        uint64_t main_trace_size = chunk[i];
+        printf("\tmem_reads_size=%ld\n", main_trace_size);
+        i++;
+        main_trace_size /= 7;
+        if (main_trace_size > 10000000)
+        {
+            printf("Main_trace size is too high=%ld\n", main_trace_size);
+            exit(-1);
+        }
+
+        if (trace_trace)
+        {
+            for (uint64_t m=0; m<main_trace_size; m++)
+            {
+                printf("\t\tchunk[%lu].main_trace[%lu]=[%lx,%lx,%lx,%lx,%lx,%lx,%lx]\n",
+                    c,
+                    m,
+                    chunk[i],
+                    chunk[i+1],
+                    chunk[i+2],
+                    chunk[i+3],
+                    chunk[i+4],
+                    chunk[i+5],
+                    chunk[i+6]
+                );
+                i += 7;
+            }
+        }
+        else
+        {
+            i += main_trace_size*7;
+        }
+
+        //Set next chunk pointer
+        chunk = chunk + i;
+    }
+    printf("Trace=0x%p chunk=0x%p size=%ld\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+}
