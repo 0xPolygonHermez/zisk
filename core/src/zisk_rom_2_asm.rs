@@ -24,7 +24,7 @@ const REG_C_W: &str = "r15d";
 const REG_C_H: &str = "r15w";
 const REG_C_B: &str = "r15b";
 const REG_FLAG: &str = "rdx";
-const REG_PC: &str = "r14";
+const REG_STEP_DOWN: &str = "r14";
 const REG_VALUE: &str = "r9";
 const REG_VALUE_W: &str = "r9d";
 //const REG_VALUE_H: &str = "r9w";
@@ -35,7 +35,7 @@ const REG_MEM_READS_SIZE: &str = "r13";
 const REG_AUX: &str = "r11";
 
 const MEM_STEP: &str = "qword ptr [MEM_STEP]";
-const MEM_STEP_DOWN: &str = "qword ptr [MEM_STEP_DOWN]";
+const MEM_PC: &str = "qword ptr [MEM_PC]";
 const MEM_SP: &str = "qword ptr [MEM_SP]";
 const MEM_END: &str = "qword ptr [MEM_END]";
 
@@ -158,7 +158,7 @@ impl ZiskRom2Asm {
         *code += ".comm MEM_STEP, 8, 8\n";
         *code += ".comm MEM_SP, 8, 8\n";
         *code += ".comm MEM_END, 8, 8\n";
-        *code += ".comm MEM_STEP_DOWN, 8, 8\n";
+        *code += ".comm MEM_PC, 8, 8\n";
         *code += ".comm MEM_TRACE_ADDRESS, 8, 8\n";
         *code += ".comm MEM_CHUNK_ADDRESS, 8, 8\n";
         *code += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
@@ -316,7 +316,8 @@ impl ZiskRom2Asm {
 
             // Call chunk_start the first time, for the first chunk
             if (ctx.generate_minimal_trace || ctx.generate_main_trace) && (k == 0) {
-                *code += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
+                *code += &format!("\tmov {}, 0x{:08x} /* value = pc */\n", REG_VALUE, ctx.pc);
+                *code += &format!("\tmov {}, {} /* pc = value */\n", MEM_PC, REG_VALUE);
                 *code += "\tcall chunk_start /* Call chunk_start the first time */\n";
             }
 
@@ -584,7 +585,7 @@ impl ZiskRom2Asm {
                         );
                         *code += &format!(
                             "\tsub {}, {} /* {} -= step_down */\n",
-                            store_a_reg, MEM_STEP_DOWN, store_a_reg_name
+                            store_a_reg, REG_STEP_DOWN, store_a_reg_name
                         );
                     }
                     ctx.a.is_saved = !ctx.store_a_in_c;
@@ -1583,10 +1584,11 @@ impl ZiskRom2Asm {
                 *code += &format!("\tinc {} /* increment step */\n", MEM_STEP);
             }
             if ctx.generate_chunks || ctx.generate_minimal_trace || ctx.generate_main_trace {
-                *code += &format!("\tdec {} /* decrement step_down */\n", MEM_STEP_DOWN);
+                *code += &format!("\tdec {} /* decrement step_down */\n", REG_STEP_DOWN);
                 if instruction.end {
                     *code += &format!("\tmov {}, 1 /* end = 1 */\n", MEM_END);
-                    *code += &format!("\tmov {}, 0x{:08x} /* pc = pc */\n", REG_PC, ctx.pc);
+                    *code += &format!("\tmov {}, 0x{:08x} /* value = pc */\n", REG_VALUE, ctx.pc);
+                    *code += &format!("\tmov {}, {} /* pc = value */\n", MEM_PC, REG_VALUE);
                     *code += "\tcall chunk_end\n";
                 } else {
                     *code += &format!("\tjz pc_{:x}_step_zero\n", ctx.pc);
@@ -1659,17 +1661,18 @@ impl ZiskRom2Asm {
                 *code += ctx.jump_to_static_pc.as_str();
             } else if ctx.jump_to_dynamic_pc {
                 *code += "\t/* jump to dynamic pc */\n";
+                *code += &format!("\tmov {}, {} /* value=pc */\n", REG_VALUE, MEM_PC);
                 *code += &format!("\tmov {}, 0x80000000 /* is pc a low address? */\n", REG_ADDRESS);
-                *code += &format!("\tcmp {}, {}\n", REG_PC, REG_ADDRESS);
+                *code += &format!("\tcmp {}, {}\n", REG_VALUE, REG_ADDRESS);
                 *code += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
-                *code += &format!("\tsub {}, {} /* pc -= 0x80000000 */\n", REG_PC, REG_ADDRESS);
-                *code += &format!("\tmov rax, {} /* rax = pc */\n", REG_PC);
+                *code += &format!("\tsub {}, {} /* pc -= 0x80000000 */\n", REG_VALUE, REG_ADDRESS);
+                *code += &format!("\tmov rax, {} /* rax = pc */\n", REG_VALUE);
                 *code += "\tlea rbx, [map_pc_80000000] /* rbx = index table base address */\n";
                 *code += "\tmov rax, [rbx + rax*2] /* rax = table entry address */\n";
                 *code += "\tjmp rax /* jump to table entry address */\n";
                 *code += &format!("pc_{:x}_jump_to_low_address:\n", ctx.pc);
-                *code += &format!("\tsub {}, 0x1000 /* pc -= 0x1000 */\n", REG_PC);
-                *code += &format!("\tmov rax, {} /* rax = pc */\n", REG_PC);
+                *code += &format!("\tsub {}, 0x1000 /* pc -= 0x1000 */\n", REG_VALUE);
+                *code += &format!("\tmov rax, {} /* rax = pc */\n", REG_VALUE);
                 *code += "\tlea rbx, [map_pc_1000] /* rbx = index table base address */\n";
                 *code += "\tmov rax, [rbx + rax*2] /* rax = table entry address */\n";
                 *code += "\tjmp rax /* jump to table entry address */\n";
@@ -3035,49 +3038,55 @@ impl ZiskRom2Asm {
             if ctx.c.is_constant {
                 let new_pc = (ctx.c.constant_value as i64 + instruction.jmp_offset1) as u64;
                 *s += &format!(
-                    "\tmov {}, 0x{:x} /* pc = c(const) + i.jmp_offset1 */\n",
-                    REG_PC, new_pc
+                    "\tmov {}, 0x{:x} /* value = c(const) + i.jmp_offset1 */\n",
+                    REG_VALUE, new_pc
                 );
+                *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
                 ctx.jump_to_static_pc = format!("\tjmp pc_{:x} /* jump to static pc */\n", new_pc);
             } else {
-                *s += &format!("\tmov {}, {} /* pc = c */\n", REG_PC, ctx.c.string_value);
+                *s += &format!("\tmov {}, {} /* value = c */\n", REG_VALUE, ctx.c.string_value);
                 if instruction.jmp_offset1 != 0 {
                     *s += &format!(
-                        "\tadd {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
-                        REG_PC, instruction.jmp_offset1
+                        "\tadd {}, 0x{:x} /* value += i.jmp_offset1 */\n",
+                        REG_VALUE, instruction.jmp_offset1
                     );
                 }
+                *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
                 ctx.jump_to_dynamic_pc = true;
             }
         } else if ctx.flag_is_always_zero {
             if ctx.pc as i64 + instruction.jmp_offset2 != ctx.next_pc as i64 {
                 *s += &format!(
                     "\tmov {}, 0x{:x} /* flag=0: pc += i.jmp_offset2 */\n",
-                    REG_PC,
+                    REG_VALUE,
                     (ctx.pc as i64 + instruction.jmp_offset2) as u64
                 );
                 // *s += &format!(
                 //     "\tadd {}, 0x{:x} /* set_pc 3: pc += i.jmp_offset2 */\n",
-                //     REG_PC, instruction.jmp_offset2
+                //     MEM_PC, instruction.jmp_offset2
                 // );
+                *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
                 ctx.jump_to_dynamic_pc = true;
             } else if id == "z" {
-                *s += &format!("\tmov {}, 0x{:x} /* flag=0: pc += 4 */\n", REG_PC, ctx.next_pc);
+                *s += &format!("\tmov {}, 0x{:x} /* flag=0: pc += 4 */\n", REG_VALUE, ctx.next_pc);
+                *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
             }
         } else if ctx.flag_is_always_one {
             if ctx.pc as i64 + instruction.jmp_offset1 != ctx.next_pc as i64 {
                 *s += &format!(
                     "\tmov {}, 0x{:x} /* flag=1: pc += i.jmp_offset1 */\n",
-                    REG_PC,
+                    REG_VALUE,
                     (ctx.pc as i64 + instruction.jmp_offset1) as u64
                 );
                 // *s += &format!(
                 //     "\tadd {}, 0x{:x} /* set_pc 4: pc += i.jmp_offset1 */\n",
-                //     REG_PC, instruction.jmp_offset1
+                //     MEM_PC, instruction.jmp_offset1
                 // );
+                *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
                 ctx.jump_to_dynamic_pc = true;
             } else if id == "z" {
-                *s += &format!("\tmov {}, 0x{:x} /* flag=1: pc += 4 */\n", REG_PC, ctx.next_pc);
+                *s += &format!("\tmov {}, 0x{:x} /* flag=1: pc += 4 */\n", REG_VALUE, ctx.next_pc);
+                *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
             }
         } else {
             *s += "\t/* pc = f(flag) */\n";
@@ -3086,20 +3095,22 @@ impl ZiskRom2Asm {
             *s += &format!("\tjne pc_{:x}_{}_flag_false\n", ctx.pc, id);
             *s += &format!(
                 "\tmov {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
-                REG_PC,
+                REG_VALUE,
                 (ctx.pc as i64 + instruction.jmp_offset1) as u64
             );
+            *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
             *s += &format!("\tjmp pc_{:x}_{}_flag_done\n", ctx.pc, id);
             *s += &format!("pc_{:x}_{}_flag_false:\n", ctx.pc, id);
             *s += &format!(
                 "\tmov {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
-                REG_PC,
+                REG_VALUE,
                 (ctx.pc as i64 + instruction.jmp_offset2) as u64
             );
+            *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
             *s += &format!("pc_{:x}_{}_flag_done:\n", ctx.pc, id);
             // *s += &format!(
             //     "\tadd {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
-            //     REG_PC, instruction.jmp_offset2
+            //     MEM_PC, instruction.jmp_offset2
             // );
             ctx.jump_to_dynamic_pc = true;
         }
@@ -3261,7 +3272,9 @@ impl ZiskRom2Asm {
                 "\tmov {}, {} /* address = chunk_address */\n",
                 REG_ADDRESS, MEM_CHUNK_ADDRESS
             );
-            *s += &format!("\tmov [{}], {} /* chunk.start.pc = pc */\n", REG_ADDRESS, REG_PC);
+
+            *s += &format!("\tmov {}, {} /* value = pc */\n", REG_VALUE, MEM_PC);
+            *s += &format!("\tmov [{}], {} /* chunk.start.pc = value */\n", REG_ADDRESS, REG_VALUE);
 
             // Write chunk.start.sp
             *s += &format!("\tmov {}, {} /* value = sp */\n", REG_VALUE, MEM_SP);
@@ -3306,7 +3319,7 @@ impl ZiskRom2Asm {
 
         *s += "\t/* Reset step_down to chunk_size */\n";
         *s += &format!("\tmov {}, chunk_size /* value = chunk_size */\n", REG_VALUE);
-        *s += &format!("\tmov {}, {} /* step_down = chunk_size */\n", MEM_STEP_DOWN, REG_VALUE);
+        *s += &format!("\tmov {}, {} /* step_down = chunk_size */\n", REG_STEP_DOWN, REG_VALUE);
 
         if ctx.generate_minimal_trace || ctx.generate_main_trace {
             *s += "\t/* Write mem reads size */\n";
@@ -3328,7 +3341,7 @@ impl ZiskRom2Asm {
         *s += "\t/* Update step from step_down */\n";
         *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
         *s += &format!("\tadd {}, chunk_size /* value += chunk_size */\n", REG_VALUE);
-        *s += &format!("\tsub {}, {} /* value -= step_down */\n", REG_VALUE, MEM_STEP_DOWN);
+        *s += &format!("\tsub {}, {} /* value -= step_down */\n", REG_VALUE, REG_STEP_DOWN);
         *s += &format!("\tmov {}, {} /* step = value */\n", MEM_STEP, REG_VALUE);
 
         if ctx.generate_minimal_trace {
