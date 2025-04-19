@@ -3030,33 +3030,33 @@ impl ZiskRom2Asm {
         code
     }
 
-    fn set_pc(ctx: &mut ZiskAsmContext, instruction: &ZiskInst, s: &mut String, id: &str) {
+    fn set_pc(ctx: &mut ZiskAsmContext, instruction: &ZiskInst, code: &mut String, id: &str) {
         ctx.jump_to_dynamic_pc = false;
         ctx.jump_to_static_pc = String::new();
         if instruction.set_pc {
-            *s += "\t/* set pc */\n";
+            *code += "\t/* set pc */\n";
             if ctx.c.is_constant {
                 let new_pc = (ctx.c.constant_value as i64 + instruction.jmp_offset1) as u64;
-                *s += &format!(
+                *code += &format!(
                     "\tmov {}, 0x{:x} /* value = c(const) + i.jmp_offset1 */\n",
                     REG_VALUE, new_pc
                 );
-                *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
+                *code += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
                 ctx.jump_to_static_pc = format!("\tjmp pc_{:x} /* jump to static pc */\n", new_pc);
             } else {
-                *s += &format!("\tmov {}, {} /* value = c */\n", REG_VALUE, ctx.c.string_value);
+                *code += &format!("\tmov {}, {} /* value = c */\n", REG_VALUE, ctx.c.string_value);
                 if instruction.jmp_offset1 != 0 {
-                    *s += &format!(
+                    *code += &format!(
                         "\tadd {}, 0x{:x} /* value += i.jmp_offset1 */\n",
                         REG_VALUE, instruction.jmp_offset1
                     );
                 }
-                *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
+                *code += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
                 ctx.jump_to_dynamic_pc = true;
             }
         } else if ctx.flag_is_always_zero {
             if ctx.pc as i64 + instruction.jmp_offset2 != ctx.next_pc as i64 {
-                *s += &format!(
+                *code += &format!(
                     "\tmov {}, 0x{:x} /* flag=0: pc += i.jmp_offset2 */\n",
                     REG_VALUE,
                     (ctx.pc as i64 + instruction.jmp_offset2) as u64
@@ -3065,15 +3065,16 @@ impl ZiskRom2Asm {
                 //     "\tadd {}, 0x{:x} /* set_pc 3: pc += i.jmp_offset2 */\n",
                 //     MEM_PC, instruction.jmp_offset2
                 // );
-                *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
+                *code += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
                 ctx.jump_to_dynamic_pc = true;
             } else if id == "z" {
-                *s += &format!("\tmov {}, 0x{:x} /* flag=0: pc += 4 */\n", REG_VALUE, ctx.next_pc);
-                *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
+                *code +=
+                    &format!("\tmov {}, 0x{:x} /* flag=0: pc += 4 */\n", REG_VALUE, ctx.next_pc);
+                *code += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
             }
         } else if ctx.flag_is_always_one {
             if ctx.pc as i64 + instruction.jmp_offset1 != ctx.next_pc as i64 {
-                *s += &format!(
+                *code += &format!(
                     "\tmov {}, 0x{:x} /* flag=1: pc += i.jmp_offset1 */\n",
                     REG_VALUE,
                     (ctx.pc as i64 + instruction.jmp_offset1) as u64
@@ -3082,32 +3083,33 @@ impl ZiskRom2Asm {
                 //     "\tadd {}, 0x{:x} /* set_pc 4: pc += i.jmp_offset1 */\n",
                 //     MEM_PC, instruction.jmp_offset1
                 // );
-                *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
+                *code += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
                 ctx.jump_to_dynamic_pc = true;
             } else if id == "z" {
-                *s += &format!("\tmov {}, 0x{:x} /* flag=1: pc += 4 */\n", REG_VALUE, ctx.next_pc);
-                *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
+                *code +=
+                    &format!("\tmov {}, 0x{:x} /* flag=1: pc += 4 */\n", REG_VALUE, ctx.next_pc);
+                *code += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
             }
         } else {
-            *s += "\t/* pc = f(flag) */\n";
+            *code += "\t/* pc = f(flag) */\n";
             // Calculate the new pc
-            *s += &format!("\tcmp {}, 1 /* flag == 1 ? */\n", REG_FLAG);
-            *s += &format!("\tjne pc_{:x}_{}_flag_false\n", ctx.pc, id);
-            *s += &format!(
+            *code += &format!("\tcmp {}, 1 /* flag == 1 ? */\n", REG_FLAG);
+            *code += &format!("\tjne pc_{:x}_{}_flag_false\n", ctx.pc, id);
+            *code += &format!(
                 "\tmov {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
                 REG_VALUE,
                 (ctx.pc as i64 + instruction.jmp_offset1) as u64
             );
-            *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
-            *s += &format!("\tjmp pc_{:x}_{}_flag_done\n", ctx.pc, id);
-            *s += &format!("pc_{:x}_{}_flag_false:\n", ctx.pc, id);
-            *s += &format!(
+            *code += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
+            *code += &format!("\tjmp pc_{:x}_{}_flag_done\n", ctx.pc, id);
+            *code += &format!("pc_{:x}_{}_flag_false:\n", ctx.pc, id);
+            *code += &format!(
                 "\tmov {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
                 REG_VALUE,
                 (ctx.pc as i64 + instruction.jmp_offset2) as u64
             );
-            *s += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
-            *s += &format!("pc_{:x}_{}_flag_done:\n", ctx.pc, id);
+            *code += &format!("\tmov {}, {} /* pc=value */\n", MEM_PC, REG_VALUE);
+            *code += &format!("pc_{:x}_{}_flag_done:\n", ctx.pc, id);
             // *s += &format!(
             //     "\tadd {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
             //     MEM_PC, instruction.jmp_offset2
@@ -3116,9 +3118,9 @@ impl ZiskRom2Asm {
         }
     }
 
-    fn a_src_mem_aligned(ctx: &mut ZiskAsmContext, s: &mut String) {
+    fn a_src_mem_aligned(ctx: &mut ZiskAsmContext, code: &mut String) {
         // Copy read data into mem_reads_address and increment it
-        *s += &format!(
+        *code += &format!(
             "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = a */\n",
             REG_MEM_READS_ADDRESS,
             REG_MEM_READS_SIZE,
@@ -3126,40 +3128,41 @@ impl ZiskRom2Asm {
         );
 
         // Increment chunk.steps.mem_reads_size
-        *s += &format!("\tinc {} /* mem_reads_size++ */\n", REG_MEM_READS_SIZE);
+        *code += &format!("\tinc {} /* mem_reads_size++ */\n", REG_MEM_READS_SIZE);
     }
 
-    fn a_src_mem_not_aligned(_ctx: &mut ZiskAsmContext, s: &mut String) {
+    fn a_src_mem_not_aligned(_ctx: &mut ZiskAsmContext, code: &mut String) {
         // Calculate previous aligned address
-        *s += &format!(
+        *code += &format!(
             "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
             REG_ADDRESS
         );
 
         // Store previous aligned address value in mem_reads
-        *s += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_ADDRESS);
-        *s += &format!(
+        *code +=
+            &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_ADDRESS);
+        *code += &format!(
             "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_a */\n",
             REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
 
         // Store next aligned address value in mem_reads
-        *s += &format!(
+        *code += &format!(
             "\tmov {}, [{} + 8] /* value = mem[prev_address] */\n",
             REG_VALUE, REG_ADDRESS
         );
-        *s += &format!(
+        *code += &format!(
             "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_a */\n",
             REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
 
         // Increment chunk.steps.mem_reads_size twice
-        *s += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
+        *code += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
     }
 
-    fn b_src_mem_aligned(ctx: &mut ZiskAsmContext, s: &mut String) {
+    fn b_src_mem_aligned(ctx: &mut ZiskAsmContext, code: &mut String) {
         // Copy read data into mem_reads_address and increment it
-        *s += &format!(
+        *code += &format!(
             "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = b */\n",
             REG_MEM_READS_ADDRESS,
             REG_MEM_READS_SIZE,
@@ -3167,146 +3170,151 @@ impl ZiskRom2Asm {
         );
 
         // Increment chunk.steps.mem_reads_size
-        *s += &format!("\tinc {} /* mem_reads_size++ */\n", REG_MEM_READS_SIZE);
+        *code += &format!("\tinc {} /* mem_reads_size++ */\n", REG_MEM_READS_SIZE);
     }
 
-    fn b_src_mem_not_aligned(_ctx: &mut ZiskAsmContext, s: &mut String) {
+    fn b_src_mem_not_aligned(_ctx: &mut ZiskAsmContext, code: &mut String) {
         // Calculate previous aligned address
-        *s += &format!(
+        *code += &format!(
             "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
             REG_ADDRESS
         );
 
         // Store previous aligned address value in mem_reads, and advance address
-        *s += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_ADDRESS);
-        *s += &format!(
+        *code +=
+            &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_ADDRESS);
+        *code += &format!(
             "\tmov [{} + {}*8], {} /* mem_address[@+size*8] = prev_b */\n",
             REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
 
         // Store next aligned address value in mem_reads, and advance address
-        *s += &format!(
+        *code += &format!(
             "\tmov {}, [{} + 8] /* value = mem[prev_address] */\n",
             REG_VALUE, REG_ADDRESS
         );
-        *s += &format!(
+        *code += &format!(
             "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_b */\n",
             REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
 
         // Increment chunk.steps.mem_reads_size twice
-        *s += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
+        *code += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
     }
 
-    fn c_store_mem_not_aligned(_ctx: &mut ZiskAsmContext, s: &mut String) {
+    fn c_store_mem_not_aligned(_ctx: &mut ZiskAsmContext, code: &mut String) {
         // Get a copy of the address to preserve it
-        *s += &format!("\tmov {}, {} /* aux = address */\n", REG_AUX, REG_ADDRESS);
+        *code += &format!("\tmov {}, {} /* aux = address */\n", REG_AUX, REG_ADDRESS);
 
         // Calculate previous aligned address
-        *s += &format!(
+        *code += &format!(
             "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
             REG_AUX
         );
 
         // Store previous aligned address value in mem_reads, and advance address
-        *s += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_AUX);
-        *s += &format!(
+        *code += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_AUX);
+        *code += &format!(
             "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
             REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
 
         // Store next aligned address value in mem_reads, and advance address
-        *s += &format!("\tmov {}, [{} + 8] /* value = mem[next_address] */\n", REG_VALUE, REG_AUX);
-        *s += &format!(
+        *code +=
+            &format!("\tmov {}, [{} + 8] /* value = mem[next_address] */\n", REG_VALUE, REG_AUX);
+        *code += &format!(
             "\tmov [{} + {}*8 +  8], {} /* mem_reads[@+size*8+8] = next_c */\n",
             REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
 
         // Increment chunk.steps.mem_reads_size twice
-        *s += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
+        *code += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
     }
 
-    fn c_store_ind_8_not_aligned(_ctx: &mut ZiskAsmContext, s: &mut String) {
+    fn c_store_ind_8_not_aligned(_ctx: &mut ZiskAsmContext, code: &mut String) {
         // Get a copy of the address to preserve it
-        *s += &format!("\tmov {}, {} /* aux = address */\n", REG_AUX, REG_ADDRESS);
+        *code += &format!("\tmov {}, {} /* aux = address */\n", REG_AUX, REG_ADDRESS);
 
         // Calculate previous aligned address
-        *s += &format!(
+        *code += &format!(
             "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
             REG_AUX
         );
 
         // Store previous aligned address value in mem_reads, and advance address
-        *s += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_AUX);
-        *s += &format!(
+        *code += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_AUX);
+        *code += &format!(
             "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
             REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
 
         // Store next aligned address value in mem_reads, and advance it
-        *s += &format!("\tmov {}, [{} + 8] /* value = mem[next_address] */\n", REG_VALUE, REG_AUX);
-        *s += &format!(
+        *code +=
+            &format!("\tmov {}, [{} + 8] /* value = mem[next_address] */\n", REG_VALUE, REG_AUX);
+        *code += &format!(
             "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_c */\n",
             REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
         );
 
         // Increment chunk.steps.mem_reads_size twice
-        *s += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
+        *code += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
     }
 
-    fn chunk_start(ctx: &mut ZiskAsmContext, s: &mut String) {
-        *s += "\t/* Increment number of chunks (first position in trace) */\n";
-        *s += &format!("\tmov {}, {} /* address = trace_addr */\n", REG_ADDRESS, MEM_TRACE_ADDRESS);
-        *s += &format!("\tmov {}, [{}] /* value = trace_addr */\n", REG_VALUE, REG_ADDRESS);
-        *s += &format!("\tinc {} /* inc value */\n", REG_VALUE);
-        *s += &format!(
+    fn chunk_start(ctx: &mut ZiskAsmContext, code: &mut String) {
+        *code += "\t/* Increment number of chunks (first position in trace) */\n";
+        *code +=
+            &format!("\tmov {}, {} /* address = trace_addr */\n", REG_ADDRESS, MEM_TRACE_ADDRESS);
+        *code += &format!("\tmov {}, [{}] /* value = trace_addr */\n", REG_VALUE, REG_ADDRESS);
+        *code += &format!("\tinc {} /* inc value */\n", REG_VALUE);
+        *code += &format!(
             "\tmov [{}], {} /* trace_addr = value (trace_addr++) */\n",
             REG_ADDRESS, REG_VALUE
         );
 
         if ctx.generate_minimal_trace {
-            *s += "\t/* Write chunk start data */\n";
+            *code += "\t/* Write chunk start data */\n";
 
             // Write chunk.start.pc
-            *s += &format!(
+            *code += &format!(
                 "\tmov {}, {} /* address = chunk_address */\n",
                 REG_ADDRESS, MEM_CHUNK_ADDRESS
             );
 
-            *s += &format!("\tmov {}, {} /* value = pc */\n", REG_VALUE, MEM_PC);
-            *s += &format!("\tmov [{}], {} /* chunk.start.pc = value */\n", REG_ADDRESS, REG_VALUE);
+            *code += &format!("\tmov {}, {} /* value = pc */\n", REG_VALUE, MEM_PC);
+            *code +=
+                &format!("\tmov [{}], {} /* chunk.start.pc = value */\n", REG_ADDRESS, REG_VALUE);
 
             // Write chunk.start.sp
-            *s += &format!("\tmov {}, {} /* value = sp */\n", REG_VALUE, MEM_SP);
-            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-            *s += &format!(
+            *code += &format!("\tmov {}, {} /* value = sp */\n", REG_VALUE, MEM_SP);
+            *code += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+            *code += &format!(
                 "\tmov [{}], {} /* chunk.start.sp = value = sp */\n",
                 REG_ADDRESS, REG_VALUE
             );
 
             // Write chunk.start.c
-            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-            *s += &format!("\tmov [{}], {} /* chunk.start.c = c */\n", REG_ADDRESS, REG_C);
+            *code += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+            *code += &format!("\tmov [{}], {} /* chunk.start.c = c */\n", REG_ADDRESS, REG_C);
 
             // Write chunk.start.step
-            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-            *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
-            *s += &format!(
+            *code += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+            *code += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+            *code += &format!(
                 "\tmov [{}], {} /* chunk.start.step = value = step */\n",
                 REG_ADDRESS, REG_VALUE
             );
-            *s += &format!(
+            *code += &format!(
                 "\tmov [{}], {} /* chunk_start_step = value = step */\n",
                 MEM_CHUNK_START_STEP, REG_VALUE
             );
 
             // Write chunk.start.reg
             for i in 1..34 {
-                *s += &format!(
+                *code += &format!(
                     "\tmov {}, qword ptr [reg_{}] /* value = reg_{} */\n",
                     REG_VALUE, i, i
                 );
-                *s += &format!(
+                *code += &format!(
                     "\tmov [{} + {}], {} /* chunk.start.reg[{}] = value */\n",
                     REG_ADDRESS,
                     i * 8,
@@ -3314,86 +3322,86 @@ impl ZiskRom2Asm {
                     i
                 );
             }
-            *s += &format!("\tadd {}, 33*8 /* address += 33*8 */\n", REG_ADDRESS);
+            *code += &format!("\tadd {}, 33*8 /* address += 33*8 */\n", REG_ADDRESS);
         }
 
-        *s += "\t/* Reset step_down to chunk_size */\n";
-        *s += &format!("\tmov {}, chunk_size /* value = chunk_size */\n", REG_VALUE);
-        *s += &format!("\tmov {}, {} /* step_down = chunk_size */\n", REG_STEP_DOWN, REG_VALUE);
+        *code += "\t/* Reset step_down to chunk_size */\n";
+        *code += &format!("\tmov {}, chunk_size /* value = chunk_size */\n", REG_VALUE);
+        *code += &format!("\tmov {}, {} /* step_down = chunk_size */\n", REG_STEP_DOWN, REG_VALUE);
 
         if ctx.generate_minimal_trace || ctx.generate_main_trace {
-            *s += "\t/* Write mem reads size */\n";
-            *s += &format!("\tmov {}, {} /* aux = chunk_size */\n", REG_AUX, MEM_CHUNK_ADDRESS);
+            *code += "\t/* Write mem reads size */\n";
+            *code += &format!("\tmov {}, {} /* aux = chunk_size */\n", REG_AUX, MEM_CHUNK_ADDRESS);
             if ctx.generate_minimal_trace {
-                *s += &format!("\tadd {}, 40*8 /* aux += 40*8 */\n", REG_AUX);
+                *code += &format!("\tadd {}, 40*8 /* aux += 40*8 */\n", REG_AUX);
             }
-            *s += &format!("\tadd {}, 8 /* aux += 8 */\n", REG_AUX);
-            *s += &format!(
+            *code += &format!("\tadd {}, 8 /* aux += 8 */\n", REG_AUX);
+            *code += &format!(
                 "\tmov {}, {} /* mem_reads_address = aux */\n",
                 REG_MEM_READS_ADDRESS, REG_AUX
             );
-            *s += "\t/* Reset mem_reads size */\n";
-            *s += &format!("\tmov {}, 0 /* mem_reads_size = 0 */\n", REG_MEM_READS_SIZE);
+            *code += "\t/* Reset mem_reads size */\n";
+            *code += &format!("\tmov {}, 0 /* mem_reads_size = 0 */\n", REG_MEM_READS_SIZE);
         }
     }
 
-    fn chunk_end(ctx: &mut ZiskAsmContext, s: &mut String, id: &str) {
-        *s += "\t/* Update step from step_down */\n";
-        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
-        *s += &format!("\tadd {}, chunk_size /* value += chunk_size */\n", REG_VALUE);
-        *s += &format!("\tsub {}, {} /* value -= step_down */\n", REG_VALUE, REG_STEP_DOWN);
-        *s += &format!("\tmov {}, {} /* step = value */\n", MEM_STEP, REG_VALUE);
+    fn chunk_end(ctx: &mut ZiskAsmContext, code: &mut String, id: &str) {
+        *code += "\t/* Update step from step_down */\n";
+        *code += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+        *code += &format!("\tadd {}, chunk_size /* value += chunk_size */\n", REG_VALUE);
+        *code += &format!("\tsub {}, {} /* value -= step_down */\n", REG_VALUE, REG_STEP_DOWN);
+        *code += &format!("\tmov {}, {} /* step = value */\n", MEM_STEP, REG_VALUE);
 
         if ctx.generate_minimal_trace {
-            *s += "\t/* Write chunk last data */\n";
+            *code += "\t/* Write chunk last data */\n";
 
             // Search position of chunk.last
-            *s += &format!(
+            *code += &format!(
                 "\tmov {}, {} /* address = chunk_address */\n",
                 REG_ADDRESS, MEM_CHUNK_ADDRESS
             );
-            *s += &format!("\tadd {}, 37*8 /* address = chunk_address + 37*8 */\n", REG_ADDRESS);
+            *code += &format!("\tadd {}, 37*8 /* address = chunk_address + 37*8 */\n", REG_ADDRESS);
 
             // Write chunk.last.c
-            *s += &format!("\tmov [{}], {} /* chunk.last.c = c */\n", REG_ADDRESS, REG_C);
+            *code += &format!("\tmov [{}], {} /* chunk.last.c = c */\n", REG_ADDRESS, REG_C);
 
-            *s += "\t/* Write chunk end data */\n";
-            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-            *s += &format!("\tmov {}, {} /* value = end */\n", REG_VALUE, MEM_END);
-            *s +=
+            *code += "\t/* Write chunk end data */\n";
+            *code += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+            *code += &format!("\tmov {}, {} /* value = end */\n", REG_VALUE, MEM_END);
+            *code +=
                 &format!("\tmov [{}], {} /* chunk.end = value = end */\n", REG_ADDRESS, REG_VALUE);
 
-            *s += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS); // steps
-            *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
-            *s +=
+            *code += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS); // steps
+            *code += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+            *code +=
                 &format!("\tsub {}, {} /* value = step_inc */\n", REG_VALUE, MEM_CHUNK_START_STEP);
-            *s += &format!(
+            *code += &format!(
                 "\tmov [{}], {} /* chunk.steps.step = value = step_inc */\n",
                 REG_ADDRESS, REG_VALUE
             );
 
             // Write mem_reads_size
-            *s += &format!("\tadd {}, 8 /* address += 8 = mem_reads_size */\n", REG_ADDRESS); // mem_reads_size
+            *code += &format!("\tadd {}, 8 /* address += 8 = mem_reads_size */\n", REG_ADDRESS); // mem_reads_size
 
-            *s += &format!(
+            *code += &format!(
                 "\tmov [{}], {} /* mem_reads_size = size */\n",
                 REG_ADDRESS, REG_MEM_READS_SIZE
             );
 
             // Get value = mem_reads_size*8, i.e. memory size till next chunk
-            *s += &format!(
+            *code += &format!(
                 "\tmov {}, {} /* value = mem_reads_size */\n",
                 REG_VALUE, REG_MEM_READS_SIZE
             );
-            *s += &format!("\tsal {}, 3 /* value <<= 3 */\n", REG_VALUE);
+            *code += &format!("\tsal {}, 3 /* value <<= 3 */\n", REG_VALUE);
 
             // Update chunk address
-            *s += &format!("\tadd {}, 8 /* address += 8 = new_chunk_address */\n", REG_ADDRESS); // new chunk
-            *s += &format!(
+            *code += &format!("\tadd {}, 8 /* address += 8 = new_chunk_address */\n", REG_ADDRESS); // new chunk
+            *code += &format!(
                 "\tadd {}, {} /* address += value = mem_reads_size*8 */\n",
                 REG_ADDRESS, REG_VALUE
             ); // new chunk
-            *s += &format!(
+            *code += &format!(
                 "\tmov {}, {} /* chunk_address = new_chunk_address */\n",
                 MEM_CHUNK_ADDRESS, REG_ADDRESS
             );
@@ -3401,97 +3409,97 @@ impl ZiskRom2Asm {
 
         if ctx.generate_main_trace {
             // Write size
-            *s += &format!(
+            *code += &format!(
                 "\tmov {}, {} /* address = chunk_address */\n",
                 REG_ADDRESS, MEM_CHUNK_ADDRESS
             );
-            *s += &format!(
+            *code += &format!(
                 "\tmov [{}], {} /* mem_reads_size = size */\n",
                 REG_ADDRESS, REG_MEM_READS_SIZE
             );
-            *s += &format!("\tadd {}, 8 /* address += 8 = new_chunk_address */\n", REG_ADDRESS); // new chunk
+            *code += &format!("\tadd {}, 8 /* address += 8 = new_chunk_address */\n", REG_ADDRESS); // new chunk
 
             // Increase chunk address
-            *s += &format!(
+            *code += &format!(
                 "\tmov {}, {} /* value = mem_reads_size */\n",
                 REG_VALUE, REG_MEM_READS_SIZE
             );
-            *s += &format!("\tsal {}, 3 /* value <<= 3 */\n", REG_VALUE);
-            *s += &format!(
+            *code += &format!("\tsal {}, 3 /* value <<= 3 */\n", REG_VALUE);
+            *code += &format!(
                 "\tadd {}, {} /* address += value = mem_reads_size*8 */\n",
                 REG_ADDRESS, REG_VALUE
             ); // new chunk
-            *s += &format!(
+            *code += &format!(
                 "\tmov {}, {} /* chunk_address = new_chunk_address */\n",
                 MEM_CHUNK_ADDRESS, REG_ADDRESS
             );
         }
 
         if ctx.generate_minimal_trace || ctx.generate_main_trace {
-            *s += "\t/* Realloc trace if threshold is passed */\n";
-            *s += &format!(
+            *code += "\t/* Realloc trace if threshold is passed */\n";
+            *code += &format!(
                 "\tmov {}, qword ptr [trace_address_threshold] /* value = trace_address_threshold */\n",
                 REG_VALUE
             );
-            *s += &format!(
+            *code += &format!(
                 "\tcmp {}, {} /* chunk_address ? trace_address_threshold */\n",
                 REG_ADDRESS, REG_VALUE
             );
-            *s += &format!("\tjb chunk_{}_address_below_threshold\n", id);
-            *s += "\tcall _realloc_trace\n";
-            *s += &format!("chunk_{}_address_below_threshold:\n", id);
+            *code += &format!("\tjb chunk_{}_address_below_threshold\n", id);
+            *code += "\tcall _realloc_trace\n";
+            *code += &format!("chunk_{}_address_below_threshold:\n", id);
         }
     }
 
-    fn push_external_registers(_ctx: &mut ZiskAsmContext, s: &mut String) {
+    fn push_external_registers(_ctx: &mut ZiskAsmContext, code: &mut String) {
         //*s += "\tpush rsp\n";
-        *s += "\tpush rbx\n";
-        *s += "\tpush rbp\n";
-        *s += "\tpush r12\n";
-        *s += "\tpush r13\n";
-        *s += "\tpush r14\n";
-        *s += "\tpush r15\n";
+        *code += "\tpush rbx\n";
+        *code += "\tpush rbp\n";
+        *code += "\tpush r12\n";
+        *code += "\tpush r13\n";
+        *code += "\tpush r14\n";
+        *code += "\tpush r15\n";
     }
 
-    fn pop_external_registers(_ctx: &mut ZiskAsmContext, s: &mut String) {
-        *s += "\tpop r15\n";
-        *s += "\tpop r14\n";
-        *s += "\tpop r13\n";
-        *s += "\tpop r12\n";
-        *s += "\tpop rbp\n";
-        *s += "\tpop rbx\n";
+    fn pop_external_registers(_ctx: &mut ZiskAsmContext, code: &mut String) {
+        *code += "\tpop r15\n";
+        *code += "\tpop r14\n";
+        *code += "\tpop r13\n";
+        *code += "\tpop r12\n";
+        *code += "\tpop rbp\n";
+        *code += "\tpop rbx\n";
         //*s += "\tpop rsp\n";
     }
 
-    fn push_internal_registers(_ctx: &mut ZiskAsmContext, s: &mut String) {
-        *s += "\tpush rax\n";
-        *s += "\tpush rcx\n";
-        *s += "\tpush rdx\n";
+    fn push_internal_registers(_ctx: &mut ZiskAsmContext, code: &mut String) {
+        *code += "\tpush rax\n";
+        *code += "\tpush rcx\n";
+        *code += "\tpush rdx\n";
         // *s += "\tpush rdi\n";
         // *s += "\tpush rsi\n";
         // *s += "\tpush rsp\n";
         // *s += "\tpush r8\n";
-        *s += "\tpush r9\n";
-        *s += "\tpush r10\n";
+        *code += "\tpush r9\n";
+        *code += "\tpush r10\n";
         //*s += "\tpush r11\n";
     }
 
-    fn pop_internal_registers(_ctx: &mut ZiskAsmContext, s: &mut String) {
+    fn pop_internal_registers(_ctx: &mut ZiskAsmContext, code: &mut String) {
         //*s += "\tpop r11\n";
-        *s += "\tpop r10\n";
-        *s += "\tpop r9\n";
+        *code += "\tpop r10\n";
+        *code += "\tpop r9\n";
         // *s += "\tpop r8\n";
         // *s += "\tpop rsp\n";
         // *s += "\tpop rsi\n";
         // *s += "\tpop rdi\n";
-        *s += "\tpop rdx\n";
-        *s += "\tpop rcx\n";
-        *s += "\tpop rax\n";
+        *code += "\tpop rdx\n";
+        *code += "\tpop rcx\n";
+        *code += "\tpop rax\n";
     }
 
     fn precompiled_save_mem_reads(
         _ctx: &mut ZiskAsmContext,
-        s: &mut String,
+        code: &mut String,
         indirections_count: u64,
         load_count: u64,
         load_size: u64,
@@ -3500,7 +3508,7 @@ impl ZiskRom2Asm {
         let mut mem_reads_index: u64 = 0;
 
         // We get a copy of the precompiled data address
-        *s += &format!("\tmov {}, rdi /* address = rdi */\n", REG_ADDRESS);
+        *code += &format!("\tmov {}, rdi /* address = rdi */\n", REG_ADDRESS);
 
         // We make 2 rounds, a first one to store the indirection addresses, and a second one to
         // store the load data, up to load_count
@@ -3508,14 +3516,14 @@ impl ZiskRom2Asm {
             // For every indirection
             for i in 0..indirections_count {
                 // Store next aligned address value in mem_reads, and advance it
-                *s += &format!(
+                *code += &format!(
                     "\tmov {}, [{} + {}*8] /* value = mem[address+{}] */\n",
                     REG_VALUE, REG_ADDRESS, i, i
                 );
 
                 // During the first iteration, store the indirection read value in mem_reads
                 if j == 0 {
-                    *s += &format!(
+                    *code += &format!(
                         "\tmov [{} + {}*8 + {}*8], {} /* mem_reads[@+size*8+ind*8] = ind */\n",
                         REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, mem_reads_index, REG_VALUE
                     );
@@ -3532,11 +3540,11 @@ impl ZiskRom2Asm {
 
                     // For each chunk of the indirection, store it in mem_reads
                     for l in 0..load_size {
-                        *s += &format!(
+                        *code += &format!(
                             "\tmov {}, [{} + {}*8] /* aux = mem[ind+{}] */\n",
                             REG_AUX, REG_VALUE, l, l
                         );
-                        *s += &format!(
+                        *code += &format!(
                             "\tmov [{} + {}*8 + {}*8], {} /* mem_reads[@+size*8+ind*8] = ind */\n",
                             REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, mem_reads_index, REG_AUX
                         );
@@ -3547,64 +3555,64 @@ impl ZiskRom2Asm {
         }
 
         // Increment chunk.steps.mem_reads_size
-        *s += &format!(
+        *code += &format!(
             "\tadd {}, {} /* mem_reads_size+={}*/\n",
             REG_MEM_READS_SIZE, mem_reads_index, mem_reads_index
         );
     }
 
-    fn trace_reg_access(ctx: &mut ZiskAsmContext, s: &mut String, reg: u64, slot: u64) {
+    fn trace_reg_access(ctx: &mut ZiskAsmContext, code: &mut String, reg: u64, slot: u64) {
         // REG_VALUE is reg_step = STEP << 4 + 1 + slot
-        *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
-        *s += &format!("\tsal {}, 3 /* value <<= 2 */\n", REG_VALUE);
-        *s += &format!("\tadd {}, {} /* value += {} */\n", REG_VALUE, slot + 1, slot + 1);
+        *code += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
+        *code += &format!("\tsal {}, 3 /* value <<= 2 */\n", REG_VALUE);
+        *code += &format!("\tadd {}, {} /* value += {} */\n", REG_VALUE, slot + 1, slot + 1);
 
         // REG_ADDRESS is reg_steps[slot], i.e. prev_reg_steps
-        *s += &format!(
+        *code += &format!(
             "\tmov {}, qword ptr [reg_steps_{}] /* address=reg_steps[slot] */\n",
             REG_ADDRESS, slot
         );
 
         // reg_prev_steps[slot] = pref_reg_steps
-        *s += &format!(
+        *code += &format!(
             "\tmov qword ptr [reg_prev_steps_{}], {} /* reg_prev_steps[slot]=address */\n",
             slot, REG_ADDRESS
         );
 
         // Check if is first_reference==0
-        *s += &format!(
+        *code += &format!(
             "\tmov {}, qword ptr [first_step_uses_{}] /* aux=first_step_uses[reg] */\n",
             REG_AUX, reg
         );
-        *s += &format!("\tjz pc_{:x}_{}_first_reference\n", ctx.pc, slot);
+        *code += &format!("\tjz pc_{:x}_{}_first_reference\n", ctx.pc, slot);
         // Not first reference
-        *s += &format!("pc_{:x}_{}_not_first_reference:\n", ctx.pc, slot);
-        *s += &format!(
+        *code += &format!("pc_{:x}_{}_not_first_reference:\n", ctx.pc, slot);
+        *code += &format!(
             "\tmov qword ptr [reg_step_ranges_{}], {} /* reg_step_ranges[slot]=reg_step */\n",
             slot, REG_VALUE
         );
-        *s += &format!(
+        *code += &format!(
             "\tsub qword ptr [reg_step_ranges_{}], {} /* reg_step_ranges[slot]-=prev_reg_step */\n",
             slot, REG_VALUE
         );
-        *s += &format!("\tjmp pc_{:x}_{}_first_reference_done\n", ctx.pc, slot);
+        *code += &format!("\tjmp pc_{:x}_{}_first_reference_done\n", ctx.pc, slot);
         // First reference
-        *s += &format!("pc_{:x}_{}_first_reference:\n", ctx.pc, slot);
-        *s += &format!(
+        *code += &format!("pc_{:x}_{}_first_reference:\n", ctx.pc, slot);
+        *code += &format!(
             "\tmov qword ptr [first_step_uses_{}], {} /* first_step_uses[reg]= */\n",
             reg, REG_VALUE
         );
-        *s += &format!("pc_{:x}_{}_first_reference_done:\n", ctx.pc, slot);
+        *code += &format!("pc_{:x}_{}_first_reference_done:\n", ctx.pc, slot);
 
         // Store reg_steps
-        *s += &format!(
+        *code += &format!(
             "\tmov qword ptr [reg_steps_{}], {} /* reg_steps[slot]=reg_step */\n",
             slot, REG_VALUE
         );
     }
 
-    fn clear_reg_step_ranges(_ctx: &mut ZiskAsmContext, s: &mut String, slot: u64) {
-        *s += &format!(
+    fn clear_reg_step_ranges(_ctx: &mut ZiskAsmContext, code: &mut String, slot: u64) {
+        *code += &format!(
             "\tmov qword ptr [reg_step_ranges_{}], 0 /* reg_step_ranges[slot]=0 */\n",
             slot
         );
