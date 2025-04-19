@@ -5,7 +5,7 @@
 //! * Registers read/write counters (total and per register)
 //! * Operations counters (total and per opcode)
 
-use zisk_core::{zisk_ops::ZiskOp, ZiskInst, M3};
+use zisk_core::{zisk_ops::ZiskOp, ZiskInst, M3, REGS_IN_MAIN_TOTAL_NUMBER};
 
 const AREA_PER_SEC: f64 = 1000000_f64;
 const COST_MEM: f64 = 10_f64 / AREA_PER_SEC;
@@ -47,17 +47,25 @@ pub struct Stats {
     steps: u64,
     /// Counters of operations, one per possible u8 opcode (many remain unused)
     ops: [u64; 256],
+    /// Counters of register accesses, one per register
+    regs: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
 }
 
 impl Default for Stats {
     /// Default constructor for Stats structure.  Sets all counters to zero.
     fn default() -> Self {
-        Self { mops: MemoryOperations::default(), usual: 0, steps: 0, ops: [0; 256] }
+        Self {
+            mops: MemoryOperations::default(),
+            usual: 0,
+            steps: 0,
+            ops: [0; 256],
+            regs: [0; REGS_IN_MAIN_TOTAL_NUMBER],
+        }
     }
 }
 
 impl Stats {
-    /// Called every time some data is read from memory, is statistics are enabled
+    /// Called every time some data is read from memory, if statistics are enabled
     pub fn on_memory_read(&mut self, address: u64, width: u64) {
         // If the memory is alligned to 8 bytes, i.e. last 3 bits are zero, then increase the
         // aligned memory read counter
@@ -77,7 +85,7 @@ impl Stats {
         }
     }
 
-    /// Called every time some data is writen to memory, is statistics are enabled
+    /// Called every time some data is writen to memory, if statistics are enabled
     pub fn on_memory_write(&mut self, address: u64, width: u64) {
         // If the memory is alligned to 8 bytes, i.e. last 3 bits are zero, then increase the
         // aligned memory read counter
@@ -95,6 +103,18 @@ impl Stats {
                 self.mops.mwrite_na1 += 1;
             }
         }
+    }
+
+    /// Called every time a register is read, if statistics are enabled
+    pub fn on_register_read(&mut self, reg: usize) {
+        assert!(reg < REGS_IN_MAIN_TOTAL_NUMBER);
+        self.regs[reg] += 1;
+    }
+
+    /// Called every time a register is written, if statistics are enabled
+    pub fn on_register_write(&mut self, reg: usize) {
+        assert!(reg < REGS_IN_MAIN_TOTAL_NUMBER);
+        self.regs[reg] += 1;
     }
 
     /// Called at every step with the current number of executed steps, if statistics are enabled
@@ -243,6 +263,25 @@ impl Stats {
                 opcode_steps[opcode],
                 self.ops[opcode]
             );
+        }
+
+        // Build the register counters
+        output += "\nRegisters:\n";
+        let mut total_regs = 0u64;
+        for (_i, reg) in self.regs.iter().enumerate() {
+            total_regs += reg;
+        }
+        if total_regs == 0 {
+            total_regs = 1;
+        }
+        output += &format!("total regs = {}\n", total_regs);
+        output += &format!("total steps = {}\n", self.steps);
+        let regs_per_step = total_regs * 1000 / if self.steps == 0 { 1 } else { self.steps };
+        output += &format!("total regs / steps = {} %o\n", regs_per_step);
+
+        for (i, reg) in self.regs.iter().enumerate() {
+            let per_thousand = reg * 1000 / total_regs;
+            output += &format!("reg[{}] = {} ({}%o)\n", i, reg, per_thousand);
         }
 
         output
