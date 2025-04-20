@@ -56,6 +56,8 @@ const FCALL_RESULT_SIZE: u64 = 36;
 const FCALL_RESULT: u64 = 37;
 const FCALL_RESULT_GOT: u64 = 69;
 
+const XMM_MAPPED_REGS: [u64; 16] = [1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+
 #[derive(Default, Debug, Clone)]
 pub struct ZiskAsmRegister {
     is_constant: bool,   // register is a constant value known at compilation time
@@ -164,8 +166,10 @@ impl ZiskRom2Asm {
         *code += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
 
         // Allocate space for the registers
-        for r in 0..35 {
-            *code += &format!(".comm reg_{}, 8, 8\n", r);
+        for r in 0u64..35u64 {
+            if !XMM_MAPPED_REGS.contains(&r) {
+                *code += &format!(".comm reg_{}, 8, 8\n", r);
+            }
         }
 
         if ctx.generate_main_trace {
@@ -294,8 +298,13 @@ impl ZiskRom2Asm {
 
         // Initialize registers to zero
         *code += "\t/* Init registers to zero */\n";
-        for r in 0..35 {
-            *code += &format!("\tmov qword ptr [reg_{}], 0\n", r);
+        for r in 0u64..35u64 {
+            if !XMM_MAPPED_REGS.contains(&r) {
+                *code += &format!("\tmov qword ptr [reg_{}], 0\n", r);
+            }
+        }
+        for r in 0..16 {
+            *code += &format!("\tpxor xmm{}, xmm{}\n", r, r);
         }
 
         *code += "\t/* Init fcall_context to zero */\n";
@@ -477,13 +486,9 @@ impl ZiskRom2Asm {
                     assert!(instruction.a_offset_imm0 <= 34);
 
                     // Read from memory and store in the proper register: a or c
-                    *code += &format!(
-                        "\tmov {}, qword ptr [reg_{}] /* {} = reg[{}] */\n",
-                        if ctx.store_a_in_c { REG_C } else { REG_A },
-                        instruction.a_offset_imm0,
-                        if ctx.store_a_in_c { "c" } else { "a" },
-                        instruction.a_offset_imm0
-                    );
+                    let dest_reg = if ctx.store_a_in_c { REG_C } else { REG_A };
+                    let dest_desc = if ctx.store_a_in_c { "c" } else { "a" };
+                    Self::read_riscv_reg(code, instruction.a_offset_imm0, dest_reg, dest_desc);
 
                     if ctx.generate_main_trace {
                         Self::trace_reg_access(&mut ctx, code, instruction.a_offset_imm0, 0);
@@ -703,13 +708,9 @@ impl ZiskRom2Asm {
                     assert!(instruction.b_offset_imm0 <= 34);
 
                     // Read from memory and store in the proper register: b or c
-                    *code += &format!(
-                        "\tmov {}, qword ptr [reg_{}] /* {} = reg[{}] */\n",
-                        if ctx.store_b_in_c { REG_C } else { REG_B },
-                        instruction.b_offset_imm0,
-                        if ctx.store_b_in_c { "c" } else { "b" },
-                        instruction.b_offset_imm0
-                    );
+                    let dest_reg = if ctx.store_b_in_c { REG_C } else { REG_B };
+                    let dest_desc = if ctx.store_b_in_c { "c" } else { "b" };
+                    Self::read_riscv_reg(code, instruction.b_offset_imm0, dest_reg, dest_desc);
 
                     if ctx.generate_main_trace {
                         Self::trace_reg_access(&mut ctx, code, instruction.b_offset_imm0, 1);
@@ -1121,10 +1122,13 @@ impl ZiskRom2Asm {
                     // Copy previous reg value to main trace
                     if ctx.generate_main_trace {
                         *code += "\t/* Main[4]=prev_reg_c */\n";
-                        *code += &format!(
-                            "\tmov {}, qword ptr [reg_{}] /* value=reg[{}] */\n",
-                            REG_VALUE, instruction.store_offset, instruction.store_offset
+                        Self::read_riscv_reg(
+                            code,
+                            instruction.store_offset as u64,
+                            REG_VALUE,
+                            "value",
                         );
+
                         *code += &format!(
                             "\tmov [{} + {}*8 + 4*8], {} /* main[@+size*8+4*8]=prev_reg */\n",
                             REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
@@ -1135,20 +1139,15 @@ impl ZiskRom2Asm {
 
                     // Store in mem[address]
                     if instruction.store_ra {
-                        *code += &format!(
-                            "\tmov {}, 0x{:x} /* value = pc + jmp_offset2 */\n",
-                            REG_VALUE,
-                            (ctx.pc as i64 + instruction.jmp_offset2) as u64
-                        );
-                        *code += &format!(
-                            "\tmov qword ptr [reg_{}], {} /* reg[{}] = value */\n",
-                            instruction.store_offset, REG_VALUE, instruction.store_offset
+                        let value = (ctx.pc as i64 + instruction.jmp_offset2) as u64;
+                        Self::write_riscv_reg_constant(
+                            code,
+                            instruction.store_offset as u64,
+                            value,
+                            "pc + jmp_offset2",
                         );
                     } else {
-                        *code += &format!(
-                            "\tmov qword ptr [reg_{}], {} /* reg[{}] = c */\n",
-                            instruction.store_offset, REG_C, instruction.store_offset
-                        );
+                        Self::write_riscv_reg(code, instruction.store_offset as u64, REG_C, "c");
                     }
 
                     if ctx.generate_main_trace {
@@ -2746,7 +2745,8 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Keccak => {
                 // Use the memory address as the first and unique parameter */
-                code += "\tmov rdi, qword ptr [reg_10] /* Keccak: rdi = A0 */\n";
+                code += "\t/* Keccak: rdi = A0 */\n";
+                Self::read_riscv_reg(&mut code, 10, "rdi", "rdi");
 
                 // Copy read data into mem_reads_address and advance it
                 if ctx.generate_minimal_trace {
@@ -3310,10 +3310,7 @@ impl ZiskRom2Asm {
 
             // Write chunk.start.reg
             for i in 1..34 {
-                *code += &format!(
-                    "\tmov {}, qword ptr [reg_{}] /* value = reg_{} */\n",
-                    REG_VALUE, i, i
-                );
+                Self::read_riscv_reg(code, i, REG_VALUE, "value");
                 *code += &format!(
                     "\tmov [{} + {}], {} /* chunk.start.reg[{}] = value */\n",
                     REG_ADDRESS,
@@ -3482,9 +3479,15 @@ impl ZiskRom2Asm {
         *code += "\tpush r9\n";
         *code += "\tpush r10\n";
         //*s += "\tpush r11\n";
+        for r in 0u64..16u64 {
+            Self::push_xmm_reg(code, r);
+        }
     }
 
     fn pop_internal_registers(_ctx: &mut ZiskAsmContext, code: &mut String) {
+        for r in (0u64..16u64).rev() {
+            Self::pop_xmm_reg(code, r);
+        }
         //*s += "\tpop r11\n";
         *code += "\tpop r10\n";
         *code += "\tpop r9\n";
@@ -3616,6 +3619,106 @@ impl ZiskRom2Asm {
             "\tmov qword ptr [reg_step_ranges_{}], 0 /* reg_step_ranges[slot]=0 */\n",
             slot
         );
+    }
+
+    fn reg_to_xmm_index(reg: u64) -> u64 {
+        let xmm_index: u64;
+        match reg {
+            1 => xmm_index = 0,
+            2 => xmm_index = 1,
+            5 => xmm_index = 2,
+            6 => xmm_index = 3,
+            7 => xmm_index = 4,
+            8 => xmm_index = 5,
+            9 => xmm_index = 6,
+            10 => xmm_index = 7,
+            11 => xmm_index = 8,
+            12 => xmm_index = 9,
+            13 => xmm_index = 10,
+            14 => xmm_index = 11,
+            15 => xmm_index = 12,
+            16 => xmm_index = 13,
+            17 => xmm_index = 14,
+            18 => xmm_index = 15,
+            _ => {
+                panic!("ZiskRom2Asm::reg_to_xmm_index() found invalid source slot={}", reg);
+            }
+        }
+        xmm_index
+    }
+
+    fn read_riscv_reg(
+        //_ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        src_slot: u64,
+        dest_reg: &str,
+        dest_desc: &str,
+    ) {
+        if XMM_MAPPED_REGS.contains(&src_slot) {
+            let xmm_index = Self::reg_to_xmm_index(src_slot);
+            *code += &format!(
+                "\tmovq {}, xmm{} /* {} = reg[{}] */\n",
+                dest_reg, xmm_index, dest_desc, src_slot
+            );
+        } else {
+            *code += &format!(
+                "\tmov {}, qword ptr [reg_{}] /* {} = reg[{}] */\n",
+                dest_reg, src_slot, dest_desc, src_slot
+            );
+        }
+    }
+
+    fn write_riscv_reg(
+        //_ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        dest_slot: u64,
+        src_reg: &str,
+        src_desc: &str,
+    ) {
+        if XMM_MAPPED_REGS.contains(&dest_slot) {
+            let xmm_index = Self::reg_to_xmm_index(dest_slot);
+            *code += &format!(
+                "\tmovq xmm{}, {} /* reg[{}]={} */\n",
+                xmm_index, src_reg, dest_slot, src_desc
+            );
+        } else {
+            *code += &format!(
+                "\tmov qword ptr [reg_{}], {} /* reg[{}] = {} */\n",
+                dest_slot, src_reg, dest_slot, src_desc
+            );
+        }
+    }
+
+    fn write_riscv_reg_constant(
+        //_ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        dest_slot: u64,
+        value: u64,
+        value_desc: &str,
+    ) {
+        if XMM_MAPPED_REGS.contains(&dest_slot) {
+            let xmm_index = Self::reg_to_xmm_index(dest_slot);
+            *code += &format!("\tmov {}, {} /* aux={} */\n", REG_AUX, value, value_desc);
+
+            *code +=
+                &format!("\tmovq xmm{}, {} /* reg[{}]=aux */\n", xmm_index, REG_AUX, dest_slot);
+        } else {
+            *code += &format!("\tmov {}, {} /* aux={} */\n", REG_AUX, value, value_desc);
+            *code += &format!(
+                "\tmov qword ptr [reg_{}], {} /* reg[{}] = aux */\n",
+                dest_slot, REG_AUX, dest_slot
+            );
+        }
+    }
+
+    fn push_xmm_reg(code: &mut String, xmm_index: u64) {
+        *code += "\tsub rsp, 8\n";
+        *code += &format!("movq [rsp], xmm{} /* push xmm{} */\n", xmm_index, xmm_index);
+    }
+
+    fn pop_xmm_reg(code: &mut String, xmm_index: u64) {
+        *code += &format!("movq xmm{}, [rsp] /* pop xmm{} */\n", xmm_index, xmm_index);
+        *code += "\tadd rsp, 8\n";
     }
 
     /// This function calculates the address of the rom histogram for the provided pc
