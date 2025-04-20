@@ -76,6 +76,7 @@ pub struct ZiskAsmContext {
     jump_to_dynamic_pc: bool,
     jump_to_static_pc: String,
     log_output: bool,
+    call_chunk_done: bool,
     generate_fast: bool,          // 0
     generate_minimal_trace: bool, // 1
     generate_rom_histogram: bool, // 2
@@ -142,6 +143,7 @@ impl ZiskRom2Asm {
         // Create context
         let mut ctx = ZiskAsmContext {
             log_output: true,
+            call_chunk_done: true,
             generate_fast,
             generate_minimal_trace,
             generate_rom_histogram,
@@ -215,6 +217,7 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_secp256k1_add\n";
         *code += ".extern opcode_secp256k1_dbl\n";
         *code += ".extern opcode_fcall\n";
+        *code += ".extern chunk_done\n";
         *code += ".extern print_fcall_ctx\n";
         *code += ".extern realloc_trace\n\n";
 
@@ -3443,8 +3446,18 @@ impl ZiskRom2Asm {
                 REG_ADDRESS, REG_VALUE
             );
             *code += &format!("\tjb chunk_{}_address_below_threshold\n", id);
+            Self::push_internal_registers(ctx, code);
             *code += "\tcall _realloc_trace\n";
+            if ctx.call_chunk_done {
+                *code += "\tcall _chunk_done\n";
+            }
+            Self::pop_internal_registers(ctx, code);
             *code += &format!("chunk_{}_address_below_threshold:\n", id);
+        } else if ctx.call_chunk_done {
+            // Call the chunk_done function
+            Self::push_internal_registers(ctx, code);
+            *code += "\tcall _chunk_done\n";
+            Self::pop_internal_registers(ctx, code);
         }
     }
 
