@@ -154,6 +154,11 @@ char * sem_output_sufix = "_semout";
 char sem_output_name[128];
 sem_t * sem_output = NULL;
 
+// Chunk done semaphore: notifies the caller when a new chunk has been processed
+char * sem_chunk_done_sufix = "_semchunkdone";
+char sem_chunk_done_name[128];
+sem_t * sem_chunk_done = NULL;
+
 int process_id = 0;
 
 uint64_t input_size = 0;
@@ -193,11 +198,13 @@ int main(int argc, char *argv[])
         strcpy(shmem_output_name, shmem_prefix);
         strcat(shmem_output_name, shmem_output_sufix);
 
-        // Build the inout and output semaphore names
+        // Build the semaphore names
         strcpy(sem_input_name, shmem_prefix);
         strcat(sem_input_name, sem_input_sufix);
         strcpy(sem_output_name, shmem_prefix);
         strcat(sem_output_name, sem_output_sufix);
+        strcpy(sem_chunk_done_name, shmem_prefix);
+        strcat(sem_chunk_done_name, sem_chunk_done_sufix);
 
         // Create (or open if existing) input and output semaphores
         sem_input = sem_open(sem_input_name, O_CREAT);
@@ -212,7 +219,12 @@ int main(int argc, char *argv[])
             printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_output_name, errno, strerror(errno));
             return -1;
         }
-        //printf("C sem_open(%s)\n", sem_output_name);
+        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT);
+        if (sem_chunk_done == SEM_FAILED)
+        {
+            printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
+            return -1;
+        }
 
 #ifdef DEBUG
         if (verbose) printf("Emulator C start; input shared memory ID = %s\n", input_parameter);
@@ -596,12 +608,10 @@ int main(int argc, char *argv[])
     // Notify the caller that the trace is ready to be consumed
     if (!is_file)
     {
-        //printf("C sem_post(%s)...\n", sem_input_name);
         result = sem_post(sem_input);
-        //printf("C sem_wait(%s) done\n", sem_input_name);
         if (result == -1)
         {
-            printf("Failed calling sem_wait(%s) errno=%d=%s\n", sem_input_name, errno, strerror(errno));
+            printf("Failed calling sem_post(%s) errno=%d=%s\n", sem_input_name, errno, strerror(errno));
             exit(-1);
         }
     }
@@ -701,6 +711,16 @@ int main(int argc, char *argv[])
         if (result == -1)
         {
             printf("Failed calling sem_unlink(%s) errno=%d=%s\n", sem_output_name, errno, strerror(errno));
+        }
+        result = sem_close(sem_chunk_done);
+        if (result == -1)
+        {
+            printf("Failed calling sem_close(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
+        }
+        result = sem_unlink(sem_chunk_done_name);
+        if (result == -1)
+        {
+            printf("Failed calling sem_unlink(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
         }
     }
 }
@@ -982,11 +1002,11 @@ extern int _print_regs()
 {
     printf("print_regs()\n");
     printf("\treg[ 0]=%lu=0x%lx=@%p\n", reg_0,  reg_0,  &reg_0);
-    printf("\treg[ 1]=%lu=0x%lx=@%p\n", reg_1,  reg_1,  &reg_1);
-    printf("\treg[ 2]=%lu=0x%lx=@%p\n", reg_2,  reg_2,  &reg_2);
+    //printf("\treg[ 1]=%lu=0x%lx=@%p\n", reg_1,  reg_1,  &reg_1);
+    //printf("\treg[ 2]=%lu=0x%lx=@%p\n", reg_2,  reg_2,  &reg_2);
     printf("\treg[ 3]=%lu=0x%lx=@%p\n", reg_3,  reg_3,  &reg_3);
     printf("\treg[ 4]=%lu=0x%lx=@%p\n", reg_4,  reg_4,  &reg_4);
-    printf("\treg[ 5]=%lu=0x%lx=@%p\n", reg_5,  reg_5,  &reg_5);
+    /*printf("\treg[ 5]=%lu=0x%lx=@%p\n", reg_5,  reg_5,  &reg_5);
     printf("\treg[ 6]=%lu=0x%lx=@%p\n", reg_6,  reg_6,  &reg_6);
     printf("\treg[ 7]=%lu=0x%lx=@%p\n", reg_7,  reg_7,  &reg_7);
     printf("\treg[ 8]=%lu=0x%lx=@%p\n", reg_8,  reg_8,  &reg_8);
@@ -999,7 +1019,7 @@ extern int _print_regs()
     printf("\treg[15]=%lu=0x%lx=@%p\n", reg_15, reg_15, &reg_15);
     printf("\treg[16]=%lu=0x%lx=@%p\n", reg_16, reg_16, &reg_16);
     printf("\treg[17]=%lu=0x%lx=@%p\n", reg_17, reg_17, &reg_17);
-    printf("\treg[18]=%lu=0x%lx=@%p\n", reg_18, reg_18, &reg_18);
+    printf("\treg[18]=%lu=0x%lx=@%p\n", reg_18, reg_18, &reg_18);*/
     printf("\treg[19]=%lu=0x%lx=@%p\n", reg_19, reg_19, &reg_19);
     printf("\treg[20]=%lu=0x%lx=@%p\n", reg_20, reg_20, &reg_20);
     printf("\treg[21]=%lu=0x%lx=@%p\n", reg_21, reg_21, &reg_21);
@@ -1099,6 +1119,20 @@ extern int _opcode_sqrt_fp_ec_parity(uint64_t params, uint64_t result)
         exit(-1);
     }
     return 0;
+}
+
+extern void _chunk_done()
+{
+    // Notify the caller that a new chunk is done and its trace is ready to be consumed
+    if (!is_file)
+    {
+        int result = sem_post(sem_chunk_done);
+        if (result == -1)
+        {
+            printf("Failed calling sem_post(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
+            exit(-1);
+        }
+    }
 }
 
 extern void _realloc_trace (void)
