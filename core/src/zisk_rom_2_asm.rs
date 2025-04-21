@@ -536,10 +536,10 @@ impl ZiskRom2Asm {
                             *code += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
                             *code += &format!("\tjnz pc_{:x}_a_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
                             Self::a_src_mem_aligned(&mut ctx, code);
-                            *code += &format!("\tjmp pc_{:x}_a_address_check_done\n", ctx.pc);
-                            *code += &format!("pc_{:x}_a_address_not_aligned:\n", ctx.pc);
-                            Self::a_src_mem_not_aligned(&mut ctx, code);
-                            *code += ".align 16\n";
+                            unusual_code += &format!("pc_{:x}_a_address_not_aligned:\n", ctx.pc);
+                            Self::a_src_mem_not_aligned(&mut ctx, &mut unusual_code);
+                            unusual_code +=
+                                &format!("\tjmp pc_{:x}_a_address_check_done\n", ctx.pc);
                             *code += &format!("pc_{:x}_a_address_check_done:\n", ctx.pc);
                         }
                     }
@@ -757,10 +757,10 @@ impl ZiskRom2Asm {
                             *code += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
                             *code += &format!("\tjnz pc_{:x}_b_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
                             Self::b_src_mem_aligned(&mut ctx, code);
-                            *code += &format!("\tjmp pc_{:x}_b_address_check_done\n", ctx.pc);
-                            Self::b_src_mem_not_aligned(&mut ctx, code);
-                            *code += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
-                            *code += ".align 16\n";
+                            unusual_code += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
+                            Self::b_src_mem_not_aligned(&mut ctx, &mut unusual_code);
+                            unusual_code +=
+                                &format!("\tjmp pc_{:x}_b_address_check_done\n", ctx.pc);
                             *code += &format!("pc_{:x}_b_address_check_done:\n", ctx.pc);
                         }
                     }
@@ -887,41 +887,39 @@ impl ZiskRom2Asm {
                                     REG_MEM_READS_SIZE
                                 );
 
-                                // Jump to done
-                                *code += &format!("\tjmp pc_{:x}_b_address_check_done\n", ctx.pc);
-
                                 // b memory address is not aligned
 
-                                *code += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
+                                unusual_code +=
+                                    &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
 
                                 // Calculate previous aligned address
-                                *code += &format!(
+                                unusual_code += &format!(
                                     "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
                                     REG_ADDRESS
                                 );
 
                                 // Store previous aligned address value in mem_reads, and advance address
-                                *code += &format!(
+                                unusual_code += &format!(
                                     "\tmov {}, [{}] /* value = mem[prev_address] */\n",
                                     REG_VALUE, REG_ADDRESS
                                 );
-                                *code += &format!(
+                                unusual_code += &format!(
                                     "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_b */\n",
                                     REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
                                 );
 
                                 // Calculate next aligned address
-                                *code += &format!(
+                                unusual_code += &format!(
                                     "\tadd {}, 8 /* address = next aligned address */\n",
                                     REG_ADDRESS
                                 );
 
                                 // Store next aligned address value in mem_reads, and advance it
-                                *code += &format!(
+                                unusual_code += &format!(
                                     "\tmov {}, [{}] /* value = mem[next_address] */\n",
                                     REG_VALUE, REG_ADDRESS
                                 );
-                                *code += &format!(
+                                unusual_code += &format!(
                                     "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_b */\n",
                                     REG_MEM_READS_ADDRESS,
                                     REG_MEM_READS_SIZE,
@@ -929,13 +927,16 @@ impl ZiskRom2Asm {
                                 );
 
                                 // Increment chunk.steps.mem_reads_size twice
-                                *code += &format!(
+                                unusual_code += &format!(
                                     "\tadd {}, 2 /* mem_reads_size += 2*/\n",
                                     REG_MEM_READS_SIZE
                                 );
 
+                                // Jump to check done
+                                unusual_code +=
+                                    &format!("\tjmp pc_{:x}_b_address_check_done\n", ctx.pc);
+
                                 // Check done
-                                *code += ".align 16\n";
                                 *code += &format!("pc_{:x}_b_address_check_done:\n", ctx.pc);
                             }
                             4 | 2 => {
@@ -987,36 +988,33 @@ impl ZiskRom2Asm {
                                     REG_MEM_READS_SIZE
                                 );
 
-                                // Jump to done
-                                *code += &format!("\tjmp pc_{:x}_b_ind_address_done\n", ctx.pc);
-
                                 // Different address
 
-                                *code += &format!("pc_{:x}_b_ind_different_address:\n", ctx.pc);
+                                unusual_code +=
+                                    &format!("pc_{:x}_b_ind_different_address:\n", ctx.pc);
 
                                 // Store next aligned address value in mem_reads
-                                *code += &format!(
+                                unusual_code += &format!(
                                     "\tmov {}, [{}] /* value = mem[next_address] */\n",
                                     REG_VALUE, REG_ADDRESS
                                 );
 
                                 // Copy read data into mem_reads_address and advance it
-                                *code += &format!(
+                                unusual_code += &format!(
                                     "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_b */\n",
                                     REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
                                 );
 
                                 // Increment chunk.steps.mem_reads_size
-                                *code += &format!(
+                                unusual_code += &format!(
                                     "\tadd {}, 2 /* mem_reads_size+=2 */\n",
                                     REG_MEM_READS_SIZE
                                 );
 
-                                *code += &format!("\tjmp pc_{:x}_b_ind_address_done\n", ctx.pc);
+                                unusual_code +=
+                                    &format!("\tjmp pc_{:x}_b_ind_address_done\n", ctx.pc);
 
                                 // Done
-
-                                *code += ".align 16\n";
                                 *code += &format!("pc_{:x}_b_ind_address_done:\n", ctx.pc);
                             }
                             1 => {
@@ -1179,10 +1177,9 @@ impl ZiskRom2Asm {
                         } else {
                             *code += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
                             *code += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
-                            *code += &format!("\tjmp pc_{:x}_c_address_aligned\n", ctx.pc);
-                            *code += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
-                            Self::c_store_mem_not_aligned(&mut ctx, code);
-                            *code += ".align 16\n";
+                            unusual_code += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                            Self::c_store_mem_not_aligned(&mut ctx, &mut unusual_code);
+                            unusual_code += &format!("\tjmp pc_{:x}_c_address_aligned\n", ctx.pc);
                             *code += &format!("pc_{:x}_c_address_aligned:\n", ctx.pc);
                         }
                     }
@@ -1250,13 +1247,13 @@ impl ZiskRom2Asm {
                                         REG_ADDRESS
                                     );
                                     *code += &format!("\tjnz pc_{:x}_c_address_not_aligned /* check if address is aligned */\n", ctx.pc);
-                                    *code += &format!(
+                                    unusual_code +=
+                                        &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                                    Self::c_store_ind_8_not_aligned(&mut ctx, &mut unusual_code);
+                                    unusual_code += &format!(
                                         "\tjmp pc_{:x}_c_address_done /* address is aligned; done */\n",
                                         ctx.pc
                                     );
-                                    *code += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
-                                    Self::c_store_ind_8_not_aligned(&mut ctx, code);
-                                    *code += ".align 16\n";
                                     *code += &format!("pc_{:x}_c_address_done:\n", ctx.pc);
                                 }
                             }
@@ -1315,38 +1312,34 @@ impl ZiskRom2Asm {
                                     REG_MEM_READS_SIZE
                                 );
 
-                                *code += &format!(
-                                    "\tjmp pc_{:x}_c_ind_address_done /* Done */\n",
-                                    ctx.pc
-                                );
-
                                 // Different address
 
-                                *code += &format!("pc_{:x}_c_ind_different_address:\n", ctx.pc);
+                                unusual_code +=
+                                    &format!("pc_{:x}_c_ind_different_address:\n", ctx.pc);
 
                                 // Store next aligned address value in mem_reads
-                                *code += &format!(
+                                unusual_code += &format!(
                                     "\tmov {}, [{}] /* value = mem[next_address] */\n",
                                     REG_VALUE, REG_AUX
                                 );
 
                                 // Copy read data into mem_reads_address and advance it
-                                *code += &format!(
+                                unusual_code += &format!(
                                     "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_c */\n",
                                     REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
                                 );
 
                                 // Increment chunk.steps.mem_reads_size
-                                *code += &format!(
+                                unusual_code += &format!(
                                     "\tadd {}, 2 /* mem_reads_size+=2 */\n",
                                     REG_MEM_READS_SIZE
                                 );
 
-                                *code += &format!("\tjmp pc_{:x}_c_ind_address_done\n", ctx.pc);
+                                unusual_code +=
+                                    &format!("\tjmp pc_{:x}_c_ind_address_done\n", ctx.pc);
 
                                 // Done
 
-                                *code += ".align 16\n";
                                 *code += &format!("pc_{:x}_c_ind_address_done:\n", ctx.pc);
                             }
                             1 => {
@@ -1594,13 +1587,10 @@ impl ZiskRom2Asm {
                     *code += "\tcall chunk_end\n";
                 } else {
                     *code += &format!("\tjz pc_{:x}_step_zero\n", ctx.pc);
-                    //*code += &format!("\tjmp pc_{:x}_step_not_zero\n", ctx.pc);
                     unusual_code += &format!("pc_{:x}_step_zero:\n", ctx.pc);
                     Self::set_pc(&mut ctx, instruction, &mut unusual_code, "z");
                     unusual_code += "\tcall chunk_end_and_start\n";
                     unusual_code += &format!("\tjmp pc_{:x}_step_done\n", ctx.pc);
-                    //*code += ".align 16\n";
-                    //*code += &format!("pc_{:x}_step_not_zero:\n", ctx.pc);
                     Self::set_pc(&mut ctx, instruction, code, "nz");
                     *code += &format!("pc_{:x}_step_done:\n", ctx.pc);
                 }
