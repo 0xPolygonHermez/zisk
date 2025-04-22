@@ -21,7 +21,11 @@ pub static KECCAK_GATE_CONFIG: GateConfig = GateConfig::with_values(
 // Main Keccak function
 // Input is a buffer of any length, including 0
 // Output is a 256 bits long buffer
-pub fn keccak(input: &[u8], output: &mut [u8; 32]) {
+pub fn keccak(
+    input: &[u8],
+    output: &mut [u8; 32],
+    get_circuit_topology: bool,
+) -> Option<GateState> {
     let mut input_state = KeccakInput::new(input);
     let mut state = GateState::new(KECCAK_GATE_CONFIG.clone());
     let mut r = [0u8; BITRATE];
@@ -41,21 +45,34 @@ pub fn keccak(input: &[u8], output: &mut [u8; 32]) {
         #[cfg(debug_assertions)]
         state.print_circuit_topology();
 
+        if get_circuit_topology {
+            // The keccakf circuit topology is completely known after a single execution
+            return Some(state);
+        }
+
         state.copy_sout_to_sin_and_reset_refs();
     }
 
     state.get_output(output);
+
+    None
+}
+
+pub fn keccakf_topology() -> GateState {
+    let input = b"";
+    let mut output = [0u8; 32];
+    keccak(input, &mut output, true).expect("Failed to get circuit topology")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::keccak;
+    use super::{keccak, keccakf_topology};
 
     #[test]
     fn test_empty_input() {
         let input = b"";
         let mut output = [0u8; 32];
-        keccak(input, &mut output);
+        keccak(input, &mut output, false);
         println!("Output: {:?}", output);
 
         // Expected Keccak-256 hash of empty input
@@ -71,7 +88,7 @@ mod tests {
     fn test_keccak_short() {
         let input = b"Hello, world!";
         let mut output = [0u8; 32];
-        keccak(input, &mut output);
+        keccak(input, &mut output, false);
 
         // Expected Keccak-256 hash of "Hello, world!"
         let expected_hash: [u8; 32] = [
@@ -87,7 +104,7 @@ mod tests {
     fn test_keccak_long() {
         let input = b"The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog...";
         let mut output = [0u8; 32];
-        keccak(input, &mut output);
+        keccak(input, &mut output, false);
 
         // Expected Keccak-256 hash of "The quick brown fox jumps over the lazy dog"
         let expected_hash: [u8; 32] = [

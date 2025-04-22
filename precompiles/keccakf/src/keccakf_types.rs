@@ -1,19 +1,4 @@
-use std::collections::HashMap;
-
 use serde::Deserialize;
-
-/// Connections for the Keccakf's circuit representation
-#[derive(Deserialize, Debug)]
-#[allow(dead_code)]
-pub struct Connections(pub Vec<Connection>);
-
-#[derive(Deserialize, Debug)]
-#[allow(dead_code)]
-pub struct Connection(pub HashMap<String, Vec<Peer>>);
-
-#[derive(Deserialize, Debug)]
-#[allow(dead_code)]
-pub struct Peer(pub String, pub usize);
 
 /// Script for the Keccakf's circuit representation
 #[derive(Deserialize, Debug)]

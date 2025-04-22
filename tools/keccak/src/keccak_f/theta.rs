@@ -59,7 +59,7 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
                         + s.gate_config.sin_ref_distance * group_2
                         + group_pos_2
                 );
-                s.xor(aux1, PinId::C, s.sin_refs[positions[2]], PinId::A, aux2);
+                s.xor(s.sin_refs[positions[2]], PinId::A, aux1, PinId::C, aux2);
             } else {
                 s.xor_res(aux1, s.sin_refs[positions[2]], aux2);
             }
@@ -75,7 +75,7 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
                         + s.gate_config.sin_ref_distance * group_3
                         + group_pos_3
                 );
-                s.xor(aux2, PinId::C, s.sin_refs[positions[3]], PinId::A, aux3);
+                s.xor(s.sin_refs[positions[3]], PinId::A, aux2, PinId::C, aux3);
             } else {
                 s.xor_res(aux2, s.sin_refs[positions[3]], aux3);
             }
@@ -92,7 +92,7 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
                         + s.gate_config.sin_ref_distance * group_4
                         + group_pos_4
                 );
-                s.xor(aux3, PinId::C, s.sin_refs[positions[4]], PinId::A, free_ref);
+                s.xor(s.sin_refs[positions[4]], PinId::A, aux3, PinId::C, free_ref);
             } else {
                 s.xor_res(aux3, s.sin_refs[positions[4]], free_ref);
             }

@@ -11,7 +11,7 @@ pub struct GateState {
     pub sin_refs: Vec<u64>,
     pub sout_refs: Vec<u64>,
 
-    // Ordered list of operations to implement the circuit
+    // Chronological list of operations to implement the circuit
     pub program: Vec<u64>,
 
     // Ordered list of gates
@@ -128,7 +128,7 @@ impl GateState {
         }
     }
 
-    // Get 32-bytes output from SinRef0
+    // Get 32-bytes output from the state input
     pub fn get_output(&self, output: &mut [u8]) {
         assert!(
             self.gate_config.sin_ref_number >= 32 * 8,
@@ -355,7 +355,6 @@ impl GateState {
         self.op(GateOperation::And, ref_a, pin_a, ref_b, pin_b, ref_c);
     }
 
-
     /// Prints operation statistics (development purposes)
     pub fn print_circuit_topology(&self) {
         println!("Number of inputs: {}", self.gate_config.sin_ref_number);
@@ -406,19 +405,4 @@ impl GateState {
         // Print the bits
         print_bits(&bits, name);
     }
-
-    // // Generate a JSON object containing all data required for the executor script file
-    // pub fn save_script_to_json(&self, _j: &mut Json) {
-    //     // TODO: implement
-    // }
-
-    // // Generate a JSON object containing all a, b, r, and op polynomials values, with length 2^parity
-    // pub fn save_pols_to_json(&self, _pols: &mut Json) {
-    //     // TODO: implement
-    // }
-
-    // // Generate a JSON object containing all wired pin connections, with length 2^parity
-    // pub fn save_connections_to_json(&self, _pols: &mut Json) {
-    //     // TODO: implement
-    // }
 }

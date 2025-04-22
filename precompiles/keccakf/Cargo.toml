@@ -18,6 +18,8 @@ zisk-common = { path = "../../common" }
 data-bus = { path = "../../data-bus" }
 zisk-pil = { path = "../../pil" }
 precompiles-common = { path = "../common" }
+circuit = { path = "../../tools/circuit" }
+keccak = { path = "../../tools/keccak" }
 
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }

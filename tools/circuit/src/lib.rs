@@ -81,13 +81,7 @@ mod tests {
 
             // Perform the circuit operation
             let free_ref = state.get_free_ref();
-            state.andp(
-                state.sin_refs[0],
-                PinId::A,
-                state.sin_refs[1],
-                PinId::A,
-                free_ref,
-            );
+            state.andp(state.sin_refs[0], PinId::A, state.sin_refs[1], PinId::A, free_ref);
 
             // Copy the result to output
             let output_ref = circuit_config.sout_first_ref;
@@ -149,13 +143,7 @@ mod tests {
 
             // Perform the circuit operation
             let free_ref = state.get_free_ref();
-            state.and(
-                state.sin_refs[0],
-                PinId::A,
-                state.sin_refs[1],
-                PinId::A,
-                free_ref,
-            );
+            state.and(state.sin_refs[0], PinId::A, state.sin_refs[1], PinId::A, free_ref);
 
             // Copy the result to output
             let output_ref = circuit_config.sout_first_ref;
@@ -211,7 +199,13 @@ mod tests {
             // Perform the circuit operation
             // 1] res := AND(1, a)
             let free_ref1 = state.get_free_ref();
-            state.and(state.gate_config.zero_ref.unwrap(), PinId::B, state.sin_refs[0], PinId::A, free_ref1);
+            state.and(
+                state.gate_config.zero_ref.unwrap(),
+                PinId::B,
+                state.sin_refs[0],
+                PinId::A,
+                free_ref1,
+            );
 
             // 2] XOR(res, b)
             let free_ref2 = state.get_free_ref();
