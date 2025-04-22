@@ -203,8 +203,11 @@ int main(int argc, char *argv[])
         strcat(sem_input_name, sem_input_sufix);
         strcpy(sem_output_name, shmem_prefix);
         strcat(sem_output_name, sem_output_sufix);
-        strcpy(sem_chunk_done_name, shmem_prefix);
-        strcat(sem_chunk_done_name, sem_chunk_done_sufix);
+        if (generate_minimal_trace || generate_main_trace)
+        {
+            strcpy(sem_chunk_done_name, shmem_prefix);
+            strcat(sem_chunk_done_name, sem_chunk_done_sufix);
+        }
 
         // Create (or open if existing) input and output semaphores
         sem_input = sem_open(sem_input_name, O_CREAT);
@@ -219,11 +222,14 @@ int main(int argc, char *argv[])
             printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_output_name, errno, strerror(errno));
             return -1;
         }
-        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT);
-        if (sem_chunk_done == SEM_FAILED)
+        if (generate_minimal_trace || generate_main_trace)
         {
-            printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
-            return -1;
+            sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT);
+            if (sem_chunk_done == SEM_FAILED)
+            {
+                printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
+                return -1;
+            }
         }
 
 #ifdef DEBUG
@@ -712,15 +718,18 @@ int main(int argc, char *argv[])
         {
             printf("Failed calling sem_unlink(%s) errno=%d=%s\n", sem_output_name, errno, strerror(errno));
         }
-        result = sem_close(sem_chunk_done);
-        if (result == -1)
+        if (generate_minimal_trace || generate_main_trace)
         {
-            printf("Failed calling sem_close(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
-        }
-        result = sem_unlink(sem_chunk_done_name);
-        if (result == -1)
-        {
-            printf("Failed calling sem_unlink(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
+            result = sem_close(sem_chunk_done);
+            if (result == -1)
+            {
+                printf("Failed calling sem_close(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
+            }
+            result = sem_unlink(sem_chunk_done_name);
+            if (result == -1)
+            {
+                printf("Failed calling sem_unlink(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
+            }
         }
     }
 }
@@ -1126,6 +1135,8 @@ extern void _chunk_done()
     // Notify the caller that a new chunk is done and its trace is ready to be consumed
     if (!is_file)
     {
+
+        assert(generate_minimal_trace || generate_main_trace);
         int result = sem_post(sem_chunk_done);
         if (result == -1)
         {
