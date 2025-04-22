@@ -2,10 +2,17 @@
 #![cfg_attr(target_os = "ziskos", feature(asm_const))]
 #[cfg(target_os = "ziskos")]
 use core::arch::asm;
+
+#[cfg(all(target_os = "ziskos", feature = "embedded-heap"))]
+extern crate alloc;
+
 #[cfg(target_os = "ziskos")]
 mod fcall;
 #[cfg(target_os = "ziskos")]
 pub use fcall::*;
+
+#[cfg(all(target_os = "ziskos", feature = "embedded-heap"))]
+mod embedded_heap;
 
 mod zisklib;
 pub use zisklib::*;
@@ -165,6 +172,10 @@ mod ziskos {
             extern "C" {
                 fn main();
             }
+
+            #[cfg(feature = "embedded-heap")]
+            crate::embedded_heap::init();
+
             main()
         }
     }
@@ -206,7 +217,7 @@ mod ziskos {
     #[no_mangle]
     unsafe extern "C" fn sys_rand(recv_buf: *mut u8, words: usize) {
         SYS_RAND_WARNING.call_once(|| {
-            println!("WARNING: Using insecure random number generator.");
+            println!("WARNING: Using insecure random number generator");
         });
         let mut rng = RNG.lock().unwrap();
         for i in 0..words {
@@ -236,18 +247,15 @@ mod ziskos {
     }
 
     #[no_mangle]
+    #[cfg(not(feature = "embedded-heap"))]
     pub unsafe extern "C" fn sys_alloc_aligned(bytes: usize, align: usize) -> *mut u8 {
         use core::arch::asm;
-        let heap_bottom: usize;
-        // UNSAFE: This is fine, just loading some constants.
-        unsafe {
-            // using inline assembly is easier to access linker constants
-            asm!(
-              "la {heap_bottom}, _kernel_heap_bottom",
-              heap_bottom = out(reg) heap_bottom,
-              options(nomem)
-            )
-        };
+
+        extern "C" {
+            static _kernel_heap_bottom: u8;
+        }
+
+        let heap_bottom = &_kernel_heap_bottom as *const u8 as usize;
 
         // Pointer to next heap address to use, or 0 if the heap has not yet been
         // initialized.
