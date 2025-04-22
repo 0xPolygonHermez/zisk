@@ -2,7 +2,7 @@
 pub struct GateConfig {
     pub gate_number: u64,
     pub max_refs: u64,
-    pub zero_ref: u64,
+    pub zero_ref: Option<u64>,
     pub first_usable_ref: u64,
     pub sin_first_ref: u64,
     pub sin_ref_group_by: u64,
@@ -27,7 +27,7 @@ impl GateConfig {
     pub const fn with_values(
         gate_number: u64,
         max_refs: u64,
-        zero_ref: u64,
+        zero_ref: Option<u64>,
         sin_first_ref: u64,
         sin_ref_group_by: u64,
         sin_ref_number: u64,
@@ -37,6 +37,8 @@ impl GateConfig {
         sout_ref_number: u64,
         sout_ref_distance: u64,
     ) -> Self {
+        assert!(max_refs >= gate_number);
+
         let sin_last_ref = sin_first_ref
             + (sin_ref_number - sin_ref_group_by) * sin_ref_distance / sin_ref_group_by
             + (sin_ref_group_by - 1);
@@ -45,35 +47,24 @@ impl GateConfig {
             + (sout_ref_group_by - 1);
 
         let mut first_usable_ref = 0;
-        loop {
-            // If it coincides with the zero_ref, skip it
-            if first_usable_ref == zero_ref {
-                first_usable_ref += 1;
-                continue;
-            }
+        while {
+            let is_zero = match zero_ref {
+                Some(z) => z == first_usable_ref,
+                None => false,
+            };
 
-            // If it coincides with any sin_ref, skip it
-            if first_usable_ref >= sin_first_ref
-                && first_usable_ref <= sin_last_ref
-                && ((first_usable_ref - sin_first_ref) % sin_ref_distance < sin_ref_group_by)
-            {
-                first_usable_ref += 1;
-                continue;
-            }
-
-            // If it coincides with any sout_ref, skip it
-            if first_usable_ref >= sout_first_ref
-                && first_usable_ref <= sout_last_ref
-                && ((first_usable_ref - sout_first_ref) % sout_ref_distance < sout_ref_group_by)
-            {
-                first_usable_ref += 1;
-                continue;
-            }
-
-            break;
+            // If it coincides with the zero_ref or any sin_ref or sout_ref, skip it
+            is_zero
+                || (first_usable_ref >= sin_first_ref
+                    && first_usable_ref <= sin_last_ref
+                    && (first_usable_ref - sin_first_ref) % sin_ref_distance < sin_ref_group_by)
+                || (first_usable_ref >= sout_first_ref
+                    && first_usable_ref <= sout_last_ref
+                    && (first_usable_ref - sout_first_ref) % sout_ref_distance < sout_ref_group_by)
+        } {
+            first_usable_ref += 1;
         }
-        assert!(first_usable_ref < max_refs);
-
+        assert!(first_usable_ref <= max_refs);
 
         Self {
             gate_number,

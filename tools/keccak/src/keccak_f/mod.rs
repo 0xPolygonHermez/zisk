@@ -17,8 +17,6 @@ use theta::keccak_f_theta;
 
 use circuit::{GateState, PinId};
 
-use crate::BITRATE;
-
 pub fn keccak_f(s: &mut GateState) {
     // Apply all 24 rounds of Keccak permutations
     for ir in 0..24 {
@@ -97,17 +95,13 @@ pub fn keccak_f(s: &mut GateState) {
         }
     }
 
-    // Add BITRATE more gates to make sure that Sout is located in the expected gates,
-    // both in pin a and r
-    for i in 0usize..BITRATE {
-        let rel_dis = i % s.gate_config.sin_ref_group_by as usize;
-        let aux = if rel_dis == 0 {
-            s.gate_config.sout_first_ref
-                + i as u64 * s.gate_config.sout_ref_distance / s.gate_config.sin_ref_group_by as u64
-        } else {
-            s.sout_refs[i - 1] + rel_dis as u64
-        };
-        s.xor(s.sout_refs[i], PinId::C, s.gate_config.zero_ref, PinId::A, aux);
-        s.sout_refs[i] = aux;
+    // Add BITRATE more gates to make sure that the output is located in the expected gates
+    for i in 0..s.gate_config.sout_ref_number {
+        let group = i / s.gate_config.sout_ref_group_by;
+        let group_pos = i % s.gate_config.sout_ref_group_by;
+        let ref_idx =
+            s.gate_config.sout_first_ref + group * s.gate_config.sout_ref_distance + group_pos;
+        s.xor(s.sout_refs[i as usize], PinId::C, s.gate_config.zero_ref.unwrap(), PinId::A, ref_idx);
+        s.sout_refs[i as usize] = ref_idx;
     }
 }

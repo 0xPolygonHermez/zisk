@@ -2,13 +2,12 @@ use circuit::{GateState, PinId};
 
 use super::bit_position;
 
-/// Keccak-f θ step
-/// Steps:
-/// 1. For all pairs (x, z) such that 0 ≤ x < 5 and 0 ≤ z < 64:
+/// Keccak-f θ step.
+/// 1. For all pairs (x, z) such that 0 ≤ x < 5 and 0 ≤ z < 64:  
 ///     C\[x, z] = A\[x, 0, z] ^ A\[x, 1, z] ^ A\[x, 2, z] ^ A\[x, 3, z] ^ A\[x, 4, z]
-/// 2. For all pairs (x, z) such that 0 ≤ x < 5 and 0≤ z < 64:
+/// 2. For all pairs (x, z) such that 0 ≤ x < 5 and 0 ≤ z < 64:  
 ///     D\[x, z] = C\[(x-1) mod 5, z] ^ C\[(x+1) mod 5, (z –1) mod 64]
-/// 3. For all triples (x, y, z) such that 0 ≤ x <5, 0 ≤ y < 5, and 0 ≤ z < 64:
+/// 3. For all triples (x, y, z) such that 0 ≤ x,y < 5, and 0 ≤ z < 64:  
 ///     A′\[x, y, z] = A\[x, y, z] ^ D\[x, z]
 pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
     // Step 1: C[x, z] = A[x, 0, z] ^ A[x, 1, z] ^ A[x, 2, z] ^ A[x, 3, z] ^ A[x, 4, z]
@@ -118,10 +117,10 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
                 let aux = if ir == 0 {
                     // In the first round we use the first 1600 Sin bit slots to store these gates
                     let group = pos as u64 / s.gate_config.sin_ref_group_by;
-                    let rel_dist = pos as u64 % s.gate_config.sin_ref_group_by;
+                    let group_pos = pos as u64 % s.gate_config.sin_ref_group_by;
                     let ref_idx = s.gate_config.sin_first_ref
                         + s.gate_config.sin_ref_distance * group
-                        + rel_dist;
+                        + group_pos;
                     assert_eq!(s.sin_refs[pos], ref_idx);
                     s.xor(ref_idx, PinId::A, d[x][z], PinId::C, ref_idx);
                     ref_idx

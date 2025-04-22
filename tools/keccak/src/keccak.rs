@@ -7,7 +7,7 @@ use super::{keccak_f::keccak_f, KeccakInput, BITRATE};
 pub static KECCAK_GATE_CONFIG: GateConfig = GateConfig::with_values(
     155286,
     160000,
-    0,
+    Some(0),
     61,
     2,
     1600,

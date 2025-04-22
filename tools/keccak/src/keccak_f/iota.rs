@@ -2,12 +2,11 @@ use circuit::{GateState, PinId};
 
 use super::{bit_position, KECCAK_F_RC};
 
-/// Keccak-f Iota permutation.  
-/// Steps:
-/// 1. For all triples (x, y, z) such that 0 ≤ x <5, 0 ≤ y < 5, and 0 ≤ z < 64, let A′\[x, y, z] = A[x, y, z]
+/// Keccak-f ι step.
+/// 1. For all triples (x, y, z) such that 0 ≤ x,y < 5, and 0 ≤ z < 64, let A′\[x, y, z] = A\[x, y, z]
 /// 2. Let RC = 0w.
 /// 3. For j from 0 to l, let RC\[2^j – 1] = rc(j + 7ir).
-/// 4. For all z such that 0 ≤ z < 64, let A′\[0, 0, z] = A′\[0, 0, z] ⊕ RC\[z].
+/// 4. For all z such that 0 ≤ z < 64, let A′\[0, 0, z] = A′\[0, 0, z] ^ RC\[z].
 /// 5. Return A′.
 pub fn keccak_f_iota(s: &mut GateState, ir: u64) {
     // Step 1: Copy all state bits
@@ -33,11 +32,11 @@ pub fn keccak_f_iota(s: &mut GateState, ir: u64) {
         match KECCAK_F_RC[ir as usize][z as usize] {
             1 => {
                 // XOR with zeroRef's pin_b
-                s.xor(s.gate_config.zero_ref, PinId::B, s.sout_refs[pos], PinId::C, aux);
+                s.xor(s.gate_config.zero_ref.unwrap(), PinId::B, s.sout_refs[pos], PinId::C, aux);
             }
             _ => {
                 // XOR with zeroRef's pin_a
-                s.xor(s.gate_config.zero_ref, PinId::A, s.sout_refs[pos], PinId::C, aux);
+                s.xor(s.gate_config.zero_ref.unwrap(), PinId::A, s.sout_refs[pos], PinId::C, aux);
             }
         }
 

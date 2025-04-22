@@ -91,11 +91,12 @@ impl GateState {
         self.adds = 0;
 
         // Init ZeroRef gate as XOR(0,1) = 1
-        let z = self.gate_config.zero_ref as usize;
-        self.gates[z].op = GateOperation::Xor;
-        self.gates[z].pins[PinId::A].bit = 0;
-        self.gates[z].pins[PinId::B].bit = 1;
-        self.gates[z].pins[PinId::C].bit = 1;
+        if let Some(z) = self.gate_config.zero_ref {
+            self.gates[z as usize].op = GateOperation::Xor;
+            self.gates[z as usize].pins[PinId::A].bit = 0;
+            self.gates[z as usize].pins[PinId::B].bit = 1;
+            self.gates[z as usize].pins[PinId::C].bit = 1;
+        }
     }
 
     // Set Rin data into bits array at SinRef0 position
@@ -154,44 +155,36 @@ impl GateState {
         assert!(self.next_ref < self.gate_config.max_refs);
 
         let result = self.next_ref;
+
+        // Update next reference for the next call
         self.next_ref += 1;
-        loop {
-            // Skip constant-filled gates
-            if self.next_ref == self.gate_config.zero_ref {
-                self.next_ref += 1;
-                continue;
-            }
+        let zero_ref = self.gate_config.zero_ref;
+        let sin_ref0 = self.gate_config.sin_first_ref;
+        let sin_ref_distance = self.gate_config.sin_ref_distance;
+        let sin_ref_group_by = self.gate_config.sin_ref_group_by;
+        let sin_last_ref = self.gate_config.sin_last_ref;
+        let sout_ref0 = self.gate_config.sout_first_ref;
+        let sout_ref_distance = self.gate_config.sout_ref_distance;
+        let sout_ref_group_by = self.gate_config.sout_ref_group_by;
+        let sout_last_ref = self.gate_config.sout_last_ref;
+        while {
+            let is_zero = match zero_ref {
+                Some(z) => z == self.next_ref,
+                None => false,
+            };
 
-            // Skip input gates
-            let sin_ref0 = self.gate_config.sin_first_ref;
-            let sin_ref_distance = self.gate_config.sin_ref_distance;
-            let sin_ref_group_by = self.gate_config.sin_ref_group_by;
-            let sin_last_ref = self.gate_config.sin_last_ref;
-            if (self.next_ref >= sin_ref0)
-                && (self.next_ref <= sin_last_ref)
-                && ((self.next_ref - sin_ref0) % sin_ref_distance < sin_ref_group_by)
-            {
-                self.next_ref += 1;
-                continue;
-            }
-
-            // Skip output gates
-            let sout_ref0 = self.gate_config.sout_first_ref;
-            let sout_ref_distance = self.gate_config.sout_ref_distance;
-            let sout_ref_group_by = self.gate_config.sout_ref_group_by;
-            let sout_last_ref = self.gate_config.sout_last_ref;
-            if (self.next_ref >= sout_ref0)
-                && (self.next_ref <= sout_last_ref)
-                && ((self.next_ref - sout_ref0) % sout_ref_distance < sout_ref_group_by)
-            {
-                self.next_ref += 1;
-                continue;
-            }
-
-            break;
+            // If it coincides with the zero_ref or any sin_ref or sout_ref, skip it
+            is_zero
+                || (self.next_ref >= sin_ref0
+                    && self.next_ref <= sin_last_ref
+                    && (self.next_ref - sin_ref0) % sin_ref_distance < sin_ref_group_by)
+                || (self.next_ref >= sout_ref0
+                    && self.next_ref <= sout_last_ref
+                    && (self.next_ref - sout_ref0) % sout_ref_distance < sout_ref_group_by)
+        } {
+            self.next_ref += 1;
         }
 
-        assert!(self.next_ref < self.gate_config.max_refs);
         result
     }
 
@@ -346,10 +339,6 @@ impl GateState {
         self.xor(ref_a, PinId::C, ref_b, PinId::C, ref_c);
     }
 
-    pub fn and(&mut self, ref_a: u64, pin_a: PinId, ref_b: u64, pin_b: PinId, ref_c: u64) {
-        self.op(GateOperation::And, ref_a, pin_a, ref_b, pin_b, ref_c);
-    }
-
     pub fn andp(&mut self, ref_a: u64, pin_a: PinId, ref_b: u64, pin_b: PinId, ref_c: u64) {
         self.op(GateOperation::Andp, ref_a, pin_a, ref_b, pin_b, ref_c);
     }
@@ -358,9 +347,17 @@ impl GateState {
         self.andp(ref_a, PinId::C, ref_b, PinId::C, ref_c);
     }
 
+    pub fn or(&mut self, ref_a: u64, pin_a: PinId, ref_b: u64, pin_b: PinId, ref_c: u64) {
+        self.op(GateOperation::Or, ref_a, pin_a, ref_b, pin_b, ref_c);
+    }
+
+    pub fn and(&mut self, ref_a: u64, pin_a: PinId, ref_b: u64, pin_b: PinId, ref_c: u64) {
+        self.op(GateOperation::And, ref_a, pin_a, ref_b, pin_b, ref_c);
+    }
+
+
     /// Prints operation statistics (development purposes)
     pub fn print_circuit_topology(&self) {
-        println!("Number of gates: {}", self.gate_config.max_refs - 1);
         println!("Number of inputs: {}", self.gate_config.sin_ref_number);
         println!("Number of outputs: {}\n", self.gate_config.sout_ref_number);
 
@@ -368,7 +365,7 @@ impl GateState {
             self.xors + self.ors + self.andps + self.ands + self.chs + self.majs + self.adds;
         let total_f = total_operations as f64;
 
-        println!("Operation statistics:");
+        println!("Gates statistics:");
         println!("==========================");
         if self.xors > 0 {
             println!("   xors      = {} = {:.2}%", self.xors, (self.xors as f64 * 100.0) / total_f);
