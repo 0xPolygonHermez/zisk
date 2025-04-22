@@ -802,20 +802,41 @@ impl ZiskRom2Asm {
                 SRC_IND => {
                     *code += &format!("\t/* b=SRC_IND width={}*/\n", instruction.ind_width);
 
+                    // Make sure register a is stored in REG_A
+                    // However, since b's source is an indirection, a's source is normally a register
+                    if ctx.a.is_constant && !ctx.a.is_saved {
+                        *code +=
+                            &format!("\tmov {}, {} /* WARNING */\n", REG_A, ctx.a.string_value);
+                        ctx.a.is_saved = true;
+                    }
+
+                    // Use REG_A if a's value is not needed beyond the b indirection,
+                    // or REG_ADDRESS otherwise
+                    let reg_address: &str;
+                    if instruction.op == ZiskOp::CopyB.code()
+                        || instruction.op == ZiskOp::SignExtendB.code()
+                        || instruction.op == ZiskOp::SignExtendH.code()
+                        || instruction.op == ZiskOp::SignExtendH.code()
+                    {
+                        reg_address = REG_A;
+                    } else {
+                        *code += &format!(
+                            "\tmov {}, {} /* address = a */\n",
+                            REG_ADDRESS, ctx.a.string_value
+                        );
+                        reg_address = REG_ADDRESS;
+                    }
+
                     // Calculate memory address
-                    *code += &format!(
-                        "\tmov {}, {} /* address = a */\n",
-                        REG_ADDRESS, ctx.a.string_value
-                    );
                     if instruction.b_offset_imm0 != 0 {
                         *code += &format!(
                             "\tadd {}, 0x{:x} /* address += i.b_offset_imm0 */\n",
-                            REG_ADDRESS, instruction.b_offset_imm0
+                            reg_address, instruction.b_offset_imm0
                         );
                     }
                     if instruction.b_use_sp_imm1 != 0 {
                         *code +=
-                            &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, MEM_SP);
+                            &format!("\tadd {}, {} /* address += sp */\n", reg_address, MEM_SP);
                     }
 
                     // Read from memory and store in the proper register: b or c
@@ -825,7 +846,7 @@ impl ZiskRom2Asm {
                             *code += &format!(
                                 "\tmov {}, qword ptr [{}] /* {} = mem[address] */\n",
                                 if ctx.store_b_in_c { REG_C } else { REG_B },
-                                REG_ADDRESS,
+                                reg_address,
                                 if ctx.store_b_in_c { "c" } else { "b" }
                             );
                         }
@@ -834,7 +855,7 @@ impl ZiskRom2Asm {
                             *code += &format!(
                                 "\tmov {}, [{}] /* {} = mem[address] */\n",
                                 if ctx.store_b_in_c { REG_C_W } else { REG_B_W },
-                                REG_ADDRESS,
+                                reg_address,
                                 if ctx.store_b_in_c { "c" } else { "b" }
                             );
                         }
@@ -843,7 +864,7 @@ impl ZiskRom2Asm {
                             *code += &format!(
                                 "\tmovzx {}, word ptr [{}] /* {} = mem[address] */\n",
                                 if ctx.store_b_in_c { REG_C } else { REG_B },
-                                REG_ADDRESS,
+                                reg_address,
                                 if ctx.store_b_in_c { "c" } else { "b" }
                             );
                         }
@@ -852,7 +873,7 @@ impl ZiskRom2Asm {
                             *code += &format!(
                                 "\tmovzx {}, byte ptr [{}] /* {} = mem[address] */\n",
                                 if ctx.store_b_in_c { REG_C } else { REG_B },
-                                REG_ADDRESS,
+                                reg_address,
                                 if ctx.store_b_in_c { "c" } else { "b" }
                             );
                         }
@@ -868,7 +889,7 @@ impl ZiskRom2Asm {
                             8 => {
                                 // // Check if address is aligned, i.e. it is a multiple of 8
                                 *code +=
-                                    &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
+                                    &format!("\ttest {}, 0x7 /* address &= 7 */\n", reg_address);
                                 *code += &format!("\tjnz pc_{:x}_b_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
 
                                 // b register memory address is fully alligned
@@ -895,13 +916,13 @@ impl ZiskRom2Asm {
                                 // Calculate previous aligned address
                                 unusual_code += &format!(
                                     "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
-                                    REG_ADDRESS
+                                    reg_address
                                 );
 
                                 // Store previous aligned address value in mem_reads, and advance address
                                 unusual_code += &format!(
                                     "\tmov {}, [{}] /* value = mem[prev_address] */\n",
-                                    REG_VALUE, REG_ADDRESS
+                                    REG_VALUE, reg_address
                                 );
                                 unusual_code += &format!(
                                     "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_b */\n",
@@ -911,13 +932,13 @@ impl ZiskRom2Asm {
                                 // Calculate next aligned address
                                 unusual_code += &format!(
                                     "\tadd {}, 8 /* address = next aligned address */\n",
-                                    REG_ADDRESS
+                                    reg_address
                                 );
 
                                 // Store next aligned address value in mem_reads, and advance it
                                 unusual_code += &format!(
                                     "\tmov {}, [{}] /* value = mem[next_address] */\n",
-                                    REG_VALUE, REG_ADDRESS
+                                    REG_VALUE, reg_address
                                 );
                                 unusual_code += &format!(
                                     "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_b */\n",
@@ -943,13 +964,13 @@ impl ZiskRom2Asm {
                                 // Calculate previous aligned address
                                 *code += &format!(
                                     "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
-                                    REG_ADDRESS
+                                    reg_address
                                 );
 
                                 // Store previous aligned address value in mem_reads, advancing address
                                 *code += &format!(
                                     "\tmov {}, [{}] /* value = mem[prev_address] */\n",
-                                    REG_VALUE, REG_ADDRESS
+                                    REG_VALUE, reg_address
                                 );
                                 *code += &format!(
                                     "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_b */\n",
@@ -960,20 +981,20 @@ impl ZiskRom2Asm {
                                 // address in value
                                 *code += &format!(
                                     "\tmov {}, {} /* value = copy of prev_address */\n",
-                                    REG_VALUE, REG_ADDRESS
+                                    REG_VALUE, reg_address
                                 );
                                 let address_increment = instruction.ind_width - 1;
                                 *code += &format!(
                                     "\tadd {}, {} /* address += {} */\n",
-                                    REG_ADDRESS, address_increment, address_increment
+                                    reg_address, address_increment, address_increment
                                 );
                                 *code += &format!(
                                     "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = next aligned address */\n",
-                                    REG_ADDRESS
+                                    reg_address
                                 );
                                 *code += &format!(
                                     "\tcmp {}, {} /* prev_address = next_address ? */\n",
-                                    REG_VALUE, REG_ADDRESS
+                                    REG_VALUE, reg_address
                                 );
                                 *code += &format!(
                                     "\tjnz pc_{:x}_b_ind_different_address /* jump if they are the same */\n",
@@ -996,7 +1017,7 @@ impl ZiskRom2Asm {
                                 // Store next aligned address value in mem_reads
                                 unusual_code += &format!(
                                     "\tmov {}, [{}] /* value = mem[next_address] */\n",
-                                    REG_VALUE, REG_ADDRESS
+                                    REG_VALUE, reg_address
                                 );
 
                                 // Copy read data into mem_reads_address and advance it
@@ -1021,13 +1042,13 @@ impl ZiskRom2Asm {
                                 // Calculate previous aligned address
                                 *code += &format!(
                                     "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
-                                    REG_ADDRESS
+                                    reg_address
                                 );
 
                                 // Store previous aligned address value in mem_reads, and increment address
                                 *code += &format!(
                                     "\tmov {}, [{}] /* value = mem[prev_address] */\n",
-                                    REG_VALUE, REG_ADDRESS
+                                    REG_VALUE, reg_address
                                 );
                                 *code += &format!(
                                     "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_b */\n",
@@ -3719,11 +3740,11 @@ impl ZiskRom2Asm {
 
     fn push_xmm_reg(code: &mut String, xmm_index: u64) {
         *code += "\tsub rsp, 8\n";
-        *code += &format!("movq [rsp], xmm{} /* push xmm{} */\n", xmm_index, xmm_index);
+        *code += &format!("\tmovq [rsp], xmm{} /* push xmm{} */\n", xmm_index, xmm_index);
     }
 
     fn pop_xmm_reg(code: &mut String, xmm_index: u64) {
-        *code += &format!("movq xmm{}, [rsp] /* pop xmm{} */\n", xmm_index, xmm_index);
+        *code += &format!("\tmovq xmm{}, [rsp] /* pop xmm{} */\n", xmm_index, xmm_index);
         *code += "\tadd rsp, 8\n";
     }
 
