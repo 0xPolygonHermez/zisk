@@ -1672,21 +1672,28 @@ impl ZiskRom2Asm {
                 *code += ctx.jump_to_static_pc.as_str();
             } else if ctx.jump_to_dynamic_pc {
                 *code += "\t/* jump to dynamic pc */\n";
-                *code += &format!("\tmov {}, {} /* value=pc */\n", REG_VALUE, REG_PC);
                 *code += &format!("\tmov {}, 0x80000000 /* is pc a low address? */\n", REG_ADDRESS);
-                *code += &format!("\tcmp {}, {}\n", REG_VALUE, REG_ADDRESS);
+                *code += &format!("\tcmp {}, {}\n", REG_PC, REG_ADDRESS);
                 *code += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
-                *code += &format!("\tsub {}, {} /* pc -= 0x80000000 */\n", REG_VALUE, REG_ADDRESS);
-                *code += &format!("\tmov rax, {} /* rax = pc */\n", REG_VALUE);
-                *code += "\tlea rbx, [map_pc_80000000] /* rbx = index table base address */\n";
-                *code += "\tmov rax, [rbx + rax*2] /* rax = table entry address */\n";
-                *code += "\tjmp rax /* jump to table entry address */\n";
+                *code += &format!("\tsub {}, {} /* pc -= 0x80000000 */\n", REG_PC, REG_ADDRESS);
+                *code += &format!(
+                    "\tlea {}, [map_pc_80000000] /* address = map[0x80000000] */\n",
+                    REG_ADDRESS
+                );
+                *code += &format!(
+                    "\tmov {}, [{} + {}*2] /* address = map[pc] */\n",
+                    REG_ADDRESS, REG_ADDRESS, REG_PC
+                );
+                *code += &format!("\tjmp {} /* jump to address */\n", REG_ADDRESS);
                 *code += &format!("pc_{:x}_jump_to_low_address:\n", ctx.pc);
-                *code += &format!("\tsub {}, 0x1000 /* pc -= 0x1000 */\n", REG_VALUE);
-                *code += &format!("\tmov rax, {} /* rax = pc */\n", REG_VALUE);
-                *code += "\tlea rbx, [map_pc_1000] /* rbx = index table base address */\n";
-                *code += "\tmov rax, [rbx + rax*2] /* rax = table entry address */\n";
-                *code += "\tjmp rax /* jump to table entry address */\n";
+                *code += &format!("\tsub {}, 0x1000 /* pc -= 0x1000 */\n", REG_PC);
+                *code +=
+                    &format!("\tlea {}, [map_pc_1000] /* address = map[0x1000] */\n", REG_ADDRESS);
+                *code += &format!(
+                    "\tmov {}, [{} + {}*2] /* address = map[pc] */\n",
+                    REG_ADDRESS, REG_ADDRESS, REG_PC
+                );
+                *code += &format!("\tjmp {} /* jump to address */\n", REG_ADDRESS);
             }
         }
 
