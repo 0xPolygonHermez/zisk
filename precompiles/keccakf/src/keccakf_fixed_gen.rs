@@ -9,7 +9,7 @@ use zisk_pil::KeccakfTrace;
 use proofman_common::{write_fixed_cols_bin, FixedColsInfo};
 
 use circuit::GateOperation;
-use keccak::keccakf_topology;
+use precompiles_helpers::keccakf_topology;
 
 mod goldilocks_constants;
 mod keccakf_types;
@@ -117,7 +117,7 @@ fn cols_gen(
     for i in 0..num_slots {
         let offset = i * slot_size;
 
-        // Compute the connections, the "+1" is for the zero_ref gate
+        // Compute the connections. The "+1" is for the zero_ref gate
         for j in 0..(slot_size + 1) {
             let mut ref1 = j;
             if j > 0 {
@@ -165,7 +165,7 @@ fn cols_gen(
 
         // Compute the connections.
         // Here, we don't need the "+1" because the zero_ref is assumed
-        // to be an XOR gate and is therefore ZERO
+        // to be an XOR gate which is encoded to be the field element 0
         for j in 0..slot_size {
             let mut ref_ = keccakf_program[j] as usize;
             let op = keccakf_gates[ref_].op;

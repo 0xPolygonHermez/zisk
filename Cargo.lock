@@ -487,6 +487,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "circuit"
+version = "0.7.0"
+
+[[package]]
 name = "clang-sys"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2305,6 +2309,7 @@ dependencies = [
 name = "precomp-keccakf"
 version = "0.7.0"
 dependencies = [
+ "circuit",
  "clap",
  "data-bus",
  "log",
@@ -2313,6 +2318,7 @@ dependencies = [
  "p3-goldilocks",
  "pil-std-lib",
  "precompiles-common",
+ "precompiles-helpers",
  "proofman-common",
  "proofman-macros",
  "proofman-util",
@@ -2341,6 +2347,7 @@ dependencies = [
  "ark-ff",
  "ark-secp256k1",
  "ark-std",
+ "circuit",
  "lib-c",
  "num-bigint",
  "num-traits",

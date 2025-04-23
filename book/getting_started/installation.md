@@ -104,7 +104,7 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
 3. Copy the tools to `~/.zisk/bin` directory:
     ```bash
     mkdir -p $HOME/.zisk/bin
-    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so precompiles/keccakf/src/keccakf_script.json $HOME/.zisk/bin
+    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so $HOME/.zisk/bin
     ```
 
 4. Copy required files to support `cargo-zisk rom-setup` command:

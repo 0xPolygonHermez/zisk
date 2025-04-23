@@ -24,7 +24,6 @@ pub struct WitnessLib<F: PrimeField64> {
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     input_data_path: Option<PathBuf>,
-    keccak_path: PathBuf,
     executor: Option<Arc<ZiskExecutor<F>>>,
 }
 
@@ -35,17 +34,10 @@ fn init_library(
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     input_data_path: Option<PathBuf>,
-    keccak_path: PathBuf,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode);
-    let result = Box::new(WitnessLib {
-        elf_path,
-        asm_path,
-        asm_rom_path,
-        input_data_path,
-        keccak_path,
-        executor: None,
-    });
+    let result =
+        Box::new(WitnessLib { elf_path, asm_path, asm_rom_path, input_data_path, executor: None });
 
     Ok(result)
 }
@@ -81,7 +73,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let mem_sm = Mem::new(std.clone());
 
         // Step 4: Initialize the precompiles state machines
-        let keccakf_sm = KeccakfManager::new::<F>(self.keccak_path.clone());
+        let keccakf_sm = KeccakfManager::new::<F>();
         let arith_eq_sm = ArithEqManager::new(std.clone());
 
         // Step 5: Create the executor and register the secondary state machines

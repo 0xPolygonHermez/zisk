@@ -58,7 +58,9 @@ pub fn keccak(
     None
 }
 
+// Get the circuit topology of the Keccak-f permutation
 pub fn keccakf_topology() -> GateState {
+    // Hash any input and stop when a single keccakf has been computed
     let input = b"";
     let mut output = [0u8; 32];
     keccak(input, &mut output, true).expect("Failed to get circuit topology")
@@ -66,7 +68,7 @@ pub fn keccakf_topology() -> GateState {
 
 #[cfg(test)]
 mod tests {
-    use super::{keccak, keccakf_topology};
+    use super::keccak;
 
     #[test]
     fn test_empty_input() {
