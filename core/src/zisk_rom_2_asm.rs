@@ -24,7 +24,7 @@ const REG_C_W: &str = "r15d";
 const REG_C_H: &str = "r15w";
 const REG_C_B: &str = "r15b";
 const REG_FLAG: &str = "rdx";
-const REG_STEP_DOWN: &str = "r14";
+const REG_STEP: &str = "r14";
 const REG_VALUE: &str = "r9";
 const REG_VALUE_W: &str = "r9d";
 //const REG_VALUE_H: &str = "r9w";
@@ -148,7 +148,7 @@ impl ZiskRom2Asm {
 
         // Create context
         let mut ctx = ZiskAsmContext {
-            log_output: false,
+            log_output,
             call_chunk_done: true,
             generate_fast,
             generate_minimal_trace,
@@ -286,7 +286,7 @@ impl ZiskRom2Asm {
         *code += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
         *code += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
         *code += &format!("\tmov {}, 0 /* pc = 0 */\n", REG_PC);
-        *code += &format!("\tmov {}, 0 /* step = 0 */\n", REG_STEP_DOWN);
+        *code += &format!("\tmov {}, 0 /* step = 0 */\n", REG_STEP);
 
         // Initialize registers to zero
         *code += "\t/* RISC-V registers to zero */\n";
@@ -597,8 +597,8 @@ impl ZiskRom2Asm {
                             store_a_reg, store_a_reg_name
                         );
                         *code += &format!(
-                            "\tsub {}, {} /* {} -= step_down */\n",
-                            store_a_reg, REG_STEP_DOWN, store_a_reg_name
+                            "\tsub {}, {} /* {} -= step count down */\n",
+                            store_a_reg, REG_STEP, store_a_reg_name
                         );
                     }
                     ctx.a.is_saved = !ctx.store_a_in_c;
@@ -1603,10 +1603,10 @@ impl ZiskRom2Asm {
             // Decrement step counter
             *code += "\t/* STEP */\n";
             if ctx.generate_fast || ctx.generate_rom_histogram || ctx.generate_main_trace {
-                *code += &format!("\tinc {} /* increment step */\n", REG_STEP_DOWN);
+                *code += &format!("\tinc {} /* increment step */\n", REG_STEP);
             }
             if ctx.generate_chunks || ctx.generate_minimal_trace || ctx.generate_main_trace {
-                *code += &format!("\tdec {} /* decrement step_down */\n", REG_STEP_DOWN);
+                *code += &format!("\tdec {} /* decrement step count down */\n", REG_STEP);
                 if instruction.end {
                     *code += &format!("\tmov {}, 1 /* end = 1 */\n", MEM_END);
                     *code += &format!("\tmov {}, 0x{:08x} /* value = pc */\n", REG_PC, ctx.pc);
@@ -1711,7 +1711,7 @@ impl ZiskRom2Asm {
         // Update step memory variable with the content of the step register, to make it accessible
         // to the caller
         if ctx.generate_fast || ctx.generate_rom_histogram || ctx.generate_main_trace {
-            *code += &format!("\tmov {}, {} /* update step */\n", MEM_STEP, REG_STEP_DOWN);
+            *code += &format!("\tmov {}, {} /* update step variable */\n", MEM_STEP, REG_STEP);
         }
 
         Self::pop_external_registers(&mut ctx, code);
@@ -3321,9 +3321,8 @@ impl ZiskRom2Asm {
             *code += &format!("\tadd {}, 33*8 /* address += 33*8 */\n", REG_ADDRESS);
         }
 
-        *code += "\t/* Reset step_down to chunk_size */\n";
-        *code += &format!("\tmov {}, chunk_size /* value = chunk_size */\n", REG_VALUE);
-        *code += &format!("\tmov {}, {} /* step_down = chunk_size */\n", REG_STEP_DOWN, REG_VALUE);
+        *code += "\t/* Reset step count down to chunk_size */\n";
+        *code += &format!("\tmov {}, chunk_size /* step count down = chunk_size */\n", REG_STEP);
 
         if ctx.generate_minimal_trace || ctx.generate_main_trace {
             *code += "\t/* Write mem reads size */\n";
@@ -3342,10 +3341,10 @@ impl ZiskRom2Asm {
     }
 
     fn chunk_end(ctx: &mut ZiskAsmContext, code: &mut String, id: &str) {
-        *code += "\t/* Update step from step_down */\n";
+        *code += "\t/* Update total step from step count down */\n";
         *code += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
         *code += &format!("\tadd {}, chunk_size /* value += chunk_size */\n", REG_VALUE);
-        *code += &format!("\tsub {}, {} /* value -= step_down */\n", REG_VALUE, REG_STEP_DOWN);
+        *code += &format!("\tsub {}, {} /* value -= step count down */\n", REG_VALUE, REG_STEP);
         *code += &format!("\tmov {}, {} /* step = value */\n", MEM_STEP, REG_VALUE);
 
         if ctx.generate_minimal_trace {
