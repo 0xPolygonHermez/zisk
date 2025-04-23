@@ -155,7 +155,7 @@ char sem_output_name[128];
 sem_t * sem_output = NULL;
 
 // Chunk done semaphore: notifies the caller when a new chunk has been processed
-char * sem_chunk_done_sufix = "_semchunkdone";
+char * sem_chunk_done_sufix = "_semckd";
 char sem_chunk_done_name[128];
 sem_t * sem_chunk_done = NULL;
 
@@ -175,7 +175,7 @@ int main(int argc, char *argv[])
     parse_arguments(argc, argv);
 
     // Check if the input parameter is a shared memory ID or a file name
-    if (strncmp(input_parameter, "SHM", 3) == 0)
+    if (strncmp(input_parameter, "ZISK", 4) == 0)
     {
         // Mark this is a shared memory, i.e. it is not a file
         is_file = false;
@@ -210,13 +210,13 @@ int main(int argc, char *argv[])
         }
 
         // Create (or open if existing) input and output semaphores
-        sem_input = sem_open(sem_input_name, O_CREAT);
+        sem_input = sem_open(sem_input_name, O_CREAT, 0644, 1);
         if (sem_input == SEM_FAILED)
         {
             printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_input_name, errno, strerror(errno));
             return -1;
         }
-        sem_output = sem_open(sem_output_name, O_CREAT);
+        sem_output = sem_open(sem_output_name, O_CREAT, 0644, 1);
         if (sem_input == SEM_FAILED)
         {
             printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_output_name, errno, strerror(errno));
@@ -224,7 +224,7 @@ int main(int argc, char *argv[])
         }
         if (generate_minimal_trace || generate_main_trace)
         {
-            sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT);
+            sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0644, 1);
             if (sem_chunk_done == SEM_FAILED)
             {
                 printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
@@ -240,7 +240,7 @@ int main(int argc, char *argv[])
     {
         // Mark this is an input file
         is_file = true;
-        sprintf(shmem_output_name, "SHM_%d_output", process_id);
+        sprintf(shmem_output_name, "ZISK_%d_output", process_id);
 #ifdef DEBUG
         if (verbose) printf("Emulator C start; input file = %s shmem=%s\n", input_parameter, shmem_output_name);
 #endif
