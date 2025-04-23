@@ -42,7 +42,7 @@ pub fn generate_assembly(
         // Convert the ELF file to Zisk format and generates an assembly file
         let rv2zk = Riscv2zisk::new(elf_file_path.to_str().unwrap().to_string());
         rv2zk
-            .runfile(asm_file.to_str().unwrap().to_string(), *gen_method)
+            .runfile(asm_file.to_str().unwrap().to_string(), *gen_method, false)
             .expect("Error converting elf to assembly");
 
         let emulator_asm_path = zisk_path.join("emulator-asm");

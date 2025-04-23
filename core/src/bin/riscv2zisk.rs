@@ -46,7 +46,7 @@ fn main() {
     let rv2zk = Riscv2zisk::new(elf_file);
 
     // Convert program
-    if let Err(e) = rv2zk.runfile(asm_file.unwrap(), generation_method) {
+    if let Err(e) = rv2zk.runfile(asm_file.unwrap(), generation_method, true) {
         println!("Application error: {e}");
         process::exit(1);
     }

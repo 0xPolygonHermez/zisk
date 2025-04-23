@@ -101,10 +101,11 @@ impl ZiskRom2Asm {
         rom: &ZiskRom,
         file_name: &Path,
         generation_method: AsmGenerationMethod,
+        log_output: bool,
     ) {
         // Get a string with the ASM data
         let mut s = String::new();
-        Self::save_to_asm(rom, &mut s, generation_method);
+        Self::save_to_asm(rom, &mut s, generation_method, log_output);
 
         // Save to file
         let path = std::path::PathBuf::from(file_name);
@@ -118,7 +119,12 @@ impl ZiskRom2Asm {
     }
 
     /// Saves ZisK rom into an i86-64 assembly data string
-    pub fn save_to_asm(rom: &ZiskRom, code: &mut String, generation_method: AsmGenerationMethod) {
+    pub fn save_to_asm(
+        rom: &ZiskRom,
+        code: &mut String,
+        generation_method: AsmGenerationMethod,
+        log_output: bool,
+    ) {
         // Select the ASM generation method
         let mut generate_fast = false;
         let mut generate_minimal_trace = false;
@@ -142,7 +148,7 @@ impl ZiskRom2Asm {
 
         // Create context
         let mut ctx = ZiskAsmContext {
-            log_output: true,
+            log_output,
             call_chunk_done: true,
             generate_fast,
             generate_minimal_trace,
