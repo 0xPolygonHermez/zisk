@@ -67,7 +67,7 @@ impl RomSM {
 
         Arc::new(Self {
             zisk_rom,
-            // No atomics, we can fivide by 4
+            // No atomics, we can divide by 4
             bios_inst_count: Arc::new(create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2)),
             // Cannot be dividede by 4
             prog_inst_count: Arc::new(create_atomic_vec((ROM_ADDR_MAX - ROM_ADDR) as usize)),
