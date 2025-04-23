@@ -148,7 +148,7 @@ impl ZiskRom2Asm {
 
         // Create context
         let mut ctx = ZiskAsmContext {
-            log_output,
+            log_output: false,
             call_chunk_done: true,
             generate_fast,
             generate_minimal_trace,
@@ -286,6 +286,7 @@ impl ZiskRom2Asm {
         *code += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
         *code += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
         *code += &format!("\tmov {}, 0 /* pc = 0 */\n", REG_PC);
+        *code += &format!("\tmov {}, 0 /* step = 0 */\n", REG_STEP_DOWN);
 
         // Initialize registers to zero
         *code += "\t/* RISC-V registers to zero */\n";
@@ -1602,7 +1603,7 @@ impl ZiskRom2Asm {
             // Decrement step counter
             *code += "\t/* STEP */\n";
             if ctx.generate_fast || ctx.generate_rom_histogram || ctx.generate_main_trace {
-                *code += &format!("\tinc {} /* increment step */\n", MEM_STEP);
+                *code += &format!("\tinc {} /* increment step */\n", REG_STEP_DOWN);
             }
             if ctx.generate_chunks || ctx.generate_minimal_trace || ctx.generate_main_trace {
                 *code += &format!("\tdec {} /* decrement step_down */\n", REG_STEP_DOWN);
@@ -1706,6 +1707,12 @@ impl ZiskRom2Asm {
         *code += "\n";
 
         *code += "execute_end:\n";
+
+        // Update step memory variable with the content of the step register, to make it accessible
+        // to the caller
+        if ctx.generate_fast || ctx.generate_rom_histogram || ctx.generate_main_trace {
+            *code += &format!("\tmov {}, {} /* update step */\n", MEM_STEP, REG_STEP_DOWN);
+        }
 
         Self::pop_external_registers(&mut ctx, code);
 

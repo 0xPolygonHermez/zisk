@@ -185,7 +185,7 @@ int main(int argc, char *argv[])
         uint64_t input_parameter_length = strlen(input_parameter);
         if (input_parameter_length > MAX_SHM_PREFIX_LENGTH)
         {
-            printf("Input parameter is too long: %s, size = %ld\n", input_parameter, input_parameter_length);
+            printf("Input parameter is too long: %s, size = %lu\n", input_parameter, input_parameter_length);
             return -1;
         }
 
@@ -284,7 +284,7 @@ int main(int argc, char *argv[])
         // Check the input data size is inside the proper range
         if (input_data_size > (MAX_INPUT_SIZE - 8))
         {
-            printf("Size of input file (%s) is too long (%ld)\n", input_parameter, input_data_size);
+            printf("Size of input file (%s) is too long (%lu)\n", input_parameter, input_data_size);
             return -1;
         }
 
@@ -316,7 +316,7 @@ int main(int argc, char *argv[])
         size_t input_read = fread((void *)(INPUT_ADDR + 16), 1, input_data_size, input_fp);
         if (input_read != input_data_size)
         {
-            printf("Input read (%ld) != input file size (%ld)\n", input_read, input_data_size);
+            printf("Input read (%lu) != input file size (%lu)\n", input_read, input_data_size);
             return -1;
         }
 
@@ -410,7 +410,7 @@ int main(int argc, char *argv[])
         result = shm_unlink(shmem_input_name);
         if (result == -1)
         {
-            printf("Failed calling shm_unlink(%s) size=%ld errno=%d=%s\n", shmem_input_name, trace_size, errno, strerror(errno));
+            printf("Failed calling shm_unlink(%s) size=%lu errno=%d=%s\n", shmem_input_name, trace_size, errno, strerror(errno));
             exit(-1);
         }
     }
@@ -542,7 +542,7 @@ int main(int argc, char *argv[])
         uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
         uint64_t final_trace_size_percentage = (final_trace_size * 100) / trace_size;
 #ifdef DEBUG
-        printf("Duration = %ld us, Keccak counter = %ld, realloc counter = %ld, steps = %ld, step duration = %ld ns, tp = %ld steps/s, trace size = 0x%lx - 0x%lx = %ld B(%ld%%), end=%ld\n",
+        printf("Duration = %lu us, Keccak counter = %lu, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu\n",
             duration,
             keccak_counter,
             realloc_counter,
@@ -558,10 +558,10 @@ int main(int argc, char *argv[])
         {
             uint64_t keccak_percentage = duration == 0 ? 0 : (keccak_duration * 100) / duration;
             uint64_t single_keccak_duration_ns = keccak_counter == 0 ? 0 : (keccak_duration * 1000) / keccak_counter;
-            printf("Keccak counter = %ld, duration = %ld us, single keccak duration = %ld ns, percentage = %ld \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
+            printf("Keccak counter = %lu, duration = %lu us, single keccak duration = %lu ns, percentage = %lu \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
         }
 #else
-        printf("Duration = %ld us, realloc counter = %ld, steps = %ld, step duration = %ld ns, tp = %ld steps/s, trace size = 0x%lx - 0x%lx = %ld B(%ld%%), end=%ld\n",
+        printf("Duration = %lu us, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu\n",
             duration,
             realloc_counter,
             steps,
@@ -573,6 +573,10 @@ int main(int argc, char *argv[])
             final_trace_size_percentage,
             end);
 #endif
+        if (generate_rom_histogram)
+        {
+            printf("Rom histogram size=%lu\n", histogram_size);
+        }
     }
 
     // Log output
@@ -674,7 +678,7 @@ int main(int argc, char *argv[])
         result = munmap((void *)TRACE_ADDR, trace_size);
         if (result == -1)
         {
-            printf("Failed calling munmap(trace) for size=%ld errno=%d=%s\n", trace_size, errno, strerror(errno));
+            printf("Failed calling munmap(trace) for size=%lu errno=%d=%s\n", trace_size, errno, strerror(errno));
             exit(-1);
         }
 
@@ -739,7 +743,7 @@ uint64_t print_abcflag_counter = 0;
 extern int _print_abcflag(uint64_t a, uint64_t b, uint64_t c, uint64_t flag)
 {
     uint64_t * pMem = (uint64_t *)0xa0012118;
-    printf("counter=%ld a=%08lx b=%08lx c=%08lx flag=%08lx mem=%08lx\n", print_abcflag_counter, a, b, c, flag, *pMem);
+    printf("counter=%lu a=%08lx b=%08lx c=%08lx flag=%08lx mem=%08lx\n", print_abcflag_counter, a, b, c, flag, *pMem);
     uint64_t *pRegs = (uint64_t *)RAM_ADDR;
     for (int i=0; i<32; i++)
     {
@@ -763,7 +767,7 @@ uint64_t print_step_counter = 0;
 extern int _print_step(uint64_t step)
 {
 #ifdef DEBUG
-    printf("step=%ld\n", print_step_counter);
+    printf("step=%lu\n", print_step_counter);
     print_step_counter++;
     // struct timeval stop_time;
     // gettimeofday(&stop_time,NULL);
@@ -894,7 +898,7 @@ extern int _opcode_secp256k1_add(uint64_t * address)
 #ifdef DEBUG
     if (verbose)
     {
-        printf("opcode_secp256k1_add() calling AddPointEcP() counter=%ld address=%p p1_address=%p p2_address=%p\n", secp256k1_add_counter, address, p1, p2);
+        printf("opcode_secp256k1_add() calling AddPointEcP() counter=%lu address=%p p1_address=%p p2_address=%p\n", secp256k1_add_counter, address, p1, p2);
         printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
         printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
         printf("p2.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0], p2[3], p2[2], p2[1], p2[0]);
@@ -938,7 +942,7 @@ extern int _opcode_secp256k1_dbl(uint64_t * address)
 #ifdef DEBUG
     if (verbose)
     {
-        printf("opcode_secp256k1_dbl() calling AddPointEcP() counter=%ld step=%08lx address=%p\n", secp256k1_dbl_counter, /**(uint64_t *)*/MEM_STEP, address);
+        printf("opcode_secp256k1_dbl() calling AddPointEcP() counter=%lu step=%08lx address=%p\n", secp256k1_dbl_counter, /**(uint64_t *)*/MEM_STEP, address);
         printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
         printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
     }
@@ -1158,7 +1162,7 @@ extern void _realloc_trace (void)
     int result = ftruncate(shmem_output_fd, new_trace_size);
     if (result != 0)
     {
-        printf("realloc_trace() failed calling ftruncate(%s) of new size=%ld errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
+        printf("realloc_trace() failed calling ftruncate(%s) of new size=%lu errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
         exit(-1);
     }
     
@@ -1166,7 +1170,7 @@ extern void _realloc_trace (void)
     void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
     if ((uint64_t)new_address != trace_address)
     {
-        printf("realloc_trace() failed calling mremap() from size=%ld to %ld got new_address=0x%p errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
+        printf("realloc_trace() failed calling mremap() from size=%lu to %lu got new_address=0x%p errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
         exit(-1);
     }
 
@@ -1377,24 +1381,24 @@ void log_minimal_trace(void)
 
     uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
     printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %ld\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %ld B\n", pOutput[2]); // Allocated size [8]
-    printf("Minimal trace used size = %ld B\n", pOutput[3]); // Minimal trace used size [8]
+    printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
+    printf("Minimal trace used size = %lu B\n", pOutput[3]); // Minimal trace used size [8]
 
     printf("Trace content:\n");
     uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
     uint64_t number_of_chunks = trace[0];
-    printf("Number of chunks=%ld\n", number_of_chunks);
+    printf("Number of chunks=%lu\n", number_of_chunks);
     if (number_of_chunks > 1000000)
     {
-        printf("Number of chunks is too high=%ld\n", number_of_chunks);
+        printf("Number of chunks is too high=%lu\n", number_of_chunks);
         exit(-1);
     }
     uint64_t * chunk = trace + 1;
     for (uint64_t c=0; c<number_of_chunks; c++)
     {
         uint64_t i=0;
-        printf("Chunk %ld:\n", c);
+        printf("Chunk %lu:\n", c);
 
         // Log current chunk start state
         printf("\tStart state:\n");
@@ -1404,11 +1408,11 @@ void log_minimal_trace(void)
         i++;
         printf("\t\tc=0x%lx\n", chunk[i]);
         i++;
-        printf("\t\tstep=%ld\n", chunk[i]);
+        printf("\t\tstep=%lu\n", chunk[i]);
         i++;
         for (uint64_t r=1; r<34; r++)
         {
-            printf("\t\tregister[%ld]=0x%lx\n", r, chunk[i]);
+            printf("\t\tregister[%lu]=0x%lx\n", r, chunk[i]);
             i++;
         }
 
@@ -1419,26 +1423,26 @@ void log_minimal_trace(void)
         
         // Log current chunk end
         printf("\tEnd:\n");
-        printf("\t\tend=%ld\n", chunk[i]);
+        printf("\t\tend=%lu\n", chunk[i]);
         i++;
 
         // Log current chunk steps
         printf("\tSteps:\n");
-        printf("\t\tsteps=%ld\n", chunk[i]);
+        printf("\t\tsteps=%lu\n", chunk[i]);
         i++;
         uint64_t mem_reads_size = chunk[i];
-        printf("\t\tmem_reads_size=%ld\n", mem_reads_size);
+        printf("\t\tmem_reads_size=%lu\n", mem_reads_size);
         i++;
         if (mem_reads_size > 10000000)
         {
-            printf("Mem reads size is too high=%ld\n", mem_reads_size);
+            printf("Mem reads size is too high=%lu\n", mem_reads_size);
             exit(-1);
         }
         if (trace_trace)
         {
             for (uint64_t m=0; m<mem_reads_size; m++)
             {
-                printf("\t\tchunk[%ld].mem_reads[%ld]=%08lx\n", c, m, chunk[i]);
+                printf("\t\tchunk[%lu].mem_reads[%lu]=%08lx\n", c, m, chunk[i]);
                 i++;
             }
         }
@@ -1450,7 +1454,7 @@ void log_minimal_trace(void)
         //Set next chunk pointer
         chunk = chunk + i;
     }
-    printf("Trace=0x%p chunk=0x%p size=%ld\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+    printf("Trace=0x%p chunk=0x%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
 }
 
 void log_histogram(void)
@@ -1458,19 +1462,19 @@ void log_histogram(void)
 
     uint64_t *  pOutput = (uint64_t *)TRACE_ADDR;
     printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %ld\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %ld B\n", pOutput[2]); // MT allocated size [8]
-    printf("Steps = %ld B\n", pOutput[3]); // MT used size [8]
+    printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    printf("Allocated size = %lu B\n", pOutput[2]); // MT allocated size [8]
+    printf("Steps = %lu B\n", pOutput[3]); // MT used size [8]
 
     printf("BIOS histogram:\n");
     uint64_t * trace = (uint64_t *)(TRACE_ADDR + 0x20);
 
     // BIOS
     uint64_t bios_size = trace[0];
-    printf("BIOS size=%ld\n", bios_size);
+    printf("BIOS size=%lu\n", bios_size);
     if (bios_size > 100000000)
     {
-        printf("Bios size is too high=%ld\n", bios_size);
+        printf("Bios size is too high=%lu\n", bios_size);
         exit(-1);
     }
     if (trace_trace)
@@ -1487,7 +1491,7 @@ void log_histogram(void)
     printf("Program size=%lu\n", program_size);
     if (program_size > 100000000)
     {
-        printf("Program size is too high=%ld\n", program_size);
+        printf("Program size is too high=%lu\n", program_size);
         exit(-1);
     }
     if (trace_trace)
@@ -1525,32 +1529,32 @@ void log_main_trace(void)
 
     uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
     printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %ld\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %ld B\n", pOutput[2]); // Allocated size [8]
-    printf("Main trace used size = %ld B\n", pOutput[3]); // Main trace used size [8]
+    printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
+    printf("Main trace used size = %lu B\n", pOutput[3]); // Main trace used size [8]
 
     printf("Trace content:\n");
     uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
     uint64_t number_of_chunks = trace[0];
-    printf("Number of chunks=%ld\n", number_of_chunks);
+    printf("Number of chunks=%lu\n", number_of_chunks);
     if (number_of_chunks > 1000000)
     {
-        printf("Number of chunks is too high=%ld\n", number_of_chunks);
+        printf("Number of chunks is too high=%lu\n", number_of_chunks);
         exit(-1);
     }
     uint64_t * chunk = trace + 1;
     for (uint64_t c=0; c<number_of_chunks; c++)
     {
         uint64_t i=0;
-        printf("Chunk %ld:\n", c);
+        printf("Chunk %lu:\n", c);
 
         uint64_t main_trace_size = chunk[i];
-        printf("\tmem_reads_size=%ld\n", main_trace_size);
+        printf("\tmem_reads_size=%lu\n", main_trace_size);
         i++;
         main_trace_size /= 7;
         if (main_trace_size > 10000000)
         {
-            printf("Main_trace size is too high=%ld\n", main_trace_size);
+            printf("Main_trace size is too high=%lu\n", main_trace_size);
             exit(-1);
         }
 
@@ -1580,5 +1584,5 @@ void log_main_trace(void)
         //Set next chunk pointer
         chunk = chunk + i;
     }
-    printf("Trace=0x%p chunk=0x%p size=%ld\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+    printf("Trace=0x%p chunk=0x%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
 }
