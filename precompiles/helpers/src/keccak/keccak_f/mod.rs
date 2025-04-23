@@ -6,8 +6,8 @@ mod round_constants;
 mod theta;
 mod utils;
 
-pub(self) use round_constants::KECCAK_F_RC;
-pub(self) use utils::bit_position;
+pub use round_constants::KECCAK_F_RC;
+pub use utils::bit_position;
 
 use chi::keccak_f_chi;
 use iota::keccak_f_iota;
@@ -68,7 +68,7 @@ pub fn keccak_f(s: &mut GateState) {
             s.print_refs(&s.sin_refs, "Before χ")
         };
 
-        keccak_f_chi(s, ir);
+        keccak_f_chi(s);
         s.copy_sout_refs_to_sin_refs();
 
         #[cfg(debug_assertions)]

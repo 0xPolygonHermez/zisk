@@ -82,7 +82,7 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
 
             // C[x, z] = aux3 ^ A[x, 4, z]
             let free_ref = s.get_free_ref();
-            c[x][z] = free_ref as u64;
+            c[x][z] = free_ref;
             if ir == 0 {
                 let group_4 = positions[4] as u64 / s.gate_config.sin_ref_group_by;
                 let group_pos_4 = positions[4] as u64 % s.gate_config.sin_ref_group_by;
@@ -104,7 +104,7 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
     for x in 0..5 {
         for z in 0..64 {
             let free_ref = s.get_free_ref();
-            d[x][z] = free_ref as u64;
+            d[x][z] = free_ref;
             s.xor_res(c[(x + 4) % 5][z], c[(x + 1) % 5][(z + 63) % 64], free_ref);
         }
     }

@@ -287,24 +287,25 @@ impl GateState {
                         & self.gates[ref_b as usize].pins[pin_b].bit;
                 self.ands += 1;
             }
-            GateOperation::Ch => {
-                self.gates[ref_c as usize].pins[PinId::C].bit =
-                    (self.gates[ref_a as usize].pins[pin_a].bit
-                        & self.gates[ref_b as usize].pins[pin_b].bit)
-                        ^ ((1 - self.gates[ref_a as usize].pins[pin_a].bit)
-                            & self.gates[ref_b as usize].pins[pin_b].bit);
-                self.chs += 1;
-            }
-            GateOperation::Maj => {
-                self.gates[ref_c as usize].pins[PinId::C].bit =
-                    (self.gates[ref_a as usize].pins[pin_a].bit
-                        & self.gates[ref_b as usize].pins[pin_b].bit)
-                        ^ (self.gates[ref_a as usize].pins[pin_a].bit
-                            & self.gates[ref_b as usize].pins[pin_b].bit)
-                        ^ (self.gates[ref_b as usize].pins[pin_b].bit
-                            & self.gates[ref_b as usize].pins[pin_b].bit);
-                self.majs += 1;
-            }
+            // TODO: Unimplemented operations
+            // GateOperation::Ch => {
+            //     self.gates[ref_c as usize].pins[PinId::C].bit =
+            //         (self.gates[ref_a as usize].pins[pin_a].bit
+            //             & self.gates[ref_b as usize].pins[pin_b].bit)
+            //             ^ ((1 - self.gates[ref_a as usize].pins[pin_a].bit)
+            //                 & self.gates[ref_b as usize].pins[pin_b].bit);
+            //     self.chs += 1;
+            // }
+            // GateOperation::Maj => {
+            //     self.gates[ref_c as usize].pins[PinId::C].bit =
+            //         (self.gates[ref_a as usize].pins[pin_a].bit
+            //             & self.gates[ref_b as usize].pins[pin_b].bit)
+            //             ^ (self.gates[ref_a as usize].pins[pin_a].bit
+            //                 & self.gates[ref_b as usize].pins[pin_b].bit)
+            //             ^ (self.gates[ref_b as usize].pins[pin_b].bit
+            //                 & self.gates[ref_b as usize].pins[pin_b].bit);
+            //     self.majs += 1;
+            // }
             GateOperation::Add => {
                 self.gates[ref_c as usize].pins[PinId::C].bit =
                     self.gates[ref_a as usize].pins[pin_a].bit

@@ -22,14 +22,14 @@ pub fn keccak_f_iota(s: &mut GateState, ir: u64) {
     // Step 4: Apply round constants to lane (0,0)
     for z in 0..64 {
         // Skip if round constant is 0
-        if KECCAK_F_RC[ir as usize][z as usize] == 0 {
+        if KECCAK_F_RC[ir as usize][z] == 0 {
             continue;
         }
 
         let pos = bit_position(0, 0, z);
         let aux = s.get_free_ref();
 
-        match KECCAK_F_RC[ir as usize][z as usize] {
+        match KECCAK_F_RC[ir as usize][z] {
             1 => {
                 // XOR with zeroRef's pin_b
                 s.xor(s.gate_config.zero_ref.unwrap(), PinId::B, s.sout_refs[pos], PinId::C, aux);
