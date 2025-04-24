@@ -1,6 +1,8 @@
 #ifndef ARITH_HPP
 #define ARITH_HPP
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -14,13 +16,13 @@ extern "C" {
 // Fcall context
 struct FcallContext
 {
-    unsigned long function_id; // identifies what function to call
-    unsigned long params_max_size; // max length of input parameters array
-    unsigned long params_size; // input parameters array valid data size
-    unsigned long params[32]; // input parameters array
-    unsigned long result_max_size; // max length of output result array
-    unsigned long result_size; // output result array valid data size (written by fcall)
-    unsigned long result[32]; // output result array (written by fcall)
+    uint64_t function_id; // identifies what function to call
+    uint64_t params_max_size; // max length of input parameters array
+    uint64_t params_size; // input parameters array valid data size
+    uint64_t params[32]; // input parameters array
+    uint64_t result_max_size; // max length of output result array
+    uint64_t result_size; // output result array valid data size (written by fcall)
+    uint64_t result[32]; // output result array (written by fcall)
 };
 
 // Fcall function; calls the corresponding function based on function identifier
@@ -44,21 +46,21 @@ int MsbPos256Ctx (
 
 // Functions supported by fcall, in u64 array format
 int InverseFpEc (
-    const unsigned long * a, // 8 x 64 bits
-          unsigned long * r  // 8 x 64 bits
+    const uint64_t * a, // 8 x 64 bits
+          uint64_t * r  // 8 x 64 bits
 );
 int InverseFnEc (
-    const unsigned long * a, // 8 x 64 bits
-          unsigned long * r  // 8 x 64 bits
+    const uint64_t * a, // 8 x 64 bits
+          uint64_t * r  // 8 x 64 bits
 );
 int SqrtFpEcParity (
-    const unsigned long * a,  // 8 x 64 bits
-    const unsigned long   parity,
-          unsigned long * r  // 8 x 64 bits
+    const uint64_t * a,  // 8 x 64 bits
+    const uint64_t   parity,
+          uint64_t * r  // 8 x 64 bits
 );
 int MsbPos256 (
-    const unsigned long * a, // 8 x 64 bits
-          unsigned long * r  // 2 x 64 bits
+    const uint64_t * a, // 8 x 64 bits
+          uint64_t * r  // 2 x 64 bits
 );
 
 #ifdef __cplusplus

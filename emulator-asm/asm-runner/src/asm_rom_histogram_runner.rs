@@ -5,7 +5,7 @@ use libc::{
 
 use crate::AsmInputC;
 
-use std::ffi::{c_void, CString};
+use std::ffi::{c_uint, c_void, CString};
 use std::path::Path;
 use std::process::{self, Command};
 use std::{fs, ptr};
@@ -143,7 +143,11 @@ impl AsmRunnerRomH {
         unsafe { shm_unlink(shmem_input_name_ptr) };
 
         let shm_fd = unsafe {
-            shm_open(shmem_input_name_ptr, libc::O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IXUSR)
+            shm_open(
+                shmem_input_name_ptr,
+                libc::O_RDWR | O_CREAT,
+                (S_IRUSR | S_IWUSR | S_IXUSR) as c_uint,
+            )
         };
         Self::check_shm_open(shm_fd, shmem_input_name_ptr);
 
@@ -179,8 +183,9 @@ impl AsmRunnerRomH {
         let shmem_output_name = CString::new(shmem_output_name).expect("CString::new failed");
         let shmem_output_name_ptr = shmem_output_name.as_ptr();
 
-        let shm_fd =
-            unsafe { shm_open(shmem_output_name_ptr, libc::O_RDONLY, S_IRUSR | S_IWUSR | S_IXUSR) };
+        let shm_fd = unsafe {
+            shm_open(shmem_output_name_ptr, libc::O_RDONLY, (S_IRUSR | S_IWUSR | S_IXUSR) as c_uint)
+        };
 
         Self::check_shm_open(shm_fd, shmem_output_name_ptr);
 

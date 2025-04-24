@@ -67,7 +67,7 @@ char *Fec_element2str(PFecElement pE) {
     if (!(pE->type & Fec_LONG)) {
         if (pE->shortVal>=0) {
             char *r = new char[32];
-            sprintf(r, "%d", pE->shortVal);
+            snprintf(r, sizeof(r), "%d", pE->shortVal);
             return r;
         } else {
             mpz_init_set_si(r, pE->shortVal);

@@ -51,7 +51,7 @@ int main(int argc, char *argv[])
         uint64_t y3[4] = {0, 0, 0, 0};
 
         int result = AddPointEc(dbl, x1, y1, x2, y2, x3, y3);
-        printf("Called AddPointEc() result=%d x1=%lx:%lx:%lx:%lx y1=%lx:%lx:%lx:%lx x2=%lx:%lx:%lx:%lx y2=%lx:%lx:%lx:%lx x3=%lx:%lx:%lx:%lx y3=%lx:%lx:%lx:%lx\n",
+        printf("Called AddPointEc() result=%d x1=%llu:%llu:%llu:%llu y1=%llu:%llu:%llu:%llu x2=%llu:%llu:%llu:%llu y2=%llu:%llu:%llu:%llu x3=%llu:%llu:%llu:%llu y3=%llu:%llu:%llu:%llu\n",
             result,
             x1[3], x1[2], x1[1], x1[0],
             y1[3], y1[2], y1[1], y1[0],
@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
             x3[3], x3[2], x3[1], x3[0],
             y3[3], y3[2], y3[1], y3[0]
         );
-    }
+   }
     
     {
         uint64_t dbl = 0;
@@ -69,7 +69,7 @@ int main(int argc, char *argv[])
         uint64_t p3[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
         int result = AddPointEcP(dbl, p1, p2, p3);
-        printf("Called AddPointEcP() result=%d x1=%lx:%lx:%lx:%lx y1=%lx:%lx:%lx:%lx x2=%lx:%lx:%lx:%lx y2=%lx:%lx:%lx:%lx x3=%lx:%lx:%lx:%lx y3=%lx:%lx:%lx:%lx\n",
+        printf("Called AddPointEcP() result=%d x1=%llu:%llu:%llu:%llu y1=%llu:%llu:%llu:%llu x2=%llu:%llu:%llu:%llu y2=%llu:%llu:%llu:%llu x3=%llu:%llu:%llu:%llu y3=%llu:%llu:%llu:%llu\n",
             result,
             p1[3], p1[2], p1[1], p1[0],
             p1[7], p1[6], p1[5], p1[4],
@@ -97,7 +97,7 @@ int main(int argc, char *argv[])
         }
         uint64_t duration = TimeDiff(startTime);
         double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("AddPointEc(dbl=0) duration=%ld TP = %f Mcalls/sec\n", duration, tp);
+        printf("AddPointEc(dbl=0) duration=%llu TP = %f Mcalls/sec\n", duration, tp);
     }
 
     {
@@ -117,7 +117,7 @@ int main(int argc, char *argv[])
         }
         uint64_t duration = TimeDiff(startTime);
         double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("AddPointEc(dbl=1) duration=%ld TP = %f Mcalls/sec\n", duration, tp);
+        printf("AddPointEc(dbl=1) duration=%llu TP = %f Mcalls/sec\n", duration, tp);
     }
 
     {
@@ -132,7 +132,7 @@ int main(int argc, char *argv[])
         }
         uint64_t duration = TimeDiff(startTime);
         double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("InverseFpEc() duration=%ld TP = %f Mcalls/sec\n", duration, tp);
+        printf("InverseFpEc() duration=%llu TP = %f Mcalls/sec\n", duration, tp);
     }
 
     {
@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
         }
         uint64_t duration = TimeDiff(startTime);
         double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("InverseFnEc() duration=%ld TP = %f Mcalls/sec\n", duration, tp);
+        printf("InverseFnEc() duration=%llu TP = %f Mcalls/sec\n", duration, tp);
     }
 
     {
@@ -163,7 +163,7 @@ int main(int argc, char *argv[])
         }
         uint64_t duration = TimeDiff(startTime);
         double tp = duration == 0 ? 0 : double(1000000)/duration;
-        printf("SqrtFpEcParity() duration=%ld TP = %f Mcalls/sec\n", duration, tp);
+        printf("SqrtFpEcParity() duration=%llu TP = %f Mcalls/sec\n", duration, tp);
     }
 
     return 0;

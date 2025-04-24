@@ -30,6 +30,6 @@ rayon = { workspace = true }
 pil-std-lib = { workspace = true }
 
 [features]
-default = ["distributed"]
-distributed = ["proofman-common/distributed", "witness/distributed"]
+default = []
+disable-distributed = ["proofman-common/disable-distributed"]
 gpu = ["proofman-common/gpu", "proofman/gpu" ]
