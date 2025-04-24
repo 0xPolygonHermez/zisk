@@ -3447,7 +3447,14 @@ impl ZiskRom2Asm {
                 *code += "\tcall _chunk_done\n";
             }
             Self::pop_internal_registers(ctx, code);
+            *code += &format!("\tjmp chunk_{}_address_done\n", id);
             *code += &format!("chunk_{}_address_below_threshold:\n", id);
+            if ctx.call_chunk_done {
+                Self::push_internal_registers(ctx, code);
+                *code += "\tcall _chunk_done\n";
+                Self::pop_internal_registers(ctx, code);
+            }
+            *code += &format!("chunk_{}_address_done:\n", id);
         } else if ctx.call_chunk_done {
             // Call the chunk_done function
             Self::push_internal_registers(ctx, code);
