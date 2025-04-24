@@ -6,9 +6,10 @@
 use crate::{elf2rom, elf2romfile, ZiskRom};
 use std::{error::Error, path::PathBuf};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum AsmGenerationMethod {
     /// Generate assembly code to not even stop at chunks, nor generate trace, i.e. fast
+    #[default]
     AsmFast,
     /// Generate assembly code to compute the minimal traces
     AsmMinimalTraces,
