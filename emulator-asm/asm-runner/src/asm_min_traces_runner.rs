@@ -69,7 +69,7 @@ impl AsmRunnerMT {
     ) -> AsmRunnerMT {
         let pid = unsafe { libc::getpid() };
 
-        let shmem_prefix = format!("SHM{}", pid);
+        let shmem_prefix = format!("ZISKMT{}", pid);
         let shmem_input_name = format!("/{}_input", shmem_prefix);
         let shmem_output_name = format!("/{}_output", shmem_prefix);
 

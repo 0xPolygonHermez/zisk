@@ -64,7 +64,7 @@ impl AsmRunnerRomH {
     ) -> AsmRunnerRomH {
         let pid = unsafe { libc::getpid() };
 
-        let shmem_prefix = format!("SHM_RH_{}", pid);
+        let shmem_prefix = format!("ZISKRH{}", pid);
         let shmem_input_name = format!("/{}_input", shmem_prefix);
         let shmem_output_name = format!("/{}_output", shmem_prefix);
 
