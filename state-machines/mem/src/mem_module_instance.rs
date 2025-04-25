@@ -4,7 +4,7 @@ use crate::{
 };
 use data_bus::{BusDevice, BusId, MemBusData, PayloadType, MEM_BUS_ID};
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{create_pool, AirInstance, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::ops::Add;
@@ -94,7 +94,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
         }
     }
 
-    fn prepare_inputs(&mut self, inputs: &mut [MemInput]) {
+    fn prepare_inputs(&self, inputs: &mut [MemInput]) {
         // sort all instance inputs
         timer_start_debug!(MEM_SORT);
         inputs.sort_by_key(|input| (input.addr, input.step));
@@ -115,7 +115,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
     /// # Returns
     /// The previous segment information.
     fn fit_inputs_and_get_prev_segment(
-        &mut self,
+        &self,
         inputs: &mut Vec<MemInput>,
         mem_check_point: MemModuleSegmentCheckPoint,
         last_value: &mut MemLastValue,
@@ -198,48 +198,56 @@ impl<F: PrimeField> MemModuleInstance<F> {
 
 impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+        core_id: usize,
+        n_cores: usize,
     ) -> Option<AirInstance<F>> {
         // Collect inputs from all collectors. At most, one of them has `prev_last_value` non zero,
         // we take this `prev_last_value`, which represents the last value of the previous segment.
 
-        let mut last_value = MemLastValue::new(SegmentId::new(0), 0, 0);
-        let inputs: Vec<_> = collectors
-            .into_iter()
-            .map(|(_, mut collector)| {
-                let mem_module_collector =
-                    collector.detach_device().as_any().downcast::<MemModuleCollector>().unwrap();
+        let pool = create_pool(core_id, n_cores);
+        pool.install(|| {
+            let mut last_value = MemLastValue::new(SegmentId::new(0), 0, 0);
+            let inputs: Vec<_> = collectors
+                .into_iter()
+                .map(|(_, mut collector)| {
+                    let mem_module_collector = collector
+                        .detach_device()
+                        .as_any()
+                        .downcast::<MemModuleCollector>()
+                        .unwrap();
 
-                last_value = last_value + mem_module_collector.last_value;
-                mem_module_collector.inputs
-            })
-            .collect();
-        let mut inputs = inputs.into_iter().flatten().collect::<Vec<_>>();
+                    last_value = last_value + mem_module_collector.last_value;
+                    mem_module_collector.inputs
+                })
+                .collect();
+            let mut inputs = inputs.into_iter().flatten().collect::<Vec<_>>();
 
-        if inputs.is_empty() {
-            return None;
-        }
+            if inputs.is_empty() {
+                return None;
+            }
 
-        // This method sorts all inputs
-        self.prepare_inputs(&mut inputs);
+            // This method sorts all inputs
+            self.prepare_inputs(&mut inputs);
 
-        // This method calculates intermediate accesses without adding inputs and trims
-        // the inputs while considering skipped rows for this instance.
-        // Additionally, it computes the necessary information for memory continuations.
-        let prev_segment = self.fit_inputs_and_get_prev_segment(
-            &mut inputs,
-            self.mem_check_point.clone(),
-            &mut last_value,
-        );
+            // This method calculates intermediate accesses without adding inputs and trims
+            // the inputs while considering skipped rows for this instance.
+            // Additionally, it computes the necessary information for memory continuations.
+            let prev_segment = self.fit_inputs_and_get_prev_segment(
+                &mut inputs,
+                self.mem_check_point.clone(),
+                &mut last_value,
+            );
 
-        // Extract segment id from instance context
-        let segment_id = self.ictx.plan.segment_id.unwrap();
+            // Extract segment id from instance context
+            let segment_id = self.ictx.plan.segment_id.unwrap();
 
-        let is_last_segment = self.mem_check_point.is_last_segment;
-        Some(self.module.compute_witness(&inputs, segment_id, is_last_segment, &prev_segment))
+            let is_last_segment = self.mem_check_point.is_last_segment;
+            Some(self.module.compute_witness(&inputs, segment_id, is_last_segment, &prev_segment))
+        })
     }
 
     /// Builds an input collector for the instance.

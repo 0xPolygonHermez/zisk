@@ -156,6 +156,20 @@ impl ZiskVerifyConstraints {
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
+        let proofman = ProofMan::<Goldilocks>::new(
+            self.get_proving_key(),
+            custom_commits_map,
+            ProofOptions::new(
+                true,
+                self.verbose.into(),
+                false,
+                false,
+                false,
+                false,
+                debug_info,
+            ),
+        ).expect("Failed to initialize proofman");
+
         let mut witness_lib;
         match self.field {
             Field::Goldilocks => {
@@ -172,12 +186,9 @@ impl ZiskVerifyConstraints {
                 )
                 .expect("Failed to initialize witness library");
 
-                ProofMan::<Goldilocks>::verify_proof_constraints_from_lib(
+                proofman.verify_proof_constraints_from_lib(
                     &mut *witness_lib,
-                    self.get_proving_key(),
                     PathBuf::new(),
-                    custom_commits_map,
-                    ProofOptions::new(true, self.verbose.into(), false, false, false, debug_info),
                 )
                 .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
             }

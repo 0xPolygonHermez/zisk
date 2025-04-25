@@ -7,7 +7,7 @@ use std::sync::Arc;
 use log::info;
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{create_pool, AirInstance, FromTrace};
 use rayon::prelude::*;
 use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow};
 
@@ -92,46 +92,56 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(&self, inputs: &[Vec<[u64; 2]>]) -> AirInstance<F> {
-        let mut add_trace = BinaryAddTrace::new();
+    pub fn compute_witness(
+        &self,
+        inputs: &[Vec<[u64; 2]>],
+        core_id: usize,
+        n_cores: usize,
+    ) -> AirInstance<F> {
+        let pool = create_pool(core_id, n_cores);
+        let air_instance = pool.install(|| {
+            let mut add_trace = BinaryAddTrace::new();
 
-        let num_rows = add_trace.num_rows();
+            let num_rows = add_trace.num_rows();
 
-        let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
-        assert!(total_inputs <= num_rows);
+            let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
+            assert!(total_inputs <= num_rows);
 
-        info!(
-            "{}: ··· Creating BinaryAdd instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
-            total_inputs,
-            num_rows,
-            total_inputs as f64 / num_rows as f64 * 100.0
-        );
+            info!(
+                "{}: ··· Creating BinaryAdd instance [{} / {} rows filled {:.2}%]",
+                Self::MY_NAME,
+                total_inputs,
+                num_rows,
+                total_inputs as f64 / num_rows as f64 * 100.0
+            );
 
-        // Split the add_e_trace.buffer into slices matching each inner vector’s length.
-        let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
-        let mut slices = Vec::with_capacity(inputs.len());
-        let mut rest = add_trace.buffer.as_mut_slice();
-        for size in sizes {
-            let (head, tail) = rest.split_at_mut(size);
-            slices.push(head);
-            rest = tail;
-        }
+            // Split the add_e_trace.buffer into slices matching each inner vector’s length.
+            let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
+            let mut slices = Vec::with_capacity(inputs.len());
+            let mut rest = add_trace.buffer.as_mut_slice();
+            for size in sizes {
+                let (head, tail) = rest.split_at_mut(size);
+                slices.push(head);
+                rest = tail;
+            }
 
-        // Process each slice in parallel, and use the corresponding inner input from `inputs`.
-        slices.into_par_iter().enumerate().for_each(|(i, slice)| {
-            //let std = self.std.clone();
-            slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
-                *trace_row = self.process_slice(&inputs[i][j]);
+            // Process each slice in parallel, and use the corresponding inner input from `inputs`.
+            slices.into_par_iter().enumerate().for_each(|(i, slice)| {
+                //let std = self.std.clone();
+                slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
+                    *trace_row = self.process_slice(&inputs[i][j]);
+                });
             });
+
+            // Note: We can choose any operation that trivially satisfies the constraints on padding
+            // rows
+            let padding_row = BinaryAddTraceRow::<F> { ..Default::default() };
+
+            add_trace.buffer[total_inputs..num_rows].fill(padding_row);
+            self.std.range_check(0, 4 * (num_rows - total_inputs) as u64, self.range_id);
+
+            AirInstance::new_from_trace(FromTrace::new(&mut add_trace))
         });
-        // Note: We can choose any operation that trivially satisfies the constraints on padding
-        // rows
-        let padding_row = BinaryAddTraceRow::<F> { ..Default::default() };
-
-        add_trace.buffer[total_inputs..num_rows].fill(padding_row);
-        self.std.range_check(0, 4 * (num_rows - total_inputs) as u64, self.range_id);
-
-        AirInstance::new_from_trace(FromTrace::new(&mut add_trace))
+        air_instance
     }
 }

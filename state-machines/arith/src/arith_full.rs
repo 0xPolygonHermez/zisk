@@ -12,7 +12,7 @@ use crate::{
 use data_bus::{ExtOperationData, OperationBusData, OperationData, PayloadType};
 use log::info;
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{create_pool, AirInstance, FromTrace};
 use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
@@ -61,89 +61,98 @@ impl ArithFullSM {
     pub fn compute_witness<F: PrimeField>(
         &self,
         inputs: &[Vec<OperationData<u64>>],
+        core_id: usize,
+        n_cores: usize,
     ) -> AirInstance<F> {
-        let mut arith_trace = ArithTrace::new();
+        let pool = create_pool(core_id, n_cores);
+        let air_instance = pool.install(|| {
+            let mut arith_trace = ArithTrace::new();
 
-        let num_rows = arith_trace.num_rows();
+            let num_rows = arith_trace.num_rows();
 
-        let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
-        assert!(total_inputs <= num_rows);
+            let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
+            assert!(total_inputs <= num_rows);
 
-        let mut range_table_inputs = ArithRangeTableInputs::new();
-        let mut table_inputs = ArithTableInputs::new();
+            let mut range_table_inputs = ArithRangeTableInputs::new();
+            let mut table_inputs = ArithTableInputs::new();
 
-        info!(
-            "{}: ··· Creating Arith instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
-            total_inputs,
-            num_rows,
-            total_inputs as f64 / num_rows as f64 * 100.0
-        );
-
-        // Split the arith_trace.buffer into slices matching each inner vector’s length.
-        let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
-        let mut slices = Vec::with_capacity(inputs.len());
-        let mut rest = arith_trace.buffer.as_mut_slice();
-        for size in sizes {
-            let (head, tail) = rest.split_at_mut(size);
-            slices.push(head);
-            rest = tail;
-        }
-
-        let results: Vec<(ArithRangeTableInputs, ArithTableInputs)> = slices
-            .into_par_iter()
-            .zip(inputs)
-            .map(|(slice, input)| {
-                let mut aop = ArithOperation::new();
-                let mut range_table = ArithRangeTableInputs::new();
-                let mut table = ArithTableInputs::new();
-
-                slice.iter_mut().zip(input).for_each(|(trace_row, input)| {
-                    *trace_row = Self::process_slice(&mut range_table, &mut table, &mut aop, input);
-                });
-
-                (range_table, table) // return partial result
-            })
-            .collect();
-
-        let padding_offset = total_inputs;
-        let padding_rows: usize = num_rows.saturating_sub(padding_offset);
-
-        if padding_rows > 0 {
-            let mut t: ArithTraceRow<F> = Default::default();
-            let padding_opcode = ZiskOp::Muluh.code();
-            t.op = F::from_u8(padding_opcode);
-            t.fab = F::ONE;
-
-            arith_trace.buffer[padding_offset..num_rows].par_iter_mut().for_each(|elem| *elem = t);
-
-            range_table_inputs.multi_use_chunk_range_check(padding_rows * 10, 0, 0);
-            range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 26, 0);
-            range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 17, 0);
-            range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 9, 0);
-            range_table_inputs.multi_use_carry_range_check(padding_rows * 7, 0);
-            table_inputs.multi_add_use(
-                padding_rows,
-                padding_opcode,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
+            info!(
+                "{}: ··· Creating Arith instance [{} / {} rows filled {:.2}%]",
+                Self::MY_NAME,
+                total_inputs,
+                num_rows,
+                total_inputs as f64 / num_rows as f64 * 100.0
             );
-        }
 
-        results.par_iter().for_each(|(range_table_inputs, table_inputs)| {
-            self.arith_table_sm.process_slice(table_inputs);
-            self.arith_range_table_sm.process_slice(range_table_inputs);
+            // Split the arith_trace.buffer into slices matching each inner vector’s length.
+            let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
+            let mut slices = Vec::with_capacity(inputs.len());
+            let mut rest = arith_trace.buffer.as_mut_slice();
+            for size in sizes {
+                let (head, tail) = rest.split_at_mut(size);
+                slices.push(head);
+                rest = tail;
+            }
+
+            let results: Vec<(ArithRangeTableInputs, ArithTableInputs)> = slices
+                .into_par_iter()
+                .zip(inputs)
+                .map(|(slice, input)| {
+                    let mut aop = ArithOperation::new();
+                    let mut range_table = ArithRangeTableInputs::new();
+                    let mut table = ArithTableInputs::new();
+
+                    slice.iter_mut().zip(input).for_each(|(trace_row, input)| {
+                        *trace_row =
+                            Self::process_slice(&mut range_table, &mut table, &mut aop, input);
+                    });
+
+                    (range_table, table) // return partial result
+                })
+                .collect();
+
+            let padding_offset = total_inputs;
+            let padding_rows: usize = num_rows.saturating_sub(padding_offset);
+
+            if padding_rows > 0 {
+                let mut t: ArithTraceRow<F> = Default::default();
+                let padding_opcode = ZiskOp::Muluh.code();
+                t.op = F::from_u8(padding_opcode);
+                t.fab = F::ONE;
+
+                arith_trace.buffer[padding_offset..num_rows]
+                    .par_iter_mut()
+                    .for_each(|elem| *elem = t);
+
+                range_table_inputs.multi_use_chunk_range_check(padding_rows * 10, 0, 0);
+                range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 26, 0);
+                range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 17, 0);
+                range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 9, 0);
+                range_table_inputs.multi_use_carry_range_check(padding_rows * 7, 0);
+                table_inputs.multi_add_use(
+                    padding_rows,
+                    padding_opcode,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                );
+            }
+
+            results.par_iter().for_each(|(range_table_inputs, table_inputs)| {
+                self.arith_table_sm.process_slice(table_inputs);
+                self.arith_range_table_sm.process_slice(range_table_inputs);
+            });
+
+            self.arith_table_sm.process_slice(&table_inputs);
+            self.arith_range_table_sm.process_slice(&range_table_inputs);
+
+            AirInstance::new_from_trace(FromTrace::new(&mut arith_trace))
         });
-
-        self.arith_table_sm.process_slice(&table_inputs);
-        self.arith_range_table_sm.process_slice(&range_table_inputs);
-
-        AirInstance::new_from_trace(FromTrace::new(&mut arith_trace))
+        air_instance
     }
 
     /// Generates binary inputs for operations requiring additional validation (e.g., division).

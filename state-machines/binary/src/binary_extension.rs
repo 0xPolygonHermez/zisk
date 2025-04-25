@@ -13,7 +13,7 @@ use log::info;
 
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{create_pool, AirInstance, FromTrace};
 use rayon::prelude::*;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow};
@@ -325,67 +325,76 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` representing the computed witness.
-    pub fn compute_witness(&self, inputs: &[Vec<BinaryInput>]) -> AirInstance<F> {
-        let mut binary_e_trace = BinaryExtensionTrace::new();
+    pub fn compute_witness(
+        &self,
+        inputs: &[Vec<BinaryInput>],
+        core_id: usize,
+        n_cores: usize,
+    ) -> AirInstance<F> {
+        let pool = create_pool(core_id, n_cores);
+        let air_instance = pool.install(|| {
+            let mut binary_e_trace = BinaryExtensionTrace::new();
 
-        let num_rows = binary_e_trace.num_rows();
+            let num_rows = binary_e_trace.num_rows();
 
-        let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
-        assert!(
-            total_inputs <= num_rows,
-            "{} <= {} ({})",
-            total_inputs,
-            num_rows,
-            BinaryExtensionTrace::<usize>::NUM_ROWS
-        );
-
-        info!(
-            "{}: ··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
-            total_inputs,
-            num_rows,
-            total_inputs as f64 / num_rows as f64 * 100.0
-        );
-
-        // Split the binary_e_trace.buffer into slices matching each inner vector’s length.
-        let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
-        let mut slices = Vec::with_capacity(inputs.len());
-        let mut rest = binary_e_trace.buffer.as_mut_slice();
-        for size in sizes {
-            let (head, tail) = rest.split_at_mut(size);
-            slices.push(head);
-            rest = tail;
-        }
-
-        // Process each slice in parallel, and use the corresponding inner input from `inputs`.
-        slices.into_par_iter().enumerate().for_each(|(i, slice)| {
-            slice.iter_mut().enumerate().for_each(|(j, cell)| {
-                *cell = self.process_slice(
-                    &inputs[i][j],
-                    self.binary_extension_table_sm.detach_multiplicity(),
-                );
-            });
-        });
-
-        // Note: We can choose any operation that trivially satisfies the constraints on padding
-        // rows
-        let padding_row =
-            BinaryExtensionTraceRow::<F> { op: F::from_u8(SE_W_OP), ..Default::default() };
-
-        binary_e_trace.buffer[total_inputs..num_rows].fill(padding_row);
-
-        let padding_size = num_rows - total_inputs;
-        for i in 0..8 {
-            let multiplicity = padding_size as u64;
-            let row = BinaryExtensionTableSM::calculate_table_row(
-                BinaryExtensionTableOp::SignExtendW,
-                i,
-                0,
-                0,
+            let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
+            assert!(
+                total_inputs <= num_rows,
+                "{} <= {} ({})",
+                total_inputs,
+                num_rows,
+                BinaryExtensionTrace::<usize>::NUM_ROWS
             );
-            self.binary_extension_table_sm.update_multiplicity(row, multiplicity);
-        }
 
-        AirInstance::new_from_trace(FromTrace::new(&mut binary_e_trace))
+            info!(
+                "{}: ··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
+                Self::MY_NAME,
+                total_inputs,
+                num_rows,
+                total_inputs as f64 / num_rows as f64 * 100.0
+            );
+
+            // Split the binary_e_trace.buffer into slices matching each inner vector’s length.
+            let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
+            let mut slices = Vec::with_capacity(inputs.len());
+            let mut rest = binary_e_trace.buffer.as_mut_slice();
+            for size in sizes {
+                let (head, tail) = rest.split_at_mut(size);
+                slices.push(head);
+                rest = tail;
+            }
+
+            // Process each slice in parallel, and use the corresponding inner input from `inputs`.
+            slices.into_par_iter().enumerate().for_each(|(i, slice)| {
+                slice.iter_mut().enumerate().for_each(|(j, cell)| {
+                    *cell = self.process_slice(
+                        &inputs[i][j],
+                        self.binary_extension_table_sm.detach_multiplicity(),
+                    );
+                });
+            });
+
+            // Note: We can choose any operation that trivially satisfies the constraints on padding
+            // rows
+            let padding_row =
+                BinaryExtensionTraceRow::<F> { op: F::from_u8(SE_W_OP), ..Default::default() };
+
+            binary_e_trace.buffer[total_inputs..num_rows].fill(padding_row);
+
+            let padding_size = num_rows - total_inputs;
+            for i in 0..8 {
+                let multiplicity = padding_size as u64;
+                let row = BinaryExtensionTableSM::calculate_table_row(
+                    BinaryExtensionTableOp::SignExtendW,
+                    i,
+                    0,
+                    0,
+                );
+                self.binary_extension_table_sm.update_multiplicity(row, multiplicity);
+            }
+
+            AirInstance::new_from_trace(FromTrace::new(&mut binary_e_trace))
+        });
+        air_instance
     }
 }

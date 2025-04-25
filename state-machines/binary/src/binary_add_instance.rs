@@ -56,10 +56,12 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+        core_id: usize,
+        n_cores: usize,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -68,7 +70,7 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
             })
             .collect();
 
-        Some(self.binary_add_sm.compute_witness(&inputs))
+        Some(self.binary_add_sm.compute_witness(&inputs, core_id, n_cores))
     }
 
     /// Retrieves the checkpoint associated with this instance.
