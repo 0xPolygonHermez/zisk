@@ -10,7 +10,7 @@ In order to generate the Zisk documentation, execute the cargo doc command.  We 
 $ cargo doc --no-deps
 ```
 
-This will generate a set of HTML files under the `target/doc` diretory.
+This will generate a set of HTML files under the `target/doc` directory.
 
 ## Viewing Zisk documentation
 
