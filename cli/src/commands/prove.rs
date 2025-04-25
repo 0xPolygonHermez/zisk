@@ -80,6 +80,9 @@ pub struct ZiskProve {
     #[clap(short = 'y', long, default_value_t = false)]
     pub verify_proofs: bool,
 
+    #[clap(short = 'c', long, default_value_t = false)]
+    pub preallocate: bool,
+
     /// Verbosity (-v, -vv)
     #[arg(short ='v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
@@ -120,8 +123,6 @@ impl ZiskProve {
         };
 
         print_banner();
-
-        let start = std::time::Instant::now();
 
         if self.output_dir.join("proofs").exists() {
             // In distributed mode two different processes may enter here at the same time and try to remove the same directory
@@ -192,6 +193,22 @@ impl ZiskProve {
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
+        let proofman = ProofMan::<Goldilocks>::new(
+                self.get_proving_key(),
+                custom_commits_map,
+                ProofOptions::new(
+                    false,
+                    self.verbose.into(),
+                    self.aggregation,
+                    self.final_snark,
+                    self.verify_proofs,
+                    self.preallocate,
+                    debug_info.clone(),
+                ),
+            ).expect("Failed to initialize proofman");
+        
+        let start = std::time::Instant::now();
+
         let mut witness_lib;
         let proof_id;
         if debug_info.std_mode.name == ModeName::Debug {
@@ -210,19 +227,9 @@ impl ZiskProve {
                     )
                     .expect("Failed to initialize witness library");
 
-                    return ProofMan::<Goldilocks>::verify_proof_constraints_from_lib(
+                    return proofman.verify_proof_constraints_from_lib(
                         &mut *witness_lib,
-                        self.get_proving_key(),
                         self.output_dir.clone(),
-                        custom_commits_map,
-                        ProofOptions::new(
-                            false,
-                            self.verbose.into(),
-                            self.aggregation,
-                            self.final_snark,
-                            self.verify_proofs,
-                            debug_info,
-                        ),
                     )
                     .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e));
                 }
@@ -243,19 +250,9 @@ impl ZiskProve {
                     )
                     .expect("Failed to initialize witness library");
 
-                    proof_id = ProofMan::<Goldilocks>::generate_proof_from_lib(
+                    proof_id = proofman.generate_proof_from_lib(
                         &mut *witness_lib,
-                        self.get_proving_key(),
                         self.output_dir.clone(),
-                        custom_commits_map,
-                        ProofOptions::new(
-                            false,
-                            self.verbose.into(),
-                            self.aggregation,
-                            self.final_snark,
-                            self.verify_proofs,
-                            debug_info,
-                        ),
                     )
                     .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
                 }

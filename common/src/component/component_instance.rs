@@ -31,10 +31,12 @@ pub trait Instance<F: PrimeField>: Send + Sync {
     /// # Returns
     /// An optional `AirInstance` object representing the computed witness.
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        _core_id: usize,
+        _n_cores: usize,
     ) -> Option<AirInstance<F>> {
         None
     }
@@ -89,7 +91,7 @@ macro_rules! table_instance {
 
         use p3_field::PrimeField;
 
-        use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
+        use proofman_common::{create_pool, AirInstance, FromTrace, ProofCtx, SetupCtx};
         use zisk_common::{
             BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
         };
@@ -122,24 +124,31 @@ macro_rules! table_instance {
 
         impl<F: PrimeField> Instance<F> for $InstanceName {
             fn compute_witness(
-                &mut self,
+                &self,
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+                core_id: usize,
+                n_cores: usize,
             ) -> Option<AirInstance<F>> {
-                let mut trace = $Trace::new();
+                let pool = create_pool(core_id, n_cores);
+                let air_instance = pool.install(|| {
+                    let mut trace = $Trace::new();
 
-                let multiplicity = self.table_sm.detach_multiplicity();
-                self.table_sm.set_calculated();
+                    let multiplicity = self.table_sm.detach_multiplicity();
+                    self.table_sm.set_calculated();
 
-                pctx.dctx_distribute_multiplicity(multiplicity, self.ictx.global_id);
+                    pctx.dctx_distribute_multiplicity(multiplicity, self.ictx.global_id);
 
-                trace.buffer.par_iter_mut().enumerate().for_each(|(i, input)| {
-                    input.multiplicity =
-                        F::from_u64(multiplicity[i].swap(0, std::sync::atomic::Ordering::Relaxed))
+                    trace.buffer.par_iter_mut().enumerate().for_each(|(i, input)| {
+                        input.multiplicity = F::from_u64(
+                            multiplicity[i].swap(0, std::sync::atomic::Ordering::Relaxed),
+                        )
+                    });
+
+                    Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
                 });
-
-                Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
+                air_instance
             }
 
             fn check_point(&self) -> CheckPoint {
@@ -188,7 +197,7 @@ macro_rules! table_instance_array {
 
         use p3_field::PrimeField;
 
-        use proofman_common::{AirInstance, ProofCtx, SetupCtx, TraceInfo};
+        use proofman_common::{create_pool, AirInstance, ProofCtx, SetupCtx, TraceInfo};
         use zisk_common::{
             BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
         };
@@ -221,27 +230,33 @@ macro_rules! table_instance_array {
 
         impl<F: PrimeField> Instance<F> for $InstanceName {
             fn compute_witness(
-                &mut self,
+                &self,
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+                core_id: usize,
+                n_cores: usize,
             ) -> Option<AirInstance<F>> {
-                let mut trace = $Trace::new();
+                let pool = create_pool(core_id, n_cores);
+                let air_instance = pool.install(|| {
+                    let mut trace = $Trace::new();
 
-                let multiplicities = self.table_sm.detach_multiplicities();
-                self.table_sm.set_calculated();
-                pctx.dctx_distribute_multiplicities(multiplicities, self.ictx.global_id);
+                    let multiplicities = self.table_sm.detach_multiplicities();
+                    self.table_sm.set_calculated();
+                    pctx.dctx_distribute_multiplicities(multiplicities, self.ictx.global_id);
 
-                let mut buffer = trace.get_buffer();
+                    let mut buffer = trace.get_buffer();
 
-                buffer.par_chunks_mut(trace.row_size).enumerate().for_each(|(row, chunk)| {
-                    for (col, vec) in multiplicities.iter().enumerate() {
-                        chunk[col] =
-                            F::from_u64(vec[row].swap(0, std::sync::atomic::Ordering::Relaxed));
-                    }
+                    buffer.par_chunks_mut(trace.row_size).enumerate().for_each(|(row, chunk)| {
+                        for (col, vec) in multiplicities.iter().enumerate() {
+                            chunk[col] =
+                                F::from_u64(vec[row].swap(0, std::sync::atomic::Ordering::Relaxed));
+                        }
+                    });
+
+                    Some(AirInstance::new(TraceInfo::new(trace.airgroup_id, trace.air_id, buffer)))
                 });
-
-                Some(AirInstance::new(TraceInfo::new(trace.airgroup_id, trace.air_id, buffer)))
+                air_instance
             }
 
             fn check_point(&self) -> CheckPoint {
@@ -288,7 +303,7 @@ macro_rules! table_instance_array {
 macro_rules! instance {
     ($name:ident, $sm:ty, $num_rows:path, $operation:path) => {
         use data_bus::BusId;
-        use proofman_common::{AirInstance, ProofCtx};
+        use proofman_common::{create_pool, AirInstance, ProofCtx};
         use sm_common::{CheckPointSkip, Instance, InstanceType};
 
         /// Represents a standalone computation instance.
@@ -316,7 +331,7 @@ macro_rules! instance {
 
         impl<F: PrimeField> Instance<F> for $name {
             fn compute_witness(
-                &mut self,
+                &self,
                 _pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
             ) -> Option<AirInstance<F>> {

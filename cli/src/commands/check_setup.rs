@@ -49,6 +49,7 @@ impl ZiskCheckSetup {
                     self.aggregation,
                     self.final_snark,
                     false,
+                    false,
                     DebugInfo::default(),
                 ),
             )
