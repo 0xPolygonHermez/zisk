@@ -1693,7 +1693,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
 
     // :0030 -> add: reg12 = reg12 + 1, jump -16
     // Increase the register #12, i.e. the data chunk index, in 1 unit.
-    // Jump to the beginnig of the output data read loop
+    // Jump to the beginning of the output data read loop
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 12, false);
     zib.src_b("imm", 1, false);
