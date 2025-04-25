@@ -1,0 +1,67 @@
+require "std_lookup.pil"
+
+const int SHA256F_TABLE_ID = 127;
+
+airtemplate Sha256fTable(const int N = 2**23, const int bits) {
+    // Operations
+    const int XOR = 0;
+    const int CH = 1;
+    const int MAJ = 2;
+    const int ADD = 3;
+
+    // Compute table size
+    const int BITS_A = bits;
+    const int BITS_B = bits;
+    const int BITS_C = bits;
+    const int BITS_OP = 2;
+    const int TABLE_BIT_SIZE = BITS_A + BITS_B + BITS_C + BITS_OP;
+
+    // Ensure that the chosen size fits
+    if (N < 2**TABLE_BIT_SIZE) {
+        error(`With bits=${bits}, N must be at least 2**${TABLE_BIT_SIZE} to fit the table, but received 2**${log2(N)}`);
+    }
+
+    const int P2_BITS_A = 2**BITS_A;
+    const int P2_BITS_B = 2**BITS_B;
+    const int P2_BITS_C = 2**BITS_C;
+    const int P2_BITS_AB = P2_BITS_A * P2_BITS_B;
+    const int P2_BITS_ABC = P2_BITS_A * P2_BITS_B * P2_BITS_C;
+    const int MASK_BITS_A = P2_BITS_A - 1;
+    const int MASK_BITS_B = P2_BITS_B - 1;
+    const int MASK_BITS_C = P2_BITS_C - 1;
+
+    col fixed A = [0..MASK_BITS_A]; // Input A (BITS_A bits)
+    col fixed B = [0:P2_BITS_A..MASK_BITS_B:P2_BITS_A]...; // Input B (BITS_B bits)
+    col fixed C = [0:P2_BITS_AB..MASK_BITS_C:P2_BITS_AB]...; // Input C (BITS_C bits)
+    col fixed GATE_OP = [XOR:P2_BITS_ABC, CH:P2_BITS_ABC, MAJ:P2_BITS_ABC, ADD:P2_BITS_ABC]...; // Gate operation (BITS_OP bit)
+
+    // Precompute a table with the two basic operations appearing in the Sha256-f permutation
+    col fixed D; // Output D (BITS_A bits)
+    col fixed CARRY; // Output carry (BITS_a bits)
+    #pragma transpile
+    for (int i = 0; i < N; i++) {
+        const int [a, b, c, gate_op] = [A[i], B[i], C[i], GATE_OP[i]];
+
+        int d = 0;
+        int carry = 0;
+        switch (gate_op) {
+            case XOR:
+                d = a ^ b ^ c;
+            case CH:
+                d = (a & b) ^ ((a ^ MASK_BITS_A) & c);
+            case MAJ:
+                d = (a & b) ^ (a & c) ^ (b & c);
+            case ADD:
+                d = a ^ b ^ c;
+                carry = (a & b) | (a & c) | (b & c);
+            default:
+                error(`Invalid gate operation opcode: ${gate_op} at row ${i}`);
+        }
+        D[i] = d;
+        CARRY[i] = carry;
+    }
+
+    // --> Prove that the circuit gates are satisfied
+    col witness multiplicity;
+    lookup_proves(SHA256F_TABLE_ID, [GATE_OP, A, B, C, D, carry], multiplicity);
+}
