@@ -2313,7 +2313,6 @@ dependencies = [
  "clap",
  "data-bus",
  "log",
- "num-bigint",
  "p3-field",
  "p3-goldilocks",
  "pil-std-lib",
@@ -2323,10 +2322,32 @@ dependencies = [
  "proofman-macros",
  "proofman-util",
  "rayon",
- "serde",
- "serde_json",
  "sm-common",
  "tiny-keccak 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "witness",
+ "zisk-common",
+ "zisk-core",
+ "zisk-pil",
+]
+
+[[package]]
+name = "precomp-sha256f"
+version = "0.7.0"
+dependencies = [
+ "circuit",
+ "clap",
+ "data-bus",
+ "log",
+ "p3-field",
+ "p3-goldilocks",
+ "pil-std-lib",
+ "precompiles-common",
+ "precompiles-helpers",
+ "proofman-common",
+ "proofman-macros",
+ "proofman-util",
+ "rayon",
+ "sm-common",
  "witness",
  "zisk-common",
  "zisk-core",

@@ -12,7 +12,6 @@ use circuit::GateOperation;
 use precompiles_helpers::keccakf_topology;
 
 mod goldilocks_constants;
-mod keccakf_types;
 
 use goldilocks_constants::{GOLDILOCKS_GEN, GOLDILOCKS_K};
 

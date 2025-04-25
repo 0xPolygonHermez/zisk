@@ -1,7 +1,5 @@
 use super::{bits_to_byte, print_bits, Gate, GateConfig, GateOperation, PinId, PinSource};
 
-const BITRATE: u64 = 1088; // Number of bits absorbed in the sponge
-
 #[derive(Debug)]
 pub struct GateState {
     pub gate_config: GateConfig,
@@ -96,35 +94,6 @@ impl GateState {
             self.gates[z as usize].pins[PinId::A].bit = 0;
             self.gates[z as usize].pins[PinId::B].bit = 1;
             self.gates[z as usize].pins[PinId::C].bit = 1;
-        }
-    }
-
-    // Set Rin data into bits array at SinRef0 position
-    pub fn set_rin(&mut self, p_rin: &[u8]) {
-        assert!(self.gate_config.sin_ref_number >= BITRATE);
-
-        for i in 0..BITRATE {
-            let group = i / self.gate_config.sin_ref_group_by;
-            let group_pos = i % self.gate_config.sin_ref_group_by;
-            let ref_idx = self.gate_config.sin_first_ref
-                + group * self.gate_config.sin_ref_distance
-                + group_pos;
-            self.gates[ref_idx as usize].pins[PinId::B].bit = p_rin[i as usize];
-            self.gates[ref_idx as usize].pins[PinId::B].source = PinSource::External;
-        }
-    }
-
-    // Mix Rin data with Sin data
-    pub fn mix_rin(&mut self) {
-        assert!(self.gate_config.sin_ref_number >= BITRATE);
-
-        for i in 0..BITRATE {
-            let group = i / self.gate_config.sin_ref_group_by;
-            let group_pos = i % self.gate_config.sin_ref_group_by;
-            let ref_idx = self.gate_config.sin_first_ref
-                + group * self.gate_config.sin_ref_distance
-                + group_pos;
-            self.xor(ref_idx, PinId::A, ref_idx, PinId::B, ref_idx);
         }
     }
 

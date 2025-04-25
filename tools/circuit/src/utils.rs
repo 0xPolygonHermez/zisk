@@ -42,3 +42,19 @@ fn byte_to_char(b: u8) -> char {
         _ => panic!("Invalid nibble value: {}", b),
     }
 }
+
+pub fn u32_to_bits(value: u32) -> [u8; 32] {
+    let mut bits = [0u8; 32];
+    for i in 0..32 {
+        bits[i] = ((value >> i) as u8) & 1;
+    }
+    bits
+}
+
+pub fn bits_to_u32(bits: &[u8; 32]) -> u32 {
+    let mut value = 0u32;
+    for i in (0..32).rev() {
+        value = (value << 1) | (bits[i] as u32);
+    }
+    value
+}
