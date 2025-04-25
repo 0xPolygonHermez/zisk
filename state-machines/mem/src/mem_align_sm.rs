@@ -8,7 +8,7 @@ use num_traits::cast::ToPrimitive;
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{create_pool, AirInstance, FromTrace};
 use zisk_pil::{MemAlignTrace, MemAlignTraceRow};
 
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
@@ -781,51 +781,58 @@ impl<F: PrimeField64> MemAlignSM<F> {
         &self,
         mem_ops: &[Vec<MemAlignInput>],
         used_rows: usize,
+        core_id: usize,
+        n_cores: usize,
     ) -> AirInstance<F> {
-        let mut trace = MemAlignTrace::<F>::new();
-        let mut reg_range_check = [0u64; 1 << CHUNK_BITS];
+        let pool = create_pool(core_id, n_cores);
+        let air_instance = pool.install(|| {
+            let mut trace = MemAlignTrace::<F>::new();
+            let mut reg_range_check = [0u64; 1 << CHUNK_BITS];
 
-        let num_rows = trace.num_rows();
+            let num_rows = trace.num_rows();
 
-        info!(
-            "{}: ··· Creating Mem Align instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
-            used_rows,
-            num_rows,
-            used_rows as f64 / num_rows as f64 * 100.0
-        );
+            info!(
+                "{}: ··· Creating Mem Align instance [{} / {} rows filled {:.2}%]",
+                Self::MY_NAME,
+                used_rows,
+                num_rows,
+                used_rows as f64 / num_rows as f64 * 100.0
+            );
 
-        let mut index = 0;
-        for inner_memp_ops in mem_ops {
-            for input in inner_memp_ops {
-                let count = self.prove_mem_align_op(input, &mut trace, index);
-                for i in 0..count {
-                    for j in 0..CHUNK_NUM {
-                        let element = trace[index + i].reg[j]
-                            .as_canonical_biguint()
-                            .to_usize()
-                            .expect("Cannot convert to usize");
-                        reg_range_check[element] += 1;
+            let mut index = 0;
+            for inner_memp_ops in mem_ops {
+                for input in inner_memp_ops {
+                    let count = self.prove_mem_align_op(input, &mut trace, index);
+                    for i in 0..count {
+                        for j in 0..CHUNK_NUM {
+                            let element = trace[index + i].reg[j]
+                                .as_canonical_biguint()
+                                .to_usize()
+                                .expect("Cannot convert to usize");
+                            reg_range_check[element] += 1;
+                        }
                     }
+                    index += count;
                 }
-                index += count;
             }
-        }
 
-        let padding_size = num_rows - index;
-        let padding_row = MemAlignTraceRow::<F> { reset: F::from_bool(true), ..Default::default() };
+            let padding_size = num_rows - index;
+            let padding_row =
+                MemAlignTraceRow::<F> { reset: F::from_bool(true), ..Default::default() };
 
-        // Store the padding rows
-        trace.buffer[index..num_rows].fill(padding_row);
+            // Store the padding rows
+            trace.buffer[index..num_rows].fill(padding_row);
 
-        // Compute the program multiplicity
-        let mem_align_rom_sm = self.mem_align_rom_sm.clone();
-        mem_align_rom_sm.update_padding_row(padding_size as u64);
+            // Compute the program multiplicity
+            let mem_align_rom_sm = self.mem_align_rom_sm.clone();
+            mem_align_rom_sm.update_padding_row(padding_size as u64);
 
-        reg_range_check[0] += CHUNK_NUM as u64 * padding_size as u64;
-        self.update_std_range_check(&reg_range_check);
+            reg_range_check[0] += CHUNK_NUM as u64 * padding_size as u64;
+            self.update_std_range_check(&reg_range_check);
 
-        AirInstance::new_from_trace(FromTrace::new(&mut trace))
+            AirInstance::new_from_trace(FromTrace::new(&mut trace))
+        });
+        air_instance
     }
 
     fn update_std_range_check(&self, reg_range_check: &[u64]) {

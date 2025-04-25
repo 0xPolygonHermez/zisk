@@ -41,6 +41,8 @@ pub struct RomSM {
 
     /// The ROM assembly worker
     rom_asm_worker: Mutex<Option<RomAsmWorker>>,
+
+    asm_rom_path: Option<PathBuf>,
 }
 
 impl RomSM {
@@ -53,18 +55,8 @@ impl RomSM {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `RomSM`.
-    pub fn new(
-        zisk_rom: Arc<ZiskRom>,
-        asm_rom_path: Option<PathBuf>,
-        input_data_path: Option<PathBuf>,
-    ) -> Arc<Self> {
-        let rom_asm_worker = asm_rom_path.map(|asm_rom_path| {
-            let mut worker = RomAsmWorker::new();
-            worker.launch_task(asm_rom_path, input_data_path);
-            worker
-        });
-
-        let (bios_inst_count, prog_inst_count) = if rom_asm_worker.is_some() {
+    pub fn new(zisk_rom: Arc<ZiskRom>, asm_rom_path: Option<PathBuf>) -> Arc<Self> {
+        let (bios_inst_count, prog_inst_count) = if asm_rom_path.is_some() {
             (vec![], vec![])
         } else {
             (
@@ -73,14 +65,22 @@ impl RomSM {
             )
         };
 
-        let rom_asm_worker = Mutex::new(rom_asm_worker);
-
         Arc::new(Self {
             zisk_rom,
             bios_inst_count: Arc::new(bios_inst_count),
             prog_inst_count: Arc::new(prog_inst_count),
-            rom_asm_worker,
+            asm_rom_path,
+            rom_asm_worker: Mutex::new(None),
         })
+    }
+
+    pub fn set_asm_rom_worker(&self, input_data_path: Option<PathBuf>) {
+        let rom_asm_worker = self.asm_rom_path.as_ref().map(|asm_rom_path| {
+            let mut worker = RomAsmWorker::new();
+            worker.launch_task(asm_rom_path.clone(), input_data_path);
+            worker
+        });
+        *self.rom_asm_worker.lock().unwrap() = rom_asm_worker;
     }
 
     /// Computes the witness for the provided plan using the given ROM.

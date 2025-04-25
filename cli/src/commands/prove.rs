@@ -12,7 +12,7 @@ use log::info;
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::{
-    initialize_logger, json_to_debug_instances_map, DebugInfo, ModeName, ProofOptions,
+    initialize_logger, json_to_debug_instances_map, DebugInfo, ModeName, ParamsGPU, ProofOptions,
 };
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
@@ -80,12 +80,30 @@ pub struct ZiskProve {
     #[clap(short = 'y', long, default_value_t = false)]
     pub verify_proofs: bool,
 
+    #[clap(short = 'r', long, default_value_t = false)]
+    pub preallocate: bool,
+
     /// Verbosity (-v, -vv)
     #[arg(short ='v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
+
+    #[clap(short = 't', long)]
+    pub max_streams: Option<usize>,
+
+    #[clap(short = 'n', long)]
+    pub number_threads_witness: Option<usize>,
+
+    #[clap(short = 'm', long)]
+    pub max_number_witness_pools: Option<usize>,
+
+    #[clap(short = 'x', long)]
+    pub max_witness_stored: Option<usize>,
+
+    #[clap(short = 'b', long, default_value_t = false)]
+    pub save_proofs: bool,
 
     // PRECOMPILES OPTIONS
     /// Sha256f script path
@@ -122,8 +140,6 @@ impl ZiskProve {
         };
 
         print_banner();
-
-        let start = std::time::Instant::now();
 
         if self.output_dir.join("proofs").exists() {
             // In distributed mode two different processes may enter here at the same time and try to remove the same directory
@@ -194,72 +210,74 @@ impl ZiskProve {
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
-        let mut witness_lib;
+        let verify_constraints = debug_info.std_mode.name == ModeName::Debug;
+
+        let mut gpu_params = ParamsGPU::new(self.preallocate);
+
+        if self.max_streams.is_some() {
+            gpu_params.with_max_number_streams(self.max_streams.unwrap());
+        }
+        if self.number_threads_witness.is_some() {
+            gpu_params.with_number_threads_pools_witness(self.number_threads_witness.unwrap());
+        }
+        if self.max_number_witness_pools.is_some() {
+            gpu_params.with_max_number_witness_pools(self.max_number_witness_pools.unwrap());
+        }
+        if self.max_witness_stored.is_some() {
+            gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
+        }
+
+        let proofman = ProofMan::<Goldilocks>::new(
+            self.get_proving_key(),
+            custom_commits_map,
+            verify_constraints,
+            self.aggregation,
+            self.final_snark,
+            gpu_params,
+        )
+        .expect("Failed to initialize proofman");
+
+        let library = unsafe { Library::new(self.get_witness_computation_lib())? };
+        let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
+            unsafe { library.get(b"init_library")? };
+        let mut witness_lib = witness_lib_constructor(
+            self.verbose.into(),
+            self.elf.clone(),
+            self.asm.clone(),
+            asm_rom,
+            sha256f_script,
+        )
+        .expect("Failed to initialize witness library");
+
+        proofman.register_witness(&mut *witness_lib);
+
+        let start = std::time::Instant::now();
+
         let proof_id;
         if debug_info.std_mode.name == ModeName::Debug {
             match self.field {
                 Field::Goldilocks => {
-                    let library = unsafe { Library::new(self.get_witness_computation_lib())? };
-                    let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
-                        unsafe { library.get(b"init_library")? };
-                    witness_lib = witness_lib_constructor(
-                        self.verbose.into(),
-                        self.elf.clone(),
-                        self.asm.clone(),
-                        asm_rom,
-                        self.input.clone(),
-                        sha256f_script,
-                    )
-                    .expect("Failed to initialize witness library");
-
-                    return ProofMan::<Goldilocks>::verify_proof_constraints_from_lib(
-                        &mut *witness_lib,
-                        self.get_proving_key(),
-                        self.output_dir.clone(),
-                        custom_commits_map,
-                        ProofOptions::new(
-                            false,
-                            self.verbose.into(),
-                            self.aggregation,
-                            self.final_snark,
-                            self.verify_proofs,
-                            debug_info,
-                        ),
-                    )
-                    .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e));
+                    return proofman
+                        .verify_proof_constraints_from_lib(self.input.clone(), &debug_info)
+                        .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e));
                 }
             };
         } else {
             match self.field {
                 Field::Goldilocks => {
-                    let library = unsafe { Library::new(self.get_witness_computation_lib())? };
-                    let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
-                        unsafe { library.get(b"init_library")? };
-                    witness_lib = witness_lib_constructor(
-                        self.verbose.into(),
-                        self.elf.clone(),
-                        self.asm.clone(),
-                        asm_rom,
-                        self.input.clone(),
-                        sha256f_script,
-                    )
-                    .expect("Failed to initialize witness library");
-
-                    proof_id = ProofMan::<Goldilocks>::generate_proof_from_lib(
-                        &mut *witness_lib,
-                        self.get_proving_key(),
-                        self.output_dir.clone(),
-                        custom_commits_map,
-                        ProofOptions::new(
-                            false,
-                            self.verbose.into(),
-                            self.aggregation,
-                            self.final_snark,
-                            self.verify_proofs,
-                            debug_info,
-                        ),
-                    )
-                    .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
+                    proof_id = proofman
+                        .generate_proof_from_lib(
+                            self.input.clone(),
+                            ProofOptions::new(
+                                false,
+                                self.aggregation,
+                                self.final_snark,
+                                self.verify_proofs,
+                                self.save_proofs,
+                                self.output_dir.clone(),
+                            ),
+                        )
+                        .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
                 }
             };
         }

@@ -6,7 +6,8 @@ use std::sync::{atomic::AtomicU32, Arc};
 
 use crate::{rom_asm_worker::RomAsmWorker, rom_counter::RomCounter, RomSM};
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{create_pool, AirInstance, ProofCtx, SetupCtx};
+use std::sync::Mutex;
 use zisk_common::{
     create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
     InstanceType, Metrics, PayloadType, ROM_BUS_ID,
@@ -26,16 +27,15 @@ pub struct RomInstance {
     ictx: InstanceCtx,
 
     /// Shared biod instruction counter for monitoring ROM operations.
-    bios_inst_count: Arc<Vec<AtomicU32>>,
+    bios_inst_count: Mutex<Arc<Vec<AtomicU32>>>,
 
     /// Shared program instruction counter for monitoring ROM operations.
-    prog_inst_count: Arc<Vec<AtomicU32>>,
+    prog_inst_count: Mutex<Arc<Vec<AtomicU32>>>,
 
     /// Execution statistics counter for ROM instructions.
-    counter_stats: Option<CounterStats>,
+    counter_stats: Mutex<Option<CounterStats>>,
 
-    /// Optional worker for ROM assembly execution.
-    rom_asm_worker: Option<RomAsmWorker>,
+    rom_asm_worker: Mutex<Option<RomAsmWorker>>,
 }
 
 impl RomInstance {
@@ -57,15 +57,15 @@ impl RomInstance {
         Self {
             zisk_rom,
             ictx,
-            bios_inst_count,
-            prog_inst_count,
-            counter_stats: None,
-            rom_asm_worker,
+            bios_inst_count: Mutex::new(bios_inst_count),
+            prog_inst_count: Mutex::new(prog_inst_count),
+            counter_stats: Mutex::new(None),
+            rom_asm_worker: Mutex::new(rom_asm_worker),
         }
     }
 
     pub fn is_asm_execution(&self) -> bool {
-        self.rom_asm_worker.is_some()
+        self.rom_asm_worker.lock().unwrap().is_some()
     }
 }
 
@@ -84,46 +84,59 @@ impl<F: PrimeField> Instance<F> for RomInstance {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        core_id: usize,
+        n_cores: usize,
     ) -> Option<AirInstance<F>> {
-        if self.is_asm_execution() {
-            // Case 1: Use ROM assembly output
-            let mut worker = self.rom_asm_worker.take().unwrap();
-            let asm_runner_romh = worker.wait_for_task();
+        let pool = create_pool(core_id, n_cores);
+        let air_instance = pool.install(|| {
+            if self.is_asm_execution() {
+                // Case 1: Use ROM assembly output
+                let mut worker = self.rom_asm_worker.lock().unwrap().take().unwrap();
+                let asm_runner_romh = worker.wait_for_task();
 
-            self.bios_inst_count =
-                Arc::new(create_atomic_vec(asm_runner_romh.asm_rowh_output.bios_inst_count.len()));
-            self.prog_inst_count =
-                Arc::new(create_atomic_vec(asm_runner_romh.asm_rowh_output.prog_inst_count.len()));
+                *self.bios_inst_count.lock().unwrap() = Arc::new(create_atomic_vec(
+                    asm_runner_romh.asm_rowh_output.bios_inst_count.len(),
+                ));
+                *self.prog_inst_count.lock().unwrap() = Arc::new(create_atomic_vec(
+                    asm_runner_romh.asm_rowh_output.prog_inst_count.len(),
+                ));
 
-            return Some(RomSM::compute_witness_from_asm(
-                &self.zisk_rom,
-                &asm_runner_romh.asm_rowh_output,
-            ));
-        }
-
-        // Case 2: Fallback to counter stats when not using assembly
-        // Detach collectors and downcast to RomCollector
-        if self.counter_stats.is_none() {
-            let collectors: Vec<_> = collectors
-                .into_iter()
-                .map(|(_, collector)| collector.as_any().downcast::<RomCollector>().unwrap())
-                .collect();
-
-            let mut counter_stats =
-                CounterStats::new(self.bios_inst_count.clone(), self.prog_inst_count.clone());
-
-            for collector in collectors {
-                counter_stats += &collector.rom_counter.counter_stats;
+                return Some(RomSM::compute_witness_from_asm(
+                    &self.zisk_rom,
+                    &asm_runner_romh.asm_rowh_output,
+                ));
             }
 
-            self.counter_stats = Some(counter_stats);
-        }
+            // Case 2: Fallback to counter stats when not using assembly
+            // Detach collectors and downcast to RomCollector
+            if self.counter_stats.lock().unwrap().is_none() {
+                let collectors: Vec<_> = collectors
+                    .into_iter()
+                    .map(|(_, collector)| collector.as_any().downcast::<RomCollector>().unwrap())
+                    .collect();
 
-        Some(RomSM::compute_witness(&self.zisk_rom, self.counter_stats.as_ref().unwrap()))
+                let mut counter_stats = CounterStats::new(
+                    self.bios_inst_count.lock().unwrap().clone(),
+                    self.prog_inst_count.lock().unwrap().clone(),
+                );
+
+                for collector in collectors {
+                    counter_stats += &collector.rom_counter.counter_stats;
+                }
+
+                *self.counter_stats.lock().unwrap() = Some(counter_stats).into();
+            }
+
+            Some(RomSM::compute_witness(
+                &self.zisk_rom,
+                self.counter_stats.lock().unwrap().as_ref().unwrap(),
+            ))
+        });
+        air_instance
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -150,14 +163,14 @@ impl<F: PrimeField> Instance<F> for RomInstance {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, _: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        if self.is_asm_execution() || self.counter_stats.is_some() {
+        if self.is_asm_execution() || self.counter_stats.lock().unwrap().is_some() {
             return None;
         }
 
         Some(Box::new(RomCollector::new(
-            self.counter_stats.is_some(),
-            self.bios_inst_count.clone(),
-            self.prog_inst_count.clone(),
+            self.counter_stats.lock().unwrap().is_some(),
+            self.bios_inst_count.lock().unwrap().clone(),
+            self.prog_inst_count.lock().unwrap().clone(),
         )))
     }
 }
