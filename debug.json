@@ -1,6 +1,6 @@
 {
     "std_mode": {
-        "opids": [5002, 1000, 10, 11],
+        "opids": [10, 11],
         "print_to_file": true,
         "n_vals": 1000000
     }

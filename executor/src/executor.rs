@@ -91,7 +91,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     const NUM_THREADS: usize = 1;
 
     /// The size in rows of the minimal traces
-    const MIN_TRACE_SIZE: u64 = 1 << 18;
+    const MIN_TRACE_SIZE: u64 = 1 << 14;
 
     const MAX_NUM_STEPS: u64 = 1 << 32;
 

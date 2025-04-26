@@ -20,7 +20,7 @@ pub const MAX_MEM_ADDR: u64 = 0xFFFF_FFFF;
 pub const MEMORY_MAX_DIFF: u64 = 1 << 24;
 pub const STEP_MEMORY_MAX_DIFF: u64 = MEMORY_MAX_DIFF - 1;
 
-pub const CHUNK_SIZE: usize = 1 << 18;
+pub const CHUNK_SIZE: usize = 1 << 14;
 pub const CHUNK_SIZE_STEPS: usize = CHUNK_SIZE * MEM_STEPS_BY_MAIN_STEP as usize;
 pub const CHUNK_MAX_DISTANCE: usize = STEP_MEMORY_MAX_DIFF as usize / CHUNK_SIZE_STEPS;
 pub const STEP_MEMORY_LIMIT_TO_VERIFY: usize = (CHUNK_MAX_DISTANCE - 2) * CHUNK_SIZE_STEPS;

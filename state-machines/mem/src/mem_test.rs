@@ -1,13 +1,19 @@
 #![cfg(test)]
 use std::sync::Arc;
 
+use data_bus::{DataBus, DataBusPlayer, OperationBusData};
+// use p3_goldilocks::Goldilocks;
+use sm_common::BusDeviceMetricsWrapper;
+use zisk_core::zisk_ops::ZiskOp::*;
+// use ZiskOperationType::*;
+
 use crate::{
-    MemCounters, MemModulePlanner, MemModulePlannerConfig, MemPlanCalculator, CHUNK_MAX_DISTANCE,
-    CHUNK_SIZE, CHUNK_SIZE_STEPS, MEMORY_LOAD_OP, MEMORY_STORE_OP,
+    mem_sm::MemSM, MemCounters, MemModulePlanner, MemModulePlannerConfig, MemPlanCalculator,
+    CHUNK_MAX_DISTANCE, CHUNK_SIZE, CHUNK_SIZE_STEPS, MEMORY_LOAD_OP, MEMORY_STORE_OP,
 };
 use data_bus::{BusDevice, MEM_BUS_ID};
-use sm_common::{ChunkId, Plan};
-
+use sm_common::Plan;
+use zisk_common::ChunkId;
 fn generate_test_plans(
     from_addr: u32,
     rows: u32,
@@ -110,7 +116,7 @@ fn add_mem_write64(counter: &mut MemCounters, addr: u32, step: u64, value: u64) 
 fn test_mem_module_planner_empty() {
     let counter = MemCounters::new();
     let mut counters: Vec<(ChunkId, &MemCounters)> = Vec::new();
-    counters.push((0, &counter));
+    counters.push((ChunkId(0), &counter));
     let plans = generate_test_plans(0xA000_0000, 4, counters);
     assert_eq!(plans.len(), 0);
 }
@@ -120,7 +126,7 @@ fn test_mem_module_planner_with_exact_one_segment() {
     add_test_aligned_mem_reads(&mut counter, 4, 10, 0xA000_0000, 10, 0x0000_0000);
     counter.close();
     let mut counters: Vec<(ChunkId, &MemCounters)> = Vec::new();
-    counters.push((0, &counter));
+    counters.push((ChunkId(0), &counter));
 
     let plans = generate_test_plans(0xA000_0000, 4, counters);
     assert_eq!(plans.len(), 1);
@@ -132,7 +138,7 @@ fn test_mem_module_planner() {
     add_test_aligned_mem_reads(&mut counter, 5, 10, 0xA000_0000, 10, 0x0000_0000);
     counter.close();
     let mut counters: Vec<(ChunkId, &MemCounters)> = Vec::new();
-    counters.push((0, &counter));
+    counters.push((ChunkId(0), &counter));
 
     let plans = generate_test_plans(0xA000_0000, 4, counters);
     assert_eq!(plans.len(), 2);
@@ -163,7 +169,7 @@ fn test_intermediate_steps() {
     add_mem_read64(&mut counter, 0xA000_0000, 40, 0x2222_2222_2222_1111);
     add_mem_read64(&mut counter, 0xA000_0016, 50, 0x3333_3333_3333_3333);
     counter.close();
-    counters.push((0, &counter));
+    counters.push((ChunkId(0), &counter));
 
     let mut counter = MemCounters::new();
     let chunk = CHUNK_MAX_DISTANCE + 1;
@@ -174,8 +180,43 @@ fn test_intermediate_steps() {
     add_mem_read64(&mut counter, 0xA000_0000, step_base + 40, 0x2222_2222_2222_1111);
     add_mem_read64(&mut counter, 0xA000_0016, step_base + 50, 0x3333_3333_3333_3333);
     counter.close();
-    counters.push((chunk, &counter));
+    counters.push((ChunkId(chunk), &counter));
 
     let plans = generate_test_plans(0xA000_0000, (CHUNK_SIZE * 4) as u32, counters);
-    println!("{:?}", plans);
+    // println!("{:?}", plans);
 }
+/*
+#[test]
+fn test_mem() {
+    let mem_sm = MemSM::new();
+    let std_sm =
+
+    let mem_bus_device = <MemSM as sm_common::ComponentBuilder<Goldilocks>>::build_counter(&mem_sm);
+
+    let mut data_bus = DataBus::<u64, BusDeviceMetricsWrapper>::new();
+    data_bus.connect_device(
+        vec![OPERATION_BUS_ID],
+        Box::new(BusDeviceMetricsWrapper::new(arith_bus_device, false)),
+    );
+
+    let data = vec![
+        (OPERATION_BUS_ID, OperationBusData::from_values(Mul as u8, Arith as u64, 1, 2).into()),
+        (OPERATION_BUS_ID, OperationBusData::from_values(Div as u8, Arith as u64, 1, 2).into()),
+        (OPERATION_BUS_ID, OperationBusData::from_values(Add as u8, Binary as u64, 1, 2).into()),
+        (OPERATION_BUS_ID, OperationBusData::from_values(Sub as u8, Binary as u64, 1, 2).into()),
+    ];
+
+    DataBusPlayer::play(&mut data_bus, data);
+
+    let arith_counter = data_bus.devices.remove(0).inner;
+
+    let arith_planner =
+        <ArithSM as sm_common::ComponentBuilder<Goldilocks>>::build_planner(&arith_sm);
+
+    let plan = arith_planner.plan(vec![(0, arith_counter)]);
+
+    println!("Plan: {:?}", plan);
+}
+*/
+#[test]
+fn full() {}

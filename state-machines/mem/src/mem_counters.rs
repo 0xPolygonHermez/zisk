@@ -14,16 +14,7 @@ use crate::MemDebug;
 
 // inside a chunk no more than 2^32 access by one address
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct UsesCounter {
-    pub first_step: u64,
-    pub last_step: u64,
-    pub count: u64,
-    #[cfg(feature = "debug_mem")]
-    pub debug: UsesCounterDebug,
-}
-
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct MemCounters {
     pub addr: HashMap<u32, u32>,
     pub addr_sorted: [Vec<(u32, u32)>; 3],
@@ -87,6 +78,18 @@ impl Metrics for MemCounters {
         let addr_w = MemHelpers::get_addr_w(addr);
         let bytes = MemBusData::get_bytes(data);
 
+        // if addr_w >= 268435456 && addr_w <= 301989880 {
+        //     // if addr_w >= 335792734 && addr_w <= 335792735 {
+        //     println!(
+        //         "COUNT: 0x{:08X},{}({}) bytes:{} op:{}",
+        //         addr,
+        //         MemBusData::get_step(data),
+        //         MemHelpers::mem_step_to_chunk(MemBusData::get_step(data)),
+        //         bytes,
+        //         MemBusData::get_op(data)
+        //     );
+        // }
+        // println!("COUNT: 0x{:08X},{}  bytes={}", addr, MemBusData::get_step(data), bytes);
         // #[cfg(feature = "debug_mem")]
         // self.debug.log(addr, step, bytes, is_write, false);
 
