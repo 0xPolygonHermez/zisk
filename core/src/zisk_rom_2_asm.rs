@@ -3074,6 +3074,10 @@ impl ZiskRom2Asm {
             *code += "\t/* set pc */\n";
             if ctx.c.is_constant {
                 let new_pc = (ctx.c.constant_value as i64 + instruction.jmp_offset1) as u64;
+                *code += &format!(
+                    "\tmov {}, 0x{:x} /* pc = c(const) + jmp_offset1 */\n",
+                    REG_PC, new_pc
+                );
                 ctx.jump_to_static_pc = format!("\tjmp pc_{:x} /* jump to static pc */\n", new_pc);
             } else {
                 *code += &format!("\tmov {}, {} /* pc = c */\n", REG_PC, ctx.c.string_value);
@@ -3088,6 +3092,8 @@ impl ZiskRom2Asm {
         } else if ctx.flag_is_always_zero {
             let new_pc = (ctx.pc as i64 + instruction.jmp_offset2) as u64;
             if new_pc != ctx.next_pc {
+                *code +=
+                    &format!("\tmov {}, 0x{:x} /* flag=0: pc+=jmp_offset2 */\n", REG_PC, new_pc);
                 ctx.jump_to_static_pc = format!("\tjmp pc_{:x} /* jump to pc+offset2 */\n", new_pc);
             } else if id == "z" {
                 *code += &format!("\tmov {}, 0x{:x} /* flag=0: pc += 4 */\n", REG_PC, ctx.next_pc);
@@ -3095,6 +3101,8 @@ impl ZiskRom2Asm {
         } else if ctx.flag_is_always_one {
             let new_pc = (ctx.pc as i64 + instruction.jmp_offset1) as u64;
             if new_pc != ctx.next_pc {
+                *code +=
+                    &format!("\tmov {}, 0x{:x} /* flag=1: pc+=jmp_offset1 */\n", REG_PC, new_pc);
                 ctx.jump_to_static_pc = format!("\tjmp pc_{:x} /* jump to pc+offset1 */\n", new_pc);
             } else if id == "z" {
                 *code += &format!("\tmov {}, 0x{:x} /* flag=1: pc += 4 */\n", REG_PC, ctx.next_pc);
