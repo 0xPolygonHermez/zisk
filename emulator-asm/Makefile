@@ -1,14 +1,10 @@
-# This lock file is used to serialize builds and prevent race conditions
-# when running multiple `make` commands in parallel with different EMU_PATH values.
-LOCKFILE := /tmp/ziskemu_build.lock
-
 # Debug build flags
 ifeq ($(dbg),1)
-      CFLAGS = -g -D DEBUG -no-pie
-      ASMFLAGS = -g --noexecstack
+	CFLAGS = -g -D DEBUG -no-pie
+	ASMFLAGS = -g --noexecstack
 else
-      CFLAGS = -O3 -no-pie
-	  ASMFLAGS = --noexecstack
+	CFLAGS = -O3 -no-pie
+	ASMFLAGS = --noexecstack
 endif
 
 # Default EMU_PATH and OUT_PATH
@@ -20,15 +16,14 @@ OUT_DIR := $(dir $(OUT_PATH))
 
 all: $(OUT_PATH)
 
-# Compile the assembly file with a dynamic path
-build/emu.o: $(EMU_PATH)
-	mkdir -p build
-	flock $(LOCKFILE) as $(ASMFLAGS) -o build/emu.o $<
-
-# Compile the final executable
-$(OUT_PATH): build/emu.o src/main.c src/chfast/keccak.c
-	mkdir -p $(OUT_DIR)
-	flock $(LOCKFILE) gcc $(CFLAGS) src/main.c src/chfast/keccak.c -lc build/emu.o -lc ../lib-c/c/lib/libziskc.a -lgmp -lstdc++ -lgmpxx -o $@
+# Main target
+$(OUT_PATH): $(EMU_PATH) src/main.c src/chfast/keccak.c
+	@TMPDIR=$$(mktemp -d /tmp/ziskemu_build_XXXXXX) && \
+	as $(ASMFLAGS) -o $$TMPDIR/emu.o $(EMU_PATH) && \
+	gcc $(CFLAGS) src/main.c src/chfast/keccak.c -lc $$TMPDIR/emu.o -lc ../lib-c/c/lib/libziskc.a -lgmp -lstdc++ -lgmpxx -o $$TMPDIR/ziskemu_bin && \
+	mkdir -p $(OUT_DIR) && \
+	mv $$TMPDIR/ziskemu_bin $(OUT_PATH) && \
+	rm -rf $$TMPDIR
 
 clean:
-	flock $(LOCKFILE) rm -rf build
+	rm -rf build
