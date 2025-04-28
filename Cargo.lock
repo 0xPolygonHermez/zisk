@@ -2347,6 +2347,8 @@ dependencies = [
  "proofman-macros",
  "proofman-util",
  "rayon",
+ "serde",
+ "serde_json",
  "sm-common",
  "witness",
  "zisk-common",
@@ -2358,6 +2360,7 @@ dependencies = [
 name = "precompiles-common"
 version = "0.7.0"
 dependencies = [
+ "p3-goldilocks",
  "zisk-core",
 ]
 

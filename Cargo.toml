@@ -27,6 +27,7 @@ members = [
     "precompiles/zisk_precompiles",
     "precompiles/common",
     "precompiles/keccakf",
+    "precompiles/sha256f",
     "lib-c",
     "emulator-asm/asm-runner",
     "ziskclib",

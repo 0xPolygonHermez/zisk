@@ -1,0 +1,42 @@
+[package]
+name = "precomp-sha256f"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[[bin]]
+name = "sha256f_fixed_gen"
+path = "src/sha256f_fixed_gen.rs"
+
+[dependencies]
+sm-common = { path = "../../state-machines/common" }
+zisk-core = { path = "../../core" }
+zisk-common = { path = "../../common" }
+data-bus = { path = "../../data-bus" }
+zisk-pil = { path = "../../pil" }
+precompiles-common = { path = "../common" }
+circuit = { path = "../../tools/circuit" }
+precompiles-helpers = { path = "../helpers" }
+
+proofman-common = { workspace = true }
+proofman-macros = { workspace = true }
+proofman-util = { workspace = true }
+witness = { workspace = true }
+pil-std-lib = { workspace = true }
+
+p3-field = { workspace=true }
+p3-goldilocks = { workspace = true }
+log = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+clap = "4.0"
+
+[features]
+default = ["distributed"]
+no_lib_link = ["proofman-common/no_lib_link"]
+distributed = ["proofman-common/distributed", "witness/distributed"]

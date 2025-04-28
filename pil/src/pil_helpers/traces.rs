@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "d0faa8aaa2d0e2c06c4b0cd3c589fae8151098f84e54977bf838d54e3d52686e";
+pub const PILOUT_HASH: &str = "6714671a694474246448df5cda00b6399a8ed7b9bdba561df8a64d230e284d05";
 
 //AIRGROUP CONSTANTS
 
@@ -62,7 +62,11 @@ pub const KECCAKF_AIR_IDS: &[usize] = &[17];
 
 pub const KECCAKF_TABLE_AIR_IDS: &[usize] = &[18];
 
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[19];
+pub const SHA_256_F_AIR_IDS: &[usize] = &[19];
+
+pub const SHA_256_F_TABLE_AIR_IDS: &[usize] = &[20];
+
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[21];
 
 
 //PUBLICS
@@ -258,13 +262,29 @@ trace!(KeccakfTableTrace<F> {
  multiplicity: [F; 1],
 },  0, 18, 2097152 );
 
+trace!(Sha256fFixed<F> {
+ L1: F, GATE_OP: F, CARRY_ENABLED: F, CONN: [F; 4], ID: F, __L1__: F,
+},  0, 19, 4194304 );
+
+trace!(Sha256fTrace<F> {
+ gate_input: [[F; 9]; 3], gate_output: [F; 9],
+},  0, 19, 4194304 );
+
+trace!(Sha256fTableFixed<F> {
+ A: F, B: F, C: F, GATE_OP: F, D: F, CARRY: F, __L1__: F,
+},  0, 20, 8388608 );
+
+trace!(Sha256fTableTrace<F> {
+ multiplicity: F,
+},  0, 20, 8388608 );
+
 trace!(SpecifiedRangesFixed<F> {
  RANGE: [F; 16], __L1__: F,
-},  0, 19, 2097152 );
+},  0, 21, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
  mul: [F; 16],
-},  0, 19, 2097152 );
+},  0, 21, 2097152 );
 
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
@@ -359,6 +379,14 @@ values!(KeccakfAirGroupValues<F> {
 });
 
 values!(KeccakfTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(Sha256fAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(Sha256fTableAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 

@@ -22,7 +22,7 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
 
     // Ensure that the sha256-f input fit in the prime field
     const int BITS_INPUT = chunks*bits;
-    if (BITS_INPUT >= log2(PRIME)) {
+    if (BITS_INPUT > log2(PRIME)) {
         error(`The number of bits ${BITS_INPUT} is too large for the prime ${PRIME}`);
     }
 
@@ -69,6 +69,7 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     expr a = 0;
     expr b = 0;
     expr c = 0;
+    expr d = 0;
     for (int i = 0; i < chunks; i++) {
         const int shift = P2_BITS**i;
         a += free_in_a[i] * shift;
@@ -98,114 +99,114 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     // const int IN_SIZE = NUM_SHA256F_PER_CIRCUIT * SHA256F_SIZE_BITS / bits_in_parallel;
     // const int OUT_SIZE = IN_SIZE;
     // const int IN_OUT_SIZE = IN_SIZE + OUT_SIZE;
-    // Instructions to add a latch:
-    //  - When there are circuits.
-    //  - Every NUM_SHA256F_PER_CIRCUIT clocks (except for the first one).
-    //  - When there are still bits to process (i.e., we repeat the previous instruction SHA256F_SIZE_BITS times).
-    col fixed latch_num_sha256f  = [0,[[0:NUM_SHA256F_PER_CIRCUIT,1],[0:(NUM_SHA256F_PER_CIRCUIT-1),1]:(SHA256F_SIZE_BITS-1), 
-                                            0:(CIRCUIT_SIZE - (IN_OUT_SIZE+1))]:NUM_CIRCUITS,
-                                        0...];
+    // // Instructions to add a latch:
+    // //  - When there are circuits.
+    // //  - Every NUM_SHA256F_PER_CIRCUIT clocks (except for the first one).
+    // //  - When there are still bits to process (i.e., we repeat the previous instruction SHA256F_SIZE_BITS times).
+    // col fixed latch_num_sha256f  = [0,[[0:NUM_SHA256F_PER_CIRCUIT,1],[0:(NUM_SHA256F_PER_CIRCUIT-1),1]:(SHA256F_SIZE_BITS-1), 
+    //                                         0:(CIRCUIT_SIZE - (IN_OUT_SIZE+1))]:NUM_CIRCUITS,
+    //                                     0...];
 
-    // Instructions to add the factor:
-    //  - When there are circuits.
-    //  - Every clock, for the clock in the circuit, we add the factor 1 << clk.
-    //  - When there are still bits to process (i.e., we repeat the previous instruction SHA256F_SIZE_BITS times).
-    col fixed factor_num_sha256f;
-    if (NUM_SHA256F_PER_CIRCUIT != 1) {
-        factor_num_sha256f = [0,[[1,2..*..2**(NUM_SHA256F_PER_CIRCUIT-1)]:SHA256F_SIZE_BITS, 
-                                  0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS,
-                              0...];
-    } else {
-        factor_num_sha256f = [0, [1:SHA256F_SIZE_BITS, 0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS, 0...];
-    }
+    // // Instructions to add the factor:
+    // //  - When there are circuits.
+    // //  - Every clock, for the clock in the circuit, we add the factor 1 << clk.
+    // //  - When there are still bits to process (i.e., we repeat the previous instruction SHA256F_SIZE_BITS times).
+    // col fixed factor_num_sha256f;
+    // if (NUM_SHA256F_PER_CIRCUIT != 1) {
+    //     factor_num_sha256f = [0,[[1,2..*..2**(NUM_SHA256F_PER_CIRCUIT-1)]:SHA256F_SIZE_BITS, 
+    //                               0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS,
+    //                           0...];
+    // } else {
+    //     factor_num_sha256f = [0, [1:SHA256F_SIZE_BITS, 0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS, 0...];
+    // }
 
-    // `bit` is a bit
-    for (int i = 0; i < bits_in_parallel; i++) {
-        bit[i] * (1 - bit[i]) === 0;
-    }
+    // // `bit` is a bit
+    // for (int i = 0; i < bits_in_parallel; i++) {
+    //     bit[i] * (1 - bit[i]) === 0;
+    // }
 
-    // `val` accumulates bits. In each i-th latch, `val` has accumulated the i-th bit of the sha256f's 
-    for (int i = 0; i < bits_in_parallel; i++) {
-        val[i]' === val[i] * (1 - latch_num_sha256f) + bit[i] * factor_num_sha256f;
-    }
+    // // `val` accumulates bits. In each i-th latch, `val` has accumulated the i-th bit of the sha256f's 
+    // for (int i = 0; i < bits_in_parallel; i++) {
+    //     val[i]' === val[i] * (1 - latch_num_sha256f) + bit[i] * factor_num_sha256f;
+    // }
 
-    // In each i-th latch, `val` has to coincide with the 'a'-th gate entry
-    for (int i = 0; i < bits_in_parallel; i++) {
-        latch_num_sha256f * (val[i] - a'(i)) === 0;
-    }
+    // // In each i-th latch, `val` has to coincide with the 'a'-th gate entry
+    // for (int i = 0; i < bits_in_parallel; i++) {
+    //     latch_num_sha256f * (val[i] - a'(i)) === 0;
+    // }
 
-    // `state` accumulates RB bits of the i-th sha256f state each clock
-    // After NUM_SHA256F_PER_CIRCUIT clocks, `state` has accumulated RB bits of the NUM_SHA256F_PER_CIRCUIT sha256f's
-    expr state[RC];
-    // Initialize the state
-    for (int i = 0; i < RC; i++) {
-        state[i] = 0;
-    }
-    // Update the state
-    const int RB_OFFSET = RB / bits_in_parallel;
-    for (int i = 0; i < RB; i++) {
-        const int state_bit = i % bits_in_parallel;
-        const int state_idx = (i - state_bit) / bits_in_parallel;
-        for (int j = 0; j < RC; j++) {
-            state[j] += bit[state_bit]'(NUM_SHA256F_PER_CIRCUIT*(RB_OFFSET * j + state_idx)) * 2**i;
-        }
-    }
+    // // `state` accumulates RB bits of the i-th sha256f state each clock
+    // // After NUM_SHA256F_PER_CIRCUIT clocks, `state` has accumulated RB bits of the NUM_SHA256F_PER_CIRCUIT sha256f's
+    // expr state[RC];
+    // // Initialize the state
+    // for (int i = 0; i < RC; i++) {
+    //     state[i] = 0;
+    // }
+    // // Update the state
+    // const int RB_OFFSET = RB / bits_in_parallel;
+    // for (int i = 0; i < RB; i++) {
+    //     const int state_bit = i % bits_in_parallel;
+    //     const int state_idx = (i - state_bit) / bits_in_parallel;
+    //     for (int j = 0; j < RC; j++) {
+    //         state[j] += bit[state_bit]'(NUM_SHA256F_PER_CIRCUIT*(RB_OFFSET * j + state_idx)) * 2**i;
+    //     }
+    // }
 
-    // `is_val` is an indicator that the value is valid
-    col witness is_val;
-    is_val * (1 - is_val) === 0;
+    // // `is_val` is an indicator that the value is valid
+    // col witness is_val;
+    // is_val * (1 - is_val) === 0;
 
-    // if multiplicity is not zero, then is_val should be 1
-    multiplicity * (is_val - 1) === 0;
+    // // if multiplicity is not zero, then is_val should be 1
+    // multiplicity * (is_val - 1) === 0;
 
-    // Then, if is_val = 1, it should be 1 (RB*2)*CHUNKS_TO_PROCESS times (input and ouput), separated by NUM_SHA256F_PER_CIRCUIT
-    // escept for the very last bit
-    const int CHUNKS_TO_PROCESS = SHA256F_SIZE_BITS / RB;
-    const int INPUT_CHUNKS = CHUNKS_TO_PROCESS / bits_in_parallel;
-    const int OUTPUT_CHUNKS = INPUT_CHUNKS;
-    const int IN_OUT_CHUNKS = INPUT_CHUNKS + OUTPUT_CHUNKS;
-    const int RB_SIZE = NUM_SHA256F_PER_CIRCUIT * RB;
-    const int RB_SIZE_MINUS_ONE = NUM_SHA256F_PER_CIRCUIT * (RB - 1);
-    col fixed latch_in_out = [0,[[1:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:(IN_OUT_CHUNKS-1),
-                                  0:RB_SIZE,
-                                  0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS,
-                              0...];
-    latch_in_out * (is_val'(RB_SIZE) - is_val) === 0;
+    // // Then, if is_val = 1, it should be 1 (RB*2)*CHUNKS_TO_PROCESS times (input and ouput), separated by NUM_SHA256F_PER_CIRCUIT
+    // // escept for the very last bit
+    // const int CHUNKS_TO_PROCESS = SHA256F_SIZE_BITS / RB;
+    // const int INPUT_CHUNKS = CHUNKS_TO_PROCESS / bits_in_parallel;
+    // const int OUTPUT_CHUNKS = INPUT_CHUNKS;
+    // const int IN_OUT_CHUNKS = INPUT_CHUNKS + OUTPUT_CHUNKS;
+    // const int RB_SIZE = NUM_SHA256F_PER_CIRCUIT * RB;
+    // const int RB_SIZE_MINUS_ONE = NUM_SHA256F_PER_CIRCUIT * (RB - 1);
+    // col fixed latch_in_out = [0,[[1:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:(IN_OUT_CHUNKS-1),
+    //                               0:RB_SIZE,
+    //                               0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS,
+    //                           0...];
+    // latch_in_out * (is_val'(RB_SIZE) - is_val) === 0;
 
-    // step should be the same every NUM_SHA256F_PER_CIRCUIT clock
-    is_val * (step'(RB_SIZE) - step) === 0;
+    // // step should be the same every NUM_SHA256F_PER_CIRCUIT clock
+    // is_val * (step'(RB_SIZE) - step) === 0;
 
-    // addr should be the previous plus one every RB_SIZE clock
-    // except when there is a change from input to output
-    col fixed addr_inc = [0,[
-                             [8:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:(INPUT_CHUNKS-1),
-                             [(-8*(INPUT_CHUNKS-1)):NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE],
-                             [8:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:(OUTPUT_CHUNKS-1),
-                              0:RB_SIZE,
-                              0:(CIRCUIT_SIZE - IN_OUT_SIZE)
-                            ]:NUM_CIRCUITS,
-                          0...];
-    is_val * (addr'(RB_SIZE) - (addr + addr_inc)) === 0;
+    // // addr should be the previous plus one every RB_SIZE clock
+    // // except when there is a change from input to output
+    // col fixed addr_inc = [0,[
+    //                          [8:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:(INPUT_CHUNKS-1),
+    //                          [(-8*(INPUT_CHUNKS-1)):NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE],
+    //                          [8:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:(OUTPUT_CHUNKS-1),
+    //                           0:RB_SIZE,
+    //                           0:(CIRCUIT_SIZE - IN_OUT_SIZE)
+    //                         ]:NUM_CIRCUITS,
+    //                       0...];
+    // is_val * (addr'(RB_SIZE) - (addr + addr_inc)) === 0;
 
-    col fixed latch_in  = [0,[[1:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:INPUT_CHUNKS,
-                               0:(CIRCUIT_SIZE - IN_SIZE)]:NUM_CIRCUITS,
-                           0...];
+    // col fixed latch_in  = [0,[[1:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:INPUT_CHUNKS,
+    //                            0:(CIRCUIT_SIZE - IN_SIZE)]:NUM_CIRCUITS,
+    //                        0...];
 
-    col fixed latch_out = [0,[ 0:(RB_SIZE*INPUT_CHUNKS),
-                              [1:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:OUTPUT_CHUNKS,
-                               0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS,
-                           0...];
-    precompiled_mem_load(
-             sel: is_val * latch_in,
-             main_step: step,
-             addr: addr,
-             value: state
-            );
+    // col fixed latch_out = [0,[ 0:(RB_SIZE*INPUT_CHUNKS),
+    //                           [1:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:OUTPUT_CHUNKS,
+    //                            0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS,
+    //                        0...];
+    // precompiled_mem_load(
+    //          sel: is_val * latch_in,
+    //          main_step: step,
+    //          addr: addr,
+    //          value: state
+    //         );
 
-    precompiled_mem_store(
-              sel: is_val * latch_out,
-              main_step: step,
-              addr: addr,
-              value: state
-            );
+    // precompiled_mem_store(
+    //           sel: is_val * latch_out,
+    //           main_step: step,
+    //           addr: addr,
+    //           value: state
+    //         );
 }

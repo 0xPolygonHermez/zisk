@@ -2,7 +2,7 @@ require "std_lookup.pil"
 
 const int SHA256F_TABLE_ID = 127;
 
-airtemplate Sha256fTable(const int N = 2**23, const int bits) {
+airtemplate Sha256fTable(const int N = 2**23, const int bits = 7) {
     // Operations
     const int XOR = 0;
     const int CH = 1;
@@ -30,7 +30,7 @@ airtemplate Sha256fTable(const int N = 2**23, const int bits) {
     const int MASK_BITS_B = P2_BITS_B - 1;
     const int MASK_BITS_C = P2_BITS_C - 1;
 
-    col fixed A = [0..MASK_BITS_A]; // Input A (BITS_A bits)
+    col fixed A = [0..MASK_BITS_A]...; // Input A (BITS_A bits)
     col fixed B = [0:P2_BITS_A..MASK_BITS_B:P2_BITS_A]...; // Input B (BITS_B bits)
     col fixed C = [0:P2_BITS_AB..MASK_BITS_C:P2_BITS_AB]...; // Input C (BITS_C bits)
     col fixed GATE_OP = [XOR:P2_BITS_ABC, CH:P2_BITS_ABC, MAJ:P2_BITS_ABC, ADD:P2_BITS_ABC]...; // Gate operation (BITS_OP bit)
@@ -63,5 +63,5 @@ airtemplate Sha256fTable(const int N = 2**23, const int bits) {
 
     // --> Prove that the circuit gates are satisfied
     col witness multiplicity;
-    lookup_proves(SHA256F_TABLE_ID, [GATE_OP, A, B, C, D, carry], multiplicity);
+    lookup_proves(SHA256F_TABLE_ID, [GATE_OP, A, B, C, D, CARRY], multiplicity);
 }

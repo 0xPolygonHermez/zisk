@@ -1,3 +1,5 @@
+use p3_goldilocks::Goldilocks;
+
 /*
     # List of generators of groups of size power of 2
     p = 2^64 - 2^32 + 1
@@ -46,3 +48,11 @@ pub const GOLDILOCKS_GEN: [u64; 33] = [
 
 // K = 7^(2^32) => Generator of the group of size (p-1)/2^32 = 3·5·17·257·65537
 pub const GOLDILOCKS_K: u64 = 12275445934081160404;
+
+pub fn get_ks(k: Goldilocks, n: usize) -> Vec<Goldilocks> {
+    let mut ks = vec![k];
+    for i in 1..n {
+        ks.push(ks[i - 1] * k);
+    }
+    ks
+}

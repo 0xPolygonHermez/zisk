@@ -10,10 +10,7 @@ use proofman_common::{write_fixed_cols_bin, FixedColsInfo};
 
 use circuit::GateOperation;
 use precompiles_helpers::keccakf_topology;
-
-mod goldilocks_constants;
-
-use goldilocks_constants::{GOLDILOCKS_GEN, GOLDILOCKS_K};
+use precompiles_common::{GOLDILOCKS_GEN, GOLDILOCKS_K, log2, get_ks};
 
 type F = Goldilocks;
 
@@ -60,21 +57,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn log2(n: usize) -> usize {
-    let mut res = 0;
-    let mut n = n;
-    while n > 1 {
-        n >>= 1;
-        res += 1;
-    }
-    res
-}
-
 fn cols_gen(
     subgroup_order: usize,
     subgroup_gen: u64,
     cosets_gen: u64,
 ) -> (Vec<F>, Vec<F>, Vec<F>, Vec<F>) {
+    fn connect(c1: &mut [F], i1: usize, c2: Option<&mut [F]>, i2: usize) {
+        match c2 {
+            Some(c2) => std::mem::swap(&mut c1[i1], &mut c2[i2]),
+            None => c1.swap(i1, i2),
+        }
+    }
+
     // Get the program and gates
     let keccakf_top = keccakf_topology();
     let keccakf_program = keccakf_top.program;
@@ -181,20 +175,4 @@ fn cols_gen(
     }
 
     (conn_a, conn_b, conn_c, gate_op)
-}
-
-fn get_ks(k: F, n: usize) -> Vec<F> {
-    let mut ks = vec![k];
-    for i in 1..n {
-        ks.push(ks[i - 1] * k);
-    }
-    ks
-}
-
-fn connect(p1: &mut [F], i1: usize, p2: Option<&mut [F]>, i2: usize) {
-    if let Some(p2) = p2 {
-        std::mem::swap(&mut p1[i1], &mut p2[i2]);
-    } else {
-        p1.swap(i1, i2);
-    }
 }
