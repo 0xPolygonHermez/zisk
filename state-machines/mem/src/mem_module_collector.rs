@@ -13,7 +13,7 @@ pub struct MemModuleCollector {
     pub inputs: Vec<MemInput>,
     pub prev_segment: Option<MemPreviousSegment>,
     pub min_addr: u32,
-    pub segment_id: SegmentId,
+    pub _segment_id: SegmentId,
     pub count: u32,
     pub to_count: u32,
     pub skip: u32,
@@ -35,14 +35,14 @@ impl MemModuleCollector {
             mem_check_point: mem_check_point.clone(),
             prev_segment: None,
             min_addr,
-            segment_id,
+            _segment_id: segment_id,
             count,
             to_count,
             skip,
         }
     }
 
-    fn debug_discard(&self, reason: u8, addr_w: u32, step: u64, value: u64) {
+    fn debug_discard(&self, _reason: u8, _addr_w: u32, _step: u64, _value: u64) {
         // let label = if reason == 0 { "ACCEPT" } else { &format!("DISCARD{}", reason) };
         // println!(
         //     "[Mem] {} discard_addr_step [0x{:X},{}] {} [F:0x{:X},{}/{} T:0x{:X},{}/{} C:{}/{}]",
@@ -87,7 +87,8 @@ impl MemModuleCollector {
         if addr_w == self.mem_check_point.from_addr && self.skip > 0 {
             if self.skip == 1 && self.mem_check_point.is_first_chunk() {
                 // The last discart before accept, we need to store the previous segment data
-                self.prev_segment = Some(MemPreviousSegment { addr: addr_w, step, value });
+                self.prev_segment =
+                    Some(MemPreviousSegment { addr: addr_w, step, value, extra_zero_step: false });
                 self.debug_discard(3, addr_w, step, value);
             } else {
                 self.debug_discard(4, addr_w, step, value);

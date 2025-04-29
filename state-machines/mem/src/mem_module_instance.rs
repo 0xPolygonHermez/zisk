@@ -7,7 +7,7 @@ use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
-use std::{cmp::min, sync::Arc};
+use std::sync::Arc;
 use zisk_common::ChunkId;
 
 pub struct MemModuleInstance<F: PrimeField> {
@@ -69,16 +69,6 @@ impl<F: PrimeField> MemModuleInstance<F> {
         prev_segment: &mut MemPreviousSegment,
         skip_rows: u32,
     ) {
-        // println!(
-        //     "[Mem:{}] #1 INPUT [0x{:X},{}] {} LV:{:?} S:{}]",
-        //     self.ictx.plan.segment_id.unwrap(),
-        //     inputs[0].addr * 8,
-        //     inputs[0].step,
-        //     inputs.len(),
-        //     prev_segment,
-        //     skip_rows,
-        // );
-
         if skip_rows > 0 && self.limited_step_distance {
             // at this point skip only affects to the intermediate steps, because address
             // skips was resolved previously.
@@ -86,21 +76,13 @@ impl<F: PrimeField> MemModuleInstance<F> {
             let last_step = prev_segment.step;
             let step = inputs[0].step;
 
-            if step < last_step {
-                for (index, input) in
-                    inputs.iter().take(min(20, skip_rows as usize) + 1).enumerate()
-                {
-                    println!("input[{}]:{:?}", index, input);
-                }
-                panic!(
-                        "MemModuleInstance: step({}) < last_step ({}) skip_rows:{} input[0]:{:?} prev_segment:{:?}",
-                        step, last_step, skip_rows, inputs[0], prev_segment
-                    );
-            }
             if let Some((full_rows, zero_row)) = MemHelpers::get_intermediate_rows(last_step, step)
             {
                 if skip_rows <= full_rows as u32 {
                     prev_segment.step = last_step + skip_rows as u64 * STEP_MEMORY_MAX_DIFF;
+                    if skip_rows == full_rows as u32 && zero_row == 1 {
+                        prev_segment.extra_zero_step = true;
+                    }
                 } else if skip_rows == (full_rows + zero_row) as u32 {
                     prev_segment.step = last_step + full_rows as u64 * STEP_MEMORY_MAX_DIFF;
                 } else {
@@ -159,8 +141,12 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         // the inputs while considering skipped rows for this instance.
         // Additionally, it computes the necessary information for memory continuations.
         let skip_rows = intermediate_skip.unwrap_or(0);
-        let mut prev_segment =
-            prev_segment.unwrap_or(MemPreviousSegment { addr: self.min_addr, step: 0, value: 0 });
+        let mut prev_segment = prev_segment.unwrap_or(MemPreviousSegment {
+            addr: self.min_addr,
+            step: 0,
+            value: 0,
+            extra_zero_step: false,
+        });
 
         self.fit_inputs_and_get_prev_segment(&mut inputs, &mut prev_segment, skip_rows);
 

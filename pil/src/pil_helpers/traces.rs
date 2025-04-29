@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "f92737a8cfe6512cdd2deefa038a7370606b9aeab7a95afcfcfcc67423bded0c";
+pub const PILOUT_HASH: &str = "c0a258f16faa9c62646c487e3729f9bc5547c11e38a422c1cede7dafdb8017e0";
 
 //AIRGROUP CONSTANTS
 
@@ -124,35 +124,35 @@ trace!(RomTrace<F> {
 
 trace!(MemFixed<F> {
  SEGMENT_L1: F, __L1__: F,
-},  0, 2, 524288 );
+},  0, 2, 4194304 );
 
 trace!(MemTrace<F> {
  addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: F,
-},  0, 2, 524288 );
+},  0, 2, 4194304 );
 
 trace!(RomDataFixed<F> {
  SEGMENT_L1: F, __L1__: F,
-},  0, 3, 524288 );
+},  0, 3, 2097152 );
 
 trace!(RomDataTrace<F> {
  addr: F, step: F, sel: F, addr_changes: F, value: [F; 2],
-},  0, 3, 524288 );
+},  0, 3, 2097152 );
 
 trace!(InputDataFixed<F> {
  SEGMENT_L1: F, __L1__: F,
-},  0, 4, 524288 );
+},  0, 4, 2097152 );
 
 trace!(InputDataTrace<F> {
  addr: F, step: F, sel: F, addr_changes: F, value_word: [F; 4], is_free_read: F,
-},  0, 4, 524288 );
+},  0, 4, 2097152 );
 
 trace!(MemAlignFixed<F> {
  L1: F, __L1__: F,
-},  0, 5, 262144 );
+},  0, 5, 4194304 );
 
 trace!(MemAlignTrace<F> {
  addr: F, offset: F, width: F, wr: F, pc: F, reset: F, sel_up_to_down: F, sel_down_to_up: F, reg: [F; 8], sel: [F; 8], step: F, delta_addr: F, sel_prove: F, value: [F; 2],
-},  0, 5, 262144 );
+},  0, 5, 4194304 );
 
 trace!(MemAlignRomFixed<F> {
  OFFSET: F, WIDTH: F, PC: F, DELTA_PC: F, DELTA_ADDR: F, FLAGS: F, __L1__: F,
@@ -275,7 +275,7 @@ values!(MainAirValues<F> {
 });
 
 values!(MemAirValues<F> {
- segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, im_direct: [FieldExtension<F>; 4],
+ segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2], im_direct: [FieldExtension<F>; 6],
 });
 
 values!(RomDataAirValues<F> {

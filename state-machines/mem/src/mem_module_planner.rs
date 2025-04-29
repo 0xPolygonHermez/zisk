@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     MemCounters, MemCountersCursor, MemHelpers, MemModuleCheckPoint, MemPlanCalculator,
@@ -15,6 +15,7 @@ pub struct MemModuleSegmentCheckPoint {
 }
 
 impl MemModuleSegmentCheckPoint {
+    #[allow(dead_code)]
     fn to_string(&self, segment_id: usize) -> String {
         let mut result = String::new();
         for (chunk_id, checkpoint) in &self.chunks {
@@ -98,6 +99,14 @@ impl<'a> MemModulePlanner {
             self.add_to_current_instance(chunk_id, addr, count);
         }
         self.close_last_segment();
+        log::info!(
+            "MemPlan : ··· Intermediate rows[{}:{}] 0x{:X} => ({},{})",
+            self.config.airgroup_id,
+            self.config.air_id,
+            self.config.from_addr * 8,
+            self.intermediate_rows,
+            self.intermediate_extra_rows
+        );
     }
     fn close_last_segment(&mut self) {
         if self.rows_available < self.config.rows {
@@ -115,7 +124,7 @@ impl<'a> MemModulePlanner {
     fn add_to_current_instance(&mut self, chunk_id: ChunkId, addr: u32, count: u32) {
         self.set_current_chunk_id(chunk_id);
         let intermediate_rows = self.add_intermediates(addr);
-        self.preopen_segment(intermediate_rows);
+        self.preopen_segment(addr, intermediate_rows);
         self.set_reference(chunk_id, addr);
         self.add_rows(addr, count);
     }
@@ -136,7 +145,7 @@ impl<'a> MemModulePlanner {
 
     fn open_segment(&mut self, intermediate_skip: Option<u32>) {
         // open a segment, must be set the reference chunk;
-        let segment_id = self.segments.len();
+        // let segment_id = self.segments.len();
         self.close_segment(false);
         if let Some(reference_chunk) = self.reference_addr_chunk {
             // not use skip, because we use accumulated skip over reference, after open this segment,
@@ -165,6 +174,16 @@ impl<'a> MemModulePlanner {
         // all rows are available
         self.rows_available = self.config.rows;
     }
+    fn add_next_addr_to_segment(&mut self, addr: u32) {
+        let chunk_id = self.current_chunk_id.unwrap();
+        // println!(
+        //     "ADDING NEXT ADDR TO SEGMENT #{}: 0x{:X} C:{}",
+        //     self.segments.len(),
+        //     addr * 8,
+        //     chunk_id
+        // );
+        self.add_chunk_to_segment(chunk_id, addr, 1, 0);
+    }
 
     fn add_chunk_to_segment(&mut self, chunk_id: ChunkId, addr: u32, count: u32, skip: u32) {
         // if addr >= 268435456 && addr <= 301989880 {
@@ -185,13 +204,12 @@ impl<'a> MemModulePlanner {
             .and_modify(|checkpoint| checkpoint.add_rows(addr, count))
             .or_insert(MemModuleCheckPoint::new(addr, skip, count, None));
     }
-    fn preopen_segment(&mut self, intermediate_rows: u32) {
+    fn preopen_segment(&mut self, addr: u32, intermediate_rows: u32) {
         if self.rows_available == 0 {
-            // self.open_segment(if self.segments.is_empty() {
-            //     None
-            // } else {
-            //     Some(intermediate_rows)
-            // });
+            if intermediate_rows > 0 {
+                // prevent last intermediate row zero
+                self.add_next_addr_to_segment(addr);
+            }
             self.open_segment(Some(intermediate_rows));
         }
     }
@@ -309,17 +327,6 @@ impl<'a> MemModulePlanner {
     fn add_intermediate_addr(&mut self, from_addr: u32, to_addr: u32) {
         // adding internal reads of zero for consecutive addresses
         let count = to_addr - from_addr + 1;
-        // println!(
-        //     "INTERMEDIATE_ADDR[{},{}] {} 0x{:X}-0x{:X} REF({}):0x{:X}+{}",
-        //     self.segments.len(),
-        //     self.config.rows - self.rows_available,
-        //     count,
-        //     from_addr * 8,
-        //     to_addr * 8,
-        //     self.reference_addr_chunk.unwrap_or_default(),
-        //     self.reference_addr * 8,
-        //     self.reference_skip
-        // );
         if count > 1 {
             self.add_intermediate_rows(from_addr, 1);
             self.add_intermediate_rows(to_addr, count - 1);
@@ -349,13 +356,13 @@ impl<'a> MemModulePlanner {
             let chunk_distance = chunk.0 - last_chunk.0;
             if chunk_distance > CHUNK_MAX_DISTANCE {
                 let distance = MemHelpers::max_distance_between_chunks(last_chunk, chunk);
-                intermediate_rows = distance / STEP_MEMORY_MAX_DIFF;
+                intermediate_rows = (distance - 1) / STEP_MEMORY_MAX_DIFF;
                 if intermediate_rows == 0 {
                     self.intermediate_extra_rows += 1;
                     intermediate_rows = 1;
                 }
-                // if (addr >= 336019566 && addr <= 336019568) || self.segments.len() == 22 {
-                //     // if addr >= 336019566 && addr <= 336019568 {
+                // let segment_id = self.segments.len();
+                // if segment_id >= 52 || segment_id <= 54 {
                 //     println!(
                 //         "INTERMEDIATE_STEPS[{},{}] {} 0x{:X},C:{} LC:{} CD:{} D:{} REF({}):0x{:X}+{}",
                 //         self.segments.len(),
@@ -393,14 +400,13 @@ impl MemPlanCalculator for MemModulePlanner {
         let segments = std::mem::take(&mut self.segments);
         for (segment_id, segment) in segments.into_iter().enumerate() {
             // for (ck_id, checkpoint) in &segment.chunks {
-            //     // if segment_id == 20 || checkpoint.intermediate_skip.is_some() {
-            //     println!(
-            //         "[{}:{},{}]: {} {:?}",
-            //         self.config.airgroup_id, self.config.air_id, segment_id, ck_id, checkpoint
-            //     );
-            //     // }
+            //     if segment_id >= 52 && segment_id <= 55 {
+            //         println!(
+            //             "[{}:{},{}]: {} {:?}",
+            //             self.config.airgroup_id, self.config.air_id, segment_id, ck_id, checkpoint
+            //         );
+            //     }
             // }
-            // println!("{}", segment.to_string(segment_id));
             let keys = segment.chunks.keys().cloned().collect::<Vec<_>>();
             plans.push(Plan::new(
                 self.config.airgroup_id,

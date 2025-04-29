@@ -69,27 +69,12 @@ impl MemCounters {
 
         self.addr_sorted[0] = addr_vector;
     }
-}
-
-impl Metrics for MemCounters {
     #[inline(always)]
-    fn measure(&mut self, data: &[u64]) {
+    fn mem_measure(&mut self, data: &[u64]) {
         let addr = MemBusData::get_addr(data);
         let addr_w = MemHelpers::get_addr_w(addr);
         let bytes = MemBusData::get_bytes(data);
 
-        // if addr_w >= 268435456 && addr_w <= 301989880 {
-        //     // if addr_w >= 335792734 && addr_w <= 335792735 {
-        //     println!(
-        //         "COUNT: 0x{:08X},{}({}) bytes:{} op:{}",
-        //         addr,
-        //         MemBusData::get_step(data),
-        //         MemHelpers::mem_step_to_chunk(MemBusData::get_step(data)),
-        //         bytes,
-        //         MemBusData::get_op(data)
-        //     );
-        // }
-        // println!("COUNT: 0x{:08X},{}  bytes={}", addr, MemBusData::get_step(data), bytes);
         // #[cfg(feature = "debug_mem")]
         // self.debug.log(addr, step, bytes, is_write, false);
 
@@ -110,6 +95,13 @@ impl Metrics for MemCounters {
             self.mem_align.push(mem_align_op_rows as u8);
             self.mem_align_rows += mem_align_op_rows;
         }
+    }
+}
+
+impl Metrics for MemCounters {
+    #[inline(always)]
+    fn measure(&mut self, data: &[u64]) {
+        self.mem_measure(data);
     }
 
     fn on_close(&mut self) {

@@ -23,7 +23,7 @@ uint64_t get_max_program_pc(void);
 uint64_t get_gen_method(void);
 
 #define RAM_ADDR (uint64_t)0xa0000000
-#define RAM_SIZE (uint64_t)0x08000000 // 128MB
+#define RAM_SIZE (uint64_t)0x20000000 // 256MB
 #define SYS_ADDR RAM_ADDR
 #define SYS_SIZE (uint64_t)0x10000
 #define OUTPUT_ADDR (SYS_ADDR + SYS_SIZE)

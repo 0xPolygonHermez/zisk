@@ -18,27 +18,21 @@ impl MemHelpers {
     }
     #[inline(always)]
     pub fn mem_step_to_chunk(step: u64) -> ChunkId {
-        ChunkId((step / (CHUNK_SIZE_STEPS as u64)) as usize)
+        ChunkId(((step - MEM_STEP_BASE) / (CHUNK_SIZE_STEPS as u64)) as usize)
     }
     #[inline(always)]
     pub fn first_chunk_mem_step(chunk: ChunkId) -> u64 {
         (chunk.0 as u64) * (CHUNK_SIZE_STEPS as u64) + MEM_STEP_BASE
     }
     #[inline(always)]
-    pub fn last_chunk_mem_step(chunk: ChunkId, is_write: bool) -> u64 {
-        (chunk.0 as u64) * (CHUNK_SIZE_STEPS as u64) + MEM_STEP_BASE + CHUNK_SIZE_STEPS as u64
-            - if is_write { 1 } else { 2 }
+    pub fn last_chunk_mem_step(chunk: ChunkId) -> u64 {
+        (chunk.0 as u64) * (CHUNK_SIZE_STEPS as u64) + MEM_STEP_BASE + CHUNK_SIZE_STEPS as u64 - 1
     }
     #[inline(always)]
     pub fn max_distance_between_chunks(from_chunk: ChunkId, to_chunk: ChunkId) -> u64 {
-        assert!(
-            from_chunk <= to_chunk,
-            "invalid call max_distance_between_chunks({},{})",
-            from_chunk,
-            to_chunk
-        );
+        debug_assert!(from_chunk <= to_chunk);
         let from_step = MemHelpers::first_chunk_mem_step(from_chunk);
-        let to_step = MemHelpers::last_chunk_mem_step(to_chunk, true);
+        let to_step = MemHelpers::last_chunk_mem_step(to_chunk);
         return to_step - from_step;
     }
 
@@ -115,6 +109,7 @@ impl MemHelpers {
 
     #[cfg(target_endian = "big")]
     compile_error!("This code requires a little-endian machine.");
+
     pub fn get_write_values(addr: u32, bytes: u8, value: u64, read_values: [u64; 2]) -> [u64; 2] {
         let is_double = Self::is_double(addr, bytes);
         let offset = Self::get_byte_offset(addr) * 8;
@@ -146,6 +141,7 @@ impl MemHelpers {
     }
     #[cfg(target_endian = "big")]
     compile_error!("This code requires a little-endian machine.");
+
     pub fn get_read_value(addr: u32, bytes: u8, read_values: [u64; 2]) -> u64 {
         let is_double = Self::is_double(addr, bytes);
         let offset = Self::get_byte_offset(addr) * 8;
@@ -167,18 +163,6 @@ impl MemHelpers {
     pub fn register_to_addr_w(register: u8) -> u32 {
         RAM_W_ADDR_INIT + register as u32
     }
-    /* struct MemHelpers {}
-
-    const MEMORY_LOAD_OP: u64 = 1;
-    const MEMORY_STORE_OP: u64 = 2;
-
-    const MEM_STEP_BASE: u64 = 1;
-    const MAX_MEM_OPS_BY_MAIN_STEP: u64 = 4;
-
-    impl MemHelpers {
-        // function mem_load(expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[]) {
-        // function mem_store(expr addr, expr step, expr step_offset = 0, expr bytes = 8, expr value[])
-        // {*/
     pub fn mem_load(
         addr: u32,
         step: u64,
@@ -214,40 +198,41 @@ impl MemHelpers {
             value,
         ]
     }
-    /*#[inline(always)]
-    pub fn main_step_to_mem_step(step: u64, step_offset: u8) -> u64 {
-        MEM_STEP_BASE + MAX_MEM_OPS_BY_MAIN_STEP * step + step_offset as u64
-    }*/
 
     #[inline(always)]
     pub fn get_distance_by_chunks(from_step: u64, to_step: u64) -> u64 {
-        assert!(
-            from_step <= to_step,
-            "invalid call get_distance_by_chunks({},{})",
-            from_step,
-            to_step
-        );
+        debug_assert!(from_step <= to_step);
 
         let from_chunk = Self::mem_step_to_chunk(from_step);
         let to_chunk = Self::mem_step_to_chunk(to_step);
         Self::max_distance_between_chunks(from_chunk, to_chunk)
     }
+
     #[inline(always)]
     pub fn get_intermediate_rows(last_step: u64, step: u64) -> Option<(u64, u64)> {
-        assert!(last_step <= step, "invalid call get_intermediate_rows({},{})", last_step, step);
+        Self::forced_get_intermediate_rows(last_step, step, false)
+    }
+    #[inline(always)]
+    pub fn forced_get_intermediate_rows(
+        last_step: u64,
+        step: u64,
+        force_extra_zero_step: bool,
+    ) -> Option<(u64, u64)> {
+        debug_assert!(last_step <= step);
         let distance_by_chunks = Self::get_distance_by_chunks(last_step, step);
         if distance_by_chunks > STEP_MEMORY_MAX_DIFF {
-            // println!("distance_by_chunks({},{}) = {}", last_step, step, distance_by_chunks);
-            let intermediate_rows = distance_by_chunks / STEP_MEMORY_MAX_DIFF;
-            let distance_by_steps = step - last_step;
-            let distance_with_intermediates = intermediate_rows * STEP_MEMORY_MAX_DIFF as u64;
-            if distance_by_steps < distance_with_intermediates {
+            let intermediate_rows = (distance_by_chunks - 1) / STEP_MEMORY_MAX_DIFF;
+            let internal_reads = (step - last_step - 1) / STEP_MEMORY_MAX_DIFF;
+            if internal_reads < intermediate_rows {
                 // exists an unncessary intermediate row, but needed to obtains same results
                 // as counters, last step is zero
+                assert_eq!(internal_reads + 1, intermediate_rows);
                 Some((intermediate_rows - 1, 1))
             } else {
                 Some((intermediate_rows, 0))
             }
+        } else if force_extra_zero_step {
+            Some((0, 1))
         } else {
             None
         }
