@@ -88,12 +88,13 @@ impl GateState {
         self.majs = 0;
         self.adds = 0;
 
-        // Init ZeroRef gate as XOR(0,1) = 1
+        // Init ZeroRef gate as XOR(0,1,0) = 1
         if let Some(z) = self.gate_config.zero_ref {
             self.gates[z as usize].op = GateOperation::Xor;
             self.gates[z as usize].pins[PinId::A].bit = 0;
             self.gates[z as usize].pins[PinId::B].bit = 1;
-            self.gates[z as usize].pins[PinId::C].bit = 1;
+            self.gates[z as usize].pins[PinId::C].bit = 0;
+            self.gates[z as usize].pins[PinId::D].bit = 1;
         }
     }
 
@@ -175,7 +176,7 @@ impl GateState {
         let mut local_sout = Vec::with_capacity(self.gate_config.sin_ref_number as usize);
         for i in 0..self.gate_config.sin_ref_number {
             let idx = self.sout_refs[i as usize] as usize;
-            local_sout.push(self.gates[idx].pins[PinId::C].bit);
+            local_sout.push(self.gates[idx].pins[PinId::D].bit);
         }
 
         // Reset state
@@ -197,89 +198,103 @@ impl GateState {
     pub fn op(
         &mut self,
         op: GateOperation,
-        ref_a: u64,
-        pin_a: PinId,
-        ref_b: u64,
-        pin_b: PinId,
-        ref_c: u64,
-    ) {
+        ref_in1: u64,
+        pin_in1: PinId,
+        ref_in2: u64,
+        pin_in2: PinId,
+        ref_in3: Option<u64>,
+        pin_in3: Option<PinId>,
+        ref_out: u64,
+    ) -> Option<u8> {
+        // Get the input bits
+        let in1 = self.gates[ref_in1 as usize].pins[pin_in1].bit;
+        let in2 = self.gates[ref_in2 as usize].pins[pin_in2].bit;
+        let in3 = if let (Some(ref_in3), Some(pin_in3)) = (ref_in3, pin_in3) {
+            self.gates[ref_in3 as usize].pins[pin_in3].bit
+        } else {
+            0 // Default value for in3 if not provided
+        };
+
         // Safety checks
-        assert!(ref_a < self.gate_config.max_refs);
-        assert!(ref_b < self.gate_config.max_refs);
-        assert!(ref_c < self.gate_config.max_refs);
-        assert!(self.gates[ref_a as usize].pins[pin_a].bit <= 1);
-        assert!(self.gates[ref_b as usize].pins[pin_b].bit <= 1);
-        assert!(self.gates[ref_c as usize].pins[PinId::C].bit <= 1);
+        assert!(ref_in1 < self.gate_config.max_refs);
+        assert!(ref_in2 < self.gate_config.max_refs);
+        assert!(ref_in3.is_none() || ref_in3.unwrap() < self.gate_config.max_refs);
+        assert!(ref_out < self.gate_config.max_refs);
+        assert!(in1 <= 1);
+        assert!(in2 <= 1);
+        assert!(ref_in3.is_none() || in3 <= 1);
+        assert!(self.gates[ref_out as usize].pins[PinId::D].bit <= 1);
 
         // Update gate type
-        self.gates[ref_c as usize].op = op;
+        self.gates[ref_out as usize].op = op;
 
-        // Update input A
-        self.gates[ref_c as usize].pins[PinId::A].source = PinSource::Wired;
-        self.gates[ref_c as usize].pins[PinId::A].wired_ref = ref_a;
-        self.gates[ref_c as usize].pins[PinId::A].wired_pin_id = pin_a;
-        self.gates[ref_c as usize].pins[PinId::A].bit = self.gates[ref_a as usize].pins[pin_a].bit;
+        // Update pin A
+        self.gates[ref_out as usize].pins[PinId::A].source = PinSource::Wired;
+        self.gates[ref_out as usize].pins[PinId::A].wired_ref = ref_in1;
+        self.gates[ref_out as usize].pins[PinId::A].wired_pin_id = pin_in1;
+        self.gates[ref_out as usize].pins[PinId::A].bit = in1;
 
-        // Update input B
-        self.gates[ref_c as usize].pins[PinId::B].source = PinSource::Wired;
-        self.gates[ref_c as usize].pins[PinId::B].wired_ref = ref_b;
-        self.gates[ref_c as usize].pins[PinId::B].wired_pin_id = pin_b;
-        self.gates[ref_c as usize].pins[PinId::B].bit = self.gates[ref_b as usize].pins[pin_b].bit;
+        // Update pin B
+        self.gates[ref_out as usize].pins[PinId::B].source = PinSource::Wired;
+        self.gates[ref_out as usize].pins[PinId::B].wired_ref = ref_in2;
+        self.gates[ref_out as usize].pins[PinId::B].wired_pin_id = pin_in2;
+        self.gates[ref_out as usize].pins[PinId::B].bit = in2;
 
-        // Update output C
-        self.gates[ref_c as usize].pins[PinId::C].source = PinSource::Gated;
-        self.gates[ref_c as usize].pins[PinId::C].wired_ref = ref_c;
+        // Update pin C
+        if let (Some(ref_in3), Some(pin_in3)) = (ref_in3, pin_in3) {
+            self.gates[ref_out as usize].pins[PinId::C].source = PinSource::Wired;
+            self.gates[ref_out as usize].pins[PinId::C].wired_ref = ref_in3;
+            self.gates[ref_out as usize].pins[PinId::C].wired_pin_id = pin_in3;
+            self.gates[ref_out as usize].pins[PinId::C].bit = in3;
+        }
+
+        // Update output D
+        self.gates[ref_out as usize].pins[PinId::D].source = PinSource::Gated;
+        self.gates[ref_out as usize].pins[PinId::D].wired_ref = ref_out;
 
         // Calculate output based on operation
+        let mut carry: Option<u8> = None;
         match op {
             GateOperation::Xor => {
-                self.gates[ref_c as usize].pins[PinId::C].bit =
-                    self.gates[ref_a as usize].pins[pin_a].bit
-                        ^ self.gates[ref_b as usize].pins[pin_b].bit;
+                // If there are 2 inputs, in3 = 0 doesn't change the result
+                self.gates[ref_out as usize].pins[PinId::D].bit = in1 ^ in2 ^ in3;
                 self.xors += 1;
             }
             GateOperation::Or => {
-                self.gates[ref_c as usize].pins[PinId::C].bit =
-                    self.gates[ref_a as usize].pins[pin_a].bit
-                        | self.gates[ref_b as usize].pins[pin_b].bit;
+                self.gates[ref_out as usize].pins[PinId::D].bit = in1 | in2;
                 self.ors += 1;
             }
-            GateOperation::Andp => {
-                self.gates[ref_c as usize].pins[PinId::C].bit =
-                    (1 - self.gates[ref_a as usize].pins[pin_a].bit)
-                        & self.gates[ref_b as usize].pins[pin_b].bit;
-                self.andps += 1;
-            }
             GateOperation::And => {
-                self.gates[ref_c as usize].pins[PinId::C].bit =
-                    self.gates[ref_a as usize].pins[pin_a].bit
-                        & self.gates[ref_b as usize].pins[pin_b].bit;
+                self.gates[ref_out as usize].pins[PinId::D].bit = in1 & in2;
                 self.ands += 1;
             }
-            // TODO: Unimplemented operations
-            // GateOperation::Ch => {
-            //     self.gates[ref_c as usize].pins[PinId::C].bit =
-            //         (self.gates[ref_a as usize].pins[pin_a].bit
-            //             & self.gates[ref_b as usize].pins[pin_b].bit)
-            //             ^ ((1 - self.gates[ref_a as usize].pins[pin_a].bit)
-            //                 & self.gates[ref_b as usize].pins[pin_b].bit);
-            //     self.chs += 1;
-            // }
-            // GateOperation::Maj => {
-            //     self.gates[ref_c as usize].pins[PinId::C].bit =
-            //         (self.gates[ref_a as usize].pins[pin_a].bit
-            //             & self.gates[ref_b as usize].pins[pin_b].bit)
-            //             ^ (self.gates[ref_a as usize].pins[pin_a].bit
-            //                 & self.gates[ref_b as usize].pins[pin_b].bit)
-            //             ^ (self.gates[ref_b as usize].pins[pin_b].bit
-            //                 & self.gates[ref_b as usize].pins[pin_b].bit);
-            //     self.majs += 1;
-            // }
+            GateOperation::Andp => {
+                self.gates[ref_out as usize].pins[PinId::D].bit = (1 - in1) & in2;
+                self.andps += 1;
+            }
             GateOperation::Add => {
-                self.gates[ref_c as usize].pins[PinId::C].bit =
-                    self.gates[ref_a as usize].pins[pin_a].bit
-                        + self.gates[ref_b as usize].pins[pin_b].bit;
+                self.gates[ref_out as usize].pins[PinId::D].bit = in1 ^ in2 ^ in3;
                 self.adds += 1;
+                carry = Some((in1 & in2) | (in1 & in3) | (in2 & in3));
+            }
+
+            GateOperation::Ch | GateOperation::Maj => {
+                // Ensure there is a third input
+                assert!(ref_in3.is_some() && pin_in3.is_some());
+
+                let out = match op {
+                    GateOperation::Ch => {
+                        self.chs += 1;
+                        (in1 & in2) ^ ((1 - in1) & in3)
+                    }
+                    GateOperation::Maj => {
+                        self.majs += 1;
+                        (in1 & in2) ^ (in1 & in3) ^ (in2 & in3)
+                    }
+                    _ => unreachable!(),
+                };
+
+                self.gates[ref_out as usize].pins[PinId::D].bit = out;
             }
             _ => {
                 panic!("op called with unknown operation");
@@ -287,42 +302,78 @@ impl GateState {
         }
 
         // Update fan-out counters and connections
-        if ref_a != ref_c {
-            self.gates[ref_a as usize].pins[pin_a].fan_out += 1;
-            self.gates[ref_a as usize].pins[pin_a].connections_to_input_a.push(ref_c);
+        if ref_in1 != ref_out {
+            self.gates[ref_in1 as usize].pins[pin_in1].fan_out += 1;
+            self.gates[ref_in1 as usize].pins[pin_in1].connections_to_input_a.push(ref_out);
         }
 
-        if ref_b != ref_c {
-            self.gates[ref_b as usize].pins[pin_b].fan_out += 1;
-            self.gates[ref_b as usize].pins[pin_b].connections_to_input_b.push(ref_c);
+        if ref_in2 != ref_out {
+            self.gates[ref_in2 as usize].pins[pin_in2].fan_out += 1;
+            self.gates[ref_in2 as usize].pins[pin_in2].connections_to_input_b.push(ref_out);
+        }
+
+        if let (Some(ref_in3), Some(pin_in3)) = (ref_in3, pin_in3) {
+            if ref_in3 != ref_out {
+                self.gates[ref_in3 as usize].pins[pin_in3].fan_out += 1;
+                self.gates[ref_in3 as usize].pins[pin_in3].connections_to_input_b.push(ref_out);
+            }
         }
 
         // Add to program
-        self.program.push(ref_c);
+        self.program.push(ref_out);
+
+        carry
     }
 
-    pub fn xor(&mut self, ref_a: u64, pin_a: PinId, ref_b: u64, pin_b: PinId, ref_c: u64) {
-        self.op(GateOperation::Xor, ref_a, pin_a, ref_b, pin_b, ref_c);
+    #[rustfmt::skip]
+    pub fn xor(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_out: u64) {
+        self.op(GateOperation::Xor, ref_in1, pin_in1, ref_in2, pin_in2, None, None, ref_out);
     }
 
-    pub fn xor_res(&mut self, ref_a: u64, ref_b: u64, ref_c: u64) {
-        self.xor(ref_a, PinId::C, ref_b, PinId::C, ref_c);
+    #[rustfmt::skip]
+    pub fn xor3(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_in3: u64, pin_in3: PinId, ref_out: u64) {
+        self.op(GateOperation::Xor, ref_in1, pin_in1, ref_in2, pin_in2, Some(ref_in3), Some(pin_in3), ref_out);
     }
 
-    pub fn andp(&mut self, ref_a: u64, pin_a: PinId, ref_b: u64, pin_b: PinId, ref_c: u64) {
-        self.op(GateOperation::Andp, ref_a, pin_a, ref_b, pin_b, ref_c);
+    pub fn xor_res(&mut self, ref_in1: u64, ref_in2: u64, ref_out: u64) {
+        self.xor(ref_in1, PinId::D, ref_in2, PinId::D, ref_out);
     }
 
-    pub fn andp_res(&mut self, ref_a: u64, ref_b: u64, ref_c: u64) {
-        self.andp(ref_a, PinId::C, ref_b, PinId::C, ref_c);
+    #[rustfmt::skip]
+    pub fn andp(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_out: u64) {
+        self.op(GateOperation::Andp, ref_in1, pin_in1, ref_in2, pin_in2, None, None, ref_out);
     }
 
-    pub fn or(&mut self, ref_a: u64, pin_a: PinId, ref_b: u64, pin_b: PinId, ref_c: u64) {
-        self.op(GateOperation::Or, ref_a, pin_a, ref_b, pin_b, ref_c);
+    pub fn andp_res(&mut self, ref_in1: u64, ref_in2: u64, ref_out: u64) {
+        self.andp(ref_in1, PinId::D, ref_in2, PinId::D, ref_out);
     }
 
-    pub fn and(&mut self, ref_a: u64, pin_a: PinId, ref_b: u64, pin_b: PinId, ref_c: u64) {
-        self.op(GateOperation::And, ref_a, pin_a, ref_b, pin_b, ref_c);
+    pub fn or(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_out: u64) {
+        self.op(GateOperation::Or, ref_in1, pin_in1, ref_in2, pin_in2, None, None, ref_out);
+    }
+
+    pub fn or_res(&mut self, ref_in1: u64, ref_in2: u64, ref_out: u64) {
+        self.or(ref_in1, PinId::D, ref_in2, PinId::D, ref_out);
+    }
+
+    #[rustfmt::skip]
+    pub fn and(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_out: u64) {
+        self.op(GateOperation::And, ref_in1, pin_in1, ref_in2, pin_in2, None, None, ref_out);
+    }
+
+    #[rustfmt::skip]
+    pub fn ch(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_in3: u64, pin_in3: PinId, ref_out: u64) {
+        self.op(GateOperation::Ch, ref_in1, pin_in1, ref_in2, pin_in2, Some(ref_in3), Some(pin_in3), ref_out);
+    }
+
+    #[rustfmt::skip]
+    pub fn maj(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_in3: u64, pin_in3: PinId, ref_out: u64) {
+        self.op(GateOperation::Maj, ref_in1, pin_in1, ref_in2, pin_in2, Some(ref_in3), Some(pin_in3), ref_out);
+    }
+
+    #[rustfmt::skip]
+    pub fn add(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_in3: u64, pin_in3: PinId, ref_out: u64) -> u8 {
+        self.op(GateOperation::Add, ref_in1, pin_in1, ref_in2, pin_in2, Some(ref_in3), Some(pin_in3), ref_out).unwrap()
     }
 
     /// Prints operation statistics (development purposes)
@@ -342,15 +393,15 @@ impl GateState {
         if self.ors > 0 {
             println!("   ors       = {} = {:.2}%", self.ors, (self.ors as f64 * 100.0) / total_f);
         }
+        if self.ands > 0 {
+            println!("   ands      = {} = {:.2}%", self.ands, (self.ands as f64 * 100.0) / total_f);
+        }
         if self.andps > 0 {
             println!(
                 "   andps     = {} = {:.2}%",
                 self.andps,
                 (self.andps as f64 * 100.0) / total_f
             );
-        }
-        if self.ands > 0 {
-            println!("   ands      = {} = {:.2}%", self.ands, (self.ands as f64 * 100.0) / total_f);
         }
         if self.chs > 0 {
             println!("   chs       = {} = {:.2}%", self.chs, (self.chs as f64 * 100.0) / total_f);
@@ -370,7 +421,7 @@ impl GateState {
     pub fn print_refs(&self, refs: &[u64], name: &str) {
         // Collect bits safely
         let bits: Vec<u8> =
-            refs.iter().map(|&ref_idx| self.gates[ref_idx as usize].pins[PinId::C].bit).collect();
+            refs.iter().map(|&ref_idx| self.gates[ref_idx as usize].pins[PinId::D].bit).collect();
 
         // Print the bits
         print_bits(&bits, name);

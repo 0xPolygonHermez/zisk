@@ -103,7 +103,7 @@ pub fn keccak_f(s: &mut GateState) {
             s.gate_config.sout_first_ref + group * s.gate_config.sout_ref_distance + group_pos;
         s.xor(
             s.sout_refs[i as usize],
-            PinId::C,
+            PinId::D,
             s.gate_config.zero_ref.unwrap(),
             PinId::A,
             ref_idx,

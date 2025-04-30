@@ -148,8 +148,13 @@ fn cols_gen(
         let offset = i * circuit_size;
 
         let mut wires: HashMap<usize, [usize; 2]> = HashMap::new();
+        // Map explanation:
+        //  · key    -> wire_idx
+        //  · val[0] -> a,b,c or d (0,1,2 or 3)
+        //  · val[1] -> gate_idx
         wires.insert(0, [0, 0]);
         wires.insert(1, [1, 0]);
+        // First gate is XOR(0,1,0) = 1 => a = c = 0, b = d = 1
         connect(&mut conn_a, 0, Some(&mut conn_c), 0, 0);
         connect(&mut conn_b, 0, Some(&mut conn_d), 0, 0);
         for (j, gate) in gates.iter().enumerate().skip(1) {

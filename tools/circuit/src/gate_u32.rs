@@ -73,59 +73,49 @@ impl<'a> GateU32<'a> {
 
         // Zero out the remaining bits
         for i in (32 - pos as usize)..32 {
-            shifted[i] = GateBit {
-                ref_: self.state.borrow().gate_config.zero_ref.unwrap(),
-                pin_id: PinId::A,
-            };
+            shifted[i] = GateBit::new(self.state.borrow().gate_config.zero_ref.unwrap());
         }
 
         self.bits = shifted;
     }
 }
 
+// TODO: Do an XOR of 3 numbers!
+
 /// XOR 2 numbers of 32 bits
 pub fn gate_u32_xor(gate_state: &mut GateState, a: &GateU32, b: &GateU32, r: &mut GateU32) {
     for i in 0..32 {
-        r.bits[i].ref_ = gate_state.get_free_ref();
-        gate_state.xor(
-            a.bits[i].ref_,
-            a.bits[i].pin_id,
-            b.bits[i].ref_,
-            b.bits[i].pin_id,
-            r.bits[i].ref_,
-        );
-        r.bits[i].pin_id = PinId::C;
+        let out_ref = gate_state.get_free_ref();
+        gate_state.xor(a.bits[i].ref_, a.bits[i].pin_id, b.bits[i].ref_, b.bits[i].pin_id, out_ref);
+        r.bits[i].ref_ = out_ref;
+        r.bits[i].pin_id = PinId::D;
     }
 }
 
 /// And 2 numbers of 32 bits
 pub fn gate_u32_and(gate_state: &mut GateState, a: &GateU32, b: &GateU32, r: &mut GateU32) {
     for i in 0..32 {
-        r.bits[i].ref_ = gate_state.get_free_ref();
-        gate_state.and(
-            a.bits[i].ref_,
-            a.bits[i].pin_id,
-            b.bits[i].ref_,
-            b.bits[i].pin_id,
-            r.bits[i].ref_,
-        );
-        r.bits[i].pin_id = PinId::C;
+        let out_ref = gate_state.get_free_ref();
+        gate_state.and(a.bits[i].ref_, a.bits[i].pin_id, b.bits[i].ref_, b.bits[i].pin_id, out_ref);
+        r.bits[i].ref_ = out_ref;
+        r.bits[i].pin_id = PinId::D;
     }
 }
 
 /// Not 1 number of 32 bits
 pub fn gate_u32_not(gate_state: &mut GateState, a: &GateU32, r: &mut GateU32) {
+    // NOT(a) is the same operation as XOR(a,1)
     for i in 0..32 {
-        r.bits[i].ref_ = gate_state.get_free_ref();
-        // NOT(a) is the same operation as XOR(a,1)
+        let out_ref = gate_state.get_free_ref();
         gate_state.xor(
             a.bits[i].ref_,
             a.bits[i].pin_id,
             gate_state.gate_config.zero_ref.unwrap(),
             PinId::B,
-            r.bits[i].ref_,
+            out_ref,
         );
-        r.bits[i].pin_id = PinId::C;
+        r.bits[i].ref_ = out_ref;
+        r.bits[i].pin_id = PinId::D;
     }
 }
 
@@ -155,7 +145,7 @@ pub fn gate_u32_add(gate_state: &mut GateState, a: &GateU32, b: &GateU32, r: &mu
                 b.bits[i].pin_id,
                 r.bits[i].ref_,
             );
-            r.bits[i].pin_id = PinId::C;
+            r.bits[i].pin_id = PinId::D;
         } else {
             let xor_ref = gate_state.get_free_ref();
             gate_state.xor(
@@ -166,8 +156,8 @@ pub fn gate_u32_add(gate_state: &mut GateState, a: &GateU32, b: &GateU32, r: &mu
                 xor_ref,
             );
             r.bits[i].ref_ = gate_state.get_free_ref();
-            gate_state.xor(xor_ref, PinId::C, carry.ref_, carry.pin_id, r.bits[i].ref_);
-            r.bits[i].pin_id = PinId::C;
+            gate_state.xor(xor_ref, PinId::D, carry.ref_, carry.pin_id, r.bits[i].ref_);
+            r.bits[i].pin_id = PinId::D;
         }
 
         // Calculate carry bit
@@ -180,7 +170,7 @@ pub fn gate_u32_add(gate_state: &mut GateState, a: &GateU32, b: &GateU32, r: &mu
                 b.bits[i].pin_id,
                 carry.ref_,
             );
-            carry.pin_id = PinId::C;
+            carry.pin_id = PinId::D;
         } else if i < 31 {
             let and_ref1 = gate_state.get_free_ref();
             gate_state.and(
@@ -198,11 +188,58 @@ pub fn gate_u32_add(gate_state: &mut GateState, a: &GateU32, b: &GateU32, r: &mu
             gate_state.and(a.bits[i].ref_, a.bits[i].pin_id, carry.ref_, carry.pin_id, and_ref3);
 
             let or_ref = gate_state.get_free_ref();
-            gate_state.or(and_ref1, PinId::C, and_ref2, PinId::C, or_ref);
+            gate_state.or(and_ref1, PinId::D, and_ref2, PinId::D, or_ref);
 
             carry.ref_ = gate_state.get_free_ref();
-            gate_state.or(or_ref, PinId::C, and_ref3, PinId::C, carry.ref_);
-            carry.pin_id = PinId::C;
+            gate_state.or(or_ref, PinId::D, and_ref3, PinId::D, carry.ref_);
+            carry.pin_id = PinId::D;
         }
     }
 }
+
+// TODO: For the future!
+// pub fn gate_u32_add(gate_state: &mut GateState, a: &GateU32, b: &GateU32, r: &mut GateU32) {
+//     let mut carry = GateBit::new(gate_state.gate_config.zero_ref.unwrap());
+//     for i in 0..32 {
+//         if i == 0 {
+//             let out_ref = gate_state.get_free_ref();
+//             let carry_val = gate_state.add(
+//                 a.bits[i].ref_,
+//                 a.bits[i].pin_id,
+//                 b.bits[i].ref_,
+//                 b.bits[i].pin_id,
+//                 gate_state.gate_config.zero_ref.unwrap(),
+//                 PinId::A,
+//                 out_ref,
+//             );
+//             r.bits[i].ref_ = out_ref;
+//             r.bits[i].pin_id = PinId::D;
+//         } else if i < 31 {
+//             let out_ref = gate_state.get_free_ref();
+//             let carry_val = gate_state.add(
+//                 a.bits[i].ref_,
+//                 a.bits[i].pin_id,
+//                 b.bits[i].ref_,
+//                 b.bits[i].pin_id,
+//                 carry.ref_,
+//                 carry.pin_id,
+//                 out_ref,
+//             );
+//             r.bits[i].ref_ = out_ref;
+//             r.bits[i].pin_id = PinId::D;
+//         } else {
+//             let out_ref = gate_state.get_free_ref();
+//             gate_state.xor3(
+//                 a.bits[i].ref_,
+//                 a.bits[i].pin_id,
+//                 b.bits[i].ref_,
+//                 b.bits[i].pin_id,
+//                 carry.ref_,
+//                 carry.pin_id,
+//                 out_ref,
+//             );
+//             r.bits[i].ref_ = out_ref;
+//             r.bits[i].pin_id = PinId::D;
+//         }
+//     }
+// }

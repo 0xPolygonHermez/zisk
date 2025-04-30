@@ -21,10 +21,11 @@ pub struct Pin {
 pub enum PinId {
     A = 0, // Input a pin
     B = 1, // Input b pin
-    C = 2, // Output c pin representing the result of the gate
+    C = 2, // Input c pin
+    D = 3, // Output d pin representing the result of the gate
 }
 
-impl Index<PinId> for [Pin; 3] {
+impl Index<PinId> for [Pin; 4] {
     type Output = Pin;
 
     fn index(&self, pin_id: PinId) -> &Self::Output {
@@ -32,7 +33,7 @@ impl Index<PinId> for [Pin; 3] {
     }
 }
 
-impl IndexMut<PinId> for [Pin; 3] {
+impl IndexMut<PinId> for [Pin; 4] {
     fn index_mut(&mut self, pin_id: PinId) -> &mut Self::Output {
         &mut self[pin_id as usize]
     }
@@ -54,11 +55,11 @@ impl Pin {
             // If the pin is not connected, then source is external
             // If the pin is connected to another pin, then source is gated
             source: match id {
-                PinId::A | PinId::B => PinSource::External,
-                PinId::C => PinSource::Gated,
+                PinId::A | PinId::B | PinId::C => PinSource::External,
+                PinId::D => PinSource::Gated,
             },
             wired_ref: 0,
-            wired_pin_id: PinId::C,
+            wired_pin_id: PinId::D,
             fan_out: 0,
             bit: 0,
             connections_to_input_a: Vec::new(),
@@ -68,11 +69,11 @@ impl Pin {
 
     pub fn reset(&mut self) {
         self.source = match self.id {
-            PinId::A | PinId::B => PinSource::External,
-            PinId::C => PinSource::Gated,
+            PinId::A | PinId::B | PinId::C => PinSource::External,
+            PinId::D => PinSource::Gated,
         };
         self.wired_ref = 0;
-        self.wired_pin_id = PinId::C;
+        self.wired_pin_id = PinId::D;
         self.fan_out = 0;
         self.bit = 0;
         self.connections_to_input_a.clear();

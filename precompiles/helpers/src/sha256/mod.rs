@@ -8,7 +8,7 @@ use circuit::{
 mod sha256_constants;
 mod sha256_input;
 
-pub use sha256_constants::{BLOCK_SIZE_BITS, BLOCK_SIZE_BYTES};
+pub use sha256_constants::{SHA256_BLOCK_SIZE_BITS, SHA256_BLOCK_SIZE_BYTES};
 use sha256_input::Sha256Input;
 
 // Initial hash values (first 32 bits of fractional parts of square roots of first 8 primes)
@@ -34,14 +34,14 @@ pub static SHA256F_GATE_CONFIG: GateConfig = GateConfig::with_values(
     160480,
     170000,
     Some(0),
-    45,
-    1,
-    768,
-    44,
-    45 + 768 * 44,
-    1,
-    256,
-    44,
+    64,
+    2,
+    512,
+    63,
+    64 + 512 * 63 / 2,
+    2,
+    512,
+    63,
 );
 
 // Main Keccak function
@@ -52,42 +52,38 @@ pub fn sha256(
     output: &mut [u32; 8],
     get_circuit_topology: bool,
 ) -> Option<GateState> {
+    // Initialize the input state and perform the padding
+    let mut input_state = Sha256Input::new(input);
+
+    // Initialize the gate state
+    let state = RefCell::new(GateState::new(SHA256F_GATE_CONFIG.clone()));
+
+    // Initialize the round constants as GateU32
+    let mut k = [GateU32::new(&state); 64];
+    for i in 0..64 {
+        k[i].from_u32(RC[i]);
+    }
+
     // Initialize the hash state
     let mut h = INITIAL_HASH_STATE;
 
-    // Initialize the input state, perform the padding and break the
-    // message into blocks of BLOCK_SIZE_BYTES bytes
-    let mut input_state = Sha256Input::new(input);
-
     // Process each block
-    let mut block = [0u8; BLOCK_SIZE_BYTES];
-    while input_state.get_next(&mut block) {
-        // Initialize the gate state for the current block
-        let state = RefCell::new(GateState::new(SHA256F_GATE_CONFIG.clone()));
-
-        // Initialize the round constants as GateU32
-        let mut k = [GateU32::new(&state); 64];
-        for i in 0..64 {
-            k[i].from_u32(RC[i]);
-        }
-
+    let mut block = [0u8; SHA256_BLOCK_SIZE_BITS];
+    while input_state.get_next_bits(&mut block) {
         // Initialize the 64-entry message schedule array
         let mut w = [GateU32::new(&state); 64];
 
         // Copy the first 16 words into the state input and the message schedule array
         for i in 0..16 {
-            let word = u32::from_be_bytes([
-                block[i * 4],
-                block[i * 4 + 1],
-                block[i * 4 + 2],
-                block[i * 4 + 3],
-            ]);
-
-            let bits = u32_to_bits(word);
+            let bits: [u8; 32] = block[i * 32..(i + 1) * 32].try_into().unwrap(); // MSB
             for j in 0..32 {
-                let ref_num = SHA256F_GATE_CONFIG.sin_first_ref + (i * 32 + j) as u64 * 44;
-                state.borrow_mut().gates[ref_num as usize].pins[PinId::A].bit = bits[j];
-                w[i].bits[j].ref_ = ref_num;
+                let group = (i * 32 + j) as u64 / SHA256F_GATE_CONFIG.sin_ref_group_by;
+                let group_pos = (i * 32 + j) as u64 % SHA256F_GATE_CONFIG.sin_ref_group_by;
+                let ref_idx = SHA256F_GATE_CONFIG.sin_first_ref
+                    + group * SHA256F_GATE_CONFIG.sin_ref_distance
+                    + group_pos;
+                state.borrow_mut().gates[ref_idx as usize].pins[PinId::A].bit = bits[31 - j];
+                w[i].bits[j].ref_ = ref_idx;
                 w[i].bits[j].pin_id = PinId::A;
             }
         }
@@ -129,14 +125,20 @@ pub fn sha256(
             gate_u32_add(&mut state.borrow_mut(), &tmp2, &sigma1, &mut w[i]);
         }
 
-        // Initialize hash state variables
+        // Copy the hash state into the state input
         let mut h32 = vec![GateU32::new(&state); 8];
         for i in 0..8 {
             let bits = u32_to_bits(h[i]);
             for j in 0..32 {
-                let ref_num = SHA256F_GATE_CONFIG.sin_first_ref + (512 + i * 32 + j) as u64 * 44;
-                state.borrow_mut().gates[ref_num as usize].pins[PinId::A].bit = bits[j];
-                h32[i].bits[j].ref_ = ref_num;
+                let group = (SHA256F_GATE_CONFIG.sin_ref_number + (i * 32 + j) as u64)
+                    / SHA256F_GATE_CONFIG.sin_ref_group_by;
+                let group_pos = (SHA256F_GATE_CONFIG.sin_ref_number + (i * 32 + j) as u64) as u64
+                    % SHA256F_GATE_CONFIG.sin_ref_group_by;
+                let ref_idx = SHA256F_GATE_CONFIG.sin_first_ref
+                    + group * SHA256F_GATE_CONFIG.sin_ref_distance
+                    + group_pos;
+                state.borrow_mut().gates[ref_idx as usize].pins[PinId::A].bit = bits[j];
+                h32[i].bits[j].ref_ = ref_idx;
                 h32[i].bits[j].pin_id = PinId::A;
             }
         }
@@ -272,11 +274,13 @@ pub fn sha256(
             // The sha256f circuit topology is completely known after a single execution
             return Some(state.into_inner());
         }
+
+        state.borrow_mut().copy_sout_to_sin_and_reset_refs();
     }
 
     output.copy_from_slice(&h);
 
-    None
+    return None;
 }
 
 // Get the circuit topology of the Keccak-f permutation
