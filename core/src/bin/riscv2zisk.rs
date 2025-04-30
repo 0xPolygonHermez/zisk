@@ -31,19 +31,22 @@ fn main() {
     };
 
     let generation_method = match gen_arg.as_str() {
+        "--gen=0" => zisk_core::AsmGenerationMethod::AsmFast,
         "--gen=1" => zisk_core::AsmGenerationMethod::AsmMinimalTraces,
         "--gen=2" => zisk_core::AsmGenerationMethod::AsmRomHistogram,
+        "--gen=3" => zisk_core::AsmGenerationMethod::AsmMainTrace,
+        "--gen=4" => zisk_core::AsmGenerationMethod::AsmChunks,
         _ => {
-            eprintln!("Invalid generation method. Use --gen=1 or --gen=2.");
+            eprintln!("Invalid generation method. Use --gen=0 (fast), --gen=1 (minimal trace), --gen=2 (rom histogram), --gen=3 (main trace) or --gen=4 (chunks).");
             process::exit(1);
         }
     };
 
     // Create an instance of the program converter
-    let rv2zk = Riscv2zisk::new(elf_file, asm_file);
+    let rv2zk = Riscv2zisk::new(elf_file);
 
     // Convert program
-    if let Err(e) = rv2zk.runfile(generation_method) {
+    if let Err(e) = rv2zk.runfile(asm_file.unwrap(), generation_method, true) {
         println!("Application error: {e}");
         process::exit(1);
     }

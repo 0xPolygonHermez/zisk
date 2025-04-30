@@ -6,7 +6,7 @@ use std::{
 use anyhow::Result;
 use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
 
-pub fn assembly_setup(
+pub fn generate_assembly(
     elf: &PathBuf,
     elf_hash: &str,
     zisk_path: &Path,
@@ -24,49 +24,58 @@ pub fn assembly_setup(
     let stem = elf.file_stem().unwrap().to_str().unwrap();
     let new_filename = format!("{}-{}.tmp", stem, elf_hash);
     let base_path = output_path.join(new_filename);
+    let file_stem = base_path.file_stem().unwrap().to_str().unwrap();
 
-    let zisk_file = base_path.with_extension("asm");
-    let asm_file = base_path.with_extension("bin");
+    let bin_mt_file = format!("{}-mt.bin", file_stem);
+    let bin_mt_file = base_path.with_file_name(bin_mt_file);
 
-    // Convert the ELF file to Zisk format and generates an assembly file
-    let rv2zk = Riscv2zisk::new(
-        elf_file_path.to_str().unwrap().to_string(),
-        Some(zisk_file.to_str().unwrap().to_string()),
-    );
-    rv2zk
-        .runfile(AsmGenerationMethod::AsmMinimalTraces)
-        .map_err(|e| anyhow::anyhow!("Error converting elf: {}", e))?;
+    let bin_rom_file = format!("{}-rom.bin", file_stem);
+    let bin_rom_file = base_path.with_file_name(bin_rom_file);
 
-    let emulator_asm_path = zisk_path.join("emulator-asm");
-    let emulator_asm_path = emulator_asm_path.to_str().unwrap();
+    [
+        (bin_mt_file, AsmGenerationMethod::AsmMinimalTraces),
+        (bin_rom_file, AsmGenerationMethod::AsmRomHistogram),
+    ]
+    .iter()
+    .for_each(|(file, gen_method)| {
+        let asm_file = file.with_extension("asm");
+        // Convert the ELF file to Zisk format and generates an assembly file
+        let rv2zk = Riscv2zisk::new(elf_file_path.to_str().unwrap().to_string());
+        rv2zk
+            .runfile(asm_file.to_str().unwrap().to_string(), *gen_method, false)
+            .expect("Error converting elf to assembly");
 
-    // Build the emulator assembly
-    let status = Command::new("make")
-        .arg("clean")
-        .current_dir(emulator_asm_path)
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .status()
-        .expect("Failed to run make clean");
+        let emulator_asm_path = zisk_path.join("emulator-asm");
+        let emulator_asm_path = emulator_asm_path.to_str().unwrap();
 
-    if !status.success() {
-        eprintln!("make clean failed");
-        std::process::exit(1);
-    }
+        // Build the emulator assembly
+        let status = Command::new("make")
+            .arg("clean")
+            .current_dir(emulator_asm_path)
+            .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+            .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+            .status()
+            .expect("Failed to run make clean");
 
-    let status = Command::new("make")
-        .arg(format!("EMU_PATH={}", zisk_file.to_str().unwrap()))
-        .arg(format!("OUT_PATH={}", asm_file.to_str().unwrap()))
-        .current_dir(emulator_asm_path)
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .status()
-        .expect("Failed to run make");
+        if !status.success() {
+            eprintln!("make clean failed");
+            std::process::exit(1);
+        }
 
-    if !status.success() {
-        eprintln!("make failed");
-        std::process::exit(1);
-    }
+        let status = Command::new("make")
+            .arg(format!("EMU_PATH={}", asm_file.to_str().unwrap()))
+            .arg(format!("OUT_PATH={}", file.to_str().unwrap()))
+            .current_dir(emulator_asm_path)
+            .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+            .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+            .status()
+            .expect("Failed to run make");
+
+        if !status.success() {
+            eprintln!("make failed");
+            std::process::exit(1);
+        }
+    });
 
     Ok(())
 }
