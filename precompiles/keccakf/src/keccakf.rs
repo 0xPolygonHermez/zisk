@@ -300,7 +300,8 @@ impl KeccakfSM {
                                 get_col_row(&row0, |row| &row.free_in_b)
                             };
                         }
-                        PinId::C => {
+                        PinId::C => panic!("Input pin C is not used by the Keccakf circuit"),
+                        PinId::D => {
                             value_a = if ref_a > 0 {
                                 get_col(par_trace, |row| &row.free_in_c, row_a)
                             } else {
@@ -351,7 +352,8 @@ impl KeccakfSM {
                                 get_col_row(&row0, |row| &row.free_in_b)
                             };
                         }
-                        PinId::C => {
+                        PinId::C => panic!("Input pin C is not used by the Keccakf circuit"),
+                        PinId::D => {
                             value_b = if ref_b > 0 {
                                 get_col(par_trace, |row| &row.free_in_c, row_b)
                             } else {

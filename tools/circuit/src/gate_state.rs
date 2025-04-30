@@ -100,11 +100,7 @@ impl GateState {
 
     // Get 32-bytes output from the state input
     pub fn get_output(&self, output: &mut [u8]) {
-        assert!(
-            self.gate_config.sin_ref_number >= 32 * 8,
-            "get_output called with insufficient sin_ref_number: {} < 256",
-            self.gate_config.sin_ref_number
-        );
+        assert!(self.gate_config.sout_ref_number >= 256);
 
         for i in 0..32 {
             let mut bytes = [0u8; 8];
@@ -161,7 +157,7 @@ impl GateState {
     /// Copy Sout references to Sin references
     pub fn copy_sout_refs_to_sin_refs(&mut self) {
         // Check sizes
-        assert_eq!(self.gate_config.sin_ref_number, self.gate_config.sout_ref_number);
+        assert!(self.gate_config.sin_ref_number >= self.gate_config.sout_ref_number);
 
         // Copy SoutRefs into SinRefs
         self.sin_refs.copy_from_slice(&self.sout_refs);
@@ -170,11 +166,11 @@ impl GateState {
     /// Copy Sout data to Sin buffer, and reset
     pub fn copy_sout_to_sin_and_reset_refs(&mut self) {
         // Check sizes
-        assert_eq!(self.gate_config.sin_ref_number, self.gate_config.sout_ref_number);
+        assert!(self.gate_config.sin_ref_number >= self.gate_config.sout_ref_number);
 
         // Collect Sout bits
-        let mut local_sout = Vec::with_capacity(self.gate_config.sin_ref_number as usize);
-        for i in 0..self.gate_config.sin_ref_number {
+        let mut local_sout = Vec::with_capacity(self.gate_config.sout_ref_number as usize);
+        for i in 0..self.gate_config.sout_ref_number {
             let idx = self.sout_refs[i as usize] as usize;
             local_sout.push(self.gates[idx].pins[PinId::D].bit);
         }
@@ -183,13 +179,12 @@ impl GateState {
         self.reset_bits_and_counters();
 
         // Restore to Sin
-        for i in 0..self.gate_config.sin_ref_number {
+        for i in 0..self.gate_config.sout_ref_number {
             let group = i / self.gate_config.sin_ref_group_by;
             let group_pos = i % self.gate_config.sin_ref_group_by;
             let idx = self.gate_config.sin_first_ref
                 + group * self.gate_config.sin_ref_distance
                 + group_pos;
-
             self.gates[idx as usize].pins[PinId::A].bit = local_sout[i as usize];
         }
     }
