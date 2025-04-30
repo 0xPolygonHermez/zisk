@@ -31,6 +31,9 @@ pub fn print_bits(bits: &[u8], name: &str) {
         output += &format!("{}:", byte_to_string(byte));
     }
 
+    if output.ends_with(':') {
+        output.pop();
+    }
     println!("{}", output);
 }
 
