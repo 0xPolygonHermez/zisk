@@ -4,4 +4,4 @@ mod sha256;
 
 pub use arith_eq::*;
 pub use keccak::{keccak, keccakf_topology};
-pub use sha256::{sha256, sha256f_topology};
+pub use sha256::{sha256, sha256f_topology, SHA256_BLOCK_SIZE_BITS};

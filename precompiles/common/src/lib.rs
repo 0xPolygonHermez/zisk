@@ -1,6 +1,6 @@
 mod goldilocks_constants;
 
-pub use goldilocks_constants::{GOLDILOCKS_GEN, GOLDILOCKS_K, get_ks};
+pub use goldilocks_constants::{get_ks, GOLDILOCKS_GEN, GOLDILOCKS_K};
 
 use zisk_core::InstContext;
 

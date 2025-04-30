@@ -5,6 +5,12 @@ pub fn byte_to_bits(byte: u8, bits: &mut [u8; 8]) {
     }
 }
 
+pub fn byte_to_bits_msb(byte: u8, bits: &mut [u8; 8]) {
+    for (i, bit) in bits.iter_mut().enumerate() {
+        *bit = (byte >> (7 - i)) & 1;
+    }
+}
+
 /// Converts 8 bits to a byte (LSB first)
 pub fn bits_to_byte(bits: &[u8; 8], byte: &mut u8) {
     // bits.iter().rev().fold(0, |byte, &bit| (byte << 1) | (bit & 1))
@@ -43,6 +49,7 @@ fn byte_to_char(b: u8) -> char {
     }
 }
 
+/// Converts u32 to bits (LSB first)
 pub fn u32_to_bits(value: u32) -> [u8; 32] {
     let mut bits = [0u8; 32];
     for i in 0..32 {
@@ -51,9 +58,26 @@ pub fn u32_to_bits(value: u32) -> [u8; 32] {
     bits
 }
 
+pub fn u32_to_bits_msb(value: u32) -> [u8; 32] {
+    let mut bits = [0u8; 32];
+    for i in 0..32 {
+        bits[i] = ((value >> (31 - i)) as u8) & 1;
+    }
+    bits
+}
+
+/// Converts bits to u32 (LSB first)
 pub fn bits_to_u32(bits: &[u8; 32]) -> u32 {
     let mut value = 0u32;
     for i in (0..32).rev() {
+        value = (value << 1) | (bits[i] as u32);
+    }
+    value
+}
+
+pub fn bits_to_u32_msb(bits: &[u8; 32]) -> u32 {
+    let mut value = 0u32;
+    for i in 0..32 {
         value = (value << 1) | (bits[i] as u32);
     }
     value

@@ -70,7 +70,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         n as u64,
         &mut [conn_a, conn_b, conn_c, conn_d, gate_op, carry_enabled],
     );
-    println!("CONN_A, CONN_B, CONN_C, CONN_D, GATE_OP and CARRY_ENABLED columns written to {}", output_file);
+    println!(
+        "CONN_A, CONN_B, CONN_C, CONN_D, GATE_OP and CARRY_ENABLED columns written to {}",
+        output_file
+    );
 
     Ok(())
 }
@@ -91,7 +94,7 @@ fn cols_gen(
         let adjust = |i| if i > 0 { i + offset } else { i };
         let row1 = adjust(i1);
         let row2 = adjust(i2);
-    
+
         match c2 {
             Some(c2) => std::mem::swap(&mut c1[row1], &mut c2[row2]),
             None => c1.swap(row1, row2),

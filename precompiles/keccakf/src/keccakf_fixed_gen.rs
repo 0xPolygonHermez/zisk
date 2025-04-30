@@ -9,8 +9,8 @@ use zisk_pil::KeccakfTrace;
 use proofman_common::{write_fixed_cols_bin, FixedColsInfo};
 
 use circuit::GateOperation;
+use precompiles_common::{get_ks, log2, GOLDILOCKS_GEN, GOLDILOCKS_K};
 use precompiles_helpers::keccakf_topology;
-use precompiles_common::{GOLDILOCKS_GEN, GOLDILOCKS_K, log2, get_ks};
 
 type F = Goldilocks;
 
