@@ -2,13 +2,13 @@ profile = "compiler"
 change-id = 126701
 
 [build]
-target = ["riscv64ima-polygon-ziskos-elf"]
+target = ["riscv64ima-zisk-zkvm-elf"]
 extended = true
 tools = ["cargo", "cargo-clippy", "clippy", "rustfmt"]
 configure-args = []
 #cargo-native-static = true
 
-[target.riscv64ima-polygon-ziskos-elf]
+[target.riscv64ima-zisk-zkvm-elf]
 cc = "riscv64-unknown-elf-gcc"
 
 [llvm]

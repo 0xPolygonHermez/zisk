@@ -114,7 +114,7 @@ Once your program is ready to run on ZisK, compile it into an ELF file (RISC-V a
 cargo-zisk build
 ```
 
-This command compiles the program using the `riscv64ima_polygon_ziskos` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/riscv64ima-polygon-ziskos-elf/debug` directory.
+This command compiles the program using the `zisk` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/riscv64ima-zisk-zkvm-elf/debug` directory.
 
 For production, compile the ELF file with the `--release` flag, similar to how you compile Rust projects:
 
@@ -122,7 +122,7 @@ For production, compile the ELF file with the `--release` flag, similar to how y
 cargo-zisk build --release
 ```
 
-In this case, the `sha_hasher` ELF file will be generated in the `./target/riscv64ima-polygon-ziskos-elf/release` directory.
+In this case, the `sha_hasher` ELF file will be generated in the `./target/riscv64ima-zisk-zkvm-elf/release` directory.
 
 ## Execute
 
@@ -130,7 +130,7 @@ You can test your compiled program using the ZisK emulator (`ziskemu`) before ge
 
 ```bash
 cargo-zisk build --release
-ziskemu -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin
 ```
 
 Alternatively, you can build and execute the program in the ZisK emulator with a single command:
@@ -147,7 +147,7 @@ Error: Error executing Run command
 
 To resolve this, you can increase the number of execution steps using the `-n` (`--max-steps`) flag. For example:
 ```bash
-ziskemu -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -n 10000000000
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -n 10000000000
 ```
 
 ## Metrics and Statistics
@@ -162,7 +162,7 @@ cargo-zisk run --release -i build/input.bin -m
 Or
 
 ```bash
-ziskemu -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -m
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -m
 ```
 
 The output will include details such as execution time, throughput, and clock cycles per step:
@@ -184,7 +184,7 @@ cargo-zisk run --release -i build/input.bin -x
 Or
 
 ```bash
-ziskemu -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -x
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -x
 ```
 
 The output will include details such as cost definitions, total cost, register reads/writes, opcode statistics, etc:
@@ -229,7 +229,7 @@ bd13089b
 Before generating a proof (or verifying the constraints), you need to generate the program setup files. This must be done the first time after building the program ELF file, or any time it changes:
 
 ```bash
-cargo-zisk rom-setup -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -k $HOME/.zisk/provingKey
+cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -k $HOME/.zisk/provingKey
 ```
 In this command:
 
@@ -248,7 +248,7 @@ cargo-zisk clean
 Before generating a proof (which can take some time), you can verify that all constraints are satisfied:
 
 ```bash
-cargo-zisk verify-constraints -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey
+cargo-zisk verify-constraints -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey
 ```
 In this command:
 
@@ -270,7 +270,7 @@ If everything is correct, you will see an output similar to:
 To generate a proof, run the following command:
 
 ```bash
-cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
+cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
 ```
 In this command:
 

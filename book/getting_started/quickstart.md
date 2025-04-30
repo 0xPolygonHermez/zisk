@@ -69,14 +69,14 @@ The next step is to build the program using the `cargo-zisk` command to generate
 cargo-zisk build --release
 ```
 
-This command builds the program using the `riscv64ima_polygon_ziskos` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/riscv64ima-polygon-ziskos-elf/release` directory.
+This command builds the program using the `zkvm` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/riscv64ima-zisk-zkvm-elf/release` directory.
 
 ## Execute
 
 Before generating a proof, you can test the program using the ZisK emulator to ensure its correctness. Specify the ELF file (using the `-e` or `--elf flag`) and the input file `input.bin` (using the `-i` or `--inputs` flag):
 
 ```bash
-ziskemu -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin
 ```
 
 The output will be:
@@ -102,7 +102,7 @@ cargo-zisk run --release -i build/input.bin
 Before generating a proof, you need to generate the program setup files. Execute:
 
 ```bash
-cargo-zisk rom-setup -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher
+cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher
 ```
 
 Once the program setup is complete, you can generate and verify a proof using the `cargo-zisk prove` command by providing the ELF file (with the `-e` or `--elf` flag) and the input file (with the `-i` or `--input` flag).
@@ -110,7 +110,7 @@ Once the program setup is complete, you can generate and verify a proof using th
 To generate and verify a proof for the previously built ELF and input files, execute:
 
 ```bash
-cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -o proof -a -y
+cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -o proof -a -y
 ```
 
 This command generates the proof in the `./proof` directory. If everything goes well, you will see a message similar to:

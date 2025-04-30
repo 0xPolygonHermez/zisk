@@ -60,7 +60,7 @@ cargo-zisk run --release --sim
 
 - Ziskemu execution:
 ```bash
-ziskemu -i build/input.bin -x -e target/riscv64ima-polygon-ziskos-elf/release/hello_world
+ziskemu -i build/input.bin -x -e target/riscv64ima-zisk-zkvm-elf/release/hello_world
 ```
 
 ### Updating the Toolchain
@@ -83,7 +83,7 @@ cp ~/.cargo/bin/ziskemu ~/.zisk/bin/
 Run the emulator with:
 
 ```bash
-ziskemu -i build/input.bin -x -e target/riscv64ima-polygon-ziskos-elf/debug/hello_world
+ziskemu -i build/input.bin -x -e target/riscv64ima-zisk-zkvm-elf/debug/hello_world
 ```
 
 ### Easy Input Update for 64-bit Values
@@ -190,7 +190,7 @@ cargo-zisk build --release --features distributed
 Then the execution command will be:
 
 ```bash
-mpirun --bind-to none -np <number_processes> -x OMP_NUM_THREADS=<number_of_threads_per_process> target/release/cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
+mpirun --bind-to none -np <number_processes> -x OMP_NUM_THREADS=<number_of_threads_per_process> target/release/cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
 ```
 ### Verify the Proof
 ```bash
