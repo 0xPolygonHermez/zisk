@@ -20,10 +20,25 @@ pub struct SortedBox {
 
 impl MemCountersCursor {
     pub fn new(counters: Arc<Vec<(ChunkId, &MemCounters)>>, addr_index: usize) -> Self {
+        let t_start = std::time::Instant::now();
         let counters_count = counters.len();
         let initial_sorted_boxes = Self::prepare(counters, addr_index);
-        let sorted_boxes = Self::merge_sorted_boxes(&initial_sorted_boxes, 4);
-        Self { counters_count, cursor_index: 0, cursor_count: sorted_boxes.len(), sorted_boxes }
+        let t_prepare = std::time::Instant::now();
+        let sorted_boxes = Self::merge_sorted_boxes(&initial_sorted_boxes, 16);
+        let cursor = Self {
+            counters_count,
+            cursor_index: 0,
+            cursor_count: sorted_boxes.len(),
+            sorted_boxes,
+        };
+        let elapsed = std::time::Instant::now() - t_start;
+        let elapsed_prepare = t_prepare - t_start;
+        println!(
+            "MemCountersCursor::new() elapsed: {} ms prepare: {} ms",
+            elapsed.as_millis(),
+            elapsed_prepare.as_millis()
+        );
+        cursor
     }
     #[inline(always)]
     pub fn init(&mut self) {
@@ -48,7 +63,7 @@ impl MemCountersCursor {
         counters: Arc<Vec<(ChunkId, &MemCounters)>>,
         addr_index: usize,
     ) -> Vec<Vec<SortedBox>> {
-        let pool = ThreadPoolBuilder::new().num_threads(4).build().unwrap();
+        let pool = ThreadPoolBuilder::new().num_threads(16).build().unwrap();
         pool.install(|| {
             counters
                 .par_iter()

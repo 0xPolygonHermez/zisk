@@ -7,6 +7,10 @@ keywords = { workspace = true }
 repository = { workspace = true }
 categories = { workspace = true }
 
+[[bin]]
+name = "mem_sim"
+path = "src/mem_sim.rs"
+
 [dependencies]
 sm-common = { path = "../common" }
 zisk-core = { path = "../../core" }

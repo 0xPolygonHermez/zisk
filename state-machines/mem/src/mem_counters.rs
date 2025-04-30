@@ -1,8 +1,14 @@
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{Read, Write},
+    slice,
+};
+use zisk_common::ChunkId;
 
 use crate::MemHelpers;
-use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
+use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_DATA_SIZE, MEM_BUS_ID};
 use sm_common::Metrics;
 use std::fmt;
 
@@ -20,6 +26,7 @@ pub struct MemCounters {
     pub addr_sorted: [Vec<(u32, u32)>; 3],
     pub mem_align: Vec<u8>,
     pub mem_align_rows: u32,
+    pub file: Option<File>,
 }
 
 impl fmt::Debug for MemCounters {
@@ -50,6 +57,7 @@ impl MemCounters {
             addr_sorted: [Vec::new(), Vec::new(), Vec::new()],
             mem_align: Vec::new(),
             mem_align_rows: 0,
+            file: None,
             #[cfg(feature = "debug_mem")]
             debug: MemDebug::new(),
         }
@@ -96,6 +104,42 @@ impl MemCounters {
             self.mem_align_rows += mem_align_op_rows;
         }
     }
+    pub fn save_to_file(&mut self, chunk_id: ChunkId, data: &[u64]) {
+        if self.file.is_none() {
+            self.file = Some(File::create(format!("tmp/bus_data/mem_{}.bin", chunk_id)).unwrap());
+        }
+        let bytes = unsafe {
+            slice::from_raw_parts(data.as_ptr() as *const u8, MEM_BUS_DATA_SIZE * size_of::<u64>())
+        };
+        self.file.as_mut().unwrap().write_all(bytes).unwrap();
+    }
+    pub fn load_from_file(
+        chunk_id: ChunkId,
+    ) -> Result<Vec<[u64; MEM_BUS_DATA_SIZE]>, std::io::Error> {
+        let mut file = File::open(format!("tmp/bus_data/mem_{}.bin", chunk_id))?;
+        const BUS_DATA_BYTES: usize = MEM_BUS_DATA_SIZE * size_of::<u64>();
+        let count = file.metadata().unwrap().len() as usize / BUS_DATA_BYTES;
+        let mut buffer = [0u8; BUS_DATA_BYTES];
+        let mut data: Vec<[u64; MEM_BUS_DATA_SIZE]> = Vec::new();
+        let mut counters: Vec<MemCounters> = Vec::new();
+        for _ in 0..count {
+            file.read_exact(&mut buffer)?;
+            let values = unsafe {
+                std::mem::transmute::<
+                    [u8; MEM_BUS_DATA_SIZE * size_of::<u64>()],
+                    [u64; MEM_BUS_DATA_SIZE],
+                >(buffer)
+            };
+            counters.push(MemCounters::new());
+            data.push(values);
+        }
+        Ok(data)
+    }
+    pub fn execute_from_vector(&mut self, data_bus: &Vec<[u64; MEM_BUS_DATA_SIZE]>) {
+        for data in data_bus {
+            self.mem_measure(data);
+        }
+    }
 }
 
 impl Metrics for MemCounters {
@@ -118,6 +162,8 @@ impl BusDevice<u64> for MemCounters {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(bus_id == &MEM_BUS_ID);
 
+        let chunk_id = MemHelpers::mem_step_to_chunk(MemBusData::get_step(data));
+        self.save_to_file(chunk_id, data);
         self.measure(data);
 
         None

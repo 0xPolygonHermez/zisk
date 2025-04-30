@@ -51,6 +51,9 @@ pub struct MemModulePlanner {
     reference_skip: u32,
     cursor: MemCountersCursor,
     intermediate_extra_rows: u64,
+    intermediate_count: u64,
+    intermediate_max: u64,
+    intermediate_max_count: u64,
     intermediate_rows: u64,
 }
 
@@ -84,6 +87,9 @@ impl<'a> MemModulePlanner {
             cursor: MemCountersCursor::new(counters, config.addr_index),
             intermediate_extra_rows: 0,
             intermediate_rows: 0,
+            intermediate_count: 0,
+            intermediate_max: 0,
+            intermediate_max_count: 0,
         }
     }
     pub fn module_plan(&mut self) {
@@ -99,14 +105,17 @@ impl<'a> MemModulePlanner {
             self.add_to_current_instance(chunk_id, addr, count);
         }
         self.close_last_segment();
-        log::info!(
-            "MemPlan : ··· Intermediate rows[{}:{}] 0x{:X} => ({},{})",
-            self.config.airgroup_id,
-            self.config.air_id,
-            self.config.from_addr * 8,
-            self.intermediate_rows,
-            self.intermediate_extra_rows
-        );
+        // log::info!(
+        //     "MemPlan : ··· Intermediate rows[{}:{}] 0x{:X} => {} {} {} {} {} (rows,#,extra,max,#max)",
+        //     self.config.airgroup_id,
+        //     self.config.air_id,
+        //     self.config.from_addr * 8,
+        //     self.intermediate_rows,
+        //     self.intermediate_count,
+        //     self.intermediate_extra_rows,
+        //     self.intermediate_max,
+        //     self.intermediate_max_count
+        // );
     }
     fn close_last_segment(&mut self) {
         if self.rows_available < self.config.rows {
@@ -335,6 +344,13 @@ impl<'a> MemModulePlanner {
             self.add_intermediate_rows(to_addr, 1);
         }
         self.intermediate_rows += count as u64;
+        self.intermediate_count += 1;
+        if count as u64 > self.intermediate_max {
+            self.intermediate_max_count = 1;
+            self.intermediate_max = count as u64;
+        } else if count as u64 == self.intermediate_max {
+            self.intermediate_max_count += 1;
+        }
     }
     fn add_intermediates(&mut self, addr: u32) -> u32 {
         if self.last_addr != addr {
@@ -358,7 +374,7 @@ impl<'a> MemModulePlanner {
                 let distance = MemHelpers::max_distance_between_chunks(last_chunk, chunk);
                 intermediate_rows = (distance - 1) / STEP_MEMORY_MAX_DIFF;
                 if intermediate_rows == 0 {
-                    self.intermediate_extra_rows += 1;
+                    // self.intermediate_extra_rows += 1;
                     intermediate_rows = 1;
                 }
                 // let segment_id = self.segments.len();
@@ -379,7 +395,14 @@ impl<'a> MemModulePlanner {
                 //     );
                 // }
                 self.add_intermediate_rows(addr, intermediate_rows as u32);
-                self.intermediate_rows += intermediate_rows;
+                // self.intermediate_rows += intermediate_rows;
+                // self.intermediate_count += 1;
+                // if intermediate_rows > self.intermediate_max {
+                //     self.intermediate_max_count = 1;
+                //     self.intermediate_max = intermediate_rows;
+                // } else if intermediate_rows == self.intermediate_max {
+                //     self.intermediate_max_count += 1;
+                // }
             }
         }
         intermediate_rows as u32
