@@ -69,7 +69,7 @@ pub trait BusDevice<D>: Any + Send {
 ///   trait.
 pub struct DataBus<D, BD: BusDevice<D>> {
     /// List of devices connected to the bus.
-    pub devices: Vec<Box<BD>>,
+    pub devices: Vec<BD>,
 
     /// Mapping from `BusId` to indices of devices listening to that ID.
     devices_bus_id_map: Vec<Vec<usize>>,
@@ -100,7 +100,7 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// # Arguments
     /// * `bus_ids` - A vector of `BusId` values the device subscribes to.
     /// * `bus_device` - The device to be added to the bus.
-    pub fn connect_device(&mut self, bus_ids: Vec<BusId>, bus_device: Box<BD>) {
+    pub fn connect_device(&mut self, bus_ids: Vec<BusId>, bus_device: BD) {
         self.devices.push(bus_device);
         let device_idx = self.devices.len() - 1;
 
@@ -151,7 +151,7 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// # Returns
     /// An optional `Box<BD>` representing the detached device, or `None` if no devices are
     /// connected.
-    pub fn detach_first_device(&mut self) -> Option<Box<BD>> {
+    pub fn detach_first_device(&mut self) -> Option<BD> {
         self.devices.pop()
     }
 
@@ -159,7 +159,7 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     ///
     /// # Returns
     /// A vector of `Box<BD>` representing all detached devices.
-    pub fn detach_devices(&mut self) -> Vec<Box<BD>> {
+    pub fn detach_devices(&mut self) -> Vec<BD> {
         std::mem::take(&mut self.devices)
     }
 }
