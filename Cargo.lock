@@ -4395,6 +4395,7 @@ dependencies = [
  "pil-std-lib",
  "precomp-arith-eq",
  "precomp-keccakf",
+ "precomp-sha256f",
  "proofman-common",
  "proofman-macros",
  "proofman-util",

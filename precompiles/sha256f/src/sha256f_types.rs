@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-/// Connections for the Keccakf's circuit representation
+/// Gates for the Sha256f's circuit representation
 #[derive(Deserialize, Debug)]
 pub struct Gate {
     #[serde(rename = "type")]
@@ -17,48 +17,44 @@ pub enum GateOp {
     add,
 }
 
-/// Script for the Keccakf's circuit representation
+/// Script for the Sha256f's circuit representation
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
 pub struct Script {
-    pub xors: usize,
-    pub andps: usize,
-    #[serde(rename = "maxRef")]
-    pub maxref: usize,
     pub program: Vec<ProgramLine>,
+    pub sums: Sums,
+    pub total: usize,
 }
 
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
 pub struct ProgramLine {
-    pub a: ValueType,
-    pub b: ValueType,
+    pub in1: InputType,
+    pub in2: InputType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub in3: Option<InputType>,
     pub op: String,
     #[serde(rename = "ref")]
     pub ref_: usize,
 }
 
 #[derive(Deserialize, Debug)]
-#[serde(untagged)]
+#[serde(tag = "type")]
 #[allow(dead_code)]
-pub enum ValueType {
-    Input(InputData),
-    Wired(WiredData),
+pub enum InputType {
+    #[serde(rename = "input")]
+    Input { bit: usize, wire: usize },
+    #[serde(rename = "inputState")]
+    InputState { bit: usize, wire: usize },
+    #[serde(rename = "wired")]
+    Wired { gate: usize, pin: String, wire: usize },
 }
 
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
-pub struct InputData {
-    pub bit: usize,
-    #[serde(rename = "type")]
-    type_: String,
-}
-
-#[derive(Deserialize, Debug)]
-#[allow(dead_code)]
-pub struct WiredData {
-    pub gate: usize,
-    pub pin: String,
-    #[serde(rename = "type")]
-    type_: String,
+pub struct Sums {
+    xor: usize,
+    add: usize,
+    ch: usize,
+    maj: usize,
 }

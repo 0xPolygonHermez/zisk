@@ -11,7 +11,7 @@ use sha256_input::Sha256Input;
 use sha256f::sha256f_internal;
 
 // Initial hash values (first 32 bits of fractional parts of square roots of first 8 primes)
-const INITIAL_HASH_STATE: [u32; 8] = [
+const SHA256_INITIAL_HASH_STATE: [u32; 8] = [
     0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
 ];
 
@@ -43,7 +43,7 @@ pub fn sha256(input: &[u8], output: &mut [u8; 32]) {
 
     // Copy the initial hash state bits into the state
     for i in 0..8 {
-        let bits = u32_to_bits(INITIAL_HASH_STATE[i]);
+        let bits = u32_to_bits(SHA256_INITIAL_HASH_STATE[i]);
         for j in 0..32 {
             let group = (i * 32 + j) as u64 / SHA256F_GATE_CONFIG.sin_ref_group_by;
             let group_pos = (i * 32 + j) as u64 % SHA256F_GATE_CONFIG.sin_ref_group_by;
@@ -143,7 +143,7 @@ pub fn sha256f_topology() -> GateState {
 
 #[cfg(test)]
 mod tests {
-    use super::{sha256, sha256f, INITIAL_HASH_STATE};
+    use super::{sha256, sha256f, SHA256_INITIAL_HASH_STATE};
 
     #[test]
     fn test_empty_string() {
@@ -231,8 +231,8 @@ mod tests {
     fn test_empty_string_f() {
         let mut state = [0u64; 4];
         for i in 0..4 {
-            let lo = INITIAL_HASH_STATE[2 * i] as u64;
-            let hi = INITIAL_HASH_STATE[2 * i + 1] as u64;
+            let lo = SHA256_INITIAL_HASH_STATE[2 * i] as u64;
+            let hi = SHA256_INITIAL_HASH_STATE[2 * i + 1] as u64;
             state[i] = (hi << 32) | lo;
         }
 
@@ -250,8 +250,8 @@ mod tests {
     fn test_one_block_message_f() {
         let mut state = [0u64; 4];
         for i in 0..4 {
-            let lo = INITIAL_HASH_STATE[2 * i] as u64;
-            let hi = INITIAL_HASH_STATE[2 * i + 1] as u64;
+            let lo = SHA256_INITIAL_HASH_STATE[2 * i] as u64;
+            let hi = SHA256_INITIAL_HASH_STATE[2 * i + 1] as u64;
             state[i] = (hi << 32) | lo;
         }
 

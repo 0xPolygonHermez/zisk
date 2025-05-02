@@ -9,6 +9,7 @@
 
 #![allow(unused)]
 
+use precompiles_helpers::sha256f;
 use ziskos::fcall_proxy;
 
 use std::{
@@ -45,6 +46,7 @@ pub enum OpType {
     Binary,
     BinaryE,
     Keccak,
+    Sha256,
     PubOut,
     ArithEq,
     Fcall,
@@ -58,6 +60,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::Binary => ZiskOperationType::Binary,
             OpType::BinaryE => ZiskOperationType::BinaryE,
             OpType::Keccak => ZiskOperationType::Keccak,
+            OpType::Sha256 => ZiskOperationType::Sha256,
             OpType::PubOut => ZiskOperationType::PubOut,
             OpType::ArithEq => ZiskOperationType::ArithEq,
             OpType::Fcall => ZiskOperationType::Fcall,
@@ -75,6 +78,7 @@ impl Display for OpType {
             Self::Binary => write!(f, "b"),
             Self::BinaryE => write!(f, "BinaryE"),
             Self::Keccak => write!(f, "Keccak"),
+            Self::Sha256 => write!(f, "Sha256"),
             Self::PubOut => write!(f, "PubOut"),
             Self::ArithEq => write!(f, "Arith256"),
             Self::Fcall => write!(f, "Fcall"),
@@ -94,6 +98,7 @@ impl FromStr for OpType {
             "b" => Ok(Self::Binary),
             "be" => Ok(Self::BinaryE),
             "k" => Ok(Self::Keccak),
+            "s" => Ok(Self::Sha256),
             "aeq" => Ok(Self::ArithEq),
             "fcall" => Ok(Self::Fcall),
             _ => Err(InvalidOpTypeError),
@@ -264,6 +269,7 @@ const BINARY_E_COST: u64 = 54;
 const ARITHA32_COST: u64 = 95;
 const ARITHAM32_COST: u64 = 95;
 const KECCAK_COST: u64 = 145000;
+const SHA256_COST: u64 = 0; // TODO: To be decide
 const ARITH_EQ_COST: u64 = 1200;
 const FCALL_COST: u64 = INTERNAL_COST;
 
@@ -331,6 +337,7 @@ define_ops! {
     (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xf6, 0, opc_fcall_param, op_fcall_param),
     (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, opc_fcall, op_fcall),
     (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, opc_fcall_get, op_fcall_get),
+    (Sha256, "sha256", Sha256, SHA256_COST, 0xf9, 96, opc_sha256, op_sha256),
 }
 
 /* INTERNAL operations */
@@ -1178,6 +1185,97 @@ pub fn opc_keccak(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn op_keccak(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_keccak() is not implemented");
+}
+
+/// Performs a Sha256-f hash over a 256-bits input state and 512-bits hash state stored in memory at the address
+/// specified by register A0, and stores the output state in the same memory address
+#[inline(always)]
+pub fn opc_sha256(ctx: &mut InstContext) {
+    // Get address from b (a = step)
+    let address = ctx.b;
+    if address & 0x7 != 0 {
+        panic!("opc_sha256() found address not aligned to 8 bytes");
+    }
+
+    // Allocate room for 12 u64 = 96 bytes = 768 bits
+    const WORDS: usize = 12;
+    let mut data = [0u64; WORDS];
+
+    // Get input data from memory or from the precompiled context
+    match ctx.emulation_mode {
+        EmulationMode::Mem => {
+            // Read data from the memory address
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = ctx.mem.read(address + (8 * i as u64), 8);
+            }
+        }
+        EmulationMode::GenerateMemReads => {
+            // Read data from the memory address
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = ctx.mem.read(address + (8 * i as u64), 8);
+            }
+
+            // Copy data to the precompiled context
+            ctx.precompiled.input_data.clear();
+            for (i, d) in data.iter_mut().enumerate() {
+                ctx.precompiled.input_data.push(*d);
+            }
+            // Write the input data address to the precompiled context
+            // ctx.precompiled.input_data_address = address;
+        }
+        EmulationMode::ConsumeMemReads => {
+            // Check input data has the expected length
+            if ctx.precompiled.input_data.len() != WORDS {
+                panic!(
+                    "opc_sha256() found ctx.precompiled.input_data.len={} != {}",
+                    ctx.precompiled.input_data.len(),
+                    WORDS
+                );
+            }
+            // Read data from the precompiled context
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = ctx.precompiled.input_data[i];
+            }
+            // Write the input data address to the precompiled context
+            // ctx.precompiled.input_data_address = address;
+        }
+    }
+
+    // Call sha256f
+    let (state_slice, input_slice) = data.split_at_mut(4);
+    let state: &mut [u64; 4] = state_slice.try_into().unwrap();
+    let input: &[u64; 8] = input_slice[..8].try_into().unwrap();
+    sha256f(state, &input, false);
+
+    // Write data to the memory address
+    for (i, d) in data.iter().enumerate() {
+        ctx.mem.write(address + (8 * i as u64), *d, 8);
+    }
+
+    // Set input data to the precompiled context
+    match ctx.emulation_mode {
+        EmulationMode::Mem => {}
+        EmulationMode::GenerateMemReads => {
+            // Write data to the precompiled context
+            ctx.precompiled.output_data.clear();
+            for (i, d) in data.iter_mut().enumerate() {
+                ctx.precompiled.output_data.push(*d);
+            }
+            // Write the input data address to the precompiled context
+            // ctx.precompiled.output_data_address = address;
+        }
+        EmulationMode::ConsumeMemReads => {}
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Sha256 can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_sha256(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_sha256() is not implemented");
 }
 
 #[inline(always)]
