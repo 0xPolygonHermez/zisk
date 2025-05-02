@@ -19,7 +19,7 @@
 //! By structuring these phases, the `ZiskExecutor` ensures high-performance execution while
 //! maintaining clarity and modularity in the computation process.
 
-use asm_runner::AsmRunnerMT;
+use asm_runner::{AsmRunnerMT, Task, TaskFactory};
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{ProofCtx, SetupCtx};
@@ -40,6 +40,7 @@ use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
 
 use std::{
     collections::HashMap,
+    fmt::Debug,
     fs,
     path::PathBuf,
     sync::{Arc, Mutex, RwLock},
@@ -55,6 +56,13 @@ type NestedDeviceMetricsList = Vec<DeviceMetricsList>;
 #[derive(Debug, Default, Clone)]
 pub struct ZiskExecutionResult {
     pub executed_steps: u64,
+}
+
+#[allow(dead_code)]
+enum MinimalTraceExecutionMode {
+    Emulator,
+    Asm,
+    AsmWithCounter,
 }
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
@@ -84,6 +92,9 @@ pub struct ZiskExecutor<F: PrimeField64> {
     std: Arc<Std<F>>,
 
     execution_result: Mutex<ZiskExecutionResult>,
+
+    main_count: Mutex<Option<DeviceMetricsList>>,
+    secn_count: Mutex<Option<NestedDeviceMetricsList>>,
 }
 
 impl<F: PrimeField64> ZiskExecutor<F> {
@@ -122,6 +133,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             secn_instances: RwLock::new(HashMap::new()),
             std,
             execution_result: Mutex::new(ZiskExecutionResult::default()),
+            main_count: Mutex::new(None),
+            secn_count: Mutex::new(None),
         }
     }
 
@@ -145,11 +158,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     ///
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
-    fn compute_minimal_traces(&self, num_threads: usize) -> MinimalTraces {
-        let min_traces = if self.asm_runner_path.is_none() {
-            self.run_emulator(num_threads)
-        } else {
-            self.run_assembly()
+    fn compute_minimal_traces(&self, mode: MinimalTraceExecutionMode) -> MinimalTraces {
+        let min_traces = match mode {
+            MinimalTraceExecutionMode::Emulator => self.run_emulator(Self::NUM_THREADS),
+            MinimalTraceExecutionMode::Asm => self.run_assembly(),
+            MinimalTraceExecutionMode::AsmWithCounter => self.run_and_count_assembly(),
         };
 
         // Store execute steps
@@ -178,6 +191,97 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             Self::MIN_TRACE_SIZE,
             asm_runner::AsmRunnerOptions::default(),
         ))
+    }
+
+    fn run_and_count_assembly(&self) -> MinimalTraces {
+        struct CounterTask<F> {
+            chunk_id: ChunkId,
+            emu_trace: EmuTrace,
+            data_bus: Mutex<Option<DataBus<PayloadType, BusDeviceMetricsWrapper>>>,
+            zisk_rom: Arc<ZiskRom>,
+            _phantom: std::marker::PhantomData<F>,
+        }
+
+        impl<F: PrimeField64> Task for CounterTask<F> {
+            type Output = (ChunkId, DataBus<u64, BusDeviceMetricsWrapper>);
+
+            fn execute(&self) -> Self::Output {
+                let mut data_bus = self.data_bus.lock().unwrap();
+                let mut data_bus = std::mem::take(&mut *data_bus).unwrap();
+
+                ZiskEmulator::process_emu_trace::<F, BusDeviceMetricsWrapper>(
+                    &self.zisk_rom,
+                    &self.emu_trace,
+                    &mut data_bus,
+                );
+
+                for device in &mut data_bus.devices {
+                    device.on_close();
+                }
+
+                (self.chunk_id, data_bus)
+            }
+        }
+
+        impl<F> Drop for CounterTask<F> {
+            fn drop(&mut self) {
+                std::mem::forget(std::mem::take(&mut self.emu_trace.mem_reads));
+            }
+        }
+
+        let task_factory: TaskFactory<CounterTask<F>> =
+            Box::new(|chunk_id: ChunkId, emu_trace: EmuTrace| CounterTask {
+                chunk_id,
+                emu_trace,
+                data_bus: Mutex::new(Some(self.get_data_bus_counters())),
+                zisk_rom: self.zisk_rom.clone(),
+                _phantom: std::marker::PhantomData,
+            });
+
+        let (asm_runner_mt, mut data_buses) = AsmRunnerMT::run_and_count(
+            self.asm_runner_path.as_ref().unwrap(),
+            self.input_data_path.as_ref().unwrap(),
+            Self::MAX_NUM_STEPS,
+            Self::MIN_TRACE_SIZE,
+            asm_runner::AsmRunnerOptions::default(),
+            task_factory,
+        );
+
+        data_buses.sort_by_key(|(chunk_id, _)| chunk_id.0);
+
+        let mut main_count = Vec::with_capacity(data_buses.len());
+        let mut secn_count = Vec::with_capacity(data_buses.len());
+
+        for (chunk_id, data_bus) in data_buses {
+            let databus_counters = self.close_data_bus_counters(data_bus, false);
+
+            let mut secondary = Vec::new();
+
+            for (is_secondary, counter) in databus_counters {
+                if is_secondary {
+                    secondary.push((chunk_id, counter));
+                } else {
+                    main_count.push((chunk_id, counter));
+                }
+            }
+
+            secn_count.push(secondary);
+        }
+
+        // Group counters by chunk_id and counter type
+        let mut secn_vec_counters =
+            (0..secn_count[0].len()).map(|_| Vec::new()).collect::<Vec<_>>();
+
+        secn_count.into_iter().enumerate().for_each(|(_, counter_slice)| {
+            counter_slice.into_iter().enumerate().for_each(|(i, counter)| {
+                secn_vec_counters[i].push(counter);
+            });
+        });
+
+        self.main_count.lock().unwrap().replace(main_count);
+        self.secn_count.lock().unwrap().replace(secn_vec_counters);
+
+        MinimalTraces::AsmEmuTrace(asm_runner_mt)
     }
 
     fn run_emulator(&self, num_threads: usize) -> MinimalTraces {
@@ -279,7 +383,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
                 let (mut main, mut secondary) = (Vec::new(), Vec::new());
 
-                let databus_counters = self.close_data_bus_counters(data_bus);
+                let databus_counters = self.close_data_bus_counters(data_bus, true);
                 for (is_secondary, counter) in databus_counters {
                     if is_secondary {
                         secondary.push(counter);
@@ -525,18 +629,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let counter = MainSM::build_counter();
 
-        data_bus.connect_device(
-            counter.bus_id(),
-            Box::new(BusDeviceMetricsWrapper::new(counter, false)),
-        );
+        data_bus.connect_device(counter.bus_id(), BusDeviceMetricsWrapper::new(counter, false));
 
         self.secondary_sm.iter().for_each(|sm| {
             let counter = sm.build_counter();
 
-            data_bus.connect_device(
-                counter.bus_id(),
-                Box::new(BusDeviceMetricsWrapper::new(counter, true)),
-            );
+            data_bus.connect_device(counter.bus_id(), BusDeviceMetricsWrapper::new(counter, true));
         });
 
         data_bus
@@ -552,12 +650,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     fn close_data_bus_counters(
         &self,
         mut data_bus: DataBus<u64, BusDeviceMetricsWrapper>,
+        execute_on_close: bool,
     ) -> Vec<(bool, Box<dyn BusDeviceMetrics>)> {
         data_bus
             .detach_devices()
             .into_iter()
             .map(|mut device| {
-                device.on_close();
+                if execute_on_close {
+                    device.on_close();
+                }
                 (device.is_secondary, device.inner)
             })
             .collect::<Vec<_>>()
@@ -586,14 +687,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 let mut data_bus = DataBus::new();
 
                 if let Some(bus_device) = secn_instance.build_inputs_collector(ChunkId(chunk_id)) {
-                    let bus_device = Box::new(BusDeviceWrapper::new(bus_device));
+                    let bus_device = BusDeviceWrapper::new(bus_device);
                     data_bus.connect_device(bus_device.bus_id(), bus_device);
 
                     for sm in &self.secondary_sm {
                         if let Some(inputs_generator) = sm.build_inputs_generator() {
                             data_bus.connect_device(
                                 vec![OPERATION_BUS_ID],
-                                Box::new(BusDeviceWrapper::new(inputs_generator)),
+                                BusDeviceWrapper::new(inputs_generator),
                             );
                         }
                     }
@@ -618,7 +719,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     fn close_data_bus_collectors(
         &self,
         mut data_buses: Vec<Option<DataBus<u64, BusDeviceWrapper<u64>>>>,
-    ) -> Vec<(usize, Box<BusDeviceWrapper<u64>>)> {
+    ) -> Vec<(usize, BusDeviceWrapper<u64>)> {
         let mut collectors_by_instance = Vec::new();
         for (chunk_id, data_bus) in data_buses.iter_mut().enumerate() {
             if let Some(data_bus) = data_bus {
@@ -644,20 +745,33 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     fn execute(&self, pctx: Arc<ProofCtx<F>>) -> Vec<usize> {
         // Process the ROM to collect the Minimal Traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
-        let min_traces = self.compute_minimal_traces(Self::NUM_THREADS);
+        let min_traces_execution_mode = if self.asm_runner_path.is_none() {
+            MinimalTraceExecutionMode::Emulator
+        } else {
+            MinimalTraceExecutionMode::AsmWithCounter
+        };
+        let min_traces = self.compute_minimal_traces(min_traces_execution_mode);
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
-        timer_start_info!(COUNT_AND_PLAN);
+        timer_start_info!(COUNT);
         // Count the metrics for the Secondary SM instances
-        let (main_count, secn_count) = self.count(&min_traces);
+        let (main_count, secn_count) = if self.main_count.lock().unwrap().is_none() {
+            self.count(&min_traces)
+        } else {
+            let main_count = self.main_count.lock().unwrap().take().unwrap();
+            let secn_count = self.secn_count.lock().unwrap().take().unwrap();
+
+            (main_count, secn_count)
+        };
+        timer_stop_and_log_info!(COUNT);
 
         // Plan the main and secondary instances using the counted metrics
+        timer_start_info!(PLAN);
         let (mut main_planning, public_values) =
             MainPlanner::plan::<F>(&min_traces, main_count, Self::MIN_TRACE_SIZE);
 
         let mut secn_planning = self.plan_sec(secn_count);
-
-        timer_stop_and_log_info!(COUNT_AND_PLAN);
+        timer_stop_and_log_info!(PLAN);
 
         // Configure the instances
         self.configure_instances(&pctx, &secn_planning);
