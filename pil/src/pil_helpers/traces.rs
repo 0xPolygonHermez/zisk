@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "64cbd5a4b90888c36710e247b6cb00451670c4dcf0261bde2344a4039789bd67";
+pub const PILOUT_HASH: &str = "d14fb32dc71ac03f9659bd96b7662a464f36c20b20be8b097c4269d86664ddee";
 
 //AIRGROUP CONSTANTS
 
@@ -267,7 +267,7 @@ trace!(Sha256fFixed<F> {
 },  0, 19, 4194304 );
 
 trace!(Sha256fTrace<F> {
- free_in_a: [F; 9], free_in_b: [F; 9], free_in_c: [F; 9], free_in_d: [F; 9], step: F, addr: F, multiplicity: F, bit: [F; 2], val: [F; 2], is_val: F,
+ free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], free_in_d: [F; 8], step: F, addr: F, multiplicity: F, bit: [F; 2], val: [F; 2], is_val: F,
 },  0, 19, 4194304 );
 
 trace!(Sha256fTableFixed<F> {

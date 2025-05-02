@@ -61,7 +61,8 @@ airgroup Zisk {
     KeccakfTable(N: 2**21, chunks: 1, bits: KECCAKF_BITS, bits_reduced: KECCAKF_BITS);
 
     const int SHA256F_BITS = 7;
-    Sha256f(N: 2**22, RC: 2, RB: 32, bits_in_parallel: 2, chunks: 9, bits: SHA256F_BITS, operation_bus_id: OPERATION_BUS_ID);
+    // TODO: Explore how to fit the sha256f circuit with chunks = 9
+    Sha256f(N: 2**22, RC: 2, RB: 32, bits_in_parallel: 2, chunks: 8, bits: SHA256F_BITS, operation_bus_id: OPERATION_BUS_ID);
     Sha256fTable(N: 2**23, bits: SHA256F_BITS);
 
     // public inputs
