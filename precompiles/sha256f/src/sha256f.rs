@@ -1,11 +1,12 @@
 use core::panic;
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{fs, sync::Arc};
 
 use log::info;
 use p3_field::PrimeField64;
 
 use data_bus::{ExtOperationData, OperationBusData, OperationSha256Data, PayloadType};
 use precompiles_common::MemBusHelpers;
+use precompiles_helpers::sha256f;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{Sha256fFixed, Sha256fTrace, Sha256fTraceRow};
@@ -49,7 +50,7 @@ impl Sha256fSM {
     ///
     /// # Returns
     /// A new `Sha256fSM` instance.
-    pub fn new(sha256f_table_sm: Arc<Sha256fTableSM>, script_path: PathBuf) -> Arc<Self> {
+    pub fn new(sha256f_table_sm: Arc<Sha256fTableSM>) -> Arc<Self> {
         let script = fs::read_to_string("../zisk/precompiles/sha256f/src/sha256f_script.json")
             .expect("Failed to read keccakf_script.json");
         let script: Script =
@@ -57,13 +58,18 @@ impl Sha256fSM {
 
         // Get the circuit size
         let circuit_size = script.total;
-        // let circuit_ops = script.sums;
+        let circuit_ops_count = &script.sums;
 
         // Check that the script is valid
-        // assert!(
-        //     circuit_ops.xor + circuit_ops.ch + circuit_ops.maj + circuit_ops.add == circuit_size
-        // );
-        // assert!(script.program.len() == circuit_size);
+        assert!(
+            circuit_ops_count.xor
+                + circuit_ops_count.ch
+                + circuit_ops_count.maj
+                + circuit_ops_count.add
+                - 1
+                == circuit_size
+        );
+        assert!(script.program.len() == circuit_size);
 
         // Compute some useful values
         let num_available_circuits = (Sha256fTrace::<usize>::NUM_ROWS - 1) / circuit_size;
@@ -97,7 +103,7 @@ impl Sha256fSM {
         let mut inputs_bits: Vec<Sha256fInput> =
             vec![[0u64; INPUT_DATA_SIZE_BITS]; self.num_available_circuits];
 
-        // Process the inputs
+        // 1] Process the inputs
         let initial_offset = num_rows_constants;
         let input_offset = Self::BLOCKS_PER_CIRCUIT / BITS_IN_PARALLEL_SHA256F; // Length of the input data
         inputs.iter().enumerate().for_each(|(i, input)| {
@@ -107,8 +113,8 @@ impl Sha256fSM {
             let step_received = OperationBusData::get_a(&input_data);
             let addr_received = OperationBusData::get_b(&input_data);
 
-            // Get the raw sha256f input as 25 u64 values
-            let sha256f_input: [u64; 25] =
+            // Get the raw sha256f input as INPUT_DATA_SIZE_U64 u64 values
+            let sha256f_data: [u64; INPUT_DATA_SIZE_U64] =
                 OperationBusData::get_extra_data(&input_data).try_into().unwrap();
 
             let circuit = i / Self::NUM_SHA256F_PER_CIRCUIT;
@@ -120,7 +126,7 @@ impl Sha256fSM {
             trace[initial_pos].multiplicity = F::ONE; // The pair (step_received, addr_received) is unique each time, so its multiplicity is 1
 
             // Process the sha256f input
-            sha256f_input.iter().enumerate().for_each(|(j, &value)| {
+            sha256f_data.iter().enumerate().for_each(|(j, &value)| {
                 let chunk_offset = j * Self::RB_SIZE;
                 let pos = initial_pos + chunk_offset;
 
@@ -148,11 +154,12 @@ impl Sha256fSM {
             });
 
             // Apply the sha256f function and get the output
-            let mut sha256f_output = sha256f_input;
-            // sha256f(&mut sha256f_output);
+            let mut sha256f_state: [u64; 4] = sha256f_data[..4].try_into().unwrap();
+            let sha256f_input: [u64; 8] = sha256f_data[4..].try_into().unwrap();
+            sha256f(&mut sha256f_state, &sha256f_input, false);
 
             // Process the output
-            sha256f_output.iter().enumerate().for_each(|(j, &value)| {
+            sha256f_state.iter().enumerate().for_each(|(j, &value)| {
                 let chunk_offset = j * Self::RB_SIZE;
                 let pos = initial_pos + input_offset + chunk_offset;
 
@@ -173,7 +180,7 @@ impl Sha256fSM {
             });
 
             // At the end of the outputs, we set the next step and address for the constraints to be satisfied
-            let final_pos = initial_pos + input_offset + (sha256f_output.len() - 1) * Self::RB_SIZE;
+            let final_pos = initial_pos + input_offset + (sha256f_state.len() - 1) * Self::RB_SIZE;
             trace[final_pos + Self::RB_SIZE].step = trace[final_pos].step;
             trace[final_pos + Self::RB_SIZE].addr = trace[final_pos].addr
         });
@@ -181,8 +188,9 @@ impl Sha256fSM {
         // It the number of inputs is less than the available sha256fs, we need to fill the remaining inputs
         if num_inputs < self.num_available_sha256fs {
             // Compute the hash of zero
-            let mut zero_output: [u64; 25] = [0u64; 25];
-            // sha256f(&mut zero_output);
+            let mut zero_state = [0u64; 4];
+            let zero_input = [0u64; 8];
+            sha256f(&mut zero_state, &zero_input, false);
 
             // If the number of inputs is not a multiple of NUM_SHA256F_PER_CIRCUIT,
             // we fill the last processed circuit
@@ -205,7 +213,7 @@ impl Sha256fSM {
 
                 let initial_pos = initial_offset + circuit_offset;
                 // Since the new bits are all zero, we have to set the hash of 0 as the respective output
-                zero_output.iter().enumerate().for_each(|(j, &value)| {
+                zero_state.iter().enumerate().for_each(|(j, &value)| {
                     let chunk_offset = j * Self::RB_SIZE;
                     let pos = initial_pos + input_offset + chunk_offset;
                     for k in 0..64 {
@@ -222,7 +230,7 @@ impl Sha256fSM {
 
             // Fill the remaining circuits with the hash of 0
             let next_circuit = num_inputs.div_ceil(Self::NUM_SHA256F_PER_CIRCUIT);
-            zero_output.iter().enumerate().for_each(|(j, &value)| {
+            zero_state.iter().enumerate().for_each(|(j, &value)| {
                 for s in next_circuit..self.num_available_circuits {
                     let circuit_offset = s * self.circuit_size;
                     let chunk_offset = j * Self::RB_SIZE;
@@ -244,144 +252,89 @@ impl Sha256fSM {
             });
         }
 
-        // Set the values of free_in_a, free_in_b, free_in_c using the script
-        let script = self.script.clone();
+        // 2] Set the values of free_in_a, free_in_b, free_in_c and free_in_d using the script
+
+        // Divide input bits between state bits and hash input bits
+        let state_bits: Vec<[u64; STATE_SIZE_BITS]> =
+            inputs_bits.iter().map(|bits| bits[..STATE_SIZE_BITS].try_into().unwrap()).collect();
+        let hash_input_bits: Vec<[u64; INPUT_SIZE_BITS]> =
+            inputs_bits.iter().map(|bits| bits[STATE_SIZE_BITS..].try_into().unwrap()).collect();
 
         let row0 = trace.buffer[0];
 
         let mut trace_slice = &mut trace.buffer[1..];
         let mut par_traces = Vec::new();
 
-        for _ in 0..inputs_bits.len() {
+        for _ in 0..self.num_available_circuits {
             let take = self.circuit_size.min(trace_slice.len());
             let (head, tail) = trace_slice.split_at_mut(take);
             par_traces.push(head);
             trace_slice = tail;
         }
 
+        let program = &self.script.program;
         par_traces.into_par_iter().enumerate().for_each(|(i, par_trace)| {
             let mut bit_input_pos = [0u64; INPUT_DATA_SIZE_BITS];
-            let mut bit_output_pos = [0u64; INPUT_DATA_SIZE_BITS];
+            let mut bit_output_pos = [0u64; OUTPUT_SIZE_BITS];
 
-            // for j in 0..self.circuit_size {
-            //     let line = &script.program[j];
-            //     let row = line.ref_ - 1;
+            for j in 0..self.circuit_size {
+                let line = &program[j];
+                let row = line.ref_ - 1;
 
-            //     let a = &line.a;
-            //     match a {
-            //         InputType::Input(a) => {
-            //             set_col(par_trace, |row| &mut row.free_in_a, row, inputs_bits[i][a.bit]);
-            //         }
-            //         InputType::Wired(b) => {
-            //             let gate = b.gate;
+                let a_val = get_val(par_trace, &row0, &state_bits, &hash_input_bits, i, &line.in1);
+                set_col(par_trace, |row| &mut row.free_in_a, row, a_val);
 
-            //             let pin = &b.pin;
-            //             if pin == "a" {
-            //                 let pinned_value = if gate > 0 {
-            //                     get_col(par_trace, |row| &row.free_in_a, gate - 1)
-            //                 } else {
-            //                     get_col_row(&row0, |row| &row.free_in_a)
-            //                 };
-            //                 set_col(par_trace, |row| &mut row.free_in_a, row, pinned_value);
-            //             } else if pin == "b" {
-            //                 let pinned_value = if gate > 0 {
-            //                     get_col(par_trace, |row| &row.free_in_b, gate - 1)
-            //                 } else {
-            //                     get_col_row(&row0, |row| &row.free_in_b)
-            //                 };
+                let b_val = get_val(par_trace, &row0, &state_bits, &hash_input_bits, i, &line.in2);
+                set_col(par_trace, |row| &mut row.free_in_b, row, b_val);
 
-            //                 set_col(par_trace, |row| &mut row.free_in_a, row, pinned_value);
-            //             } else if pin == "c" {
-            //                 let pinned_value = if gate > 0 {
-            //                     get_col(par_trace, |row| &row.free_in_c, gate - 1)
-            //                 } else {
-            //                     get_col_row(&row0, |row| &row.free_in_c)
-            //                 };
+                if let Some(in3) = &line.in3 {
+                    let c_val = get_val(par_trace, &row0, &state_bits, &hash_input_bits, i, in3);
+                    set_col(par_trace, |row| &mut row.free_in_c, row, c_val);
+                }
+                let c_val = get_col(par_trace, |row| &row.free_in_c, row);
 
-            //                 set_col(par_trace, |row| &mut row.free_in_a, row, pinned_value);
-            //             } else {
-            //                 panic!("Invalid pin");
-            //             }
-            //         }
-            //     }
+                let op = &line.op;
+                let d_val;
+                if op == "xor" {
+                    d_val = a_val ^ b_val ^ c_val;
+                } else if op == "ch" {
+                    d_val = (a_val & b_val) ^ ((a_val ^ MASK_BITS_A) & c_val);
+                } else if op == "maj" {
+                    d_val = (a_val & b_val) ^ (a_val & c_val) ^ (b_val & c_val);
+                } else if op == "add" {
+                    d_val = a_val ^ b_val ^ c_val;
+                    let carry = (a_val & b_val) | (a_val & c_val) | (b_val & c_val);
+                    set_col(par_trace, |row| &mut row.free_in_c, row + 1, carry);
+                } else {
+                    panic!("Invalid operation: {}", op);
+                }
 
-            //     let b = &line.b;
-            //     match b {
-            //         InputType::Input(b) => {
-            //             set_col(par_trace, |row| &mut row.free_in_b, row, inputs_bits[i][b.bit]);
-            //         }
-            //         InputType::Wired(b) => {
-            //             let gate = b.gate;
+                set_col(par_trace, |row| &mut row.free_in_d, row, d_val);
 
-            //             let pin = &b.pin;
-            //             if pin == "a" {
-            //                 let pinned_value = if gate > 0 {
-            //                     get_col(par_trace, |row| &row.free_in_a, gate - 1)
-            //                 } else {
-            //                     get_col_row(&row0, |row| &row.free_in_a)
-            //                 };
+                if (line.ref_ >= STATE_IN_FIRST_REF)
+                    && (line.ref_
+                        <= STATE_IN_FIRST_REF
+                            + (INPUT_DATA_SIZE_BITS - 2) * STATE_IN_REF_DISTANCE / 2
+                            + 1)
+                    && ((line.ref_ - STATE_IN_FIRST_REF) % STATE_IN_REF_DISTANCE < 2)
+                {
+                    let ref_pos = line.ref_ - STATE_IN_FIRST_REF;
+                    let bit_pos = ref_pos / STATE_IN_REF_DISTANCE * 2 + ref_pos % 2;
+                    bit_input_pos[bit_pos] = a_val;
+                }
 
-            //                 set_col(par_trace, |row| &mut row.free_in_b, row, pinned_value);
-            //             } else if pin == "b" {
-            //                 let pinned_value = if gate > 0 {
-            //                     get_col(par_trace, |row| &row.free_in_b, gate - 1)
-            //                 } else {
-            //                     get_col_row(&row0, |row| &row.free_in_b)
-            //                 };
-
-            //                 set_col(par_trace, |row| &mut row.free_in_b, row, pinned_value);
-            //             } else if pin == "c" {
-            //                 let pinned_value = if gate > 0 {
-            //                     get_col(par_trace, |row| &row.free_in_c, gate - 1)
-            //                 } else {
-            //                     get_col_row(&row0, |row| &row.free_in_c)
-            //                 };
-
-            //                 set_col(par_trace, |row| &mut row.free_in_b, row, pinned_value);
-            //             } else {
-            //                 panic!("Invalid pin");
-            //             }
-            //         }
-            //     }
-
-            //     let a_val = get_col(par_trace, |row| &row.free_in_a, row) & MASK_CHUNK_BITS_SHA256F;
-            //     let b_val = get_col(par_trace, |row| &row.free_in_b, row) & MASK_CHUNK_BITS_SHA256F;
-            //     let op = &line.op;
-            //     let c_val;
-            //     if op == "xor" {
-            //         c_val = a_val ^ b_val;
-            //     } else if op == "andp" {
-            //         c_val = (a_val ^ MASK_CHUNK_BITS_SHA256F) & b_val
-            //     } else {
-            //         panic!("Invalid operation");
-            //     }
-
-            //     set_col(par_trace, |row| &mut row.free_in_c, row, c_val);
-
-            //     if (line.ref_ >= STATE_IN_REF_0)
-            //         && (line.ref_
-            //             <= STATE_IN_REF_0
-            //                 + (INPUT_DATA_SIZE_BITS - 2) * STATE_IN_REF_DISTANCE / 2
-            //                 + 1)
-            //         && ((line.ref_ - STATE_IN_REF_0) % STATE_IN_REF_DISTANCE < 2)
-            //     {
-            //         let ref_pos = line.ref_ - STATE_IN_REF_0;
-            //         let bit_pos = ref_pos / STATE_IN_REF_DISTANCE * 2 + ref_pos % 2;
-            //         bit_input_pos[bit_pos] = a_val;
-            //     }
-
-            //     if (line.ref_ >= STATE_OUT_REF_0)
-            //         && (line.ref_
-            //             <= STATE_OUT_REF_0
-            //                 + (INPUT_DATA_SIZE_BITS - 2) * STATE_OUT_REF_DISTANCE / 2
-            //                 + 1)
-            //         && ((line.ref_ - STATE_OUT_REF_0) % STATE_OUT_REF_DISTANCE < 2)
-            //     {
-            //         let ref_pos = line.ref_ - STATE_OUT_REF_0;
-            //         let bit_pos = ref_pos / STATE_OUT_REF_DISTANCE * 2 + ref_pos % 2;
-            //         bit_output_pos[bit_pos] = a_val;
-            //     }
-            // }
+                if (line.ref_ >= STATE_OUT_FIRST_REF)
+                    && (line.ref_
+                        <= STATE_OUT_FIRST_REF
+                            + (INPUT_DATA_SIZE_BITS - 2) * STATE_OUT_REF_DISTANCE / 2
+                            + 1)
+                    && ((line.ref_ - STATE_OUT_FIRST_REF) % STATE_OUT_REF_DISTANCE < 2)
+                {
+                    let ref_pos = line.ref_ - STATE_OUT_FIRST_REF;
+                    let bit_pos = ref_pos / STATE_OUT_REF_DISTANCE * 2 + ref_pos % 2;
+                    bit_output_pos[bit_pos] = a_val;
+                }
+            }
 
             // Update the multiplicity table for the circuit
             for k in 0..self.circuit_size {
@@ -421,6 +374,51 @@ impl Sha256fSM {
             } else {
                 F::from_u64(new_bit << circuit_pos)
             };
+        }
+
+        fn get_val<F: PrimeField64>(
+            trace: &[Sha256fTraceRow<F>],
+            row0: &Sha256fTraceRow<F>,
+            state_bits: &Vec<[u64; STATE_SIZE_BITS]>,
+            hash_input_bits: &Vec<[u64; INPUT_SIZE_BITS]>,
+            circuit: usize,
+            gate_input: &InputType,
+        ) -> u64 {
+            match gate_input {
+                InputType::Wired { gate, pin, .. } => match pin.as_str() {
+                    "in1" => {
+                        if *gate > 0 {
+                            get_col(trace, |row| &row.free_in_a, *gate - 1)
+                        } else {
+                            get_col_row(&row0, |row| &row.free_in_a)
+                        }
+                    }
+                    "in2" => {
+                        if *gate > 0 {
+                            get_col(trace, |row| &row.free_in_b, *gate - 1)
+                        } else {
+                            get_col_row(&row0, |row| &row.free_in_b)
+                        }
+                    }
+                    "in3" => {
+                        if *gate > 0 {
+                            get_col(trace, |row| &row.free_in_c, *gate - 1)
+                        } else {
+                            get_col_row(&row0, |row| &row.free_in_c)
+                        }
+                    }
+                    "out" => {
+                        if *gate > 0 {
+                            get_col(trace, |row| &row.free_in_d, *gate - 1)
+                        } else {
+                            get_col_row(&row0, |row| &row.free_in_d)
+                        }
+                    }
+                    _ => panic!("Invalid pin: {}", pin),
+                },
+                InputType::Input { bit, .. } => hash_input_bits[circuit][*bit],
+                InputType::InputState { bit, .. } => state_bits[circuit][*bit],
+            }
         }
 
         fn set_col<F: PrimeField64>(
@@ -517,34 +515,35 @@ impl Sha256fSM {
             num_rows_needed as f64 / num_rows as f64 * 100.0
         );
 
-        // Set a = 0b00..00 and b = 0b11..11 at the first row
-        // Set, e.g., the operation to be an XOR and set c = 0b11..11 = b = a ^ b
+        // Set a = 0b00..00, b = 0b11..11 and c = 0b00..00 at the first row
+        // Set, e.g., the operation to be an XOR and set d = 0b11..11 = b = a ^ b ^ c
         let mut row: Sha256fTraceRow<F> = Default::default();
         let zeros = 0u64;
         let ones = MASK_BITS_SHA256F;
         let gate_op = fixed[0].GATE_OP.as_canonical_u64();
         // Sanity check
-        assert_eq!(gate_op, Sha256fTableGateOp::Xor as u64, "Invalid initial dummy gate operation");
+        assert_eq!(gate_op, Sha256fTableGateOp::Xor as u64, "Invalid first row gate operation");
         for i in 0..CHUNKS_SHA256F {
             row.free_in_a[i] = F::from_u64(zeros);
             row.free_in_b[i] = F::from_u64(ones);
             row.free_in_c[i] = F::from_u64(zeros);
             row.free_in_d[i] = F::from_u64(ones);
         }
+
+        // Assign the first row
+        sha256f_trace[0] = row;
+
         // Update the multiplicity table
         let table_row =
             Sha256fTableSM::calculate_table_row(&Sha256fTableGateOp::Xor, zeros, ones, zeros);
         self.sha256f_table_sm.update_input(table_row, CHUNKS_SHA256F as u64);
-
-        // Assign the single constant row
-        sha256f_trace[0] = row;
 
         // Fill the rest of the trace
         self.process_slice(&fixed, &mut sha256f_trace, num_rows_constants, &inputs);
         timer_stop_and_log_trace!(SHA256F_TRACE);
 
         timer_start_trace!(SHA256F_PADDING);
-        // A row with all zeros satisfies the constraints (since both XOR(0,0) and ANDP(0,0) are 0)
+        // A row with all zeros satisfies the constraints (assuming the operation to be XOR(0,0,0)=0)
         let padding_row: Sha256fTraceRow<F> = Default::default();
         for i in (num_rows_constants + self.circuit_size * self.num_available_circuits)..num_rows {
             let gate_op = fixed[i].GATE_OP.as_canonical_u64();
@@ -581,14 +580,14 @@ impl Sha256fSM {
             // On counter phase we don't need final values, we only need the
             // address and step
             // Compute the reads
-            for i in 0..25 {
+            for i in 0..INPUT_DATA_SIZE_U64 {
                 let new_addr = addr + 8 * i as u32;
                 let read = MemBusHelpers::mem_aligned_load(new_addr, step_main, 0);
                 mem_data.push(read.to_vec());
             }
 
             // Compute the writes
-            for i in 0..25 {
+            for i in 0..INPUT_DATA_SIZE_U64 {
                 let new_addr = addr + 8 * i as u32;
                 let write = MemBusHelpers::mem_aligned_write(new_addr, step_main, 0);
                 mem_data.push(write.to_vec());
@@ -596,23 +595,25 @@ impl Sha256fSM {
 
             return mem_data;
         }
-        // Get the raw sha256f input as 25 u64 values
-        let sha256f_input: [u64; 25] =
+
+        // Get the raw sha256f input as INPUT_DATA_SIZE_U64 u64 values
+        let sha256f_data: [u64; INPUT_DATA_SIZE_U64] =
             OperationBusData::get_extra_data(&input_data).try_into().unwrap();
 
-        // Apply the sha256f function and get the output
-        let mut sha256f_output = sha256f_input;
-        // sha256f(&mut sha256f_output);
-
         // Compute the reads
-        for (i, &input) in sha256f_input.iter().enumerate() {
+        for (i, &input) in sha256f_data.iter().enumerate() {
             let new_addr = addr + 8 * i as u32;
             let read = MemBusHelpers::mem_aligned_load(new_addr, step_main, input);
             mem_data.push(read.to_vec());
         }
 
+        // Apply the sha256f function and get the output
+        let mut sha256f_state: [u64; 4] = sha256f_data[..4].try_into().unwrap();
+        let sha256f_input: [u64; 8] = sha256f_data[4..].try_into().unwrap();
+        sha256f(&mut sha256f_state, &sha256f_input, false);
+
         // Compute the writes
-        for (i, &output) in sha256f_output.iter().enumerate() {
+        for (i, &output) in sha256f_state.iter().enumerate() {
             let new_addr = addr + 8 * i as u32;
             let write = MemBusHelpers::mem_aligned_write(new_addr, step_main, output);
             mem_data.push(write.to_vec());

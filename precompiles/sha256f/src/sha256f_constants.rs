@@ -3,6 +3,10 @@
 /// Generic Parameters
 pub const INPUT_DATA_SIZE_BITS: usize = 768;
 pub const INPUT_DATA_SIZE_BYTES: usize = INPUT_DATA_SIZE_BITS / 8; // 96
+pub const INPUT_DATA_SIZE_U64: usize = INPUT_DATA_SIZE_BITS / 64; // 12
+pub const STATE_SIZE_BITS: usize = 256;
+pub const INPUT_SIZE_BITS: usize = 512;
+pub const OUTPUT_SIZE_BITS: usize = 256;
 pub const RB: usize = 32;
 pub const P2_RB: u64 = 1 << RB;
 pub const MASK_RB: u64 = P2_RB - 1;
@@ -33,10 +37,10 @@ pub const MASK_BITS_B: u64 = P2_BITS_B - 1;
 pub const MASK_BITS_C: u64 = P2_BITS_C - 1;
 
 // /// Circuit parameters
-// pub const STATE_IN_REF_0: usize = 61;
-// pub const STATE_IN_REF_DISTANCE: usize = 60;
-// pub const STATE_OUT_REF_0: usize = 48_061; // 61 + 1600 * 30;
-// pub const STATE_OUT_REF_DISTANCE: usize = 60;
+pub const STATE_IN_FIRST_REF: usize = 64;
+pub const STATE_IN_REF_DISTANCE: usize = 63;
+pub const STATE_OUT_FIRST_REF: usize = 24_256; // 64 + 768 * 63 / 2
+pub const STATE_OUT_REF_DISTANCE: usize = 63;
 pub const XOR_GATE_OP: u8 = 0x00;
 pub const CH_GATE_OP: u8 = 0x01;
 pub const MAJ_GATE_OP: u8 = 0x02;

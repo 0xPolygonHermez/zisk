@@ -53,8 +53,8 @@ pub enum InputType {
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
 pub struct Sums {
-    xor: usize,
-    add: usize,
-    ch: usize,
-    maj: usize,
+    pub xor: usize,
+    pub add: usize,
+    pub ch: usize,
+    pub maj: usize,
 }

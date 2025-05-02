@@ -8,6 +8,7 @@ use executor::ZiskExecutor;
 use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
+use precomp_sha256f::Sha256fManager;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
@@ -74,6 +75,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         // Step 4: Initialize the precompiles state machines
         let keccakf_sm = KeccakfManager::new::<F>();
+        let sha256f_sm = Sha256fManager::new::<F>();
         let arith_eq_sm = ArithEqManager::new(std.clone());
 
         // Step 5: Create the executor and register the secondary state machines
@@ -92,6 +94,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         // Step 6: Register the precompiles state machines
         executor.register_sm(keccakf_sm);
+        executor.register_sm(sha256f_sm);
         executor.register_sm(arith_eq_sm);
 
         let executor = Arc::new(executor);
