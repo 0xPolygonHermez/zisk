@@ -14,7 +14,7 @@ const RC: [u32; 64] = [
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ];
 
-pub fn sha256f(gate_state: &RefCell<GateState>) {
+pub fn sha256f_internal(gate_state: &RefCell<GateState>) {
     #[cfg(debug_assertions)]
     gate_state.borrow().print_refs(&gate_state.borrow().sin_refs, "Before permutation");
 

@@ -85,3 +85,20 @@ pub fn bits_to_u32_msb(bits: &[u8; 32]) -> u32 {
     }
     value
 }
+
+/// Converts u64 to bits (LSB first)
+pub fn u64_to_bits(value: u64) -> [u8; 64] {
+    let mut bits = [0u8; 64];
+    for i in 0..64 {
+        bits[i] = ((value >> i) as u8) & 1;
+    }
+    bits
+}
+
+pub fn bits_to_u64(bits: &[u8; 64]) -> u64 {
+    let mut value = 0u64;
+    for i in (0..64).rev() {
+        value = (value << 1) | (bits[i] as u64);
+    }
+    value
+}

@@ -1,4 +1,6 @@
-use super::{bits_to_byte, print_bits, Gate, GateConfig, GateOperation, PinId, PinSource};
+use super::{
+    bits_to_byte, bits_to_u64, print_bits, Gate, GateConfig, GateOperation, PinId, PinSource,
+};
 
 #[derive(Debug)]
 pub struct GateState {
@@ -113,6 +115,23 @@ impl GateState {
                 bytes[j as usize] = self.gates[ref_idx as usize].pins[PinId::A].bit;
             }
             bits_to_byte(&bytes, &mut output[i as usize]);
+        }
+    }
+
+    pub fn get_output_u64(&self, output: &mut [u64]) {
+        assert!(self.gate_config.sout_ref_number >= 256);
+
+        for i in 0..4 {
+            let mut bytes = [0u8; 64];
+            for j in 0..64 {
+                let group = (i * 64 + j) / self.gate_config.sin_ref_group_by;
+                let group_pos = (i * 64 + j) % self.gate_config.sin_ref_group_by;
+                let ref_idx = self.gate_config.sin_first_ref
+                    + group * self.gate_config.sin_ref_distance
+                    + group_pos;
+                bytes[j as usize] = self.gates[ref_idx as usize].pins[PinId::A].bit;
+            }
+            output[i as usize] = bits_to_u64(&bytes);
         }
     }
 
@@ -416,7 +435,7 @@ impl GateState {
     pub fn print_refs(&self, refs: &[u64], name: &str) {
         // Collect bits safely
         let bits: Vec<u8> =
-            refs.iter().map(|&ref_idx| self.gates[ref_idx as usize].pins[PinId::D].bit).collect();
+            refs.iter().map(|&ref_idx| self.gates[ref_idx as usize].pins[PinId::A].bit).collect();
 
         // Print the bits
         print_bits(&bits, name);

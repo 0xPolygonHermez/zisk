@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use circuit::{u32_to_bits, GateConfig, GateState, PinId};
+use circuit::{u32_to_bits, u64_to_bits, GateConfig, GateState, PinId};
 
 mod sha256_constants;
 mod sha256_input;
@@ -8,9 +8,14 @@ mod sha256f;
 
 pub use sha256_constants::{SHA256_BLOCK_SIZE_BITS, SHA256_BLOCK_SIZE_BYTES};
 use sha256_input::Sha256Input;
-use sha256f::sha256f;
+use sha256f::sha256f_internal;
 
-// Keccak Configuration
+// Initial hash values (first 32 bits of fractional parts of square roots of first 8 primes)
+const INITIAL_HASH_STATE: [u32; 8] = [
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+];
+
+// Sha256 Configuration
 #[rustfmt::skip]
 pub static SHA256F_GATE_CONFIG: GateConfig = GateConfig::with_values(
     160480,
@@ -26,25 +31,15 @@ pub static SHA256F_GATE_CONFIG: GateConfig = GateConfig::with_values(
     63,
 );
 
-// Main Keccak function
+// Main Sha256 function
 // Input is a buffer of any length, including 0
 // Output is a 256 bits long buffer
-pub fn sha256(
-    input: &[u8],
-    output: &mut [u8; 32],
-    get_circuit_topology: bool,
-) -> Option<GateState> {
+pub fn sha256(input: &[u8], output: &mut [u8; 32]) {
     // Initialize the gate state
     let gate_state = RefCell::new(GateState::new(SHA256F_GATE_CONFIG.clone()));
 
     // Initialize the input and perform the padding
     let mut input = Sha256Input::new(input);
-
-    // Initial hash values (first 32 bits of fractional parts of square roots of first 8 primes)
-    const INITIAL_HASH_STATE: [u32; 8] = [
-        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
-        0x5be0cd19,
-    ];
 
     // Copy the initial hash state bits into the state
     for i in 0..8 {
@@ -78,43 +73,85 @@ pub fn sha256(
             }
         }
 
-        sha256f(&gate_state);
-
-        #[cfg(debug_assertions)]
-        gate_state.borrow().print_circuit_topology();
-
-        if get_circuit_topology {
-            // The sha256f circuit topology is completely known after a single execution
-            return Some(gate_state.into_inner());
-        }
+        sha256f_internal(&gate_state);
 
         gate_state.borrow_mut().copy_sout_to_sin_and_reset_refs();
     }
 
     gate_state.borrow().get_output(output);
-
-    return None;
 }
 
-// Get the circuit topology of the Keccak-f permutation
+pub fn sha256f(
+    state: &mut [u64; 4],
+    input: &[u64; 8],
+    get_circuit_topology: bool,
+) -> Option<GateState> {
+    // Initialize the gate state
+    let gate_state = RefCell::new(GateState::new(SHA256F_GATE_CONFIG.clone()));
+
+    // Copy the hash state bits into the state
+    for i in 0..4 {
+        let bits = u64_to_bits(state[i]);
+        for j in 0..64 {
+            let group = (i * 64 + j) as u64 / SHA256F_GATE_CONFIG.sin_ref_group_by;
+            let group_pos = (i * 64 + j) as u64 % SHA256F_GATE_CONFIG.sin_ref_group_by;
+            let ref_idx = SHA256F_GATE_CONFIG.sin_first_ref
+                + group * SHA256F_GATE_CONFIG.sin_ref_distance
+                + group_pos;
+            gate_state.borrow_mut().gates[ref_idx as usize].pins[PinId::A].bit = bits[j];
+        }
+    }
+
+    // Copy the input bits into the state
+    for i in 0..8 {
+        let bits = u64_to_bits(input[i]);
+        for j in 0..64 {
+            let group = (256 + i * 64 + j) as u64 / SHA256F_GATE_CONFIG.sin_ref_group_by;
+            let group_pos = (256 + i * 64 + j) as u64 % SHA256F_GATE_CONFIG.sin_ref_group_by;
+            let ref_idx = SHA256F_GATE_CONFIG.sin_first_ref
+                + group * SHA256F_GATE_CONFIG.sin_ref_distance
+                + group_pos;
+            gate_state.borrow_mut().gates[ref_idx as usize].pins[PinId::A].bit = bits[63 - j];
+        }
+    }
+
+    // Execute the sha256f function
+    sha256f_internal(&gate_state);
+
+    #[cfg(debug_assertions)]
+    gate_state.borrow().print_circuit_topology();
+
+    if get_circuit_topology {
+        // The sha256f circuit topology is completely known after a single execution
+        return Some(gate_state.into_inner());
+    }
+
+    gate_state.borrow_mut().copy_sout_to_sin_and_reset_refs();
+
+    gate_state.borrow().get_output_u64(state);
+
+    None
+}
+
+// Get the circuit topology of the Sha256-f permutation
 pub fn sha256f_topology() -> GateState {
-    // Hash any input and stop when a single sha256f has been computed
-    let input = b"";
-    let mut output = [0u8; 32];
-    sha256(input, &mut output, true).expect("Failed to get circuit topology")
+    // Hashf any input and get the circuit topology
+    let mut state = [0u64; 4];
+    let input = [0u64; 8];
+    sha256f(&mut state, &input, true).expect("Failed to get circuit topology")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::sha256;
+    use super::{sha256, sha256f, INITIAL_HASH_STATE};
 
     #[test]
     fn test_empty_string() {
         let input = b"";
         let mut output = [0u8; 32];
-        sha256(input, &mut output, false);
+        sha256(input, &mut output);
 
-        // Expected Keccak-256
+        // Expected Sha256
         let expected_hash: [u8; 32] = [
             0x42, 0xC4, 0xB0, 0xE3, // 0xE3B0C442
             0x14, 0x1C, 0xFC, 0x98, // 0x98FC1C14
@@ -132,9 +169,9 @@ mod tests {
     fn test_one_block_message() {
         let input = b"abc";
         let mut output = [0u8; 32];
-        sha256(input, &mut output, false);
+        sha256(input, &mut output);
 
-        // Expected Keccak-256
+        // Expected Sha256
         let expected_hash: [u8; 32] = [
             0xBF, 0x16, 0x78, 0xBA, // 0xBA7816BF
             0xEA, 0xCF, 0x01, 0x8F, // 0x8F01CFEA
@@ -152,9 +189,9 @@ mod tests {
     fn test_two_block_message() {
         let input = b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
         let mut output = [0u8; 32];
-        sha256(input, &mut output, false);
+        sha256(input, &mut output);
 
-        // Expected Keccak-256 hash
+        // Expected Sha256 hash
         let expected_hash: [u8; 32] = [
             0x61, 0x6A, 0x8D, 0x24, // 0x248D6A61
             0xB8, 0x38, 0x06, 0xD2, // 0xD20638B8
@@ -173,9 +210,9 @@ mod tests {
     fn test_sha256_long() {
         let input = b"The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog.The quick brown fox jumps over the lazy dog...";
         let mut output = [0u8; 32];
-        sha256(input, &mut output, false);
+        sha256(input, &mut output);
 
-        // Expected Keccak-256 hash
+        // Expected Sha256 hash
         let expected_hash: [u8; 32] = [
             0x46, 0xC7, 0x80, 0x8C, // 0x8C80C746
             0xA8, 0xB4, 0x52, 0x73, // 0x7352B4A8
@@ -188,5 +225,44 @@ mod tests {
         ];
 
         assert_eq!(output[..], expected_hash[..]);
+    }
+
+    #[test]
+    fn test_empty_string_f() {
+        let mut state = [0u64; 4];
+        for i in 0..4 {
+            let lo = INITIAL_HASH_STATE[2 * i] as u64;
+            let hi = INITIAL_HASH_STATE[2 * i + 1] as u64;
+            state[i] = (hi << 32) | lo;
+        }
+
+        let mut input = [0u64; 8];
+        input[0] = 0x0000_0001_0000_0000;
+        sha256f(&mut state, &input, false);
+
+        // Expected Sha256f
+        let expected_hash: [u64; 4] =
+            [0x98FC1C14E3B0C442, 0x996FB9249AFBF4C8, 0x649B934C27AE41E4, 0x7852B855A495991B];
+        assert_eq!(state[..], expected_hash[..]);
+    }
+
+    #[test]
+    fn test_one_block_message_f() {
+        let mut state = [0u64; 4];
+        for i in 0..4 {
+            let lo = INITIAL_HASH_STATE[2 * i] as u64;
+            let hi = INITIAL_HASH_STATE[2 * i + 1] as u64;
+            state[i] = (hi << 32) | lo;
+        }
+
+        let mut input = [0u64; 8];
+        input[0] = 0x01C6_4686_0000_0000;
+        input[7] = 0x0000_0000_1800_0000;
+        sha256f(&mut state, &input, false);
+
+        // Expected Sha256f
+        let expected_hash: [u64; 4] =
+            [0x8F01CFEABA7816BF, 0x5DAE2223414140DE, 0x96177A9CB00361A3, 0xF20015ADB410FF61];
+        assert_eq!(state[..], expected_hash[..]);
     }
 }
