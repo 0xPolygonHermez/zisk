@@ -89,7 +89,7 @@ impl<F: PrimeField> Instance<F> for RomInstance {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+        collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
     ) -> Option<AirInstance<F>> {
         if self.is_asm_execution() {
             // Case 1: Use ROM assembly output
