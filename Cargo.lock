@@ -261,6 +261,7 @@ version = "0.7.0"
 dependencies = [
  "clap",
  "libc",
+ "log",
  "named-sem",
  "rayon",
  "zisk-common",
