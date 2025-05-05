@@ -104,7 +104,7 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
 3. Copy the tools to `~/.zisk/bin` directory:
     ```bash
     mkdir -p $HOME/.zisk/bin
-    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so $HOME/.zisk/bin
+    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so precompiles/sha256f/src/sha256f_script.json $HOME/.zisk/bin
     ```
 
 4. Copy required files to support `cargo-zisk rom-setup` command:
@@ -186,16 +186,16 @@ Please note that the process can be long, taking approximately 2–3 hours depen
 
 6. Generate fixed data:
     ```bash
-    cargo run --release --bin keccakf_fixed_gen
+    cargo run --release --bin keccakf_fixed_gen && cargo run --release --bin sha256f_fixed_gen
     mkdir -p build
-    mv precompiles/keccakf/src/keccakf_fixed.bin build
+    mv precompiles/keccakf/src/keccakf_fixed.bin build && mv precompiles/sha256f/src/sha256f_fixed.bin build
     ```
 
-    These commands generates the `keccakf_fixed.bin` file in the `build` directory.
+    These commands generate the `keccakf_fixed.bin` and `sha256f_fixed.bin` files in the `build` directory.
 
 7. Generate setup data: (Note that this command may take 2–3 hours to complete):
     ```bash
-    node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -i ./build/keccakf_fixed.bin -r
+    node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -i ./build/keccakf_fixed.bin precompiles/sha256f/src/sha256f_fixed.bin -r
     ```
 
     This command generates the `provingKey` directory.

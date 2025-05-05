@@ -1,10 +1,10 @@
 //! This module defines constants for the Sha256 precompile.
 
 /// Generic Parameters
-pub const INPUT_DATA_SIZE_BITS: usize = 768;
-pub const INPUT_DATA_SIZE_U64: usize = INPUT_DATA_SIZE_BITS / 64; // 12
 pub const STATE_SIZE_BITS: usize = 256;
 pub const INPUT_SIZE_BITS: usize = 512;
+pub const INPUT_DATA_SIZE_BITS: usize = STATE_SIZE_BITS + INPUT_SIZE_BITS;
+pub const INPUT_DATA_SIZE_U64: usize = INPUT_DATA_SIZE_BITS / 64; // 12
 pub const OUTPUT_SIZE_BITS: usize = 256;
 pub const RB: usize = 32;
 pub const RB_BLOCKS_TO_PROCESS: usize = INPUT_DATA_SIZE_BITS / RB;
@@ -16,7 +16,9 @@ pub const NUM_SHA256F_PER_CIRCUIT: usize = BITS_SHA256F * CHUNKS_SHA256F;
 pub const RB_SIZE: usize = NUM_SHA256F_PER_CIRCUIT * RB;
 pub const BLOCKS_PER_CIRCUIT: usize = NUM_SHA256F_PER_CIRCUIT * RB * RB_BLOCKS_TO_PROCESS;
 pub const P2_BITS_SHA256F: u64 = 1 << BITS_SHA256F;
+pub const P2_CHUNK_BITS_SHA256F: u64 = 1 << (BITS_SHA256F * CHUNKS_SHA256F);
 pub const MASK_BITS_SHA256F: u64 = P2_BITS_SHA256F - 1;
+pub const MASK_CHUNK_BITS_SHA256F: u64 = P2_CHUNK_BITS_SHA256F - 1;
 
 /// Sha256f circuit configuration
 pub const BITS_IN_PARALLEL: usize = 2;

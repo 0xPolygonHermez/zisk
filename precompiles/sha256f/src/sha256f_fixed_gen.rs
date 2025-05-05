@@ -9,8 +9,10 @@ use zisk_pil::Sha256fTrace;
 
 use proofman_common::{write_fixed_cols_bin, FixedColsInfo};
 
+mod sha256f_constants;
 mod sha256f_types;
 
+use sha256f_constants::{ADD_GATE_OP, CH_GATE_OP, MAJ_GATE_OP, XOR_GATE_OP};
 use sha256f_types::{Gate, GateOp};
 
 use precompiles_common::{get_ks, log2, GOLDILOCKS_GEN, GOLDILOCKS_K};
@@ -101,12 +103,6 @@ fn cols_gen(
         }
     }
 
-    // Define some constants
-    const XOR: usize = 0;
-    const CH: usize = 1;
-    const MAJ: usize = 2;
-    const ADD: usize = 3;
-
     // Check that the subgroup order is sufficiently large
     let circuit_size = gates.len() - 1;
     if circuit_size >= subgroup_order {
@@ -140,7 +136,7 @@ fn cols_gen(
     let mut carry_enabled = vec![F::ZERO; subgroup_order];
 
     // First row is reserved for constant signals 0,1
-    gate_op[0] = F::from_usize(XOR);
+    gate_op[0] = F::from_u8(XOR_GATE_OP);
     carry_enabled[0] = F::ZERO;
 
     // Compute the gates and gate_op
@@ -198,19 +194,19 @@ fn cols_gen(
             }
             match gate.op {
                 GateOp::xor => {
-                    gate_op[row] = F::from_usize(XOR);
+                    gate_op[row] = F::from_u8(XOR_GATE_OP);
                     carry_enabled[row] = F::ZERO;
                 }
                 GateOp::ch => {
-                    gate_op[row] = F::from_usize(CH);
+                    gate_op[row] = F::from_u8(CH_GATE_OP);
                     carry_enabled[row] = F::ZERO;
                 }
                 GateOp::maj => {
-                    gate_op[row] = F::from_usize(MAJ);
+                    gate_op[row] = F::from_u8(MAJ_GATE_OP);
                     carry_enabled[row] = F::ZERO;
                 }
                 GateOp::add => {
-                    gate_op[row] = F::from_usize(ADD);
+                    gate_op[row] = F::from_u8(ADD_GATE_OP);
                     carry_enabled[row] = F::ONE;
                 }
             }

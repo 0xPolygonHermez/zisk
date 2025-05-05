@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use data_bus::{BusDevice, PayloadType, OPERATION_BUS_ID};
 use p3_field::PrimeField64;
@@ -28,9 +28,9 @@ impl Sha256fManager {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `Sha256fManager`.
-    pub fn new<F: PrimeField64>() -> Arc<Self> {
+    pub fn new<F: PrimeField64>(script_path: PathBuf) -> Arc<Self> {
         let sha256f_table_sm = Sha256fTableSM::new::<F>();
-        let sha256f_sm = Sha256fSM::new(sha256f_table_sm.clone());
+        let sha256f_sm = Sha256fSM::new(sha256f_table_sm.clone(), script_path);
 
         Arc::new(Self { sha256f_sm, sha256f_table_sm })
     }

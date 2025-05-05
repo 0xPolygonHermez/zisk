@@ -5,9 +5,7 @@ require "std_connection.pil"
 // Precompile in charge of performing the SHA2-256 permutation (named here Sha256-f). 
 // For reference: https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf
 
-const int SHA256F_SIZE_BITS = 512;
-
-const int SHA256F_OP = 0xF2;
+const int SHA256F_OP = 0xF9;
 const int SHA256F_CIRCUIT_ID = 0x191;
 
 airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, const int bits_in_parallel = 2, const int chunks = 9, const int bits = 7, const int operation_bus_id) {
@@ -106,28 +104,35 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     col witness bit[bits_in_parallel];
     col witness val[bits_in_parallel];
 
-    const int IN_SIZE = NUM_SHA256F_PER_CIRCUIT * SHA256F_SIZE_BITS / bits_in_parallel;
-    const int OUT_SIZE = IN_SIZE;
+    const int STATE_SIZE_BITS = 256;
+    const int INPUT_SIZE_BITS = 512;
+    const int INPUT_DATA_SIZE_BITS = STATE_SIZE_BITS + INPUT_SIZE_BITS;
+    const int OUTPUT_SIZE_BITS = STATE_SIZE_BITS;
+
+    const int IN_SIZE = NUM_SHA256F_PER_CIRCUIT * INPUT_DATA_SIZE_BITS / bits_in_parallel;
+    const int OUT_SIZE = NUM_SHA256F_PER_CIRCUIT * OUTPUT_SIZE_BITS / bits_in_parallel;
     const int IN_OUT_SIZE = IN_SIZE + OUT_SIZE;
     // Instructions to add a latch:
     //  - When there are circuits.
-    //  - Every NUM_SHA256F_PER_CIRCUIT clocks (except for the first one).
-    //  - When there are still bits to process (i.e., we repeat the previous instruction SHA256F_SIZE_BITS times).
-    col fixed latch_num_sha256f  = [0,[[0:NUM_SHA256F_PER_CIRCUIT,1],[0:(NUM_SHA256F_PER_CIRCUIT-1),1]:(SHA256F_SIZE_BITS-1), 
-                                            0:(CIRCUIT_SIZE - (IN_OUT_SIZE+1))]:NUM_CIRCUITS,
-                                        0...];
+    //  - Every NUM_SHA256F_PER_CIRCUIT clocks.
+    //  - When there are still bits to process.
+    col fixed latch_num_sha256f  = [0,[0,[0:(NUM_SHA256F_PER_CIRCUIT-1),1]:((INPUT_DATA_SIZE_BITS + OUTPUT_SIZE_BITS) / bits_in_parallel),
+                                       0:(CIRCUIT_SIZE - (IN_OUT_SIZE+1))]:NUM_CIRCUITS,
+                                    0...];
 
     // Instructions to add the factor:
     //  - When there are circuits.
     //  - Every clock, for the clock in the circuit, we add the factor 1 << clk.
-    //  - When there are still bits to process (i.e., we repeat the previous instruction SHA256F_SIZE_BITS times).
+    //  - When there are still bits to process (i.e., we repeat the previous instruction INPUT_DATA_SIZE_BITS times).
     col fixed factor_num_sha256f;
     if (NUM_SHA256F_PER_CIRCUIT != 1) {
-        factor_num_sha256f = [0,[[1,2..*..2**(NUM_SHA256F_PER_CIRCUIT-1)]:SHA256F_SIZE_BITS, 
+        factor_num_sha256f = [0,[[1,2..*..2**(NUM_SHA256F_PER_CIRCUIT-1)]:((INPUT_DATA_SIZE_BITS + OUTPUT_SIZE_BITS) / bits_in_parallel), 
                                   0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS,
                               0...];
     } else {
-        factor_num_sha256f = [0, [1:SHA256F_SIZE_BITS, 0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS, 0...];
+        factor_num_sha256f = [0, [1:((INPUT_DATA_SIZE_BITS + OUTPUT_SIZE_BITS) / bits_in_parallel), 
+                                  0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS, 
+                              0...];
     }
 
     // `bit` is a bit
@@ -169,14 +174,13 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     // if multiplicity is not zero, then is_val should be 1
     multiplicity * (is_val - 1) === 0;
 
-    // Then, if is_val = 1, it should be 1 (RB*2)*CHUNKS_TO_PROCESS times (input and ouput), separated by NUM_SHA256F_PER_CIRCUIT
+    // Then, if is_val = 1, it should be 1 RB*INPUT_CHUNKS_TO_PROCESS times (input and ouput), separated by NUM_SHA256F_PER_CIRCUIT
     // escept for the very last bit
-    const int CHUNKS_TO_PROCESS = SHA256F_SIZE_BITS / RB;
-    const int INPUT_CHUNKS = CHUNKS_TO_PROCESS / bits_in_parallel;
-    const int OUTPUT_CHUNKS = INPUT_CHUNKS;
+    const int INPUT_CHUNKS = INPUT_DATA_SIZE_BITS / (RB * RC);
+    const int OUTPUT_CHUNKS = OUTPUT_SIZE_BITS / (RB * RC);
     const int IN_OUT_CHUNKS = INPUT_CHUNKS + OUTPUT_CHUNKS;
-    const int RB_SIZE = NUM_SHA256F_PER_CIRCUIT * RB;
-    const int RB_SIZE_MINUS_ONE = NUM_SHA256F_PER_CIRCUIT * (RB - 1);
+    const int RB_SIZE = NUM_SHA256F_PER_CIRCUIT * RB * RC / bits_in_parallel;
+    const int RB_SIZE_MINUS_ONE = NUM_SHA256F_PER_CIRCUIT * (RB * RC / bits_in_parallel - 1);
     col fixed latch_in_out = [0,[[1:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:(IN_OUT_CHUNKS-1),
                                   0:RB_SIZE,
                                   0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS,

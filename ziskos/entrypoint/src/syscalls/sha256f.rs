@@ -6,13 +6,14 @@ use core::arch::asm;
 #[cfg(target_os = "ziskos")]
 use crate::ziskos_syscall;
 
-/// Executes the Sha256 permutation on the given state.
+/// Executes the SHA-256 extend and compress function on the given state and input.
 ///
 /// The `Sha256` system call executes a CSR set on a custom port. When transpiling from RISC-V to Zisk,
 /// this instruction is replaced with a precompiled operation—specifically, `Sha256`.
 ///
-/// The syscall takes as a parameter the address of a state data (512 bits = 64 bytes)
-/// and the result of the sha256f operation is stored at the same location
+/// The syscall takes as a parameter the address of a state data (256 bits = 32 bytes)
+/// and the address of an input data (512 bits = 64 bytes), and the result of the
+/// sha256f operation (256 bits = 32 bytes) is stored at the same location as the state.
 ///
 /// ### Safety
 ///
