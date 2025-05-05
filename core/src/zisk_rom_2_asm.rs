@@ -3990,7 +3990,7 @@ impl ZiskRom2Asm {
                 *code += &format!(
                     "\tmov qword {}[{}], 0 {}\n",
                     ctx.ptr,
-                    REG_ADDRESS,Fcall
+                    REG_ADDRESS,
                     ctx.comment_str("free_input = 0")
                 );
                 *code += &format!("pc_{:x}_fcall_result_done:\n", ctx.pc);
