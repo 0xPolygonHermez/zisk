@@ -33,7 +33,7 @@ impl MemHelpers {
         debug_assert!(from_chunk <= to_chunk);
         let from_step = MemHelpers::first_chunk_mem_step(from_chunk);
         let to_step = MemHelpers::last_chunk_mem_step(to_chunk);
-        return to_step - from_step;
+        to_step - from_step
     }
 
     #[inline(always)]

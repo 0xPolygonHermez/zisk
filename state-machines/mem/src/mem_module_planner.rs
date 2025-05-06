@@ -67,7 +67,7 @@ pub struct MemModulePlannerConfig {
     pub consecutive_addr: bool,
     pub intermediate_step_reads: bool,
 }
-impl<'a> MemModulePlanner {
+impl MemModulePlanner {
     pub fn new(
         config: MemModulePlannerConfig,
         counters: Arc<Vec<(ChunkId, &MemCounters)>>,

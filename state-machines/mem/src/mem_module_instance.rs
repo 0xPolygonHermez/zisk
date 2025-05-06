@@ -65,7 +65,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
     /// The previous segment information.
     fn fit_inputs_and_get_prev_segment(
         &mut self,
-        inputs: &mut Vec<MemInput>,
+        inputs: &mut [MemInput],
         prev_segment: &mut MemPreviousSegment,
         skip_rows: u32,
     ) {
@@ -84,7 +84,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
                         prev_segment.extra_zero_step = true;
                     }
                 } else if skip_rows == (full_rows + zero_row) as u32 {
-                    prev_segment.step = last_step + full_rows as u64 * STEP_MEMORY_MAX_DIFF;
+                    prev_segment.step = last_step + full_rows * STEP_MEMORY_MAX_DIFF;
                 } else {
                     panic!("Invalid skip rows {} > {}", skip_rows, full_rows + zero_row);
                 }
@@ -167,7 +167,7 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         let chunk_check_point = self.check_point.chunks.get(&chunk_id).unwrap();
         Some(Box::new(MemModuleCollector::new(
-            &chunk_check_point,
+            chunk_check_point,
             self.min_addr,
             self.ictx.plan.segment_id.unwrap(),
         )))

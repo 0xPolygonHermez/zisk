@@ -99,7 +99,7 @@ impl MemCounters {
                     .and_modify(|count| *count += ops_by_addr)
                     .or_insert(ops_by_addr);
             }
-            let mem_align_op_rows = 1 + addr_count * ops_by_addr as u32;
+            let mem_align_op_rows = 1 + addr_count * ops_by_addr;
             self.mem_align.push(mem_align_op_rows as u8);
             self.mem_align_rows += mem_align_op_rows;
         }

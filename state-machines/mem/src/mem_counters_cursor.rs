@@ -110,7 +110,7 @@ impl MemCountersCursor {
             groups.push(&sorted_boxes[start_index..sorted_boxes.len()]);
         }
         let next_boxes: Vec<Vec<SortedBox>> =
-            groups.into_par_iter().map(|group| Self::merge_k_sorted_boxes(group)).collect();
+            groups.into_par_iter().map(Self::merge_k_sorted_boxes).collect();
         Self::merge_sorted_boxes(&next_boxes, arity)
     }
     fn merge_k_sorted_boxes(boxes: &[Vec<SortedBox>]) -> Vec<SortedBox> {

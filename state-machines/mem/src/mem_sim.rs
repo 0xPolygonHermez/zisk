@@ -49,10 +49,11 @@ fn main() {
         }
     }
     let mut metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)> = Vec::new();
-    for i in 0..data.len() {
+
+    for (i, data) in data.iter().enumerate() {
         println!("Executing bus data chunk {} ...", i);
         let mut counter = MemCounters::new();
-        counter.execute_from_vector(&data[i]);
+        counter.execute_from_vector(data);
         counter.close();
         metrics.push((ChunkId(i), Box::new(counter)));
     }
