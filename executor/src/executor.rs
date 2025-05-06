@@ -272,7 +272,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let mut secn_vec_counters =
             (0..secn_count[0].len()).map(|_| Vec::new()).collect::<Vec<_>>();
 
-        secn_count.into_iter().enumerate().for_each(|(_, counter_slice)| {
+        secn_count.into_iter().for_each(|counter_slice| {
             counter_slice.into_iter().enumerate().for_each(|(i, counter)| {
                 secn_vec_counters[i].push(counter);
             });

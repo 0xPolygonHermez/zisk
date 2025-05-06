@@ -1086,13 +1086,12 @@ impl ZiskRom2Asm {
                     // Use REG_A if a's value is not needed beyond the b indirection, in which case
                     // we can overwirte it to build the address to read from the b value,
                     // or REG_ADDRESS otherwise to preserve the value of a
-                    let reg_address: &str;
+                    let mut reg_address: &str = REG_A;
                     if instruction.op == ZiskOp::CopyB.code()
                         || instruction.op == ZiskOp::SignExtendB.code()
                         || instruction.op == ZiskOp::SignExtendH.code()
                         || instruction.op == ZiskOp::SignExtendH.code()
                     {
-                        reg_address = REG_A;
                     } else {
                         *code += &format!(
                             "\tmov {}, {} {}\n",
@@ -2289,50 +2288,50 @@ impl ZiskRom2Asm {
         }
         *code += "\n";
 
-        let mut lines = code.lines();
-        //let mut empty_lines_counter = 0u64;
-        let mut map_label_lines_counter = 0u64;
-        let mut pc_label_lines_counter = 0u64;
-        let mut comment_lines_counter = 0u64;
-        let mut code_lines_counter = 0u64;
-
-        loop {
-            let line_option = lines.next();
-            if line_option.is_none() {
-                break;
-            }
-            let line = line_option.unwrap();
-            if line.is_empty() {
-                //empty_lines_counter += 1;
-                continue;
-            }
-            if line.starts_with("map_pc_") {
-                map_label_lines_counter += 1;
-                continue;
-            }
-            if line.starts_with("pc_") {
-                pc_label_lines_counter += 1;
-                continue;
-            }
-            if line.starts_with("\t/*") {
-                comment_lines_counter += 1;
-                continue;
-            }
-            code_lines_counter += 1;
-        }
-
         #[cfg(debug_assertions)]
-        println!(
-            "ZiskRom2Asm::save_to_asm() {} bytes, {} instructions, {:02} bytes/inst, {} map lines, {} label lines, {} comment lines, {} code lines, {:02} code lines/inst",
-            code.len(),
-            rom.sorted_pc_list.len(),
-            code.len() as f64 / rom.sorted_pc_list.len() as f64,
-            map_label_lines_counter,
-            pc_label_lines_counter,
-            comment_lines_counter,
-            code_lines_counter,
-            code_lines_counter as f64 / rom.sorted_pc_list.len() as f64,
-        );
+        {
+            let mut lines = code.lines();
+            let mut map_label_lines_counter = 0u64;
+            let mut pc_label_lines_counter = 0u64;
+            let mut comment_lines_counter = 0u64;
+            let mut code_lines_counter = 0u64;
+
+            loop {
+                let line_option = lines.next();
+                if line_option.is_none() {
+                    break;
+                }
+                let line = line_option.unwrap();
+                if line.is_empty() {
+                    continue;
+                }
+                if line.starts_with("map_pc_") {
+                    map_label_lines_counter += 1;
+                    continue;
+                }
+                if line.starts_with("pc_") {
+                    pc_label_lines_counter += 1;
+                    continue;
+                }
+                if line.starts_with("\t/*") {
+                    comment_lines_counter += 1;
+                    continue;
+                }
+                code_lines_counter += 1;
+            }
+
+            println!(
+                "ZiskRom2Asm::save_to_asm() {} bytes, {} instructions, {:02} bytes/inst, {} map lines, {} label lines, {} comment lines, {} code lines, {:02} code lines/inst",
+                code.len(),
+                rom.sorted_pc_list.len(),
+                code.len() as f64 / rom.sorted_pc_list.len() as f64,
+                map_label_lines_counter,
+                pc_label_lines_counter,
+                comment_lines_counter,
+                code_lines_counter,
+                code_lines_counter as f64 / rom.sorted_pc_list.len() as f64,
+            );
+        }
     }
 
     fn operation_to_asm(
@@ -5059,58 +5058,54 @@ impl ZiskRom2Asm {
     }
 
     fn reg_to_xmm_index(reg: u64) -> u64 {
-        let xmm_index: u64;
         match reg {
-            1 => xmm_index = 0,
-            2 => xmm_index = 1,
-            5 => xmm_index = 2,
-            6 => xmm_index = 3,
-            7 => xmm_index = 4,
-            8 => xmm_index = 5,
-            9 => xmm_index = 6,
-            10 => xmm_index = 7,
-            11 => xmm_index = 8,
-            12 => xmm_index = 9,
-            13 => xmm_index = 10,
-            14 => xmm_index = 11,
-            15 => xmm_index = 12,
-            16 => xmm_index = 13,
-            17 => xmm_index = 14,
-            18 => xmm_index = 15,
+            1 => 0,
+            2 => 1,
+            5 => 2,
+            6 => 3,
+            7 => 4,
+            8 => 5,
+            9 => 6,
+            10 => 7,
+            11 => 8,
+            12 => 9,
+            13 => 10,
+            14 => 11,
+            15 => 12,
+            16 => 13,
+            17 => 14,
+            18 => 15,
             _ => {
                 panic!("ZiskRom2Asm::reg_to_xmm_index() found invalid source slot={}", reg);
             }
         }
-        xmm_index
     }
 
     fn reg_to_rsp_index(reg: u64) -> u64 {
-        let rsp_index: u64;
         match reg {
-            0 => rsp_index = 0,
-            3 => rsp_index = 1,
-            4 => rsp_index = 2,
-            19 => rsp_index = 3,
-            20 => rsp_index = 4,
-            21 => rsp_index = 5,
-            22 => rsp_index = 6,
-            23 => rsp_index = 7,
-            24 => rsp_index = 8,
-            25 => rsp_index = 9,
-            26 => rsp_index = 10,
-            27 => rsp_index = 11,
-            28 => rsp_index = 12,
-            29 => rsp_index = 13,
-            30 => rsp_index = 14,
-            31 => rsp_index = 15,
-            32 => rsp_index = 16,
-            33 => rsp_index = 17,
-            34 => rsp_index = 18,
+            0 => 0,
+            3 => 1,
+            4 => 2,
+            19 => 3,
+            20 => 4,
+            21 => 5,
+            22 => 6,
+            23 => 7,
+            24 => 8,
+            25 => 9,
+            26 => 10,
+            27 => 11,
+            28 => 12,
+            29 => 13,
+            30 => 14,
+            31 => 15,
+            32 => 16,
+            33 => 17,
+            34 => 18,
             _ => {
                 panic!("ZiskRom2Asm::reg_to_rsp_index() found invalid source slot={}", reg);
             }
         }
-        rsp_index
     }
 
     fn read_riscv_reg(
@@ -5128,26 +5123,24 @@ impl ZiskRom2Asm {
                 xmm_index,
                 ctx.comment(format!("{} = reg[{}]", dest_desc, src_slot))
             );
+        } else if ctx.bus_op() {
+            let rsp_index = Self::reg_to_rsp_index(src_slot);
+            *code += &format!(
+                "\tmov {}, qword {}[rsp - {}*8 + {}*8] {}\n",
+                dest_reg,
+                ctx.ptr,
+                RSP_REGS_OFFSET,
+                rsp_index,
+                ctx.comment(format!("{} = reg[{}]", dest_desc, src_slot))
+            );
         } else {
-            if ctx.bus_op() {
-                let rsp_index = Self::reg_to_rsp_index(src_slot);
-                *code += &format!(
-                    "\tmov {}, qword {}[rsp - {}*8 + {}*8] {}\n",
-                    dest_reg,
-                    ctx.ptr,
-                    RSP_REGS_OFFSET,
-                    rsp_index,
-                    ctx.comment(format!("{} = reg[{}]", dest_desc, src_slot))
-                );
-            } else {
-                *code += &format!(
-                    "\tmov {}, qword {}[reg_{}] {}\n",
-                    dest_reg,
-                    ctx.ptr,
-                    src_slot,
-                    ctx.comment(format!("{} = reg[{}]", dest_desc, src_slot))
-                );
-            }
+            *code += &format!(
+                "\tmov {}, qword {}[reg_{}] {}\n",
+                dest_reg,
+                ctx.ptr,
+                src_slot,
+                ctx.comment(format!("{} = reg[{}]", dest_desc, src_slot))
+            );
         }
     }
 
@@ -5162,26 +5155,24 @@ impl ZiskRom2Asm {
         if XMM_MAPPED_REGS.contains(&dest_slot) {
             let xmm_index = Self::reg_to_xmm_index(dest_slot);
             *code += &format!("\tmovq xmm{}, {} {}\n", xmm_index, src_reg, ctx.comment(comment));
+        } else if ctx.bus_op() {
+            let rsp_index = Self::reg_to_rsp_index(dest_slot);
+            *code += &format!(
+                "\tmov qword {}[rsp - {}*8 + {}*8], {} {}\n",
+                ctx.ptr,
+                RSP_REGS_OFFSET,
+                rsp_index,
+                src_reg,
+                ctx.comment(comment)
+            );
         } else {
-            if ctx.bus_op() {
-                let rsp_index = Self::reg_to_rsp_index(dest_slot);
-                *code += &format!(
-                    "\tmov qword {}[rsp - {}*8 + {}*8], {} {}\n",
-                    ctx.ptr,
-                    RSP_REGS_OFFSET,
-                    rsp_index,
-                    src_reg,
-                    ctx.comment(comment)
-                );
-            } else {
-                *code += &format!(
-                    "\tmov qword {}[reg_{}], {} {}\n",
-                    ctx.ptr,
-                    dest_slot,
-                    src_reg,
-                    ctx.comment(comment)
-                );
-            }
+            *code += &format!(
+                "\tmov qword {}[reg_{}], {} {}\n",
+                ctx.ptr,
+                dest_slot,
+                src_reg,
+                ctx.comment(comment)
+            );
         }
     }
 

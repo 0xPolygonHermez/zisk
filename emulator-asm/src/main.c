@@ -453,6 +453,7 @@ int main(int argc, char *argv[])
         uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
         pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
         pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+        pOutput[2] = trace_size;
         // MT allocated size [8] -> to be updated after completion
         // MT used size [8] -> to be updated after completion
     }
@@ -832,6 +833,8 @@ extern void _realloc_trace (void)
     // Update trace global variables
     trace_size = new_trace_size;
     trace_address_threshold = TRACE_ADDR + trace_size - MAX_CHUNK_TRACE_SIZE;
+
+    ((uint64_t *)new_address)[2] = trace_size;
 }
 
 void print_usage (void)

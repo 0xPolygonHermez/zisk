@@ -207,7 +207,10 @@ impl ZiskRom {
     /// Saves ZisK rom into an i86-64 assembly data string
     pub fn build_constant_trace<F: PrimeField>(&self) -> Vec<MainTraceRow<F>> {
         let mut result: Vec<MainTraceRow<F>> = Vec::with_capacity(self.sorted_pc_list.len());
-        unsafe { result.set_len(self.sorted_pc_list.len()) };
+        #[allow(clippy::uninit_vec)]
+        unsafe {
+            result.set_len(self.sorted_pc_list.len())
+        };
 
         // For all program addresses in the vector
         for (i, pc) in self.sorted_pc_list.iter().enumerate() {
