@@ -12,6 +12,12 @@ pub enum Field {
     // Add other variants here as needed
 }
 
+impl Default for Field {
+    fn default() -> Self {
+        Field::Goldilocks
+    }
+}
+
 impl FromStr for Field {
     type Err = String;
 

@@ -49,6 +49,7 @@ indicatif = "0.17.8"
 futures = "0.3.30"
 yansi = "1.0.1"
 libloading = "0.8.4"
+thiserror = "2.0.12"
 
 [features]
 default = ["distributed"]

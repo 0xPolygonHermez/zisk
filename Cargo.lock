@@ -414,6 +414,7 @@ dependencies = [
  "serde_json",
  "sysinfo 0.34.2",
  "target-lexicon",
+ "thiserror 2.0.12",
  "tokio",
  "vergen",
  "witness",

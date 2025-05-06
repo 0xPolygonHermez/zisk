@@ -1,8 +1,10 @@
 pub mod commands;
+mod api;
 mod proof_log;
-pub mod toolchain;
-pub mod ux;
+mod toolchain;
+mod ux;
 
+pub use api::*;
 use anyhow::{Context, Result};
 use futures::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
