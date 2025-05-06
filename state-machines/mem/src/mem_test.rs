@@ -1,15 +1,9 @@
 #![cfg(test)]
 use std::sync::Arc;
 
-use data_bus::{DataBus, DataBusPlayer, OperationBusData};
-// use p3_goldilocks::Goldilocks;
-use sm_common::BusDeviceMetricsWrapper;
-use zisk_core::zisk_ops::ZiskOp::*;
-// use ZiskOperationType::*;
-
 use crate::{
-    mem_sm::MemSM, MemCounters, MemModulePlanner, MemModulePlannerConfig, MemPlanCalculator,
-    CHUNK_MAX_DISTANCE, CHUNK_SIZE, CHUNK_SIZE_STEPS, MEMORY_LOAD_OP, MEMORY_STORE_OP,
+    MemCounters, MemModulePlanner, MemModulePlannerConfig, MemPlanCalculator, CHUNK_MAX_DISTANCE,
+    CHUNK_SIZE, CHUNK_SIZE_STEPS, MEMORY_LOAD_OP, MEMORY_STORE_OP,
 };
 use data_bus::{BusDevice, MEM_BUS_ID};
 use sm_common::Plan;
@@ -64,6 +58,7 @@ struct ConfigNextOp {
     pub addr_cycle: u64,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_mem_data(
     counter: &mut MemCounters,
     count: u64,
@@ -96,13 +91,13 @@ fn add_mem_data(
     }
 }
 
-fn add_mem_read(counter: &mut MemCounters, addr: u32, step: u64, value: u64, width: u64) {
-    counter.process_data(&MEM_BUS_ID, &[MEMORY_LOAD_OP as u64, addr as u64, step, width, value]);
-}
+// fn add_mem_read(counter: &mut MemCounters, addr: u32, step: u64, value: u64, width: u64) {
+//     counter.process_data(&MEM_BUS_ID, &[MEMORY_LOAD_OP as u64, addr as u64, step, width, value]);
+// }
 
-fn add_mem_write(counter: &mut MemCounters, addr: u32, step: u64, value: u64, width: u64) {
-    counter.process_data(&MEM_BUS_ID, &[MEMORY_STORE_OP as u64, addr as u64, step, width, value]);
-}
+// fn add_mem_write(counter: &mut MemCounters, addr: u32, step: u64, value: u64, width: u64) {
+//     counter.process_data(&MEM_BUS_ID, &[MEMORY_STORE_OP as u64, addr as u64, step, width, value]);
+// }
 
 fn add_mem_read64(counter: &mut MemCounters, addr: u32, step: u64, value: u64) {
     counter.process_data(&MEM_BUS_ID, &[MEMORY_LOAD_OP as u64, addr as u64, step, 8, value]);
@@ -115,8 +110,7 @@ fn add_mem_write64(counter: &mut MemCounters, addr: u32, step: u64, value: u64) 
 #[test]
 fn test_mem_module_planner_empty() {
     let counter = MemCounters::new();
-    let mut counters: Vec<(ChunkId, &MemCounters)> = Vec::new();
-    counters.push((ChunkId(0), &counter));
+    let counters: Vec<(ChunkId, &MemCounters)> = vec![(ChunkId(0), &counter)];
     let plans = generate_test_plans(0xA000_0000, 4, counters);
     assert_eq!(plans.len(), 0);
 }
@@ -125,8 +119,7 @@ fn test_mem_module_planner_with_exact_one_segment() {
     let mut counter = MemCounters::new();
     add_test_aligned_mem_reads(&mut counter, 4, 10, 0xA000_0000, 10, 0x0000_0000);
     counter.close();
-    let mut counters: Vec<(ChunkId, &MemCounters)> = Vec::new();
-    counters.push((ChunkId(0), &counter));
+    let counters: Vec<(ChunkId, &MemCounters)> = vec![(ChunkId(0), &counter)];
 
     let plans = generate_test_plans(0xA000_0000, 4, counters);
     assert_eq!(plans.len(), 1);
@@ -137,8 +130,7 @@ fn test_mem_module_planner() {
     let mut counter = MemCounters::new();
     add_test_aligned_mem_reads(&mut counter, 5, 10, 0xA000_0000, 10, 0x0000_0000);
     counter.close();
-    let mut counters: Vec<(ChunkId, &MemCounters)> = Vec::new();
-    counters.push((ChunkId(0), &counter));
+    let counters: Vec<(ChunkId, &MemCounters)> = vec![(ChunkId(0), &counter)];
 
     let plans = generate_test_plans(0xA000_0000, 4, counters);
     assert_eq!(plans.len(), 2);
@@ -163,7 +155,7 @@ fn test_counters() {
 fn test_intermediate_steps() {
     let mut counters: Vec<(ChunkId, &MemCounters)> = Vec::new();
     let mut counter = MemCounters::new();
-    let cfg = ConfigNextOp { step_delta: 1, step_cycle: 0, addr_delta: 8, addr_cycle: 0 };
+    let _cfg = ConfigNextOp { step_delta: 1, step_cycle: 0, addr_delta: 8, addr_cycle: 0 };
     add_mem_write64(&mut counter, 0xA000_0002, 18, 0x2222_2222_2222_2222);
     add_mem_read64(&mut counter, 0xA000_0000, 12, 0x1111_1111_1111_1111);
     add_mem_read64(&mut counter, 0xA000_0000, 40, 0x2222_2222_2222_1111);
@@ -174,7 +166,7 @@ fn test_intermediate_steps() {
     let mut counter = MemCounters::new();
     let chunk = CHUNK_MAX_DISTANCE + 1;
     let step_base = (chunk * CHUNK_SIZE_STEPS) as u64;
-    let cfg = ConfigNextOp { step_delta: 1, step_cycle: 0, addr_delta: 8, addr_cycle: 0 };
+    let _cfg = ConfigNextOp { step_delta: 1, step_cycle: 0, addr_delta: 8, addr_cycle: 0 };
     add_mem_write64(&mut counter, 0xA000_0002, step_base + 18, 0x2222_2222_2222_2222);
     add_mem_read64(&mut counter, 0xA000_0000, step_base + 12, 0x1111_1111_1111_1111);
     add_mem_read64(&mut counter, 0xA000_0000, step_base + 40, 0x2222_2222_2222_1111);
@@ -182,7 +174,7 @@ fn test_intermediate_steps() {
     counter.close();
     counters.push((ChunkId(chunk), &counter));
 
-    let plans = generate_test_plans(0xA000_0000, (CHUNK_SIZE * 4) as u32, counters);
+    let _plans = generate_test_plans(0xA000_0000, (CHUNK_SIZE * 4) as u32, counters);
     // println!("{:?}", plans);
 }
 /*
