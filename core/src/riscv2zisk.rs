@@ -11,7 +11,7 @@ pub enum AsmGenerationMethod {
     /// Generate assembly code to not even stop at chunks, nor generate trace, i.e. fast
     #[default]
     AsmFast,
-    /// Generate assembly code to compute the minimal traces
+    /// Generate assembly code to compute the minimal trace
     AsmMinimalTraces,
     /// Generate assembly code to compute the ROM histogram
     AsmRomHistogram,
@@ -21,6 +21,11 @@ pub enum AsmGenerationMethod {
     AsmChunks,
     /// Generate assembly code to compute bus op [op, a, b, mem_read_index] traces
     AsmBusOp,
+    /// Generate assembly code to compute the minimal trace, but only at the requrested chunks,
+    /// e.g. [0,8,16...], [1,9,17...], etc.  This is done to distribute the minimal trace generation
+    /// accross 8 processes, to increase speed and memory bus saturation.  It's called zip because
+    /// one process generates the chunks that are complementary to the sum of the other processes.
+    AsmZip,
 }
 /// RISCV-to-ZisK struct containing the input ELF RISCV file name and the output ZISK ASM file name
 pub struct Riscv2zisk {

@@ -37,8 +37,9 @@ fn main() {
         "--gen=3" => zisk_core::AsmGenerationMethod::AsmMainTrace,
         "--gen=4" => zisk_core::AsmGenerationMethod::AsmChunks,
         "--gen=5" => zisk_core::AsmGenerationMethod::AsmBusOp,
+        "--gen=6" => zisk_core::AsmGenerationMethod::AsmZip,
         _ => {
-            eprintln!("Invalid generation method. Use --gen=0 (fast), --gen=1 (minimal trace), --gen=2 (rom histogram), --gen=3 (main trace), --gen=4 (chunks) or --gen=5 (bus op).");
+            eprintln!("Invalid generation method. Use --gen=0 (fast), --gen=1 (minimal trace), --gen=2 (rom histogram), --gen=3 (main trace), --gen=4 (chunks) or --gen=5 (bus op) or --gen=6 (zip).");
             process::exit(1);
         }
     };
