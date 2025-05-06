@@ -1,7 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
-use data_bus::{BusDevice, PayloadType, OPERATION_BUS_ID};
 use p3_field::PrimeField64;
+use zisk_common::{BusDevice, PayloadType, OPERATION_BUS_ID};
 
 use sm_common::{
     table_instance_array, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,

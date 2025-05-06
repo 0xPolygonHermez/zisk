@@ -17,7 +17,7 @@
 
 use crate::{Emu, EmuOptions, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr};
 
-use data_bus::{BusDevice, DataBus};
+use data_bus::DataBus;
 use p3_field::PrimeField;
 use std::{
     fs,
@@ -25,6 +25,7 @@ use std::{
     time::Instant,
 };
 use sysinfo::System;
+use zisk_common::BusDevice;
 use zisk_common::EmuTrace;
 use zisk_core::{Riscv2zisk, ZiskRom};
 

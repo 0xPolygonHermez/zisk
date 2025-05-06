@@ -5,14 +5,15 @@
 //! execution plans.
 
 use crate::{BinaryAddCollector, BinaryAddSM};
-use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
     BusDeviceWrapper, CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType,
 };
 use std::{collections::HashMap, sync::Arc};
+use zisk_common::BusDevice;
 use zisk_common::ChunkId;
+use zisk_common::PayloadType;
 use zisk_pil::BinaryAddTrace;
 
 /// The `BinaryAddInstance` struct represents an instance for binary add witness computations.

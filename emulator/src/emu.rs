@@ -1,13 +1,13 @@
 use std::{mem, sync::atomic::AtomicU32};
 
 use crate::{EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, ParEmuOptions};
-use data_bus::{
-    BusDevice, ExtOperationData, OperationBusData, RomBusData, MEM_BUS_ID, OPERATION_BUS_ID,
-    ROM_BUS_ID,
-};
 use p3_field::PrimeField;
 use riscv::RiscVRegisters;
 use sm_mem::MemHelpers;
+use zisk_common::{
+    BusDevice, ExtOperationData, OperationBusData, RomBusData, MEM_BUS_ID, OPERATION_BUS_ID,
+    ROM_BUS_ID,
+};
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use data_bus::DataBus;

@@ -1,5 +1,7 @@
 use crate::BusId;
 
+use super::PayloadType;
+
 pub const MEM_BUS_ID: BusId = BusId(2);
 
 pub const MEM_BUS_DATA_SIZE: usize = 7;
@@ -11,6 +13,9 @@ const BYTES: usize = 3;
 const MEM_VALUE_0: usize = 4;
 const MEM_VALUE_1: usize = 5;
 const VALUE: usize = 6;
+
+/// Type representing a memory data payload consisting of four `PayloadType` values.
+pub type MemData = [PayloadType; 4];
 
 pub struct MemBusData;
 

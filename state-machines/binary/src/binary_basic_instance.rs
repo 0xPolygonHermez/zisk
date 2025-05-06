@@ -5,14 +5,15 @@
 //! execution plans.
 
 use crate::{BinaryBasicCollector, BinaryBasicSM};
-use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
     BusDeviceWrapper, CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType,
 };
 use std::{collections::HashMap, sync::Arc};
+use zisk_common::BusDevice;
 use zisk_common::ChunkId;
+use zisk_common::PayloadType;
 use zisk_pil::BinaryTrace;
 
 /// The `BinaryBasicInstance` struct represents an instance for binary-related witness computations.

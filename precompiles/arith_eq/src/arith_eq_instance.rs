@@ -7,9 +7,6 @@
 use crate::{
     Arith256Input, Arith256ModInput, ArithEqInput, ArithEqSM, Secp256k1AddInput, Secp256k1DblInput,
 };
-use data_bus::{
-    BusDevice, BusId, ExtOperationData, OperationBusData, PayloadType, OPERATION_BUS_ID,
-};
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
@@ -17,6 +14,9 @@ use sm_common::{
 };
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
+use zisk_common::{
+    BusDevice, BusId, ExtOperationData, OperationBusData, PayloadType, OPERATION_BUS_ID,
+};
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithEqTrace;
 

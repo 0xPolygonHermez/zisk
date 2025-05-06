@@ -2,8 +2,10 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::PubOut` instructions.
 
-use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OPERATION_BUS_ID, OP_TYPE};
 use sm_common::Metrics;
+use zisk_common::{
+    BusDevice, BusId, ExtOperationData, OperationBusData, OPERATION_BUS_ID, OP_TYPE,
+};
 use zisk_core::ZiskOperationType;
 
 /// The `MainCounter` struct represents a counter that monitors and measures

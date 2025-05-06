@@ -4,8 +4,8 @@
 
 use std::ops::Add;
 
-use data_bus::{BusDevice, BusId, ExtOperationData, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE};
 use sm_common::{BusDeviceMode, Counter, Metrics};
+use zisk_common::{BusDevice, BusId, ExtOperationData, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::ZiskOperationType;
 
 use crate::KeccakfSM;

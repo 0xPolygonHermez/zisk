@@ -5,16 +5,16 @@
 //! execution plans.
 
 use crate::KeccakfSM;
-use data_bus::{
-    BusDevice, BusId, ExtOperationData, OperationKeccakData, PayloadType, OPERATION_BUS_ID, OP_TYPE,
-};
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use sm_common::{
     BusDeviceWrapper, CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType,
 };
 use std::{any::Any, collections::HashMap, sync::Arc};
-use zisk_common::ChunkId;
+use zisk_common::{
+    BusDevice, BusId, ChunkId, ExtOperationData, OperationKeccakData, PayloadType,
+    OPERATION_BUS_ID, OP_TYPE,
+};
 use zisk_core::ZiskOperationType;
 use zisk_pil::KeccakfTrace;
 

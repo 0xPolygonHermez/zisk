@@ -723,6 +723,7 @@ checksum = "ef8ae57c4978a2acd8b869ce6b9ca1dfe817bff704c220209fdef2c0b75a01b9"
 name = "data-bus"
 version = "0.7.0"
 dependencies = [
+ "zisk-common",
  "zisk-core",
 ]
 
@@ -2283,7 +2284,6 @@ dependencies = [
  "ark-ff",
  "ark-secp256k1",
  "ark-std",
- "data-bus",
  "generic-array",
  "k256",
  "lazy_static",
@@ -2319,7 +2319,6 @@ name = "precomp-keccakf"
 version = "0.7.0"
 dependencies = [
  "clap",
- "data-bus",
  "log",
  "num-bigint",
  "p3-field",
@@ -3039,7 +3038,6 @@ dependencies = [
 name = "sm-arith"
 version = "0.7.0"
 dependencies = [
- "data-bus",
  "log",
  "num-bigint",
  "p3-field",
@@ -3059,7 +3057,6 @@ dependencies = [
 name = "sm-binary"
 version = "0.7.0"
 dependencies = [
- "data-bus",
  "log",
  "num-bigint",
  "p3-field",
@@ -3092,7 +3089,6 @@ dependencies = [
 name = "sm-main"
 version = "0.7.0"
 dependencies = [
- "data-bus",
  "log",
  "num-bigint",
  "p3-field",
@@ -3113,7 +3109,6 @@ dependencies = [
 name = "sm-mem"
 version = "0.7.0"
 dependencies = [
- "data-bus",
  "log",
  "num-bigint",
  "num-traits",
@@ -3135,7 +3130,6 @@ name = "sm-rom"
 version = "0.7.0"
 dependencies = [
  "asm-runner",
- "data-bus",
  "itertools 0.14.0",
  "log",
  "p3-field",

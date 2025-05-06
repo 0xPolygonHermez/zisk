@@ -2,7 +2,7 @@
 //! of `BusDevice` and `Metrics`, providing a unified interface for monitoring and managing
 //! bus operations with associated metrics.
 
-use data_bus::{BusDevice, BusId, PayloadType};
+use zisk_common::{BusDevice, BusId, PayloadType};
 
 use crate::Metrics;
 

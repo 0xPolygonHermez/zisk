@@ -4,11 +4,11 @@ use crate::{
     InputDataSM, MemAlignInstance, MemAlignRomSM, MemAlignSM, MemCounters, MemModuleInstance,
     MemPlanner, MemSM, RomDataSM,
 };
-use data_bus::MEM_BUS_ID;
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
 use sm_common::{table_instance, BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan, Planner};
+use zisk_common::MEM_BUS_ID;
 use zisk_pil::{
     InputDataTrace, MemAlignRomTrace, MemAlignTrace, MemTrace, RomDataTrace, ZiskProofValues,
 };

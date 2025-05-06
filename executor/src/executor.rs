@@ -29,13 +29,13 @@ use witness::WitnessComponent;
 
 use rayon::prelude::*;
 
-use data_bus::{BusDevice, DataBus, PayloadType, OPERATION_BUS_ID};
+use data_bus::DataBus;
 use sm_common::{
     BusDeviceMetrics, BusDeviceMetricsWrapper, BusDeviceWrapper, CheckPoint, ComponentBuilder,
     Instance, InstanceCtx, InstanceType, MinimalTraces, Plan,
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
-use zisk_common::ChunkId;
+use zisk_common::{BusDevice, ChunkId, PayloadType, OPERATION_BUS_ID};
 use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
 
 use std::{

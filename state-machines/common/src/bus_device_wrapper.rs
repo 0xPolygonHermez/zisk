@@ -1,4 +1,4 @@
-use data_bus::BusDevice;
+use zisk_common::{BusDevice, BusId};
 
 /// The `BusDeviceWrapper` struct wraps a `BusDevice` trait object
 pub struct BusDeviceWrapper<D> {
@@ -42,16 +42,12 @@ impl<D: 'static> BusDevice<D> for BusDeviceWrapper<D> {
     /// An optional vector of tuples containing the bus ID and data payload to be sent to other
     /// devices. If no data is to be sent, `None` is returned.
     #[inline(always)]
-    fn process_data(
-        &mut self,
-        bus_id: &data_bus::BusId,
-        data: &[D],
-    ) -> Option<Vec<(data_bus::BusId, Vec<D>)>> {
+    fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> Option<Vec<(BusId, Vec<D>)>> {
         self.bus_device.as_mut().unwrap().process_data(bus_id, data)
     }
 
     /// Returns the bus IDs associated with this instance.
-    fn bus_id(&self) -> Vec<data_bus::BusId> {
+    fn bus_id(&self) -> Vec<BusId> {
         self.bus_device.as_ref().unwrap().bus_id()
     }
 

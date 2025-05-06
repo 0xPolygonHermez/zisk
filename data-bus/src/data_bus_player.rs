@@ -2,7 +2,9 @@
 
 use std::{io, str::FromStr};
 
-use crate::{BusDevice, BusId, DataBus, DataBusFileReader};
+use zisk_common::{BusDevice, BusId};
+
+use crate::{DataBus, DataBusFileReader};
 
 pub struct DataBusPlayer;
 

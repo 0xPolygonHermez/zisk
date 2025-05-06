@@ -3,60 +3,9 @@
 //! omnipresent devices that process all data sent to the bus. This module provides mechanisms to
 //! send data, route it to the appropriate subscribers, and manage device connections.
 
-use std::{any::Any, collections::VecDeque, ops::Deref};
+use std::collections::VecDeque;
 
-/// Type representing a bus ID.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct BusId(pub usize);
-
-impl PartialEq<usize> for BusId {
-    fn eq(&self, other: &usize) -> bool {
-        self.0 == *other
-    }
-}
-
-impl Deref for BusId {
-    type Target = usize;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-/// Type representing the payload transmitted across the bus.
-pub type PayloadType = u64;
-
-/// Type representing a memory data payload consisting of four `PayloadType` values.
-pub type MemData = [PayloadType; 4];
-
-/// Represents a subscriber in the `DataBus` system.
-///
-/// A `BusDevice` listens to messages sent to specific or all bus IDs and processes the data
-/// accordingly.
-///
-/// # Associated Type
-/// * `D` - The type of data handled by the `BusDevice`.
-pub trait BusDevice<D>: Any + Send {
-    /// Processes incoming data sent to the device.
-    ///
-    /// # Arguments
-    /// * `bus_id` - The ID of the bus that sent the data.
-    /// * `data` - A reference to the data payload being processed.
-    ///
-    /// # Returns
-    /// An optional vector of tuples containing the bus ID and data payload to be sent to other
-    /// devices. If no data is to be sent, `None` is returned.
-    fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> Option<Vec<(BusId, Vec<D>)>>;
-
-    /// Returns the bus IDs associated with this instance.
-    ///
-    /// # Returns
-    /// A vector containing the connected bus ID.
-    fn bus_id(&self) -> Vec<BusId>;
-
-    /// Converts the device to a generic `Any` type.
-    fn as_any(self: Box<Self>) -> Box<dyn Any>;
-}
+use zisk_common::{BusDevice, BusId};
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
 ///

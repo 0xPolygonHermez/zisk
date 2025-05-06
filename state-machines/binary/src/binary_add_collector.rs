@@ -1,7 +1,7 @@
 //! The `BinaryAddCollector` struct represents an input collector for binary add operations.
 
-use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OPERATION_BUS_ID};
 use sm_common::CollectSkipper;
+use zisk_common::{BusDevice, BusId, ExtOperationData, OperationBusData, OPERATION_BUS_ID};
 use zisk_core::zisk_ops::ZiskOp;
 
 /// The `BinaryAddCollector` struct represents an input collector for binary add operations.

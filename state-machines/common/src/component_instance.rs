@@ -2,10 +2,9 @@
 //! in the context of proof systems. It includes traits and macros for defining instances
 //! and integrating them with state machines and proofs.
 
-use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use zisk_common::ChunkId;
+use zisk_common::{BusDevice, ChunkId, PayloadType};
 
 use crate::{BusDeviceWrapper, CheckPoint};
 
@@ -92,9 +91,9 @@ macro_rules! table_instance {
 
         use p3_field::PrimeField;
 
-        use data_bus::{BusId, PayloadType};
         use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
         use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
+        use zisk_common::{BusDevice, BusId, PayloadType};
         use zisk_pil::$Trace;
 
         use rayon::prelude::*;
@@ -153,7 +152,7 @@ macro_rules! table_instance {
             }
         }
 
-        impl data_bus::BusDevice<u64> for $InstanceName {
+        impl BusDevice<u64> for $InstanceName {
             fn process_data(
                 &mut self,
                 bus_id: &BusId,
@@ -190,9 +189,9 @@ macro_rules! table_instance_array {
 
         use p3_field::PrimeField;
 
-        use data_bus::{BusId, PayloadType};
         use proofman_common::{AirInstance, ProofCtx, SetupCtx, TraceInfo};
         use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
+        use zisk_common::{BusDevice, BusId, PayloadType};
         use zisk_pil::$Trace;
 
         use rayon::prelude::*;
@@ -254,7 +253,7 @@ macro_rules! table_instance_array {
             }
         }
 
-        impl data_bus::BusDevice<u64> for $InstanceName {
+        impl BusDevice<u64> for $InstanceName {
             fn process_data(
                 &mut self,
                 bus_id: &BusId,
