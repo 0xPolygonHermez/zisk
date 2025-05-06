@@ -104,6 +104,7 @@ impl MemCounters {
             self.mem_align_rows += mem_align_op_rows;
         }
     }
+    #[allow(dead_code)]
     pub fn save_to_file(&mut self, chunk_id: ChunkId, data: &[u64]) {
         if self.file.is_none() {
             self.file = Some(File::create(format!("tmp/bus_data/mem_{}.bin", chunk_id)).unwrap());
@@ -113,6 +114,7 @@ impl MemCounters {
         };
         self.file.as_mut().unwrap().write_all(bytes).unwrap();
     }
+    #[allow(dead_code)]
     pub fn load_from_file(
         chunk_id: ChunkId,
     ) -> Result<Vec<[u64; MEM_BUS_DATA_SIZE]>, std::io::Error> {
@@ -135,6 +137,7 @@ impl MemCounters {
         }
         Ok(data)
     }
+    #[allow(dead_code)]
     pub fn execute_from_vector(&mut self, data_bus: &Vec<[u64; MEM_BUS_DATA_SIZE]>) {
         for data in data_bus {
             self.mem_measure(data);
@@ -162,8 +165,8 @@ impl BusDevice<u64> for MemCounters {
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(bus_id == &MEM_BUS_ID);
 
-        let chunk_id = MemHelpers::mem_step_to_chunk(MemBusData::get_step(data));
-        self.save_to_file(chunk_id, data);
+        // let chunk_id = MemHelpers::mem_step_to_chunk(MemBusData::get_step(data));
+        // self.save_to_file(chunk_id, data);
         self.measure(data);
 
         None

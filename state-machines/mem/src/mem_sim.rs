@@ -12,7 +12,6 @@ pub use mem_inputs::*;
 mod mem_sm;
 pub use mem_sm::*;
 mod rom_data_sm;
-use proofman_util::{timer_start_info, timer_stop_and_log_info};
 pub use rom_data_sm::*;
 mod input_data_sm;
 pub use input_data_sm::*;
@@ -32,7 +31,6 @@ mod mem_module_check_point;
 pub use mem_module_check_point::*;
 // mod mem_ops;
 // pub use mem_ops::*;
-use p3_field::PrimeField64;
 use sm_common::BusDeviceMetrics;
 use zisk_common::ChunkId;
 

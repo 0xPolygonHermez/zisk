@@ -50,11 +50,11 @@ pub struct MemModulePlanner {
     reference_addr: u32,
     reference_skip: u32,
     cursor: MemCountersCursor,
-    intermediate_extra_rows: u64,
-    intermediate_count: u64,
-    intermediate_max: u64,
-    intermediate_max_count: u64,
-    intermediate_rows: u64,
+    // intermediate_extra_rows: u64,
+    // intermediate_count: u64,
+    // intermediate_max: u64,
+    // intermediate_max_count: u64,
+    // intermediate_rows: u64,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -85,11 +85,11 @@ impl<'a> MemModulePlanner {
             reference_skip: 0,
             last_chunk: None,
             cursor: MemCountersCursor::new(counters, config.addr_index),
-            intermediate_extra_rows: 0,
-            intermediate_rows: 0,
-            intermediate_count: 0,
-            intermediate_max: 0,
-            intermediate_max_count: 0,
+            // intermediate_extra_rows: 0,
+            // intermediate_rows: 0,
+            // intermediate_count: 0,
+            // intermediate_max: 0,
+            // intermediate_max_count: 0,
         }
     }
     pub fn module_plan(&mut self) {
@@ -343,14 +343,14 @@ impl<'a> MemModulePlanner {
             assert_eq!(to_addr, from_addr);
             self.add_intermediate_rows(to_addr, 1);
         }
-        self.intermediate_rows += count as u64;
-        self.intermediate_count += 1;
-        if count as u64 > self.intermediate_max {
-            self.intermediate_max_count = 1;
-            self.intermediate_max = count as u64;
-        } else if count as u64 == self.intermediate_max {
-            self.intermediate_max_count += 1;
-        }
+        // self.intermediate_rows += count as u64;
+        // self.intermediate_count += 1;
+        // if count as u64 > self.intermediate_max {
+        //    self.intermediate_max_count = 1;
+        //    self.intermediate_max = count as u64;
+        // } else if count as u64 == self.intermediate_max {
+        //    self.intermediate_max_count += 1;
+        //}
     }
     fn add_intermediates(&mut self, addr: u32) -> u32 {
         if self.last_addr != addr {
