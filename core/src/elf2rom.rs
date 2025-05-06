@@ -3,8 +3,8 @@
 use crate::{
     add_end_jmp, is_elf_file,
     riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
-    AsmGenerationMethod, RoData, ZiskInst, ZiskRom, RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ADDR_MAX,
-    ROM_ENTRY,
+    AsmGenerationMethod, RoData, ZiskInst, ZiskRom, ZiskRom2Asm, RAM_ADDR, RAM_SIZE, ROM_ADDR,
+    ROM_ADDR_MAX, ROM_ENTRY,
 };
 use elf::{
     abi::{SHF_EXECINSTR, SHF_WRITE, SHT_PROGBITS},
@@ -123,8 +123,15 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
     let mut max_rom_instructions = 0;
     let mut min_rom_na_unstructions = u64::MAX;
     let mut max_rom_na_unstructions = 0;
+
+    // Prepare sorted pc list
+    rom.sorted_pc_list.reserve(rom.insts.len());
+
     for instruction in &rom.insts {
         let addr = *instruction.0;
+
+        // Add to pc list (still unsorted)
+        rom.sorted_pc_list.push(addr);
 
         if addr < ROM_ENTRY {
             return Err(format!("Address out of range: {}", addr).into());
@@ -172,6 +179,9 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
         (0..num_rom_na_instructions).into_par_iter().map(|_| ZiskInst::default()).collect();
     rom.offset_rom_na_unstructions = min_rom_na_unstructions;
 
+    // Sort pc list
+    rom.sorted_pc_list.sort();
+
     for instruction in &rom.insts {
         let addr = *instruction.0;
 
@@ -186,6 +196,14 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
         }
     }
 
+    // Link every instruction with the position they occupy in the sorted pc list
+    for i in 0..rom.sorted_pc_list.len() {
+        let pc = rom.sorted_pc_list[i];
+        rom.insts.get_mut(&pc).unwrap().i.sorted_pc_list_index = i;
+        let inst = rom.get_mut_instruction(pc);
+        inst.sorted_pc_list_index = i;
+    }
+
     //println! {"elf2rom() got rom.insts.len={}", rom.insts.len()};
 
     Ok(rom)
@@ -197,9 +215,10 @@ pub fn elf2romfile(
     elf_file: &Path,
     asm_file: &Path,
     generation_method: AsmGenerationMethod,
+    log_output: bool,
 ) -> Result<(), Box<dyn Error>> {
     let rom = elf2rom(elf_file)?;
-    rom.save_to_asm_file(asm_file, generation_method);
+    ZiskRom2Asm::save_to_asm_file(&rom, asm_file, generation_method, log_output);
 
     Ok(())
 }

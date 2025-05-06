@@ -17,6 +17,7 @@ path = "src/bin/riscv2zisk.rs"
 
 [dependencies]
 riscv = { path = "../riscv" }
+zisk-pil = { path = "../pil" }
 
 rayon = { workspace = true }
 serde = { workspace = true }
@@ -29,6 +30,7 @@ tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 precompiles-helpers = { path = "../precompiles/helpers" }
 lib-c = { path = "../lib-c" }
 ziskos = { path = "../ziskos/entrypoint" }
+p3-field = { workspace=true }
 
 [features]
 default = []

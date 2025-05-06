@@ -63,14 +63,22 @@ impl RomSM {
             worker.launch_task(asm_rom_path, input_data_path);
             worker
         });
+
+        let (bios_inst_count, prog_inst_count) = if rom_asm_worker.is_some() {
+            (vec![], vec![])
+        } else {
+            (
+                create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2), // No atomics, we can divide by 4
+                create_atomic_vec((ROM_ADDR_MAX - ROM_ADDR) as usize), // Cannot be dividede by 4
+            )
+        };
+
         let rom_asm_worker = Mutex::new(rom_asm_worker);
 
         Arc::new(Self {
             zisk_rom,
-            // No atomics, we can fivide by 4
-            bios_inst_count: Arc::new(create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2)),
-            // Cannot be dividede by 4
-            prog_inst_count: Arc::new(create_atomic_vec((ROM_ADDR_MAX - ROM_ADDR) as usize)),
+            bios_inst_count: Arc::new(bios_inst_count),
+            prog_inst_count: Arc::new(prog_inst_count),
             rom_asm_worker,
         })
     }
