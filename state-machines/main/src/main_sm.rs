@@ -54,10 +54,16 @@ impl MainInstance {
 
 /// The `MainSM` struct represents the Main State Machine,
 /// responsible for generating the main witness.
-pub struct MainSM {}
+pub struct MainSM<F: PrimeField64> {
+    std: Arc<Std<F>>,
+}
 
-impl MainSM {
+impl<F: PrimeField64> MainSM<F> {
     const MY_NAME: &'static str = "MainSM  ";
+
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+        Arc::new(Self { std })
+    }
 
     /// Computes the main witness trace for a given segment based on the provided proof context,
     /// ROM, and emulation traces.
@@ -70,12 +76,12 @@ impl MainSM {
     /// * `main_instance` - Reference to the `MainInstance` representing the current segment.
     ///
     /// The computed trace is added to the proof context's air instance repository.
-    pub fn compute_witness<F: PrimeField64>(
+    pub fn compute_witness(
+        &self,
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
         min_trace_size: u64,
         main_instance: &mut MainInstance,
-        std: Arc<Std<F>>,
     ) -> AirInstance<F> {
         // Create the main trace buffer
         let mut main_trace = MainTrace::new();
@@ -196,7 +202,7 @@ impl MainSM {
             step_range_check.clone(),
             &mut large_range_checks,
         );
-        Self::update_std_range_checks(std, step_range_check, &large_range_checks);
+        self.update_std_range_checks(step_range_check, &large_range_checks);
 
         // Generate and add the AIR instance
         let from_trace = FromTrace::new(&mut main_trace).with_air_values(&mut air_values);
@@ -213,7 +219,7 @@ impl MainSM {
     ///
     /// # Returns
     /// The next program counter value after processing the minimal trace.
-    fn fill_partial_trace<F: PrimeField64>(
+    fn fill_partial_trace(
         zisk_rom: &ZiskRom,
         main_trace: &mut [MainTraceRow<F>],
         min_trace: &EmuTrace,
@@ -261,7 +267,7 @@ impl MainSM {
         )
     }
 
-    fn complete_trace_with_initial_reg_steps_per_chunk<F: PrimeField64>(
+    fn complete_trace_with_initial_reg_steps_per_chunk(
         num_rows: usize,
         fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace)],
         main_trace: &mut MainTrace<F>,
@@ -325,7 +331,7 @@ impl MainSM {
             reg_steps[reg_index] = reg_prev_mem_step;
         }
     }
-    fn update_reg_airvalues<F: PrimeField64>(
+    fn update_reg_airvalues(
         air_values: &mut MainAirValues<'_, F>,
         final_step: u64,
         last_reg_values: &[u64],
@@ -347,25 +353,25 @@ impl MainSM {
             }
         }
     }
-    fn update_std_range_checks<F: PrimeField64>(
-        std: Arc<Std<F>>,
+    fn update_std_range_checks(
+        &self,
         step_range_check: Arc<Vec<AtomicU32>>,
         large_range_checks: &[u32],
     ) {
-        let range_id = std.get_range(1, MEMORY_MAX_DIFF as i64, None);
+        let range_id = self.std.get_range(1, MEMORY_MAX_DIFF as i64, None);
         for (value, _multiplicity) in step_range_check.iter().enumerate() {
             let multiplicity = _multiplicity.load(Ordering::Relaxed);
             if multiplicity != 0 {
-                std.range_check((value + 1) as i64, multiplicity as u64, range_id);
+                self.std.range_check((value + 1) as i64, multiplicity as u64, range_id);
             }
         }
         for range in large_range_checks {
-            std.range_check(*range as i64, 1, range_id);
+            self.std.range_check(*range as i64, 1, range_id);
         }
     }
 
     /// Debug method for the main state machine.
-    pub fn debug<F: PrimeField64>(_pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {
+    pub fn debug(_pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {
         // No debug information to display
     }
 

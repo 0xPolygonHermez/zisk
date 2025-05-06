@@ -39,6 +39,7 @@ rayon = { workspace = true }
 
 [features]
 default = ["distributed"]
+dev = []
 no_lib_link = ["proofman-common/no_lib_link"]
 diagnostic = ["proofman-macros/diagnostic"]
 distributed = ["proofman-common/distributed", "witness/distributed"]

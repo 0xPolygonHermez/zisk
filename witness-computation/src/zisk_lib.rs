@@ -15,6 +15,7 @@ use sm_rom::RomSM;
 use std::{any::Any, path::PathBuf, sync::Arc};
 use zisk_core::Riscv2zisk;
 
+use crate::register_state_machines_dev;
 use p3_field::PrimeField64;
 use p3_goldilocks::Goldilocks;
 use witness::{WitnessLibrary, WitnessManager};
@@ -72,39 +73,25 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {}", e));
         let zisk_rom = Arc::new(zisk_rom);
 
-        // Step 3: Initialize the secondary state machines
-        let std = Std::new(wcm.clone());
-        let rom_sm =
-            RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone(), self.input_data_path.clone());
-        let binary_sm = BinarySM::new(std.clone());
-        let arith_sm = ArithSM::new();
-        let mem_sm = Mem::new(std.clone());
-
-        // Step 4: Initialize the precompiles state machines
-        let keccakf_sm = KeccakfManager::new::<F>(self.keccak_path.clone());
-        let arith_eq_sm = ArithEqManager::new(std.clone());
-
-        // Step 5: Create the executor and register the secondary state machines
+        // Step 3: Create the executor
         let mut executor: ZiskExecutor<F> = ZiskExecutor::new(
             self.elf_path.clone(),
             self.asm_path.clone(),
             self.asm_rom_path.clone(),
             self.input_data_path.clone(),
-            zisk_rom,
-            std,
+            self.keccak_path.clone(),
+            zisk_rom.clone(),
         );
-        executor.register_sm(mem_sm);
-        executor.register_sm(rom_sm);
-        executor.register_sm(binary_sm);
-        executor.register_sm(arith_sm);
 
-        // Step 6: Register the precompiles state machines
-        executor.register_sm(keccakf_sm);
-        executor.register_sm(arith_eq_sm);
+        if cfg!(not(feature = "dev")) {
+            register_state_machines(&mut executor, wcm.clone());
+        } else {
+            register_state_machines_dev(&mut executor, wcm.clone());
+        }
 
         let executor = Arc::new(executor);
 
-        // Step 7: Register the executor as a component in the Witness Manager
+        // Step 8: Register the executor as a component in the Witness Manager
         wcm.register_component(executor.clone());
 
         self.executor = Some(executor);
@@ -120,4 +107,36 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             Some(executor) => Some(Box::new(executor.get_execution_result()) as Box<dyn Any>),
         }
     }
+}
+
+pub fn register_state_machines<F: PrimeField64>(
+    executor: &mut ZiskExecutor<F>,
+    wcm: Arc<WitnessManager<F>>,
+) {
+    let std = Std::new(wcm.clone());
+    executor.register_main_sm(std.clone());
+
+    // Step 4: Initialize the secondary state machines
+    let rom_sm = RomSM::new(
+        executor.zisk_rom.clone(),
+        executor.asm_rom_path.clone(),
+        executor.input_data_path.clone(),
+    );
+    let binary_sm = BinarySM::new(std.clone());
+    let arith_sm = ArithSM::new();
+    let mem_sm = Mem::new(std.clone());
+
+    // Step 5: Initialize the precompiles state machines
+    let keccakf_sm = KeccakfManager::new::<F>(executor.keccak_path.clone());
+    let arith_eq_sm = ArithEqManager::new(std.clone());
+
+    // Step 6: Register the secondary state machines
+    executor.register_sm(mem_sm);
+    executor.register_sm(rom_sm);
+    executor.register_sm(binary_sm);
+    executor.register_sm(arith_sm);
+
+    // Step 7: Register the precompiles state machines
+    executor.register_sm(keccakf_sm);
+    executor.register_sm(arith_eq_sm);
 }

@@ -30,11 +30,12 @@ use witness::WitnessComponent;
 use rayon::prelude::*;
 
 use data_bus::{BusDevice, DataBus, PayloadType, OPERATION_BUS_ID};
+use sm_common::Metrics;
 use sm_common::{
     BusDeviceMetrics, BusDeviceMetricsWrapper, BusDeviceWrapper, CheckPoint, ComponentBuilder,
     Instance, InstanceCtx, InstanceType, MinimalTraces, Plan,
 };
-use sm_main::{MainInstance, MainPlanner, MainSM};
+use sm_main::{MainCounter, MainInstance, MainPlanner, MainSM};
 use zisk_common::ChunkId;
 use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
 
@@ -70,6 +71,8 @@ pub struct ZiskExecutor<F: PrimeField64> {
 
     pub asm_runner_path: Option<PathBuf>,
     pub asm_rom_path: Option<PathBuf>,
+    pub keccak_path: PathBuf,
+    main_sm: Option<Arc<MainSM<F>>>,
 
     /// Registered secondary state machines.
     secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,
@@ -81,7 +84,6 @@ pub struct ZiskExecutor<F: PrimeField64> {
 
     pub main_instances: RwLock<HashMap<usize, MainInstance>>,
     pub secn_instances: RwLock<HashMap<usize, Box<dyn Instance<F>>>>,
-    std: Arc<Std<F>>,
 
     execution_result: Mutex<ZiskExecutionResult>,
 }
@@ -105,22 +107,23 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         asm_path: Option<PathBuf>,
         asm_rom_path: Option<PathBuf>,
         input_data_path: Option<PathBuf>,
+        keccak_path: PathBuf,
         zisk_rom: Arc<ZiskRom>,
-        std: Arc<Std<F>>,
     ) -> Self {
         Self {
             input_data_path,
             rom_path,
             asm_runner_path: asm_path,
             asm_rom_path,
+            keccak_path,
             zisk_rom,
+            main_sm: None,
             secondary_sm: Vec::new(),
             min_traces: RwLock::new(MinimalTraces::None),
             main_planning: RwLock::new(Vec::new()),
             secn_planning: RwLock::new(Vec::new()),
             main_instances: RwLock::new(HashMap::new()),
             secn_instances: RwLock::new(HashMap::new()),
-            std,
             execution_result: Mutex::new(ZiskExecutionResult::default()),
         }
     }
@@ -135,6 +138,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// * `sm` - The state machine to register.
     pub fn register_sm(&mut self, sm: Arc<dyn ComponentBuilder<F>>) {
         self.secondary_sm.push(sm);
+    }
+
+    pub fn register_main_sm(&mut self, std: Arc<Std<F>>) {
+        assert!(self.main_sm.is_none(), "Main state machine already registered");
+        self.main_sm = Some(MainSM::new(std.clone()));
     }
 
     /// Computes minimal traces by processing the ZisK ROM with given public inputs.
@@ -246,6 +254,20 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             .unwrap_or_else(|| panic!("create_main_instance: Invalid metadata format"));
 
         MainInstance::new(InstanceCtx::new(global_id, plan), is_last_segment)
+    }
+
+    fn get_publics(
+        &self,
+        main_counters: &Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>,
+    ) -> Vec<(u64, u32)> {
+        let mut publics = Vec::new();
+
+        main_counters.iter().for_each(|(_, counter)| {
+            let reg_counter = Metrics::as_any(&**counter).downcast_ref::<MainCounter>().unwrap();
+            publics.extend_from_slice(&reg_counter.publics);
+        });
+
+        publics
     }
 
     /// Counts metrics for secondary state machines based on minimal traces.
@@ -401,12 +423,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             _ => unreachable!(),
         };
 
-        let air_instance = MainSM::compute_witness(
+        let air_instance = self.main_sm.as_ref().unwrap().compute_witness(
             &self.zisk_rom,
             min_traces,
             Self::MIN_TRACE_SIZE,
             main_instance,
-            self.std.clone(),
         );
 
         pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
@@ -523,7 +544,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     fn get_data_bus_counters(&self) -> DataBus<PayloadType, BusDeviceMetricsWrapper> {
         let mut data_bus = DataBus::new();
 
-        let counter = MainSM::build_counter();
+        let counter = MainSM::<F>::build_counter();
 
         data_bus.connect_device(
             counter.bus_id(),
@@ -651,9 +672,13 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         // Count the metrics for the Secondary SM instances
         let (main_count, secn_count) = self.count(&min_traces);
 
+        let public_values = self.get_publics(&main_count);
+
         // Plan the main and secondary instances using the counted metrics
-        let (mut main_planning, public_values) =
-            MainPlanner::plan::<F>(&min_traces, main_count, Self::MIN_TRACE_SIZE);
+        let mut main_planning = match self.main_sm.is_some() {
+            true => MainPlanner::plan::<F>(&min_traces, Self::MIN_TRACE_SIZE),
+            false => vec![],
+        };
 
         let mut secn_planning = self.plan_sec(secn_count);
 

@@ -7,12 +7,10 @@ use std::any::Any;
 
 use p3_field::PrimeField;
 use sm_common::MinimalTraces;
-use sm_common::{BusDeviceMetrics, CheckPoint, InstanceType, Metrics, Plan};
+use sm_common::{CheckPoint, InstanceType, Plan};
 use zisk_common::ChunkId;
 use zisk_common::SegmentId;
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
-
-use crate::MainCounter;
 
 /// The `MainPlanner` struct generates execution plans for the Main State Machine.
 ///
@@ -33,11 +31,7 @@ impl MainPlanner {
     ///
     /// # Returns
     /// A vector of `Plan` instances, each corresponding to a segment of the main trace.
-    pub fn plan<F: PrimeField>(
-        min_traces: &MinimalTraces,
-        main_counters: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>,
-        min_traces_size: u64,
-    ) -> (Vec<Plan>, Vec<(u64, u32)>) {
+    pub fn plan<F: PrimeField>(min_traces: &MinimalTraces, min_traces_size: u64) -> Vec<Plan> {
         let min_traces = match min_traces {
             MinimalTraces::EmuTrace(min_traces) => min_traces,
             MinimalTraces::AsmEmuTrace(asm_min_traces) => &asm_min_traces.vec_chunks,
@@ -45,13 +39,6 @@ impl MainPlanner {
         };
 
         let num_rows = MainTrace::<F>::NUM_ROWS as u64;
-
-        let mut publics = Vec::new();
-
-        main_counters.iter().for_each(|(_, counter)| {
-            let reg_counter = Metrics::as_any(&**counter).downcast_ref::<MainCounter>().unwrap();
-            publics.extend_from_slice(&reg_counter.publics);
-        });
 
         assert!(num_rows.is_power_of_two());
         assert!(min_traces_size.is_power_of_two());
@@ -74,6 +61,6 @@ impl MainPlanner {
             })
             .collect();
 
-        (plans, publics)
+        plans
     }
 }
