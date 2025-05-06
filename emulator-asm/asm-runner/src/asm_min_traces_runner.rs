@@ -10,9 +10,9 @@ use zisk_common::{ChunkId, EmuTrace};
 use std::ffi::{c_void, CString};
 use std::fmt::Debug;
 use std::path::Path;
+use std::process::{self, Command};
 use std::sync::mpsc;
 use std::time::Duration;
-use std::process::{self, Command};
 use std::{fs, ptr};
 
 use log::info;
