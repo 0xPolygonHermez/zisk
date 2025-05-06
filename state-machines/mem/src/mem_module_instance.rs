@@ -103,7 +103,7 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+        collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
     ) -> Option<AirInstance<F>> {
         // Collect inputs from all collectors. At most, one of them has `prev_last_value` non zero,
         // we take this `prev_last_value`, which represents the last value of the previous segment.

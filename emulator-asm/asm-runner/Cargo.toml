@@ -16,9 +16,11 @@ name = "asm-runner-main"
 path = "src/main.rs"
 
 [dependencies]
-log = { workspace = true }
 zisk-common = { path = "../../common" }
 zisk-core = { path = "../../core" }
+
+log = { workspace = true}
+rayon = { workspace = true}
 
 clap = { version = "4", features = ["derive"] }
 libc = "0.2"

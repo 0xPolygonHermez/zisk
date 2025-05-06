@@ -19,6 +19,8 @@ pub enum AsmGenerationMethod {
     AsmMainTrace,
     /// Generate assembly code to stop at chunks, but do not generate any trace
     AsmChunks,
+    /// Generate assembly code to compute bus op [op, a, b, mem_read_index] traces
+    AsmBusOp,
 }
 /// RISCV-to-ZisK struct containing the input ELF RISCV file name and the output ZISK ASM file name
 pub struct Riscv2zisk {

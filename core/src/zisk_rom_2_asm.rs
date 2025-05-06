@@ -55,8 +55,8 @@ pub struct ZiskAsmRegister {
     is_constant: bool,   // register is a constant value known at compilation time
     constant_value: u64, // register constant value, only valid if is_constant==true
     is_saved: bool,      // register has been saved to memory/register
-    string_value: String, /* register string value: a constant value (e.g. "0x3f") or a register
-                          * (e.g. "rax") */
+    string_value: String, // register string value: a constant value (e.g. "0x3f") or a register
+                         // (e.g. "rax")
 }
 
 #[derive(Default, Debug, Clone)]
@@ -87,14 +87,34 @@ pub struct ZiskAsmContext {
     mem_trace_address: String,
     mem_chunk_address: String,
     mem_chunk_start_step: String,
+    fcall_ctx: String,
+
+    comments: bool, // true if we want to generate comments in the assembly source code
+    boc: String,    // begin of comment: '/*', ';', '#', etc.
+    eoc: String,    // end of comment: '*/', '', etc
+
+    ptr: String, // "ptr ", ""
 }
 
+// Local variables, used in library:
+//   registers[35] -> RSP - 34*8
+//   trace_address -> RSP - (35-16 = 19)*8
+//   trace_size -> RSP - 20*8
+//   fcall_ctx[70] -> RSP - 90*8
+//   mem_step -> RSP - 91*8
+const RSP_REGS_OFFSET: u64 = 34 * 8;
+// const RSP_TRACE_ADDRESS_OFFSET: u64 = 19 * 8;
+// const RSP_TRACE_SIZE_OFFSET: u64 = 20 * 8;
+const RSP_FCALL_CTX_OFFSET: u64 = 90 * 8;
+const RSP_MEM_STEP_OFFSET: u64 = 91 * 8;
+const RSP_OFFSET: u64 = 91 * 8;
+
 impl ZiskAsmContext {
-    pub fn minimal_trace(&self) -> bool {
-        self.mode == AsmGenerationMethod::AsmMinimalTraces
-    }
     pub fn fast(&self) -> bool {
         self.mode == AsmGenerationMethod::AsmFast
+    }
+    pub fn minimal_trace(&self) -> bool {
+        self.mode == AsmGenerationMethod::AsmMinimalTraces
     }
     pub fn rom_histogram(&self) -> bool {
         self.mode == AsmGenerationMethod::AsmRomHistogram
@@ -104,6 +124,44 @@ impl ZiskAsmContext {
     }
     pub fn chunks(&self) -> bool {
         self.mode == AsmGenerationMethod::AsmChunks
+    }
+    pub fn bus_op(&self) -> bool {
+        self.mode == AsmGenerationMethod::AsmBusOp
+    }
+    pub fn process(&self) -> bool {
+        match self.mode {
+            AsmGenerationMethod::AsmFast
+            | AsmGenerationMethod::AsmMinimalTraces
+            | AsmGenerationMethod::AsmRomHistogram
+            | AsmGenerationMethod::AsmMainTrace
+            | AsmGenerationMethod::AsmChunks => true,
+            AsmGenerationMethod::AsmBusOp => false,
+        }
+    }
+    pub fn lib(&self) -> bool {
+        !self.process()
+    }
+    // Creates a comment with the specified prefix and sufix, i.e. with the requested syntax
+    pub fn comment(&self, c: String) -> String {
+        let mut s = String::new();
+        if self.comments {
+            s = format!("{}{}{}", self.boc, c, self.eoc);
+        }
+        s
+    }
+
+    // Creates a comment from a str
+    pub fn comment_str(&self, c: &str) -> String {
+        self.comment(c.to_string())
+    }
+
+    // Creates a full-line comment
+    pub fn full_line_comment(&self, c: String) -> String {
+        let mut s = String::new();
+        if self.comments {
+            s = format!("\t{}{}{}\n", self.boc, c, self.eoc);
+        }
+        s
     }
 }
 
@@ -151,33 +209,58 @@ impl ZiskRom2Asm {
             log_output,
             call_chunk_done: true,
             mode: generation_method,
-            mem_step: "qword ptr [MEM_STEP]".to_string(),
-            mem_sp: "qword ptr [MEM_SP]".to_string(),
-            mem_end: "qword ptr [MEM_END]".to_string(),
-            mem_trace_address: "qword ptr [MEM_TRACE_ADDRESS]".to_string(),
-            mem_chunk_address: "qword ptr [MEM_CHUNK_ADDRESS]".to_string(),
-            mem_chunk_start_step: "qword ptr [MEM_CHUNK_START_STEP]".to_string(),
+            comments: true,
+            boc: "/* ".to_string(),
+            eoc: " */".to_string(),
             ..Default::default()
         };
 
+        if ctx.process() {
+            ctx.ptr = "ptr ".to_string();
+            ctx.mem_step = format!("qword {}[MEM_STEP]", ctx.ptr);
+            ctx.mem_sp = format!("qword {}[MEM_SP]", ctx.ptr);
+            ctx.mem_end = format!("qword {}[MEM_END]", ctx.ptr);
+            ctx.mem_trace_address = format!("qword {}[MEM_TRACE_ADDRESS]", ctx.ptr);
+            ctx.mem_chunk_address = format!("qword {}[MEM_CHUNK_ADDRESS]", ctx.ptr);
+            ctx.mem_chunk_start_step = format!("qword {}[MEM_CHUNK_START_STEP]", ctx.ptr);
+            ctx.fcall_ctx = "fcall_ctx".to_string();
+        }
+
+        if ctx.lib() {
+            ctx.ptr = "ptr ".to_string();
+            ctx.mem_step = format!("qword {}[rsp + {}]", ctx.ptr, RSP_MEM_STEP_OFFSET);
+            ctx.fcall_ctx = format!("rsp + {}", RSP_FCALL_CTX_OFFSET);
+        }
+
         *code += ".intel_syntax noprefix\n";
         *code += ".code64\n";
-        *code += ".section .rodata\n";
-        *code += "msg: .ascii \"Zisk assembly emulator\\n\"\n";
-        *code += ".set msglen, (. - msg)\n\n";
 
-        *code += ".section .data\n";
-        *code += ".comm MEM_STEP, 8, 8\n";
-        *code += ".comm MEM_SP, 8, 8\n";
-        *code += ".comm MEM_END, 8, 8\n";
-        *code += ".comm MEM_TRACE_ADDRESS, 8, 8\n";
-        *code += ".comm MEM_CHUNK_ADDRESS, 8, 8\n";
-        *code += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
+        // if ctx.process() {
+        //     //*code += "bits 64\n";
+        //     *code += ".section .rodata\n";
+        //     *code += "msg: .ascii \"Zisk assembly emulator\\n\"\n";
+        //     *code += ".set msglen, (. - msg)\n\n";
+        // }
 
-        // Allocate space for the registers
-        for r in 0u64..35u64 {
-            if !XMM_MAPPED_REGS.contains(&r) {
-                *code += &format!(".comm reg_{}, 8, 8\n", r);
+        if ctx.fast()
+            || ctx.minimal_trace()
+            || ctx.rom_histogram()
+            || ctx.main_trace()
+            || ctx.chunks()
+        {
+            *code += ".section .data\n";
+            *code += ".comm MEM_STEP, 8, 8\n";
+            *code += ".comm MEM_SP, 8, 8\n";
+            *code += ".comm MEM_END, 8, 8\n";
+            *code += ".comm MEM_TRACE_ADDRESS, 8, 8\n";
+            *code += ".comm MEM_CHUNK_ADDRESS, 8, 8\n";
+            *code += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
+
+            // Allocate space for the registers
+            for r in 0u64..35u64 {
+                if !XMM_MAPPED_REGS.contains(&r) {
+                    *code += &format!(".comm reg_{}, 8, 8\n", r);
+                }
             }
         }
 
@@ -205,7 +288,14 @@ impl ZiskRom2Asm {
         //     result_size
         //     result[32]
         //     result_got
-        *code += ".comm fcall_ctx, 8*70, 8\n";
+        if ctx.fast()
+            || ctx.minimal_trace()
+            || ctx.rom_histogram()
+            || ctx.main_trace()
+            || ctx.chunks()
+        {
+            *code += ".comm fcall_ctx, 8*70, 8\n";
+        }
 
         // for k in 0..keys.len() {
         //     let pc = keys[k];
@@ -214,7 +304,9 @@ impl ZiskRom2Asm {
         //     *s += &format!(".set pc_{}_log_len, (. - pc_{}_log)\n", pc, pc);
         // }
 
-        *code += ".section .text\n";
+        if ctx.process() {
+            *code += ".section .text\n";
+        }
         *code += ".extern print_abcflag\n";
         *code += ".extern print_char\n";
         *code += ".extern print_step\n";
@@ -277,54 +369,117 @@ impl ZiskRom2Asm {
         }
         *code += "\tret\n\n";
 
-        *code += ".global emulator_start\n";
-        *code += "emulator_start:\n";
+        if ctx.fast()
+            || ctx.minimal_trace()
+            || ctx.rom_histogram()
+            || ctx.main_trace()
+            || ctx.chunks()
+        {
+            *code += ".global emulator_start\n";
+            *code += "emulator_start:\n";
+        }
+        if ctx.bus_op() {
+            *code += ".global emulator_chunk_bus_op\n";
+            *code += "emulator_chunk_bus_op:\n";
+        }
 
         Self::push_external_registers(&mut ctx, code);
 
-        *code += "\n/* ZisK registers initialization */\n";
-        *code += &format!("\tmov {}, 0 /* a = 0 */\n", REG_A);
-        *code += &format!("\tmov {}, 0 /* b = 0 */\n", REG_B);
-        *code += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
-        *code += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
-        *code += &format!("\tmov {}, 0 /* pc = 0 */\n", REG_PC);
-        *code += &format!("\tmov {}, 0 /* step = 0 */\n", REG_STEP);
+        if ctx.lib() {
+            *code += &format!(
+                "\tadd rsp, {}{}\n",
+                RSP_OFFSET,
+                ctx.comment_str("Reserve space for local variables")
+            );
+        }
+
+        *code += &format!("\n{}\n", ctx.comment_str("ZisK registers initialization"));
+        *code += &format!("\tmov {}, 0 {}\n", REG_A, ctx.comment_str("a=0"));
+        *code += &format!("\tmov {}, 0 {}\n", REG_B, ctx.comment_str("b=0"));
+        *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c=0"));
+        *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag=0"));
+        *code += &format!("\tmov {}, 0 {}\n", REG_PC, ctx.comment_str("pc=0"));
+        *code += &format!("\tmov {}, 0 {}\n", REG_STEP, ctx.comment_str("step=0"));
 
         // Initialize registers to zero
-        *code += "\t/* RISC-V registers to zero */\n";
-        for r in 0u64..35u64 {
-            if !XMM_MAPPED_REGS.contains(&r) {
-                *code += &format!("\tmov qword ptr [reg_{}], 0\n", r);
+        *code += &ctx.full_line_comment("Set RISC-V registers to zero".to_string());
+
+        if ctx.fast()
+            || ctx.minimal_trace()
+            || ctx.rom_histogram()
+            || ctx.main_trace()
+            || ctx.chunks()
+        {
+            for r in 0u64..35u64 {
+                if !XMM_MAPPED_REGS.contains(&r) {
+                    *code += &format!("\tmov qword {}[reg_{}], 0\n", ctx.ptr, r);
+                }
             }
         }
         for r in 0..16 {
             *code += &format!("\tpxor xmm{}, xmm{}\n", r, r);
         }
 
-        *code += "\n/* ASM memory initialization */\n";
-        *code += &format!("\tmov {}, 0 /* step = 0 */\n", ctx.mem_step);
-        *code += &format!("\tmov {}, 0 /* sp = 0 */\n", ctx.mem_sp);
-        *code += &format!("\tmov {}, 0 /* end = 0 */\n", ctx.mem_end);
+        *code += &format!("\n{}\n", ctx.comment_str("ASM memory initialization"));
+        if ctx.fast()
+            || ctx.minimal_trace()
+            || ctx.rom_histogram()
+            || ctx.main_trace()
+            || ctx.chunks()
+        {
+            *code += &format!("\tmov {}, 0 {}\n", ctx.mem_step, ctx.comment_str("step=0"));
+            *code += &format!("\tmov {}, 0 {}\n", ctx.mem_sp, ctx.comment_str("sp=0"));
+            *code += &format!("\tmov {}, 0 {}\n", ctx.mem_end, ctx.comment_str("step=0"));
+        }
         if ctx.minimal_trace() || ctx.main_trace() {
-            *code += &format!("\tmov {}, {} /* value = TRACE_ADDR */\n", REG_VALUE, TRACE_ADDR);
             *code += &format!(
-                "\tmov {}, {} /* trace_address = value = TRACE_ADDR */\n",
-                ctx.mem_trace_address, REG_VALUE
+                "\tmov {}, {} {}\n",
+                REG_VALUE,
+                TRACE_ADDR,
+                ctx.comment_str("value = TRACE_ADDR")
             );
-            *code += &format!("\tadd {}, 8 /* value += 8 */\n", REG_VALUE);
             *code += &format!(
-                "\tmov {}, {} /* chunk_address = value = TRACE_ADDR + 8 */\n\n",
-                ctx.mem_chunk_address, REG_VALUE
+                "\tmov {}, {} {}\n",
+                ctx.mem_trace_address,
+                REG_VALUE,
+                ctx.comment_str("trace_address = value = TRACE_ADDR")
+            );
+            *code += &format!("\tadd {}, 8 {}\n", REG_VALUE, ctx.comment_str("value+=8"));
+            *code += &format!(
+                "\tmov {}, {} {}\n\n",
+                ctx.mem_chunk_address,
+                REG_VALUE,
+                ctx.comment_str("chunk_address = value = TRACE_ADDR+8")
             );
         }
 
-        *code += "\t/* fcall_context initialization */\n";
-        *code += &format!("\tlea {}, fcall_ctx /* address = fcall context */\n", REG_ADDRESS);
+        *code += &ctx.full_line_comment("fcall_context initialization".to_string());
+        if ctx.fast()
+            || ctx.minimal_trace()
+            || ctx.rom_histogram()
+            || ctx.main_trace()
+            || ctx.chunks()
+        {
+            *code += &format!(
+                "\tlea {}, {} {}\n",
+                REG_ADDRESS,
+                ctx.fcall_ctx,
+                ctx.comment_str("address = fcall context")
+            );
+        } else {
+            *code += &format!("\tmov {}, rsp {}\n", REG_ADDRESS, ctx.comment_str("address = rsp"));
+            *code += &format!(
+                "\tadd {}, {} {}\n",
+                REG_ADDRESS,
+                RSP_FCALL_CTX_OFFSET,
+                ctx.comment_str("address += fcall_ctx_offset")
+            );
+        }
         for i in 0..70 {
             if (i == FCALL_PARAMS_CAPACITY) || (i == FCALL_RESULT_CAPACITY) {
-                *code += &format!("\tmov qword ptr [{} + {}*8], 32\n", REG_ADDRESS, i);
+                *code += &format!("\tmov qword {}[{} + {}*8], 32\n", ctx.ptr, REG_ADDRESS, i);
             } else {
-                *code += &format!("\tmov qword ptr [{} + {}*8], 0\n", REG_ADDRESS, i);
+                *code += &format!("\tmov qword {}[{} + {}*8], 0\n", ctx.ptr, REG_ADDRESS, i);
             }
         }
 
@@ -336,8 +491,16 @@ impl ZiskRom2Asm {
 
             // Call chunk_start the first time, for the first chunk
             if (ctx.minimal_trace() || ctx.main_trace()) && (k == 0) {
-                *code += &format!("\tmov {}, 0x{:08x} /* value = pc */\n", REG_PC, ctx.pc);
-                *code += "\tcall chunk_start /* Call chunk_start the first time */\n";
+                *code += &format!(
+                    "\tmov {}, 0x{:08x} {}\n",
+                    REG_PC,
+                    ctx.pc,
+                    ctx.comment_str("value = pc")
+                );
+                *code += &format!(
+                    "\tcall chunk_start {}\n",
+                    ctx.comment_str("Call chunk_start the first time")
+                );
             }
 
             ctx.next_pc =
@@ -346,7 +509,9 @@ impl ZiskRom2Asm {
 
             // Instruction label
             *code += "\n";
-            *code += &format!("pc_{:x}: /*{} */\n", ctx.pc, instruction.to_text().as_str());
+            let mut instruction_comment = instruction.to_text();
+            instruction_comment.remove(0);
+            *code += &format!("pc_{:x}: {}\n", ctx.pc, ctx.comment(instruction_comment));
 
             //println!("ZiskRom2Asm::save_to_asm() instruction={}", instruction.to_text());
 
@@ -365,9 +530,9 @@ impl ZiskRom2Asm {
             // Update the rom histogram
             if ctx.rom_histogram() {
                 let address = Self::get_rom_histogram_trace_address(rom, ctx.pc);
-                *code += "\t/* rom histogram */\n";
+                *code += &ctx.full_line_comment("rom histogram".to_string());
                 *code += &format!("\tmov {}, 0x{:08x}\n", REG_ADDRESS, address);
-                *code += &format!("\tinc qword ptr [{}]\n", REG_ADDRESS);
+                *code += &format!("\tinc qword {}[{}]\n", ctx.ptr, REG_ADDRESS);
             }
 
             // Set special storage destinations for a and b registers, based on operations, in order
@@ -455,12 +620,12 @@ impl ZiskRom2Asm {
             ctx.b.is_saved = false;
             ctx.b.string_value = REG_B.to_string();
             if instruction.b_src == SRC_C {
-                *code += "\t/* b=SRC_C */\n";
+                *code += &ctx.full_line_comment("b=SRC_C".to_string());
                 if ctx.store_b_in_c {
                     // No need to copy c to b, since we need b to be stored in c
                     ctx.b.is_saved = false;
                 } else {
-                    *code += &format!("\tmov {}, {} /* b = c */\n", REG_B, REG_C);
+                    *code += &format!("\tmov {}, {} {}\n", REG_B, REG_C, ctx.comment_str("b = c"));
                     ctx.b.is_saved = true;
                 }
                 if ctx.main_trace() {
@@ -478,12 +643,13 @@ impl ZiskRom2Asm {
             ctx.a.string_value = REG_A.to_string();
             match instruction.a_src {
                 SRC_C => {
-                    *code += "\t/* a=SRC_C */\n";
+                    *code += &ctx.full_line_comment("a=SRC_C".to_string());
                     if ctx.store_a_in_c {
                         // No need to copy c to a, since we need a to be stored in c
                         ctx.a.is_saved = false;
                     } else {
-                        *code += &format!("\tmov {}, {} /* a = c */\n", REG_A, REG_C);
+                        *code +=
+                            &format!("\tmov {}, {} {}\n", REG_A, REG_C, ctx.comment_str("a = c"));
                         ctx.a.is_saved = true;
                     }
                     if ctx.main_trace() {
@@ -491,38 +657,54 @@ impl ZiskRom2Asm {
                     }
                 }
                 SRC_REG => {
-                    *code += &format!("\t/* a=SRC_REG reg={} */\n", instruction.a_offset_imm0);
+                    *code += &ctx
+                        .full_line_comment(format!("a=SRC_REG reg={}", instruction.a_offset_imm0));
 
                     assert!(instruction.a_offset_imm0 <= 34);
 
                     // Read from memory and store in the proper register: a or c
                     let dest_reg = if ctx.store_a_in_c { REG_C } else { REG_A };
                     let dest_desc = if ctx.store_a_in_c { "c" } else { "a" };
-                    Self::read_riscv_reg(code, instruction.a_offset_imm0, dest_reg, dest_desc);
+                    Self::read_riscv_reg(
+                        &mut ctx,
+                        code,
+                        instruction.a_offset_imm0,
+                        dest_reg,
+                        dest_desc,
+                    );
 
                     if ctx.main_trace() {
                         Self::trace_reg_access(&mut ctx, code, instruction.a_offset_imm0, 0);
                     }
                 }
                 SRC_MEM => {
-                    *code += "\t/* a=SRC_MEM */\n";
+                    *code += &ctx.full_line_comment("a=SRC_MEM".to_string());
 
                     // Calculate memory address
                     *code += &format!(
-                        "\tmov {}, 0x{:x} /* address = i.a_offset_imm0 */\n",
-                        REG_ADDRESS, instruction.a_offset_imm0
+                        "\tmov {}, 0x{:x} {}\n",
+                        REG_ADDRESS,
+                        instruction.a_offset_imm0,
+                        ctx.comment_str("address = a_offset_imm0")
                     );
                     if instruction.a_use_sp_imm1 != 0 {
-                        *code +=
-                            &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, ctx.mem_sp);
+                        *code += &format!(
+                            "\tadd {}, {} {}\n",
+                            REG_ADDRESS,
+                            ctx.mem_sp,
+                            ctx.comment_str("address += sp")
+                        );
                     }
 
                     // Read value from memory and store in the proper register: a or c
                     *code += &format!(
-                        "\tmov {}, [{}] /* {} = mem[address] */\n",
+                        "\tmov {}, [{}] {}\n",
                         if ctx.store_a_in_c { REG_C } else { REG_A },
                         REG_ADDRESS,
-                        if ctx.store_a_in_c { "c" } else { "a" }
+                        ctx.comment(format!(
+                            "{} = mem[address]",
+                            if ctx.store_a_in_c { "c" } else { "a" }
+                        ))
                     );
 
                     // Mem reads
@@ -540,8 +722,12 @@ impl ZiskRom2Asm {
                         else {
                             // Check if address is aligned, i.e. it is a multiple of 8, or not,
                             // and insert code accordingly
-                            *code += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
-                            *code += &format!("\tjnz pc_{:x}_a_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
+                            *code += &format!(
+                                "\ttest {}, 0x7 {}\n",
+                                REG_ADDRESS,
+                                ctx.comment_str("address &= 7")
+                            );
+                            *code += &format!("\tjnz pc_{:x}_a_address_not_aligned\n", ctx.pc);
                             Self::a_src_mem_aligned(&mut ctx, code);
                             unusual_code += &format!("pc_{:x}_a_address_not_aligned:\n", ctx.pc);
                             Self::a_src_mem_not_aligned(&mut ctx, &mut unusual_code);
@@ -558,49 +744,58 @@ impl ZiskRom2Asm {
                     ctx.a.is_saved = true;
                 }
                 SRC_IMM => {
-                    *code += "\t/* a=SRC_IMM */\n";
+                    *code += &ctx.full_line_comment("a=SRC_IMM".to_string());
                     ctx.a.is_constant = true;
                     ctx.a.constant_value =
                         instruction.a_offset_imm0 | (instruction.a_use_sp_imm1 << 32);
                     ctx.a.string_value = format!("0x{:x}", ctx.a.constant_value);
                     if ctx.store_a_in_c {
                         *code += &format!(
-                            "\tmov {}, {} /* c = constant */\n",
-                            REG_C, ctx.a.string_value
+                            "\tmov {}, {} {}\n",
+                            REG_C,
+                            ctx.a.string_value,
+                            ctx.comment_str("c = constant")
                         );
                         ctx.a.is_saved = false;
                     } else if ctx.store_a_in_a {
                         *code += &format!(
-                            "\tmov {}, {} /* a = constant */\n",
-                            REG_A, ctx.a.string_value
+                            "\tmov {}, {} {}\n",
+                            REG_A,
+                            ctx.a.string_value,
+                            ctx.comment_str("a = constant")
                         );
                         ctx.a.is_saved = true;
                     } else {
                         ctx.a.is_saved = false;
                     }
                     // DEBUG: Used only to get register traces:
-                    //*s += &format!("\tmov {}, {} /* a=a_value */\n", REG_A, ctx.a.string_value);
+                    //*s += &format!("\tmov {}, {} {}\n", REG_A, ctx.a.string_value, ctx.commit_str("a = a_value"));
 
                     if ctx.main_trace() {
                         Self::clear_reg_step_ranges(&mut ctx, code, 0);
                     }
                 }
                 SRC_STEP => {
-                    *code += "\t/* a=SRC_STEP */\n";
+                    *code += &ctx.full_line_comment("a=SRC_STEP".to_string());
                     let store_a_reg = if ctx.store_a_in_c { REG_C } else { REG_A };
                     let store_a_reg_name = if ctx.store_a_in_c { "c" } else { "a" };
                     *code += &format!(
-                        "\tmov {}, {} /* {} = step */\n",
-                        store_a_reg, ctx.mem_step, store_a_reg_name
+                        "\tmov {}, {} {}\n",
+                        store_a_reg,
+                        ctx.mem_step,
+                        ctx.comment(format!("{} = step", store_a_reg_name))
                     );
                     if ctx.minimal_trace() {
                         *code += &format!(
-                            "\tadd {}, chunk_size /* {} += chunk_size */\n",
-                            store_a_reg, store_a_reg_name
+                            "\tadd {}, chunk_size {}\n",
+                            store_a_reg,
+                            ctx.comment(format!("{} += chunk_size", store_a_reg_name))
                         );
                         *code += &format!(
-                            "\tsub {}, {} /* {} -= step count down */\n",
-                            store_a_reg, REG_STEP, store_a_reg_name
+                            "\tsub {}, {} {}\n",
+                            store_a_reg,
+                            REG_STEP,
+                            ctx.comment(format!("{} -= step_count_down", store_a_reg_name))
                         );
                     }
                     ctx.a.is_saved = !ctx.store_a_in_c;
@@ -616,17 +811,14 @@ impl ZiskRom2Asm {
 
             // Copy a value to main trace
             if ctx.main_trace() {
-                *code += "\t/* Main[1]=a */\n";
+                *code += &ctx.full_line_comment("Main[1]=a".to_string());
                 if ctx.store_a_in_c {
                     *code += &format!(
                         "\tmov [{} + {}*8 + 1*8], {}\n",
                         REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_C
                     );
                 } else if ctx.a.is_constant && !ctx.store_a_in_a {
-                    *code += &format!(
-                        "\tmov {}, 0x{:x} /* value=a_const */\n",
-                        REG_A, ctx.a.constant_value
-                    );
+                    *code += &format!("\tmov {}, 0x{:x}\n", REG_A, ctx.a.constant_value);
                     *code += &format!(
                         "\tmov [{} + {}*8 + 1*8], {}\n",
                         REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_A
@@ -642,7 +834,7 @@ impl ZiskRom2Asm {
             // Copy rom_index<<32 + addr1 to main trace
             // where addr1 = b_offset_imm0 + REG_A(if b=SRC_IND)
             if ctx.main_trace() {
-                *code += "\t/* Main[0]=rom_index<<32+addr1 */\n";
+                *code += &ctx.full_line_comment("Main[0]=rom_index<<32+addr1".to_string());
                 let rom_index = instruction.sorted_pc_list_index as u64;
                 assert!(rom_index <= 0xffffffff);
                 // if instruction.b_offset_imm0 > 0xffffffff {
@@ -659,43 +851,53 @@ impl ZiskRom2Asm {
                         }) as u64;
                     assert!(addr1 <= 0xffffffff);
                     let value = (rom_index << 32) + addr1;
-                    *code += &format!(
-                        "\tmov {}, {} /* value=rom_index<<32+addr1 (const) */\n",
-                        REG_VALUE, value
-                    );
+                    *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
                 } else {
                     // In this case the value to store is not constant
                     assert!(instruction.b_src == SRC_IND);
                     *code += &format!(
-                        "\tmov {}, {} /* value=a */\n",
+                        "\tmov {}, {} {}\n",
                         REG_VALUE,
-                        if ctx.store_a_in_c { REG_C } else { REG_A }
+                        if ctx.store_a_in_c { REG_C } else { REG_A },
+                        ctx.comment_str("value = a")
                     );
                     if instruction.b_offset_imm0 as i64 >= 0 {
                         *code += &format!(
-                            "\tmov {}, 0x{:x} /* aux=rom_index<<32+b_offset_imm0 */\n",
+                            "\tmov {}, 0x{:x} {}\n",
                             REG_AUX,
-                            instruction.b_offset_imm0 + ((rom_index & 0xffffffff) << 32)
+                            instruction.b_offset_imm0 + ((rom_index & 0xffffffff) << 32),
+                            ctx.comment_str("aux = rom_index<<32 + b_offset_imm0")
                         );
-                        *code += &format!("\tadd {}, {} /* value+=aux */\n", REG_VALUE, REG_AUX);
+                        *code += &format!(
+                            "\tadd {}, {} {}\n",
+                            REG_VALUE,
+                            REG_AUX,
+                            ctx.comment_str("value += aux")
+                        );
                     } else {
                         *code += &format!(
-                            "\tmov {}, 0x{:x} /* aux=-b_offset_imm0 */\n",
+                            "\tmov {}, 0x{:x} {}\n",
                             REG_AUX,
-                            -(instruction.b_offset_imm0 as i64)
+                            -(instruction.b_offset_imm0 as i64),
+                            ctx.comment_str("aux = -b_offset_imm0")
                         );
                         *code += &format!(
-                            "\tsub {}, {} /* value-=b_offset_imm0 */\n",
-                            REG_VALUE, REG_AUX
-                        );
-                        *code += &format!(
-                            "\tmov {}, 0x{:x} /* aux+=rom_index<<32 */\n",
+                            "\tsub {}, {} {}\n",
+                            REG_VALUE,
                             REG_AUX,
-                            (rom_index & 0xffffffff) << 32
+                            ctx.comment_str("value = -b_offset_imm0")
                         );
                         *code += &format!(
-                            "\tadd {}, {} /* value+=aux=rom_index<<32+b_offset_imm0 */\n",
-                            REG_VALUE, REG_AUX
+                            "\tmov {}, 0x{:x} {}\n",
+                            REG_AUX,
+                            (rom_index & 0xffffffff) << 32,
+                            ctx.comment_str("aux += rom_index<<32")
+                        );
+                        *code += &format!(
+                            "\tadd {}, {} {}\n",
+                            REG_VALUE,
+                            REG_AUX,
+                            ctx.comment_str("value += aux = rom_index<<32 + b_offset_imm0")
                         );
                     }
                 }
@@ -713,38 +915,54 @@ impl ZiskRom2Asm {
             match instruction.b_src {
                 SRC_C => {}
                 SRC_REG => {
-                    *code += &format!("\t/* b=SRC_REG reg={} */\n", instruction.b_offset_imm0);
+                    *code += &ctx
+                        .full_line_comment(format!("b=SRC_REG reg={}", instruction.b_offset_imm0));
 
                     assert!(instruction.b_offset_imm0 <= 34);
 
                     // Read from memory and store in the proper register: b or c
                     let dest_reg = if ctx.store_b_in_c { REG_C } else { REG_B };
                     let dest_desc = if ctx.store_b_in_c { "c" } else { "b" };
-                    Self::read_riscv_reg(code, instruction.b_offset_imm0, dest_reg, dest_desc);
+                    Self::read_riscv_reg(
+                        &mut ctx,
+                        code,
+                        instruction.b_offset_imm0,
+                        dest_reg,
+                        dest_desc,
+                    );
 
                     if ctx.main_trace() {
                         Self::trace_reg_access(&mut ctx, code, instruction.b_offset_imm0, 1);
                     }
                 }
                 SRC_MEM => {
-                    *code += "\t/* b=SRC_MEM */\n";
+                    *code += &ctx.full_line_comment("b=SRC_MEM".to_string());
 
                     // Calculate memory address
                     *code += &format!(
-                        "\tmov {}, 0x{:x} /* address = i.b_offset_imm0 */\n",
-                        REG_ADDRESS, instruction.b_offset_imm0
+                        "\tmov {}, 0x{:x} {}\n",
+                        REG_ADDRESS,
+                        instruction.b_offset_imm0,
+                        ctx.comment_str("address = b_offset_imm0")
                     );
                     if instruction.b_use_sp_imm1 != 0 {
-                        *code +=
-                            &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, ctx.mem_sp);
+                        *code += &format!(
+                            "\tadd {}, {} {}\n",
+                            REG_ADDRESS,
+                            ctx.mem_sp,
+                            ctx.comment_str("address += sp")
+                        );
                     }
 
                     // Read value from memory and store in the proper register: b or c
                     *code += &format!(
-                        "\tmov {}, [{}] /* {} = mem[address] */\n",
+                        "\tmov {}, [{}] {}\n",
                         if ctx.store_b_in_c { REG_C } else { REG_B },
                         REG_ADDRESS,
-                        if ctx.store_b_in_c { "c" } else { "b" }
+                        ctx.comment(format!(
+                            "{} = mem[address]",
+                            if ctx.store_b_in_c { "c" } else { "b" }
+                        ))
                     );
 
                     // Mem reads
@@ -761,8 +979,12 @@ impl ZiskRom2Asm {
                         // If address is dynamic
                         else {
                             // Check if address is aligned, i.e. it is a multiple of 8
-                            *code += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
-                            *code += &format!("\tjnz pc_{:x}_b_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
+                            *code += &format!(
+                                "\ttest {}, 0x7 {}\n",
+                                REG_ADDRESS,
+                                ctx.comment_str("address &= 7")
+                            );
+                            *code += &format!("\tjnz pc_{:x}_b_address_not_aligned\n", ctx.pc);
                             Self::b_src_mem_aligned(&mut ctx, code);
                             unusual_code += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
                             Self::b_src_mem_not_aligned(&mut ctx, &mut unusual_code);
@@ -779,58 +1001,63 @@ impl ZiskRom2Asm {
                     }
                 }
                 SRC_IMM => {
-                    *code += "\t/* b=SRC_IMM */\n";
+                    *code += &ctx.full_line_comment("b=SRC_IMM".to_string());
                     ctx.b.is_constant = true;
                     ctx.b.constant_value =
                         instruction.b_offset_imm0 | (instruction.b_use_sp_imm1 << 32);
                     ctx.b.string_value = format!("0x{:x}", ctx.b.constant_value);
                     if ctx.store_b_in_c {
                         *code += &format!(
-                            "\tmov {}, {} /* c = constant */\n",
-                            REG_C, ctx.b.string_value
+                            "\tmov {}, {} {}\n",
+                            REG_C,
+                            ctx.b.string_value,
+                            ctx.comment_str("c = constant")
                         );
                         ctx.b.is_saved = false;
                     } else if ctx.store_b_in_b {
                         *code += &format!(
-                            "\tmov {}, {} /* b = constant */\n",
-                            REG_B, ctx.b.string_value
+                            "\tmov {}, {} {}\n",
+                            REG_B,
+                            ctx.b.string_value,
+                            ctx.comment_str("b = constant")
                         );
                         ctx.b.is_saved = true;
                     } else {
                         ctx.b.is_saved = false;
                     }
                     // DEBUG: Used only to get register traces:
-                    //*s += &format!("\tmov {}, {} /*b=b_value */\n", REG_B, ctx.b.string_value);
+                    //*s += &format!("\tmov {}, {} {}\n", REG_B, ctx.b.string_value, ctx.commit_str("b = b_value"));
 
                     if ctx.main_trace() {
                         Self::clear_reg_step_ranges(&mut ctx, code, 1);
                     }
                 }
                 SRC_IND => {
-                    *code += &format!("\t/* b=SRC_IND width={}*/\n", instruction.ind_width);
+                    *code += &ctx
+                        .full_line_comment(format!("b=SRC_IND width={}", instruction.ind_width));
 
                     // Make sure register a is stored in REG_A
                     // However, since b's source is an indirection, a's source is normally a register
                     if ctx.a.is_constant && !ctx.a.is_saved {
-                        *code +=
-                            &format!("\tmov {}, {} /* WARNING */\n", REG_A, ctx.a.string_value);
+                        *code += &format!("\tmov {}, {}\n", REG_A, ctx.a.string_value);
                         ctx.a.is_saved = true;
                     }
 
                     // Use REG_A if a's value is not needed beyond the b indirection, in which case
                     // we can overwirte it to build the address to read from the b value,
                     // or REG_ADDRESS otherwise to preserve the value of a
-                    let reg_address: &str;
+                    let mut reg_address: &str = REG_A;
                     if instruction.op == ZiskOp::CopyB.code()
                         || instruction.op == ZiskOp::SignExtendB.code()
                         || instruction.op == ZiskOp::SignExtendH.code()
                         || instruction.op == ZiskOp::SignExtendH.code()
                     {
-                        reg_address = REG_A;
                     } else {
                         *code += &format!(
-                            "\tmov {}, {} /* address = a */\n",
-                            REG_ADDRESS, ctx.a.string_value
+                            "\tmov {}, {} {}\n",
+                            REG_ADDRESS,
+                            ctx.a.string_value,
+                            ctx.comment_str("address = a")
                         );
                         reg_address = REG_ADDRESS;
                     }
@@ -838,13 +1065,19 @@ impl ZiskRom2Asm {
                     // Calculate memory address
                     if instruction.b_offset_imm0 != 0 {
                         *code += &format!(
-                            "\tadd {}, 0x{:x} /* address += i.b_offset_imm0 */\n",
-                            reg_address, instruction.b_offset_imm0
+                            "\tadd {}, 0x{:x} {}\n",
+                            reg_address,
+                            instruction.b_offset_imm0,
+                            ctx.comment_str("address += b_offset_imm0")
                         );
                     }
                     if instruction.b_use_sp_imm1 != 0 {
-                        *code +=
-                            &format!("\tadd {}, {} /* address += sp */\n", reg_address, ctx.mem_sp);
+                        *code += &format!(
+                            "\tadd {}, {} {}\n",
+                            reg_address,
+                            ctx.mem_sp,
+                            ctx.comment_str("address += sp")
+                        );
                     }
 
                     // Read from memory and store in the proper register: b or c
@@ -852,37 +1085,52 @@ impl ZiskRom2Asm {
                         8 => {
                             // Read 8-bytes value from address
                             *code += &format!(
-                                "\tmov {}, qword ptr [{}] /* {} = mem[address] */\n",
+                                "\tmov {}, qword {}[{}] {}\n",
                                 if ctx.store_b_in_c { REG_C } else { REG_B },
+                                ctx.ptr,
                                 reg_address,
-                                if ctx.store_b_in_c { "c" } else { "b" }
+                                ctx.comment(format!(
+                                    "{} = mem[address]",
+                                    if ctx.store_b_in_c { "c" } else { "b" }
+                                ))
                             );
                         }
                         4 => {
                             // Read 4-bytes value from address
                             *code += &format!(
-                                "\tmov {}, [{}] /* {} = mem[address] */\n",
+                                "\tmov {}, [{}] {}\n",
                                 if ctx.store_b_in_c { REG_C_W } else { REG_B_W },
                                 reg_address,
-                                if ctx.store_b_in_c { "c" } else { "b" }
+                                ctx.comment(format!(
+                                    "{} = mem[address]",
+                                    if ctx.store_b_in_c { "c" } else { "b" }
+                                ))
                             );
                         }
                         2 => {
                             // Read 2-bytes value from address
                             *code += &format!(
-                                "\tmovzx {}, word ptr [{}] /* {} = mem[address] */\n",
+                                "\tmovzx {}, word {}[{}] {}\n",
                                 if ctx.store_b_in_c { REG_C } else { REG_B },
+                                ctx.ptr,
                                 reg_address,
-                                if ctx.store_b_in_c { "c" } else { "b" }
+                                ctx.comment(format!(
+                                    "{} = mem[address]",
+                                    if ctx.store_b_in_c { "c" } else { "b" }
+                                ))
                             );
                         }
                         1 => {
                             // Read 1-bytes value from address
                             *code += &format!(
-                                "\tmovzx {}, byte ptr [{}] /* {} = mem[address] */\n",
+                                "\tmovzx {}, byte {}[{}] {}\n",
                                 if ctx.store_b_in_c { REG_C } else { REG_B },
+                                ctx.ptr,
                                 reg_address,
-                                if ctx.store_b_in_c { "c" } else { "b" }
+                                ctx.comment(format!(
+                                    "{} = mem[address]",
+                                    if ctx.store_b_in_c { "c" } else { "b" }
+                                ))
                             );
                         }
                         _ => panic!(
@@ -896,24 +1144,29 @@ impl ZiskRom2Asm {
                         match instruction.ind_width {
                             8 => {
                                 // // Check if address is aligned, i.e. it is a multiple of 8
-                                *code +=
-                                    &format!("\ttest {}, 0x7 /* address &= 7 */\n", reg_address);
-                                *code += &format!("\tjnz pc_{:x}_b_address_not_aligned /* check if address is not aligned */\n", ctx.pc);
+                                *code += &format!(
+                                    "\ttest {}, 0x7 {}\n",
+                                    reg_address,
+                                    ctx.comment_str("address &= 7")
+                                );
+                                *code += &format!("\tjnz pc_{:x}_b_address_not_aligned\n", ctx.pc);
 
                                 // b register memory address is fully alligned
 
                                 // Copy read data into mem_reads_address and increment it
                                 *code += &format!(
-                                    "\tmov [{} + {}*8], {} /* mem_reads[@+size*8]=b */\n",
+                                    "\tmov [{} + {}*8], {} {}\n",
                                     REG_MEM_READS_ADDRESS,
                                     REG_MEM_READS_SIZE,
-                                    if ctx.store_b_in_c { REG_C } else { REG_B }
+                                    if ctx.store_b_in_c { REG_C } else { REG_B },
+                                    ctx.comment_str("mem_reads[@+size*8] = b")
                                 );
 
                                 // Increment chunk.steps.mem_reads_size
                                 *code += &format!(
-                                    "\tinc {} /* mem_reads_size++ */\n",
-                                    REG_MEM_READS_SIZE
+                                    "\tinc {} {}\n",
+                                    REG_MEM_READS_SIZE,
+                                    ctx.comment_str("mem_reads_size++")
                                 );
 
                                 // b memory address is not aligned
@@ -923,42 +1176,53 @@ impl ZiskRom2Asm {
 
                                 // Calculate previous aligned address
                                 unusual_code += &format!(
-                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
-                                    reg_address
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
+                                    reg_address,
+                                    ctx.comment_str("address = previous aligned address")
                                 );
 
                                 // Store previous aligned address value in mem_reads, and advance address
                                 unusual_code += &format!(
-                                    "\tmov {}, [{}] /* value = mem[prev_address] */\n",
-                                    REG_VALUE, reg_address
+                                    "\tmov {}, [{}] {}\n",
+                                    REG_VALUE,
+                                    reg_address,
+                                    ctx.comment_str("value = mem[prev_address]")
                                 );
                                 unusual_code += &format!(
-                                    "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_b */\n",
-                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                    "\tmov [{} + {}*8], {} {}\n",
+                                    REG_MEM_READS_ADDRESS,
+                                    REG_MEM_READS_SIZE,
+                                    REG_VALUE,
+                                    ctx.comment_str("mem_reads[@+size*8] = prev_b")
                                 );
 
                                 // Calculate next aligned address
                                 unusual_code += &format!(
-                                    "\tadd {}, 8 /* address = next aligned address */\n",
-                                    reg_address
+                                    "\tadd {}, 8 {}\n",
+                                    reg_address,
+                                    ctx.comment_str("address = next aligned address")
                                 );
 
                                 // Store next aligned address value in mem_reads, and advance it
                                 unusual_code += &format!(
-                                    "\tmov {}, [{}] /* value = mem[next_address] */\n",
-                                    REG_VALUE, reg_address
+                                    "\tmov {}, [{}] {}\n",
+                                    REG_VALUE,
+                                    reg_address,
+                                    ctx.comment_str("value = mem[next_address]")
                                 );
                                 unusual_code += &format!(
-                                    "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_b */\n",
+                                    "\tmov [{} + {}*8 + 8], {} {}\n",
                                     REG_MEM_READS_ADDRESS,
                                     REG_MEM_READS_SIZE,
-                                    REG_VALUE
+                                    REG_VALUE,
+                                    ctx.comment_str("mem_reads[@+size*8+8] = next_b")
                                 );
 
                                 // Increment chunk.steps.mem_reads_size twice
                                 unusual_code += &format!(
-                                    "\tadd {}, 2 /* mem_reads_size += 2*/\n",
-                                    REG_MEM_READS_SIZE
+                                    "\tadd {}, 2 {}\n",
+                                    REG_MEM_READS_SIZE,
+                                    ctx.comment_str("mem_reads_size += 2")
                                 );
 
                                 // Jump to check done
@@ -971,50 +1235,62 @@ impl ZiskRom2Asm {
                             4 | 2 => {
                                 // Calculate previous aligned address
                                 *code += &format!(
-                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
-                                    reg_address
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
+                                    reg_address,
+                                    ctx.comment_str("address = previous aligned address")
                                 );
 
                                 // Store previous aligned address value in mem_reads, advancing address
                                 *code += &format!(
-                                    "\tmov {}, [{}] /* value = mem[prev_address] */\n",
-                                    REG_VALUE, reg_address
+                                    "\tmov {}, [{}] {}\n",
+                                    REG_VALUE,
+                                    reg_address,
+                                    ctx.comment_str("value = mem[prev_address]")
                                 );
                                 *code += &format!(
-                                    "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_b */\n",
-                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                    "\tmov [{} + {}*8], {} {}\n",
+                                    REG_MEM_READS_ADDRESS,
+                                    REG_MEM_READS_SIZE,
+                                    REG_VALUE,
+                                    ctx.comment_str("mem_reads[@+size*8] = prev_b")
                                 );
 
                                 // Calculate next aligned address, keeping a copy of previous aligned
                                 // address in value
                                 *code += &format!(
-                                    "\tmov {}, {} /* value = copy of prev_address */\n",
-                                    REG_VALUE, reg_address
+                                    "\tmov {}, {} {}\n",
+                                    REG_VALUE,
+                                    reg_address,
+                                    ctx.comment_str("value = copy of prev_address")
                                 );
                                 let address_increment = instruction.ind_width - 1;
                                 *code += &format!(
-                                    "\tadd {}, {} /* address += {} */\n",
-                                    reg_address, address_increment, address_increment
+                                    "\tadd {}, {} {}\n",
+                                    reg_address,
+                                    address_increment,
+                                    ctx.comment(format!("address += {}", address_increment))
                                 );
                                 *code += &format!(
-                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = next aligned address */\n",
-                                    reg_address
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
+                                    reg_address,
+                                    ctx.comment_str("address = next aligned address")
                                 );
                                 *code += &format!(
-                                    "\tcmp {}, {} /* prev_address = next_address ? */\n",
-                                    REG_VALUE, reg_address
+                                    "\tcmp {}, {} {}\n",
+                                    REG_VALUE,
+                                    reg_address,
+                                    ctx.comment_str("prev_address = next_address ?")
                                 );
-                                *code += &format!(
-                                    "\tjnz pc_{:x}_b_ind_different_address /* jump if they are the same */\n",
-                                    ctx.pc
-                                );
+                                *code +=
+                                    &format!("\tjnz pc_{:x}_b_ind_different_address\n", ctx.pc);
 
                                 // Same address
 
                                 // Increment chunk.steps.mem_reads_size
                                 *code += &format!(
-                                    "\tinc {} /* mem_reads_size++ */\n",
-                                    REG_MEM_READS_SIZE
+                                    "\tinc {} {}\n",
+                                    REG_MEM_READS_SIZE,
+                                    ctx.comment_str("mem_reads_size++")
                                 );
 
                                 // Different address
@@ -1024,20 +1300,26 @@ impl ZiskRom2Asm {
 
                                 // Store next aligned address value in mem_reads
                                 unusual_code += &format!(
-                                    "\tmov {}, [{}] /* value = mem[next_address] */\n",
-                                    REG_VALUE, reg_address
+                                    "\tmov {}, [{}] {}\n",
+                                    REG_VALUE,
+                                    reg_address,
+                                    ctx.comment_str("value = mem[next_address]")
                                 );
 
                                 // Copy read data into mem_reads_address and advance it
                                 unusual_code += &format!(
-                                    "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_b */\n",
-                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                    "\tmov [{} + {}*8 + 8], {} {}\n",
+                                    REG_MEM_READS_ADDRESS,
+                                    REG_MEM_READS_SIZE,
+                                    REG_VALUE,
+                                    ctx.comment_str("mem_reads[@+size*8+8] = next_b")
                                 );
 
                                 // Increment chunk.steps.mem_reads_size
                                 unusual_code += &format!(
-                                    "\tadd {}, 2 /* mem_reads_size+=2 */\n",
-                                    REG_MEM_READS_SIZE
+                                    "\tadd {}, 2 {}\n",
+                                    REG_MEM_READS_SIZE,
+                                    ctx.comment_str("mem_reads_size += 2")
                                 );
 
                                 unusual_code +=
@@ -1049,24 +1331,31 @@ impl ZiskRom2Asm {
                             1 => {
                                 // Calculate previous aligned address
                                 *code += &format!(
-                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
-                                    reg_address
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
+                                    reg_address,
+                                    ctx.comment_str("address = previous aligned address")
                                 );
 
                                 // Store previous aligned address value in mem_reads, and increment address
                                 *code += &format!(
-                                    "\tmov {}, [{}] /* value = mem[prev_address] */\n",
-                                    REG_VALUE, reg_address
+                                    "\tmov {}, [{}] {}\n",
+                                    REG_VALUE,
+                                    reg_address,
+                                    ctx.comment_str("value = mem[prev_address")
                                 );
                                 *code += &format!(
-                                    "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_b */\n",
-                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                    "\tmov [{} + {}*8], {} {}\n",
+                                    REG_MEM_READS_ADDRESS,
+                                    REG_MEM_READS_SIZE,
+                                    REG_VALUE,
+                                    ctx.comment_str("mem_reads[@+size*8] = prev_b")
                                 );
 
                                 // Increment chunk.steps.mem_reads_size
                                 *code += &format!(
-                                    "\tinc {} /* mem_reads_size++ */\n",
-                                    REG_MEM_READS_SIZE
+                                    "\tinc {} {}\n",
+                                    REG_MEM_READS_SIZE,
+                                    ctx.comment_str("mem_reads_size++")
                                 );
                             }
                             _ => panic!(
@@ -1089,25 +1378,36 @@ impl ZiskRom2Asm {
 
             // Copy b value to main trace
             if ctx.main_trace() {
-                *code += "\t/* Main[2]=b */\n";
+                *code += &ctx.full_line_comment("Main[2]=b".to_string());
                 if ctx.store_b_in_c {
                     *code += &format!(
-                        "\tmov [{} + {}*8 + 2*8], {} /* b=c */\n",
-                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_C
+                        "\tmov [{} + {}*8 + 2*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_C,
+                        ctx.comment_str("b = c")
                     );
                 } else if ctx.b.is_constant && !ctx.store_b_in_b {
                     *code += &format!(
-                        "\tmov {}, 0x{:x} /* value=b_const */\n",
-                        REG_B, ctx.b.constant_value
+                        "\tmov {}, 0x{:x} {}\n",
+                        REG_B,
+                        ctx.b.constant_value,
+                        ctx.comment_str("value = b_const")
                     );
                     *code += &format!(
-                        "\tmov [{} + {}*8 + 2*8], {} /* b=const */\n",
-                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_B
+                        "\tmov [{} + {}*8 + 2*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_B,
+                        ctx.comment_str("b = const")
                     );
                 } else {
                     *code += &format!(
-                        "\tmov [{} + {}*8 + 2*8], {} /* b */\n",
-                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_B
+                        "\tmov [{} + {}*8 + 2*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_B,
+                        ctx.comment_str("b")
                     );
                 }
             }
@@ -1117,7 +1417,6 @@ impl ZiskRom2Asm {
             /*************/
 
             // Execute operation, storing result is registers c and flag
-            //*s += &format!("\t/* operation: (c, flag) = op(a, b) */\n");
             Self::operation_to_asm(&mut ctx, instruction.op, code, &mut unusual_code);
 
             // At this point, REG_C must contain the value of c
@@ -1125,7 +1424,7 @@ impl ZiskRom2Asm {
 
             // Copy c value to main trace
             if ctx.main_trace() {
-                *code += "\t/* Main[3]=c */\n";
+                *code += &ctx.full_line_comment("Main[3]=c".to_string());
                 *code += &format!(
                     "\tmov [{} + {}*8 + 3*8], {}\n",
                     REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_C
@@ -1139,7 +1438,7 @@ impl ZiskRom2Asm {
             // Store register c
             match instruction.store {
                 STORE_NONE => {
-                    *code += "\t/* STORE_NONE */\n";
+                    *code += &ctx.full_line_comment("STORE_NONE".to_string());
 
                     if ctx.main_trace() {
                         Self::clear_reg_step_ranges(&mut ctx, code, 2);
@@ -1151,8 +1450,9 @@ impl ZiskRom2Asm {
 
                     // Copy previous reg value to main trace
                     if ctx.main_trace() {
-                        *code += "\t/* Main[4]=prev_reg_c */\n";
+                        *code += &ctx.full_line_comment("Main[4]=prev_reg".to_string());
                         Self::read_riscv_reg(
+                            &mut ctx,
                             code,
                             instruction.store_offset as u64,
                             REG_VALUE,
@@ -1160,24 +1460,35 @@ impl ZiskRom2Asm {
                         );
 
                         *code += &format!(
-                            "\tmov [{} + {}*8 + 4*8], {} /* main[@+size*8+4*8]=prev_reg */\n",
-                            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                            "\tmov [{} + {}*8 + 4*8], {} {}\n",
+                            REG_MEM_READS_ADDRESS,
+                            REG_MEM_READS_SIZE,
+                            REG_VALUE,
+                            ctx.comment_str("main[@+size*8+4*8] = prev_reg")
                         );
                     }
 
-                    *code += &format!("\t/* STORE_REG reg={} */\n", instruction.store_offset);
+                    *code += &ctx
+                        .full_line_comment(format!("STORE_REG reg={}", instruction.store_offset));
 
                     // Store in mem[address]
                     if instruction.store_ra {
                         let value = (ctx.pc as i64 + instruction.jmp_offset2) as u64;
                         Self::write_riscv_reg_constant(
+                            &mut ctx,
                             code,
                             instruction.store_offset as u64,
                             value,
                             "pc + jmp_offset2",
                         );
                     } else {
-                        Self::write_riscv_reg(code, instruction.store_offset as u64, REG_C, "c");
+                        Self::write_riscv_reg(
+                            &mut ctx,
+                            code,
+                            instruction.store_offset as u64,
+                            REG_C,
+                            "c",
+                        );
                     }
 
                     if ctx.main_trace() {
@@ -1185,16 +1496,22 @@ impl ZiskRom2Asm {
                     }
                 }
                 STORE_MEM => {
-                    *code += "\t/* STORE_MEM */\n";
+                    *code += &ctx.full_line_comment("STORE_MEM".to_string());
 
                     // Calculate memory address and store it in REG_ADDRESS
                     *code += &format!(
-                        "\tmov {}, 0x{:x}/* address = i.store_offset */\n",
-                        REG_ADDRESS, instruction.store_offset
+                        "\tmov {}, 0x{:x} {}\n",
+                        REG_ADDRESS,
+                        instruction.store_offset,
+                        ctx.comment_str("address = i.store_offset")
                     );
                     if instruction.store_use_sp {
-                        *code +=
-                            &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, ctx.mem_sp);
+                        *code += &format!(
+                            "\tadd {}, {} {}\n",
+                            REG_ADDRESS,
+                            ctx.mem_sp,
+                            ctx.comment_str("address += sp")
+                        );
                     }
 
                     // Mem reads
@@ -1204,7 +1521,11 @@ impl ZiskRom2Asm {
                                 Self::c_store_mem_not_aligned(&mut ctx, code);
                             }
                         } else {
-                            *code += &format!("\ttest {}, 0x7 /* address &= 7 */\n", REG_ADDRESS);
+                            *code += &format!(
+                                "\ttest {}, 0x7 {}\n",
+                                REG_ADDRESS,
+                                ctx.comment_str("address &= 7")
+                            );
                             *code += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
                             unusual_code += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
                             Self::c_store_mem_not_aligned(&mut ctx, &mut unusual_code);
@@ -1216,17 +1537,24 @@ impl ZiskRom2Asm {
                     // Store mem[address] = value
                     if instruction.store_ra {
                         *code += &format!(
-                            "\tmov {}, 0x{:x} /* value = pc + jmp_offset2 */\n",
+                            "\tmov {}, 0x{:x} {}\n",
                             REG_VALUE,
-                            (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                            (ctx.pc as i64 + instruction.jmp_offset2) as u64,
+                            ctx.comment_str("value = pc + jmp_offset2")
                         );
                         *code += &format!(
-                            "\tmov [{}], {} /* mem[address] = value */\n",
-                            REG_ADDRESS, REG_VALUE
+                            "\tmov [{}], {} {}\n",
+                            REG_ADDRESS,
+                            REG_VALUE,
+                            ctx.comment_str("mem[address] = value")
                         );
                     } else {
-                        *code +=
-                            &format!("\tmov [{}], {} /* mem[address] = c */\n", REG_ADDRESS, REG_C);
+                        *code += &format!(
+                            "\tmov [{}], {} {}\n",
+                            REG_ADDRESS,
+                            REG_C,
+                            ctx.comment_str("mem[address] = c")
+                        );
                     }
 
                     if ctx.main_trace() {
@@ -1234,22 +1562,31 @@ impl ZiskRom2Asm {
                     }
                 }
                 STORE_IND => {
-                    *code += &format!("\t/* STORE_IND width={} */\n", instruction.ind_width);
+                    *code += &ctx
+                        .full_line_comment(format!("STORE_IND width={}", instruction.ind_width));
 
                     // Calculate memory address and store it in REG_ADDRESS
                     *code += &format!(
-                        "\tmov {}, {} /* address = a */\n",
-                        REG_ADDRESS, ctx.a.string_value
+                        "\tmov {}, {} {}\n",
+                        REG_ADDRESS,
+                        ctx.a.string_value,
+                        ctx.comment_str("address = a")
                     );
                     if instruction.store_offset != 0 {
                         *code += &format!(
-                            "\tadd {}, 0x{:x} /* address += i.store_offset */\n",
-                            REG_ADDRESS, instruction.store_offset as u64
+                            "\tadd {}, 0x{:x} {}\n",
+                            REG_ADDRESS,
+                            instruction.store_offset as u64,
+                            ctx.comment_str("address += i.store_offset")
                         );
                     }
                     if instruction.store_use_sp {
-                        *code +=
-                            &format!("\tadd {}, {} /* address += sp */\n", REG_ADDRESS, ctx.mem_sp);
+                        *code += &format!(
+                            "\tadd {}, {} {}\n",
+                            REG_ADDRESS,
+                            ctx.mem_sp,
+                            ctx.comment_str("address += sp")
+                        );
                     }
 
                     let address_is_constant = ctx.a.is_constant && !instruction.store_use_sp;
@@ -1272,73 +1609,87 @@ impl ZiskRom2Asm {
                                     }
                                 } else {
                                     *code += &format!(
-                                        "\ttest {}, 0x7 /* address &= 7 */\n",
-                                        REG_ADDRESS
+                                        "\ttest {}, 0x7 {}\n",
+                                        REG_ADDRESS,
+                                        ctx.comment_str("address &= 7")
                                     );
-                                    *code += &format!("\tjnz pc_{:x}_c_address_not_aligned /* check if address is aligned */\n", ctx.pc);
+                                    *code +=
+                                        &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
                                     unusual_code +=
                                         &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
                                     Self::c_store_ind_8_not_aligned(&mut ctx, &mut unusual_code);
-                                    unusual_code += &format!(
-                                        "\tjmp pc_{:x}_c_address_done /* address is aligned; done */\n",
-                                        ctx.pc
-                                    );
+                                    unusual_code +=
+                                        &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
                                     *code += &format!("pc_{:x}_c_address_done:\n", ctx.pc);
                                 }
                             }
                             4 | 2 => {
                                 // Get a copy of the address to preserve it
                                 *code += &format!(
-                                    "\tmov {}, {} /* aux = address */\n",
-                                    REG_AUX, REG_ADDRESS
+                                    "\tmov {}, {} {}\n",
+                                    REG_AUX,
+                                    REG_ADDRESS,
+                                    ctx.comment_str("aux = address")
                                 );
 
                                 // Calculate previous aligned address
                                 *code += &format!(
-                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
-                                    REG_AUX
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
+                                    REG_AUX,
+                                    ctx.comment_str("address = previous aligned address")
                                 );
 
                                 // Store previous aligned address value in mem_reads, advancing address
                                 *code += &format!(
-                                    "\tmov {}, [{}] /* value = mem[prev_address] */\n",
-                                    REG_VALUE, REG_AUX
+                                    "\tmov {}, [{}] {}\n",
+                                    REG_VALUE,
+                                    REG_AUX,
+                                    ctx.comment_str("value = mem[prev_address]")
                                 );
                                 *code += &format!(
-                                    "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
-                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                    "\tmov [{} + {}*8], {} {}\n",
+                                    REG_MEM_READS_ADDRESS,
+                                    REG_MEM_READS_SIZE,
+                                    REG_VALUE,
+                                    ctx.comment_str("mem_reads[@+size*8] = prev_c")
                                 );
 
                                 // Calculate next aligned address, keeping a copy of previous aligned
                                 // address in value
                                 *code += &format!(
-                                    "\tmov {}, {} /* value = copy of prev_address */\n",
-                                    REG_VALUE, REG_AUX
+                                    "\tmov {}, {} {}\n",
+                                    REG_VALUE,
+                                    REG_AUX,
+                                    ctx.comment_str("value = copy of prev_address")
                                 );
                                 let address_increment = instruction.ind_width - 1;
                                 *code += &format!(
-                                    "\tadd {}, {} /* address += {} */\n",
-                                    REG_AUX, address_increment, address_increment
+                                    "\tadd {}, {} {}\n",
+                                    REG_AUX,
+                                    address_increment,
+                                    ctx.comment(format!("address += {}", address_increment))
                                 );
                                 *code += &format!(
-                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = next aligned address */\n",
-                                    REG_AUX
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
+                                    REG_AUX,
+                                    ctx.comment_str("address = next aligned address")
                                 );
                                 *code += &format!(
-                                    "\tcmp {}, {} /* prev_address = next_address ? */\n",
-                                    REG_VALUE, REG_AUX
+                                    "\tcmp {}, {} {}\n",
+                                    REG_VALUE,
+                                    REG_AUX,
+                                    ctx.comment_str("prev_address = next_address ?")
                                 );
-                                *code += &format!(
-                                    "\tjnz pc_{:x}_c_ind_different_address /* jump if they are the same */\n",
-                                    ctx.pc
-                                );
+                                *code +=
+                                    &format!("\tjnz pc_{:x}_c_ind_different_address\n", ctx.pc);
 
                                 // Same address
 
                                 // Increment chunk.steps.mem_reads_size
                                 *code += &format!(
-                                    "\tinc {} /* mem_reads_size++ */\n",
-                                    REG_MEM_READS_SIZE
+                                    "\tinc {} {}\n",
+                                    REG_MEM_READS_SIZE,
+                                    ctx.comment_str("mem_reads_size++")
                                 );
 
                                 // Different address
@@ -1348,20 +1699,26 @@ impl ZiskRom2Asm {
 
                                 // Store next aligned address value in mem_reads
                                 unusual_code += &format!(
-                                    "\tmov {}, [{}] /* value = mem[next_address] */\n",
-                                    REG_VALUE, REG_AUX
+                                    "\tmov {}, [{}] {}\n",
+                                    REG_VALUE,
+                                    REG_AUX,
+                                    ctx.comment_str("value = mem[next_address]")
                                 );
 
                                 // Copy read data into mem_reads_address and advance it
                                 unusual_code += &format!(
-                                    "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_c */\n",
-                                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                    "\tmov [{} + {}*8 + 8], {} {}\n",
+                                    REG_MEM_READS_ADDRESS,
+                                    REG_MEM_READS_SIZE,
+                                    REG_VALUE,
+                                    ctx.comment_str("mem_reads[@+size*8+8] = next_c")
                                 );
 
                                 // Increment chunk.steps.mem_reads_size
                                 unusual_code += &format!(
-                                    "\tadd {}, 2 /* mem_reads_size+=2 */\n",
-                                    REG_MEM_READS_SIZE
+                                    "\tadd {}, 2 {}\n",
+                                    REG_MEM_READS_SIZE,
+                                    ctx.comment_str("mem_reads_size += 2")
                                 );
 
                                 unusual_code +=
@@ -1378,46 +1735,61 @@ impl ZiskRom2Asm {
                                 if address_is_constant && address_is_aligned {
                                     // Store  aligned address value in mem_reads, and increment address
                                     *code += &format!(
-                                        "\tmov {}, [{}] /* value = mem[address] */\n",
-                                        REG_VALUE, REG_ADDRESS
+                                        "\tmov {}, [{}] {}\n",
+                                        REG_VALUE,
+                                        REG_ADDRESS,
+                                        ctx.comment_str("value = mem[address]")
                                     );
                                     *code += &format!(
-                                        "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
-                                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                        "\tmov [{} + {}*8], {} {}\n",
+                                        REG_MEM_READS_ADDRESS,
+                                        REG_MEM_READS_SIZE,
+                                        REG_VALUE,
+                                        ctx.comment_str("mem_reads[@+size*8] = prev_c")
                                     );
 
                                     // Increment chunk.steps.mem_reads_size
                                     *code += &format!(
-                                        "\tinc {} /* mem_reads_size++ */\n",
-                                        REG_MEM_READS_SIZE
+                                        "\tinc {} {}\n",
+                                        REG_MEM_READS_SIZE,
+                                        ctx.comment_str("mem_reads_size++")
                                     );
                                 } else {
                                     // Get a copy of the address to preserve it
                                     *code += &format!(
-                                        "\tmov {}, {} /* aux = address */\n",
-                                        REG_AUX, REG_ADDRESS
+                                        "\tmov {}, {} {}\n",
+                                        REG_AUX,
+                                        REG_ADDRESS,
+                                        ctx.comment_str("aux = address")
                                     );
 
                                     // Calculate previous aligned address
                                     *code += &format!(
-                                        "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
-                                        REG_AUX
+                                        "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
+                                        REG_AUX,
+                                        ctx.comment_str("address = previous aligned address")
                                     );
 
                                     // Store previous aligned address value in mem_reads, and increment address
                                     *code += &format!(
-                                        "\tmov {}, [{}] /* value = mem[prev_address] */\n",
-                                        REG_VALUE, REG_AUX
+                                        "\tmov {}, [{}] {}\n",
+                                        REG_VALUE,
+                                        REG_AUX,
+                                        ctx.comment_str("value = mem[prev_address]")
                                     );
                                     *code += &format!(
-                                        "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
-                                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                                        "\tmov [{} + {}*8], {} {}\n",
+                                        REG_MEM_READS_ADDRESS,
+                                        REG_MEM_READS_SIZE,
+                                        REG_VALUE,
+                                        ctx.comment_str("mem_reads[@+size*8] = prev_c")
                                     );
 
                                     // Increment chunk.steps.mem_reads_size
                                     *code += &format!(
-                                        "\tinc {} /* mem_reads_size++ */\n",
-                                        REG_MEM_READS_SIZE
+                                        "\tinc {} {}\n",
+                                        REG_MEM_READS_SIZE,
+                                        ctx.comment_str("mem_reads_size++")
                                     );
                                 }
                             }
@@ -1433,82 +1805,106 @@ impl ZiskRom2Asm {
                         8 => {
                             if instruction.store_ra {
                                 *code += &format!(
-                                    "\tmov qword ptr [{}], {} /* width=8: mem[address] = pc + jmp_offset2 */\n",
+                                    "\tmov qword {}[{}], {} {}\n",
+                                    ctx.ptr,
                                     REG_ADDRESS,
-                                    (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                                    (ctx.pc as i64 + instruction.jmp_offset2) as u64,
+                                    ctx.comment_str("width=8: mem[address] = pc + jmp_offset2")
                                 );
                             } else {
                                 *code += &format!(
-                                    "\tmov [{}], {} /* width=8: mem[address] = c */\n",
-                                    REG_ADDRESS, REG_C
+                                    "\tmov [{}], {} {}\n",
+                                    REG_ADDRESS,
+                                    REG_C,
+                                    ctx.comment_str("width=8: mem[address] = c")
                                 );
                             }
                         }
                         4 => {
                             if instruction.store_ra {
                                 *code += &format!(
-                                    "\tmov dword ptr [{}], {} /* width=4: mem[address] = pc + jmp_offset2 */\n",
+                                    "\tmov dword {}[{}], {} {}\n",
+                                    ctx.ptr,
                                     REG_ADDRESS,
-                                    (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                                    (ctx.pc as i64 + instruction.jmp_offset2) as u64,
+                                    ctx.comment_str("width=4: mem[address] = pc + jmp_offset2")
                                 );
                             } else {
                                 *code += &format!(
-                                    "\tmov [{}], {} /* width=4: mem[address] = c */\n",
-                                    REG_ADDRESS, REG_C_W
+                                    "\tmov [{}], {} {}\n",
+                                    REG_ADDRESS,
+                                    REG_C_W,
+                                    ctx.comment_str("width=4: mem[address] = c")
                                 );
                             }
                         }
                         2 => {
                             if instruction.store_ra {
                                 *code += &format!(
-                                    "\tmov word ptr [{}], {} /* width=2: mem[address] = pc + jmp_offset2 */\n",
+                                    "\tmov word {}[{}], {} {}\n",
+                                    ctx.ptr,
                                     REG_ADDRESS,
-                                    (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                                    (ctx.pc as i64 + instruction.jmp_offset2) as u64,
+                                    ctx.comment_str("width=2: mem[address] = pc + jmp_offset2")
                                 );
                             } else {
                                 *code += &format!(
-                                    "\tmov [{}], {} /* width=2: mem[address] = c */\n",
-                                    REG_ADDRESS, REG_C_H
+                                    "\tmov [{}], {} {}\n",
+                                    REG_ADDRESS,
+                                    REG_C_H,
+                                    ctx.comment_str("width=2: mem[address] = c")
                                 );
                             }
                         }
                         1 => {
                             if instruction.store_ra {
                                 *code += &format!(
-                                    "\tmov word ptr [{}], {} /* width=1: mem[address] = pc + jmp_offset2 */\n",
+                                    "\tmov word {}[{}], {} {}\n",
+                                    ctx.ptr,
                                     REG_ADDRESS,
-                                    (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                                    (ctx.pc as i64 + instruction.jmp_offset2) as u64,
+                                    ctx.comment_str("width=1: mem[address] = pc + jmp_offset2")
                                 );
                             } else {
                                 *code += &format!(
-                                    "\tmov [{}], {} /* width=1: mem[address] = c */\n",
-                                    REG_ADDRESS, REG_C_B
+                                    "\tmov [{}], {} {}\n",
+                                    REG_ADDRESS,
+                                    REG_C_B,
+                                    ctx.comment_str("width=1: mem[address] = c")
                                 );
                             }
                             if ctx.log_output {
                                 *code += &format!(
-                                    "\tmov {}, 0xa0000200 /* width=1: aux = UART */\n",
+                                    "\tmov {}, 0xa0000200 {}\n",
                                     REG_FLAG,
+                                    ctx.comment_str("width=1: aux = UART")
                                 );
                                 *code += &format!(
-                                    "\tcmp {}, {} /* width=1: if address = USART then print char */\n",
-                                    REG_ADDRESS, REG_FLAG
+                                    "\tcmp {}, {} {}\n",
+                                    REG_ADDRESS,
+                                    REG_FLAG,
+                                    ctx.comment_str("width=1: if address = USART then print char")
                                 );
                                 *code += &format!(
-                                    "\tjne pc_{:x}_store_c_not_uart /* width=1: continue */\n",
+                                    "\tjne pc_{:x}_store_c_not_uart {}\n",
                                     ctx.pc,
+                                    ctx.comment_str("width=1: continue")
                                 );
                                 if instruction.store_ra {
                                     *code += &format!(
-                                        "\tmov dil, 0x{:x} /* width=1: rdi = value */\n",
-                                        (ctx.pc as i64 + instruction.jmp_offset2) as u64 as u8
+                                        "\tmov dil, 0x{:x} {}\n",
+                                        (ctx.pc as i64 + instruction.jmp_offset2) as u64 as u8,
+                                        ctx.comment_str("width=1: rdi = value")
                                     );
                                 } else {
-                                    *code +=
-                                        &format!("\tmov dil, {} /* width=1: rdi = c */\n", REG_C_B);
+                                    *code += &format!(
+                                        "\tmov dil, {} {}\n",
+                                        REG_C_B,
+                                        ctx.comment_str("width=1: rdi = c")
+                                    );
                                 }
                                 Self::push_internal_registers(&mut ctx, code);
-                                *code += "\tcall _print_char /* width=1: call print_char() */\n";
+                                *code += "\tcall _print_char\n";
                                 Self::pop_internal_registers(&mut ctx, code);
                                 *code += &format!("pc_{:x}_store_c_not_uart:\n", ctx.pc);
                             }
@@ -1531,7 +1927,7 @@ impl ZiskRom2Asm {
 
             // if ctx.c.is_constant && !ctx.c.string_value.eq(REG_C) {
             //     *s += &format!(
-            //         "\tmov {}, {} /* STORE: make sure c=value */\n",
+            //         "\tmov {}, {} ; STORE: make sure c=value */\n",
             //         REG_C, ctx.c.string_value
             //     );
             // }
@@ -1562,22 +1958,27 @@ impl ZiskRom2Asm {
             // *s += &format!("\tpop {}\n", REG_FLAG);
 
             if ctx.main_trace() {
-                *code += "\t/* Main[5] = prev_reg_mem[0] + (prev_reg_mem[1] & 0xfffff ) << 40 */\n";
-                *code += &format!("\tmov {}, qword ptr [reg_prev_steps_1]\n", REG_VALUE);
+                *code += &ctx.full_line_comment(
+                    "Main[5] = prev_reg_mem[0] + (prev_reg_mem[1] & 0xfffff ) << 40".to_string(),
+                );
+                *code += &format!("\tmov {}, qword {}[reg_prev_steps_1]\n", REG_VALUE, ctx.ptr);
                 *code += &format!("\tshl {}, 40\n", REG_VALUE); // 64-40=24 bits
-                *code += &format!("\tmov {}, qword ptr [reg_prev_steps_0]\n", REG_AUX);
+                *code += &format!("\tmov {}, qword {}[reg_prev_steps_0]\n", REG_AUX, ctx.ptr);
                 *code += &format!("\tadd {}, {}\n", REG_VALUE, REG_AUX);
                 *code += &format!(
-                    "\tmov [{} + {}*8 + 5*8], {} /* main[@+size*8+5*8]=value */\n",
-                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                    "\tmov [{} + {}*8 + 5*8], {} {}\n",
+                    REG_MEM_READS_ADDRESS,
+                    REG_MEM_READS_SIZE,
+                    REG_VALUE,
+                    ctx.comment_str("main[@+size*8+5*8] = value")
                 );
 
-                *code += "\t/* Main[6] = prev_reg_mem[2] + (prev_reg_mem[1] & 0xfffff00000 ) << 21 + flag<<24 */\n";
-                *code += &format!("\tmov {}, qword ptr [reg_prev_steps_1]\n", REG_VALUE);
+                *code += &ctx.full_line_comment("Main[6] = prev_reg_mem[2] + (prev_reg_mem[1] & 0xfffff00000 ) << 21 + flag<<24".to_string());
+                *code += &format!("\tmov {}, qword {}[reg_prev_steps_1]\n", REG_VALUE, ctx.ptr);
                 *code += &format!("\tmov {}, 0xfffff00000\n", REG_AUX);
                 *code += &format!("\tand {}, {}\n", REG_VALUE, REG_AUX);
                 *code += &format!("\tshl {}, 21\n", REG_VALUE);
-                *code += &format!("\tmov {}, qword ptr [reg_prev_steps_2]\n", REG_AUX);
+                *code += &format!("\tmov {}, qword {}[reg_prev_steps_2]\n", REG_AUX, ctx.ptr);
                 *code += &format!("\tadd {}, {}\n", REG_VALUE, REG_AUX);
                 if ctx.flag_is_always_one {
                     *code += &format!("\tmov {}, 0x10000000000\n", REG_AUX);
@@ -1590,12 +1991,19 @@ impl ZiskRom2Asm {
                     *code += &format!("\tadd {}, {}\n", REG_VALUE, REG_AUX);
                 }
                 *code += &format!(
-                    "\tmov [{} + {}*8 + 6*8], {} /* main[@+size*8+6*8]=value */\n",
-                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                    "\tmov [{} + {}*8 + 6*8], {} {}\n",
+                    REG_MEM_READS_ADDRESS,
+                    REG_MEM_READS_SIZE,
+                    REG_VALUE,
+                    ctx.comment_str("main[@+size*8+6*8] = value")
                 );
 
                 // Increment chunk.steps.mem_reads_size in 7 u64 slots
-                *code += &format!("\tadd {}, 7 /* mem_reads_size += 7 */\n", REG_MEM_READS_SIZE);
+                *code += &format!(
+                    "\tadd {}, 7 {}\n",
+                    REG_MEM_READS_SIZE,
+                    ctx.comment_str("mem_reads_size += 7")
+                );
             }
 
             /********/
@@ -1603,21 +2011,35 @@ impl ZiskRom2Asm {
             /********/
 
             // Decrement step counter
-            *code += "\t/* STEP */\n";
+            *code += &ctx.full_line_comment("STEP".to_string());
             if ctx.fast() || ctx.rom_histogram() || ctx.main_trace() {
-                *code += &format!("\tinc {} /* increment step */\n", REG_STEP);
+                *code += &format!("\tinc {} {}\n", REG_STEP, ctx.comment_str("increment step"));
             }
-            if ctx.chunks() || ctx.minimal_trace() || ctx.main_trace() {
-                *code += &format!("\tdec {} /* decrement step count down */\n", REG_STEP);
+            if ctx.chunks() || ctx.minimal_trace() || ctx.main_trace() || ctx.bus_op() {
+                *code += &format!(
+                    "\tdec {} {}\n",
+                    REG_STEP,
+                    ctx.comment_str("decrement step count down")
+                );
                 if instruction.end {
-                    *code += &format!("\tmov {}, 1 /* end = 1 */\n", ctx.mem_end);
-                    *code += &format!("\tmov {}, 0x{:08x} /* value = pc */\n", REG_PC, ctx.pc);
-                    *code += "\tcall chunk_end\n";
+                    if ctx.process() {
+                        *code +=
+                            &format!("\tmov {}, 1 {}\n", ctx.mem_end, ctx.comment_str("end = 1"));
+                        *code += &format!(
+                            "\tmov {}, 0x{:08x} {}\n",
+                            REG_PC,
+                            ctx.pc,
+                            ctx.comment_str("value = pc")
+                        );
+                        *code += "\tcall chunk_end\n";
+                    }
                 } else {
                     *code += &format!("\tjz pc_{:x}_step_zero\n", ctx.pc);
                     unusual_code += &format!("pc_{:x}_step_zero:\n", ctx.pc);
                     Self::set_pc(&mut ctx, instruction, &mut unusual_code, "z");
-                    unusual_code += "\tcall chunk_end_and_start\n";
+                    if ctx.process() {
+                        unusual_code += "\tcall chunk_end_and_start\n";
+                    }
                     unusual_code += &format!("\tjmp pc_{:x}_step_done\n", ctx.pc);
                     Self::set_pc(&mut ctx, instruction, code, "nz");
                     *code += &format!("pc_{:x}_step_done:\n", ctx.pc);
@@ -1625,16 +2047,16 @@ impl ZiskRom2Asm {
             }
             if ctx.fast() || ctx.rom_histogram() {
                 if instruction.end {
-                    *code += &format!("\tmov {}, 1 /* end = 1 */\n", ctx.mem_end);
+                    *code += &format!("\tmov {}, 1 {}\n", ctx.mem_end, ctx.comment_str("end = 1"));
                 }
                 Self::set_pc(&mut ctx, instruction, code, "nz");
             }
 
             // Used only to get logs of step
-            // *s += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, MEM_STEP);
-            // *s += &format!("\tand {}, 0xfffff /* value = step */\n", REG_VALUE);
-            // *s += &format!("\tcmp {}, 0 /* value = step */\n", REG_VALUE);
-            // *s += &format!("\tjne  pc_{:x}_inc_step_done /* value = step */\n", ctx.pc);
+            // *s += &format!("\tmov {}, {} ; value = step */\n", REG_VALUE, MEM_STEP);
+            // *s += &format!("\tand {}, 0xfffff ; value = step */\n", REG_VALUE);
+            // *s += &format!("\tcmp {}, 0 ; value = step */\n", REG_VALUE);
+            // *s += &format!("\tjne  pc_{:x}_inc_step_done ; value = step */\n", ctx.pc);
             // *s += &format!("\tpush {}\n", REG_VALUE);
             // *s += &format!("\tmov rdi, {}\n", MEM_STEP);
 
@@ -1665,44 +2087,63 @@ impl ZiskRom2Asm {
             // *s += &format!("pc_{:x}_inc_step_done:\n", ctx.pc);
 
             // If step % K == 0 then store data
-            // *s += &format!("\tmov {}, {} /* copy step into value */\n", REG_VALUE, MEM_STEP);
-            // *s += &format!("\tand {}, 0xffff /* value &= k */\n", REG_VALUE);
+            // *s += &format!("\tmov {}, {} ; copy step into value */\n", REG_VALUE, MEM_STEP);
+            // *s += &format!("\tand {}, 0xffff ; value &= k */\n", REG_VALUE);
             // *s += &format!(
-            //     "\tjnz pc_{:x}_no_store_data /* skip if storing is not required */\n",
+            //     "\tjnz pc_{:x}_no_store_data ; skip if storing is not required */\n",
             //     ctx.pc
             // );
-            // *s += &format!("\t/* Store data */\n");
+            // *s += &format!("\t; Store data */\n");
             // *s += &format!("pc_{:x}_no_store_data:\n", ctx.pc);
 
             // Jump to new pc, if not the next one
             if instruction.end {
-                *code += "\tjmp execute_end /* end */\n";
+                *code += "\tjmp execute_end\n";
             } else if !ctx.jump_to_static_pc.is_empty() {
                 *code += ctx.jump_to_static_pc.as_str();
             } else if ctx.jump_to_dynamic_pc {
-                *code += "\t/* jump to dynamic pc */\n";
-                *code += &format!("\tmov {}, 0x80000000 /* is pc a low address? */\n", REG_ADDRESS);
+                *code += &ctx.full_line_comment("jump to dynamic pc".to_string());
+                *code += &format!(
+                    "\tmov {}, 0x80000000 {}\n",
+                    REG_ADDRESS,
+                    ctx.comment_str("is pc a low address?")
+                );
                 *code += &format!("\tcmp {}, {}\n", REG_PC, REG_ADDRESS);
                 *code += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
-                *code += &format!("\tsub {}, {} /* pc -= 0x80000000 */\n", REG_PC, REG_ADDRESS);
                 *code += &format!(
-                    "\tlea {}, [map_pc_80000000] /* address = map[0x80000000] */\n",
-                    REG_ADDRESS
+                    "\tsub {}, {} {}\n",
+                    REG_PC,
+                    REG_ADDRESS,
+                    ctx.comment_str("pc -= 0x80000000")
                 );
                 *code += &format!(
-                    "\tmov {}, [{} + {}*2] /* address = map[pc] */\n",
-                    REG_ADDRESS, REG_ADDRESS, REG_PC
+                    "\tlea {}, [map_pc_80000000] {}\n",
+                    REG_ADDRESS,
+                    ctx.comment_str("address = map[0x80000000]")
                 );
-                *code += &format!("\tjmp {} /* jump to address */\n", REG_ADDRESS);
+                *code += &format!(
+                    "\tmov {}, [{} + {}*2] {}\n",
+                    REG_ADDRESS,
+                    REG_ADDRESS,
+                    REG_PC,
+                    ctx.comment_str("address = map[pc]")
+                );
+                *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));
                 *code += &format!("pc_{:x}_jump_to_low_address:\n", ctx.pc);
-                *code += &format!("\tsub {}, 0x1000 /* pc -= 0x1000 */\n", REG_PC);
-                *code +=
-                    &format!("\tlea {}, [map_pc_1000] /* address = map[0x1000] */\n", REG_ADDRESS);
+                *code += &format!("\tsub {}, 0x1000 {}\n", REG_PC, ctx.comment_str("pc -= 0x1000"));
                 *code += &format!(
-                    "\tmov {}, [{} + {}*2] /* address = map[pc] */\n",
-                    REG_ADDRESS, REG_ADDRESS, REG_PC
+                    "\tlea {}, [map_pc_1000] {}\n",
+                    REG_ADDRESS,
+                    ctx.comment_str("address = map[0x1000]")
                 );
-                *code += &format!("\tjmp {} /* jump to address */\n", REG_ADDRESS);
+                *code += &format!(
+                    "\tmov {}, [{} + {}*2] {}\n",
+                    REG_ADDRESS,
+                    REG_ADDRESS,
+                    REG_PC,
+                    ctx.comment_str("address = map[pc]")
+                );
+                *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));
             }
         }
 
@@ -1713,7 +2154,20 @@ impl ZiskRom2Asm {
         // Update step memory variable with the content of the step register, to make it accessible
         // to the caller
         if ctx.fast() || ctx.rom_histogram() || ctx.main_trace() {
-            *code += &format!("\tmov {}, {} /* update step variable */\n", ctx.mem_step, REG_STEP);
+            *code += &format!(
+                "\tmov {}, {} {}\n",
+                ctx.mem_step,
+                REG_STEP,
+                ctx.comment_str("update step variable")
+            );
+        }
+
+        if ctx.lib() {
+            *code += &format!(
+                "\tsub rsp, {} {}\n",
+                RSP_OFFSET,
+                ctx.comment_str("Unreserve space for local variables")
+            );
         }
 
         Self::pop_external_registers(&mut ctx, code);
@@ -1750,11 +2204,11 @@ impl ZiskRom2Asm {
             // a constant in the instruction, but dynamically built as part of the emulation
 
             // Only use labels in boundary pc addresses
-            // match *key {
-            //     0x1000 | 0x10000000 | 0x80000000 => {
-            //         *s += &format!("\nmap_pc_{:x}: \t.quad pc_{:x}", key, key)
+            // match key {
+            //     0x1000 | 0x80000000 => {
+            //         *code += &format!("\nmap_pc_{:x}: \t.quad pc_{:x}", key, key)
             //     }
-            //     _ => *s += &format!(", pc_{:x}", key),
+            //     _ => *code += &format!(", pc_{:x}", key),
             // }
 
             // Use labels always
@@ -1762,50 +2216,50 @@ impl ZiskRom2Asm {
         }
         *code += "\n";
 
-        let mut lines = code.lines();
-        //let mut empty_lines_counter = 0u64;
-        let mut map_label_lines_counter = 0u64;
-        let mut pc_label_lines_counter = 0u64;
-        let mut comment_lines_counter = 0u64;
-        let mut code_lines_counter = 0u64;
-
-        loop {
-            let line_option = lines.next();
-            if line_option.is_none() {
-                break;
-            }
-            let line = line_option.unwrap();
-            if line.is_empty() {
-                //empty_lines_counter += 1;
-                continue;
-            }
-            if line.starts_with("map_pc_") {
-                map_label_lines_counter += 1;
-                continue;
-            }
-            if line.starts_with("pc_") {
-                pc_label_lines_counter += 1;
-                continue;
-            }
-            if line.starts_with("\t/*") {
-                comment_lines_counter += 1;
-                continue;
-            }
-            code_lines_counter += 1;
-        }
-
         #[cfg(debug_assertions)]
-        println!(
-            "ZiskRom2Asm::save_to_asm() {} bytes, {} instructions, {:02} bytes/inst, {} map lines, {} label lines, {} comment lines, {} code lines, {:02} code lines/inst",
-            code.len(),
-            rom.sorted_pc_list.len(),
-            code.len() as f64 / rom.sorted_pc_list.len() as f64,
-            map_label_lines_counter,
-            pc_label_lines_counter,
-            comment_lines_counter,
-            code_lines_counter,
-            code_lines_counter as f64 / rom.sorted_pc_list.len() as f64,
-        );
+        {
+            let mut lines = code.lines();
+            let mut map_label_lines_counter = 0u64;
+            let mut pc_label_lines_counter = 0u64;
+            let mut comment_lines_counter = 0u64;
+            let mut code_lines_counter = 0u64;
+
+            loop {
+                let line_option = lines.next();
+                if line_option.is_none() {
+                    break;
+                }
+                let line = line_option.unwrap();
+                if line.is_empty() {
+                    continue;
+                }
+                if line.starts_with("map_pc_") {
+                    map_label_lines_counter += 1;
+                    continue;
+                }
+                if line.starts_with("pc_") {
+                    pc_label_lines_counter += 1;
+                    continue;
+                }
+                if line.starts_with("\t/*") {
+                    comment_lines_counter += 1;
+                    continue;
+                }
+                code_lines_counter += 1;
+            }
+
+            println!(
+                "ZiskRom2Asm::save_to_asm() {} bytes, {} instructions, {:02} bytes/inst, {} map lines, {} label lines, {} comment lines, {} code lines, {:02} code lines/inst",
+                code.len(),
+                rom.sorted_pc_list.len(),
+                code.len() as f64 / rom.sorted_pc_list.len() as f64,
+                map_label_lines_counter,
+                pc_label_lines_counter,
+                comment_lines_counter,
+                code_lines_counter,
+                code_lines_counter as f64 / rom.sorted_pc_list.len() as f64,
+            );
+        }
     }
 
     fn operation_to_asm(
@@ -1827,7 +2281,7 @@ impl ZiskRom2Asm {
         let zisk_op = ZiskOp::try_from_code(opcode).unwrap();
         match zisk_op {
             ZiskOp::Flag => {
-                *code += &format!("\tmov {}, 0 /* Flag: c = 0 */\n", REG_C);
+                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("Flag: c = 0"));
                 ctx.c.is_constant = true;
                 ctx.c.constant_value = 0;
                 ctx.c.string_value = "0".to_string();
@@ -1844,8 +2298,10 @@ impl ZiskRom2Asm {
             ZiskOp::SignExtendB => {
                 assert!(ctx.store_b_in_b);
                 *code += &format!(
-                    "\tmovsx {}, {} /* SignExtendW: sign extend b(8b) to c(64b) */\n",
-                    REG_C, REG_B_B
+                    "\tmovsx {}, {} {}\n",
+                    REG_C,
+                    REG_B_B,
+                    ctx.comment_str("SignExtendW: sign extend b(8b) to c(64b)")
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -1853,8 +2309,10 @@ impl ZiskRom2Asm {
             ZiskOp::SignExtendH => {
                 assert!(ctx.store_b_in_b);
                 *code += &format!(
-                    "\tmovsx {}, {} /* SignExtendW: sign extend b(16b) to c(64b) */\n",
-                    REG_C, REG_B_H
+                    "\tmovsx {}, {} {}\n",
+                    REG_C,
+                    REG_B_H,
+                    ctx.comment_str("SignExtendW: sign extend b(16b) to c(64b)")
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -1862,8 +2320,10 @@ impl ZiskRom2Asm {
             ZiskOp::SignExtendW => {
                 assert!(ctx.store_b_in_b);
                 *code += &format!(
-                    "\tmovsxd {}, {} /* SignExtendW: sign extend b(32b) to c(64b) */\n",
-                    REG_C, REG_B_W
+                    "\tmovsxd {}, {} {}\n",
+                    REG_C,
+                    REG_B_W,
+                    ctx.comment_str("SignExtendW: sign extend b(32b) to c(64b)")
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -1871,16 +2331,18 @@ impl ZiskRom2Asm {
             ZiskOp::Add => {
                 if ctx.a.is_constant && (ctx.a.constant_value == 0) {
                     assert!(ctx.store_b_in_c);
-                    *code += "\t/* Add: c = a(0) + b = b */\n";
+                    *code += &ctx.full_line_comment("Add: c = a(0) + b = b".to_string());
                 } else if ctx.b.is_constant && (ctx.b.constant_value == 0) {
                     assert!(ctx.store_a_in_c);
-                    *code += "\t/* Add: c = a + b(0) = a */\n";
+                    *code += &ctx.full_line_comment("Add: c = a + b(0) = a".to_string());
                 } else {
                     assert!(ctx.store_a_in_c);
-                    *code += "\t/* Add: c = a */\n";
+                    *code += &ctx.full_line_comment("Add: c = a".to_string());
                     *code += &format!(
-                        "\tadd {}, {} /* Add: c = c + b = a + b */\n",
-                        REG_C, ctx.b.string_value
+                        "\tadd {}, {} {}\n",
+                        REG_C,
+                        ctx.b.string_value,
+                        ctx.comment_str("Add: c = c + b = a + b")
                     );
                 }
                 ctx.c.is_saved = true;
@@ -1890,28 +2352,35 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_b_in_b);
                 // DEBUG: Used only to preserve b value
                 // s +=
-                //     &format!("\tmov {}, {} /* AddW: value = b */\n", REG_VALUE, ctx.b.string_value);
+                //     &format!("\tmov {}, {} {}\n", REG_VALUE, ctx.b.string_value, ctx.comment_str("AddW: value = b"));
                 if ctx.a.is_constant && (ctx.a.constant_value == 0) {
-                    *code += "\t/* AddW: ignoring a since a = 0 */\n";
+                    *code += &ctx.full_line_comment("AddW: ignoring a since a = 0".to_string());
                 } else {
-                    *code +=
-                        &format!("\tadd {}, {} /* AddW: b += a */\n", REG_B, ctx.a.string_value);
+                    *code += &format!(
+                        "\tadd {}, {} {}\n",
+                        REG_B,
+                        ctx.a.string_value,
+                        ctx.comment_str("AddW: b += a")
+                    );
                 }
-                *code += "\tcdqe /* AddW: trunk b */\n";
-                *code += &format!("\tmov {}, {} /* AddW: c = b */\n", REG_C, REG_B);
+                *code += &format!("\tcdqe {}\n", ctx.comment_str("AddW: trunk b"));
+                *code +=
+                    &format!("\tmov {}, {} {}\n", REG_C, REG_B, ctx.comment_str("AddW: c = b"));
                 ctx.c.is_saved = true;
                 // DEBUG: Used only to preserve b value
-                //s += &format!("\tmov {}, {} /* AddW: b = value */\n", REG_B, REG_VALUE);
+                //s += &format!("\tmov {}, {} {}\n", REG_B, REG_VALUE, ctx.comment_str("AddW: b = value"));
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sub => {
                 assert!(ctx.store_a_in_c);
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
-                    *code += "\t/* Sub: ignoring b since b = 0 */\n";
+                    *code += &ctx.full_line_comment("Sub: ignoring b since b = 0".to_string());
                 } else {
                     *code += &format!(
-                        "\tsub {}, {} /* Sub: c = c - b = a - b */\n",
-                        REG_C, ctx.b.string_value
+                        "\tsub {}, {} {}\n",
+                        REG_C,
+                        ctx.b.string_value,
+                        ctx.comment_str("Sub: c = c - b = a - b")
                     );
                 }
                 ctx.c.is_saved = true;
@@ -1921,57 +2390,92 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_a_in_a);
                 // DEBUG: Used only to preserve b value
                 // s += &format!(
-                //     "\tmov {}, {} /* SubW: address = a */\n",
-                //     REG_ADDRESS, ctx.a.string_value
+                //     "\tmov {}, {} {}\n",
+                //     REG_ADDRESS, ctx.a.string_value,
+                //     ctx.commit_str("SubW: address = a")
                 // );
                 // s +=
-                //     &format!("\tmov {}, {} /* SubW: value = b */\n", REG_VALUE, ctx.b.string_value);
+                //     &format!("\tmov {}, {} {}\n", REG_VALUE, ctx.b.string_value, ctx.comment_str("SubW: value = b"));
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
-                    *code += "\t/* SubW: ignoring b since b = 0 */\n";
+                    *code += &ctx.full_line_comment("SubW: ignoring b since b = 0".to_string());
                 } else {
-                    *code +=
-                        &format!("\tsub {}, {} /* SubW: a -= b */\n", REG_A, ctx.b.string_value);
+                    *code += &format!(
+                        "\tsub {}, {} {}\n",
+                        REG_A,
+                        ctx.b.string_value,
+                        ctx.comment_str("SubW: a -= b")
+                    );
                 }
-                *code += &format!("\tmov {}, {} /* SubW: b = a = a - b*/\n", REG_B, REG_A);
-                *code += "\tcdqe /* SubW: trunk b */\n";
-                *code += &format!("\tmov {}, {} /* SubW: c = b */\n", REG_C, REG_B);
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_B,
+                    REG_A,
+                    ctx.comment_str("SubW: b = a = a - b")
+                );
+                *code += &format!("\tcdqe {}\n", ctx.comment_str("SubW: trunk b"));
+                *code +=
+                    &format!("\tmov {}, {} {}\n", REG_C, REG_B, ctx.comment_str("SubW: c = b"));
                 ctx.c.is_saved = true;
                 // DEBUG: Used only to preserver a,b values
-                // s += &format!("\tmov {}, {} /* SubW: a = address */\n", REG_A, REG_ADDRESS);
-                // s += &format!("\tmov {}, {} /* SubW: b = value */\n", REG_B, REG_VALUE);
+                // s += &format!("\tmov {}, {} {}\n", REG_A, REG_ADDRESS, ctx.comment_str("SubW: a = address"));
+                // s += &format!("\tmov {}, {} {}\n", REG_B, REG_VALUE, ctx.comment_str("SubW: b = value"));
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sll => {
                 assert!(ctx.store_a_in_c);
                 if ctx.b.is_constant {
                     *code += &format!(
-                        "\tshl {}, 0x{:x} /* Sll: c = a << b */\n",
+                        "\tshl {}, 0x{:x} {}\n",
                         REG_C,
-                        ctx.b.constant_value & 0x3f
+                        ctx.b.constant_value & 0x3f,
+                        ctx.comment_str("Sll: c = a << b")
                     );
                 } else {
-                    *code += &format!("\tmov rcx, {} /* Sll: c = b */\n", REG_B);
-                    *code += &format!("\tshl {}, cl /* Sll: c(value) = a << b */\n", REG_C);
+                    *code += &format!("\tmov rcx, {} {}\n", REG_B, ctx.comment_str("Sll: c = b"));
+                    *code += &format!(
+                        "\tshl {}, cl {}\n",
+                        REG_C,
+                        ctx.comment_str("Sll: c(value) = a << b")
+                    );
                 }
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::SllW => {
-                *code +=
-                    &format!("\tmov {}, {} /* SllW: value = a */\n", REG_VALUE, ctx.a.string_value);
-                *code += &format!("\tmov rcx, {} /* SllW: c = b */\n", ctx.b.string_value);
-                *code += &format!("\tshl {}, cl /* SllW: value = a << b */\n", REG_VALUE_W);
                 *code += &format!(
-                    "\tmovsxd {}, {} /* SllW: sign extend to quad value -> c */\n",
-                    REG_C, REG_VALUE_W
+                    "\tmov {}, {} {}\n",
+                    REG_VALUE,
+                    ctx.a.string_value,
+                    ctx.comment_str("SllW: value = a")
+                );
+                *code += &format!(
+                    "\tmov rcx, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("SllW: c = b")
+                );
+                *code += &format!(
+                    "\tshl {}, cl {}\n",
+                    REG_VALUE_W,
+                    ctx.comment_str("SllW: value = a << b")
+                );
+                *code += &format!(
+                    "\tmovsxd {}, {} {}\n",
+                    REG_C,
+                    REG_VALUE_W,
+                    ctx.comment_str("SllW: sign extend to quad value -> c")
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sra => {
                 assert!(ctx.store_a_in_c);
-                *code += &format!("\tmov rcx, {} /* Sra: rcx = b */\n", ctx.b.string_value);
-                *code += &format!("\tsar {}, cl /* Sra: c = c >> b(cl) */\n", REG_C);
+                *code += &format!(
+                    "\tmov rcx, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("Sra: rcx = b")
+                );
+                *code +=
+                    &format!("\tsar {}, cl {}\n", REG_C, ctx.comment_str("Sra: c = c >> b(cl)"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -1979,40 +2483,65 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_a_in_c);
                 if ctx.b.is_constant {
                     *code += &format!(
-                        "\tshr {}, 0x{:x} /* Srl: c = a >> b */\n",
+                        "\tshr {}, 0x{:x} {}\n",
                         REG_C,
-                        ctx.b.constant_value & 0x3f
+                        ctx.b.constant_value & 0x3f,
+                        ctx.comment_str("Srl: c = a >> b")
                     );
                 } else {
-                    *code += &format!("\tmov rcx, {} /* Srl: b = value */\n", ctx.b.string_value);
-                    *code += &format!("\tshr {}, cl /* Srl: c(value) = a >> b */\n", REG_C);
+                    *code += &format!(
+                        "\tmov rcx, {} {}\n",
+                        ctx.b.string_value,
+                        ctx.comment_str("Srl: b = value ")
+                    );
+                    *code += &format!(
+                        "\tshr {}, cl {}\n",
+                        REG_C,
+                        ctx.comment_str("Srl: c(value) = a >> b")
+                    );
                 }
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::SraW => {
                 if ctx.b.is_constant {
-                    *code +=
-                        &format!("\tmov {}, {} /* SraW: c = a */\n", REG_VALUE, ctx.a.string_value);
                     *code += &format!(
-                        "\tsar {}, 0x{:x} /* SraW: c = a >> b */\n",
-                        REG_VALUE_W,
-                        ctx.b.constant_value & 0x3f
+                        "\tmov {}, {} {}\n",
+                        REG_VALUE,
+                        ctx.a.string_value,
+                        ctx.comment_str("SraW: c = a")
                     );
                     *code += &format!(
-                        "\tmovsxd {}, {} /* SraW: sign extend to quad */\n",
-                        REG_C, REG_VALUE_W
+                        "\tsar {}, 0x{:x} {}\n",
+                        REG_VALUE_W,
+                        ctx.b.constant_value & 0x3f,
+                        ctx.comment_str("SraW: c = a >> b")
+                    );
+                    *code += &format!(
+                        "\tmovsxd {}, {} {}\n",
+                        REG_C,
+                        REG_VALUE_W,
+                        ctx.comment_str("SraW: sign extend to quad")
                     );
                 } else {
                     *code += &format!(
-                        "\tmov {}, {} /* SraW: c(value) = a */\n",
-                        REG_VALUE, ctx.a.string_value
+                        "\tmov {}, {} {}\n",
+                        REG_VALUE,
+                        ctx.a.string_value,
+                        ctx.comment_str("SraW: c(value) = a")
                     );
-                    *code += &format!("\tmov rcx, {} /* SraW: rcx = b */\n", REG_B);
-                    *code += &format!("\tsar {}, cl /* SraW: c(value) = a >> b */\n", REG_VALUE_W);
+                    *code +=
+                        &format!("\tmov rcx, {} {}\n", REG_B, ctx.comment_str("SraW: rcx = b"));
                     *code += &format!(
-                        "\tmovsxd {}, {} /* SraW: sign extend to quad */\n",
-                        REG_C, REG_VALUE_W
+                        "\tsar {}, cl {}\n",
+                        REG_VALUE_W,
+                        ctx.comment_str("SraW: c(value) = a >> b")
+                    );
+                    *code += &format!(
+                        "\tmovsxd {}, {} {}\n",
+                        REG_C,
+                        REG_VALUE_W,
+                        ctx.comment_str("SraW: sign extend to quad")
                     );
                 }
                 ctx.c.is_saved = true;
@@ -2020,41 +2549,67 @@ impl ZiskRom2Asm {
             }
             ZiskOp::SrlW => {
                 if ctx.b.is_constant {
-                    *code +=
-                        &format!("\tmov {}, {} /* SrlW: c = a */\n", REG_VALUE, ctx.a.string_value);
                     *code += &format!(
-                        "\tshr {}, 0x{:x} /* SrlW: c = a >> b */\n",
-                        REG_VALUE_W,
-                        ctx.b.constant_value & 0x3f
+                        "\tmov {}, {} {}\n",
+                        REG_VALUE,
+                        ctx.a.string_value,
+                        ctx.comment_str("SrlW: c = a")
                     );
                     *code += &format!(
-                        "\tmovsxd {}, {} /* SrlW: sign extend to quad */\n",
-                        REG_C, REG_VALUE_W
+                        "\tshr {}, 0x{:x} {}\n",
+                        REG_VALUE_W,
+                        ctx.b.constant_value & 0x3f,
+                        ctx.comment_str("SrlW: c = a >> b")
+                    );
+                    *code += &format!(
+                        "\tmovsxd {}, {} {}\n",
+                        REG_C,
+                        REG_VALUE_W,
+                        ctx.comment_str("SrlW: sign extend to quad")
                     );
                 } else {
-                    *code +=
-                        &format!("\tmov {}, {} /* SrlW: c = a */\n", REG_VALUE, ctx.a.string_value);
-                    *code += &format!("\tmov rcx, {} /* SrlW: b = value */\n", ctx.b.string_value);
-                    *code += &format!("\tshr {}, cl /* SrlW: c(value) = a >> b */\n", REG_VALUE_W);
                     *code += &format!(
-                        "\tmovsxd {}, {} /* SlrW: sign extend to quad */\n",
-                        REG_C, REG_VALUE_W
+                        "\tmov {}, {} {}\n",
+                        REG_VALUE,
+                        ctx.a.string_value,
+                        ctx.comment_str("SrlW: c = a")
+                    );
+                    *code += &format!(
+                        "\tmov rcx, {} {}\n",
+                        ctx.b.string_value,
+                        ctx.comment_str("SrlW: b = value")
+                    );
+                    *code += &format!(
+                        "\tshr {}, cl {}\n",
+                        REG_VALUE_W,
+                        ctx.comment_str("SrlW: c(value) = a >> b")
+                    );
+                    *code += &format!(
+                        "\tmovsxd {}, {} {}\n",
+                        REG_C,
+                        REG_VALUE_W,
+                        ctx.comment_str("SlrW: sign extend to quad")
                     );
                 }
                 ctx.c.is_saved = true;
-                //s += &format!("\tmov {}, {} /* SrlW: c = value */\n", REG_C, REG_VALUE);
+                //s += &format!("\tmov {}, {} {}\n", REG_C, REG_VALUE, ctx.comment_str("SrlW: c = value"));
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Eq => {
                 assert!(ctx.store_a_in_a);
-                *code += &format!("\tcmp {}, {} /* Eq: a == b ? */\n", REG_A, ctx.b.string_value);
+                *code += &format!(
+                    "\tcmp {}, {} {}\n",
+                    REG_A,
+                    ctx.b.string_value,
+                    ctx.comment_str("Eq: a == b ?")
+                );
                 *code += &format!("\tje pc_{:x}_equal_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
-                *code += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_equal_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_equal_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
-                *code += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("pc_{:x}_equal_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
             }
@@ -2062,41 +2617,53 @@ impl ZiskRom2Asm {
                 // Make sure a is in REG_A to compare it against b (constant, expression or reg)
                 if ctx.a.is_constant {
                     *code += &format!(
-                        "\tmov {}, 0x{:x} /* EqW: a = const_value */\n",
+                        "\tmov {}, 0x{:x} {}\n",
                         REG_A,
-                        ctx.a.constant_value & 0xffffffff
+                        ctx.a.constant_value & 0xffffffff,
+                        ctx.comment_str("EqW: a = constant")
                     );
                 }
                 // Compare against b, either as a numeric constant or as a register
                 if ctx.b.is_constant {
                     *code += &format!(
-                        "\tcmp {}, 0x{:x} /* EqW: a == b ? */\n",
+                        "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
-                        ctx.b.constant_value & 0xffffffff
+                        ctx.b.constant_value & 0xffffffff,
+                        ctx.comment_str("EqW: a == b ?")
                     );
                 } else {
-                    *code += &format!("\tcmp {}, {} /* EqW: a == b ? */\n", REG_A_W, REG_B_W);
+                    *code += &format!(
+                        "\tcmp {}, {} {}\n",
+                        REG_A_W,
+                        REG_B_W,
+                        ctx.comment_str("EqW: a == b ?")
+                    );
                 }
                 *code += &format!("\tje pc_{:x}_equal_w_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
-                *code += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 0 {}n", REG_C, ctx.comment_str("c = 0"));
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_equal_w_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_equal_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
-                *code += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("pc_{:x}_equal_w_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
             }
             ZiskOp::Ltu => {
                 assert!(ctx.store_a_in_a);
-                *code += &format!("\tcmp {}, {} /* Ltu: a == b ? */\n", REG_A, ctx.b.string_value);
+                *code += &format!(
+                    "\tcmp {}, {} {}\n",
+                    REG_A,
+                    ctx.b.string_value,
+                    ctx.comment_str("Ltu: a == b ?")
+                );
                 *code += &format!("\tjb pc_{:x}_ltu_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
-                *code += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_ltu_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_ltu_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
-                *code += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("pc_{:x}_ltu_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
             }
@@ -2105,20 +2672,27 @@ impl ZiskRom2Asm {
                 // If b is constant and too big, move it to its register
                 if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
                     *code += &format!(
-                        "\tmov {}, {} /* Lt: b = const_value */\n",
-                        REG_B, ctx.b.string_value
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Lt: b = constant")
                     );
                     ctx.b.is_constant = false;
                     ctx.b.string_value = REG_B.to_string();
                 }
-                *code += &format!("\tcmp {}, {} /* Lt: a == b ? */\n", REG_A, ctx.b.string_value);
+                *code += &format!(
+                    "\tcmp {}, {} {}\n",
+                    REG_A,
+                    ctx.b.string_value,
+                    ctx.comment_str("Lt: a == b ?")
+                );
                 *code += &format!("\tjl pc_{:x}_lt_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
-                *code += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_lt_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_lt_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
-                *code += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("pc_{:x}_lt_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
             }
@@ -2127,20 +2701,26 @@ impl ZiskRom2Asm {
                 // Compare against b, either as a numeric constant or as a register
                 if ctx.b.is_constant {
                     *code += &format!(
-                        "\tcmp {}, 0x{:x} /* LtuW: a == b ? */\n",
+                        "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
-                        ctx.b.constant_value & 0xffffffff
+                        ctx.b.constant_value & 0xffffffff,
+                        ctx.comment_str("LtuW: a == b ?")
                     );
                 } else {
-                    *code += &format!("\tcmp {}, {} /* LtuW: a == b ? */\n", REG_A_W, REG_B_W);
+                    *code += &format!(
+                        "\tcmp {}, {} {}\n",
+                        REG_A_W,
+                        REG_B_W,
+                        ctx.comment_str("LtuW: a == b ?")
+                    );
                 }
                 *code += &format!("\tjb pc_{:x}_ltuw_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
-                *code += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_ltuw_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_ltuw_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
-                *code += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("pc_{:x}_ltuw_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
             }
@@ -2149,20 +2729,26 @@ impl ZiskRom2Asm {
                 // Compare against b, either as a numeric constant or as a register
                 if ctx.b.is_constant {
                     *code += &format!(
-                        "\tcmp {}, 0x{:x} /* LtW: a == b ? */\n",
+                        "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
-                        ctx.b.constant_value & 0xffffffff
+                        ctx.b.constant_value & 0xffffffff,
+                        ctx.comment_str("LtW: a == b ?")
                     );
                 } else {
-                    *code += &format!("\tcmp {}, {} /* LtW: a == b ? */\n", REG_A_W, REG_B_W);
+                    *code += &format!(
+                        "\tcmp {}, {} {}\n",
+                        REG_A_W,
+                        REG_B_W,
+                        ctx.comment_str("LtW: a == b")
+                    );
                 }
                 *code += &format!("\tjl pc_{:x}_ltw_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
-                *code += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_ltw_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_ltw_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
-                *code += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("pc_{:x}_ltw_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
             }
@@ -2171,20 +2757,27 @@ impl ZiskRom2Asm {
                 // If b is constant and too big, move it to its register
                 if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
                     *code += &format!(
-                        "\tmov {}, {} /* Leu: b = const_value */\n",
-                        REG_B, ctx.b.string_value
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Leu: b = const_value")
                     );
                     ctx.b.is_constant = false;
                     ctx.b.string_value = REG_B.to_string();
                 }
-                *code += &format!("\tcmp {}, {} /* Leu: a == b ? */\n", REG_A, ctx.b.string_value);
+                *code += &format!(
+                    "\tcmp {}, {} {}\n",
+                    REG_A,
+                    ctx.b.string_value,
+                    ctx.comment_str("Leu: a == b ?")
+                );
                 *code += &format!("\tpc_{:x}_jbe leu_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
-                *code += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tpc_{:x}_jmp leu_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_leu_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
-                *code += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("pc_{:x}_leu_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
             }
@@ -2193,20 +2786,27 @@ impl ZiskRom2Asm {
                 // If b is constant and too big, move it to its register
                 if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
                     *code += &format!(
-                        "\tmov {}, {} /* Le: b = const_value */\n",
-                        REG_B, ctx.b.string_value
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Le: b = const_value")
                     );
                     ctx.b.is_constant = false;
                     ctx.b.string_value = REG_B.to_string();
                 }
-                *code += &format!("\tcmp {}, {} /* Le: a == b ? */\n", REG_A, ctx.b.string_value);
+                *code += &format!(
+                    "\tcmp {}, {} {}\n",
+                    REG_A,
+                    ctx.b.string_value,
+                    ctx.comment_str("Le: a == b ?")
+                );
                 *code += &format!("\tjle pc_{:x}_lte_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
-                *code += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_lte_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_lte_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
-                *code += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("pc_{:x}_lte_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
             }
@@ -2215,20 +2815,26 @@ impl ZiskRom2Asm {
                 // Compare against b, either as a numeric constant or as a register
                 if ctx.b.is_constant {
                     *code += &format!(
-                        "\tcmp {}, 0x{:x} /* LeuW: a == b ? */\n",
+                        "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
-                        ctx.b.constant_value & 0xffffffff
+                        ctx.b.constant_value & 0xffffffff,
+                        ctx.comment_str("LeuW: a == b ?")
                     );
                 } else {
-                    *code += &format!("\tcmp {}, {} /* LeuW: a == b ? */\n", REG_A_W, REG_B_W);
+                    *code += &format!(
+                        "\tcmp {}, {} {}\n",
+                        REG_A_W,
+                        REG_B_W,
+                        ctx.comment_str("LeuW: a == b ?")
+                    );
                 }
                 *code += &format!("\tjbe pc_{:x}_leuw_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
-                *code += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_leuw_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_leuw_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
-                *code += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("pc_{:x}_leuw_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
             }
@@ -2237,31 +2843,39 @@ impl ZiskRom2Asm {
                 // Compare against b, either as a numeric constant or as a register
                 if ctx.b.is_constant {
                     *code += &format!(
-                        "\tcmp {}, 0x{:x} /* LeW: a == b ? */\n",
+                        "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
-                        ctx.b.constant_value & 0xffffffff
+                        ctx.b.constant_value & 0xffffffff,
+                        ctx.comment_str("LeW: a == b ?")
                     );
                 } else {
-                    *code += &format!("\tcmp {}, {} /* LeW: a == b ? */\n", REG_A_W, REG_B_W);
+                    *code += &format!(
+                        "\tcmp {}, {} {}\n",
+                        REG_A_W,
+                        REG_B_W,
+                        ctx.comment_str("LeW: a == b ?")
+                    );
                 }
                 *code += &format!("\tjle pc_{:x}_lew_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 /* c = 0 */\n", REG_C);
-                *code += &format!("\tmov {}, 0 /* flag = 0 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_lew_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_lew_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 /* c = 1 */\n", REG_C);
-                *code += &format!("\tmov {}, 1 /* flag = 1 */\n", REG_FLAG);
+                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("pc_{:x}_lew_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
             }
             ZiskOp::And => {
                 assert!(ctx.store_a_in_c);
                 if ctx.b.is_constant && (ctx.b.constant_value == 0xffffffffffffffff) {
-                    *code += "\t/* And: ignoring b since b = f's */\n";
+                    *code += &ctx.full_line_comment("And: ignoring b since b = f's".to_string());
                 } else {
                     *code += &format!(
-                        "\tand {}, {} /* And: c = c AND b = a AND b */\n",
-                        REG_C, ctx.b.string_value
+                        "\tand {}, {} {}\n",
+                        REG_C,
+                        ctx.b.string_value,
+                        ctx.comment_str("And: c = c AND b = a AND b")
                     );
                 }
                 ctx.c.is_saved = true;
@@ -2270,11 +2884,13 @@ impl ZiskRom2Asm {
             ZiskOp::Or => {
                 assert!(ctx.store_a_in_c);
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
-                    *code += "\t/* Or: ignoring b since b = 0 */\n";
+                    *code += &ctx.full_line_comment("Or: ignoring b since b = 0".to_string());
                 } else {
                     *code += &format!(
-                        "\tor {}, {} /* Or: c = c OR b = a OR b */\n",
-                        REG_C, ctx.b.string_value
+                        "\tor {}, {} {}\n",
+                        REG_C,
+                        ctx.b.string_value,
+                        ctx.comment_str("Or: c = c OR b = a OR b")
                     );
                 }
                 ctx.c.is_saved = true;
@@ -2283,11 +2899,13 @@ impl ZiskRom2Asm {
             ZiskOp::Xor => {
                 assert!(ctx.store_a_in_c);
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
-                    *code += "\t/* Xor: ignoring b since b = 0 */\n";
+                    *code += &ctx.full_line_comment("Xor: ignoring b since b = 0".to_string());
                 } else {
                     *code += &format!(
-                        "\txor {}, {} /* Xor: c = c XOR b = a XOR b */\n",
-                        REG_C, ctx.b.string_value
+                        "\txor {}, {} {}\n",
+                        REG_C,
+                        ctx.b.string_value,
+                        ctx.comment_str("Xor: c = c XOR b = a XOR b")
                     );
                 }
                 ctx.c.is_saved = true;
@@ -2297,8 +2915,10 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
                 // RDX:RAX := RAX ∗ r/m64
-                *code += &format!("\tmul {} /* Mulu: rax*reg -> rdx:rax */\n", REG_A);
-                *code += &format!("\tmov {}, rax /* Mulu: c = result(rax) */\n", REG_C);
+                *code +=
+                    &format!("\tmul {} {}\n", REG_A, ctx.comment_str("Mulu: rax*reg -> rdx:rax"));
+                *code +=
+                    &format!("\tmov {}, rax {}\n", REG_C, ctx.comment_str("Mulu: c = result(rax)"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -2306,8 +2926,13 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
                 // RDX:RAX := RAX ∗ r/m64
-                *code += &format!("\tmul {} /* Muluh: rax*reg -> rdx:rax */\n", REG_A);
-                *code += &format!("\tmov {}, rdx /* Muluh: c = high result(rdx) */\n", REG_C);
+                *code +=
+                    &format!("\tmul {} {}\n", REG_A, ctx.comment_str("Muluh: rax*reg -> rdx:rax"));
+                *code += &format!(
+                    "\tmov {}, rdx {}\n",
+                    REG_C,
+                    ctx.comment_str("Muluh: c = high result(rdx)")
+                );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -2315,17 +2940,35 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
                 // RDX:RAX := RAX ∗ r/m64
-                *code += &format!("\tmov rsi, {} /* Mulsuh: rsi=b */\n", REG_B);
-                *code += &format!("\tmov rax, {} /* Mulsuh: rax=a */\n", REG_A);
-                *code += &format!("\tmov {}, rax /* Mulsuh: value=a */\n", REG_VALUE);
-                *code += &format!("\tsar {}, 63 /* Mulsuh: value=a>>63=a_bit_63 */\n", REG_VALUE);
-                *code += "\tmov rdx, 0 /* Mulsuh: rdx=0, rdx:rax=a */\n";
-                *code += "\tmul rsi /* Mulsuh: rdx:rax=a*b (unsigned) */\n";
-                *code += "\tmov rcx, rax /* Mulsuh: rax=a */\n";
-                *code += &format!("\tmov rax, {} /* Mulsuh: rax=a_bit_63 */\n", REG_VALUE);
-                *code += "\timul rax, rsi /* Mulsuh: rax=rax*b=a_bit_63*b */\n";
-                *code += "\tadd rdx, rax /* Mulsuh: rdx=rdx+a_bit_63*b */\n";
-                *code += &format!("\tmov {}, rdx /* Mulsuh: c=high result(rdx) */\n", REG_C);
+                *code += &format!("\tmov rsi, {} {}\n", REG_B, ctx.comment_str("Mulsuh: rsi = b"));
+                *code += &format!("\tmov rax, {} {}\n", REG_A, ctx.comment_str("Mulsuh: rax = a"));
+                *code +=
+                    &format!("\tmov {}, rax {}\n", REG_VALUE, ctx.comment_str("Mulsuh: value = a"));
+                *code += &format!(
+                    "\tsar {}, 63 {}\n",
+                    REG_VALUE,
+                    ctx.comment_str("Mulsuh: value = a>>63 = a_bit_63")
+                );
+                *code += &format!("\tmov rdx, 0 {}\n", ctx.comment_str("Mulsuh: rdx=0, rdx:rax=a"));
+                *code +=
+                    &format!("\tmul rsi {}\n", ctx.comment_str("Mulsuh: rdx:rax = a*b (unsigned)"));
+                *code += &format!("\tmov rcx, rax {}\n", ctx.comment_str("Mulsuh: rax = a"));
+                *code += &format!(
+                    "\tmov rax, {} {}\n",
+                    REG_VALUE,
+                    ctx.comment_str("Mulsuh: rax = a_bit_63")
+                );
+                *code += &format!(
+                    "\timul rax, rsi {}\n",
+                    ctx.comment_str("Mulsuh: rax = rax*b = a_bit_63*b")
+                );
+                *code +=
+                    &format!("\tadd rdx, rax {}\n", ctx.comment_str("Mulsuh: rdx=rdx+a_bit_63*b"));
+                *code += &format!(
+                    "\tmov {}, rdx {}\n",
+                    REG_C,
+                    ctx.comment_str("Mulsuh: c = high result(rdx)")
+                );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -2333,8 +2976,10 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
                 // RDX:RAX := RAX ∗ r/m64
-                *code += &format!("\timul {} /* Mul: rax*reg -> rdx:rax */\n", REG_A);
-                *code += &format!("\tmov {}, rax /* Mul: c = result(rax) */\n", REG_C);
+                *code +=
+                    &format!("\timul {} {}\n", REG_A, ctx.comment_str("Mul: rax*reg -> rdx:rax"));
+                *code +=
+                    &format!("\tmov {}, rax {}\n", REG_C, ctx.comment_str("Mul: c = result(rax)"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -2342,8 +2987,13 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
                 // RDX:RAX := RAX ∗ r/m64
-                *code += &format!("\timul {} /* Mulh: rax*reg -> rdx:rax */\n", REG_A);
-                *code += &format!("\tmov {}, rdx /* Mulh: c = high result(rdx) */\n", REG_C);
+                *code +=
+                    &format!("\timul {} {}\n", REG_A, ctx.comment_str("Mulh: rax*reg -> rdx:rax"));
+                *code += &format!(
+                    "\tmov {}, rdx {}\n",
+                    REG_C,
+                    ctx.comment_str("Mulh: c = high result(rdx)")
+                );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -2351,9 +3001,14 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
                 // RDX:RAX := RAX ∗ r/m64
-                *code += &format!("\tmul {} /* MulW: rax*reg -> rdx:rax */\n", REG_A_W);
                 *code +=
-                    &format!("\tmovsxd {}, {} /* MulW: sign extend to quad */\n", REG_C, REG_B_W);
+                    &format!("\tmul {} {}\n", REG_A_W, ctx.comment_str("MulW: rax*reg -> rdx:rax"));
+                *code += &format!(
+                    "\tmovsxd {}, {} {}\n",
+                    REG_C,
+                    REG_B_W,
+                    ctx.comment_str("MulW: sign extend to quad")
+                );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -2362,24 +3017,46 @@ impl ZiskRom2Asm {
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder
                 // If b==0 return 0xffffffffffffffff
-                *code += &format!("\tcmp {}, 0 /* Divu: if b == 0 return f's */\n", REG_B);
                 *code += &format!(
-                    "\tjne pc_{:x}_divu_b_is_not_zero /* Divu: if b is not zero, divide */\n",
-                    ctx.pc
+                    "\tcmp {}, 0 {}\n",
+                    REG_B,
+                    ctx.comment_str("Divu: if b == 0 return f's")
                 );
-                *code +=
-                    &format!("\tmov {}, 0xffffffffffffffff /* Divu: set result to f's */\n", REG_C);
+                *code += &format!(
+                    "\tjne pc_{:x}_divu_b_is_not_zero {}\n",
+                    ctx.pc,
+                    ctx.comment_str("Divu: if b is not zero, divide")
+                );
+                *code += &format!(
+                    "\tmov {}, 0xffffffffffffffff {}\n",
+                    REG_C,
+                    ctx.comment_str("Divu: set result to f's")
+                );
                 *code += &format!("\tje pc_{:x}_divu_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_divu_b_is_not_zero:\n", ctx.pc);
 
-                *code += &format!("\tmov {}, {} /* Divu: value = b backup */\n", REG_VALUE, REG_B);
-                *code += "\tmov rdx, 0 /* Divu: rdx = 0 */\n";
-                *code += &format!("\tmov rax, {} /* Divu: rax = a */\n", ctx.a.string_value);
                 *code += &format!(
-                    "\tdiv {} /* Divu: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
-                    REG_VALUE
+                    "\tmov {}, {} {}\n",
+                    REG_VALUE,
+                    REG_B,
+                    ctx.comment_str("Divu: value = b backup")
                 );
-                *code += &format!("\tmov {}, rax /* Divu: c = quotient(rax) */\n", REG_C);
+                *code += &format!("\tmov rdx, 0 {}\n", ctx.comment_str("Divu: rdx = 0"));
+                *code += &format!(
+                    "\tmov rax, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("Divu: rax = a")
+                );
+                *code += &format!(
+                    "\tdiv {} {}\n",
+                    REG_VALUE,
+                    ctx.comment_str("Divu: rdx:rax / value(b backup) -> rax (rdx remainder)")
+                );
+                *code += &format!(
+                    "\tmov {}, rax {}\n",
+                    REG_C,
+                    ctx.comment_str("Divu: c = quotient(rax)")
+                );
                 *code += &format!("pc_{:x}_divu_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2389,32 +3066,53 @@ impl ZiskRom2Asm {
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder
                 // If b==0 return a
-                *code += &format!("\tcmp {}, 0 /* Remu: if b == 0 return a */\n", REG_B);
                 *code += &format!(
-                    "\tjne pc_{:x}_remu_b_is_not_zero /* Remu: if b is not zero, divide */\n",
-                    ctx.pc
+                    "\tcmp {}, 0 {}\n",
+                    REG_B,
+                    ctx.comment_str("Remu: if b == 0 return a")
                 );
                 *code += &format!(
-                    "\tmov {}, {} /* Remu: set result to f's */\n",
-                    REG_C, ctx.a.string_value
+                    "\tjne pc_{:x}_remu_b_is_not_zero {}\n",
+                    ctx.pc,
+                    ctx.comment_str("Remu: if b is not zero, divide")
+                );
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_C,
+                    ctx.a.string_value,
+                    ctx.comment_str("Remu: set result to f's")
                 );
                 *code += &format!("\tje pc_{:x}_remu_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_remu_b_is_not_zero:\n", ctx.pc);
 
-                *code += &format!("\tmov {}, {} /* Remu: value = b backup */\n", REG_VALUE, REG_B);
-                *code += "\tmov rdx, 0 /* Remu: rdx = 0 */\n";
-                *code += &format!("\tmov rax, {} /* Remu: rax = a */\n", ctx.a.string_value);
                 *code += &format!(
-                    "\tdiv {} /* Remu: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
-                    REG_VALUE
+                    "\tmov {}, {} {}\n",
+                    REG_VALUE,
+                    REG_B,
+                    ctx.comment_str("Remu: value = b backup")
                 );
-                *code += &format!("\tmov {}, rdx /* Remu: c = remainder(rdx) */\n", REG_C);
+                *code += &format!("\tmov rdx, 0 {}\n", ctx.comment_str("Remu: rdx = 0"));
+                *code += &format!(
+                    "\tmov rax, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("Remu: rax = a")
+                );
+                *code += &format!(
+                    "\tdiv {} {}\n",
+                    REG_VALUE,
+                    ctx.comment_str("Remu: rdx:rax / value(b backup) -> rax (rdx remainder)")
+                );
+                *code += &format!(
+                    "\tmov {}, rdx {}\n",
+                    REG_C,
+                    ctx.comment_str("Remu: c = remainder(rdx)")
+                );
                 *code += &format!("pc_{:x}_remu_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
 
-                // s += &format!("\tmov {}, 0 /* Remu: c = remainder(rdx) */\n", REG_ADDRESS);
+                // s += &format!("\tmov {}, 0 ; Remu: c = remainder(rdx) */\n", REG_ADDRESS);
                 // s += &format!(
-                //     "\tmov {}, [{}] /* Remu: c = remainder(rdx) */\n",
+                //     "\tmov {}, [{}] ; Remu: c = remainder(rdx) */\n",
                 //     REG_ADDRESS, REG_ADDRESS
                 // );
                 ctx.flag_is_always_zero = true;
@@ -2432,64 +3130,99 @@ impl ZiskRom2Asm {
 
                 // Check divide by zero:
                 // If b==0 return 0xffffffffffffffff
-                *code += &format!("\tcmp {}, 0 /* Div: if b == 0 return f's */\n", REG_B);
                 *code += &format!(
-                    "\tjne pc_{:x}_div_check_underflow /* Div: if b is not zero, divide */\n",
-                    ctx.pc
+                    "\tcmp {}, 0 {}\n",
+                    REG_B,
+                    ctx.comment_str("Div: if b == 0 return f's")
+                );
+                *code += &format!(
+                    "\tjne pc_{:x}_div_check_underflow {}\n",
+                    ctx.pc,
+                    ctx.comment_str("Div: if b is not zero, divide")
                 );
                 *unusual_code += &format!("pc_{:x}_div_check_underflow:\n", ctx.pc);
-                *unusual_code +=
-                    &format!("\tmov {}, 0xffffffffffffffff /* Div: set result to f's */\n", REG_C);
+                *unusual_code += &format!(
+                    "\tmov {}, 0xffffffffffffffff {}\n",
+                    REG_C,
+                    ctx.comment_str("Div: set result to f's")
+                );
 
                 *unusual_code += &format!("\tjmp pc_{:x}_div_done\n", ctx.pc);
 
                 // Check underflow:
                 // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a
                 *code += &format!(
-                    "\tmov {}, 0x8000000000000000 /* Div: value == 0x8000000000000000 */\n",
-                    REG_VALUE
+                    "\tmov {}, 0x8000000000000000 {}\n",
+                    REG_VALUE,
+                    ctx.comment_str("Div: value == 0x8000000000000000")
                 );
                 *code += &format!(
-                    "\tcmp {}, {} /* Div: if a == value(0x8000000000000000), then check b */\n",
-                    REG_A, REG_VALUE
+                    "\tcmp {}, {} {}\n",
+                    REG_A,
+                    REG_VALUE,
+                    ctx.comment_str("Div: if a == value(0x8000000000000000), then check b")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_div_divide /* Div: if a is not 0x8000000000000000, then divide */\n",
-                    ctx.pc
+                    "\tjne pc_{:x}_div_divide {}\n",
+                    ctx.pc,
+                    ctx.comment_str("Div: if a is not 0x8000000000000000, then divide")
                 );
                 *code += &format!(
-                    "\tmov {}, 0xffffffffffffffff /* Div: value == 0xffffffffffffffff */\n",
-                    REG_VALUE
+                    "\tmov {}, 0xffffffffffffffff {}\n",
+                    REG_VALUE,
+                    ctx.comment_str("Div: value == 0xffffffffffffffff")
                 );
                 *code += &format!(
-                    "\tcmp {}, {} /* Div: if b == 0xffffffffffffffff, then return a */\n",
-                    REG_B, REG_VALUE
+                    "\tcmp {}, {} {}\n",
+                    REG_B,
+                    REG_VALUE,
+                    ctx.comment_str("Div: if b == 0xffffffffffffffff, then return a")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_div_divide /* Div: if b is not 0xffffffffffffffff, divide */\n",
-                    ctx.pc
+                    "\tjne pc_{:x}_div_divide {}\n",
+                    ctx.pc,
+                    ctx.comment_str("Div: if b is not 0xffffffffffffffff, divide")
                 );
-                *code += &format!("\tmov {}, {} /* Div: set result to a */\n", REG_C, REG_A);
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_C,
+                    REG_A,
+                    ctx.comment_str("Div: set result to a")
+                );
 
                 *code += &format!("\tje pc_{:x}_div_done\n", ctx.pc);
 
                 // Divide
                 *code += &format!("pc_{:x}_div_divide:\n", ctx.pc);
-                *code += &format!("\tmov {}, {} /* Div: value = b backup */\n", REG_VALUE, REG_B);
-                *code += &format!("\tmov rax, {} /* Div: rax = a */\n", REG_A);
-                *code += "\tbt rax, 63 /* Div: is a negative? */\n";
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_VALUE,
+                    REG_B,
+                    ctx.comment_str("Div: value = b backup")
+                );
+                *code += &format!("\tmov rax, {} {}\n", REG_A, ctx.comment_str("Div: rax = a"));
+                *code += &format!("\tbt rax, 63 {}\n", ctx.comment_str("Div: is a negative?"));
                 *code += &format!("\tjnc pc_{:x}_a_is_positive\n", ctx.pc);
-                *code += "\tmov rdx, 0xffffffffffffffff /* Div: a is negative, rdx = f's */\n";
+                *code += &format!(
+                    "\tmov rdx, 0xffffffffffffffff {}\n",
+                    ctx.comment_str("Div: a is negative, rdx = f's")
+                );
                 *code += &format!("\tjmp pc_{:x}_a_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_a_is_positive:\n", ctx.pc);
-                *code += "\tmov rdx, 0 /* Div: a is positive, rdx = 0 */\n";
+                *code +=
+                    &format!("\tmov rdx, 0 {}\n", ctx.comment_str("Div: a is positive, rdx = 0"));
                 *code += &format!("pc_{:x}_a_done:\n", ctx.pc);
 
                 *code += &format!(
-                    "\tidiv {} /* Div: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
-                    REG_VALUE
+                    "\tidiv {} {}\n",
+                    REG_VALUE,
+                    ctx.comment_str("Div: rdx:rax / value(b backup) -> rax (rdx remainder)")
                 );
-                *code += &format!("\tmov {}, rax /* Div: c = quotient(rax) */\n", REG_C);
+                *code += &format!(
+                    "\tmov {}, rax {}\n",
+                    REG_C,
+                    ctx.comment_str("Div: c = quotient(rax)")
+                );
                 *code += &format!("pc_{:x}_div_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2507,62 +3240,95 @@ impl ZiskRom2Asm {
 
                 // Check divide by zero:
                 // If b==0 return 0xffffffffffffffff
-                *code += &format!("\tcmp {}, 0 /* Rem: if b == 0 return f's */\n", REG_B);
                 *code += &format!(
-                    "\tjne pc_{:x}_rem_check_underflow /* Rem: if b is not zero, divide */\n",
-                    ctx.pc
+                    "\tcmp {}, 0 {}\n",
+                    REG_B,
+                    ctx.comment_str("Rem: if b == 0 return f's")
                 );
-                *code += &format!("\tmov {}, {} /* Rem: set result to a */\n", REG_C, REG_A);
+                *code += &format!(
+                    "\tjne pc_{:x}_rem_check_underflow {}\n",
+                    ctx.pc,
+                    ctx.comment_str("Rem: if b is not zero, divide")
+                );
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_C,
+                    REG_A,
+                    ctx.comment_str("Rem: set result to a")
+                );
 
                 *code += &format!("\tje pc_{:x}_rem_done\n", ctx.pc);
 
                 // Check underflow:
                 // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a
                 *code += &format!(
-                    "\tmov {}, 0x8000000000000000 /* Rem: value == 0x8000000000000000 */\n",
-                    REG_VALUE
+                    "\tmov {}, 0x8000000000000000 {}\n",
+                    REG_VALUE,
+                    ctx.comment_str("Rem: value == 0x8000000000000000")
                 );
                 *code += &format!(
-                    "\tcmp {}, {} /* Rem: if a == value(0x8000000000000000), then check b */\n",
-                    REG_A, REG_VALUE
+                    "\tcmp {}, {} {}\n",
+                    REG_A,
+                    REG_VALUE,
+                    ctx.comment_str("Rem: if a == value(0x8000000000000000), then check b")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_rem_divide /* Rem: if a is not 0x8000000000000000, then divide */\n",
-                    ctx.pc
+                    "\tjne pc_{:x}_rem_divide {}\n",
+                    ctx.pc,
+                    ctx.comment_str("Rem: if a is not 0x8000000000000000, then divide")
                 );
                 *code += &format!(
-                    "\tmov {}, 0xffffffffffffffff /* Rem: value == 0xffffffffffffffff */\n",
-                    REG_VALUE
+                    "\tmov {}, 0xffffffffffffffff {}\n",
+                    REG_VALUE,
+                    ctx.comment_str("Rem: value == 0xffffffffffffffff")
                 );
                 *code += &format!(
-                    "\tcmp {}, {} /* Rem: if b == 0xffffffffffffffff, then return a */\n",
-                    REG_B, REG_VALUE
+                    "\tcmp {}, {} {}\n",
+                    REG_B,
+                    REG_VALUE,
+                    ctx.comment_str("Rem: if b == 0xffffffffffffffff, then return a")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_rem_divide /* Rem: if b is not 0xffffffffffffffff, divide */\n",
-                    ctx.pc
+                    "\tjne pc_{:x}_rem_divide {}\n",
+                    ctx.pc,
+                    ctx.comment_str("Rem: if b is not 0xffffffffffffffff, divide")
                 );
-                *code += &format!("\tmov {}, 0 /* Rem: set result to 0 */\n", REG_C);
+                *code +=
+                    &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("Rem: set result to 0"));
 
                 *code += &format!("\tje pc_{:x}_rem_done\n", ctx.pc);
 
                 // Divide
                 *code += &format!("pc_{:x}_rem_divide:\n", ctx.pc);
-                *code += &format!("\tmov {}, {} /* Rem: value = b backup */\n", REG_VALUE, REG_B);
-                *code += &format!("\tmov rax, {} /* Rem: rax = a */\n", REG_A);
-                *code += "\tbt rax, 63 /* Rem: is a negative? */\n";
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_VALUE,
+                    REG_B,
+                    ctx.comment_str("Rem: value = b backup")
+                );
+                *code += &format!("\tmov rax, {} {}\n", REG_A, ctx.comment_str("Rem: rax = a"));
+                *code += &format!("\tbt rax, 63 {}\n", ctx.comment_str("Rem: is a negative?"));
                 *code += &format!("\tjnc pc_{:x}_a_is_positive\n", ctx.pc);
-                *code += "\tmov rdx, 0xffffffffffffffff /* Rem: a is negative, rdx = f's */\n";
+                *code += &format!(
+                    "\tmov rdx, 0xffffffffffffffff {}\n",
+                    ctx.comment_str("Rem: a is negative, rdx = f's")
+                );
                 *code += &format!("\tjmp pc_{:x}_a_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_a_is_positive:\n", ctx.pc);
-                *code += "\tmov rdx, 0 /* Rem: a is positive, rdx = 0 */\n";
+                *code +=
+                    &format!("\tmov rdx, 0 {}\n", ctx.comment_str("Rem: a is positive, rdx = 0"));
                 *code += &format!("pc_{:x}_a_done:\n", ctx.pc);
 
                 *code += &format!(
-                    "\tidiv {} /* Rem: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
-                    REG_VALUE
+                    "\tidiv {} {}\n",
+                    REG_VALUE,
+                    ctx.comment_str("Rem: rdx:rax / value(b backup) -> rax (rdx remainder)")
                 );
-                *code += &format!("\tmov {}, rdx /* Rem: c = remainder(rdx) */\n", REG_C);
+                *code += &format!(
+                    "\tmov {}, rdx {}\n",
+                    REG_C,
+                    ctx.comment_str("Rem: c = remainder(rdx)")
+                );
                 *code += &format!("pc_{:x}_rem_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2570,29 +3336,42 @@ impl ZiskRom2Asm {
             ZiskOp::DivuW => {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
-                *code +=
-                    &format!("\tcmp {}, 0 /* DivuW: if b==0 then return all f's */\n", REG_B_W);
                 *code += &format!(
-                    "\tjne pc_{:x}_divuw_b_is_not_zero /* DivuW: if b is not zero, divide */\n",
-                    ctx.pc
+                    "\tcmp {}, 0 {}\n",
+                    REG_B_W,
+                    ctx.comment_str("DivuW: if b==0 then return all f's")
                 );
                 *code += &format!(
-                    "\tmov {}, 0xffffffffffffffff /* DivuW: set result to f's */\n",
-                    REG_C
+                    "\tjne pc_{:x}_divuw_b_is_not_zero {}\n",
+                    ctx.pc,
+                    ctx.comment_str("DivuW: if b is not zero, divide")
+                );
+                *code += &format!(
+                    "\tmov {}, 0xffffffffffffffff {}\n",
+                    REG_C,
+                    ctx.comment_str("DivuW: set result to f's")
                 );
                 *code += &format!("\tjmp pc_{:x}_divuw_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_divuw_b_is_not_zero:\n", ctx.pc);
 
-                *code +=
-                    &format!("\tmov {}, {} /* DivuW: value = b backup */\n", REG_VALUE_W, REG_B_W);
-                *code += "\tmov rdx, 0 /* DivuW: rdx = 0 */\n";
-                *code += &format!("\tmov eax, {} /* DivuW: rax = a */\n", REG_A_W);
                 *code += &format!(
-                    "\tdiv {} /* DivuW: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
-                    REG_VALUE_W
+                    "\tmov {}, {} {}\n",
+                    REG_VALUE_W,
+                    REG_B_W,
+                    ctx.comment_str("DivuW: value = b backup")
                 );
-                *code +=
-                    &format!("\tmovsxd {}, eax /* DivuW: sign extend 32 to 64 bits */\n", REG_C);
+                *code += &format!("\tmov rdx, 0 {}\n", ctx.comment_str("DivuW: rdx = 0"));
+                *code += &format!("\tmov eax, {} {}\n", REG_A_W, ctx.comment_str("DivuW: rax = a"));
+                *code += &format!(
+                    "\tdiv {} {}\n",
+                    REG_VALUE_W,
+                    ctx.comment_str("DivuW: rdx:rax / value(b backup) -> rax (rdx remainder)")
+                );
+                *code += &format!(
+                    "\tmovsxd {}, eax {}\n",
+                    REG_C,
+                    ctx.comment_str("DivuW: sign extend 32 to 64 bits")
+                );
                 *code += &format!("pc_{:x}_divuw_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2600,28 +3379,39 @@ impl ZiskRom2Asm {
             ZiskOp::RemuW => {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
-                *code += &format!("\tcmp {}, 0 /* RemuW: if b==0 then return a */\n", REG_B_W);
                 *code += &format!(
-                    "\tjne pc_{:x}_remuw_b_is_not_zero /* RemuW: if b is not zero, divide */\n",
-                    ctx.pc
+                    "\tcmp {}, 0 {}n",
+                    REG_B_W,
+                    ctx.comment_str("RemuW: if b==0 then return a")
                 );
+                *code += &format!("\tjne pc_{:x}_remuw_b_is_not_zero\n", ctx.pc);
                 *code += &format!(
-                    "\tmovsxd {}, {} /* RemuW: return a, sign extend 32 to 64 bits */\n",
-                    REG_C, REG_A_W
+                    "\tmovsxd {}, {} {}\n",
+                    REG_C,
+                    REG_A_W,
+                    ctx.comment_str("RemuW: return a, sign extend 32 to 64 bits")
                 );
                 *code += &format!("\tjmp pc_{:x}_remuw_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_remuw_b_is_not_zero:\n", ctx.pc);
 
-                *code +=
-                    &format!("\tmov {}, {} /* RemuW: value = b backup */\n", REG_VALUE_W, REG_B_W);
-                *code += "\tmov rdx, 0 /* RemuW: rdx = 0 */\n";
-                *code += &format!("\tmov eax, {} /* RemuW: rax = a */\n", REG_A_W);
                 *code += &format!(
-                    "\tdiv {} /* RemuW: rdx:rax / value(b backup) -> rax (rdx remainder)*/\n",
-                    REG_VALUE_W
+                    "\tmov {}, {} {}\n",
+                    REG_VALUE_W,
+                    REG_B_W,
+                    ctx.comment_str("RemuW: value = b backup")
                 );
-                *code +=
-                    &format!("\tmovsxd {}, edx /* RemuW: sign extend 32 to 64 bits */\n", REG_C);
+                *code += &format!("\tmov rdx, 0 {}\n", ctx.comment_str("RemuW: rdx = 0"));
+                *code += &format!("\tmov eax, {} {}\n", REG_A_W, ctx.comment_str("RemuW: rax = a"));
+                *code += &format!(
+                    "\tdiv {} {}\n",
+                    REG_VALUE_W,
+                    ctx.comment_str("RemuW: rdx:rax / value(b backup) -> rax (rdx remainder)")
+                );
+                *code += &format!(
+                    "\tmovsxd {}, edx {}\n",
+                    REG_C,
+                    ctx.comment_str("RemuW: sign extend 32 to 64 bits")
+                );
                 *code += &format!("pc_{:x}_remuw_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2635,26 +3425,44 @@ impl ZiskRom2Asm {
 
                 // Check divide by zero:
                 // If b==0 return 0xffffffffffffffff
-                *code += &format!("\tcmp {}, 0 /* DivW: if b == 0 return f's */\n", REG_B_W);
                 *code += &format!(
-                    "\tjne pc_{:x}_divw_divide /* DivW: if b is not zero, divide */\n",
-                    ctx.pc
+                    "\tcmp {}, 0 {}\n",
+                    REG_B_W,
+                    ctx.comment_str("DivW: if b == 0 return f's")
                 );
-                *code +=
-                    &format!("\tmov {}, 0xffffffffffffffff /* DivW: set result to f's */\n", REG_C);
+                *code += &format!(
+                    "\tjne pc_{:x}_divw_divide {}\n",
+                    ctx.pc,
+                    ctx.comment_str("DivW: if b is not zero, divide")
+                );
+                *code += &format!(
+                    "\tmov {}, 0xffffffffffffffff {}\n",
+                    REG_C,
+                    ctx.comment_str("DivW: set result to f's")
+                );
 
                 *code += &format!("\tje pc_{:x}_divw_done\n", ctx.pc);
 
                 // Divide
-                *code +=
-                    &format!("\tmov {}, {} /* DivW: value = b backup */\n", REG_VALUE_W, REG_B_W);
-                *code += &format!("\tmov eax, {} /* DivW: rax = a */\n", REG_A_W);
-                *code += "\tcdq /* DivW: EDX:EAX := sign-extend of EAX */\n";
                 *code += &format!(
-                    "\tidiv {} /* DivW: edx:eax / value(b backup) -> eax (edx remainder)*/\n",
-                    REG_VALUE_W
+                    "\tmov {}, {} {}\n",
+                    REG_VALUE_W,
+                    REG_B_W,
+                    ctx.comment_str("DivW: value = b backup")
                 );
-                *code += &format!("\tmovsx {}, eax /* DivW: c = quotient(rax) */\n", REG_C);
+                *code += &format!("\tmov eax, {} {}\n", REG_A_W, ctx.comment_str("DivW: rax = a"));
+                *code +=
+                    &format!("\tcdq {}\n", ctx.comment_str("DivW: EDX:EAX := sign-extend of EAX"));
+                *code += &format!(
+                    "\tidiv {} {}\n",
+                    REG_VALUE_W,
+                    ctx.comment_str("DivW: edx:eax / value(b backup) -> eax (edx remainder)")
+                );
+                *code += &format!(
+                    "\tmovsx {}, eax {}\n",
+                    REG_C,
+                    ctx.comment_str("DivW: c = quotient(rax)")
+                );
                 *code += &format!("pc_{:x}_divw_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2668,25 +3476,45 @@ impl ZiskRom2Asm {
 
                 // Check divide by zero:
                 // If b==0 return a
-                *code += &format!("\tcmp {}, 0 /* RemW: if b == 0 return f's */\n", REG_B_W);
                 *code += &format!(
-                    "\tjne pc_{:x}_remw_divide /* RemW: if b is not zero, divide */\n",
-                    ctx.pc
+                    "\tcmp {}, 0 {}\n",
+                    REG_B_W,
+                    ctx.comment_str("RemW: if b == 0 return f's")
                 );
-                *code += &format!("\tmovsx {}, {} /* RemW: set result to a */\n", REG_C, REG_A_W);
+                *code += &format!(
+                    "\tjne pc_{:x}_remw_divide {}\n",
+                    ctx.pc,
+                    ctx.comment_str("RemW: if b is not zero, divide")
+                );
+                *code += &format!(
+                    "\tmovsx {}, {} {}\n",
+                    REG_C,
+                    REG_A_W,
+                    ctx.comment_str("RemW: set result to a")
+                );
 
                 *code += &format!("\tje pc_{:x}_remw_done\n", ctx.pc);
 
                 // Divide
-                *code +=
-                    &format!("\tmov {}, {} /* RemW: value = b backup */\n", REG_VALUE_W, REG_B_W);
-                *code += &format!("\tmov eax, {} /* RemW: rax = a */\n", REG_A_W);
-                *code += "\tcdq /* RemW: EDX:EAX := sign-extend of EAX */\n";
                 *code += &format!(
-                    "\tidiv {} /* RemW: edx:eax / value(b backup) -> eax (edx remainder)*/\n",
-                    REG_VALUE_W
+                    "\tmov {}, {} {}\n",
+                    REG_VALUE_W,
+                    REG_B_W,
+                    ctx.comment_str("RemW: value = b backup ")
                 );
-                *code += &format!("\tmovsx {}, edx /* RemW: c = remainder(edx) */\n", REG_C);
+                *code += &format!("\tmov eax, {} {}\n", REG_A_W, ctx.comment_str("RemW: rax = a"));
+                *code +=
+                    &format!("\tcdq {}\n", ctx.comment_str("RemW: EDX:EAX := sign-extend of EAX"));
+                *code += &format!(
+                    "\tidiv {} {}\n",
+                    REG_VALUE_W,
+                    ctx.comment_str("RemW: edx:eax / value(b backup) -> eax (edx remainder)")
+                );
+                *code += &format!(
+                    "\tmovsx {}, edx {}\n",
+                    REG_C,
+                    ctx.comment_str("RemW: c = remainder(edx)")
+                );
                 *code += &format!("pc_{:x}_remw_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2694,11 +3522,18 @@ impl ZiskRom2Asm {
             ZiskOp::Minu => {
                 assert!(ctx.store_a_in_c);
                 *code += &format!(
-                    "\tcmp {}, {} /* Minu: compare a and b */\n",
-                    REG_C, ctx.b.string_value
+                    "\tcmp {}, {} {}\n",
+                    REG_C,
+                    ctx.b.string_value,
+                    ctx.comment_str("Minu: compare a and b")
                 );
                 *code += &format!("\tjb pc_{:x}_minu_a_is_below_b\n", ctx.pc);
-                *code += &format!("\tmov {}, {} /* c = b */\n", REG_C, ctx.b.string_value);
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_C,
+                    ctx.b.string_value,
+                    ctx.comment_str("c = b")
+                );
                 *code += &format!("pc_{:x}_minu_a_is_below_b:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2706,11 +3541,18 @@ impl ZiskRom2Asm {
             ZiskOp::Min => {
                 assert!(ctx.store_a_in_c);
                 *code += &format!(
-                    "\tcmp {}, {} /* Min: compare a and b */\n",
-                    REG_C, ctx.b.string_value
+                    "\tcmp {}, {} {}\n",
+                    REG_C,
+                    ctx.b.string_value,
+                    ctx.comment_str("Min: compare a and b")
                 );
                 *code += &format!("\tjl pc_{:x}_min_a_is_below_b\n", ctx.pc);
-                *code += &format!("\tmov {}, {} /* c = b */\n", REG_C, ctx.b.string_value);
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_C,
+                    ctx.b.string_value,
+                    ctx.comment_str("c = b")
+                );
                 *code += &format!("pc_{:x}_min_a_is_below_b:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2718,9 +3560,15 @@ impl ZiskRom2Asm {
             ZiskOp::MinuW => {
                 assert!(ctx.store_a_in_c);
                 assert!(ctx.store_b_in_b);
-                *code += &format!("\tcmp {}, {} /* MinuW: compare a and b */\n", REG_C_W, REG_B_W);
+                *code += &format!(
+                    "\tcmp {}, {} {}\n",
+                    REG_C_W,
+                    REG_B_W,
+                    ctx.comment_str("MinuW: compare a and b")
+                );
                 *code += &format!("\tjb pc_{:x}_minuw_a_is_below_b\n", ctx.pc);
-                *code += &format!("\tmov {}, {} /* MinuW: c = b */\n", REG_C, REG_B);
+                *code +=
+                    &format!("\tmov {}, {} {}\n", REG_C, REG_B, ctx.comment_str("MinuW: c = b "));
                 *code += &format!("pc_{:x}_minuw_a_is_below_b:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2728,9 +3576,15 @@ impl ZiskRom2Asm {
             ZiskOp::MinW => {
                 assert!(ctx.store_a_in_c);
                 assert!(ctx.store_b_in_b);
-                *code += &format!("\tcmp {}, {} /* MinW: compare a and b */\n", REG_C_W, REG_B_W);
+                *code += &format!(
+                    "\tcmp {}, {} {}\n",
+                    REG_C_W,
+                    REG_B_W,
+                    ctx.comment_str("MinW: compare a and b")
+                );
                 *code += &format!("\tjl pc_{:x}_minw_a_is_below_b\n", ctx.pc);
-                *code += &format!("\tmov {}, {} /* MinW: c = b */\n", REG_C, REG_B);
+                *code +=
+                    &format!("\tmov {}, {} {}\n", REG_C, REG_B, ctx.comment_str("MinW: c = b"));
                 *code += &format!("pc_{:x}_minw_a_is_below_b:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2738,11 +3592,18 @@ impl ZiskRom2Asm {
             ZiskOp::Maxu => {
                 assert!(ctx.store_a_in_c);
                 *code += &format!(
-                    "\tcmp {}, {} /* Maxu: compare a and b */\n",
-                    REG_C, ctx.b.string_value
+                    "\tcmp {}, {} {}\n",
+                    REG_C,
+                    ctx.b.string_value,
+                    ctx.comment_str("Maxu: compare a and b")
                 );
                 *code += &format!("\tja pc_{:x}_maxu_a_is_above_b\n", ctx.pc);
-                *code += &format!("\tmov {}, {} /* Maxu: c = b */\n", REG_C, ctx.b.string_value);
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_C,
+                    ctx.b.string_value,
+                    ctx.comment_str("Maxu: c = b")
+                );
                 *code += &format!("pc_{:x}_maxu_a_is_above_b:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2750,11 +3611,18 @@ impl ZiskRom2Asm {
             ZiskOp::Max => {
                 assert!(ctx.store_a_in_c);
                 *code += &format!(
-                    "\tcmp {}, {} /* Max: compare a and b */\n",
-                    REG_C, ctx.b.string_value
+                    "\tcmp {}, {} {}\n",
+                    REG_C,
+                    ctx.b.string_value,
+                    ctx.comment_str("Max: compare a and b")
                 );
                 *code += &format!("\tjg pc_{:x}_max_a_is_above_b\n", ctx.pc);
-                *code += &format!("\tmov {}, {} /* Max: c = b */\n", REG_C, ctx.b.string_value);
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_C,
+                    ctx.b.string_value,
+                    ctx.comment_str("Max: c = b")
+                );
                 *code += &format!("pc_{:x}_max_a_is_above_b:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2762,9 +3630,15 @@ impl ZiskRom2Asm {
             ZiskOp::MaxuW => {
                 assert!(ctx.store_a_in_c);
                 assert!(ctx.store_b_in_b);
-                *code += &format!("\tcmp {}, {} /* MaxuW: compare a and b */\n", REG_C_W, REG_B_W);
+                *code += &format!(
+                    "\tcmp {}, {} {}\n",
+                    REG_C_W,
+                    REG_B_W,
+                    ctx.comment_str("MaxuW: compare a and b")
+                );
                 *code += &format!("\tja pc_{:x}_maxuw_a_is_above_b\n", ctx.pc);
-                *code += &format!("\tmov {}, {} /* MaxuW: c = b */\n", REG_C, REG_B);
+                *code +=
+                    &format!("\tmov {}, {} {}\n", REG_C, REG_B, ctx.comment_str("MaxuW: c = b"));
                 *code += &format!("pc_{:x}_maxuw_a_is_above_b:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -2772,42 +3646,51 @@ impl ZiskRom2Asm {
             ZiskOp::MaxW => {
                 assert!(ctx.store_a_in_c);
                 assert!(ctx.store_b_in_b);
-                *code += &format!("\tcmp {}, {} /* MaxW: compare a and b */\n", REG_C_W, REG_B_W);
+                *code += &format!(
+                    "\tcmp {}, {} {}\n",
+                    REG_C_W,
+                    REG_B_W,
+                    ctx.comment_str("MaxW: compare a and b")
+                );
                 *code += &format!("\tjg pc_{:x}_maxw_a_is_above_b\n", ctx.pc);
-                *code += &format!("\tmov {}, {} /* MaxW: c = b */\n", REG_C, REG_B);
+                *code +=
+                    &format!("\tmov {}, {} {}\n", REG_C, REG_B, ctx.comment_str("MaxW: c = b"));
                 *code += &format!("pc_{:x}_maxw_a_is_above_b:\n", ctx.pc);
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Keccak => {
-                // Use the memory address as the first and unique parameter */
-                *code += "\t/* Keccak: rdi = A0 */\n";
-                Self::read_riscv_reg(code, 10, "rdi", "rdi");
+                // Use the memory address as the first and unique parameter
+                *code += &ctx.full_line_comment("Keccak: rdi = A0".to_string());
+                Self::read_riscv_reg(ctx, code, 10, "rdi", "rdi");
 
                 // Copy read data into mem_reads_address and advance it
                 if ctx.minimal_trace() {
                     *code += &format!("\tmov {}, rdi\n", REG_ADDRESS);
                     for k in 0..25 {
                         *code += &format!(
-                            "\tmov {}, [{} + {}] /* value = mem[keccak_address[{}]] */\n",
+                            "\tmov {}, [{} + {}] {}\n",
                             REG_VALUE,
                             REG_ADDRESS,
                             k * 8,
-                            k
+                            ctx.comment(format!("value = mem[keccak_address[{}]]", k))
                         );
                         *code += &format!(
-                            "\tmov [{} + {}*8 + {}], {} /* mem_reads[{}] = value */\n",
+                            "\tmov [{} + {}*8 + {}], {} {}\n",
                             REG_MEM_READS_ADDRESS,
                             REG_MEM_READS_SIZE,
                             k * 8,
                             REG_VALUE,
-                            k
+                            ctx.comment(format!("mem_reads[{}] = value", k))
                         );
                     }
 
                     // Increment chunk.steps.mem_reads_size in 25 units
-                    *code +=
-                        &format!("\tadd {}, 25 /* mem_reads_size+=25 */\n", REG_MEM_READS_SIZE);
+                    *code += &format!(
+                        "\tadd {}, 25 {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size += 25")
+                    );
                 }
                 // Call the keccak function
                 Self::push_internal_registers(ctx, code);
@@ -2815,7 +3698,7 @@ impl ZiskRom2Asm {
                 Self::pop_internal_registers(ctx, code);
 
                 // Set result
-                *code += &format!("\tmov {}, 0 /* Keccak: c=0 */\n", REG_C);
+                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("Keccak: c=0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -2827,10 +3710,14 @@ impl ZiskRom2Asm {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Arith256 => {
-                *code += "\t/* Arith256 */\n";
+                *code += &ctx.full_line_comment("Arith256".to_string());
 
-                // Use the memory address as the first and unique parameter */
-                *code += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
+                // Use the memory address as the first and unique parameter
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rdi = b = address")
+                );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
@@ -2843,15 +3730,19 @@ impl ZiskRom2Asm {
                 Self::pop_internal_registers(ctx, code);
 
                 // Set result
-                *code += &format!("\tmov {}, 0 /* c=0 */\n", REG_C);
+                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Arith256Mod => {
-                *code += "\t/* Arith256Mod */\n";
+                *code += &ctx.full_line_comment("Arith256Mod".to_string());
 
-                // Use the memory address as the first and unique parameter */
-                *code += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
+                // Use the memory address as the first and unique parameter
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rdi = b = address")
+                );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
@@ -2864,15 +3755,19 @@ impl ZiskRom2Asm {
                 Self::pop_internal_registers(ctx, code);
 
                 // Set result
-                *code += &format!("\tmov {}, 0 /* c=0 */\n", REG_C);
+                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Secp256k1Add => {
-                *code += "\t/* Secp256k1Add */\n";
+                *code += &ctx.full_line_comment("Secp256k1Add".to_string());
 
-                // Use the memory address as the first and unique parameter */
-                *code += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
+                // Use the memory address as the first and unique parameter
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rdi = b = address")
+                );
 
                 // Save data into mem_reads
                 if ctx.minimal_trace() {
@@ -2885,39 +3780,47 @@ impl ZiskRom2Asm {
                 Self::pop_internal_registers(ctx, code);
 
                 // Set result
-                *code += &format!("\tmov {}, 0 /* c=0 */\n", REG_C);
+                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Secp256k1Dbl => {
-                *code += "\t/* Secp256k1Dbl */\n";
+                *code += &ctx.full_line_comment("Secp256k1Dbl".to_string());
 
-                // Use the memory address as the first and unique parameter */
-                *code += &format!("\tmov rdi, {} /* rdi = b = address */\n", ctx.b.string_value);
+                // Use the memory address as the first and unique parameter
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rdi = b = address")
+                );
 
                 // Copy read data into mem_reads
                 if ctx.minimal_trace() {
                     *code += &format!("\tmov {}, rdi\n", REG_ADDRESS);
                     for k in 0..8 {
                         *code += &format!(
-                            "\tmov {}, [{} + {}] /* value = mem[address[{}]] */\n",
+                            "\tmov {}, [{} + {}] {}\n",
                             REG_VALUE,
                             REG_ADDRESS,
                             k * 8,
-                            k
+                            ctx.comment(format!("value = mem[address[{}]]", k))
                         );
                         *code += &format!(
-                            "\tmov [{} + {}*8 + {}], {} /* mem_reads[{}] = value */\n",
+                            "\tmov [{} + {}*8 + {}], {} {}\n",
                             REG_MEM_READS_ADDRESS,
                             REG_MEM_READS_SIZE,
                             k * 8,
                             REG_VALUE,
-                            k
+                            ctx.comment(format!("mem_reads[{}] = value", k))
                         );
                     }
 
                     // Increment chunk.steps.mem_reads_size in 8 units
-                    *code += &format!("\tadd {}, 8 /* mem_reads_size+=8 */\n", REG_MEM_READS_SIZE);
+                    *code += &format!(
+                        "\tadd {}, 8 {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size += 8")
+                    );
                 }
 
                 // Call the secp256k1_dbl function
@@ -2926,7 +3829,7 @@ impl ZiskRom2Asm {
                 Self::pop_internal_registers(ctx, code);
 
                 // Set result
-                *code += &format!("\tmov {}, 0 /* c=0 */\n", REG_C);
+                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -2934,43 +3837,72 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_b_in_c);
                 assert!(ctx.a.is_constant);
                 assert!(ctx.a.constant_value <= 32);
-                *code += "\t/* FcallParam */\n";
+                *code += &ctx.full_line_comment("FcallParam".to_string());
 
                 if ctx.a.constant_value == 1 {
                     // Store param in params
                     *code += &format!(
-                        "\tmov {}, qword ptr [fcall_ctx + {}*8] /* aux = params size */\n",
-                        REG_AUX, FCALL_PARAMS_SIZE
+                        "\tmov {}, qword {}[{} + {}*8] {}\n",
+                        REG_AUX,
+                        ctx.ptr,
+                        ctx.fcall_ctx,
+                        FCALL_PARAMS_SIZE,
+                        ctx.comment_str("aux = params size")
                     );
                     *code += &format!(
-                        "\tmov qword ptr [fcall_ctx + {}*8 + {}*8], {} /* ctx.params[size] = b */\n",
-                        REG_AUX, FCALL_PARAMS, REG_C
+                        "\tmov qword {}[{} + {}*8 + {}*8], {} {}\n",
+                        ctx.ptr,
+                        ctx.fcall_ctx,
+                        REG_AUX,
+                        FCALL_PARAMS,
+                        REG_C,
+                        ctx.comment_str("ctx.params[size] = b")
                     );
                     *code += &format!(
-                        "\tinc qword ptr [fcall_ctx + {}*8] /* inc ctx.params_size */\n",
-                        FCALL_PARAMS_SIZE
+                        "\tinc qword {}[{} + {}*8] {}\n",
+                        ctx.ptr,
+                        ctx.fcall_ctx,
+                        FCALL_PARAMS_SIZE,
+                        ctx.comment_str("inc ctx.params_size")
                     );
                 } else {
                     // Store params in params
                     *code += &format!(
-                        "\tmov {}, qword ptr [fcall_ctx + {}*8] /* aux = params size */\n",
-                        REG_AUX, FCALL_PARAMS_SIZE
+                        "\tmov {}, qword {}[{} + {}*8] {}\n",
+                        REG_AUX,
+                        ctx.ptr,
+                        ctx.fcall_ctx,
+                        FCALL_PARAMS_SIZE,
+                        ctx.comment_str("aux = params size")
                     );
                     for i in 0..ctx.a.constant_value {
                         *code += &format!(
-                            "\tmov {}, qword ptr [{} + {}*8] /* value=params[b] */\n",
-                            REG_VALUE, REG_C, i
+                            "\tmov {}, qword {}[{} + {}*8] {}\n",
+                            REG_VALUE,
+                            ctx.ptr,
+                            REG_C,
+                            i,
+                            ctx.comment_str("value = params[b]")
                         );
 
                         *code += &format!(
-                            "\tmov qword ptr [fcall_ctx + {}*8 + {}*8], {} /* params[aux] = param */\n",
-                            REG_AUX, FCALL_PARAMS, REG_VALUE
+                            "\tmov qword {}[{} + {}*8 + {}*8], {} {}\n",
+                            ctx.ptr,
+                            ctx.fcall_ctx,
+                            REG_AUX,
+                            FCALL_PARAMS,
+                            REG_VALUE,
+                            ctx.comment_str("params[aux] = param")
                         );
-                        *code += &format!("\tinc {} /* inc aux */\n", REG_AUX);
+                        *code += &format!("\tinc {} {}\n", REG_AUX, ctx.comment_str("inc aux"));
                     }
                     *code += &format!(
-                        "\tmov qword ptr [fcall_ctx + {}*8], {} /* ctx.params_size = aux */\n",
-                        FCALL_PARAMS_SIZE, REG_AUX
+                        "\tmov qword {}[{} + {}*8], {} {}\n",
+                        ctx.ptr,
+                        ctx.fcall_ctx,
+                        FCALL_PARAMS_SIZE,
+                        REG_AUX,
+                        ctx.comment_str("ctx.params_size = aux")
                     );
                 }
 
@@ -2978,19 +3910,41 @@ impl ZiskRom2Asm {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Fcall => {
-                *code += "\t/* Fcall */\n";
+                *code += &ctx.full_line_comment("Fcall".to_string());
 
                 assert!(ctx.store_b_in_c);
 
                 // Store a (function id) in context
                 assert!(ctx.a.is_constant);
                 *code += &format!(
-                    "\tmov qword ptr [fcall_ctx + {}*8], {} /* ctx.function id = a */\n",
-                    FCALL_FUNCTION_ID, ctx.a.constant_value
+                    "\tmov qword {}[{} + {}*8], {} {}\n",
+                    ctx.ptr,
+                    ctx.fcall_ctx,
+                    FCALL_FUNCTION_ID,
+                    ctx.a.constant_value,
+                    ctx.comment_str("ctx.function id = a")
                 );
 
-                // Set the fcall context address as the first parameter */
-                *code += "\tlea rdi, fcall_ctx /* rdi = fcall context */\n";
+                // Set the fcall context address as the first parameter
+                if ctx.fast()
+                    || ctx.minimal_trace()
+                    || ctx.rom_histogram()
+                    || ctx.main_trace()
+                    || ctx.chunks()
+                {
+                    *code += &format!(
+                        "\tlea rdi, {} {}\n",
+                        ctx.fcall_ctx,
+                        ctx.comment_str("rdi = fcall context")
+                    );
+                } else {
+                    *code += &format!("\tmov rdi, rsp {}\n", ctx.comment_str("rdi = rsp"));
+                    *code += &format!(
+                        "\tadd rdi, {} {}\n",
+                        RSP_FCALL_CTX_OFFSET,
+                        ctx.comment_str("rdi = fcall context")
+                    );
+                }
 
                 // Call the fcall function
                 Self::push_internal_registers(ctx, code);
@@ -2999,66 +3953,108 @@ impl ZiskRom2Asm {
 
                 // Get free input address
                 *code += &format!(
-                    "\tmov {}, {} /* address=free_input */\n",
-                    REG_ADDRESS, FREE_INPUT_ADDR
+                    "\tmov {}, {} {}\n",
+                    REG_ADDRESS,
+                    FREE_INPUT_ADDR,
+                    ctx.comment_str("address = free_input")
                 );
 
                 // Copy ctx.result[0] or 0 into free input
                 *code += &format!(
-                    "\tmov {}, qword ptr [fcall_ctx + {}*8] /* aux=ctx.result_size */\n",
-                    REG_AUX, FCALL_RESULT_SIZE
+                    "\tmov {}, qword {}[{} + {}*8] {}\n",
+                    REG_AUX,
+                    ctx.ptr,
+                    ctx.fcall_ctx,
+                    FCALL_RESULT_SIZE,
+                    ctx.comment_str("aux = ctx.result_size")
                 );
-                *code += &format!("\tcmp {}, 0 /* aux vs 0 */\n", REG_AUX);
+                *code += &format!("\tcmp {}, 0\n", REG_AUX);
                 *code += &format!("\tjz pc_{:x}_fcall_result_zero\n", ctx.pc);
                 *code += &format!(
-                    "\tmov {}, qword ptr [fcall_ctx + {}*8] /* value=ctx.result[0] */\n",
-                    REG_VALUE, FCALL_RESULT
+                    "\tmov {}, qword {}[{} + {}*8] {}\n",
+                    REG_VALUE,
+                    ctx.ptr,
+                    ctx.fcall_ctx,
+                    FCALL_RESULT,
+                    ctx.comment_str("value = ctx.result[0]")
                 );
-                *code +=
-                    &format!("\tmov [{}], {} /* free_input=value */\n", REG_ADDRESS, REG_VALUE);
+                *code += &format!(
+                    "\tmov [{}], {} {}\n",
+                    REG_ADDRESS,
+                    REG_VALUE,
+                    ctx.comment_str("free_input = value")
+                );
                 *code += &format!("\tjmp pc_{:x}_fcall_result_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_fcall_result_zero:\n", ctx.pc);
-                *code += &format!("\tmov qword ptr [{}], 0 /* free_input=0 */\n", REG_ADDRESS);
+                *code += &format!(
+                    "\tmov qword {}[{}], 0 {}\n",
+                    ctx.ptr,
+                    REG_ADDRESS,
+                    ctx.comment_str("free_input = 0")
+                );
                 *code += &format!("pc_{:x}_fcall_result_done:\n", ctx.pc);
 
                 // Update fcall counters
                 *code += &format!(
-                    "\tmov qword ptr [fcall_ctx + {}*8], 0 /* ctx.params_size=0 */\n",
-                    FCALL_PARAMS_SIZE
+                    "\tmov qword {}[{} + {}*8], 0 {}\n",
+                    ctx.ptr,
+                    ctx.fcall_ctx,
+                    FCALL_PARAMS_SIZE,
+                    ctx.comment_str("ctx.params_size = 0")
                 );
                 *code += &format!(
-                    "\tmov qword ptr [fcall_ctx + {}*8], 1 /* ctx.result_got=1 */\n",
-                    FCALL_RESULT_GOT
+                    "\tmov qword {}[{} + {}*8], 1 {}\n",
+                    ctx.ptr,
+                    ctx.fcall_ctx,
+                    FCALL_RESULT_GOT,
+                    ctx.comment_str("ctx.result_got = 1")
                 );
 
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::FcallGet => {
-                *code += "\t/* FcallGet */\n";
+                *code += &ctx.full_line_comment("FcallGet".to_string());
 
                 assert!(ctx.store_b_in_c);
 
                 // Get value from fcall_ctx.result[got] and store it in free input address
                 *code += &format!(
-                    "\tmov {}, qword ptr [fcall_ctx + {}*8] /* aux=ctx.result_got */\n",
-                    REG_AUX, FCALL_RESULT_GOT
+                    "\tmov {}, qword {}[{} + {}*8] {}\n",
+                    REG_AUX,
+                    ctx.ptr,
+                    ctx.fcall_ctx,
+                    FCALL_RESULT_GOT,
+                    ctx.comment_str("aux = ctx.result_got")
                 );
                 *code += &format!(
-                    "\tmov {}, qword ptr [fcall_ctx + {}*8 + {}*8] /* value=ctx.result[got] */\n",
-                    REG_VALUE, REG_AUX, FCALL_RESULT
+                    "\tmov {}, qword {}[{} + {}*8 + {}*8] {}\n",
+                    REG_VALUE,
+                    ctx.ptr,
+                    ctx.fcall_ctx,
+                    REG_AUX,
+                    FCALL_RESULT,
+                    ctx.comment_str("value = ctx.result[got]")
                 );
                 *code += &format!(
-                    "\tmov {}, {} /* address=free_input */\n",
-                    REG_ADDRESS, FREE_INPUT_ADDR
+                    "\tmov {}, {} {}\n",
+                    REG_ADDRESS,
+                    FREE_INPUT_ADDR,
+                    ctx.comment_str("address = free_input")
                 );
                 *code += &format!(
-                    "\tmov qword ptr [{}], {} /* free_input=value */\n",
-                    REG_ADDRESS, REG_VALUE
+                    "\tmov qword {}[{}], {} {}\n",
+                    ctx.ptr,
+                    REG_ADDRESS,
+                    REG_VALUE,
+                    ctx.comment_str("free_input = value")
                 );
                 *code += &format!(
-                    "\tinc qword ptr [fcall_ctx + {}*8] /* inc ctx.result_got */\n",
-                    FCALL_RESULT_GOT
+                    "\tinc qword {}[{} + {}*8] {}\n",
+                    ctx.ptr,
+                    ctx.fcall_ctx,
+                    FCALL_RESULT_GOT,
+                    ctx.comment_str("inc ctx.result_go")
                 );
 
                 ctx.c.is_saved = true;
@@ -3071,20 +4067,30 @@ impl ZiskRom2Asm {
         ctx.jump_to_dynamic_pc = false;
         ctx.jump_to_static_pc = String::new();
         if instruction.set_pc {
-            *code += "\t/* set pc */\n";
+            *code += &ctx.full_line_comment("set pc".to_string());
             if ctx.c.is_constant {
                 let new_pc = (ctx.c.constant_value as i64 + instruction.jmp_offset1) as u64;
                 *code += &format!(
-                    "\tmov {}, 0x{:x} /* pc = c(const) + jmp_offset1 */\n",
-                    REG_PC, new_pc
+                    "\tmov {}, 0x{:x} {}\n",
+                    REG_PC,
+                    new_pc,
+                    ctx.comment_str("pc = c(const) + jmp_offset1")
                 );
-                ctx.jump_to_static_pc = format!("\tjmp pc_{:x} /* jump to static pc */\n", new_pc);
+                ctx.jump_to_static_pc =
+                    format!("\tjmp pc_{:x} {}\n", new_pc, ctx.comment_str("jump to static pc"));
             } else {
-                *code += &format!("\tmov {}, {} /* pc = c */\n", REG_PC, ctx.c.string_value);
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_PC,
+                    ctx.c.string_value,
+                    ctx.comment_str("pc = c")
+                );
                 if instruction.jmp_offset1 != 0 {
                     *code += &format!(
-                        "\tadd {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
-                        REG_PC, instruction.jmp_offset1
+                        "\tadd {}, 0x{:x} {}\n",
+                        REG_PC,
+                        instruction.jmp_offset1,
+                        ctx.comment_str("pc += jmp_offset1")
                     );
                 }
                 ctx.jump_to_dynamic_pc = true;
@@ -3092,37 +4098,59 @@ impl ZiskRom2Asm {
         } else if ctx.flag_is_always_zero {
             let new_pc = (ctx.pc as i64 + instruction.jmp_offset2) as u64;
             if new_pc != ctx.next_pc {
-                *code +=
-                    &format!("\tmov {}, 0x{:x} /* flag=0: pc+=jmp_offset2 */\n", REG_PC, new_pc);
-                ctx.jump_to_static_pc = format!("\tjmp pc_{:x} /* jump to pc+offset2 */\n", new_pc);
+                *code += &format!(
+                    "\tmov {}, 0x{:x} {}\n",
+                    REG_PC,
+                    new_pc,
+                    ctx.comment_str("flag=0: pc+=jmp_offset2")
+                );
+                ctx.jump_to_static_pc =
+                    format!("\tjmp pc_{:x} {}\n", new_pc, ctx.comment_str("jump to pc+offset2"));
             } else if id == "z" {
-                *code += &format!("\tmov {}, 0x{:x} /* flag=0: pc += 4 */\n", REG_PC, ctx.next_pc);
+                *code += &format!(
+                    "\tmov {}, 0x{:x} {}\n",
+                    REG_PC,
+                    ctx.next_pc,
+                    ctx.comment_str("flag=0: pc += 4")
+                );
             }
         } else if ctx.flag_is_always_one {
             let new_pc = (ctx.pc as i64 + instruction.jmp_offset1) as u64;
             if new_pc != ctx.next_pc {
-                *code +=
-                    &format!("\tmov {}, 0x{:x} /* flag=1: pc+=jmp_offset1 */\n", REG_PC, new_pc);
-                ctx.jump_to_static_pc = format!("\tjmp pc_{:x} /* jump to pc+offset1 */\n", new_pc);
+                *code += &format!(
+                    "\tmov {}, 0x{:x} {}\n",
+                    REG_PC,
+                    new_pc,
+                    ctx.comment_str("flag=1: pc+=jmp_offset1")
+                );
+                ctx.jump_to_static_pc =
+                    format!("\tjmp pc_{:x} {}\n", new_pc, ctx.comment_str("jump to pc+offset1"));
             } else if id == "z" {
-                *code += &format!("\tmov {}, 0x{:x} /* flag=1: pc += 4 */\n", REG_PC, ctx.next_pc);
+                *code += &format!(
+                    "\tmov {}, 0x{:x} {}\n",
+                    REG_PC,
+                    ctx.next_pc,
+                    ctx.comment_str("flag=1: pc += 4")
+                );
             }
         } else {
-            *code += "\t/* pc = f(flag) */\n";
+            *code += &ctx.full_line_comment("pc = f(flag)".to_string());
             // Calculate the new pc
-            *code += &format!("\tcmp {}, 1 /* flag == 1 ? */\n", REG_FLAG);
+            *code += &format!("\tcmp {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag == 1 ?"));
             *code += &format!("\tjne pc_{:x}_{}_flag_false\n", ctx.pc, id);
             *code += &format!(
-                "\tmov {}, 0x{:x} /* pc += i.jmp_offset1 */\n",
+                "\tmov {}, 0x{:x} {}\n",
                 REG_PC,
-                (ctx.pc as i64 + instruction.jmp_offset1) as u64
+                (ctx.pc as i64 + instruction.jmp_offset1) as u64,
+                ctx.comment_str("pc += i.jmp_offset1")
             );
             *code += &format!("\tjmp pc_{:x}_{}_flag_done\n", ctx.pc, id);
             *code += &format!("pc_{:x}_{}_flag_false:\n", ctx.pc, id);
             *code += &format!(
-                "\tmov {}, 0x{:x} /* pc += i.jmp_offset2 */\n",
+                "\tmov {}, 0x{:x} {}\n",
                 REG_PC,
-                (ctx.pc as i64 + instruction.jmp_offset2) as u64
+                (ctx.pc as i64 + instruction.jmp_offset2) as u64,
+                ctx.comment_str("pc += i.jmp_offset2")
             );
             *code += &format!("pc_{:x}_{}_flag_done:\n", ctx.pc, id);
             ctx.jump_to_dynamic_pc = true;
@@ -3132,328 +4160,529 @@ impl ZiskRom2Asm {
     fn a_src_mem_aligned(ctx: &mut ZiskAsmContext, code: &mut String) {
         // Copy read data into mem_reads_address and increment it
         *code += &format!(
-            "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = a */\n",
+            "\tmov [{} + {}*8], {} {}\n",
             REG_MEM_READS_ADDRESS,
             REG_MEM_READS_SIZE,
-            if ctx.store_a_in_c { REG_C } else { REG_A }
+            if ctx.store_a_in_c { REG_C } else { REG_A },
+            ctx.comment_str("mem_reads[@+size*8] = a")
         );
 
         // Increment chunk.steps.mem_reads_size
-        *code += &format!("\tinc {} /* mem_reads_size++ */\n", REG_MEM_READS_SIZE);
+        *code += &format!("\tinc {} {}\n", REG_MEM_READS_SIZE, ctx.comment_str("mem_reads_size++"));
     }
 
-    fn a_src_mem_not_aligned(_ctx: &mut ZiskAsmContext, code: &mut String) {
+    fn a_src_mem_not_aligned(ctx: &mut ZiskAsmContext, code: &mut String) {
         // Calculate previous aligned address
         *code += &format!(
-            "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
-            REG_ADDRESS
+            "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
+            REG_ADDRESS,
+            ctx.comment_str("address = previous aligned address")
         );
 
         // Store previous aligned address value in mem_reads
-        *code +=
-            &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_ADDRESS);
         *code += &format!(
-            "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_a */\n",
-            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+            "\tmov {}, [{}] {}\n",
+            REG_VALUE,
+            REG_ADDRESS,
+            ctx.comment_str("value = mem[prev_address]")
+        );
+        *code += &format!(
+            "\tmov [{} + {}*8], {} {}\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            REG_VALUE,
+            ctx.comment_str("mem_reads[@+size*8] = prev_a")
         );
 
         // Store next aligned address value in mem_reads
         *code += &format!(
-            "\tmov {}, [{} + 8] /* value = mem[prev_address] */\n",
-            REG_VALUE, REG_ADDRESS
+            "\tmov {}, [{} + 8] {}\n",
+            REG_VALUE,
+            REG_ADDRESS,
+            ctx.comment_str("value = mem[prev_address]")
         );
         *code += &format!(
-            "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_a */\n",
-            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+            "\tmov [{} + {}*8 + 8], {} {}\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            REG_VALUE,
+            ctx.comment_str("mem_reads[@+size*8+8] = next_a")
         );
 
         // Increment chunk.steps.mem_reads_size twice
-        *code += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
+        *code += &format!(
+            "\tadd {}, 2 {}\n",
+            REG_MEM_READS_SIZE,
+            ctx.comment_str("mem_reads_size += 2")
+        );
     }
 
     fn b_src_mem_aligned(ctx: &mut ZiskAsmContext, code: &mut String) {
         // Copy read data into mem_reads_address and increment it
         *code += &format!(
-            "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = b */\n",
+            "\tmov [{} + {}*8], {} {}\n",
             REG_MEM_READS_ADDRESS,
             REG_MEM_READS_SIZE,
-            if ctx.store_b_in_c { REG_C } else { REG_B }
+            if ctx.store_b_in_c { REG_C } else { REG_B },
+            ctx.comment_str("mem_reads[@+size*8] = b")
         );
 
         // Increment chunk.steps.mem_reads_size
-        *code += &format!("\tinc {} /* mem_reads_size++ */\n", REG_MEM_READS_SIZE);
+        *code += &format!("\tinc {} {}\n", REG_MEM_READS_SIZE, ctx.comment_str("mem_reads_size++"));
     }
 
-    fn b_src_mem_not_aligned(_ctx: &mut ZiskAsmContext, code: &mut String) {
+    fn b_src_mem_not_aligned(ctx: &mut ZiskAsmContext, code: &mut String) {
         // Calculate previous aligned address
         *code += &format!(
-            "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
-            REG_ADDRESS
+            "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
+            REG_ADDRESS,
+            ctx.comment_str("address = previous aligned address")
         );
 
         // Store previous aligned address value in mem_reads, and advance address
-        *code +=
-            &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_ADDRESS);
         *code += &format!(
-            "\tmov [{} + {}*8], {} /* mem_address[@+size*8] = prev_b */\n",
-            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+            "\tmov {}, [{}] {}\n",
+            REG_VALUE,
+            REG_ADDRESS,
+            ctx.comment_str("value = mem[prev_address]")
+        );
+        *code += &format!(
+            "\tmov [{} + {}*8], {} {}\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            REG_VALUE,
+            ctx.comment_str("mem_address[@+size*8] = prev_b")
         );
 
         // Store next aligned address value in mem_reads, and advance address
         *code += &format!(
-            "\tmov {}, [{} + 8] /* value = mem[prev_address] */\n",
-            REG_VALUE, REG_ADDRESS
+            "\tmov {}, [{} + 8] {}\n",
+            REG_VALUE,
+            REG_ADDRESS,
+            ctx.comment_str("value = mem[prev_address]")
         );
         *code += &format!(
-            "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_b */\n",
-            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+            "\tmov [{} + {}*8 + 8], {} {}\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            REG_VALUE,
+            ctx.comment_str("mem_reads[@+size*8+8] = next_b")
         );
 
         // Increment chunk.steps.mem_reads_size twice
-        *code += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
+        *code += &format!(
+            "\tadd {}, 2 {}\n",
+            REG_MEM_READS_SIZE,
+            ctx.comment_str("mem_reads_size += 2")
+        );
     }
 
-    fn c_store_mem_not_aligned(_ctx: &mut ZiskAsmContext, code: &mut String) {
+    fn c_store_mem_not_aligned(ctx: &mut ZiskAsmContext, code: &mut String) {
         // Get a copy of the address to preserve it
-        *code += &format!("\tmov {}, {} /* aux = address */\n", REG_AUX, REG_ADDRESS);
+        *code +=
+            &format!("\tmov {}, {} {}\n", REG_AUX, REG_ADDRESS, ctx.comment_str("aux = address"));
 
         // Calculate previous aligned address
         *code += &format!(
-            "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
-            REG_AUX
+            "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
+            REG_AUX,
+            ctx.comment_str("address = previous aligned address")
         );
 
         // Store previous aligned address value in mem_reads, and advance address
-        *code += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_AUX);
         *code += &format!(
-            "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
-            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+            "\tmov {}, [{}] {}\n",
+            REG_VALUE,
+            REG_AUX,
+            ctx.comment_str("value = mem[prev_address]")
+        );
+        *code += &format!(
+            "\tmov [{} + {}*8], {} {}\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            REG_VALUE,
+            ctx.comment_str("mem_reads[@+size*8] = prev_c")
         );
 
         // Store next aligned address value in mem_reads, and advance address
-        *code +=
-            &format!("\tmov {}, [{} + 8] /* value = mem[next_address] */\n", REG_VALUE, REG_AUX);
         *code += &format!(
-            "\tmov [{} + {}*8 +  8], {} /* mem_reads[@+size*8+8] = next_c */\n",
-            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+            "\tmov {}, [{} + 8] {}\n",
+            REG_VALUE,
+            REG_AUX,
+            ctx.comment_str("value = mem[next_address]")
+        );
+        *code += &format!(
+            "\tmov [{} + {}*8 +  8], {} {}\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            REG_VALUE,
+            ctx.comment_str("mem_reads[@+size*8+8] = next_c")
         );
 
         // Increment chunk.steps.mem_reads_size twice
-        *code += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
+        *code += &format!(
+            "\tadd {}, 2 {}\n",
+            REG_MEM_READS_SIZE,
+            ctx.comment_str("mem_reads_size += 2")
+        );
     }
 
-    fn c_store_ind_8_not_aligned(_ctx: &mut ZiskAsmContext, code: &mut String) {
+    fn c_store_ind_8_not_aligned(ctx: &mut ZiskAsmContext, code: &mut String) {
         // Get a copy of the address to preserve it
-        *code += &format!("\tmov {}, {} /* aux = address */\n", REG_AUX, REG_ADDRESS);
+        *code +=
+            &format!("\tmov {}, {} {}\n", REG_AUX, REG_ADDRESS, ctx.comment_str("aux = address"));
 
         // Calculate previous aligned address
         *code += &format!(
-            "\tand {}, 0xFFFFFFFFFFFFFFF8 /* address = previous aligned address */\n",
-            REG_AUX
+            "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
+            REG_AUX,
+            ctx.comment_str("aux = previous aligned address")
         );
 
         // Store previous aligned address value in mem_reads, and advance address
-        *code += &format!("\tmov {}, [{}] /* value = mem[prev_address] */\n", REG_VALUE, REG_AUX);
         *code += &format!(
-            "\tmov [{} + {}*8], {} /* mem_reads[@+size*8] = prev_c */\n",
-            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+            "\tmov {}, [{}] {}\n",
+            REG_VALUE,
+            REG_AUX,
+            ctx.comment_str("value = mem[prev_address]")
+        );
+        *code += &format!(
+            "\tmov [{} + {}*8], {} {}\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            REG_VALUE,
+            ctx.comment_str("mem_reads[@+size*8] = prev_c")
         );
 
         // Store next aligned address value in mem_reads, and advance it
-        *code +=
-            &format!("\tmov {}, [{} + 8] /* value = mem[next_address] */\n", REG_VALUE, REG_AUX);
         *code += &format!(
-            "\tmov [{} + {}*8 + 8], {} /* mem_reads[@+size*8+8] = next_c */\n",
-            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+            "\tmov {}, [{} + 8] {}\n",
+            REG_VALUE,
+            REG_AUX,
+            ctx.comment_str("value = mem[next_address]")
+        );
+        *code += &format!(
+            "\tmov [{} + {}*8 + 8], {} {}\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            REG_VALUE,
+            ctx.comment_str("mem_reads[@+size*8+8] = next_c")
         );
 
         // Increment chunk.steps.mem_reads_size twice
-        *code += &format!("\tadd {}, 2 /* mem_reads_size+=2*/\n", REG_MEM_READS_SIZE);
+        *code += &format!(
+            "\tadd {}, 2 {}\n",
+            REG_MEM_READS_SIZE,
+            ctx.comment_str("mem_reads_size += 2")
+        );
     }
 
     fn chunk_start(ctx: &mut ZiskAsmContext, code: &mut String) {
-        *code += "\t/* Increment number of chunks (first position in trace) */\n";
+        *code += &ctx
+            .full_line_comment("Increment number of chunks (first position in trace)".to_string());
         *code += &format!(
-            "\tmov {}, {} /* address = trace_addr */\n",
-            REG_ADDRESS, ctx.mem_trace_address
+            "\tmov {}, {} {}\n",
+            REG_ADDRESS,
+            ctx.mem_trace_address,
+            ctx.comment_str("address = trace_addr")
         );
-        *code += &format!("\tmov {}, [{}] /* value = trace_addr */\n", REG_VALUE, REG_ADDRESS);
-        *code += &format!("\tinc {} /* inc value */\n", REG_VALUE);
         *code += &format!(
-            "\tmov [{}], {} /* trace_addr = value (trace_addr++) */\n",
-            REG_ADDRESS, REG_VALUE
+            "\tmov {}, [{}] {}\n",
+            REG_VALUE,
+            REG_ADDRESS,
+            ctx.comment_str("value = trace_addr")
+        );
+        *code += &format!("\tinc {} {}\n", REG_VALUE, ctx.comment_str("inc value"));
+        *code += &format!(
+            "\tmov [{}], {} {}\n",
+            REG_ADDRESS,
+            REG_VALUE,
+            ctx.comment_str("trace_addr = value (trace_addr++)")
         );
 
         if ctx.minimal_trace() {
-            *code += "\t/* Write chunk start data */\n";
+            *code += &ctx.full_line_comment("Write chunk start data".to_string());
 
             // Write chunk.start.pc
             *code += &format!(
-                "\tmov {}, {} /* address = chunk_address */\n",
-                REG_ADDRESS, ctx.mem_chunk_address
+                "\tmov {}, {} {}\n",
+                REG_ADDRESS,
+                ctx.mem_chunk_address,
+                ctx.comment_str("address = chunk_address")
             );
 
-            *code += &format!("\tmov [{}], {} /* chunk.start.pc = value */\n", REG_ADDRESS, REG_PC);
+            *code += &format!(
+                "\tmov [{}], {} {}\n",
+                REG_ADDRESS,
+                REG_PC,
+                ctx.comment_str("chunk.start.pc = value")
+            );
 
             // Write chunk.start.sp
-            *code += &format!("\tmov {}, {} /* value = sp */\n", REG_VALUE, ctx.mem_sp);
-            *code += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
+            *code +=
+                &format!("\tmov {}, {} {}\n", REG_VALUE, ctx.mem_sp, ctx.comment_str("value = sp"));
+            *code += &format!("\tadd {}, 8 {}\n", REG_ADDRESS, ctx.comment_str("address += 8"));
             *code += &format!(
-                "\tmov [{}], {} /* chunk.start.sp = value = sp */\n",
-                REG_ADDRESS, REG_VALUE
+                "\tmov [{}], {} {}\n",
+                REG_ADDRESS,
+                REG_VALUE,
+                ctx.comment_str("chunk.start.sp = value = sp")
             );
 
             // Write chunk.start.c
-            *code += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-            *code += &format!("\tmov [{}], {} /* chunk.start.c = c */\n", REG_ADDRESS, REG_C);
+            *code += &format!("\tadd {}, 8 {}\n", REG_ADDRESS, ctx.comment_str("address += 8"));
+            *code += &format!(
+                "\tmov [{}], {} {}\n",
+                REG_ADDRESS,
+                REG_C,
+                ctx.comment_str("chunk.start.c = c")
+            );
 
             // Write chunk.start.step
-            *code += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-            *code += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, ctx.mem_step);
+            *code += &format!("\tadd {}, 8 {}\n", REG_ADDRESS, ctx.comment_str("address += 8"));
             *code += &format!(
-                "\tmov [{}], {} /* chunk.start.step = value = step */\n",
-                REG_ADDRESS, REG_VALUE
+                "\tmov {}, {} {}\n",
+                REG_VALUE,
+                ctx.mem_step,
+                ctx.comment_str("value = step")
             );
             *code += &format!(
-                "\tmov [{}], {} /* chunk_start_step = value = step */\n",
-                ctx.mem_chunk_start_step, REG_VALUE
+                "\tmov [{}], {} {}\n",
+                REG_ADDRESS,
+                REG_VALUE,
+                ctx.comment_str("chunk.start.step = value = step")
+            );
+            *code += &format!(
+                "\tmov [{}], {} {}\n",
+                ctx.mem_chunk_start_step,
+                REG_VALUE,
+                ctx.comment_str("chunk.start.step = value = step")
             );
 
             // Write chunk.start.reg
             for i in 1..34 {
-                Self::read_riscv_reg(code, i, REG_VALUE, "value");
+                Self::read_riscv_reg(ctx, code, i, REG_VALUE, "value");
                 *code += &format!(
-                    "\tmov [{} + {}], {} /* chunk.start.reg[{}] = value */\n",
+                    "\tmov [{} + {}], {} {}\n",
                     REG_ADDRESS,
                     i * 8,
                     REG_VALUE,
-                    i
+                    ctx.comment(format!("chunk.start.reg[{}] = value", i))
                 );
             }
-            *code += &format!("\tadd {}, 33*8 /* address += 33*8 */\n", REG_ADDRESS);
+            *code +=
+                &format!("\tadd {}, 33*8 {}\n", REG_ADDRESS, ctx.comment_str("address += 33*8"));
         }
 
-        *code += "\t/* Reset step count down to chunk_size */\n";
-        *code += &format!("\tmov {}, chunk_size /* step count down = chunk_size */\n", REG_STEP);
+        *code += &ctx.full_line_comment("Reset step count down to chunk_size".to_string());
+        *code += &format!(
+            "\tmov {}, chunk_size {}\n",
+            REG_STEP,
+            ctx.comment_str("step_count_down = chunk_size")
+        );
 
         if ctx.minimal_trace() || ctx.main_trace() {
-            *code += "\t/* Write mem reads size */\n";
-            *code +=
-                &format!("\tmov {}, {} /* aux = chunk_size */\n", REG_AUX, ctx.mem_chunk_address);
-            if ctx.minimal_trace() {
-                *code += &format!("\tadd {}, 40*8 /* aux += 40*8 */\n", REG_AUX);
-            }
-            *code += &format!("\tadd {}, 8 /* aux += 8 */\n", REG_AUX);
+            *code += &ctx.full_line_comment("Write mem reads size".to_string());
             *code += &format!(
-                "\tmov {}, {} /* mem_reads_address = aux */\n",
-                REG_MEM_READS_ADDRESS, REG_AUX
+                "\tmov {}, {} {}\n",
+                REG_AUX,
+                ctx.mem_chunk_address,
+                ctx.comment_str("aux = chunk_size")
             );
-            *code += "\t/* Reset mem_reads size */\n";
-            *code += &format!("\tmov {}, 0 /* mem_reads_size = 0 */\n", REG_MEM_READS_SIZE);
+            if ctx.minimal_trace() {
+                *code += &format!("\tadd {}, 40*8 {}\n", REG_AUX, ctx.comment_str("aux += 40*8"));
+            }
+            *code += &format!("\tadd {}, 8 {}\n", REG_AUX, ctx.comment_str("aux += 8"));
+            *code += &format!(
+                "\tmov {}, {} {}\n",
+                REG_MEM_READS_ADDRESS,
+                REG_AUX,
+                ctx.comment_str("mem_reads_address = aux")
+            );
+            *code += &ctx.full_line_comment("Reset mem_reads size".to_string());
+            *code += &format!(
+                "\tmov {}, 0 {}\n",
+                REG_MEM_READS_SIZE,
+                ctx.comment_str("mem_reads_size = 0")
+            );
         }
     }
 
     fn chunk_end(ctx: &mut ZiskAsmContext, code: &mut String, id: &str) {
-        *code += "\t/* Update total step from step count down */\n";
-        *code += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, ctx.mem_step);
-        *code += &format!("\tadd {}, chunk_size /* value += chunk_size */\n", REG_VALUE);
-        *code += &format!("\tsub {}, {} /* value -= step count down */\n", REG_VALUE, REG_STEP);
-        *code += &format!("\tmov {}, {} /* step = value */\n", ctx.mem_step, REG_VALUE);
+        *code += &ctx.full_line_comment("Update total step from step count down".to_string());
+        *code +=
+            &format!("\tmov {}, {} {}\n", REG_VALUE, ctx.mem_step, ctx.comment_str("value = step"));
+        *code += &format!(
+            "\tadd {}, chunk_size {}\n",
+            REG_VALUE,
+            ctx.comment_str("value += chunk_size")
+        );
+        *code += &format!(
+            "\tsub {}, {} {}\n",
+            REG_VALUE,
+            REG_STEP,
+            ctx.comment_str("value -= step_count_down")
+        );
+        *code +=
+            &format!("\tmov {}, {} {}\n", ctx.mem_step, REG_VALUE, ctx.comment_str("step = value"));
 
         if ctx.minimal_trace() {
-            *code += "\t/* Write chunk last data */\n";
+            *code += &ctx.full_line_comment("Write chunk last data".to_string());
 
             // Search position of chunk.last
             *code += &format!(
-                "\tmov {}, {} /* address = chunk_address */\n",
-                REG_ADDRESS, ctx.mem_chunk_address
+                "\tmov {}, {} {}\n",
+                REG_ADDRESS,
+                ctx.mem_chunk_address,
+                ctx.comment_str("address = chunk_address")
             );
-            *code += &format!("\tadd {}, 37*8 /* address = chunk_address + 37*8 */\n", REG_ADDRESS);
+            *code += &format!(
+                "\tadd {}, 37*8 {}\n",
+                REG_ADDRESS,
+                ctx.comment_str("address = chunk_address + 37*8")
+            );
 
             // Write chunk.last.c
-            *code += &format!("\tmov [{}], {} /* chunk.last.c = c */\n", REG_ADDRESS, REG_C);
-
-            *code += "\t/* Write chunk end data */\n";
-            *code += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS);
-            *code += &format!("\tmov {}, {} /* value = end */\n", REG_VALUE, ctx.mem_end);
-            *code +=
-                &format!("\tmov [{}], {} /* chunk.end = value = end */\n", REG_ADDRESS, REG_VALUE);
-
-            *code += &format!("\tadd {}, 8 /* address += 8 */\n", REG_ADDRESS); // steps
-            *code += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, ctx.mem_step);
             *code += &format!(
-                "\tsub {}, {} /* value = step_inc */\n",
-                REG_VALUE, ctx.mem_chunk_start_step
+                "\tmov [{}], {} {}\n",
+                REG_ADDRESS,
+                REG_C,
+                ctx.comment_str("chunk.last.c = c")
+            );
+
+            *code += &ctx.full_line_comment("Write chunk end data".to_string());
+            *code += &format!("\tadd {}, 8 {}\n", REG_ADDRESS, ctx.comment_str("address += 8"));
+            *code += &format!(
+                "\tmov {}, {} {}\n",
+                REG_VALUE,
+                ctx.mem_end,
+                ctx.comment_str("value = end")
             );
             *code += &format!(
-                "\tmov [{}], {} /* chunk.steps.step = value = step_inc */\n",
-                REG_ADDRESS, REG_VALUE
+                "\tmov [{}], {} {}\n",
+                REG_ADDRESS,
+                REG_VALUE,
+                ctx.comment_str("chunk.end = value = end")
+            );
+
+            *code += &format!("\tadd {}, 8 {}\n", REG_ADDRESS, ctx.comment_str("address += 8"));
+            *code += &format!(
+                "\tmov {}, {} {}\n",
+                REG_VALUE,
+                ctx.mem_step,
+                ctx.comment_str("value = step")
+            );
+            *code += &format!(
+                "\tsub {}, {} {}\n",
+                REG_VALUE,
+                ctx.mem_chunk_start_step,
+                ctx.comment_str("value = step_inc")
+            );
+            *code += &format!(
+                "\tmov [{}], {} {}\n",
+                REG_ADDRESS,
+                REG_VALUE,
+                ctx.comment_str("chunk.steps.step = value = step_inc")
             );
 
             // Write mem_reads_size
-            *code += &format!("\tadd {}, 8 /* address += 8 = mem_reads_size */\n", REG_ADDRESS); // mem_reads_size
+            *code += &format!(
+                "\tadd {}, 8 {}\n",
+                REG_ADDRESS,
+                ctx.comment_str("address += 8 = mem_reads_size")
+            ); // mem_reads_size
 
             *code += &format!(
-                "\tmov [{}], {} /* mem_reads_size = size */\n",
-                REG_ADDRESS, REG_MEM_READS_SIZE
+                "\tmov [{}], {} {}\n",
+                REG_ADDRESS,
+                REG_MEM_READS_SIZE,
+                ctx.comment_str("mem_reads_size = size")
             );
 
             // Get value = mem_reads_size*8, i.e. memory size till next chunk
             *code += &format!(
-                "\tmov {}, {} /* value = mem_reads_size */\n",
-                REG_VALUE, REG_MEM_READS_SIZE
+                "\tmov {}, {} {}\n",
+                REG_VALUE,
+                REG_MEM_READS_SIZE,
+                ctx.comment_str("value = mem_reads_size")
             );
-            *code += &format!("\tsal {}, 3 /* value <<= 3 */\n", REG_VALUE);
+            *code += &format!("\tsal {}, 3 {}\n", REG_VALUE, ctx.comment_str("value <<= 3"));
 
             // Update chunk address
-            *code += &format!("\tadd {}, 8 /* address += 8 = new_chunk_address */\n", REG_ADDRESS); // new chunk
             *code += &format!(
-                "\tadd {}, {} /* address += value = mem_reads_size*8 */\n",
-                REG_ADDRESS, REG_VALUE
+                "\tadd {}, 8 {}\n",
+                REG_ADDRESS,
+                ctx.comment_str("address += 8 = new_chunk_address")
+            );
+            *code += &format!(
+                "\tadd {}, {} {}\n",
+                REG_ADDRESS,
+                REG_VALUE,
+                ctx.comment_str("address += value = mem_reads_size*8")
             ); // new chunk
             *code += &format!(
-                "\tmov {}, {} /* chunk_address = new_chunk_address */\n",
-                ctx.mem_chunk_address, REG_ADDRESS
+                "\tmov {}, {} {}\n",
+                ctx.mem_chunk_address,
+                REG_ADDRESS,
+                ctx.comment_str("chunk_address = new_chunk_address")
             );
         }
 
         if ctx.main_trace() {
             // Write size
             *code += &format!(
-                "\tmov {}, {} /* address = chunk_address */\n",
-                REG_ADDRESS, ctx.mem_chunk_address
+                "\tmov {}, {} {}\n",
+                REG_ADDRESS,
+                ctx.mem_chunk_address,
+                ctx.comment_str("address = chunk_address")
             );
             *code += &format!(
-                "\tmov [{}], {} /* mem_reads_size = size */\n",
-                REG_ADDRESS, REG_MEM_READS_SIZE
+                "\tmov [{}], {} {}\n",
+                REG_ADDRESS,
+                REG_MEM_READS_SIZE,
+                ctx.comment_str("mem_reads_size = size")
             );
-            *code += &format!("\tadd {}, 8 /* address += 8 = new_chunk_address */\n", REG_ADDRESS); // new chunk
+            *code += &format!(
+                "\tadd {}, 8 {}\n",
+                REG_ADDRESS,
+                ctx.comment_str("address += 8 = new_chunk_address")
+            );
 
             // Increase chunk address
             *code += &format!(
-                "\tmov {}, {} /* value = mem_reads_size */\n",
-                REG_VALUE, REG_MEM_READS_SIZE
+                "\tmov {}, {} {}\n",
+                REG_VALUE,
+                REG_MEM_READS_SIZE,
+                ctx.comment_str("value = mem_reads_size")
             );
-            *code += &format!("\tsal {}, 3 /* value <<= 3 */\n", REG_VALUE);
+            *code += &format!("\tsal {}, 3 {}\n", REG_VALUE, ctx.comment_str("value <<= 3"));
             *code += &format!(
-                "\tadd {}, {} /* address += value = mem_reads_size*8 */\n",
-                REG_ADDRESS, REG_VALUE
-            ); // new chunk
+                "\tadd {}, {} {}\n",
+                REG_ADDRESS,
+                REG_VALUE,
+                ctx.comment_str("address += value = mem_reads_size*8")
+            );
             *code += &format!(
-                "\tmov {}, {} /* chunk_address = new_chunk_address */\n",
-                ctx.mem_chunk_address, REG_ADDRESS
+                "\tmov {}, {} {}\n",
+                ctx.mem_chunk_address,
+                REG_ADDRESS,
+                ctx.comment_str("chunk_address = new_chunk_address")
             );
         }
 
         if ctx.minimal_trace() || ctx.main_trace() {
-            *code += "\t/* Realloc trace if threshold is passed */\n";
+            *code += &ctx.full_line_comment("Realloc trace if threshold is passed".to_string());
             *code += &format!(
-                "\tmov {}, qword ptr [trace_address_threshold] /* value = trace_address_threshold */\n",
-                REG_VALUE
+                "\tmov {}, qword {}[trace_address_threshold] {}\n",
+                REG_VALUE,
+                ctx.ptr,
+                ctx.comment_str("value = trace_address_threshold")
             );
             *code += &format!(
-                "\tcmp {}, {} /* chunk_address ? trace_address_threshold */\n",
-                REG_ADDRESS, REG_VALUE
+                "\tcmp {}, {} {}\n",
+                REG_ADDRESS,
+                REG_VALUE,
+                ctx.comment_str("chunk_address ? trace_address_threshold")
             );
             *code += &format!("\tjb chunk_{}_address_below_threshold\n", id);
             Self::push_internal_registers(ctx, code);
@@ -3498,7 +4727,7 @@ impl ZiskRom2Asm {
         //*s += "\tpop rsp\n";
     }
 
-    fn push_internal_registers(_ctx: &mut ZiskAsmContext, code: &mut String) {
+    fn push_internal_registers(ctx: &mut ZiskAsmContext, code: &mut String) {
         *code += "\tpush rax\n";
         *code += "\tpush rcx\n";
         *code += "\tpush rdx\n";
@@ -3510,13 +4739,13 @@ impl ZiskRom2Asm {
         *code += "\tpush r10\n";
         *code += "\tpush r11\n";
         for r in 0u64..16u64 {
-            Self::push_xmm_reg(code, r);
+            Self::push_xmm_reg(ctx, code, r);
         }
     }
 
-    fn pop_internal_registers(_ctx: &mut ZiskAsmContext, code: &mut String) {
+    fn pop_internal_registers(ctx: &mut ZiskAsmContext, code: &mut String) {
         for r in (0u64..16u64).rev() {
-            Self::pop_xmm_reg(code, r);
+            Self::pop_xmm_reg(ctx, code, r);
         }
         *code += "\tpop r11\n";
         *code += "\tpop r10\n";
@@ -3531,7 +4760,7 @@ impl ZiskRom2Asm {
     }
 
     fn precompiled_save_mem_reads(
-        _ctx: &mut ZiskAsmContext,
+        ctx: &mut ZiskAsmContext,
         code: &mut String,
         indirections_count: u64,
         load_count: u64,
@@ -3541,7 +4770,7 @@ impl ZiskRom2Asm {
         let mut mem_reads_index: u64 = 0;
 
         // We get a copy of the precompiled data address
-        *code += &format!("\tmov {}, rdi /* address = rdi */\n", REG_ADDRESS);
+        *code += &format!("\tmov {}, rdi {}\n", REG_ADDRESS, ctx.comment_str("address = rdi"));
 
         // We make 2 rounds, a first one to store the indirection addresses, and a second one to
         // store the load data, up to load_count
@@ -3550,15 +4779,22 @@ impl ZiskRom2Asm {
             for i in 0..indirections_count {
                 // Store next aligned address value in mem_reads, and advance it
                 *code += &format!(
-                    "\tmov {}, [{} + {}*8] /* value = mem[address+{}] */\n",
-                    REG_VALUE, REG_ADDRESS, i, i
+                    "\tmov {}, [{} + {}*8] {}\n",
+                    REG_VALUE,
+                    REG_ADDRESS,
+                    i,
+                    ctx.comment(format!("value = mem[address+{}]", i))
                 );
 
                 // During the first iteration, store the indirection read value in mem_reads
                 if j == 0 {
                     *code += &format!(
-                        "\tmov [{} + {}*8 + {}*8], {} /* mem_reads[@+size*8+ind*8] = ind */\n",
-                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, mem_reads_index, REG_VALUE
+                        "\tmov [{} + {}*8 + {}*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        mem_reads_index,
+                        REG_VALUE,
+                        ctx.comment_str("mem_reads[@+size*8+ind*8] = ind")
                     );
                     mem_reads_index += 1;
                 }
@@ -3574,12 +4810,19 @@ impl ZiskRom2Asm {
                     // For each chunk of the indirection, store it in mem_reads
                     for l in 0..load_size {
                         *code += &format!(
-                            "\tmov {}, [{} + {}*8] /* aux = mem[ind+{}] */\n",
-                            REG_AUX, REG_VALUE, l, l
+                            "\tmov {}, [{} + {}*8] {}\n",
+                            REG_AUX,
+                            REG_VALUE,
+                            l,
+                            ctx.comment(format!("aux = mem[ind+{}]", l))
                         );
                         *code += &format!(
-                            "\tmov [{} + {}*8 + {}*8], {} /* mem_reads[@+size*8+ind*8] = ind */\n",
-                            REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, mem_reads_index, REG_AUX
+                            "\tmov [{} + {}*8 + {}*8], {} {}\n",
+                            REG_MEM_READS_ADDRESS,
+                            REG_MEM_READS_SIZE,
+                            mem_reads_index,
+                            REG_AUX,
+                            ctx.comment_str("mem_reads[@+size*8+ind*8] = ind")
                         );
                         mem_reads_index += 1;
                     }
@@ -3589,96 +4832,152 @@ impl ZiskRom2Asm {
 
         // Increment chunk.steps.mem_reads_size
         *code += &format!(
-            "\tadd {}, {} /* mem_reads_size+={}*/\n",
-            REG_MEM_READS_SIZE, mem_reads_index, mem_reads_index
+            "\tadd {}, {} {}\n",
+            REG_MEM_READS_SIZE,
+            mem_reads_index,
+            ctx.comment(format!("mem_reads_size+={}", mem_reads_index))
         );
     }
 
     fn trace_reg_access(ctx: &mut ZiskAsmContext, code: &mut String, reg: u64, slot: u64) {
         // REG_VALUE is reg_step = STEP << 4 + 1 + slot
-        *code += &format!("\tmov {}, {} /* value = step */\n", REG_VALUE, ctx.mem_step);
-        *code += &format!("\tsal {}, 3 /* value <<= 2 */\n", REG_VALUE);
-        *code += &format!("\tadd {}, {} /* value += {} */\n", REG_VALUE, slot + 1, slot + 1);
+        *code +=
+            &format!("\tmov {}, {} {}\n", REG_VALUE, ctx.mem_step, ctx.comment_str("value = step"));
+        *code += &format!("\tsal {}, 3 {}\n", REG_VALUE, ctx.comment_str("value <<= 2"));
+        *code += &format!(
+            "\tadd {}, {} {}\n",
+            REG_VALUE,
+            slot + 1,
+            ctx.comment(format!("value += {}", slot + 1))
+        );
 
         // REG_ADDRESS is reg_steps[slot], i.e. prev_reg_steps
         *code += &format!(
-            "\tmov {}, qword ptr [reg_steps_{}] /* address=reg_steps[slot] */\n",
-            REG_ADDRESS, slot
+            "\tmov {}, qword {}[reg_steps_{}] {}\n",
+            REG_ADDRESS,
+            ctx.ptr,
+            slot,
+            ctx.comment_str("address = reg_steps[slot]")
         );
 
         // reg_prev_steps[slot] = pref_reg_steps
         *code += &format!(
-            "\tmov qword ptr [reg_prev_steps_{}], {} /* reg_prev_steps[slot]=address */\n",
-            slot, REG_ADDRESS
+            "\tmov qword {}[reg_prev_steps_{}], {} {}\n",
+            ctx.ptr,
+            slot,
+            REG_ADDRESS,
+            ctx.comment_str("reg_prev_steps[slot] = address")
         );
 
         // Check if is first_reference==0
         *code += &format!(
-            "\tmov {}, qword ptr [first_step_uses_{}] /* aux=first_step_uses[reg] */\n",
-            REG_AUX, reg
+            "\tmov {}, qword {}[first_step_uses_{}] {}\n",
+            REG_AUX,
+            ctx.ptr,
+            reg,
+            ctx.comment_str("aux = first_step_uses[reg]")
         );
         *code += &format!("\tjz pc_{:x}_{}_first_reference\n", ctx.pc, slot);
         // Not first reference
         *code += &format!("pc_{:x}_{}_not_first_reference:\n", ctx.pc, slot);
         *code += &format!(
-            "\tmov qword ptr [reg_step_ranges_{}], {} /* reg_step_ranges[slot]=reg_step */\n",
-            slot, REG_VALUE
+            "\tmov qword {}[reg_step_ranges_{}], {} {}\n",
+            ctx.ptr,
+            slot,
+            REG_VALUE,
+            ctx.comment_str("reg_step_ranges[slot] = reg_step")
         );
         *code += &format!(
-            "\tsub qword ptr [reg_step_ranges_{}], {} /* reg_step_ranges[slot]-=prev_reg_step */\n",
-            slot, REG_VALUE
+            "\tsub qword {}[reg_step_ranges_{}], {} {}\n",
+            ctx.ptr,
+            slot,
+            REG_VALUE,
+            ctx.comment_str("reg_step_ranges[slot] -= prev_reg_step")
         );
         *code += &format!("\tjmp pc_{:x}_{}_first_reference_done\n", ctx.pc, slot);
         // First reference
         *code += &format!("pc_{:x}_{}_first_reference:\n", ctx.pc, slot);
         *code += &format!(
-            "\tmov qword ptr [first_step_uses_{}], {} /* first_step_uses[reg]= */\n",
-            reg, REG_VALUE
+            "\tmov qword {}[first_step_uses_{}], {} {}\n",
+            ctx.ptr,
+            reg,
+            REG_VALUE,
+            ctx.comment_str("first_step_uses[reg] = value")
         );
         *code += &format!("pc_{:x}_{}_first_reference_done:\n", ctx.pc, slot);
 
         // Store reg_steps
         *code += &format!(
-            "\tmov qword ptr [reg_steps_{}], {} /* reg_steps[slot]=reg_step */\n",
-            slot, REG_VALUE
+            "\tmov qword {}[reg_steps_{}], {} {}\n",
+            ctx.ptr,
+            slot,
+            REG_VALUE,
+            ctx.comment_str("reg_steps[slot] = reg_step")
         );
     }
 
-    fn clear_reg_step_ranges(_ctx: &mut ZiskAsmContext, code: &mut String, slot: u64) {
+    fn clear_reg_step_ranges(ctx: &mut ZiskAsmContext, code: &mut String, slot: u64) {
         *code += &format!(
-            "\tmov qword ptr [reg_step_ranges_{}], 0 /* reg_step_ranges[slot]=0 */\n",
-            slot
+            "\tmov qword {}[reg_step_ranges_{}], 0 {}\n",
+            ctx.ptr,
+            slot,
+            ctx.comment_str("reg_step_ranges[slot]=0")
         );
     }
 
     fn reg_to_xmm_index(reg: u64) -> u64 {
-        let xmm_index: u64;
         match reg {
-            1 => xmm_index = 0,
-            2 => xmm_index = 1,
-            5 => xmm_index = 2,
-            6 => xmm_index = 3,
-            7 => xmm_index = 4,
-            8 => xmm_index = 5,
-            9 => xmm_index = 6,
-            10 => xmm_index = 7,
-            11 => xmm_index = 8,
-            12 => xmm_index = 9,
-            13 => xmm_index = 10,
-            14 => xmm_index = 11,
-            15 => xmm_index = 12,
-            16 => xmm_index = 13,
-            17 => xmm_index = 14,
-            18 => xmm_index = 15,
+            1 => 0,
+            2 => 1,
+            5 => 2,
+            6 => 3,
+            7 => 4,
+            8 => 5,
+            9 => 6,
+            10 => 7,
+            11 => 8,
+            12 => 9,
+            13 => 10,
+            14 => 11,
+            15 => 12,
+            16 => 13,
+            17 => 14,
+            18 => 15,
             _ => {
                 panic!("ZiskRom2Asm::reg_to_xmm_index() found invalid source slot={}", reg);
             }
         }
-        xmm_index
+    }
+
+    fn reg_to_rsp_index(reg: u64) -> u64 {
+        match reg {
+            0 => 0,
+            3 => 1,
+            4 => 2,
+            19 => 3,
+            20 => 4,
+            21 => 5,
+            22 => 6,
+            23 => 7,
+            24 => 8,
+            25 => 9,
+            26 => 10,
+            27 => 11,
+            28 => 12,
+            29 => 13,
+            30 => 14,
+            31 => 15,
+            32 => 16,
+            33 => 17,
+            34 => 18,
+            _ => {
+                panic!("ZiskRom2Asm::reg_to_rsp_index() found invalid source slot={}", reg);
+            }
+        }
     }
 
     fn read_riscv_reg(
-        //_ctx: &mut ZiskAsmContext,
+        ctx: &mut ZiskAsmContext,
         code: &mut String,
         src_slot: u64,
         dest_reg: &str,
@@ -3687,67 +4986,116 @@ impl ZiskRom2Asm {
         if XMM_MAPPED_REGS.contains(&src_slot) {
             let xmm_index = Self::reg_to_xmm_index(src_slot);
             *code += &format!(
-                "\tmovq {}, xmm{} /* {} = reg[{}] */\n",
-                dest_reg, xmm_index, dest_desc, src_slot
+                "\tmovq {}, xmm{} {}\n",
+                dest_reg,
+                xmm_index,
+                ctx.comment(format!("{} = reg[{}]", dest_desc, src_slot))
+            );
+        } else if ctx.bus_op() {
+            let rsp_index = Self::reg_to_rsp_index(src_slot);
+            *code += &format!(
+                "\tmov {}, qword {}[rsp - {}*8 + {}*8] {}\n",
+                dest_reg,
+                ctx.ptr,
+                RSP_REGS_OFFSET,
+                rsp_index,
+                ctx.comment(format!("{} = reg[{}]", dest_desc, src_slot))
             );
         } else {
             *code += &format!(
-                "\tmov {}, qword ptr [reg_{}] /* {} = reg[{}] */\n",
-                dest_reg, src_slot, dest_desc, src_slot
+                "\tmov {}, qword {}[reg_{}] {}\n",
+                dest_reg,
+                ctx.ptr,
+                src_slot,
+                ctx.comment(format!("{} = reg[{}]", dest_desc, src_slot))
             );
         }
     }
 
     fn write_riscv_reg(
-        //_ctx: &mut ZiskAsmContext,
+        ctx: &mut ZiskAsmContext,
         code: &mut String,
         dest_slot: u64,
         src_reg: &str,
         src_desc: &str,
     ) {
+        let comment = format!("reg[{}]={}", dest_slot, src_desc);
         if XMM_MAPPED_REGS.contains(&dest_slot) {
             let xmm_index = Self::reg_to_xmm_index(dest_slot);
+            *code += &format!("\tmovq xmm{}, {} {}\n", xmm_index, src_reg, ctx.comment(comment));
+        } else if ctx.bus_op() {
+            let rsp_index = Self::reg_to_rsp_index(dest_slot);
             *code += &format!(
-                "\tmovq xmm{}, {} /* reg[{}]={} */\n",
-                xmm_index, src_reg, dest_slot, src_desc
+                "\tmov qword {}[rsp - {}*8 + {}*8], {} {}\n",
+                ctx.ptr,
+                RSP_REGS_OFFSET,
+                rsp_index,
+                src_reg,
+                ctx.comment(comment)
             );
         } else {
             *code += &format!(
-                "\tmov qword ptr [reg_{}], {} /* reg[{}] = {} */\n",
-                dest_slot, src_reg, dest_slot, src_desc
+                "\tmov qword {}[reg_{}], {} {}\n",
+                ctx.ptr,
+                dest_slot,
+                src_reg,
+                ctx.comment(comment)
             );
         }
     }
 
     fn write_riscv_reg_constant(
-        //_ctx: &mut ZiskAsmContext,
+        ctx: &mut ZiskAsmContext,
         code: &mut String,
         dest_slot: u64,
         value: u64,
         value_desc: &str,
     ) {
+        let comment = format!("reg[{}]={}", dest_slot, value_desc);
         if XMM_MAPPED_REGS.contains(&dest_slot) {
             let xmm_index = Self::reg_to_xmm_index(dest_slot);
-            *code += &format!("\tmov {}, {} /* aux={} */\n", REG_AUX, value, value_desc);
+            *code += &format!("\tmov {}, {}\n", REG_AUX, value);
 
-            *code +=
-                &format!("\tmovq xmm{}, {} /* reg[{}]=aux */\n", xmm_index, REG_AUX, dest_slot);
+            *code += &format!("\tmovq xmm{}, {} {}\n", xmm_index, REG_AUX, ctx.comment(comment));
         } else {
-            *code += &format!("\tmov {}, {} /* aux={} */\n", REG_AUX, value, value_desc);
-            *code += &format!(
-                "\tmov qword ptr [reg_{}], {} /* reg[{}] = aux */\n",
-                dest_slot, REG_AUX, dest_slot
-            );
+            *code += &format!("\tmov {}, {}\n", REG_AUX, value);
+            if ctx.bus_op() {
+                let rsp_index = Self::reg_to_rsp_index(dest_slot);
+                *code += &format!(
+                    "\tmov qword {}[rsp - {}*8 + {}*8], {} {}\n",
+                    ctx.ptr,
+                    RSP_REGS_OFFSET,
+                    rsp_index,
+                    REG_AUX,
+                    ctx.comment(comment)
+                );
+            } else {
+                *code += &format!(
+                    "\tmov qword {}[reg_{}], {} {}\n",
+                    ctx.ptr,
+                    dest_slot,
+                    REG_AUX,
+                    ctx.comment(comment)
+                );
+            }
         }
     }
 
-    fn push_xmm_reg(code: &mut String, xmm_index: u64) {
+    fn push_xmm_reg(ctx: &mut ZiskAsmContext, code: &mut String, xmm_index: u64) {
         *code += "\tsub rsp, 8\n";
-        *code += &format!("\tmovq [rsp], xmm{} /* push xmm{} */\n", xmm_index, xmm_index);
+        *code += &format!(
+            "\tmovq [rsp], xmm{} {}\n",
+            xmm_index,
+            ctx.comment(format!("push xmm{}", xmm_index))
+        );
     }
 
-    fn pop_xmm_reg(code: &mut String, xmm_index: u64) {
-        *code += &format!("\tmovq xmm{}, [rsp] /* pop xmm{} */\n", xmm_index, xmm_index);
+    fn pop_xmm_reg(ctx: &mut ZiskAsmContext, code: &mut String, xmm_index: u64) {
+        *code += &format!(
+            "\tmovq xmm{}, [rsp] {}\n",
+            xmm_index,
+            ctx.comment(format!("pop xmm{}", xmm_index))
+        );
         *code += "\tadd rsp, 8\n";
     }
 

@@ -268,7 +268,7 @@ impl Stats {
         // Build the register counters
         output += "\nRegisters:\n";
         let mut total_regs = 0u64;
-        for (_i, reg) in self.regs.iter().enumerate() {
+        for reg in self.regs.iter() {
             total_regs += reg;
         }
         if total_regs == 0 {
