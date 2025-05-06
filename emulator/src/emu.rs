@@ -78,6 +78,10 @@ impl<'a> Emu<'a> {
                 // Calculate memory address
                 let reg = instruction.a_offset_imm0 as usize;
                 self.ctx.inst_ctx.a = self.get_reg(reg);
+
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_register_read(instruction.a_offset_imm0 as usize);
+                }
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -124,6 +128,10 @@ impl<'a> Emu<'a> {
                 // Calculate memory address
                 let reg = instruction.a_offset_imm0 as usize;
                 self.ctx.inst_ctx.a = self.get_reg(reg);
+
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_register_read(instruction.a_offset_imm0 as usize);
+                }
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -182,6 +190,10 @@ impl<'a> Emu<'a> {
             SRC_REG => {
                 self.ctx.inst_ctx.a =
                     self.get_traced_reg(instruction.a_offset_imm0 as usize, 0, reg_trace);
+
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_register_read(instruction.a_offset_imm0 as usize);
+                }
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -245,6 +257,10 @@ impl<'a> Emu<'a> {
             SRC_C => self.ctx.inst_ctx.a = self.ctx.inst_ctx.c,
             SRC_REG => {
                 self.ctx.inst_ctx.a = self.get_reg(instruction.a_offset_imm0 as usize);
+
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_register_read(instruction.a_offset_imm0 as usize);
+                }
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -318,6 +334,10 @@ impl<'a> Emu<'a> {
             SRC_REG => {
                 // Calculate memory address
                 self.ctx.inst_ctx.b = self.get_reg(instruction.b_offset_imm0 as usize);
+
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_register_read(instruction.b_offset_imm0 as usize);
+                }
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -369,6 +389,10 @@ impl<'a> Emu<'a> {
             SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
             SRC_REG => {
                 self.ctx.inst_ctx.b = self.get_reg(instruction.b_offset_imm0 as usize);
+
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_register_read(instruction.b_offset_imm0 as usize);
+                }
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -455,6 +479,10 @@ impl<'a> Emu<'a> {
             SRC_REG => {
                 self.ctx.inst_ctx.b =
                     self.get_traced_reg(instruction.b_offset_imm0 as usize, 1, reg_trace);
+
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_register_read(instruction.b_offset_imm0 as usize);
+                }
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -570,6 +598,10 @@ impl<'a> Emu<'a> {
             SRC_C => self.ctx.inst_ctx.b = self.ctx.inst_ctx.c,
             SRC_REG => {
                 self.ctx.inst_ctx.b = self.get_reg(instruction.b_offset_imm0 as usize);
+
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_register_read(instruction.b_offset_imm0 as usize);
+                }
             }
             SRC_MEM => {
                 // Calculate memory address
@@ -734,6 +766,10 @@ impl<'a> Emu<'a> {
                     instruction.store_offset as usize,
                     self.get_value_to_store(instruction),
                 );
+
+                if self.ctx.do_stats {
+                    self.ctx.stats.on_register_write(instruction.store_offset as usize);
+                }
             }
             STORE_MEM => {
                 // Calculate value

@@ -11,16 +11,6 @@ use std::{
 
 use zisk_core::{ROM_ADDR, ROM_ENTRY};
 
-/// Enumeration representing different types of counters for metrics collection.
-#[derive(Debug)]
-pub enum CounterType {
-    /// A simple counter for counting instructions.
-    Counter(Counter),
-
-    /// A detailed counter that tracks instructions by program counter (PC) and execution steps.
-    CounterStats(CounterStats),
-}
-
 /// The `Metrics` trait provides an interface for tracking and managing metrics in a
 /// flexible and extensible manner.
 ///

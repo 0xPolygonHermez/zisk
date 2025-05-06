@@ -6,12 +6,21 @@
 use crate::{elf2rom, elf2romfile, ZiskRom};
 use std::{error::Error, path::PathBuf};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum AsmGenerationMethod {
+    /// Generate assembly code to not even stop at chunks, nor generate trace, i.e. fast
+    #[default]
+    AsmFast,
     /// Generate assembly code to compute the minimal traces
     AsmMinimalTraces,
     /// Generate assembly code to compute the ROM histogram
     AsmRomHistogram,
+    /// Generate assembly code to compute the main SM trace
+    AsmMainTrace,
+    /// Generate assembly code to stop at chunks, but do not generate any trace
+    AsmChunks,
+    /// Generate assembly code to compute bus op [op, a, b, mem_read_index] traces
+    AsmBusOp,
 }
 /// RISCV-to-ZisK struct containing the input ELF RISCV file name and the output ZISK ASM file name
 pub struct Riscv2zisk {
@@ -30,8 +39,9 @@ impl Riscv2zisk {
         &self,
         asm_file: P,
         generation_method: AsmGenerationMethod,
+        log_output: bool,
     ) -> Result<(), Box<dyn Error>> {
-        elf2romfile(&self.elf_file, &asm_file.into(), generation_method)
+        elf2romfile(&self.elf_file, &asm_file.into(), generation_method, log_output)
             .map_err(|e| format!("Error converting elf to assembly: {}", e).into())
     }
 

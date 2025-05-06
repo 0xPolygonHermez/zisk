@@ -37,7 +37,7 @@ pub trait Instance<F: PrimeField>: Send + Sync {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        _collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+        _collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
     ) -> Option<AirInstance<F>> {
         None
     }
@@ -127,7 +127,7 @@ macro_rules! table_instance {
                 &mut self,
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
-                _collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+                _collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
             ) -> Option<AirInstance<F>> {
                 let mut trace = $Trace::new();
 
@@ -225,7 +225,7 @@ macro_rules! table_instance_array {
                 &mut self,
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
-                _collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+                _collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
             ) -> Option<AirInstance<F>> {
                 let mut trace = $Trace::new();
 
