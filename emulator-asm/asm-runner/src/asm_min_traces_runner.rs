@@ -275,7 +275,8 @@ impl AsmRunnerMT {
                         break 1;
                     }
 
-                    let output_header = Self::read_output_header(&mut header_ptr, &shmem_output_name);
+                    let output_header =
+                        Self::read_output_header(&mut header_ptr, &shmem_output_name);
                     break output_header.exit_code;
                 }
             }
@@ -464,10 +465,10 @@ impl AsmRunnerMT {
             unsafe { mmap(ptr::null_mut(), header_size, PROT_READ, MAP_SHARED, shm_fd, 0) };
         Self::check_mmap(mapped, header_size, file!(), line!());
 
-        // Step 2: Read the header
+        // Read the header
         let header = unsafe { ptr::read(mapped as *const AsmMTHeader) };
 
-        // Step 3: Unmap the small mapping
+        // Unmap the small mapping
         unsafe {
             munmap(mapped, header_size);
         }
