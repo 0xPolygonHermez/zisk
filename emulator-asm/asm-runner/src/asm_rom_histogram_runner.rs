@@ -8,7 +8,7 @@ use named_sem::NamedSemaphore;
 
 use std::ffi::{c_void, CString};
 use std::path::Path;
-use std::process::Command;
+use std::process::{self, Command};
 use std::{fs, ptr};
 
 use crate::{AsmRHData, AsmRHHeader, AsmRunnerOptions, AsmRunnerTraceLevel};
@@ -97,6 +97,8 @@ impl AsmRunnerRomH {
 
         if !options.log_output {
             command.arg("-o");
+            command.stdout(process::Stdio::null());
+            command.stderr(process::Stdio::null());
         }
         if options.metrics {
             command.arg("-m");
