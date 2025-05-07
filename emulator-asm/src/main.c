@@ -104,6 +104,7 @@ bool generate_fast = false;
 // Zip
 bool generate_zip = false;
 uint64_t chunk_mask = 0x0; // 0, 1, 2, 3, 4, 5, 6 or 7
+#define MAX_CHUNK_MASK 7
 
 // Maximum length of the shared memory prefix, e.g. SHMZISK12345678
 #define MAX_SHM_PREFIX_LENGTH 32
@@ -840,7 +841,7 @@ extern void _realloc_trace (void)
 
 void print_usage (void)
 {
-    char * usage = "Usage: ziskemuasm <input_file> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-h/--help print this]";
+    char * usage = "Usage: ziskemuasm <input_file> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [-c <chunk_number>] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-h/--help print this]";
 #ifdef DEBUG
     printf("%s [-v verbose on] [-k keccak trace on]\n", usage);
 #else
@@ -955,6 +956,42 @@ void parse_arguments(int argc, char *argv[])
                 print_usage();
                 continue;
             }
+            if (strcmp(argv[i], "-c") == 0)
+            {
+                i++;
+                if (i >= argc)
+                {
+                    printf("Detected argument -c in the last position; please provide chunk number after it\n");
+                    print_usage();
+                    exit(-1);
+                }
+                errno = 0;
+                char *endptr;
+                chunk_mask = strtoul(argv[i], &endptr, 10);
+
+                // Check for errors
+                if (errno == ERANGE) {
+                    printf("Error: Chunk number is too large\n");
+                    print_usage();
+                    exit(-1);
+                } else if (endptr == argv[i]) {
+                    printf("Error: No digits found while parsing chunk number\n");
+                    print_usage();
+                    exit(-1);
+                } else if (*endptr != '\0') {
+                    printf("Error: Extra characters after chunk number: %s\n", endptr);
+                    print_usage();
+                    exit(-1);
+                } else if (chunk_mask > MAX_CHUNK_MASK) {
+                    printf("Error: Invalid chunk number: %lu\n", chunk_mask);
+                    print_usage();
+                    exit(-1);
+                } else {
+                    printf("Got chunk_mask= %lu\n", chunk_mask);
+                }
+                continue;
+            }
+            
             // We accept only one input parameter (beyond the flags)
             if (input_parameter == NULL)
             {
