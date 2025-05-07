@@ -2,9 +2,8 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::PubOut` instructions.
 
-use sm_common::Metrics;
 use zisk_common::{
-    BusDevice, BusId, ExtOperationData, OperationBusData, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusId, ExtOperationData, Metrics, OperationBusData, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 

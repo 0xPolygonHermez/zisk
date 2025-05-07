@@ -9,13 +9,11 @@ use crate::{
 };
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use sm_common::{
-    BusDeviceWrapper, CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType,
-};
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
 use zisk_common::{
-    BusDevice, BusId, ExtOperationData, OperationBusData, PayloadType, OPERATION_BUS_ID,
+    BusDevice, BusDeviceWrapper, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance,
+    InstanceCtx, InstanceType, OperationBusData, PayloadType, OPERATION_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithEqTrace;

@@ -4,10 +4,9 @@
 //! This trait provides methods to create counters, planners, input collectors, and optional
 //! input generators, enabling flexible and modular integration of components.
 
-use crate::{BusDeviceMetrics, Instance, InstanceCtx, Plan, Planner};
+use crate::{BusDevice, BusDeviceMetrics, Instance, InstanceCtx, PayloadType, Plan, Planner};
 use p3_field::PrimeField;
 use proofman_common::ProofCtx;
-use zisk_common::{BusDevice, PayloadType};
 
 /// The `ComponentBuilder` trait provides an interface for building components
 /// such as counters, planners, input collectors, and optional input generators.

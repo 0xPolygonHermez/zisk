@@ -4,8 +4,7 @@
 
 use std::collections::HashMap;
 
-use crate::{CheckPoint, CollectSkipper};
-use zisk_common::ChunkId;
+use crate::{CheckPoint, ChunkId, CollectSkipper};
 
 /// Represents the instruction count for a specific chunk.
 ///

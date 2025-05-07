@@ -7,13 +7,11 @@
 use crate::KeccakfSM;
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use sm_common::{
-    BusDeviceWrapper, CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType,
-};
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::{
-    BusDevice, BusId, ChunkId, ExtOperationData, OperationKeccakData, PayloadType,
-    OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusDeviceWrapper, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData,
+    Instance, InstanceCtx, InstanceType, OperationKeccakData, PayloadType, OPERATION_BUS_ID,
+    OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::KeccakfTrace;

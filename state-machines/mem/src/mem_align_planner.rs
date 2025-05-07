@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use crate::{MemCounters, MemPlanCalculator};
-use sm_common::{CheckPoint, InstanceType, Plan};
-use zisk_common::{ChunkId, SegmentId};
+use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 use zisk_pil::{MemAlignTrace, MEM_ALIGN_AIR_IDS, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 #[allow(dead_code)]

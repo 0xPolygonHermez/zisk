@@ -2,9 +2,8 @@
 //! sent over the data bus. It is designed to be reusable across multiple state machines
 //! and collects metrics for specified `ZiskOperationType` instructions.
 
-use crate::{Counter, Metrics};
 use std::ops::Add;
-use zisk_common::{BusDevice, BusId, ExtOperationData, OperationBusData};
+use crate::{BusDevice, BusId, Counter, ExtOperationData, Metrics, OperationBusData};
 use zisk_core::ZiskOperationType;
 
 /// The `RegularCounters` struct represents a generic counter that monitors and measures

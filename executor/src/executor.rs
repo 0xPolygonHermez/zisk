@@ -19,7 +19,7 @@
 //! By structuring these phases, the `ZiskExecutor` ensures high-performance execution while
 //! maintaining clarity and modularity in the computation process.
 
-use asm_runner::{AsmRunnerMT, Task, TaskFactory};
+use asm_runner::{AsmRunnerMT, MinimalTraces, Task, TaskFactory};
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{ProofCtx, SetupCtx};
@@ -30,9 +30,9 @@ use witness::WitnessComponent;
 use rayon::prelude::*;
 
 use data_bus::DataBus;
-use sm_common::{
+use zisk_common::{
     BusDeviceMetrics, BusDeviceMetricsWrapper, BusDeviceWrapper, CheckPoint, ComponentBuilder,
-    Instance, InstanceCtx, InstanceType, MinimalTraces, Plan,
+    Instance, InstanceCtx, InstanceType, Plan,
 };
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::{BusDevice, ChunkId, PayloadType, OPERATION_BUS_ID};

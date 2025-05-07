@@ -956,7 +956,6 @@ dependencies = [
  "proofman-util",
  "rayon",
  "rom-setup",
- "sm-common",
  "sm-main",
  "sm-rom",
  "witness",
@@ -2306,7 +2305,6 @@ dependencies = [
  "rustfmt-wrapper",
  "serde",
  "serde_json",
- "sm-common",
  "typenum",
  "witness",
  "zisk-common",
@@ -2331,7 +2329,6 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
- "sm-common",
  "tiny-keccak 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "witness",
  "zisk-common",
@@ -3047,7 +3044,6 @@ dependencies = [
  "proofman-util",
  "rayon",
  "sm-binary",
- "sm-common",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -3065,30 +3061,16 @@ dependencies = [
  "proofman-macros",
  "proofman-util",
  "rayon",
- "sm-common",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
 
 [[package]]
-name = "sm-common"
-version = "0.7.0"
-dependencies = [
- "asm-runner",
- "data-bus",
- "p3-field",
- "proofman-common",
- "proofman-util",
- "rayon",
- "zisk-common",
- "zisk-core",
-]
-
-[[package]]
 name = "sm-main"
 version = "0.7.0"
 dependencies = [
+ "asm-runner",
  "log",
  "num-bigint",
  "p3-field",
@@ -3097,7 +3079,6 @@ dependencies = [
  "proofman-macros",
  "proofman-util",
  "rayon",
- "sm-common",
  "sm-mem",
  "zisk-common",
  "zisk-core",
@@ -3118,7 +3099,6 @@ dependencies = [
  "proofman-macros",
  "proofman-util",
  "rayon",
- "sm-common",
  "witness",
  "zisk-common",
  "zisk-core",
@@ -3137,7 +3117,6 @@ dependencies = [
  "proofman-macros",
  "proofman-util",
  "rayon",
- "sm-common",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -4382,6 +4361,8 @@ name = "zisk-common"
 version = "0.7.0"
 dependencies = [
  "libc",
+ "p3-field",
+ "proofman-common",
  "zisk-core",
 ]
 
@@ -4442,7 +4423,6 @@ dependencies = [
  "rayon",
  "sm-arith",
  "sm-binary",
- "sm-common",
  "sm-main",
  "sm-mem",
  "sm-rom",

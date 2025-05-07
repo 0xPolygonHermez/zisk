@@ -18,7 +18,6 @@ members = [
     "rom-setup",
     "state-machines/arith",
     "state-machines/binary",
-    "state-machines/common",
     "state-machines/main",
     "state-machines/mem",
     "state-machines/rom",

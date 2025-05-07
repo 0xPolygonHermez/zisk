@@ -1,8 +1,7 @@
 use rayon::prelude::*;
 use std::collections::HashMap;
 
-use sm_common::Metrics;
-use zisk_common::{BusDevice, BusId, MemBusData, MEM_BUS_ID};
+use zisk_common::{BusDevice, BusId, MemBusData, Metrics, MEM_BUS_ID};
 
 use crate::MemHelpers;
 

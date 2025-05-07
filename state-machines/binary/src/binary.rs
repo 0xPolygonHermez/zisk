@@ -16,11 +16,10 @@ use crate::{
 };
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
-use sm_common::{
+use zisk_common::{
     table_instance, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
-    Planner,
+    Planner, OPERATION_BUS_ID,
 };
-use zisk_common::OPERATION_BUS_ID;
 use zisk_pil::{
     BinaryAddTrace, BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace,
 };

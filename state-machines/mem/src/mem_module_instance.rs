@@ -5,10 +5,12 @@ use crate::{
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::ops::Add;
 use std::sync::Arc;
-use zisk_common::{BusDevice, BusId, ChunkId, MemBusData, PayloadType, SegmentId, MEM_BUS_ID};
+use zisk_common::{
+    BusDevice, BusDeviceWrapper, BusId, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType,
+    MemBusData, PayloadType, SegmentId, MEM_BUS_ID,
+};
 
 pub struct MemModuleInstance<F: PrimeField> {
     /// Instance context

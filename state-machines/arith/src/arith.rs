@@ -9,11 +9,9 @@
 use std::sync::Arc;
 
 use p3_field::PrimeField;
-use sm_common::{
-    table_instance, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, InstanceCtx, InstanceInfo,
-    Planner, TableInfo,
+use zisk_common::{
+    table_instance, BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, PayloadType, Planner, TableInfo, OPERATION_BUS_ID
 };
-use zisk_common::{BusDevice, PayloadType, OPERATION_BUS_ID};
 use zisk_core::ZiskOperationType;
 use zisk_pil::{ArithRangeTableTrace, ArithTableTrace, ArithTrace};
 
@@ -90,7 +88,7 @@ impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
     ///
     /// # Returns
     /// A boxed implementation of `StdInstance`.
-    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn sm_common::Instance<F>> {
+    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
             ArithTrace::<usize>::AIR_ID => {
                 Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), ictx))

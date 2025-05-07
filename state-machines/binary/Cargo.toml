@@ -11,7 +11,6 @@ categories = { workspace = true }
 zisk-core = { path = "../../core" }
 zisk-common = { path = "../../common" }
 zisk-pil = { path = "../../pil" }
-sm-common = { path = "../common" }
 
 p3-field = { workspace=true }
 proofman-common = { workspace = true }

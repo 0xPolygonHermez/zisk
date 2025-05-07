@@ -3,8 +3,9 @@
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
 use crate::BinaryInput;
-use sm_common::CollectSkipper;
-use zisk_common::{BusDevice, BusId, ExtOperationData, OperationBusData, OPERATION_BUS_ID};
+use zisk_common::{
+    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID,
+};
 use zisk_core::ZiskOperationType;
 
 /// The `BinaryExtensionCollector` struct represents an input collector for binary extension

@@ -6,8 +6,9 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
-use sm_common::{BusDeviceMode, Counter, Metrics};
-use zisk_common::{BusDevice, BusId, ExtOperationData, OPERATION_BUS_ID, OP_TYPE};
+use zisk_common::{
+    BusDevice, BusDeviceMode, BusId, Counter, ExtOperationData, Metrics, OPERATION_BUS_ID, OP_TYPE,
+};
 use zisk_core::ZiskOperationType;
 
 use crate::ArithFullSM;

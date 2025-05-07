@@ -5,8 +5,10 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
-use sm_common::{BusDeviceMode, Counter, Metrics};
-use zisk_common::{BusDevice, BusId, ExtOperationData, OperationBusData, OPERATION_BUS_ID};
+use zisk_common::{
+    BusDevice, BusDeviceMode, BusId, Counter, ExtOperationData, Metrics, OperationBusData,
+    OPERATION_BUS_ID,
+};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
 /// The `BinaryCounter` struct represents a counter that monitors and measures

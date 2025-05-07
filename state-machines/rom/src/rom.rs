@@ -13,16 +13,16 @@ use std::{
     sync::{atomic::AtomicU32, Arc, Mutex},
 };
 
+use crate::{rom_asm_worker::RomAsmWorker, RomCounter, RomInstance, RomPlanner};
 use asm_runner::AsmRHData;
 use itertools::Itertools;
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
-use sm_common::{
-    create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, InstanceCtx, Planner,
+use zisk_common::{
+    create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, Instance, InstanceCtx,
+    Planner,
 };
-
-use crate::{rom_asm_worker::RomAsmWorker, RomCounter, RomInstance, RomPlanner};
 use zisk_core::{
     zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT, SRC_IMM,
 };
@@ -339,7 +339,7 @@ impl<F: PrimeField> ComponentBuilder<F> for RomSM {
     ///
     /// # Returns
     /// A boxed implementation of `RomInstance`.
-    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn sm_common::Instance<F>> {
+    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         let mut worker_guard = self.rom_asm_worker.lock().unwrap();
         let worker = worker_guard.take();
 

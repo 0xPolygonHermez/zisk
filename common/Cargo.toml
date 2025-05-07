@@ -10,3 +10,11 @@ categories = { workspace = true }
 [dependencies]
 libc = "0.2"
 zisk-core = { path = "../core" }
+
+proofman-common = { workspace = true }
+p3-field = { workspace = true }
+
+[features]
+default = ["distributed"]
+no_lib_link = ["proofman-common/no_lib_link"]
+distributed = ["proofman-common/distributed"]

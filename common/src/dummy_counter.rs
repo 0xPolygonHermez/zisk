@@ -5,8 +5,7 @@
 
 use std::any::Any;
 
-use crate::Metrics;
-use zisk_common::{BusDevice, BusId};
+use crate::{BusDevice, BusId, Metrics};
 
 /// The `DummyCounter` struct serves as a placeholder counter that performs no actions
 /// when connected to the data bus.

@@ -2,9 +2,9 @@
 //! in the context of proof systems. It includes traits and macros for defining instances
 //! and integrating them with state machines and proofs.
 
+use crate::{BusDevice, ChunkId, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use zisk_common::{BusDevice, ChunkId, PayloadType};
 
 use crate::{BusDeviceWrapper, CheckPoint};
 
@@ -92,8 +92,10 @@ macro_rules! table_instance {
         use p3_field::PrimeField;
 
         use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
-        use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
-        use zisk_common::{BusDevice, BusId, PayloadType};
+        use zisk_common::{
+            BusDevice, BusDeviceWrapper, BusId, CheckPoint, Instance, InstanceCtx, InstanceType,
+            PayloadType,
+        };
         use zisk_pil::$Trace;
 
         use rayon::prelude::*;
@@ -190,8 +192,10 @@ macro_rules! table_instance_array {
         use p3_field::PrimeField;
 
         use proofman_common::{AirInstance, ProofCtx, SetupCtx, TraceInfo};
-        use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
-        use zisk_common::{BusDevice, BusId, PayloadType};
+        use zisk_common::{
+            BusDevice, BusDeviceWrapper, BusId, CheckPoint, Instance, InstanceCtx, InstanceType,
+            PayloadType,
+        };
         use zisk_pil::$Trace;
 
         use rayon::prelude::*;

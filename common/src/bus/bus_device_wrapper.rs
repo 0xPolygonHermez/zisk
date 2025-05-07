@@ -1,4 +1,4 @@
-use zisk_common::{BusDevice, BusId};
+use super::{BusDevice, BusId};
 
 /// The `BusDeviceWrapper` struct wraps a `BusDevice` trait object
 pub struct BusDeviceWrapper<D> {

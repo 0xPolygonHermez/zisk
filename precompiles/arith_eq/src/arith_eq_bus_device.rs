@@ -4,8 +4,10 @@
 
 use std::ops::Add;
 
-use sm_common::{BusDeviceMode, Counter, Metrics};
-use zisk_common::{BusDevice, BusId, ExtOperationData, OperationBusData, OPERATION_BUS_ID};
+use zisk_common::{
+    BusDevice, BusDeviceMode, BusId, Counter, ExtOperationData, Metrics, OperationBusData,
+    OPERATION_BUS_ID,
+};
 use zisk_core::ZiskOperationType;
 
 use crate::mem_inputs::{

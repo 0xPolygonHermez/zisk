@@ -1,8 +1,7 @@
 //! The `RomPlanner` module defines a planner for organizing execution plans for ROM-related
 //! operations. It aggregates ROM metrics and generates a plan for the execution flow.
 
-use sm_common::{BusDeviceMetrics, CheckPoint, InstanceType, Plan, Planner};
-use zisk_common::ChunkId;
+use zisk_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Plan, Planner};
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 /// The `RomPlanner` struct creates an execution plan from aggregated ROM metrics.

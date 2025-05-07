@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc};
 use p3_field::PrimeField64;
 use zisk_common::{BusDevice, PayloadType, OPERATION_BUS_ID};
 
-use sm_common::{
+use zisk_common::{
     table_instance_array, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
     InstanceInfo, Planner, TableInfo,
 };

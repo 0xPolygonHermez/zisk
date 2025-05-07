@@ -8,8 +8,7 @@ use std::{
     sync::{atomic::AtomicU32, Arc},
 };
 
-use sm_common::{CounterStats, Metrics};
-use zisk_common::{BusDevice, BusId, RomBusData, RomData, ROM_BUS_ID};
+use zisk_common::{BusDevice, BusId, CounterStats, Metrics, RomBusData, RomData, ROM_BUS_ID};
 
 /// The `RomCounter` struct represents a counter that monitors ROM-related metrics
 /// on the data bus.

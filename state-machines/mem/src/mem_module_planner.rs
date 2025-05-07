@@ -2,8 +2,7 @@ use rayon::{prelude::*, ThreadPoolBuilder};
 use std::sync::Arc;
 
 use crate::{MemCounters, MemPlanCalculator, UsesCounter, STEP_MEMORY_MAX_DIFF};
-use sm_common::{CheckPoint, InstanceType, Plan};
-use zisk_common::{ChunkId, SegmentId};
+use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 
 const REGISTERS_COUNT: usize = 32;
 

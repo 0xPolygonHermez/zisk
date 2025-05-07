@@ -28,7 +28,6 @@ required-features = ["test_data"]
 
 
 [dependencies]
-sm-common = { path = "../../state-machines/common" }
 zisk-core = { path = "../../core" }
 zisk-pil = { path = "../../pil" }
 precompiles-common = { path = "../common" }
@@ -64,7 +63,8 @@ path-clean = "1.0"
 nom = "7"
 
 [features]
-default = []
+default = ["distributed"]
 no_lib_link = ["proofman-common/no_lib_link"]
+distributed = ["proofman-common/distributed", "witness/distributed"]
 test_data = []
 test_data_secp256k1 = []

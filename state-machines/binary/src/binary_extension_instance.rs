@@ -7,13 +7,11 @@
 use crate::{BinaryExtensionCollector, BinaryExtensionSM};
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use sm_common::{
-    BusDeviceWrapper, CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType,
-};
 use std::{collections::HashMap, sync::Arc};
-use zisk_common::BusDevice;
-use zisk_common::ChunkId;
-use zisk_common::PayloadType;
+use zisk_common::{
+    BusDevice, BusDeviceWrapper, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx,
+    InstanceType, PayloadType,
+};
 use zisk_pil::BinaryExtensionTrace;
 
 /// The `BinaryExtensionInstance` struct represents an instance for binary extension-related witness

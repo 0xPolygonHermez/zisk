@@ -7,11 +7,10 @@ use std::sync::{atomic::AtomicU32, Arc};
 use crate::{rom_asm_worker::RomAsmWorker, rom_counter::RomCounter, RomSM};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use sm_common::{
-    create_atomic_vec, BusDeviceWrapper, CheckPoint, CounterStats, Instance, InstanceCtx,
-    InstanceType, Metrics,
+use zisk_common::{
+    create_atomic_vec, BusDevice, BusDeviceWrapper, BusId, CheckPoint, ChunkId, CounterStats,
+    Instance, InstanceCtx, InstanceType, Metrics, PayloadType, ROM_BUS_ID,
 };
-use zisk_common::{BusDevice, BusId, ChunkId, PayloadType, ROM_BUS_ID};
 use zisk_core::ZiskRom;
 
 /// The `RomInstance` struct represents an instance to perform the witness computations for
