@@ -157,13 +157,13 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     for (int i = 0; i < RC; i++) {
         state[i] = 0;
     }
-    // Update the state
+    // Update the state, the Sha256 state is represented in big endian
     const int RB_OFFSET = RB / bits_in_parallel;
     for (int i = 0; i < RB; i++) {
         const int state_bit = i % bits_in_parallel;
         const int state_idx = (i - state_bit) / bits_in_parallel;
         for (int j = 0; j < RC; j++) {
-            state[j] += bit[state_bit]'(NUM_SHA256F_PER_CIRCUIT*(RB_OFFSET * j + state_idx)) * 2**i;
+            state[RC - 1 - j] += bit[state_bit]'(NUM_SHA256F_PER_CIRCUIT*(RB_OFFSET * j + state_idx)) * 2**(RB - 1 - i);
         }
     }
 

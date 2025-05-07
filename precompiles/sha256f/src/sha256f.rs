@@ -46,7 +46,6 @@ impl Sha256fSM {
     /// # Returns
     /// A new `Sha256fSM` instance.
     pub fn new(sha256f_table_sm: Arc<Sha256fTableSM>, script_path: PathBuf) -> Arc<Self> {
-        let script_path = PathBuf::from("precompiles/sha256f/src/sha256f_script.json");
         let script = fs::read_to_string(script_path).expect("Failed to read sha256f_script.json");
         let script: Script =
             serde_json::from_str(&script).expect("Failed to parse sha256f_script.json");
