@@ -20,5 +20,5 @@ p3-field = { workspace = true }
 rayon = { workspace = true }
 
 [features]
-default = ["distributed"]
-distributed = ["proofman-common/distributed"]
+default = []
+disable-distributed = ["proofman-common/disable-distributed"]
