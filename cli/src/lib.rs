@@ -1,7 +1,5 @@
 pub mod commands;
-mod proof_log;
-pub mod toolchain;
-pub mod ux;
+mod toolchain;
 
 use anyhow::{Context, Result};
 use futures::StreamExt;

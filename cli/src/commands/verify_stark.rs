@@ -12,7 +12,7 @@ use proofman::verify_proof_from_file;
 
 use crate::ZISK_VERSION_MESSAGE;
 
-use super::{get_default_stark_info, get_default_verifier_bin, get_default_verkey};
+use zisk::common::{get_default_stark_info, get_default_verifier_bin, get_default_verkey};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]

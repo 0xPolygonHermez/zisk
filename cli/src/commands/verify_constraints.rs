@@ -1,3 +1,4 @@
+use crate::ZISK_VERSION_MESSAGE;
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
@@ -16,14 +17,8 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
 };
-
-use crate::{
-    commands::{Field, ZiskLibInitFn},
-    ux::print_banner,
-    ZISK_VERSION_MESSAGE,
-};
-
-use super::{get_default_proving_key, get_default_witness_computation_lib};
+use zisk::common::{get_default_proving_key, get_default_witness_computation_lib};
+use zisk::common::{print_banner, Field, ZiskLibInitFn};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]

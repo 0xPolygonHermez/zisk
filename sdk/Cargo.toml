@@ -1,0 +1,27 @@
+[package]
+name = "zisk"
+description = "ZisK is an innovative and high-performance zkVM that enables trustless, verifiable computation, allowing developers to generate and verify proofs for arbitrary program execution efficiently."
+readme = "../README.md"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
+
+[dependencies]
+anyhow = { version = "1.0.86", features = ["backtrace"] }
+clap = { version = "4.5.7", features = ["derive", "env"] }
+colored = { workspace = true }
+executor = { path = "../executor", version = "0.7.0"}
+libloading = "0.8.4"
+log = { workspace = true }
+p3-goldilocks = { workspace = true }
+proofman = { workspace = true }
+proofman-common = { workspace = true }
+rom-setup = { path = "../rom-setup", version = "0.7.0" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sysinfo = { workspace = true }
+thiserror = "2.0.12"
+witness = { workspace = true }

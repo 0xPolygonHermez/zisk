@@ -1,17 +1,15 @@
 // extern crate env_logger;
-use crate::commands::Field;
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
 use proofman_common::{initialize_logger, DebugInfo};
 use std::path::PathBuf;
+use zisk::common::{get_default_proving_key, Field};
 
 use p3_goldilocks::Goldilocks;
 
 use proofman::ProofMan;
 use proofman_common::{ProofOptions, VerboseMode};
-
-use super::get_default_proving_key;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
