@@ -6,7 +6,7 @@ require "std_connection.pil"
 // For reference: https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf
 
 const int SHA256F_OP = 0xF9;
-const int SHA256F_CIRCUIT_ID = 0x191;
+const int SHA256F_CIRCUIT_ID = 401;
 
 airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, const int bits_in_parallel = 2, const int chunks = 9, const int bits = 7, const int operation_bus_id) {
     // Sha256-f circuit size

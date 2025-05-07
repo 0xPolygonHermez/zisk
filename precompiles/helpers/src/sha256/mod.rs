@@ -111,7 +111,7 @@ pub fn sha256f(
             let ref_idx = SHA256F_GATE_CONFIG.sin_first_ref
                 + group * SHA256F_GATE_CONFIG.sin_ref_distance
                 + group_pos;
-            gate_state.borrow_mut().gates[ref_idx as usize].pins[PinId::A].bit = bits[63 - j];
+            gate_state.borrow_mut().gates[ref_idx as usize].pins[PinId::A].bit = bits[j];
         }
     }
 
@@ -128,7 +128,19 @@ pub fn sha256f(
 
     gate_state.borrow_mut().copy_sout_to_sin_and_reset_refs();
 
-    gate_state.borrow().get_output_u64(state);
+    let mut output = [0u8; 32];
+    gate_state.borrow().get_output(&mut output);
+
+    // Change order for each 32-bit word
+    for i in 0..8 {
+        let out_32 =
+            output[i * 4..(i + 1) * 4].iter().rev().fold(0u32, |acc, &x| (acc << 8) | x as u32);
+        if i % 2 == 0 {
+            state[i / 2] = (out_32 as u64) << 32;
+        } else {
+            state[i / 2] |= out_32 as u64;
+        }
+    }
 
     None
 }
@@ -231,18 +243,18 @@ mod tests {
     fn test_empty_string_f() {
         let mut state = [0u64; 4];
         for i in 0..4 {
-            let lo = SHA256_INITIAL_HASH_STATE[2 * i] as u64;
-            let hi = SHA256_INITIAL_HASH_STATE[2 * i + 1] as u64;
+            let lo = SHA256_INITIAL_HASH_STATE[2 * i + 1] as u64;
+            let hi = SHA256_INITIAL_HASH_STATE[2 * i] as u64;
             state[i] = (hi << 32) | lo;
         }
 
         let mut input = [0u64; 8];
-        input[0] = 0x0000_0001_0000_0000;
+        input[0] = 0x8000_0000_0000_0000;
         sha256f(&mut state, &input, false);
 
         // Expected Sha256f
         let expected_hash: [u64; 4] =
-            [0x98FC1C14E3B0C442, 0x996FB9249AFBF4C8, 0x649B934C27AE41E4, 0x7852B855A495991B];
+            [0xE3B0C44298FC1C14, 0x9AFBF4C8996FB924, 0x27AE41E4649B934C, 0xA495991B7852B855];
         assert_eq!(state[..], expected_hash[..]);
     }
 
@@ -250,19 +262,19 @@ mod tests {
     fn test_one_block_message_f() {
         let mut state = [0u64; 4];
         for i in 0..4 {
-            let lo = SHA256_INITIAL_HASH_STATE[2 * i] as u64;
-            let hi = SHA256_INITIAL_HASH_STATE[2 * i + 1] as u64;
+            let lo = SHA256_INITIAL_HASH_STATE[2 * i + 1] as u64;
+            let hi = SHA256_INITIAL_HASH_STATE[2 * i] as u64;
             state[i] = (hi << 32) | lo;
         }
 
         let mut input = [0u64; 8];
-        input[0] = 0x01C6_4686_0000_0000;
-        input[7] = 0x0000_0000_1800_0000;
+        input[0] = 0x6162_6380_0000_0000;
+        input[7] = 0x18;
         sha256f(&mut state, &input, false);
 
         // Expected Sha256f
         let expected_hash: [u64; 4] =
-            [0x8F01CFEABA7816BF, 0x5DAE2223414140DE, 0x96177A9CB00361A3, 0xF20015ADB410FF61];
+            [0xBA7816BF8F01CFEA, 0x414140DE5DAE2223, 0xB00361A396177A9C, 0xB410FF61F20015AD];
         assert_eq!(state[..], expected_hash[..]);
     }
 }

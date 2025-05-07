@@ -118,23 +118,6 @@ impl GateState {
         }
     }
 
-    pub fn get_output_u64(&self, output: &mut [u64]) {
-        assert!(self.gate_config.sout_ref_number >= 256);
-
-        for i in 0..4 {
-            let mut bytes = [0u8; 64];
-            for j in 0..64 {
-                let group = (i * 64 + j) / self.gate_config.sin_ref_group_by;
-                let group_pos = (i * 64 + j) % self.gate_config.sin_ref_group_by;
-                let ref_idx = self.gate_config.sin_first_ref
-                    + group * self.gate_config.sin_ref_distance
-                    + group_pos;
-                bytes[j as usize] = self.gates[ref_idx as usize].pins[PinId::A].bit;
-            }
-            output[i as usize] = bits_to_u64(&bytes);
-        }
-    }
-
     /// Get a free reference (the next one) and increment counter
     pub fn get_free_ref(&mut self) -> u64 {
         assert!(self.next_ref < self.gate_config.max_refs);

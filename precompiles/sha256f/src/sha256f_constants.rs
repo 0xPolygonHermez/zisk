@@ -1,34 +1,32 @@
-//! This module defines constants for the Sha256 precompile.
-
-/// Generic Parameters
+// Generic Parameters
 pub const STATE_SIZE_BITS: usize = 256;
 pub const INPUT_SIZE_BITS: usize = 512;
-pub const INPUT_DATA_SIZE_BITS: usize = STATE_SIZE_BITS + INPUT_SIZE_BITS;
+pub const INPUT_DATA_SIZE_BITS: usize = STATE_SIZE_BITS + INPUT_SIZE_BITS; // 768
 pub const INPUT_DATA_SIZE_U64: usize = INPUT_DATA_SIZE_BITS / 64; // 12
 pub const OUTPUT_SIZE_BITS: usize = 256;
 pub const RB: usize = 32;
-pub const RB_BLOCKS_TO_PROCESS: usize = INPUT_DATA_SIZE_BITS / RB;
+pub const RC: usize = 2;
+pub const BITS_IN_PARALLEL: usize = 2;
 
-/// Sha256f circuit Parameters
+// Sha256f circuit Parameters
 pub const BITS_SHA256F: usize = 7;
 pub const CHUNKS_SHA256F: usize = 8;
-pub const NUM_SHA256F_PER_CIRCUIT: usize = BITS_SHA256F * CHUNKS_SHA256F;
-pub const RB_SIZE: usize = NUM_SHA256F_PER_CIRCUIT * RB;
-pub const BLOCKS_PER_CIRCUIT: usize = NUM_SHA256F_PER_CIRCUIT * RB * RB_BLOCKS_TO_PROCESS;
 pub const P2_BITS_SHA256F: u64 = 1 << BITS_SHA256F;
 pub const P2_CHUNK_BITS_SHA256F: u64 = 1 << (BITS_SHA256F * CHUNKS_SHA256F);
 pub const MASK_BITS_SHA256F: u64 = P2_BITS_SHA256F - 1;
 pub const MASK_CHUNK_BITS_SHA256F: u64 = P2_CHUNK_BITS_SHA256F - 1;
+pub const NUM_SHA256F_PER_CIRCUIT: usize = BITS_SHA256F * CHUNKS_SHA256F;
+pub const RB_SIZE: usize = NUM_SHA256F_PER_CIRCUIT * RB * RC / BITS_IN_PARALLEL;
+pub const INPUT_SIZE: usize = NUM_SHA256F_PER_CIRCUIT * INPUT_DATA_SIZE_BITS / BITS_IN_PARALLEL;
 
-/// Sha256f circuit configuration
-pub const BITS_IN_PARALLEL: usize = 2;
+// Sha256f circuit configuration
 pub const STATE_IN_FIRST_REF: usize = NUM_SHA256F_PER_CIRCUIT + 1;
 pub const STATE_IN_REF_DISTANCE: usize = NUM_SHA256F_PER_CIRCUIT;
 pub const STATE_OUT_FIRST_REF: usize =
     STATE_IN_FIRST_REF + INPUT_DATA_SIZE_BITS * STATE_IN_REF_DISTANCE / BITS_IN_PARALLEL;
 pub const STATE_OUT_REF_DISTANCE: usize = NUM_SHA256F_PER_CIRCUIT;
 
-/// Sha256f Table Parameters
+// Sha256f Table Parameters
 pub const CHUNKS_SHA256F_TABLE: usize = 1;
 pub const BITS_SHA256F_TABLE: usize = BITS_SHA256F;
 pub const BITS_A: usize = BITS_SHA256F_TABLE - CHUNKS_SHA256F_TABLE + 1;

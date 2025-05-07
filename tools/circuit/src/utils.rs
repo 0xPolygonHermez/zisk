@@ -88,11 +88,18 @@ pub fn bits_to_u32_msb(bits: &[u8; 32]) -> u32 {
 
 /// Converts u64 to bits (LSB first)
 pub fn u64_to_bits(value: u64) -> [u8; 64] {
-    let mut bits = [0u8; 64];
-    for i in 0..64 {
-        bits[i] = ((value >> i) as u8) & 1;
-    }
-    bits
+    // Divide into two of u32
+    let lo = (value & 0xFFFF_FFFF) as u32;
+    let hi = (value >> 32) as u32;
+
+    let lo_bits = u32_to_bits(lo);
+    let hi_bits = u32_to_bits(hi);
+
+    // Combine into a single array
+    let mut result = [0u8; 64];
+    result[..32].copy_from_slice(&hi_bits);
+    result[32..].copy_from_slice(&lo_bits);
+    result
 }
 
 pub fn bits_to_u64(bits: &[u8; 64]) -> u64 {

@@ -168,7 +168,7 @@ impl ZiskVerifyConstraints {
                     self.asm.clone(),
                     asm_rom,
                     self.input.clone(),
-                    sha256f_script
+                    sha256f_script,
                 )
                 .expect("Failed to initialize witness library");
 
