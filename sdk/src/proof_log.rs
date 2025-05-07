@@ -1,3 +1,5 @@
+//! This module provides functionality to log the results of the proof generation process.
+
 use serde::Serialize;
 use std::error::Error;
 use std::fs::File;

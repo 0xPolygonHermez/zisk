@@ -43,7 +43,7 @@ fn main() -> Result<()> {
         Cargo::Clean(cmd) => {
             cmd.run().context("Error executing Clean command")?;
         }
-        Cargo::Prove(mut cmd) => {
+        Cargo::Prove(cmd) => {
             cmd.run().context("Error executing Prove command")?;
         }
         Cargo::RomSetup(cmd) => {

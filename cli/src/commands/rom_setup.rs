@@ -5,9 +5,8 @@ use std::path::PathBuf;
 use colored::Colorize;
 use proofman_common::initialize_logger;
 
-use crate::ux::print_banner;
-
-use super::{get_default_proving_key, get_default_zisk_path};
+use zisk::common::print_banner;
+use zisk::common::{get_default_proving_key, get_default_zisk_path};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]

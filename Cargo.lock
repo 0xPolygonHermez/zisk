@@ -388,6 +388,7 @@ dependencies = [
  "vergen",
  "witness",
  "yansi",
+ "zisk",
  "zisk-core",
 ]
 
@@ -4223,6 +4224,27 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "zisk"
+version = "0.7.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "colored",
+ "executor",
+ "libloading",
+ "log",
+ "p3-goldilocks",
+ "proofman",
+ "proofman-common",
+ "rom-setup",
+ "serde",
+ "serde_json",
+ "sysinfo 0.34.2",
+ "thiserror 2.0.12",
+ "witness",
 ]
 
 [[package]]

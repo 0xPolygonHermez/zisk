@@ -33,6 +33,7 @@ serde_json = { workspace = true }
 executor = { path = "../executor" }
 rom-setup = { path = "../rom-setup" }
 zisk-core = { path = "../core" }
+zisk = { path = "../sdk" }
 
 anyhow = { version = "1.0.86", features = ["backtrace"] }
 clap = { version = "4.5.7", features = ["derive", "env"] }

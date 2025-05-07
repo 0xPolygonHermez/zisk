@@ -1,11 +1,8 @@
 pub mod commands;
-mod api;
-mod proof_log;
 mod toolchain;
-mod ux;
 
-pub use api::*;
 use anyhow::{Context, Result};
+pub use api::*;
 use futures::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::{
