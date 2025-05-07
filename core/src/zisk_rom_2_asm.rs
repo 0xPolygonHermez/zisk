@@ -88,7 +88,9 @@ pub struct ZiskAsmContext {
     mem_chunk_address: String,
     mem_chunk_start_step: String,
     fcall_ctx: String,
-    mem_active_chunk: String,
+    mem_chunk_id: String,     // 0, 1, 2, 3, 4...
+    mem_chunk_mask: String,   // Module 8 of the chunks we want to activate, e.g. 0x03
+    mem_active_chunk: String, // 1 if current chunk is active (we collect mem reads), 0 otherwise
 
     comments: bool, // true if we want to generate comments in the assembly source code
     boc: String,    // begin of comment: '/*', ';', '#', etc.
@@ -230,6 +232,8 @@ impl ZiskRom2Asm {
             ctx.mem_chunk_start_step = format!("qword {}[MEM_CHUNK_START_STEP]", ctx.ptr);
             ctx.fcall_ctx = "fcall_ctx".to_string();
             ctx.mem_active_chunk = format!("qword {}[MEM_ACTIVE_CHUNK]", ctx.ptr);
+            ctx.mem_chunk_id = format!("qword {}[MEM_CHUNK_ID]", ctx.ptr);
+            ctx.mem_chunk_mask = format!("qword {}[chunk_mask]", ctx.ptr);
         }
 
         if ctx.lib() {
@@ -262,6 +266,7 @@ impl ZiskRom2Asm {
             *code += ".comm MEM_TRACE_ADDRESS, 8, 8\n";
             *code += ".comm MEM_CHUNK_ADDRESS, 8, 8\n";
             *code += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
+            *code += ".comm MEM_CHUNK_ID, 8, 8\n";
             *code += ".comm MEM_ACTIVE_CHUNK, 8, 8\n";
 
             // Allocate space for the registers
@@ -334,10 +339,14 @@ impl ZiskRom2Asm {
             *code += ".extern trace_address_threshold\n\n";
         }
 
+        if ctx.zip() {
+            *code += ".extern chunk_mask\n";
+        }
+
         if ctx.chunks() || ctx.minimal_trace() || ctx.main_trace() || ctx.zip() {
             // Chunk start
             *code += "chunk_start:\n";
-            Self::chunk_start(&mut ctx, code);
+            Self::chunk_start(&mut ctx, code, "start");
             *code += "\tret\n\n";
 
             // Chunk end
@@ -348,7 +357,8 @@ impl ZiskRom2Asm {
             // Chunk end and start
             *code += "chunk_end_and_start:\n";
             Self::chunk_end(&mut ctx, code, "end_and_start");
-            Self::chunk_start(&mut ctx, code);
+            *code += "\n";
+            Self::chunk_start(&mut ctx, code, "end_and_start");
             *code += "\tret\n\n";
         }
 
@@ -445,10 +455,14 @@ impl ZiskRom2Asm {
             *code += &format!("\tmov {}, 0 {}\n", ctx.mem_sp, ctx.comment_str("sp = 0"));
             *code += &format!("\tmov {}, 0 {}\n", ctx.mem_end, ctx.comment_str("step = 0"));
             if ctx.zip() {
+                *code +=
+                    &format!("\tmov {}, 0 {}\n", ctx.mem_chunk_id, ctx.comment_str("chunk_id = 0"));
+            }
+            if ctx.zip() {
                 *code += &format!(
                     "\tmov {}, 0 {}\n",
                     ctx.mem_active_chunk,
-                    ctx.comment_str("mem_active_chunk = 0")
+                    ctx.comment_str("active_chunk = 0")
                 );
             }
         }
@@ -738,7 +752,7 @@ impl ZiskRom2Asm {
                                 ctx.mem_active_chunk,
                                 ctx.comment_str("mem_active_chunk == 1 ?")
                             );
-                            *code += &format!("\tjnz pc_{:x}_a_address_done\n", ctx.pc);
+                            *code += &format!("\tjz pc_{:x}_a_address_done\n", ctx.pc);
                         }
                         // If address is constant
                         if instruction.a_use_sp_imm1 == 0 {
@@ -1005,7 +1019,7 @@ impl ZiskRom2Asm {
                                 ctx.mem_active_chunk,
                                 ctx.comment_str("mem_active_chunk == 1 ?")
                             );
-                            *code += &format!("\tjnz pc_{:x}_b_address_check_done\n", ctx.pc);
+                            *code += &format!("\tjz pc_{:x}_b_address_check_done\n", ctx.pc);
                         }
                         // If address is constant
                         if instruction.b_use_sp_imm1 == 0 {
@@ -1188,7 +1202,7 @@ impl ZiskRom2Asm {
                                 ctx.mem_active_chunk,
                                 ctx.comment_str("mem_active_chunk == 1 ?")
                             );
-                            *code += &format!("\tjnz pc_{:x}_b_ind_done\n", ctx.pc);
+                            *code += &format!("\tjz pc_{:x}_b_ind_done\n", ctx.pc);
                         }
                         match instruction.ind_width {
                             8 => {
@@ -1568,20 +1582,29 @@ impl ZiskRom2Asm {
 
                     // Mem reads
                     if ctx.minimal_trace() || ctx.zip() {
-                        // If zip, check if chunk is active
-                        if ctx.zip() {
-                            *code += &format!(
-                                "\ttest {}, 1 {}\n",
-                                ctx.mem_active_chunk,
-                                ctx.comment_str("mem_active_chunk == 1 ?")
-                            );
-                            *code += &format!("\tjnz pc_{:x}_c_address_done\n", ctx.pc);
-                        }
                         if !instruction.store_use_sp {
                             if (instruction.store_offset & 0x7) != 0 {
+                                // If zip, check if chunk is active
+                                if ctx.zip() {
+                                    *code += &format!(
+                                        "\ttest {}, 1 {}\n",
+                                        ctx.mem_active_chunk,
+                                        ctx.comment_str("mem_active_chunk == 1 ?")
+                                    );
+                                    *code += &format!("\tjz pc_{:x}_c_address_done\n", ctx.pc);
+                                }
                                 Self::c_store_mem_not_aligned(&mut ctx, code);
                             }
                         } else {
+                            // If zip, check if chunk is active
+                            if ctx.zip() {
+                                *code += &format!(
+                                    "\ttest {}, 1 {}\n",
+                                    ctx.mem_active_chunk,
+                                    ctx.comment_str("mem_active_chunk == 1 ?")
+                                );
+                                *code += &format!("\tjz pc_{:x}_c_address_done\n", ctx.pc);
+                            }
                             *code += &format!(
                                 "\ttest {}, 0x7 {}\n",
                                 REG_ADDRESS,
@@ -1668,7 +1691,7 @@ impl ZiskRom2Asm {
                                 ctx.mem_active_chunk,
                                 ctx.comment_str("mem_active_chunk == 1 ?")
                             );
-                            *code += &format!("\tjnz pc_{:x}_c_active_chunk_done\n", ctx.pc);
+                            *code += &format!("\tjz pc_{:x}_c_active_chunk_done\n", ctx.pc);
                         }
                         match instruction.ind_width {
                             8 => {
@@ -3745,7 +3768,7 @@ impl ZiskRom2Asm {
                             ctx.mem_active_chunk,
                             ctx.comment_str("mem_active_chunk == 1 ?")
                         );
-                        *code += &format!("\tjnz pc_{:x}_keccak_active_chunk_done\n", ctx.pc);
+                        *code += &format!("\tjz pc_{:x}_keccak_active_chunk_done\n", ctx.pc);
                     }
                     *code += &format!("\tmov {}, rdi\n", REG_ADDRESS);
                     for k in 0..25 {
@@ -3811,7 +3834,7 @@ impl ZiskRom2Asm {
                             ctx.mem_active_chunk,
                             ctx.comment_str("mem_active_chunk == 1 ?")
                         );
-                        *code += &format!("\tjnz pc_{:x}_arith256_active_chunk_done\n", ctx.pc);
+                        *code += &format!("\tjz pc_{:x}_arith256_active_chunk_done\n", ctx.pc);
                     }
                     Self::precompiled_save_mem_reads(ctx, code, 5, 3, 4);
                     if ctx.zip() {
@@ -3848,7 +3871,7 @@ impl ZiskRom2Asm {
                             ctx.mem_active_chunk,
                             ctx.comment_str("mem_active_chunk == 1 ?")
                         );
-                        *code += &format!("\tjnz pc_{:x}_arith256mod_active_chunk_done\n", ctx.pc);
+                        *code += &format!("\tjz pc_{:x}_arith256mod_active_chunk_done\n", ctx.pc);
                     }
                     Self::precompiled_save_mem_reads(ctx, code, 5, 4, 4);
                     if ctx.zip() {
@@ -3885,7 +3908,7 @@ impl ZiskRom2Asm {
                             ctx.mem_active_chunk,
                             ctx.comment_str("mem_active_chunk == 1 ?")
                         );
-                        *code += &format!("\tjnz pc_{:x}_secp256k1add_active_chunk_done\n", ctx.pc);
+                        *code += &format!("\tjz pc_{:x}_secp256k1add_active_chunk_done\n", ctx.pc);
                     }
                     Self::precompiled_save_mem_reads(ctx, code, 2, 2, 8);
                     if ctx.zip() {
@@ -3922,7 +3945,7 @@ impl ZiskRom2Asm {
                             ctx.mem_active_chunk,
                             ctx.comment_str("mem_active_chunk == 1 ?")
                         );
-                        *code += &format!("\tjnz pc_{:x}_secp256k1dbl_active_chunk_done\n", ctx.pc);
+                        *code += &format!("\tjz pc_{:x}_secp256k1dbl_active_chunk_done\n", ctx.pc);
                     }
                     *code += &format!("\tmov {}, rdi\n", REG_ADDRESS);
                     for k in 0..8 {
@@ -4509,7 +4532,40 @@ impl ZiskRom2Asm {
         );
     }
 
-    fn chunk_start(ctx: &mut ZiskAsmContext, code: &mut String) {
+    fn chunk_start(ctx: &mut ZiskAsmContext, code: &mut String, id: &str) {
+        if ctx.zip() {
+            *code += &ctx.full_line_comment(
+                "If chunk_id & 0x7 == chunk_mask then activate this chunk".to_string(),
+            );
+            *code += &format!(
+                "\tmov {}, {} {}\n",
+                REG_AUX,
+                ctx.mem_chunk_id,
+                ctx.comment_str("aux = chunk_id")
+            );
+            *code += &format!("\tinc {} {}\n", ctx.mem_chunk_id, ctx.comment_str("chunk_id++"));
+            *code += &format!("\tand {}, 0x7 {}\n", REG_AUX, ctx.comment_str("aux &= mask"));
+            *code += &format!(
+                "\tcmp {}, {} {}\n",
+                REG_AUX,
+                ctx.mem_chunk_mask,
+                ctx.comment_str("aux ?= chunk_mask")
+            );
+            *code += &format!("\tjz chunk_start_{}_activate\n", id);
+            *code += &format!(
+                "\tmov {}, 0 {}\n",
+                ctx.mem_active_chunk,
+                ctx.comment_str("deactivate chunk")
+            );
+            *code += &format!("\tjmp chunk_start_{}_done\n", id);
+            *code += &format!("chunk_start_{}_activate:\n", id);
+            *code += &format!(
+                "\tmov {}, 1 {}\n",
+                ctx.mem_active_chunk,
+                ctx.comment_str("activate chunk")
+            );
+        }
+
         *code += &ctx
             .full_line_comment("Increment number of chunks (first position in trace)".to_string());
         *code += &format!(
@@ -4606,13 +4662,6 @@ impl ZiskRom2Asm {
                 &format!("\tadd {}, 33*8 {}\n", REG_ADDRESS, ctx.comment_str("address += 33*8"));
         }
 
-        *code += &ctx.full_line_comment("Reset step count down to chunk_size".to_string());
-        *code += &format!(
-            "\tmov {}, chunk_size {}\n",
-            REG_STEP,
-            ctx.comment_str("step_count_down = chunk_size")
-        );
-
         if ctx.minimal_trace() || ctx.main_trace() || ctx.zip() {
             *code += &ctx.full_line_comment("Write mem reads size".to_string());
             *code += &format!(
@@ -4638,6 +4687,16 @@ impl ZiskRom2Asm {
                 ctx.comment_str("mem_reads_size = 0")
             );
         }
+        if ctx.zip() {
+            *code += &format!("chunk_start_{}_done:\n", id);
+        }
+
+        *code += &ctx.full_line_comment("Reset step count down to chunk_size".to_string());
+        *code += &format!(
+            "\tmov {}, chunk_size {}\n",
+            REG_STEP,
+            ctx.comment_str("step_count_down = chunk_size")
+        );
     }
 
     fn chunk_end(ctx: &mut ZiskAsmContext, code: &mut String, id: &str) {
@@ -4657,6 +4716,16 @@ impl ZiskRom2Asm {
         );
         *code +=
             &format!("\tmov {}, {} {}\n", ctx.mem_step, REG_VALUE, ctx.comment_str("step = value"));
+
+        if ctx.zip() {
+            *code += &ctx.full_line_comment("If active_chunk == 0 skip this chunk".to_string());
+            *code += &format!(
+                "\tcmp {}, 0 {}\n",
+                ctx.mem_active_chunk,
+                ctx.comment_str("active_chunk ?= 0")
+            );
+            *code += &format!("\tjz chunk_end_{}_done\n", id);
+        }
 
         if ctx.minimal_trace() || ctx.zip() {
             *code += &ctx.full_line_comment("Write chunk last data".to_string());
@@ -4836,6 +4905,9 @@ impl ZiskRom2Asm {
             Self::push_internal_registers(ctx, code);
             *code += "\tcall _chunk_done\n";
             Self::pop_internal_registers(ctx, code);
+        }
+        if ctx.zip() {
+            *code += &format!("chunk_end_{}_done:\n", id);
         }
     }
 

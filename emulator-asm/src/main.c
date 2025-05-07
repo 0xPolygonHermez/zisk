@@ -103,6 +103,7 @@ bool generate_fast = false;
 
 // Zip
 bool generate_zip = false;
+uint64_t chunk_mask = 0x0; // 0, 1, 2, 3, 4, 5, 6 or 7
 
 // Maximum length of the shared memory prefix, e.g. SHMZISK12345678
 #define MAX_SHM_PREFIX_LENGTH 32
@@ -839,10 +840,11 @@ extern void _realloc_trace (void)
 
 void print_usage (void)
 {
+    char * usage = "Usage: ziskemuasm <input_file> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-h/--help print this]";
 #ifdef DEBUG
-    printf("Usage: ziskemuasm <input_file> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-v verbose on] [-k keccak trace on] [-h/--help print this]\n");
+    printf("%s [-v verbose on] [-k keccak trace on]\n", usage);
 #else
-    printf("Usage: ziskemuasm <input_file> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-h/--help print this]\n");
+    printf("%s\n", usage);
 #endif
 }
 
