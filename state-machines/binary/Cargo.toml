@@ -25,7 +25,7 @@ rayon = { workspace = true }
 num-bigint = { workspace = true }
 
 [features]
-default = ["distributed"]
+default = []
 no_lib_link = ["proofman-common/no_lib_link"]
 diagnostic = ["proofman-macros/diagnostic"]
-distributed = ["proofman-common/distributed"]
+disable-distributed = ["proofman-common/disable-distributed"]
