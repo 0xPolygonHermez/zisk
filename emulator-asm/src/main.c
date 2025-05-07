@@ -25,7 +25,7 @@ uint64_t get_max_program_pc(void);
 uint64_t get_gen_method(void);
 
 #define RAM_ADDR (uint64_t)0xa0000000
-#define RAM_SIZE (uint64_t)0x08000000 // 128MB
+#define RAM_SIZE (uint64_t)0x20000000 // 512MB
 #define SYS_ADDR RAM_ADDR
 #define SYS_SIZE (uint64_t)0x10000
 #define OUTPUT_ADDR (SYS_ADDR + SYS_SIZE)
@@ -206,7 +206,7 @@ int main(int argc, char *argv[])
 
 #ifdef DEBUG
         if (verbose) printf("Emulator C start; input shared memory ID = %s\n", input_parameter);
-#endif        
+#endif
     }
     else
     {
@@ -335,7 +335,7 @@ int main(int argc, char *argv[])
             printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
-        
+
         // Map the shared memory object into the process address space
         shmem_input_address = mmap(NULL, shmem_input_size + 32, PROT_READ /*| PROT_WRITE*/, MAP_SHARED, shmem_input_fd, 0);
         if (shmem_input_address == MAP_FAILED)
@@ -377,7 +377,7 @@ int main(int argc, char *argv[])
             printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             exit(-1);
         }
-        
+
         // Unlink input
         result = shm_unlink(shmem_input_name);
         if (result == -1)
@@ -394,7 +394,7 @@ int main(int argc, char *argv[])
     if (generate_rom_histogram)
     {
         // Get max PC values for low and high addresses
-        uint64_t max_bios_pc = get_max_bios_pc(); 
+        uint64_t max_bios_pc = get_max_bios_pc();
         uint64_t max_program_pc = get_max_program_pc();
         assert(max_bios_pc >= 0x1000);
         assert((max_bios_pc & 0x3) == 0);
@@ -413,7 +413,7 @@ int main(int argc, char *argv[])
     {
         // Make sure the output shared memory is deleted
         shm_unlink(shmem_output_name);
-        
+
         // Create the output shared memory
         shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT, 0644);
         if (shmem_output_fd < 0)
@@ -454,7 +454,7 @@ int main(int argc, char *argv[])
         // MT allocated size [8] -> to be updated after completion
         // MT used size [8] -> to be updated after completion
     }
-    
+
     /*******/
     /* RAM */
     /*******/
@@ -818,7 +818,7 @@ extern void _realloc_trace (void)
         printf("realloc_trace() failed calling ftruncate(%s) of new size=%lu errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
         exit(-1);
     }
-    
+
     // Remap the memory
     void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
     if ((uint64_t)new_address != trace_address)
@@ -954,7 +954,7 @@ void parse_arguments(int argc, char *argv[])
             exit(-1);
         }
     }
-    
+
     if (number_of_selected_generation_methods != 1)
     {
         printf("Invalid arguments: select 1 generation method, and only one\n");
@@ -1049,7 +1049,7 @@ void log_minimal_trace(void)
         printf("\tLast state:\n");
         printf("\t\tc=0x%lx\n", chunk[i]);
         i++;
-        
+
         // Log current chunk end
         printf("\tEnd:\n");
         printf("\t\tend=%lu\n", chunk[i]);
