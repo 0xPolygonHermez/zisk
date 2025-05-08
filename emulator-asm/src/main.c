@@ -270,7 +270,7 @@ int main(int argc, char *argv[])
         input_size = ((input_data_size + 16 + 7) >> 3) << 3;
 
         // Map input address space
-        void * pInput = mmap((void *)INPUT_ADDR, input_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+        void * pInput = mmap((void *)INPUT_ADDR, input_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, 0);
         if (pInput == NULL)
         {
             printf("Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
@@ -353,7 +353,7 @@ int main(int argc, char *argv[])
         input_size = ((shmem_input_size + 16 + 7) >> 3) << 3;
 
         // Map input address space
-        void * pInput = mmap((void *)INPUT_ADDR, input_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+        void * pInput = mmap((void *)INPUT_ADDR, input_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, 0);
         if (pInput == NULL)
         {
             printf("Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
@@ -436,7 +436,7 @@ int main(int argc, char *argv[])
         }
 
         // Map it to the trace address
-        void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_output_fd, 0);
+        void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ | PROT_WRITE, MAP_SHARED|MAP_FIXED, shmem_output_fd, 0);
         if (pTrace == NULL)
         {
             printf("Failed calling mmap(pTrace) errno=%d=%s\n", errno, strerror(errno));
@@ -463,7 +463,7 @@ int main(int argc, char *argv[])
     /*******/
     /* RAM */
     /*******/
-    void * pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    void * pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, 0);
     if (pRam == NULL)
     {
         printf("Failed calling mmap(ram) errno=%d=%s\n", errno, strerror(errno));
@@ -481,7 +481,7 @@ int main(int argc, char *argv[])
     /*******/
     /* ROM */
     /*******/
-    void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, 0);
     if (pRom == NULL)
     {
         printf("Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
