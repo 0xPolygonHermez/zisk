@@ -32,7 +32,7 @@ use rayon::prelude::*;
 use data_bus::{DataBus, DataBusTrait};
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::{
-    BusDeviceMetrics, BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType, Plan,
+    BusDevice, BusDeviceMetrics, CheckPoint, Instance, InstanceCtx, InstanceType, Plan,
 };
 use zisk_common::{ChunkId, PayloadType};
 use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
@@ -524,11 +524,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         // Execute collect process for each chunk
         data_buses.par_iter_mut().enumerate().for_each(|(chunk_id, data_bus)| {
             if let Some(data_bus) = data_bus {
-                ZiskEmulator::process_emu_traces::<
-                    F,
-                    BusDeviceWrapper<u64>,
-                    DataBus<PayloadType, BusDeviceWrapper<u64>>,
-                >(&self.zisk_rom, min_traces, chunk_id, data_bus);
+                ZiskEmulator::process_emu_traces::<F, Box<dyn BusDevice<u64>>>(
+                    &self.zisk_rom,
+                    min_traces,
+                    chunk_id,
+                    data_bus,
+                );
             }
         });
 
@@ -605,8 +606,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// of collectors for each instance.
     fn close_data_bus_collectors(
         &self,
-        mut data_buses: Vec<Option<DataBus<PayloadType, BusDeviceWrapper<u64>>>>,
-    ) -> Vec<(usize, BusDeviceWrapper<u64>)> {
+        mut data_buses: Vec<Option<DataBus<PayloadType, Box<dyn BusDevice<u64>>>>>,
+    ) -> Vec<(usize, Box<dyn BusDevice<u64>>)> {
         let mut collectors_by_instance = Vec::new();
         for (chunk_id, data_bus) in data_buses.iter_mut().enumerate() {
             if let Some(data_bus) = data_bus {

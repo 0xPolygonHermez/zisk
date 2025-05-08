@@ -233,11 +233,11 @@ impl ZiskEmulator {
     /// EXPAND phase
     /// Third phase of the witness computation
     /// I have a
-    pub fn process_emu_traces<F: PrimeField, T, DB: DataBusTrait<u64, T>>(
+    pub fn process_emu_traces<F: PrimeField, T>(
         rom: &ZiskRom,
         min_traces: &[EmuTrace],
         chunk_id: usize,
-        data_bus: &mut DB,
+        data_bus: &mut impl DataBusTrait<u64, T>,
     ) {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);

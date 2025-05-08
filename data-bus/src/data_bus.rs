@@ -128,7 +128,8 @@ impl<D, BD: BusDevice<D>> DataBusTrait<D, BD> for DataBus<D, BD> {
     }
 
     fn close_data_bus(mut self, execute_on_close: bool) -> Vec<(bool, BD)> {
-        let mut xxx = self.detach_devices()
+        let mut xxx = self
+            .detach_devices()
             .into_iter()
             .map(|mut device| {
                 if execute_on_close {

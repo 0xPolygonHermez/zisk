@@ -1,7 +1,7 @@
 use data_bus::{DataBus, DataBusTrait};
 use p3_field::Field;
 use proofman_common::ProofCtx;
-use zisk_common::{BusDeviceMetrics, BusDeviceWrapper, Instance, InstanceCtx, PayloadType, Plan};
+use zisk_common::{BusDevice, BusDeviceMetrics, Instance, InstanceCtx, PayloadType, Plan};
 
 use crate::NestedDeviceMetricsList;
 
@@ -44,5 +44,5 @@ pub trait SMBundle<F: Field>: Send + Sync {
         &self,
         secn_instance: &mut Box<dyn Instance<F>>,
         chunks_to_execute: Vec<bool>,
-    ) -> Vec<Option<DataBus<u64, BusDeviceWrapper<u64>>>>;
+    ) -> Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>>;
 }

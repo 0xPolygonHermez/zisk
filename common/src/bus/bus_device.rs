@@ -33,3 +33,21 @@ pub trait BusDevice<D>: Any + Send {
     /// Performs any necessary cleanup or finalization when the metrics instance is closed.
     fn on_close(&mut self) {}
 }
+
+impl BusDevice<u64> for Box<dyn BusDevice<u64>> {
+    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+        (**self).process_data(bus_id, data)
+    }
+
+    fn bus_id(&self) -> Vec<BusId> {
+        (**self).bus_id()
+    }
+
+    fn as_any(self: Box<Self>) -> Box<dyn Any> {
+        (*self).as_any()
+    }
+
+    fn on_close(&mut self) {
+        (**self).on_close()
+    }
+}

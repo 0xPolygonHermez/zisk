@@ -5,8 +5,8 @@ use p3_field::PrimeField64;
 use proofman_common::ProofCtx;
 use sm_main::MainSM;
 use zisk_common::{
-    BusDevice, BusDeviceMetrics, BusDeviceWrapper, ChunkId,
-    ComponentBuilder, Instance, InstanceCtx, PayloadType, Plan, OPERATION_BUS_ID,
+    BusDevice, BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, PayloadType,
+    Plan, OPERATION_BUS_ID,
 };
 
 use crate::{NestedDeviceMetricsList, SMBundle};
@@ -63,7 +63,7 @@ impl<F: PrimeField64> SMBundle<F> for DynSMBundle<F> {
         &self,
         secn_instance: &mut Box<dyn Instance<F>>,
         chunks_to_execute: Vec<bool>,
-    ) -> Vec<Option<DataBus<u64, BusDeviceWrapper<u64>>>> {
+    ) -> Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>> {
         chunks_to_execute
             .iter()
             .enumerate()
@@ -75,15 +75,11 @@ impl<F: PrimeField64> SMBundle<F> for DynSMBundle<F> {
                 let mut data_bus = DataBus::new();
 
                 if let Some(bus_device) = secn_instance.build_inputs_collector(ChunkId(chunk_id)) {
-                    let bus_device = BusDeviceWrapper::new(bus_device);
                     data_bus.connect_device(bus_device.bus_id(), bus_device);
 
                     for sm in &self.secondary_sm {
                         if let Some(inputs_generator) = sm.build_inputs_generator() {
-                            data_bus.connect_device(
-                                vec![OPERATION_BUS_ID],
-                                BusDeviceWrapper::new(inputs_generator),
-                            );
+                            data_bus.connect_device(vec![OPERATION_BUS_ID], inputs_generator);
                         }
                     }
 

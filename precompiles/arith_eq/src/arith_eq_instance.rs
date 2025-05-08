@@ -12,8 +12,8 @@ use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
 use zisk_common::{
-    BusDevice, BusDeviceWrapper, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance,
-    InstanceCtx, InstanceType, OperationBusData, PayloadType, OPERATION_BUS_ID,
+    BusDevice, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
+    InstanceType, OperationBusData, PayloadType, OPERATION_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithEqTrace;
@@ -61,13 +61,11 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
         &mut self,
         _pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
-        collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
+        collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
-            .map(|(_, mut collector)| {
-                collector.detach_device().as_any().downcast::<ArithEqCollector>().unwrap().inputs
-            })
+            .map(|(_, collector)| collector.as_any().downcast::<ArithEqCollector>().unwrap().inputs)
             .collect();
 
         Some(self.arith_eq_sm.compute_witness(sctx, &inputs))

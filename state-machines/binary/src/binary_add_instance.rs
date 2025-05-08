@@ -9,8 +9,8 @@ use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::{
-    BusDevice, BusDeviceWrapper, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx,
-    InstanceType, PayloadType,
+    BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
+    PayloadType,
 };
 use zisk_pil::BinaryAddTrace;
 
@@ -58,12 +58,12 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
+        collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
-            .map(|(_, mut collector)| {
-                collector.detach_device().as_any().downcast::<BinaryAddCollector>().unwrap().inputs
+            .map(|(_, collector)| {
+                collector.as_any().downcast::<BinaryAddCollector>().unwrap().inputs
             })
             .collect();
 

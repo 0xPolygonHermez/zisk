@@ -4,8 +4,8 @@ use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::sync::Arc;
 use zisk_common::{
-    BusDevice, BusDeviceWrapper, BusId, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType,
-    MemBusData, PayloadType, MEM_BUS_ID,
+    BusDevice, BusId, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, MemBusData,
+    PayloadType, MEM_BUS_ID,
 };
 
 pub struct MemAlignInstance<F: PrimeField64> {
@@ -26,14 +26,13 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
+        collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         let mut total_rows = 0;
         let inputs: Vec<_> = collectors
             .into_iter()
-            .map(|(_, mut collector)| {
-                let collector =
-                    collector.detach_device().as_any().downcast::<MemAlignCollector>().unwrap();
+            .map(|(_, collector)| {
+                let collector = collector.as_any().downcast::<MemAlignCollector>().unwrap();
 
                 total_rows += collector.rows;
 

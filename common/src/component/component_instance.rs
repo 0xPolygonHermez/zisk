@@ -6,7 +6,7 @@ use crate::{BusDevice, ChunkId, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 
-use crate::{BusDeviceWrapper, CheckPoint};
+use crate::CheckPoint;
 
 /// Represents the type of an instance, either a standalone instance or a table.
 #[derive(Debug, PartialEq)]
@@ -36,7 +36,7 @@ pub trait Instance<F: PrimeField>: Send + Sync {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        _collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
+        _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         None
     }
@@ -93,8 +93,7 @@ macro_rules! table_instance {
 
         use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
         use zisk_common::{
-            BusDevice, BusDeviceWrapper, BusId, CheckPoint, Instance, InstanceCtx, InstanceType,
-            PayloadType,
+            BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
         };
         use zisk_pil::$Trace;
 
@@ -128,7 +127,7 @@ macro_rules! table_instance {
                 &mut self,
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
-                _collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
+                _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
             ) -> Option<AirInstance<F>> {
                 let mut trace = $Trace::new();
 
@@ -193,8 +192,7 @@ macro_rules! table_instance_array {
 
         use proofman_common::{AirInstance, ProofCtx, SetupCtx, TraceInfo};
         use zisk_common::{
-            BusDevice, BusDeviceWrapper, BusId, CheckPoint, Instance, InstanceCtx, InstanceType,
-            PayloadType,
+            BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
         };
         use zisk_pil::$Trace;
 
@@ -228,7 +226,7 @@ macro_rules! table_instance_array {
                 &mut self,
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
-                _collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
+                _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
             ) -> Option<AirInstance<F>> {
                 let mut trace = $Trace::new();
 

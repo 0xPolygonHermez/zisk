@@ -25,7 +25,7 @@ pub struct WitnessLib<F: PrimeField64> {
     asm_rom_path: Option<PathBuf>,
     input_data_path: Option<PathBuf>,
     keccak_path: PathBuf,
-    executor: Option<Arc<ZiskExecutor<F, DynSMBundle<F>>>>,
+    executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
 }
 
 #[no_mangle]
@@ -84,26 +84,26 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let keccakf_sm = KeccakfManager::new::<F>(self.keccak_path.clone());
         let arith_eq_sm = ArithEqManager::new(std.clone());
 
-        let sm_bundle = DynSMBundle::new(vec![
-            mem_sm.clone(),
-            rom_sm.clone(),
-            binary_sm.clone(),
-            arith_sm.clone(),
-            keccakf_sm.clone(),
-            arith_eq_sm.clone(),
-        ]);
-
-        // let sm_bundle = StaticSMBundle::new(
+        // let sm_bundle = DynSMBundle::new(vec![
         //     mem_sm.clone(),
         //     rom_sm.clone(),
         //     binary_sm.clone(),
         //     arith_sm.clone(),
         //     keccakf_sm.clone(),
         //     arith_eq_sm.clone(),
-        // );
+        // ]);
+
+        let sm_bundle = StaticSMBundle::new(
+            mem_sm.clone(),
+            rom_sm.clone(),
+            binary_sm.clone(),
+            arith_sm.clone(),
+            keccakf_sm.clone(),
+            arith_eq_sm.clone(),
+        );
 
         // Step 5: Create the executor and register the secondary state machines
-        let executor: ZiskExecutor<F, DynSMBundle<F>> = ZiskExecutor::new(
+        let executor: ZiskExecutor<F, StaticSMBundle<F>> = ZiskExecutor::new(
             self.elf_path.clone(),
             self.asm_path.clone(),
             self.asm_rom_path.clone(),

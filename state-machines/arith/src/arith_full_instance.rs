@@ -9,8 +9,8 @@ use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::{
-    BusDevice, BusDeviceWrapper, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData,
-    Instance, InstanceCtx, InstanceType, OperationData, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
+    InstanceType, OperationData, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
@@ -59,17 +59,12 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
+        collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
-            .map(|(_, mut collector)| {
-                collector
-                    .detach_device()
-                    .as_any()
-                    .downcast::<ArithInstanceCollector>()
-                    .unwrap()
-                    .inputs
+            .map(|(_, collector)| {
+                collector.as_any().downcast::<ArithInstanceCollector>().unwrap().inputs
             })
             .collect();
 
