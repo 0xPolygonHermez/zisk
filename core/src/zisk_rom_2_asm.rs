@@ -417,12 +417,12 @@ impl ZiskRom2Asm {
         }
 
         *code += &format!("\n{}\n", ctx.comment_str("ZisK registers initialization"));
-        *code += &format!("\tmov {}, 0 {}\n", REG_A, ctx.comment_str("a=0"));
-        *code += &format!("\tmov {}, 0 {}\n", REG_B, ctx.comment_str("b=0"));
-        *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c=0"));
-        *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag=0"));
-        *code += &format!("\tmov {}, 0 {}\n", REG_PC, ctx.comment_str("pc=0"));
-        *code += &format!("\tmov {}, 0 {}\n", REG_STEP, ctx.comment_str("step=0"));
+        *code += &format!("\txor {}, {} {}\n", REG_A, REG_A, ctx.comment_str("a = 0"));
+        *code += &format!("\txor {}, {} {}\n", REG_B, REG_B, ctx.comment_str("b = 0"));
+        *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+        *code += &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
+        *code += &format!("\txor {}, {} {}\n", REG_PC, REG_PC, ctx.comment_str("pc = 0"));
+        *code += &format!("\txor {}, {} {}\n", REG_STEP, REG_STEP, ctx.comment_str("step = 0"));
 
         // Initialize registers to zero
         *code += &ctx.full_line_comment("Set RISC-V registers to zero".to_string());
@@ -2389,7 +2389,8 @@ impl ZiskRom2Asm {
         let zisk_op = ZiskOp::try_from_code(opcode).unwrap();
         match zisk_op {
             ZiskOp::Flag => {
-                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("Flag: c = 0"));
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Flag: c = 0"));
                 ctx.c.is_constant = true;
                 ctx.c.constant_value = 0;
                 ctx.c.string_value = "0".to_string();
@@ -2712,8 +2713,9 @@ impl ZiskRom2Asm {
                     ctx.comment_str("Eq: a == b ?")
                 );
                 *code += &format!("\tje pc_{:x}_equal_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
-                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_equal_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_equal_true:\n", ctx.pc);
                 *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
@@ -2748,8 +2750,9 @@ impl ZiskRom2Asm {
                     );
                 }
                 *code += &format!("\tje pc_{:x}_equal_w_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 {}n", REG_C, ctx.comment_str("c = 0"));
-                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_equal_w_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_equal_true:\n", ctx.pc);
                 *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
@@ -2766,8 +2769,9 @@ impl ZiskRom2Asm {
                     ctx.comment_str("Ltu: a == b ?")
                 );
                 *code += &format!("\tjb pc_{:x}_ltu_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
-                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_ltu_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_ltu_true:\n", ctx.pc);
                 *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
@@ -2795,8 +2799,9 @@ impl ZiskRom2Asm {
                     ctx.comment_str("Lt: a == b ?")
                 );
                 *code += &format!("\tjl pc_{:x}_lt_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
-                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_lt_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_lt_true:\n", ctx.pc);
                 *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
@@ -2823,8 +2828,9 @@ impl ZiskRom2Asm {
                     );
                 }
                 *code += &format!("\tjb pc_{:x}_ltuw_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
-                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_ltuw_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_ltuw_true:\n", ctx.pc);
                 *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
@@ -2851,8 +2857,9 @@ impl ZiskRom2Asm {
                     );
                 }
                 *code += &format!("\tjl pc_{:x}_ltw_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
-                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_ltw_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_ltw_true:\n", ctx.pc);
                 *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
@@ -2880,8 +2887,9 @@ impl ZiskRom2Asm {
                     ctx.comment_str("Leu: a == b ?")
                 );
                 *code += &format!("\tpc_{:x}_jbe leu_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
-                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tpc_{:x}_jmp leu_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_leu_true:\n", ctx.pc);
                 *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
@@ -2909,8 +2917,9 @@ impl ZiskRom2Asm {
                     ctx.comment_str("Le: a == b ?")
                 );
                 *code += &format!("\tjle pc_{:x}_lte_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
-                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_lte_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_lte_true:\n", ctx.pc);
                 *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
@@ -2937,8 +2946,9 @@ impl ZiskRom2Asm {
                     );
                 }
                 *code += &format!("\tjbe pc_{:x}_leuw_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
-                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_leuw_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_leuw_true:\n", ctx.pc);
                 *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
@@ -2965,8 +2975,9 @@ impl ZiskRom2Asm {
                     );
                 }
                 *code += &format!("\tjle pc_{:x}_lew_true\n", ctx.pc);
-                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
-                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_lew_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_lew_true:\n", ctx.pc);
                 *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
@@ -3217,12 +3228,6 @@ impl ZiskRom2Asm {
                 );
                 *code += &format!("pc_{:x}_remu_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-
-                // s += &format!("\tmov {}, 0 ; Remu: c = remainder(rdx) */\n", REG_ADDRESS);
-                // s += &format!(
-                //     "\tmov {}, [{}] ; Remu: c = remainder(rdx) */\n",
-                //     REG_ADDRESS, REG_ADDRESS
-                // );
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Div => {
@@ -3401,8 +3406,12 @@ impl ZiskRom2Asm {
                     ctx.pc,
                     ctx.comment_str("Rem: if b is not 0xffffffffffffffff, divide")
                 );
-                *code +=
-                    &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("Rem: set result to 0"));
+                *code += &format!(
+                    "\txor {}, {} {}\n",
+                    REG_C,
+                    REG_C,
+                    ctx.comment_str("Rem: set result to 0")
+                );
 
                 *code += &format!("\tje pc_{:x}_rem_done\n", ctx.pc);
 
@@ -3819,7 +3828,8 @@ impl ZiskRom2Asm {
                 Self::pop_internal_registers(ctx, code);
 
                 // Set result
-                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("Keccak: c=0"));
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Keccak: c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -3865,7 +3875,7 @@ impl ZiskRom2Asm {
                 Self::pop_internal_registers(ctx, code);
 
                 // Set result
-                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -3904,7 +3914,7 @@ impl ZiskRom2Asm {
                 Self::pop_internal_registers(ctx, code);
 
                 // Set result
-                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -3943,7 +3953,7 @@ impl ZiskRom2Asm {
                 Self::pop_internal_registers(ctx, code);
 
                 // Set result
-                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -4006,7 +4016,7 @@ impl ZiskRom2Asm {
                 Self::pop_internal_registers(ctx, code);
 
                 // Set result
-                *code += &format!("\tmov {}, 0 {}\n", REG_C, ctx.comment_str("c = 0"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -4705,7 +4715,8 @@ impl ZiskRom2Asm {
             );
             *code += &ctx.full_line_comment("Reset mem_reads size".to_string());
             *code += &format!(
-                "\tmov {}, 0 {}\n",
+                "\txor {}, {} {}\n",
+                REG_MEM_READS_SIZE,
                 REG_MEM_READS_SIZE,
                 ctx.comment_str("mem_reads_size = 0")
             );
