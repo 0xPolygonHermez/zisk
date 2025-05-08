@@ -2,7 +2,6 @@ pub mod commands;
 mod toolchain;
 
 use anyhow::{Context, Result};
-pub use api::*;
 use futures::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::{

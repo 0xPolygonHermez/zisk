@@ -33,28 +33,44 @@ impl Prover {
         PathBuf::from(format!("{}/{}", get_home_dir(), DEFAULT_CACHE_PATH))
     }
 
-    fn get_asm_files(context: &ProveContext) -> Result<Option<PathBuf>, ProverError> {
-        let mut asm: Option<PathBuf> = None;
+    fn get_asm_files(
+        context: &ProveContext,
+    ) -> Result<(Option<PathBuf>, Option<PathBuf>), ProverError> {
+        // If it's macOS we need to use the emulator since ASM is not supported
+        let emulator = if cfg!(target_os = "macos") { true } else { context.config.emulator };
+
+        let mut asm_mt_path: Option<PathBuf> = context.config.asm.clone();
+        let mut asm_rom_path: Option<PathBuf> = None;
 
         // If emulator is not enabled and no ASM file is provided
-        if !context.config.emulator && context.config.asm.is_none() {
+        if !emulator && asm_mt_path.is_none() {
             let stem = context.elf.file_stem().unwrap().to_str().unwrap();
 
             let hash = get_elf_data_hash(&context.elf)
                 .map_err(|e| ProverError::ElfHashError(e.to_string()))?;
 
-            let asm_filename = format!("{stem}-{hash}.bin");
-            asm = Some(Self::default_cache_path().join(&asm_filename));
+            let asm_mt_filename = format!("{stem}-{hash}.bin");
+            let asm_rom_filename = format!("{stem}-{hash}-rom.bin");
+            asm_mt_path = Some(Self::default_cache_path().join(&asm_mt_filename));
+            asm_rom_path = Some(Self::default_cache_path().join(&asm_rom_filename));
         }
 
-        // If the ASM file is set, check if it exists
-        if let Some(path) = &asm {
+        // If the asm_mt_path is set, check if the file exists
+        if let Some(path) = &asm_mt_path {
             if !path.exists() {
                 return Err(ProverError::AsmLoadError(path.to_string_lossy().into()));
             }
         }
 
-        Ok(asm)
+        // TODO: If the config.asm is set using cli parameter, the asm_rom_path will be always None
+        // If the asm_rom_path is set, check if the file exists
+        if let Some(path) = &asm_rom_path {
+            if !path.exists() {
+                return Err(ProverError::AsmLoadError(path.to_string_lossy().into()));
+            }
+        }
+
+        Ok((asm_mt_path, asm_rom_path))
     }
 
     fn get_elf_bin_path(context: &ProveContext) -> Result<PathBuf, ProverError> {
@@ -123,9 +139,10 @@ impl Prover {
                 let witness_lib = witness_lib_constructor(
                     context.config.verbose.into(),
                     context.elf.clone(),
-                    context.asm_path.clone(),
+                    context.asm_mt_path.clone(),
+                    context.asm_rom_path.clone(),
                     context.input.clone(),
-                    context.config.keccak_script.clone().into(),
+                    context.config.sha256f_script.clone().into(),
                 )
                 .expect("Failed to initialize witness library");
 
@@ -148,7 +165,8 @@ impl Prover {
             config: config.unwrap_or_else(ProveConfig::new),
             ..Default::default()
         };
-        context.asm_path = Self::get_asm_files(&context)?;
+        // TODO: Pass mutable context to get_asm_files and get_elf_bin_path
+        (context.asm_mt_path, context.asm_rom_path) = Self::get_asm_files(&context)?;
         context.elf_bin_path = Self::get_elf_bin_path(&context)?;
 
         // Initialize the logger

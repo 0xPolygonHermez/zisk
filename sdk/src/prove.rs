@@ -1,7 +1,7 @@
 //! This module provides the configuration and context for the proving process.
 //!
 use crate::common::{
-    print_banner, Field, KeccakScriptPath, OutputPath, ProvingKeyPath, WitnessLibPath,
+    print_banner, Field, OutputPath, ProvingKeyPath, Sha256fScriptPath, WitnessLibPath,
 };
 use colored::Colorize;
 use proofman_common::{json_to_debug_instances_map, DebugInfo, ModeName};
@@ -44,7 +44,7 @@ pub struct ProveConfig {
     pub debug_info: DebugInfo,
 
     /// Keccak script file path.
-    pub keccak_script: KeccakScriptPath,
+    pub sha256f_script: Sha256fScriptPath,
 }
 
 impl ProveConfig {
@@ -114,10 +114,12 @@ impl ProveConfig {
         self
     }
 
-    pub fn keccak_script(mut self, path: Option<impl Into<PathBuf>>) -> Self {
-        self.keccak_script = KeccakScriptPath::new(path);
+    pub fn sha256f_script(mut self, path: Option<impl Into<PathBuf>>) -> Self {
+        self.sha256f_script = Sha256fScriptPath::new(path);
         self
     }
+
+    // TODO: Add function to check if all paths exists
 }
 
 impl Default for ProveConfig {
@@ -134,7 +136,7 @@ impl Default for ProveConfig {
             verify_proofs: false,
             verbose: 0,
             debug_info: DebugInfo::default(),
-            keccak_script: KeccakScriptPath::default(),
+            sha256f_script: Sha256fScriptPath::default(),
         }
     }
 }
@@ -151,8 +153,11 @@ pub struct ProveContext {
     /// Prove configuration options
     pub config: ProveConfig,
 
-    /// Path to the ASM file (optional)
-    pub asm_path: Option<PathBuf>,
+    /// Path to the ASM_MT file (optional)
+    pub asm_mt_path: Option<PathBuf>,
+
+    /// Path to the ASM_ROM file (optional)
+    pub asm_rom_path: Option<PathBuf>,
 
     /// Path to the ELF binary file
     pub elf_bin_path: PathBuf,
@@ -171,7 +176,7 @@ impl ProveContext {
 
         println!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display());
 
-        if let Some(asm_path) = &self.asm_path {
+        if let Some(asm_path) = &self.asm_mt_path {
             println!("{: >12} {}", "ASM runner".bright_green().bold(), asm_path.display());
         } else {
             println!(
@@ -199,8 +204,8 @@ impl ProveContext {
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
         println!(
             "{: >12} {}",
-            "Keccak".bright_green().bold(),
-            self.config.keccak_script.as_ref().display()
+            "Sha256f".bright_green().bold(),
+            self.config.sha256f_script.as_ref().display()
         );
 
         println!();

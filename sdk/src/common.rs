@@ -99,7 +99,7 @@ pathbuf_newtype! {
 }
 
 pathbuf_newtype! {
-    pub KeccakScriptPath, format!("{}/.zisk/bin/keccakf_script.json", get_home_dir())
+    pub Sha256fScriptPath, format!("{}/.zisk/bin/keccakf_script.json", get_home_dir())
 }
 
 pathbuf_newtype! {
@@ -161,9 +161,10 @@ pub fn get_default_verkey() -> String {
 pub type ZiskLibInitFn<F> = fn(
     VerboseMode,
     PathBuf,         // Rom path
-    Option<PathBuf>, // Asm path
+    Option<PathBuf>, // Asm MT path
+    Option<PathBuf>, // Asm ROM path
     Option<PathBuf>, // Inputs path
-    PathBuf,         // Keccak path
+    PathBuf,         // Sha256f script path
 ) -> Result<Box<dyn WitnessLibrary<F>>, Box<dyn std::error::Error>>;
 
 /// Prints the ZisK and system information.
