@@ -52,5 +52,5 @@ libloading = "0.8.4"
 thiserror = "2.0.12"
 
 [features]
-default = ["distributed"]
-distributed = ["proofman/distributed", "proofman-common/distributed"]
+default = []
+disable-distributed = ["proofman-common/disable-distributed"]

@@ -152,10 +152,6 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             last_value = mem_op.value;
             i += 1;
         }
-        // println!("TRACE_INPUT_DATA_COUNT = {}", i);
-        // println!("TRACE_{}_INPUT_DATA = {:?}", 0, trace[0]);
-        // println!("TRACE_{}_INPUT_DATA = {:?}", 1, trace[1]);
-        // println!("TRACE_{}_INPUT_DATA = {:?}", 2, trace[2]);
         let count = i;
 
         // STEP3. Add dummy rows to the output vector to fill the remaining rows

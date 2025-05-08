@@ -10,9 +10,11 @@ require "binary/pil/binary_extension.pil"
 require "binary/pil/binary_extension_table.pil"
 require "binary/pil/binary_add.pil"
 require "arith/pil/arith.pil"
+require "arith_eq/pil/arith_eq.pil"
 require "keccakf/pil/keccakf.pil"
 require "keccakf/pil/keccakf_table.pil"
-require "arith_eq/pil/arith_eq.pil"
+require "sha256f/pil/sha256f.pil"
+require "sha256f/pil/sha256f_table.pil"
 
 const int OPERATION_BUS_ID = 5000;
 
@@ -32,7 +34,7 @@ airgroup Zisk {
     Main(N: 2**22, RC: 2, operation_bus_id: OPERATION_BUS_ID);
     Rom(N: 2**21);
 
-    Mem(N: 2**22, RC: 2, base_address: 0xA000_0000);
+    Mem(N: 2**22, RC: 2, base_address: 0xA000_0000, size_mb: 512, large_mem: 1);
     Mem(N: 2**21, RC: 2, base_address: 0x8000_0000, immutable: 1) alias RomData;
     Mem(N: 2**21, RC: 2, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
 
@@ -58,6 +60,10 @@ airgroup Zisk {
     Keccakf(N: 2**22, RC: 2, RB: 32, bits_in_parallel: 2, chunks: 6, bits: KECCAKF_BITS, bits_reduced: KECCAKF_BITS, operation_bus_id: OPERATION_BUS_ID);
     KeccakfTable(N: 2**21, chunks: 1, bits: KECCAKF_BITS, bits_reduced: KECCAKF_BITS);
 
+    const int SHA256F_BITS = 7;
+    // TODO: Explore how to fit the sha256f circuit with chunks = 9
+    Sha256f(N: 2**22, RC: 2, RB: 32, bits_in_parallel: 2, chunks: 8, bits: SHA256F_BITS, operation_bus_id: OPERATION_BUS_ID);
+    Sha256fTable(N: 2**23, chunks: 1, bits: SHA256F_BITS);
 
     // public inputs
     for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {
