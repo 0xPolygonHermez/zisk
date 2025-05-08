@@ -1619,10 +1619,6 @@ impl<'a> Emu<'a> {
 
         // Call the operation
         (instruction.func)(&mut self.ctx.inst_ctx);
-        if instruction.op == 0xF8 {
-            println!("instruction: {:?}", instruction);
-            println!("inst_ctx: {:?}", self.ctx.inst_ctx);
-        }
 
         // Store the 'c' register value based on the storage specified by the current instruction
         self.store_c(instruction);
