@@ -8,7 +8,8 @@ use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
 use zisk_common::{
-    table_instance, BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, Plan, Planner, MEM_BUS_ID
+    table_instance, BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, Plan, Planner,
+    MEM_BUS_ID,
 };
 use zisk_pil::{
     InputDataTrace, MemAlignRomTrace, MemAlignTrace, MemTrace, RomDataTrace, ZiskProofValues,
@@ -32,6 +33,10 @@ impl<F: PrimeField64> Mem<F> {
         let rom_data_sm = RomDataSM::new(std.clone());
 
         Arc::new(Self { mem_align_sm, mem_align_rom_sm, mem_sm, input_data_sm, rom_data_sm })
+    }
+
+    pub fn build_mem_counter(&self) -> MemCounters {
+        MemCounters::new()
     }
 }
 

@@ -17,11 +17,13 @@ sm-binary = { path = "../state-machines/binary" }
 sm-main = { path = "../state-machines/main" }
 sm-mem = { path = "../state-machines/mem" }
 sm-rom = { path = "../state-machines/rom" }
+data-bus = { path = "../data-bus" }
 precomp-keccakf = { path = "../precompiles/keccakf" }
 precomp-arith-eq = { path = "../precompiles/arith_eq" }
 zisk-pil = { path = "../pil" }
 ziskemu = { path = "../emulator" }
 zisk-core = { path = "../core" }
+zisk-common = { path = "../common" }
 
 
 proofman-common = { workspace = true }

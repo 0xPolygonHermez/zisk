@@ -10,7 +10,8 @@ use std::sync::Arc;
 
 use p3_field::PrimeField;
 use zisk_common::{
-    table_instance, BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, PayloadType, Planner, TableInfo, OPERATION_BUS_ID
+    table_instance, BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance,
+    InstanceCtx, InstanceInfo, PayloadType, Planner, TableInfo, OPERATION_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::{ArithRangeTableTrace, ArithTableTrace, ArithTrace};
@@ -45,6 +46,10 @@ impl ArithSM {
         let arith_full_sm = ArithFullSM::new(arith_table_sm.clone(), arith_range_table_sm.clone());
 
         Arc::new(Self { arith_full_sm, arith_table_sm, arith_range_table_sm })
+    }
+
+    pub fn build_arith_counter(&self) -> ArithCounterInputGen {
+        ArithCounterInputGen::new(BusDeviceMode::Counter)
     }
 }
 

@@ -119,29 +119,13 @@ impl Metrics for MemCounters {
         }
     }
 
-    fn on_close(&mut self) {
-        // address must be ordered
-        let mut addr_vector: Vec<(u32, UsesCounter)> =
-            std::mem::take(&mut self.addr).into_iter().collect();
-        addr_vector.par_sort_by_key(|(key, _)| *key);
-
-        // Divideix el vector original en tres parts
-        let point = addr_vector.partition_point(|x| x.0 < (0xA000_0000 / 8));
-        self.addr_sorted[2] = addr_vector.split_off(point);
-
-        let point = addr_vector.partition_point(|x| x.0 < (0x9000_0000 / 8));
-        self.addr_sorted[1] = addr_vector.split_off(point);
-
-        self.addr_sorted[0] = addr_vector;
-    }
-
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
 impl BusDevice<u64> for MemCounters {
-    #[inline]
+    #[inline(always)]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(bus_id == &MEM_BUS_ID);
 
@@ -157,5 +141,21 @@ impl BusDevice<u64> for MemCounters {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
+    }
+
+    fn on_close(&mut self) {
+        // address must be ordered
+        let mut addr_vector: Vec<(u32, UsesCounter)> =
+            std::mem::take(&mut self.addr).into_iter().collect();
+        addr_vector.par_sort_by_key(|(key, _)| *key);
+
+        // Divideix el vector original en tres parts
+        let point = addr_vector.partition_point(|x| x.0 < (0xA000_0000 / 8));
+        self.addr_sorted[2] = addr_vector.split_off(point);
+
+        let point = addr_vector.partition_point(|x| x.0 < (0x9000_0000 / 8));
+        self.addr_sorted[1] = addr_vector.split_off(point);
+
+        self.addr_sorted[0] = addr_vector;
     }
 }

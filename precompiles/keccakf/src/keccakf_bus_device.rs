@@ -59,6 +59,7 @@ impl Metrics for KeccakfCounterInputGen {
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs for the bus.
+    #[inline(always)]
     fn measure(&mut self, _data: &[u64]) {
         self.counter.update(1);
     }
@@ -97,7 +98,7 @@ impl BusDevice<u64> for KeccakfCounterInputGen {
     ///
     /// # Returns
     /// A vector of derived inputs to be sent back to the bus.
-    #[inline]
+    #[inline(always)]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 

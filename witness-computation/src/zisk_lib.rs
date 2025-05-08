@@ -19,13 +19,15 @@ use p3_field::PrimeField64;
 use p3_goldilocks::Goldilocks;
 use witness::{WitnessLibrary, WitnessManager};
 
+use crate::StaticSMBundle;
+
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     input_data_path: Option<PathBuf>,
     keccak_path: PathBuf,
-    executor: Option<Arc<ZiskExecutor<F>>>,
+    executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
 }
 
 #[no_mangle]
@@ -84,23 +86,25 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let keccakf_sm = KeccakfManager::new::<F>(self.keccak_path.clone());
         let arith_eq_sm = ArithEqManager::new(std.clone());
 
+        let sm_static_bundle = StaticSMBundle::new(
+            mem_sm.clone(),
+            rom_sm.clone(),
+            binary_sm.clone(),
+            arith_sm.clone(),
+            keccakf_sm.clone(),
+            arith_eq_sm.clone(),
+        );
+
         // Step 5: Create the executor and register the secondary state machines
-        let mut executor: ZiskExecutor<F> = ZiskExecutor::new(
+        let executor: ZiskExecutor<F, StaticSMBundle<F>> = ZiskExecutor::new(
             self.elf_path.clone(),
             self.asm_path.clone(),
             self.asm_rom_path.clone(),
             self.input_data_path.clone(),
             zisk_rom,
             std,
+            sm_static_bundle,
         );
-        executor.register_sm(mem_sm);
-        executor.register_sm(rom_sm);
-        executor.register_sm(binary_sm);
-        executor.register_sm(arith_sm);
-
-        // Step 6: Register the precompiles state machines
-        executor.register_sm(keccakf_sm);
-        executor.register_sm(arith_eq_sm);
 
         let executor = Arc::new(executor);
 

@@ -70,6 +70,10 @@ impl<F: PrimeField64> BinarySM<F> {
             binary_add_sm,
         })
     }
+
+    pub fn build_binary_counter(&self) -> BinaryCounter {
+        BinaryCounter::new(BusDeviceMode::Counter)
+    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {

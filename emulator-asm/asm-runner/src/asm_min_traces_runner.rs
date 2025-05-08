@@ -234,7 +234,7 @@ impl AsmRunnerMT {
             println!("Child process launched successfully");
         }
 
-        let pool = ThreadPoolBuilder::new().num_threads(32).build().unwrap();
+        let pool = ThreadPoolBuilder::new().num_threads(16).build().unwrap();
 
         let mut chunk_id = ChunkId(0);
         let mut header_ptr: Option<*mut c_void> = None;

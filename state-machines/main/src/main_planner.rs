@@ -5,11 +5,9 @@
 
 use std::any::Any;
 
-use asm_runner::{AsmRunnerMT, MinimalTraces};
+use asm_runner::MinimalTraces;
 use p3_field::PrimeField;
-use zisk_common::{
-    BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan, SegmentId
-};
+use zisk_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan, SegmentId};
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::MainCounter;

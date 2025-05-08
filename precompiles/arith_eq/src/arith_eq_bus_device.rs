@@ -5,8 +5,9 @@
 use std::ops::Add;
 
 use zisk_common::{
-    BusDevice, BusDeviceMode, BusId, Counter, ExtOperationData, Metrics, OperationBusData,
-    OPERATION_BUS_ID,
+    BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OPERATION_BUS_ARITH_256_DATA_SIZE,
+    OPERATION_BUS_ARITH_256_MOD_DATA_SIZE, OPERATION_BUS_ID, OPERATION_BUS_SECP256K1_ADD_DATA_SIZE,
+    OPERATION_BUS_SECP256K1_DBL_DATA_SIZE, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 
@@ -62,6 +63,7 @@ impl Metrics for ArithEqCounterInputGen {
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs for the bus.
+    #[inline(always)]
     fn measure(&mut self, _data: &[u64]) {
         self.counter.update(1);
     }
@@ -100,32 +102,35 @@ impl BusDevice<u64> for ArithEqCounterInputGen {
     ///
     /// # Returns
     /// A vector of derived inputs to be sent back to the bus.
-    #[inline]
+    #[inline(always)]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
-        let op_data: ExtOperationData<u64> = data.try_into().ok()?;
-        let step_main = OperationBusData::get_a(&op_data);
-        let addr_main = OperationBusData::get_b(&op_data) as u32;
-        if OperationBusData::get_op_type(&op_data) as u32 != ZiskOperationType::ArithEq as u32 {
+        const ARITH_EQ: u64 = ZiskOperationType::ArithEq as u64;
+
+        if data[OP_TYPE] != ARITH_EQ {
             return None;
         }
+
+        let step_main = data[A];
+        let addr_main = data[B] as u32;
 
         let only_counters = self.mode == BusDeviceMode::Counter;
         if only_counters {
             self.measure(data);
         }
-        match op_data {
-            ExtOperationData::OperationArith256Data(_) => {
+
+        match data.len() {
+            OPERATION_BUS_ARITH_256_DATA_SIZE => {
                 generate_arith256_mem_inputs(addr_main, step_main, data, only_counters)
             }
-            ExtOperationData::OperationArith256ModData(_) => {
+            OPERATION_BUS_ARITH_256_MOD_DATA_SIZE => {
                 generate_arith256_mod_mem_inputs(addr_main, step_main, data, only_counters)
             }
-            ExtOperationData::OperationSecp256k1AddData(_) => {
+            OPERATION_BUS_SECP256K1_ADD_DATA_SIZE => {
                 generate_secp256k1_add_mem_inputs(addr_main, step_main, data, only_counters)
             }
-            ExtOperationData::OperationSecp256k1DblData(_) => {
+            OPERATION_BUS_SECP256K1_DBL_DATA_SIZE => {
                 generate_secp256k1_dbl_mem_inputs(addr_main, step_main, data, only_counters)
             }
 

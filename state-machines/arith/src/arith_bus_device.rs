@@ -6,9 +6,7 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
-use zisk_common::{
-    BusDevice, BusDeviceMode, BusId, Counter, ExtOperationData, Metrics, OPERATION_BUS_ID, OP_TYPE,
-};
+use zisk_common::{BusDevice, BusDeviceMode, BusId, Counter, Metrics, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::ZiskOperationType;
 
 use crate::ArithFullSM;
@@ -81,24 +79,26 @@ impl BusDevice<u64> for ArithCounterInputGen {
     ///
     /// # Returns
     /// A vector of derived inputs to be sent back to the bus.
+    #[inline(always)]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
-        if data[OP_TYPE] as u32 != ZiskOperationType::Arith as u32 {
+        const ARITH: u64 = ZiskOperationType::Arith as u64;
+
+        if data[OP_TYPE] != ARITH {
             return None;
         }
 
-        let data: ExtOperationData<u64> = data.try_into().ok()?;
-        if let ExtOperationData::OperationData(data) = data {
-            if self.mode == BusDeviceMode::Counter {
-                self.measure(&data);
-            }
+        debug_assert_eq!(data.len(), 4);
 
-            let bin_inputs = ArithFullSM::generate_inputs(&data);
-            return Some(bin_inputs.into_iter().map(|x| (OPERATION_BUS_ID, x)).collect());
+        if self.mode == BusDeviceMode::Counter {
+            self.measure(&data);
         }
 
-        None
+        let bin_inputs =
+            ArithFullSM::generate_inputs(unsafe { &*(data.as_ptr() as *const [u64; 4]) });
+
+        return Some(bin_inputs.into_iter().map(|x| (OPERATION_BUS_ID, x)).collect());
     }
 
     /// Returns the bus IDs associated with this counter.

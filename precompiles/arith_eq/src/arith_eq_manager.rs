@@ -33,6 +33,10 @@ impl<F: PrimeField64> ArithEqManager<F> {
 
         Arc::new(Self { arith_eq_sm, arith_eq_lt_table_sm })
     }
+
+    pub fn build_arith_eq_counter(&self) -> ArithEqCounterInputGen {
+        ArithEqCounterInputGen::new(BusDeviceMode::Counter)
+    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager<F> {

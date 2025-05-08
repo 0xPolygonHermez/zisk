@@ -34,6 +34,10 @@ impl KeccakfManager {
 
         Arc::new(Self { keccakf_sm, keccakf_table_sm })
     }
+
+    pub fn build_keccakf_counter(&self) -> KeccakfCounterInputGen {
+        KeccakfCounterInputGen::new(BusDeviceMode::Counter)
+    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {

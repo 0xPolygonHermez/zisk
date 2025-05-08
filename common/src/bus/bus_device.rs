@@ -29,4 +29,7 @@ pub trait BusDevice<D>: Any + Send {
 
     /// Converts the device to a generic `Any` type.
     fn as_any(self: Box<Self>) -> Box<dyn Any>;
+
+    /// Performs any necessary cleanup or finalization when the metrics instance is closed.
+    fn on_close(&mut self) {}
 }

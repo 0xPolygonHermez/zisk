@@ -4,7 +4,7 @@ use std::{io, str::FromStr};
 
 use zisk_common::{BusDevice, BusId};
 
-use crate::{DataBus, DataBusFileReader};
+use crate::{DataBus, DataBusFileReader, DataBusTrait};
 
 pub struct DataBusPlayer;
 

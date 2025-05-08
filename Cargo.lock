@@ -4409,6 +4409,7 @@ dependencies = [
 name = "zisk-witness"
 version = "0.7.0"
 dependencies = [
+ "data-bus",
  "env_logger",
  "executor",
  "log",
@@ -4427,6 +4428,7 @@ dependencies = [
  "sm-mem",
  "sm-rom",
  "witness",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
  "ziskemu",

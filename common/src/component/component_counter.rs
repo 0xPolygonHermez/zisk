@@ -28,9 +28,6 @@ pub trait Metrics: Send + Sync {
     /// - The derived data payload.
     fn measure(&mut self, data: &[u64]);
 
-    /// Performs any necessary cleanup or finalization when the metrics instance is closed.
-    fn on_close(&mut self) {}
-
     /// Provides a dynamic reference for type casting purposes.
     ///
     /// # Returns

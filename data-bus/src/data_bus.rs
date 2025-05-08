@@ -5,7 +5,20 @@
 
 use std::collections::VecDeque;
 
-use zisk_common::{BusDevice, BusId};
+use zisk_common::{BusDevice, BusDeviceMetrics, BusId};
+
+pub trait DataBusTrait<D> {
+    /// Writes data to the bus and processes it through the registered devices.
+    ///
+    /// # Arguments
+    /// * `bus_id` - The ID of the bus receiving the data.
+    /// * `payload` - The data payload to be sent.
+    fn write_to_bus(&mut self, bus_id: BusId, payload: &[D]);
+
+    fn on_close(&mut self);
+
+    fn close_data_bus(self, execute_on_close: bool) -> Vec<(bool, Box<dyn BusDeviceMetrics>)>;
+}
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
 ///
@@ -58,19 +71,19 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
         }
     }
 
-    /// Writes data to the bus and processes it through the registered devices.
-    ///
-    /// # Arguments
-    /// * `bus_id` - The ID of the bus receiving the data.
-    /// * `payload` - The data payload to be sent.
-    #[inline(always)]
-    pub fn write_to_bus(&mut self, bus_id: BusId, payload: &[D]) {
-        self.route_data(bus_id, payload);
+    // /// Writes data to the bus and processes it through the registered devices.
+    // ///
+    // /// # Arguments
+    // /// * `bus_id` - The ID of the bus receiving the data.
+    // /// * `payload` - The data payload to be sent.
+    // #[inline(always)]
+    // pub fn write_to_bus(&mut self, bus_id: BusId, payload: &[D]) {
+    //     self.route_data(bus_id, payload);
 
-        while let Some((bus_id, payload)) = self.pending_transfers.pop_front() {
-            self.route_data(bus_id, &payload)
-        }
-    }
+    //     while let Some((bus_id, payload)) = self.pending_transfers.pop_front() {
+    //         self.route_data(bus_id, &payload)
+    //     }
+    // }
 
     /// Routes data to the devices subscribed to a specific bus ID or global devices.
     ///
@@ -110,5 +123,25 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// A vector of `Box<BD>` representing all detached devices.
     pub fn detach_devices(&mut self) -> Vec<BD> {
         std::mem::take(&mut self.devices)
+    }
+}
+
+impl<D, BD: BusDevice<D>> DataBusTrait<D> for DataBus<D, BD> {
+    fn write_to_bus(&mut self, bus_id: BusId, payload: &[D]) {
+        self.route_data(bus_id, payload);
+
+        while let Some((bus_id, payload)) = self.pending_transfers.pop_front() {
+            self.route_data(bus_id, &payload)
+        }
+    }
+
+    fn on_close(&mut self) {
+        for device in &mut self.devices {
+            device.on_close();
+        }
+    }
+
+    fn close_data_bus(self, _execute_on_close: bool) -> Vec<(bool, Box<dyn BusDeviceMetrics>)> {
+        vec![]
     }
 }
