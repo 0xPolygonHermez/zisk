@@ -79,8 +79,8 @@ mod tests {
 
         assert!(input.get_next(&mut buffer));
         assert_eq!(buffer[0], 0x01);
-        for i in 1..BYTERATE - 1 {
-            assert_eq!(buffer[i], 0x00);
+        for &byte in buffer.iter().take(BYTERATE - 1).skip(1) {
+            assert_eq!(byte, 0x00);
         }
         assert_eq!(buffer[BYTERATE - 1], 0x80);
         assert!(!input.get_next(&mut buffer));
@@ -95,12 +95,12 @@ mod tests {
         assert!(input.padding_size == 36);
 
         assert!(input.get_next(&mut buffer));
-        for i in 0..100 {
-            assert_eq!(buffer[i], 0xFF); // Original data
+        for &byte in buffer.iter().take(100) {
+            assert_eq!(byte, 0xFF); // Original data
         }
         assert_eq!(buffer[100], 0x01); // From padding
-        for i in 101..135 {
-            assert_eq!(buffer[i], 0x00); // Padding
+        for &byte in buffer.iter().take(135).skip(101) {
+            assert_eq!(byte, 0x00); // Padding
         }
         assert_eq!(buffer[135], 0x80); // Last padding byte
 
@@ -117,15 +117,15 @@ mod tests {
         assert!(input.padding_size == 136);
 
         assert!(input.get_next(&mut buffer));
-        for i in 0..BYTERATE {
-            assert_eq!(buffer[i], 0xFF); // Original data
+        for &byte in buffer.iter().take(BYTERATE) {
+            assert_eq!(byte, 0xFF); // Original data
         }
 
         // Second read should be padded
         assert!(input.get_next(&mut buffer));
         assert_eq!(buffer[0], 0x01); // From padding
-        for i in 1..BYTERATE - 1 {
-            assert_eq!(buffer[i], 0x00); // Padding
+        for &byte in buffer.iter().take(BYTERATE - 1).skip(1) {
+            assert_eq!(byte, 0x00); // Padding
         }
         assert_eq!(buffer[BYTERATE - 1], 0x80); // Last padding byte
 
@@ -142,18 +142,18 @@ mod tests {
         assert!(input.padding_size == 72);
 
         assert!(input.get_next(&mut buffer));
-        for i in 0..BYTERATE {
-            assert_eq!(buffer[i], 0xFF); // Original data
+        for &byte in buffer.iter().take(BYTERATE) {
+            assert_eq!(byte, 0xFF); // Original data
         }
 
         // Second read should be padded
         assert!(input.get_next(&mut buffer));
-        for i in 0..64 {
-            assert_eq!(buffer[i], 0xFF); // Original data
+        for &byte in buffer.iter().take(64) {
+            assert_eq!(byte, 0xFF); // Original data
         }
         assert_eq!(buffer[64], 0x01); // From padding
-        for i in 65..BYTERATE - 1 {
-            assert_eq!(buffer[i], 0x00); // Padding
+        for &byte in buffer.iter().take(BYTERATE - 1).skip(65) {
+            assert_eq!(byte, 0x00); // Padding
         }
         assert_eq!(buffer[BYTERATE - 1], 0x80); // Last padding byte
 

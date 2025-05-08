@@ -13,7 +13,7 @@ use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{KeccakfFixed, KeccakfTrace, KeccakfTraceRow};
 
-use crate::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM};
+use super::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM};
 
 use rayon::prelude::*;
 
@@ -255,10 +255,10 @@ impl KeccakfSM {
         }
 
         par_traces.into_par_iter().enumerate().for_each(|(i, par_trace)| {
-            for j in 0..self.slot_size {
-                let ref_ = program[j] as usize;
-                let row = ref_ - 1;
-                let gate = &gates[ref_];
+            for &line in program.iter() {
+                let line = line as usize;
+                let row = line - 1;
+                let gate = &gates[line];
 
                 // Set the value of free_in_a
                 let a = &gate.pins[0];
@@ -269,12 +269,12 @@ impl KeccakfSM {
                 // If the reference is in the range of the inputs
                 // and the wired pin is A (inputs are located at pin A),
                 // we can get the value directly from the inputs
-                if (ref_a >= STATE_IN_REF_0)
-                    && (ref_a
-                        <= STATE_IN_REF_0
-                            + (STATE_IN_NUMBER - STATE_IN_GROUP_BY) * STATE_IN_REF_DISTANCE
-                                / STATE_IN_GROUP_BY
-                            + (STATE_IN_GROUP_BY - 1))
+                if (STATE_IN_REF_0
+                    ..=STATE_IN_REF_0
+                        + (STATE_IN_NUMBER - STATE_IN_GROUP_BY) * STATE_IN_REF_DISTANCE
+                            / STATE_IN_GROUP_BY
+                        + (STATE_IN_GROUP_BY - 1))
+                    .contains(&ref_a)
                     && ((ref_a - STATE_IN_REF_0) % STATE_IN_REF_DISTANCE < STATE_IN_GROUP_BY)
                     && matches!(wired_a, PinId::A)
                 {
@@ -300,7 +300,8 @@ impl KeccakfSM {
                                 get_col_row(&row0, |row| &row.free_in_b)
                             };
                         }
-                        PinId::C => {
+                        PinId::C => panic!("Input pin C is not used by the Keccakf circuit"),
+                        PinId::D => {
                             value_a = if ref_a > 0 {
                                 get_col(par_trace, |row| &row.free_in_c, row_a)
                             } else {
@@ -320,12 +321,12 @@ impl KeccakfSM {
                 // If the reference is in the range of the inputs
                 // and the wired pin is A (inputs are located at pin A),
                 // we can get the value directly from the inputs
-                if (ref_b >= STATE_IN_REF_0)
-                    && (ref_b
-                        <= STATE_IN_REF_0
-                            + (STATE_IN_NUMBER - STATE_IN_GROUP_BY) * STATE_IN_REF_DISTANCE
-                                / STATE_IN_GROUP_BY
-                            + (STATE_IN_GROUP_BY - 1))
+                if (STATE_IN_REF_0
+                    ..=STATE_IN_REF_0
+                        + (STATE_IN_NUMBER - STATE_IN_GROUP_BY) * STATE_IN_REF_DISTANCE
+                            / STATE_IN_GROUP_BY
+                        + (STATE_IN_GROUP_BY - 1))
+                    .contains(&ref_b)
                     && ((ref_b - STATE_IN_REF_0) % STATE_IN_REF_DISTANCE < STATE_IN_GROUP_BY)
                     && matches!(wired_b, PinId::A)
                 {
@@ -351,7 +352,8 @@ impl KeccakfSM {
                                 get_col_row(&row0, |row| &row.free_in_b)
                             };
                         }
-                        PinId::C => {
+                        PinId::C => panic!("Input pin C is not used by the Keccakf circuit"),
+                        PinId::D => {
                             value_b = if ref_b > 0 {
                                 get_col(par_trace, |row| &row.free_in_c, row_b)
                             } else {

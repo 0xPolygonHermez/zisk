@@ -5,6 +5,12 @@ pub fn byte_to_bits(byte: u8, bits: &mut [u8; 8]) {
     }
 }
 
+pub fn byte_to_bits_msb(byte: u8, bits: &mut [u8; 8]) {
+    for (i, bit) in bits.iter_mut().enumerate() {
+        *bit = (byte >> (7 - i)) & 1;
+    }
+}
+
 /// Converts 8 bits to a byte (LSB first)
 pub fn bits_to_byte(bits: &[u8; 8], byte: &mut u8) {
     // bits.iter().rev().fold(0, |byte, &bit| (byte << 1) | (bit & 1))
@@ -25,6 +31,9 @@ pub fn print_bits(bits: &[u8], name: &str) {
         output += &format!("{}:", byte_to_string(byte));
     }
 
+    if output.ends_with(':') {
+        output.pop();
+    }
     println!("{}", output);
 }
 
@@ -41,4 +50,62 @@ fn byte_to_char(b: u8) -> char {
         10..=15 => (b'a' + b - 10) as char,
         _ => panic!("Invalid nibble value: {}", b),
     }
+}
+
+/// Converts u32 to bits (LSB first)
+pub fn u32_to_bits(value: u32) -> [u8; 32] {
+    let mut bits = [0u8; 32];
+    for (i, bit) in bits.iter_mut().enumerate() {
+        *bit = ((value >> i) as u8) & 1;
+    }
+    bits
+}
+
+pub fn u32_to_bits_msb(value: u32) -> [u8; 32] {
+    let mut bits = [0u8; 32];
+    for (i, bit) in bits.iter_mut().enumerate() {
+        *bit = ((value >> (31 - i)) as u8) & 1;
+    }
+    bits
+}
+
+/// Converts bits to u32 (LSB first)
+pub fn bits_to_u32(bits: &[u8; 32]) -> u32 {
+    let mut value = 0u32;
+    for i in (0..32).rev() {
+        value = (value << 1) | (bits[i] as u32);
+    }
+    value
+}
+
+pub fn bits_to_u32_msb(bits: &[u8; 32]) -> u32 {
+    let mut value = 0u32;
+    for bit in bits.iter() {
+        value = (value << 1) | (*bit as u32);
+    }
+    value
+}
+
+/// Converts u64 to bits (LSB first)
+pub fn u64_to_bits(value: u64) -> [u8; 64] {
+    // Divide into two of u32
+    let lo = (value & 0xFFFF_FFFF) as u32;
+    let hi = (value >> 32) as u32;
+
+    let lo_bits = u32_to_bits(lo);
+    let hi_bits = u32_to_bits(hi);
+
+    // Combine into a single array
+    let mut result = [0u8; 64];
+    result[..32].copy_from_slice(&hi_bits);
+    result[32..].copy_from_slice(&lo_bits);
+    result
+}
+
+pub fn bits_to_u64(bits: &[u8; 64]) -> u64 {
+    let mut value = 0u64;
+    for i in (0..64).rev() {
+        value = (value << 1) | (bits[i] as u64);
+    }
+    value
 }

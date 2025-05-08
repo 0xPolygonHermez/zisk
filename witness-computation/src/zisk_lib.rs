@@ -8,6 +8,7 @@ use executor::ZiskExecutor;
 use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
+use precomp_sha256f::Sha256fManager;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
@@ -24,6 +25,7 @@ pub struct WitnessLib<F: PrimeField64> {
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     input_data_path: Option<PathBuf>,
+    sha256f_script_path: PathBuf,
     executor: Option<Arc<ZiskExecutor<F>>>,
 }
 
@@ -34,10 +36,17 @@ fn init_library(
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     input_data_path: Option<PathBuf>,
+    sha256f_script_path: PathBuf,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode);
-    let result =
-        Box::new(WitnessLib { elf_path, asm_path, asm_rom_path, input_data_path, executor: None });
+    let result = Box::new(WitnessLib {
+        elf_path,
+        asm_path,
+        asm_rom_path,
+        input_data_path,
+        sha256f_script_path,
+        executor: None,
+    });
 
     Ok(result)
 }
@@ -74,6 +83,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         // Step 4: Initialize the precompiles state machines
         let keccakf_sm = KeccakfManager::new::<F>();
+        let sha256f_sm = Sha256fManager::new::<F>(self.sha256f_script_path.clone());
         let arith_eq_sm = ArithEqManager::new(std.clone());
 
         // Step 5: Create the executor and register the secondary state machines
@@ -92,6 +102,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         // Step 6: Register the precompiles state machines
         executor.register_sm(keccakf_sm);
+        executor.register_sm(sha256f_sm);
         executor.register_sm(arith_eq_sm);
 
         let executor = Arc::new(executor);

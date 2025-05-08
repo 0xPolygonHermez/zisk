@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "c0a258f16faa9c62646c487e3729f9bc5547c11e38a422c1cede7dafdb8017e0";
+pub const PILOUT_HASH: &str = "d9c4fcd06f6490b921ca1dc61f9d22d0f9af82654940e1fb6ffecebe0f582f32";
 
 //AIRGROUP CONSTANTS
 
@@ -62,14 +62,16 @@ pub const KECCAKF_AIR_IDS: &[usize] = &[17];
 
 pub const KECCAKF_TABLE_AIR_IDS: &[usize] = &[18];
 
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[19];
+pub const SHA_256_F_AIR_IDS: &[usize] = &[19];
 
+pub const SHA_256_F_TABLE_AIR_IDS: &[usize] = &[20];
+
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[21];
 
 //PUBLICS
 use serde::Deserialize;
 use serde::Serialize;
 use serde_arrays;
-
 
 fn default_array_rom_root() -> [u64; 4] {
     [0; 4]
@@ -79,33 +81,28 @@ fn default_array_inputs() -> [u64; 64] {
     [0; 64]
 }
 
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ZiskPublics {
     #[serde(default = "default_array_rom_root", with = "serde_arrays")]
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
-    
 }
 
 impl Default for ZiskPublics {
     fn default() -> Self {
-        Self {  
-            rom_root: [0; 4],  
-            inputs: [0; 64], 
-        }
+        Self { rom_root: [0; 4], inputs: [0; 64] }
     }
 }
 
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],
 });
- 
+
 values!(ZiskProofValues<F> {
  enable_input_data: F,
 });
- 
+
 trace!(MainFixed<F> {
  SEGMENT_L1: F, SEGMENT_STEP: F, __L1__: F,
 },  0, 0, 4194304 );
@@ -258,13 +255,29 @@ trace!(KeccakfTableTrace<F> {
  multiplicity: [F; 1],
 },  0, 18, 2097152 );
 
+trace!(Sha256fFixed<F> {
+ L1: F, GATE_OP: F, CARRY_ENABLED: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, latch_num_sha256f: F, factor_num_sha256f: F, latch_in_out: F, addr_inc: F, latch_in: F, latch_out: F, __L1__: F,
+},  0, 19, 4194304 );
+
+trace!(Sha256fTrace<F> {
+ free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], free_in_d: [F; 8], step: F, addr: F, multiplicity: F, bit: [F; 2], val: [F; 2], is_val: F,
+},  0, 19, 4194304 );
+
+trace!(Sha256fTableFixed<F> {
+ A: [F; 1], B: F, C: F, GATE_OP: F, D: [F; 1], CARRY: [F; 1], __L1__: F,
+},  0, 20, 8388608 );
+
+trace!(Sha256fTableTrace<F> {
+ multiplicity: [F; 1],
+},  0, 20, 8388608 );
+
 trace!(SpecifiedRangesFixed<F> {
  RANGE: [F; 16], __L1__: F,
-},  0, 19, 2097152 );
+},  0, 21, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
  mul: [F; 16],
-},  0, 19, 2097152 );
+},  0, 21, 2097152 );
 
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
@@ -359,6 +372,14 @@ values!(KeccakfAirGroupValues<F> {
 });
 
 values!(KeccakfTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(Sha256fAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(Sha256fTableAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 

@@ -31,9 +31,6 @@ p3-field = { workspace=true }
 p3-goldilocks = { workspace = true }
 log = { workspace = true }
 rayon = { workspace = true }
-num-bigint = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
 
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 clap = "4.0"

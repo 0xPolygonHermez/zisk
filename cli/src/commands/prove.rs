@@ -18,7 +18,11 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{
+    collections::HashMap,
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 use super::{get_default_proving_key, get_default_witness_computation_lib};
 
@@ -82,6 +86,10 @@ pub struct ZiskProve {
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
+
+    // PRECOMPILES OPTIONS
+    /// Sha256f script path
+    pub sha256f_script: Option<PathBuf>,
 }
 
 impl ZiskProve {
@@ -98,6 +106,17 @@ impl ZiskProve {
                 let proving_key: PathBuf = PathBuf::from(&self.get_proving_key());
                 json_to_debug_instances_map(proving_key, debug_value.clone())
             }
+        };
+
+        let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
+            sha256f_path.clone()
+        } else {
+            let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
+            let script_path = PathBuf::from(format!("{}/.zisk/bin/sha256f_script.json", home_dir));
+            if !script_path.exists() {
+                panic!("Sha256f script file not found at {:?}", script_path);
+            }
+            script_path
         };
 
         print_banner();
@@ -169,7 +188,7 @@ impl ZiskProve {
                 .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
         }
 
-        self.print_command_info();
+        self.print_command_info(&sha256f_script);
 
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
@@ -188,6 +207,7 @@ impl ZiskProve {
                         self.asm.clone(),
                         asm_rom,
                         self.input.clone(),
+                        sha256f_script,
                     )
                     .expect("Failed to initialize witness library");
 
@@ -220,6 +240,7 @@ impl ZiskProve {
                         self.asm.clone(),
                         asm_rom,
                         self.input.clone(),
+                        sha256f_script,
                     )
                     .expect("Failed to initialize witness library");
 
@@ -269,7 +290,7 @@ impl ZiskProve {
         Ok(())
     }
 
-    fn print_command_info(&self) {
+    fn print_command_info(&self, sha256f_script: &Path) {
         println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
         println!(
             "{: >12} {}",
@@ -303,6 +324,7 @@ impl ZiskProve {
 
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
+        println!("{: >12} {}", "Sha256f".bright_green().bold(), sha256f_script.display());
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 
         println!();

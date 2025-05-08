@@ -1,21 +1,23 @@
 use crate::{Pin, PinId, PinSource};
 
 /*
-    a -----||---\
-           || OP )----- c
-    b -----||---/
+    a -----||-----\
+           ||      |
+    b -----||  OP  )----- d
+           ||      |
+    c -----||-----/
 */
 #[derive(Clone, Debug)]
 pub struct Gate {
     pub op: GateOperation,
-    pub pins: [Pin; 3],
+    pub pins: [Pin; 4],
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum GateOperation {
     Unknown = 0,
     Xor = 1,  // Xor(a,b) := a ^ b
-    Andp = 2, // Andp(a.b) := ¬a & b
+    Andp = 2, // Andp(a,b) := ¬a & b
     Or = 3,   // Or(a,b) := a | b
     And = 4,  // And(a,b) := a & b
     Ch = 5,   // Ch(a,b,c) := (a & b) ^ (¬a & c)
@@ -31,10 +33,10 @@ impl Default for Gate {
 
 impl Gate {
     pub fn new() -> Self {
-        // Default gate is XOR(0,0), where 0 is externally set
+        // Default gate is XOR
         Self {
             op: GateOperation::Xor,
-            pins: [Pin::new(PinId::A), Pin::new(PinId::B), Pin::new(PinId::C)],
+            pins: [Pin::new(PinId::A), Pin::new(PinId::B), Pin::new(PinId::C), Pin::new(PinId::D)],
         }
     }
 
@@ -53,7 +55,10 @@ impl Gate {
         self.pins[PinId::B].source = PinSource::External;
         self.pins[PinId::B].bit = 0;
 
-        self.pins[PinId::C].source = PinSource::Gated;
-        self.pins[PinId::C].bit = 0; // XOR(0,0) = 0
+        self.pins[PinId::C].source = PinSource::External;
+        self.pins[PinId::C].bit = 0;
+
+        self.pins[PinId::D].source = PinSource::Gated;
+        self.pins[PinId::D].bit = 0; // XOR(0,0,0) = 0
     }
 }

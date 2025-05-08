@@ -4,6 +4,7 @@ pub mod keccakf;
 pub mod point256;
 pub mod secp256k1_add;
 pub mod secp256k1_dbl;
+pub mod sha256f;
 mod syscall;
 
 pub use syscall::*;

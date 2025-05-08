@@ -103,10 +103,10 @@ All following commands should be executed in the `zisk` folder.
 ### Compile Zisk PIL
 
 !!!!!! Baixar pil2-proofman per poder compilar la std
-node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zisk_pre_040.pilout -b build/build_pre_040 -t ../pil2-proofman/pil2-stark/build/bctree -i ./build/keccakf_fixed.bin
+node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zisk_pre_040.pilout -b build/build_pre_040 -t ../pil2-proofman/pil2-stark/build/bctree -i ./build/keccakf_fixed.bin ./build/sha256f_fixed.bin
 com es genera el fixed.bin???
 
-cargo run --release --bin keccakf_fixed_gen
+cargo run --release --bin keccakf_fixed_gen && cargo run --release --bin sha256f_fixed_gen
 ```bash
 node --max-old-space-size=65536 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout
 ```
