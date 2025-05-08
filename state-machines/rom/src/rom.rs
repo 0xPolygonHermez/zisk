@@ -20,7 +20,8 @@ use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_common::{
-    create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, Instance, InstanceCtx, Planner
+    create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, Instance, InstanceCtx,
+    Planner,
 };
 use zisk_core::{
     zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT, SRC_IMM,

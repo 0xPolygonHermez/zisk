@@ -12,9 +12,7 @@ use sm_arith::ArithCounterInputGen;
 use sm_binary::BinaryCounter;
 use sm_main::MainCounter;
 use sm_mem::MemCounters;
-use zisk_common::{
-    BusDevice, BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID,
-};
+use zisk_common::{BusDevice, BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
 ///
