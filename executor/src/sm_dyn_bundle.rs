@@ -41,7 +41,7 @@ impl<F: PrimeField64> SMBundle<F> for DynSMBundle<F> {
         self.secondary_sm[idx].build_instance(ictx)
     }
 
-    fn get_data_bus_counters(
+    fn build_data_bus_counters(
         &self,
     ) -> impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static {
         let mut data_bus = DataBus::new();
@@ -59,7 +59,11 @@ impl<F: PrimeField64> SMBundle<F> for DynSMBundle<F> {
         data_bus
     }
 
-    fn get_data_bus_collectors(
+    fn main_counter_idx(&self) -> Option<usize> {
+        Some(0)
+    }
+
+    fn build_data_bus_collectors(
         &self,
         secn_instance: &mut Box<dyn Instance<F>>,
         chunks_to_execute: Vec<bool>,

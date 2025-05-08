@@ -29,9 +29,11 @@ pub trait SMBundle<F: Field>: Send + Sync {
     ///
     /// # Returns
     /// A `DataBus` instance with connected counters for each registered secondary state machine.
-    fn get_data_bus_counters(
+    fn build_data_bus_counters(
         &self,
     ) -> impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static;
+
+    fn main_counter_idx(&self) -> Option<usize>;
 
     /// Retrieves a data bus for managing collectors in secondary state machines.
     /// # Arguments
@@ -40,7 +42,7 @@ pub trait SMBundle<F: Field>: Send + Sync {
     ///
     /// # Returns
     /// A vector of data buses with attached collectors for each chunk to be executed
-    fn get_data_bus_collectors(
+    fn build_data_bus_collectors(
         &self,
         secn_instance: &mut Box<dyn Instance<F>>,
         chunks_to_execute: Vec<bool>,

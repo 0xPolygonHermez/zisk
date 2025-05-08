@@ -101,7 +101,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
         }
     }
 
-    fn get_data_bus_counters(
+    fn build_data_bus_counters(
         &self,
     ) -> impl DataBusTrait<u64, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static {
         StaticDataBus::new(
@@ -113,7 +113,11 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
         )
     }
 
-    fn get_data_bus_collectors(
+    fn main_counter_idx(&self) -> Option<usize> {
+        Some(0)
+    }
+
+    fn build_data_bus_collectors(
         &self,
         secn_instance: &mut Box<dyn Instance<F>>,
         chunks_to_execute: Vec<bool>,

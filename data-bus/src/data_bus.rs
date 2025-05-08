@@ -17,7 +17,7 @@ pub trait DataBusTrait<D, T> {
 
     fn on_close(&mut self);
 
-    fn close_data_bus(self, execute_on_close: bool) -> Vec<(bool, T)>;
+    fn into_devices(self, execute_on_close: bool) -> Vec<T>;
 }
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
@@ -93,23 +93,6 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
         println!("Devices by bus ID: {:?}", self.devices_bus_id_map);
         println!("Pending Transfers: {:?}", self.pending_transfers.len());
     }
-
-    /// Detaches and returns the most recently added device.
-    ///
-    /// # Returns
-    /// An optional `Box<BD>` representing the detached device, or `None` if no devices are
-    /// connected.
-    pub fn detach_first_device(&mut self) -> Option<BD> {
-        self.devices.pop()
-    }
-
-    /// Detaches and returns all devices currently connected to the bus.
-    ///
-    /// # Returns
-    /// A vector of `Box<BD>` representing all detached devices.
-    pub fn detach_devices(&mut self) -> Vec<BD> {
-        std::mem::take(&mut self.devices)
-    }
 }
 
 impl<D, BD: BusDevice<D>> DataBusTrait<D, BD> for DataBus<D, BD> {
@@ -127,18 +110,16 @@ impl<D, BD: BusDevice<D>> DataBusTrait<D, BD> for DataBus<D, BD> {
         }
     }
 
-    fn close_data_bus(mut self, execute_on_close: bool) -> Vec<(bool, BD)> {
-        let mut xxx = self
-            .detach_devices()
-            .into_iter()
-            .map(|mut device| {
-                if execute_on_close {
-                    device.on_close();
-                }
-                (true, device)
-            })
-            .collect::<Vec<_>>();
-        xxx[0].0 = false;
-        xxx
+    fn into_devices(self, execute_on_close: bool) -> Vec<BD> {
+        let mut result = Vec::with_capacity(self.devices.len());
+
+        for mut device in self.devices {
+            if execute_on_close {
+                device.on_close();
+            }
+            result.push(device);
+        }
+
+        result
     }
 }

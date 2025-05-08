@@ -230,7 +230,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         }
 
         let task_factory: TaskFactory<_> = Box::new(|chunk_id: ChunkId, emu_trace: EmuTrace| {
-            let data_bus = self.sm_bundle.get_data_bus_counters();
+            let data_bus = self.sm_bundle.build_data_bus_counters();
             CounterTask {
                 chunk_id,
                 emu_trace,
@@ -254,16 +254,17 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let mut main_count = Vec::with_capacity(data_buses.len());
         let mut secn_count = Vec::with_capacity(data_buses.len());
 
+        let main_idx = self.sm_bundle.main_counter_idx();
         for (chunk_id, data_bus) in data_buses {
-            let databus_counters = data_bus.close_data_bus(false);
+            let databus_counters = data_bus.into_devices(false);
 
             let mut secondary = Vec::new();
 
-            for (is_secondary, counter) in databus_counters {
-                if is_secondary {
-                    secondary.push((chunk_id, counter));
-                } else {
-                    main_count.push((chunk_id, counter));
+            for (idx, counter) in databus_counters.into_iter().enumerate() {
+                match main_idx {
+                    None => secondary.push((chunk_id, counter)),
+                    Some(i) if idx == i => main_count.push((chunk_id, counter)),
+                    Some(_) => secondary.push((chunk_id, counter)),
                 }
             }
 
@@ -375,7 +376,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let (main_metrics_slices, secn_metrics_slices): (Vec<_>, Vec<_>) = min_traces
             .par_iter()
             .map(|minimal_trace| {
-                let mut data_bus = self.sm_bundle.get_data_bus_counters();
+                let mut data_bus = self.sm_bundle.build_data_bus_counters();
 
                 ZiskEmulator::process_emu_trace::<F, Box<dyn BusDeviceMetrics>>(
                     &self.zisk_rom,
@@ -383,17 +384,18 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     &mut data_bus,
                 );
 
-                let (mut main, mut secondary) = (Vec::new(), Vec::new());
+                let (mut main_count, mut secn_count) = (Vec::new(), Vec::new());
 
-                let databus_counters = data_bus.close_data_bus(true);
-                for (is_secondary, counter) in databus_counters {
-                    if is_secondary {
-                        secondary.push(counter);
-                    } else {
-                        main.push(counter);
+                let databus_counters = data_bus.into_devices(true);
+                let main_idx = self.sm_bundle.main_counter_idx();
+                for (idx, counter) in databus_counters.into_iter().enumerate() {
+                    match main_idx {
+                        None => secn_count.push(counter),
+                        Some(i) if idx == i => main_count.push(counter),
+                        Some(_) => secn_count.push(counter),
                     }
                 }
-                (main, secondary)
+                (main_count, secn_count)
             })
             .unzip();
 
@@ -519,7 +521,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         // Create data buses for each chunk
         let mut data_buses =
-            self.sm_bundle.get_data_bus_collectors(secn_instance, chunks_to_execute);
+            self.sm_bundle.build_data_bus_collectors(secn_instance, chunks_to_execute);
 
         // Execute collect process for each chunk
         data_buses.par_iter_mut().enumerate().for_each(|(chunk_id, data_bus)| {
@@ -610,9 +612,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     ) -> Vec<(usize, Box<dyn BusDevice<u64>>)> {
         let mut collectors_by_instance = Vec::new();
         for (chunk_id, data_bus) in data_buses.iter_mut().enumerate() {
-            if let Some(data_bus) = data_bus {
-                let mut detached = data_bus.detach_devices();
+            if let Some(data_bus) = data_bus.take() {
+                let mut detached = data_bus.into_devices(false);
 
+                // As a convention the first element is the main collector the others are input generators
                 let first_collector = detached.swap_remove(0);
                 collectors_by_instance.push((chunk_id, first_collector));
             }

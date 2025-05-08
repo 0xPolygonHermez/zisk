@@ -114,7 +114,7 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
         self.mem_counter.on_close();
     }
 
-    fn close_data_bus(mut self, execute_on_close: bool) -> Vec<(bool, Box<dyn BusDeviceMetrics>)> {
+    fn into_devices(mut self, execute_on_close: bool) -> Vec<Box<dyn BusDeviceMetrics>> {
         if execute_on_close {
             self.on_close();
         }
@@ -129,14 +129,14 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
             pending_transfers: _,
         } = self;
 
-        let counters: Vec<(bool, Box<dyn BusDeviceMetrics>)> = vec![
-            (false, Box::new(main_counter)),
-            (true, Box::new(mem_counter)),
-            (true, Box::new(DummyCounter {})),
-            (true, Box::new(binary_counter)),
-            (true, Box::new(arith_counter)),
-            (true, Box::new(keccakf_counter)),
-            (true, Box::new(arith_eq_counter)),
+        let counters: Vec<Box<dyn BusDeviceMetrics>> = vec![
+            Box::new(main_counter),
+            Box::new(mem_counter),
+            Box::new(DummyCounter {}),
+            Box::new(binary_counter),
+            Box::new(arith_counter),
+            Box::new(keccakf_counter),
+            Box::new(arith_eq_counter),
         ];
 
         counters
