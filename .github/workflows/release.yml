@@ -137,7 +137,6 @@ jobs:
           cp ./target/${TARGET}/release/ziskemu              zisk-dist/bin/
           cp ./target/${TARGET}/release/riscv2zisk           zisk-dist/bin/
           cp ./target/${TARGET}/release/libzisk_witness.so   zisk-dist/bin/
-          cp ./precompiles/keccakf/src/keccakf_script.json   zisk-dist/bin/
           cp ./ziskup/ziskup                                 zisk-dist/bin/
           cp -r ./emulator-asm/src                           zisk-dist/zisk/emulator-asm/
           cp -r ./lib-c/                                     zisk-dist/zisk

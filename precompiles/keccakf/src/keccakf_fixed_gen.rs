@@ -1,41 +1,26 @@
-use std::{error::Error, fs};
+use std::error::Error;
 
 use clap::{Arg, Command};
 use p3_field::PrimeCharacteristicRing;
 use p3_goldilocks::Goldilocks;
-use serde::de::DeserializeOwned;
 
 use zisk_pil::KeccakfTrace;
 
 use proofman_common::{write_fixed_cols_bin, FixedColsInfo};
 
+use circuit::GateOperation;
+use precompiles_helpers::keccakf_topology;
+
 mod goldilocks_constants;
 mod keccakf_types;
 
 use goldilocks_constants::{GOLDILOCKS_GEN, GOLDILOCKS_K};
-use keccakf_types::{Connections, Script};
 
 type F = Goldilocks;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let matches = Command::new("keccakf_fixed_gen")
         .version(env!("CARGO_PKG_VERSION"))
-        .arg(
-            Arg::new("script")
-                .short('s')
-                .long("script")
-                .value_name("script_path")
-                .help("Path to the script JSON file")
-                .default_value("precompiles/keccakf/src/keccakf_script.json"),
-        )
-        .arg(
-            Arg::new("connections")
-                .short('c')
-                .long("connections")
-                .value_name("connections_path")
-                .help("Path to the connections JSON file")
-                .default_value("precompiles/keccakf/src/keccakf_connections.json"),
-        )
         .arg(
             Arg::new("output")
                 .short('o')
@@ -46,24 +31,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         )
         .get_matches();
 
-    let script_path = matches.get_one::<String>("script").unwrap();
-    let connections_path = matches.get_one::<String>("connections").unwrap();
     let output_file = matches.get_one::<String>("output").unwrap();
 
     let n: usize = KeccakfTrace::<usize>::NUM_ROWS;
     let bits = log2(n);
-
-    // Get the script and connections
-    let script: Script = read_json(script_path)?;
-    let connections: Connections = read_json(connections_path)?;
 
     // Get the subgroup generator and coset generator
     let subgroup_gen = GOLDILOCKS_GEN[bits];
     let cosets_gen = GOLDILOCKS_K;
 
     // Generate the columns
-    let (conn_a, conn_b, conn_c, gate_op) =
-        cols_gen(n, subgroup_gen, cosets_gen, connections, script);
+    let (conn_a, conn_b, conn_c, gate_op) = cols_gen(n, subgroup_gen, cosets_gen);
 
     // Serialize the columns and write them to a binary file
     let conn_a = FixedColsInfo::new("Keccakf.CONN_A", None, conn_a);
@@ -93,27 +71,23 @@ fn log2(n: usize) -> usize {
     res
 }
 
-fn read_json<T: DeserializeOwned>(file_path: &str) -> Result<T, Box<dyn Error>> {
-    let json_content = fs::read_to_string(file_path)?;
-    let user: T = serde_json::from_str(&json_content)?;
-    Ok(user)
-}
-
 fn cols_gen(
     subgroup_order: usize,
     subgroup_gen: u64,
     cosets_gen: u64,
-    connections: Connections,
-    script: Script,
 ) -> (Vec<F>, Vec<F>, Vec<F>, Vec<F>) {
-    // Check the connections and the script are well-formed
-    let connections = connections.0;
-    assert!(script.program.len() + 1 == connections.len());
+    // Get the program and gates
+    let keccakf_top = keccakf_topology();
+    let keccakf_program = keccakf_top.program;
+    let keccakf_gates = keccakf_top.gates;
 
     // Check that the subgroup order is sufficiently large
-    let slot_size = script.maxref;
+    let slot_size = keccakf_program.len();
     if slot_size >= subgroup_order {
-        panic!("The provided number of bits is too small to fit the script");
+        panic!(
+            "The provided number of bits {} is too small for the Keccakf circuit",
+            subgroup_order
+        );
     }
 
     // Get the number of slots we can generate
@@ -142,79 +116,67 @@ fn cols_gen(
     // Compute the connections and gate_op
     for i in 0..num_slots {
         let offset = i * slot_size;
-        for (j, connection) in connections.iter().enumerate() {
-            let conn = &connection.0;
+
+        // Compute the connections. The "+1" is for the zero_ref gate
+        for j in 0..(slot_size + 1) {
             let mut ref1 = j;
             if j > 0 {
                 ref1 += offset;
             }
 
-            if conn.contains_key("A") {
-                for k in 0..conn["A"].len() {
-                    let peer = &conn["A"][k];
-                    let mut ref2 = peer.1;
+            // k = 0: Connections to input A
+            // k = 1: Connections to input B
+            // k = 2: Connections to input C
+            for k in 0..3 {
+                let pin = &keccakf_gates[j].pins[k];
+                let connections_to_input_a = &pin.connections_to_input_a;
+                for l in 0..connections_to_input_a.len() {
+                    let mut ref2 = connections_to_input_a[l] as usize;
                     if ref2 > 0 {
                         ref2 += offset;
                     }
 
-                    let peer_type = peer.0.clone();
-                    match peer_type.as_str() {
-                        "A" => connect(&mut conn_a, ref1, None, ref2),
-                        "B" => connect(&mut conn_a, ref1, Some(&mut conn_b), ref2),
-                        "C" => connect(&mut conn_a, ref1, Some(&mut conn_c), ref2),
-                        _ => panic!("Invalid peer type: {}", peer_type),
+                    if k == 0 {
+                        connect(&mut conn_a, ref1, None, ref2);
+                    } else if k == 1 {
+                        connect(&mut conn_b, ref1, Some(&mut conn_a), ref2);
+                    } else {
+                        connect(&mut conn_c, ref1, Some(&mut conn_a), ref2);
                     }
                 }
-            }
 
-            if conn.contains_key("B") {
-                for k in 0..conn["B"].len() {
-                    let peer = &conn["B"][k];
-                    let mut ref2 = peer.1;
+                let connections_to_input_b = &pin.connections_to_input_b;
+                for l in 0..connections_to_input_b.len() {
+                    let mut ref2 = connections_to_input_b[l] as usize;
                     if ref2 > 0 {
                         ref2 += offset;
                     }
 
-                    let peer_type = peer.0.clone();
-                    match peer_type.as_str() {
-                        "A" => connect(&mut conn_b, ref1, Some(&mut conn_a), ref2),
-                        "B" => connect(&mut conn_b, ref1, None, ref2),
-                        "C" => connect(&mut conn_b, ref1, Some(&mut conn_c), ref2),
-                        _ => panic!("Invalid peer type: {}", peer_type),
-                    }
-                }
-            }
-
-            if conn.contains_key("C") {
-                for k in 0..conn["C"].len() {
-                    let peer = &conn["C"][k];
-                    let mut ref2 = peer.1;
-                    if ref2 > 0 {
-                        ref2 += offset;
-                    }
-
-                    let peer_type = peer.0.clone();
-                    match peer_type.as_str() {
-                        "A" => connect(&mut conn_c, ref1, Some(&mut conn_a), ref2),
-                        "B" => connect(&mut conn_c, ref1, Some(&mut conn_b), ref2),
-                        "C" => connect(&mut conn_c, ref1, None, ref2),
-                        _ => panic!("Invalid peer type: {}", peer_type),
+                    if k == 0 {
+                        connect(&mut conn_a, ref1, Some(&mut conn_b), ref2);
+                    } else if k == 1 {
+                        connect(&mut conn_b, ref1, None, ref2);
+                    } else {
+                        connect(&mut conn_c, ref1, Some(&mut conn_b), ref2);
                     }
                 }
             }
         }
 
-        for j in 0..script.program.len() {
-            let line = &script.program[j];
-            let mut ref_ = line.ref_;
+        // Compute the connections.
+        // Here, we don't need the "+1" because the zero_ref is assumed
+        // to be an XOR gate which is encoded to be the field element 0
+        for j in 0..slot_size {
+            let mut ref_ = keccakf_program[j] as usize;
+            let op = keccakf_gates[ref_].op;
             if ref_ > 0 {
                 ref_ += offset;
             }
 
-            match line.op.as_str() {
-                "xor" => gate_op[ref_] = F::ZERO,
-                "andp" => gate_op[ref_] = F::ONE,
-                _ => panic!("Invalid op: {}", line.op),
+            match op {
+                GateOperation::Xor => gate_op[ref_] = F::ZERO,
+                GateOperation::Andp => gate_op[ref_] = F::ONE,
+                _ => panic!("Invalid op: {:?}", op),
             }
         }
     }
