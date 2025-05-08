@@ -1,7 +1,7 @@
 use std::fmt;
 
 /// Type representing a chunk identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ChunkId(pub usize);
 
 impl ChunkId {

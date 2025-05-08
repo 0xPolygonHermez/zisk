@@ -295,7 +295,7 @@ values!(MainAirValues<F> {
 });
 
 values!(MemAirValues<F> {
- segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, im_direct: [FieldExtension<F>; 4],
+ segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2], im_direct: [FieldExtension<F>; 6],
 });
 
 values!(RomDataAirValues<F> {

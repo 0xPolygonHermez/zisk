@@ -18,11 +18,7 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
-use std::{
-    collections::HashMap,
-    env, fs,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, fs, path::PathBuf};
 
 use super::{get_default_proving_key, get_default_witness_computation_lib};
 
@@ -151,8 +147,10 @@ impl ZiskProve {
             }
         }
 
+        let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
+
         let mut asm_rom = None;
-        if self.emulator {
+        if emulator {
             self.asm = None;
         } else if self.asm.is_none() {
             let stem = self.elf.file_stem().unwrap().to_str().unwrap();
