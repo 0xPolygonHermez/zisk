@@ -3844,6 +3844,9 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
+            ZiskOp::Sha256 => {
+                // TODO!
+            }
             ZiskOp::PubOut => {
                 assert!(ctx.store_b_in_c);
                 ctx.c.is_constant = ctx.b.is_constant;

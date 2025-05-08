@@ -19,7 +19,7 @@ pub struct MemAlignInput {
     pub mem_values: [u64; 2],
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct MemInput {
     pub addr: u32,      // address in word native format means byte_address / MEM_BYTES
     pub is_write: bool, // it's a write operation

@@ -1728,6 +1728,9 @@ impl<'a> Emu<'a> {
             ExtOperationData::OperationKeccakData(data) => {
                 data_bus.write_to_bus(OPERATION_BUS_ID, &data);
             }
+            ExtOperationData::OperationSha256Data(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+            }
             ExtOperationData::OperationArith256Data(data) => {
                 data_bus.write_to_bus(OPERATION_BUS_ID, &data);
             }
@@ -1841,6 +1844,9 @@ impl<'a> Emu<'a> {
                 data_bus.write_to_bus(OPERATION_BUS_ID, &data);
             }
             ExtOperationData::OperationKeccakData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+            }
+            ExtOperationData::OperationSha256Data(data) => {
                 data_bus.write_to_bus(OPERATION_BUS_ID, &data);
             }
             ExtOperationData::OperationArith256Data(data) => {

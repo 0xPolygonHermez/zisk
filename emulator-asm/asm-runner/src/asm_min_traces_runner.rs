@@ -7,10 +7,10 @@ use named_sem::NamedSemaphore;
 use rayon::ThreadPoolBuilder;
 use zisk_common::{ChunkId, EmuTrace};
 
-use std::ffi::{c_void, CString};
+use std::ffi::{c_uint, c_void, CString};
 use std::fmt::Debug;
 use std::path::Path;
-use std::process::Command;
+use std::process::{self, Command};
 use std::sync::mpsc;
 use std::time::Duration;
 use std::{fs, ptr};
@@ -105,6 +105,8 @@ impl AsmRunnerMT {
 
         if !options.log_output {
             command.arg("-o");
+            command.stdout(process::Stdio::null());
+            command.stderr(process::Stdio::null());
         }
         if options.metrics {
             command.arg("-m");
@@ -352,7 +354,11 @@ impl AsmRunnerMT {
         unsafe { shm_unlink(shmem_input_name_ptr) };
 
         let shm_fd = unsafe {
-            shm_open(shmem_input_name_ptr, libc::O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IXUSR)
+            shm_open(
+                shmem_input_name_ptr,
+                libc::O_RDWR | O_CREAT,
+                (S_IRUSR | S_IWUSR | S_IXUSR) as c_uint,
+            )
         };
         Self::check_shm_open(shm_fd, shmem_input_name_ptr);
 
@@ -388,8 +394,9 @@ impl AsmRunnerMT {
         let shmem_output_name = CString::new(shmem_output_name).expect("CString::new failed");
         let shmem_output_name_ptr = shmem_output_name.as_ptr();
 
-        let shm_fd =
-            unsafe { shm_open(shmem_output_name_ptr, libc::O_RDONLY, S_IRUSR | S_IWUSR | S_IXUSR) };
+        let shm_fd = unsafe {
+            shm_open(shmem_output_name_ptr, libc::O_RDONLY, (S_IRUSR | S_IWUSR | S_IXUSR) as c_uint)
+        };
 
         Self::check_shm_open(shm_fd, shmem_output_name_ptr);
 

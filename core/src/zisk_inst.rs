@@ -79,6 +79,7 @@ pub enum ZiskOperationType {
     Binary,
     BinaryE,
     Keccak,
+    Sha256,
     PubOut,
     ArithEq,
     FcallParam,
