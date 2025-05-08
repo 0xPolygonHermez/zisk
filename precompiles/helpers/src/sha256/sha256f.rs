@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+
 use std::cell::RefCell;
 
 use circuit::{gate_u32_add, gate_u32_and, gate_u32_not, gate_u32_xor, GateState, GateU32, PinId};

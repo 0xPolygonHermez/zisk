@@ -7,17 +7,14 @@ use serde::de::DeserializeOwned;
 
 use zisk_pil::Sha256fTrace;
 
+use precompiles_common::{get_ks, log2, GOLDILOCKS_GEN, GOLDILOCKS_K};
 use proofman_common::{write_fixed_cols_bin, FixedColsInfo};
 
-mod sha256f_constants;
-mod sha256f_types;
-
-use sha256f_constants::{ADD_GATE_OP, CH_GATE_OP, MAJ_GATE_OP, XOR_GATE_OP};
-use sha256f_types::{Gate, GateOp};
-
-use precompiles_common::{get_ks, log2, GOLDILOCKS_GEN, GOLDILOCKS_K};
+use precomp_sha256f::{Gate, GateOp, ADD_GATE_OP, CH_GATE_OP, MAJ_GATE_OP, XOR_GATE_OP};
 
 type F = Goldilocks;
+
+type FixedCols = (Vec<F>, Vec<F>, Vec<F>, Vec<F>, Vec<F>, Vec<F>);
 
 fn main() -> Result<(), Box<dyn Error>> {
     let matches = Command::new("sha256f_fixed_gen")
@@ -91,8 +88,8 @@ fn cols_gen(
     subgroup_gen: u64,
     cosets_gen: u64,
     gates: Vec<Gate>,
-) -> (Vec<F>, Vec<F>, Vec<F>, Vec<F>, Vec<F>, Vec<F>) {
-    fn connect(c1: &mut Vec<F>, i1: usize, c2: Option<&mut Vec<F>>, i2: usize, offset: usize) {
+) -> FixedCols {
+    fn connect(c1: &mut [F], i1: usize, c2: Option<&mut Vec<F>>, i2: usize, offset: usize) {
         let adjust = |i| if i > 0 { i + offset } else { i };
         let row1 = adjust(i1);
         let row2 = adjust(i2);
@@ -155,8 +152,7 @@ fn cols_gen(
         connect(&mut conn_b, 0, Some(&mut conn_d), 0, 0);
         for (j, gate) in gates.iter().enumerate().skip(1) {
             let conn = gate.connections;
-            for k in 0..4 {
-                let wire = conn[k];
+            for (k, &wire) in conn.iter().enumerate() {
                 if !wires.contains_key(&wire) {
                     // If the wire is not in the map, insert it with the current gate
                     wires.insert(wire, [k, j]);

@@ -12,7 +12,7 @@ use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{Sha256fFixed, Sha256fTrace, Sha256fTraceRow};
 
-use crate::{sha256f_constants::*, InputType, Script, Sha256fTableGateOp, Sha256fTableSM};
+use super::{sha256f_constants::*, InputType, Script, Sha256fTableGateOp, Sha256fTableSM};
 
 use rayon::prelude::*;
 
@@ -271,8 +271,7 @@ impl Sha256fSM {
 
         let program = &self.script.program;
         par_traces.into_par_iter().enumerate().for_each(|(i, par_trace)| {
-            for j in 0..self.circuit_size {
-                let line = &program[j];
+            for line in program.iter() {
                 let row = line.ref_ - 1;
 
                 let a_val = get_val(par_trace, &row0, &state_bits, &hash_input_bits, i, &line.in1);
@@ -342,8 +341,8 @@ impl Sha256fSM {
         fn get_val<F: PrimeField64>(
             trace: &[Sha256fTraceRow<F>],
             row0: &Sha256fTraceRow<F>,
-            state_bits: &Vec<[u64; STATE_SIZE_BITS]>,
-            hash_input_bits: &Vec<[u64; INPUT_SIZE_BITS]>,
+            state_bits: &[[u64; STATE_SIZE_BITS]],
+            hash_input_bits: &[[u64; INPUT_SIZE_BITS]],
             circuit: usize,
             gate_input: &InputType,
         ) -> u64 {
@@ -353,28 +352,28 @@ impl Sha256fSM {
                         if *gate > 0 {
                             get_col(trace, |row| &row.free_in_a, *gate - 1)
                         } else {
-                            get_col_row(&row0, |row| &row.free_in_a)
+                            get_col_row(row0, |row| &row.free_in_a)
                         }
                     }
                     "in2" => {
                         if *gate > 0 {
                             get_col(trace, |row| &row.free_in_b, *gate - 1)
                         } else {
-                            get_col_row(&row0, |row| &row.free_in_b)
+                            get_col_row(row0, |row| &row.free_in_b)
                         }
                     }
                     "in3" => {
                         if *gate > 0 {
                             get_col(trace, |row| &row.free_in_c, *gate - 1)
                         } else {
-                            get_col_row(&row0, |row| &row.free_in_c)
+                            get_col_row(row0, |row| &row.free_in_c)
                         }
                     }
                     "out" => {
                         if *gate > 0 {
                             get_col(trace, |row| &row.free_in_d, *gate - 1)
                         } else {
-                            get_col_row(&row0, |row| &row.free_in_d)
+                            get_col_row(row0, |row| &row.free_in_d)
                         }
                     }
                     _ => panic!("Invalid pin: {}", pin),

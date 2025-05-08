@@ -1,14 +1,16 @@
+#![allow(clippy::needless_range_loop)]
+
 use circuit::{GateState, PinId};
 
 use super::bit_position;
 
 /// Keccak-f θ step.
 /// 1. For all pairs (x, z) such that 0 ≤ x < 5 and 0 ≤ z < 64:  
-///     C\[x, z] = A\[x, 0, z] ^ A\[x, 1, z] ^ A\[x, 2, z] ^ A\[x, 3, z] ^ A\[x, 4, z]
+///    C\[x, z] = A\[x, 0, z] ^ A\[x, 1, z] ^ A\[x, 2, z] ^ A\[x, 3, z] ^ A\[x, 4, z]
 /// 2. For all pairs (x, z) such that 0 ≤ x < 5 and 0 ≤ z < 64:  
-///     D\[x, z] = C\[(x-1) mod 5, z] ^ C\[(x+1) mod 5, (z –1) mod 64]
-/// 3. For all triples (x, y, z) such that 0 ≤ x,y < 5, and 0 ≤ z < 64:  
-///     A′\[x, y, z] = A\[x, y, z] ^ D\[x, z]
+///    D\[x, z] = C\[(x-1) mod 5, z] ^ C\[(x+1) mod 5, (z –1) mod 64]
+/// 3. For all triples (x, y, z) such that 0 ≤ x,y < 5, and 0 ≤ z < 64:   
+///    A′\[x, y, z] = A\[x, y, z] ^ D\[x, z]
 pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
     // Step 1: C[x, z] = A[x, 0, z] ^ A[x, 1, z] ^ A[x, 2, z] ^ A[x, 3, z] ^ A[x, 4, z]
     let mut c = [[0u64; 64]; 5];

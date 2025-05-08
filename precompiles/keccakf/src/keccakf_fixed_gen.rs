@@ -111,7 +111,7 @@ fn cols_gen(
         let offset = i * slot_size;
 
         // Compute the connections. The "+1" is for the zero_ref gate
-        for j in 0..(slot_size + 1) {
+        for (j, gate) in keccakf_gates.iter().enumerate() {
             let mut ref1 = j;
             if j > 0 {
                 ref1 += offset;
@@ -121,10 +121,10 @@ fn cols_gen(
             // k = 1: Connections to input B
             // k = 2: Connections to input C
             for k in 0..3 {
-                let pin = &keccakf_gates[j].pins[k];
+                let pin = &gate.pins[k];
                 let connections_to_input_a = &pin.connections_to_input_a;
-                for l in 0..connections_to_input_a.len() {
-                    let mut ref2 = connections_to_input_a[l] as usize;
+                for &ref2 in connections_to_input_a {
+                    let mut ref2 = ref2 as usize;
                     if ref2 > 0 {
                         ref2 += offset;
                     }
@@ -139,8 +139,8 @@ fn cols_gen(
                 }
 
                 let connections_to_input_b = &pin.connections_to_input_b;
-                for l in 0..connections_to_input_b.len() {
-                    let mut ref2 = connections_to_input_b[l] as usize;
+                for &ref2 in connections_to_input_b {
+                    let mut ref2 = ref2 as usize;
                     if ref2 > 0 {
                         ref2 += offset;
                     }
@@ -159,16 +159,16 @@ fn cols_gen(
         // Compute the connections.
         // Here, we don't need the "+1" because the zero_ref is assumed
         // to be an XOR gate which is encoded to be the field element 0
-        for j in 0..slot_size {
-            let mut ref_ = keccakf_program[j] as usize;
-            let op = keccakf_gates[ref_].op;
-            if ref_ > 0 {
-                ref_ += offset;
+        for &line in keccakf_program.iter() {
+            let mut line = line as usize;
+            let op = keccakf_gates[line].op;
+            if line > 0 {
+                line += offset;
             }
 
             match op {
-                GateOperation::Xor => gate_op[ref_] = F::ZERO,
-                GateOperation::Andp => gate_op[ref_] = F::ONE,
+                GateOperation::Xor => gate_op[line] = F::ZERO,
+                GateOperation::Andp => gate_op[line] = F::ONE,
                 _ => panic!("Invalid op: {:?}", op),
             }
         }
