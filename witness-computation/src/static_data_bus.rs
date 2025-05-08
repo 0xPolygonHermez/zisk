@@ -12,7 +12,9 @@ use sm_arith::ArithCounterInputGen;
 use sm_binary::BinaryCounter;
 use sm_main::MainCounter;
 use sm_mem::MemCounters;
-use zisk_common::{BusDevice, BusId, DummyCounter, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
+use zisk_common::{
+    BusDevice, BusDeviceMetrics, BusId, DummyCounter, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID,
+};
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
 ///
@@ -93,7 +95,7 @@ impl StaticDataBus<PayloadType> {
     }
 }
 
-impl DataBusTrait<PayloadType> for StaticDataBus<PayloadType> {
+impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<PayloadType> {
     #[inline(always)]
     fn write_to_bus(&mut self, bus_id: BusId, payload: &[PayloadType]) {
         self.route_data(bus_id, payload);
@@ -112,10 +114,7 @@ impl DataBusTrait<PayloadType> for StaticDataBus<PayloadType> {
         self.mem_counter.on_close();
     }
 
-    fn close_data_bus(
-        mut self,
-        execute_on_close: bool,
-    ) -> Vec<(bool, Box<dyn zisk_common::BusDeviceMetrics>)> {
+    fn close_data_bus(mut self, execute_on_close: bool) -> Vec<(bool, Box<dyn BusDeviceMetrics>)> {
         if execute_on_close {
             self.on_close();
         }
@@ -130,7 +129,7 @@ impl DataBusTrait<PayloadType> for StaticDataBus<PayloadType> {
             pending_transfers: _,
         } = self;
 
-        let counters: Vec<(bool, Box<dyn zisk_common::BusDeviceMetrics>)> = vec![
+        let counters: Vec<(bool, Box<dyn BusDeviceMetrics>)> = vec![
             (false, Box::new(main_counter)),
             (true, Box::new(mem_counter)),
             (true, Box::new(DummyCounter {})),

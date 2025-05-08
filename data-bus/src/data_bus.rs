@@ -5,9 +5,9 @@
 
 use std::collections::VecDeque;
 
-use zisk_common::{BusDevice, BusDeviceMetrics, BusId};
+use zisk_common::{BusDevice, BusId};
 
-pub trait DataBusTrait<D> {
+pub trait DataBusTrait<D, T> {
     /// Writes data to the bus and processes it through the registered devices.
     ///
     /// # Arguments
@@ -17,7 +17,7 @@ pub trait DataBusTrait<D> {
 
     fn on_close(&mut self);
 
-    fn close_data_bus(self, execute_on_close: bool) -> Vec<(bool, Box<dyn BusDeviceMetrics>)>;
+    fn close_data_bus(self, execute_on_close: bool) -> Vec<(bool, T)>;
 }
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
@@ -71,20 +71,6 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
         }
     }
 
-    // /// Writes data to the bus and processes it through the registered devices.
-    // ///
-    // /// # Arguments
-    // /// * `bus_id` - The ID of the bus receiving the data.
-    // /// * `payload` - The data payload to be sent.
-    // #[inline(always)]
-    // pub fn write_to_bus(&mut self, bus_id: BusId, payload: &[D]) {
-    //     self.route_data(bus_id, payload);
-
-    //     while let Some((bus_id, payload)) = self.pending_transfers.pop_front() {
-    //         self.route_data(bus_id, &payload)
-    //     }
-    // }
-
     /// Routes data to the devices subscribed to a specific bus ID or global devices.
     ///
     /// # Arguments
@@ -126,7 +112,7 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     }
 }
 
-impl<D, BD: BusDevice<D>> DataBusTrait<D> for DataBus<D, BD> {
+impl<D, BD: BusDevice<D>> DataBusTrait<D, BD> for DataBus<D, BD> {
     fn write_to_bus(&mut self, bus_id: BusId, payload: &[D]) {
         self.route_data(bus_id, payload);
 
@@ -141,7 +127,17 @@ impl<D, BD: BusDevice<D>> DataBusTrait<D> for DataBus<D, BD> {
         }
     }
 
-    fn close_data_bus(self, _execute_on_close: bool) -> Vec<(bool, Box<dyn BusDeviceMetrics>)> {
-        vec![]
+    fn close_data_bus(mut self, execute_on_close: bool) -> Vec<(bool, BD)> {
+        let mut xxx = self.detach_devices()
+            .into_iter()
+            .map(|mut device| {
+                if execute_on_close {
+                    device.on_close();
+                }
+                (true, device)
+            })
+            .collect::<Vec<_>>();
+        xxx[0].0 = false;
+        xxx
     }
 }

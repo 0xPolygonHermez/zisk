@@ -16,7 +16,7 @@ impl DataBusPlayer {
     /// * `data` - A vector of `(BusId, Payload)` tuples.
     pub fn play<D, BD: BusDevice<D>>(data_bus: &mut DataBus<D, BD>, data: Vec<(BusId, Vec<D>)>) {
         for (bus_id, payload) in data {
-            data_bus.write_to_bus(bus_id, &payload);
+            <DataBus<D, BD> as DataBusTrait<D, BD>>::write_to_bus(data_bus, bus_id, &payload);
         }
     }
 

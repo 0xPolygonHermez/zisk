@@ -245,7 +245,7 @@ impl<'a> Emu<'a> {
     /// Calculate the 'a' register value based on the source specified by the current instruction,
     /// using formerly generated memory reads from a previous emulation
     #[inline(always)]
-    pub fn source_a_mem_reads_consume_databus<DB: DataBusTrait<u64>>(
+    pub fn source_a_mem_reads_consume_databus<T, DB: DataBusTrait<u64, T>>(
         &mut self,
         instruction: &ZiskInst,
         mem_reads: &[u64],
@@ -586,7 +586,7 @@ impl<'a> Emu<'a> {
     /// Calculate the 'b' register value based on the source specified by the current instruction,
     /// using formerly generated memory reads from a previous emulation
     #[inline(always)]
-    pub fn source_b_mem_reads_consume_databus<DB: DataBusTrait<u64>>(
+    pub fn source_b_mem_reads_consume_databus<T, DB: DataBusTrait<u64, T>>(
         &mut self,
         instruction: &ZiskInst,
         mem_reads: &[u64],
@@ -972,7 +972,7 @@ impl<'a> Emu<'a> {
     /// Store the 'c' register value based on the storage specified by the current instruction and
     /// log memory access if required
     #[inline(always)]
-    pub fn store_c_mem_reads_consume_databus<DB: DataBusTrait<u64>>(
+    pub fn store_c_mem_reads_consume_databus<T, DB: DataBusTrait<u64, T>>(
         &mut self,
         instruction: &ZiskInst,
         mem_reads: &[u64],
@@ -1643,11 +1643,11 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn step_emu_trace<F: PrimeField>(
+    pub fn step_emu_trace<F: PrimeField, T>(
         &mut self,
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
-        data_bus: &mut impl DataBusTrait<u64>,
+        data_bus: &mut impl DataBusTrait<u64, T>,
     ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
         // let debug = instruction.op >= 0xF6;
@@ -1753,10 +1753,10 @@ impl<'a> Emu<'a> {
     }
 
     /// Run a slice of the program to generate full traces
-    pub fn process_emu_trace<F: PrimeField>(
+    pub fn process_emu_trace<F: PrimeField, T>(
         &mut self,
         emu_trace: &EmuTrace,
-        data_bus: &mut impl DataBusTrait<u64>,
+        data_bus: &mut impl DataBusTrait<u64, T>,
     ) {
         // Set initial state
         self.ctx.inst_ctx.pc = emu_trace.start_state.pc;
@@ -1768,12 +1768,12 @@ impl<'a> Emu<'a> {
 
         let mut mem_reads_index: usize = 0;
         for _ in 0..emu_trace.steps {
-            self.step_emu_trace::<F>(&emu_trace.mem_reads, &mut mem_reads_index, data_bus);
+            self.step_emu_trace::<F, T>(&emu_trace.mem_reads, &mut mem_reads_index, data_bus);
         }
     }
 
     /// Run a slice of the program to generate full traces
-    pub fn process_emu_traces<DB: DataBusTrait<u64>>(
+    pub fn process_emu_traces<T, DB: DataBusTrait<u64, T>>(
         &mut self,
         vec_traces: &[EmuTrace],
         chunk_id: usize,
@@ -1806,11 +1806,11 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn step_emu_traces(
+    pub fn step_emu_traces<T>(
         &mut self,
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
-        data_bus: &mut impl DataBusTrait<u64>,
+        data_bus: &mut impl DataBusTrait<u64, T>,
     ) {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
         self.source_a_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);

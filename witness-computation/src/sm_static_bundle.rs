@@ -11,8 +11,8 @@ use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
 use zisk_common::{
-    BusDevice, BusDeviceWrapper, ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan,
-    OPERATION_BUS_ID,
+    BusDevice, BusDeviceMetrics, BusDeviceWrapper, ChunkId, ComponentBuilder, Instance,
+    InstanceCtx, Plan, OPERATION_BUS_ID,
 };
 
 use executor::NestedDeviceMetricsList;
@@ -22,7 +22,7 @@ use crate::StaticDataBus;
 const NUM_SM: usize = 7;
 const NUM_SM_WITHOUT_MAIN: usize = NUM_SM - 1;
 
-// const MAIN_SM_ID: usize = 0;
+const _MAIN_SM_ID: usize = 0;
 const MEM_SM_ID: usize = 1;
 const ROM_SM_ID: usize = 2;
 const BINARY_SM_ID: usize = 3;
@@ -31,7 +31,6 @@ const KECCAK_SM_ID: usize = 5;
 const ARITH_EQ_SM_ID: usize = 6;
 
 pub struct StaticSMBundle<F: PrimeField64> {
-    // main_sm: Arc<dyn ComponentBuilder<F>>,
     mem_sm: Arc<Mem<F>>,
     rom_sm: Arc<RomSM>,
     binary_sm: Arc<BinarySM<F>>,
@@ -42,7 +41,6 @@ pub struct StaticSMBundle<F: PrimeField64> {
 
 impl<F: PrimeField64> StaticSMBundle<F> {
     pub fn new(
-        // main_sm: Arc<dyn ComponentBuilder<F>>,
         mem_sm: Arc<Mem<F>>,
         rom_sm: Arc<RomSM>,
         binary_sm: Arc<BinarySM<F>>,
@@ -103,7 +101,9 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
         }
     }
 
-    fn get_data_bus_counters(&self) -> impl DataBusTrait<u64> + Send + Sync + 'static {
+    fn get_data_bus_counters(
+        &self,
+    ) -> impl DataBusTrait<u64, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static {
         StaticDataBus::new(
             self.binary_sm.build_binary_counter(),
             self.arith_sm.build_arith_counter(),

@@ -218,22 +218,22 @@ impl ZiskEmulator {
     /// Second phase of the witness computation
     /// Executes in parallel the different blocks of wc
     /// Good to be fast
-    pub fn process_emu_trace<F: PrimeField>(
+    pub fn process_emu_trace<F: PrimeField, T>(
         rom: &ZiskRom,
         emu_trace: &EmuTrace,
-        data_bus: &mut impl DataBusTrait<u64>,
+        data_bus: &mut impl DataBusTrait<u64, T>,
     ) {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);
 
         // Run the emulation
-        emu.process_emu_trace::<F>(emu_trace, data_bus);
+        emu.process_emu_trace::<F, T>(emu_trace, data_bus);
     }
 
     /// EXPAND phase
     /// Third phase of the witness computation
     /// I have a
-    pub fn process_emu_traces<F: PrimeField, DB: DataBusTrait<u64>>(
+    pub fn process_emu_traces<F: PrimeField, T, DB: DataBusTrait<u64, T>>(
         rom: &ZiskRom,
         min_traces: &[EmuTrace],
         chunk_id: usize,

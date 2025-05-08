@@ -4,7 +4,10 @@
 //! This module leverages `WitnessLibrary` to orchestrate the setup of state machines,
 //! program conversion, and execution pipelines to generate required witnesses.
 
-use executor::ZiskExecutor;
+use crate::StaticSMBundle;
+use executor::{DynSMBundle, ZiskExecutor};
+use p3_field::PrimeField64;
+use p3_goldilocks::Goldilocks;
 use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
@@ -13,13 +16,8 @@ use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
 use std::{any::Any, path::PathBuf, sync::Arc};
-use zisk_core::Riscv2zisk;
-
-use p3_field::PrimeField64;
-use p3_goldilocks::Goldilocks;
 use witness::{WitnessLibrary, WitnessManager};
-
-use crate::StaticSMBundle;
+use zisk_core::Riscv2zisk;
 
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
@@ -27,7 +25,7 @@ pub struct WitnessLib<F: PrimeField64> {
     asm_rom_path: Option<PathBuf>,
     input_data_path: Option<PathBuf>,
     keccak_path: PathBuf,
-    executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
+    executor: Option<Arc<ZiskExecutor<F, DynSMBundle<F>>>>,
 }
 
 #[no_mangle]
@@ -86,24 +84,33 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let keccakf_sm = KeccakfManager::new::<F>(self.keccak_path.clone());
         let arith_eq_sm = ArithEqManager::new(std.clone());
 
-        let sm_static_bundle = StaticSMBundle::new(
+        let sm_bundle = DynSMBundle::new(vec![
             mem_sm.clone(),
             rom_sm.clone(),
             binary_sm.clone(),
             arith_sm.clone(),
             keccakf_sm.clone(),
             arith_eq_sm.clone(),
-        );
+        ]);
+
+        // let sm_bundle = StaticSMBundle::new(
+        //     mem_sm.clone(),
+        //     rom_sm.clone(),
+        //     binary_sm.clone(),
+        //     arith_sm.clone(),
+        //     keccakf_sm.clone(),
+        //     arith_eq_sm.clone(),
+        // );
 
         // Step 5: Create the executor and register the secondary state machines
-        let executor: ZiskExecutor<F, StaticSMBundle<F>> = ZiskExecutor::new(
+        let executor: ZiskExecutor<F, DynSMBundle<F>> = ZiskExecutor::new(
             self.elf_path.clone(),
             self.asm_path.clone(),
             self.asm_rom_path.clone(),
             self.input_data_path.clone(),
             zisk_rom,
             std,
-            sm_static_bundle,
+            sm_bundle,
         );
 
         let executor = Arc::new(executor);

@@ -188,7 +188,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     fn run_and_count_assembly(&self) -> MinimalTraces {
         struct CounterTask<F, DB>
         where
-            DB: DataBusTrait<PayloadType>,
+            DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>,
         {
             chunk_id: ChunkId,
             emu_trace: EmuTrace,
@@ -200,7 +200,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         impl<F, DB> Task for CounterTask<F, DB>
         where
             F: PrimeField64,
-            DB: DataBusTrait<PayloadType> + Send + Sync + 'static,
+            DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static,
         {
             type Output = (ChunkId, DB);
 
@@ -208,7 +208,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 let mut data_bus = self.data_bus.lock().unwrap();
                 let mut data_bus = std::mem::take(&mut *data_bus).unwrap();
 
-                ZiskEmulator::process_emu_trace::<F>(
+                ZiskEmulator::process_emu_trace::<F, Box<dyn BusDeviceMetrics>>(
                     &self.zisk_rom,
                     &self.emu_trace,
                     &mut data_bus,
@@ -222,7 +222,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         impl<F, DB> Drop for CounterTask<F, DB>
         where
-            DB: DataBusTrait<PayloadType>,
+            DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>,
         {
             fn drop(&mut self) {
                 std::mem::forget(std::mem::take(&mut self.emu_trace.mem_reads));
@@ -230,7 +230,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         }
 
         let task_factory: TaskFactory<_> = Box::new(|chunk_id: ChunkId, emu_trace: EmuTrace| {
-            let data_bus = self.sm_bundle.get_data_bus_counters(); // BD is inferred here
+            let data_bus = self.sm_bundle.get_data_bus_counters();
             CounterTask {
                 chunk_id,
                 emu_trace,
@@ -377,7 +377,11 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             .map(|minimal_trace| {
                 let mut data_bus = self.sm_bundle.get_data_bus_counters();
 
-                ZiskEmulator::process_emu_trace::<F>(&self.zisk_rom, minimal_trace, &mut data_bus);
+                ZiskEmulator::process_emu_trace::<F, Box<dyn BusDeviceMetrics>>(
+                    &self.zisk_rom,
+                    minimal_trace,
+                    &mut data_bus,
+                );
 
                 let (mut main, mut secondary) = (Vec::new(), Vec::new());
 
@@ -520,12 +524,11 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         // Execute collect process for each chunk
         data_buses.par_iter_mut().enumerate().for_each(|(chunk_id, data_bus)| {
             if let Some(data_bus) = data_bus {
-                ZiskEmulator::process_emu_traces::<F, DataBus<PayloadType, BusDeviceWrapper<u64>>>(
-                    &self.zisk_rom,
-                    min_traces,
-                    chunk_id,
-                    data_bus,
-                );
+                ZiskEmulator::process_emu_traces::<
+                    F,
+                    BusDeviceWrapper<u64>,
+                    DataBus<PayloadType, BusDeviceWrapper<u64>>,
+                >(&self.zisk_rom, min_traces, chunk_id, data_bus);
             }
         });
 
