@@ -101,6 +101,11 @@ bool generate_chunks = false;
 // Fast
 bool generate_fast = false;
 
+// Zip
+bool generate_zip = false;
+uint64_t chunk_mask = 0x0; // 0, 1, 2, 3, 4, 5, 6 or 7
+#define MAX_CHUNK_MASK 7
+
 // Maximum length of the shared memory prefix, e.g. SHMZISK12345678
 #define MAX_SHM_PREFIX_LENGTH 32
 
@@ -175,7 +180,7 @@ int main(int argc, char *argv[])
         strcat(sem_input_name, sem_input_sufix);
         strcpy(sem_output_name, shmem_prefix);
         strcat(sem_output_name, sem_output_sufix);
-        if (generate_minimal_trace || generate_main_trace)
+        if (generate_minimal_trace || generate_main_trace || generate_zip)
         {
             strcpy(sem_chunk_done_name, shmem_prefix);
             strcat(sem_chunk_done_name, sem_chunk_done_sufix);
@@ -194,7 +199,7 @@ int main(int argc, char *argv[])
             printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_output_name, errno, strerror(errno));
             return -1;
         }
-        if (generate_minimal_trace || generate_main_trace)
+        if (generate_minimal_trace || generate_main_trace || generate_zip)
         {
             sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0644, 1);
             if (sem_chunk_done == SEM_FAILED)
@@ -265,7 +270,7 @@ int main(int argc, char *argv[])
         input_size = ((input_data_size + 16 + 7) >> 3) << 3;
 
         // Map input address space
-        void * pInput = mmap((void *)INPUT_ADDR, input_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+        void * pInput = mmap((void *)INPUT_ADDR, input_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, 0);
         if (pInput == NULL)
         {
             printf("Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
@@ -315,7 +320,7 @@ int main(int argc, char *argv[])
 
         // Read input header data
         uint64_t * control = (uint64_t *)shmem_input_address;
-        if (generate_minimal_trace) {
+        if (generate_minimal_trace || generate_zip) {
             chunk_size = control[0];
             assert(chunk_size > 0);
             chunk_size_mask = chunk_size - 1;
@@ -348,7 +353,7 @@ int main(int argc, char *argv[])
         input_size = ((shmem_input_size + 16 + 7) >> 3) << 3;
 
         // Map input address space
-        void * pInput = mmap((void *)INPUT_ADDR, input_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+        void * pInput = mmap((void *)INPUT_ADDR, input_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, 0);
         if (pInput == NULL)
         {
             printf("Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
@@ -409,7 +414,7 @@ int main(int argc, char *argv[])
         trace_size = initial_trace_size;
     }
 
-    if (generate_minimal_trace || generate_rom_histogram || generate_main_trace)
+    if (generate_minimal_trace || generate_rom_histogram || generate_main_trace || generate_zip)
     {
         // Make sure the output shared memory is deleted
         shm_unlink(shmem_output_name);
@@ -431,7 +436,7 @@ int main(int argc, char *argv[])
         }
 
         // Map it to the trace address
-        void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_output_fd, 0);
+        void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ | PROT_WRITE, MAP_SHARED|MAP_FIXED, shmem_output_fd, 0);
         if (pTrace == NULL)
         {
             printf("Failed calling mmap(pTrace) errno=%d=%s\n", errno, strerror(errno));
@@ -458,7 +463,7 @@ int main(int argc, char *argv[])
     /*******/
     /* RAM */
     /*******/
-    void * pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    void * pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, 0);
     if (pRam == NULL)
     {
         printf("Failed calling mmap(ram) errno=%d=%s\n", errno, strerror(errno));
@@ -476,7 +481,7 @@ int main(int argc, char *argv[])
     /*******/
     /* ROM */
     /*******/
-    void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, 0);
     if (pRom == NULL)
     {
         printf("Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
@@ -569,14 +574,14 @@ int main(int argc, char *argv[])
     }
 
     // Complete output header data
-    if (generate_minimal_trace || generate_rom_histogram)
+    if (generate_minimal_trace || generate_rom_histogram || generate_zip)
     {
         uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
         pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
         pOutput[1] = 0; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
         pOutput[2] = trace_size; // MT allocated size [8]
         //assert(final_trace_size > 32);
-        if (generate_minimal_trace)
+        if (generate_minimal_trace || generate_zip)
         {
             pOutput[3] = final_trace_size; // MT used size [8]
         }
@@ -600,7 +605,7 @@ int main(int argc, char *argv[])
     }
 
     // Log trace
-    if (generate_minimal_trace && trace)
+    if ((generate_minimal_trace || generate_zip) && trace)
     {
         log_minimal_trace();
     }
@@ -646,7 +651,7 @@ int main(int argc, char *argv[])
     }
 
     // Cleanup trace
-    if (generate_minimal_trace || generate_rom_histogram)
+    if (generate_minimal_trace || generate_rom_histogram || generate_zip)
     {
         result = munmap((void *)TRACE_ADDR, trace_size);
         if (result == -1)
@@ -695,7 +700,7 @@ int main(int argc, char *argv[])
         {
             printf("Failed calling sem_unlink(%s) errno=%d=%s\n", sem_output_name, errno, strerror(errno));
         }
-        if (generate_minimal_trace || generate_main_trace)
+        if (generate_minimal_trace || generate_main_trace || generate_zip)
         {
             result = sem_close(sem_chunk_done);
             if (result == -1)
@@ -793,7 +798,7 @@ extern void _chunk_done()
     // Notify the caller that a new chunk is done and its trace is ready to be consumed
     if (!is_file)
     {
-        assert(generate_minimal_trace || generate_main_trace);
+        assert(generate_minimal_trace || generate_main_trace || generate_zip);
         int result = sem_post(sem_chunk_done);
         if (result == -1)
         {
@@ -836,10 +841,11 @@ extern void _realloc_trace (void)
 
 void print_usage (void)
 {
+    char * usage = "Usage: ziskemuasm <input_file> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [-c <chunk_number>] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-h/--help print this]";
 #ifdef DEBUG
-    printf("Usage: ziskemuasm <input_file> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-v verbose on] [-k keccak trace on] [-h/--help print this]\n");
+    printf("%s [-v verbose on] [-k keccak trace on]\n", usage);
 #else
-    printf("Usage: ziskemuasm <input_file> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-h/--help print this]\n");
+    printf("%s\n", usage);
 #endif
 }
 
@@ -850,6 +856,7 @@ uint64_t get_c_gen_method(void)
     if (generate_rom_histogram) return 2;
     if (generate_main_trace) return 3;
     if (generate_chunks) return 4;
+    if (generate_zip) return 6;
     printf("get_c_gen_method() called without any generation method active\n");
     exit(-1);
 }
@@ -887,6 +894,12 @@ void parse_arguments(int argc, char *argv[])
             if ( (strcmp(argv[i], "--gen=4") == 0) || (strcmp(argv[i], "--generate_chunks") == 0))
             {
                 generate_chunks = true;
+                number_of_selected_generation_methods++;
+                continue;
+            }
+            if ( (strcmp(argv[i], "--gen=6") == 0) || (strcmp(argv[i], "--generate_zip") == 0))
+            {
+                generate_zip = true;
                 number_of_selected_generation_methods++;
                 continue;
             }
@@ -943,6 +956,42 @@ void parse_arguments(int argc, char *argv[])
                 print_usage();
                 continue;
             }
+            if (strcmp(argv[i], "-c") == 0)
+            {
+                i++;
+                if (i >= argc)
+                {
+                    printf("Detected argument -c in the last position; please provide chunk number after it\n");
+                    print_usage();
+                    exit(-1);
+                }
+                errno = 0;
+                char *endptr;
+                chunk_mask = strtoul(argv[i], &endptr, 10);
+
+                // Check for errors
+                if (errno == ERANGE) {
+                    printf("Error: Chunk number is too large\n");
+                    print_usage();
+                    exit(-1);
+                } else if (endptr == argv[i]) {
+                    printf("Error: No digits found while parsing chunk number\n");
+                    print_usage();
+                    exit(-1);
+                } else if (*endptr != '\0') {
+                    printf("Error: Extra characters after chunk number: %s\n", endptr);
+                    print_usage();
+                    exit(-1);
+                } else if (chunk_mask > MAX_CHUNK_MASK) {
+                    printf("Error: Invalid chunk number: %lu\n", chunk_mask);
+                    print_usage();
+                    exit(-1);
+                } else {
+                    printf("Got chunk_mask= %lu\n", chunk_mask);
+                }
+                continue;
+            }
+            
             // We accept only one input parameter (beyond the flags)
             if (input_parameter == NULL)
             {
