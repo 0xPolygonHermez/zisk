@@ -62,7 +62,7 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+        collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()

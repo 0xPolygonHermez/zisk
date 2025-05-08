@@ -24,10 +24,8 @@ pub fn generate_assembly(
     let stem = elf.file_stem().unwrap().to_str().unwrap();
     let new_filename = format!("{}-{}.tmp", stem, elf_hash);
     let base_path = output_path.join(new_filename);
-
-    let asm_file = base_path.with_extension("asm");
-
     let file_stem = base_path.file_stem().unwrap().to_str().unwrap();
+
     let bin_mt_file = format!("{}-mt.bin", file_stem);
     let bin_mt_file = base_path.with_file_name(bin_mt_file);
 
@@ -40,10 +38,11 @@ pub fn generate_assembly(
     ]
     .iter()
     .for_each(|(file, gen_method)| {
+        let asm_file = file.with_extension("asm");
         // Convert the ELF file to Zisk format and generates an assembly file
         let rv2zk = Riscv2zisk::new(elf_file_path.to_str().unwrap().to_string());
         rv2zk
-            .runfile(asm_file.to_str().unwrap().to_string(), *gen_method)
+            .runfile(asm_file.to_str().unwrap().to_string(), *gen_method, false)
             .expect("Error converting elf to assembly");
 
         let emulator_asm_path = zisk_path.join("emulator-asm");

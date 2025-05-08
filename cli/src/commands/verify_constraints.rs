@@ -97,8 +97,10 @@ impl ZiskVerifyConstraints {
             }
         }
 
+        let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
+
         let mut asm_rom = None;
-        if self.emulator {
+        if emulator {
             self.asm = None;
         } else if self.asm.is_none() {
             let stem = self.elf.file_stem().unwrap().to_str().unwrap();
