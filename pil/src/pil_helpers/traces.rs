@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "d0faa8aaa2d0e2c06c4b0cd3c589fae8151098f84e54977bf838d54e3d52686e";
+pub const PILOUT_HASH: &str = "c0a258f16faa9c62646c487e3729f9bc5547c11e38a422c1cede7dafdb8017e0";
 
 //AIRGROUP CONSTANTS
 
@@ -275,7 +275,7 @@ values!(MainAirValues<F> {
 });
 
 values!(MemAirValues<F> {
- segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, im_direct: [FieldExtension<F>; 4],
+ segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2], im_direct: [FieldExtension<F>; 6],
 });
 
 values!(RomDataAirValues<F> {

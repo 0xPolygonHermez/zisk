@@ -25,7 +25,7 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+        collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
     ) -> Option<AirInstance<F>> {
         let mut total_rows = 0;
         let inputs: Vec<_> = collectors

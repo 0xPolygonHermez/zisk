@@ -67,7 +67,7 @@ char *Fnec_element2str(PFnecElement pE) {
     if (!(pE->type & Fnec_LONG)) {
         if (pE->shortVal>=0) {
             char *r = new char[32];
-            sprintf(r, "%d", pE->shortVal);
+            snprintf(r, 32, "%d", pE->shortVal);
             return r;
         } else {
             mpz_init_set_si(r, pE->shortVal);

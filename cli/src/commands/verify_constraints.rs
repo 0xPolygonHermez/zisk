@@ -11,11 +11,7 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
-use std::{
-    collections::HashMap,
-    env, fs,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, fs, path::PathBuf};
 
 use crate::{
     commands::{Field, ZiskLibInitFn},
@@ -71,10 +67,6 @@ pub struct ZiskVerifyConstraints {
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
-
-    // PRECOMPILES OPTIONS
-    /// Keccak script path
-    pub keccak_script: Option<PathBuf>,
 }
 
 impl ZiskVerifyConstraints {
@@ -87,17 +79,6 @@ impl ZiskVerifyConstraints {
             Some(Some(debug_value)) => {
                 json_to_debug_instances_map(self.get_proving_key(), debug_value.clone())
             }
-        };
-
-        let keccak_script = if let Some(keccak_path) = &self.keccak_script {
-            keccak_path.clone()
-        } else {
-            let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{}/.zisk/bin/keccakf_script.json", home_dir));
-            if !script_path.exists() {
-                panic!("Keccakf script file not found at {:?}", script_path);
-            }
-            script_path
         };
 
         print_banner();
@@ -116,8 +97,10 @@ impl ZiskVerifyConstraints {
             }
         }
 
+        let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
+
         let mut asm_rom = None;
-        if self.emulator {
+        if emulator {
             self.asm = None;
         } else if self.asm.is_none() {
             let stem = self.elf.file_stem().unwrap().to_str().unwrap();
@@ -151,7 +134,7 @@ impl ZiskVerifyConstraints {
                 .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
         }
 
-        self.print_command_info(&keccak_script);
+        self.print_command_info();
 
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
@@ -168,7 +151,6 @@ impl ZiskVerifyConstraints {
                     self.asm.clone(),
                     asm_rom,
                     self.input.clone(),
-                    keccak_script,
                 )
                 .expect("Failed to initialize witness library");
 
@@ -208,7 +190,7 @@ impl ZiskVerifyConstraints {
         Ok(())
     }
 
-    fn print_command_info(&self, keccak_script: &Path) {
+    fn print_command_info(&self) {
         // Print Verify Contraints command info
         println!("{} VerifyConstraints", format!("{: >12}", "Command").bright_green().bold());
         println!(
@@ -243,7 +225,6 @@ impl ZiskVerifyConstraints {
 
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
-        println!("{: >12} {}", "Keccak".bright_green().bold(), keccak_script.display());
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 
         println!();

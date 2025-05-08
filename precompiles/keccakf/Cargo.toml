@@ -18,6 +18,8 @@ zisk-common = { path = "../../common" }
 data-bus = { path = "../../data-bus" }
 zisk-pil = { path = "../../pil" }
 precompiles-common = { path = "../common" }
+circuit = { path = "../../tools/circuit" }
+precompiles-helpers = { path = "../helpers" }
 
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
@@ -38,6 +40,6 @@ clap = "4.0"
 
 
 [features]
-default = ["distributed"]
+default = []
 no_lib_link = ["proofman-common/no_lib_link"]
-distributed = ["proofman-common/distributed", "witness/distributed"]
+disable-distributed = ["proofman-common/disable-distributed"]

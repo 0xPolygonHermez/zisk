@@ -1,17 +1,19 @@
 use core::panic;
-use std::{fs, path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
 use log::info;
 use p3_field::PrimeField64;
+use tiny_keccak::keccakf;
 
+use circuit::{Gate, GateOperation, PinId};
 use data_bus::{ExtOperationData, OperationBusData, OperationKeccakData, PayloadType};
 use precompiles_common::MemBusHelpers;
+use precompiles_helpers::keccakf_topology;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use tiny_keccak::keccakf;
 use zisk_pil::{KeccakfFixed, KeccakfTrace, KeccakfTraceRow};
 
-use crate::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM, Script, ValueType};
+use crate::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM};
 
 use rayon::prelude::*;
 
@@ -20,8 +22,9 @@ pub struct KeccakfSM {
     /// Reference to the Keccakf Table State Machine.
     keccakf_table_sm: Arc<KeccakfTableSM>,
 
-    /// Script for the Keccakf's circuit representation
-    script: Arc<Script>,
+    /// The circuit description of the Keccakf
+    program: Vec<u64>,
+    gates: Vec<Gate>,
 
     /// Size of a slot in the trace. It corresponds to the number of gates in the circuit.
     slot_size: usize,
@@ -50,17 +53,12 @@ impl KeccakfSM {
     ///
     /// # Returns
     /// A new `KeccakfSM` instance.
-    pub fn new(keccakf_table_sm: Arc<KeccakfTableSM>, script_path: PathBuf) -> Arc<Self> {
-        let script = fs::read_to_string(script_path).expect("Failed to read keccakf_script.json");
-        let script: Script =
-            serde_json::from_str(&script).expect("Failed to parse keccakf_script.json");
-
+    pub fn new(keccakf_table_sm: Arc<KeccakfTableSM>) -> Arc<Self> {
         // Get the slot size
-        let slot_size = script.maxref;
-
-        // Check that the script is valid
-        debug_assert!(script.xors + script.andps == slot_size);
-        debug_assert!(script.program.len() == slot_size);
+        let keccakf_top = keccakf_topology();
+        let keccakf_program = keccakf_top.program;
+        let keccakf_gates = keccakf_top.gates;
+        let slot_size = keccakf_program.len();
 
         // Compute some useful values
         let num_available_slots = (KeccakfTrace::<usize>::NUM_ROWS - 1) / slot_size;
@@ -68,7 +66,8 @@ impl KeccakfSM {
 
         Arc::new(Self {
             keccakf_table_sm,
-            script: Arc::new(script),
+            program: keccakf_program,
+            gates: keccakf_gates,
             slot_size,
             num_available_slots,
             num_available_keccakfs,
@@ -238,8 +237,9 @@ impl KeccakfSM {
             });
         }
 
-        // Set the values of free_in_a, free_in_b, free_in_c using the script
-        let script = self.script.clone();
+        // Set the values of free_in_a, free_in_b, free_in_c
+        let program = &self.program;
+        let gates = &self.gates;
 
         let row0 = trace.buffer[0];
 
@@ -255,127 +255,121 @@ impl KeccakfSM {
         }
 
         par_traces.into_par_iter().enumerate().for_each(|(i, par_trace)| {
-            let mut bit_input_pos = [0u64; INPUT_DATA_SIZE_BITS];
-            let mut bit_output_pos = [0u64; INPUT_DATA_SIZE_BITS];
-
             for j in 0..self.slot_size {
-                let line = &script.program[j];
-                let row = line.ref_ - 1;
+                let ref_ = program[j] as usize;
+                let row = ref_ - 1;
+                let gate = &gates[ref_];
 
-                let a = &line.a;
-                match a {
-                    ValueType::Input(a) => {
-                        set_col(par_trace, |row| &mut row.free_in_a, row, inputs_bits[i][a.bit]);
-                    }
-                    ValueType::Wired(b) => {
-                        let gate = b.gate;
-
-                        let pin = &b.pin;
-                        if pin == "a" {
-                            let pinned_value = if gate > 0 {
-                                get_col(par_trace, |row| &row.free_in_a, gate - 1)
-                            } else {
-                                get_col_row(&row0, |row| &row.free_in_a)
-                            };
-                            set_col(par_trace, |row| &mut row.free_in_a, row, pinned_value);
-                        } else if pin == "b" {
-                            let pinned_value = if gate > 0 {
-                                get_col(par_trace, |row| &row.free_in_b, gate - 1)
-                            } else {
-                                get_col_row(&row0, |row| &row.free_in_b)
-                            };
-
-                            set_col(par_trace, |row| &mut row.free_in_a, row, pinned_value);
-                        } else if pin == "c" {
-                            let pinned_value = if gate > 0 {
-                                get_col(par_trace, |row| &row.free_in_c, gate - 1)
-                            } else {
-                                get_col_row(&row0, |row| &row.free_in_c)
-                            };
-
-                            set_col(par_trace, |row| &mut row.free_in_a, row, pinned_value);
-                        } else {
-                            panic!("Invalid pin");
-                        }
-                    }
-                }
-
-                let b = &line.b;
-                match b {
-                    ValueType::Input(b) => {
-                        set_col(par_trace, |row| &mut row.free_in_b, row, inputs_bits[i][b.bit]);
-                    }
-                    ValueType::Wired(b) => {
-                        let gate = b.gate;
-
-                        let pin = &b.pin;
-                        if pin == "a" {
-                            let pinned_value = if gate > 0 {
-                                get_col(par_trace, |row| &row.free_in_a, gate - 1)
-                            } else {
-                                get_col_row(&row0, |row| &row.free_in_a)
-                            };
-
-                            set_col(par_trace, |row| &mut row.free_in_b, row, pinned_value);
-                        } else if pin == "b" {
-                            let pinned_value = if gate > 0 {
-                                get_col(par_trace, |row| &row.free_in_b, gate - 1)
-                            } else {
-                                get_col_row(&row0, |row| &row.free_in_b)
-                            };
-
-                            set_col(par_trace, |row| &mut row.free_in_b, row, pinned_value);
-                        } else if pin == "c" {
-                            let pinned_value = if gate > 0 {
-                                get_col(par_trace, |row| &row.free_in_c, gate - 1)
-                            } else {
-                                get_col_row(&row0, |row| &row.free_in_c)
-                            };
-
-                            set_col(par_trace, |row| &mut row.free_in_b, row, pinned_value);
-                        } else {
-                            panic!("Invalid pin");
-                        }
-                    }
-                }
-
-                let a_val = get_col(par_trace, |row| &row.free_in_a, row) & MASK_CHUNK_BITS_KECCAKF;
-                let b_val = get_col(par_trace, |row| &row.free_in_b, row) & MASK_CHUNK_BITS_KECCAKF;
-                let op = &line.op;
-                let c_val;
-                if op == "xor" {
-                    c_val = a_val ^ b_val;
-                } else if op == "andp" {
-                    c_val = (a_val ^ MASK_CHUNK_BITS_KECCAKF) & b_val
-                } else {
-                    panic!("Invalid operation");
-                }
-
-                set_col(par_trace, |row| &mut row.free_in_c, row, c_val);
-
-                if (line.ref_ >= STATE_IN_REF_0)
-                    && (line.ref_
+                // Set the value of free_in_a
+                let a = &gate.pins[0];
+                let ref_a = a.wired_ref as usize;
+                let row_a = ref_a - 1;
+                let wired_a = a.wired_pin_id;
+                let value_a;
+                // If the reference is in the range of the inputs
+                // and the wired pin is A (inputs are located at pin A),
+                // we can get the value directly from the inputs
+                if (ref_a >= STATE_IN_REF_0)
+                    && (ref_a
                         <= STATE_IN_REF_0
-                            + (INPUT_DATA_SIZE_BITS - 2) * STATE_IN_REF_DISTANCE / 2
-                            + 1)
-                    && ((line.ref_ - STATE_IN_REF_0) % STATE_IN_REF_DISTANCE < 2)
+                            + (STATE_IN_NUMBER - STATE_IN_GROUP_BY) * STATE_IN_REF_DISTANCE
+                                / STATE_IN_GROUP_BY
+                            + (STATE_IN_GROUP_BY - 1))
+                    && ((ref_a - STATE_IN_REF_0) % STATE_IN_REF_DISTANCE < STATE_IN_GROUP_BY)
+                    && matches!(wired_a, PinId::A)
                 {
-                    let ref_pos = line.ref_ - STATE_IN_REF_0;
-                    let bit_pos = ref_pos / STATE_IN_REF_DISTANCE * 2 + ref_pos % 2;
-                    bit_input_pos[bit_pos] = a_val;
+                    let s = ref_a - STATE_IN_REF_0;
+                    let bit_a =
+                        s / STATE_IN_REF_DISTANCE * STATE_IN_GROUP_BY + s % STATE_IN_GROUP_BY;
+                    value_a = inputs_bits[i][bit_a];
+                } else
+                // Otherwise, we get one of the already computed values
+                {
+                    match wired_a {
+                        PinId::A => {
+                            value_a = if ref_a > 0 {
+                                get_col(par_trace, |row| &row.free_in_a, row_a)
+                            } else {
+                                get_col_row(&row0, |row| &row.free_in_a)
+                            };
+                        }
+                        PinId::B => {
+                            value_a = if ref_a > 0 {
+                                get_col(par_trace, |row| &row.free_in_b, row_a)
+                            } else {
+                                get_col_row(&row0, |row| &row.free_in_b)
+                            };
+                        }
+                        PinId::C => {
+                            value_a = if ref_a > 0 {
+                                get_col(par_trace, |row| &row.free_in_c, row_a)
+                            } else {
+                                get_col_row(&row0, |row| &row.free_in_c)
+                            };
+                        }
+                    }
                 }
+                set_col(par_trace, |row| &mut row.free_in_a, row, value_a);
 
-                if (line.ref_ >= STATE_OUT_REF_0)
-                    && (line.ref_
-                        <= STATE_OUT_REF_0
-                            + (INPUT_DATA_SIZE_BITS - 2) * STATE_OUT_REF_DISTANCE / 2
-                            + 1)
-                    && ((line.ref_ - STATE_OUT_REF_0) % STATE_OUT_REF_DISTANCE < 2)
+                // Set the value of free_in_b
+                let b = &gate.pins[1];
+                let ref_b = b.wired_ref as usize;
+                let row_b = ref_b - 1;
+                let wired_b = b.wired_pin_id;
+                let value_b;
+                // If the reference is in the range of the inputs
+                // and the wired pin is A (inputs are located at pin A),
+                // we can get the value directly from the inputs
+                if (ref_b >= STATE_IN_REF_0)
+                    && (ref_b
+                        <= STATE_IN_REF_0
+                            + (STATE_IN_NUMBER - STATE_IN_GROUP_BY) * STATE_IN_REF_DISTANCE
+                                / STATE_IN_GROUP_BY
+                            + (STATE_IN_GROUP_BY - 1))
+                    && ((ref_b - STATE_IN_REF_0) % STATE_IN_REF_DISTANCE < STATE_IN_GROUP_BY)
+                    && matches!(wired_b, PinId::A)
                 {
-                    let ref_pos = line.ref_ - STATE_OUT_REF_0;
-                    let bit_pos = ref_pos / STATE_OUT_REF_DISTANCE * 2 + ref_pos % 2;
-                    bit_output_pos[bit_pos] = a_val;
+                    let s = ref_b - STATE_IN_REF_0;
+                    let bit_b =
+                        s / STATE_IN_REF_DISTANCE * STATE_IN_GROUP_BY + s % STATE_IN_GROUP_BY;
+                    value_b = inputs_bits[i][bit_b];
+                } else
+                // Otherwise, we get one of the already computed values
+                {
+                    match wired_b {
+                        PinId::A => {
+                            value_b = if ref_b > 0 {
+                                get_col(par_trace, |row| &row.free_in_a, row_b)
+                            } else {
+                                get_col_row(&row0, |row| &row.free_in_a)
+                            };
+                        }
+                        PinId::B => {
+                            value_b = if ref_b > 0 {
+                                get_col(par_trace, |row| &row.free_in_b, row_b)
+                            } else {
+                                get_col_row(&row0, |row| &row.free_in_b)
+                            };
+                        }
+                        PinId::C => {
+                            value_b = if ref_b > 0 {
+                                get_col(par_trace, |row| &row.free_in_c, row_b)
+                            } else {
+                                get_col_row(&row0, |row| &row.free_in_c)
+                            };
+                        }
+                    }
                 }
+                set_col(par_trace, |row| &mut row.free_in_b, row, value_b);
+
+                // Set the value of free_in_c as value_a OP value_b
+                let op = gate.op;
+                let c_val = match op {
+                    GateOperation::Xor => value_a ^ value_b,
+                    GateOperation::Andp => (value_a ^ MASK_CHUNK_BITS_KECCAKF) & value_b,
+                    _ => panic!("Invalid operation"),
+                };
+                set_col(par_trace, |row| &mut row.free_in_c, row, c_val);
             }
 
             // Update the multiplicity table for the slot
