@@ -4959,7 +4959,7 @@ impl ZiskRom2Asm {
         }
     }
 
-    fn push_external_registers(ctx: &mut ZiskAsmContext, code: &mut String) {
+    fn push_external_registers(_ctx: &mut ZiskAsmContext, code: &mut String) {
         //*code += "\tpush rsp\n";
         *code += "\tpush rbx\n";
         *code += "\tpush rbp\n";
@@ -4972,7 +4972,7 @@ impl ZiskRom2Asm {
         // }
     }
 
-    fn pop_external_registers(ctx: &mut ZiskAsmContext, code: &mut String) {
+    fn pop_external_registers(_ctx: &mut ZiskAsmContext, code: &mut String) {
         // for r in (0u64..16u64).rev() {
         //     Self::pop_xmm_reg(ctx, code, r);
         // }
