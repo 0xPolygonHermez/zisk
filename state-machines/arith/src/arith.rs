@@ -58,8 +58,8 @@ impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
     ///
     /// # Returns
     /// A boxed implementation of `ArithCounter`.
-    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(ArithCounterInputGen::new(BusDeviceMode::Counter))
+    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
+        Some(Box::new(ArithCounterInputGen::new(BusDeviceMode::Counter)))
     }
 
     /// Builds a planner to plan arithmetic-related instances.

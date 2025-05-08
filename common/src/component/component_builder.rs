@@ -19,7 +19,7 @@ pub trait ComponentBuilder<F: PrimeField>: Send + Sync {
     ///
     /// # Returns
     /// A boxed implementation of `BusDeviceMetrics`, capable of tracking bus data.
-    fn build_counter(&self) -> Box<dyn BusDeviceMetrics>;
+    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>>;
 
     /// Builds a planner for planning execution instances.
     ///

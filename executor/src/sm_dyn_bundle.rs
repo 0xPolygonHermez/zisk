@@ -6,7 +6,7 @@ use proofman_common::ProofCtx;
 use sm_main::MainSM;
 use zisk_common::{
     BusDevice, BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, PayloadType,
-    Plan, OPERATION_BUS_ID,
+    Plan,
 };
 
 use crate::{NestedDeviceMetricsList, SMBundle};
@@ -48,12 +48,12 @@ impl<F: PrimeField64> SMBundle<F> for DynSMBundle<F> {
 
         let counter = MainSM::build_counter();
 
-        data_bus.connect_device(counter.bus_id(), counter);
+        data_bus.connect_device(Some(counter));
 
         self.secondary_sm.iter().for_each(|sm| {
             let counter = sm.build_counter();
 
-            data_bus.connect_device(counter.bus_id(), counter);
+            data_bus.connect_device(counter);
         });
 
         data_bus
@@ -79,11 +79,11 @@ impl<F: PrimeField64> SMBundle<F> for DynSMBundle<F> {
                 let mut data_bus = DataBus::new();
 
                 if let Some(bus_device) = secn_instance.build_inputs_collector(ChunkId(chunk_id)) {
-                    data_bus.connect_device(bus_device.bus_id(), bus_device);
+                    data_bus.connect_device(Some(bus_device));
 
                     for sm in &self.secondary_sm {
                         if let Some(inputs_generator) = sm.build_inputs_generator() {
-                            data_bus.connect_device(vec![OPERATION_BUS_ID], inputs_generator);
+                            data_bus.connect_device(Some(inputs_generator));
                         }
                     }
 

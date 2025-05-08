@@ -29,6 +29,7 @@ use witness::WitnessComponent;
 
 use rayon::prelude::*;
 
+use crate::DummyCounter;
 use data_bus::{DataBus, DataBusTrait};
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::{
@@ -263,7 +264,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             for (idx, counter) in databus_counters.into_iter().enumerate() {
                 match main_idx {
                     None => secondary.push((chunk_id, counter)),
-                    Some(i) if idx == i => main_count.push((chunk_id, counter)),
+                    Some(i) if idx == i => {
+                        main_count.push((chunk_id, counter.unwrap_or(Box::new(DummyCounter {}))))
+                    }
                     Some(_) => secondary.push((chunk_id, counter)),
                 }
             }
@@ -276,8 +279,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             (0..secn_count[0].len()).map(|_| Vec::new()).collect::<Vec<_>>();
 
         secn_count.into_iter().enumerate().for_each(|(_, counter_slice)| {
-            counter_slice.into_iter().enumerate().for_each(|(i, counter)| {
-                secn_vec_counters[i].push(counter);
+            counter_slice.into_iter().enumerate().for_each(|(i, (chunk_id, counter))| {
+                secn_vec_counters[i].push((chunk_id, counter.unwrap_or(Box::new(DummyCounter {}))));
             });
         });
 
@@ -405,7 +408,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         secn_metrics_slices.into_iter().enumerate().for_each(|(chunk_id, counter_slice)| {
             counter_slice.into_iter().enumerate().for_each(|(i, counter)| {
-                secn_vec_counters[i].push((ChunkId(chunk_id), counter));
+                secn_vec_counters[i]
+                    .push((ChunkId(chunk_id), counter.unwrap_or(Box::new(DummyCounter {}))));
             });
         });
 
@@ -413,7 +417,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             .into_iter()
             .enumerate()
             .flat_map(|(chunk_id, counters)| {
-                counters.into_iter().map(move |counter| (ChunkId(chunk_id), counter))
+                counters.into_iter().map(move |counter| {
+                    (ChunkId(chunk_id), counter.unwrap_or(Box::new(DummyCounter {})))
+                })
             })
             .collect();
 
@@ -617,7 +623,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
                 // As a convention the first element is the main collector the others are input generators
                 let first_collector = detached.swap_remove(0);
-                collectors_by_instance.push((chunk_id, first_collector));
+                collectors_by_instance.push((chunk_id, first_collector.unwrap()));
             }
         }
 

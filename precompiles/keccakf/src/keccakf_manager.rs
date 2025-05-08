@@ -45,8 +45,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
     ///
     /// # Returns
     /// A boxed implementation of `RegularCounters` configured for keccakf operations.
-    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(KeccakfCounterInputGen::new(BusDeviceMode::Counter))
+    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
+        Some(Box::new(KeccakfCounterInputGen::new(BusDeviceMode::Counter)))
     }
 
     /// Builds a planner to plan keccakf-related instances.

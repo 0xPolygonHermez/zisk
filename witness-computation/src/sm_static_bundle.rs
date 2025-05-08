@@ -12,7 +12,6 @@ use sm_mem::Mem;
 use sm_rom::RomSM;
 use zisk_common::{
     BusDevice, BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan,
-    OPERATION_BUS_ID,
 };
 
 use executor::NestedDeviceMetricsList;
@@ -105,11 +104,11 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
         &self,
     ) -> impl DataBusTrait<u64, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static {
         StaticDataBus::new(
+            self.mem_sm.build_mem_counter(),
             self.binary_sm.build_binary_counter(),
             self.arith_sm.build_arith_counter(),
             self.keccak_sm.build_keccakf_counter(),
             self.arith_eq_sm.build_arith_eq_counter(),
-            self.mem_sm.build_mem_counter(),
         )
     }
 
@@ -133,7 +132,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                 let mut data_bus = DataBus::new();
 
                 if let Some(bus_device) = secn_instance.build_inputs_collector(ChunkId(chunk_id)) {
-                    data_bus.connect_device(bus_device.bus_id(), bus_device);
+                    data_bus.connect_device(Some(bus_device));
 
                     macro_rules! add_generator {
                         ($field:ident, $type:ty) => {
@@ -142,7 +141,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                                     &*self.$field,
                                 )
                             {
-                                data_bus.connect_device(vec![OPERATION_BUS_ID], inputs_generator);
+                                data_bus.connect_device(Some(inputs_generator));
                             }
                         };
                     }

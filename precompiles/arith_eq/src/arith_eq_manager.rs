@@ -44,8 +44,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager<F> {
     ///
     /// # Returns
     /// A boxed implementation of `RegularCounters` configured for arith256 operations.
-    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(ArithEqCounterInputGen::new(BusDeviceMode::Counter))
+    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
+        Some(Box::new(ArithEqCounterInputGen::new(BusDeviceMode::Counter)))
     }
 
     /// Builds a planner to plan arith256-related instances.

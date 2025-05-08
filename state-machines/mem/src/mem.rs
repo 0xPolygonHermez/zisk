@@ -41,8 +41,8 @@ impl<F: PrimeField64> Mem<F> {
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
-    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(MemCounters::new())
+    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
+        Some(Box::new(MemCounters::new()))
     }
 
     fn build_planner(&self) -> Box<dyn Planner> {

@@ -13,7 +13,7 @@ use sm_binary::BinaryCounter;
 use sm_main::MainCounter;
 use sm_mem::MemCounters;
 use zisk_common::{
-    BusDevice, BusDeviceMetrics, BusId, DummyCounter, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID,
+    BusDevice, BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID,
 };
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
@@ -28,12 +28,11 @@ use zisk_common::{
 pub struct StaticDataBus<D> {
     /// List of devices connected to the bus.
     pub main_counter: MainCounter,
+    pub mem_counter: MemCounters,
     pub binary_counter: BinaryCounter,
     pub arith_counter: ArithCounterInputGen,
     pub keccakf_counter: KeccakfCounterInputGen,
     pub arith_eq_counter: ArithEqCounterInputGen,
-
-    pub mem_counter: MemCounters,
 
     /// Queue of pending data transfers to be processed.
     pending_transfers: VecDeque<(BusId, Vec<D>)>,
@@ -42,19 +41,19 @@ pub struct StaticDataBus<D> {
 impl StaticDataBus<PayloadType> {
     /// Creates a new `DataBus` instance.
     pub fn new(
+        mem_counter: MemCounters,
         binary_counter: BinaryCounter,
         arith_counter: ArithCounterInputGen,
-        keccak_counter: KeccakfCounterInputGen,
+        keccakf_counter: KeccakfCounterInputGen,
         arith_eq_counter: ArithEqCounterInputGen,
-        mem_counter: MemCounters,
     ) -> Self {
         Self {
             main_counter: MainCounter::new(),
+            mem_counter,
             binary_counter,
             arith_counter,
-            keccakf_counter: keccak_counter,
+            keccakf_counter,
             arith_eq_counter,
-            mem_counter,
             pending_transfers: VecDeque::new(),
         }
     }
@@ -107,36 +106,36 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
 
     fn on_close(&mut self) {
         self.main_counter.on_close();
+        self.mem_counter.on_close();
         self.binary_counter.on_close();
         self.arith_counter.on_close();
         self.keccakf_counter.on_close();
         self.arith_eq_counter.on_close();
-        self.mem_counter.on_close();
     }
 
-    fn into_devices(mut self, execute_on_close: bool) -> Vec<Box<dyn BusDeviceMetrics>> {
+    fn into_devices(mut self, execute_on_close: bool) -> Vec<Option<Box<dyn BusDeviceMetrics>>> {
         if execute_on_close {
             self.on_close();
         }
 
         let StaticDataBus {
             main_counter,
+            mem_counter,
             binary_counter,
             arith_counter,
             keccakf_counter,
             arith_eq_counter,
-            mem_counter,
             pending_transfers: _,
         } = self;
 
-        let counters: Vec<Box<dyn BusDeviceMetrics>> = vec![
-            Box::new(main_counter),
-            Box::new(mem_counter),
-            Box::new(DummyCounter {}),
-            Box::new(binary_counter),
-            Box::new(arith_counter),
-            Box::new(keccakf_counter),
-            Box::new(arith_eq_counter),
+        let counters: Vec<Option<Box<dyn BusDeviceMetrics>>> = vec![
+            Some(Box::new(main_counter)),
+            Some(Box::new(mem_counter)),
+            None,
+            Some(Box::new(binary_counter)),
+            Some(Box::new(arith_counter)),
+            Some(Box::new(keccakf_counter)),
+            Some(Box::new(arith_eq_counter)),
         ];
 
         counters

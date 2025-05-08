@@ -82,8 +82,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
     /// # Returns
     /// A boxed implementation of `RegularCounters` configured for binary and extension binary
     /// operations.
-    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(BinaryCounter::new(BusDeviceMode::Counter))
+    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
+        Some(Box::new(BinaryCounter::new(BusDeviceMode::Counter)))
     }
 
     /// Builds a planner to plan binary-related instances.

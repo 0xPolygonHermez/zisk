@@ -13,15 +13,14 @@ use std::{
     sync::{atomic::AtomicU32, Arc, Mutex},
 };
 
-use crate::{rom_asm_worker::RomAsmWorker, RomCounter, RomInstance, RomPlanner};
+use crate::{rom_asm_worker::RomAsmWorker, RomInstance, RomPlanner};
 use asm_runner::AsmRHData;
 use itertools::Itertools;
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_common::{
-    create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, Instance, InstanceCtx,
-    Planner,
+    create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, Instance, InstanceCtx, Planner
 };
 use zisk_core::{
     zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT, SRC_IMM,
@@ -320,8 +319,8 @@ impl<F: PrimeField> ComponentBuilder<F> for RomSM {
     ///
     /// # Returns
     /// A boxed implementation of `RomCounter`.
-    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(RomCounter::new(self.bios_inst_count.clone(), self.prog_inst_count.clone()))
+    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
+        None
     }
 
     /// Builds a planner for ROM-related instances.
