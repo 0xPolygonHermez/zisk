@@ -1,12 +1,13 @@
 use core::panic;
-use std::{fs, path::PathBuf, sync::{Arc, Mutex}};
+use std::{fs, path::PathBuf, sync::Arc};
 
+use generic_array::{typenum::U64, GenericArray};
 use log::info;
 use p3_field::PrimeField64;
+use sha2::compress256;
 
 use data_bus::{ExtOperationData, OperationBusData, OperationSha256Data, PayloadType};
 use precompiles_common::MemBusHelpers;
-use precompiles_helpers::sha256f;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{Sha256fFixed, Sha256fTrace, Sha256fTraceRow};
@@ -148,7 +149,11 @@ impl Sha256fSM {
             // Apply the sha256f function
             let mut sha256f_state: [u64; 4] = sha256f_data[..4].try_into().unwrap();
             let sha256f_input: [u64; 8] = sha256f_data[4..].try_into().unwrap();
-            sha256f(&mut sha256f_state, &sha256f_input, false);
+            let mut state_u32 = convert_u64_to_u32_be_words(&sha256f_state);
+            let block: GenericArray<u8, U64> = u64s_to_generic_array_be(&sha256f_input);
+            let blocks = &[block];
+            compress256(&mut state_u32, blocks);
+            sha256f_state = convert_u32s_back_to_u64_be(&state_u32);
 
             // Process the output
             sha256f_state.iter().enumerate().for_each(|(j, &value)| {
@@ -179,10 +184,12 @@ impl Sha256fSM {
         // It the number of inputs is less than the available sha256fs, we need to fill the remaining inputs
         if num_inputs < self.num_available_sha256fs {
             // Compute the hash of zero
-            let mut zero_state = [0u64; 4];
-            let zero_input = [0u64; 8];
-            sha256f(&mut zero_state, &zero_input, false);
+            let mut zero_state = [0u32; 8];
+            let block_zeros: GenericArray<u8, U64> = GenericArray::default();
+            let blocks_zeros = &[block_zeros];
+            compress256(&mut zero_state, blocks_zeros);
             // hash_of_0: [0x7ca51614425c3ba8, 0xce54dd2fc2020ae7, 0xb6e574d198136d0f, 0xae7e26ccbf0be7a6]
+            let zero_state: [u64; 4] = convert_u32s_back_to_u64_be(&zero_state);
 
             // If the number of inputs is not a multiple of NUM_SHA256F_PER_CIRCUIT,
             // we fill the last processed circuit
@@ -282,14 +289,21 @@ impl Sha256fSM {
 
                 let op = &line.op;
                 let d_val;
+                let op_val;
                 if op == "xor" {
                     d_val = a_val ^ b_val ^ c_val;
+                    op_val = Sha256fTableGateOp::Xor;
                 } else if op == "ch" {
                     d_val = (a_val & b_val) ^ ((a_val ^ MASK_CHUNK_BITS_SHA256F) & c_val);
+                    op_val = Sha256fTableGateOp::Ch;
                 } else if op == "maj" {
                     d_val = (a_val & b_val) ^ (a_val & c_val) ^ (b_val & c_val);
+                    op_val = Sha256fTableGateOp::Maj;
                 } else if op == "add" {
                     d_val = a_val ^ b_val ^ c_val;
+                    op_val = Sha256fTableGateOp::Add;
+
+                    // Compute and set the carry
                     let carry = (a_val & b_val) | (a_val & c_val) | (b_val & c_val);
                     set_col(par_trace, |row| &mut row.free_in_c, row + 1, carry);
                 } else {
@@ -297,28 +311,13 @@ impl Sha256fSM {
                 }
 
                 set_col(par_trace, |row| &mut row.free_in_d, row, d_val);
-            }
 
-            // Update the multiplicity table for the circuit
-            // TODO: Move this code above
-            for k in 0..self.circuit_size {
-                let a = par_trace[k].free_in_a;
-                let b = par_trace[k].free_in_b;
-                let c = par_trace[k].free_in_c;
-                let gate_op = F::as_canonical_u64(&fixed[1 + i * self.circuit_size + k].GATE_OP);
-                let gate_op_val = match gate_op as u8 {
-                    XOR_GATE_OP => Sha256fTableGateOp::Xor,
-                    CH_GATE_OP => Sha256fTableGateOp::Ch,
-                    MAJ_GATE_OP => Sha256fTableGateOp::Maj,
-                    ADD_GATE_OP => Sha256fTableGateOp::Add,
-                    _ => panic!("Invalid gate operation"),
-                };
+                // Update the multiplicity table for the circuit
                 for j in 0..CHUNKS_SHA256F {
-                    let a_val = F::as_canonical_u64(&a[j]);
-                    let b_val = F::as_canonical_u64(&b[j]);
-                    let c_val = F::as_canonical_u64(&c[j]);
-                    let table_row =
-                        Sha256fTableSM::calculate_table_row(&gate_op_val, a_val, b_val, c_val);
+                    let a = (a_val >> (j * BITS_SHA256F)) & MASK_BITS_SHA256F;
+                    let b = (b_val >> (j * BITS_SHA256F)) & MASK_BITS_SHA256F;
+                    let c = (c_val >> (j * BITS_SHA256F)) & MASK_BITS_SHA256F;
+                    let table_row = Sha256fTableSM::calculate_table_row(&op_val, a, b, c);
                     self.sha256f_table_sm.update_input(table_row, 1);
                 }
             }
@@ -459,7 +458,9 @@ impl Sha256fSM {
         let num_inputs: usize = inputs.len();
         let num_circuits_needed = num_inputs.div_ceil(NUM_SHA256F_PER_CIRCUIT);
         let num_rows_constants = 1; // Number of rows used for the constants
-        let num_rows_needed = num_rows_constants + num_circuits_needed * self.circuit_size;
+        let num_padding_rows = (num_rows - num_rows_constants) % self.circuit_size;
+        let num_rows_needed =
+            num_rows_constants + num_circuits_needed * self.circuit_size + num_padding_rows;
 
         // Sanity checks
         assert!(
@@ -574,7 +575,11 @@ impl Sha256fSM {
         // Apply the sha256f function and get the output
         let mut sha256f_state: [u64; 4] = sha256f_data[..4].try_into().unwrap();
         let sha256f_input: [u64; 8] = sha256f_data[4..].try_into().unwrap();
-        sha256f(&mut sha256f_state, &sha256f_input, false);
+        let mut state_u32 = convert_u64_to_u32_be_words(&sha256f_state);
+        let block: GenericArray<u8, U64> = u64s_to_generic_array_be(&sha256f_input);
+        let blocks = &[block];
+        compress256(&mut state_u32, blocks);
+        sha256f_state = convert_u32s_back_to_u64_be(&state_u32);
 
         // Compute the writes
         for (i, &output) in sha256f_state.iter().enumerate() {
@@ -585,4 +590,35 @@ impl Sha256fSM {
 
         mem_data
     }
+}
+
+fn convert_u64_to_u32_be_words(input: &[u64; 4]) -> [u32; 8] {
+    let mut out = [0u32; 8];
+    for (i, &word) in input.iter().enumerate() {
+        let bytes = word.to_be_bytes();
+        out[2 * i] = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        out[2 * i + 1] = u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+    }
+    out
+}
+
+fn u64s_to_generic_array_be(input: &[u64; 8]) -> GenericArray<u8, U64> {
+    let mut out = [0u8; 64];
+    for (i, word) in input.iter().enumerate() {
+        let bytes = word.to_be_bytes();
+        out[i * 8..(i + 1) * 8].copy_from_slice(&bytes);
+    }
+    GenericArray::<u8, U64>::clone_from_slice(&out)
+}
+
+fn convert_u32s_back_to_u64_be(words: &[u32; 8]) -> [u64; 4] {
+    let mut out = [0u64; 4];
+    for i in 0..4 {
+        let high = words[2 * i].to_be_bytes();
+        let low = words[2 * i + 1].to_be_bytes();
+        out[i] = u64::from_be_bytes([
+            high[0], high[1], high[2], high[3], low[0], low[1], low[2], low[3],
+        ]);
+    }
+    out
 }

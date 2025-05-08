@@ -64,8 +64,7 @@ pub fn sha256(input: &[u8], output: &mut [u8; 32]) {
             let bits: [u8; 32] = block[i * 32..(i + 1) * 32].try_into().unwrap(); // MSB
             for j in 0..32 {
                 let group = (256 + (i * 32 + j) as u64) / SHA256F_GATE_CONFIG.sin_ref_group_by;
-                let group_pos =
-                    (256 + (i * 32 + j) as u64) as u64 % SHA256F_GATE_CONFIG.sin_ref_group_by;
+                let group_pos = (256 + (i * 32 + j) as u64) % SHA256F_GATE_CONFIG.sin_ref_group_by;
                 let ref_idx = SHA256F_GATE_CONFIG.sin_first_ref
                     + group * SHA256F_GATE_CONFIG.sin_ref_distance
                     + group_pos;

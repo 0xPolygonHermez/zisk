@@ -2337,6 +2337,7 @@ dependencies = [
  "circuit",
  "clap",
  "data-bus",
+ "generic-array",
  "log",
  "p3-field",
  "p3-goldilocks",
@@ -2349,6 +2350,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "sha2",
  "sm-common",
  "witness",
  "zisk-common",
@@ -2407,7 +2409,6 @@ dependencies = [
  "env_logger",
  "libloading",
  "log",
- "mpi",
  "num-bigint",
  "num-traits",
  "p3-field",
@@ -3005,9 +3006,9 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.10.8"
+version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "793db75ad2bcafc3ffa7c68b215fee268f537982cd901d132f89c6343f3a3dc8"
+checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
 dependencies = [
  "cfg-if",
  "cpufeatures",
@@ -4351,6 +4352,7 @@ name = "zisk-core"
 version = "0.7.0"
 dependencies = [
  "elf",
+ "generic-array",
  "indexmap",
  "json",
  "lib-c",
@@ -4359,6 +4361,7 @@ dependencies = [
  "riscv",
  "serde",
  "serde_json",
+ "sha2",
  "tiny-keccak 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "ziskos",
 ]

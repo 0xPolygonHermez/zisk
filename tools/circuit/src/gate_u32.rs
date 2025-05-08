@@ -46,19 +46,19 @@ impl<'a> GateU32<'a> {
     pub fn to_u32(&self) -> u32 {
         let mut bits = [0u8; 32];
         let state = self.state.borrow();
-        for i in 0..32 {
-            let ref_ = self.bits[i].ref_ as usize;
-            let pin_id = self.bits[i].pin_id;
+        for (i, bit) in self.bits.iter().enumerate() {
+            let ref_ = bit.ref_ as usize;
+            let pin_id = bit.pin_id;
             bits[i] = state.gates[ref_].pins[pin_id].bit;
         }
 
-        return bits_to_u32(&bits);
+        bits_to_u32(&bits)
     }
 
     pub fn rotate_right(&mut self, pos: usize) {
         let mut rotated = [GateBit::new(self.state.borrow().gate_config.zero_ref.unwrap()); 32];
-        for i in 0..32 {
-            rotated[i] = self.bits[(i + pos) % 32].clone();
+        for (i, rotated_bit) in rotated.iter_mut().enumerate() {
+            *rotated_bit = self.bits[(i + pos) % 32];
         }
         self.bits = rotated;
     }
@@ -67,13 +67,11 @@ impl<'a> GateU32<'a> {
         let mut shifted = [GateBit::new(self.state.borrow().gate_config.zero_ref.unwrap()); 32];
 
         // Shift the bits
-        for i in 0..32 - pos {
-            shifted[i] = self.bits[i + pos].clone();
-        }
+        shifted[..32 - pos].copy_from_slice(&self.bits[pos..]);
 
         // Zero out the remaining bits
-        for i in (32 - pos as usize)..32 {
-            shifted[i] = GateBit::new(self.state.borrow().gate_config.zero_ref.unwrap());
+        for s in shifted.iter_mut().skip(32 - pos) {
+            *s = GateBit::new(self.state.borrow().gate_config.zero_ref.unwrap());
         }
 
         self.bits = shifted;

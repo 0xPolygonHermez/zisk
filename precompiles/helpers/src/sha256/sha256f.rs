@@ -19,13 +19,13 @@ pub fn sha256f_internal(gate_state: &RefCell<GateState>) {
     gate_state.borrow().print_refs(&gate_state.borrow().sin_refs, "Before permutation");
 
     // Initialize the round constants as GateU32
-    let mut k = [GateU32::new(&gate_state); 64];
+    let mut k = [GateU32::new(gate_state); 64];
     for i in 0..64 {
         k[i].from_u32(RC[i]);
     }
 
     // Copy the hash state into the hash state array
-    let mut h32 = vec![GateU32::new(&gate_state); 8];
+    let mut h32 = vec![GateU32::new(gate_state); 8];
     for i in 0..8 {
         for j in 0..32 {
             let group = (i * 32 + j) as u64 / gate_state.borrow().gate_config.sin_ref_group_by;
@@ -39,27 +39,19 @@ pub fn sha256f_internal(gate_state: &RefCell<GateState>) {
     }
 
     // Initialize working variables with the current hash state
-    let (mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h) = (
-        h32[0].clone(),
-        h32[1].clone(),
-        h32[2].clone(),
-        h32[3].clone(),
-        h32[4].clone(),
-        h32[5].clone(),
-        h32[6].clone(),
-        h32[7].clone(),
-    );
+    let (mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h) =
+        (h32[0], h32[1], h32[2], h32[3], h32[4], h32[5], h32[6], h32[7]);
 
     // Initialize the 64-entry message schedule array
-    let mut w = [GateU32::new(&gate_state); 64];
+    let mut w = [GateU32::new(gate_state); 64];
 
     // Copy the input bits 16 words into the message schedule array
     for i in 0..16 {
         for j in 0..32 {
             let group =
                 (256 + (i * 32 + j) as u64) / gate_state.borrow().gate_config.sin_ref_group_by;
-            let group_pos = (256 + (i * 32 + j) as u64) as u64
-                % gate_state.borrow().gate_config.sin_ref_group_by;
+            let group_pos =
+                (256 + (i * 32 + j) as u64) % gate_state.borrow().gate_config.sin_ref_group_by;
             let ref_idx = gate_state.borrow().gate_config.sin_first_ref
                 + group * gate_state.borrow().gate_config.sin_ref_distance
                 + group_pos;
@@ -71,24 +63,24 @@ pub fn sha256f_internal(gate_state: &RefCell<GateState>) {
     // Extend the message schedule array
     for i in 16..64 {
         // 1] Compute sigma0(w[i-15]) = ROTR(w[i-15], 7) ^ ROTR(w[i-15], 18) ^ SHR(w[i-15], 3)
-        let mut tmp1 = w[i - 15].clone();
-        let mut tmp2 = w[i - 15].clone();
-        let mut tmp3 = w[i - 15].clone();
+        let mut tmp1 = w[i - 15];
+        let mut tmp2 = w[i - 15];
+        let mut tmp3 = w[i - 15];
 
         tmp1.rotate_right(7);
         tmp2.rotate_right(18);
         tmp3.shift_right(3);
 
-        let mut tmp4 = GateU32::new(&gate_state);
+        let mut tmp4 = GateU32::new(gate_state);
         gate_u32_xor(&mut gate_state.borrow_mut(), &tmp1, &tmp2, &mut tmp4);
 
-        let mut sigma0 = GateU32::new(&gate_state);
+        let mut sigma0 = GateU32::new(gate_state);
         gate_u32_xor(&mut gate_state.borrow_mut(), &tmp4, &tmp3, &mut sigma0);
 
         // 2] Compute sigma1(w[i-2]) = ROTR(w[i-2], 17) ^ ROTR(w[i-2], 19) ^ SHR(w[i-2], 10)
-        tmp1 = w[i - 2].clone();
-        tmp2 = w[i - 2].clone();
-        tmp3 = w[i - 2].clone();
+        tmp1 = w[i - 2];
+        tmp2 = w[i - 2];
+        tmp3 = w[i - 2];
 
         tmp1.rotate_right(17);
         tmp2.rotate_right(19);
@@ -96,7 +88,7 @@ pub fn sha256f_internal(gate_state: &RefCell<GateState>) {
 
         gate_u32_xor(&mut gate_state.borrow_mut(), &tmp1, &tmp2, &mut tmp4);
 
-        let mut sigma1 = GateU32::new(&gate_state);
+        let mut sigma1 = GateU32::new(gate_state);
         gate_u32_xor(&mut gate_state.borrow_mut(), &tmp4, &tmp3, &mut sigma1);
 
         // 3] Compute w[i] = w[i-16] + sigma0 + w[i-7] + sigma1
@@ -108,51 +100,51 @@ pub fn sha256f_internal(gate_state: &RefCell<GateState>) {
     // Compression function main loop
     for i in 0..64 {
         // 1] Compute SIGMA1(e) = rotateRight32(e, 6) ^ rotateRight32(e, 11) ^ rotateRight32(e, 25)
-        let mut tmp1 = e.clone();
-        let mut tmp2 = e.clone();
-        let mut tmp3 = e.clone();
+        let mut tmp1 = e;
+        let mut tmp2 = e;
+        let mut tmp3 = e;
 
         tmp1.rotate_right(6);
         tmp2.rotate_right(11);
         tmp3.rotate_right(25);
 
-        let mut xor = GateU32::new(&gate_state);
+        let mut xor = GateU32::new(gate_state);
         gate_u32_xor(&mut gate_state.borrow_mut(), &tmp1, &tmp2, &mut xor);
 
-        let mut big_sigma1 = GateU32::new(&gate_state);
+        let mut big_sigma1 = GateU32::new(gate_state);
         gate_u32_xor(&mut gate_state.borrow_mut(), &xor, &tmp3, &mut big_sigma1);
 
         // 2] Compute ch(e,f,g) = (e & f) ^ ((¬e) & g)
-        let mut ch = GateU32::new(&gate_state);
+        let mut ch = GateU32::new(gate_state);
         gate_u32_and(&mut gate_state.borrow_mut(), &e, &f, &mut tmp1);
         gate_u32_not(&mut gate_state.borrow_mut(), &e, &mut tmp2);
         gate_u32_and(&mut gate_state.borrow_mut(), &tmp2, &g, &mut tmp3);
         gate_u32_xor(&mut gate_state.borrow_mut(), &tmp1, &tmp3, &mut ch);
 
         // 3] Compute T1 = h + SIGMA1(e) + ch(e,f,g) + k[i] + w[i]
-        let mut t1 = GateU32::new(&gate_state);
+        let mut t1 = GateU32::new(gate_state);
         gate_u32_add(&mut gate_state.borrow_mut(), &h, &big_sigma1, &mut tmp1);
         gate_u32_add(&mut gate_state.borrow_mut(), &tmp1, &ch, &mut tmp2);
         gate_u32_add(&mut gate_state.borrow_mut(), &tmp2, &k[i], &mut tmp3);
         gate_u32_add(&mut gate_state.borrow_mut(), &tmp3, &w[i], &mut t1);
 
         // 4] Compute SIGMA0(a) = rotateRight32(a, 2) ^ rotateRight32(a, 13) ^ rotateRight32(a, 22)
-        tmp1 = a.clone();
-        tmp2 = a.clone();
-        tmp3 = a.clone();
+        tmp1 = a;
+        tmp2 = a;
+        tmp3 = a;
 
         tmp1.rotate_right(2);
         tmp2.rotate_right(13);
         tmp3.rotate_right(22);
 
-        let mut xor = GateU32::new(&gate_state);
+        let mut xor = GateU32::new(gate_state);
         gate_u32_xor(&mut gate_state.borrow_mut(), &tmp1, &tmp2, &mut xor);
 
-        let mut big_sigma0 = GateU32::new(&gate_state);
+        let mut big_sigma0 = GateU32::new(gate_state);
         gate_u32_xor(&mut gate_state.borrow_mut(), &xor, &tmp3, &mut big_sigma0);
 
         // 5] Compute maj(a,b,c) = (a & b) ^ (a & c) ^ (b & c)
-        let mut maj = GateU32::new(&gate_state);
+        let mut maj = GateU32::new(gate_state);
         gate_u32_and(&mut gate_state.borrow_mut(), &a, &b, &mut tmp1);
         gate_u32_and(&mut gate_state.borrow_mut(), &a, &c, &mut tmp2);
         gate_u32_and(&mut gate_state.borrow_mut(), &b, &c, &mut tmp3);
@@ -160,24 +152,24 @@ pub fn sha256f_internal(gate_state: &RefCell<GateState>) {
         gate_u32_xor(&mut gate_state.borrow_mut(), &xor, &tmp3, &mut maj);
 
         // 6] Compute T2 = SIGMA0(a) + maj(a,b,c)
-        let mut t2 = GateU32::new(&gate_state);
+        let mut t2 = GateU32::new(gate_state);
         gate_u32_add(&mut gate_state.borrow_mut(), &big_sigma0, &maj, &mut t2);
 
         // 7] Update the working variables
-        h = g.clone();
-        g = f.clone();
-        f = e.clone();
+        h = g;
+        g = f;
+        f = e;
         // e = d + T1
         gate_u32_add(&mut gate_state.borrow_mut(), &d, &t1, &mut e);
-        d = c.clone();
-        c = b.clone();
-        b = a.clone();
+        d = c;
+        c = b;
+        b = a;
         // a = T1 + T2
         gate_u32_add(&mut gate_state.borrow_mut(), &t1, &t2, &mut a);
     }
 
     // Update hash values
-    let mut state_output = vec![GateU32::new(&gate_state); 8];
+    let mut state_output = vec![GateU32::new(gate_state); 8];
     gate_u32_add(&mut gate_state.borrow_mut(), &h32[0], &a, &mut state_output[0]);
     gate_u32_add(&mut gate_state.borrow_mut(), &h32[1], &b, &mut state_output[1]);
     gate_u32_add(&mut gate_state.borrow_mut(), &h32[2], &c, &mut state_output[2]);
@@ -197,13 +189,13 @@ pub fn sha256f_internal(gate_state: &RefCell<GateState>) {
                 + group * gate_state.borrow().gate_config.sout_ref_distance
                 + group_pos;
             gate_state.borrow_mut().xor(
-                state_output[i].bits[j as usize].ref_,
-                state_output[i].bits[j as usize].pin_id,
+                state_output[i].bits[j].ref_,
+                state_output[i].bits[j].pin_id,
                 zero_ref,
                 PinId::A,
                 ref_idx,
             );
-            gate_state.borrow_mut().sout_refs[(i * 32 + j) as usize] = ref_idx;
+            gate_state.borrow_mut().sout_refs[i * 32 + j] = ref_idx;
         }
     }
 

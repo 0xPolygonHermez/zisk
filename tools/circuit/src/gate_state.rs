@@ -1,6 +1,4 @@
-use super::{
-    bits_to_byte, bits_to_u64, print_bits, Gate, GateConfig, GateOperation, PinId, PinSource,
-};
+use super::{bits_to_byte, print_bits, Gate, GateConfig, GateOperation, PinId, PinSource};
 
 #[derive(Debug)]
 pub struct GateState {
@@ -192,6 +190,7 @@ impl GateState {
     }
 
     // Perform the gate operation
+    #[allow(clippy::too_many_arguments)]
     pub fn op(
         &mut self,
         op: GateOperation,
@@ -328,6 +327,7 @@ impl GateState {
     }
 
     #[rustfmt::skip]
+    #[allow(clippy::too_many_arguments)]
     pub fn xor3(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_in3: u64, pin_in3: PinId, ref_out: u64) {
         self.op(GateOperation::Xor, ref_in1, pin_in1, ref_in2, pin_in2, Some(ref_in3), Some(pin_in3), ref_out);
     }
@@ -359,16 +359,19 @@ impl GateState {
     }
 
     #[rustfmt::skip]
+    #[allow(clippy::too_many_arguments)]
     pub fn ch(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_in3: u64, pin_in3: PinId, ref_out: u64) {
         self.op(GateOperation::Ch, ref_in1, pin_in1, ref_in2, pin_in2, Some(ref_in3), Some(pin_in3), ref_out);
     }
 
     #[rustfmt::skip]
+    #[allow(clippy::too_many_arguments)]
     pub fn maj(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_in3: u64, pin_in3: PinId, ref_out: u64) {
         self.op(GateOperation::Maj, ref_in1, pin_in1, ref_in2, pin_in2, Some(ref_in3), Some(pin_in3), ref_out);
     }
 
     #[rustfmt::skip]
+    #[allow(clippy::too_many_arguments)]
     pub fn add(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_in3: u64, pin_in3: PinId, ref_out: u64) -> u8 {
         self.op(GateOperation::Add, ref_in1, pin_in1, ref_in2, pin_in2, Some(ref_in3), Some(pin_in3), ref_out).unwrap()
     }

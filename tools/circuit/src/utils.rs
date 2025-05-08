@@ -55,16 +55,16 @@ fn byte_to_char(b: u8) -> char {
 /// Converts u32 to bits (LSB first)
 pub fn u32_to_bits(value: u32) -> [u8; 32] {
     let mut bits = [0u8; 32];
-    for i in 0..32 {
-        bits[i] = ((value >> i) as u8) & 1;
+    for (i, bit) in bits.iter_mut().enumerate() {
+        *bit = ((value >> i) as u8) & 1;
     }
     bits
 }
 
 pub fn u32_to_bits_msb(value: u32) -> [u8; 32] {
     let mut bits = [0u8; 32];
-    for i in 0..32 {
-        bits[i] = ((value >> (31 - i)) as u8) & 1;
+    for (i, bit) in bits.iter_mut().enumerate() {
+        *bit = ((value >> (31 - i)) as u8) & 1;
     }
     bits
 }
@@ -80,8 +80,8 @@ pub fn bits_to_u32(bits: &[u8; 32]) -> u32 {
 
 pub fn bits_to_u32_msb(bits: &[u8; 32]) -> u32 {
     let mut value = 0u32;
-    for i in 0..32 {
-        value = (value << 1) | (bits[i] as u32);
+    for bit in bits.iter() {
+        value = (value << 1) | (*bit as u32);
     }
     value
 }

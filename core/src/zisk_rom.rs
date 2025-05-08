@@ -2619,6 +2619,45 @@ impl ZiskRom {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
+            ZiskOp::Sha256 => {
+                // TODO!
+                // // Use the memory address as the first and unique parameter */
+                // s += "\tmov rdi, qword ptr [reg_10] /* Keccak: rdi = A0 */\n";
+
+                // // Copy read data into mem_reads_address and advance it
+                // if ctx.generate_minimal_trace {
+                //     s += &format!("\tmov {}, rdi\n", REG_ADDRESS);
+                //     for k in 0..25 {
+                //         s += &format!(
+                //             "\tmov {}, [{} + {}] /* value = mem[keccak_address[{}]] */\n",
+                //             REG_VALUE,
+                //             REG_ADDRESS,
+                //             k * 8,
+                //             k
+                //         );
+                //         s += &format!(
+                //             "\tmov [{} + {}*8 + {}], {} /* mem_reads[{}] = value */\n",
+                //             REG_MEM_READS_ADDRESS,
+                //             REG_MEM_READS_SIZE,
+                //             k * 8,
+                //             REG_VALUE,
+                //             k
+                //         );
+                //     }
+
+                //     // Increment chunk.steps.mem_reads_size in 25 units
+                //     s += &format!("\tadd {}, 25 /* mem_reads_size+=25 */\n", REG_MEM_READS_SIZE);
+                // }
+                // // Call the keccak function
+                // Self::push_internal_registers(ctx, &mut s);
+                // s += "\tcall _opcode_keccak\n";
+                // Self::pop_internal_registers(ctx, &mut s);
+
+                // // Set result
+                // s += &format!("\tmov {}, 0 /* Keccak: c=0 */\n", REG_C);
+                // ctx.c.is_saved = true;
+                // ctx.flag_is_always_zero = true;
+            }
             ZiskOp::PubOut => {
                 assert!(ctx.store_b_in_c);
                 ctx.c.is_constant = ctx.b.is_constant;

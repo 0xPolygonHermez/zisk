@@ -130,8 +130,8 @@ mod tests {
 
         assert!(input.get_next(&mut buffer));
         assert_eq!(buffer[0], 0x80);
-        for i in 1..SHA256_BLOCK_SIZE_BYTES {
-            assert_eq!(buffer[i], 0x00);
+        for &byte in buffer.iter().take(SHA256_BLOCK_SIZE_BYTES).skip(1) {
+            assert_eq!(byte, 0x00);
         }
         assert!(!input.get_next(&mut buffer));
     }
@@ -145,14 +145,14 @@ mod tests {
         assert!(input.padding_size == 9);
 
         assert!(input.get_next(&mut buffer));
-        for i in 0..55 {
-            assert_eq!(buffer[i], 0xFF); // Original data
+        for &byte in buffer.iter().take(55) {
+            assert_eq!(byte, 0xFF); // Original data
         }
         assert_eq!(buffer[55], 0x80); // From padding
 
         // 55*8 in binary is 0b00000001 0b10111000 == 0x01 || 0xB8
-        for i in 56..SHA256_BLOCK_SIZE_BYTES - 2 {
-            assert_eq!(buffer[i], 0x00); // Padding
+        for &byte in buffer.iter().take(SHA256_BLOCK_SIZE_BYTES - 2).skip(56) {
+            assert_eq!(byte, 0x00); // padding
         }
         assert_eq!(buffer[SHA256_BLOCK_SIZE_BYTES - 2], 0x01);
         assert_eq!(buffer[SHA256_BLOCK_SIZE_BYTES - 1], 0xB8);
@@ -170,18 +170,18 @@ mod tests {
         assert!(input.padding_size == 72);
 
         assert!(input.get_next(&mut buffer));
-        for i in 0..56 {
-            assert_eq!(buffer[i], 0xFF); // Original data
+        for &byte in buffer.iter().take(56) {
+            assert_eq!(byte, 0xFF); // Original data
         }
         assert_eq!(buffer[56], 0x80); // From padding
-        for i in 57..SHA256_BLOCK_SIZE_BYTES {
-            assert_eq!(buffer[i], 0x00); // Original data
+        for &byte in buffer.iter().take(SHA256_BLOCK_SIZE_BYTES).skip(57) {
+            assert_eq!(byte, 0x00); // Original data
         }
 
         assert!(input.get_next(&mut buffer));
         // 56*8 in binary is 0b00000001 0b11000000 == 0x01 || 0xC0
-        for i in 0..SHA256_BLOCK_SIZE_BYTES - 2 {
-            assert_eq!(buffer[i], 0x00); // Padding
+        for &byte in buffer.iter().take(SHA256_BLOCK_SIZE_BYTES - 2) {
+            assert_eq!(byte, 0x00); // padding
         }
         assert_eq!(buffer[SHA256_BLOCK_SIZE_BYTES - 2], 0x01);
         assert_eq!(buffer[SHA256_BLOCK_SIZE_BYTES - 1], 0xC0);
@@ -199,8 +199,8 @@ mod tests {
         assert!(input.padding_size == SHA256_BLOCK_SIZE_BYTES);
 
         assert!(input.get_next(&mut buffer));
-        for i in 0..SHA256_BLOCK_SIZE_BYTES {
-            assert_eq!(buffer[i], 0xFF); // Original data
+        for &byte in buffer.iter().take(SHA256_BLOCK_SIZE_BYTES) {
+            assert_eq!(byte, 0xFF);
         }
 
         // Second read should be padded
@@ -208,8 +208,8 @@ mod tests {
         assert_eq!(buffer[0], 0x80); // From padding
 
         // 64*8 in binary is 0b00000010 0b00000000 == 0x02 || 0x00
-        for i in 1..SHA256_BLOCK_SIZE_BYTES - 2 {
-            assert_eq!(buffer[i], 0x00); // Padding
+        for &byte in buffer.iter().take(SHA256_BLOCK_SIZE_BYTES - 2).skip(1) {
+            assert_eq!(byte, 0x00);
         }
         assert_eq!(buffer[SHA256_BLOCK_SIZE_BYTES - 2], 0x02);
         assert_eq!(buffer[SHA256_BLOCK_SIZE_BYTES - 1], 0x00);
@@ -227,26 +227,26 @@ mod tests {
         assert!(input.padding_size == 71);
 
         assert!(input.get_next(&mut buffer));
-        for i in 0..SHA256_BLOCK_SIZE_BYTES {
-            assert_eq!(buffer[i], 0xFF); // Original data
+        for &byte in buffer.iter().take(SHA256_BLOCK_SIZE_BYTES) {
+            assert_eq!(byte, 0xFF); // Original data
         }
 
         // Second read should be padded
         assert!(input.get_next(&mut buffer));
-        for i in 0..57 {
-            assert_eq!(buffer[i], 0xFF); // Original data
+        for &byte in buffer.iter().take(57) {
+            assert_eq!(byte, 0xFF);
         }
         assert_eq!(buffer[57], 0x80); // From padding
 
         // 121*8 in binary is 0b00000011 0b11001000 == 0x03 || 0xC8
-        for i in 58..SHA256_BLOCK_SIZE_BYTES {
-            assert_eq!(buffer[i], 0x00); // Padding
+        for &byte in buffer.iter().take(SHA256_BLOCK_SIZE_BYTES).skip(58) {
+            assert_eq!(byte, 0x00);
         }
 
         // Third read should be padded
         assert!(input.get_next(&mut buffer));
-        for i in 0..SHA256_BLOCK_SIZE_BYTES - 2 {
-            assert_eq!(buffer[i], 0x00);
+        for &byte in buffer.iter().take(SHA256_BLOCK_SIZE_BYTES - 2) {
+            assert_eq!(byte, 0x00);
         }
         assert_eq!(buffer[SHA256_BLOCK_SIZE_BYTES - 2], 0x03);
         assert_eq!(buffer[SHA256_BLOCK_SIZE_BYTES - 1], 0xC8);
