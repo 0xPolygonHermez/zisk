@@ -1,7 +1,8 @@
 //! Configuration and context for the proving process.
 //!
 use crate::common::{
-    print_banner, Field, OutputPath, ProvingKeyPath, Sha256fScriptPath, WitnessLibPath,
+    print_banner, Field, PathBufWithDefault, DEFAULT_OUTPUT_PATH, DEFAULT_PROVING_KEY_PATH,
+    DEFAULT_SHA256F_SCRIPT_PATH, DEFAULT_WITNESS_LIB_PATH,
 };
 use anyhow::Result;
 use colored::Colorize;
@@ -15,20 +16,23 @@ use std::path::PathBuf;
 /// Prove command configuration options.
 #[derive(Clone)]
 pub struct ProveConfig {
-    /// Witness computation dynamic library path.
-    pub witness_lib: WitnessLibPath,
-
     /// ASM file path (optional, mutually exclusive with emulator option).
     pub asm: Option<PathBuf>,
 
     /// Use prebuilt emulator instead of ASM.
     pub emulator: bool,
 
+    /// Witness computation dynamic library path.
+    pub witness_lib: PathBufWithDefault,
+
     /// Proving key path.
-    pub proving_key: ProvingKeyPath,
+    pub proving_key: PathBufWithDefault,
+
+    /// Sha256f script file path.
+    pub sha256f_script: PathBufWithDefault,
 
     /// Output path.
-    pub output_dir: OutputPath,
+    pub output_dir: PathBufWithDefault,
 
     /// Field type to use.
     pub field: Field,
@@ -48,9 +52,6 @@ pub struct ProveConfig {
     /// Debug information.
     pub debug_info: DebugInfo,
 
-    /// Keccak script file path.
-    pub sha256f_script: Sha256fScriptPath,
-
     /// Only verify constraints (no proof generation).
     pub only_verify_constraints: bool,
 }
@@ -58,18 +59,21 @@ pub struct ProveConfig {
 impl Default for ProveConfig {
     fn default() -> Self {
         ProveConfig {
-            witness_lib: WitnessLibPath::default(),
+            witness_lib: PathBufWithDefault::new(None::<PathBuf>, DEFAULT_WITNESS_LIB_PATH.clone()),
             asm: None,
             emulator: false,
-            proving_key: ProvingKeyPath::default(),
-            output_dir: OutputPath::default(),
+            proving_key: PathBufWithDefault::new(None::<PathBuf>, DEFAULT_PROVING_KEY_PATH.clone()),
+            output_dir: PathBufWithDefault::new(None::<PathBuf>, DEFAULT_OUTPUT_PATH.clone()),
             field: Field::default(),
             aggregation: true,
             final_snark: false,
             verify_proofs: false,
             verbose: 0,
             debug_info: DebugInfo::default(),
-            sha256f_script: Sha256fScriptPath::default(),
+            sha256f_script: PathBufWithDefault::new(
+                None::<PathBuf>,
+                DEFAULT_SHA256F_SCRIPT_PATH.clone(),
+            ),
             only_verify_constraints: false,
         }
     }
@@ -81,7 +85,7 @@ impl ProveConfig {
     }
 
     pub fn witness_lib(mut self, path: Option<impl Into<PathBuf>>) -> Self {
-        self.witness_lib = WitnessLibPath::new(path);
+        self.witness_lib.set_path(path);
         self
     }
 
@@ -96,12 +100,12 @@ impl ProveConfig {
     }
 
     pub fn proving_key(mut self, path: Option<impl Into<PathBuf>>) -> Self {
-        self.proving_key = ProvingKeyPath::new(path);
+        self.proving_key.set_path(path);
         self
     }
 
     pub fn output_dir(mut self, path: Option<impl Into<PathBuf>>) -> Self {
-        self.output_dir = OutputPath::new(path);
+        self.output_dir.set_path(path);
 
         self
     }
@@ -143,7 +147,7 @@ impl ProveConfig {
     }
 
     pub fn sha256f_script(mut self, path: Option<impl Into<PathBuf>>) -> Self {
-        self.sha256f_script = Sha256fScriptPath::new(path);
+        self.sha256f_script.set_path(path);
         self
     }
 

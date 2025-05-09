@@ -1,6 +1,6 @@
 //! This module provides the ZisK zkVM Prover interface.
 
-use crate::common::{get_home_dir, Field, OutputPath, ZiskLibInitFn};
+use crate::common::{get_home_dir, Field, PathBufWithDefault, ZiskLibInitFn};
 use crate::prove::{ProveConfig, ProveContext, ProveResult};
 use crate::{VerifyConfig, VerifyContext, VerifyResult};
 
@@ -96,7 +96,7 @@ impl Prover {
         Ok(())
     }
 
-    fn cleanup_output_dir(output_dir: &OutputPath) {
+    fn cleanup_output_dir(output_dir: PathBufWithDefault) {
         let proofs_dir = output_dir.as_ref().join("proofs");
         if proofs_dir.exists() {
             // In distributed mode two different processes may enter here at the same time and try to remove the same directory
@@ -186,7 +186,7 @@ impl Prover {
 
         // Clean up the output directory only if we generate a proof
         if !context.config.only_verify_constraints {
-            Self::cleanup_output_dir(&context.config.output_dir);
+            Self::cleanup_output_dir(context.config.output_dir.clone());
         }
 
         // Create the cache directory (if needed)

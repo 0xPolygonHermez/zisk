@@ -14,6 +14,29 @@ use witness::WitnessLibrary;
 
 pub static DEFAULT_HOME_DIR: Lazy<PathBuf> = Lazy::new(|| PathBuf::from(get_home_dir()));
 
+pub static DEFAULT_PROVING_KEY_PATH: Lazy<PathBuf> =
+    Lazy::new(|| DEFAULT_HOME_DIR.join(".zisk/provingKey"));
+
+pub static DEFAULT_WITNESS_LIB_PATH: Lazy<PathBuf> =
+    Lazy::new(|| DEFAULT_HOME_DIR.join(".zisk/bin/libzisk_witness.so"));
+
+pub static DEFAULT_SHA256F_SCRIPT_PATH: Lazy<PathBuf> =
+    Lazy::new(|| DEFAULT_HOME_DIR.join(".zisk/bin/keccakf_script.json"));
+
+pub static DEFAULT_STARK_INFO_PATH: Lazy<PathBuf> = Lazy::new(|| {
+    DEFAULT_HOME_DIR.join(".zisk/provingKey/zisk/vadcop_final/vadcop_final.starkinfo.json")
+});
+
+pub static DEFAULT_VERIFIER_BIN_PATH: Lazy<PathBuf> = Lazy::new(|| {
+    DEFAULT_HOME_DIR.join(".zisk/provingKey/zisk/vadcop_final/vadcop_final.verifier.bin")
+});
+
+pub static DEFAULT_VERIFICATION_KEY_PATH: Lazy<PathBuf> = Lazy::new(|| {
+    DEFAULT_HOME_DIR.join(".zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.json")
+});
+
+pub static DEFAULT_OUTPUT_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from("./output"));
+
 #[derive(Parser, Debug, Clone, ValueEnum)]
 pub enum Field {
     Goldilocks,
@@ -44,70 +67,6 @@ impl Display for Field {
             Field::Goldilocks => write!(f, "goldilocks"),
         }
     }
-}
-
-/// Macro to define a new type around `PathBuf` with a custom default path.
-macro_rules! pathbuf_newtype {
-    (
-        $(#[$outer:meta])*
-        $vis:vis $name:ident, $default_expr:expr
-    ) => {
-        $(#[$outer])*
-        #[derive(Debug, Clone, PartialEq, Eq)]
-        $vis struct $name(PathBuf);
-
-        impl $name {
-            /// Build from any Into<PathBuf>
-            $vis fn new(path: Option<impl Into<PathBuf>>) -> Self {
-                path.map_or_else($name::default, |p| p.into().into())
-            }
-
-            /// Default path inside the user's home directory
-            fn default_path() -> PathBuf {
-                PathBuf::from($default_expr)
-            }
-        }
-
-        impl Default for $name {
-            fn default() -> Self {
-                $name(Self::default_path())
-            }
-        }
-
-        impl From<PathBuf> for $name {
-            fn from(p: PathBuf) -> Self {
-                $name(p)
-            }
-        }
-
-        impl From<$name> for PathBuf {
-            fn from(wrapper: $name) -> PathBuf {
-                wrapper.0
-            }
-        }
-
-        impl AsRef<Path> for $name {
-            fn as_ref(&self) -> &Path {
-                &self.0
-            }
-        }
-    };
-}
-
-pathbuf_newtype! {
-    pub WitnessLibPath, format!("{}/.zisk/bin/libzisk_witness.so", get_home_dir())
-}
-
-pathbuf_newtype! {
-    pub ProvingKeyPath, format!("{}/.zisk/provingKey", get_home_dir())
-}
-
-pathbuf_newtype! {
-    pub Sha256fScriptPath, format!("{}/.zisk/bin/keccakf_script.json", get_home_dir())
-}
-
-pathbuf_newtype! {
-    pub OutputPath, "./output"
 }
 
 /// PathBufWithDefault is a wrapper around PathBuf that provides a default path if none is provided.

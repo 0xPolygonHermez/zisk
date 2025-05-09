@@ -1,21 +1,11 @@
-use crate::common::{PathBufWithDefault, DEFAULT_HOME_DIR};
+use crate::common::{
+    PathBufWithDefault, DEFAULT_STARK_INFO_PATH, DEFAULT_VERIFICATION_KEY_PATH,
+    DEFAULT_VERIFIER_BIN_PATH,
+};
 
 use colored::Colorize;
-use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::path::PathBuf;
-
-pub static DEFAULT_STARK_INFO_PATH: Lazy<PathBuf> = Lazy::new(|| {
-    DEFAULT_HOME_DIR.join(".zisk/provingKey/zisk/vadcop_final/vadcop_final.starkinfo.json")
-});
-
-pub static DEFAULT_VERIFIER_BIN_PATH: Lazy<PathBuf> = Lazy::new(|| {
-    DEFAULT_HOME_DIR.join(".zisk/provingKey/zisk/vadcop_final/vadcop_final.verifier.bin")
-});
-
-pub static DEFAULT_VERIFICATION_KEY_PATH: Lazy<PathBuf> = Lazy::new(|| {
-    DEFAULT_HOME_DIR.join(".zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.json")
-});
 
 /// Verify command configuration options.
 #[derive(Clone)]
