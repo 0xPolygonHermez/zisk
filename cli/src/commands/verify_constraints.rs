@@ -24,12 +24,12 @@ pub struct ZiskVerifyConstraints {
 
     /// Path to the assembly file for the emulator [default: installation path].
     /// Cannot be used together with `--emulator`.
-    #[clap(short = 's', long)]
+    #[clap(short = 's', long, conflicts_with = "emulator")]
     pub asm: Option<PathBuf>,
 
     /// Use the prebuilt emulator instead of assembly.
     /// Cannot be used together with `--asm`.
-    #[clap(short = 'l', long, action = clap::ArgAction::SetTrue)]
+    #[clap(short = 'l', long, action = clap::ArgAction::SetTrue, conflicts_with = "asm")]
     pub emulator: bool,
 
     /// Path to the witness computation library [default: installation path].
