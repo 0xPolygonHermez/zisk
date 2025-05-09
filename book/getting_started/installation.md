@@ -195,7 +195,7 @@ Please note that the process can be long, taking approximately 2–3 hours depen
 
 7. Generate setup data: (Note that this command may take 2–3 hours to complete):
     ```bash
-    node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -i ./build/keccakf_fixed.bin ./build/sha256f_fixed.bin -r
+    node --max-old-space-size=131072 ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -i ./build/keccakf_fixed.bin ./build/sha256f_fixed.bin -r
     ```
 
     This command generates the `provingKey` directory.
