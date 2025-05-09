@@ -55,6 +55,26 @@ pub struct ProveConfig {
     pub only_verify_constraints: bool,
 }
 
+impl Default for ProveConfig {
+    fn default() -> Self {
+        ProveConfig {
+            witness_lib: WitnessLibPath::default(),
+            asm: None,
+            emulator: false,
+            proving_key: ProvingKeyPath::default(),
+            output_dir: OutputPath::default(),
+            field: Field::default(),
+            aggregation: true,
+            final_snark: false,
+            verify_proofs: false,
+            verbose: 0,
+            debug_info: DebugInfo::default(),
+            sha256f_script: Sha256fScriptPath::default(),
+            only_verify_constraints: false,
+        }
+    }
+}
+
 impl ProveConfig {
     pub fn new() -> Self {
         Self::default()
@@ -133,26 +153,6 @@ impl ProveConfig {
     }
 
     // TODO: Add function to check if all paths exists
-}
-
-impl Default for ProveConfig {
-    fn default() -> Self {
-        ProveConfig {
-            witness_lib: WitnessLibPath::default(),
-            asm: None,
-            emulator: false,
-            proving_key: ProvingKeyPath::default(),
-            output_dir: OutputPath::default(),
-            field: Field::default(),
-            aggregation: true,
-            final_snark: false,
-            verify_proofs: false,
-            verbose: 0,
-            debug_info: DebugInfo::default(),
-            sha256f_script: Sha256fScriptPath::default(),
-            only_verify_constraints: false,
-        }
-    }
 }
 
 /// ProveResult holds the result of the proving process.

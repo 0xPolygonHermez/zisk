@@ -4236,6 +4236,8 @@ dependencies = [
  "executor",
  "libloading",
  "log",
+ "once_cell",
+ "p3-field",
  "p3-goldilocks",
  "proofman",
  "proofman-common",

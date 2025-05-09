@@ -15,59 +15,63 @@ use zisk::{common::Field, prove::ProveConfig, prover::Prover};
         .required(false)
 ))]
 pub struct ZiskProve {
-    /// Witness computation dynamic library path
-    #[clap(short = 'w', long)]
-    pub witness_lib: Option<PathBuf>,
-
-    /// ELF file path
-    /// This is the path to the ROM file that the witness computation dynamic library will use
-    /// to generate the witness.
-    #[clap(short = 'e', long)]
+    /// Path to the ELF file to prove.
+    #[clap(short = 'e', long, required = true)]
     pub elf: PathBuf,
 
-    /// ASM file path
-    /// Optional, mutually exclusive with `--emulator`
-    #[clap(short = 's', long)]
-    pub asm: Option<PathBuf>,
-
-    /// Use prebuilt emulator (mutually exclusive with `--asm`)
-    #[clap(short = 'l', long, action = clap::ArgAction::SetTrue)]
-    pub emulator: bool,
-
-    /// Input path
+    /// Path to the input file for the prover.
     #[clap(short = 'i', long)]
     pub input: Option<PathBuf>,
 
-    /// Setup folder path
+    /// Path to the assembly file for the emulator [default: installation path].
+    /// Cannot be used together with `--emulator`.
+    #[clap(short = 's', long)]
+    pub asm: Option<PathBuf>,
+
+    /// Use the prebuilt emulator instead of assembly.
+    /// Cannot be used together with `--asm`.
+    #[clap(short = 'l', long, action = clap::ArgAction::SetTrue)]
+    pub emulator: bool,
+
+    /// Path to the witness computation library [default: installation path].
+    #[clap(short = 'w', long)]
+    pub witness_lib: Option<PathBuf>,
+
+    /// Path to the proving key setup directory [default: installation path].
     #[clap(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
-    /// Output dir path
+    /// Path to the SHA256f script file [default: installation path].
+    #[clap(short = 's', long)]
+    pub sha256f_script: Option<PathBuf>,
+
+    /// Path to the output directory.
     #[clap(short = 'o', long, default_value = "tmp")]
     pub output_dir: PathBuf,
 
+    /// Finite field to use for the proof.
     #[clap(long, default_value_t = Field::Goldilocks)]
     pub field: Field,
 
+    /// Enable aggregation of proofs.
     #[clap(short = 'a', long, default_value_t = false)]
     pub aggregation: bool,
 
+    /// Enable final SNARK generation.
     #[clap(short = 'f', long, default_value_t = false)]
     pub final_snark: bool,
 
+    /// Verify generated proofs.
     #[clap(short = 'y', long, default_value_t = false)]
     pub verify_proofs: bool,
 
-    /// Verbosity (-v, -vv)
-    #[arg(short ='v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
-    pub verbose: u8, // Using u8 to hold the number of `-v`
+    /// Increase verbosity [possible values: -v, -vv, etc...].
+    #[clap(short = 'v', long, action = clap::ArgAction::Count)]
+    pub verbose: u8,
 
+    /// Enable debug mode.
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
-
-    // PRECOMPILES OPTIONS
-    /// Sha256f script path
-    pub sha256f_script: Option<PathBuf>,
 }
 
 impl ZiskProve {

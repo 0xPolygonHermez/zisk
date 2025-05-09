@@ -2,18 +2,26 @@
 
 use crate::common::{get_home_dir, Field, OutputPath, ZiskLibInitFn};
 use crate::prove::{ProveConfig, ProveContext, ProveResult};
+use crate::{VerifyConfig, VerifyContext, VerifyResult};
 
 use anyhow::Result;
 use executor::ZiskExecutionResult;
 use libloading::{Library, Symbol};
+use p3_field::PrimeCharacteristicRing;
 use p3_goldilocks::Goldilocks;
+use proofman::verify_proof_from_file;
 use proofman::ProofMan;
 use proofman_common::{initialize_logger, ModeName, ProofOptions};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+    io::Read,
+    path::PathBuf,
+};
 use witness::WitnessLibrary;
 
 /// Main ZisK zkVM Prover interface.
@@ -254,48 +262,59 @@ impl Prover {
 
         Ok(ProveResult::new(proof_id, result.executed_steps, elapsed))
     }
-}
 
-// TODO: Remove ProverError and use anyhow error directly
-/// Errors that can occur during proving.
-#[derive(Debug, thiserror::Error)]
-pub enum ProverError {
-    #[error("Missing required field: {0}")]
-    RequiredFieldError(String),
+    pub fn verify(
+        &self,
+        proof: PathBuf,
+        public_inputs: Option<PathBuf>,
+        config: Option<VerifyConfig>,
+    ) -> Result<VerifyResult> {
+        // Define the context for the verification process
+        let context = VerifyContext {
+            proof,
+            public_inputs,
+            config: config.unwrap_or_else(VerifyConfig::new),
+        };
 
-    #[error("Failed to load ASM file: {0}")]
-    AsmLoadError(String),
+        // Initialize the logger
+        initialize_logger(context.config.verbose.into());
 
-    #[error("Failed to load ASM ROM file: {0}")]
-    AsmRomLoadError(String),
+        // Print the command context information
+        context.print();
 
-    #[error("Failed to load ELF file: {0}")]
-    ElfLoadError(String),
+        // Get public inputs from the file
+        let publics = if let Some(publics) = &context.public_inputs {
+            let mut contents = String::new();
+            let mut file = File::open(publics)?;
 
-    #[error("Failed to generate ELF hash: {0}")]
-    ElfHashError(String),
+            let _ = file
+                .read_to_string(&mut contents)
+                .map_err(|e| anyhow::anyhow!("Failed to read public inputs file: {}", e));
 
-    #[error("Failed to load witness library: {0}")]
-    WitnessLoadError(String),
+            let verkey_json_string: Vec<String> = serde_json::from_str(&contents)?;
 
-    #[error("Failed to run emulator: {0}")]
-    EmulatorError(String),
+            let verkey_json: Vec<u64> = verkey_json_string
+                .iter()
+                .map(|s| s.parse::<u64>().expect("Failed to parse string as u64"))
+                .collect();
 
-    #[error("Failed to generate witness: {0}")]
-    WitnessGenerationError(String),
+            Some(verkey_json.into_iter().map(Goldilocks::from_u64).collect::<Vec<Goldilocks>>())
+        } else {
+            None
+        };
 
-    #[error("Failed to generate proof: {0}")]
-    ProofGenerationError(String),
+        // Verify the proof
+        // TODO: Modify the verify_proof_from_file function to pass params as PathBuf instead of String
+        let valid = verify_proof_from_file::<Goldilocks>(
+            context.proof.to_string_lossy().to_string(),
+            context.config.stark_info.to_string_lossy().to_string(),
+            context.config.verifier_bin.to_string_lossy().to_string(),
+            context.config.verification_key.to_string_lossy().to_string(),
+            publics,
+            None,
+            None,
+        );
 
-    #[error("Failed to store proof log: {0}")]
-    ProofLogError(String),
-
-    #[error("Proof verification failed")]
-    VerificationFailed,
-
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
-
-    #[error("Other error: {0}")]
-    Other(String),
+        Ok(VerifyResult { valid })
+    }
 }

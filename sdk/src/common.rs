@@ -2,13 +2,17 @@
 
 use clap::{Parser, ValueEnum};
 use colored::Colorize;
+use once_cell::sync::Lazy;
 use proofman_common::VerboseMode;
+use std::borrow::Cow;
 use std::env;
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use sysinfo::System;
 use witness::WitnessLibrary;
+
+pub static DEFAULT_HOME_DIR: Lazy<PathBuf> = Lazy::new(|| PathBuf::from(get_home_dir()));
 
 #[derive(Parser, Debug, Clone, ValueEnum)]
 pub enum Field {
@@ -104,6 +108,43 @@ pathbuf_newtype! {
 
 pathbuf_newtype! {
     pub OutputPath, "./output"
+}
+
+/// PathBufWithDefault is a wrapper around PathBuf that provides a default path if none is provided.
+#[derive(Clone)]
+pub struct PathBufWithDefault {
+    path: PathBuf,
+    default_path: PathBuf,
+}
+
+impl PathBufWithDefault {
+    pub fn new(path: Option<impl Into<PathBuf>>, default_path: impl Into<PathBuf>) -> Self {
+        let default_path: PathBuf = default_path.into();
+        PathBufWithDefault {
+            path: path.map_or_else(|| default_path.clone(), |p| p.into()),
+            default_path,
+        }
+    }
+
+    pub fn set_path(&mut self, path: Option<impl Into<PathBuf>>) {
+        self.path = path.map_or_else(|| self.default_path.clone(), |p| p.into().into());
+    }
+
+    pub fn to_string_lossy(&self) -> Cow<'_, str> {
+        self.path.to_string_lossy()
+    }
+}
+
+impl From<PathBufWithDefault> for PathBuf {
+    fn from(wrapper: PathBufWithDefault) -> PathBuf {
+        wrapper.path
+    }
+}
+
+impl AsRef<Path> for PathBufWithDefault {
+    fn as_ref(&self) -> &Path {
+        &self.path
+    }
 }
 
 /// Gets the user's home directory as specified by the HOME environment variable.

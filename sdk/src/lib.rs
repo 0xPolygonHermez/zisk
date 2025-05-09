@@ -10,3 +10,5 @@ pub mod prove;
 pub use prove::*;
 pub mod prover;
 pub use prover::*;
+pub mod verify;
+pub use verify::*;
