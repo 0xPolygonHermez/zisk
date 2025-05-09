@@ -336,6 +336,7 @@ impl ZiskRom2Asm {
         *code += ".extern print_char\n";
         *code += ".extern print_step\n";
         *code += ".extern opcode_keccak\n";
+        *code += ".extern opcode_sha256\n";
         *code += ".extern opcode_arith256\n";
         *code += ".extern opcode_arith256_mod\n";
         *code += ".extern opcode_secp256k1_add\n";
@@ -3845,7 +3846,67 @@ impl ZiskRom2Asm {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::Sha256 => {
-                // TODO!
+                // Use the memory address as the first and unique parameter
+                *code += &ctx.full_line_comment("SHA256: rdi = b".to_string());
+
+                // Use the memory address as the first and unique parameter
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rdi = b = address")
+                );
+
+                // Copy read data into mem_reads_address and advance it
+                if ctx.minimal_trace() || ctx.zip() {
+                    // If zip, check if chunk is active
+                    if ctx.zip() {
+                        *code += &format!(
+                            "\ttest {}, 1 {}\n",
+                            REG_ACTIVE_CHUNK,
+                            ctx.comment_str("active_chunk == 1 ?")
+                        );
+                        *code += &format!("\tjnz pc_{:x}_sha256_active_chunk\n", ctx.pc);
+                        *code += &format!("\tjmp pc_{:x}_sha256_active_chunk_done\n", ctx.pc);
+                        *code += &format!("pc_{:x}_sha256_active_chunk:\n", ctx.pc);
+                    }
+                    *code += &format!("\tmov {}, rdi\n", REG_ADDRESS);
+                    for k in 0..12 {
+                        *code += &format!(
+                            "\tmov {}, [{} + {}] {}\n",
+                            REG_VALUE,
+                            REG_ADDRESS,
+                            k * 8,
+                            ctx.comment(format!("value = mem[sha256_address[{}]]", k))
+                        );
+                        *code += &format!(
+                            "\tmov [{} + {}*8 + {}], {} {}\n",
+                            REG_MEM_READS_ADDRESS,
+                            REG_MEM_READS_SIZE,
+                            k * 8,
+                            REG_VALUE,
+                            ctx.comment(format!("mem_reads[{}] = value", k))
+                        );
+                    }
+
+                    // Increment chunk.steps.mem_reads_size in 12 units
+                    *code += &format!(
+                        "\tadd {}, 12 {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size += 12")
+                    );
+
+                    *code += &format!("pc_{:x}_sha256_active_chunk_done:\n", ctx.pc);
+                }
+                // Call the SHA256 function
+                Self::push_internal_registers(ctx, code);
+                *code += "\tcall _opcode_sha256\n";
+                Self::pop_internal_registers(ctx, code);
+
+                // Set result
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("SHA256: c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
             }
             ZiskOp::PubOut => {
                 assert!(ctx.store_b_in_c);
