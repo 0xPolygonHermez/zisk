@@ -1,14 +1,11 @@
 //! This module provides the ZisK zkVM Prover interface.
 
 use crate::common::{get_home_dir, Field, OutputPath, ZiskLibInitFn};
-use crate::proof_log;
-use crate::prove::{ProveConfig, ProveContext};
+use crate::prove::{ProveConfig, ProveContext, ProveResult};
 
 use anyhow::Result;
-use colored::Colorize;
 use executor::ZiskExecutionResult;
 use libloading::{Library, Symbol};
-use log::info;
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::{initialize_logger, ModeName, ProofOptions};
@@ -33,9 +30,7 @@ impl Prover {
         PathBuf::from(format!("{}/{}", get_home_dir(), DEFAULT_CACHE_PATH))
     }
 
-    fn get_asm_files(
-        context: &ProveContext,
-    ) -> Result<(Option<PathBuf>, Option<PathBuf>), ProverError> {
+    fn get_asm_files(context: &mut ProveContext) -> Result<()> {
         // If it's macOS we need to use the emulator since ASM is not supported
         let emulator = if cfg!(target_os = "macos") { true } else { context.config.emulator };
 
@@ -47,7 +42,7 @@ impl Prover {
             let stem = context.elf.file_stem().unwrap().to_str().unwrap();
 
             let hash = get_elf_data_hash(&context.elf)
-                .map_err(|e| ProverError::ElfHashError(e.to_string()))?;
+                .map_err(|e| anyhow::anyhow!("Failed to generate ELF hash: {}", e))?;
 
             let asm_mt_filename = format!("{stem}-{hash}.bin");
             let asm_rom_filename = format!("{stem}-{hash}-rom.bin");
@@ -58,7 +53,7 @@ impl Prover {
         // If the asm_mt_path is set, check if the file exists
         if let Some(path) = &asm_mt_path {
             if !path.exists() {
-                return Err(ProverError::AsmLoadError(path.to_string_lossy().into()));
+                return Err(anyhow::anyhow!("Failed to load ASM file: {}", path.to_string_lossy()));
             }
         }
 
@@ -66,26 +61,31 @@ impl Prover {
         // If the asm_rom_path is set, check if the file exists
         if let Some(path) = &asm_rom_path {
             if !path.exists() {
-                return Err(ProverError::AsmLoadError(path.to_string_lossy().into()));
+                return Err(anyhow::anyhow!("Failed to load ASM file: {}", path.to_string_lossy()));
             }
         }
 
-        Ok((asm_mt_path, asm_rom_path))
+        context.asm_mt_path = asm_mt_path;
+        context.asm_rom_path = asm_rom_path;
+
+        Ok(())
     }
 
-    fn get_elf_bin_path(context: &ProveContext) -> Result<PathBuf, ProverError> {
+    fn get_elf_bin_path(context: &mut ProveContext) -> Result<()> {
         let blowup_factor = get_rom_blowup_factor(context.config.proving_key.as_ref());
 
         let elf_bin_path =
             get_elf_bin_file_path(&context.elf, &Self::default_cache_path(), blowup_factor)
-                .map_err(|e| ProverError::ElfLoadError(e.to_string()))?;
+                .map_err(|e| anyhow::anyhow!("Failed to generate ELF hash: {}", e))?;
 
         if !elf_bin_path.exists() {
             let _ = gen_elf_hash(&context.elf, &elf_bin_path, blowup_factor, false)
-                .map_err(|e| ProverError::ElfHashError(e.to_string()))?;
+                .map_err(|e| anyhow::anyhow!("Failed to generate ELF hash: {}", e))?;
         }
 
-        Ok(elf_bin_path)
+        context.elf_bin_path = elf_bin_path;
+
+        Ok(())
     }
 
     fn cleanup_output_dir(output_dir: &OutputPath) {
@@ -122,18 +122,18 @@ impl Prover {
 
     fn load_witness_lib(
         context: &ProveContext,
-    ) -> Result<(Library, Box<dyn WitnessLibrary<Goldilocks>>), ProverError> {
+    ) -> Result<(Library, Box<dyn WitnessLibrary<Goldilocks>>)> {
         match context.config.field {
             Field::Goldilocks => {
                 let witness_lib_pathbuf: PathBuf = context.config.witness_lib.clone().into();
                 let library = unsafe {
                     Library::new(witness_lib_pathbuf)
-                        .map_err(|e| ProverError::WitnessLoadError(e.to_string()))?
+                        .map_err(|e| anyhow::anyhow!("Failed to load witness library: {}", e))?
                 };
                 let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> = unsafe {
                     library
                         .get(b"init_library")
-                        .map_err(|e| ProverError::WitnessLoadError(e.to_string()))?
+                        .map_err(|e| anyhow::anyhow!("Failed to load witness library: {}", e))?
                 };
 
                 let witness_lib = witness_lib_constructor(
@@ -144,7 +144,7 @@ impl Prover {
                     context.input.clone(),
                     context.config.sha256f_script.clone().into(),
                 )
-                .expect("Failed to initialize witness library");
+                .map_err(|e| anyhow::anyhow!("Failed to initialize witness library: {}", e))?;
 
                 Ok((library, witness_lib))
             }
@@ -157,7 +157,7 @@ impl Prover {
         elf: PathBuf,
         input: Option<PathBuf>,
         config: Option<ProveConfig>,
-    ) -> Result<()> {
+    ) -> Result<ProveResult> {
         // Define the context for the proving process
         let mut context = ProveContext {
             elf,
@@ -165,20 +165,26 @@ impl Prover {
             config: config.unwrap_or_else(ProveConfig::new),
             ..Default::default()
         };
-        // TODO: Pass mutable context to get_asm_files and get_elf_bin_path
-        (context.asm_mt_path, context.asm_rom_path) = Self::get_asm_files(&context)?;
-        context.elf_bin_path = Self::get_elf_bin_path(&context)?;
 
         // Initialize the logger
         initialize_logger(context.config.verbose.into());
 
+        // Get the paths for the ASM and ELF files
+        Self::get_asm_files(&mut context)?;
+        Self::get_elf_bin_path(&mut context)?;
+
+        // TODO: Move this to the beginning of the function?
         let start = std::time::Instant::now();
 
-        // Clean up the output directory and create the cache directory (if needed)
-        Self::cleanup_output_dir(&context.config.output_dir);
+        // Clean up the output directory only if we generate a proof
+        if !context.config.only_verify_constraints {
+            Self::cleanup_output_dir(&context.config.output_dir);
+        }
+
+        // Create the cache directory (if needed)
         Self::create_cache_dir();
 
-        // Print the context information
+        // Print the command context information
         context.print();
 
         // Define the custom commits map
@@ -195,24 +201,29 @@ impl Prover {
             Field::Goldilocks => {
                 (_witness_lib, witness_lib_constructor) = Self::load_witness_lib(&context).unwrap();
 
-                // Generate the proof (or verify-constraints if in debug mode)
-                if context.config.debug_info.std_mode.name == ModeName::Debug {
+                // Generate the proof (or verify-constraints if in debug mode or only_verify_constraints)
+                // TODO: Check if debug mode is still used
+                if context.config.debug_info.std_mode.name == ModeName::Debug
+                    || context.config.only_verify_constraints
+                {
+                    // Verify constraints only
                     ProofMan::<Goldilocks>::verify_proof_constraints_from_lib(
                         &mut *witness_lib_constructor,
                         context.config.proving_key.clone().into(),
                         context.config.output_dir.clone().into(),
                         custom_commits_map,
                         ProofOptions::new(
-                            false,
+                            true,
                             context.config.verbose.into(),
-                            context.config.aggregation,
-                            context.config.final_snark,
-                            context.config.verify_proofs,
+                            false,
+                            false,
+                            false,
                             context.config.debug_info.clone(),
                         ),
                     )
-                    .map_err(|e| ProverError::ProofGenerationError(e.to_string()))?;
+                    .map_err(|e| anyhow::anyhow!("Failed to generate proof: {}", e))?;
                 } else {
+                    // Generate the proof
                     proof_id = ProofMan::<Goldilocks>::generate_proof_from_lib(
                         &mut *witness_lib_constructor,
                         context.config.proving_key.clone().into(),
@@ -227,7 +238,7 @@ impl Prover {
                             context.config.debug_info.clone(),
                         ),
                     )
-                    .map_err(|e| ProverError::ProofGenerationError(e.to_string()))?;
+                    .map_err(|e| anyhow::anyhow!("Failed to generate proof: {}", e))?;
                 }
             }
         }
@@ -241,27 +252,11 @@ impl Prover {
             .downcast::<ZiskExecutionResult>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
-        // Print the results
-        println!();
-        info!("{}", "    Zisk: --- PROVE SUMMARY ------------------------".bright_green().bold());
-        if let Some(proof_id) = &proof_id {
-            info!("                Proof ID: {}", proof_id);
-        }
-        info!("              ► Statistics");
-        info!("                time: {} seconds, steps: {}", elapsed, result.executed_steps);
-
-        // Save the proof result
-        if let Some(proof_id) = proof_id {
-            let logs = proof_log::ProofLog::new(result.executed_steps, proof_id, elapsed);
-            let log_path = context.config.output_dir.as_ref().join("result.json");
-            proof_log::ProofLog::write_json_log(&log_path, &logs)
-                .map_err(|e| ProverError::ProofLogError(e.to_string()))?;
-        }
-
-        Ok(())
+        Ok(ProveResult::new(proof_id, result.executed_steps, elapsed))
     }
 }
 
+// TODO: Remove ProverError and use anyhow error directly
 /// Errors that can occur during proving.
 #[derive(Debug, thiserror::Error)]
 pub enum ProverError {

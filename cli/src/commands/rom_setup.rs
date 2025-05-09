@@ -1,15 +1,14 @@
-use anyhow::Result;
-use clap::Parser;
-use std::path::PathBuf;
+use crate::ZISK_VERSION_MESSAGE;
 
+use anyhow::Result;
+use std::path::PathBuf;
 use colored::Colorize;
 use proofman_common::initialize_logger;
-
 use zisk::common::print_banner;
 use zisk::common::{get_default_proving_key, get_default_zisk_path};
 
-#[derive(Parser)]
-#[command(version, about, long_about = None)]
+#[derive(clap::Args)]
+#[command(about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 #[command(propagate_version = true)]
 pub struct ZiskRomSetup {
     /// ELF file path
@@ -20,7 +19,7 @@ pub struct ZiskRomSetup {
     #[clap(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
-    /// Setup folder path
+    /// ZisK folder path
     #[clap(short = 'z', long)]
     pub zisk_path: Option<PathBuf>,
 

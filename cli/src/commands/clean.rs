@@ -1,17 +1,16 @@
+use crate::ZISK_VERSION_MESSAGE;
+
 use std::fs;
-
-use clap::Parser;
 use colored::Colorize;
-
 use anyhow::{Context, Result};
 use log::info;
 use proofman_common::initialize_logger;
-
 use zisk::common::{get_home_zisk_path, print_banner};
 
 /// Deletes the default zisk setup folder
-#[derive(Parser, Debug)]
-#[command(version, about = "Remove the cache directory", long_about = None)]
+#[derive(clap::Args)]
+#[command(about = "Remove the cache directory", long_about = None, version = ZISK_VERSION_MESSAGE)]
+#[command(propagate_version = true)]
 pub struct ZiskClean;
 
 impl ZiskClean {

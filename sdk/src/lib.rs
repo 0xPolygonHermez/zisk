@@ -6,7 +6,7 @@
 //! to start using ZisK zkVM,
 
 pub mod common;
-pub mod proof_log;
 pub mod prove;
 pub use prove::*;
 pub mod prover;
+pub use prover::*;

@@ -1,10 +1,12 @@
 use crate::{ZISK_TARGET, ZISK_VERSION_MESSAGE};
+
 use anyhow::{anyhow, Context, Result};
 use std::process::{Command, Stdio};
 
 // Structure representing the 'build' subcommand of cargo.
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
+#[command(propagate_version = true)]
 pub struct ZiskBuild {
     #[clap(short = 'F', long)]
     features: Option<String>,

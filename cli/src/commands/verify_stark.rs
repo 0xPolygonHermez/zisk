@@ -1,20 +1,16 @@
+use crate::ZISK_VERSION_MESSAGE;
+
 use anyhow::{anyhow, Ok, Result};
-use clap::Parser;
 use colored::Colorize;
+use p3_field::PrimeCharacteristicRing;
+use p3_goldilocks::Goldilocks;
+use proofman::verify_proof_from_file;
 use proofman_common::initialize_logger;
 use std::io::Read;
 use std::{fs::File, path::PathBuf};
-
-use p3_field::PrimeCharacteristicRing;
-use p3_goldilocks::Goldilocks;
-
-use proofman::verify_proof_from_file;
-
-use crate::ZISK_VERSION_MESSAGE;
-
 use zisk::common::{get_default_stark_info, get_default_verifier_bin, get_default_verkey};
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 #[command(propagate_version = true)]
 pub struct ZiskVerify {

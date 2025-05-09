@@ -1,18 +1,16 @@
-// extern crate env_logger;
+use crate::ZISK_VERSION_MESSAGE;
+
 use anyhow::Result;
-use clap::Parser;
 use colored::Colorize;
 use proofman_common::{initialize_logger, DebugInfo};
 use std::path::PathBuf;
 use zisk::common::{get_default_proving_key, Field};
-
 use p3_goldilocks::Goldilocks;
-
 use proofman::ProofMan;
 use proofman_common::{ProofOptions, VerboseMode};
 
-#[derive(Parser)]
-#[command(version, about, long_about = None)]
+#[derive(clap::Args)]
+#[command(about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 #[command(propagate_version = true)]
 pub struct ZiskCheckSetup {
     /// Setup folder path

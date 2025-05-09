@@ -1,7 +1,9 @@
 use crate::ZISK_VERSION_MESSAGE;
+
 use anyhow::Result;
 use std::path::PathBuf;
 use zisk::{common::Field, prove::ProveConfig, prover::Prover};
+
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -70,6 +72,7 @@ pub struct ZiskProve {
 
 impl ZiskProve {
     pub fn run(&self) -> Result<()> {
+        // Configure prove command
         let prove_config = ProveConfig::new()
             .witness_lib(self.witness_lib.clone())
             .asm(self.asm.clone())
@@ -84,6 +87,15 @@ impl ZiskProve {
             .debug(self.debug.clone())
             .sha256f_script(self.sha256f_script.clone());
 
-        Prover::new().prove(self.elf.clone(), self.input.clone(), Some(prove_config))
+        // Generate the proof
+        let result = Prover::new().prove(
+            self.elf.clone(),
+            self.input.clone(),
+            Some(prove_config.clone()),
+        )?;
+
+        // Print and save the result
+        result.print();
+        result.save(prove_config.output_dir.as_ref().join("result.json"))
     }
 }

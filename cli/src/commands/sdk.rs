@@ -1,14 +1,15 @@
-use clap::Subcommand;
-
 use crate::toolchain::{
     build_toolchain::BuildToolchainCmd, install_toolchain::InstallToolchainCmd, new::NewCmd,
 };
 use crate::ZISK_VERSION_MESSAGE;
+
 use anyhow::Result;
+use clap::Subcommand;
 
 // Structure representing the 'sdk' subcommand of cargo.
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, args_conflicts_with_subcommands = true, version = ZISK_VERSION_MESSAGE)]
+#[command(propagate_version = true)]
 pub struct ZiskSdk {
     #[clap(subcommand)]
     pub command: ZiskSdkCommands,

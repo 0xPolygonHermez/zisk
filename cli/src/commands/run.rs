@@ -1,15 +1,16 @@
 use crate::{ZISK_TARGET, ZISK_VERSION_MESSAGE};
+
 use anyhow::{anyhow, Context, Result};
 use std::{
     env,
     process::{Command, Stdio},
 };
-
 use std::{fs::File, io::Write, path::Path};
 
 // Structure representing the 'run' subcommand of cargo.
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
+#[command(propagate_version = true)]
 pub struct ZiskRun {
     #[clap(short = 'F', long)]
     features: Option<String>,

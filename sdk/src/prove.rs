@@ -1,10 +1,15 @@
-//! This module provides the configuration and context for the proving process.
+//! Configuration and context for the proving process.
 //!
 use crate::common::{
     print_banner, Field, OutputPath, ProvingKeyPath, Sha256fScriptPath, WitnessLibPath,
 };
+use anyhow::Result;
 use colored::Colorize;
+use log::info;
 use proofman_common::{json_to_debug_instances_map, DebugInfo, ModeName};
+use serde::Serialize;
+use std::fs::File;
+use std::io::Write;
 use std::path::PathBuf;
 
 /// Prove command configuration options.
@@ -45,6 +50,9 @@ pub struct ProveConfig {
 
     /// Keccak script file path.
     pub sha256f_script: Sha256fScriptPath,
+
+    /// Only verify constraints (no proof generation).
+    pub only_verify_constraints: bool,
 }
 
 impl ProveConfig {
@@ -119,6 +127,11 @@ impl ProveConfig {
         self
     }
 
+    pub fn only_verify_constraints(mut self, enabled: bool) -> Self {
+        self.only_verify_constraints = enabled;
+        self
+    }
+
     // TODO: Add function to check if all paths exists
 }
 
@@ -137,7 +150,61 @@ impl Default for ProveConfig {
             verbose: 0,
             debug_info: DebugInfo::default(),
             sha256f_script: Sha256fScriptPath::default(),
+            only_verify_constraints: false,
         }
+    }
+}
+
+/// ProveResult holds the result of the proving process.
+#[derive(Serialize)]
+pub struct ProveResult {
+    /// Proof ID. Only available if the proof is generated (not only verifying constraints).
+    pub proof_id: Option<String>,
+
+    /// Number of cycles used
+    pub cycles: u64,
+
+    /// Proving time in seconds
+    pub time: f64,
+}
+
+impl ProveResult {
+    pub fn new(proof_id: Option<String>, cycles: u64, time: f64) -> Self {
+        ProveResult { proof_id, cycles, time }
+    }
+
+    pub fn print(&self) {
+        println!();
+
+        if self.proof_id.is_some() {
+            info!("{}", "Zisk: --- PROVE SUMMARY ------------------------".bright_green().bold());
+        } else {
+            info!(
+                "{}",
+                "Zisk: --- VERIFY CONSTRAINTS SUMMARY ------------------------"
+                    .bright_green()
+                    .bold()
+            );
+        };
+
+        if let Some(proof_id) = &self.proof_id {
+            info!("                Proof ID: {}", proof_id);
+        }
+        info!("              ► Statistics");
+        info!("                time: {} seconds, steps: {}", self.time, self.cycles);
+    }
+
+    pub fn save(&self, path: PathBuf) -> Result<()> {
+        // Save the proof result only if the proof was generated and we have a proof ID
+        if self.proof_id.is_some() {
+            let prove_result_json = serde_json::to_string_pretty(&self)?;
+
+            let mut file = File::create(&path)?;
+            file.write_all(prove_result_json.as_bytes())
+                .map_err(|e| anyhow::anyhow!("Failed to save prove result: {}", e))?;
+        }
+
+        Ok(())
     }
 }
 
@@ -167,7 +234,10 @@ impl ProveContext {
     pub fn print(&self) {
         print_banner();
 
-        println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
+        let command =
+            if self.config.only_verify_constraints { "Verify constraints" } else { "Prove" };
+
+        println!("{} {}", format!("{: >12}", "Command").bright_green().bold(), command);
         println!(
             "{: >12} {}",
             "Witness Lib".bright_green().bold(),
