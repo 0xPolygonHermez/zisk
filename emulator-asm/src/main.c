@@ -163,6 +163,8 @@ int main(int argc, char *argv[])
         if (input_parameter_length > MAX_SHM_PREFIX_LENGTH)
         {
             printf("Input parameter is too long: %s, size = %lu\n", input_parameter, input_parameter_length);
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
 
@@ -191,12 +193,16 @@ int main(int argc, char *argv[])
         if (sem_input == SEM_FAILED)
         {
             printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_input_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
         sem_output = sem_open(sem_output_name, O_CREAT, 0644, 1);
         if (sem_input == SEM_FAILED)
         {
             printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_output_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
         if (generate_minimal_trace || generate_main_trace || generate_zip)
@@ -205,6 +211,8 @@ int main(int argc, char *argv[])
             if (sem_chunk_done == SEM_FAILED)
             {
                 printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
+                fflush(stdout);
+                fflush(stderr);
                 return -1;
             }
         }
@@ -235,6 +243,8 @@ int main(int argc, char *argv[])
         if (input_fp == NULL)
         {
             printf("Failed calling fopen(%s) errno=%d=%s; does it exist?\n", input_parameter, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
 
@@ -242,12 +252,16 @@ int main(int argc, char *argv[])
         if (fseek(input_fp, 0, SEEK_END) == -1)
         {
             printf("Failed calling fseek(%s) errno=%d=%s\n", input_parameter, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
         long input_data_size = ftell(input_fp);
         if (input_data_size == -1)
         {
             printf("Failed calling ftell(%s) errno=%d=%s\n", input_parameter, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
 
@@ -255,6 +269,8 @@ int main(int argc, char *argv[])
         if (fseek(input_fp, 0, SEEK_SET) == -1)
         {
             printf("Failed calling fseek(%s, 0) errno=%d=%s\n", input_parameter, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
 
@@ -262,6 +278,8 @@ int main(int argc, char *argv[])
         if (input_data_size > (MAX_INPUT_SIZE - 8))
         {
             printf("Size of input file (%s) is too long (%lu)\n", input_parameter, input_data_size);
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
 
@@ -274,11 +292,15 @@ int main(int argc, char *argv[])
         if (pInput == NULL)
         {
             printf("Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
         if ((uint64_t)pInput != INPUT_ADDR)
         {
             printf("Called mmap(pInput) but returned address = 0x%p != 0x%lx\n", pInput, INPUT_ADDR);
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
     #ifdef DEBUG
@@ -294,6 +316,8 @@ int main(int argc, char *argv[])
         if (input_read != input_data_size)
         {
             printf("Input read (%lu) != input file size (%lu)\n", input_read, input_data_size);
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
 
@@ -307,6 +331,8 @@ int main(int argc, char *argv[])
         if (shmem_input_fd < 0)
         {
             printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
 
@@ -315,6 +341,8 @@ int main(int argc, char *argv[])
         if (shmem_input_address == MAP_FAILED)
         {
             printf("Failed calling mmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
 
@@ -338,6 +366,8 @@ int main(int argc, char *argv[])
         if (result == -1)
         {
             printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             exit(-1);
         }
 
@@ -346,6 +376,8 @@ int main(int argc, char *argv[])
         if (shmem_input_address == MAP_FAILED)
         {
             printf("Failed calling mmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
 
@@ -357,11 +389,15 @@ int main(int argc, char *argv[])
         if (pInput == NULL)
         {
             printf("Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
         if ((uint64_t)pInput != INPUT_ADDR)
         {
             printf("Called mmap(pInput) but returned address = 0x%p != 0x%lx\n", pInput, INPUT_ADDR);
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
 #ifdef DEBUG
@@ -380,6 +416,8 @@ int main(int argc, char *argv[])
         if (result == -1)
         {
             printf("Failed calling munmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             exit(-1);
         }
 
@@ -388,6 +426,8 @@ int main(int argc, char *argv[])
         if (result == -1)
         {
             printf("Failed calling shm_unlink(%s) size=%lu errno=%d=%s\n", shmem_input_name, trace_size, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             exit(-1);
         }
     }
@@ -424,6 +464,8 @@ int main(int argc, char *argv[])
         if (shmem_output_fd < 0)
         {
             printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
 
@@ -432,6 +474,8 @@ int main(int argc, char *argv[])
         if (result != 0)
         {
             printf("Failed calling ftruncate(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
 
@@ -440,11 +484,15 @@ int main(int argc, char *argv[])
         if (pTrace == NULL)
         {
             printf("Failed calling mmap(pTrace) errno=%d=%s\n", errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
         if ((uint64_t)pTrace != TRACE_ADDR)
         {
             printf("Called mmap(trace) but returned address = 0x%p != 0x%lx\n", pTrace, TRACE_ADDR);
+            fflush(stdout);
+            fflush(stderr);
             return -1;
         }
     #ifdef DEBUG
@@ -467,11 +515,15 @@ int main(int argc, char *argv[])
     if (pRam == NULL)
     {
         printf("Failed calling mmap(ram) errno=%d=%s\n", errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
         return -1;
     }
     if ((uint64_t)pRam != RAM_ADDR)
     {
         printf("Called mmap(ram) but returned address = 0x%p != 0x%08lx\n", pRam, RAM_ADDR);
+        fflush(stdout);
+        fflush(stderr);
         return -1;
     }
 #ifdef DEBUG
@@ -485,11 +537,15 @@ int main(int argc, char *argv[])
     if (pRom == NULL)
     {
         printf("Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
         return -1;
     }
     if ((uint64_t)pRom != ROM_ADDR)
     {
         printf("Called mmap(rom) but returned address = 0x%p != 0x%lx\n", pRom, ROM_ADDR);
+        fflush(stdout);
+        fflush(stderr);
         return -1;
     }
 #ifdef DEBUG
@@ -600,6 +656,8 @@ int main(int argc, char *argv[])
         if (result == -1)
         {
             printf("Failed calling sem_post(%s) errno=%d=%s\n", sem_input_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             exit(-1);
         }
     }
@@ -631,6 +689,8 @@ int main(int argc, char *argv[])
     if (result == -1)
     {
         printf("Failed calling munmap(rom) errno=%d=%s\n", errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
         exit(-1);
     }
 
@@ -639,6 +699,8 @@ int main(int argc, char *argv[])
     if (result == -1)
     {
         printf("Failed calling munmap(ram) errno=%d=%s\n", errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
         exit(-1);
     }
 
@@ -647,6 +709,8 @@ int main(int argc, char *argv[])
     if (result == -1)
     {
         printf("Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
         exit(-1);
     }
 
@@ -657,6 +721,8 @@ int main(int argc, char *argv[])
         if (result == -1)
         {
             printf("Failed calling munmap(trace) for size=%lu errno=%d=%s\n", trace_size, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             exit(-1);
         }
 
@@ -669,6 +735,8 @@ int main(int argc, char *argv[])
             if (result == -1)
             {
                 printf("Failed calling sem_wait(%s) errno=%d=%s\n", sem_output_name, errno, strerror(errno));
+                fflush(stdout);
+                fflush(stderr);
                 exit(-1);
             }
         }
@@ -714,6 +782,8 @@ int main(int argc, char *argv[])
             }
         }
     }
+    fflush(stdout);
+    fflush(stderr);
 }
 
 extern uint64_t reg_0;
@@ -803,6 +873,8 @@ extern void _chunk_done()
         if (result == -1)
         {
             printf("Failed calling sem_post(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
             exit(-1);
         }
     }
@@ -821,6 +893,8 @@ extern void _realloc_trace (void)
     if (result != 0)
     {
         printf("realloc_trace() failed calling ftruncate(%s) of new size=%lu errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
         exit(-1);
     }
 
@@ -829,6 +903,8 @@ extern void _realloc_trace (void)
     if ((uint64_t)new_address != trace_address)
     {
         printf("realloc_trace() failed calling mremap() from size=%lu to %lu got new_address=0x%p errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
         exit(-1);
     }
 
@@ -858,6 +934,8 @@ uint64_t get_c_gen_method(void)
     if (generate_chunks) return 4;
     if (generate_zip) return 6;
     printf("get_c_gen_method() called without any generation method active\n");
+    fflush(stdout);
+    fflush(stderr);
     exit(-1);
 }
 void parse_arguments(int argc, char *argv[])
@@ -1000,6 +1078,8 @@ void parse_arguments(int argc, char *argv[])
             }
             printf("Unrecognized argument: %s, current input=%s\n", argv[i], input_parameter);
             print_usage();
+            fflush(stdout);
+            fflush(stderr);
             exit(-1);
         }
     }
@@ -1008,6 +1088,8 @@ void parse_arguments(int argc, char *argv[])
     {
         printf("Invalid arguments: select 1 generation method, and only one\n");
         print_usage();
+        fflush(stdout);
+        fflush(stderr);
         exit(-1);
     }
 
@@ -1019,6 +1101,8 @@ void parse_arguments(int argc, char *argv[])
             c_gen_method,
             asm_gen_method);
         print_usage();
+        fflush(stdout);
+        fflush(stderr);
         exit(-1);
     }
 }
@@ -1056,7 +1140,6 @@ void parse_arguments(int argc, char *argv[])
 */
 void log_minimal_trace(void)
 {
-
     uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
     printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
     printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
@@ -1070,6 +1153,8 @@ void log_minimal_trace(void)
     if (number_of_chunks > 1000000)
     {
         printf("Number of chunks is too high=%lu\n", number_of_chunks);
+        fflush(stdout);
+        fflush(stderr);
         exit(-1);
     }
     uint64_t * chunk = trace + 1;
@@ -1114,6 +1199,8 @@ void log_minimal_trace(void)
         if (mem_reads_size > 10000000)
         {
             printf("Mem reads size is too high=%lu\n", mem_reads_size);
+            fflush(stdout);
+            fflush(stderr);
             exit(-1);
         }
         if (trace_trace)
@@ -1153,6 +1240,8 @@ void log_histogram(void)
     if (bios_size > 100000000)
     {
         printf("Bios size is too high=%lu\n", bios_size);
+        fflush(stdout);
+        fflush(stderr);
         exit(-1);
     }
     if (trace_trace)
@@ -1170,6 +1259,8 @@ void log_histogram(void)
     if (program_size > 100000000)
     {
         printf("Program size is too high=%lu\n", program_size);
+        fflush(stdout);
+        fflush(stderr);
         exit(-1);
     }
     if (trace_trace)
@@ -1218,6 +1309,8 @@ void log_main_trace(void)
     if (number_of_chunks > 1000000)
     {
         printf("Number of chunks is too high=%lu\n", number_of_chunks);
+        fflush(stdout);
+        fflush(stderr);
         exit(-1);
     }
     uint64_t * chunk = trace + 1;
@@ -1233,6 +1326,8 @@ void log_main_trace(void)
         if (main_trace_size > 10000000)
         {
             printf("Main_trace size is too high=%lu\n", main_trace_size);
+            fflush(stdout);
+            fflush(stderr);
             exit(-1);
         }
 
