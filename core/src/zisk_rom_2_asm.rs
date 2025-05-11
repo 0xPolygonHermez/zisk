@@ -47,8 +47,8 @@ const REG_ACTIVE_CHUNK: &str = "rbp";
 //   - rsi
 //   - rsp
 
-const TRACE_ADDR: &str = "0xb0000020";
-const TRACE_ADDR_NUMBER: u64 = 0xb0000020;
+const TRACE_ADDR: &str = "0xc0000020";
+const TRACE_ADDR_NUMBER: u64 = 0xc0000020;
 
 // Fcall context offsets of the different fields
 const FCALL_FUNCTION_ID: u64 = 0;
