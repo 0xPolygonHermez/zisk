@@ -12,6 +12,7 @@ use std::process::{self, Command};
 use std::{fs, ptr};
 
 use crate::{AsmRHData, AsmRHHeader, AsmRunnerOptions, AsmRunnerTraceLevel};
+use mpi::traits::*;
 
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
 pub struct AsmRunnerRomH {
@@ -62,9 +63,13 @@ impl AsmRunnerRomH {
         shm_size: u64,
         options: AsmRunnerOptions,
     ) -> AsmRunnerRomH {
-        let pid = unsafe { libc::getpid() };
+        let universe = mpi::initialize().unwrap();
+        let world = universe.world();
 
-        let shmem_prefix = format!("ZISKRH{}", pid);
+        let pid = unsafe { libc::getpid() };
+        let rank = world.rank();
+
+        let shmem_prefix = format!("ZISKRH{}-{}", pid, rank);
         let shmem_input_name = format!("/{}_input", shmem_prefix);
         let shmem_output_name = format!("/{}_output", shmem_prefix);
 

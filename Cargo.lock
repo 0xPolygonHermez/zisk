@@ -262,6 +262,7 @@ dependencies = [
  "clap",
  "libc",
  "log",
+ "mpi",
  "named-sem",
  "rayon",
  "zisk-common",

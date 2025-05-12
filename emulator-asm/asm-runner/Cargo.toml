@@ -25,3 +25,4 @@ rayon = { workspace = true}
 clap = { version = "4", features = ["derive"] }
 libc = "0.2"
 named-sem = "0.2.2"
+mpi = "0.8"

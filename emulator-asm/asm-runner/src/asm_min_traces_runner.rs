@@ -18,6 +18,7 @@ use std::{fs, ptr};
 use log::info;
 
 use crate::{AsmInputC, AsmMTChunk, AsmMTHeader, AsmRunnerOptions, AsmRunnerTraceLevel};
+use mpi::traits::*;
 
 pub trait Task: Send + Sync + 'static {
     type Output: Send + 'static;
@@ -85,9 +86,13 @@ impl AsmRunnerMT {
         chunk_size: u64,
         options: AsmRunnerOptions,
     ) -> AsmRunnerMT {
-        let pid = unsafe { libc::getpid() };
+        let universe = mpi::initialize().unwrap();
+        let world = universe.world();
 
-        let shmem_prefix = format!("ZISKMT{}", pid);
+        let pid = unsafe { libc::getpid() };
+        let rank = world.rank();
+
+        let shmem_prefix = format!("ZISKMT{}-{}", pid, rank);
         let shmem_input_name = format!("/{}_input", shmem_prefix);
         let shmem_output_name = format!("/{}_output", shmem_prefix);
 
@@ -173,9 +178,13 @@ impl AsmRunnerMT {
         options: AsmRunnerOptions,
         task_factory: TaskFactory<T>,
     ) -> (AsmRunnerMT, Vec<T::Output>) {
-        let pid = unsafe { libc::getpid() };
+        let universe = mpi::initialize().unwrap();
+        let world = universe.world();
 
-        let shmem_prefix = format!("ZISKMT{}", pid);
+        let pid = unsafe { libc::getpid() };
+        let rank = world.rank();
+
+        let shmem_prefix = format!("ZISKMT{}-{}", pid, rank);
         let shmem_input_name = format!("/{}_input", shmem_prefix);
         let shmem_output_name = format!("/{}_output", shmem_prefix);
 
