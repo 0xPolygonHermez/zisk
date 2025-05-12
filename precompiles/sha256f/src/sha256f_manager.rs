@@ -1,11 +1,9 @@
 use std::{path::PathBuf, sync::Arc};
 
-use data_bus::{BusDevice, PayloadType, OPERATION_BUS_ID};
 use p3_field::PrimeField64;
-
-use sm_common::{
-    table_instance_array, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
-    InstanceInfo, Planner, TableInfo,
+use zisk_common::{
+    table_instance_array, BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance,
+    InstanceCtx, InstanceInfo, PayloadType, Planner, TableInfo, OPERATION_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::{Sha256fTableTrace, Sha256fTrace};
@@ -34,6 +32,10 @@ impl Sha256fManager {
 
         Arc::new(Self { sha256f_sm, sha256f_table_sm })
     }
+
+    pub fn build_sha256f_counter(&self) -> Sha256fCounterInputGen {
+        Sha256fCounterInputGen::new(BusDeviceMode::Counter)
+    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for Sha256fManager {
@@ -41,8 +43,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for Sha256fManager {
     ///
     /// # Returns
     /// A boxed implementation of `RegularCounters` configured for sha256f operations.
-    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(Sha256fCounterInputGen::new(BusDeviceMode::Counter))
+    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
+        Some(Box::new(Sha256fCounterInputGen::new(BusDeviceMode::Counter)))
     }
 
     /// Builds a planner to plan sha256f-related instances.

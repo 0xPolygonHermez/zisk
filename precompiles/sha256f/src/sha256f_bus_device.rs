@@ -4,8 +4,10 @@
 
 use std::ops::Add;
 
-use data_bus::{BusDevice, BusId, ExtOperationData, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE};
-use sm_common::{BusDeviceMode, Counter, Metrics};
+use zisk_common::{
+    BusDevice, BusDeviceMode, BusId, Counter, ExtOperationData, Metrics, MEM_BUS_ID,
+    OPERATION_BUS_ID, OP_TYPE,
+};
 use zisk_core::ZiskOperationType;
 
 use crate::Sha256fSM;
@@ -57,6 +59,7 @@ impl Metrics for Sha256fCounterInputGen {
     ///
     /// # Returns
     /// An empty vector, as this implementation does not produce any derived inputs for the bus.
+    #[inline(always)]
     fn measure(&mut self, _data: &[u64]) {
         self.counter.update(1);
     }

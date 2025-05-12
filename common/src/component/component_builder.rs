@@ -4,8 +4,7 @@
 //! This trait provides methods to create counters, planners, input collectors, and optional
 //! input generators, enabling flexible and modular integration of components.
 
-use crate::{BusDeviceMetrics, Instance, InstanceCtx, Plan, Planner};
-use data_bus::{BusDevice, PayloadType};
+use crate::{BusDevice, BusDeviceMetrics, Instance, InstanceCtx, PayloadType, Plan, Planner};
 use p3_field::PrimeField;
 use proofman_common::ProofCtx;
 
@@ -20,7 +19,7 @@ pub trait ComponentBuilder<F: PrimeField>: Send + Sync {
     ///
     /// # Returns
     /// A boxed implementation of `BusDeviceMetrics`, capable of tracking bus data.
-    fn build_counter(&self) -> Box<dyn BusDeviceMetrics>;
+    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>>;
 
     /// Builds a planner for planning execution instances.
     ///

@@ -4,11 +4,13 @@ use crate::{
     InputDataSM, MemAlignInstance, MemAlignRomSM, MemAlignSM, MemCounters, MemModuleInstance,
     MemPlanner, MemSM, RomDataSM,
 };
-use data_bus::MEM_BUS_ID;
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
-use sm_common::{table_instance, BusDeviceMetrics, ComponentBuilder, InstanceCtx, Plan, Planner};
+use zisk_common::{
+    table_instance, BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, Plan, Planner,
+    MEM_BUS_ID,
+};
 use zisk_pil::{
     InputDataTrace, MemAlignRomTrace, MemAlignTrace, MemTrace, RomDataTrace, ZiskProofValues,
 };
@@ -32,11 +34,15 @@ impl<F: PrimeField64> Mem<F> {
 
         Arc::new(Self { mem_align_sm, mem_align_rom_sm, mem_sm, input_data_sm, rom_data_sm })
     }
+
+    pub fn build_mem_counter(&self) -> MemCounters {
+        MemCounters::new()
+    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
-    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(MemCounters::new())
+    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
+        Some(Box::new(MemCounters::new()))
     }
 
     fn build_planner(&self) -> Box<dyn Planner> {
@@ -57,7 +63,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
     ///
     /// # Returns
     /// A boxed implementation of a Memory Instance.
-    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn sm_common::Instance<F>> {
+    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
             MemTrace::<usize>::AIR_ID => {
                 Box::new(MemModuleInstance::new(self.mem_sm.clone(), ictx, true))

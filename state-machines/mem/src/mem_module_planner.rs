@@ -4,9 +4,8 @@ use crate::{
     MemCounters, MemCountersCursor, MemHelpers, MemModuleCheckPoint, MemPlanCalculator,
     CHUNK_MAX_DISTANCE, STEP_MEMORY_MAX_DIFF,
 };
-use sm_common::{CheckPoint, InstanceType, Plan};
 use std::cmp::min;
-use zisk_common::{ChunkId, SegmentId};
+use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 
 #[derive(Debug, Default, Clone)]
 pub struct MemModuleSegmentCheckPoint {

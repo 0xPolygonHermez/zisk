@@ -2,13 +2,13 @@ use crate::{
     mem_module_collector::MemModuleCollector, MemHelpers, MemInput, MemModule,
     MemModuleSegmentCheckPoint, MemPreviousSegment, STEP_MEMORY_MAX_DIFF,
 };
-use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
 use std::sync::Arc;
-use zisk_common::ChunkId;
+use zisk_common::{
+    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
+};
 
 pub struct MemModuleInstance<F: PrimeField> {
     /// Instance context
@@ -103,7 +103,7 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
+        collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         // Collect inputs from all collectors. At most, one of them has `prev_last_value` non zero,
         // we take this `prev_last_value`, which represents the last value of the previous segment.
@@ -113,9 +113,9 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         let mut intermediate_skip: Option<u32> = None;
         let inputs: Vec<_> = collectors
             .into_iter()
-            .map(|(_, mut collector)| {
+            .map(|(_, collector)| {
                 let mem_module_collector =
-                    collector.detach_device().as_any().downcast::<MemModuleCollector>().unwrap();
+                    collector.as_any().downcast::<MemModuleCollector>().unwrap();
 
                 if mem_module_collector.prev_segment.is_some() {
                     assert!(prev_segment.is_none());

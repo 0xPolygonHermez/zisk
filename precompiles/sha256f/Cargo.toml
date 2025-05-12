@@ -12,7 +12,6 @@ name = "sha256f_fixed_gen"
 path = "src/sha256f_fixed_gen.rs"
 
 [dependencies]
-sm-common = { path = "../../state-machines/common" }
 zisk-core = { path = "../../core" }
 zisk-common = { path = "../../common" }
 data-bus = { path = "../../data-bus" }

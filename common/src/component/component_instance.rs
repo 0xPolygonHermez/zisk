@@ -2,12 +2,9 @@
 //! in the context of proof systems. It includes traits and macros for defining instances
 //! and integrating them with state machines and proofs.
 
-use data_bus::{BusDevice, PayloadType};
+use crate::{BusDevice, CheckPoint, ChunkId, PayloadType};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use zisk_common::ChunkId;
-
-use crate::{BusDeviceWrapper, CheckPoint};
 
 /// Represents the type of an instance, either a standalone instance or a table.
 #[derive(Debug, PartialEq)]
@@ -37,7 +34,7 @@ pub trait Instance<F: PrimeField>: Send + Sync {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        _collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
+        _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         None
     }
@@ -92,9 +89,10 @@ macro_rules! table_instance {
 
         use p3_field::PrimeField;
 
-        use data_bus::{BusId, PayloadType};
         use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
-        use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
+        use zisk_common::{
+            BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
+        };
         use zisk_pil::$Trace;
 
         use rayon::prelude::*;
@@ -127,7 +125,7 @@ macro_rules! table_instance {
                 &mut self,
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
-                _collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
+                _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
             ) -> Option<AirInstance<F>> {
                 let mut trace = $Trace::new();
 
@@ -153,7 +151,7 @@ macro_rules! table_instance {
             }
         }
 
-        impl data_bus::BusDevice<u64> for $InstanceName {
+        impl BusDevice<u64> for $InstanceName {
             fn process_data(
                 &mut self,
                 bus_id: &BusId,
@@ -190,9 +188,10 @@ macro_rules! table_instance_array {
 
         use p3_field::PrimeField;
 
-        use data_bus::{BusId, PayloadType};
         use proofman_common::{AirInstance, ProofCtx, SetupCtx, TraceInfo};
-        use sm_common::{BusDeviceWrapper, CheckPoint, Instance, InstanceCtx, InstanceType};
+        use zisk_common::{
+            BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
+        };
         use zisk_pil::$Trace;
 
         use rayon::prelude::*;
@@ -225,7 +224,7 @@ macro_rules! table_instance_array {
                 &mut self,
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
-                _collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
+                _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
             ) -> Option<AirInstance<F>> {
                 let mut trace = $Trace::new();
 
@@ -254,7 +253,7 @@ macro_rules! table_instance_array {
             }
         }
 
-        impl data_bus::BusDevice<u64> for $InstanceName {
+        impl BusDevice<u64> for $InstanceName {
             fn process_data(
                 &mut self,
                 bus_id: &BusId,

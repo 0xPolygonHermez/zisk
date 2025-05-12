@@ -4,7 +4,10 @@
 //! This module leverages `WitnessLibrary` to orchestrate the setup of state machines,
 //! program conversion, and execution pipelines to generate required witnesses.
 
-use executor::ZiskExecutor;
+use crate::StaticSMBundle;
+use executor::{/*DynSMBundle,*/ ZiskExecutor};
+use p3_field::PrimeField64;
+use p3_goldilocks::Goldilocks;
 use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
@@ -14,11 +17,8 @@ use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
 use std::{any::Any, path::PathBuf, sync::Arc};
-use zisk_core::Riscv2zisk;
-
-use p3_field::PrimeField64;
-use p3_goldilocks::Goldilocks;
 use witness::{WitnessLibrary, WitnessManager};
+use zisk_core::Riscv2zisk;
 
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
@@ -26,7 +26,7 @@ pub struct WitnessLib<F: PrimeField64> {
     asm_rom_path: Option<PathBuf>,
     input_data_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
-    executor: Option<Arc<ZiskExecutor<F>>>,
+    executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
 }
 
 #[no_mangle]
@@ -86,24 +86,37 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let sha256f_sm = Sha256fManager::new::<F>(self.sha256f_script_path.clone());
         let arith_eq_sm = ArithEqManager::new(std.clone());
 
+        // let sm_bundle = DynSMBundle::new(vec![
+        //     mem_sm.clone(),
+        //     rom_sm.clone(),
+        //     binary_sm.clone(),
+        //     arith_sm.clone(),
+        //     keccakf_sm.clone(),
+        //     sha256f_sm.clone(),
+        //     arith_eq_sm.clone(),
+        // ]);
+
+        let sm_bundle = StaticSMBundle::new(
+            mem_sm.clone(),
+            rom_sm.clone(),
+            binary_sm.clone(),
+            arith_sm.clone(),
+            // The precompiles state machines
+            keccakf_sm.clone(),
+            sha256f_sm.clone(),
+            arith_eq_sm.clone(),
+        );
+
         // Step 5: Create the executor and register the secondary state machines
-        let mut executor: ZiskExecutor<F> = ZiskExecutor::new(
+        let executor: ZiskExecutor<F, StaticSMBundle<F>> = ZiskExecutor::new(
             self.elf_path.clone(),
             self.asm_path.clone(),
             self.asm_rom_path.clone(),
             self.input_data_path.clone(),
             zisk_rom,
             std,
+            sm_bundle,
         );
-        executor.register_sm(mem_sm);
-        executor.register_sm(rom_sm);
-        executor.register_sm(binary_sm);
-        executor.register_sm(arith_sm);
-
-        // Step 6: Register the precompiles state machines
-        executor.register_sm(keccakf_sm);
-        executor.register_sm(sha256f_sm);
-        executor.register_sm(arith_eq_sm);
 
         let executor = Arc::new(executor);
 

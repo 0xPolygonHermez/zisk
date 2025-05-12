@@ -1,8 +1,7 @@
 use crate::{
     mem_bus_data_to_input::MemBusDataToInput, MemInput, MemModuleCheckPoint, MemPreviousSegment,
 };
-use data_bus::{BusDevice, BusId, MEM_BUS_ID};
-use zisk_common::SegmentId;
+use zisk_common::{BusDevice, BusId, SegmentId, MEM_BUS_ID};
 
 #[derive(Debug)]
 pub struct MemModuleCollector {

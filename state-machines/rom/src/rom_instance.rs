@@ -5,14 +5,12 @@
 use std::sync::{atomic::AtomicU32, Arc};
 
 use crate::{rom_asm_worker::RomAsmWorker, rom_counter::RomCounter, RomSM};
-use data_bus::{BusDevice, BusId, PayloadType, ROM_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use sm_common::{
-    create_atomic_vec, BusDeviceWrapper, CheckPoint, CounterStats, Instance, InstanceCtx,
-    InstanceType, Metrics,
+use zisk_common::{
+    create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
+    InstanceType, Metrics, PayloadType, ROM_BUS_ID,
 };
-use zisk_common::ChunkId;
 use zisk_core::ZiskRom;
 
 /// The `RomInstance` struct represents an instance to perform the witness computations for
@@ -89,7 +87,7 @@ impl<F: PrimeField> Instance<F> for RomInstance {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        collectors: Vec<(usize, BusDeviceWrapper<PayloadType>)>,
+        collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         if self.is_asm_execution() {
             // Case 1: Use ROM assembly output
@@ -111,9 +109,7 @@ impl<F: PrimeField> Instance<F> for RomInstance {
         // Detach collectors and downcast to RomCollector
         let collectors: Vec<_> = collectors
             .into_iter()
-            .map(|(_, mut collector)| {
-                collector.detach_device().as_any().downcast::<RomCollector>().unwrap()
-            })
+            .map(|(_, collector)| collector.as_any().downcast::<RomCollector>().unwrap())
             .collect();
 
         let mut counter_stats =
@@ -198,7 +194,7 @@ impl BusDevice<u64> for RomCollector {
     /// An optional vector of tuples where:
     /// - The first element is the bus ID.
     /// - The second element is always empty indicating there are no derived inputs.
-    #[inline]
+    #[inline(always)]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == ROM_BUS_ID);
 

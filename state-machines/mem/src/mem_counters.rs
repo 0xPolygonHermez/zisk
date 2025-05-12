@@ -8,9 +8,8 @@ use std::{
 use zisk_common::ChunkId;
 
 use crate::MemHelpers;
-use data_bus::{BusDevice, BusId, MemBusData, MEM_BUS_DATA_SIZE, MEM_BUS_ID};
-use sm_common::Metrics;
 use std::fmt;
+use zisk_common::{BusDevice, BusId, MemBusData, Metrics, MEM_BUS_DATA_SIZE, MEM_BUS_ID};
 
 // TODO: static compilation assert chunk max size = 2^22 to avoid intermediate
 // accesses inside the chunk (counters)
@@ -151,17 +150,13 @@ impl Metrics for MemCounters {
         self.mem_measure(data);
     }
 
-    fn on_close(&mut self) {
-        self.close();
-    }
-
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
 impl BusDevice<u64> for MemCounters {
-    #[inline]
+    #[inline(always)]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(bus_id == &MEM_BUS_ID);
 
@@ -179,5 +174,9 @@ impl BusDevice<u64> for MemCounters {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
+    }
+
+    fn on_close(&mut self) {
+        self.close();
     }
 }

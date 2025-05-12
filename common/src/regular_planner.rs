@@ -5,10 +5,9 @@
 use std::any::Any;
 
 use crate::{
-    component_counter, BusDeviceMetrics, CheckPoint, InstCount, InstanceType, Plan, Planner,
+    BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner,
     RegularCounters,
 };
-use zisk_common::ChunkId;
 use zisk_core::ZiskOperationType;
 
 use super::plan;
@@ -142,9 +141,8 @@ impl Planner for RegularPlanner {
         }
 
         counters.iter().for_each(|(chunk_id, counter)| {
-            let reg_counter = component_counter::Metrics::as_any(&**counter)
-                .downcast_ref::<RegularCounters>()
-                .unwrap();
+            let reg_counter =
+                Metrics::as_any(&**counter).downcast_ref::<RegularCounters>().unwrap();
 
             // Iterate over `instances_info` and add `InstCount` objects to the correct vector
             for (index, instance_info) in self.instances_info.iter().enumerate() {

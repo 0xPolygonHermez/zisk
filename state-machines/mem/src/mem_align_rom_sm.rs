@@ -3,7 +3,7 @@ use std::sync::{
     Arc,
 };
 
-use sm_common::create_atomic_vec;
+use zisk_common::create_atomic_vec;
 use zisk_pil::MemAlignRomTrace;
 
 #[derive(Debug, Clone, Copy)]

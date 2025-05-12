@@ -1,5 +1,5 @@
 use crate::{MemHelpers, MemInput};
-use data_bus::MemBusData;
+use zisk_common::MemBusData;
 
 pub struct MemBusDataToInput;
 

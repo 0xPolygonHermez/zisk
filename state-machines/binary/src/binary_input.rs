@@ -1,4 +1,4 @@
-use data_bus::{ExtOperationData, OperationBusData};
+use zisk_common::{ExtOperationData, OperationBusData};
 
 pub struct BinaryInput {
     pub op: u8,

@@ -116,8 +116,8 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         let mut last_step = previous_segment.step;
         let mut last_value = previous_segment.value;
         let mut force_zero_step = previous_segment.extra_zero_step;
-        let mut total_full_rows = 0u64;
-        let mut total_zero_rows = 0u64;
+        // let mut total_full_rows = 0u64;
+        // let mut total_zero_rows = 0u64;
 
         let mut i = 0;
         let mut increment;
@@ -183,8 +183,8 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                             zero_row = 0;
                         }
 
-                        total_zero_rows += zero_row;
-                        total_full_rows += full_rows;
+                        // total_zero_rows += zero_row;
+                        // total_full_rows += full_rows;
                         // without address changes, the internal reads before write must use the last
                         // value, in the case of reads value and the last value are the same
                         let (low_val, high_val) = (last_value as u32, (last_value >> 32) as u32);
@@ -436,12 +436,12 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                 padding_size
             );
         }
-        if total_zero_rows > 0 {
-            println!(
-                "[Mem:{}] full_rows: {} zero_rows: {}",
-                segment_id, total_full_rows, total_zero_rows
-            );
-        }
+        // if total_zero_rows > 0 {
+        //     println!(
+        //         "[Mem:{}] full_rows: {} zero_rows: {}",
+        //         segment_id, total_full_rows, total_zero_rows
+        //     );
+        // }
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
     }
 }

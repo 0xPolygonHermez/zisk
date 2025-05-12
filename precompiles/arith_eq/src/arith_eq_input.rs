@@ -1,4 +1,4 @@
-use data_bus::{
+use zisk_common::{
     OperationArith256Data, OperationArith256ModData, OperationSecp256k1AddData,
     OperationSecp256k1DblData,
 };

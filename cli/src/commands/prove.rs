@@ -189,7 +189,6 @@ impl ZiskProve {
         }
 
         self.print_command_info(&sha256f_script);
-
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 

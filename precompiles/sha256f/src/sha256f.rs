@@ -6,10 +6,10 @@ use log::info;
 use p3_field::PrimeField64;
 use sha2::compress256;
 
-use data_bus::{ExtOperationData, OperationBusData, OperationSha256Data, PayloadType};
 use precompiles_common::MemBusHelpers;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use zisk_common::{ExtOperationData, OperationBusData, OperationSha256Data, PayloadType};
 use zisk_pil::{Sha256fFixed, Sha256fTrace, Sha256fTraceRow};
 
 use super::{sha256f_constants::*, InputType, Script, Sha256fTableGateOp, Sha256fTableSM};

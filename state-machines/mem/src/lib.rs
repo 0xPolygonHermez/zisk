@@ -29,7 +29,7 @@ use mem_align_planner::*;
 use mem_align_rom_sm::*;
 use mem_align_sm::*;
 pub use mem_constants::*;
-use mem_counters::*;
+pub use mem_counters::*;
 use mem_counters_cursor::*;
 pub use mem_helpers::*;
 use mem_inputs::*;

@@ -6,11 +6,11 @@ use p3_field::PrimeField64;
 use tiny_keccak::keccakf;
 
 use circuit::{Gate, GateOperation, PinId};
-use data_bus::{ExtOperationData, OperationBusData, OperationKeccakData, PayloadType};
 use precompiles_common::MemBusHelpers;
 use precompiles_helpers::keccakf_topology;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use zisk_common::{ExtOperationData, OperationBusData, OperationKeccakData, PayloadType};
 use zisk_pil::{KeccakfFixed, KeccakfTrace, KeccakfTraceRow};
 
 use super::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM};
