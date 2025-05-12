@@ -5,9 +5,8 @@ use crate::{
     MemCounters, MemModulePlanner, MemModulePlannerConfig, MemPlanCalculator, CHUNK_MAX_DISTANCE,
     CHUNK_SIZE, CHUNK_SIZE_STEPS, MEMORY_LOAD_OP, MEMORY_STORE_OP,
 };
-use data_bus::{BusDevice, MEM_BUS_ID};
-use sm_common::Plan;
-use zisk_common::ChunkId;
+use zisk_common::{BusDevice, ChunkId, Plan, MEM_BUS_ID};
+
 fn generate_test_plans(
     from_addr: u32,
     rows: u32,

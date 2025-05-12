@@ -9,7 +9,7 @@ use std::sync::{
 };
 
 use crate::ArithTableInputs;
-use sm_common::create_atomic_vec;
+use zisk_common::create_atomic_vec;
 use zisk_pil::ArithTableTrace;
 
 /// The `ArithTableSM` struct represents the Arithmetic Table State Machine.

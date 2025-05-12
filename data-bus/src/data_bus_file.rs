@@ -10,7 +10,7 @@ use std::{
     str::FromStr,
 };
 
-use crate::BusId;
+use zisk_common::BusId;
 
 pub struct DataBusFileReader;
 

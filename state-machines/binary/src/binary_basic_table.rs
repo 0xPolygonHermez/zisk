@@ -8,7 +8,7 @@ use std::sync::{
     Arc,
 };
 
-use sm_common::create_atomic_vec;
+use zisk_common::create_atomic_vec;
 use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8, P2_9};
 use zisk_pil::BinaryTableTrace;
 

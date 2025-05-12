@@ -4,8 +4,7 @@
 
 use std::any::Any;
 
-use crate::{BusDeviceMetrics, InstanceType};
-use zisk_common::{ChunkId, SegmentId};
+use crate::{BusDeviceMetrics, ChunkId, InstanceType, SegmentId};
 
 /// The `CollectSkipper` struct defines logic for skipping instructions during input collection.
 ///

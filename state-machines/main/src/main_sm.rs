@@ -16,15 +16,11 @@ use log::info;
 
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
-use rayon::iter::{IndexedParallelIterator, ParallelIterator};
-use sm_common::{BusDeviceMetrics, InstanceCtx};
-
-use sm_mem::{MemHelpers, MEMORY_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
-use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
-
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
-
-use zisk_common::EmuTrace;
+use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use sm_mem::{MemHelpers, MEMORY_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
+use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx};
+use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
 use ziskemu::{Emu, EmuRegTrace};
 

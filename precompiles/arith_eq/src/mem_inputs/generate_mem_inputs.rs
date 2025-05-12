@@ -1,5 +1,5 @@
-use data_bus::{BusId, MEM_BUS_ID, OPERATION_BUS_DATA_SIZE};
 use precompiles_common::MemBusHelpers;
+use zisk_common::{BusId, MEM_BUS_ID, OPERATION_BUS_DATA_SIZE};
 
 #[derive(Debug)]
 pub struct ArithEqMemInputConfig {

@@ -5,8 +5,7 @@
 
 use std::any::Any;
 
-use crate::Metrics;
-use data_bus::{BusDevice, BusId};
+use zisk_common::{BusDevice, BusId, Metrics};
 
 /// The `DummyCounter` struct serves as a placeholder counter that performs no actions
 /// when connected to the data bus.
@@ -37,6 +36,7 @@ impl Metrics for DummyCounter {
 }
 
 impl BusDevice<u64> for DummyCounter {
+    #[inline(always)]
     fn process_data(&mut self, _bus_id: &BusId, _data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         None
     }

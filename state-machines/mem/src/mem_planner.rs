@@ -3,8 +3,7 @@ use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "debug_mem")]
 use crate::MemDebug;
-use sm_common::{BusDeviceMetrics, Metrics, Plan, Planner};
-use zisk_common::ChunkId;
+use zisk_common::{BusDeviceMetrics, ChunkId, Metrics, Plan, Planner};
 
 #[cfg(feature = "debug_mem")]
 use crate::MemHelpers;

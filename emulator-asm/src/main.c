@@ -36,7 +36,7 @@ uint64_t get_gen_method(void);
 #define INPUT_ADDR (uint64_t)0x90000000
 #define MAX_INPUT_SIZE (uint64_t)0x08000000 // 128MB
 
-#define TRACE_ADDR         (uint64_t)0xb0000000
+#define TRACE_ADDR         (uint64_t)0xc0000000
 #define INITIAL_TRACE_SIZE (uint64_t)0x100000000 // 4GB
 
 #define REG_ADDR (uint64_t)0x70000000

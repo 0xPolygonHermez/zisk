@@ -26,6 +26,13 @@ pub trait Task: Send + Sync + 'static {
 
 pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, EmuTrace) -> T + Send + Sync + 'a>;
 
+#[derive(Debug)]
+pub enum MinimalTraces {
+    None,
+    EmuTrace(Vec<EmuTrace>),
+    AsmEmuTrace(AsmRunnerMT),
+}
+
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
 #[derive(Debug)]
 pub struct AsmRunnerMT {
@@ -229,7 +236,7 @@ impl AsmRunnerMT {
             println!("Child process launched successfully");
         }
 
-        let pool = ThreadPoolBuilder::new().num_threads(32).build().unwrap();
+        let pool = ThreadPoolBuilder::new().num_threads(16).build().unwrap();
 
         let mut chunk_id = ChunkId(0);
         let mut header_ptr: Option<*mut c_void> = None;

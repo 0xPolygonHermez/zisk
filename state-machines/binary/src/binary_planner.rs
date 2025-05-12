@@ -7,10 +7,9 @@
 use std::any::Any;
 
 use crate::BinaryCounter;
-use sm_common::{
-    plan, BusDeviceMetrics, CheckPoint, InstCount, InstanceType, Metrics, Plan, Planner,
+use zisk_common::{
+    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner,
 };
-use zisk_common::ChunkId;
 use zisk_pil::{
     BinaryAddTrace, BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace,
 };

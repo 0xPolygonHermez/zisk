@@ -11,7 +11,7 @@ mod arith_table_data;
 mod arith_table_helpers;
 
 pub use arith::*;
-use arith_bus_device::*;
+pub use arith_bus_device::*;
 use arith_full::*;
 use arith_full_instance::*;
 use arith_operation::*;

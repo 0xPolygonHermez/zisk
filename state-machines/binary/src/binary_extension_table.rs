@@ -9,7 +9,7 @@ use std::sync::{
     Arc,
 };
 
-use sm_common::create_atomic_vec;
+use zisk_common::create_atomic_vec;
 use zisk_core::{P2_11, P2_19, P2_8};
 use zisk_pil::BinaryExtensionTableTrace;
 
