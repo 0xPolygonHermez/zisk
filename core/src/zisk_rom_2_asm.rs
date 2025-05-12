@@ -1916,7 +1916,9 @@ impl ZiskRom2Asm {
                                 instruction.ind_width, ctx.pc
                             ),
                         }
-                        *code += &format!("pc_{:x}_c_active_chunk_done:\n", ctx.pc);
+                        if ctx.zip() {
+                            *code += &format!("pc_{:x}_c_active_chunk_done:\n", ctx.pc);
+                        }
                     }
 
                     // Store mem[address] = value
