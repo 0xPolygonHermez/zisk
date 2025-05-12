@@ -63,9 +63,6 @@ pub struct ZiskExecutor<F: PrimeField64> {
     /// ZisK ROM, a binary file containing the ZisK program to be executed.
     pub zisk_rom: Arc<ZiskRom>,
 
-    /// Path to the input data file.
-    pub input_data_path: Option<PathBuf>,
-
     pub rom_path: PathBuf,
 
     pub asm_runner_path: Option<PathBuf>,
@@ -98,18 +95,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// Creates a new instance of the `ZiskExecutor`.
     ///
     /// # Arguments
-    /// * `input_data_path` - Path to the input data file.
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
     pub fn new(
         rom_path: PathBuf,
         asm_path: Option<PathBuf>,
         asm_rom_path: Option<PathBuf>,
-        input_data_path: Option<PathBuf>,
         zisk_rom: Arc<ZiskRom>,
         std: Arc<Std<F>>,
     ) -> Self {
         Self {
-            input_data_path,
             rom_path,
             asm_runner_path: asm_path,
             asm_rom_path,
@@ -145,11 +139,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     ///
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
-    fn compute_minimal_traces(&self, num_threads: usize) -> MinimalTraces {
+    fn compute_minimal_traces(
+        &self,
+        num_threads: usize,
+        input_data_path: Option<PathBuf>,
+    ) -> MinimalTraces {
         let min_traces = if self.asm_runner_path.is_none() {
-            self.run_emulator(num_threads)
+            self.run_emulator(num_threads, input_data_path)
         } else {
-            self.run_assembly()
+            self.run_assembly(input_data_path)
         };
 
         // Store execute steps
@@ -170,23 +168,23 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         min_traces
     }
 
-    fn run_assembly(&self) -> MinimalTraces {
+    fn run_assembly(&self, input_data_path: Option<PathBuf>) -> MinimalTraces {
         MinimalTraces::AsmEmuTrace(AsmRunnerMT::run(
             self.asm_runner_path.as_ref().unwrap(),
-            self.input_data_path.as_ref().unwrap(),
+            input_data_path.as_ref().unwrap(),
             Self::MAX_NUM_STEPS,
             Self::MIN_TRACE_SIZE,
             asm_runner::AsmRunnerOptions::default(),
         ))
     }
 
-    fn run_emulator(&self, num_threads: usize) -> MinimalTraces {
+    fn run_emulator(&self, num_threads: usize, input_data_path: Option<PathBuf>) -> MinimalTraces {
         assert!(Self::MIN_TRACE_SIZE.is_power_of_two());
 
         // Call emulate with these options
-        let input_data = if self.input_data_path.is_some() {
+        let input_data = if input_data_path.is_some() {
             // Read inputs data from the provided inputs path
-            let path = PathBuf::from(self.input_data_path.as_ref().unwrap().display().to_string());
+            let path = PathBuf::from(input_data_path.as_ref().unwrap().display().to_string());
             fs::read(path).expect("Could not read inputs file")
         } else {
             Vec::new()
@@ -659,10 +657,10 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     ///
     /// # Returns
     /// A vector of global IDs for the instances to compute witness for.
-    fn execute(&self, pctx: Arc<ProofCtx<F>>) -> Vec<usize> {
+    fn execute(&self, pctx: Arc<ProofCtx<F>>, input_data_path: Option<PathBuf>) -> Vec<usize> {
         // Process the ROM to collect the Minimal Traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
-        let min_traces = self.compute_minimal_traces(Self::NUM_THREADS);
+        let min_traces = self.compute_minimal_traces(Self::NUM_THREADS, input_data_path);
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
         timer_start_info!(COUNT_AND_PLAN);
@@ -718,6 +716,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             secn_instances
                 .entry(*global_id)
                 .or_insert_with(|| self.create_secn_instance(*global_id));
+            secn_instances[&global_id].reset();
         }
 
         [main_global_ids, secn_global_ids_vec].concat()

@@ -76,6 +76,8 @@ pub trait Instance<F: PrimeField>: Send + Sync {
     /// * `_pctx` - The proof context, unused in this implementation.
     /// * `_sctx` - The setup context, unused in this implementation.
     fn debug(&self, _pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {}
+
+    fn reset(&self) {}
 }
 
 /// Macro to define a table-backed instance.
@@ -159,6 +161,10 @@ macro_rules! table_instance {
 
             fn instance_type(&self) -> InstanceType {
                 InstanceType::Table
+            }
+
+            fn reset(&self) {
+                self.table_sm.reset_calculated();
             }
         }
 
@@ -266,6 +272,10 @@ macro_rules! table_instance_array {
 
             fn instance_type(&self) -> InstanceType {
                 InstanceType::Table
+            }
+
+            fn reset(&self) {
+                self.table_sm.reset_calculated();
             }
         }
 

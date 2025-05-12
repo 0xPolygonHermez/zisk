@@ -58,7 +58,7 @@ impl BinaryExtensionTableSM {
     /// # Arguments
     /// * `input` - A slice of `u64` values to process.
     pub fn update_multiplicity(&self, row: u64, value: u64) {
-        if self.calculated.load(Ordering::Relaxed) {
+        if self.calculated.load(Ordering::SeqCst) {
             return;
         }
         self.multiplicity[row as usize].fetch_add(value, Ordering::Relaxed);
@@ -73,7 +73,11 @@ impl BinaryExtensionTableSM {
     }
 
     pub fn set_calculated(&self) {
-        self.calculated.store(true, Ordering::Relaxed);
+        self.calculated.store(true, Ordering::SeqCst);
+    }
+
+    pub fn reset_calculated(&self) {
+        self.calculated.store(false, Ordering::SeqCst);
     }
 
     /// Calculates the row index in the Binary Extension Table based on the operation and its

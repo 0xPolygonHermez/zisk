@@ -193,19 +193,20 @@ impl ZiskProve {
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
         let proofman = ProofMan::<Goldilocks>::new(
-                self.get_proving_key(),
-                custom_commits_map,
-                ProofOptions::new(
-                    false,
-                    self.verbose.into(),
-                    self.aggregation,
-                    self.final_snark,
-                    self.verify_proofs,
-                    self.preallocate,
-                    debug_info.clone(),
-                ),
-            ).expect("Failed to initialize proofman");
-        
+            self.get_proving_key(),
+            custom_commits_map,
+            ProofOptions::new(
+                false,
+                self.verbose.into(),
+                self.aggregation,
+                self.final_snark,
+                self.verify_proofs,
+                self.preallocate,
+                debug_info.clone(),
+            ),
+        )
+        .expect("Failed to initialize proofman");
+
         let start = std::time::Instant::now();
 
         let mut witness_lib;
@@ -221,16 +222,15 @@ impl ZiskProve {
                         self.elf.clone(),
                         self.asm.clone(),
                         asm_rom,
-                        self.input.clone(),
                         keccak_script,
                     )
                     .expect("Failed to initialize witness library");
 
-                    return proofman.verify_proof_constraints_from_lib(
-                        &mut *witness_lib,
-                        self.output_dir.clone(),
-                    )
-                    .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e));
+                    proofman.register_witness(&mut *witness_lib);
+
+                    return proofman
+                        .verify_proof_constraints_from_lib(self.input.clone())
+                        .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e));
                 }
             };
         } else {
@@ -244,16 +244,15 @@ impl ZiskProve {
                         self.elf.clone(),
                         self.asm.clone(),
                         asm_rom,
-                        self.input.clone(),
                         keccak_script,
                     )
                     .expect("Failed to initialize witness library");
 
-                    proof_id = proofman.generate_proof_from_lib(
-                        &mut *witness_lib,
-                        self.output_dir.clone(),
-                    )
-                    .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
+                    proofman.register_witness(&mut *witness_lib);
+                    
+                    proof_id = proofman
+                        .generate_proof_from_lib(self.input.clone(), self.output_dir.clone())
+                        .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
                 }
             };
         }

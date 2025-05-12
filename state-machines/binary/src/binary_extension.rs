@@ -3,10 +3,7 @@
 //! This state machine handles binary extension-related operations, computes traces, and manages
 //! range checks and multiplicities for table rows based on the operations provided.
 
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc,
-};
+use std::sync::Arc;
 
 use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
 use log::info;
@@ -113,7 +110,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     pub fn process_slice(
         &self,
         input: &BinaryInput,
-        multiplicity: &[AtomicU64],
+        binary_extension_table_sm: &BinaryExtensionTableSM,
     ) -> BinaryExtensionTraceRow<F> {
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
@@ -306,7 +303,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 *a_byte as u64,
                 in2_low,
             );
-            multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
+            binary_extension_table_sm.update_multiplicity(row, 1);
         }
 
         // Store the range check
@@ -367,10 +364,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             // Process each slice in parallel, and use the corresponding inner input from `inputs`.
             slices.into_par_iter().enumerate().for_each(|(i, slice)| {
                 slice.iter_mut().enumerate().for_each(|(j, cell)| {
-                    *cell = self.process_slice(
-                        &inputs[i][j],
-                        self.binary_extension_table_sm.detach_multiplicity(),
-                    );
+                    *cell = self.process_slice(&inputs[i][j], &self.binary_extension_table_sm);
                 });
             });
 
