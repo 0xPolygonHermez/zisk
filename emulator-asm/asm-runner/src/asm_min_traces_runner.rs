@@ -294,7 +294,7 @@ impl AsmRunnerMT {
                     }
                 }
                 Err(e) => {
-                    error!("Semaphore error: {:?}", e);
+                    error!("Semaphore sem_chunk_done error: {:?}", e);
 
                     if chunk_id.0 == 0 {
                         break 1;
