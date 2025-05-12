@@ -24,7 +24,7 @@ build/emu.o: $(EMU_PATH)
 # Compile the final executable
 $(OUT_PATH): build/emu.o src/main.c src/emu.c src/chfast/keccak.c
 	mkdir -p $(OUT_DIR)
-	gcc $(CFLAGS) src/main.c src/emu.c src/chfast/keccak.c -lc build/emu.o -lc ../lib-c/c/lib/libziskc.a -lgmp -lstdc++ -lgmpxx -o $@
+	gcc $(CFLAGS) src/main.c src/emu.c src/chfast/keccak.c src/bcon/bcon_sha256.c -lc build/emu.o -lc ../lib-c/c/lib/libziskc.a -lgmp -lstdc++ -lgmpxx -o $@
 
 clean:
 	rm -rf build

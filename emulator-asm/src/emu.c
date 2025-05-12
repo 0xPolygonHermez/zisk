@@ -9,12 +9,14 @@
 #include "../../lib-c/c/src/ec/ec.hpp"
 #include "../../lib-c/c/src/fcall/fcall.hpp"
 #include "../../lib-c/c/src/arith256/arith256.hpp"
+#include "bcon/bcon_sha256.hpp"
 
 extern void keccakf1600_generic(uint64_t state[25]);
 
 #ifdef DEBUG
 bool emu_verbose = false;
 bool keccak_metrics = false;
+bool sha256_metrics = false;
 bool arith256_metrics = false;
 bool arith256_mod_metrics = false;
 bool secp256k1_add_metrics = false;
@@ -24,6 +26,10 @@ bool secp256k1_dbl_metrics = false;
 struct timeval keccak_start, keccak_stop;
 uint64_t keccak_counter = 0;
 uint64_t keccak_duration = 0;
+
+struct timeval sha256_start, sha256_stop;
+uint64_t sha256_counter = 0;
+uint64_t sha256_duration = 0;
 
 struct timeval arith256_start, arith256_stop;
 uint64_t arith256_counter = 0;
@@ -126,6 +132,27 @@ extern int _opcode_keccak(uint64_t address)
     {
         gettimeofday(&keccak_stop, NULL);
         keccak_duration += TimeDiff(keccak_start, keccak_stop);
+    }
+#endif
+    return 0;
+}
+
+extern int _opcode_sha256(uint64_t * address)
+{
+#ifdef DEBUG
+    if (sha256_metrics || emu_verbose) gettimeofday(&sha256_start, NULL);
+#endif
+    //if (emu_verbose) printf("opcode_sha256() calling sha256_transform_2() counter=%d address=%08lx\n", sha256_counter, address);
+
+    sha256_transform_2( (uint32_t *) address, (uint8_t *)(address + 4));
+
+    //if (emu_verbose) printf("opcode_sha256() called sha256_transform_2()\n");
+#ifdef DEBUG
+    sha256_counter++;
+    if (sha256_metrics || emu_verbose)
+    {
+        gettimeofday(&sha256_stop, NULL);
+        sha256_duration += TimeDiff(sha256_start, sha256_stop);
     }
 #endif
     return 0;

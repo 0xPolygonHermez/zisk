@@ -25,12 +25,7 @@ impl MemCountersCursor {
         let initial_sorted_boxes = Self::prepare(counters, addr_index);
         // let t_prepare = std::time::Instant::now();
         let sorted_boxes = Self::merge_sorted_boxes(&initial_sorted_boxes, 16);
-        let cursor = Self {
-            counters_count,
-            cursor_index: 0,
-            cursor_count: sorted_boxes.len(),
-            sorted_boxes,
-        };
+        Self { counters_count, cursor_index: 0, cursor_count: sorted_boxes.len(), sorted_boxes }
         // let elapsed = std::time::Instant::now() - t_start;
         // let elapsed_prepare = t_prepare - t_start;
         // println!(
@@ -38,7 +33,6 @@ impl MemCountersCursor {
         //     elapsed.as_millis(),
         //     elapsed_prepare.as_millis()
         // );
-        cursor
     }
     #[inline(always)]
     pub fn init(&mut self) {
