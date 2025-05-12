@@ -1,10 +1,10 @@
 pub mod mem_constants;
 pub mod mem_counters;
 mod mem_helpers;
-use data_bus::MEM_BUS_DATA_SIZE;
 pub use mem_constants::*;
 use mem_counters::*;
 pub use mem_helpers::*;
+use zisk_common::MEM_BUS_DATA_SIZE;
 mod mem_inputs;
 pub use mem_module::*;
 mod mem_module;
@@ -31,7 +31,7 @@ mod mem_module_check_point;
 pub use mem_module_check_point::*;
 // mod mem_ops;
 // pub use mem_ops::*;
-use sm_common::BusDeviceMetrics;
+use zisk_common::BusDeviceMetrics;
 use zisk_common::ChunkId;
 
 // cargo run --release --features="test_data" --bin arith_eq_test_generator

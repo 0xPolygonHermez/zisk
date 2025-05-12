@@ -12,10 +12,8 @@ name = "keccakf_fixed_gen"
 path = "src/keccakf_fixed_gen.rs"
 
 [dependencies]
-sm-common = { path = "../../state-machines/common" }
 zisk-core = { path = "../../core" }
 zisk-common = { path = "../../common" }
-data-bus = { path = "../../data-bus" }
 zisk-pil = { path = "../../pil" }
 precompiles-common = { path = "../common" }
 circuit = { path = "../../tools/circuit" }
@@ -31,9 +29,6 @@ p3-field = { workspace=true }
 p3-goldilocks = { workspace = true }
 log = { workspace = true }
 rayon = { workspace = true }
-num-bigint = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
 
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 clap = "4.0"

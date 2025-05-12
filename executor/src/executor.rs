@@ -19,7 +19,7 @@
 //! By structuring these phases, the `ZiskExecutor` ensures high-performance execution while
 //! maintaining clarity and modularity in the computation process.
 
-use asm_runner::{AsmRunnerMT, Task, TaskFactory};
+use asm_runner::{AsmRunnerMT, MinimalTraces, Task, TaskFactory};
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{ProofCtx, SetupCtx};
@@ -29,13 +29,13 @@ use witness::WitnessComponent;
 
 use rayon::prelude::*;
 
-use data_bus::{BusDevice, DataBus, PayloadType, OPERATION_BUS_ID};
-use sm_common::{
-    BusDeviceMetrics, BusDeviceMetricsWrapper, BusDeviceWrapper, CheckPoint, ComponentBuilder,
-    Instance, InstanceCtx, InstanceType, MinimalTraces, Plan,
-};
+use crate::{DataBusCollectorCollection, DummyCounter};
+use data_bus::DataBusTrait;
 use sm_main::{MainInstance, MainPlanner, MainSM};
-use zisk_common::ChunkId;
+use zisk_common::{
+    BusDevice, BusDeviceMetrics, CheckPoint, Instance, InstanceCtx, InstanceType, Plan,
+};
+use zisk_common::{ChunkId, PayloadType};
 use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
 
 use std::{
@@ -49,9 +49,11 @@ use zisk_common::EmuTrace;
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
 
+use crate::SMBundle;
+
 type DeviceMetricsByChunk = (ChunkId, Box<dyn BusDeviceMetrics>); // (chunk_id, metrics)
 type DeviceMetricsList = Vec<DeviceMetricsByChunk>;
-type NestedDeviceMetricsList = Vec<DeviceMetricsList>;
+pub type NestedDeviceMetricsList = Vec<DeviceMetricsList>;
 
 #[derive(Debug, Default, Clone)]
 pub struct ZiskExecutionResult {
@@ -67,7 +69,7 @@ enum MinimalTraceExecutionMode {
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
-pub struct ZiskExecutor<F: PrimeField64> {
+pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     /// ZisK ROM, a binary file containing the ZisK program to be executed.
     pub zisk_rom: Arc<ZiskRom>,
 
@@ -78,9 +80,6 @@ pub struct ZiskExecutor<F: PrimeField64> {
 
     pub asm_runner_path: Option<PathBuf>,
     pub asm_rom_path: Option<PathBuf>,
-
-    /// Registered secondary state machines.
-    secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,
 
     /// Planning information for main state machines.
     pub min_traces: RwLock<MinimalTraces>,
@@ -95,9 +94,10 @@ pub struct ZiskExecutor<F: PrimeField64> {
 
     main_count: Mutex<Option<DeviceMetricsList>>,
     secn_count: Mutex<Option<NestedDeviceMetricsList>>,
+    sm_bundle: BD,
 }
 
-impl<F: PrimeField64> ZiskExecutor<F> {
+impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// The number of threads to use for parallel processing when computing minimal traces.
     const NUM_THREADS: usize = 16;
 
@@ -118,6 +118,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         input_data_path: Option<PathBuf>,
         zisk_rom: Arc<ZiskRom>,
         std: Arc<Std<F>>,
+        sm_bundle: BD,
     ) -> Self {
         Self {
             input_data_path,
@@ -125,7 +126,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             asm_runner_path: asm_path,
             asm_rom_path,
             zisk_rom,
-            secondary_sm: Vec::new(),
             min_traces: RwLock::new(MinimalTraces::None),
             main_planning: RwLock::new(Vec::new()),
             secn_planning: RwLock::new(Vec::new()),
@@ -135,19 +135,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             execution_result: Mutex::new(ZiskExecutionResult::default()),
             main_count: Mutex::new(None),
             secn_count: Mutex::new(None),
+            sm_bundle,
         }
     }
 
     pub fn get_execution_result(&self) -> ZiskExecutionResult {
         self.execution_result.lock().unwrap().clone()
-    }
-
-    /// Registers a secondary state machine with the executor.
-    ///
-    /// # Arguments
-    /// * `sm` - The state machine to register.
-    pub fn register_sm(&mut self, sm: Arc<dyn ComponentBuilder<F>>) {
-        self.secondary_sm.push(sm);
     }
 
     /// Computes minimal traces by processing the ZisK ROM with given public inputs.
@@ -194,49 +187,59 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     }
 
     fn run_and_count_assembly(&self) -> MinimalTraces {
-        struct CounterTask<F> {
+        struct CounterTask<F, DB>
+        where
+            DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>,
+        {
             chunk_id: ChunkId,
             emu_trace: EmuTrace,
-            data_bus: Mutex<Option<DataBus<PayloadType, BusDeviceMetricsWrapper>>>,
+            data_bus: Mutex<Option<DB>>,
             zisk_rom: Arc<ZiskRom>,
             _phantom: std::marker::PhantomData<F>,
         }
 
-        impl<F: PrimeField64> Task for CounterTask<F> {
-            type Output = (ChunkId, DataBus<u64, BusDeviceMetricsWrapper>);
+        impl<F, DB> Task for CounterTask<F, DB>
+        where
+            F: PrimeField64,
+            DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static,
+        {
+            type Output = (ChunkId, DB);
 
             fn execute(&self) -> Self::Output {
                 let mut data_bus = self.data_bus.lock().unwrap();
                 let mut data_bus = std::mem::take(&mut *data_bus).unwrap();
 
-                ZiskEmulator::process_emu_trace::<F, BusDeviceMetricsWrapper>(
+                ZiskEmulator::process_emu_trace::<F, _, _>(
                     &self.zisk_rom,
                     &self.emu_trace,
                     &mut data_bus,
                 );
 
-                for device in &mut data_bus.devices {
-                    device.on_close();
-                }
+                data_bus.on_close();
 
                 (self.chunk_id, data_bus)
             }
         }
 
-        impl<F> Drop for CounterTask<F> {
+        impl<F, DB> Drop for CounterTask<F, DB>
+        where
+            DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>,
+        {
             fn drop(&mut self) {
                 std::mem::forget(std::mem::take(&mut self.emu_trace.mem_reads));
             }
         }
 
-        let task_factory: TaskFactory<CounterTask<F>> =
-            Box::new(|chunk_id: ChunkId, emu_trace: EmuTrace| CounterTask {
+        let task_factory: TaskFactory<_> = Box::new(|chunk_id: ChunkId, emu_trace: EmuTrace| {
+            let data_bus = self.sm_bundle.build_data_bus_counters();
+            CounterTask {
                 chunk_id,
                 emu_trace,
-                data_bus: Mutex::new(Some(self.get_data_bus_counters())),
+                data_bus: Mutex::new(Some(data_bus)),
                 zisk_rom: self.zisk_rom.clone(),
-                _phantom: std::marker::PhantomData,
-            });
+                _phantom: std::marker::PhantomData::<F>,
+            }
+        });
 
         let (asm_runner_mt, mut data_buses) = AsmRunnerMT::run_and_count(
             self.asm_runner_path.as_ref().unwrap(),
@@ -252,16 +255,19 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let mut main_count = Vec::with_capacity(data_buses.len());
         let mut secn_count = Vec::with_capacity(data_buses.len());
 
+        let main_idx = self.sm_bundle.main_counter_idx();
         for (chunk_id, data_bus) in data_buses {
-            let databus_counters = self.close_data_bus_counters(data_bus, false);
+            let databus_counters = data_bus.into_devices(false);
 
             let mut secondary = Vec::new();
 
-            for (is_secondary, counter) in databus_counters {
-                if is_secondary {
-                    secondary.push((chunk_id, counter));
-                } else {
-                    main_count.push((chunk_id, counter));
+            for (idx, counter) in databus_counters.into_iter().enumerate() {
+                match main_idx {
+                    None => secondary.push((chunk_id, counter)),
+                    Some(i) if idx == i => {
+                        main_count.push((chunk_id, counter.unwrap_or(Box::new(DummyCounter {}))))
+                    }
+                    Some(_) => secondary.push((chunk_id, counter)),
                 }
             }
 
@@ -273,8 +279,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             (0..secn_count[0].len()).map(|_| Vec::new()).collect::<Vec<_>>();
 
         secn_count.into_iter().for_each(|counter_slice| {
-            counter_slice.into_iter().enumerate().for_each(|(i, counter)| {
-                secn_vec_counters[i].push(counter);
+            counter_slice.into_iter().enumerate().for_each(|(i, (chunk_id, counter))| {
+                secn_vec_counters[i].push((chunk_id, counter.unwrap_or(Box::new(DummyCounter {}))));
             });
         });
 
@@ -373,25 +379,26 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let (main_metrics_slices, secn_metrics_slices): (Vec<_>, Vec<_>) = min_traces
             .par_iter()
             .map(|minimal_trace| {
-                let mut data_bus = self.get_data_bus_counters();
+                let mut data_bus = self.sm_bundle.build_data_bus_counters();
 
-                ZiskEmulator::process_emu_trace::<F, BusDeviceMetricsWrapper>(
+                ZiskEmulator::process_emu_trace::<F, _, _>(
                     &self.zisk_rom,
                     minimal_trace,
                     &mut data_bus,
                 );
 
-                let (mut main, mut secondary) = (Vec::new(), Vec::new());
+                let (mut main_count, mut secn_count) = (Vec::new(), Vec::new());
 
-                let databus_counters = self.close_data_bus_counters(data_bus, true);
-                for (is_secondary, counter) in databus_counters {
-                    if is_secondary {
-                        secondary.push(counter);
-                    } else {
-                        main.push(counter);
+                let databus_counters = data_bus.into_devices(true);
+                let main_idx = self.sm_bundle.main_counter_idx();
+                for (idx, counter) in databus_counters.into_iter().enumerate() {
+                    match main_idx {
+                        None => secn_count.push(counter),
+                        Some(i) if idx == i => main_count.push(counter),
+                        Some(_) => secn_count.push(counter),
                     }
                 }
-                (main, secondary)
+                (main_count, secn_count)
             })
             .unzip();
 
@@ -401,7 +408,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         secn_metrics_slices.into_iter().enumerate().for_each(|(chunk_id, counter_slice)| {
             counter_slice.into_iter().enumerate().for_each(|(i, counter)| {
-                secn_vec_counters[i].push((ChunkId(chunk_id), counter));
+                secn_vec_counters[i]
+                    .push((ChunkId(chunk_id), counter.unwrap_or(Box::new(DummyCounter {}))));
             });
         });
 
@@ -409,39 +417,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             .into_iter()
             .enumerate()
             .flat_map(|(chunk_id, counters)| {
-                counters.into_iter().map(move |counter| (ChunkId(chunk_id), counter))
+                counters.into_iter().map(move |counter| {
+                    (ChunkId(chunk_id), counter.unwrap_or(Box::new(DummyCounter {})))
+                })
             })
             .collect();
 
         (main_vec_counters, secn_vec_counters)
-    }
-
-    /// Plans the secondary state machines by generating plans from the counted metrics.
-    ///
-    /// # Arguments
-    /// * `vec_counters` - A nested vector containing metrics for each secondary state machine.
-    ///
-    /// # Returns
-    /// A vector of plans for each secondary state machine.
-    fn plan_sec(&self, vec_counters: NestedDeviceMetricsList) -> Vec<Vec<Plan>> {
-        self.secondary_sm
-            .iter()
-            .zip(vec_counters)
-            .map(|(sm, counters)| sm.build_planner().plan(counters))
-            .collect()
-    }
-
-    /// Prepares and configures the secondary instances using the provided plans before their
-    /// creation.
-    ///
-    /// # Arguments
-    /// * `pctx` - Proof context.
-    /// * `plannings` - A vector of vectors containing plans for each secondary state machine.
-    fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Vec<Plan>]) {
-        self.secondary_sm
-            .iter()
-            .zip(plannings)
-            .for_each(|(sm, plans)| sm.configure_instances(pctx, plans));
     }
 
     /// Adds secondary state machine instances to the proof context and assigns global IDs.
@@ -487,7 +469,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let global_id = plan.global_id.unwrap();
 
         let ictx = InstanceCtx::new(global_id, plan);
-        self.secondary_sm[plan_idx.0].build_instance(ictx)
+        self.sm_bundle.build_instance(plan_idx.0, ictx)
     }
 
     /// Expands and computes witnesses for a main instance.
@@ -544,12 +526,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let chunks_to_execute = self.chunks_to_execute(min_traces, secn_instance);
 
         // Create data buses for each chunk
-        let mut data_buses = self.get_data_bus_collectors(secn_instance, chunks_to_execute);
+        let mut data_buses =
+            self.sm_bundle.build_data_bus_collectors(secn_instance, chunks_to_execute);
 
         // Execute collect process for each chunk
         data_buses.par_iter_mut().enumerate().for_each(|(chunk_id, data_bus)| {
             if let Some(data_bus) = data_bus {
-                ZiskEmulator::process_emu_traces::<F, BusDeviceWrapper<u64>>(
+                ZiskEmulator::process_emu_traces::<F, _, _>(
                     &self.zisk_rom,
                     min_traces,
                     chunk_id,
@@ -620,93 +603,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         chunks_to_execute
     }
 
-    /// Retrieves a `DataBus` configured with counters for each secondary state machine.
-    ///
-    /// # Returns
-    /// A `DataBus` instance with connected counters for each registered secondary state machine.
-    fn get_data_bus_counters(&self) -> DataBus<PayloadType, BusDeviceMetricsWrapper> {
-        let mut data_bus = DataBus::new();
-
-        let counter = MainSM::build_counter();
-
-        data_bus.connect_device(counter.bus_id(), BusDeviceMetricsWrapper::new(counter, false));
-
-        self.secondary_sm.iter().for_each(|sm| {
-            let counter = sm.build_counter();
-
-            data_bus.connect_device(counter.bus_id(), BusDeviceMetricsWrapper::new(counter, true));
-        });
-
-        data_bus
-    }
-
-    /// Finalizes a `DataBus` with counters, detaching and closing all devices.
-    ///
-    /// # Arguments
-    /// * `data_bus` - A `DataBus` instance with attached counters.
-    ///
-    /// # Returns
-    /// A vector containing all detached counters after closing their associated devices.
-    fn close_data_bus_counters(
-        &self,
-        mut data_bus: DataBus<u64, BusDeviceMetricsWrapper>,
-        execute_on_close: bool,
-    ) -> Vec<(bool, Box<dyn BusDeviceMetrics>)> {
-        data_bus
-            .detach_devices()
-            .into_iter()
-            .map(|mut device| {
-                if execute_on_close {
-                    device.on_close();
-                }
-                (device.is_secondary, device.inner)
-            })
-            .collect::<Vec<_>>()
-    }
-
-    /// Retrieves a data bus for managing collectors in secondary state machines.
-    /// # Arguments
-    /// * `secn_instance` - Secondary state machine instance.
-    /// * `chunks_to_execute` - A vector of booleans indicating which chunks to execute.
-    ///
-    /// # Returns
-    /// A vector of data buses with attached collectors for each chunk to be executed
-    fn get_data_bus_collectors(
-        &self,
-        secn_instance: &mut Box<dyn Instance<F>>,
-        chunks_to_execute: Vec<bool>,
-    ) -> Vec<Option<DataBus<u64, BusDeviceWrapper<u64>>>> {
-        chunks_to_execute
-            .iter()
-            .enumerate()
-            .map(|(chunk_id, to_be_executed)| {
-                if !to_be_executed {
-                    return None;
-                }
-
-                let mut data_bus = DataBus::new();
-
-                if let Some(bus_device) = secn_instance.build_inputs_collector(ChunkId(chunk_id)) {
-                    let bus_device = BusDeviceWrapper::new(bus_device);
-                    data_bus.connect_device(bus_device.bus_id(), bus_device);
-
-                    for sm in &self.secondary_sm {
-                        if let Some(inputs_generator) = sm.build_inputs_generator() {
-                            data_bus.connect_device(
-                                vec![OPERATION_BUS_ID],
-                                BusDeviceWrapper::new(inputs_generator),
-                            );
-                        }
-                    }
-
-                    Some(data_bus)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
     /// Closes a data bus used for managing collectors and returns the first instance.
     ///
     /// # Arguments
@@ -718,15 +614,16 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// of collectors for each instance.
     fn close_data_bus_collectors(
         &self,
-        mut data_buses: Vec<Option<DataBus<u64, BusDeviceWrapper<u64>>>>,
-    ) -> Vec<(usize, BusDeviceWrapper<u64>)> {
+        mut data_buses: DataBusCollectorCollection,
+    ) -> Vec<(usize, Box<dyn BusDevice<u64>>)> {
         let mut collectors_by_instance = Vec::new();
         for (chunk_id, data_bus) in data_buses.iter_mut().enumerate() {
-            if let Some(data_bus) = data_bus {
-                let mut detached = data_bus.detach_devices();
+            if let Some(data_bus) = data_bus.take() {
+                let mut detached = data_bus.into_devices(false);
 
+                // As a convention the first element is the main collector the others are input generators
                 let first_collector = detached.swap_remove(0);
-                collectors_by_instance.push((chunk_id, first_collector));
+                collectors_by_instance.push((chunk_id, first_collector.unwrap()));
             }
         }
 
@@ -734,7 +631,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     }
 }
 
-impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
+impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, BD> {
     /// Executes the ZisK ROM program and calculate the plans for main and secondary state machines.
     ///
     /// # Arguments
@@ -770,11 +667,11 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         let (mut main_planning, public_values) =
             MainPlanner::plan::<F>(&min_traces, main_count, Self::MIN_TRACE_SIZE);
 
-        let mut secn_planning = self.plan_sec(secn_count);
+        let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
         timer_stop_and_log_info!(PLAN);
 
         // Configure the instances
-        self.configure_instances(&pctx, &secn_planning);
+        self.sm_bundle.configure_instances(&pctx, &secn_planning);
 
         // Assign the instances
         self.assign_main_instances(&pctx, &mut main_planning);

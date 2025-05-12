@@ -81,7 +81,6 @@ mod tests {
         let input = b"";
         let mut output = [0u8; 32];
         keccak(input, &mut output, false);
-        println!("Output: {:?}", output);
 
         // Expected Keccak-256 hash of empty input
         let expected_hash: [u8; 32] = [

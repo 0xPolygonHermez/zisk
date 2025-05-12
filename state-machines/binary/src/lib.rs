@@ -25,7 +25,7 @@ use binary_basic_collector::*;
 use binary_basic_instance::*;
 use binary_basic_table::*;
 pub use binary_constants::*;
-use binary_counter::*;
+pub use binary_counter::*;
 use binary_extension::*;
 use binary_extension_collector::*;
 use binary_extension_instance::*;

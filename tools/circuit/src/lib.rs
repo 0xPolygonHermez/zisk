@@ -1,14 +1,16 @@
 mod gate;
 mod gate_config;
 mod gate_state;
+mod gate_u32;
 mod pin;
 mod utils;
 
 pub use gate::{Gate, GateOperation};
 pub use gate_config::GateConfig;
 pub use gate_state::GateState;
+pub use gate_u32::{gate_u32_add, gate_u32_and, gate_u32_not, gate_u32_xor, GateU32};
 pub use pin::{Pin, PinId, PinSource};
-pub use utils::{bits_to_byte, byte_to_bits, print_bits};
+pub use utils::*;
 
 #[cfg(test)]
 mod tests {
@@ -55,7 +57,7 @@ mod tests {
             // Copy the result to output
             let output_ref = circuit_config.sout_first_ref;
             state.gates[output_ref as usize].pins[PinId::A].bit =
-                state.gates[free_ref as usize].pins[PinId::C].bit;
+                state.gates[free_ref as usize].pins[PinId::D].bit;
 
             // Compare
             assert_eq!(state.gates[output_ref as usize].pins[PinId::A].bit, expected_outputs[i]);
@@ -86,7 +88,7 @@ mod tests {
             // Copy the result to output
             let output_ref = circuit_config.sout_first_ref;
             state.gates[output_ref as usize].pins[PinId::A].bit =
-                state.gates[free_ref as usize].pins[PinId::C].bit;
+                state.gates[free_ref as usize].pins[PinId::D].bit;
 
             // Compare
             assert_eq!(state.gates[output_ref as usize].pins[PinId::A].bit, expected_outputs[i]);
@@ -117,7 +119,7 @@ mod tests {
             // Copy the result to output
             let output_ref = circuit_config.sout_first_ref;
             state.gates[output_ref as usize].pins[PinId::A].bit =
-                state.gates[free_ref as usize].pins[PinId::C].bit;
+                state.gates[free_ref as usize].pins[PinId::D].bit;
 
             // Compare
             assert_eq!(state.gates[output_ref as usize].pins[PinId::A].bit, expected_outputs[i]);
@@ -148,7 +150,7 @@ mod tests {
             // Copy the result to output
             let output_ref = circuit_config.sout_first_ref;
             state.gates[output_ref as usize].pins[PinId::A].bit =
-                state.gates[free_ref as usize].pins[PinId::C].bit;
+                state.gates[free_ref as usize].pins[PinId::D].bit;
 
             // Compare
             assert_eq!(state.gates[output_ref as usize].pins[PinId::A].bit, expected_outputs[i]);
@@ -209,12 +211,12 @@ mod tests {
 
             // 2] XOR(res, b)
             let free_ref2 = state.get_free_ref();
-            state.xor(free_ref1, PinId::C, state.sin_refs[1], PinId::A, free_ref2);
+            state.xor(free_ref1, PinId::D, state.sin_refs[1], PinId::A, free_ref2);
 
             // Copy the result to output
             let output_ref = circuit_config.sout_first_ref;
             state.gates[output_ref as usize].pins[PinId::A].bit =
-                state.gates[free_ref2 as usize].pins[PinId::C].bit;
+                state.gates[free_ref2 as usize].pins[PinId::D].bit;
 
             // Compare
             assert_eq!(state.gates[output_ref as usize].pins[PinId::A].bit, expected_outputs[i]);

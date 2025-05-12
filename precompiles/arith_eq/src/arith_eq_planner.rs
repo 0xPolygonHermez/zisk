@@ -8,11 +8,10 @@ use std::any::Any;
 
 use crate::ArithEqCounterInputGen;
 
-use sm_common::{
-    plan, BusDeviceMetrics, CheckPoint, InstCount, InstanceInfo, InstanceType, Metrics, Plan,
-    Planner, TableInfo,
+use zisk_common::{
+    plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics,
+    Plan, Planner, TableInfo,
 };
-use zisk_common::ChunkId;
 
 /// The `ArithEqPlanner` struct organizes execution plans for arithmetic instances and tables.
 ///
