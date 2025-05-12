@@ -15,7 +15,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 use std::{fs, ptr};
 
-use log::info;
+use log::{error, info};
 
 use crate::{AsmInputC, AsmMTChunk, AsmMTHeader, AsmRunnerOptions, AsmRunnerTraceLevel};
 
@@ -95,12 +95,18 @@ impl AsmRunnerMT {
         let sem_output_name = format!("/{}_semout", shmem_prefix);
         let sem_input_name = format!("/{}_semin", shmem_prefix);
 
-        let mut sem_in = NamedSemaphore::create(sem_input_name.clone(), 0).unwrap_or_else(|_| {
-            panic!("AsmRunnerMT::run() failed calling NamedSemaphore::create({})", sem_input_name)
+        let mut sem_in = NamedSemaphore::create(sem_input_name.clone(), 0).unwrap_or_else(|e| {
+            panic!(
+                "AsmRunnerMT::run() failed calling NamedSemaphore::create({}), error: {}",
+                sem_input_name, e
+            )
         });
 
-        let mut sem_out = NamedSemaphore::create(sem_output_name.clone(), 0).unwrap_or_else(|_| {
-            panic!("AsmRunnerMT::run() failed calling NamedSemaphore::create({})", sem_input_name)
+        let mut sem_out = NamedSemaphore::create(sem_output_name.clone(), 0).unwrap_or_else(|e| {
+            panic!(
+                "AsmRunnerMT::run() failed calling NamedSemaphore::create({}), error: {}",
+                sem_output_name, e
+            )
         });
 
         Self::write_input(inputs_path, &shmem_input_name, shm_size, chunk_size);
@@ -137,15 +143,17 @@ impl AsmRunnerMT {
         // Spawn child process
         let start = std::time::Instant::now();
         if let Err(e) = command.arg(&shmem_prefix).spawn() {
-            eprintln!("Child process failed: {:?}", e);
+            error!("Child process failed: {:?}", e);
         } else if options.verbose || options.log_output {
-            println!("Child process launched successfully");
+            info!("Child process launched successfully");
         }
 
         // Wait for the assembly emulator to complete writing the trace
-        let result = sem_in.wait();
-        if result.is_err() {
-            panic!("AsmRunnerMT::run() failed calling semin.wait({})", sem_input_name);
+        if let Err(e) = sem_in.wait() {
+            panic!(
+                "AsmRunnerMT::run() failed calling semin.wait({}), error: {}",
+                sem_input_name, e
+            );
         }
 
         let stop = start.elapsed();
@@ -157,9 +165,11 @@ impl AsmRunnerMT {
         info!("AsmRnner: ··· Assembly execution speed: {:.2} MHz", mhz);
 
         // Tell the assembly that we are done reading the trace
-        let result = sem_out.post();
-        if result.is_err() {
-            panic!("AsmRunnerMT::run() failed calling semout.post({})", sem_output_name);
+        if let Err(e) = sem_out.post() {
+            panic!(
+                "AsmRunnerMT::run() failed calling semout.post({}), error: {}",
+                sem_output_name, e
+            );
         }
 
         AsmRunnerMT::new(shmem_output_name, mapped_ptr, vec_chunks)
@@ -184,19 +194,25 @@ impl AsmRunnerMT {
         let sem_input_name = format!("/{}_semin", shmem_prefix);
         let sem_chunk_done_name = format!("/{}_semckd", shmem_prefix);
 
-        let mut sem_in = NamedSemaphore::create(sem_input_name.clone(), 0).unwrap_or_else(|_| {
-            panic!("AsmRunnerMT::run() failed calling NamedSemaphore::create({})", sem_input_name)
+        let mut sem_in = NamedSemaphore::create(sem_input_name.clone(), 0).unwrap_or_else(|e| {
+            panic!(
+                "AsmRunnerMT::run() failed calling NamedSemaphore::create({}), error: {}",
+                sem_input_name, e
+            )
         });
 
-        let mut sem_out = NamedSemaphore::create(sem_output_name.clone(), 0).unwrap_or_else(|_| {
-            panic!("AsmRunnerMT::run() failed calling NamedSemaphore::create({})", sem_input_name)
+        let mut sem_out = NamedSemaphore::create(sem_output_name.clone(), 0).unwrap_or_else(|e| {
+            panic!(
+                "AsmRunnerMT::run() failed calling NamedSemaphore::create({}), error: {}",
+                sem_input_name, e
+            )
         });
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
-            .unwrap_or_else(|_| {
+            .unwrap_or_else(|e| {
                 panic!(
-                    "AsmRunnerMT::run() failed calling NamedSemaphore::create({})",
-                    sem_input_name
+                    "AsmRunnerMT::run() failed calling NamedSemaphore::create({}), error: {}",
+                    sem_input_name, e
                 )
             });
 
@@ -231,9 +247,9 @@ impl AsmRunnerMT {
 
         let start = std::time::Instant::now();
         if let Err(e) = command.arg(&shmem_prefix).spawn() {
-            eprintln!("Child process failed: {:?}", e);
+            error!("Child process failed: {:?}", e);
         } else if options.verbose || options.log_output {
-            println!("Child process launched successfully");
+            info!("Child process launched successfully");
         }
 
         let pool = ThreadPoolBuilder::new().num_threads(16).build().unwrap();
@@ -278,7 +294,7 @@ impl AsmRunnerMT {
                     }
                 }
                 Err(e) => {
-                    eprintln!("Semaphore error: {:?}", e);
+                    error!("Semaphore error: {:?}", e);
 
                     if chunk_id.0 == 0 {
                         break 1;
