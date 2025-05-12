@@ -40,7 +40,7 @@ impl ArithTableSM {
     /// * `inputs` - A reference to `ArithTableInputs`, containing rows and their corresponding
     ///   values.
     pub fn process_slice(&self, inputs: &ArithTableInputs) {
-        if self.calculated.load(Ordering::Relaxed) {
+        if self.calculated.load(Ordering::SeqCst) {
             return;
         }
         for (row, value) in inputs {
@@ -57,6 +57,10 @@ impl ArithTableSM {
     }
 
     pub fn set_calculated(&self) {
-        self.calculated.store(true, Ordering::Relaxed);
+        self.calculated.store(true, Ordering::SeqCst);
+    }
+
+    pub fn reset_calculated(&self) {
+        self.calculated.store(false, Ordering::SeqCst);
     }
 }

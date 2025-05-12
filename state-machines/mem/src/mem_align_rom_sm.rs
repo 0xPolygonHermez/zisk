@@ -124,7 +124,11 @@ impl MemAlignRomSM {
     }
 
     pub fn set_calculated(&self) {
-        self.calculated.store(true, Ordering::Relaxed);
+        self.calculated.store(true, Ordering::SeqCst);
+    }
+
+    pub fn reset_calculated(&self) {
+        self.calculated.store(false, Ordering::SeqCst);
     }
 
     pub fn update_padding_row(&self, padding_len: u64) {
@@ -133,7 +137,7 @@ impl MemAlignRomSM {
     }
 
     pub fn update_multiplicity_by_row_idx(&self, row_idx: u64, mul: u64) {
-        if self.calculated.load(Ordering::Relaxed) {
+        if self.calculated.load(Ordering::SeqCst) {
             return;
         }
         self.multiplicity[row_idx as usize].fetch_add(mul, Ordering::Relaxed);

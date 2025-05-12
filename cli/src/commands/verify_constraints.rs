@@ -161,16 +161,9 @@ impl ZiskVerifyConstraints {
         let proofman = ProofMan::<Goldilocks>::new(
             self.get_proving_key(),
             custom_commits_map,
-            ProofOptions::new(
-                true,
-                self.verbose.into(),
-                false,
-                false,
-                false,
-                false,
-                debug_info,
-            ),
-        ).expect("Failed to initialize proofman");
+            ProofOptions::new(true, self.verbose.into(), false, false, false, false, debug_info),
+        )
+        .expect("Failed to initialize proofman");
 
         let mut witness_lib;
         match self.field {
@@ -183,16 +176,15 @@ impl ZiskVerifyConstraints {
                     self.elf.clone(),
                     self.asm.clone(),
                     asm_rom,
-                    self.input.clone(),
                     sha256f_script,
                 )
                 .expect("Failed to initialize witness library");
 
-                proofman.verify_proof_constraints_from_lib(
-                    &mut *witness_lib,
-                    PathBuf::new(),
-                )
-                .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
+                proofman.register_witness(&mut *witness_lib);
+
+                proofman
+                    .verify_proof_constraints_from_lib(self.input.clone())
+                    .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
             }
         };
 
