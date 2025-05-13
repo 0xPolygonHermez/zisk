@@ -4,9 +4,8 @@ ZisK can be installed from prebuilt binaries (recommended) or by building ZisK t
 
 ## System Requirements
 
-ZisK currently supports **Linux x86_64** systems.
-
-> **Note:** macOS is not yet supported, but we are actively working on adding support.
+ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below).
+> **Note:** Proof generation and verification on **macOS** are not yet supported. We’re actively working to add this functionality.
 
 ### Required Tools
 
@@ -186,9 +185,11 @@ Please note that the process can be long, taking approximately 2–3 hours depen
 
 6. Generate fixed data:
     ```bash
-    cargo run --release --bin keccakf_fixed_gen && cargo run --release --bin sha256f_fixed_gen
+    cargo run --release --bin keccakf_fixed_gen
+    cargo run --release --bin sha256f_fixed_gen
     mkdir -p build
-    mv precompiles/keccakf/src/keccakf_fixed.bin build && mv precompiles/sha256f/src/sha256f_fixed.bin build
+    mv precompiles/keccakf/src/keccakf_fixed.bin build 
+    mv precompiles/sha256f/src/sha256f_fixed.bin build
     ```
 
     These commands generate the `keccakf_fixed.bin` and `sha256f_fixed.bin` files in the `build` directory.
