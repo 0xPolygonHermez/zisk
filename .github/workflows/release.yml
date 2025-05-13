@@ -52,9 +52,6 @@ jobs:
   release:
     name: Build ${{ matrix.target }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
-    env:
-      # macOS-ARM:
-      PKG_CONFIG_PATH: /opt/homebrew/lib/pkgconfig    
     timeout-minutes: 240
     needs: prepare
     strategy:
@@ -106,7 +103,7 @@ jobs:
         shell: bash
         run: |
             if [[ "${{ matrix.platform }}" == "darwin" ]]; then
-                brew install jq curl libomp protobuf openssl nasm pkgconf open-mpi
+                brew install jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
             else
                 sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev \
                     libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev \
@@ -116,8 +113,11 @@ jobs:
       - name: Apple M1 setup
         if: matrix.target == 'aarch64-apple-darwin'
         run: |
+          echo PKG_CONFIG_PATH: /opt/homebrew/lib/pkgconfig >> $GITHUB_ENV
           echo "SDKROOT=$(xcrun -sdk macosx --show-sdk-path)" >> $GITHUB_ENV
           echo "MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx --show-sdk-platform-version)" >> $GITHUB_ENV
+          echo LIBFFI_LIB_DIR=/opt/homebrew/opt/libffi/lib >> $GITHUB_ENV
+          echo LIBFFI_INCLUDE_DIR=/opt/homebrew/opt/libffi/include >> $GITHUB_ENV
 
       - name: Build binaries
         shell: bash
