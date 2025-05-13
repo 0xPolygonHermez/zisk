@@ -127,7 +127,7 @@ impl AsmRunnerRomH {
         // Wait for the assembly emulator to complete writing the trace
         if let Err(e) = semin.wait() {
             panic!(
-                "AsmRunnerRomH::run() failed calling semout.wait({}), error: {}",
+                "AsmRunnerRomH::run() failed calling semin.wait({}), error: {}",
                 sem_input_name, e
             );
         }
