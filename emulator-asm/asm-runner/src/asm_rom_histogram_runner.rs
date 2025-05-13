@@ -121,7 +121,7 @@ impl AsmRunnerRomH {
         if let Err(e) = command.arg(&shmem_prefix).spawn() {
             error!("Child process failed: {:?}", e);
         } else if options.verbose || options.log_output {
-            info!("Child exited successfully");
+            info!("Child process launched successfully");
         }
 
         // Wait for the assembly emulator to complete writing the trace
