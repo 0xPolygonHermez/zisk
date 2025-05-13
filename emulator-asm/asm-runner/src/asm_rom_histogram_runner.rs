@@ -11,6 +11,8 @@ use std::path::Path;
 use std::process::{self, Command};
 use std::{fs, ptr};
 
+use log::{error, info};
+
 use crate::{AsmRHData, AsmRHHeader, AsmRunnerOptions, AsmRunnerTraceLevel};
 
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
@@ -71,22 +73,18 @@ impl AsmRunnerRomH {
         // Build semaphores names, and create them (if they don not already exist)
         let sem_output_name = format!("/{}_semout", shmem_prefix);
         let sem_input_name = format!("/{}_semin", shmem_prefix);
-        let result = NamedSemaphore::create(sem_input_name.clone(), 0);
-        if result.is_err() {
+        let mut semin = NamedSemaphore::create(sem_input_name.clone(), 0).unwrap_or_else(|e| {
             panic!(
-                "AsmRunnerRomH::run() failed calling NamedSemaphore::create({})",
-                sem_input_name
-            );
-        }
-        let mut semin = result.unwrap();
-        let result = NamedSemaphore::create(sem_output_name.clone(), 0);
-        if result.is_err() {
+                "AsmRunnerRomH::run() failed calling NamedSemaphore::create({}), error: {}",
+                sem_input_name, e
+            )
+        });
+        let mut semout = NamedSemaphore::create(sem_output_name.clone(), 0).unwrap_or_else(|e| {
             panic!(
-                "AsmRunnerRomH::run() failed calling NamedSemaphore::create({})",
-                sem_output_name
-            );
-        }
-        let mut semout = result.unwrap();
+                "AsmRunnerRomH::run() failed calling NamedSemaphore::create({}), error: {}",
+                sem_output_name, e
+            )
+        });
 
         Self::write_input(inputs_path, &shmem_input_name, shm_size, 0);
 
@@ -121,23 +119,27 @@ impl AsmRunnerRomH {
 
         // Spawn child process
         if let Err(e) = command.arg(&shmem_prefix).spawn() {
-            eprintln!("Child process failed: {:?}", e);
+            error!("Child process failed: {:?}", e);
         } else if options.verbose || options.log_output {
-            println!("Child exited successfully");
+            info!("Child exited successfully");
         }
 
         // Wait for the assembly emulator to complete writing the trace
-        let result = semin.wait();
-        if result.is_err() {
-            panic!("AsmRunnerRomH::run() failed calling semout.wait({})", sem_input_name);
+        if let Err(e) = semin.wait() {
+            panic!(
+                "AsmRunnerRomH::run() failed calling semout.wait({}), error: {}",
+                sem_input_name, e
+            );
         }
 
         let (mapped_ptr, asm_rowh_output) = Self::map_output(shmem_output_name.clone());
 
         // Tell the assembly that we are done reading the trace
-        let result = semout.post();
-        if result.is_err() {
-            panic!("AsmRunnerRomH::run() failed calling semout.post({})", sem_output_name);
+        if let Err(e) = semout.post() {
+            panic!(
+                "AsmRunnerRomH::run() failed calling semout.post({}), error: {}",
+                sem_output_name, e
+            );
         }
 
         AsmRunnerRomH::new(shmem_output_name, mapped_ptr, asm_rowh_output)
