@@ -113,6 +113,12 @@ jobs:
                     libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
             fi
 
+      - name: Apple M1 setup
+        if: matrix.target == 'aarch64-apple-darwin'
+        run: |
+          echo "SDKROOT=$(xcrun -sdk macosx --show-sdk-path)" >> $GITHUB_ENV
+          echo "MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx --show-sdk-platform-version)" >> $GITHUB_ENV
+
       - name: Build binaries
         shell: bash
         run: |
