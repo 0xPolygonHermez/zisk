@@ -9,7 +9,7 @@ use std::sync::{
 };
 
 use p3_field::Field;
-use sm_common::create_atomic_vec;
+use zisk_common::create_atomic_vec;
 use zisk_pil::KeccakfTableTrace;
 
 use crate::keccakf_constants::*;

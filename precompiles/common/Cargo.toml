@@ -9,3 +9,5 @@ categories = { workspace = true }
 
 [dependencies]
 zisk-core = { path = "../../core" }
+
+p3-goldilocks = { workspace = true }

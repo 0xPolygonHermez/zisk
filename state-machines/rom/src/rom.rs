@@ -13,16 +13,16 @@ use std::{
     sync::{atomic::AtomicU32, Arc, Mutex},
 };
 
+use crate::{rom_asm_worker::RomAsmWorker, RomInstance, RomPlanner};
 use asm_runner::AsmRHData;
 use itertools::Itertools;
 use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
-use sm_common::{
-    create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, InstanceCtx, Planner,
+use zisk_common::{
+    create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, Instance, InstanceCtx,
+    Planner,
 };
-
-use crate::{rom_asm_worker::RomAsmWorker, RomCounter, RomInstance, RomPlanner};
 use zisk_core::{
     zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT, SRC_IMM,
 };
@@ -63,14 +63,22 @@ impl RomSM {
             worker.launch_task(asm_rom_path, input_data_path);
             worker
         });
+
+        let (bios_inst_count, prog_inst_count) = if rom_asm_worker.is_some() {
+            (vec![], vec![])
+        } else {
+            (
+                create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2), // No atomics, we can divide by 4
+                create_atomic_vec((ROM_ADDR_MAX - ROM_ADDR) as usize), // Cannot be dividede by 4
+            )
+        };
+
         let rom_asm_worker = Mutex::new(rom_asm_worker);
 
         Arc::new(Self {
             zisk_rom,
-            // No atomics, we can fivide by 4
-            bios_inst_count: Arc::new(create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2)),
-            // Cannot be dividede by 4
-            prog_inst_count: Arc::new(create_atomic_vec((ROM_ADDR_MAX - ROM_ADDR) as usize)),
+            bios_inst_count: Arc::new(bios_inst_count),
+            prog_inst_count: Arc::new(prog_inst_count),
             rom_asm_worker,
         })
     }
@@ -312,8 +320,8 @@ impl<F: PrimeField> ComponentBuilder<F> for RomSM {
     ///
     /// # Returns
     /// A boxed implementation of `RomCounter`.
-    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(RomCounter::new(self.bios_inst_count.clone(), self.prog_inst_count.clone()))
+    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
+        None
     }
 
     /// Builds a planner for ROM-related instances.
@@ -331,7 +339,7 @@ impl<F: PrimeField> ComponentBuilder<F> for RomSM {
     ///
     /// # Returns
     /// A boxed implementation of `RomInstance`.
-    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn sm_common::Instance<F>> {
+    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         let mut worker_guard = self.rom_asm_worker.lock().unwrap();
         let worker = worker_guard.take();
 

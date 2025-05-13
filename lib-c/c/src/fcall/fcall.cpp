@@ -1,5 +1,6 @@
 #include "fcall.hpp"
 #include "../common/utils.hpp"
+#include <stdint.h>
 
 int Fcall (
     struct FcallContext * ctx  // fcall context
@@ -31,7 +32,7 @@ int Fcall (
         }
         default:
         {
-            printf("Fcall() found unsupported function_id=%lu\n", ctx->function_id);
+            printf("Fcall() found unsupported function_id=%llu\n", ctx->function_id);
             return -1;
         }
     }
@@ -44,8 +45,8 @@ int Fcall (
 /***************/
 
 int InverseFpEc (
-    const unsigned long * _a, // 4 x 64 bits
-          unsigned long * _r  // 4 x 64 bits
+    const uint64_t * _a, // 4 x 64 bits
+          uint64_t * _r  // 4 x 64 bits
 )
 {
     // TODO: call mpz_invert
@@ -87,8 +88,8 @@ int InverseFpEcCtx (
 /****************/
 
 int InverseFnEc (
-    const unsigned long * _a,  // 8 x 64 bits
-    unsigned long * _r  // 8 x 64 bits
+    const uint64_t * _a,  // 8 x 64 bits
+    uint64_t * _r  // 8 x 64 bits
 )
 {
     RawFnec::Element a;
@@ -149,12 +150,12 @@ inline bool sqrtF3mod4(mpz_class &r, const mpz_class &a)
 }
 
 int SqrtFpEcParity (
-    const unsigned long * _a,  // 4 x 64 bits
-    const unsigned long _parity,  // 1 x 64 bits
-    unsigned long * _r  // 1 x 64 bits (sqrt exists) + 4 x 64 bits
+    const uint64_t * _a,  // 4 x 64 bits
+    const uint64_t _parity,  // 1 x 64 bits
+    uint64_t * _r  // 1 x 64 bits (sqrt exists) + 4 x 64 bits
 )
 {
-    mpz_class parity = _parity;
+    mpz_class parity(static_cast<unsigned long>(_parity));
     mpz_class a;
     array2scalar(_a, a);
 
@@ -221,8 +222,8 @@ uint64_t msb_pos(uint64_t x)
 }
 
 int MsbPos256 (
-    const unsigned long * a, // 8 x 64 bits
-          unsigned long * r  // 2 x 64 bits
+    const uint64_t * a, // 8 x 64 bits
+          uint64_t * r  // 2 x 64 bits
 )
 {
     const uint64_t * x = a;

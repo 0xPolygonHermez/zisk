@@ -5,13 +5,12 @@
 use std::sync::{atomic::AtomicU32, Arc};
 
 use crate::{rom_asm_worker::RomAsmWorker, rom_counter::RomCounter, RomSM};
-use data_bus::{BusDevice, BusId, PayloadType, ROM_BUS_ID};
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use sm_common::{
-    BusDeviceWrapper, CheckPoint, CounterStats, Instance, InstanceCtx, InstanceType, Metrics,
+use zisk_common::{
+    create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
+    InstanceType, Metrics, PayloadType, ROM_BUS_ID,
 };
-use zisk_common::ChunkId;
 use zisk_core::ZiskRom;
 
 /// The `RomInstance` struct represents an instance to perform the witness computations for
@@ -35,6 +34,7 @@ pub struct RomInstance {
     /// Execution statistics counter for ROM instructions.
     counter_stats: Option<CounterStats>,
 
+    /// Optional worker for ROM assembly execution.
     rom_asm_worker: Option<RomAsmWorker>,
 }
 
@@ -63,6 +63,10 @@ impl RomInstance {
             rom_asm_worker,
         }
     }
+
+    pub fn is_asm_execution(&self) -> bool {
+        self.rom_asm_worker.is_some()
+    }
 }
 
 impl<F: PrimeField> Instance<F> for RomInstance {
@@ -83,25 +87,30 @@ impl<F: PrimeField> Instance<F> for RomInstance {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+        collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
-        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        let worker = self.rom_asm_worker.take();
-        if let Some(mut worker) = worker {
+        if self.is_asm_execution() {
+            // Case 1: Use ROM assembly output
+            let mut worker = self.rom_asm_worker.take().unwrap();
             let asm_runner_romh = worker.wait_for_task();
+
+            self.bios_inst_count =
+                Arc::new(create_atomic_vec(asm_runner_romh.asm_rowh_output.bios_inst_count.len()));
+            self.prog_inst_count =
+                Arc::new(create_atomic_vec(asm_runner_romh.asm_rowh_output.prog_inst_count.len()));
+
             return Some(RomSM::compute_witness_from_asm(
                 &self.zisk_rom,
                 &asm_runner_romh.asm_rowh_output,
             ));
         }
-        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+        // Case 2: Fallback to counter stats when not using assembly
+        // Detach collectors and downcast to RomCollector
         if self.counter_stats.is_none() {
             let collectors: Vec<_> = collectors
                 .into_iter()
-                .map(|(_, mut collector)| {
-                    collector.detach_device().as_any().downcast::<RomCollector>().unwrap()
-                })
+                .map(|(_, collector)| collector.as_any().downcast::<RomCollector>().unwrap())
                 .collect();
 
             let mut counter_stats =
@@ -141,6 +150,10 @@ impl<F: PrimeField> Instance<F> for RomInstance {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, _: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
+        if self.is_asm_execution() || self.counter_stats.is_some() {
+            return None;
+        }
+
         Some(Box::new(RomCollector::new(
             self.counter_stats.is_some(),
             self.bios_inst_count.clone(),
@@ -183,7 +196,7 @@ impl BusDevice<u64> for RomCollector {
     /// An optional vector of tuples where:
     /// - The first element is the bus ID.
     /// - The second element is always empty indicating there are no derived inputs.
-    #[inline]
+    #[inline(always)]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == ROM_BUS_ID);
 

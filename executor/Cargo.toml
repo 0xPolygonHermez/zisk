@@ -8,7 +8,6 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-sm-common = { path = "../state-machines/common" }
 sm-main = { path = "../state-machines/main" }
 sm-rom = { path = "../state-machines/rom" }
 rom-setup = { path = "../rom-setup" }
@@ -30,6 +29,6 @@ rayon = { workspace = true }
 pil-std-lib = { workspace = true }
 
 [features]
-default = ["distributed"]
-distributed = ["proofman-common/distributed", "witness/distributed"]
+default = []
+disable-distributed = ["proofman-common/disable-distributed"]
 gpu = ["proofman-common/gpu", "proofman/gpu" ]

@@ -10,9 +10,7 @@ categories = { workspace = true }
 [dependencies]
 zisk-core = { path = "../../core" }
 zisk-common = { path = "../../common" }
-data-bus = { path = "../../data-bus" }
 zisk-pil = { path = "../../pil" }
-sm-common = { path = "../common" }
 sm-binary = { path = "../binary" }
 
 p3-field = { workspace=true }
@@ -27,8 +25,8 @@ num-bigint = { workspace = true }
 
 
 [features]
-default = ["distributed"]
+default = []
 diagnostic = ["proofman-macros/diagnostic"]
 generate_code_arith_range_table = []
 no_lib_link = ["proofman-common/no_lib_link"]
-distributed = ["proofman-common/distributed"]
+disable-distributed = ["proofman-common/disable-distributed"]

@@ -8,4 +8,5 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
+zisk-common = { path = "../common" }
 zisk-core = { path = "../core" }

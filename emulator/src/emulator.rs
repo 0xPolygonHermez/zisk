@@ -17,7 +17,7 @@
 
 use crate::{Emu, EmuOptions, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr};
 
-use data_bus::{BusDevice, DataBus};
+use data_bus::DataBusTrait;
 use p3_field::PrimeField;
 use std::{
     fs,
@@ -218,28 +218,26 @@ impl ZiskEmulator {
     /// Second phase of the witness computation
     /// Executes in parallel the different blocks of wc
     /// Good to be fast
-    #[inline]
-    pub fn process_emu_trace<F: PrimeField, BD: BusDevice<u64>>(
+    pub fn process_emu_trace<F: PrimeField, T, DB: DataBusTrait<u64, T>>(
         rom: &ZiskRom,
         emu_trace: &EmuTrace,
-        data_bus: &mut DataBus<u64, BD>,
+        data_bus: &mut DB,
     ) {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);
 
         // Run the emulation
-        emu.process_emu_trace::<F, BD>(emu_trace, data_bus);
+        emu.process_emu_trace(emu_trace, data_bus);
     }
 
     /// EXPAND phase
     /// Third phase of the witness computation
     /// I have a
-    #[inline]
-    pub fn process_emu_traces<F: PrimeField, BD: BusDevice<u64>>(
+    pub fn process_emu_traces<F: PrimeField, T, DB: DataBusTrait<u64, T>>(
         rom: &ZiskRom,
         min_traces: &[EmuTrace],
         chunk_id: usize,
-        data_bus: &mut DataBus<u64, BD>,
+        data_bus: &mut DB,
     ) {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);
