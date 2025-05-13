@@ -134,12 +134,12 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
                 .collect();
             let mut inputs = inputs.into_iter().flatten().collect::<Vec<_>>();
 
-                if inputs.is_empty() {
-                    return None;
-                }
+            if inputs.is_empty() {
+                return None;
+            }
 
-                // This method sorts all inputs
-                self.prepare_inputs(&mut inputs);
+            // This method sorts all inputs
+            self.prepare_inputs(&mut inputs);
 
             // This method calculates intermediate accesses without adding inputs and trims
             // the inputs while considering skipped rows for this instance.
@@ -154,8 +154,8 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
 
             self.fit_inputs_and_get_prev_segment(&mut inputs, &mut prev_segment, skip_rows);
 
-                // Extract segment id from instance context
-                let segment_id = self.ictx.plan.segment_id.unwrap();
+            // Extract segment id from instance context
+            let segment_id = self.ictx.plan.segment_id.unwrap();
 
             let is_last_segment = self.check_point.is_last_segment;
             Some(self.module.compute_witness(&inputs, segment_id, is_last_segment, &prev_segment))

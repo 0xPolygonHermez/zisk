@@ -250,7 +250,7 @@ impl ZiskProve {
                     .expect("Failed to initialize witness library");
 
                     proofman.register_witness(&mut *witness_lib);
-                    
+
                     proof_id = proofman
                         .generate_proof_from_lib(self.input.clone(), self.output_dir.clone())
                         .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;

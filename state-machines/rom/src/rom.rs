@@ -55,10 +55,7 @@ impl RomSM {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `RomSM`.
-    pub fn new(
-        zisk_rom: Arc<ZiskRom>,
-        asm_rom_path: Option<PathBuf>,
-    ) -> Arc<Self> {
+    pub fn new(zisk_rom: Arc<ZiskRom>, asm_rom_path: Option<PathBuf>) -> Arc<Self> {
         let (bios_inst_count, prog_inst_count) = if asm_rom_path.is_some() {
             (vec![], vec![])
         } else {
@@ -78,16 +75,12 @@ impl RomSM {
     }
 
     pub fn set_asm_rom_worker(&self, input_data_path: Option<PathBuf>) {
-        let rom_asm_worker = self
-            .asm_rom_path
-            .as_ref()
-            .map(|asm_rom_path| {
-                let mut worker = RomAsmWorker::new();
-                worker.launch_task(asm_rom_path.clone(), input_data_path);
-                worker
-            })
-            .unwrap();
-        *self.rom_asm_worker.lock().unwrap() = Some(rom_asm_worker);
+        let rom_asm_worker = self.asm_rom_path.as_ref().map(|asm_rom_path| {
+            let mut worker = RomAsmWorker::new();
+            worker.launch_task(asm_rom_path.clone(), input_data_path);
+            worker
+        });
+        *self.rom_asm_worker.lock().unwrap() = rom_asm_worker;
     }
 
     /// Computes the witness for the provided plan using the given ROM.

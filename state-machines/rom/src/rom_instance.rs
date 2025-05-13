@@ -6,8 +6,8 @@ use std::sync::{atomic::AtomicU32, Arc};
 
 use crate::{rom_asm_worker::RomAsmWorker, rom_counter::RomCounter, RomSM};
 use p3_field::PrimeField;
-use std::sync::Mutex;
 use proofman_common::{create_pool, AirInstance, ProofCtx, SetupCtx};
+use std::sync::Mutex;
 use zisk_common::{
     create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
     InstanceType, Metrics, PayloadType, ROM_BUS_ID,
@@ -97,18 +97,20 @@ impl<F: PrimeField> Instance<F> for RomInstance {
                 // Case 1: Use ROM assembly output
                 let mut worker = self.rom_asm_worker.lock().unwrap().take().unwrap();
                 let asm_runner_romh = worker.wait_for_task();
-    
-                *self.bios_inst_count.lock().unwrap() =
-                    Arc::new(create_atomic_vec(asm_runner_romh.asm_rowh_output.bios_inst_count.len()));
-                    *self.prog_inst_count.lock().unwrap() =
-                    Arc::new(create_atomic_vec(asm_runner_romh.asm_rowh_output.prog_inst_count.len()));
-    
+
+                *self.bios_inst_count.lock().unwrap() = Arc::new(create_atomic_vec(
+                    asm_runner_romh.asm_rowh_output.bios_inst_count.len(),
+                ));
+                *self.prog_inst_count.lock().unwrap() = Arc::new(create_atomic_vec(
+                    asm_runner_romh.asm_rowh_output.prog_inst_count.len(),
+                ));
+
                 return Some(RomSM::compute_witness_from_asm(
                     &self.zisk_rom,
                     &asm_runner_romh.asm_rowh_output,
                 ));
             }
-    
+
             // Case 2: Fallback to counter stats when not using assembly
             // Detach collectors and downcast to RomCollector
             if self.counter_stats.lock().unwrap().is_none() {
@@ -116,18 +118,23 @@ impl<F: PrimeField> Instance<F> for RomInstance {
                     .into_iter()
                     .map(|(_, collector)| collector.as_any().downcast::<RomCollector>().unwrap())
                     .collect();
-        
-                let mut counter_stats =
-                    CounterStats::new(self.bios_inst_count.lock().unwrap().clone(), self.prog_inst_count.lock().unwrap().clone());
-        
+
+                let mut counter_stats = CounterStats::new(
+                    self.bios_inst_count.lock().unwrap().clone(),
+                    self.prog_inst_count.lock().unwrap().clone(),
+                );
+
                 for collector in collectors {
                     counter_stats += &collector.rom_counter.counter_stats;
                 }
-        
+
                 *self.counter_stats.lock().unwrap() = Some(counter_stats).into();
             }
-    
-            Some(RomSM::compute_witness(&self.zisk_rom, self.counter_stats.lock().unwrap().as_ref().unwrap()))
+
+            Some(RomSM::compute_witness(
+                &self.zisk_rom,
+                self.counter_stats.lock().unwrap().as_ref().unwrap(),
+            ))
         });
         air_instance
     }

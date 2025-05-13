@@ -25,6 +25,7 @@ use pil_std_lib::Std;
 use proofman_common::{ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::gen_elf_hash;
+use sm_rom::RomSM;
 use witness::WitnessComponent;
 
 use rayon::prelude::*;
@@ -92,6 +93,7 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     main_count: Mutex<Option<DeviceMetricsList>>,
     secn_count: Mutex<Option<NestedDeviceMetricsList>>,
     sm_bundle: BD,
+    rom_sm: Option<Arc<RomSM>>,
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
@@ -114,6 +116,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         zisk_rom: Arc<ZiskRom>,
         std: Arc<Std<F>>,
         sm_bundle: BD,
+        rom_sm: Option<Arc<RomSM>>,
     ) -> Self {
         Self {
             rom_path,
@@ -130,6 +133,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             main_count: Mutex::new(None),
             secn_count: Mutex::new(None),
             sm_bundle,
+            rom_sm,
         }
     }
 
@@ -145,11 +149,19 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     ///
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
-    fn compute_minimal_traces(&self, mode: MinimalTraceExecutionMode, input_data_path: Option<PathBuf>) -> MinimalTraces {
+    fn compute_minimal_traces(
+        &self,
+        mode: MinimalTraceExecutionMode,
+        input_data_path: Option<PathBuf>,
+    ) -> MinimalTraces {
         let min_traces = match mode {
-            MinimalTraceExecutionMode::Emulator => self.run_emulator(Self::NUM_THREADS, input_data_path),
+            MinimalTraceExecutionMode::Emulator => {
+                self.run_emulator(Self::NUM_THREADS, input_data_path)
+            }
             MinimalTraceExecutionMode::Asm => self.run_assembly(input_data_path),
-            MinimalTraceExecutionMode::AsmWithCounter => self.run_and_count_assembly(input_data_path),
+            MinimalTraceExecutionMode::AsmWithCounter => {
+                self.run_and_count_assembly(input_data_path)
+            }
         };
 
         // Store execute steps
@@ -651,6 +663,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
     /// # Returns
     /// A vector of global IDs for the instances to compute witness for.
     fn execute(&self, pctx: Arc<ProofCtx<F>>, input_data_path: Option<PathBuf>) -> Vec<usize> {
+        // Set ASM ROM worker
+        if self.rom_sm.is_some() {
+            self.rom_sm.as_ref().unwrap().set_asm_rom_worker(input_data_path.clone());
+        }
         // Process the ROM to collect the Minimal Traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
         let min_traces_execution_mode = if self.asm_runner_path.is_none() {

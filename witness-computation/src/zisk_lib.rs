@@ -111,6 +111,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             zisk_rom,
             std,
             sm_bundle,
+            Some(rom_sm.clone()),
         );
 
         let executor = Arc::new(executor);
