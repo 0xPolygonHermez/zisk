@@ -204,7 +204,7 @@ impl AsmRunnerMT {
         let mut sem_out = NamedSemaphore::create(sem_output_name.clone(), 0).unwrap_or_else(|e| {
             panic!(
                 "AsmRunnerMT::run() failed calling NamedSemaphore::create({}), error: {}",
-                sem_input_name, e
+                sem_output_name, e
             )
         });
 
@@ -212,7 +212,7 @@ impl AsmRunnerMT {
             .unwrap_or_else(|e| {
                 panic!(
                     "AsmRunnerMT::run() failed calling NamedSemaphore::create({}), error: {}",
-                    sem_input_name, e
+                    sem_chunk_done_name, e
                 )
             });
 
