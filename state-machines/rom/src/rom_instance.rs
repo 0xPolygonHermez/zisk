@@ -107,19 +107,21 @@ impl<F: PrimeField> Instance<F> for RomInstance {
 
         // Case 2: Fallback to counter stats when not using assembly
         // Detach collectors and downcast to RomCollector
-        let collectors: Vec<_> = collectors
-            .into_iter()
-            .map(|(_, collector)| collector.as_any().downcast::<RomCollector>().unwrap())
-            .collect();
+        if self.counter_stats.is_none() {
+            let collectors: Vec<_> = collectors
+                .into_iter()
+                .map(|(_, collector)| collector.as_any().downcast::<RomCollector>().unwrap())
+                .collect();
 
-        let mut counter_stats =
-            CounterStats::new(self.bios_inst_count.clone(), self.prog_inst_count.clone());
+            let mut counter_stats =
+                CounterStats::new(self.bios_inst_count.clone(), self.prog_inst_count.clone());
 
-        for collector in collectors {
-            counter_stats += &collector.rom_counter.counter_stats;
+            for collector in collectors {
+                counter_stats += &collector.rom_counter.counter_stats;
+            }
+
+            self.counter_stats = Some(counter_stats);
         }
-
-        self.counter_stats = Some(counter_stats);
 
         Some(RomSM::compute_witness(&self.zisk_rom, self.counter_stats.as_ref().unwrap()))
     }
@@ -148,7 +150,7 @@ impl<F: PrimeField> Instance<F> for RomInstance {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, _: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        if self.is_asm_execution() {
+        if self.is_asm_execution() || self.counter_stats.is_some() {
             return None;
         }
 
