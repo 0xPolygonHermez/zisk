@@ -52,6 +52,9 @@ jobs:
   release:
     name: Build ${{ matrix.target }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
+    env:
+      # macOS-ARM:
+      PKG_CONFIG_PATH: /opt/homebrew/lib/pkgconfig    
     timeout-minutes: 240
     needs: prepare
     strategy:
