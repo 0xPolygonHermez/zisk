@@ -1,5 +1,4 @@
 #![allow(unexpected_cfgs)]
-#![cfg_attr(all(target_os = "zkvm", target_vendor = "zisk"), feature(asm_const))]
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use core::arch::asm;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]

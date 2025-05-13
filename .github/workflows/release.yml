@@ -77,11 +77,11 @@ jobs:
           #   svm_target_platform: macosx-amd64
           #   platform: darwin
           #   arch: amd64
-          # - runner: macos-14
-          #   target: aarch64-apple-darwin
-          #   svm_target_platform: macosx-aarch64
-          #   platform: darwin
-          #   arch: arm64
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            svm_target_platform: macosx-aarch64
+            platform: darwin
+            arch: arm64
           # - runner: windows-latest
           #   target: x86_64-pc-windows-msvc
           #   svm_target_platform: windows-amd64
@@ -97,31 +97,35 @@ jobs:
           toolchain: stable
           profile: default
           override: true
-          target: x86_64-unknown-linux-gnu
+          target: ${{ matrix.target }}
 
       - name: Install dependencies
         shell: bash
         run: |
-            sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev \
-                libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev \
-                libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
+            if [[ "${{ matrix.platform }}" == "darwin" ]]; then
+                brew install jq curl libomp protobuf openssl nasm
+            else
+                sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev \
+                    libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev \
+                    libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
+            fi
 
       - name: Build binaries
         shell: bash
         run: |
             cargo build --release --target "${{ matrix.target }}"
             
-            # Verify built binaries
-            bins=(cargo-zisk ziskemu riscv2zisk libzisk_witness.so)
-            for name in "${bins[@]}"; do
-                bin=./target/${TARGET}/release/$name$exe
-                echo "🔍 Verifying binary: $bin"
-                file "$bin" || echo "⚠️  file command failed on $bin"
-                ldd "$bin" || echo "⚠️  ldd command failed on $bin"
-                if [[ "$name" = "cargo-zisk" ]]; then
-                $bin --version || echo "⚠️  Running $bin --version failed"
-                fi
-            done
+            # # Verify built binaries
+            # bins=(cargo-zisk ziskemu riscv2zisk libzisk_witness.so)
+            # for name in "${bins[@]}"; do
+            #     bin=./target/${TARGET}/release/$name$exe
+            #     echo "🔍 Verifying binary: $bin"
+            #     file "$bin" || echo "⚠️  file command failed on $bin"
+            #     ldd "$bin" || echo "⚠️  ldd command failed on $bin"
+            #     if [[ "$name" = "cargo-zisk" ]]; then
+            #     $bin --version || echo "⚠️  Running $bin --version failed"
+            #     fi
+            # done
 
       - name: Archive binaries
         id: artifacts
