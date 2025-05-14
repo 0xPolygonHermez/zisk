@@ -4391,7 +4391,7 @@ dependencies = [
  "getrandom 0.2.16",
  "lazy_static",
  "lib-c",
- "rand 0.9.1",
+ "rand 0.8.5",
  "static_assertions",
  "tiny-keccak 2.0.2 (git+https://github.com/0xPolygonHermez/zisk-patch-tiny-keccak.git?branch=zisk)",
 ]
