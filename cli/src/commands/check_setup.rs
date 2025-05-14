@@ -1,5 +1,5 @@
 // extern crate env_logger;
-use crate::commands::Field;
+use crate::commands::{fail_if_macos, Field};
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
@@ -33,9 +33,7 @@ pub struct ZiskCheckSetup {
 
 impl ZiskCheckSetup {
     pub fn run(&self) -> Result<()> {
-        if cfg!(target_os = "macos") {
-            return Err(anyhow::anyhow!("check-setup command is not supported on macOS"));
-        }
+        fail_if_macos()?;
 
         println!("{} CheckSetup", format!("{: >12}", "Command").bright_green().bold());
         println!();

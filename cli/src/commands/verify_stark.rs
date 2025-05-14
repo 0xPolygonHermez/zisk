@@ -10,6 +10,7 @@ use p3_goldilocks::Goldilocks;
 
 use proofman::verify_proof_from_file;
 
+use crate::commands::fail_if_macos;
 use crate::ZISK_VERSION_MESSAGE;
 
 use super::{get_default_stark_info, get_default_verifier_bin, get_default_verkey};
@@ -42,9 +43,7 @@ impl ZiskVerify {
     const NAME: &'static str = "VStark  ";
 
     pub fn run(&self) -> Result<()> {
-        if cfg!(target_os = "macos") {
-            return Err(anyhow::anyhow!("verify command is not supported on macOS"));
-        }
+        fail_if_macos()?;
 
         println!("{} ZiskVerify", format!("{: >12}", "Command").bright_green().bold());
         println!();

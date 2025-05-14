@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use colored::Colorize;
 use proofman_common::initialize_logger;
 
-use crate::ux::print_banner;
+use crate::{commands::fail_if_macos, ux::print_banner};
 
 use super::{get_default_proving_key, get_default_zisk_path};
 
@@ -35,9 +35,7 @@ pub struct ZiskRomSetup {
 
 impl ZiskRomSetup {
     pub fn run(&self) -> Result<()> {
-        if cfg!(target_os = "macos") {
-            return Err(anyhow::anyhow!("rom-setup command is not supported on macOS"));
-        }
+        fail_if_macos()?;
 
         println!("{} Rom Setup", format!("{: >12}", "Command").bright_green().bold());
 

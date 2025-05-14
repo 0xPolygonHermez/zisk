@@ -7,7 +7,10 @@ use anyhow::{Context, Result};
 use log::info;
 use proofman_common::initialize_logger;
 
-use crate::{commands::get_home_zisk_path, ux::print_banner};
+use crate::{
+    commands::{fail_if_macos, get_home_zisk_path},
+    ux::print_banner,
+};
 
 /// Deletes the default zisk setup folder
 #[derive(Parser, Debug)]
@@ -16,9 +19,7 @@ pub struct ZiskClean;
 
 impl ZiskClean {
     pub fn run(&self) -> Result<()> {
-        if cfg!(target_os = "macos") {
-            return Err(anyhow::anyhow!("clean command is not supported on macOS"));
-        }
+        fail_if_macos()?;
 
         initialize_logger(proofman_common::VerboseMode::Info);
 

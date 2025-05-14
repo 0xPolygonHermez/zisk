@@ -1,5 +1,5 @@
 use crate::{
-    commands::{Field, ZiskLibInitFn},
+    commands::{fail_if_macos, Field, ZiskLibInitFn},
     proof_log,
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
@@ -94,9 +94,7 @@ pub struct ZiskProve {
 
 impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
-        if cfg!(target_os = "macos") {
-            return Err(anyhow::anyhow!("prove command is not supported on macOS"));
-        }
+        fail_if_macos()?;
 
         println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
         println!();

@@ -18,7 +18,7 @@ use std::{
 };
 
 use crate::{
-    commands::{Field, ZiskLibInitFn},
+    commands::{fail_if_macos, Field, ZiskLibInitFn},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -79,9 +79,7 @@ pub struct ZiskVerifyConstraints {
 
 impl ZiskVerifyConstraints {
     pub fn run(&mut self) -> Result<()> {
-        if cfg!(target_os = "macos") {
-            return Err(anyhow::anyhow!("verify-constraints command is not supported on macOS"));
-        }
+        fail_if_macos()?;
 
         initialize_logger(self.verbose.into());
 
