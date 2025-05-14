@@ -30,9 +30,14 @@ log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+
 executor = { path = "../executor" }
 rom-setup = { path = "../rom-setup" }
 zisk-core = { path = "../core" }
+
+server = { path = "../server" }
 
 anyhow = { version = "1.0.86", features = ["backtrace"] }
 clap = { version = "4.5.7", features = ["derive", "env"] }
