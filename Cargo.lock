@@ -257,7 +257,7 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
 name = "asm-runner"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "clap",
  "libc",
@@ -361,7 +361,7 @@ checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
 
 [[package]]
 name = "cargo-zisk"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -448,7 +448,7 @@ dependencies = [
 
 [[package]]
 name = "circuit"
-version = "0.7.0"
+version = "0.8.0"
 
 [[package]]
 name = "clap"
@@ -657,7 +657,7 @@ dependencies = [
 
 [[package]]
 name = "data-bus"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "zisk-common",
  "zisk-core",
@@ -879,7 +879,7 @@ dependencies = [
 
 [[package]]
 name = "executor"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "asm-runner",
  "data-bus",
@@ -1530,7 +1530,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "lib-c"
-version = "0.7.0"
+version = "0.8.0"
 
 [[package]]
 name = "libc"
@@ -2135,7 +2135,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-arith-eq"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "ark-ff",
  "ark-secp256k1",
@@ -2171,7 +2171,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-keccakf"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "circuit",
  "clap",
@@ -2194,7 +2194,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-sha256f"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "circuit",
  "clap",
@@ -2221,7 +2221,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-common"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "p3-goldilocks",
  "zisk-core",
@@ -2229,7 +2229,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-helpers"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "ark-ff",
  "ark-secp256k1",
@@ -2624,14 +2624,14 @@ dependencies = [
 
 [[package]]
 name = "riscv"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "elf",
 ]
 
 [[package]]
 name = "rom-setup"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -2883,7 +2883,7 @@ dependencies = [
 
 [[package]]
 name = "sm-arith"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "log",
  "num-bigint",
@@ -2901,7 +2901,7 @@ dependencies = [
 
 [[package]]
 name = "sm-binary"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "log",
  "num-bigint",
@@ -2918,7 +2918,7 @@ dependencies = [
 
 [[package]]
 name = "sm-main"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "asm-runner",
  "log",
@@ -2938,7 +2938,7 @@ dependencies = [
 
 [[package]]
 name = "sm-mem"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "log",
  "num-bigint",
@@ -2957,7 +2957,7 @@ dependencies = [
 
 [[package]]
 name = "sm-rom"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "asm-runner",
  "itertools 0.14.0",
@@ -4278,7 +4278,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-common"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "libc",
  "p3-field",
@@ -4288,7 +4288,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-core"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "elf",
  "generic-array",
@@ -4309,7 +4309,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-pil"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "proofman-common",
  "proofman-macros",
@@ -4320,7 +4320,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-precompiles"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "precomp-arith-eq",
  "precomp-keccakf",
@@ -4329,7 +4329,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-witness"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "data-bus",
  "env_logger",
@@ -4359,14 +4359,14 @@ dependencies = [
 
 [[package]]
 name = "ziskclib"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "tiny-keccak 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "ziskemu"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "clap",
  "criterion",
@@ -4385,13 +4385,13 @@ dependencies = [
 
 [[package]]
 name = "ziskos"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cfg-if",
  "getrandom 0.2.16",
  "lazy_static",
  "lib-c",
- "rand 0.8.5",
+ "rand 0.9.1",
  "static_assertions",
  "tiny-keccak 2.0.2 (git+https://github.com/0xPolygonHermez/zisk-patch-tiny-keccak.git?branch=zisk)",
 ]

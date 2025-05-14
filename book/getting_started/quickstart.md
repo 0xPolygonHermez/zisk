@@ -4,18 +4,26 @@ In this guide, you will learn how to install ZisK, create a simple program and r
 
 ## Installation
 
-ZisK currently supports **Linux x86_64** systems.
+ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below).
 
-Ubuntu 22.04 or higher is required.
+>[!CAUTION]
+>
+>Proof generation and verification on **macOS** are not yet supported. We’re actively working to add this functionality.
 
-> **Note:** macOS is not yet supported, but we are actively working on adding support.
+**Ubuntu 22.04 or higher** is required.
+**macOS 14 or higher** is required.
 
 1. Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
 
 2. Install all required dependencies with:
-    ```bash
-    sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
-    ```
+    - **Ubuntu**:
+        ```bash
+        sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
+        ```
+    - **macOS**:
+        ```bash
+        brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
+        ```    
 
 3. To install ZisK using ziskup, run the following command in your terminal:
     ```bash
