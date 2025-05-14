@@ -113,11 +113,11 @@ jobs:
       - name: Apple M1 setup
         if: matrix.target == 'aarch64-apple-darwin'
         run: |
-          echo PKG_CONFIG_PATH: /opt/homebrew/lib/pkgconfig >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig" >> $GITHUB_ENV
           echo "SDKROOT=$(xcrun -sdk macosx --show-sdk-path)" >> $GITHUB_ENV
           echo "MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx --show-sdk-platform-version)" >> $GITHUB_ENV
-          echo LIBFFI_LIB_DIR=/opt/homebrew/opt/libffi/lib >> $GITHUB_ENV
-          echo LIBFFI_INCLUDE_DIR=/opt/homebrew/opt/libffi/include >> $GITHUB_ENV
+          echo "LIBFFI_LIB_DIR=/opt/homebrew/opt/libffi/lib" >> $GITHUB_ENV
+          echo "LIBFFI_INCLUDE_DIR=/opt/homebrew/opt/libffi/include" >> $GITHUB_ENV
 
       - name: Build binaries
         shell: bash
