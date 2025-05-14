@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use cargo_zisk::{
     commands::{
-        ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskProve, ZiskRomSetup, ZiskRun, ZiskSdk,
-        ZiskServer, ZiskVerify, ZiskVerifyConstraints,
+        ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskProve, ZiskProveClient, ZiskRomSetup, ZiskRun,
+        ZiskSdk, ZiskServer, ZiskVerify, ZiskVerifyConstraints,
     },
     ZISK_VERSION_MESSAGE,
 };
@@ -21,6 +21,7 @@ pub enum Cargo {
     Build(ZiskBuild),
     CheckSetup(ZiskCheckSetup),
     Clean(ZiskClean),
+    ProveClient(ZiskProveClient),
     Prove(ZiskProve),
     RomSetup(ZiskRomSetup),
     Run(ZiskRun),
@@ -43,6 +44,9 @@ fn main() -> Result<()> {
         }
         Cargo::Clean(cmd) => {
             cmd.run().context("Error executing Clean command")?;
+        }
+        Cargo::ProveClient(cmd) => {
+            cmd.run().context("Error executing ProveClient command")?;
         }
         Cargo::Prove(mut cmd) => {
             cmd.run().context("Error executing Prove command")?;
