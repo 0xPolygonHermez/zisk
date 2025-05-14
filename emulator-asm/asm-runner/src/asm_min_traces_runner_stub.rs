@@ -29,9 +29,9 @@ impl AsmRunnerMT {
         _mapped_ptr: *mut c_void,
         _vec_chunks: Vec<EmuTrace>,
     ) -> Self {
-        panic!(
+        compile_error!(
             "AsmRunnerMT::new() is not supported on this platform. Only Linux x86_64 is supported."
-        )
+        );
     }
 
     pub fn run(
@@ -41,9 +41,9 @@ impl AsmRunnerMT {
         _chunk_size: u64,
         _options: AsmRunnerOptions,
     ) -> AsmRunnerMT {
-        panic!(
+        compile_error!(
             "AsmRunnerMT::run() is not supported on this platform. Only Linux x86_64 is supported."
-        )
+        );
     }
 
     pub fn run_and_count<T: Task>(
@@ -54,7 +54,9 @@ impl AsmRunnerMT {
         _options: AsmRunnerOptions,
         _task_factory: TaskFactory<T>,
     ) -> (AsmRunnerMT, Vec<T::Output>) {
-        panic!("AsmRunnerMT::run_and_count() is not supported on this platform. Only Linux x86_64 is supported.")
+        compile_error!(
+            "AsmRunnerMT::run_and_count() is not supported on this platform. Only Linux x86_64 is supported."
+        );
     }
 }
 
