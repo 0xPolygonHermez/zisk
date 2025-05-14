@@ -209,9 +209,29 @@ EOF
       ;;
   esac
 
-  results=($(get_profile_and_shell))
-  PROFILE="${results[0]}"
-  PREF_SHELL="${results[1]}"
+  # Determine the profile file and preferred shell based on the current shell
+  case "${SHELL}" in
+    */zsh)
+      PROFILE=${ZDOTDIR:-${HOME}}/.zshenv
+      PREF_SHELL="zsh"
+      ;;
+    */bash)
+      PROFILE=${HOME}/.bashrc
+      PREF_SHELL="bash"
+      ;;
+    */fish)
+      PROFILE=${HOME}/.config/fish/config.fish
+      PREF_SHELL="fish"
+      ;;
+    */ash)
+      PROFILE=${HOME}/.profile
+      PREF_SHELL="ash"
+      ;;
+    *)
+      warn "could not detect shell, manually add ${ZISK_BIN_DIR} to your PATH"
+      exit 1
+      ;;
+  esac
 
   # Only add ziskup if it isn't already in PATH.
   if [[ ":${PATH}:" != *":${ZISK_BIN_DIR}:"* ]]; then
@@ -334,36 +354,6 @@ install_setup() {
       ensure_silent "${CARGO_ZISK}" check-setup -a
       say "Constant tree files generated successfully."
     fi
-}
-
-get_profile_and_shell() {
-  local profile=""
-  local pref_shell=""
-  # Determine the profile file and preferred shell based on the current shell
-  case "${SHELL}" in
-    */zsh)
-      profile=${ZDOTDIR:-${HOME}}/.zshenv
-      pref_shell="zsh"
-      ;;
-    */bash)
-      profile=${HOME}/.bashrc
-      pref_shell="bash"
-      ;;
-    */fish)
-      profile=${HOME}/.config/fish/config.fish
-      pref_shell="fish"
-      ;;
-    */ash)
-      profile=${HOME}/.profile
-      pref_shell="ash"
-      ;;
-    *)
-      warn "could not detect shell, manually add ${ZISK_BIN_DIR} to your PATH"
-      exit 1
-      ;;
-  esac
-  echo "${profile}"
-  echo "${pref_shell}"
 }
 
 # Banner Function for ZisK
