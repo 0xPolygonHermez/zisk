@@ -6,9 +6,7 @@ ZisK can be installed from prebuilt binaries (recommended) or by building the Zi
 
 ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below).
 
->[!CAUTION]
->
->Proof generation and verification on **macOS** are not yet supported. We’re actively working to add this functionality.
+>**Note:** Proof generation and verification on **macOS** are not yet supported. We’re actively working to add this functionality.
 
 ### Required Tools
 
