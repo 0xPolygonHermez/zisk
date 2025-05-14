@@ -1,9 +1,9 @@
 //! Arith256 system call interception
 
-#[cfg(target_os = "ziskos")]
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use core::arch::asm;
 
-#[cfg(target_os = "ziskos")]
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use crate::ziskos_syscall;
 
 /// Executes the `Arith256` operation, performing a 256-bit multiplication and addition:
@@ -34,8 +34,8 @@ pub struct SyscallArith256Params<'a> {
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn syscall_arith256(params: &mut SyscallArith256Params) {
-    #[cfg(target_os = "ziskos")]
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     ziskos_syscall!(0x801, params);
-    #[cfg(not(target_os = "ziskos"))]
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     unreachable!()
 }

@@ -31,7 +31,7 @@ impl AsmRunnerMT {
     ) -> Self {
         panic!(
             "AsmRunnerMT::new() is not supported on this platform. Only Linux x86_64 is supported."
-        )
+        );
     }
 
     pub fn run(
@@ -43,7 +43,7 @@ impl AsmRunnerMT {
     ) -> AsmRunnerMT {
         panic!(
             "AsmRunnerMT::run() is not supported on this platform. Only Linux x86_64 is supported."
-        )
+        );
     }
 
     pub fn run_and_count<T: Task>(
@@ -54,7 +54,9 @@ impl AsmRunnerMT {
         _options: AsmRunnerOptions,
         _task_factory: TaskFactory<T>,
     ) -> (AsmRunnerMT, Vec<T::Output>) {
-        panic!("AsmRunnerMT::run_and_count() is not supported on this platform. Only Linux x86_64 is supported.")
+        panic!(
+            "AsmRunnerMT::run_and_count() is not supported on this platform. Only Linux x86_64 is supported."
+        );
     }
 }
 

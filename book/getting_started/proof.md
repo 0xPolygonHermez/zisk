@@ -55,7 +55,7 @@ Compile and execute in **zisk mode**:
 `cargo-zisk run --release --sim`
 
 Execute with ziskemu:
-`ziskemu -i build/input.bin -x -e target/riscv64ima-polygon-ziskos-elf/release/fibonacci`
+`ziskemu -i build/input.bin -x -e target/riscv64ima-zisk-zkvm-elf/release/fibonacci`
 
 ### Update toolchain
 ```
@@ -72,5 +72,5 @@ cp ~/.cargo/bin/ziskemu ~/.zisk/bin/
 ```
 
 ```bash
-ziskemu -i build/input.bin -x -e target/riscv64ima-polygon-ziskos-elf/debug/fibonacci
+ziskemu -i build/input.bin -x -e target/riscv64ima-zisk-zkvm-elf/debug/fibonacci
 ```

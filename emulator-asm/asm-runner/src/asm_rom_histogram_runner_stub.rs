@@ -17,7 +17,9 @@ impl AsmRunnerRomH {
         _mapped_ptr: *mut c_void,
         _asm_rowh_output: AsmRHData,
     ) -> Self {
-        panic!("AsmRunnerRomH::new() is not supported on this platform. Only Linux x86_64 is supported.");
+        panic!(
+            "AsmRunnerRomH::new() is not supported on this platform. Only Linux x86_64 is supported."
+        );
     }
 
     pub fn run(
@@ -26,6 +28,8 @@ impl AsmRunnerRomH {
         _shm_size: u64,
         _options: AsmRunnerOptions,
     ) -> AsmRunnerRomH {
-        panic!("AsmRunnerRomH::run() is not supported on this platform. Only Linux x86_64 is supported.");
+        panic!(
+            "AsmRunnerRomH::run() is not supported on this platform. Only Linux x86_64 is supported."
+        );
     }
 }

@@ -57,7 +57,7 @@
                 //"emulator/benches/data/my.elf",
                 //"zisk_block.elf",
                 //"pessimistic-proof-program-keccak.elf",
-                "../fran/target/riscv64ima-polygon-ziskos-elf/debug/fran",
+                "../fran/target/riscv64ima-zisk-zkvm-elf/debug/fran",
                 "-i",
                 //"emulator/benches/data/input.bin",
                 "input.bin",
@@ -85,7 +85,7 @@
             },
             "args": [
                 "-e",
-                "/Users/jbaylina/git/zisk/hello_world/target/riscv64ima-polygon-ziskos-elf/debug/sha_hasher",
+                "/Users/jbaylina/git/zisk/hello_world/target/riscv64ima-zisk-zkvm-elf/debug/sha_hasher",
                 "-i",
                 "/Users/jbaylina/git/zisk/hello_world/build/input.bin",
                 "-c",

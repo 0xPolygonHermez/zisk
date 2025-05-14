@@ -110,7 +110,7 @@ jobs:
         shell: bash
         run: |
           cd $HOME/sha_hasher
-          cargo-zisk rom-setup -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher 2>&1 | tee romsetup_output.log
+          cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher 2>&1 | tee romsetup_output.log
           if ! grep -F "ROM setup successfully completed" romsetup_output.log; then
             echo "❌ Program setup failed"
             exit 1
@@ -120,7 +120,7 @@ jobs:
         shell: bash
         run: |
           cd $HOME/sha_hasher
-          cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -o proof -a -y 2>&1 | tee prove_output.log
+          cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -o proof -a -y 2>&1 | tee prove_output.log
           if ! grep -F "Vadcop Final proof was verified" prove_output.log; then
             echo "❌ Prove program failed"
             exit 1

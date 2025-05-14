@@ -1,15 +1,13 @@
-profile = "compiler"
-change-id = 126701
+# This silences a bootstrap warning about missing change tracking in config.toml.
+# It acknowledges the latest major configuration version used by the Rust build system.
+change-id = 134650
 
 [build]
-target = ["riscv64ima-polygon-ziskos-elf"]
+target = ["riscv64ima-zisk-zkvm-elf"]
 extended = true
 tools = ["cargo", "cargo-clippy", "clippy", "rustfmt"]
 configure-args = []
-
-
-[target.riscv64ima-polygon-ziskos-elf]
-cc = "riscv64-unknown-elf-gcc"
+cargo-native-static = true
 
 [llvm]
 download-ci-llvm = false
