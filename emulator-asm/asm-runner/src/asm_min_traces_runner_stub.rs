@@ -29,7 +29,7 @@ impl AsmRunnerMT {
         _mapped_ptr: *mut c_void,
         _vec_chunks: Vec<EmuTrace>,
     ) -> Self {
-        compile_error!(
+        panic!(
             "AsmRunnerMT::new() is not supported on this platform. Only Linux x86_64 is supported."
         );
     }
@@ -41,7 +41,7 @@ impl AsmRunnerMT {
         _chunk_size: u64,
         _options: AsmRunnerOptions,
     ) -> AsmRunnerMT {
-        compile_error!(
+        panic!(
             "AsmRunnerMT::run() is not supported on this platform. Only Linux x86_64 is supported."
         );
     }
@@ -54,7 +54,7 @@ impl AsmRunnerMT {
         _options: AsmRunnerOptions,
         _task_factory: TaskFactory<T>,
     ) -> (AsmRunnerMT, Vec<T::Output>) {
-        compile_error!(
+        panic!(
             "AsmRunnerMT::run_and_count() is not supported on this platform. Only Linux x86_64 is supported."
         );
     }
