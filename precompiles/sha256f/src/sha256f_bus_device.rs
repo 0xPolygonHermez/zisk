@@ -98,7 +98,7 @@ impl BusDevice<u64> for Sha256fCounterInputGen {
     ///
     /// # Returns
     /// A vector of derived inputs to be sent back to the bus.
-    #[inline]
+    #[inline(always)]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
