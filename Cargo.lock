@@ -646,7 +646,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.8.0#29fb47de9d6d70b5dc79ed4f9813ea9abd7d4f3e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.8.0#77b0c8f4d405fce115d800ff32fbd451f4f105b4"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -1999,8 +1999,8 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
 name = "pil-std-lib"
-version = "0.7.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.8.0#29fb47de9d6d70b5dc79ed4f9813ea9abd7d4f3e"
+version = "0.8.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.8.0#77b0c8f4d405fce115d800ff32fbd451f4f105b4"
 dependencies = [
  "colored",
  "log",
@@ -2251,8 +2251,8 @@ dependencies = [
 
 [[package]]
 name = "proofman"
-version = "0.7.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.8.0#29fb47de9d6d70b5dc79ed4f9813ea9abd7d4f3e"
+version = "0.8.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.8.0#77b0c8f4d405fce115d800ff32fbd451f4f105b4"
 dependencies = [
  "blake3",
  "colored",
@@ -2277,8 +2277,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-common"
-version = "0.7.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.8.0#29fb47de9d6d70b5dc79ed4f9813ea9abd7d4f3e"
+version = "0.8.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.8.0#77b0c8f4d405fce115d800ff32fbd451f4f105b4"
 dependencies = [
  "env_logger",
  "libloading",
@@ -2298,8 +2298,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-hints"
-version = "0.7.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.8.0#29fb47de9d6d70b5dc79ed4f9813ea9abd7d4f3e"
+version = "0.8.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.8.0#77b0c8f4d405fce115d800ff32fbd451f4f105b4"
 dependencies = [
  "log",
  "p3-field",
@@ -2310,8 +2310,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-macros"
-version = "0.7.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.8.0#29fb47de9d6d70b5dc79ed4f9813ea9abd7d4f3e"
+version = "0.8.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.8.0#77b0c8f4d405fce115d800ff32fbd451f4f105b4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2321,16 +2321,16 @@ dependencies = [
 
 [[package]]
 name = "proofman-starks-lib-c"
-version = "0.7.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.8.0#29fb47de9d6d70b5dc79ed4f9813ea9abd7d4f3e"
+version = "0.8.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.8.0#77b0c8f4d405fce115d800ff32fbd451f4f105b4"
 dependencies = [
  "log",
 ]
 
 [[package]]
 name = "proofman-util"
-version = "0.7.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.8.0#29fb47de9d6d70b5dc79ed4f9813ea9abd7d4f3e"
+version = "0.8.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.8.0#77b0c8f4d405fce115d800ff32fbd451f4f105b4"
 dependencies = [
  "colored",
  "p3-field",
@@ -3442,8 +3442,8 @@ dependencies = [
 
 [[package]]
 name = "transcript"
-version = "0.7.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.8.0#29fb47de9d6d70b5dc79ed4f9813ea9abd7d4f3e"
+version = "0.8.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.8.0#77b0c8f4d405fce115d800ff32fbd451f4f105b4"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -4133,8 +4133,8 @@ dependencies = [
 
 [[package]]
 name = "witness"
-version = "0.7.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.8.0#29fb47de9d6d70b5dc79ed4f9813ea9abd7d4f3e"
+version = "0.8.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.8.0#77b0c8f4d405fce115d800ff32fbd451f4f105b4"
 dependencies = [
  "colored",
  "env_logger",
