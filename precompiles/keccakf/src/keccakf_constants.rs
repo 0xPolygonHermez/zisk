@@ -30,8 +30,12 @@ pub const MASK_BITS_B: u64 = P2_BITS_B - 1;
 
 /// Circuit parameters
 pub const STATE_IN_REF_0: usize = 61;
+pub const STATE_IN_GROUP_BY: usize = 2;
+pub const STATE_IN_NUMBER: usize = 1600;
 pub const STATE_IN_REF_DISTANCE: usize = 60;
 pub const STATE_OUT_REF_0: usize = 48_061; // 61 + 1600 * 30;
+pub const STATE_OUT_GROUP_BY: usize = 2;
+pub const STATE_OUT_NUMBER: usize = 1600;
 pub const STATE_OUT_REF_DISTANCE: usize = 60;
 pub const XOR_GATE_OP: u8 = 0x00;
 pub const ANDP_GATE_OP: u8 = 0x01;

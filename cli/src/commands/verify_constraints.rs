@@ -18,7 +18,7 @@ use std::{
 };
 
 use crate::{
-    commands::{Field, ZiskLibInitFn},
+    commands::{cli_fail_if_gpu_mode, cli_fail_if_macos, Field, ZiskLibInitFn},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -73,12 +73,15 @@ pub struct ZiskVerifyConstraints {
     pub debug: Option<Option<String>>,
 
     // PRECOMPILES OPTIONS
-    /// Keccak script path
-    pub keccak_script: Option<PathBuf>,
+    /// Sha256f script path
+    pub sha256f_script: Option<PathBuf>,
 }
 
 impl ZiskVerifyConstraints {
     pub fn run(&mut self) -> Result<()> {
+        cli_fail_if_macos()?;
+        cli_fail_if_gpu_mode()?;
+
         initialize_logger(self.verbose.into());
 
         let debug_info = match &self.debug {
@@ -89,13 +92,13 @@ impl ZiskVerifyConstraints {
             }
         };
 
-        let keccak_script = if let Some(keccak_path) = &self.keccak_script {
-            keccak_path.clone()
+        let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
+            sha256f_path.clone()
         } else {
             let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{}/.zisk/bin/keccakf_script.json", home_dir));
+            let script_path = PathBuf::from(format!("{}/.zisk/bin/sha256f_script.json", home_dir));
             if !script_path.exists() {
-                panic!("Keccakf script file not found at {:?}", script_path);
+                panic!("Sha256f script file not found at {:?}", script_path);
             }
             script_path
         };
@@ -116,19 +119,30 @@ impl ZiskVerifyConstraints {
             }
         }
 
-        if self.emulator {
+        let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
+
+        let mut asm_rom = None;
+        if emulator {
             self.asm = None;
         } else if self.asm.is_none() {
             let stem = self.elf.file_stem().unwrap().to_str().unwrap();
             let hash = get_elf_data_hash(&self.elf)
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
-            let new_filename = format!("{stem}-{hash}.bin");
+            let new_filename = format!("{stem}-{hash}-mt.bin");
+            let asm_rom_filename = format!("{stem}-{hash}-rom.bin");
+            asm_rom = Some(default_cache_path.join(asm_rom_filename));
             self.asm = Some(default_cache_path.join(new_filename));
         }
 
         if let Some(asm_path) = &self.asm {
             if !asm_path.exists() {
                 return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_path.display()));
+            }
+        }
+
+        if let Some(asm_rom) = &asm_rom {
+            if !asm_rom.exists() {
+                return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_rom.display()));
             }
         }
 
@@ -142,7 +156,7 @@ impl ZiskVerifyConstraints {
                 .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
         }
 
-        self.print_command_info(&keccak_script);
+        self.print_command_info(&sha256f_script);
 
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
@@ -157,8 +171,9 @@ impl ZiskVerifyConstraints {
                     self.verbose.into(),
                     self.elf.clone(),
                     self.asm.clone(),
+                    asm_rom,
                     self.input.clone(),
-                    keccak_script,
+                    sha256f_script,
                 )
                 .expect("Failed to initialize witness library");
 
@@ -198,7 +213,7 @@ impl ZiskVerifyConstraints {
         Ok(())
     }
 
-    fn print_command_info(&self, keccak_script: &Path) {
+    fn print_command_info(&self, sha256f_script: &Path) {
         // Print Verify Contraints command info
         println!("{} VerifyConstraints", format!("{: >12}", "Command").bright_green().bold());
         println!(
@@ -233,7 +248,7 @@ impl ZiskVerifyConstraints {
 
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
-        println!("{: >12} {}", "Keccak".bright_green().bold(), keccak_script.display());
+        println!("{: >12} {}", "Sha256f".bright_green().bold(), sha256f_script.display());
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 
         println!();

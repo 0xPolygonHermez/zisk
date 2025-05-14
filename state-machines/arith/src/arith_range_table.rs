@@ -9,7 +9,7 @@ use std::sync::{
 };
 
 use crate::ArithRangeTableInputs;
-use sm_common::create_atomic_vec;
+use zisk_common::create_atomic_vec;
 use zisk_pil::ArithRangeTableTrace;
 
 /// The `ArithRangeTableSM` struct represents the Arithmetic Range Table State Machine.

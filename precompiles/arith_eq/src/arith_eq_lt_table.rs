@@ -8,7 +8,7 @@ use std::sync::{
     Arc,
 };
 
-use sm_common::create_atomic_vec;
+use zisk_common::create_atomic_vec;
 use zisk_pil::ArithEqLtTableTrace;
 
 /// The `ArithEqLtTableSM` struct represents the ArithEqLt Table State Machine.

@@ -20,7 +20,7 @@ pub struct ZiskInstBuilder {
 
 impl ZiskInstBuilder {
     /// Constructor setting the initial pc address
-    #[inline]
+    #[inline(always)]
     pub fn new(paddr: u64) -> ZiskInstBuilder {
         let mut zib = ZiskInstBuilder::default();
         zib.i.paddr = paddr;

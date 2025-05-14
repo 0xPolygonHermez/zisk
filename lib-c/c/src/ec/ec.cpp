@@ -5,6 +5,7 @@
 #include "../ffiasm/fnec.hpp"
 #include "../common/utils.hpp"
 #include "../common/globals.hpp"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {

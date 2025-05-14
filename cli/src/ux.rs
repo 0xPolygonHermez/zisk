@@ -5,7 +5,8 @@ pub fn print_banner() {
     println!();
     println!(
         "{}",
-        format!("{: >12} {}", "ZisK zkVM", env!("CARGO_PKG_VERSION")).bright_purple().bold()
+        format!("\x1b[38;2;10;191;131m{: >12} {}\x1b[0m", "ZisK zkVM", env!("CARGO_PKG_VERSION"))
+            .bold()
     );
 
     // System

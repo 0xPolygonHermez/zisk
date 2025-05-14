@@ -2,8 +2,7 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::PubOut` instructions.
 
-use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OPERATION_BUS_ID, OP_TYPE};
-use sm_common::Metrics;
+use zisk_common::{BusDevice, BusId, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::ZiskOperationType;
 
 /// The `MainCounter` struct represents a counter that monitors and measures
@@ -59,16 +58,18 @@ impl BusDevice<u64> for MainCounter {
     /// A tuple where:
     /// - The first element indicates whether processing should continue.
     /// - The second element contains derived inputs to be sent back to the bus.
+    #[inline(always)]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
-        if data[OP_TYPE] as u32 != ZiskOperationType::PubOut as u32 {
+        const PUBOUT: u64 = ZiskOperationType::PubOut as u64;
+
+        if data[OP_TYPE] != PUBOUT {
             return None;
         }
 
-        let data: ExtOperationData<u64> = data.try_into().ok()?;
-        let pub_index = 2 * OperationBusData::get_a(&data);
-        let pub_value = OperationBusData::get_b(&data);
+        let pub_index = 2 * data[A];
+        let pub_value = data[B];
 
         let values = [(pub_value & 0xFFFFFFFF) as u32, ((pub_value >> 32) & 0xFFFFFFFF) as u32];
 

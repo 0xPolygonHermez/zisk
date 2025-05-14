@@ -1,3 +1,7 @@
+mod goldilocks_constants;
+
+pub use goldilocks_constants::{get_ks, GOLDILOCKS_GEN, GOLDILOCKS_K};
+
 use zisk_core::InstContext;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -73,4 +77,14 @@ impl MemBusHelpers {
             if is_write { value } else { 0 },
         ]
     }
+}
+
+pub fn log2(n: usize) -> usize {
+    let mut res = 0;
+    let mut n = n;
+    while n > 1 {
+        n >>= 1;
+        res += 1;
+    }
+    res
 }

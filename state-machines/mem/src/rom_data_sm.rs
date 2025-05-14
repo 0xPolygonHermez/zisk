@@ -91,6 +91,16 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
             if distance > 1 {
                 let mut internal_reads = distance - 1;
 
+                // println!(
+                //     "INTERNAL_READS[{},{}] {} 0x{:X},{} LAST:0x{:X}",
+                //     segment_id,
+                //     i,
+                //     internal_reads,
+                //     mem_op.addr * 8,
+                //     mem_op.step,
+                //     last_addr * 8
+                // );
+
                 // check if has enough rows to complete the internal reads + regular memory
                 let incomplete = (i + internal_reads as usize) >= num_rows;
                 if incomplete {

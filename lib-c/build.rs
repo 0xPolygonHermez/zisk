@@ -5,10 +5,10 @@ use std::process::Command;
 use std::time::UNIX_EPOCH;
 
 fn main() {
-    // if cfg!(target_os = "macos") {
-    //     println!("cargo:rustc-cfg=feature=\"no_lib_link\"");
-    //     return;
-    // }
+    if cfg!(target_os = "macos") {
+        println!("cargo:rustc-cfg=feature=\"no_lib_link\"");
+        return;
+    }
 
     // // **Check if the `no_lib_link` feature is enabled**
     // if env::var("CARGO_FEATURE_NO_LIB_LINK").is_ok() {

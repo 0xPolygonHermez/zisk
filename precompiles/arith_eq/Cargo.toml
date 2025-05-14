@@ -1,7 +1,11 @@
 [package]
 name = "precomp-arith-eq"
-version = "0.1.0"
-edition = "2021"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
 
 [[bin]]
 name = "arith_eq_generator"
@@ -28,9 +32,7 @@ required-features = ["test_data"]
 
 
 [dependencies]
-sm-common = { path = "../../state-machines/common" }
 zisk-core = { path = "../../core" }
-data-bus = { path = "../../data-bus" }
 zisk-pil = { path = "../../pil" }
 precompiles-common = { path = "../common" }
 precompiles-helpers = { path = "../helpers" }

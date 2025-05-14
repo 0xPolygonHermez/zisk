@@ -84,10 +84,29 @@ pub fn get_default_verkey() -> String {
     verkey
 }
 
+/// If the target_os is macOS returns an error indicating that the command is not supported.
+pub fn cli_fail_if_macos() -> anyhow::Result<()> {
+    if cfg!(target_os = "macos") {
+        Err(anyhow::anyhow!("Command is not supported on macOS"))
+    } else {
+        Ok(())
+    }
+}
+
+/// If the feature "gpu" is enabled, returns an error indicating that the command is not supported.
+pub fn cli_fail_if_gpu_mode() -> anyhow::Result<()> {
+    if cfg!(feature = "gpu") {
+        Err(anyhow::anyhow!("Command is not supported on GPU mode"))
+    } else {
+        Ok(())
+    }
+}
+
 pub type ZiskLibInitFn<F> = fn(
     VerboseMode,
     PathBuf,         // Rom path
     Option<PathBuf>, // Asm path
+    Option<PathBuf>, // Asm ROM path
     Option<PathBuf>, // Inputs path
-    PathBuf,         // Keccak path
+    PathBuf,         // Sha256f script path
 ) -> Result<Box<dyn WitnessLibrary<F>>, Box<dyn std::error::Error>>;

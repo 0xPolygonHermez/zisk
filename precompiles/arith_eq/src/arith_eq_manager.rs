@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use data_bus::{BusDevice, PayloadType, OPERATION_BUS_ID};
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
+use zisk_common::{BusDevice, PayloadType, OPERATION_BUS_ID};
 
-use sm_common::{
+use zisk_common::{
     table_instance_array, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
     InstanceInfo, Planner, TableInfo,
 };
@@ -33,6 +33,10 @@ impl<F: PrimeField64> ArithEqManager<F> {
 
         Arc::new(Self { arith_eq_sm, arith_eq_lt_table_sm })
     }
+
+    pub fn build_arith_eq_counter(&self) -> ArithEqCounterInputGen {
+        ArithEqCounterInputGen::new(BusDeviceMode::Counter)
+    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager<F> {
@@ -40,8 +44,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager<F> {
     ///
     /// # Returns
     /// A boxed implementation of `RegularCounters` configured for arith256 operations.
-    fn build_counter(&self) -> Box<dyn BusDeviceMetrics> {
-        Box::new(ArithEqCounterInputGen::new(BusDeviceMode::Counter))
+    fn build_counter(&self) -> Option<Box<dyn BusDeviceMetrics>> {
+        Some(Box::new(ArithEqCounterInputGen::new(BusDeviceMode::Counter)))
     }
 
     /// Builds a planner to plan arith256-related instances.
