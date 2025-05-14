@@ -36,7 +36,7 @@ pub struct ZiskRomSetup {
 impl ZiskRomSetup {
     pub fn run(&self) -> Result<()> {
         if cfg!(target_os = "macos") {
-            anyhow::anyhow!("rom-setup command is not supported on macOS");
+            return Err(anyhow::anyhow!("rom-setup command is not supported on macOS"));
         }
 
         println!("{} Rom Setup", format!("{: >12}", "Command").bright_green().bold());

@@ -43,7 +43,7 @@ impl ZiskVerify {
 
     pub fn run(&self) -> Result<()> {
         if cfg!(target_os = "macos") {
-            anyhow::anyhow!("verify command is not supported on macOS");
+            return Err(anyhow::anyhow!("verify command is not supported on macOS"));
         }
 
         println!("{} ZiskVerify", format!("{: >12}", "Command").bright_green().bold());

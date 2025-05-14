@@ -95,7 +95,7 @@ pub struct ZiskProve {
 impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
         if cfg!(target_os = "macos") {
-            anyhow::anyhow!("prove command is not supported on macOS");
+            return Err(anyhow::anyhow!("prove command is not supported on macOS"));
         }
 
         println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());

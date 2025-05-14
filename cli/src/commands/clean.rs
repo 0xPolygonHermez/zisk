@@ -17,7 +17,7 @@ pub struct ZiskClean;
 impl ZiskClean {
     pub fn run(&self) -> Result<()> {
         if cfg!(target_os = "macos") {
-            anyhow::anyhow!("clean command is not supported on macOS");
+            return Err(anyhow::anyhow!("clean command is not supported on macOS"));
         }
 
         initialize_logger(proofman_common::VerboseMode::Info);
