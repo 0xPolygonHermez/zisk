@@ -1,11 +1,14 @@
 # Installation Guide
 
-ZisK can be installed from prebuilt binaries (recommended) or by building ZisK tools, toolchain and setup files from source.
+ZisK can be installed from prebuilt binaries (recommended) or by building the ZisK tools, toolchain and setup files from source.
 
 ## System Requirements
 
 ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below).
-> **Note:** Proof generation and verification on **macOS** are not yet supported. We’re actively working to add this functionality.
+
+>[!CAUTION]
+>
+>Proof generation and verification on **macOS** are not yet supported. We’re actively working to add this functionality.
 
 ### Required Tools
 
@@ -22,6 +25,17 @@ Ubuntu 22.04 or higher is required.
 Install all required dependencies with:
 ```bash
 sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common libclang-dev clang
+```
+
+### macOS
+
+macOS 14 or higher is required.
+
+You must have [Homebrew](https://brew.sh/) installed.
+
+Install all required dependencies with:
+```bash
+brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
 ```
 
 ## Installing ZisK
