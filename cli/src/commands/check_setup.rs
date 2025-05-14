@@ -1,5 +1,5 @@
 // extern crate env_logger;
-use crate::commands::Field;
+use crate::commands::{cli_fail_if_macos, Field};
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
@@ -33,6 +33,8 @@ pub struct ZiskCheckSetup {
 
 impl ZiskCheckSetup {
     pub fn run(&self) -> Result<()> {
+        cli_fail_if_macos()?;
+
         println!("{} CheckSetup", format!("{: >12}", "Command").bright_green().bold());
         println!();
 

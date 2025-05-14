@@ -18,7 +18,7 @@ use std::{
 };
 
 use crate::{
-    commands::{Field, ZiskLibInitFn},
+    commands::{cli_fail_if_macos, Field, ZiskLibInitFn},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -79,6 +79,8 @@ pub struct ZiskVerifyConstraints {
 
 impl ZiskVerifyConstraints {
     pub fn run(&mut self) -> Result<()> {
+        cli_fail_if_macos()?;
+
         initialize_logger(self.verbose.into());
 
         let debug_info = match &self.debug {

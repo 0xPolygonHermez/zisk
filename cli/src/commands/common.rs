@@ -84,6 +84,15 @@ pub fn get_default_verkey() -> String {
     verkey
 }
 
+/// If the target_os is macOS returns an error indicating that the command is not supported.
+pub fn cli_fail_if_macos() -> anyhow::Result<()> {
+    if cfg!(target_os = "macos") {
+        Err(anyhow::anyhow!("Command is not supported on macOS"))
+    } else {
+        Ok(())
+    }
+}
+
 pub type ZiskLibInitFn<F> = fn(
     VerboseMode,
     PathBuf,         // Rom path

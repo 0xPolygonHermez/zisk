@@ -7,7 +7,10 @@ use anyhow::{Context, Result};
 use log::info;
 use proofman_common::initialize_logger;
 
-use crate::{commands::get_home_zisk_path, ux::print_banner};
+use crate::{
+    commands::{cli_fail_if_macos, get_home_zisk_path},
+    ux::print_banner,
+};
 
 /// Deletes the default zisk setup folder
 #[derive(Parser, Debug)]
@@ -16,6 +19,8 @@ pub struct ZiskClean;
 
 impl ZiskClean {
     pub fn run(&self) -> Result<()> {
+        cli_fail_if_macos()?;
+
         initialize_logger(proofman_common::VerboseMode::Info);
 
         print_banner();
