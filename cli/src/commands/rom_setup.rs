@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use colored::Colorize;
 use proofman_common::initialize_logger;
 
-use crate::{commands::fail_if_macos, ux::print_banner};
+use crate::{commands::cli_fail_if_macos, ux::print_banner};
 
 use super::{get_default_proving_key, get_default_zisk_path};
 
@@ -35,7 +35,7 @@ pub struct ZiskRomSetup {
 
 impl ZiskRomSetup {
     pub fn run(&self) -> Result<()> {
-        fail_if_macos()?;
+        cli_fail_if_macos()?;
 
         println!("{} Rom Setup", format!("{: >12}", "Command").bright_green().bold());
 
