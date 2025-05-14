@@ -33,6 +33,10 @@ pub struct ZiskCheckSetup {
 
 impl ZiskCheckSetup {
     pub fn run(&self) -> Result<()> {
+        if cfg!(target_os = "macos") {
+            anyhow::anyhow!("check-setup command is not supported on macOS");
+        }
+
         println!("{} CheckSetup", format!("{: >12}", "Command").bright_green().bold());
         println!();
 

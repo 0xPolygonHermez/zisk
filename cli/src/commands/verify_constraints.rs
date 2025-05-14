@@ -79,6 +79,10 @@ pub struct ZiskVerifyConstraints {
 
 impl ZiskVerifyConstraints {
     pub fn run(&mut self) -> Result<()> {
+        if cfg!(target_os = "macos") {
+            anyhow::anyhow!("verify-constraints command is not supported on macOS");
+        }
+
         initialize_logger(self.verbose.into());
 
         let debug_info = match &self.debug {
