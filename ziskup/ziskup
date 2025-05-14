@@ -141,7 +141,7 @@ main() {
 
   # Compute the URL of the release tarball in the zisk repository
   if [ "${ZISK_VERSION}" = "latest" ]; then
-    RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/download/test-6f2b3f4595c11f6715424266070459d5106825fa/"
+    RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/latest/download/"
   else 
     RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/download/${ZISK_VERSION}/"
   fi
