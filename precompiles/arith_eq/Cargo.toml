@@ -67,8 +67,7 @@ path-clean = "1.0"
 nom = "7"
 
 [features]
-default = ["distributed"]
+default = []
 no_lib_link = ["proofman-common/no_lib_link"]
-distributed = ["proofman-common/distributed"] #, "witness/distributed"]
 test_data = []
 test_data_secp256k1 = []
