@@ -63,10 +63,7 @@ main() {
   # macOS (Darwin) is explicitly unsupported and will trigger an error.
   case "${PLATFORM}" in
     linux) ;;
-    darwin | mac*)
-      err "macOS is currently not supported! We are actively working on adding support soon" >&2
-      exit 1
-      ;;
+    darwin | mac*) ;;
     *)
       err "unsupported platform ${PLATFORM}"
       exit 1
@@ -103,22 +100,27 @@ main() {
     ARCHITECTURE="amd64" # Amd.
   fi
 
-  # Ask user about key installation in case it was not provided as an argument
+  # If the plaform is macOS darwin we don't install any key
+  if [ "${PLATFORM}" = "darwin" ]; then
+    SETUP_KEY="none"
+  fi
+
+  # If we are running in a GitHub action, we install the proving key by default
+  if [[ -n "${GH_RUNNER}" ]]; then
+    warn "Running from GitHub action, installing proving key"
+    SETUP_KEY="proving"
+  fi
+
+  # Ask user about key installation if SETUP_KEY is not set
   if [[ -z "${SETUP_KEY}" ]]; then
     step "Setup installation options:"
     say "1) Install proving key (default - just press enter)"
     say "2) Install verify key"
     say "3) None"
 
-    # Check if we are running in a GitHub runner, in that case we use the default option
-    if [[ -n "${GH_RUNNER}" ]]; then
-      warn "Running from GitHub action, using default option 1"
-      user_choice=1
-    else
-      # Read user input with default option set to 1
-      read -p ">" user_choice < /dev/tty
-      user_choice=${user_choice:-1}
-    fi
+    # Read user input with default option set to 1
+    read -p ">" user_choice < /dev/tty
+    user_choice=${user_choice:-1}
 
     case "${user_choice}" in
         1)
@@ -139,7 +141,7 @@ main() {
 
   # Compute the URL of the release tarball in the zisk repository
   if [ "${ZISK_VERSION}" = "latest" ]; then
-    RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/latest/download/"
+    RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/download/test-6f2b3f4595c11f6715424266070459d5106825fa/"
   else 
     RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/download/${ZISK_VERSION}/"
   fi
@@ -147,14 +149,18 @@ main() {
   BIN_ARCHIVE_URL="${RELEASE_URL}cargo_zisk_${PLATFORM}_${ARCHITECTURE}.${EXT}"
 
   # Download and extract the binaries archive
-  if [ "${PLATFORM}" = "linux" ]; then
+  if [ "${PLATFORM}" = "linux" ] || [ "${PLATFORM}" = "darwin" ]; then
     tmp="$(mktemp -d)/cargo_zisk.tar.gz"
 
     step "Downloading ZisK ${ZISK_VERSION} version..."
     ensure download "${BIN_ARCHIVE_URL}" "${tmp}"
 
     step "Installing ZisK ${ZISK_VERSION} version..."
-    ensure tar --overwrite -xzf "${tmp}" -C "${ZISK_DIR}"
+    if [ "${PLATFORM}" = "linux" ]; then
+      ensure tar --overwrite -xzf "${tmp}" -C "${ZISK_DIR}"
+    else
+      ensure tar -xzf "${tmp}" -C "${ZISK_DIR}"
+    fi
 
     rm -f "${tmp}"
   fi
@@ -203,27 +209,16 @@ EOF
       ;;
   esac
 
-  # Only add ziskup if it isn't already in PATH.
-  if [[ ":${PATH}:" != *":${ZISK_BIN_DIR}:"* ]]; then
-      # Add the ziskup directory to the path and ensure the old PATH variables remain.
-      echo >>"${PROFILE}" && echo "export PATH=\"\${PATH}:${ZISK_BIN_DIR}\"" >>"${PROFILE}"
-  fi
-
-  # Warn MacOS users that they may need to manually install libusb via Homebrew:
-  if [[ "${OSTYPE}" =~ ^darwin ]] && [[ ! -f /usr/local/opt/libusb/lib/libusb-1.0.0.dylib && ! -f /opt/homebrew/opt/libusb/lib/libusb-1.0.0.dylib ]]; then
-      echo
-      warn "libusb not found. You may need to install it manually on macOS via Homebrew (brew install libusb)."
-  fi
-
-  # Warn MacOS users that they may need to manually install opensll via Homebrew:
-  if [[ "${OSTYPE}" =~ ^darwin ]] && [[ ! -f /usr/local/opt/openssl/lib/libssl.3.dylib && ! -f /opt/homebrew/opt/openssl/lib/libssl.3.dylib ]]; then
-      echo
-      warn "libusb not found. You may need to install it manually on macOS via Homebrew (brew install openssl)."
-  fi
-
   results=($(get_profile_and_shell))
   PROFILE="${results[0]}"
   PREF_SHELL="${results[1]}"
+
+  # Only add ziskup if it isn't already in PATH.
+  if [[ ":${PATH}:" != *":${ZISK_BIN_DIR}:"* ]]; then
+      # Add the ziskup directory to the path and ensure the old PATH variables remain.
+      echo "Adding ZisK to your PATH..."
+      echo >>"${PROFILE}" && echo "export PATH=\"\${PATH}:${ZISK_BIN_DIR}\"" >>"${PROFILE}"
+  fi
 
   step "Done! ZisK version ${ZISK_VERSION} has been installed."
   say "Your preferred shell '${PREF_SHELL}' was detected and ZisK has been added to your PATH. To start using the ZisK CLI tools, run 'source ${PROFILE}' or open a new terminal session."
