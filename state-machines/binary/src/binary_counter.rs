@@ -5,8 +5,9 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
-use data_bus::{BusDevice, BusId, ExtOperationData, OperationBusData, OPERATION_BUS_ID};
-use sm_common::{BusDeviceMode, Counter, Metrics};
+use zisk_common::{
+    BusDevice, BusDeviceMode, BusId, Counter, Metrics, OP, OPERATION_BUS_ID, OP_TYPE,
+};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
 /// The `BinaryCounter` struct represents a counter that monitors and measures
@@ -17,8 +18,10 @@ use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 pub struct BinaryCounter {
     /// Counter for binary add operations (only add, no addw)
     pub counter_add: Counter,
+
     /// Counter for basic binary operations, but not considering add operations
     pub counter_basic_wo_add: Counter,
+
     /// Counter for binary extension operations
     pub counter_extension: Counter,
 
@@ -54,17 +57,22 @@ impl Metrics for BinaryCounter {
     /// An empty vector, as this implementation does not produce any derived inputs for the bus.
     #[inline(always)]
     fn measure(&mut self, data: &[u64]) {
-        let data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
+        // Precomputed constants to avoid casting each time
+        const BINARY: u64 = ZiskOperationType::Binary as u64;
+        const BINARY_E: u64 = ZiskOperationType::BinaryE as u64;
+        const ADD_CODE: u64 = ZiskOp::Add.code() as u64;
 
-        let op_type = OperationBusData::get_op_type(&data);
-        if op_type == ZiskOperationType::Binary as u64 {
-            if OperationBusData::get_op(&data) == ZiskOp::Add.code() {
+        let op_type = data[OP_TYPE];
+
+        if op_type == BINARY {
+            // Always read the OP index (assume well-formed trace)
+            let op = data[OP];
+            if op == ADD_CODE {
                 self.counter_add.update(1);
             } else {
                 self.counter_basic_wo_add.update(1);
             }
-        } else if op_type == ZiskOperationType::BinaryE as u64 {
+        } else if op_type == BINARY_E {
             self.counter_extension.update(1);
         }
     }
@@ -87,13 +95,14 @@ impl BusDevice<u64> for BinaryCounter {
     ///
     /// # Returns
     /// A vector of derived inputs to be sent back to the bus.
+    #[inline(always)]
     fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.mode == BusDeviceMode::Counter {
             self.measure(data);
-            return None;
         }
+
         None
     }
 

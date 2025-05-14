@@ -1,10 +1,9 @@
 #![allow(unexpected_cfgs)]
-#![cfg_attr(target_os = "ziskos", feature(asm_const))]
-#[cfg(target_os = "ziskos")]
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use core::arch::asm;
-#[cfg(target_os = "ziskos")]
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 mod fcall;
-#[cfg(target_os = "ziskos")]
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub use fcall::*;
 
 mod zisklib;
@@ -39,7 +38,7 @@ macro_rules! entrypoint {
 #[allow(unused_imports)]
 use crate::ziskos_definitions::ziskos_config::*;
 
-#[cfg(target_os = "ziskos")]
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub fn read_input() -> Vec<u8> {
     // Create a slice of the first 8 bytes to get the size
     let bytes = unsafe { core::slice::from_raw_parts((INPUT_ADDR as *const u8).add(8), 8) };
@@ -51,7 +50,7 @@ pub fn read_input() -> Vec<u8> {
     input.to_vec()
 }
 
-#[cfg(not(target_os = "ziskos"))]
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 pub fn read_input() -> Vec<u8> {
     use std::{fs::File, io::Read};
 
@@ -62,7 +61,7 @@ pub fn read_input() -> Vec<u8> {
     buffer
 }
 
-#[cfg(target_os = "ziskos")]
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub fn set_output(id: usize, value: u32) {
     use std::arch::asm;
     let addr_n: *mut u32;
@@ -99,12 +98,12 @@ pub fn set_output(id: usize, value: u32) {
     unsafe { core::ptr::write_volatile(addr_v, value) };
 }
 
-#[cfg(not(target_os = "ziskos"))]
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 pub fn set_output(id: usize, value: u32) {
     println!("public {}: {:#010x}", id, value);
 }
 
-#[cfg(target_os = "ziskos")]
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 mod ziskos {
     use crate::ziskos_definitions::ziskos_config::*;
     use core::arch::asm;

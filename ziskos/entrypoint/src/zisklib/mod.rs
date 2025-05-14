@@ -1,10 +1,10 @@
 mod fcalls;
 pub use fcalls::*;
-#[cfg(target_os = "ziskos")]
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 mod lib;
-#[cfg(target_os = "ziskos")]
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub use lib::*;
-#[cfg(not(target_os = "ziskos"))]
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 mod fcalls_impl;
-#[cfg(not(target_os = "ziskos"))]
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 pub use fcalls_impl::*;

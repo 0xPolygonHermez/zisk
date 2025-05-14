@@ -60,7 +60,7 @@ cargo-zisk run --release --sim
 
 - Ziskemu execution:
 ```bash
-ziskemu -i build/input.bin -x -e target/riscv64ima-polygon-ziskos-elf/release/hello_world
+ziskemu -i build/input.bin -x -e target/riscv64ima-zisk-zkvm-elf/release/hello_world
 ```
 
 ### Updating the Toolchain
@@ -83,7 +83,7 @@ cp ~/.cargo/bin/ziskemu ~/.zisk/bin/
 Run the emulator with:
 
 ```bash
-ziskemu -i build/input.bin -x -e target/riscv64ima-polygon-ziskos-elf/debug/hello_world
+ziskemu -i build/input.bin -x -e target/riscv64ima-zisk-zkvm-elf/debug/hello_world
 ```
 
 ### Easy Input Update for 64-bit Values
@@ -103,10 +103,10 @@ All following commands should be executed in the `zisk` folder.
 ### Compile Zisk PIL
 
 !!!!!! Baixar pil2-proofman per poder compilar la std
-node --max-old-space-size=65536 ../pil2-proofman-js/src/main_setup.js -a pil/zisk_pre_040.pilout -b build/build_pre_040 -t ../pil2-proofman/pil2-stark/build/bctree -i ./build/keccakf_fixed.bin
+node --max-old-space-size=131072 ../pil2-proofman-js/src/main_setup.js -a pil/zisk_pre_040.pilout -b build/build_pre_040 -t ../pil2-proofman/pil2-stark/build/bctree -i ./build/keccakf_fixed.bin ./build/sha256f_fixed.bin
 com es genera el fixed.bin???
 
-cargo run --release --bin keccakf_fixed_gen
+cargo run --release --bin keccakf_fixed_gen && cargo run --release --bin sha256f_fixed_gen
 ```bash
 node --max-old-space-size=65536 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout
 ```
@@ -190,7 +190,7 @@ cargo-zisk build --release --features distributed
 Then the execution command will be:
 
 ```bash
-mpirun --bind-to none -np <number_processes> -x OMP_NUM_THREADS=<number_of_threads_per_process> target/release/cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
+mpirun --bind-to none -np <number_processes> -x OMP_NUM_THREADS=<number_of_threads_per_process> target/release/cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
 ```
 ### Verify the Proof
 ```bash

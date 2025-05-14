@@ -51,5 +51,6 @@ yansi = "1.0.1"
 libloading = "0.8.4"
 
 [features]
-default = ["distributed"]
-distributed = ["proofman/distributed", "proofman-common/distributed"]
+default = []
+disable-distributed = ["proofman-common/disable-distributed"]
+gpu = []

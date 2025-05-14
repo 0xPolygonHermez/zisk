@@ -4,18 +4,26 @@ In this guide, you will learn how to install ZisK, create a simple program and r
 
 ## Installation
 
-ZisK currently supports **Linux x86_64** systems.
+ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below).
 
-Ubuntu 22.04 or higher is required.
+>[!CAUTION]
+>
+>Proof generation and verification on **macOS** are not yet supported. We’re actively working to add this functionality.
 
-> **Note:** macOS is not yet supported, but we are actively working on adding support.
+**Ubuntu 22.04 or higher** is required.
+**macOS 14 or higher** is required.
 
 1. Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
 
 2. Install all required dependencies with:
-    ```bash
-    sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
-    ```
+    - **Ubuntu**:
+        ```bash
+        sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
+        ```
+    - **macOS**:
+        ```bash
+        brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
+        ```    
 
 3. To install ZisK using ziskup, run the following command in your terminal:
     ```bash
@@ -69,14 +77,14 @@ The next step is to build the program using the `cargo-zisk` command to generate
 cargo-zisk build --release
 ```
 
-This command builds the program using the `riscv64ima_polygon_ziskos` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/riscv64ima-polygon-ziskos-elf/release` directory.
+This command builds the program using the `zkvm` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/riscv64ima-zisk-zkvm-elf/release` directory.
 
 ## Execute
 
 Before generating a proof, you can test the program using the ZisK emulator to ensure its correctness. Specify the ELF file (using the `-e` or `--elf flag`) and the input file `input.bin` (using the `-i` or `--inputs` flag):
 
 ```bash
-ziskemu -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin
 ```
 
 The output will be:
@@ -102,7 +110,7 @@ cargo-zisk run --release -i build/input.bin
 Before generating a proof, you need to generate the program setup files. Execute:
 
 ```bash
-cargo-zisk rom-setup -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher
+cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher
 ```
 
 Once the program setup is complete, you can generate and verify a proof using the `cargo-zisk prove` command by providing the ELF file (with the `-e` or `--elf` flag) and the input file (with the `-i` or `--input` flag).
@@ -110,7 +118,7 @@ Once the program setup is complete, you can generate and verify a proof using th
 To generate and verify a proof for the previously built ELF and input files, execute:
 
 ```bash
-cargo-zisk prove -e target/riscv64ima-polygon-ziskos-elf/release/sha_hasher -i build/input.bin -o proof -a -y
+cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -o proof -a -y
 ```
 
 This command generates the proof in the `./proof` directory. If everything goes well, you will see a message similar to:

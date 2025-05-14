@@ -9,3 +9,11 @@ categories = { workspace = true }
 
 [dependencies]
 libc = "0.2"
+zisk-core = { path = "../core" }
+
+proofman-common = { workspace = true }
+p3-field = { workspace = true }
+
+[features]
+default = []
+disable-distributed = ["proofman-common/disable-distributed"]

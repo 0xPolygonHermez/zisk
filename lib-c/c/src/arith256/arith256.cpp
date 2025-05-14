@@ -2,11 +2,11 @@
 #include "../common/utils.hpp"
 
 int Arith256 (
-    const unsigned long * _a,  // 4 x 64 bits
-    const unsigned long * _b,  // 4 x 64 bits
-    const unsigned long * _c,  // 4 x 64 bits
-          unsigned long * _dl, // 4 x 64 bits
-          unsigned long * _dh  // 4 x 64 bits
+    const uint64_t * _a,  // 4 x 64 bits
+    const uint64_t * _b,  // 4 x 64 bits
+    const uint64_t * _c,  // 4 x 64 bits
+          uint64_t * _dl, // 4 x 64 bits
+          uint64_t * _dh  // 4 x 64 bits
 )
 {
     // Convert input parameters to scalars
@@ -32,11 +32,11 @@ int Arith256 (
 }
 
 int Arith256Mod (
-    const unsigned long * _a,      // 4 x 64 bits
-    const unsigned long * _b,      // 4 x 64 bits
-    const unsigned long * _c,      // 4 x 64 bits
-    const unsigned long * _module, // 4 x 64 bits
-          unsigned long * _d       // 4 x 64 bits
+    const uint64_t * _a,      // 4 x 64 bits
+    const uint64_t * _b,      // 4 x 64 bits
+    const uint64_t * _c,      // 4 x 64 bits
+    const uint64_t * _module, // 4 x 64 bits
+          uint64_t * _d       // 4 x 64 bits
 )
 {
     // Convert input parameters to scalars

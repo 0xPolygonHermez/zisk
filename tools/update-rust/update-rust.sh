@@ -27,11 +27,6 @@ if [ ! -d "$ZISK_RUST_DIR" ]; then
     # Change directory to Zisk Rust repository
     cd ${ZISK_RUST_DIR}
 
-    # Updating submodules
-    log_info "Updating submodules (this will take some minutes)"
-    exec_git \
-        "git submodule update --init --recursive --progress" \
-        "Failed to update submodules"
 else
     log_info "Zisk Rust repository already exists in directory ${ZISK_RUST_DIR}"
     # Change directory to Zisk Rust repository

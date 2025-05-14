@@ -5,14 +5,13 @@
 //! execution plans.
 
 use crate::{BinaryExtensionCollector, BinaryExtensionSM};
-use data_bus::{BusDevice, PayloadType};
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use sm_common::{
-    BusDeviceWrapper, CheckPoint, CollectSkipper, Instance, InstanceCtx, InstanceType,
-};
 use std::{collections::HashMap, sync::Arc};
-use zisk_common::ChunkId;
+use zisk_common::{
+    BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
+    PayloadType,
+};
 use zisk_pil::BinaryExtensionTrace;
 
 /// The `BinaryExtensionInstance` struct represents an instance for binary extension-related witness
@@ -61,17 +60,12 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
         &mut self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        collectors: Vec<(usize, Box<BusDeviceWrapper<PayloadType>>)>,
+        collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
-            .map(|(_, mut collector)| {
-                collector
-                    .detach_device()
-                    .as_any()
-                    .downcast::<BinaryExtensionCollector>()
-                    .unwrap()
-                    .inputs
+            .map(|(_, collector)| {
+                collector.as_any().downcast::<BinaryExtensionCollector>().unwrap().inputs
             })
             .collect();
 

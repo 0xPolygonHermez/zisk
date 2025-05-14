@@ -133,7 +133,7 @@ impl ZiskRun {
             );
         }
 
-        env::set_var("CARGO_TARGET_RISCV64IMA_POLYGON_ZISKOS_ELF_RUNNER", runner_command);
+        env::set_var("CARGO_TARGET_RISCV64IMA_ZISK_ZKVM_ELF_RUNNER", runner_command);
 
         command.args(["--target", ZISK_TARGET]);
 

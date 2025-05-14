@@ -61,6 +61,9 @@ pub struct EmuOptions {
     /// Generates statistics about opcodes and memory usage.  Enabled with `-x`.
     #[clap(short = 'x', long, value_name = "STATS", default_value = "false")]
     pub stats: bool,
+    /// Generates minimal traces.  Enabled with `-g`.
+    #[clap(short = 'g', long, value_name = "MINIMAL_TRACES", default_value = "false")]
+    pub generate_minimal_traces: bool,
 }
 
 impl Default for EmuOptions {
@@ -81,6 +84,7 @@ impl Default for EmuOptions {
             log_metrics: false,
             tracerv: false,
             stats: false,
+            generate_minimal_traces: false,
         }
     }
 }
@@ -101,7 +105,8 @@ impl fmt::Display for EmuOptions {
         writeln!(f, "METRICS: {:?}", self.log_metrics)?;
         writeln!(f, "STATS: {:?}", self.stats)?;
         writeln!(f, "TRACERV: {:?}", self.tracerv)?;
-        writeln!(f, "LOG_STEP: {:?}", self.log_step)
+        writeln!(f, "LOG_STEP: {:?}", self.log_step)?;
+        writeln!(f, "MINIMAL_TRACES: {:?}", self.generate_minimal_traces)
     }
 }
 
@@ -115,5 +120,6 @@ impl EmuOptions {
             && !self.verbose
             && !self.tracerv
             && !self.stats
+            && !self.generate_minimal_traces
     }
 }

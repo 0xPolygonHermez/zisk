@@ -17,7 +17,7 @@
 
 use crate::{Emu, EmuOptions, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr};
 
-use data_bus::{BusDevice, DataBus};
+use data_bus::DataBusTrait;
 use p3_field::PrimeField;
 use std::{
     fs,
@@ -78,7 +78,7 @@ impl ZiskEmulator {
 
         // Create an instance of the RISC-V -> ZisK program transpiler (Riscv2zisk) with the ELF
         // file name
-        let riscv2zisk = Riscv2zisk::new(elf_filename, None);
+        let riscv2zisk = Riscv2zisk::new(elf_filename);
 
         // Convert the ELF file to ZisK ROM calling the transpiler run() method
         let zisk_rom = riscv2zisk.run().map_err(|err| ZiskEmulatorErr::Unknown(err.to_string()))?;
@@ -177,7 +177,7 @@ impl ZiskEmulator {
     /// First phase of the witness computation
     /// 8 threads in waterfall (# threads to be re-calibrated after memory reads refactor)
     /// Must be fast
-    pub fn compute_minimal_traces<F: PrimeField>(
+    pub fn compute_minimal_traces(
         rom: &ZiskRom,
         inputs: &[u8],
         options: &EmuOptions,
@@ -191,7 +191,7 @@ impl ZiskEmulator {
 
             // Run the emulation
             let mut emu = Emu::new(rom);
-            let result = emu.par_run::<F>(inputs.to_owned(), options, &par_emu_options);
+            let result = emu.par_run(inputs.to_owned(), options, &par_emu_options);
 
             if !emu.terminated() {
                 panic!("Emulation did not complete");
@@ -218,28 +218,26 @@ impl ZiskEmulator {
     /// Second phase of the witness computation
     /// Executes in parallel the different blocks of wc
     /// Good to be fast
-    #[inline]
-    pub fn process_emu_trace<F: PrimeField, BD: BusDevice<u64>>(
+    pub fn process_emu_trace<F: PrimeField, T, DB: DataBusTrait<u64, T>>(
         rom: &ZiskRom,
         emu_trace: &EmuTrace,
-        data_bus: &mut DataBus<u64, BD>,
+        data_bus: &mut DB,
     ) {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);
 
         // Run the emulation
-        emu.process_emu_trace::<F, BD>(emu_trace, data_bus);
+        emu.process_emu_trace(emu_trace, data_bus);
     }
 
     /// EXPAND phase
     /// Third phase of the witness computation
     /// I have a
-    #[inline]
-    pub fn process_emu_traces<F: PrimeField, BD: BusDevice<u64>>(
+    pub fn process_emu_traces<F: PrimeField, T, DB: DataBusTrait<u64, T>>(
         rom: &ZiskRom,
         min_traces: &[EmuTrace],
         chunk_id: usize,
-        data_bus: &mut DataBus<u64, BD>,
+        data_bus: &mut DB,
     ) {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);

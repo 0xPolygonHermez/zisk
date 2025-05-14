@@ -16,12 +16,12 @@ name = "ziskemu"
 path = "src/bin/ziskemu.rs"
 
 [dependencies]
+zisk-common = { path = "../common" }
 zisk-core = { path = "../core" }
-riscv = { path = "../riscv" }
 zisk-pil = { path = "../pil" }
+riscv = { path = "../riscv" }
 data-bus = { path = "../data-bus" }
 rayon = { workspace = true }
-zisk-common = { path = "../common" }
 sm-mem = { path = "../state-machines/mem" }
 
 p3-field = { workspace=true }

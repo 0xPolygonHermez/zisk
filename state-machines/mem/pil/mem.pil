@@ -13,23 +13,29 @@
     - Immutable free-input memory, always reading the same value for each address.
 
 
-    - Allows to define a memory on a region with size <= MEMORY_MAX_DIFF * mem_bytes (2^24).
+    - Allows to define a memory on a region. Initially the distance between address could
+      be up to 2^24 (2^24 * 8 bytes = 128MB). But now it's possible to use a bigger memory, ziskos
+      during boot execute internal reads each 128 MB to avoid distances greater than 2^24.
+      but this distance is divided in two chunks of 16 bits, to verify that this distance is "positive"
     - Inside this component the address are mem-byte address, to translate internal adress to
-      external need to multiply by mem_bytes.
+      external need to multiply by bytes.
     - For executors optimization, external addresses use 32-bits.
     - The memory regions must be exclusive, to avoid collisions between different memories.
     - The constraints over instances guarantees that the memory access are inside definited region.
     - The constraints guarantees that only one cyle for memory region is allowed.
     - For non-aligned or for non mem-bytes access, the MemAlign machine was used.
+    - For reads, it's possible read (only read) many times the same address, in same step, this
+      feature is usefull for precompiles.
 
     Parameters:
 
     - N = number of rows
     - id = bus_id used of memory operations
     - RC = number of value chunks (2 by default)
-    - mem_bytes = number of bytes of memory word (8 bytes by default)
+    - bytes = number of bytes of memory word (8 bytes by default)
     - base_address = base byte address when start the memory
-    - mem_size = size of memory in bytes (0x800_0000 by default)
+    - size_mb = size of memory in mega-bytes (1024^2, 128 by default)
+    - large_mem = to force use two chunks for distance between base_address and previous_segment_addr
     - immutable = if memory is immutable, first access must be a write (by default is mutable)
     - free_input_mem = if memory is a free input memory, memory without write, all access are reads
                        with same value, this value it's stablished by executor.
@@ -66,18 +72,21 @@ const int MAX_MEM_STEPS_PER_MAIN_STEP = 4;
 
 const int MAX_RANGE_CHECK_CHUNK = 2**16;
 
-airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2, const int mem_bytes = 8,
-                const int base_address = 0, const int mem_size = 0x800_0000, int immutable = 0,
-                const int free_input_mem = 0, const expr enable_flag = 1, const int use_predefined_ranges = 0) {
+airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2, const int bytes = 8,
+                const int base_address = 0, const int size_mb = 128, int immutable = 0,
+                const int free_input_mem = 0, const expr enable_flag = 1, const int use_predefined_ranges = 0, const int large_mem = 0) {
 
     col fixed SEGMENT_L1 = [1,0...];
     const expr SEGMENT_LAST = SEGMENT_L1';
 
     // in this air the address in a mem-bytes address (internal), when this address is pushed in BUS must be multiplied
-    // by mem_bytes to get the real address.
+    // by bytes to get the real address.
 
-    const expr internal_base_address = base_address / mem_bytes;
-    const expr internal_end_address = (base_address + mem_size - 1) / mem_bytes;
+    assert(size_mb <= 128 || large_mem);
+
+    const expr mem_size = size_mb * 1024 * 1024;
+    const expr internal_base_address = base_address / bytes;
+    const expr internal_end_address = (base_address + mem_size - 1) / bytes;
     airval segment_id;
     airval is_first_segment;
     airval is_last_segment;
@@ -90,7 +99,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // If is_first_segment means that segment must be 0
     is_first_segment * segment_id === 0;
 
-    col witness addr;        // n-byte address, real address = addr * mem_bytes
+    col witness addr;        // n-byte address, real address = addr * bytes
     col witness step;
     col witness sel;
     col witness addr_changes;
@@ -211,13 +220,38 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // For security, ensure that the first address has the correct value to prevent adding a large
     // number of instances that could cause an "overflow" in the prime field.
 
-    range_check(expression: previous_segment_addr - internal_base_address + 1, min: 1, max: MEMORY_MAX_DIFF);
+    if (large_mem) {
+        // Distance between the internal base address of memory area and previous_segment_address could be greater than 2^24, so
+        // we divide this distance in two chunks of 16 bits, to verify that this distance is "positive"
+
+        airval distance_base[2];
+
+        previous_segment_addr - internal_base_address === distance_base[0] + 0x10000 * distance_base[1];
+
+        range_check(expression: distance_base[0], min: 0, max: 0xFFFF);
+        range_check(expression: distance_base[1], min: 0, max: 0xFFFF);
+    } else {
+
+        range_check(expression: previous_segment_addr - internal_base_address + 1, min: 1, max: MEMORY_MAX_DIFF);
+    }
 
     // Final memory control: the last address must be within the memory area.
     // Since the initial address is inside the memory area and addresses are either equal or incremental,
     // if the last address is within the memory area, all addresses are guaranteed to be inside as well.
 
-    range_check(expression: internal_end_address - segment_last_addr + 1, min: 1, max: MEMORY_MAX_DIFF);
+    if (large_mem) {
+        // Distance between the last address and the end address of the memory area could be greater than 2^24, so
+        // we divide this distance in two chunks of 16 bits, to verify that this distance is "positive"
+
+        airval distance_end[2];
+
+        internal_end_address - segment_last_addr === distance_end[0] + 0x10000 * distance_end[1];
+
+        range_check(expression: distance_end[0], min: 0, max: 0xFFFF);
+        range_check(expression: distance_end[1], min: 0, max: 0xFFFF);
+    } else {
+        range_check(expression: internal_end_address - segment_last_addr + 1, min: 1, max: MEMORY_MAX_DIFF);
+    }
 
     // Check the order of operations inside segment
 
@@ -229,7 +263,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
         // In this type of memory, addresses need to be ordered. However, execution typically
         // accesses a full range of addresses. To avoid wasting a range check, we assume that
-        // addresses are consecutive (note that addresses are `mem_bytes` addresses). If the executor
+        // addresses are consecutive (note that addresses are `bytes` addresses). If the executor
         // detects that an address has not been accessed, it must be added but not sent to the bus.
 
         // `previous_addr` is `previous_segment_addr` in row 0 and the `addr` of the previous row
@@ -313,13 +347,13 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         }
     }
 
-    // The Memory component is only able to prove aligned memory access, since we force the bus address to be a multiple of mem_bytes
-    // and the width to be exactly mem_bytes
-    // Notice, however, that the main can also use widths of 4, 2, 1 and addresses that are not multiples of mem_bytes.
+    // The Memory component is only able to prove aligned memory access, since we force the bus address to be a multiple of bytes
+    // and the width to be exactly bytes
+    // Notice, however, that the main can also use widths of 4, 2, 1 and addresses that are not multiples of bytes.
     // These are handled with the Memory Align component
 
     const expr mem_op = wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
-    permutation_proves(MEMORY_ID, expressions: [mem_op, addr * mem_bytes, step, mem_bytes, ...value], sel: sel);
+    permutation_proves(MEMORY_ID, expressions: [mem_op, addr * bytes, step, bytes, ...value], sel: sel);
 }
 
 // Memory helpers to use the memory

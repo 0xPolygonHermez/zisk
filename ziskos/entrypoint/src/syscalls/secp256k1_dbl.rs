@@ -1,9 +1,9 @@
 //! syscall_secp256k1_dbl system call interception
 
-#[cfg(target_os = "ziskos")]
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use crate::ziskos_syscall;
 
-#[cfg(target_os = "ziskos")]
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use core::arch::asm;
 
 use super::point256::SyscallPoint256;
@@ -23,8 +23,8 @@ use super::point256::SyscallPoint256;
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn syscall_secp256k1_dbl(p1: &mut SyscallPoint256) {
-    #[cfg(target_os = "ziskos")]
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     ziskos_syscall!(0x804, p1);
-    #[cfg(not(target_os = "ziskos"))]
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     unreachable!()
 }

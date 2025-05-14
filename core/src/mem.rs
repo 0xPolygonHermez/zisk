@@ -91,7 +91,7 @@ pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
 /// First globa RW memory address
 pub const RAM_ADDR: u64 = 0xa0000000;
 /// Size of the global RW memory
-pub const RAM_SIZE: u64 = 0x08000000; // 128M
+pub const RAM_SIZE: u64 = 0x20000000; // 512M
 /// First system RW memory address
 pub const SYS_ADDR: u64 = RAM_ADDR;
 /// Size of the system RW memory

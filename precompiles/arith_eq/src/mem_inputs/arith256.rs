@@ -1,6 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Arith256;
-use data_bus::BusId;
+use zisk_common::BusId;
 
 pub const ARITH_256_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
     indirect_params: 5,
