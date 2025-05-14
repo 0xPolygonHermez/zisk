@@ -24,4 +24,6 @@ rayon = { workspace = true}
 
 clap = { version = "4", features = ["derive"] }
 libc = "0.2"
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 named-sem = "0.2.2"
