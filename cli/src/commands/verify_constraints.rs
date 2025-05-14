@@ -18,7 +18,7 @@ use std::{
 };
 
 use crate::{
-    commands::{cli_fail_if_macos, Field, ZiskLibInitFn},
+    commands::{cli_fail_if_gpu_mode, cli_fail_if_macos, Field, ZiskLibInitFn},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -80,6 +80,7 @@ pub struct ZiskVerifyConstraints {
 impl ZiskVerifyConstraints {
     pub fn run(&mut self) -> Result<()> {
         cli_fail_if_macos()?;
+        cli_fail_if_gpu_mode()?;
 
         initialize_logger(self.verbose.into());
 
