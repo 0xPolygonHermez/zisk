@@ -22,8 +22,6 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 
-#define DEBUG
-
 // Assembly-provided functions
 void emulator_start(void);
 uint64_t get_max_bios_pc(void);
@@ -277,7 +275,7 @@ int main(int argc, char *argv[])
         struct sockaddr_in address;
         int addrlen = sizeof(address);
         int client_fd;
-        printf("Calling accept()...\n");
+        printf("Waiting for incoming connections to port %u...\n", port);
         client_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
         if (client_fd < 0)
         {
@@ -286,8 +284,9 @@ int main(int argc, char *argv[])
             fflush(stderr);
             exit(-1);
         }
-
+#ifdef DEBUG
         if (verbose) printf("New client: %s:%d\n", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
+#endif
 
         // Configure linger to send data before closing the socket
         // struct linger linger_opt = {1, 5};  // Enable linger with 5s timeout
@@ -319,14 +318,18 @@ int main(int argc, char *argv[])
                 fflush(stderr);
                 break;
             }
+#ifdef DEBUG
             if (verbose) printf("recv() returned: %ld\n", bytes_read);
+#endif
 
             uint64_t response[5];
             switch (request[0])
             {
                 case TYPE_PING:
                 {
+#ifdef DEBUG
                     if (verbose) printf("PING received\n");
+#endif
                     response[0] = TYPE_PONG;
                     response[1] = gen_method;
                     response[2] = trace_size;
@@ -336,7 +339,9 @@ int main(int argc, char *argv[])
                 }
                 case TYPE_MT_REQUEST:
                 {
+#ifdef DEBUG
                     if (verbose) printf("MINIMAL TRACE received\n");
+#endif
                     if (gen_method == MinimalTrace)
                     {
                         server_run();
@@ -359,7 +364,7 @@ int main(int argc, char *argv[])
                 }
                 case TYPE_SD_REQUEST:
                 {
-                    if (verbose) printf("SHUTDOWN received\n");
+                    printf("SHUTDOWN received\n");
                     bShutdown = true;
 
                     response[0] = TYPE_SD_RESPONSE;
@@ -378,7 +383,6 @@ int main(int argc, char *argv[])
                 }
             }
 
-            printf("size=%ld\n", sizeof(response));
             ssize_t bytes_sent = send(client_fd, response, sizeof(response), 0);
             if (bytes_sent != sizeof(response))
             {
@@ -387,7 +391,9 @@ int main(int argc, char *argv[])
                 fflush(stderr);
                 break;
             }
+#ifdef DEBUG
             if (verbose) printf("Response sent to client\n");
+#endif
 
             if (bShutdown)
             {
@@ -395,7 +401,9 @@ int main(int argc, char *argv[])
             }
         }
 
+        // Chutdown the client socket
         shutdown(client_fd, SHUT_WR);
+
         // Close client socket
         close(client_fd);
 
@@ -930,9 +938,7 @@ void client_run (void)
     /* Ping */
     /********/
 
-#ifdef DEBUG
     gettimeofday(&start_time, NULL);
-#endif
 
     // Prepare message to send
     request[0] = TYPE_PING;
@@ -982,20 +988,16 @@ void client_run (void)
         exit(-1);
     }
 
-#ifdef DEBUG
     gettimeofday(&stop_time, NULL);
     duration = TimeDiff(start_time, stop_time);
     printf("client (PING): done in %lu us\n", duration);
-#endif
 
     /*****************/
     /* Minimal trace */
     /*****************/
     for (uint64_t i=0; i<number_of_mt_requests; i++)
     {
-#ifdef DEBUG
     gettimeofday(&start_time, NULL);
-#endif
 
     // Prepare message to send
     request[0] = TYPE_MT_REQUEST;
@@ -1045,11 +1047,9 @@ void client_run (void)
         exit(-1);
     }
     
-#ifdef DEBUG
     gettimeofday(&stop_time, NULL);
     duration = TimeDiff(start_time, stop_time);
     printf("client (MT): done in %lu us\n", duration);
-#endif
     } // number_of_mt_requests
 
     /************/
@@ -1059,9 +1059,7 @@ void client_run (void)
     if (do_shutdown)
     {
 
-#ifdef DEBUG
     gettimeofday(&start_time, NULL);
-#endif
 
     // Prepare message to send
     request[0] = TYPE_SD_REQUEST;
@@ -1104,11 +1102,9 @@ void client_run (void)
         exit(-1);
     }
     
-#ifdef DEBUG
     gettimeofday(&stop_time, NULL);
     duration = TimeDiff(start_time, stop_time);
     printf("client (SD): done in %lu us\n", duration);
-#endif
 
     } // do_shutdown
 
