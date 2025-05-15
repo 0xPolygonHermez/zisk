@@ -277,8 +277,9 @@ impl ZiskRom2Asm {
             *code += ".comm MEM_TRACE_ADDRESS, 8, 8\n";
             *code += ".comm MEM_CHUNK_ADDRESS, 8, 8\n";
             *code += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
-            *code += ".comm MEM_CHUNK_ID, 8, 8\n";
-            *code += ".comm MEM_ACTIVE_CHUNK, 8, 8\n";
+            if ctx.zip() {
+                *code += ".comm MEM_CHUNK_ID, 8, 8\n";
+            }
 
             // Allocate space for the registers
             for r in 0u64..35u64 {
@@ -498,6 +499,11 @@ impl ZiskRom2Asm {
                 ctx.mem_chunk_address,
                 REG_VALUE,
                 ctx.comment_str("chunk_address = value = TRACE_ADDR+8")
+            );
+            *code += &format!(
+                "\tmov {}, 0 {}\n",
+                ctx.mem_chunk_start_step,
+                ctx.comment_str("chunk_start_step = 0")
             );
         }
 

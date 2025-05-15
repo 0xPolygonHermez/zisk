@@ -80,6 +80,7 @@ uint16_t port = 0;
 bool server = false;
 bool client = false;
 bool chunk_done = false;
+bool do_shutdown = false; // If true, the client will perform a shutdown request to the server when done
 
 char input_file[4096];
 
@@ -288,34 +289,38 @@ int main(int argc, char *argv[])
         if (verbose) printf("New client: %s:%d\n", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
 
         // Configure linger to send data before closing the socket
-        struct linger linger_opt = {1, 5};  // Enable linger with 5s timeout
-        setsockopt(client_fd, SOL_SOCKET, SO_LINGER, &linger_opt, sizeof(linger_opt));
-        int cork = 0;
-        setsockopt(client_fd, IPPROTO_TCP, TCP_CORK, &cork, sizeof(cork));
+        // struct linger linger_opt = {1, 5};  // Enable linger with 5s timeout
+        // setsockopt(client_fd, SOL_SOCKET, SO_LINGER, &linger_opt, sizeof(linger_opt));
+        // int cork = 0;
+        // setsockopt(client_fd, IPPROTO_TCP, TCP_CORK, &cork, sizeof(cork));
+        // // Disable Nagle algorithm
+        // int flag = 1;
+        // setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+
+        bool bShutdown = false;
 
         while (true)
         {
             // Read client request
             uint64_t request[5];
-            ssize_t bytes_read = read(client_fd, request, sizeof(request));
+            ssize_t bytes_read = recv(client_fd, request, sizeof(request), MSG_WAITALL);
             if (bytes_read < 0)
             {
-                printf("Failed calling read() bytes_read=%ld errno=%d=%s\n", bytes_read, errno, strerror(errno));
+                printf("Failed calling recv() bytes_read=%ld errno=%d=%s\n", bytes_read, errno, strerror(errno));
                 fflush(stdout);
                 fflush(stderr);
                 break;
             }
             if (bytes_read != sizeof(request))
             {
-                printf("Failed calling read() invalid bytes_read=%ld errno=%d=%s\n", bytes_read, errno, strerror(errno));
+                printf("Failed calling recv() invalid bytes_read=%ld errno=%d=%s\n", bytes_read, errno, strerror(errno));
                 fflush(stdout);
                 fflush(stderr);
                 break;
             }
-            if (verbose) printf("read() returned: %ld\n", bytes_read);
+            if (verbose) printf("recv() returned: %ld\n", bytes_read);
 
             uint64_t response[5];
-            bool bShutdown = false;
             switch (request[0])
             {
                 case TYPE_PING:
@@ -325,7 +330,7 @@ int main(int argc, char *argv[])
                     response[1] = gen_method;
                     response[2] = trace_size;
                     response[3] = 0;
-                    response[4] = 0;
+                    response[4] = 0x0102030405060708;
                     break;
                 }
                 case TYPE_MT_REQUEST:
@@ -392,6 +397,11 @@ int main(int argc, char *argv[])
         shutdown(client_fd, SHUT_WR);
         // Close client socket
         close(client_fd);
+
+        if (bShutdown)
+        {
+            break;
+        }
     }
 
     // Close the server
@@ -591,6 +601,11 @@ void parse_arguments(int argc, char *argv[])
                 }
                 continue;
             }
+            if (strcmp(argv[i], "--shutdown") == 0)
+            {
+                do_shutdown = true;
+                continue;
+            }
             printf("Unrecognized argument: %s\n", argv[i]);
             print_usage();
             fflush(stdout);
@@ -733,6 +748,10 @@ void client_run (void)
     /* Read input file data */
     /************************/
 
+#ifdef DEBUG
+    gettimeofday(&start_time, NULL);
+#endif
+
     // Open input file
     FILE * input_fp = fopen(input_file, "r");
     if (input_fp == NULL)
@@ -825,15 +844,11 @@ void client_run (void)
         exit(-1);
     }
 
-    // Unlink input
-    result = shm_unlink(shmem_input_name);
-    if (result == -1)
-    {
-        printf("Failed calling shm_unlink(%s) size=%lu errno=%d=%s\n", shmem_input_name, trace_size, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
+#ifdef DEBUG
+    gettimeofday(&stop_time, NULL);
+    duration = TimeDiff(start_time, stop_time);
+    printf("client (input): done in %lu us\n", duration);
+#endif
 
     /*************************/
     /* Connect to the server */
@@ -878,6 +893,10 @@ void client_run (void)
     /* Ping */
     /********/
 
+#ifdef DEBUG
+    gettimeofday(&start_time, NULL);
+#endif
+
     // Prepare message to send
     request[0] = TYPE_PING;
     request[1] = 0;
@@ -896,7 +915,7 @@ void client_run (void)
     }
 
     // Read server response
-    ssize_t bytes_received = recv_all_with_timeout(socket_fd, response, sizeof(response) - 1, 0, 5);
+    ssize_t bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
     if (bytes_received < 0)
     {
         printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
@@ -926,9 +945,19 @@ void client_run (void)
         exit(-1);
     }
 
+#ifdef DEBUG
+    gettimeofday(&stop_time, NULL);
+    duration = TimeDiff(start_time, stop_time);
+    printf("client (PING): done in %lu us\n", duration);
+#endif
+
     /*****************/
     /* Minimal trace */
     /*****************/
+
+#ifdef DEBUG
+    gettimeofday(&start_time, NULL);
+#endif
 
     // Prepare message to send
     request[0] = TYPE_MT_REQUEST;
@@ -948,7 +977,7 @@ void client_run (void)
     }
 
     // Read server response
-    bytes_received = recv_all_with_timeout(socket_fd, response, sizeof(response) - 1, 0, 5);
+    bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
     if (bytes_received < 0)
     {
         printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
@@ -977,10 +1006,23 @@ void client_run (void)
         fflush(stderr);
         exit(-1);
     }
+    
+#ifdef DEBUG
+    gettimeofday(&stop_time, NULL);
+    duration = TimeDiff(start_time, stop_time);
+    printf("client (MT): done in %lu us\n", duration);
+#endif
 
     /************/
     /* Shutdown */
     /************/
+
+    if (do_shutdown)
+    {
+
+#ifdef DEBUG
+    gettimeofday(&start_time, NULL);
+#endif
 
     // Prepare message to send
     request[0] = TYPE_SD_REQUEST;
@@ -1000,7 +1042,7 @@ void client_run (void)
     }
 
     // Read server response
-    bytes_received = recv_all_with_timeout(socket_fd, response, sizeof(response) - 1, 0, 5);
+    bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
     if (bytes_received < 0)
     {
         printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
@@ -1022,6 +1064,14 @@ void client_run (void)
         fflush(stderr);
         exit(-1);
     }
+    
+#ifdef DEBUG
+    gettimeofday(&stop_time, NULL);
+    duration = TimeDiff(start_time, stop_time);
+    printf("client (SD): done in %lu us\n", duration);
+#endif
+
+    } // do_shutdown
 
     /***********/
     /* Cleanup */
@@ -1271,11 +1321,6 @@ void server_run (void)
 
     uint64_t * pInput = (uint64_t *)INPUT_ADDR;
 
-    for (int i=0; i<10; i++)
-    {
-        printf("input[%d]=%lu\n", i, pInput[i]);
-    }
-
     // Call emulator assembly code
     gettimeofday(&start_time,NULL);
     emulator_start();
@@ -1421,10 +1466,18 @@ void server_cleanup (void)
     }
 
     // Cleanup INPUT
-    result = munmap((void *)INPUT_ADDR, input_size);
+    result = munmap((void *)INPUT_ADDR, MAX_INPUT_SIZE);
     if (result == -1)
     {
         printf("Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+    result = shm_unlink(shmem_input_name);
+    if (result == -1)
+    {
+        printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -1435,6 +1488,14 @@ void server_cleanup (void)
     if (result == -1)
     {
         printf("Failed calling munmap(trace) for size=%lu errno=%d=%s\n", trace_size, errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+    result = shm_unlink(shmem_output_name);
+    if (result == -1)
+    {
+        printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -1835,59 +1896,59 @@ void log_main_trace(void)
     printf("Trace=0x%p chunk=0x%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
 }
 
-int recv_all_with_timeout (int sockfd, void *buffer, size_t length, int flags, int timeout_sec)
-{
-    fd_set readfds;
-    struct timeval tv;
-    char *ptr = (char*)buffer;
-    size_t remaining = length;
+// int recv_all_with_timeout (int sockfd, void *buffer, size_t length, int flags, int timeout_sec)
+// {
+//     fd_set readfds;
+//     struct timeval tv;
+//     char *ptr = (char*)buffer;
+//     size_t remaining = length;
 
-    while (remaining > 0)
-    {
-        FD_ZERO(&readfds);
-        FD_SET(sockfd, &readfds);
-        tv.tv_sec = timeout_sec;
-        tv.tv_usec = 0;
+//     while (remaining > 0)
+//     {
+//         FD_ZERO(&readfds);
+//         FD_SET(sockfd, &readfds);
+//         tv.tv_sec = timeout_sec;
+//         tv.tv_usec = 0;
 
-        int ready = select(sockfd+1, &readfds, NULL, NULL, &tv);
-        if (ready == 0)
-        {
-            printf("Failed calling select() errno=%d=%s\n", errno, strerror(errno));
-            if (remaining < length)
-            {
-                return length - remaining;
-            }
-            else
-            {
-                return -1;
-            }
-        }
+//         int ready = select(sockfd+1, &readfds, NULL, NULL, &tv);
+//         if (ready == 0)
+//         {
+//             printf("Failed calling select() errno=%d=%s\n", errno, strerror(errno));
+//             if (remaining < length)
+//             {
+//                 return length - remaining;
+//             }
+//             else
+//             {
+//                 return -1;
+//             }
+//         }
 
-        ssize_t received = recv(sockfd, ptr, remaining, flags);
-        if (received == -1)
-        {
-            printf("Failed calling recv() errno=%d=%s\n", errno, strerror(errno));
-            if (remaining < length)
-            {
-                return length - remaining;
-            }
-            else
-            {
-                return -1;
-            }
-        }
-        if (received == 0)
-        {
-            return length - remaining;
-        }
-        if (received > remaining)
-        {
-            printf("Called select() but received(%ld) > remaining(%ld)\n", received, remaining);
-            return -1;
-        }
-        ptr += received;
-        remaining -= received;
-    }
+//         ssize_t received = recv(sockfd, ptr, remaining, flags);
+//         if (received == -1)
+//         {
+//             printf("Failed calling recv() errno=%d=%s\n", errno, strerror(errno));
+//             if (remaining < length)
+//             {
+//                 return length - remaining;
+//             }
+//             else
+//             {
+//                 return -1;
+//             }
+//         }
+//         if (received == 0)
+//         {
+//             return length - remaining;
+//         }
+//         if (received > remaining)
+//         {
+//             printf("Called select() but received(%ld) > remaining(%ld)\n", received, remaining);
+//             return -1;
+//         }
+//         ptr += received;
+//         remaining -= received;
+//     }
 
-    return length;
-}
+//     return length;
+// }
