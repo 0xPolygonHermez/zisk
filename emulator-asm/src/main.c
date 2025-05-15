@@ -81,6 +81,7 @@ bool server = false;
 bool client = false;
 bool chunk_done = false;
 bool do_shutdown = false; // If true, the client will perform a shutdown request to the server when done
+uint64_t number_of_mt_requests = 1; // Loop to send this number of minimal trace requests
 
 char input_file[4096];
 
@@ -427,7 +428,7 @@ int main(int argc, char *argv[])
 
 void print_usage (void)
 {
-    char * usage = "Usage: ziskemuasm -s(server) -c(client) -f <input_file> -p <port_number> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [--chunk <chunk_number>] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-h/--help print this]";
+    char * usage = "Usage: ziskemuasm -s(server) -c(client) -f <input_file> -p <port_number> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [--chunk <chunk_number>] [--shutdows] [--mt <number_of_mt_requests>] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-h/--help print this]";
 #ifdef DEBUG
     printf("%s [-v verbose on] [-k keccak trace on]\n", usage);
 #else
@@ -604,6 +605,42 @@ void parse_arguments(int argc, char *argv[])
             if (strcmp(argv[i], "--shutdown") == 0)
             {
                 do_shutdown = true;
+                continue;
+            }
+
+            if (strcmp(argv[i], "--mt") == 0)
+            {
+                i++;
+                if (i >= argc)
+                {
+                    printf("Detected argument -mt in the last position; please provide chunk number after it\n");
+                    print_usage();
+                    exit(-1);
+                }
+                errno = 0;
+                char *endptr;
+                number_of_mt_requests = strtoul(argv[i], &endptr, 10);
+
+                // Check for errors
+                if (errno == ERANGE) {
+                    printf("Error: Number of MT requests is too large\n");
+                    print_usage();
+                    exit(-1);
+                } else if (endptr == argv[i]) {
+                    printf("Error: No digits found while parsing number of MT requests\n");
+                    print_usage();
+                    exit(-1);
+                } else if (*endptr != '\0') {
+                    printf("Error: Extra characters after number of MT requests: %s\n", endptr);
+                    print_usage();
+                    exit(-1);
+                } else if (number_of_mt_requests > 1000000) {
+                    printf("Error: Invalid number of MT requests: %lu\n", number_of_mt_requests);
+                    print_usage();
+                    exit(-1);
+                } else {
+                    printf("Got number of MT requests= %lu\n", number_of_mt_requests);
+                }
                 continue;
             }
             printf("Unrecognized argument: %s\n", argv[i]);
@@ -954,7 +991,8 @@ void client_run (void)
     /*****************/
     /* Minimal trace */
     /*****************/
-
+    for (uint64_t i=0; i<number_of_mt_requests; i++)
+    {
 #ifdef DEBUG
     gettimeofday(&start_time, NULL);
 #endif
@@ -1012,6 +1050,7 @@ void client_run (void)
     duration = TimeDiff(start_time, stop_time);
     printf("client (MT): done in %lu us\n", duration);
 #endif
+    } // number_of_mt_requests
 
     /************/
     /* Shutdown */
@@ -1895,60 +1934,3 @@ void log_main_trace(void)
     }
     printf("Trace=0x%p chunk=0x%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
 }
-
-// int recv_all_with_timeout (int sockfd, void *buffer, size_t length, int flags, int timeout_sec)
-// {
-//     fd_set readfds;
-//     struct timeval tv;
-//     char *ptr = (char*)buffer;
-//     size_t remaining = length;
-
-//     while (remaining > 0)
-//     {
-//         FD_ZERO(&readfds);
-//         FD_SET(sockfd, &readfds);
-//         tv.tv_sec = timeout_sec;
-//         tv.tv_usec = 0;
-
-//         int ready = select(sockfd+1, &readfds, NULL, NULL, &tv);
-//         if (ready == 0)
-//         {
-//             printf("Failed calling select() errno=%d=%s\n", errno, strerror(errno));
-//             if (remaining < length)
-//             {
-//                 return length - remaining;
-//             }
-//             else
-//             {
-//                 return -1;
-//             }
-//         }
-
-//         ssize_t received = recv(sockfd, ptr, remaining, flags);
-//         if (received == -1)
-//         {
-//             printf("Failed calling recv() errno=%d=%s\n", errno, strerror(errno));
-//             if (remaining < length)
-//             {
-//                 return length - remaining;
-//             }
-//             else
-//             {
-//                 return -1;
-//             }
-//         }
-//         if (received == 0)
-//         {
-//             return length - remaining;
-//         }
-//         if (received > remaining)
-//         {
-//             printf("Called select() but received(%ld) > remaining(%ld)\n", received, remaining);
-//             return -1;
-//         }
-//         ptr += received;
-//         remaining -= received;
-//     }
-
-//     return length;
-// }
