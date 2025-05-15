@@ -73,6 +73,7 @@ GenMethod gen_method = Fast;
 // Service TCP parameters
 #define SERVER_IP "127.0.0.1"  // Change to your server IP
 uint16_t port = 0;
+uint16_t arguments_port = 0;
 
 // Type of execution
 bool server = false;
@@ -574,7 +575,6 @@ void parse_arguments(int argc, char *argv[])
                 strcpy(input_file, argv[i]);
                 continue;
             }
-
             if (strcmp(argv[i], "--chunk") == 0)
             {
                 i++;
@@ -615,13 +615,12 @@ void parse_arguments(int argc, char *argv[])
                 do_shutdown = true;
                 continue;
             }
-
             if (strcmp(argv[i], "--mt") == 0)
             {
                 i++;
                 if (i >= argc)
                 {
-                    printf("Detected argument -mt in the last position; please provide chunk number after it\n");
+                    printf("Detected argument -mt in the last position; please provide number of MT requests after it\n");
                     print_usage();
                     exit(-1);
                 }
@@ -648,6 +647,37 @@ void parse_arguments(int argc, char *argv[])
                     exit(-1);
                 } else {
                     printf("Got number of MT requests= %lu\n", number_of_mt_requests);
+                }
+                continue;
+            }
+            if (strcmp(argv[i], "-p") == 0)
+            {
+                i++;
+                if (i >= argc)
+                {
+                    printf("Detected argument -p in the last position; please provide port number after it\n");
+                    print_usage();
+                    exit(-1);
+                }
+                errno = 0;
+                char *endptr;
+                arguments_port = strtoul(argv[i], &endptr, 10);
+
+                // Check for errors
+                if (errno == ERANGE) {
+                    printf("Error: Port number is too large\n");
+                    print_usage();
+                    exit(-1);
+                } else if (endptr == argv[i]) {
+                    printf("Error: No digits found while parsing port number\n");
+                    print_usage();
+                    exit(-1);
+                } else if (*endptr != '\0') {
+                    printf("Error: Extra characters after port number: %s\n", endptr);
+                    print_usage();
+                    exit(-1);
+                } else {
+                    printf("Got port number= %u\n", arguments_port);
                 }
                 continue;
             }
@@ -775,6 +805,11 @@ void configure (void)
             fflush(stderr);
             exit(-1);
         }
+    }
+
+    if (arguments_port != 0)
+    {
+        port = arguments_port;
     }
 
 #ifdef DEBUG
