@@ -10,9 +10,9 @@
 // chunk_bits:16
 // terms_by_clock: 2
 
-pub struct Bn254PointY3 {}
+pub struct Bn254CurveY3 {}
 
-impl Bn254PointY3 {
+impl Bn254CurveY3 {
     #[allow(clippy::too_many_arguments)]
     pub fn calculate(
         icol: u8,

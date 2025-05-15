@@ -130,11 +130,11 @@ fn main() {
         ],
     );
 
-    let rust_file = rust_code_path.join("bn254_point_add.rs");
-    eq.generate_rust_code_to_file("Bn254PointAdd", "x1,y1,x2,y2,s,q0", rust_file.to_str().unwrap());
+    let rust_file = rust_code_path.join("bn254_curve_add.rs");
+    eq.generate_rust_code_to_file("Bn254CurveAdd", "x1,y1,x2,y2,s,q0", rust_file.to_str().unwrap());
 
-    let pil_file = pil_code_path.join("bn254_point_add.pil");
-    eq.generate_pil_code_to_file("eq_bn254_point_add", pil_file.to_str().unwrap());
+    let pil_file = pil_code_path.join("bn254_curve_add.pil");
+    eq.generate_pil_code_to_file("eq_bn254_curve_add", pil_file.to_str().unwrap());
 
     // s - duplicate points
 
@@ -147,11 +147,11 @@ fn main() {
         ],
     );
 
-    let rust_file = rust_code_path.join("bn254_point_dbl.rs");
-    eq.generate_rust_code_to_file("Bn254PointDbl", "x1,y1,s,q0", rust_file.to_str().unwrap());
+    let rust_file = rust_code_path.join("bn254_curve_dbl.rs");
+    eq.generate_rust_code_to_file("Bn254CurveDbl", "x1,y1,s,q0", rust_file.to_str().unwrap());
 
-    let pil_file = pil_code_path.join("bn254_point_dbl.pil");
-    eq.generate_pil_code_to_file("eq_bn254_point_dbl", pil_file.to_str().unwrap());
+    let pil_file = pil_code_path.join("bn254_curve_dbl.pil");
+    eq.generate_pil_code_to_file("eq_bn254_curve_dbl", pil_file.to_str().unwrap());
 
     // x3
 
@@ -164,11 +164,11 @@ fn main() {
         ],
     );
 
-    let rust_file = rust_code_path.join("bn254_point_x3.rs");
-    eq.generate_rust_code_to_file("Bn254PointX3", "x1,x2,x3,s,q1", rust_file.to_str().unwrap());
+    let rust_file = rust_code_path.join("bn254_curve_x3.rs");
+    eq.generate_rust_code_to_file("Bn254CurveX3", "x1,x2,x3,s,q1", rust_file.to_str().unwrap());
 
-    let pil_file = pil_code_path.join("bn254_point_x3.pil");
-    eq.generate_pil_code_to_file("eq_bn254_point_x3", pil_file.to_str().unwrap());
+    let pil_file = pil_code_path.join("bn254_curve_x3.pil");
+    eq.generate_pil_code_to_file("eq_bn254_curve_x3", pil_file.to_str().unwrap());
 
     // y3
 
@@ -181,11 +181,11 @@ fn main() {
         ],
     );
 
-    let rust_file = rust_code_path.join("bn254_point_y3.rs");
-    eq.generate_rust_code_to_file("Bn254PointY3", "x1,y1,x3,y3,s,q2", rust_file.to_str().unwrap());
+    let rust_file = rust_code_path.join("bn254_curve_y3.rs");
+    eq.generate_rust_code_to_file("Bn254CurveY3", "x1,y1,x3,y3,s,q2", rust_file.to_str().unwrap());
 
-    let pil_file = pil_code_path.join("bn254_point_y3.pil");
-    eq.generate_pil_code_to_file("eq_bn254_point_y3", pil_file.to_str().unwrap());
+    let pil_file = pil_code_path.join("bn254_curve_y3.pil");
+    eq.generate_pil_code_to_file("eq_bn254_curve_y3", pil_file.to_str().unwrap());
 
     // x3 - complex addition
 
@@ -267,7 +267,11 @@ fn main() {
     );
 
     let rust_file = rust_code_path.join("bn254_complex_mul_x3.rs");
-    eq.generate_rust_code_to_file("Bn254ComplexMulX3", "x1,y1,x2,y2,x3,q1", rust_file.to_str().unwrap());
+    eq.generate_rust_code_to_file(
+        "Bn254ComplexMulX3",
+        "x1,y1,x2,y2,x3,q1",
+        rust_file.to_str().unwrap(),
+    );
 
     let pil_file = pil_code_path.join("bn254_complex_mul_x3.pil");
     eq.generate_pil_code_to_file("eq_bn254_complex_mul_x3", pil_file.to_str().unwrap());
@@ -284,7 +288,11 @@ fn main() {
     );
 
     let rust_file = rust_code_path.join("bn254_complex_mul_y3.rs");
-    eq.generate_rust_code_to_file("Bn254ComplexMulY3", "x1,y1,x2,y2,y3,q2", rust_file.to_str().unwrap());
+    eq.generate_rust_code_to_file(
+        "Bn254ComplexMulY3",
+        "x1,y1,x2,y2,y3,q2",
+        rust_file.to_str().unwrap(),
+    );
 
     let pil_file = pil_code_path.join("bn254_complex_mul_y3.pil");
     eq.generate_pil_code_to_file("eq_bn254_complex_mul_y3", pil_file.to_str().unwrap());

@@ -11,18 +11,18 @@
 // terms_by_clock: 2
 
 
-const expr eq_bn254_point_x3_chunks[31];
+const expr eq_bn254_curve_x3_chunks[31];
 
 // clock #0
 
-eq_bn254_point_x3_chunks[ 0] =   s * s                       //   s[0] * s[0]
+eq_bn254_curve_x3_chunks[ 0] =   s * s                       //   s[0] * s[0]
                                - x1                          // - x1[0]
                                - x2                          // - x2[0]
                                - x3                          // - x3[0]
                                - 0xFD47 * q1                 // - p[0] * q1[0]
                                + 0xD470;                     // + (p*offset)[0]
 
-eq_bn254_point_x3_chunks[ 1] =   s' * s                      //   s[1] * s[0]
+eq_bn254_curve_x3_chunks[ 1] =   s' * s                      //   s[1] * s[0]
                                + s * s'                      // + s[0] * s[1]
                                - x1'                         // - x1[1]
                                - x2'                         // - x2[1]
@@ -33,7 +33,7 @@ eq_bn254_point_x3_chunks[ 1] =   s' * s                      //   s[1] * s[0]
 
 // clock #1
 
-eq_bn254_point_x3_chunks[ 2] =   s' * 's                     //   s[2] * s[0]
+eq_bn254_curve_x3_chunks[ 2] =   s' * 's                     //   s[2] * s[0]
                                + s * s                       // + s[1] * s[1]
                                + 's * s'                     // + s[0] * s[2]
                                - x1'                         // - x1[2]
@@ -44,7 +44,7 @@ eq_bn254_point_x3_chunks[ 2] =   s' * 's                     //   s[2] * s[0]
                                - 0xFD47 * q1'                // - p[0] * q1[2]
                                + 0xC16D;                     // + (p*offset)[2]
 
-eq_bn254_point_x3_chunks[ 3] =   s'2 * 's                    //   s[3] * s[0]
+eq_bn254_curve_x3_chunks[ 3] =   s'2 * 's                    //   s[3] * s[0]
                                + s' * s                      // + s[2] * s[1]
                                + s * s'                      // + s[1] * s[2]
                                + 's * s'2                    // + s[0] * s[3]
@@ -59,7 +59,7 @@ eq_bn254_point_x3_chunks[ 3] =   s'2 * 's                    //   s[3] * s[0]
 
 // clock #2
 
-eq_bn254_point_x3_chunks[ 4] =   s'2 * 2's                   //   s[4] * s[0]
+eq_bn254_curve_x3_chunks[ 4] =   s'2 * 2's                   //   s[4] * s[0]
                                + s' * 's                     // + s[3] * s[1]
                                + s * s                       // + s[2] * s[2]
                                + 's * s'                     // + s[1] * s[3]
@@ -74,7 +74,7 @@ eq_bn254_point_x3_chunks[ 4] =   s'2 * 2's                   //   s[4] * s[0]
                                - 0xFD47 * q1'2               // - p[0] * q1[4]
                                + 0xA8D3;                     // + (p*offset)[4]
 
-eq_bn254_point_x3_chunks[ 5] =   s'3 * 2's                   //   s[5] * s[0]
+eq_bn254_curve_x3_chunks[ 5] =   s'3 * 2's                   //   s[5] * s[0]
                                + s'2 * 's                    // + s[4] * s[1]
                                + s' * s                      // + s[3] * s[2]
                                + s * s'                      // + s[2] * s[3]
@@ -93,7 +93,7 @@ eq_bn254_point_x3_chunks[ 5] =   s'3 * 2's                   //   s[5] * s[0]
 
 // clock #3
 
-eq_bn254_point_x3_chunks[ 6] =   s'3 * 3's                   //   s[6] * s[0]
+eq_bn254_curve_x3_chunks[ 6] =   s'3 * 3's                   //   s[6] * s[0]
                                + s'2 * 2's                   // + s[5] * s[1]
                                + s' * 's                     // + s[4] * s[2]
                                + s * s                       // + s[3] * s[3]
@@ -112,7 +112,7 @@ eq_bn254_point_x3_chunks[ 6] =   s'3 * 3's                   //   s[6] * s[0]
                                - 0xFD47 * q1'3               // - p[0] * q1[6]
                                + 0xA916;                     // + (p*offset)[6]
 
-eq_bn254_point_x3_chunks[ 7] =   s'4 * 3's                   //   s[7] * s[0]
+eq_bn254_curve_x3_chunks[ 7] =   s'4 * 3's                   //   s[7] * s[0]
                                + s'3 * 2's                   // + s[6] * s[1]
                                + s'2 * 's                    // + s[5] * s[2]
                                + s' * s                      // + s[4] * s[3]
@@ -135,7 +135,7 @@ eq_bn254_point_x3_chunks[ 7] =   s'4 * 3's                   //   s[7] * s[0]
 
 // clock #4
 
-eq_bn254_point_x3_chunks[ 8] =   s'4 * 4's                   //   s[8] * s[0]
+eq_bn254_curve_x3_chunks[ 8] =   s'4 * 4's                   //   s[8] * s[0]
                                + s'3 * 3's                   // + s[7] * s[1]
                                + s'2 * 2's                   // + s[6] * s[2]
                                + s' * 's                     // + s[5] * s[3]
@@ -158,7 +158,7 @@ eq_bn254_point_x3_chunks[ 8] =   s'4 * 4's                   //   s[8] * s[0]
                                - 0xFD47 * q1'4               // - p[0] * q1[8]
                                + 0x85D9;                     // + (p*offset)[8]
 
-eq_bn254_point_x3_chunks[ 9] =   s'5 * 4's                   //   s[9] * s[0]
+eq_bn254_curve_x3_chunks[ 9] =   s'5 * 4's                   //   s[9] * s[0]
                                + s'4 * 3's                   // + s[8] * s[1]
                                + s'3 * 2's                   // + s[7] * s[2]
                                + s'2 * 's                    // + s[6] * s[3]
@@ -185,7 +185,7 @@ eq_bn254_point_x3_chunks[ 9] =   s'5 * 4's                   //   s[9] * s[0]
 
 // clock #5
 
-eq_bn254_point_x3_chunks[10] =   s'5 * 5's                   //   s[10] * s[0]
+eq_bn254_curve_x3_chunks[10] =   s'5 * 5's                   //   s[10] * s[0]
                                + s'4 * 4's                   // + s[9] * s[1]
                                + s'3 * 3's                   // + s[8] * s[2]
                                + s'2 * 2's                   // + s[7] * s[3]
@@ -212,7 +212,7 @@ eq_bn254_point_x3_chunks[10] =   s'5 * 5's                   //   s[10] * s[0]
                                - 0xFD47 * q1'5               // - p[0] * q1[10]
                                + 0x5B68;                     // + (p*offset)[10]
 
-eq_bn254_point_x3_chunks[11] =   s'6 * 5's                   //   s[11] * s[0]
+eq_bn254_curve_x3_chunks[11] =   s'6 * 5's                   //   s[11] * s[0]
                                + s'5 * 4's                   // + s[10] * s[1]
                                + s'4 * 3's                   // + s[9] * s[2]
                                + s'3 * 2's                   // + s[8] * s[3]
@@ -243,7 +243,7 @@ eq_bn254_point_x3_chunks[11] =   s'6 * 5's                   //   s[11] * s[0]
 
 // clock #6
 
-eq_bn254_point_x3_chunks[12] =   s'6 * 6's                   //   s[12] * s[0]
+eq_bn254_curve_x3_chunks[12] =   s'6 * 6's                   //   s[12] * s[0]
                                + s'5 * 5's                   // + s[11] * s[1]
                                + s'4 * 4's                   // + s[10] * s[2]
                                + s'3 * 3's                   // + s[9] * s[3]
@@ -274,7 +274,7 @@ eq_bn254_point_x3_chunks[12] =   s'6 * 6's                   //   s[12] * s[0]
                                - 0xFD47 * q1'6               // - p[0] * q1[12]
                                + 0x29B;                      // + (p*offset)[12]
 
-eq_bn254_point_x3_chunks[13] =   s'7 * 6's                   //   s[13] * s[0]
+eq_bn254_curve_x3_chunks[13] =   s'7 * 6's                   //   s[13] * s[0]
                                + s'6 * 5's                   // + s[12] * s[1]
                                + s'5 * 4's                   // + s[11] * s[2]
                                + s'4 * 3's                   // + s[10] * s[3]
@@ -309,7 +309,7 @@ eq_bn254_point_x3_chunks[13] =   s'7 * 6's                   //   s[13] * s[0]
 
 // clock #7
 
-eq_bn254_point_x3_chunks[14] =   s'7 * 7's                   //   s[14] * s[0]
+eq_bn254_curve_x3_chunks[14] =   s'7 * 7's                   //   s[14] * s[0]
                                + s'6 * 6's                   // + s[13] * s[1]
                                + s'5 * 5's                   // + s[12] * s[2]
                                + s'4 * 4's                   // + s[11] * s[3]
@@ -344,7 +344,7 @@ eq_bn254_point_x3_chunks[14] =   s'7 * 7's                   //   s[14] * s[0]
                                - 0xFD47 * q1'7               // - p[0] * q1[14]
                                + 0xE72E;                     // + (p*offset)[14]
 
-eq_bn254_point_x3_chunks[15] =   s'8 * 7's                   //   s[15] * s[0]
+eq_bn254_curve_x3_chunks[15] =   s'8 * 7's                   //   s[15] * s[0]
                                + s'7 * 6's                   // + s[14] * s[1]
                                + s'6 * 5's                   // + s[13] * s[2]
                                + s'5 * 4's                   // + s[12] * s[3]
@@ -383,7 +383,7 @@ eq_bn254_point_x3_chunks[15] =   s'8 * 7's                   //   s[15] * s[0]
 
 // clock #8
 
-eq_bn254_point_x3_chunks[16] =   s'7 * 7's                   //   s[15] * s[1]
+eq_bn254_curve_x3_chunks[16] =   s'7 * 7's                   //   s[15] * s[1]
                                + s'6 * 6's                   // + s[14] * s[2]
                                + s'5 * 5's                   // + s[13] * s[3]
                                + s'4 * 4's                   // + s[12] * s[4]
@@ -415,7 +415,7 @@ eq_bn254_point_x3_chunks[16] =   s'7 * 7's                   //   s[15] * s[1]
                                - 0xD87C * q1'7               // - p[1] * q1[15]
                                + 0x3;                        // + (p*offset)[16]
 
-eq_bn254_point_x3_chunks[17] =   s'7 * 6's                   //   s[15] * s[2]
+eq_bn254_curve_x3_chunks[17] =   s'7 * 6's                   //   s[15] * s[2]
                                + s'6 * 5's                   // + s[14] * s[3]
                                + s'5 * 4's                   // + s[13] * s[4]
                                + s'4 * 3's                   // + s[12] * s[5]
@@ -446,7 +446,7 @@ eq_bn254_point_x3_chunks[17] =   s'7 * 6's                   //   s[15] * s[2]
 
 // clock #9
 
-eq_bn254_point_x3_chunks[18] =   s'6 * 6's                   //   s[15] * s[3]
+eq_bn254_curve_x3_chunks[18] =   s'6 * 6's                   //   s[15] * s[3]
                                + s'5 * 5's                   // + s[14] * s[4]
                                + s'4 * 4's                   // + s[13] * s[5]
                                + s'3 * 3's                   // + s[12] * s[6]
@@ -473,7 +473,7 @@ eq_bn254_point_x3_chunks[18] =   s'6 * 6's                   //   s[15] * s[3]
                                - 0xCA8D * q1'5               // - p[4] * q1[14]
                                - 0x3C20 * q1'6;              // - p[3] * q1[15]
 
-eq_bn254_point_x3_chunks[19] =   s'6 * 5's                   //   s[15] * s[4]
+eq_bn254_curve_x3_chunks[19] =   s'6 * 5's                   //   s[15] * s[4]
                                + s'5 * 4's                   // + s[14] * s[5]
                                + s'4 * 3's                   // + s[13] * s[6]
                                + s'3 * 2's                   // + s[12] * s[7]
@@ -500,7 +500,7 @@ eq_bn254_point_x3_chunks[19] =   s'6 * 5's                   //   s[15] * s[4]
 
 // clock #10
 
-eq_bn254_point_x3_chunks[20] =   s'5 * 5's                   //   s[15] * s[5]
+eq_bn254_curve_x3_chunks[20] =   s'5 * 5's                   //   s[15] * s[5]
                                + s'4 * 4's                   // + s[14] * s[6]
                                + s'3 * 3's                   // + s[13] * s[7]
                                + s'2 * 2's                   // + s[12] * s[8]
@@ -523,7 +523,7 @@ eq_bn254_point_x3_chunks[20] =   s'5 * 5's                   //   s[15] * s[5]
                                - 0x6A91 * q1'4               // - p[6] * q1[14]
                                - 0x6871 * q1'5;              // - p[5] * q1[15]
 
-eq_bn254_point_x3_chunks[21] =   s'5 * 4's                   //   s[15] * s[6]
+eq_bn254_curve_x3_chunks[21] =   s'5 * 4's                   //   s[15] * s[6]
                                + s'4 * 3's                   // + s[14] * s[7]
                                + s'3 * 2's                   // + s[13] * s[8]
                                + s'2 * 's                    // + s[12] * s[9]
@@ -546,7 +546,7 @@ eq_bn254_point_x3_chunks[21] =   s'5 * 4's                   //   s[15] * s[6]
 
 // clock #11
 
-eq_bn254_point_x3_chunks[22] =   s'4 * 4's                   //   s[15] * s[7]
+eq_bn254_curve_x3_chunks[22] =   s'4 * 4's                   //   s[15] * s[7]
                                + s'3 * 3's                   // + s[14] * s[8]
                                + s'2 * 2's                   // + s[13] * s[9]
                                + s' * 's                     // + s[12] * s[10]
@@ -565,7 +565,7 @@ eq_bn254_point_x3_chunks[22] =   s'4 * 4's                   //   s[15] * s[7]
                                - 0x585D * q1'3               // - p[8] * q1[14]
                                - 0x9781 * q1'4;              // - p[7] * q1[15]
 
-eq_bn254_point_x3_chunks[23] =   s'4 * 3's                   //   s[15] * s[8]
+eq_bn254_curve_x3_chunks[23] =   s'4 * 3's                   //   s[15] * s[8]
                                + s'3 * 2's                   // + s[14] * s[9]
                                + s'2 * 's                    // + s[13] * s[10]
                                + s' * s                      // + s[12] * s[11]
@@ -584,7 +584,7 @@ eq_bn254_point_x3_chunks[23] =   s'4 * 3's                   //   s[15] * s[8]
 
 // clock #12
 
-eq_bn254_point_x3_chunks[24] =   s'3 * 3's                   //   s[15] * s[9]
+eq_bn254_curve_x3_chunks[24] =   s'3 * 3's                   //   s[15] * s[9]
                                + s'2 * 2's                   // + s[14] * s[10]
                                + s' * 's                     // + s[13] * s[11]
                                + s * s                       // + s[12] * s[12]
@@ -599,7 +599,7 @@ eq_bn254_point_x3_chunks[24] =   s'3 * 3's                   //   s[15] * s[9]
                                - 0x45B6 * q1'2               // - p[10] * q1[14]
                                - 0x8181 * q1'3;              // - p[9] * q1[15]
 
-eq_bn254_point_x3_chunks[25] =   s'3 * 2's                   //   s[15] * s[10]
+eq_bn254_curve_x3_chunks[25] =   s'3 * 2's                   //   s[15] * s[10]
                                + s'2 * 's                    // + s[14] * s[11]
                                + s' * s                      // + s[13] * s[12]
                                + s * s'                      // + s[12] * s[13]
@@ -614,7 +614,7 @@ eq_bn254_point_x3_chunks[25] =   s'3 * 2's                   //   s[15] * s[10]
 
 // clock #13
 
-eq_bn254_point_x3_chunks[26] =   s'2 * 2's                   //   s[15] * s[11]
+eq_bn254_curve_x3_chunks[26] =   s'2 * 2's                   //   s[15] * s[11]
                                + s' * 's                     // + s[14] * s[12]
                                + s * s                       // + s[13] * s[13]
                                + 's * s'                     // + s[12] * s[14]
@@ -625,7 +625,7 @@ eq_bn254_point_x3_chunks[26] =   s'2 * 2's                   //   s[15] * s[11]
                                - 0xA029 * q1'                // - p[12] * q1[14]
                                - 0xB850 * q1'2;              // - p[11] * q1[15]
 
-eq_bn254_point_x3_chunks[27] =   s'2 * 's                    //   s[15] * s[12]
+eq_bn254_curve_x3_chunks[27] =   s'2 * 's                    //   s[15] * s[12]
                                + s' * s                      // + s[14] * s[13]
                                + s * s'                      // + s[13] * s[14]
                                + 's * s'2                    // + s[12] * s[15]
@@ -636,20 +636,20 @@ eq_bn254_point_x3_chunks[27] =   s'2 * 's                    //   s[15] * s[12]
 
 // clock #14
 
-eq_bn254_point_x3_chunks[28] =   s' * 's                     //   s[15] * s[13]
+eq_bn254_curve_x3_chunks[28] =   s' * 's                     //   s[15] * s[13]
                                + s * s                       // + s[14] * s[14]
                                + 's * s'                     // + s[13] * s[15]
                                - 0x3064 * 'q1                // - p[15] * q1[13]
                                - 0x4E72 * q1                 // - p[14] * q1[14]
                                - 0xE131 * q1';               // - p[13] * q1[15]
 
-eq_bn254_point_x3_chunks[29] =   s' * s                      //   s[15] * s[14]
+eq_bn254_curve_x3_chunks[29] =   s' * s                      //   s[15] * s[14]
                                + s * s'                      // + s[14] * s[15]
                                - 0x3064 * q1                 // - p[15] * q1[14]
                                - 0x4E72 * q1';               // - p[14] * q1[15]
 
 // clock #15
 
-eq_bn254_point_x3_chunks[30] =   s * s                       //   s[15] * s[15]
+eq_bn254_curve_x3_chunks[30] =   s * s                       //   s[15] * s[15]
                                - 0x3064 * q1;                // - p[15] * q1[15]
 
