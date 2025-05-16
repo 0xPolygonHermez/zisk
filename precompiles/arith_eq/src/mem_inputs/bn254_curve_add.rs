@@ -2,7 +2,7 @@ use super::ArithEqMemInputConfig;
 use crate::executors::Bn254Curve;
 use zisk_common::BusId;
 
-pub const BN254_ADD_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
+pub const BN254_CURVE_ADD_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
     indirect_params: 2,
     rewrite_params: true,
     read_params: 2,
@@ -10,7 +10,7 @@ pub const BN254_ADD_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
     chunks_per_param: 8,
 };
 
-pub fn generate_bn254_add_mem_inputs(
+pub fn generate_bn254_curve_add_mem_inputs(
     addr_main: u32,
     step_main: u64,
     data: &[u64],
@@ -28,6 +28,6 @@ pub fn generate_bn254_add_mem_inputs(
         data,
         Some(&p3),
         only_counters,
-        &BN254_ADD_MEM_CONFIG,
+        &BN254_CURVE_ADD_MEM_CONFIG,
     ))
 }

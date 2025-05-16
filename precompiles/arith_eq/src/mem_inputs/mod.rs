@@ -1,21 +1,21 @@
 mod arith256;
 mod arith256_mod;
-mod bn254_add;
 mod bn254_complex_add;
 mod bn254_complex_mul;
 mod bn254_complex_sub;
-mod bn254_dbl;
+mod bn254_curve_add;
+mod bn254_curve_dbl;
 mod generate_mem_inputs;
 mod secp256k1_add;
 mod secp256k1_dbl;
 
 pub use arith256::*;
 pub use arith256_mod::*;
-pub use bn254_add::*;
 pub use bn254_complex_add::*;
 pub use bn254_complex_mul::*;
 pub use bn254_complex_sub::*;
-pub use bn254_dbl::*;
+pub use bn254_curve_add::*;
+pub use bn254_curve_dbl::*;
 pub use generate_mem_inputs::*;
 pub use secp256k1_add::*;
 pub use secp256k1_dbl::*;

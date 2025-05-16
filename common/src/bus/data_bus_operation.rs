@@ -21,6 +21,7 @@ pub const OPERATION_BUS_SHA256F_DATA_SIZE: usize = 5;
 
 const DATA_256_BITS_SIZE: usize = 4;
 const POINT_256_BITS_SIZE: usize = 2 * DATA_256_BITS_SIZE;
+const COMPLEX_OVER_256_BITS_SIZE: usize = 2 * DATA_256_BITS_SIZE;
 const INDIRECTION_SIZE: usize = 1;
 
 // use OPERATION_BUS_DATA_SIZE because a = step, b = addr
@@ -32,6 +33,16 @@ pub const OPERATION_BUS_SECP256K1_ADD_DATA_SIZE: usize =
     OPERATION_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * POINT_256_BITS_SIZE;
 pub const OPERATION_BUS_SECP256K1_DBL_DATA_SIZE: usize =
     OPERATION_BUS_DATA_SIZE + POINT_256_BITS_SIZE;
+pub const OPERATION_BUS_BN254_CURVE_ADD_DATA_SIZE: usize =
+    OPERATION_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * POINT_256_BITS_SIZE;
+pub const OPERATION_BUS_BN254_CURVE_DBL_DATA_SIZE: usize =
+    OPERATION_BUS_DATA_SIZE + POINT_256_BITS_SIZE;
+pub const OPERATION_BUS_BN254_COMPLEX_ADD_DATA_SIZE: usize =
+    OPERATION_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * COMPLEX_OVER_256_BITS_SIZE;
+pub const OPERATION_BUS_BN254_COMPLEX_SUB_DATA_SIZE: usize =
+    OPERATION_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * COMPLEX_OVER_256_BITS_SIZE;
+pub const OPERATION_BUS_BN254_COMPLEX_MUL_DATA_SIZE: usize =
+    OPERATION_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * COMPLEX_OVER_256_BITS_SIZE;
 
 /// Index of the operation value in the operation data payload.
 pub const OP: usize = 0;
@@ -55,6 +66,11 @@ pub type OperationArith256Data<D> = [D; OPERATION_BUS_ARITH_256_DATA_SIZE];
 pub type OperationArith256ModData<D> = [D; OPERATION_BUS_ARITH_256_MOD_DATA_SIZE];
 pub type OperationSecp256k1AddData<D> = [D; OPERATION_BUS_SECP256K1_ADD_DATA_SIZE];
 pub type OperationSecp256k1DblData<D> = [D; OPERATION_BUS_SECP256K1_DBL_DATA_SIZE];
+pub type OperationBn254CurveAddData<D> = [D; OPERATION_BUS_BN254_CURVE_ADD_DATA_SIZE];
+pub type OperationBn254CurveDblData<D> = [D; OPERATION_BUS_BN254_CURVE_DBL_DATA_SIZE];
+pub type OperationBn254ComplexAddData<D> = [D; OPERATION_BUS_BN254_COMPLEX_ADD_DATA_SIZE];
+pub type OperationBn254ComplexSubData<D> = [D; OPERATION_BUS_BN254_COMPLEX_SUB_DATA_SIZE];
+pub type OperationBn254ComplexMulData<D> = [D; OPERATION_BUS_BN254_COMPLEX_MUL_DATA_SIZE];
 
 pub enum ExtOperationData<D> {
     OperationData(OperationData<D>),
@@ -64,6 +80,11 @@ pub enum ExtOperationData<D> {
     OperationArith256ModData(OperationArith256ModData<D>),
     OperationSecp256k1AddData(OperationSecp256k1AddData<D>),
     OperationSecp256k1DblData(OperationSecp256k1DblData<D>),
+    OperationBn254CurveAddData(OperationBn254CurveAddData<D>),
+    OperationBn254CurveDblData(OperationBn254CurveDblData<D>),
+    OperationBn254ComplexAddData(OperationBn254ComplexAddData<D>),
+    OperationBn254ComplexSubData(OperationBn254ComplexSubData<D>),
+    OperationBn254ComplexMulData(OperationBn254ComplexMulData<D>),
 }
 
 const KECCAK_OP: u8 = ZiskOp::Keccak.code();
@@ -72,6 +93,11 @@ const ARITH256_OP: u8 = ZiskOp::Arith256.code();
 const ARITH256_MOD_OP: u8 = ZiskOp::Arith256Mod.code();
 const SECP256K1_ADD_OP: u8 = ZiskOp::Secp256k1Add.code();
 const SECP256K1_DBL_OP: u8 = ZiskOp::Secp256k1Dbl.code();
+const BN254_CURVE_ADD_OP: u8 = ZiskOp::Bn254CurveAdd.code();
+const BN254_CURVE_DBL_OP: u8 = ZiskOp::Bn254CurveDbl.code();
+const BN254_COMPLEX_ADD_OP: u8 = ZiskOp::Bn254ComplexAdd.code();
+const BN254_COMPLEX_SUB_OP: u8 = ZiskOp::Bn254ComplexSub.code();
+const BN254_COMPLEX_MUL_OP: u8 = ZiskOp::Bn254ComplexMul.code();
 
 // impl<D: Copy + Into<u8>> TryFrom<&[D]> for ExtOperationData<D> {
 impl<D: Copy + Into<u64>> TryFrom<&[D]> for ExtOperationData<D> {
@@ -112,6 +138,31 @@ impl<D: Copy + Into<u64>> TryFrom<&[D]> for ExtOperationData<D> {
                 let array: OperationSecp256k1DblData<D> =
                     data.try_into().map_err(|_| "Invalid OperationSecp256k1DblData size")?;
                 Ok(ExtOperationData::OperationSecp256k1DblData(array))
+            }
+            BN254_CURVE_ADD_OP => {
+                let array: OperationBn254CurveAddData<D> =
+                    data.try_into().map_err(|_| "Invalid OperationBn254CurveAddData size")?;
+                Ok(ExtOperationData::OperationBn254CurveAddData(array))
+            }
+            BN254_CURVE_DBL_OP => {
+                let array: OperationBn254CurveDblData<D> =
+                    data.try_into().map_err(|_| "Invalid OperationBn254CurveDblData size")?;
+                Ok(ExtOperationData::OperationBn254CurveDblData(array))
+            }
+            BN254_COMPLEX_ADD_OP => {
+                let array: OperationBn254ComplexAddData<D> =
+                    data.try_into().map_err(|_| "Invalid OperationBn254ComplexAddData size")?;
+                Ok(ExtOperationData::OperationBn254ComplexAddData(array))
+            }
+            BN254_COMPLEX_SUB_OP => {
+                let array: OperationBn254ComplexSubData<D> =
+                    data.try_into().map_err(|_| "Invalid OperationBn254ComplexSubData size")?;
+                Ok(ExtOperationData::OperationBn254ComplexSubData(array))
+            }
+            BN254_COMPLEX_MUL_OP => {
+                let array: OperationBn254ComplexMulData<D> =
+                    data.try_into().map_err(|_| "Invalid OperationBn254ComplexMulData size")?;
+                Ok(ExtOperationData::OperationBn254ComplexMulData(array))
             }
             _ => {
                 let array: OperationData<D> =
@@ -223,6 +274,56 @@ impl OperationBusData<u64> {
                         data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
                         ExtOperationData::OperationSecp256k1DblData(data)
                     }
+                    BN254_CURVE_ADD_OP => {
+                        let mut data: OperationBn254CurveAddData<u64> =
+                            [0; OPERATION_BUS_BN254_CURVE_ADD_DATA_SIZE];
+                        data[0] = inst.op as u64; // OP
+                        data[1] = inst.op_type as u64; // OP_TYPE
+                        data[2] = a; // A step
+                        data[3] = b; // B addr
+                        data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
+                        ExtOperationData::OperationBn254CurveAddData(data)
+                    }
+                    BN254_CURVE_DBL_OP => {
+                        let mut data: OperationBn254CurveDblData<u64> =
+                            [0; OPERATION_BUS_BN254_CURVE_DBL_DATA_SIZE];
+                        data[0] = inst.op as u64; // OP
+                        data[1] = inst.op_type as u64; // OP_TYPE
+                        data[2] = a; // A step
+                        data[3] = b; // B addr
+                        data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
+                        ExtOperationData::OperationBn254CurveDblData(data)
+                    }
+                    BN254_COMPLEX_ADD_OP => {
+                        let mut data: OperationBn254ComplexAddData<u64> =
+                            [0; OPERATION_BUS_BN254_COMPLEX_ADD_DATA_SIZE];
+                        data[0] = inst.op as u64; // OP
+                        data[1] = inst.op_type as u64; // OP_TYPE
+                        data[2] = a; // A step
+                        data[3] = b; // B addr
+                        data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
+                        ExtOperationData::OperationBn254ComplexAddData(data)
+                    }
+                    BN254_COMPLEX_SUB_OP => {
+                        let mut data: OperationBn254ComplexSubData<u64> =
+                            [0; OPERATION_BUS_BN254_COMPLEX_SUB_DATA_SIZE];
+                        data[0] = inst.op as u64; // OP
+                        data[1] = inst.op_type as u64; // OP_TYPE
+                        data[2] = a; // A step
+                        data[3] = b; // B addr
+                        data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
+                        ExtOperationData::OperationBn254ComplexSubData(data)
+                    }
+                    BN254_COMPLEX_MUL_OP => {
+                        let mut data: OperationBn254ComplexMulData<u64> =
+                            [0; OPERATION_BUS_BN254_COMPLEX_MUL_DATA_SIZE];
+                        data[0] = inst.op as u64; // OP
+                        data[1] = inst.op_type as u64; // OP_TYPE
+                        data[2] = a; // A step
+                        data[3] = b; // B addr
+                        data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
+                        ExtOperationData::OperationBn254ComplexMulData(data)
+                    }
                     _ => {
                         ExtOperationData::OperationData([
                             inst.op as u64,      // OP
@@ -261,6 +362,11 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationArith256ModData(d) => d[OP] as u8,
             ExtOperationData::OperationSecp256k1AddData(d) => d[OP] as u8,
             ExtOperationData::OperationSecp256k1DblData(d) => d[OP] as u8,
+            ExtOperationData::OperationBn254CurveAddData(d) => d[OP] as u8,
+            ExtOperationData::OperationBn254CurveDblData(d) => d[OP] as u8,
+            ExtOperationData::OperationBn254ComplexAddData(d) => d[OP] as u8,
+            ExtOperationData::OperationBn254ComplexSubData(d) => d[OP] as u8,
+            ExtOperationData::OperationBn254ComplexMulData(d) => d[OP] as u8,
         }
     }
 
@@ -281,6 +387,11 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationArith256ModData(d) => d[OP_TYPE],
             ExtOperationData::OperationSecp256k1AddData(d) => d[OP_TYPE],
             ExtOperationData::OperationSecp256k1DblData(d) => d[OP_TYPE],
+            ExtOperationData::OperationBn254CurveAddData(d) => d[OP_TYPE],
+            ExtOperationData::OperationBn254CurveDblData(d) => d[OP_TYPE],
+            ExtOperationData::OperationBn254ComplexAddData(d) => d[OP_TYPE],
+            ExtOperationData::OperationBn254ComplexSubData(d) => d[OP_TYPE],
+            ExtOperationData::OperationBn254ComplexMulData(d) => d[OP_TYPE],
         }
     }
 
@@ -301,6 +412,11 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationArith256ModData(d) => d[A],
             ExtOperationData::OperationSecp256k1AddData(d) => d[A],
             ExtOperationData::OperationSecp256k1DblData(d) => d[A],
+            ExtOperationData::OperationBn254CurveAddData(d) => d[A],
+            ExtOperationData::OperationBn254CurveDblData(d) => d[A],
+            ExtOperationData::OperationBn254ComplexAddData(d) => d[A],
+            ExtOperationData::OperationBn254ComplexSubData(d) => d[A],
+            ExtOperationData::OperationBn254ComplexMulData(d) => d[A],
         }
     }
 
@@ -321,6 +437,11 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationArith256ModData(d) => d[B],
             ExtOperationData::OperationSecp256k1AddData(d) => d[B],
             ExtOperationData::OperationSecp256k1DblData(d) => d[B],
+            ExtOperationData::OperationBn254CurveAddData(d) => d[B],
+            ExtOperationData::OperationBn254CurveDblData(d) => d[B],
+            ExtOperationData::OperationBn254ComplexAddData(d) => d[B],
+            ExtOperationData::OperationBn254ComplexSubData(d) => d[B],
+            ExtOperationData::OperationBn254ComplexMulData(d) => d[B],
         }
     }
 
@@ -340,6 +461,11 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationArith256ModData(d) => d[4..].to_vec(),
             ExtOperationData::OperationSecp256k1AddData(d) => d[4..].to_vec(),
             ExtOperationData::OperationSecp256k1DblData(d) => d[4..].to_vec(),
+            ExtOperationData::OperationBn254CurveAddData(d) => d[4..].to_vec(),
+            ExtOperationData::OperationBn254CurveDblData(d) => d[4..].to_vec(),
+            ExtOperationData::OperationBn254ComplexAddData(d) => d[4..].to_vec(),
+            ExtOperationData::OperationBn254ComplexSubData(d) => d[4..].to_vec(),
+            ExtOperationData::OperationBn254ComplexMulData(d) => d[4..].to_vec(),
             _ => vec![],
         }
     }

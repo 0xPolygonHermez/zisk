@@ -20,3 +20,5 @@ circuit = { path = "../../tools/circuit" }
 [features]
 default = []
 secp256k1_rust = []
+bn254_curve_rust = []
+bn254_complex_rust = []

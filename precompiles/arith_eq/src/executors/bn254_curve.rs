@@ -158,7 +158,7 @@ impl Bn254Curve {
     pub fn verify_add_dbl(is_dbl: bool, p1: &[u64; 8], p2: &[u64; 8], p: &[u64; 8]) {
         let data = Self::execute_add_dbl(is_dbl, p1, p2);
         data.check_ranges();
-        let op = if is_dbl { "Bn254Dbl" } else { "Bn254Add" };
+        let op = if is_dbl { "Bn254CurveDbl" } else { "Bn254CurveAdd" };
         for i in 0..2 {
             let offset = (i + 1) * 4 - 1;
             let mut x3 = data.x3[offset] as u64;
