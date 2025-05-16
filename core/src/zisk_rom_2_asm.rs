@@ -110,7 +110,7 @@ pub struct ZiskAsmContext {
 
     ptr: String, // "ptr ", ""
 
-    assert_rsp_counter: u64,
+                 //assert_rsp_counter: u64,
 }
 
 // Local variables, used in library:

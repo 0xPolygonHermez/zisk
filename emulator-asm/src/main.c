@@ -42,7 +42,7 @@ uint64_t get_gen_method(void);
 #define OUTPUT_ADDR (SYS_ADDR + SYS_SIZE)
 
 #define TRACE_ADDR         (uint64_t)0xc0000000
-#define INITIAL_TRACE_SIZE (uint64_t)0x40000000 // 4GB
+#define INITIAL_TRACE_SIZE (uint64_t)0x100000000 // 4GB
 
 #define REG_ADDR (uint64_t)0x70000000
 #define REG_SIZE (uint64_t)0x1000 // 4kB
@@ -144,7 +144,7 @@ void log_main_trace(void);
 int recv_all_with_timeout (int sockfd, void *buffer, size_t length, int flags, int timeout_sec);
 
 // Configuration
-bool output = true;
+bool output = false;
 bool metrics = false;
 bool trace = false;
 bool trace_trace = false;
@@ -1072,59 +1072,62 @@ void client_run (void)
     /*****************/
     for (uint64_t i=0; i<number_of_mt_requests; i++)
     {
-    gettimeofday(&start_time, NULL);
+        gettimeofday(&start_time, NULL);
 
-    // Prepare message to send
-    request[0] = TYPE_MT_REQUEST;
-    request[1] = 1024*1024; // chunk_len
-    request[2] = 0xFFFFFFFF; // max_steps
-    request[3] = 0;
-    request[4] = 0;
+        // Prepare message to send
+        request[0] = TYPE_MT_REQUEST;
+        request[1] = 1024*1024; // chunk_len
+        request[2] = 0xFFFFFFFF; // max_steps
+        request[3] = 0;
+        request[4] = 0;
 
-    // Send data to server
-    result = send(socket_fd, request, sizeof(request), 0);
-    if (result < 0)
-    {
-        printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
+        // Send data to server
+        result = send(socket_fd, request, sizeof(request), 0);
+        if (result < 0)
+        {
+            printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
 
-    // Read server response
-    bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-    if (bytes_received < 0)
-    {
-        printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (bytes_received != sizeof(response))
-    {
-        printf("recv_all_with_timeout() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (response[0] != TYPE_MT_RESPONSE)
-    {
-        printf("recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (response[1] != 0)
-    {
-        printf("recv_all_with_timeout() returned unexpected result=%lu\n", response[1]);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    
-    gettimeofday(&stop_time, NULL);
-    duration = TimeDiff(start_time, stop_time);
-    printf("client (MT)[%lu]: done in %lu us\n", i, duration);
+        // Read server response
+        bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
+        if (bytes_received < 0)
+        {
+            printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if (bytes_received != sizeof(response))
+        {
+            printf("recv_all_with_timeout() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if (response[0] != TYPE_MT_RESPONSE)
+        {
+            printf("recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if (response[1] != 0)
+        {
+            printf("recv_all_with_timeout() returned unexpected result=%lu\n", response[1]);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        
+        gettimeofday(&stop_time, NULL);
+        duration = TimeDiff(start_time, stop_time);
+        printf("client (MT)[%lu]: done in %lu us\n", i, duration);
+
+        // Pretend to spend some time processing the incoming data
+        usleep((1000000));
     } // number_of_mt_requests
 
     /************/
