@@ -2472,6 +2472,7 @@ dependencies = [
  "crossbeam-channel",
  "crossbeam-queue",
  "curves",
+ "dashmap",
  "env_logger",
  "libloading",
  "log",
@@ -2539,6 +2540,7 @@ dependencies = [
 name = "proofman-starks-lib-c"
 version = "0.7.1"
 dependencies = [
+ "crossbeam-channel",
  "log",
 ]
 
