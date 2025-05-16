@@ -10,7 +10,7 @@ pub const BN254_COMPLEX_ADD_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputC
     chunks_per_param: 8,
 };
 
-pub fn generate_BN254_COMPLEX_ADD_mem_inputs(
+pub fn generate_bn254_complex_add_mem_inputs(
     addr_main: u32,
     step_main: u64,
     data: &[u64],
