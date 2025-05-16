@@ -114,10 +114,26 @@ uint64_t realloc_counter = 0;
 
 extern void zisk_keccakf(uint64_t state[25]);
 
-#define INITIAL_CHUNK_SIZE (1<<18)
+bool is_power_of_two (uint64_t number) {
+    return (number != 0) && ((number & (number - 1)) == 0);
+}
+
+#define INITIAL_CHUNK_SIZE (1ULL << 18)
 uint64_t chunk_size = INITIAL_CHUNK_SIZE;
 uint64_t chunk_size_mask = INITIAL_CHUNK_SIZE - 1;
-uint64_t max_steps = 0xffffffffffffffff;
+uint64_t max_steps = (1ULL << 32);
+
+void set_max_steps (uint64_t new_max_steps)
+{
+    if (!is_power_of_two(new_max_steps))
+    {
+        printf("ERROR: set_max_steps() got a new max steps = %lu that is not a power of two\n", new_max_steps);
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+    max_steps = new_max_steps;
+}
 
 uint64_t initial_trace_size = INITIAL_TRACE_SIZE;
 uint64_t trace_address = TRACE_ADDR;
@@ -126,6 +142,20 @@ uint64_t trace_size = INITIAL_TRACE_SIZE;
 // Worst case: every chunk instruction is a keccak operation, with an input data of 200 bytes
 #define MAX_CHUNK_TRACE_SIZE (INITIAL_CHUNK_SIZE * 200) + (44 * 8) + 32
 uint64_t trace_address_threshold = TRACE_ADDR + INITIAL_TRACE_SIZE - MAX_CHUNK_TRACE_SIZE;
+
+void set_chunk_size (uint64_t new_chunk_size)
+{
+    if (!is_power_of_two(new_chunk_size))
+    {
+        printf("ERROR: set_chunk_size() got a new chunk size = %lu that is not a power of two\n", new_chunk_size);
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+    chunk_size = new_chunk_size;
+    chunk_size_mask = chunk_size - 1;
+    trace_address_threshold = TRACE_ADDR + INITIAL_TRACE_SIZE - ((chunk_size*200) + (44*8) + 32);
+}
 
 void parse_arguments(int argc, char *argv[]);
 uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime);
@@ -341,10 +371,13 @@ int main(int argc, char *argv[])
 #endif
                     if (gen_method == MinimalTrace)
                     {
+                        set_max_steps(request[1]);
+                        set_chunk_size(request[2]);
+
                         server_run();
 
                         response[0] = TYPE_MT_RESPONSE;
-                        response[1] = 0;
+                        response[1] = MEM_END ? 0 : 1;
                         response[2] = trace_size;
                         response[3] = trace_size;
                         response[4] = 0;
@@ -368,10 +401,12 @@ int main(int argc, char *argv[])
 #endif
                     if (gen_method == RomHistogram)
                     {
+                        set_max_steps(request[1]);
+
                         server_run();
 
                         response[0] = TYPE_RH_RESPONSE;
-                        response[1] = 0;
+                        response[1] = MEM_END ? 0 : 1;
                         response[2] = trace_size;
                         response[3] = trace_size;
                         response[4] = 0;
@@ -1059,7 +1094,7 @@ void client_run (void)
         // Prepare message to send
         request[0] = TYPE_MT_REQUEST;
         request[1] = 1024*1024; // chunk_len
-        request[2] = 0xFFFFFFFF; // max_steps
+        request[2] = 1ULL << 32; // max_steps
         request[3] = 0;
         request[4] = 0;
 

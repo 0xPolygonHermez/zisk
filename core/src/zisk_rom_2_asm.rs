@@ -353,6 +353,7 @@ impl ZiskRom2Asm {
         *code += ".extern realloc_trace\n\n";
 
         if ctx.minimal_trace() || ctx.main_trace() || ctx.zip() {
+            *code += ".extern max_steps\n";
             *code += ".extern chunk_size\n";
             *code += ".extern trace_address_threshold\n\n";
         }
@@ -2174,6 +2175,18 @@ impl ZiskRom2Asm {
                     Self::set_pc(&mut ctx, instruction, &mut unusual_code, "z");
                     if ctx.process() {
                         unusual_code += "\tcall chunk_end_and_start\n";
+                        unusual_code += &format!(
+                            "\tmov {}, {} {}\n",
+                            REG_VALUE,
+                            ctx.mem_step,
+                            ctx.comment_str("value = step")
+                        );
+                        unusual_code += &format!(
+                            "\tcmp {}, qword ptr [max_steps] {}\n",
+                            REG_VALUE,
+                            ctx.comment_str("step ?= max_steps")
+                        );
+                        unusual_code += "\tjae execute_end\n";
                     }
                     unusual_code += &format!("\tjmp pc_{:x}_step_done\n", ctx.pc);
                     Self::set_pc(&mut ctx, instruction, code, "nz");
