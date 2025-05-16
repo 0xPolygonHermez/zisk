@@ -1,6 +1,6 @@
+use ark_bn254::Fq as Bn254Field;
 use ark_ff::PrimeField;
 use ark_secp256k1::Fq as Secp256k1Field;
-// use ark_std::Zero;
 use num_bigint::{BigInt, Sign};
 use num_traits::Zero;
 
@@ -94,13 +94,32 @@ pub fn bigint_to_2x4_u64(value: &BigInt, lres: &mut [u64; 4], hres: &mut [u64; 4
     }
 }
 
-pub fn bigint_from_field(value: &Secp256k1Field) -> BigInt {
-    let mut result = BigInt::zero();
+pub trait FieldToBigInt {
+    fn to_bigint(&self) -> BigInt;
+}
 
-    for &word in value.into_bigint().0.iter().rev() {
-        result <<= 64;
-        result += word;
+impl FieldToBigInt for Secp256k1Field {
+    fn to_bigint(&self) -> BigInt {
+        let mut result = BigInt::zero();
+        for &word in self.into_bigint().0.iter().rev() {
+            result <<= 64;
+            result += word;
+        }
+        result
     }
+}
 
-    result
+impl FieldToBigInt for Bn254Field {
+    fn to_bigint(&self) -> BigInt {
+        let mut result = BigInt::zero();
+        for &word in self.into_bigint().0.iter().rev() {
+            result <<= 64;
+            result += word;
+        }
+        result
+    }
+}
+
+pub fn bigint_from_field<F: FieldToBigInt>(value: &F) -> BigInt {
+    value.to_bigint()
 }
