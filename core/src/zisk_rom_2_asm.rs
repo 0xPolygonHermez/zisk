@@ -102,12 +102,15 @@ pub struct ZiskAsmContext {
     fcall_ctx: String,
     mem_chunk_id: String,   // 0, 1, 2, 3, 4...
     mem_chunk_mask: String, // Module 8 of the chunks we want to activate, e.g. 0x03
+    mem_rsp: String,        // Backup of rsp register value from caller
 
     comments: bool, // true if we want to generate comments in the assembly source code
     boc: String,    // begin of comment: '/*', ';', '#', etc.
     eoc: String,    // end of comment: '*/', '', etc
 
     ptr: String, // "ptr ", ""
+
+    assert_rsp_counter: u64,
 }
 
 // Local variables, used in library:
@@ -244,6 +247,7 @@ impl ZiskRom2Asm {
             ctx.fcall_ctx = "fcall_ctx".to_string();
             ctx.mem_chunk_id = format!("qword {}[MEM_CHUNK_ID]", ctx.ptr);
             ctx.mem_chunk_mask = format!("qword {}[chunk_mask]", ctx.ptr);
+            ctx.mem_rsp = format!("qword {}[MEM_RSP]", ctx.ptr);
         }
 
         if ctx.lib() {
@@ -277,6 +281,7 @@ impl ZiskRom2Asm {
             *code += ".comm MEM_TRACE_ADDRESS, 8, 8\n";
             *code += ".comm MEM_CHUNK_ADDRESS, 8, 8\n";
             *code += ".comm MEM_CHUNK_START_STEP, 8, 8\n";
+            *code += ".comm MEM_RSP, 8, 8\n";
             if ctx.zip() {
                 *code += ".comm MEM_CHUNK_ID, 8, 8\n";
             }
@@ -2030,9 +2035,11 @@ impl ZiskRom2Asm {
                                         ctx.comment_str("width=1: rdi = c")
                                     );
                                 }
-                                Self::push_internal_registers(&mut ctx, code);
+                                Self::push_internal_registers(&mut ctx, code, false);
+                                //Self::assert_rsp_is_aligned(&mut ctx, code);
                                 *code += "\tcall _print_char\n";
-                                Self::pop_internal_registers(&mut ctx, code);
+                                Self::pop_internal_registers(&mut ctx, code, false);
+                                //Self::assert_rsp_is_aligned(&mut ctx, code);
                                 *code += &format!("pc_{:x}_store_c_not_uart:\n", ctx.pc);
                             }
                         }
@@ -3843,9 +3850,11 @@ impl ZiskRom2Asm {
                     *code += &format!("pc_{:x}_keccak_active_chunk_done:\n", ctx.pc);
                 }
                 // Call the keccak function
-                Self::push_internal_registers(ctx, code);
+                Self::push_internal_registers(ctx, code, false);
+                //Self::assert_rsp_is_aligned(ctx, code);
                 *code += "\tcall _opcode_keccak\n";
-                Self::pop_internal_registers(ctx, code);
+                Self::pop_internal_registers(ctx, code, false);
+                //Self::assert_rsp_is_aligned(ctx, code);
 
                 // Set result
                 *code +=
@@ -3906,9 +3915,11 @@ impl ZiskRom2Asm {
                     *code += &format!("pc_{:x}_sha256_active_chunk_done:\n", ctx.pc);
                 }
                 // Call the SHA256 function
-                Self::push_internal_registers(ctx, code);
+                Self::push_internal_registers(ctx, code, false);
+                //Self::assert_rsp_is_aligned(ctx, code);
                 *code += "\tcall _opcode_sha256\n";
-                Self::pop_internal_registers(ctx, code);
+                Self::pop_internal_registers(ctx, code, false);
+                //Self::assert_rsp_is_aligned(ctx, code);
 
                 // Set result
                 *code +=
@@ -3953,9 +3964,11 @@ impl ZiskRom2Asm {
                 }
 
                 // Call the secp256k1_add function
-                Self::push_internal_registers(ctx, code);
+                Self::push_internal_registers(ctx, code, false);
+                //Self::assert_rsp_is_aligned(ctx, code);
                 *code += "\tcall _opcode_arith256\n";
-                Self::pop_internal_registers(ctx, code);
+                Self::pop_internal_registers(ctx, code, false);
+                //Self::assert_rsp_is_aligned(ctx, code);
 
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
@@ -3992,9 +4005,11 @@ impl ZiskRom2Asm {
                 }
 
                 // Call the secp256k1_add function
-                Self::push_internal_registers(ctx, code);
+                Self::push_internal_registers(ctx, code, false);
+                //Self::assert_rsp_is_aligned(ctx, code);
                 *code += "\tcall _opcode_arith256_mod\n";
-                Self::pop_internal_registers(ctx, code);
+                Self::pop_internal_registers(ctx, code, false);
+                //Self::assert_rsp_is_aligned(ctx, code);
 
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
@@ -4031,9 +4046,11 @@ impl ZiskRom2Asm {
                 }
 
                 // Call the secp256k1_add function
-                Self::push_internal_registers(ctx, code);
+                Self::push_internal_registers(ctx, code, false);
+                //Self::assert_rsp_is_aligned(ctx, code);
                 *code += "\tcall _opcode_secp256k1_add\n";
-                Self::pop_internal_registers(ctx, code);
+                Self::pop_internal_registers(ctx, code, false);
+                //Self::assert_rsp_is_aligned(ctx, code);
 
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
@@ -4094,9 +4111,11 @@ impl ZiskRom2Asm {
                 }
 
                 // Call the secp256k1_dbl function
-                Self::push_internal_registers(ctx, code);
+                Self::push_internal_registers(ctx, code, false);
+                //Self::assert_rsp_is_aligned(ctx, code);
                 *code += "\tcall _opcode_secp256k1_dbl\n";
-                Self::pop_internal_registers(ctx, code);
+                Self::pop_internal_registers(ctx, code, false);
+                //Self::assert_rsp_is_aligned(ctx, code);
 
                 // Set result
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
@@ -4218,9 +4237,11 @@ impl ZiskRom2Asm {
                 }
 
                 // Call the fcall function
-                Self::push_internal_registers(ctx, code);
+                Self::push_internal_registers(ctx, code, false);
+                //Self::assert_rsp_is_aligned(ctx, code);
                 *code += "\tcall _opcode_fcall\n";
-                Self::pop_internal_registers(ctx, code);
+                Self::pop_internal_registers(ctx, code, false);
+                //Self::assert_rsp_is_aligned(ctx, code);
 
                 // Get free input address
                 *code += &format!(
@@ -5003,32 +5024,95 @@ impl ZiskRom2Asm {
                 ctx.comment_str("chunk_address ? trace_address_threshold")
             );
             *code += &format!("\tjb chunk_{}_address_below_threshold\n", id);
-            Self::push_internal_registers(ctx, code);
+            Self::push_internal_registers(ctx, code, true);
+            //Self::assert_rsp_is_aligned(ctx, code);
             *code += "\tcall _realloc_trace\n";
             if ctx.call_chunk_done {
+                //Self::assert_rsp_is_aligned(ctx, code);
                 *code += "\tcall _chunk_done\n";
             }
-            Self::pop_internal_registers(ctx, code);
+            //Self::assert_rsp_is_aligned(ctx, code);
+            Self::pop_internal_registers(ctx, code, true);
             *code += &format!("\tjmp chunk_{}_address_done\n", id);
             *code += &format!("chunk_{}_address_below_threshold:\n", id);
             if ctx.call_chunk_done {
-                Self::push_internal_registers(ctx, code);
+                Self::push_internal_registers(ctx, code, true);
+                //Self::assert_rsp_is_aligned(ctx, code);
                 *code += "\tcall _chunk_done\n";
-                Self::pop_internal_registers(ctx, code);
+                //Self::assert_rsp_is_aligned(ctx, code);
+                Self::pop_internal_registers(ctx, code, true);
             }
             *code += &format!("chunk_{}_address_done:\n", id);
         } else if ctx.call_chunk_done {
             // Call the chunk_done function
-            Self::push_internal_registers(ctx, code);
+            Self::push_internal_registers(ctx, code, true);
+            //Self::assert_rsp_is_aligned(ctx, code);
             *code += "\tcall _chunk_done\n";
-            Self::pop_internal_registers(ctx, code);
+            //Self::assert_rsp_is_aligned(ctx, code);
+            Self::pop_internal_registers(ctx, code, true);
         }
         if ctx.zip() {
             *code += &format!("chunk_end_{}_done:\n", id);
         }
     }
 
-    fn push_external_registers(_ctx: &mut ZiskAsmContext, code: &mut String) {
+    fn push_xmm_regs(ctx: &mut ZiskAsmContext, code: &mut String, extra_8: bool) {
+        *code += &format!(
+            "\tsub rsp, 16*16 + {} {}\n",
+            if extra_8 { "8" } else { "0" },
+            ctx.comment_str("push 16 xmm registers")
+        );
+        *code += "\tmovaps [rsp + 0*16], xmm0\n";
+        *code += "\tmovaps [rsp + 1*16], xmm1\n";
+        *code += "\tmovaps [rsp + 2*16], xmm2\n";
+        *code += "\tmovaps [rsp + 3*16], xmm3\n";
+        *code += "\tmovaps [rsp + 4*16], xmm4\n";
+        *code += "\tmovaps [rsp + 5*16], xmm5\n";
+        *code += "\tmovaps [rsp + 6*16], xmm6\n";
+        *code += "\tmovaps [rsp + 7*16], xmm7\n";
+        *code += "\tmovaps [rsp + 8*16], xmm8\n";
+        *code += "\tmovaps [rsp + 9*16], xmm9\n";
+        *code += "\tmovaps [rsp + 10*16], xmm10\n";
+        *code += "\tmovaps [rsp + 11*16], xmm11\n";
+        *code += "\tmovaps [rsp + 12*16], xmm12\n";
+        *code += "\tmovaps [rsp + 13*16], xmm13\n";
+        *code += "\tmovaps [rsp + 14*16], xmm14\n";
+        *code += "\tmovaps [rsp + 15*16], xmm15\n";
+    }
+    fn pop_xmm_regs(ctx: &mut ZiskAsmContext, code: &mut String, extra_8: bool) {
+        *code += "\tmovaps xmm0, [rsp + 0*16]\n";
+        *code += "\tmovaps xmm1, [rsp + 1*16]\n";
+        *code += "\tmovaps xmm2, [rsp + 2*16]\n";
+        *code += "\tmovaps xmm3, [rsp + 3*16]\n";
+        *code += "\tmovaps xmm4, [rsp + 4*16]\n";
+        *code += "\tmovaps xmm5, [rsp + 5*16]\n";
+        *code += "\tmovaps xmm6, [rsp + 6*16]\n";
+        *code += "\tmovaps xmm7, [rsp + 7*16]\n";
+        *code += "\tmovaps xmm8, [rsp + 8*16]\n";
+        *code += "\tmovaps xmm9, [rsp + 9*16]\n";
+        *code += "\tmovaps xmm10, [rsp + 10*16]\n";
+        *code += "\tmovaps xmm11, [rsp + 11*16]\n";
+        *code += "\tmovaps xmm12, [rsp + 12*16]\n";
+        *code += "\tmovaps xmm13, [rsp + 13*16]\n";
+        *code += "\tmovaps xmm14, [rsp + 14*16]\n";
+        *code += "\tmovaps xmm15, [rsp + 15*16]\n";
+        *code += &format!(
+            "\tadd rsp, 16*16 + {} {}\n",
+            if extra_8 { "8" } else { "0" },
+            ctx.comment_str("pop 16 xmm registers")
+        );
+    }
+
+    // fn assert_rsp_is_aligned(ctx: &mut ZiskAsmContext, code: &mut String) {
+    //     *code += "\ttest rsp, 0xf\n";
+    //     *code += &format!("\tjz pc_{:x}_{}_rsp_aligned\n", ctx.pc, ctx.assert_rsp_counter);
+    //     *code += "\tint3\n";
+    //     *code += &format!("pc_{:x}_{}_rsp_aligned:\n", ctx.pc, ctx.assert_rsp_counter);
+    //     ctx.assert_rsp_counter += 1;
+    // }
+
+    fn push_external_registers(ctx: &mut ZiskAsmContext, code: &mut String) {
+        *code += &format!("\tmov {}, rsp {}\n", ctx.mem_rsp, ctx.comment_str("backup rsp"));
         //*code += "\tpush rsp\n";
         *code += "\tpush rbx\n";
         *code += "\tpush rbp\n";
@@ -5036,15 +5120,11 @@ impl ZiskRom2Asm {
         *code += "\tpush r13\n";
         *code += "\tpush r14\n";
         *code += "\tpush r15\n";
-        // for r in 0u64..16u64 {
-        //     Self::push_xmm_reg(ctx, code, r);
-        // }
+        Self::push_xmm_regs(ctx, code, true);
     }
 
-    fn pop_external_registers(_ctx: &mut ZiskAsmContext, code: &mut String) {
-        // for r in (0u64..16u64).rev() {
-        //     Self::pop_xmm_reg(ctx, code, r);
-        // }
+    fn pop_external_registers(ctx: &mut ZiskAsmContext, code: &mut String) {
+        Self::pop_xmm_regs(ctx, code, true);
         *code += "\tpop r15\n";
         *code += "\tpop r14\n";
         *code += "\tpop r13\n";
@@ -5052,35 +5132,32 @@ impl ZiskRom2Asm {
         *code += "\tpop rbp\n";
         *code += "\tpop rbx\n";
         //*code += "\tpop rsp\n";
+        *code += &format!("\tmov rsp, {} {}\n", ctx.mem_rsp, ctx.comment_str("restore rsp"));
     }
 
-    fn push_internal_registers(ctx: &mut ZiskAsmContext, code: &mut String) {
+    fn push_internal_registers(ctx: &mut ZiskAsmContext, code: &mut String, extra_8: bool) {
         *code += "\tpush rax\n";
         *code += "\tpush rcx\n";
         *code += "\tpush rdx\n";
-        // *code += "\tpush rdi\n";
+        //*code += "\tpush rdi\n";
         // *code += "\tpush rsi\n";
         // *code += "\tpush rsp\n";
         *code += "\tpush r8\n";
         *code += "\tpush r9\n";
         *code += "\tpush r10\n";
         *code += "\tpush r11\n";
-        for r in 0u64..16u64 {
-            Self::push_xmm_reg(ctx, code, r);
-        }
+        Self::push_xmm_regs(ctx, code, !extra_8);
     }
 
-    fn pop_internal_registers(ctx: &mut ZiskAsmContext, code: &mut String) {
-        for r in (0u64..16u64).rev() {
-            Self::pop_xmm_reg(ctx, code, r);
-        }
+    fn pop_internal_registers(ctx: &mut ZiskAsmContext, code: &mut String, extra_8: bool) {
+        Self::pop_xmm_regs(ctx, code, !extra_8);
         *code += "\tpop r11\n";
         *code += "\tpop r10\n";
         *code += "\tpop r9\n";
         *code += "\tpop r8\n";
         // *code += "\tpop rsp\n";
         // *code += "\tpop rsi\n";
-        // *code += "\tpop rdi\n";
+        //*code += "\tpop rdi\n";
         *code += "\tpop rdx\n";
         *code += "\tpop rcx\n";
         *code += "\tpop rax\n";
@@ -5406,24 +5483,6 @@ impl ZiskRom2Asm {
                 );
             }
         }
-    }
-
-    fn push_xmm_reg(ctx: &mut ZiskAsmContext, code: &mut String, xmm_index: u64) {
-        *code += "\tsub rsp, 8\n";
-        *code += &format!(
-            "\tmovq [rsp], xmm{} {}\n",
-            xmm_index,
-            ctx.comment(format!("push xmm{}", xmm_index))
-        );
-    }
-
-    fn pop_xmm_reg(ctx: &mut ZiskAsmContext, code: &mut String, xmm_index: u64) {
-        *code += &format!(
-            "\tmovq xmm{}, [rsp] {}\n",
-            xmm_index,
-            ctx.comment(format!("pop xmm{}", xmm_index))
-        );
-        *code += "\tadd rsp, 8\n";
     }
 
     /// This function calculates the address of the rom histogram for the provided pc

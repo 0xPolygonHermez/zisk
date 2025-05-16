@@ -121,12 +121,11 @@ extern int _opcode_keccak(uint64_t address)
 {
 #ifdef DEBUG
     if (keccak_metrics || emu_verbose) gettimeofday(&keccak_start, NULL);
+    if (emu_verbose) printf("opcode_keccak() calling KeccakF1600() counter=%lu address=%08lx\n", keccak_counter, address);
 #endif
-    //if (emu_verbose) printf("opcode_keccak() calling KeccakF1600() counter=%d address=%08lx\n", keccak_counter, address);
     keccakf1600_generic((uint64_t *)address);
-    //zisk_keccakf((uint64_t *)address);
-    //if (emu_verbose) printf("opcode_keccak() called KeccakF1600()\n");
 #ifdef DEBUG
+    if (emu_verbose) printf("opcode_keccak() called KeccakF1600()\n");
     keccak_counter++;
     if (keccak_metrics || emu_verbose)
     {
@@ -141,13 +140,13 @@ extern int _opcode_sha256(uint64_t * address)
 {
 #ifdef DEBUG
     if (sha256_metrics || emu_verbose) gettimeofday(&sha256_start, NULL);
+    if (emu_verbose) printf("opcode_sha256() calling sha256_transform_2() counter=%lu address=%p\n", sha256_counter, address);
 #endif
-    //if (emu_verbose) printf("opcode_sha256() calling sha256_transform_2() counter=%d address=%08lx\n", sha256_counter, address);
 
     sha256_transform_2( (uint32_t *) address, (uint8_t *)(address + 4));
 
-    //if (emu_verbose) printf("opcode_sha256() called sha256_transform_2()\n");
 #ifdef DEBUG
+    if (emu_verbose) printf("opcode_sha256() called sha256_transform_2()\n");
     sha256_counter++;
     if (sha256_metrics || emu_verbose)
     {
@@ -185,8 +184,8 @@ extern int _opcode_arith256(uint64_t * address)
         exit(-1);
     }
 
-    //if (emu_verbose) printf("opcode_arith256() called Arith256()\n");
 #ifdef DEBUG
+    if (emu_verbose) printf("opcode_arith256() called Arith256()\n");
     if (emu_verbose)
     {
         printf("dl = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", dl[3], dl[2], dl[1], dl[0], dl[3], dl[2], dl[1], dl[0]);
@@ -230,8 +229,8 @@ extern int _opcode_arith256_mod(uint64_t * address)
         exit(-1);
     }
 
-    //if (emu_verbose) printf("opcode_arith256_mod() called Arith256Mod()\n");
 #ifdef DEBUG
+    if (emu_verbose) printf("opcode_arith256_mod() called Arith256Mod()\n");
     if (emu_verbose)
     {
         printf("d = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", d[3], d[2], d[1], d[0], d[3], d[2], d[1], d[0]);
@@ -316,8 +315,8 @@ extern int _opcode_secp256k1_dbl(uint64_t * address)
         printf("_opcode_secp256k1_dbl() failed callilng AddPointEcP() result=%d;", result);
         exit(-1);
     }
-    //if (emu_verbose) printf("opcode_secp256k1_dbl() called AddPointEcP()\n");
 #ifdef DEBUG
+    if (emu_verbose) printf("opcode_secp256k1_dbl() called AddPointEcP()\n");
     secp256k1_dbl_counter++;
     if (secp256k1_dbl_metrics || emu_verbose)
     {
@@ -361,6 +360,9 @@ extern int _print_fcall_ctx(void)
 
 extern int _opcode_fcall(struct FcallContext * ctx)
 {
+#ifdef DEBUG
+        if (emu_verbose) printf("_opcode_fcall() counter=%lu\n", fcall_counter);
+#endif
     fcall_counter++;
     //printf("_opcode_fcall() counter=%lu\n", fcall_counter);
     int iresult = Fcall(ctx);
@@ -374,6 +376,9 @@ extern int _opcode_fcall(struct FcallContext * ctx)
 
 extern int _opcode_inverse_fp_ec(uint64_t params, uint64_t result)
 {
+#ifdef DEBUG
+    if (emu_verbose) printf("_opcode_inverse_fp_ec() counter=%lu\n", fcall_counter);
+#endif
     int iresult = InverseFpEc (
         (unsigned long *)params, // a
         (unsigned long *)result // r
@@ -388,6 +393,9 @@ extern int _opcode_inverse_fp_ec(uint64_t params, uint64_t result)
 
 extern int _opcode_inverse_fn_ec(uint64_t params, uint64_t result)
 {
+#ifdef DEBUG
+    if (emu_verbose) printf("_opcode_inverse_fn_ec() counter=%lu\n", fcall_counter);
+#endif
     int iresult = InverseFnEc (
         (unsigned long *)params, // a
         (unsigned long *)result // r
@@ -402,6 +410,9 @@ extern int _opcode_inverse_fn_ec(uint64_t params, uint64_t result)
 
 extern int _opcode_sqrt_fp_ec_parity(uint64_t params, uint64_t result)
 {
+#ifdef DEBUG
+    if (emu_verbose) printf("_opcode_sqrt_fp_ec_parity() counter=%lu\n", fcall_counter);
+#endif
     int iresult = SqrtFpEcParity (
         (unsigned long *)params, // a
         *(unsigned long *)(params + 4*8), // parity

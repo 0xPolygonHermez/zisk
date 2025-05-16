@@ -47,6 +47,12 @@ uint64_t get_gen_method(void);
 #define REG_ADDR (uint64_t)0x70000000
 #define REG_SIZE (uint64_t)0x1000 // 4kB
 
+uint8_t * pInput = (uint8_t *)INPUT_ADDR;
+uint8_t * pInputLast = (uint8_t *)(INPUT_ADDR + 10440504 - 64);
+uint8_t * pRam = (uint8_t *)RAM_ADDR;
+uint8_t * pRom = (uint8_t *)ROM_ADDR;
+uint8_t * pTrace = (uint8_t *)TRACE_ADDR;
+
 #define TYPE_PING 1 // Ping
 #define TYPE_PONG 2
 #define TYPE_MT_REQUEST 3 // Minimal trace
@@ -299,6 +305,7 @@ int main(int argc, char *argv[])
         // setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
 
         bool bShutdown = false;
+        bool bReset;
 
         while (true)
         {
@@ -324,6 +331,7 @@ int main(int argc, char *argv[])
 #endif
 
             uint64_t response[5];
+            bReset = false;
             switch (request[0])
             {
                 case TYPE_PING:
@@ -335,7 +343,7 @@ int main(int argc, char *argv[])
                     response[1] = gen_method;
                     response[2] = trace_size;
                     response[3] = 0;
-                    response[4] = 0x0102030405060708;
+                    response[4] = 0;
                     break;
                 }
                 case TYPE_MT_REQUEST:
@@ -352,10 +360,39 @@ int main(int argc, char *argv[])
                         response[2] = trace_size;
                         response[3] = trace_size;
                         response[4] = 0;
+
+                        bReset = true;
                     }
                     else
                     {
                         response[0] = TYPE_MT_RESPONSE;
+                        response[1] = 1;
+                        response[2] = trace_size;
+                        response[3] = trace_size;
+                        response[4] = 0;
+                    }
+                    break;
+                }
+                case TYPE_RH_REQUEST:
+                {
+#ifdef DEBUG
+                    if (verbose) printf("MINIMAL TRACE received\n");
+#endif
+                    if (gen_method == RomHistogram)
+                    {
+                        server_run();
+
+                        response[0] = TYPE_RH_RESPONSE;
+                        response[1] = 0;
+                        response[2] = trace_size;
+                        response[3] = trace_size;
+                        response[4] = 0;
+
+                        bReset = true;
+                    }
+                    else
+                    {
+                        response[0] = TYPE_RH_RESPONSE;
                         response[1] = 1;
                         response[2] = trace_size;
                         response[3] = trace_size;
@@ -384,7 +421,7 @@ int main(int argc, char *argv[])
                 }
             }
 
-            ssize_t bytes_sent = send(client_fd, response, sizeof(response), 0);
+            ssize_t bytes_sent = send(client_fd, response, sizeof(response), MSG_WAITALL);
             if (bytes_sent != sizeof(response))
             {
                 printf("Failed calling send() invalid bytes_sent=%ld errno=%d=%s\n", bytes_sent, errno, strerror(errno));
@@ -395,6 +432,10 @@ int main(int argc, char *argv[])
 #ifdef DEBUG
             if (verbose) printf("Response sent to client\n");
 #endif
+            if (bReset)
+            {
+                server_reset();
+            }
 
             if (bShutdown)
             {
@@ -437,7 +478,7 @@ int main(int argc, char *argv[])
 
 void print_usage (void)
 {
-    char * usage = "Usage: ziskemuasm -s(server) -c(client) -f <input_file> -p <port_number> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [--chunk <chunk_number>] [--shutdows] [--mt <number_of_mt_requests>] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-h/--help print this]";
+    char * usage = "Usage: ziskemuasm -s(server) -c(client) -i <input_file> -p <port_number> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [--chunk <chunk_number>] [--shutdown] [--mt <number_of_mt_requests>] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-h/--help print this]";
 #ifdef DEBUG
     printf("%s [-v verbose on] [-k keccak trace on]\n", usage);
 #else
@@ -529,10 +570,9 @@ void parse_arguments(int argc, char *argv[])
             {
 #ifdef DEBUG
                 verbose = true;
+                //emu_verbose = true;
 #else
-                printf("Verbose option -v is only available in debug compilation\n");
-                print_usage();
-                exit(-1);
+                printf("Verbose option -v is only available in debug compilation; ignoring...\n");
 #endif
                 continue;
             }
@@ -1084,7 +1124,7 @@ void client_run (void)
     
     gettimeofday(&stop_time, NULL);
     duration = TimeDiff(start_time, stop_time);
-    printf("client (MT): done in %lu us\n", duration);
+    printf("client (MT)[%lu]: done in %lu us\n", i, duration);
     } // number_of_mt_requests
 
     /************/
@@ -1375,10 +1415,10 @@ void server_reset (void)
 
     // Reset trace
     // Init output header data
-    uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
-    pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
-    pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    pOutput[2] = trace_size;
+    // uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
+    // pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
+    // pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    // pOutput[2] = trace_size;
     // MT allocated size [8] -> to be updated after completion
     // MT used size [8] -> to be updated after completion
 }
@@ -1388,8 +1428,6 @@ void server_run (void)
     /*******/
     /* ASM */
     /*******/
-
-    uint64_t * pInput = (uint64_t *)INPUT_ADDR;
 
     // Call emulator assembly code
     gettimeofday(&start_time,NULL);
@@ -1681,7 +1719,9 @@ extern void _chunk_done()
 extern void _realloc_trace (void)
 {
     realloc_counter++;
-    //printf("realloc_trace() realloc counter=%d trace_address=0x%08x trace_size=%d\n", realloc_counter, trace_address, trace_size);
+#ifdef DEBUG
+    if (verbose) printf("realloc_trace() realloc counter=%lu trace_address=0x%lx trace_size=%lu\n", realloc_counter, trace_address, trace_size);
+#endif
 
     // Calculate new trace size
     uint64_t new_trace_size = trace_size * 2;
