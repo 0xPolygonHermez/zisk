@@ -68,7 +68,7 @@ fn handle_summary(config: &ServerConfig) -> Response {
     let uptime = config.launch_time.elapsed();
     let summary = serde_json::json!({
         "server_id": config.server_id.to_string(),
-        "elf_file": config.elf_path.display().to_string(),
+        "elf_file": config.elf.display().to_string(),
         "uptime": format!("{:.2?}", uptime)
     });
     Response::Ok { message: summary.to_string() }

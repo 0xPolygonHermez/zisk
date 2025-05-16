@@ -1,21 +1,86 @@
 use std::{net::TcpListener, path::PathBuf, sync::Arc, time::Instant};
 
+use proofman_common::DebugInfo;
 use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::handle_client;
 
-#[derive(Debug)]
 pub struct ServerConfig {
-    pub elf_path: PathBuf,
+    /// Port number for the server to listen on
     pub port: u16,
+
+    /// Path to the ELF file
+    pub elf: PathBuf,
+
+    /// Path to the witness computation dynamic library
+    pub witness_lib: PathBuf,
+
+    /// Path to the ASM file (optional)
+    pub asm: Option<PathBuf>,
+
+    /// Flag indicating whether to use the prebuilt emulator
+    pub emulator: bool,
+
+    /// Path to the proving key
+    pub proving_key: PathBuf,
+
+    /// Indicates whether the proof includes recursive aggregation.
+    pub aggregation: bool,
+
+    /// Indicates whether the prover should produce a final SNARK.
+    pub final_snark: bool,
+
+    /// Indicates whether the prover should verify the produced proofs.
+    pub verify_proofs: bool,
+
+    /// Verbosity level for logging
+    pub verbose: u8,
+
+    /// Debug information
+    pub debug: DebugInfo,
+
+    /// Path to the SHA256f script
+    pub sha256f_script: PathBuf,
+
+    /// Time when the server was launched
     pub launch_time: Instant,
+
+    /// Unique identifier for the server instance
     pub server_id: Uuid,
 }
 
 impl ServerConfig {
-    pub fn new(elf_path: PathBuf, port: u16) -> Self {
-        Self { elf_path, port, launch_time: Instant::now(), server_id: Uuid::new_v4() }
+    pub fn new(
+        port: u16,
+        elf: PathBuf,
+        witness_lib: PathBuf,
+        asm: Option<PathBuf>,
+        emulator: bool,
+        proving_key: PathBuf,
+        aggregation: bool,
+        final_snark: bool,
+        verify_proofs: bool,
+        verbose: u8,
+        debug: DebugInfo,
+        sha256f_script: PathBuf,
+    ) -> Self {
+        Self {
+            port,
+            elf,
+            witness_lib,
+            asm,
+            emulator,
+            proving_key,
+            aggregation,
+            final_snark,
+            verify_proofs,
+            verbose,
+            debug,
+            sha256f_script,
+            launch_time: Instant::now(),
+            server_id: Uuid::new_v4(),
+        }
     }
 }
 
@@ -34,7 +99,7 @@ impl Server {
         info!(
             "Server started on port {} with ELF '{}' and ID {}.",
             self.config.port,
-            self.config.elf_path.display(),
+            self.config.elf.display(),
             self.config.server_id
         );
 

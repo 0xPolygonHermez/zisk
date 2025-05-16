@@ -94,9 +94,6 @@ pub struct ZiskProve {
 
 impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
-        println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
-        println!();
-
         initialize_logger(self.verbose.into());
 
         let debug_info = match &self.debug {

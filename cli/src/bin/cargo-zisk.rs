@@ -60,7 +60,7 @@ fn main() -> Result<()> {
         Cargo::Sdk(cmd) => {
             cmd.command.run().context("Error executing SDK command")?;
         }
-        Cargo::Server(cmd) => {
+        Cargo::Server(mut cmd) => {
             cmd.run().context("Error executing Server command")?;
         }
         Cargo::Verify(cmd) => {
