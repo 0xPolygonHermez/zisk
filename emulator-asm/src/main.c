@@ -1093,7 +1093,7 @@ void client_run (void)
 
         // Prepare message to send
         request[0] = TYPE_MT_REQUEST;
-        request[1] = 1024*1024; // chunk_len
+        request[1] = 1ULL << 18; // chunk_len
         request[2] = 1ULL << 32; // max_steps
         request[3] = 0;
         request[4] = 0;
