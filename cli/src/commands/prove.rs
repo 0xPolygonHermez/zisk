@@ -243,7 +243,7 @@ impl ZiskProve {
             self.elf.clone(),
             self.asm.clone(),
             asm_rom,
-            keccak_script,
+            sha256f_script,
         )
         .expect("Failed to initialize witness library");
 
