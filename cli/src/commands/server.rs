@@ -8,11 +8,10 @@ use rom_setup::{
 };
 use server::{Server, ServerConfig};
 use std::collections::HashMap;
-use std::fs::OpenOptions;
 use std::path::Path;
 use std::{env, fs};
 use std::{path::PathBuf, process};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use zisk_common::init_tracing;
 
 use crate::commands::Field;
 use crate::ux::print_banner;
@@ -63,15 +62,6 @@ pub struct ZiskServer {
 
     #[clap(long, default_value_t = Field::Goldilocks)]
     pub field: Field,
-
-    #[clap(short = 'a', long, default_value_t = false)]
-    pub aggregation: bool,
-
-    #[clap(short = 'f', long, default_value_t = false)]
-    pub final_snark: bool,
-
-    #[clap(short = 'y', long, default_value_t = false)]
-    pub verify_proofs: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short ='v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
@@ -175,11 +165,10 @@ impl ZiskServer {
             self.elf.clone(),
             self.get_witness_computation_lib(),
             self.asm.clone(),
+            asm_rom,
+            custom_commits_map,
             emulator,
             self.get_proving_key(),
-            self.aggregation,
-            self.final_snark,
-            self.verify_proofs,
             self.verbose,
             debug_info,
             sha256f_script,
@@ -253,25 +242,4 @@ impl ZiskServer {
             self.proving_key.clone().unwrap()
         }
     }
-}
-
-fn init_tracing(log_path: &str) {
-    let file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(log_path)
-        .expect("Failed to open log file");
-
-    let file_layer = fmt::layer()
-        .with_writer(file)
-        .with_ansi(false) // no color in file
-        .with_target(false);
-
-    let stdout_layer = fmt::layer().with_writer(std::io::stdout).with_ansi(true).with_target(false);
-
-    tracing_subscriber::registry()
-        .with(EnvFilter::from_default_env().add_directive("info".parse().unwrap()))
-        .with(stdout_layer)
-        .with(file_layer)
-        .init();
 }

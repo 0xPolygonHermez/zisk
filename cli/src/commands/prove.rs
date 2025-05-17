@@ -1,9 +1,4 @@
-use crate::{
-    commands::{Field, ZiskLibInitFn},
-    proof_log,
-    ux::print_banner,
-    ZISK_VERSION_MESSAGE,
-};
+use crate::{commands::Field, proof_log, ux::print_banner, ZISK_VERSION_MESSAGE};
 use anyhow::Result;
 use colored::Colorize;
 use executor::ZiskExecutionResult;
@@ -23,6 +18,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
 };
+use zisk_common::ZiskLibInitFn;
 
 use super::{get_default_proving_key, get_default_witness_computation_lib};
 

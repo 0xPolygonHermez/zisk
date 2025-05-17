@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use log::info;
+use tracing::info;
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
@@ -21,8 +21,6 @@ pub struct BinaryAddSM<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> BinaryAddSM<F> {
-    const MY_NAME: &'static str = "BinaryAdd";
-
     /// Creates a new BinaryAdd State Machine instance.
     ///
     /// # Arguments
@@ -101,8 +99,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         assert!(total_inputs <= num_rows);
 
         info!(
-            "{}: ··· Creating BinaryAdd instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
+            "··· Creating BinaryAdd instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,
             total_inputs as f64 / num_rows as f64 * 100.0

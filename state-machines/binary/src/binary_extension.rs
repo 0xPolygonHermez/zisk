@@ -9,7 +9,7 @@ use std::sync::{
 };
 
 use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
-use log::info;
+use tracing::info;
 
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
@@ -49,8 +49,6 @@ pub struct BinaryExtensionSM<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> BinaryExtensionSM<F> {
-    const MY_NAME: &'static str = "BinaryE ";
-
     /// Creates a new instance of the `BinaryExtensionSM`.
     ///
     /// # Arguments
@@ -340,8 +338,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         );
 
         info!(
-            "{}: ··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
+            "··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,
             total_inputs as f64 / num_rows as f64 * 100.0

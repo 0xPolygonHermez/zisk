@@ -162,7 +162,7 @@ impl AsmRunnerMT {
 
         let total_steps = vec_chunks.iter().map(|x| x.steps).sum::<u64>();
         let mhz = (total_steps as f64 / stop.as_secs_f64()) / 1_000_000.0;
-        info!("AsmRnner: ··· Assembly execution speed: {:.2} MHz", mhz);
+        info!("··· Assembly execution speed: {:.2} MHz", mhz);
 
         // Tell the assembly that we are done reading the trace
         if let Err(e) = sem_out.post() {
@@ -342,7 +342,7 @@ impl AsmRunnerMT {
 
         let total_steps = vec_chunks.iter().map(|x| x.steps).sum::<u64>();
         let mhz = (total_steps as f64 / stop.as_secs_f64()) / 1_000_000.0;
-        info!("AsmRnner: ··· Assembly execution speed: {:.2} MHz", mhz);
+        info!("··· Assembly execution speed: {:.2} MHz", mhz);
 
         // Tell the assembly that we are done reading the trace
         let result = sem_out.post();

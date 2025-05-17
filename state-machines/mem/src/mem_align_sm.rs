@@ -3,7 +3,7 @@ use std::sync::Arc;
 #[cfg(feature = "debug_mem_align")]
 use std::sync::Mutex;
 
-use log::info;
+use tracing::info;
 use num_traits::cast::ToPrimitive;
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
@@ -64,8 +64,6 @@ macro_rules! debug_info {
 }
 
 impl<F: PrimeField64> MemAlignSM<F> {
-    const MY_NAME: &'static str = "MemAlign";
-
     pub fn new(std: Arc<Std<F>>, mem_align_rom_sm: Arc<MemAlignRomSM>) -> Arc<Self> {
         Arc::new(Self {
             _std: std.clone(),
@@ -788,8 +786,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         let num_rows = trace.num_rows();
 
         info!(
-            "{}: ··· Creating Mem Align instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
+            "··· Creating Mem Align instance [{} / {} rows filled {:.2}%]",
             used_rows,
             num_rows,
             used_rows as f64 / num_rows as f64 * 100.0

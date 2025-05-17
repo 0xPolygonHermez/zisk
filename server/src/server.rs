@@ -1,8 +1,10 @@
-use std::{net::TcpListener, path::PathBuf, sync::Arc, time::Instant};
+use std::{collections::HashMap, net::TcpListener, path::PathBuf, sync::Arc, time::Instant};
 
 use proofman_common::DebugInfo;
-use tracing::{error, info};
 use uuid::Uuid;
+
+use tracing::error;
+use zisk_common::info_file;
 
 use crate::handle_client;
 
@@ -19,20 +21,17 @@ pub struct ServerConfig {
     /// Path to the ASM file (optional)
     pub asm: Option<PathBuf>,
 
+    /// Path to the ASM ROM file (optional)
+    pub asm_rom: Option<PathBuf>,
+
+    /// Map of custom commits
+    pub custom_commits_map: HashMap<String, PathBuf>,
+
     /// Flag indicating whether to use the prebuilt emulator
     pub emulator: bool,
 
     /// Path to the proving key
     pub proving_key: PathBuf,
-
-    /// Indicates whether the proof includes recursive aggregation.
-    pub aggregation: bool,
-
-    /// Indicates whether the prover should produce a final SNARK.
-    pub final_snark: bool,
-
-    /// Indicates whether the prover should verify the produced proofs.
-    pub verify_proofs: bool,
 
     /// Verbosity level for logging
     pub verbose: u8,
@@ -56,11 +55,10 @@ impl ServerConfig {
         elf: PathBuf,
         witness_lib: PathBuf,
         asm: Option<PathBuf>,
+        asm_rom: Option<PathBuf>,
+        custom_commits_map: HashMap<String, PathBuf>,
         emulator: bool,
         proving_key: PathBuf,
-        aggregation: bool,
-        final_snark: bool,
-        verify_proofs: bool,
         verbose: u8,
         debug: DebugInfo,
         sha256f_script: PathBuf,
@@ -70,11 +68,10 @@ impl ServerConfig {
             elf,
             witness_lib,
             asm,
+            asm_rom,
+            custom_commits_map,
             emulator,
             proving_key,
-            aggregation,
-            final_snark,
-            verify_proofs,
             verbose,
             debug,
             sha256f_script,
@@ -96,7 +93,7 @@ impl Server {
     pub fn run(&self) -> std::io::Result<()> {
         let listener = TcpListener::bind(("127.0.0.1", self.config.port))?;
 
-        info!(
+        info_file!(
             "Server started on port {} with ELF '{}' and ID {}.",
             self.config.port,
             self.config.elf.display(),
@@ -109,7 +106,7 @@ impl Server {
                     let config = Arc::clone(&self.config);
                     if let Ok(should_shutdown) = handle_client(stream, config) {
                         if should_shutdown {
-                            info!("{}", "Shutdown signal received. Exiting.");
+                            info_file!("{}", "Shutdown signal received. Exiting.");
                             break;
                         }
                     }

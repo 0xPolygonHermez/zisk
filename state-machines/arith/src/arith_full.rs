@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crate::{
     ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
 };
-use log::info;
+use tracing::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
@@ -34,8 +34,6 @@ pub struct ArithFullSM {
 }
 
 impl ArithFullSM {
-    const MY_NAME: &'static str = "Arith   ";
-
     /// Creates a new `ArithFullSM` instance.
     ///
     /// # Arguments
@@ -73,8 +71,7 @@ impl ArithFullSM {
         let mut table_inputs = ArithTableInputs::new();
 
         info!(
-            "{}: ··· Creating Arith instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
+            "··· Creating Arith instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,
             total_inputs as f64 / num_rows as f64 * 100.0

@@ -2,7 +2,7 @@ use core::panic;
 use std::{fs, path::PathBuf, sync::Arc};
 
 use generic_array::{typenum::U64, GenericArray};
-use log::info;
+use tracing::info;
 use p3_field::PrimeField64;
 use sha2::compress256;
 
@@ -37,8 +37,6 @@ pub struct Sha256fSM {
 type Sha256fInput = [u64; INPUT_DATA_SIZE_BITS];
 
 impl Sha256fSM {
-    const MY_NAME: &'static str = "Sha256f ";
-
     /// Creates a new Sha256f State Machine instance.
     ///
     /// # Arguments
@@ -472,8 +470,7 @@ impl Sha256fSM {
         assert!(num_rows_needed <= num_rows);
 
         info!(
-            "{}: ··· Creating Sha256f instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
+            "··· Creating Sha256f instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,
             num_rows_needed as f64 / num_rows as f64 * 100.0

@@ -1,7 +1,7 @@
 use core::panic;
 use std::sync::Arc;
 
-use log::info;
+use tracing::info;
 use p3_field::PrimeField64;
 use tiny_keccak::keccakf;
 
@@ -39,8 +39,6 @@ pub struct KeccakfSM {
 type KeccakfInput = [u64; INPUT_DATA_SIZE_BITS];
 
 impl KeccakfSM {
-    const MY_NAME: &'static str = "Keccakf ";
-
     pub const NUM_KECCAKF_PER_SLOT: usize = CHUNKS_KECCAKF * BITS_KECCAKF;
 
     const RB_SIZE: usize = Self::NUM_KECCAKF_PER_SLOT * RB;
@@ -496,8 +494,7 @@ impl KeccakfSM {
         debug_assert!(num_rows_needed <= num_rows);
 
         info!(
-            "{}: ··· Creating Keccakf instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
+            "··· Creating Keccakf instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,
             num_rows_needed as f64 / num_rows as f64 * 100.0

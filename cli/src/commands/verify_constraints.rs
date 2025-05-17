@@ -16,12 +16,9 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
 };
+use zisk_common::ZiskLibInitFn;
 
-use crate::{
-    commands::{Field, ZiskLibInitFn},
-    ux::print_banner,
-    ZISK_VERSION_MESSAGE,
-};
+use crate::{commands::Field, ux::print_banner, ZISK_VERSION_MESSAGE};
 
 use super::{get_default_proving_key, get_default_witness_computation_lib};
 

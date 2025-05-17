@@ -4,27 +4,29 @@ use std::{
     sync::Arc,
 };
 
-use crate::ServerConfig;
-use clap::ValueEnum;
+use crate::{
+    handle_prove, handle_verify_constraints, ProveRequest, ServerConfig, VerifyConstraintsRequest,
+};
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use zisk_common::info_file;
 
-#[derive(Serialize, Deserialize, Debug, Clone, ValueEnum, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-#[clap(rename_all = "lowercase")]
-pub enum Command {
-    Summary,
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "command", rename_all = "lowercase")]
+pub enum Request {
+    Status,
     Shutdown,
+    Prove {
+        #[serde(flatten)]
+        payload: ProveRequest,
+    },
+    VerifyConstraints {
+        #[serde(flatten)]
+        payload: VerifyConstraintsRequest,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Request {
-    pub command: Command,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "status")]
-#[serde(rename_all = "lowercase")]
+#[serde(tag = "status", rename_all = "lowercase")]
 pub enum Response {
     Ok { message: String },
     Error { message: String },
@@ -45,12 +47,19 @@ pub fn handle_client(mut stream: TcpStream, config: Arc<ServerConfig>) -> std::i
         }
     };
 
-    info!("Received request: {:?}", request);
+    info_file!("Received request: {:?}", request);
 
-    let must_shutdown = request.command == Command::Shutdown;
-    let response = match request.command {
-        Command::Summary => handle_summary(config.as_ref()),
-        Command::Shutdown => handle_shutdown(),
+    let mut must_shutdown = false;
+    let response = match request {
+        Request::Status => handle_status(config.as_ref()),
+        Request::Shutdown => {
+            must_shutdown = true;
+            handle_shutdown()
+        }
+        Request::VerifyConstraints { payload } => {
+            handle_verify_constraints(config.as_ref(), payload)
+        }
+        Request::Prove { payload } => handle_prove(config.as_ref(), payload),
     };
 
     send_json(&mut stream, &response)?;
@@ -64,14 +73,14 @@ fn send_json(stream: &mut TcpStream, response: &Response) -> std::io::Result<()>
 }
 
 // Command handlers
-fn handle_summary(config: &ServerConfig) -> Response {
+fn handle_status(config: &ServerConfig) -> Response {
     let uptime = config.launch_time.elapsed();
-    let summary = serde_json::json!({
+    let status = serde_json::json!({
         "server_id": config.server_id.to_string(),
         "elf_file": config.elf.display().to_string(),
         "uptime": format!("{:.2?}", uptime)
     });
-    Response::Ok { message: summary.to_string() }
+    Response::Ok { message: status.to_string() }
 }
 
 fn handle_shutdown() -> Response {
