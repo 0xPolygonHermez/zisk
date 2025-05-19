@@ -151,6 +151,7 @@ impl Bn254Complex {
         let mut data = Self::prepare(op.clone(), f1, f2, None).unwrap();
         for icol in 0..COLS {
             let index = icol as usize;
+            // data.eq[index][0] = 0;
             data.eq[index][1] = match op {
                 OpType::Add => equations::Bn254ComplexAddX3::calculate(
                     icol, &data.x1, &data.x2, &data.x3, &data.q1,

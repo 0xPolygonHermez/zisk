@@ -7,6 +7,7 @@ pub const ARITH_EQ_CHUNKS: usize = 16;
 pub const ARITH_EQ_CHUNK_BITS: usize = 16;
 pub const ARITH_EQ_CHUNK_SIZE: usize = 1 << ARITH_EQ_CHUNK_BITS;
 pub const ARITH_EQ_CHUNK_BASE_MAX: usize = ARITH_EQ_CHUNK_SIZE - 1;
+pub const ARITH_EQ_OP_NUM: usize = 9;
 
 pub const SEL_OP_ARITH256: usize = 0;
 pub const SEL_OP_ARITH256_MOD: usize = 1;

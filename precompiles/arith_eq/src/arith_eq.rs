@@ -140,6 +140,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
             row_offset,
         );
     }
+
     fn process_secp256k1_add(
         &self,
         input: &Secp256k1AddInput,
@@ -164,6 +165,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
             row_offset,
         );
     }
+
     fn process_secp256k1_dbl(
         &self,
         input: &Secp256k1DblInput,
@@ -319,6 +321,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
         self.std.range_check(value, 1, range_id);
         F::from_i64(value)
     }
+
     fn expand_data_on_trace(
         &self,
         data: &executors::ArithEqData,
@@ -357,7 +360,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
             trace[irow].s = self.to_ranged_field(data.s[i], self.chunk_range_id);
 
             // TODO Range check
-            for j in 0..4 {
+            for j in 0..ARITH_EQ_OP_NUM {
                 let selected = j == sel_op;
                 trace[irow].sel_op[j] = F::from_bool(selected);
                 if i == 0 {
@@ -449,6 +452,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
             }
         }
     }
+
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
     ///
     /// # Arguments
@@ -461,10 +465,6 @@ impl<F: PrimeField64> ArithEqSM<F> {
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<ArithEqInput>],
     ) -> AirInstance<F> {
-        // Get the fixed cols
-        let _airgroup_id = ArithEqTrace::<usize>::AIRGROUP_ID;
-        let _air_id = ArithEqTrace::<usize>::AIR_ID;
-
         let mut trace = ArithEqTrace::<F>::new();
         let num_rows = trace.num_rows();
         let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
@@ -516,6 +516,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
                 index += 1;
             }
         }
+
         let padding_ops = (self.num_available_ops - index) as u64;
         self.std.range_check(0, 3 * padding_ops, self.q_hsc_range_id);
         self.std.range_check(0, 157 * padding_ops, self.chunk_range_id);
