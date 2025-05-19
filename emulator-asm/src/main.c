@@ -42,10 +42,16 @@ uint64_t get_gen_method(void);
 #define OUTPUT_ADDR (SYS_ADDR + SYS_SIZE)
 
 #define TRACE_ADDR         (uint64_t)0xc0000000
-#define INITIAL_TRACE_SIZE (uint64_t)0x40000000 // 4GB
+#define INITIAL_TRACE_SIZE (uint64_t)0x100000000 // 4GB
 
 #define REG_ADDR (uint64_t)0x70000000
 #define REG_SIZE (uint64_t)0x1000 // 4kB
+
+uint8_t * pInput = (uint8_t *)INPUT_ADDR;
+uint8_t * pInputLast = (uint8_t *)(INPUT_ADDR + 10440504 - 64);
+uint8_t * pRam = (uint8_t *)RAM_ADDR;
+uint8_t * pRom = (uint8_t *)ROM_ADDR;
+uint8_t * pTrace = (uint8_t *)TRACE_ADDR;
 
 #define TYPE_PING 1 // Ping
 #define TYPE_PONG 2
@@ -108,18 +114,48 @@ uint64_t realloc_counter = 0;
 
 extern void zisk_keccakf(uint64_t state[25]);
 
-#define CHUNK_SIZE 1024*1024
-uint64_t chunk_size = CHUNK_SIZE;
-uint64_t chunk_size_mask = CHUNK_SIZE - 1;
-uint64_t max_steps = 0xffffffffffffffff;
+bool is_power_of_two (uint64_t number) {
+    return (number != 0) && ((number & (number - 1)) == 0);
+}
+
+#define INITIAL_CHUNK_SIZE (1ULL << 18)
+uint64_t chunk_size = INITIAL_CHUNK_SIZE;
+uint64_t chunk_size_mask = INITIAL_CHUNK_SIZE - 1;
+uint64_t max_steps = (1ULL << 32);
+
+void set_max_steps (uint64_t new_max_steps)
+{
+    if (!is_power_of_two(new_max_steps))
+    {
+        printf("ERROR: set_max_steps() got a new max steps = %lu that is not a power of two\n", new_max_steps);
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+    max_steps = new_max_steps;
+}
 
 uint64_t initial_trace_size = INITIAL_TRACE_SIZE;
 uint64_t trace_address = TRACE_ADDR;
 uint64_t trace_size = INITIAL_TRACE_SIZE;
 
 // Worst case: every chunk instruction is a keccak operation, with an input data of 200 bytes
-#define MAX_CHUNK_TRACE_SIZE (CHUNK_SIZE * 200) + (44 * 8) + 32
+#define MAX_CHUNK_TRACE_SIZE (INITIAL_CHUNK_SIZE * 200) + (44 * 8) + 32
 uint64_t trace_address_threshold = TRACE_ADDR + INITIAL_TRACE_SIZE - MAX_CHUNK_TRACE_SIZE;
+
+void set_chunk_size (uint64_t new_chunk_size)
+{
+    if (!is_power_of_two(new_chunk_size))
+    {
+        printf("ERROR: set_chunk_size() got a new chunk size = %lu that is not a power of two\n", new_chunk_size);
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+    chunk_size = new_chunk_size;
+    chunk_size_mask = chunk_size - 1;
+    trace_address_threshold = TRACE_ADDR + INITIAL_TRACE_SIZE - ((chunk_size*200) + (44*8) + 32);
+}
 
 void parse_arguments(int argc, char *argv[]);
 uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime);
@@ -138,32 +174,20 @@ void log_main_trace(void);
 int recv_all_with_timeout (int sockfd, void *buffer, size_t length, int flags, int timeout_sec);
 
 // Configuration
-bool output = true;
+bool output = false;
 bool metrics = false;
 bool trace = false;
 bool trace_trace = false;
 #ifdef DEBUG
 bool verbose = false;
 #endif
-bool generate_minimal_trace = false;
 
 // ROM histogram
-bool generate_rom_histogram = false;
 uint64_t histogram_size = 0;
 uint64_t bios_size = 0;
 uint64_t program_size = 0;
 
-// Main trace
-bool generate_main_trace = false;
-
-// Chunks
-bool generate_chunks = false;
-
-// Fast
-bool generate_fast = false;
-
 // Zip
-bool generate_zip = false;
 uint64_t chunk_mask = 0x0; // 0, 1, 2, 3, 4, 5, 6 or 7
 #define MAX_CHUNK_MASK 7
 
@@ -299,6 +323,7 @@ int main(int argc, char *argv[])
         // setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
 
         bool bShutdown = false;
+        bool bReset;
 
         while (true)
         {
@@ -324,6 +349,7 @@ int main(int argc, char *argv[])
 #endif
 
             uint64_t response[5];
+            bReset = false;
             switch (request[0])
             {
                 case TYPE_PING:
@@ -335,7 +361,7 @@ int main(int argc, char *argv[])
                     response[1] = gen_method;
                     response[2] = trace_size;
                     response[3] = 0;
-                    response[4] = 0x0102030405060708;
+                    response[4] = 0;
                     break;
                 }
                 case TYPE_MT_REQUEST:
@@ -345,17 +371,51 @@ int main(int argc, char *argv[])
 #endif
                     if (gen_method == MinimalTrace)
                     {
+                        set_max_steps(request[1]);
+                        set_chunk_size(request[2]);
+
                         server_run();
 
                         response[0] = TYPE_MT_RESPONSE;
-                        response[1] = 0;
+                        response[1] = MEM_END ? 0 : 1;
                         response[2] = trace_size;
                         response[3] = trace_size;
                         response[4] = 0;
+
+                        bReset = true;
                     }
                     else
                     {
                         response[0] = TYPE_MT_RESPONSE;
+                        response[1] = 1;
+                        response[2] = trace_size;
+                        response[3] = trace_size;
+                        response[4] = 0;
+                    }
+                    break;
+                }
+                case TYPE_RH_REQUEST:
+                {
+#ifdef DEBUG
+                    if (verbose) printf("MINIMAL TRACE received\n");
+#endif
+                    if (gen_method == RomHistogram)
+                    {
+                        set_max_steps(request[1]);
+
+                        server_run();
+
+                        response[0] = TYPE_RH_RESPONSE;
+                        response[1] = MEM_END ? 0 : 1;
+                        response[2] = trace_size;
+                        response[3] = trace_size;
+                        response[4] = 0;
+
+                        bReset = true;
+                    }
+                    else
+                    {
+                        response[0] = TYPE_RH_RESPONSE;
                         response[1] = 1;
                         response[2] = trace_size;
                         response[3] = trace_size;
@@ -384,7 +444,7 @@ int main(int argc, char *argv[])
                 }
             }
 
-            ssize_t bytes_sent = send(client_fd, response, sizeof(response), 0);
+            ssize_t bytes_sent = send(client_fd, response, sizeof(response), MSG_WAITALL);
             if (bytes_sent != sizeof(response))
             {
                 printf("Failed calling send() invalid bytes_sent=%ld errno=%d=%s\n", bytes_sent, errno, strerror(errno));
@@ -395,6 +455,10 @@ int main(int argc, char *argv[])
 #ifdef DEBUG
             if (verbose) printf("Response sent to client\n");
 #endif
+            if (bReset)
+            {
+                server_reset();
+            }
 
             if (bShutdown)
             {
@@ -437,7 +501,7 @@ int main(int argc, char *argv[])
 
 void print_usage (void)
 {
-    char * usage = "Usage: ziskemuasm -s(server) -c(client) -f <input_file> -p <port_number> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [--chunk <chunk_number>] [--shutdows] [--mt <number_of_mt_requests>] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-h/--help print this]";
+    char * usage = "Usage: ziskemuasm -s(server) -c(client) -i <input_file> -p <port_number> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [--chunk <chunk_number>] [--shutdown] [--mt <number_of_mt_requests>] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-h/--help print this]";
 #ifdef DEBUG
     printf("%s [-v verbose on] [-k keccak trace on]\n", usage);
 #else
@@ -465,42 +529,36 @@ void parse_arguments(int argc, char *argv[])
             if ( (strcmp(argv[i], "--gen=0") == 0) || (strcmp(argv[i], "--generate_fast") == 0))
             {
                 gen_method = Fast;
-                generate_fast = true;
                 number_of_selected_generation_methods++;
                 continue;
             }
             if ( (strcmp(argv[i], "--gen=1") == 0) || (strcmp(argv[i], "--generate_minimal_trace") == 0))
             {
                 gen_method = MinimalTrace;
-                generate_minimal_trace = true;
                 number_of_selected_generation_methods++;
                 continue;
             }
             if ( (strcmp(argv[i], "--gen=2") == 0) || (strcmp(argv[i], "--generate_rom_histogram") == 0))
             {
                 gen_method = RomHistogram;
-                generate_rom_histogram = true;
                 number_of_selected_generation_methods++;
                 continue;
             }
             if ( (strcmp(argv[i], "--gen=3") == 0) || (strcmp(argv[i], "--generate_main_trace") == 0))
             {
                 gen_method = MainTrace;
-                generate_main_trace = true;
                 number_of_selected_generation_methods++;
                 continue;
             }
             if ( (strcmp(argv[i], "--gen=4") == 0) || (strcmp(argv[i], "--generate_chunks") == 0))
             {
                 gen_method = ChunksOnly;
-                generate_chunks = true;
                 number_of_selected_generation_methods++;
                 continue;
             }
             if ( (strcmp(argv[i], "--gen=6") == 0) || (strcmp(argv[i], "--generate_zip") == 0))
             {
                 gen_method = Zip;
-                generate_zip = true;
                 number_of_selected_generation_methods++;
                 continue;
             }
@@ -529,10 +587,9 @@ void parse_arguments(int argc, char *argv[])
             {
 #ifdef DEBUG
                 verbose = true;
+                //emu_verbose = true;
 #else
-                printf("Verbose option -v is only available in debug compilation\n");
-                print_usage();
-                exit(-1);
+                printf("Verbose option -v is only available in debug compilation; ignoring...\n");
 #endif
                 continue;
             }
@@ -1032,59 +1089,62 @@ void client_run (void)
     /*****************/
     for (uint64_t i=0; i<number_of_mt_requests; i++)
     {
-    gettimeofday(&start_time, NULL);
+        gettimeofday(&start_time, NULL);
 
-    // Prepare message to send
-    request[0] = TYPE_MT_REQUEST;
-    request[1] = 1024*1024; // chunk_len
-    request[2] = 0xFFFFFFFF; // max_steps
-    request[3] = 0;
-    request[4] = 0;
+        // Prepare message to send
+        request[0] = TYPE_MT_REQUEST;
+        request[1] = 1ULL << 18; // chunk_len
+        request[2] = 1ULL << 32; // max_steps
+        request[3] = 0;
+        request[4] = 0;
 
-    // Send data to server
-    result = send(socket_fd, request, sizeof(request), 0);
-    if (result < 0)
-    {
-        printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
+        // Send data to server
+        result = send(socket_fd, request, sizeof(request), 0);
+        if (result < 0)
+        {
+            printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
 
-    // Read server response
-    bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-    if (bytes_received < 0)
-    {
-        printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (bytes_received != sizeof(response))
-    {
-        printf("recv_all_with_timeout() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (response[0] != TYPE_MT_RESPONSE)
-    {
-        printf("recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (response[1] != 0)
-    {
-        printf("recv_all_with_timeout() returned unexpected result=%lu\n", response[1]);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    
-    gettimeofday(&stop_time, NULL);
-    duration = TimeDiff(start_time, stop_time);
-    printf("client (MT): done in %lu us\n", duration);
+        // Read server response
+        bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
+        if (bytes_received < 0)
+        {
+            printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if (bytes_received != sizeof(response))
+        {
+            printf("recv_all_with_timeout() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if (response[0] != TYPE_MT_RESPONSE)
+        {
+            printf("recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if (response[1] != 0)
+        {
+            printf("recv_all_with_timeout() returned unexpected result=%lu\n", response[1]);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        
+        gettimeofday(&stop_time, NULL);
+        duration = TimeDiff(start_time, stop_time);
+        printf("client (MT)[%lu]: done in %lu us\n", i, duration);
+
+        // Pretend to spend some time processing the incoming data
+        usleep((1000000));
     } // number_of_mt_requests
 
     /************/
@@ -1275,7 +1335,7 @@ void server_setup (void)
     /* TRACE */
     /*********/
 
-    if (generate_rom_histogram)
+    if (gen_method == RomHistogram)
     {
         // Get max PC values for low and high addresses
         uint64_t max_bios_pc = get_max_bios_pc();
@@ -1293,7 +1353,7 @@ void server_setup (void)
         trace_size = initial_trace_size;
     }
 
-    if (generate_minimal_trace || generate_rom_histogram || generate_main_trace || generate_zip)
+    if ((gen_method == MinimalTrace) || (gen_method == RomHistogram) || (gen_method == MainTrace) || (gen_method == Zip))
     {
         // Make sure the output shared memory is deleted
         shm_unlink(shmem_output_name);
@@ -1375,10 +1435,10 @@ void server_reset (void)
 
     // Reset trace
     // Init output header data
-    uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
-    pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
-    pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    pOutput[2] = trace_size;
+    // uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
+    // pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
+    // pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    // pOutput[2] = trace_size;
     // MT allocated size [8] -> to be updated after completion
     // MT used size [8] -> to be updated after completion
 }
@@ -1388,8 +1448,6 @@ void server_run (void)
     /*******/
     /* ASM */
     /*******/
-
-    uint64_t * pInput = (uint64_t *)INPUT_ADDR;
 
     // Call emulator assembly code
     gettimeofday(&start_time,NULL);
@@ -1443,7 +1501,7 @@ void server_run (void)
             final_trace_size_percentage,
             end);
 #endif
-        if (generate_rom_histogram)
+        if (gen_method == RomHistogram)
         {
             printf("Rom histogram size=%lu\n", histogram_size);
         }
@@ -1466,14 +1524,14 @@ void server_run (void)
     }
 
     // Complete output header data
-    if (generate_minimal_trace || generate_rom_histogram || generate_zip)
+    if ((gen_method == MinimalTrace) || (gen_method == RomHistogram) || (gen_method == Zip))
     {
         uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
         pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
         pOutput[1] = 0; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
         pOutput[2] = trace_size; // MT allocated size [8]
         //assert(final_trace_size > 32);
-        if (generate_minimal_trace || generate_zip)
+        if ((gen_method == MinimalTrace) || (gen_method == Zip))
         {
             pOutput[3] = final_trace_size; // MT used size [8]
         }
@@ -1499,15 +1557,15 @@ void server_run (void)
     // }
 
     // Log trace
-    if ((generate_minimal_trace || generate_zip) && trace)
+    if (((gen_method == MinimalTrace) || (gen_method == Zip)) && trace)
     {
         log_minimal_trace();
     }
-    if (generate_rom_histogram && trace)
+    if ((gen_method == RomHistogram) && trace)
     {
         log_histogram();
     }
-    if (generate_main_trace && trace)
+    if ((gen_method == MainTrace) && trace)
     {
         log_main_trace();
     }
@@ -1681,7 +1739,9 @@ extern void _chunk_done()
 extern void _realloc_trace (void)
 {
     realloc_counter++;
-    //printf("realloc_trace() realloc counter=%d trace_address=0x%08x trace_size=%d\n", realloc_counter, trace_address, trace_size);
+#ifdef DEBUG
+    if (verbose) printf("realloc_trace() realloc counter=%lu trace_address=0x%lx trace_size=%lu\n", realloc_counter, trace_address, trace_size);
+#endif
 
     // Calculate new trace size
     uint64_t new_trace_size = trace_size * 2;
