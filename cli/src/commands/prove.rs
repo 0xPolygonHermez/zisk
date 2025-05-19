@@ -102,6 +102,9 @@ pub struct ZiskProve {
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
+    #[clap(short = 'p', long)]
+    pub max_number_proof_pools: Option<usize>,
+
     #[clap(short = 'b', long, default_value_t = false)]
     pub save_proofs: bool,
 
@@ -223,6 +226,10 @@ impl ZiskProve {
         }
         if self.max_witness_stored.is_some() {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
+        }
+
+        if self.max_number_proof_pools.is_some() {
+            gpu_params.with_max_number_proof_pools(self.max_number_proof_pools.unwrap());
         }
 
         let proofman = ProofMan::<Goldilocks>::new(
