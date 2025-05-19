@@ -20,6 +20,10 @@ use super::point256::SyscallPoint256;
 /// ### Safety
 ///
 /// The caller must ensure that `p1` is a valid pointer to data that is aligned to an eight-byte boundary.
+///
+/// The caller must ensure that `p1` coordinates are within the range of the BN254 base field.
+///
+/// The resulting point will have both coordinates in the range of the BN254 base field.
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn syscall_bn254_curve_dbl(p1: &mut SyscallPoint256) {

@@ -8,6 +8,13 @@ use core::arch::asm;
 
 use super::complex256::SyscallComplex256;
 
+#[derive(Debug)]
+#[repr(C)]
+pub struct SyscallBn254ComplexMulParams<'a> {
+    pub f1: &'a mut SyscallComplex256,
+    pub f2: &'a SyscallComplex256,
+}
+
 /// Performs the multiplication of two complex field elements on a complex extension of the Bn254 base field curve,
 /// storing the result in the first field element.
 ///
@@ -22,14 +29,10 @@ use super::complex256::SyscallComplex256;
 /// ### Safety
 ///
 /// The caller must ensure that `f1` is a valid pointer to data that is aligned to an eight-byte boundary.
-
-#[derive(Debug)]
-#[repr(C)]
-pub struct SyscallBn254ComplexMulParams<'a> {
-    pub f1: &'a mut SyscallComplex256,
-    pub f2: &'a SyscallComplex256,
-}
-
+///
+/// The caller must ensure that both `f1` and `f2` coordinates are within the range of the BN254 base field.
+///
+/// The resulting field element will have both coordinates in the range of the BN254 base field.
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn syscall_bn254_complex_mul(params: &mut SyscallBn254ComplexMulParams) {
