@@ -26,6 +26,8 @@ pub enum AsmGenerationMethod {
     /// accross 8 processes, to increase speed and memory bus saturation.  It's called zip because
     /// one process generates the chunks that are complementary to the sum of the other processes.
     AsmZip,
+    /// Generate assembly code to compute the memory operations [w/r, width, address] trace
+    AsmMemOp,
 }
 /// RISCV-to-ZisK struct containing the input ELF RISCV file name and the output ZISK ASM file name
 pub struct Riscv2zisk {

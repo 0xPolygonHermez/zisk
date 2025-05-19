@@ -73,6 +73,7 @@ typedef enum {
     ChunksOnly = 4,
     BusOp = 5,
     Zip = 6,
+    MemOp = 7,
 } GenMethod;
 GenMethod gen_method = Fast;
 
@@ -170,6 +171,7 @@ void server_cleanup (void);
 void log_minimal_trace(void);
 void log_histogram(void);
 void log_main_trace(void);
+void log_mem_op(void);
 
 int recv_all_with_timeout (int sockfd, void *buffer, size_t length, int flags, int timeout_sec);
 
@@ -397,7 +399,7 @@ int main(int argc, char *argv[])
                 case TYPE_RH_REQUEST:
                 {
 #ifdef DEBUG
-                    if (verbose) printf("MINIMAL TRACE received\n");
+                    if (verbose) printf("ROM HISTOGRAM received\n");
 #endif
                     if (gen_method == RomHistogram)
                     {
@@ -416,6 +418,36 @@ int main(int argc, char *argv[])
                     else
                     {
                         response[0] = TYPE_RH_RESPONSE;
+                        response[1] = 1;
+                        response[2] = trace_size;
+                        response[3] = trace_size;
+                        response[4] = 0;
+                    }
+                    break;
+                }
+                case TYPE_MO_REQUEST:
+                {
+#ifdef DEBUG
+                    if (verbose) printf("MEMORY OPERATIONS received\n");
+#endif
+                    if (gen_method == MemOp)
+                    {
+                        set_max_steps(request[1]);
+                        set_chunk_size(request[2]);
+
+                        server_run();
+
+                        response[0] = TYPE_MO_RESPONSE;
+                        response[1] = MEM_END ? 0 : 1;
+                        response[2] = trace_size;
+                        response[3] = trace_size;
+                        response[4] = 0;
+
+                        bReset = true;
+                    }
+                    else
+                    {
+                        response[0] = TYPE_MO_RESPONSE;
                         response[1] = 1;
                         response[2] = trace_size;
                         response[3] = trace_size;
@@ -559,6 +591,12 @@ void parse_arguments(int argc, char *argv[])
             if ( (strcmp(argv[i], "--gen=6") == 0) || (strcmp(argv[i], "--generate_zip") == 0))
             {
                 gen_method = Zip;
+                number_of_selected_generation_methods++;
+                continue;
+            }
+            if ( (strcmp(argv[i], "--gen=7") == 0) || (strcmp(argv[i], "--generate_mem_op") == 0))
+            {
+                gen_method = MemOp;
                 number_of_selected_generation_methods++;
                 continue;
             }
@@ -855,6 +893,15 @@ void configure (void)
             port = 23115;
             break;
         }
+        case MemOp:
+        {
+            strcpy(shmem_input_name, "ZISKMO_input");
+            strcpy(shmem_output_name, "ZISKMO_output");
+            strcpy(sem_chunk_done_name, "ZISKMO_chunk_done");
+            chunk_done = true;
+            port = 23117;
+            break;
+        }
         default:
         {
             printf("Invalid gen_method = %u\n", gen_method);
@@ -1072,7 +1119,7 @@ void client_run (void)
         fflush(stderr);
         exit(-1);
     }
-    if (response[1] != 1)
+    if (response[1] != gen_method)
     {
         printf("recv_all_with_timeout() returned unexpected gen_method=%lu\n", response[1]);
         fflush(stdout);
@@ -1089,62 +1136,138 @@ void client_run (void)
     /*****************/
     for (uint64_t i=0; i<number_of_mt_requests; i++)
     {
-        gettimeofday(&start_time, NULL);
+        switch (gen_method)
+        {
+            case MinimalTrace:
+            {
+                gettimeofday(&start_time, NULL);
 
-        // Prepare message to send
-        request[0] = TYPE_MT_REQUEST;
-        request[1] = 1ULL << 18; // chunk_len
-        request[2] = 1ULL << 32; // max_steps
-        request[3] = 0;
-        request[4] = 0;
+                // Prepare message to send
+                request[0] = TYPE_MT_REQUEST;
+                request[1] = 1ULL << 32; // max_steps
+                request[2] = 1ULL << 18; // chunk_len
+                request[3] = 0;
+                request[4] = 0;
 
-        // Send data to server
-        result = send(socket_fd, request, sizeof(request), 0);
-        if (result < 0)
-        {
-            printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
+                // Send data to server
+                result = send(socket_fd, request, sizeof(request), 0);
+                if (result < 0)
+                {
+                    printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
 
-        // Read server response
-        bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-        if (bytes_received < 0)
-        {
-            printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (bytes_received != sizeof(response))
-        {
-            printf("recv_all_with_timeout() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (response[0] != TYPE_MT_RESPONSE)
-        {
-            printf("recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (response[1] != 0)
-        {
-            printf("recv_all_with_timeout() returned unexpected result=%lu\n", response[1]);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-        printf("client (MT)[%lu]: done in %lu us\n", i, duration);
+                // Read server response
+                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
+                if (bytes_received < 0)
+                {
+                    printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (bytes_received != sizeof(response))
+                {
+                    printf("recv_all_with_timeout() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[0] != TYPE_MT_RESPONSE)
+                {
+                    printf("recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[1] != 0)
+                {
+                    printf("recv_all_with_timeout() returned unexpected result=%lu\n", response[1]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                printf("client (MT)[%lu]: done in %lu us\n", i, duration);
 
-        // Pretend to spend some time processing the incoming data
-        usleep((1000000));
+                // Pretend to spend some time processing the incoming data
+                usleep((1000000));
+
+                break;
+            }
+            case MemOp:
+            {
+                gettimeofday(&start_time, NULL);
+
+                // Prepare message to send
+                request[0] = TYPE_MO_REQUEST;
+                request[1] = 1ULL << 32; // max_steps
+                request[2] = 1ULL << 18; // chunk_len
+                request[3] = 0;
+                request[4] = 0;
+
+                // Send data to server
+                result = send(socket_fd, request, sizeof(request), 0);
+                if (result < 0)
+                {
+                    printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+
+                // Read server response
+                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
+                if (bytes_received < 0)
+                {
+                    printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (bytes_received != sizeof(response))
+                {
+                    printf("recv_all_with_timeout() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[0] != TYPE_MO_RESPONSE)
+                {
+                    printf("recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[1] != 0)
+                {
+                    printf("recv_all_with_timeout() returned unexpected result=%lu\n", response[1]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                printf("client (MO)[%lu]: done in %lu us\n", i, duration);
+
+                // Pretend to spend some time processing the incoming data
+                usleep((1000000));
+                
+                break;
+            }
+            default:
+            {
+                printf("client_run() found invalid gen_method=%d\n", gen_method);
+                fflush(stdout);
+                fflush(stderr);
+                exit(-1);
+            }
+        }
     } // number_of_mt_requests
 
     /************/
@@ -1238,13 +1361,13 @@ void server_setup (void)
     }
     if ((uint64_t)pRom != ROM_ADDR)
     {
-        printf("Called mmap(rom) but returned address = 0x%p != 0x%lx\n", pRom, ROM_ADDR);
+        printf("Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
         fflush(stdout);
         fflush(stderr);
         exit(-1);
     }
 #ifdef DEBUG
-    if (verbose) printf("mmap(rom) returned 0x%p in %lu us\n", pRom, duration);
+    if (verbose) printf("mmap(rom) returned %p in %lu us\n", pRom, duration);
 #endif
 
     /*********/
@@ -1292,13 +1415,13 @@ void server_setup (void)
     }
     if ((uint64_t)pInput != INPUT_ADDR)
     {
-        printf("Called mmap(pInput) but returned address = 0x%p != 0x%lx\n", pInput, INPUT_ADDR);
+        printf("Called mmap(pInput) but returned address = %p != 0x%lx\n", pInput, INPUT_ADDR);
         fflush(stdout);
         fflush(stderr);
         exit(-1);
     }
 #ifdef DEBUG
-    if (verbose) printf("mmap(input) returned 0x%p in %lu us\n", pInput, duration);
+    if (verbose) printf("mmap(input) returned %p in %lu us\n", pInput, duration);
 #endif
 
     /*******/
@@ -1322,13 +1445,13 @@ void server_setup (void)
     }
     if ((uint64_t)pRam != RAM_ADDR)
     {
-        printf("Called mmap(ram) but returned address = 0x%p != 0x%08lx\n", pRam, RAM_ADDR);
+        printf("Called mmap(ram) but returned address = %p != 0x%08lx\n", pRam, RAM_ADDR);
         fflush(stdout);
         fflush(stderr);
         exit(-1);
     }
 #ifdef DEBUG
-    if (verbose) printf("mmap(ram) returned 0x%p in %lu us\n", pRam, duration);
+    if (verbose) printf("mmap(ram) returned %p in %lu us\n", pRam, duration);
 #endif
 
     /*********/
@@ -1353,7 +1476,7 @@ void server_setup (void)
         trace_size = initial_trace_size;
     }
 
-    if ((gen_method == MinimalTrace) || (gen_method == RomHistogram) || (gen_method == MainTrace) || (gen_method == Zip))
+    if ((gen_method == MinimalTrace) || (gen_method == RomHistogram) || (gen_method == MainTrace) || (gen_method == Zip) || (gen_method == MemOp))
     {
         // Make sure the output shared memory is deleted
         shm_unlink(shmem_output_name);
@@ -1396,13 +1519,13 @@ void server_setup (void)
         }
         if ((uint64_t)pTrace != TRACE_ADDR)
         {
-            printf("Called mmap(trace) but returned address = 0x%p != 0x%lx\n", pTrace, TRACE_ADDR);
+            printf("Called mmap(trace) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
             fflush(stdout);
             fflush(stderr);
             exit(-1);
         }
     #ifdef DEBUG
-        if (verbose) printf("mmap(trace) returned 0x%p in %lu us\n", pTrace, duration);
+        if (verbose) printf("mmap(trace) returned %p in %lu us\n", pTrace, duration);
     #endif
     }
 
@@ -1470,7 +1593,7 @@ void server_run (void)
         uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
         uint64_t final_trace_size_percentage = (final_trace_size * 100) / trace_size;
 #ifdef DEBUG
-        printf("Duration = %lu us, Keccak counter = %lu, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu\n",
+        printf("Duration = %lu us, Keccak counter = %lu, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu, max steps=%lu, chunk size=%lu\n",
             duration,
             keccak_counter,
             realloc_counter,
@@ -1481,7 +1604,9 @@ void server_run (void)
             MEM_TRACE_ADDRESS,
             final_trace_size,
             final_trace_size_percentage,
-            end);
+            end,
+            max_steps,
+            chunk_size);
         if (keccak_metrics)
         {
             uint64_t keccak_percentage = duration == 0 ? 0 : (keccak_duration * 100) / duration;
@@ -1489,7 +1614,7 @@ void server_run (void)
             printf("Keccak counter = %lu, duration = %lu us, single keccak duration = %lu ns, percentage = %lu \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
         }
 #else
-        printf("Duration = %lu us, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu\n",
+        printf("Duration = %lu us, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu, max steps=%lu, chunk size=%l\n",
             duration,
             realloc_counter,
             steps,
@@ -1499,7 +1624,9 @@ void server_run (void)
             MEM_TRACE_ADDRESS,
             final_trace_size,
             final_trace_size_percentage,
-            end);
+            end,
+            max_steps,
+            chunk_size);
 #endif
         if (gen_method == RomHistogram)
         {
@@ -1568,6 +1695,10 @@ void server_run (void)
     if ((gen_method == MainTrace) && trace)
     {
         log_main_trace();
+    }
+    if ((gen_method == MemOp) && trace)
+    {
+        log_mem_op();
     }
 }
 
@@ -1760,7 +1891,7 @@ extern void _realloc_trace (void)
     void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
     if ((uint64_t)new_address != trace_address)
     {
-        printf("realloc_trace() failed calling mremap() from size=%lu to %lu got new_address=0x%p errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
+        printf("realloc_trace() failed calling mremap() from size=%lu to %lu got new_address=%p errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -1885,7 +2016,7 @@ void log_minimal_trace(void)
         //Set next chunk pointer
         chunk = chunk + i;
     }
-    printf("Trace=0x%p chunk=0x%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+    printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
 }
 
 void log_histogram(void)
@@ -2023,5 +2154,88 @@ void log_main_trace(void)
         //Set next chunk pointer
         chunk = chunk + i;
     }
-    printf("Trace=0x%p chunk=0x%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+    printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+}
+
+
+/* Memory operations structure
+    [8B] Number of chunks = C
+
+    Chunk 0:
+        [8B] mem_op_trace_size
+        [8B] mem_op_trace[0]
+        [8B] mem_op_trace[1]
+        …
+        [8B] mem_op_trace[mem_op_trace_size - 1]
+
+    Chunk 1:
+    …
+    Chunk C-1:
+    …
+*/
+void log_mem_op(void)
+{
+
+    uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
+    printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
+    printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
+    printf("Memory operations trace used size = %lu B\n", pOutput[3]); // Main trace used size [8]
+
+    printf("Trace content:\n");
+    uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
+    uint64_t number_of_chunks = trace[0];
+    printf("Number of chunks=%lu\n", number_of_chunks);
+    if (number_of_chunks > 1000000)
+    {
+        printf("Number of chunks is too high=%lu\n", number_of_chunks);
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+    uint64_t * chunk = trace + 1;
+    for (uint64_t c=0; c<number_of_chunks; c++)
+    {
+        uint64_t i=0;
+        printf("Chunk %lu:\n", c);
+
+        uint64_t mem_op_trace_size = chunk[i];
+        printf("\tmem_op_trace_size=%lu\n", mem_op_trace_size);
+        i++;
+        if (mem_op_trace_size > 10000000)
+        {
+            printf("Mem op trace size is too high=%lu\n", mem_op_trace_size);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        for (uint64_t m=0; m<mem_op_trace_size; m++)
+        {
+            uint64_t write = (chunk[i] >> 48) & 0x1;
+            uint64_t width = (chunk[i] >> 32) & 0xF;
+            uint64_t address = chunk[i] & 0xFFFFFFFF;
+            bool inside_range =
+                ((address >= RAM_ADDR) && (address < (RAM_ADDR + RAM_SIZE))) ||
+                ((address >= ROM_ADDR) && (address < (ROM_ADDR + ROM_SIZE))) ||
+                ((address >= INPUT_ADDR) && (address < (INPUT_ADDR + MAX_INPUT_SIZE)));
+            if (trace_trace || !inside_range)
+            {
+                printf("\t\tchunk[%lu].mem_op_trace[%lu] = %016lx = write=%lx, width=%lx, address=%lx%s\n",
+                    c,
+                    m,
+                    chunk[i],
+                    write,
+                    width,
+                    address,
+                    inside_range ? "" : " ERROR!!!!!!!!!!!!!!"
+                );
+            }
+            i += 1;
+        }
+
+        //Set next chunk pointer
+        chunk = chunk + i;
+    }
+    printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
 }
