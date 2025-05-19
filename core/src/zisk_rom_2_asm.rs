@@ -196,10 +196,11 @@ impl ZiskRom2Asm {
         file_name: &Path,
         generation_method: AsmGenerationMethod,
         log_output: bool,
+        comments: bool,
     ) {
         // Get a string with the ASM data
         let mut s = String::new();
-        Self::save_to_asm(rom, &mut s, generation_method, log_output);
+        Self::save_to_asm(rom, &mut s, generation_method, log_output, comments);
 
         // Save to file
         let path = std::path::PathBuf::from(file_name);
@@ -218,6 +219,7 @@ impl ZiskRom2Asm {
         code: &mut String,
         generation_method: AsmGenerationMethod,
         log_output: bool,
+        comments: bool,
     ) {
         // Clear output data, just in case
         code.clear();
@@ -228,9 +230,9 @@ impl ZiskRom2Asm {
         // Create context
         let mut ctx = ZiskAsmContext {
             log_output,
-            call_chunk_done: true,
+            call_chunk_done: false,
             mode: generation_method,
-            comments: true,
+            comments,
             boc: "/* ".to_string(),
             eoc: " */".to_string(),
             ..Default::default()
