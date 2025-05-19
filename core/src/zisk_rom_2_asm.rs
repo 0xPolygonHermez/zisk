@@ -148,6 +148,9 @@ impl ZiskAsmContext {
     pub fn zip(&self) -> bool {
         self.mode == AsmGenerationMethod::AsmZip
     }
+    pub fn mem_op(&self) -> bool {
+        self.mode == AsmGenerationMethod::AsmMemOp
+    }
     pub fn process(&self) -> bool {
         match self.mode {
             AsmGenerationMethod::AsmFast
@@ -155,7 +158,8 @@ impl ZiskAsmContext {
             | AsmGenerationMethod::AsmRomHistogram
             | AsmGenerationMethod::AsmMainTrace
             | AsmGenerationMethod::AsmChunks
-            | AsmGenerationMethod::AsmZip => true,
+            | AsmGenerationMethod::AsmZip
+            | AsmGenerationMethod::AsmMemOp => true,
             AsmGenerationMethod::AsmBusOp => false,
         }
     }
@@ -274,6 +278,7 @@ impl ZiskRom2Asm {
             || ctx.main_trace()
             || ctx.chunks()
             || ctx.zip()
+            || ctx.mem_op()
         {
             *code += ".section .data\n";
             *code += ".align 8\n";
@@ -326,6 +331,7 @@ impl ZiskRom2Asm {
             || ctx.main_trace()
             || ctx.chunks()
             || ctx.zip()
+            || ctx.mem_op()
         {
             *code += ".comm fcall_ctx, 8*70, 8\n";
         }
@@ -354,7 +360,7 @@ impl ZiskRom2Asm {
         *code += ".extern print_fcall_ctx\n";
         *code += ".extern realloc_trace\n\n";
 
-        if ctx.minimal_trace() || ctx.main_trace() || ctx.zip() {
+        if ctx.minimal_trace() || ctx.main_trace() || ctx.zip() || ctx.mem_op() {
             *code += ".extern max_steps\n";
             *code += ".extern chunk_size\n";
             *code += ".extern trace_address_threshold\n\n";
@@ -364,7 +370,7 @@ impl ZiskRom2Asm {
             *code += ".extern chunk_mask\n";
         }
 
-        if ctx.chunks() || ctx.minimal_trace() || ctx.main_trace() || ctx.zip() {
+        if ctx.chunks() || ctx.minimal_trace() || ctx.main_trace() || ctx.zip() || ctx.mem_op() {
             // Chunk start
             *code += "chunk_start:\n";
             Self::chunk_start(&mut ctx, code, "start");
@@ -408,6 +414,8 @@ impl ZiskRom2Asm {
             *code += "\tmov rax, 4\n";
         } else if ctx.zip() {
             *code += "\tmov rax, 6\n";
+        } else if ctx.mem_op() {
+            *code += "\tmov rax, 7\n";
         }
         *code += "\tret\n\n";
 
@@ -417,6 +425,7 @@ impl ZiskRom2Asm {
             || ctx.main_trace()
             || ctx.chunks()
             || ctx.zip()
+            || ctx.mem_op()
         {
             *code += ".global emulator_start\n";
             *code += "emulator_start:\n";
@@ -453,6 +462,7 @@ impl ZiskRom2Asm {
             || ctx.main_trace()
             || ctx.chunks()
             || ctx.zip()
+            || ctx.mem_op()
         {
             for r in 0u64..35u64 {
                 if !XMM_MAPPED_REGS.contains(&r) {
@@ -471,6 +481,7 @@ impl ZiskRom2Asm {
             || ctx.main_trace()
             || ctx.chunks()
             || ctx.zip()
+            || ctx.mem_op()
         {
             *code += &format!("\tmov {}, 0 {}\n", ctx.mem_step, ctx.comment_str("step = 0"));
             *code += &format!("\tmov {}, 0 {}\n", ctx.mem_sp, ctx.comment_str("sp = 0"));
@@ -488,7 +499,7 @@ impl ZiskRom2Asm {
                 );
             }
         }
-        if ctx.minimal_trace() || ctx.main_trace() || ctx.zip() {
+        if ctx.minimal_trace() || ctx.main_trace() || ctx.zip() || ctx.mem_op() {
             *code += &format!(
                 "\tmov {}, {} {}\n",
                 REG_VALUE,
@@ -553,7 +564,7 @@ impl ZiskRom2Asm {
             ctx.pc = rom.sorted_pc_list[k];
 
             // Call chunk_start the first time, for the first chunk
-            if (ctx.minimal_trace() || ctx.main_trace() || ctx.zip()) && (k == 0) {
+            if (ctx.minimal_trace() || ctx.main_trace() || ctx.zip() || ctx.mem_op()) && (k == 0) {
                 *code += &format!(
                     "\tmov {}, 0x{:08x} {}\n",
                     REG_PC,
@@ -813,6 +824,10 @@ impl ZiskRom2Asm {
 
                     if ctx.main_trace() {
                         Self::clear_reg_step_ranges(&mut ctx, code, 0);
+                    }
+
+                    if ctx.mem_op() {
+                        Self::a_src_mem_op(&mut ctx, code);
                     }
 
                     ctx.a.is_saved = true;
@@ -1083,6 +1098,10 @@ impl ZiskRom2Asm {
 
                     if ctx.main_trace() {
                         Self::clear_reg_step_ranges(&mut ctx, code, 1);
+                    }
+
+                    if ctx.mem_op() {
+                        Self::b_src_mem_op(&mut ctx, code);
                     }
                 }
                 SRC_IMM => {
@@ -1468,6 +1487,10 @@ impl ZiskRom2Asm {
                     if ctx.main_trace() {
                         Self::clear_reg_step_ranges(&mut ctx, code, 1);
                     }
+
+                    if ctx.mem_op() {
+                        Self::b_src_ind_mem_op(&mut ctx, code, reg_address, instruction.ind_width);
+                    }
                 }
                 _ => panic!(
                     "ZiskRom2Asm::save_to_asm() Invalid b_src={} pc={}",
@@ -1680,6 +1703,10 @@ impl ZiskRom2Asm {
 
                     if ctx.main_trace() {
                         Self::clear_reg_step_ranges(&mut ctx, code, 2);
+                    }
+
+                    if ctx.mem_op() {
+                        Self::c_store_mem_mem_op(&mut ctx, code);
                     }
                 }
                 STORE_IND => {
@@ -2055,6 +2082,10 @@ impl ZiskRom2Asm {
                     if ctx.main_trace() {
                         Self::clear_reg_step_ranges(&mut ctx, code, 2);
                     }
+
+                    if ctx.mem_op() {
+                        Self::c_store_ind_mem_op(&mut ctx, code, instruction.ind_width);
+                    }
                 }
                 _ => panic!(
                     "ZiskRom2Asm::save_to_asm() Invalid store={} pc={}",
@@ -2152,7 +2183,12 @@ impl ZiskRom2Asm {
             if ctx.fast() || ctx.rom_histogram() || ctx.main_trace() {
                 *code += &format!("\tinc {} {}\n", REG_STEP, ctx.comment_str("increment step"));
             }
-            if ctx.chunks() || ctx.minimal_trace() || ctx.main_trace() || ctx.bus_op() || ctx.zip()
+            if ctx.chunks()
+                || ctx.minimal_trace()
+                || ctx.main_trace()
+                || ctx.bus_op()
+                || ctx.zip()
+                || ctx.mem_op()
             {
                 *code += &format!(
                     "\tdec {} {}\n",
@@ -4236,6 +4272,7 @@ impl ZiskRom2Asm {
                     || ctx.main_trace()
                     || ctx.chunks()
                     || ctx.zip()
+                    || ctx.mem_op()
                 {
                     *code += &format!(
                         "\tlea rdi, {} {}\n",
@@ -4370,6 +4407,10 @@ impl ZiskRom2Asm {
         }
     }
 
+    /**********/
+    /* SET PC */
+    /**********/
+
     fn set_pc(ctx: &mut ZiskAsmContext, instruction: &ZiskInst, code: &mut String, id: &str) {
         ctx.jump_to_dynamic_pc = false;
         ctx.jump_to_static_pc = String::new();
@@ -4463,6 +4504,10 @@ impl ZiskRom2Asm {
             ctx.jump_to_dynamic_pc = true;
         }
     }
+
+    /*************/
+    /* MEM READS */
+    /*************/
 
     fn a_src_mem_aligned(ctx: &mut ZiskAsmContext, code: &mut String) {
         // Copy read data into mem_reads_address and increment it
@@ -4684,6 +4729,163 @@ impl ZiskRom2Asm {
         );
     }
 
+    /*********************/
+    /* MEMORY OPERATIONS */
+    /*********************/
+
+    fn a_src_mem_op(ctx: &mut ZiskAsmContext, code: &mut String) {
+        // Calculate the trace value on top of the address
+        const WIDTH: u64 = 8;
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            REG_AUX,
+            WIDTH << 32,
+            ctx.comment_str("aux = mem op mask")
+        );
+        *code += &format!(
+            "\tor {}, {} {}\n",
+            REG_ADDRESS,
+            REG_AUX,
+            ctx.comment_str("address |= mem op mask")
+        );
+
+        // Copy read data into mem_reads_address and increment it
+        *code += &format!(
+            "\tmov [{} + {}*8], {} {}\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            REG_ADDRESS,
+            ctx.comment_str("mem_reads[@+size*8] = mem op")
+        );
+
+        // Increment chunk.steps.mem_reads_size
+        *code += &format!("\tinc {} {}\n", REG_MEM_READS_SIZE, ctx.comment_str("mem_reads_size++"));
+    }
+
+    fn b_src_mem_op(ctx: &mut ZiskAsmContext, code: &mut String) {
+        // Calculate the trace value on top of the address
+        const WIDTH: u64 = 8;
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            REG_AUX,
+            WIDTH << 32,
+            ctx.comment_str("aux = mem op mask")
+        );
+        *code += &format!(
+            "\tor {}, {} {}\n",
+            REG_ADDRESS,
+            REG_AUX,
+            ctx.comment_str("address |= mem op mask")
+        );
+
+        // Copy read data into mem_reads_address and increment it
+        *code += &format!(
+            "\tmov [{} + {}*8], {} {}\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            REG_ADDRESS,
+            ctx.comment_str("mem_reads[@+size*8] = mem op")
+        );
+
+        // Increment chunk.steps.mem_reads_size
+        *code += &format!("\tinc {} {}\n", REG_MEM_READS_SIZE, ctx.comment_str("mem_reads_size++"));
+    }
+
+    fn b_src_ind_mem_op(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        reg_address: &str,
+        width: u64,
+    ) {
+        // Calculate the trace value on top of the address
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            REG_AUX,
+            width << 32,
+            ctx.comment_str("aux = mem op mask")
+        );
+        *code += &format!(
+            "\tor {}, {} {}\n",
+            reg_address,
+            REG_AUX,
+            ctx.comment_str("address |= mem op mask")
+        );
+
+        // Copy read data into mem_reads_address and increment it
+        *code += &format!(
+            "\tmov [{} + {}*8], {} {}\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            reg_address,
+            ctx.comment_str("mem_reads[@+size*8] = mem op")
+        );
+
+        // Increment chunk.steps.mem_reads_size
+        *code += &format!("\tinc {} {}\n", REG_MEM_READS_SIZE, ctx.comment_str("mem_reads_size++"));
+    }
+
+    fn c_store_mem_mem_op(ctx: &mut ZiskAsmContext, code: &mut String) {
+        // Calculate the trace value on top of the address
+        const WRITE: u64 = 1;
+        const WIDTH: u64 = 8;
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            REG_AUX,
+            (WRITE << 48) + (WIDTH << 32),
+            ctx.comment_str("aux = mem op mask")
+        );
+        *code += &format!(
+            "\tor {}, {} {}\n",
+            REG_ADDRESS,
+            REG_AUX,
+            ctx.comment_str("address |= mem op mask")
+        );
+
+        // Copy read data into mem_reads_address and increment it
+        *code += &format!(
+            "\tmov [{} + {}*8], {} {}\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            REG_ADDRESS,
+            ctx.comment_str("mem_reads[@+size*8] = mem op")
+        );
+
+        // Increment chunk.steps.mem_reads_size
+        *code += &format!("\tinc {} {}\n", REG_MEM_READS_SIZE, ctx.comment_str("mem_reads_size++"));
+    }
+
+    fn c_store_ind_mem_op(ctx: &mut ZiskAsmContext, code: &mut String, width: u64) {
+        // Calculate the trace value on top of the address
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            REG_AUX,
+            (1u64 << 48) | (width << 32),
+            ctx.comment_str("aux = mem op mask")
+        );
+        *code += &format!(
+            "\tor {}, {} {}\n",
+            REG_ADDRESS,
+            REG_AUX,
+            ctx.comment_str("address |= mem op mask")
+        );
+
+        // Copy read data into mem_reads_address and increment it
+        *code += &format!(
+            "\tmov [{} + {}*8], {} {}\n",
+            REG_MEM_READS_ADDRESS,
+            REG_MEM_READS_SIZE,
+            REG_ADDRESS,
+            ctx.comment_str("mem_reads[@+size*8] = mem op")
+        );
+
+        // Increment chunk.steps.mem_reads_size
+        *code += &format!("\tinc {} {}\n", REG_MEM_READS_SIZE, ctx.comment_str("mem_reads_size++"));
+    }
+
+    /*******************/
+    /* CHUNK START/END */
+    /*******************/
+
     fn chunk_start(ctx: &mut ZiskAsmContext, code: &mut String, id: &str) {
         if ctx.zip() {
             *code += &ctx.full_line_comment(
@@ -4812,7 +5014,7 @@ impl ZiskRom2Asm {
                 &format!("\tadd {}, 33*8 {}\n", REG_ADDRESS, ctx.comment_str("address += 33*8"));
         }
 
-        if ctx.minimal_trace() || ctx.main_trace() || ctx.zip() {
+        if ctx.minimal_trace() || ctx.main_trace() || ctx.zip() || ctx.mem_op() {
             *code += &ctx.full_line_comment("Write mem reads size".to_string());
             *code += &format!(
                 "\tmov {}, {} {}\n",
@@ -4982,7 +5184,7 @@ impl ZiskRom2Asm {
             );
         }
 
-        if ctx.main_trace() {
+        if ctx.main_trace() || ctx.mem_op() {
             // Write size
             *code += &format!(
                 "\tmov {}, {} {}\n",
@@ -5024,7 +5226,7 @@ impl ZiskRom2Asm {
             );
         }
 
-        if ctx.minimal_trace() || ctx.main_trace() || ctx.zip() {
+        if ctx.minimal_trace() || ctx.main_trace() || ctx.zip() || ctx.mem_op() {
             *code += &ctx.full_line_comment("Realloc trace if threshold is passed".to_string());
             *code += &format!(
                 "\tmov {}, qword {}[trace_address_threshold] {}\n",
@@ -5070,6 +5272,10 @@ impl ZiskRom2Asm {
             *code += &format!("chunk_end_{}_done:\n", id);
         }
     }
+
+    /*************/
+    /* REGISTERS */
+    /*************/
 
     fn push_xmm_regs(ctx: &mut ZiskAsmContext, code: &mut String, extra_8: bool) {
         *code += &format!(
