@@ -172,6 +172,7 @@ void log_minimal_trace(void);
 void log_histogram(void);
 void log_main_trace(void);
 void log_mem_op(void);
+void save_mem_op_to_files(void);
 
 int recv_all_with_timeout (int sockfd, void *buffer, size_t length, int flags, int timeout_sec);
 
@@ -181,6 +182,7 @@ bool metrics = false;
 bool trace = false;
 bool trace_trace = false;
 bool verbose = false;
+bool save_to_file = false;
 
 // ROM histogram
 uint64_t histogram_size = 0;
@@ -534,7 +536,7 @@ int main(int argc, char *argv[])
 
 void print_usage (void)
 {
-    char * usage = "Usage: ziskemuasm -s(server) -c(client) -i <input_file> -p <port_number> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [--chunk <chunk_number>] [--shutdown] [--mt <number_of_mt_requests>] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-h/--help print this]";
+    char * usage = "Usage: ziskemuasm -s(server) -c(client) -i <input_file> -p <port_number> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [--chunk <chunk_number>] [--shutdown] [--mt <number_of_mt_requests>] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-f(save to file)] [-h/--help print this]";
 #ifdef DEBUG
     printf("%s [-v verbose on] [-k keccak trace on]\n", usage);
 #else
@@ -771,6 +773,11 @@ void parse_arguments(int argc, char *argv[])
                 } else {
                     printf("Got port number= %u\n", arguments_port);
                 }
+                continue;
+            }
+            if (strcmp(argv[i], "-f") == 0)
+            {
+                save_to_file = true;
                 continue;
             }
             printf("Unrecognized argument: %s\n", argv[i]);
@@ -1701,6 +1708,10 @@ void server_run (void)
     {
         log_mem_op();
     }
+    if ((gen_method == MemOp) && save_to_file)
+    {
+        save_mem_op_to_files();
+    }
 }
 
 void server_cleanup (void)
@@ -2158,6 +2169,53 @@ void log_main_trace(void)
     printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
 }
 
+void buffer2file (const void * buffer_address, size_t buffer_length, const char * file_name)
+{
+    if (!file_name)
+    {
+        printf("ERROR: buffer2file() found invalid file_name\n");
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+    if (!buffer_address)
+    {
+        printf("ERROR: buffer2file() found invalid buffer_address\n");
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+
+    FILE * file = fopen(file_name, "wb");
+    if (!file)
+    {
+        printf("ERROR: buffer2file() failed calling fopen(%s) errno=%d=%s\n", file_name, errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+
+    if (buffer_length > 0)
+    {
+        size_t bytes_written = fwrite(buffer_address, 1, buffer_length, file);
+        if (bytes_written != buffer_length)
+        {
+            printf("ERROR: buffer2file() failed calling fwrite(%s) buffer_address=%p buffer_length=%lu errno=%d=%s\n", file_name, buffer_address, buffer_length, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            fclose(file);
+            exit(-1);
+        }
+    }
+
+    if (fclose(file) != 0)
+    {
+        printf("ERROR: buffer2file() failed calling fclose(%s) errno=%d=%s\n", file_name, errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+}
 
 /* Memory operations structure
     [8B] Number of chunks = C
@@ -2176,7 +2234,7 @@ void log_main_trace(void)
 */
 void log_mem_op(void)
 {
-
+    // Log header
     uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
     printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
     printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
@@ -2237,6 +2295,53 @@ void log_mem_op(void)
 
         //Set next chunk pointer
         chunk = chunk + i;
+    }
+    printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+}
+
+void save_mem_op_to_files(void)
+{
+    // Log header
+    uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
+    printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
+    printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
+    printf("Memory operations trace used size = %lu B\n", pOutput[3]); // Main trace used size [8]
+
+    printf("Trace content:\n");
+    uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
+    uint64_t number_of_chunks = trace[0];
+    printf("Number of chunks=%lu\n", number_of_chunks);
+    if (number_of_chunks > 1000000)
+    {
+        printf("Number of chunks is too high=%lu\n", number_of_chunks);
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+    uint64_t * chunk = trace + 1;
+    for (uint64_t c=0; c<number_of_chunks; c++)
+    {
+        char file_name[256];
+        sprintf(file_name, "/tmp/mem_count_data_%lu.bin", c);
+
+        uint64_t i=0;
+        uint64_t mem_op_trace_size = chunk[i];
+        i++;
+        if (mem_op_trace_size > 10000000)
+        {
+            printf("Mem op trace size is too high=%lu\n", mem_op_trace_size);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        printf("Chunk %lu: file=%s length=%lu\n", c, file_name, mem_op_trace_size);
+
+        buffer2file(&chunk[i], mem_op_trace_size * 8, file_name);
+
+        //Set next chunk pointer
+        chunk = chunk + mem_op_trace_size + 1;
     }
     printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
 }
