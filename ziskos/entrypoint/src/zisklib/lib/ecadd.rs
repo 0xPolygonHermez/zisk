@@ -5,14 +5,10 @@ use crate::{
 };
 
 use super::{
-    bn254_fp::{add_fp_bn254, mul_fp_bn254, square_fp_bn254},
+    bn254_fp::{add_fp_bn254, mul_fp_bn254, square_fp_bn254, P_MINUS_ONE},
     gt,
     utils::eq,
 };
-
-/// BN254 base field size
-const P_MINUS_ONE: [u64; 4] =
-    [0x3C208C16D87CFD46, 0x97816A916871CA8D, 0xB85045B68181585D, 0x30644E72E131A029];
 
 /// Given two points `p1` and `p2` on the BN254 curve, this function computes the sum of the two points.
 ///
