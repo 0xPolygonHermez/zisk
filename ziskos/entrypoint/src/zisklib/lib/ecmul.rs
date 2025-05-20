@@ -6,7 +6,8 @@ use crate::{
 };
 
 use super::{
-    bn254_fp::{add_fp_bn254, mul_fp_bn254, square_fp_bn254, P_MINUS_ONE, R_MINUS_ONE},
+    bn254::constants::{E_B, P_MINUS_ONE, R_MINUS_ONE},
+    bn254::fp::{add_fp_bn254, mul_fp_bn254, square_fp_bn254},
     gt,
     utils::eq,
 };
@@ -23,7 +24,7 @@ use super::{
 /// - 4: p is not on the curve.
 pub fn ecmul(k: &[u64; 4], p: &[u64; 8]) -> ([u64; 8], u8) {
     // Verify the coordinates of p
-    let x1 = p[0..4].try_into().unwrap();
+    let x1: [u64; 4] = p[0..4].try_into().unwrap();
     if gt(&x1, &P_MINUS_ONE) {
         #[cfg(debug_assertions)]
         println!("x1 should be less than P_MINUS_ONE: {:?}, but got {:?}", P_MINUS_ONE, x1);
@@ -31,7 +32,7 @@ pub fn ecmul(k: &[u64; 4], p: &[u64; 8]) -> ([u64; 8], u8) {
         return ([0u64; 8], 1);
     }
 
-    let y1 = p[4..8].try_into().unwrap();
+    let y1: [u64; 4] = p[4..8].try_into().unwrap();
     if gt(&y1, &P_MINUS_ONE) {
         #[cfg(debug_assertions)]
         println!("y1 should be less than P_MINUS_ONE: {:?}, but got {:?}", P_MINUS_ONE, y1);
@@ -56,7 +57,7 @@ pub fn ecmul(k: &[u64; 4], p: &[u64; 8]) -> ([u64; 8], u8) {
     // Check if p is on curve: y² == x³ + 3 mod p
     let x_sq = square_fp_bn254(&x1);
     let x_cubed = mul_fp_bn254(&x_sq, &x1);
-    let x_cubed_plus_3 = add_fp_bn254(&x_cubed, &[3, 0, 0, 0]);
+    let x_cubed_plus_3 = add_fp_bn254(&x_cubed, &E_B);
     let y_sq = square_fp_bn254(&y1);
     if !eq(&x_cubed_plus_3, &y_sq) {
         #[cfg(debug_assertions)]

@@ -1,6 +1,9 @@
-/// Given two 256-bit number `x` and `y`, compares them and returns true if `x > y`; otherwise, false.
-pub(super) fn gt(x: &[u64; 4], y: &[u64; 4]) -> bool {
-    for i in (0..4).rev() {
+/// Given two n-bit number `x` and `y`, compares them and returns true if `x > y`; otherwise, false.
+pub(super) fn gt(x: &[u64], y: &[u64]) -> bool {
+    let len = x.len();
+    assert_eq!(len, y.len(), "x and y must have the same length");
+
+    for i in (0..len).rev() {
         if x[i] > y[i] {
             return true;
         } else if x[i] < y[i] {
@@ -10,9 +13,12 @@ pub(super) fn gt(x: &[u64; 4], y: &[u64; 4]) -> bool {
     false
 }
 
-/// Given two 256-bit number `x` and `y`, compares them and returns true if `x == y`; otherwise, false.
-pub(super) fn eq(x: &[u64; 4], y: &[u64; 4]) -> bool {
-    for i in 0..4 {
+/// Given two n-bit number `x` and `y`, compares them and returns true if `x == y`; otherwise, false.
+pub(super) fn eq(x: &[u64], y: &[u64]) -> bool {
+    let len = x.len();
+    assert_eq!(len, y.len(), "x and y must have the same length");
+
+    for i in 0..len {
         if x[i] != y[i] {
             return false;
         }

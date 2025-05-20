@@ -1,0 +1,55 @@
+// BN254 family parameter
+pub const X: [u64; 4] = [0x44E992B44A6909F1, 0, 0, 0];
+pub const X_DOUBLE: [u64; 4] = [0x89D3256894D213E2, 0, 0, 0];
+
+// BN254 B parameter E: y² = x³ + 3
+pub const E_B: [u64; 4] = [3, 0, 0, 0];
+
+// BN254 twist B parameter E': y² = x³ + 3 / (9 + u)
+const ETWISTED_B_X: [u64; 4] =
+    [0x3267E6DC24A138E5, 0xB5B4C5E559DBEFA3, 0x81BE18991BE06AC3, 0x2B149D40CEB8AAAE];
+const ETWISTED_B_Y: [u64; 4] =
+    [0xE4A2BD0685C315D2, 0xA74FA084E52D1852, 0xCD2CAFADEED8FDF4, 0x9713B03AF0FED4];
+pub const ETWISTED_B: [u64; 8] = [
+    ETWISTED_B_X[0],
+    ETWISTED_B_X[1],
+    ETWISTED_B_X[2],
+    ETWISTED_B_X[3],
+    ETWISTED_B_Y[0],
+    ETWISTED_B_Y[1],
+    ETWISTED_B_Y[2],
+    ETWISTED_B_Y[3],
+];
+
+// BN254 base field size
+pub const P: [u64; 4] =
+    [0x3C208C16D87CFD47, 0x97816A916871CA8D, 0xB85045B68181585D, 0x30644E72E131A029];
+pub const P_MINUS_ONE: [u64; 4] = [P[0] - 1, P[1], P[2], P[3]];
+
+// BN254 scalar field size
+const R: [u64; 4] =
+    [0x43e1f593f0000001, 0x2833e84879b97091, 0xb85045b68181585d, 0x30644e72e131a029];
+pub const R_MINUS_ONE: [u64; 4] = [R[0] - 1, R[1], R[2], R[3]];
+
+// Precomputed frobenius operator constants
+pub const FROBENIUS_GAMMA12: [u64; 8] = [
+    0x99E39557176F553D,
+    0xB78CC310C2C3330C,
+    0x4C0BEC3CF559B143,
+    0x2FB347984F7911F7,
+    0x1665D51C640FCBA2,
+    0x32AE2A1D0B7C9DCE,
+    0x4BA4CC8BD75A0794,
+    0x16C9E55061EBAE20,
+];
+
+pub const FROBENIUS_GAMMA13: [u64; 8] = [
+    0xDC54014671A0135A,
+    0xDBAAE0EDA9C95998,
+    0xDC5EC698B6E2F9B9,
+    0x063CF305489AF5DC,
+    0x82D37F632623B0E3,
+    0x21807DC98FA25BD2,
+    0x0704B5A7EC796F2B,
+    0x07C03CBCAC41049A,
+];
