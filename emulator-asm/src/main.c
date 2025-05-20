@@ -1533,13 +1533,17 @@ void server_setup (void)
     /* SEM CHUNK DONE */
     /******************/
 
-    sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0644, 1);
-    if (sem_chunk_done == SEM_FAILED)
+    if (chunk_done)
     {
-        printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
+        assert(strlen(sem_chunk_done_name) > 0);
+        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0644, 1);
+        if (sem_chunk_done == SEM_FAILED)
+        {
+            printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
     }
 }
 
@@ -1856,7 +1860,7 @@ extern int _print_regs()
 extern void _chunk_done()
 {
     // Notify the caller that a new chunk is done and its trace is ready to be consumed
-    assert((gen_method == MinimalTrace) || (gen_method == MainTrace) || (gen_method == Zip) || (gen_method == ChunksOnly));
+    assert(chunk_done);
     int result = sem_post(sem_chunk_done);
     if (result == -1)
     {
