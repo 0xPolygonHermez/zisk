@@ -469,7 +469,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     lookup_assumes(ROM_BUS_ID, [pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
                                 op, store_offset, jmp_offset1, jmp_offset2, rom_flags]);
 
-    // Continuations beetwen segments, we assume initial state and proves the final state.
+    // Continuations between segments, we assume initial state and proves the final state.
 
     // The next segment increments the current segment by one, except for the last segment, which
     // closes the cycle at the known main_segment_id.
