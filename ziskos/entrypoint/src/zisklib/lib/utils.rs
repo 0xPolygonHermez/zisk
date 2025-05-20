@@ -10,6 +10,16 @@ pub(super) fn gt(x: &[u64; 4], y: &[u64; 4]) -> bool {
     false
 }
 
+/// Given two 256-bit number `x` and `y`, compares them and returns true if `x == y`; otherwise, false.
+pub(super) fn eq(x: &[u64; 4], y: &[u64; 4]) -> bool {
+    for i in 0..4 {
+        if x[i] != y[i] {
+            return false;
+        }
+    }
+    true
+}
+
 /// Given two 256-bit unsigned integers `x` and `y`, computes the subtraction `x - y`.
 /// It assumes that `x >= y`.
 pub(super) fn sub(x: &[u64; 4], y: &[u64; 4]) -> [u64; 4] {
