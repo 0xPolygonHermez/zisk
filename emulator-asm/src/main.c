@@ -180,9 +180,7 @@ bool output = false;
 bool metrics = false;
 bool trace = false;
 bool trace_trace = false;
-#ifdef DEBUG
 bool verbose = false;
-#endif
 
 // ROM histogram
 uint64_t histogram_size = 0;
@@ -349,6 +347,7 @@ int main(int argc, char *argv[])
 #ifdef DEBUG
             if (verbose) printf("recv() returned: %ld\n", bytes_read);
 #endif
+            if (verbose) printf("recv()'d request=[%lu, %lu, %lu, %lu, %lu]\n", request[0], request[1], request[2], request[3], request[4]);
 
             uint64_t response[5];
             bReset = false;
@@ -475,6 +474,8 @@ int main(int argc, char *argv[])
                     exit(-1);                
                 }
             }
+
+            if (verbose) printf("send()'ing response=[%lu, %lu, %lu, %lu, %lu]\n", response[0], response[1], response[2], response[3], response[4]);
 
             ssize_t bytes_sent = send(client_fd, response, sizeof(response), MSG_WAITALL);
             if (bytes_sent != sizeof(response))
@@ -623,12 +624,8 @@ void parse_arguments(int argc, char *argv[])
             }
             if (strcmp(argv[i], "-v") == 0)
             {
-#ifdef DEBUG
                 verbose = true;
                 //emu_verbose = true;
-#else
-                printf("Verbose option -v is only available in debug compilation; ignoring...\n");
-#endif
                 continue;
             }
             if (strcmp(argv[i], "-k") == 0)
@@ -1618,7 +1615,7 @@ void server_run (void)
             printf("Keccak counter = %lu, duration = %lu us, single keccak duration = %lu ns, percentage = %lu \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
         }
 #else
-        printf("Duration = %lu us, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu, max steps=%lu, chunk size=%l\n",
+        printf("Duration = %lu us, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu, max steps=%lu, chunk size=%lu\n",
             duration,
             realloc_counter,
             steps,
