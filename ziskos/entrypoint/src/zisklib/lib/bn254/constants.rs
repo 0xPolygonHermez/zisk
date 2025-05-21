@@ -1,9 +1,8 @@
 // BN254 family parameter
 pub const X: [u64; 4] = [0x44E992B44A6909F1, 0, 0, 0];
-pub const X_DOUBLE: [u64; 4] = [0x89D3256894D213E2, 0, 0, 0];
 
 // BN254 B parameter E: y² = x³ + 3
-pub const E_B: [u64; 4] = [3, 0, 0, 0];
+pub const E_B: [u64; 4] = [0x3, 0, 0, 0];
 
 // BN254 twist B parameter E': y² = x³ + 3 / (9 + u)
 const ETWISTED_B_X: [u64; 4] =

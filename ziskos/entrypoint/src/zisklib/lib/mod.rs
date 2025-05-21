@@ -8,6 +8,7 @@ mod secp256k1_fp_assert_nqr;
 mod secp256k1_msm;
 mod utils;
 
+pub use bn254::constants::P;
 pub use ecadd::ecadd;
 pub use ecmul::ecmul;
 pub use ecpairing::ecpairing;
