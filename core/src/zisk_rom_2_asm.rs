@@ -4427,7 +4427,7 @@ impl ZiskRom2Asm {
                     ctx.fcall_ctx,
                     REG_AUX,
                     FCALL_RESULT,
-                    ctx.comment_str("value = ctx.result[got]")
+                    ctx.comment_str("value = ctx.result_got")
                 );
                 *code += &format!(
                     "\tmov {}, {} {}\n",
@@ -4447,37 +4447,8 @@ impl ZiskRom2Asm {
                     ctx.ptr,
                     ctx.fcall_ctx,
                     FCALL_RESULT_GOT,
-                    ctx.comment_str("inc ctx.result_go")
+                    ctx.comment_str("inc ctx.result_got")
                 );
-
-                // Trace the mem operation, i.e. write to FREE_INPUT_ADDR
-                if ctx.mem_op() {
-                    // Calculate the trace value
-                    const WRITE: u64 = 1;
-                    const WIDTH: u64 = 8;
-                    *code += &format!(
-                        "\tmov {}, {} {}\n",
-                        REG_AUX,
-                        (WRITE << 48) + (WIDTH << 32) + FREE_INPUT_ADDR,
-                        ctx.comment_str("aux = mem op mask")
-                    );
-
-                    // Copy read data into mem_reads_address and increment it
-                    *code += &format!(
-                        "\tmov [{} + {}*8], {} {}\n",
-                        REG_MEM_READS_ADDRESS,
-                        REG_MEM_READS_SIZE,
-                        REG_AUX,
-                        ctx.comment_str("mem_reads[@+size*8] = mem op")
-                    );
-
-                    // Increment chunk.steps.mem_reads_size
-                    *code += &format!(
-                        "\tinc {} {}\n",
-                        REG_MEM_READS_SIZE,
-                        ctx.comment_str("mem_reads_size++")
-                    );
-                }
 
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
