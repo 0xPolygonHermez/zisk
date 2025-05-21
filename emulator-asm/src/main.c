@@ -52,6 +52,7 @@ uint8_t * pInputLast = (uint8_t *)(INPUT_ADDR + 10440504 - 64);
 uint8_t * pRam = (uint8_t *)RAM_ADDR;
 uint8_t * pRom = (uint8_t *)ROM_ADDR;
 uint8_t * pTrace = (uint8_t *)TRACE_ADDR;
+uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
 
 #define TYPE_PING 1 // Ping
 #define TYPE_PONG 2
@@ -155,7 +156,15 @@ void set_chunk_size (uint64_t new_chunk_size)
     }
     chunk_size = new_chunk_size;
     chunk_size_mask = chunk_size - 1;
-    trace_address_threshold = TRACE_ADDR + INITIAL_TRACE_SIZE - ((chunk_size*200) + (44*8) + 32);
+    trace_address_threshold = TRACE_ADDR + trace_size - ((chunk_size*200) + (44*8) + 32);
+}
+
+void set_trace_size (uint64_t new_trace_size)
+{
+    // Update trace global variables
+    trace_size = new_trace_size;
+    trace_address_threshold = TRACE_ADDR + trace_size - MAX_CHUNK_TRACE_SIZE;
+    pOutput[2] = trace_size;
 }
 
 void parse_arguments(int argc, char *argv[]);
@@ -1564,14 +1573,11 @@ void server_reset (void)
     if (verbose) printf("memset(ram) in %lu us\n", duration);
 #endif
 
-    // Reset trace
-    // Init output header data
-    // uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
-    // pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
-    // pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    // pOutput[2] = trace_size;
-    // MT allocated size [8] -> to be updated after completion
-    // MT used size [8] -> to be updated after completion
+    // Reset trace: init output header data
+    pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
+    pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    pOutput[2] = trace_size; // MT allocated size [8] -> to be updated after reallocation
+    pOutput[3] = 0; // MT used size [8] -> to be updated after completion
 }
 
 void server_run (void)
@@ -1910,10 +1916,7 @@ extern void _realloc_trace (void)
     }
 
     // Update trace global variables
-    trace_size = new_trace_size;
-    trace_address_threshold = TRACE_ADDR + trace_size - MAX_CHUNK_TRACE_SIZE;
-
-    ((uint64_t *)new_address)[2] = trace_size;
+    set_trace_size(new_trace_size);
 }
 
 /* Trace data structure
