@@ -234,7 +234,7 @@ impl ZiskRom2Asm {
         // Create context
         let mut ctx = ZiskAsmContext {
             log_output,
-            call_chunk_done: false,
+            call_chunk_done: true,
             mode: generation_method,
             comments,
             boc: "/* ".to_string(),
