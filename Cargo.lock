@@ -2425,7 +2425,6 @@ dependencies = [
  "env_logger",
  "libloading",
  "log",
- "mpi",
  "num-bigint",
  "num-traits",
  "p3-field",

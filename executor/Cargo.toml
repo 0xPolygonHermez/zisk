@@ -31,6 +31,5 @@ pil-std-lib = { workspace = true }
 core_affinity = "0.8.3"
 
 [features]
-default = ["distributed"]
-distributed = ["proofman-common/distributed", "witness/distributed"]
+default = []
 gpu = ["proofman-common/gpu", "proofman/gpu" ]
