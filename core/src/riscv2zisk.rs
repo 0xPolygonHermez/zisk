@@ -21,9 +21,9 @@ pub enum AsmGenerationMethod {
     AsmChunks,
     /// Generate assembly code to compute bus op [op, a, b, mem_read_index] traces
     AsmBusOp,
-    /// Generate assembly code to compute the minimal trace, but only at the requrested chunks,
+    /// Generate assembly code to compute the minimal trace, but only at the requested chunks,
     /// e.g. [0,8,16...], [1,9,17...], etc.  This is done to distribute the minimal trace generation
-    /// accross 8 processes, to increase speed and memory bus saturation.  It's called zip because
+    /// across 8 processes, to increase speed and memory bus saturation.  It's called zip because
     /// one process generates the chunks that are complementary to the sum of the other processes.
     AsmZip,
 }
