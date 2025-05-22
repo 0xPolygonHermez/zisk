@@ -71,6 +71,7 @@ enum MinimalTraceExecutionMode {
 pub struct Stats {
     pub collect_time: u64,
     pub witness_time: u64,
+    pub num_chunks: usize,
 }
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
@@ -518,7 +519,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         self.stats.lock().unwrap().push((
             airgroup_id,
             air_id,
-            Stats { collect_time: 0, witness_time },
+            Stats { collect_time: 0, witness_time, num_chunks: 1 },
         ));
     }
 
@@ -549,6 +550,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         // Group the instances by the chunk they need to process
         let chunks_to_execute = self.chunks_to_execute(min_traces, secn_instance);
+        let num_chunks = chunks_to_execute.iter().filter(|&&x| x).count();
 
         // Create data buses for each chunk
         let mut data_buses =
@@ -582,7 +584,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         self.stats.lock().unwrap().push((
             airgroup_id,
             air_id,
-            Stats { collect_time, witness_time },
+            Stats { collect_time, witness_time, num_chunks },
         ));
     }
 
@@ -615,7 +617,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         self.stats.lock().unwrap().push((
             airgroup_id,
             air_id,
-            Stats { collect_time:0, witness_time },
+            Stats { collect_time: 0, witness_time, num_chunks: 0 },
         ));
     }
 
