@@ -280,10 +280,10 @@ impl ZiskVerifyConstraints {
     pub fn print_stats(stats: Vec<(usize, usize, Stats)>) {
         println!("Individual Entries:");
         println!(
-            "{:<25} {:<8} {:<15} {:<15}",
-            "Name", "air id", "collect (ms)", "witness (ms)"
+            "{:<25} {:<8} {:<15} {:<15} {:<12}",
+            "Name", "air id", "collect (ms)", "witness (ms)", "chunks"
         );
-        println!("{}", "-".repeat(65));
+        println!("{}", "-".repeat(80));
 
         // Sort individual stats by (airgroup_id, air_id)
         let mut sorted_stats = stats.clone();
@@ -291,42 +291,41 @@ impl ZiskVerifyConstraints {
 
         for (airgroup_id, air_id, stats) in sorted_stats.iter() {
             println!(
-                "{:<25} {:<8} {:<15} {:<15}",
+                "{:<25} {:<8} {:<15} {:<15} {:<12}",
                 Self::air_name(*airgroup_id, *air_id),
                 air_id,
                 stats.collect_time,
-                stats.witness_time
+                stats.witness_time,
+                stats.num_chunks,
             );
         }
 
-        // Build grouped data: Vec<Stats> per (airgroup_id, air_id)
+        // Group stats
         let mut grouped: HashMap<(usize, usize), Vec<Stats>> = HashMap::new();
         for (airgroup_id, air_id, stats) in stats.iter() {
-            grouped
-                .entry((*airgroup_id, *air_id))
-                .or_default()
-                .push(Stats {
-                    collect_time: stats.collect_time,
-                    witness_time: stats.witness_time,
-                });
+            grouped.entry((*airgroup_id, *air_id)).or_default().push(stats.clone());
         }
 
-        println!("\nGrouped Totals (Min / Max / Avg):");
+        println!("\nGrouped Totals:");
         println!(
-            "{:<25} {:<8} {:>7} {:>12} {:>12} {:>12}    {:>12} {:>12} {:>12}",
-            "Name", "air id", "count",
-            "collect min", "collect max", "collect avg",
-            "witness min", "witness max", "witness avg"
+            "{:<8} {:<25}   {:<6}   {:<20}   {:<20}   {:<20}",
+            "Air id", "Name", "Count", "Chunks", "Collect (ms)", "Witness (ms)",
         );
-        println!("{}", "-".repeat(130));
+        println!(
+            "{:<8} {:<25}   {:<6}   {:<6} {:<6} {:<6}   {:<6} {:<6} {:<6}   {:<6} {:<6} {:<6}",
+            "", "", "", "min", "max", "avg", "min", "max", "avg", "min", "max", "avg",
+        );
+        println!("{}", "-".repeat(160));
 
         let mut grouped_sorted: Vec<_> = grouped.into_iter().collect();
         grouped_sorted.sort_by_key(|((airgroup_id, air_id), _)| (*airgroup_id, *air_id));
 
         for ((airgroup_id, air_id), entries) in grouped_sorted {
+            let count = entries.len() as u64;
+
             let (mut c_min, mut c_max, mut c_sum) = (u64::MAX, 0, 0);
             let (mut w_min, mut w_max, mut w_sum) = (u64::MAX, 0, 0);
-            let count = entries.len() as u64;
+            let (mut n_min, mut n_max, mut n_sum) = (usize::MAX, 0, 0usize);
 
             for e in &entries {
                 c_min = c_min.min(e.collect_time);
@@ -336,20 +335,31 @@ impl ZiskVerifyConstraints {
                 w_min = w_min.min(e.witness_time);
                 w_max = w_max.max(e.witness_time);
                 w_sum += e.witness_time;
+
+                n_min = n_min.min(e.num_chunks);
+                n_max = n_max.max(e.num_chunks);
+                n_sum += e.num_chunks;
             }
 
             println!(
-                "{:<25} {:<8} {:>7} {:>12} {:>12} {:>12}    {:>12} {:>12} {:>12}",
-                Self::air_name(airgroup_id, air_id),
+                "{:<8} {:<25} | {:<6} | {:<6} {:<6} {:<6} | {:<6} {:<6} {:<6} | {:<6} {:<6} {:<6}",
                 air_id,
+                Self::air_name(airgroup_id, air_id),
                 count,
-                c_min, c_max, c_sum / count,
-                w_min, w_max, w_sum / count,
+                n_min,
+                n_max,
+                n_sum as u64 / count,
+                c_min,
+                c_max,
+                c_sum / count,
+                w_min,
+                w_max,
+                w_sum / count,
             );
         }
     }
 
-    fn air_name( airgroup_id: usize, air_id: usize) -> String {
+    fn air_name(_airgroup_id: usize, air_id: usize) -> String {
         match air_id {
             0 => "Main".to_string(),
             1 => "ROM".to_string(),
