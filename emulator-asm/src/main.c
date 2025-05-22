@@ -62,6 +62,8 @@ uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
 #define TYPE_RH_RESPONSE 6
 #define TYPE_MO_REQUEST 7 // Memory opcode
 #define TYPE_MO_RESPONSE 8
+#define TYPE_MA_REQUEST 9 // Main packed trace
+#define TYPE_MA_RESPONSE 10
 #define TYPE_SD_REQUEST 1000000 // Shutdown
 #define TYPE_SD_RESPONSE 1000001
 
@@ -140,6 +142,7 @@ void set_max_steps (uint64_t new_max_steps)
 uint64_t initial_trace_size = INITIAL_TRACE_SIZE;
 uint64_t trace_address = TRACE_ADDR;
 uint64_t trace_size = INITIAL_TRACE_SIZE;
+uint64_t trace_used_size = 0;
 
 // Worst case: every chunk instruction is a keccak operation, with an input data of 200 bytes
 #define MAX_CHUNK_TRACE_SIZE (INITIAL_CHUNK_SIZE * 200) + (44 * 8) + 32
@@ -391,7 +394,7 @@ int main(int argc, char *argv[])
                         response[0] = TYPE_MT_RESPONSE;
                         response[1] = MEM_END ? 0 : 1;
                         response[2] = trace_size;
-                        response[3] = trace_size;
+                        response[3] = trace_used_size;
                         response[4] = 0;
 
                         bReset = true;
@@ -401,7 +404,7 @@ int main(int argc, char *argv[])
                         response[0] = TYPE_MT_RESPONSE;
                         response[1] = 1;
                         response[2] = trace_size;
-                        response[3] = trace_size;
+                        response[3] = trace_used_size;
                         response[4] = 0;
                     }
                     break;
@@ -420,7 +423,7 @@ int main(int argc, char *argv[])
                         response[0] = TYPE_RH_RESPONSE;
                         response[1] = MEM_END ? 0 : 1;
                         response[2] = trace_size;
-                        response[3] = trace_size;
+                        response[3] = trace_used_size;
                         response[4] = 0;
 
                         bReset = true;
@@ -430,7 +433,7 @@ int main(int argc, char *argv[])
                         response[0] = TYPE_RH_RESPONSE;
                         response[1] = 1;
                         response[2] = trace_size;
-                        response[3] = trace_size;
+                        response[3] = trace_used_size;
                         response[4] = 0;
                     }
                     break;
@@ -450,7 +453,7 @@ int main(int argc, char *argv[])
                         response[0] = TYPE_MO_RESPONSE;
                         response[1] = MEM_END ? 0 : 1;
                         response[2] = trace_size;
-                        response[3] = trace_size;
+                        response[3] = trace_used_size;
                         response[4] = 0;
 
                         bReset = true;
@@ -460,7 +463,37 @@ int main(int argc, char *argv[])
                         response[0] = TYPE_MO_RESPONSE;
                         response[1] = 1;
                         response[2] = trace_size;
-                        response[3] = trace_size;
+                        response[3] = trace_used_size;
+                        response[4] = 0;
+                    }
+                    break;
+                }
+                case TYPE_MA_REQUEST:
+                {
+#ifdef DEBUG
+                    if (verbose) printf("MAIN TRACE received\n");
+#endif
+                    if (gen_method == MainTrace)
+                    {
+                        set_max_steps(request[1]);
+                        set_chunk_size(request[2]);
+
+                        server_run();
+
+                        response[0] = TYPE_MA_RESPONSE;
+                        response[1] = MEM_END ? 0 : 1;
+                        response[2] = trace_size;
+                        response[3] = trace_used_size;
+                        response[4] = 0;
+
+                        bReset = true;
+                    }
+                    else
+                    {
+                        response[0] = TYPE_MA_RESPONSE;
+                        response[1] = 1;
+                        response[2] = trace_size;
+                        response[3] = trace_used_size;
                         response[4] = 0;
                     }
                     break;
@@ -876,7 +909,7 @@ void configure (void)
             strcpy(shmem_output_name, "ZISKMA_output");
             strcpy(sem_chunk_done_name, "ZISKMA_chunk_done");
             chunk_done = true;
-            port = 23115;
+            port = 23118;
             break;
         }
         case ChunksOnly:
@@ -929,9 +962,7 @@ void configure (void)
         port = arguments_port;
     }
 
-#ifdef DEBUG
     if (verbose) printf("ziskemuasm configuration: gen_method=%u port=%u shmem_input=%s shmem_output=%s sem_chunk_done=%s\n", gen_method, port, shmem_input_name, shmem_output_name, sem_chunk_done_name);
-#endif
 }
 
 void client_run (void)
@@ -1273,6 +1304,67 @@ void client_run (void)
                 
                 break;
             }
+            case MainTrace:
+            {
+                gettimeofday(&start_time, NULL);
+
+                // Prepare message to send
+                request[0] = TYPE_MA_REQUEST;
+                request[1] = 1ULL << 32; // max_steps
+                request[2] = 1ULL << 18; // chunk_len
+                request[3] = 0;
+                request[4] = 0;
+
+                // Send data to server
+                result = send(socket_fd, request, sizeof(request), 0);
+                if (result < 0)
+                {
+                    printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+
+                // Read server response
+                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
+                if (bytes_received < 0)
+                {
+                    printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (bytes_received != sizeof(response))
+                {
+                    printf("recv_all_with_timeout() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[0] != TYPE_MO_RESPONSE)
+                {
+                    printf("recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[1] != 0)
+                {
+                    printf("recv_all_with_timeout() returned unexpected result=%lu\n", response[1]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                printf("client (MA)[%lu]: done in %lu us\n", i, duration);
+
+                // Pretend to spend some time processing the incoming data
+                usleep((1000000));
+                
+                break;
+            }
             default:
             {
                 printf("client_run() found invalid gen_method=%d\n", gen_method);
@@ -1578,6 +1670,9 @@ void server_reset (void)
     pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
     pOutput[2] = trace_size; // MT allocated size [8] -> to be updated after reallocation
     pOutput[3] = 0; // MT used size [8] -> to be updated after completion
+    
+    // Reset trace used size
+    trace_used_size = 0;
 }
 
 void server_run (void)
@@ -1593,6 +1688,7 @@ void server_run (void)
     assembly_duration = TimeDiff(start_time, stop_time);
 
     uint64_t final_trace_size = MEM_CHUNK_ADDRESS - MEM_TRACE_ADDRESS;
+    trace_used_size = final_trace_size + 32;
 
     if ( metrics
 #ifdef DEBUG
@@ -1665,7 +1761,7 @@ void server_run (void)
     }
 
     // Complete output header data
-    if ((gen_method == MinimalTrace) || (gen_method == RomHistogram) || (gen_method == Zip))
+    if ((gen_method == MinimalTrace) || (gen_method == RomHistogram) || (gen_method == Zip) || (gen_method == MainTrace) || (gen_method == MemOp))
     {
         uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
         pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
