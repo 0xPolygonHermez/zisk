@@ -315,7 +315,7 @@ impl ZiskVerifyConstraints {
             "{:<8} {:<25}   {:<6}   {:<6} {:<6} {:<6}   {:<6} {:<6} {:<6}   {:<6} {:<6} {:<6}",
             "", "", "", "min", "max", "avg", "min", "max", "avg", "min", "max", "avg",
         );
-        println!("{}", "-".repeat(160));
+        println!("{}", "-".repeat(109));
 
         let mut grouped_sorted: Vec<_> = grouped.into_iter().collect();
         grouped_sorted.sort_by_key(|((airgroup_id, air_id), _)| (*airgroup_id, *air_id));
