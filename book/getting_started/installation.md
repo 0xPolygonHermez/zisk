@@ -151,7 +151,7 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
     ```bash
     rustup toolchain list
     ```
-    Confirm taht `zisk` appears in the list of installed toolchains.
+    Confirm that `zisk` appears in the list of installed toolchains.
 
 #### Build Setup
 
