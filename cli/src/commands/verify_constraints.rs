@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
-use executor::ZiskExecutionResult;
+use executor::{Stats, ZiskExecutionResult};
 use libloading::{Library, Symbol};
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
@@ -189,10 +189,10 @@ impl ZiskVerifyConstraints {
 
         let elapsed = start.elapsed();
 
-        let result: ZiskExecutionResult = *witness_lib
+        let (result, stats): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
             .get_execution_result()
             .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-            .downcast::<ZiskExecutionResult>()
+            .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
         println!();
@@ -206,6 +206,8 @@ impl ZiskVerifyConstraints {
             elapsed.as_secs_f32(),
             result.executed_steps
         );
+
+        Self::print_stats(stats);
 
         Ok(())
     }
@@ -268,6 +270,110 @@ impl ZiskVerifyConstraints {
             get_default_proving_key()
         } else {
             self.proving_key.clone().unwrap()
+        }
+    }
+
+    /// Prints stats individually and grouped, with aligned columns.
+    ///
+    /// # Arguments
+    /// * `stats_mutex` - A reference to the Mutex holding the stats vector.
+    pub fn print_stats(stats: Vec<(usize, usize, Stats)>) {
+        println!("Individual Entries:");
+        println!(
+            "{:<25} {:<8} {:<15} {:<15}",
+            "Name", "air id", "collect (ms)", "witness (ms)"
+        );
+        println!("{}", "-".repeat(65));
+
+        // Sort individual stats by (airgroup_id, air_id)
+        let mut sorted_stats = stats.clone();
+        sorted_stats.sort_by_key(|(airgroup_id, air_id, _)| (*airgroup_id, *air_id));
+
+        for (airgroup_id, air_id, stats) in sorted_stats.iter() {
+            println!(
+                "{:<25} {:<8} {:<15} {:<15}",
+                Self::air_name(*airgroup_id, *air_id),
+                air_id,
+                stats.collect_time,
+                stats.witness_time
+            );
+        }
+
+        // Build grouped data: Vec<Stats> per (airgroup_id, air_id)
+        let mut grouped: HashMap<(usize, usize), Vec<Stats>> = HashMap::new();
+        for (airgroup_id, air_id, stats) in stats.iter() {
+            grouped
+                .entry((*airgroup_id, *air_id))
+                .or_default()
+                .push(Stats {
+                    collect_time: stats.collect_time,
+                    witness_time: stats.witness_time,
+                });
+        }
+
+        println!("\nGrouped Totals (Min / Max / Avg):");
+        println!(
+            "{:<25} {:<8} {:>7} {:>12} {:>12} {:>12}    {:>12} {:>12} {:>12}",
+            "Name", "air id", "count",
+            "collect min", "collect max", "collect avg",
+            "witness min", "witness max", "witness avg"
+        );
+        println!("{}", "-".repeat(130));
+
+        let mut grouped_sorted: Vec<_> = grouped.into_iter().collect();
+        grouped_sorted.sort_by_key(|((airgroup_id, air_id), _)| (*airgroup_id, *air_id));
+
+        for ((airgroup_id, air_id), entries) in grouped_sorted {
+            let (mut c_min, mut c_max, mut c_sum) = (u64::MAX, 0, 0);
+            let (mut w_min, mut w_max, mut w_sum) = (u64::MAX, 0, 0);
+            let count = entries.len() as u64;
+
+            for e in &entries {
+                c_min = c_min.min(e.collect_time);
+                c_max = c_max.max(e.collect_time);
+                c_sum += e.collect_time;
+
+                w_min = w_min.min(e.witness_time);
+                w_max = w_max.max(e.witness_time);
+                w_sum += e.witness_time;
+            }
+
+            println!(
+                "{:<25} {:<8} {:>7} {:>12} {:>12} {:>12}    {:>12} {:>12} {:>12}",
+                Self::air_name(airgroup_id, air_id),
+                air_id,
+                count,
+                c_min, c_max, c_sum / count,
+                w_min, w_max, w_sum / count,
+            );
+        }
+    }
+
+    fn air_name( airgroup_id: usize, air_id: usize) -> String {
+        match air_id {
+            0 => "Main".to_string(),
+            1 => "ROM".to_string(),
+            2 => "MEM".to_string(),
+            3 => "ROM_DATA".to_string(),
+            4 => "INPUT_DATA".to_string(),
+            5 => "MEM_ALIGN".to_string(),
+            6 => "MEM_ALIGN_ROM".to_string(),
+            7 => "ARITH".to_string(),
+            8 => "ARITH_TABLE".to_string(),
+            9 => "ARITH_RANGE_TABLE".to_string(),
+            10 => "ARITH_EQ".to_string(),
+            11 => "ARITH_EQ_LT_TABLE".to_string(),
+            12 => "BINARY".to_string(),
+            13 => "BINARY_ADD".to_string(),
+            14 => "BINARY_TABLE".to_string(),
+            15 => "BINARY_EXTENSION".to_string(),
+            16 => "BINARY_EXTENSION_TABLE".to_string(),
+            17 => "KECCAKF".to_string(),
+            18 => "KECCAKF_TABLE".to_string(),
+            19 => "SHA_256_F".to_string(),
+            20 => "SHA_256_F_TABLE".to_string(),
+            21 => "SPECIFIED_RANGES".to_string(),
+            _ => format!("Unknown air_id: {}", air_id),
         }
     }
 }
