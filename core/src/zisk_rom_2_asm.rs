@@ -5398,6 +5398,18 @@ impl ZiskRom2Asm {
             if ctx.minimal_trace() || ctx.zip() {
                 *code += &format!("\tadd {}, 40*8 {}\n", REG_AUX, ctx.comment_str("aux += 40*8"));
             }
+            // Set mem reads size to all F's
+            *code += &format!(
+                "\tmov {}, 0xFFFFFFFFFFFFFFFF {}\n",
+                REG_VALUE,
+                ctx.comment_str("value = F's")
+            );
+            *code += &format!(
+                "\tmov [{}], {} {}\n",
+                REG_AUX,
+                REG_VALUE,
+                ctx.comment_str("mem_reads_size = value")
+            );
             *code += &format!("\tadd {}, 8 {}\n", REG_AUX, ctx.comment_str("aux += 8"));
             *code += &format!(
                 "\tmov {}, {} {}\n",
