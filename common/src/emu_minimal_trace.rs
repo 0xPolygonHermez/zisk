@@ -31,7 +31,7 @@ impl Default for EmuTraceStart {
 #[repr(C)]
 #[derive(Default, Clone)]
 pub struct EmuTrace {
-    /// State at the begining of the execution
+    /// State at the beginning of the execution
     pub start_state: EmuTraceStart,
     /// State at the end of the execution
     pub last_c: u64,
