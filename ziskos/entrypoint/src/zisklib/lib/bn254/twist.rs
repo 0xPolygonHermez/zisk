@@ -5,7 +5,7 @@ use super::{
     constants::{ETWISTED_B, E_B, FROBENIUS_GAMMA12, FROBENIUS_GAMMA13},
     fp2::{
         add_fp2_bn254, conjugate_fp2_bn254, dbl_fp2_bn254, inv_fp2_bn254, mul_fp2_bn254,
-        scalar_mul_fp2_bn254, square_fp2_bn254, sub_fp2_bn254,
+        neg_fp2_bn254, scalar_mul_fp2_bn254, square_fp2_bn254, sub_fp2_bn254,
     },
 };
 
@@ -123,6 +123,18 @@ pub fn dbl_twist_bn254(p: &[u64; 16]) -> [u64; 16] {
     [
         x3[0], x3[1], x3[2], x3[3], x3[4], x3[5], x3[6], x3[7], y3[0], y3[1], y3[2], y3[3], y3[4],
         y3[5], y3[6], y3[7],
+    ]
+}
+
+pub fn neg_twist_bn254(p: &[u64; 16]) -> [u64; 16] {
+    let x: [u64; 8] = p[0..8].try_into().unwrap();
+    let y: [u64; 8] = p[8..16].try_into().unwrap();
+
+    // Compute the negation
+    let y_neg = neg_fp2_bn254(&y);
+    [
+        x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], y_neg[0], y_neg[1], y_neg[2], y_neg[3],
+        y_neg[4], y_neg[5], y_neg[6], y_neg[7],
     ]
 }
 

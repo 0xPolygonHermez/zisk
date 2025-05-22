@@ -29,6 +29,15 @@ pub fn fcall_bn254_fp2_inv(p_value: &[u64; 8]) -> [u64; 8] {
     {
         ziskos_fcall_param!(p_value, 8);
         ziskos_fcall!(FCALL_BN254_FP2_INV_ID);
-        [ziskos_fcall_get(), ziskos_fcall_get(), ziskos_fcall_get(), ziskos_fcall_get()]
+        [
+            ziskos_fcall_get(),
+            ziskos_fcall_get(),
+            ziskos_fcall_get(),
+            ziskos_fcall_get(),
+            ziskos_fcall_get(),
+            ziskos_fcall_get(),
+            ziskos_fcall_get(),
+            ziskos_fcall_get(),
+        ]
     }
 }

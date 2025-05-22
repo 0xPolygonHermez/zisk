@@ -1,6 +1,10 @@
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
-use num_traits::{ToPrimitive, Zero};
+
+use super::bn254_fp::{
+    _bn254_fp_add, _bn254_fp_dbl, _bn254_fp_inv, _bn254_fp_mul, _bn254_fp_neg, _bn254_fp_square,
+    _bn254_fp_sub,
+};
 
 lazy_static! {
     pub static ref P: BigUint = BigUint::parse_bytes(
@@ -13,67 +17,139 @@ lazy_static! {
 /// Perform the inversion of a non-zero field element in Fp2
 pub fn bn254_fp2_inv(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
-    let real: &[u64; 4] = &params[0..4].try_into().unwrap();
-    let imaginary: &[u64; 4] = &params[4..8].try_into().unwrap();
-
-    // Perform the inversion using fp inversion
-    let denominator = bn254_fp_add(&bn254_fp_mul(real, real), &bn254_fp_mul(imaginary, imaginary));
-    let denominator = bn254_fp_inv(&denominator);
-
-    let inv_real = bn254_fp_mul(real, &denominator);
-    let inv_imaginary = bn254_fp_mul(&bn254_fp_neg(imaginary), &denominator);
+    let a = &params[0..8].try_into().unwrap();
+    let inv = _bn254_fp2_inv(a);
 
     // Store the result
-    results[0..4].copy_from_slice(&inv_real);
-    results[4..8].copy_from_slice(&inv_imaginary);
+    results[0..8].copy_from_slice(&inv);
 
     8
 }
 
-fn bn254_fp_add(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
-    let a_big = from_limbs_le(a);
-    let b_big = from_limbs_le(b);
-    let sum = (a_big + b_big) % &*P;
-    to_limbs_le(&sum)
+pub fn _bn254_fp2_inv(a: &[u64; 8]) -> [u64; 8] {
+    let real = &a[0..4].try_into().unwrap();
+    let imaginary = &a[4..8].try_into().unwrap();
+
+    // Perform the inversion using fp inversion
+    let denominator =
+        _bn254_fp_add(&_bn254_fp_mul(real, real), &_bn254_fp_mul(imaginary, imaginary));
+    let denominator = _bn254_fp_inv(&denominator);
+
+    let inv_real = _bn254_fp_mul(real, &denominator);
+    let inv_imaginary = _bn254_fp_mul(&_bn254_fp_neg(imaginary), &denominator);
+
+    [
+        inv_real[0],
+        inv_real[1],
+        inv_real[2],
+        inv_real[3],
+        inv_imaginary[0],
+        inv_imaginary[1],
+        inv_imaginary[2],
+        inv_imaginary[3],
+    ]
 }
 
-fn bn254_fp_mul(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
-    let a_big = from_limbs_le(a);
-    let b_big = from_limbs_le(b);
-    let product = (a_big * b_big) % &*P;
-    to_limbs_le(&product)
+pub fn _bn254_fp2_dbl(a: &[u64; 8]) -> [u64; 8] {
+    let a_real = &a[0..4].try_into().unwrap();
+    let a_imaginary = &a[4..8].try_into().unwrap();
+
+    let real_part = _bn254_fp_add(a_real, a_real);
+    let imaginary_part = _bn254_fp_add(a_imaginary, a_imaginary);
+
+    [
+        real_part[0],
+        real_part[1],
+        real_part[2],
+        real_part[3],
+        imaginary_part[0],
+        imaginary_part[1],
+        imaginary_part[2],
+        imaginary_part[3],
+    ]
 }
 
-fn bn254_fp_neg(a: &[u64; 4]) -> [u64; 4] {
-    let a_big = from_limbs_le(a);
-    let neg = &*P - a_big;
-    to_limbs_le(&neg)
+pub fn _bn254_fp2_sub(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
+    let a_real = &a[0..4].try_into().unwrap();
+    let a_imaginary = &a[4..8].try_into().unwrap();
+    let b_real = &b[0..4].try_into().unwrap();
+    let b_imaginary = &b[4..8].try_into().unwrap();
+
+    let real_part = _bn254_fp_sub(a_real, b_real);
+    let imaginary_part = _bn254_fp_sub(a_imaginary, b_imaginary);
+
+    [
+        real_part[0],
+        real_part[1],
+        real_part[2],
+        real_part[3],
+        imaginary_part[0],
+        imaginary_part[1],
+        imaginary_part[2],
+        imaginary_part[3],
+    ]
 }
 
-fn bn254_fp_inv(a: &[u64; 4]) -> [u64; 4] {
-    let a_big = from_limbs_le(a);
-    let inv = a_big.modinv(&*P);
-    match inv {
-        Some(inverse) => to_limbs_le(&inverse),
-        None => {
-            // Handle the case where the inverse does not exist
-            panic!("Inverse does not exist");
-        }
-    }
+pub fn _bn254_fp2_mul(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
+    let a_real = &a[0..4].try_into().unwrap();
+    let a_imaginary = &a[4..8].try_into().unwrap();
+    let b_real = &b[0..4].try_into().unwrap();
+    let b_imaginary = &b[4..8].try_into().unwrap();
+
+    let real_part =
+        _bn254_fp_sub(&_bn254_fp_mul(a_real, b_real), &_bn254_fp_mul(a_imaginary, b_imaginary));
+    let imaginary_part =
+        _bn254_fp_add(&_bn254_fp_mul(a_real, b_imaginary), &_bn254_fp_mul(a_imaginary, b_real));
+
+    [
+        real_part[0],
+        real_part[1],
+        real_part[2],
+        real_part[3],
+        imaginary_part[0],
+        imaginary_part[1],
+        imaginary_part[2],
+        imaginary_part[3],
+    ]
 }
 
-fn from_limbs_le(limbs: &[u64; 4]) -> BigUint {
-    limbs.iter().rev().fold(BigUint::zero(), |acc, &limb| (acc << 64) + BigUint::from(limb))
+pub fn _bn254_fp2_square(a: &[u64; 8]) -> [u64; 8] {
+    let a_real = &a[0..4].try_into().unwrap();
+    let a_imaginary = &a[4..8].try_into().unwrap();
+
+    let real_part = _bn254_fp_sub(&_bn254_fp_square(a_real), &_bn254_fp_square(a_imaginary));
+    let imaginary_part = _bn254_fp_dbl(&_bn254_fp_mul(a_real, a_imaginary));
+
+    [
+        real_part[0],
+        real_part[1],
+        real_part[2],
+        real_part[3],
+        imaginary_part[0],
+        imaginary_part[1],
+        imaginary_part[2],
+        imaginary_part[3],
+    ]
 }
 
-fn to_limbs_le(value: &BigUint) -> [u64; 4] {
-    let mut limbs = [0u64; 4];
-    let mut _value = value.clone();
-    for limb in limbs.iter_mut() {
-        *limb = (_value.clone() & BigUint::from(u64::MAX)).to_u64().unwrap();
-        _value >>= 64;
-    }
-    limbs
+pub fn _bn254_fp2_scalar_mul(a: &[u64; 8], b: &[u64; 4]) -> [u64; 8] {
+    let a_real = &a[0..4].try_into().unwrap();
+    let a_imaginary = &a[4..8].try_into().unwrap();
+    let b = &b[0..4].try_into().unwrap();
+
+    let real_part = _bn254_fp_mul(a_real, b);
+    let imaginary_part = _bn254_fp_mul(a_imaginary, b);
+
+    [
+        real_part[0],
+        real_part[1],
+        real_part[2],
+        real_part[3],
+        imaginary_part[0],
+        imaginary_part[1],
+        imaginary_part[2],
+        imaginary_part[3],
+    ]
 }
 
 #[cfg(test)]
