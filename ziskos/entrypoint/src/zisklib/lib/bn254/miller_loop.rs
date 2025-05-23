@@ -15,6 +15,7 @@ use super::{
         add_fp2_bn254, dbl_fp2_bn254, mul_fp2_bn254, neg_fp2_bn254, scalar_mul_fp2_bn254,
         square_fp2_bn254, sub_fp2_bn254,
     },
+    twist::utf_endomorphism_twist_bn254,
 };
 
 /// Pseudobinary representation of the loop length 6·X+2 of the
@@ -68,6 +69,29 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
             r = line_add_bn254(&r, q_prime, &lambda, &mu);
         }
     }
+
+    // Compute the last two lines
+
+    // f = f · line_{twist(R),twist(UTF(Q))}(P)
+    let q_frob = utf_endomorphism_twist_bn254(&q);
+
+    // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(utf(q))}
+    let (lambda, mu) = fcall_bn254_add_line_coeffs(&r, &q_frob);
+    assert!(is_line_bn254(&r, &q_frob, &lambda, &mu));
+
+    f = mul_fp12_bn254(&f, &line_eval_bn254(&lambda, &mu, &xp_prime, &yp_prime));
+
+    // Update r by r + utf(q)
+    r = line_add_bn254(&r, &q_frob, &lambda, &mu);
+
+    // f = f · line_{twist(R),twist(-UTF(UTF(Q)))}(P)
+    let q_frob2 = neg_twist_bn254(&utf_endomorphism_twist_bn254(&q_frob));
+
+    // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(-utf(utf(q)))}
+    let (lambda, mu) = fcall_bn254_add_line_coeffs(&r, &q_frob2);
+    assert!(is_line_bn254(&r, &q_frob2, &lambda, &mu));
+
+    f = mul_fp12_bn254(&f, &line_eval_bn254(&lambda, &mu, &xp_prime, &yp_prime));
 
     f
 }

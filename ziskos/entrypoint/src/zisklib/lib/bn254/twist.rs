@@ -150,7 +150,7 @@ pub fn scalar_mul_by_x_twist_bn254(p: &[u64; 16]) -> [u64; 16] {
     q
 }
 
-/// Compute the untwist-frobenius-twist (utf) endomorphism 𝜓: (x,y) = (𝛾₁₂·conjugate(x),𝛾₁₃·conjugate(y))
+/// Compute the untwist-frobenius-twist (utf) endomorphism 𝜓: (x,y) = (𝛾₁₂·x̄,𝛾₁₃·ȳ)
 pub fn utf_endomorphism_twist_bn254(p: &[u64; 16]) -> [u64; 16] {
     let mut x: [u64; 8] = p[0..8].try_into().unwrap();
     let mut y: [u64; 8] = p[8..16].try_into().unwrap();

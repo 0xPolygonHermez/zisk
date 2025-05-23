@@ -1,5 +1,15 @@
-use super::fp6::{
-    add_fp6_bn254, dbl_fp6_bn254, mul_fp6_bn254, sparse_mul_fp6_bn254, sub_fp6_bn254,
+use super::{
+    constants::{
+        FROBENIUS_GAMMA11, FROBENIUS_GAMMA12, FROBENIUS_GAMMA13, FROBENIUS_GAMMA14,
+        FROBENIUS_GAMMA15, FROBENIUS_GAMMA21, FROBENIUS_GAMMA22, FROBENIUS_GAMMA23,
+        FROBENIUS_GAMMA24, FROBENIUS_GAMMA25, FROBENIUS_GAMMA31, FROBENIUS_GAMMA32,
+        FROBENIUS_GAMMA33, FROBENIUS_GAMMA34, FROBENIUS_GAMMA35,
+    },
+    fp2::{conjugate_fp2_bn254, mul_fp2_bn254, scalar_mul_fp2_bn254},
+    fp6::{
+        add_fp6_bn254, dbl_fp6_bn254, inv_fp6_bn254, mul_fp6_bn254, neg_fp6_bn254,
+        sparse_mul_fp6_bn254, square_fp6_bn254, sub_fp6_bn254,
+    },
 };
 
 // mulFp12BN254:
@@ -58,5 +68,131 @@ pub fn square_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     let mut result = [0; 48];
     result[0..24].copy_from_slice(&c1);
     result[24..48].copy_from_slice(&c2);
+    result
+}
+
+/// inverseFp12BN254:
+///             in: (a1 + a2·w) ∈ Fp12, where ai ∈ Fp6
+///             out: (a1 + a2·w)⁻¹ = (c1 + c2·w) ∈ Fp12, where:
+///                  - c1 = a1·(a1² - a2²·v)⁻¹
+///                  - c2 = -a2·(a1² - a2²·v)⁻¹
+pub fn inv_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
+    let a1 = &a[0..24].try_into().unwrap();
+    let a2 = &a[24..48].try_into().unwrap();
+
+    let a1_sq = square_fp6_bn254(a1);
+    let a2_sq = square_fp6_bn254(a2);
+
+    let a2_sqv = sparse_mul_fp6_bn254(&a2_sq, &[1, 0, 0, 0, 0, 0, 0, 0]);
+    let a1_sq_minus_a2_sqv = sub_fp6_bn254(&a1_sq, &a2_sqv);
+    let inv = inv_fp6_bn254(&a1_sq_minus_a2_sqv);
+
+    let c1 = mul_fp6_bn254(a1, &inv);
+    let c2 = neg_fp6_bn254(&mul_fp6_bn254(a2, &inv));
+
+    let mut result = [0; 48];
+    result[0..24].copy_from_slice(&c1);
+    result[24..48].copy_from_slice(&c2);
+    result
+}
+
+pub fn conjugate_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
+    let mut result = [0; 48];
+    result[0..24].copy_from_slice(&a[0..24]);
+    result[24..48].copy_from_slice(&neg_fp6_bn254(&a[24..48].try_into().unwrap()));
+    result
+}
+
+// frobFp12BN254:
+//             in: (a1 + a2·w) = ((a11 + a12v + a13v²) + (a21 + a22v + a23v²)·w) ∈ Fp12, where ai ∈ Fp6 and aij ∈ Fp2
+//             out: (a1 + a2·w)ᵖ = (c1 + c2·w) ∈ Fp12, where:
+//                  - c1 = a̅11     + a̅12·γ12·v + a̅13·γ14·v²
+//                  - c2 = a̅21·γ11 + a̅22·γ13·v + a̅23·γ15·v²
+pub fn frobenius1_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
+    let a11 = &a[0..8].try_into().unwrap();
+    let a12 = &a[8..16].try_into().unwrap();
+    let a13 = &a[16..24].try_into().unwrap();
+    let a21 = &a[24..32].try_into().unwrap();
+    let a22 = &a[32..40].try_into().unwrap();
+    let a23 = &a[40..48].try_into().unwrap();
+
+    let mut result = [0; 48];
+
+    // c1 = a̅11 + a̅12·γ12·v + a̅13·γ14·v²
+    result[0..8].copy_from_slice(&conjugate_fp2_bn254(a11));
+    let mut tmp = conjugate_fp2_bn254(a12);
+    result[8..16].copy_from_slice(&mul_fp2_bn254(&tmp, &FROBENIUS_GAMMA12));
+    tmp = conjugate_fp2_bn254(a13);
+    result[16..24].copy_from_slice(&mul_fp2_bn254(&tmp, &FROBENIUS_GAMMA14));
+
+    // c2 = a̅21·γ11 + a̅22·γ13·v + a̅23·γ15·v²
+    tmp = conjugate_fp2_bn254(a21);
+    result[24..32].copy_from_slice(&mul_fp2_bn254(&tmp, &FROBENIUS_GAMMA11));
+    tmp = conjugate_fp2_bn254(a22);
+    result[32..40].copy_from_slice(&mul_fp2_bn254(&tmp, &FROBENIUS_GAMMA13));
+    tmp = conjugate_fp2_bn254(a23);
+    result[40..48].copy_from_slice(&mul_fp2_bn254(&tmp, &FROBENIUS_GAMMA15));
+
+    result
+}
+
+// frob2Fp12BN254:
+//             in: (a1 + a2·w) = ((a11 + a12v + a13v²) + (a21 + a22v + a23v²)) ∈ Fp12, where ai ∈ Fp6 and aij ∈ Fp2
+//             out: (a1 + a2·w)ᵖ˙ᵖ = (c1 + c2·w) ∈ Fp12, where:
+//                  - c1 = a11     + a12·γ22·v + a13·γ24·v²
+//                  - c2 = a21·γ21 + a22·γ23·v + a23·γ25·v²
+pub fn frobenius2_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
+    let a11: &[u64; 8] = &a[0..8].try_into().unwrap();
+    let a12 = &a[8..16].try_into().unwrap();
+    let a13 = &a[16..24].try_into().unwrap();
+    let a21 = &a[24..32].try_into().unwrap();
+    let a22 = &a[32..40].try_into().unwrap();
+    let a23 = &a[40..48].try_into().unwrap();
+
+    let mut result = [0; 48];
+
+    // c1 = a11 + a12·γ22·v + a13·γ24·v²
+    result[0..8].copy_from_slice(a11);
+    result[8..16].copy_from_slice(&scalar_mul_fp2_bn254(a12, &FROBENIUS_GAMMA22));
+    result[16..24].copy_from_slice(&scalar_mul_fp2_bn254(a13, &FROBENIUS_GAMMA24));
+
+    // c2 = a21·γ21 + a22·γ23·v + a23·γ25·v²
+    result[24..32].copy_from_slice(&scalar_mul_fp2_bn254(a21, &FROBENIUS_GAMMA21));
+    result[32..40].copy_from_slice(&scalar_mul_fp2_bn254(a22, &FROBENIUS_GAMMA23));
+    result[40..48].copy_from_slice(&scalar_mul_fp2_bn254(a23, &FROBENIUS_GAMMA25));
+
+    result
+}
+
+// frob3Fp12BN254:
+//             in: (a1 + a2·w) = ((a11 + a12v + a13v²) + (a21 + a22v + a23v²)) ∈ Fp12, where ai ∈ Fp6 and aij ∈ Fp2
+//             out: (a1 + a2·w)ᵖ˙ᵖ˙ᵖ = (c1 + c2·w) ∈ Fp12, where:
+//                  - c1 = a̅11     + a̅12·γ32·v + a̅13·γ34·v²
+//                  - c2 = a̅21·γ31 + a̅22·γ33·v + a̅23·γ35·v²
+pub fn frobenius3_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
+    let a11 = &a[0..8].try_into().unwrap();
+    let a12 = &a[8..16].try_into().unwrap();
+    let a13 = &a[16..24].try_into().unwrap();
+    let a21 = &a[24..32].try_into().unwrap();
+    let a22 = &a[32..40].try_into().unwrap();
+    let a23 = &a[40..48].try_into().unwrap();
+
+    let mut result = [0; 48];
+
+    // c1 = a̅11 + a̅12·γ32·v + a̅13·γ34·v²
+    result[0..8].copy_from_slice(&conjugate_fp2_bn254(a11));
+    let mut tmp = conjugate_fp2_bn254(a12);
+    result[8..16].copy_from_slice(&mul_fp2_bn254(&tmp, &FROBENIUS_GAMMA32));
+    tmp = conjugate_fp2_bn254(a13);
+    result[16..24].copy_from_slice(&mul_fp2_bn254(&tmp, &FROBENIUS_GAMMA34));
+
+    // c2 = a̅21·γ31 + a̅22·γ33·v + a̅23·γ35·v²
+    tmp = conjugate_fp2_bn254(a21);
+    result[24..32].copy_from_slice(&mul_fp2_bn254(&tmp, &FROBENIUS_GAMMA31));
+    tmp = conjugate_fp2_bn254(a22);
+    result[32..40].copy_from_slice(&mul_fp2_bn254(&tmp, &FROBENIUS_GAMMA33));
+    tmp = conjugate_fp2_bn254(a23);
+    result[40..48].copy_from_slice(&mul_fp2_bn254(&tmp, &FROBENIUS_GAMMA35));
+
     result
 }

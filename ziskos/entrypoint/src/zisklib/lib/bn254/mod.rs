@@ -1,5 +1,7 @@
 pub mod constants;
 pub mod curve;
+pub mod cyclotomic;
+pub mod final_exp;
 pub mod fp;
 pub mod fp12;
 pub mod fp2;
