@@ -3,12 +3,12 @@ use crate::{
     bn254_curve_dbl::syscall_bn254_curve_dbl,
     fcall_msb_pos_256,
     point256::SyscallPoint256,
+    zisklib::lib::utils::gt,
 };
 
 use super::{
     bn254::constants::{E_B, P_MINUS_ONE, R_MINUS_ONE},
     bn254::fp::{add_fp_bn254, mul_fp_bn254, square_fp_bn254},
-    gt,
     utils::eq,
 };
 

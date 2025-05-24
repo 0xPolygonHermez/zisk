@@ -5,10 +5,11 @@ use crate::{
 };
 
 use super::{
-    bn254::constants::{E_B, P_MINUS_ONE},
-    bn254::fp::{add_fp_bn254, mul_fp_bn254, square_fp_bn254},
-    gt,
-    utils::eq,
+    bn254::{
+        constants::{E_B, P_MINUS_ONE},
+        fp::{add_fp_bn254, mul_fp_bn254, square_fp_bn254},
+    },
+    utils::{eq, gt},
 };
 
 /// Given two points `p1` and `p2` on the BN254 curve, this function computes the sum of the two points.

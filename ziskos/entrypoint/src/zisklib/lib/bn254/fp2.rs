@@ -5,8 +5,9 @@ use crate::{
     complex256::SyscallComplex256,
     fcall_bn254_fp2_inv,
     zisklib::lib::utils::eq,
-    P,
 };
+
+use super::constants::{P, P_MINUS_ONE};
 
 pub fn add_fp2_bn254(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
     let mut f1 =
@@ -33,11 +34,12 @@ pub fn dbl_fp2_bn254(a: &[u64; 8]) -> [u64; 8] {
 }
 
 pub fn neg_fp2_bn254(a: &[u64; 8]) -> [u64; 8] {
-    let mut f1 = SyscallComplex256 { x: P, y: P };
-    let f2 = SyscallComplex256 { x: a[0..4].try_into().unwrap(), y: a[4..8].try_into().unwrap() };
+    let mut f1 =
+        SyscallComplex256 { x: a[0..4].try_into().unwrap(), y: a[4..8].try_into().unwrap() };
+    let f2 = SyscallComplex256 { x: P_MINUS_ONE, y: [0u64; 4] };
 
-    let mut params = SyscallBn254ComplexSubParams { f1: &mut f1, f2: &f2 };
-    syscall_bn254_complex_sub(&mut params);
+    let mut params = SyscallBn254ComplexMulParams { f1: &mut f1, f2: &f2 };
+    syscall_bn254_complex_mul(&mut params);
     let res_x = params.f1.x;
     let res_y = params.f1.y;
     [res_x[0], res_x[1], res_x[2], res_x[3], res_y[0], res_y[1], res_y[2], res_y[3]]
@@ -116,7 +118,7 @@ pub fn inv_fp2_bn254(a: &[u64; 8]) -> [u64; 8] {
 }
 
 pub fn conjugate_fp2_bn254(a: &[u64; 8]) -> [u64; 8] {
-    let mut f1 = SyscallComplex256 { x: a[0..4].try_into().unwrap(), y: P };
+    let mut f1 = SyscallComplex256 { x: a[0..4].try_into().unwrap(), y: [0, 0, 0, 0] };
     let f2 = SyscallComplex256 { x: [0, 0, 0, 0], y: a[4..8].try_into().unwrap() };
 
     let mut params = SyscallBn254ComplexSubParams { f1: &mut f1, f2: &f2 };

@@ -2,12 +2,12 @@ use lazy_static::lazy_static;
 use num_bigint::BigUint;
 
 use super::bn254_fp::{
-    _bn254_fp_add, _bn254_fp_dbl, _bn254_fp_inv, _bn254_fp_mul, _bn254_fp_neg, _bn254_fp_square,
-    _bn254_fp_sub,
+    bn254_fp_add, bn254_fp_dbl, bn254_fp_inv, bn254_fp_mul, bn254_fp_neg, bn254_fp_square,
+    bn254_fp_sub,
 };
 
 lazy_static! {
-    pub static ref P: BigUint = BigUint::parse_bytes(
+    static ref P: BigUint = BigUint::parse_bytes(
         b"30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47",
         16
     )
@@ -15,10 +15,10 @@ lazy_static! {
 }
 
 /// Perform the inversion of a non-zero field element in Fp2
-pub fn bn254_fp2_inv(params: &[u64], results: &mut [u64]) -> i64 {
+pub fn fcall_bn254_fp2_inv(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let a = &params[0..8].try_into().unwrap();
-    let inv = _bn254_fp2_inv(a);
+    let inv = bn254_fp2_inv(a);
 
     // Store the result
     results[0..8].copy_from_slice(&inv);
@@ -26,17 +26,16 @@ pub fn bn254_fp2_inv(params: &[u64], results: &mut [u64]) -> i64 {
     8
 }
 
-pub fn _bn254_fp2_inv(a: &[u64; 8]) -> [u64; 8] {
+pub fn bn254_fp2_inv(a: &[u64; 8]) -> [u64; 8] {
     let real = &a[0..4].try_into().unwrap();
     let imaginary = &a[4..8].try_into().unwrap();
 
     // Perform the inversion using fp inversion
-    let denominator =
-        _bn254_fp_add(&_bn254_fp_mul(real, real), &_bn254_fp_mul(imaginary, imaginary));
-    let denominator = _bn254_fp_inv(&denominator);
+    let denominator = bn254_fp_add(&bn254_fp_mul(real, real), &bn254_fp_mul(imaginary, imaginary));
+    let denominator = bn254_fp_inv(&denominator);
 
-    let inv_real = _bn254_fp_mul(real, &denominator);
-    let inv_imaginary = _bn254_fp_mul(&_bn254_fp_neg(imaginary), &denominator);
+    let inv_real = bn254_fp_mul(real, &denominator);
+    let inv_imaginary = bn254_fp_mul(&bn254_fp_neg(imaginary), &denominator);
 
     [
         inv_real[0],
@@ -50,12 +49,12 @@ pub fn _bn254_fp2_inv(a: &[u64; 8]) -> [u64; 8] {
     ]
 }
 
-pub fn _bn254_fp2_dbl(a: &[u64; 8]) -> [u64; 8] {
+pub fn bn254_fp2_dbl(a: &[u64; 8]) -> [u64; 8] {
     let a_real = &a[0..4].try_into().unwrap();
     let a_imaginary = &a[4..8].try_into().unwrap();
 
-    let real_part = _bn254_fp_add(a_real, a_real);
-    let imaginary_part = _bn254_fp_add(a_imaginary, a_imaginary);
+    let real_part = bn254_fp_add(a_real, a_real);
+    let imaginary_part = bn254_fp_add(a_imaginary, a_imaginary);
 
     [
         real_part[0],
@@ -69,14 +68,14 @@ pub fn _bn254_fp2_dbl(a: &[u64; 8]) -> [u64; 8] {
     ]
 }
 
-pub fn _bn254_fp2_sub(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
+pub fn bn254_fp2_sub(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
     let a_real = &a[0..4].try_into().unwrap();
     let a_imaginary = &a[4..8].try_into().unwrap();
     let b_real = &b[0..4].try_into().unwrap();
     let b_imaginary = &b[4..8].try_into().unwrap();
 
-    let real_part = _bn254_fp_sub(a_real, b_real);
-    let imaginary_part = _bn254_fp_sub(a_imaginary, b_imaginary);
+    let real_part = bn254_fp_sub(a_real, b_real);
+    let imaginary_part = bn254_fp_sub(a_imaginary, b_imaginary);
 
     [
         real_part[0],
@@ -90,16 +89,16 @@ pub fn _bn254_fp2_sub(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
     ]
 }
 
-pub fn _bn254_fp2_mul(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
+pub fn bn254_fp2_mul(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
     let a_real = &a[0..4].try_into().unwrap();
     let a_imaginary = &a[4..8].try_into().unwrap();
     let b_real = &b[0..4].try_into().unwrap();
     let b_imaginary = &b[4..8].try_into().unwrap();
 
     let real_part =
-        _bn254_fp_sub(&_bn254_fp_mul(a_real, b_real), &_bn254_fp_mul(a_imaginary, b_imaginary));
+        bn254_fp_sub(&bn254_fp_mul(a_real, b_real), &bn254_fp_mul(a_imaginary, b_imaginary));
     let imaginary_part =
-        _bn254_fp_add(&_bn254_fp_mul(a_real, b_imaginary), &_bn254_fp_mul(a_imaginary, b_real));
+        bn254_fp_add(&bn254_fp_mul(a_real, b_imaginary), &bn254_fp_mul(a_imaginary, b_real));
 
     [
         real_part[0],
@@ -113,12 +112,12 @@ pub fn _bn254_fp2_mul(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
     ]
 }
 
-pub fn _bn254_fp2_square(a: &[u64; 8]) -> [u64; 8] {
+pub fn bn254_fp2_square(a: &[u64; 8]) -> [u64; 8] {
     let a_real = &a[0..4].try_into().unwrap();
     let a_imaginary = &a[4..8].try_into().unwrap();
 
-    let real_part = _bn254_fp_sub(&_bn254_fp_square(a_real), &_bn254_fp_square(a_imaginary));
-    let imaginary_part = _bn254_fp_dbl(&_bn254_fp_mul(a_real, a_imaginary));
+    let real_part = bn254_fp_sub(&bn254_fp_square(a_real), &bn254_fp_square(a_imaginary));
+    let imaginary_part = bn254_fp_dbl(&bn254_fp_mul(a_real, a_imaginary));
 
     [
         real_part[0],
@@ -132,13 +131,13 @@ pub fn _bn254_fp2_square(a: &[u64; 8]) -> [u64; 8] {
     ]
 }
 
-pub fn _bn254_fp2_scalar_mul(a: &[u64; 8], b: &[u64; 4]) -> [u64; 8] {
+pub fn bn254_fp2_scalar_mul(a: &[u64; 8], b: &[u64; 4]) -> [u64; 8] {
     let a_real = &a[0..4].try_into().unwrap();
     let a_imaginary = &a[4..8].try_into().unwrap();
     let b = &b[0..4].try_into().unwrap();
 
-    let real_part = _bn254_fp_mul(a_real, b);
-    let imaginary_part = _bn254_fp_mul(a_imaginary, b);
+    let real_part = bn254_fp_mul(a_real, b);
+    let imaginary_part = bn254_fp_mul(a_imaginary, b);
 
     [
         real_part[0],
@@ -162,7 +161,7 @@ mod tests {
         let expected_inv = [1, 0, 0, 0, 0, 0, 0, 0];
 
         let mut results = [0; 8];
-        bn254_fp2_inv(&x, &mut results);
+        fcall_bn254_fp2_inv(&x, &mut results);
         assert_eq!(results, expected_inv);
     }
 
@@ -190,7 +189,7 @@ mod tests {
         ];
 
         let mut results = [0; 8];
-        bn254_fp2_inv(&x, &mut results);
+        fcall_bn254_fp2_inv(&x, &mut results);
         assert_eq!(results, expected_inv);
     }
 }

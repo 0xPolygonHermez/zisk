@@ -7,7 +7,7 @@ use crate::zisklib::lib::{
         miller_loop::miller_loop_bn254,
         twist::{is_on_curve_twist_bn254, is_on_subgroup_twist_bn254},
     },
-    gt,
+    utils::gt,
 };
 
 /// Performs a pairing product check over the BN254 curve.

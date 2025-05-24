@@ -4,9 +4,12 @@ use crate::{
     arith256_mod::{syscall_arith256_mod, SyscallArith256ModParams},
     fcall_secp256k1_fn_inv, fcall_secp256k1_fp_sqrt,
     point256::SyscallPoint256,
+    zisklib::lib::{
+        secp256k1_fp_assert_nqr::secp256k1_fp_assert_nqr,
+        secp256k1_msm::secp256k1_double_scalar_mul_with_g,
+        utils::{gt, sub},
+    },
 };
-
-use super::{gt, secp256k1_double_scalar_mul_with_g, secp256k1_fp_assert_nqr, sub};
 
 /// Secp256k1 base field size
 const P: [u64; 4] =

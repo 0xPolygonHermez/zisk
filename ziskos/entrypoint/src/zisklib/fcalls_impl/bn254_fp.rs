@@ -12,12 +12,12 @@ lazy_static! {
 }
 
 /// Perform the inversion of a non-zero field element in Fp
-pub fn bn254_fp_inv(params: &[u64], results: &mut [u64]) -> i64 {
+pub fn fcall_bn254_fp_inv(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let a: &[u64; 4] = &params[0..4].try_into().unwrap();
 
     // Perform the inversion using fp inversion
-    let inv = _bn254_fp_inv(a);
+    let inv = bn254_fp_inv(a);
 
     // Store the result
     results[0..4].copy_from_slice(&inv);
@@ -25,46 +25,46 @@ pub fn bn254_fp_inv(params: &[u64], results: &mut [u64]) -> i64 {
     4
 }
 
-pub fn _bn254_fp_add(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
+pub fn bn254_fp_add(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
     let a_big = from_limbs_le(a);
     let b_big = from_limbs_le(b);
     let sum = (a_big + b_big) % &*P;
     to_limbs_le(&sum)
 }
 
-pub fn _bn254_fp_dbl(a: &[u64; 4]) -> [u64; 4] {
+pub fn bn254_fp_dbl(a: &[u64; 4]) -> [u64; 4] {
     let a_big = from_limbs_le(a);
     let double = (a_big.clone() + a_big) % &*P;
     to_limbs_le(&double)
 }
 
-pub fn _bn254_fp_sub(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
+pub fn bn254_fp_sub(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
     let a_big = from_limbs_le(a);
     let b_big = from_limbs_le(b);
     let diff = if a_big >= b_big { (a_big - b_big) % &*P } else { ((a_big + &*P) - b_big) % &*P };
     to_limbs_le(&diff)
 }
 
-pub fn _bn254_fp_neg(a: &[u64; 4]) -> [u64; 4] {
+pub fn bn254_fp_neg(a: &[u64; 4]) -> [u64; 4] {
     let a_big = from_limbs_le(a);
     let neg = &*P - a_big;
     to_limbs_le(&neg)
 }
 
-pub fn _bn254_fp_mul(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
+pub fn bn254_fp_mul(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
     let a_big = from_limbs_le(a);
     let b_big = from_limbs_le(b);
     let product = (a_big * b_big) % &*P;
     to_limbs_le(&product)
 }
 
-pub fn _bn254_fp_square(a: &[u64; 4]) -> [u64; 4] {
+pub fn bn254_fp_square(a: &[u64; 4]) -> [u64; 4] {
     let a_big = from_limbs_le(a);
     let square = (a_big.clone() * a_big) % &*P;
     to_limbs_le(&square)
 }
 
-pub fn _bn254_fp_inv(a: &[u64; 4]) -> [u64; 4] {
+pub fn bn254_fp_inv(a: &[u64; 4]) -> [u64; 4] {
     let a_big = from_limbs_le(a);
     let inv = a_big.modinv(&*P);
     match inv {
@@ -86,7 +86,7 @@ mod tests {
         let expected_inv = [1, 0, 0, 0];
 
         let mut results = [0; 4];
-        bn254_fp_inv(&x, &mut results);
+        fcall_bn254_fp_inv(&x, &mut results);
         assert_eq!(results, expected_inv);
     }
 
@@ -97,7 +97,7 @@ mod tests {
             [0x7258dab6e90d1680, 0x779f7ec5cad25c1d, 0xb9c114d250bcaa3c, 0x2525db1f6832d97d];
 
         let mut results = [0; 4];
-        bn254_fp_inv(&x, &mut results);
+        fcall_bn254_fp_inv(&x, &mut results);
         assert_eq!(results, expected_inv);
     }
 }

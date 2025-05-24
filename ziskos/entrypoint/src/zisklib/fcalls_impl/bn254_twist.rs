@@ -1,10 +1,10 @@
 use super::bn254_fp2::{
-    _bn254_fp2_dbl, _bn254_fp2_inv, _bn254_fp2_mul, _bn254_fp2_scalar_mul, _bn254_fp2_square,
-    _bn254_fp2_sub,
+    bn254_fp2_dbl, bn254_fp2_inv, bn254_fp2_mul, bn254_fp2_scalar_mul, bn254_fp2_square,
+    bn254_fp2_sub,
 };
 
 /// Computes the coefficients (𝜆,𝜇) of a line passing through points (x1,y1),(x2,y2)
-pub fn bn254_add_line_coeffs(params: &[u64], results: &mut [u64]) -> i64 {
+pub fn fcall_bn254_twist_add_line_coeffs(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let x1: &[u64; 8] = &params[0..8].try_into().unwrap();
     let y1: &[u64; 8] = &params[8..16].try_into().unwrap();
@@ -12,11 +12,11 @@ pub fn bn254_add_line_coeffs(params: &[u64], results: &mut [u64]) -> i64 {
     let y2: &[u64; 8] = &params[24..32].try_into().unwrap();
 
     // Compute 𝜆
-    let mut lambda = _bn254_fp2_inv(&_bn254_fp2_sub(x2, x1));
-    lambda = _bn254_fp2_mul(&lambda, &_bn254_fp2_sub(y2, y1));
+    let mut lambda = bn254_fp2_inv(&bn254_fp2_sub(x2, x1));
+    lambda = bn254_fp2_mul(&lambda, &bn254_fp2_sub(y2, y1));
 
     // Compute 𝜇
-    let mu = _bn254_fp2_sub(y1, &_bn254_fp2_mul(&lambda, x1));
+    let mu = bn254_fp2_sub(y1, &bn254_fp2_mul(&lambda, x1));
 
     // Store the result
     results[0..8].copy_from_slice(&lambda);
@@ -26,18 +26,18 @@ pub fn bn254_add_line_coeffs(params: &[u64], results: &mut [u64]) -> i64 {
 }
 
 /// Computes the coefficients (𝜆,𝜇) of the tangent line at the point (x,y)
-pub fn bn254_dbl_line_coeffs(params: &[u64], results: &mut [u64]) -> i64 {
+pub fn fcall_bn254_twist_dbl_line_coeffs(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let x: &[u64; 8] = &params[0..8].try_into().unwrap();
     let y: &[u64; 8] = &params[8..16].try_into().unwrap();
 
     // Compute 𝜆
-    let mut lambda = _bn254_fp2_inv(&_bn254_fp2_dbl(y));
-    let x_sq = _bn254_fp2_square(x);
-    lambda = _bn254_fp2_mul(&lambda, &_bn254_fp2_scalar_mul(&x_sq, &[3, 0, 0, 0]));
+    let mut lambda = bn254_fp2_inv(&bn254_fp2_dbl(y));
+    let x_sq = bn254_fp2_square(x);
+    lambda = bn254_fp2_mul(&lambda, &bn254_fp2_scalar_mul(&x_sq, &[3, 0, 0, 0]));
 
     // Compute 𝜇
-    let mu = _bn254_fp2_sub(y, &_bn254_fp2_mul(&lambda, x));
+    let mu = bn254_fp2_sub(y, &bn254_fp2_mul(&lambda, x));
 
     // Store the result
     results[0..8].copy_from_slice(&lambda);
@@ -93,7 +93,7 @@ mod tests {
         params[0..16].copy_from_slice(&p);
         params[16..32].copy_from_slice(&q);
         let mut results = [0; 16];
-        bn254_add_line_coeffs(&params, &mut results);
+        fcall_bn254_twist_add_line_coeffs(&params, &mut results);
 
         let expected_lambda = [
             0x70a3dd9659d4661d,
@@ -141,7 +141,7 @@ mod tests {
         ];
 
         let mut results = [0; 16];
-        bn254_dbl_line_coeffs(&p, &mut results);
+        fcall_bn254_twist_dbl_line_coeffs(&p, &mut results);
 
         let expected_lambda = [
             0xfa23df0596bf5ac0,
