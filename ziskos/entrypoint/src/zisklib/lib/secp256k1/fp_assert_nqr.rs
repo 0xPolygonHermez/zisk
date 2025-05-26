@@ -1,19 +1,14 @@
 use crate::{
     arith256_mod::{syscall_arith256_mod, SyscallArith256ModParams},
     fcall_secp256k1_fp_inv,
+    zisklib::lib::utils::exp_power_of_two,
 };
 
-use super::exp_power_of_two;
-
-/// Secp256k1 base field size
-const P: [u64; 4] =
-    [0xFFFFFFFEFFFFFC2F, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF];
-const P_MINUS_ONE: [u64; 4] =
-    [0xFFFFFFFEFFFFFC2E, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF];
+use super::constants::{P, P_MINUS_ONE};
 
 /// Given a 256-bit number `x`, uses the Euler's Criterion `x^{(p-1)/2} == -1 (mod p)` to assert it is not a quadratic residue.
 /// It assumes that `x` is a field element.
-pub(super) fn secp256k1_fp_assert_nqr(x: &[u64; 4]) {
+pub fn secp256k1_fp_assert_nqr(x: &[u64; 4]) {
     // Note: (p-1)/2 = 2^255 - 2^32 + 2^31 - 2^9 + 2^4 + 2^3 - 1
 
     //                x^(2^255) · x^(2^31) · x^(2^4) · x^(2^3)

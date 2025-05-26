@@ -172,7 +172,7 @@ pub fn ecpairing(g1_points: &[[u64; 8]], g2_points: &[[u64; 16]]) -> (bool, u8) 
         let miller_loop = miller_loop_bn254(p, q);
 
         // Update result with the new miller loop result
-        acc = mul_fp12_bn254(&acc, &miller_loop);
+        acc = mul_fp12_bn254(&acc, &miller_loop); // TODO: The mul is sparse, so we can optimize this further
     }
 
     // Final exponentiation
