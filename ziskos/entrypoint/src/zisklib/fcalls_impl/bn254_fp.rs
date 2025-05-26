@@ -66,7 +66,7 @@ pub fn bn254_fp_square(a: &[u64; 4]) -> [u64; 4] {
 
 pub fn bn254_fp_inv(a: &[u64; 4]) -> [u64; 4] {
     let a_big = from_limbs_le(a);
-    let inv = a_big.modinv(&*P);
+    let inv = a_big.modinv(&P);
     match inv {
         Some(inverse) => to_limbs_le(&inverse),
         None => {

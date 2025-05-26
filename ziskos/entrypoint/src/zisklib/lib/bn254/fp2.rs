@@ -7,7 +7,7 @@ use crate::{
     zisklib::lib::utils::eq,
 };
 
-use super::constants::{P, P_MINUS_ONE};
+use super::constants::P_MINUS_ONE;
 
 pub fn add_fp2_bn254(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
     let mut f1 =

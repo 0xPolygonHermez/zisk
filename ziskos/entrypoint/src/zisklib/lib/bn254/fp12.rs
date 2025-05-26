@@ -7,18 +7,18 @@ use super::{
         FROBENIUS_GAMMA24, FROBENIUS_GAMMA25, FROBENIUS_GAMMA31, FROBENIUS_GAMMA32,
         FROBENIUS_GAMMA33, FROBENIUS_GAMMA34, FROBENIUS_GAMMA35,
     },
-    fp2::{conjugate_fp2_bn254, mul_fp2_bn254, scalar_mul_fp2_bn254},
+    fp2::{add_fp2_bn254, conjugate_fp2_bn254, mul_fp2_bn254, scalar_mul_fp2_bn254},
     fp6::{
         add_fp6_bn254, dbl_fp6_bn254, inv_fp6_bn254, mul_fp6_bn254, neg_fp6_bn254,
-        sparse_mul_fp6_bn254, square_fp6_bn254, sub_fp6_bn254,
+        sparse_mula_fp6_bn254, sparse_mulb_fp6_bn254, sparse_mulc_fp6_bn254, square_fp6_bn254,
+        sub_fp6_bn254,
     },
 };
 
-// mulFp12BN254:
-//             in: (a1 + a2·w),(b1 + b2·w) ∈ Fp12, where ai,bi ∈ Fp6
-//             out: (a1 + a2·w)·(b1 + b2·w) = (c1 + c2·w) ∈ Fp12, where:
-//                  - c1 = a1·b1 + a2·b2·v
-//                  - c2 = (a1+a2)·(b1+b2) - a1·b1 - a2·b2
+// in: (a1 + a2·w),(b1 + b2·w) ∈ Fp12, where ai,bi ∈ Fp6
+// out: (a1 + a2·w)·(b1 + b2·w) = (c1 + c2·w) ∈ Fp12, where:
+//      - c1 = a1·b1 + a2·b2·v
+//      - c2 = (a1+a2)·(b1+b2) - a1·b1 - a2·b2
 pub fn mul_fp12_bn254(a: &[u64; 48], b: &[u64; 48]) -> [u64; 48] {
     let a1 = &a[0..24].try_into().unwrap();
     let a2 = &a[24..48].try_into().unwrap();
@@ -28,7 +28,7 @@ pub fn mul_fp12_bn254(a: &[u64; 48], b: &[u64; 48]) -> [u64; 48] {
     let a1b1 = mul_fp6_bn254(a1, b1);
     let a2b2 = mul_fp6_bn254(a2, b2);
 
-    let a2b2v = sparse_mul_fp6_bn254(&a2b2, &[1, 0, 0, 0, 0, 0, 0, 0]);
+    let a2b2v = sparse_mula_fp6_bn254(&a2b2, &[1, 0, 0, 0, 0, 0, 0, 0]);
     let c1 = add_fp6_bn254(&a1b1, &a2b2v);
 
     let a1_plus_a2 = add_fp6_bn254(a1, a2);
@@ -43,19 +43,124 @@ pub fn mul_fp12_bn254(a: &[u64; 48], b: &[u64; 48]) -> [u64; 48] {
     result
 }
 
-// squareFp12BN254:
-//             in: (a1 + a2·w) ∈ Fp12, where ai ∈ Fp6
-//             out: (a1 + a2·w)² = (c1 + c2·w) ∈ Fp12, where:
-//                  - c1 = (a1-a2)·(a1-a2·v) + a1·a2 + a1·a2·v
-//                  - c2 = 2·a1·a2
+// in: (a1 + a2·w + a3·w² + a4·w³ + a5·w⁴ + a6·w⁵),(b1 + b2·w + b3·w² + b4·w³ + b5·w⁴ + b6·w⁵) ∈ Fp12,
+//      where ai,bi ∈ Fp2
+// out: c1 + c2·w + c3·w² + c4·w³ + c5·w⁴ + c6·w⁵ ∈ Fp12, where:
+//      - c1 = a1·b1 + (a2·b6 + a3·b5 + a4·b4 + a5·b3 + a6·b2)·(9+u)
+//      - c2 = a1·b2 + a2·b1 + (a3·b6 + a4·b5 + a5·b4 + a6·b3)·(9+u)
+//      - c3 = a1·b3 + a2·b2 + a3·b1 + (a4·b6 + a5·b5 + a6·b4)·(9+u)
+//      - c4 = a1·b4 + a2·b3 + a3·b2 + a4·b1 + (a5·b6 + a6·b5)·(9+u)
+//      - c5 = a1·b5 + a2·b4 + a3·b3 + a4·b2 + a5·b1 + a6·b6·(9+u)
+//      - c6 = a1·b6 + a2·b5 + a3·b4 + a4·b3 + a5·b2 + a6·b1
+pub fn mulb_fp12_bn254(a: &[u64; 48], b: &[u64; 48]) -> [u64; 48] {
+    let a1 = &a[0..8].try_into().unwrap();
+    let a2 = &a[8..16].try_into().unwrap();
+    let a3 = &a[16..24].try_into().unwrap();
+    let a4 = &a[24..32].try_into().unwrap();
+    let a5 = &a[32..40].try_into().unwrap();
+    let a6 = &a[40..48].try_into().unwrap();
+    let b1 = &b[0..8].try_into().unwrap();
+    let b2 = &b[8..16].try_into().unwrap();
+    let b3 = &b[16..24].try_into().unwrap();
+    let b4 = &b[24..32].try_into().unwrap();
+    let b5 = &b[32..40].try_into().unwrap();
+    let b6 = &b[40..48].try_into().unwrap();
+
+    // c1 = a1·b1 + (a2·b6 + a3·b5 + a4·b4 + a5·b3 + a6·b2)·(9+u)
+    let mut c1 = mul_fp2_bn254(a2, b6);
+    c1 = add_fp2_bn254(&c1, &mul_fp2_bn254(a3, b5));
+    c1 = add_fp2_bn254(&c1, &mul_fp2_bn254(a4, b4));
+    c1 = add_fp2_bn254(&c1, &mul_fp2_bn254(a5, b3));
+    c1 = add_fp2_bn254(&c1, &mul_fp2_bn254(a6, b2));
+    c1 = mul_fp2_bn254(&c1, &[9, 0, 0, 0, 1, 0, 0, 0]);
+    c1 = add_fp2_bn254(&c1, &mul_fp2_bn254(a1, b1));
+
+    // c2 = a1·b2 + a2·b1 + (a3·b6 + a4·b5 + a5·b4 + a6·b3)·(9+u)
+    let mut c2 = mul_fp2_bn254(a3, b6);
+    c2 = add_fp2_bn254(&c2, &mul_fp2_bn254(a4, b5));
+    c2 = add_fp2_bn254(&c2, &mul_fp2_bn254(a5, b4));
+    c2 = add_fp2_bn254(&c2, &mul_fp2_bn254(a6, b3));
+    c2 = mul_fp2_bn254(&c2, &[9, 0, 0, 0, 1, 0, 0, 0]);
+    c2 = add_fp2_bn254(&c2, &mul_fp2_bn254(a1, b2));
+    c2 = add_fp2_bn254(&c2, &mul_fp2_bn254(a2, b1));
+
+    // c3 = a1·b3 + a2·b2 + a3·b1 + (a4·b6 + a5·b5 + a6·b4)·(9+u)
+    let mut c3 = mul_fp2_bn254(a4, b6);
+    c3 = add_fp2_bn254(&c3, &mul_fp2_bn254(a5, b5));
+    c3 = add_fp2_bn254(&c3, &mul_fp2_bn254(a6, b4));
+    c3 = mul_fp2_bn254(&c3, &[9, 0, 0, 0, 1, 0, 0, 0]);
+    c3 = add_fp2_bn254(&c3, &mul_fp2_bn254(a1, b3));
+    c3 = add_fp2_bn254(&c3, &mul_fp2_bn254(a2, b2));
+    c3 = add_fp2_bn254(&c3, &mul_fp2_bn254(a3, b1));
+
+    // c4 = a1·b4 + a2·b3 + a3·b2 + a4·b1 + (a5·b6 + a6·b5)·(9+u)
+    let mut c4 = mul_fp2_bn254(a5, b6);
+    c4 = add_fp2_bn254(&c4, &mul_fp2_bn254(a6, b5));
+    c4 = mul_fp2_bn254(&c4, &[9, 0, 0, 0, 1, 0, 0, 0]);
+    c4 = add_fp2_bn254(&c4, &mul_fp2_bn254(a1, b4));
+    c4 = add_fp2_bn254(&c4, &mul_fp2_bn254(a2, b3));
+    c4 = add_fp2_bn254(&c4, &mul_fp2_bn254(a3, b2));
+    c4 = add_fp2_bn254(&c4, &mul_fp2_bn254(a4, b1));
+
+    // c5 = a1·b5 + a2·b4 + a3·b3 + a4·b2 + a5·b1 + a6·b6·(9+u)
+    let mut c5 = mul_fp2_bn254(a6, b6);
+    c5 = mul_fp2_bn254(&c5, &[9, 0, 0, 0, 1, 0, 0, 0]);
+    c5 = add_fp2_bn254(&c5, &mul_fp2_bn254(a1, b5));
+    c5 = add_fp2_bn254(&c5, &mul_fp2_bn254(a2, b4));
+    c5 = add_fp2_bn254(&c5, &mul_fp2_bn254(a3, b3));
+    c5 = add_fp2_bn254(&c5, &mul_fp2_bn254(a4, b2));
+    c5 = add_fp2_bn254(&c5, &mul_fp2_bn254(a5, b1));
+
+    // c6 = a1·b6 + a2·b5 + a3·b4 + a4·b3 + a5·b2 + a6·b1
+    let mut c6 = mul_fp2_bn254(a1, b6);
+    c6 = add_fp2_bn254(&c6, &mul_fp2_bn254(a2, b5));
+    c6 = add_fp2_bn254(&c6, &mul_fp2_bn254(a3, b4));
+    c6 = add_fp2_bn254(&c6, &mul_fp2_bn254(a4, b3));
+    c6 = add_fp2_bn254(&c6, &mul_fp2_bn254(a5, b2));
+    c6 = add_fp2_bn254(&c6, &mul_fp2_bn254(a6, b1));
+
+    let mut result = [0; 48];
+    result[0..8].copy_from_slice(&c1);
+    result[8..16].copy_from_slice(&c2);
+    result[16..24].copy_from_slice(&c3);
+    result[24..32].copy_from_slice(&c4);
+    result[32..40].copy_from_slice(&c5);
+    result[40..48].copy_from_slice(&c6);
+    result
+}
+
+// in: (a1 + a2·w),(b1 + b2·w) ∈ Fp12, where ai ∈ Fp6, b1 = 1 and b2 = b21 + b22·v, with b21,b22 ∈ Fp2
+// out: (a1 + a2·w)·(b1 + b2·w) = (c1 + c2·w) ∈ Fp12, where:
+//      - c1 = a1 + a2·(b21·v + b22·v²)
+//      - c2 = a2 + a1·(b21 + b22·v)
+pub fn sparse_mul_fp12_bn254(a: &[u64; 48], b: &[u64; 16]) -> [u64; 48] {
+    let a1 = &a[0..24].try_into().unwrap();
+    let a2 = &a[24..48].try_into().unwrap();
+
+    let mut c1 = sparse_mulc_fp6_bn254(&a2, b);
+    c1 = add_fp6_bn254(&c1, a1);
+
+    let mut c2 = sparse_mulb_fp6_bn254(a1, b);
+    c2 = add_fp6_bn254(&c2, a2);
+
+    let mut result = [0; 48];
+    result[0..24].copy_from_slice(&c1);
+    result[24..48].copy_from_slice(&c2);
+    result
+}
+
+// in: (a1 + a2·w) ∈ Fp12, where ai ∈ Fp6
+// out: (a1 + a2·w)² = (c1 + c2·w) ∈ Fp12, where:
+//      - c1 = (a1-a2)·(a1-a2·v) + a1·a2 + a1·a2·v
+//      - c2 = 2·a1·a2
 pub fn square_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     let a1 = &a[0..24].try_into().unwrap();
     let a2 = &a[24..48].try_into().unwrap();
 
     // a1·a2, a2·v, a1·a2·v
     let a1a2 = mul_fp6_bn254(a1, a2);
-    let a2v = sparse_mul_fp6_bn254(a2, &[1, 0, 0, 0, 0, 0, 0, 0]);
-    let a1a2v = sparse_mul_fp6_bn254(&a1a2, &[1, 0, 0, 0, 0, 0, 0, 0]);
+    let a2v = sparse_mula_fp6_bn254(a2, &[1, 0, 0, 0, 0, 0, 0, 0]);
+    let a1a2v = sparse_mula_fp6_bn254(&a1a2, &[1, 0, 0, 0, 0, 0, 0, 0]);
 
     // c1
     let a1_minus_a2 = sub_fp6_bn254(a1, a2);
@@ -73,11 +178,10 @@ pub fn square_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     result
 }
 
-/// inverseFp12BN254:
-///             in: (a1 + a2·w) ∈ Fp12, where ai ∈ Fp6
-///             out: (a1 + a2·w)⁻¹ = (c1 + c2·w) ∈ Fp12, where:
-///                  - c1 = a1·(a1² - a2²·v)⁻¹
-///                  - c2 = -a2·(a1² - a2²·v)⁻¹
+// in: (a1 + a2·w) ∈ Fp12, where ai ∈ Fp6
+// out: (a1 + a2·w)⁻¹ = (c1 + c2·w) ∈ Fp12, where:
+//      - c1 = a1·(a1² - a2²·v)⁻¹
+//      - c2 = -a2·(a1² - a2²·v)⁻¹
 pub fn inv_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     let a1 = &a[0..24].try_into().unwrap();
     let a2 = &a[24..48].try_into().unwrap();
@@ -85,7 +189,7 @@ pub fn inv_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     let a1_sq = square_fp6_bn254(a1);
     let a2_sq = square_fp6_bn254(a2);
 
-    let a2_sqv = sparse_mul_fp6_bn254(&a2_sq, &[1, 0, 0, 0, 0, 0, 0, 0]);
+    let a2_sqv = sparse_mula_fp6_bn254(&a2_sq, &[1, 0, 0, 0, 0, 0, 0, 0]);
     let a1_sq_minus_a2_sqv = sub_fp6_bn254(&a1_sq, &a2_sqv);
     let inv = inv_fp6_bn254(&a1_sq_minus_a2_sqv);
 
@@ -105,11 +209,10 @@ pub fn conjugate_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     result
 }
 
-// frobFp12BN254:
-//             in: (a1 + a2·w) = ((a11 + a12v + a13v²) + (a21 + a22v + a23v²)·w) ∈ Fp12, where ai ∈ Fp6 and aij ∈ Fp2
-//             out: (a1 + a2·w)ᵖ = (c1 + c2·w) ∈ Fp12, where:
-//                  - c1 = a̅11     + a̅12·γ12·v + a̅13·γ14·v²
-//                  - c2 = a̅21·γ11 + a̅22·γ13·v + a̅23·γ15·v²
+// in: (a1 + a2·w) = ((a11 + a12v + a13v²) + (a21 + a22v + a23v²)·w) ∈ Fp12, where ai ∈ Fp6 and aij ∈ Fp2
+// out: (a1 + a2·w)ᵖ = (c1 + c2·w) ∈ Fp12, where:
+//      - c1 = a̅11     + a̅12·γ12·v + a̅13·γ14·v²
+//      - c2 = a̅21·γ11 + a̅22·γ13·v + a̅23·γ15·v²
 pub fn frobenius1_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     let a11 = &a[0..8].try_into().unwrap();
     let a12 = &a[8..16].try_into().unwrap();
@@ -138,11 +241,10 @@ pub fn frobenius1_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     result
 }
 
-// frob2Fp12BN254:
-//             in: (a1 + a2·w) = ((a11 + a12v + a13v²) + (a21 + a22v + a23v²)) ∈ Fp12, where ai ∈ Fp6 and aij ∈ Fp2
-//             out: (a1 + a2·w)ᵖ˙ᵖ = (c1 + c2·w) ∈ Fp12, where:
-//                  - c1 = a11     + a12·γ22·v + a13·γ24·v²
-//                  - c2 = a21·γ21 + a22·γ23·v + a23·γ25·v²
+// in: (a1 + a2·w) = ((a11 + a12v + a13v²) + (a21 + a22v + a23v²)) ∈ Fp12, where ai ∈ Fp6 and aij ∈ Fp2
+// out: (a1 + a2·w)ᵖ˙ᵖ = (c1 + c2·w) ∈ Fp12, where:
+//      - c1 = a11     + a12·γ22·v + a13·γ24·v²
+//      - c2 = a21·γ21 + a22·γ23·v + a23·γ25·v²
 pub fn frobenius2_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     let a11: &[u64; 8] = &a[0..8].try_into().unwrap();
     let a12 = &a[8..16].try_into().unwrap();
@@ -166,11 +268,10 @@ pub fn frobenius2_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     result
 }
 
-// frob3Fp12BN254:
-//             in: (a1 + a2·w) = ((a11 + a12v + a13v²) + (a21 + a22v + a23v²)) ∈ Fp12, where ai ∈ Fp6 and aij ∈ Fp2
-//             out: (a1 + a2·w)ᵖ˙ᵖ˙ᵖ = (c1 + c2·w) ∈ Fp12, where:
-//                  - c1 = a̅11     + a̅12·γ32·v + a̅13·γ34·v²
-//                  - c2 = a̅21·γ31 + a̅22·γ33·v + a̅23·γ35·v²
+// in: (a1 + a2·w) = ((a11 + a12v + a13v²) + (a21 + a22v + a23v²)) ∈ Fp12, where ai ∈ Fp6 and aij ∈ Fp2
+// out: (a1 + a2·w)ᵖ˙ᵖ˙ᵖ = (c1 + c2·w) ∈ Fp12, where:
+//      - c1 = a̅11     + a̅12·γ32·v + a̅13·γ34·v²
+//      - c2 = a̅21·γ31 + a̅22·γ33·v + a̅23·γ35·v²
 pub fn frobenius3_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     let a11 = &a[0..8].try_into().unwrap();
     let a12 = &a[8..16].try_into().unwrap();
@@ -199,9 +300,8 @@ pub fn frobenius3_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     result
 }
 
-// expCycloFp12BN254:
-//             in: e, (a1 + a2·w) ∈ Fp12, where e ∈ [0,p¹²-2] ai ∈ Fp6
-//             out: (c1 + c2·w) = (a1 + a2·w)^e ∈ Fp12
+// in: e, (a1 + a2·w) ∈ Fp12, where e ∈ [0,p¹²-2] ai ∈ Fp6
+// out: (c1 + c2·w) = (a1 + a2·w)^e ∈ Fp12
 pub fn exp_fp12_bn254(e: u64, a: &[u64; 48]) -> [u64; 48] {
     let mut one = [0; 48];
     one[0] = 1;

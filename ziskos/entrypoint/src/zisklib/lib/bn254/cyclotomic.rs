@@ -1,7 +1,7 @@
 use crate::zisklib::lib::utils::eq;
 
 use super::{
-    fp12::mul_fp12_bn254,
+    fp12::mulb_fp12_bn254,
     fp2::{
         add_fp2_bn254, dbl_fp2_bn254, inv_fp2_bn254, mul_fp2_bn254, scalar_mul_fp2_bn254,
         square_fp2_bn254, sub_fp2_bn254,
@@ -175,21 +175,8 @@ pub fn square_cyclo_bn254(a: &[u64; 32]) -> [u64; 32] {
 ///
 /// NOTE: The output is not guaranteed to be in GΦ6(p²), if the input isn't.
 pub fn exp_by_x_cyclo_bn254(a: &[u64; 48]) -> [u64; 48] {
-    let a0: &[u64; 8] = &a[0..8].try_into().unwrap();
-    let a2: &[u64; 8] = &a[8..16].try_into().unwrap();
-    let a4: &[u64; 8] = &a[16..24].try_into().unwrap();
-    let a1: &[u64; 8] = &a[24..32].try_into().unwrap();
-    let a3: &[u64; 8] = &a[32..40].try_into().unwrap();
-    let a5: &[u64; 8] = &a[40..48].try_into().unwrap();
-
     // Start the loop with a
-    let mut mul = a.clone();
-    // mul[0..8].copy_from_slice(a0);
-    mul[8..16].copy_from_slice(a4);
-    mul[16..24].copy_from_slice(a3);
-    mul[24..32].copy_from_slice(a2);
-    mul[32..40].copy_from_slice(a1);
-    // mul[40..48].copy_from_slice(a5);
+    let mut result = a.clone();
 
     // Compress the input so we can work in compressed form
     let mut comp = compress_cyclo_bn254(&a);
@@ -200,27 +187,9 @@ pub fn exp_by_x_cyclo_bn254(a: &[u64; 48]) -> [u64; 48] {
         if bit == 1 {
             // decompress and multiply
             let decomp = decompress_cyclo_bn254(&comp);
-
-            let mut _decomp = decomp;
-            // _decomp[0..8].copy_from_slice(&decomp[0..8]);
-            _decomp[8..16].copy_from_slice(&decomp[16..24]);
-            _decomp[16..24].copy_from_slice(&decomp[32..40]);
-            _decomp[24..32].copy_from_slice(&decomp[8..16]);
-            _decomp[32..40].copy_from_slice(&decomp[24..32]);
-            // _decomp[40..48].copy_from_slice(&decomp[40..48]);
-
-            mul = mul_fp12_bn254(&mul, &_decomp);
+            result = mulb_fp12_bn254(&result, &decomp);
         }
     }
-
-    // a0 + a2·w + a4·w² + a1·w³ + a3·w⁴ + a5·w⁵ ~ (a0 + a4·v + a3·v²) + (a2 + a1·v + a5·v²)·w
-    let mut result = [0; 48];
-    result[0..8].copy_from_slice(&mul[0..8]);
-    result[8..16].copy_from_slice(&mul[24..32]);
-    result[16..24].copy_from_slice(&mul[8..16]);
-    result[24..32].copy_from_slice(&mul[32..40]);
-    result[32..40].copy_from_slice(&mul[16..24]);
-    result[40..48].copy_from_slice(&mul[40..48]);
 
     result
 }

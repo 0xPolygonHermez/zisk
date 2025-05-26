@@ -1,10 +1,8 @@
 use crate::{
+    bn254::fp12::sparse_mul_fp12_bn254,
     fcall_bn254_add_line_coeffs, fcall_bn254_dbl_line_coeffs,
     zisklib::lib::{
-        bn254::{
-            fp12::{mul_fp12_bn254, square_fp12_bn254},
-            twist::neg_twist_bn254,
-        },
+        bn254::{fp12::square_fp12_bn254, twist::neg_twist_bn254},
         utils::eq,
     },
 };
@@ -48,15 +46,7 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
         // Compute f = f² · line_{twist(r),twist(r)}(p)
         f = square_fp12_bn254(&f);
         let l = line_eval_twist_bn254(&lambda, &mu, &xp_prime, &yp_prime);
-        // a0 + a2·w + a4·w² + a1·w³ + a3·w⁴ + a5·w⁵ ~ (a0 + a4·v + a3·v²) + (a2 + a1·v + a5·v²)·w
-        let mut _l = l;
-        // _l[0..8].copy_from_slice(&l[0..8]);
-        _l[8..16].copy_from_slice(&l[16..24]);
-        _l[16..24].copy_from_slice(&l[32..40]);
-        _l[24..32].copy_from_slice(&l[8..16]);
-        _l[32..40].copy_from_slice(&l[24..32]);
-        // _l[40..48].copy_from_slice(&l[40..48]);
-        f = mul_fp12_bn254(&f, &_l); // TODO: This mul is sparse
+        f = sparse_mul_fp12_bn254(&f, &l);
 
         // Double r
         r = line_dbl_twist_bn254(&r, &lambda, &mu);
@@ -72,14 +62,7 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
 
             // Compute f = f · line_{twist(r),twist(q')}
             let l = line_eval_twist_bn254(&lambda, &mu, &xp_prime, &yp_prime);
-            let mut _l = l;
-            // _l[0..8].copy_from_slice(&l[0..8]);
-            _l[8..16].copy_from_slice(&l[16..24]);
-            _l[16..24].copy_from_slice(&l[32..40]);
-            _l[24..32].copy_from_slice(&l[8..16]);
-            _l[32..40].copy_from_slice(&l[24..32]);
-            // _l[40..48].copy_from_slice(&l[40..48]);
-            f = mul_fp12_bn254(&f, &_l); // TODO: This mul is sparse
+            f = sparse_mul_fp12_bn254(&f, &l);
 
             // Add r and q'
             r = line_add_twist_bn254(&r, q_prime, &lambda, &mu);
@@ -96,14 +79,7 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
     assert!(is_line_twist_bn254(&r, &q_frob, &lambda, &mu));
 
     let l = line_eval_twist_bn254(&lambda, &mu, &xp_prime, &yp_prime);
-    let mut _l = l;
-    // _l[0..8].copy_from_slice(&l[0..8]);
-    _l[8..16].copy_from_slice(&l[16..24]);
-    _l[16..24].copy_from_slice(&l[32..40]);
-    _l[24..32].copy_from_slice(&l[8..16]);
-    _l[32..40].copy_from_slice(&l[24..32]);
-    // _l[40..48].copy_from_slice(&l[40..48]);
-    f = mul_fp12_bn254(&f, &_l); // TODO: This mul is sparse
+    f = sparse_mul_fp12_bn254(&f, &l);
 
     // Update r by r + utf(q)
     r = line_add_twist_bn254(&r, &q_frob, &lambda, &mu);
@@ -116,14 +92,7 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
     assert!(is_line_twist_bn254(&r, &q_frob2, &lambda, &mu));
 
     let l = line_eval_twist_bn254(&lambda, &mu, &xp_prime, &yp_prime);
-    let mut _l = l;
-    // _l[0..8].copy_from_slice(&l[0..8]);
-    _l[8..16].copy_from_slice(&l[16..24]);
-    _l[16..24].copy_from_slice(&l[32..40]);
-    _l[24..32].copy_from_slice(&l[8..16]);
-    _l[32..40].copy_from_slice(&l[24..32]);
-    // _l[40..48].copy_from_slice(&l[40..48]);
-    f = mul_fp12_bn254(&f, &_l); // TODO: This mul is sparse
+    f = sparse_mul_fp12_bn254(&f, &l);
 
     f
 }
@@ -175,20 +144,19 @@ fn line_check_twist_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bo
     eq(&rhs, y)
 }
 
-/// Evaluates the line function l(x,y) := 1 + λxw - μyw³
+/// Evaluates the line function l(x,y) := (1 + 0·v + 0·v²) + (λx + μy·v + 0·v²)·w
 fn line_eval_twist_bn254(
     lambda: &[u64; 8],
     mu: &[u64; 8],
     x: &[u64; 4],
     y: &[u64; 4],
-) -> [u64; 48] {
+) -> [u64; 16] {
     let coeff1 = scalar_mul_fp2_bn254(lambda, x);
     let coeff2 = scalar_mul_fp2_bn254(mu, &neg_fp_bn254(y));
 
-    let mut result = [0; 48];
-    result[0] = 1;
-    result[8..16].copy_from_slice(&coeff1);
-    result[24..32].copy_from_slice(&coeff2);
+    let mut result = [0; 16];
+    result[0..8].copy_from_slice(&coeff1);
+    result[8..16].copy_from_slice(&coeff2);
 
     result
 }

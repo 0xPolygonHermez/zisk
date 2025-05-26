@@ -6,6 +6,9 @@ use super::{
     },
 };
 
+// TODO: The final exp could be optimized by using the optimizations described in https://eprint.iacr.org/2024/640.pdf
+// However, I dont think its a good idea in general to optimize verification "at all costs".
+
 /// Given f ∈ Fp12*, computes f^((p¹²-1)/r) ∈ Fp12*
 pub fn final_exp_bn254(f: &[u64; 48]) -> [u64; 48] {
     //////////////////
@@ -25,6 +28,8 @@ pub fn final_exp_bn254(f: &[u64; 48]) -> [u64; 48] {
     // The hard part: exp by (p⁴-p²+1)/r
     //////////////////
 
+    // TODO: The exponentiations can be optimized by using a single representation of Fp12
+    //       you can avoid the permutations before the function call entirely
     // m^x, (m^x)^x, (m^{x²})^x
     // (a0 + a4·v + a3·v²) + (a2 + a1·v + a5·v²)·w ~ a0 + a2·w + a4·w² + a1·w³ + a3·w⁴ + a5·w⁵
     let mut _m = m;

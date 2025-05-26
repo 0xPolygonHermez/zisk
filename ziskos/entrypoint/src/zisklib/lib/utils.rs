@@ -1,9 +1,4 @@
-use core::arch::asm;
-
-use crate::{
-    arith256_mod::{syscall_arith256_mod, SyscallArith256ModParams},
-    SYSCALL_ARITH256_MOD_ID,
-};
+use crate::arith256_mod::{syscall_arith256_mod, SyscallArith256ModParams};
 
 /// Given two n-bit number `x` and `y`, compares them and returns true if `x > y`; otherwise, false.
 pub(super) fn gt(x: &[u64], y: &[u64]) -> bool {

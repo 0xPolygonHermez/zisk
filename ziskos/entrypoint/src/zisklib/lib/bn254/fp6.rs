@@ -1,5 +1,6 @@
 use super::fp2::{
-    add_fp2_bn254, dbl_fp2_bn254, inv_fp2_bn254, mul_fp2_bn254, neg_fp2_bn254, square_fp2_bn254, sub_fp2_bn254
+    add_fp2_bn254, dbl_fp2_bn254, inv_fp2_bn254, mul_fp2_bn254, neg_fp2_bn254, square_fp2_bn254,
+    sub_fp2_bn254,
 };
 
 pub fn add_fp6_bn254(a: &[u64; 24], b: &[u64; 24]) -> [u64; 24] {
@@ -44,12 +45,11 @@ pub fn sub_fp6_bn254(a: &[u64; 24], b: &[u64; 24]) -> [u64; 24] {
     result
 }
 
-// mulFp6BN254:
-//             in: (a1 + a2·v + a3·v²),(b1 + b2·v + b3·v²) ∈ Fp6, where ai,bi ∈ Fp2
-//             out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
-//                  - c1 = [(a2+a3)·(b2+b3) - a2·b2 - a3·b3]·(9+u) + a1·b1
-//                  - c2 = (a1+a2)·(b1+b2) - a1·b1 - a2·b2 + a3·b3·(9+u)
-//                  - c3 = (a1+a3)·(b1+b3) - a1·b1 + a2·b2 - a3·b3
+// in: (a1 + a2·v + a3·v²),(b1 + b2·v + b3·v²) ∈ Fp6, where ai,bi ∈ Fp2
+// out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
+//      - c1 = [(a2+a3)·(b2+b3) - a2·b2 - a3·b3]·(9+u) + a1·b1
+//      - c2 = (a1+a2)·(b1+b2) - a1·b1 - a2·b2 + a3·b3·(9+u)
+//      - c3 = (a1+a3)·(b1+b3) - a1·b1 + a2·b2 - a3·b3
 pub fn mul_fp6_bn254(a: &[u64; 24], b: &[u64; 24]) -> [u64; 24] {
     let a1 = &a[0..8].try_into().unwrap();
     let a2 = &a[8..16].try_into().unwrap();
@@ -98,13 +98,12 @@ pub fn mul_fp6_bn254(a: &[u64; 24], b: &[u64; 24]) -> [u64; 24] {
     result
 }
 
-// sparseMulAFp6BN254:
-//             in: (a1 + a2·v + a3·v²),b2·v ∈ Fp6, where ai,b2 ∈ Fp2
-//             out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
-//                  - c1 = b2·a3·(9+u)
-//                  - c2 = b2·a1
-//                  - c3 = b2·a2
-pub fn sparse_mul_fp6_bn254(a: &[u64; 24], b2: &[u64; 8]) -> [u64; 24] {
+// in: (a1 + a2·v + a3·v²),b2·v ∈ Fp6, where ai,b2 ∈ Fp2
+// out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
+//      - c1 = b2·a3·(9+u)
+//      - c2 = b2·a1
+//      - c3 = b2·a2
+pub fn sparse_mula_fp6_bn254(a: &[u64; 24], b2: &[u64; 8]) -> [u64; 24] {
     let a1 = &a[0..8].try_into().unwrap();
     let a2 = &a[8..16].try_into().unwrap();
     let a3 = &a[16..24].try_into().unwrap();
@@ -126,12 +125,75 @@ pub fn sparse_mul_fp6_bn254(a: &[u64; 24], b2: &[u64; 8]) -> [u64; 24] {
     result
 }
 
-/// squareFp6BN254:
-///             in: (a1 + a2·v + a3·v²) ∈ Fp6, where ai ∈ Fp2
-///             out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
-///                  - c1 = 2·a2·a3·(9 + u) + a1²
-///                  - c2 = a3²·(9 + u) + 2·a1·a2
-///                  - c3 = 2·a1·a2 - a3² + (a1 - a2 + a3)² + 2·a2·a3 - a1²
+// in: (a1 + a2·v + a3·v²),(b1 + b2·v) ∈ Fp6, where ai,bi ∈ Fp2
+// out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
+//      - c1 = a1·b1 + a3·b2·(9+u)
+//      - c2 = a1·b2 + a2·b1
+//      - c3 = a2·b2 + a3·b1
+pub fn sparse_mulb_fp6_bn254(a: &[u64; 24], b: &[u64; 16]) -> [u64; 24] {
+    let a1 = &a[0..8].try_into().unwrap();
+    let a2 = &a[8..16].try_into().unwrap();
+    let a3 = &a[16..24].try_into().unwrap();
+    let b1 = &b[0..8].try_into().unwrap();
+    let b2 = &b[8..16].try_into().unwrap();
+
+    // c1 = a1·b1 + a3·b2·(9+u)
+    let mut c1 = mul_fp2_bn254(a1, b1);
+    c1 = add_fp2_bn254(&c1, &mul_fp2_bn254(&a3, &mul_fp2_bn254(b2, &[9, 0, 0, 0, 1, 0, 0, 0])));
+
+    // c2 = a1·b2 + a2·b1
+    let mut c2 = mul_fp2_bn254(a1, b2);
+    c2 = add_fp2_bn254(&c2, &mul_fp2_bn254(a2, b1));
+
+    // c3 = a2·b2 + a3·b1
+    let mut c3 = mul_fp2_bn254(a2, b2);
+    c3 = add_fp2_bn254(&c3, &mul_fp2_bn254(a3, b1));
+
+    let mut result = [0; 24];
+    result[0..8].copy_from_slice(&c1);
+    result[8..16].copy_from_slice(&c2);
+    result[16..24].copy_from_slice(&c3);
+    result
+}
+
+// in: (a1 + a2·v + a3·v²),(b2·v + b3·v²) ∈ Fp6, where ai,bi ∈ Fp2
+// out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
+//      - c1 = (a2·b3 + a3·b2)·(9+u)
+//      - c2 = a1·b2 + a3·b3·(9+u)
+//      - c3 = a1·b3 + a2·b2
+pub fn sparse_mulc_fp6_bn254(a: &[u64; 24], b: &[u64; 16]) -> [u64; 24] {
+    let a1 = &a[0..8].try_into().unwrap();
+    let a2 = &a[8..16].try_into().unwrap();
+    let a3 = &a[16..24].try_into().unwrap();
+    let b2 = &b[0..8].try_into().unwrap();
+    let b3 = &b[8..16].try_into().unwrap();
+
+    // c1 = (a2·b3 + a3·b2)·(9+u)
+    let mut c1 = mul_fp2_bn254(a2, b3);
+    c1 = add_fp2_bn254(&c1, &mul_fp2_bn254(a3, b2));
+    c1 = mul_fp2_bn254(&c1, &[9, 0, 0, 0, 1, 0, 0, 0]);
+
+    // c2 = a1·b2 + a3·b3·(9+u)
+    let mut c2 = mul_fp2_bn254(a3, b3);
+    c2 = mul_fp2_bn254(&c2, &[9, 0, 0, 0, 1, 0, 0, 0]);
+    c2 = add_fp2_bn254(&c2, &mul_fp2_bn254(a1, b2));
+
+    // c3 = a2·b3 + a2·b2
+    let mut c3 = mul_fp2_bn254(a1, b3);
+    c3 = add_fp2_bn254(&c3, &mul_fp2_bn254(a2, b2));
+
+    let mut result = [0; 24];
+    result[0..8].copy_from_slice(&c1);
+    result[8..16].copy_from_slice(&c2);
+    result[16..24].copy_from_slice(&c3);
+    result
+}
+
+// in: (a1 + a2·v + a3·v²) ∈ Fp6, where ai ∈ Fp2
+// out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
+//      - c1 = 2·a2·a3·(9 + u) + a1²
+//      - c2 = a3²·(9 + u) + 2·a1·a2
+//      - c3 = 2·a1·a2 - a3² + (a1 - a2 + a3)² + 2·a2·a3 - a1²
 pub fn square_fp6_bn254(a: &[u64; 24]) -> [u64; 24] {
     let a1 = &a[0..8].try_into().unwrap();
     let a2 = &a[8..16].try_into().unwrap();
@@ -171,16 +233,15 @@ pub fn square_fp6_bn254(a: &[u64; 24]) -> [u64; 24] {
     result
 }
 
-// inverseFp6BN254:
-//             in: (a1 + a2·v + a3·v²) ∈ Fp6, where ai ∈ Fp2
-//             out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
-//                  - c1 = (a1² - (9 + u)·(a2·a3))·(a1·c1mid + xi·(a3·c2mid + a2·c3mid))⁻¹
-//                  - c2 = ((9 + u)·a3² - (a1·a2))·(a1·c1mid + xi·(a3·c2mid + a2·c3mid))⁻¹
-//                  - c3 = (a2²-a1·a3)·(a1·c1mid + xi·(a3·c2mid + a2·c3mid))⁻¹
-//             with
-//                  * c1mid = a1² - (9 + u)·(a2·a3)
-//                  * c2mid = (9 + u)·a3² - (a1·a2)
-//                  * c3mid = a2² - (a1·a3)
+// in: (a1 + a2·v + a3·v²) ∈ Fp6, where ai ∈ Fp2
+// out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
+//      - c1 = (a1² - (9 + u)·(a2·a3))·(a1·c1mid + xi·(a3·c2mid + a2·c3mid))⁻¹
+//      - c2 = ((9 + u)·a3² - (a1·a2))·(a1·c1mid + xi·(a3·c2mid + a2·c3mid))⁻¹
+//      - c3 = (a2²-a1·a3)·(a1·c1mid + xi·(a3·c2mid + a2·c3mid))⁻¹
+// with
+//      * c1mid = a1² - (9 + u)·(a2·a3)
+//      * c2mid = (9 + u)·a3² - (a1·a2)
+//      * c3mid = a2² - (a1·a3)
 pub fn inv_fp6_bn254(a: &[u64; 24]) -> [u64; 24] {
     let a1 = &a[0..8].try_into().unwrap();
     let a2 = &a[8..16].try_into().unwrap();
