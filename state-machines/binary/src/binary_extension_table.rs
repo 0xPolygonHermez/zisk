@@ -5,10 +5,11 @@
 //! (`Srl`), arithmetic shifts, and sign extensions.
 
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, Ordering},
     Arc,
 };
 
+use proofman_common::PaddedAtomicU64;
 use zisk_common::create_atomic_vec;
 use zisk_core::{P2_11, P2_19, P2_8};
 use zisk_pil::BinaryExtensionTableTrace;
@@ -34,7 +35,7 @@ pub enum BinaryExtensionTableOp {
 /// and sign extensions.
 pub struct BinaryExtensionTableSM {
     /// The multiplicity table
-    multiplicity: Vec<AtomicU64>,
+    multiplicity: Vec<PaddedAtomicU64>,
     calculated: AtomicBool,
 }
 
@@ -68,7 +69,7 @@ impl BinaryExtensionTableSM {
     ///
     /// # Returns
     /// A `Vec<u64>` containing the multiplicity table's current values.
-    pub fn detach_multiplicity(&self) -> &[AtomicU64] {
+    pub fn detach_multiplicity(&self) -> &[PaddedAtomicU64] {
         &self.multiplicity
     }
 
@@ -128,6 +129,19 @@ impl BinaryExtensionTableSM {
             BinaryExtensionTableOp::SignExtendB => 6 * P2_19,
             BinaryExtensionTableOp::SignExtendH => 6 * P2_19 + P2_11,
             BinaryExtensionTableOp::SignExtendW => 6 * P2_19 + 2 * P2_11,
+        }
+    }
+
+    pub fn acc_local_multiplicity(&self, local_binary_extension_table_sm: &BinaryExtensionTableSM) {
+        if self.calculated.load(Ordering::SeqCst) {
+            return;
+        }
+        // TODO: PARALLEL ???
+        for (i, multiplicity) in local_binary_extension_table_sm.multiplicity.iter().enumerate() {
+            let value = multiplicity.load(Ordering::Relaxed);
+            if value != 0 {
+                self.multiplicity[i].fetch_add(value, Ordering::Relaxed);
+            }
         }
     }
 }

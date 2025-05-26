@@ -4644,6 +4644,7 @@ dependencies = [
  "data-bus",
  "p3-field",
  "pprof",
+ "proofman-common",
  "rayon",
  "riscv",
  "sm-mem",

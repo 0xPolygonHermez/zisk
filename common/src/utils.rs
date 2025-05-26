@@ -8,6 +8,6 @@ pub fn create_atomic_vec<DT>(size: usize) -> Vec<DT> {
         std::ptr::write_bytes(ptr, 0, size * std::mem::size_of::<DT>()); // Fast zeroing
 
         vec.set_len(size);
-        std::mem::transmute(vec) // Convert MaybeUninit<Vec> -> Vec<AtomicU64>
+        std::mem::transmute(vec) // Convert MaybeUninit<Vec> -> Vec<PaddedAtomicU64>
     }
 }

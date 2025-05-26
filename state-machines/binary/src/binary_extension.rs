@@ -361,10 +361,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 rest = tail;
             }
 
+            let local_binary_extension_table_sm = BinaryExtensionTableSM::new();
+
             // Process each slice in parallel, and use the corresponding inner input from `inputs`.
             slices.into_par_iter().enumerate().for_each(|(i, slice)| {
                 slice.iter_mut().enumerate().for_each(|(j, cell)| {
-                    *cell = self.process_slice(&inputs[i][j], &self.binary_extension_table_sm);
+                    *cell = self.process_slice(&inputs[i][j], &local_binary_extension_table_sm);
                 });
             });
 
@@ -384,8 +386,10 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                     0,
                     0,
                 );
-                self.binary_extension_table_sm.update_multiplicity(row, multiplicity);
+                local_binary_extension_table_sm.update_multiplicity(row, multiplicity);
             }
+
+            self.binary_extension_table_sm.acc_local_multiplicity(&local_binary_extension_table_sm);
 
             AirInstance::new_from_trace(FromTrace::new(&mut binary_e_trace))
         });

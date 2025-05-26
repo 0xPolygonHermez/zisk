@@ -4,11 +4,12 @@
 //! functionality to process inputs and manage multiplicity data.
 
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, Ordering},
     Arc,
 };
 
 use crate::ArithTableInputs;
+use proofman_common::PaddedAtomicU64;
 use zisk_common::create_atomic_vec;
 use zisk_pil::ArithTableTrace;
 
@@ -18,7 +19,7 @@ use zisk_pil::ArithTableTrace;
 /// inputs and retrieve the accumulated data.
 pub struct ArithTableSM {
     /// Multiplicity table shared across threads.
-    multiplicity: Vec<AtomicU64>,
+    multiplicity: Vec<PaddedAtomicU64>,
     calculated: AtomicBool,
 }
 
@@ -52,7 +53,7 @@ impl ArithTableSM {
     ///
     /// # Returns
     /// A vector containing the multiplicity table.
-    pub fn detach_multiplicity(&self) -> &[AtomicU64] {
+    pub fn detach_multiplicity(&self) -> &[PaddedAtomicU64] {
         &self.multiplicity
     }
 
@@ -62,5 +63,18 @@ impl ArithTableSM {
 
     pub fn reset_calculated(&self) {
         self.calculated.store(false, Ordering::SeqCst);
+    }
+
+    pub fn acc_local_multiplicity(&self, local_arith_table_sm: &ArithTableSM) {
+        if self.calculated.load(Ordering::SeqCst) {
+            return;
+        }
+        // TODO: PARALLEL ???
+        for (i, multiplicity) in local_arith_table_sm.multiplicity.iter().enumerate() {
+            let value = multiplicity.load(Ordering::Relaxed);
+            if value != 0 {
+                self.multiplicity[i].fetch_add(value, Ordering::Relaxed);
+            }
+        }
     }
 }

@@ -2,11 +2,11 @@
 //!
 //! It is responsible for computing witnesses for ROM-related execution plans,
 
-use std::sync::{atomic::AtomicU32, Arc};
+use std::sync::Arc;
 
 use crate::{rom_asm_worker::RomAsmWorker, rom_counter::RomCounter, RomSM};
 use p3_field::PrimeField;
-use proofman_common::{create_pool, AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{create_pool, AirInstance, PaddedAtomicU32, ProofCtx, SetupCtx};
 use std::sync::Mutex;
 use zisk_common::{
     create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
@@ -27,10 +27,10 @@ pub struct RomInstance {
     ictx: InstanceCtx,
 
     /// Shared biod instruction counter for monitoring ROM operations.
-    bios_inst_count: Mutex<Arc<Vec<AtomicU32>>>,
+    bios_inst_count: Mutex<Arc<Vec<PaddedAtomicU32>>>,
 
     /// Shared program instruction counter for monitoring ROM operations.
-    prog_inst_count: Mutex<Arc<Vec<AtomicU32>>>,
+    prog_inst_count: Mutex<Arc<Vec<PaddedAtomicU32>>>,
 
     /// Execution statistics counter for ROM instructions.
     counter_stats: Mutex<Option<CounterStats>>,
@@ -50,8 +50,8 @@ impl RomInstance {
     pub fn new(
         zisk_rom: Arc<ZiskRom>,
         ictx: InstanceCtx,
-        bios_inst_count: Arc<Vec<AtomicU32>>,
-        prog_inst_count: Arc<Vec<AtomicU32>>,
+        bios_inst_count: Arc<Vec<PaddedAtomicU32>>,
+        prog_inst_count: Arc<Vec<PaddedAtomicU32>>,
         rom_asm_worker: Option<RomAsmWorker>,
     ) -> Self {
         Self {
@@ -190,8 +190,8 @@ impl RomCollector {
     /// A new `RomCounter` instance.
     pub fn new(
         computed: bool,
-        bios_inst_count: Arc<Vec<AtomicU32>>,
-        prog_inst_count: Arc<Vec<AtomicU32>>,
+        bios_inst_count: Arc<Vec<PaddedAtomicU32>>,
+        prog_inst_count: Arc<Vec<PaddedAtomicU32>>,
     ) -> Self {
         let rom_counter = RomCounter::new(bios_inst_count, prog_inst_count);
         Self { already_computed: computed, rom_counter }

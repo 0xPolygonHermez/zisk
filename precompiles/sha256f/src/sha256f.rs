@@ -92,6 +92,7 @@ impl Sha256fSM {
         trace: &mut Sha256fTrace<F>,
         num_rows_constants: usize,
         inputs: &[OperationSha256Data<u64>],
+        local_sha256f_table_sm: &Sha256fTableSM,
         core_id: usize,
         n_cores: usize,
     ) {
@@ -351,7 +352,7 @@ impl Sha256fSM {
                         let b = (b_val >> (j * BITS_SHA256F)) & MASK_BITS_SHA256F;
                         let c = (c_val >> (j * BITS_SHA256F)) & MASK_BITS_SHA256F;
                         let table_row = Sha256fTableSM::calculate_table_row(&op_val, a, b, c);
-                        self.sha256f_table_sm.update_input(table_row, 1);
+                        local_sha256f_table_sm.update_input(table_row, 1);
                     }
                 }
             })
@@ -483,6 +484,8 @@ impl Sha256fSM {
         let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
         let fixed = Sha256fFixed::from_vec(fixed_pols);
 
+        let local_sha256f_table_sm = Sha256fTableSM::new::<F>();
+
         timer_start_trace!(SHA256F_TRACE);
         let mut sha256f_trace = Sha256fTrace::new();
         let num_rows = sha256f_trace.num_rows();
@@ -537,7 +540,7 @@ impl Sha256fSM {
         // Update the multiplicity table
         let table_row =
             Sha256fTableSM::calculate_table_row(&Sha256fTableGateOp::Xor, zeros, ones, zeros);
-        self.sha256f_table_sm.update_input(table_row, CHUNKS_SHA256F as u64);
+        local_sha256f_table_sm.update_input(table_row, CHUNKS_SHA256F as u64);
 
         // Fill the rest of the trace
         self.process_slice(
@@ -545,6 +548,7 @@ impl Sha256fSM {
             &mut sha256f_trace,
             num_rows_constants,
             &inputs,
+            &local_sha256f_table_sm,
             core_id,
             n_cores,
         );
@@ -563,11 +567,13 @@ impl Sha256fSM {
             );
 
             let table_row = Sha256fTableSM::calculate_table_row(&Sha256fTableGateOp::Xor, 0, 0, 0);
-            self.sha256f_table_sm.update_input(table_row, CHUNKS_SHA256F as u64);
+            local_sha256f_table_sm.update_input(table_row, CHUNKS_SHA256F as u64);
 
             sha256f_trace[i] = padding_row;
         }
         timer_stop_and_log_trace!(SHA256F_PADDING);
+
+        self.sha256f_table_sm.acc_local_multiplicity(&local_sha256f_table_sm);
 
         AirInstance::new_from_trace(FromTrace::new(&mut sha256f_trace))
     }

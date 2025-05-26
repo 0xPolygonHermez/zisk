@@ -1,8 +1,9 @@
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, Ordering},
     Arc,
 };
 
+use proofman_common::PaddedAtomicU64;
 use zisk_common::create_atomic_vec;
 use zisk_pil::MemAlignRomTrace;
 
@@ -19,7 +20,7 @@ const ONE_WORD_COMBINATIONS: u64 = 20; // (0..4,[1,2,4]), (5,6,[1,2]), (7,[1]) -
 const TWO_WORD_COMBINATIONS: u64 = 11; // (1..4,[8]), (5,6,[4,8]), (7,[2,4,8]) -> 4*1 + 2*2 + 1*3 = 11
 
 pub struct MemAlignRomSM {
-    multiplicity: Vec<AtomicU64>, // row_num -> multiplicity
+    multiplicity: Vec<PaddedAtomicU64>, // row_num -> multiplicity
     calculated: AtomicBool,
 }
 
@@ -119,7 +120,7 @@ impl MemAlignRomSM {
         }
     }
 
-    pub fn detach_multiplicity(&self) -> &[AtomicU64] {
+    pub fn detach_multiplicity(&self) -> &[PaddedAtomicU64] {
         &self.multiplicity
     }
 
@@ -141,5 +142,17 @@ impl MemAlignRomSM {
             return;
         }
         self.multiplicity[row_idx as usize].fetch_add(mul, Ordering::Relaxed);
+    }
+
+    pub fn acc_local_multiplicity(&self, local_mem_align_rom_sm: &MemAlignRomSM) {
+        if self.calculated.load(Ordering::SeqCst) {
+            return;
+        }
+        for (i, multiplicity) in local_mem_align_rom_sm.multiplicity.iter().enumerate() {
+            let value = multiplicity.load(Ordering::Relaxed);
+            if value != 0 {
+                self.multiplicity[i].fetch_add(value, Ordering::Relaxed);
+            }
+        }
     }
 }

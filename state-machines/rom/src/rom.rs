@@ -10,7 +10,7 @@
 
 use std::{
     path::PathBuf,
-    sync::{atomic::AtomicU32, Arc, Mutex},
+    sync::{Arc, Mutex},
 };
 
 use crate::{rom_asm_worker::RomAsmWorker, RomInstance, RomPlanner};
@@ -18,7 +18,7 @@ use asm_runner::AsmRHData;
 use itertools::Itertools;
 use log::info;
 use p3_field::PrimeField;
-use proofman_common::{AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace, PaddedAtomicU32};
 use zisk_common::{
     create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, Instance, InstanceCtx,
     Planner,
@@ -34,10 +34,10 @@ pub struct RomSM {
     zisk_rom: Arc<ZiskRom>,
 
     /// Shared biod instruction counter for monitoring ROM operations.
-    bios_inst_count: Arc<Vec<AtomicU32>>,
+    bios_inst_count: Arc<Vec<PaddedAtomicU32>>,
 
     /// Shared program instruction counter for monitoring ROM operations.
-    prog_inst_count: Arc<Vec<AtomicU32>>,
+    prog_inst_count: Arc<Vec<PaddedAtomicU32>>,
 
     /// The ROM assembly worker
     rom_asm_worker: Mutex<Option<RomAsmWorker>>,

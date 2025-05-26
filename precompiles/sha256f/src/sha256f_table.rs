@@ -4,11 +4,12 @@
 //! and managing multiplicity tables for Sha256f table traces.
 
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, Ordering},
     Arc,
 };
 
 use p3_field::Field;
+use proofman_common::PaddedAtomicU64;
 use zisk_common::create_atomic_vec;
 use zisk_pil::Sha256fTableTrace;
 
@@ -36,7 +37,7 @@ pub enum Sha256fTableGateOp {
 /// rows.
 pub struct Sha256fTableSM {
     /// The multiplicity table, shared across threads.
-    multiplicities: Vec<Vec<AtomicU64>>,
+    multiplicities: Vec<Vec<PaddedAtomicU64>>,
     calculated: AtomicBool,
 }
 
@@ -68,7 +69,7 @@ impl Sha256fTableSM {
     ///
     /// # Returns
     /// A vector containing the multiplicity table.
-    pub fn detach_multiplicities(&self) -> &[Vec<AtomicU64>] {
+    pub fn detach_multiplicities(&self) -> &[Vec<PaddedAtomicU64>] {
         &self.multiplicities
     }
 
@@ -112,6 +113,19 @@ impl Sha256fTableSM {
             Sha256fTableGateOp::Ch => P2_BITS_ABC,
             Sha256fTableGateOp::Maj => 2 * P2_BITS_ABC,
             Sha256fTableGateOp::Add => 3 * P2_BITS_ABC,
+        }
+    }
+
+    pub fn acc_local_multiplicity(&self, local_sha256f_table_sm: &Sha256fTableSM) {
+        if self.calculated.load(Ordering::SeqCst) {
+            return;
+        }
+        // TODO: PARALLEL ???
+        for (i, multiplicity) in local_sha256f_table_sm.multiplicities[0].iter().enumerate() {
+            let value = multiplicity.load(Ordering::Relaxed);
+            if value != 0 {
+                self.multiplicities[0][i].fetch_add(value, Ordering::Relaxed);
+            }
         }
     }
 }

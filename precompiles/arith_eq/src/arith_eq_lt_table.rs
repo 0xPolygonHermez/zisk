@@ -3,8 +3,9 @@
 //! This state machine is responsible for handling verification of chunks are less than
 //! module or prime chunk
 
+use proofman_common::PaddedAtomicU64;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, Ordering},
     Arc,
 };
 
@@ -17,7 +18,7 @@ use zisk_pil::ArithEqLtTableTrace;
 /// rows.
 pub struct ArithEqLtTableSM {
     /// The multiplicity table, shared across threads.
-    multiplicities: Vec<Vec<AtomicU64>>,
+    multiplicities: Vec<Vec<PaddedAtomicU64>>,
     calculated: AtomicBool,
 }
 
@@ -38,7 +39,7 @@ impl ArithEqLtTableSM {
     ///
     /// # Returns
     /// A vector containing the multiplicity table.
-    pub fn detach_multiplicities(&self) -> &[Vec<AtomicU64>] {
+    pub fn detach_multiplicities(&self) -> &[Vec<PaddedAtomicU64>] {
         &self.multiplicities
     }
 
@@ -80,5 +81,18 @@ impl ArithEqLtTableSM {
             panic!("Invalid index:{} prev_lt:{} lt:{} delta:{}", index, prev_lt, lt, delta);
         }
         self.multiplicities[0][index].fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn acc_local_multiplicity(&self, local_arith_eq_lt_table_sm: &ArithEqLtTableSM) {
+        if self.calculated.load(Ordering::SeqCst) {
+            return;
+        }
+        // TODO: PARALLEL ???
+        for (i, multiplicity) in local_arith_eq_lt_table_sm.multiplicities[0].iter().enumerate() {
+            let value = multiplicity.load(Ordering::Relaxed);
+            if value != 0 {
+                self.multiplicities[0][i].fetch_add(value, Ordering::Relaxed);
+            }
+        }
     }
 }

@@ -7,16 +7,13 @@
 //!   segment.
 //! - Methods for computing the witness and setting up trace rows.
 
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc,
-};
+use std::sync::{atomic::Ordering, Arc};
 
 use log::info;
 
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{create_pool, AirInstance, FromTrace, ProofCtx, SetupCtx};
+use proofman_common::{create_pool, AirInstance, FromTrace, PaddedAtomicU32, ProofCtx, SetupCtx};
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 use sm_mem::{MemHelpers, MEMORY_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx};
@@ -122,7 +119,7 @@ impl MainSM {
 
             // Vector of atomics of u32, it's enough to count all range check values of the trace.
             let step_range_check =
-                Arc::new((0..max_range).map(|_| AtomicU32::new(0)).collect::<Vec<_>>());
+                Arc::new((0..max_range).map(|_| PaddedAtomicU32::new(0)).collect::<Vec<_>>());
 
             // We know each register's previous step, but only by instance. We don't have this
             // information by chunk, so we need to store in the EmuRegTrace the location of the
@@ -220,7 +217,7 @@ impl MainSM {
         main_trace: &mut [MainTraceRow<F>],
         min_trace: &EmuTrace,
         reg_trace: &mut EmuRegTrace,
-        step_range_check: Arc<Vec<AtomicU32>>,
+        step_range_check: Arc<Vec<PaddedAtomicU32>>,
         last_reg_values: bool,
     ) -> (u64, Vec<u64>) {
         // Initialize the emulator with the start state of the emu trace
@@ -267,7 +264,7 @@ impl MainSM {
         num_rows: usize,
         fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace)],
         main_trace: &mut MainTrace<F>,
-        step_range_check: Arc<Vec<AtomicU32>>,
+        step_range_check: Arc<Vec<PaddedAtomicU32>>,
         reg_steps: &mut [u64; REGS_IN_MAIN],
     ) -> Vec<u32> {
         let mut large_range_checks: Vec<u32> = vec![];
@@ -332,7 +329,7 @@ impl MainSM {
         final_step: u64,
         last_reg_values: &[u64],
         reg_steps: &[u64; REGS_IN_MAIN],
-        step_range_check: Arc<Vec<AtomicU32>>,
+        step_range_check: Arc<Vec<PaddedAtomicU32>>,
         large_range_checks: &mut Vec<u32>,
     ) {
         let max_range = step_range_check.len() as u64;
@@ -351,7 +348,7 @@ impl MainSM {
     }
     fn update_std_range_checks<F: PrimeField64>(
         std: Arc<Std<F>>,
-        step_range_check: Arc<Vec<AtomicU32>>,
+        step_range_check: Arc<Vec<PaddedAtomicU32>>,
         large_range_checks: &[u32],
     ) {
         let range_id = std.get_range(1, MEMORY_MAX_DIFF as i64, None);

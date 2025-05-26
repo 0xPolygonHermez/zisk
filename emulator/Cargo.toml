@@ -16,6 +16,7 @@ name = "ziskemu"
 path = "src/bin/ziskemu.rs"
 
 [dependencies]
+proofman-common = { workspace = true }
 zisk-common = { path = "../common" }
 zisk-core = { path = "../core" }
 zisk-pil = { path = "../pil" }

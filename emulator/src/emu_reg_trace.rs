@@ -1,5 +1,6 @@
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::Ordering;
 
+use proofman_common::PaddedAtomicU32;
 use zisk_core::{REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 
 // TODO: REMOVE THIS !!!
@@ -33,7 +34,7 @@ impl EmuRegTrace {
     pub fn clear_reg_step_ranges(&mut self) {
         self.reg_step_ranges = [0; 3];
     }
-    pub fn update_step_range_check(&self, step_range_check: &[AtomicU32]) {
+    pub fn update_step_range_check(&self, step_range_check: &[PaddedAtomicU32]) {
         for range in self.reg_step_ranges.iter() {
             // 0 isn't a valid range value, 0 is used to mark as no range
             if *range == 0 {

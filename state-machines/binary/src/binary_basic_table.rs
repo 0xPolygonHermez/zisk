@@ -4,10 +4,11 @@
 //! and managing multiplicity tables for binary table traces.
 
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, Ordering},
     Arc,
 };
 
+use proofman_common::PaddedAtomicU64;
 use zisk_common::create_atomic_vec;
 use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8, P2_9};
 use zisk_pil::BinaryTableTrace;
@@ -44,7 +45,7 @@ pub enum BinaryBasicTableOp {
 /// rows.
 pub struct BinaryBasicTableSM {
     /// The multiplicity table, shared across threads.
-    multiplicity: Vec<AtomicU64>,
+    multiplicity: Vec<PaddedAtomicU64>,
     calculated: AtomicBool,
 }
 
@@ -75,7 +76,7 @@ impl BinaryBasicTableSM {
     ///
     /// # Returns
     /// A vector containing the multiplicity table.
-    pub fn detach_multiplicity(&self) -> &[AtomicU64] {
+    pub fn detach_multiplicity(&self) -> &[PaddedAtomicU64] {
         &self.multiplicity
     }
 
@@ -243,6 +244,19 @@ impl BinaryBasicTableSM {
             BinaryBasicTableOp::Or => 6 * P2_19 + 6 * P2_18 + 3 * P2_17,
             BinaryBasicTableOp::Xor => 6 * P2_19 + 6 * P2_18 + 4 * P2_17,
             BinaryBasicTableOp::Ext32 => 6 * P2_19 + 6 * P2_18 + 5 * P2_17,
+        }
+    }
+
+    pub fn acc_local_multiplicity(&self, local_binary_basic_table_sm: &BinaryBasicTableSM) {
+        if self.calculated.load(Ordering::SeqCst) {
+            return;
+        }
+        // TODO: PARALLEL ???
+        for (i, multiplicity) in local_binary_basic_table_sm.multiplicity.iter().enumerate() {
+            let value = multiplicity.load(Ordering::Relaxed);
+            if value != 0 {
+                self.multiplicity[i].fetch_add(value, Ordering::Relaxed);
+            }
         }
     }
 }

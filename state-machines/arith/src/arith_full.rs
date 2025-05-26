@@ -64,6 +64,9 @@ impl ArithFullSM {
         core_id: usize,
         n_cores: usize,
     ) -> AirInstance<F> {
+        let local_arith_table_sm = ArithTableSM::new();
+        let local_arith_range_table_sm = ArithRangeTableSM::new();
+
         let pool = create_pool(core_id, n_cores);
         let air_instance = pool.install(|| {
             let mut arith_trace = ArithTrace::new();
@@ -143,12 +146,15 @@ impl ArithFullSM {
             }
 
             results.par_iter().for_each(|(range_table_inputs, table_inputs)| {
-                self.arith_table_sm.process_slice(table_inputs);
-                self.arith_range_table_sm.process_slice(range_table_inputs);
+                local_arith_table_sm.process_slice(table_inputs);
+                local_arith_range_table_sm.process_slice(range_table_inputs);
             });
 
-            self.arith_table_sm.process_slice(&table_inputs);
-            self.arith_range_table_sm.process_slice(&range_table_inputs);
+            local_arith_table_sm.process_slice(&table_inputs);
+            local_arith_range_table_sm.process_slice(&range_table_inputs);
+
+            self.arith_table_sm.acc_local_multiplicity(&local_arith_table_sm);
+            self.arith_range_table_sm.acc_local_multiplicity(&local_arith_range_table_sm);
 
             AirInstance::new_from_trace(FromTrace::new(&mut arith_trace))
         });

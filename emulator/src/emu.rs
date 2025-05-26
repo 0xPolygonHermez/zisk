@@ -1,7 +1,8 @@
-use std::{mem, sync::atomic::AtomicU32};
+use std::mem;
 
 use crate::{EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, ParEmuOptions};
 use p3_field::PrimeField;
+use proofman_common::PaddedAtomicU32;
 use riscv::RiscVRegisters;
 use sm_mem::MemHelpers;
 use zisk_common::{
@@ -1877,7 +1878,7 @@ impl<'a> Emu<'a> {
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
         reg_trace: &mut EmuRegTrace,
-        step_range_check: Option<&[AtomicU32]>,
+        step_range_check: Option<&[PaddedAtomicU32]>,
     ) -> EmuFullTraceStep<F> {
         if self.ctx.inst_ctx.pc == 0 {
             println!("PC=0 CRASH (step:{})", self.ctx.inst_ctx.step);

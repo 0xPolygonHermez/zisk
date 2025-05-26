@@ -139,7 +139,7 @@ impl BinaryBasicSM {
     #[inline(always)]
     pub fn process_slice<F: PrimeField>(
         input: &BinaryInput,
-        binary_table_sm: &BinaryBasicTableSM,
+        local_binary_table_sm: &BinaryBasicTableSM,
     ) -> BinaryTraceRow<F> {
         // Create an empty trace
         let mut row: BinaryTraceRow<F> = Default::default();
@@ -252,7 +252,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    local_binary_table_sm.update_multiplicity(row, 1);
                 }
             }
             MAXU_OP | MAXUW_OP | MAX_OP | MAXW_OP => {
@@ -319,7 +319,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    local_binary_table_sm.update_multiplicity(row, 1);
                 }
             }
             LT_ABS_NP_OP => {
@@ -375,7 +375,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    local_binary_table_sm.update_multiplicity(row, 1);
                 }
             }
             LT_ABS_PN_OP => {
@@ -431,7 +431,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    local_binary_table_sm.update_multiplicity(row, 1);
                 }
             }
             LTU_OP | LTUW_OP | LT_OP | LTW_OP => {
@@ -493,7 +493,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    local_binary_table_sm.update_multiplicity(row, 1);
                 }
             }
             GT_OP => {
@@ -546,7 +546,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    local_binary_table_sm.update_multiplicity(row, 1);
                 }
             }
             EQ_OP | EQW_OP => {
@@ -593,7 +593,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    local_binary_table_sm.update_multiplicity(row, 1);
                 }
             }
             ADD_OP | ADDW_OP => {
@@ -638,7 +638,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    local_binary_table_sm.update_multiplicity(row, 1);
                 }
             }
             SUB_OP | SUBW_OP => {
@@ -682,7 +682,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    local_binary_table_sm.update_multiplicity(row, 1);
                 }
             }
             LEU_OP | LEUW_OP | LE_OP | LEW_OP => {
@@ -735,7 +735,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    local_binary_table_sm.update_multiplicity(row, 1);
                 }
             }
             AND_OP => {
@@ -766,7 +766,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    local_binary_table_sm.update_multiplicity(row, 1);
                 }
             }
             OR_OP => {
@@ -797,7 +797,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    local_binary_table_sm.update_multiplicity(row, 1);
                 }
             }
             XOR_OP => {
@@ -829,7 +829,7 @@ impl BinaryBasicSM {
                         plast[i],
                         flags,
                     );
-                    binary_table_sm.update_multiplicity(row, 1);
+                    local_binary_table_sm.update_multiplicity(row, 1);
                 }
             }
             _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={}", opcode),
@@ -915,10 +915,12 @@ impl BinaryBasicSM {
                 rest = tail;
             }
 
+            let local_binary_table_sm = BinaryBasicTableSM::new();
+
             // Process each slice in parallel, and use the corresponding inner input from `inputs`.
             slices.into_par_iter().enumerate().for_each(|(i, slice)| {
                 slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
-                    *trace_row = Self::process_slice(&inputs[i][j], &self.binary_basic_table_sm);
+                    *trace_row = Self::process_slice(&inputs[i][j], &local_binary_table_sm);
                 });
             });
 
@@ -943,8 +945,10 @@ impl BinaryBasicSM {
                     last as u64,
                     0,
                 );
-                self.binary_basic_table_sm.update_multiplicity(row, multiplicity);
+                local_binary_table_sm.update_multiplicity(row, multiplicity);
             }
+
+            self.binary_basic_table_sm.acc_local_multiplicity(&local_binary_table_sm);
 
             AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))
         });

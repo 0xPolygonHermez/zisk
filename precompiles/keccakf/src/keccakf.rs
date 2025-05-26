@@ -88,6 +88,7 @@ impl KeccakfSM {
         trace: &mut KeccakfTrace<F>,
         num_rows_constants: usize,
         inputs: &[OperationKeccakData<u64>],
+        local_keccakf_table_sm: &KeccakfTableSM,
         core_id: usize,
         n_cores: usize,
     ) {
@@ -404,7 +405,7 @@ impl KeccakfSM {
                         let b_val = F::as_canonical_u64(&b[j]);
                         let table_row =
                             KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val);
-                        self.keccakf_table_sm.update_input(table_row, 1);
+                        local_keccakf_table_sm.update_input(table_row, 1);
                     }
                 }
             })
@@ -491,6 +492,8 @@ impl KeccakfSM {
         let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
         let fixed = KeccakfFixed::from_vec(fixed_pols);
 
+        let local_keccakf_table_sm = KeccakfTableSM::new::<F>();
+
         timer_start_trace!(KECCAKF_TRACE);
         let mut keccakf_trace = KeccakfTrace::new();
         let num_rows = keccakf_trace.num_rows();
@@ -541,7 +544,7 @@ impl KeccakfSM {
         }
         // Update the multiplicity table
         let table_row = KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, zeros, ones);
-        self.keccakf_table_sm.update_input(table_row, CHUNKS_KECCAKF as u64);
+        local_keccakf_table_sm.update_input(table_row, CHUNKS_KECCAKF as u64);
 
         // Assign the single constant row
         keccakf_trace[0] = row;
@@ -552,6 +555,7 @@ impl KeccakfSM {
             &mut keccakf_trace,
             num_rows_constants,
             &inputs,
+            &local_keccakf_table_sm,
             core_id,
             n_cores,
         );
@@ -570,11 +574,13 @@ impl KeccakfSM {
             );
 
             let table_row = KeccakfTableSM::calculate_table_row(&KeccakfTableGateOp::Xor, 0, 0);
-            self.keccakf_table_sm.update_input(table_row, CHUNKS_KECCAKF as u64);
+            local_keccakf_table_sm.update_input(table_row, CHUNKS_KECCAKF as u64);
 
             keccakf_trace[i] = padding_row;
         }
         timer_stop_and_log_trace!(KECCAKF_PADDING);
+
+        self.keccakf_table_sm.acc_local_multiplicity(&local_keccakf_table_sm);
 
         AirInstance::new_from_trace(FromTrace::new(&mut keccakf_trace))
     }

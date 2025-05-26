@@ -80,6 +80,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         input: &MemAlignInput,
         trace: &mut MemAlignTrace<F>,
         index: usize,
+        local_mem_align_rom_sm: &MemAlignRomSM,
     ) -> usize {
         let addr = input.addr;
         let width = input.width;
@@ -128,7 +129,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
                 // Get the next pc
                 let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::OneRead, offset, width);
+                    local_mem_align_rom_sm.calculate_next_pc(MemOp::OneRead, offset, width);
 
                 let mut read_row = MemAlignTraceRow::<F> {
                     step: F::from_u64(step),
@@ -237,7 +238,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
                 // Get the next pc
                 let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::OneWrite, offset, width);
+                    local_mem_align_rom_sm.calculate_next_pc(MemOp::OneWrite, offset, width);
 
                 // Compute the write value
                 let value_write = {
@@ -402,7 +403,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
                 // Get the next pc
                 let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::TwoReads, offset, width);
+                    local_mem_align_rom_sm.calculate_next_pc(MemOp::TwoReads, offset, width);
 
                 let mut first_read_row = MemAlignTraceRow::<F> {
                     step: F::from_u64(step),
@@ -588,7 +589,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
                 // Get the next pc
                 let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::TwoWrites, offset, width);
+                    local_mem_align_rom_sm.calculate_next_pc(MemOp::TwoWrites, offset, width);
 
                 // RWVWR
                 let mut first_read_row = MemAlignTraceRow::<F> {
@@ -799,10 +800,13 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 used_rows as f64 / num_rows as f64 * 100.0
             );
 
+            let local_mem_align_rom_sm = MemAlignRomSM::new();
+
             let mut index = 0;
             for inner_memp_ops in mem_ops {
                 for input in inner_memp_ops {
-                    let count = self.prove_mem_align_op(input, &mut trace, index);
+                    let count =
+                        self.prove_mem_align_op(input, &mut trace, index, &local_mem_align_rom_sm);
                     for i in 0..count {
                         for j in 0..CHUNK_NUM {
                             let element = trace[index + i].reg[j]
@@ -824,11 +828,12 @@ impl<F: PrimeField64> MemAlignSM<F> {
             trace.buffer[index..num_rows].fill(padding_row);
 
             // Compute the program multiplicity
-            let mem_align_rom_sm = self.mem_align_rom_sm.clone();
-            mem_align_rom_sm.update_padding_row(padding_size as u64);
+            local_mem_align_rom_sm.update_padding_row(padding_size as u64);
 
             reg_range_check[0] += CHUNK_NUM as u64 * padding_size as u64;
             self.update_std_range_check(&reg_range_check);
+
+            self.mem_align_rom_sm.acc_local_multiplicity(&local_mem_align_rom_sm);
 
             AirInstance::new_from_trace(FromTrace::new(&mut trace))
         });

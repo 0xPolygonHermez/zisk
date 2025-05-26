@@ -6,9 +6,10 @@ use std::{
     any::Any,
     fmt::Debug,
     ops::{Add, AddAssign},
-    sync::{atomic::AtomicU32, Arc},
+    sync::Arc,
 };
 
+use proofman_common::PaddedAtomicU32;
 use zisk_core::{ROM_ADDR, ROM_ENTRY};
 
 /// The `Metrics` trait provides an interface for tracking and managing metrics in a
@@ -85,10 +86,10 @@ impl AddAssign<&Counter> for Counter {
 #[derive(Debug)]
 pub struct CounterStats {
     /// Shared biod instruction counter for monitoring ROM operations.
-    pub bios_inst_count: Arc<Vec<AtomicU32>>,
+    pub bios_inst_count: Arc<Vec<PaddedAtomicU32>>,
 
     /// Shared program instruction counter for monitoring ROM operations.
-    pub prog_inst_count: Arc<Vec<AtomicU32>>,
+    pub prog_inst_count: Arc<Vec<PaddedAtomicU32>>,
 
     /// The PC of the last executed instruction.
     pub end_pc: u64,
@@ -98,7 +99,10 @@ pub struct CounterStats {
 }
 
 impl CounterStats {
-    pub fn new(entry_inst_count: Arc<Vec<AtomicU32>>, inst_count: Arc<Vec<AtomicU32>>) -> Self {
+    pub fn new(
+        entry_inst_count: Arc<Vec<PaddedAtomicU32>>,
+        inst_count: Arc<Vec<PaddedAtomicU32>>,
+    ) -> Self {
         CounterStats {
             bios_inst_count: entry_inst_count,
             prog_inst_count: inst_count,
