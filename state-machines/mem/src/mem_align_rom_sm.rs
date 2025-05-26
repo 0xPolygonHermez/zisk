@@ -24,8 +24,6 @@ pub struct MemAlignRomSM {
 }
 
 impl MemAlignRomSM {
-    // const MY_NAME: &'static str = "MemAlignRom";
-
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             multiplicity: create_atomic_vec(MemAlignRomTrace::<usize>::NUM_ROWS),
