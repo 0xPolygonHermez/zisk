@@ -1,6 +1,6 @@
 // use std::path::Path;
 
-// use log::info;
+// use tracing::info;
 
 // use crate::{gen_elf_hash, get_elf_bin_file_path, get_rom_blowup_factor};
 

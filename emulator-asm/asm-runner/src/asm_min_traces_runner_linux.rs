@@ -15,8 +15,6 @@ use std::sync::mpsc;
 use std::time::Duration;
 use std::{fs, ptr};
 
-use log::{error, info};
-
 use crate::{AsmInputC, AsmMTChunk, AsmMTHeader, AsmRunnerOptions, AsmRunnerTraceLevel};
 
 pub trait Task: Send + Sync + 'static {
@@ -143,9 +141,9 @@ impl AsmRunnerMT {
         // Spawn child process
         let start = std::time::Instant::now();
         if let Err(e) = command.arg(&shmem_prefix).spawn() {
-            error!("Child process failed: {:?}", e);
+            tracing::error!("Child process failed: {:?}", e);
         } else if options.verbose || options.log_output {
-            info!("Child process launched successfully");
+            tracing::info!("Child process launched successfully");
         }
 
         // Wait for the assembly emulator to complete writing the trace
@@ -162,7 +160,7 @@ impl AsmRunnerMT {
 
         let total_steps = vec_chunks.iter().map(|x| x.steps).sum::<u64>();
         let mhz = (total_steps as f64 / stop.as_secs_f64()) / 1_000_000.0;
-        info!("AsmRnner: ··· Assembly execution speed: {:.2} MHz", mhz);
+        tracing::info!("··· Assembly execution speed: {:.2} MHz", mhz);
 
         // Tell the assembly that we are done reading the trace
         if let Err(e) = sem_out.post() {
@@ -247,9 +245,9 @@ impl AsmRunnerMT {
 
         let start = std::time::Instant::now();
         if let Err(e) = command.arg(&shmem_prefix).spawn() {
-            error!("Child process failed: {:?}", e);
+            tracing::error!("Child process failed: {:?}", e);
         } else if options.verbose || options.log_output {
-            info!("Child process launched successfully");
+            tracing::info!("Child process launched successfully");
         }
 
         let pool = ThreadPoolBuilder::new().num_threads(16).build().unwrap();
@@ -294,7 +292,7 @@ impl AsmRunnerMT {
                     }
                 }
                 Err(e) => {
-                    error!("Semaphore sem_chunk_done error: {:?}", e);
+                    tracing::error!("Semaphore sem_chunk_done error: {:?}", e);
 
                     if chunk_id.0 == 0 {
                         break 1;
@@ -342,7 +340,7 @@ impl AsmRunnerMT {
 
         let total_steps = vec_chunks.iter().map(|x| x.steps).sum::<u64>();
         let mhz = (total_steps as f64 / stop.as_secs_f64()) / 1_000_000.0;
-        info!("AsmRnner: ··· Assembly execution speed: {:.2} MHz", mhz);
+        tracing::info!("··· Assembly execution speed: {:.2} MHz", mhz);
 
         // Tell the assembly that we are done reading the trace
         let result = sem_out.post();
