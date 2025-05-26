@@ -641,16 +641,16 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
     /// A vector of global IDs for the instances to compute witness for.
     fn execute(&self, pctx: Arc<ProofCtx<F>>) -> Vec<usize> {
         // Process the ROM to collect the Minimal Traces
-        timer_start_info!(COMPUTE_MINIMAL_TRACE);
+        // timer_start_info!(COMPUTE_MINIMAL_TRACE);
         let min_traces_execution_mode = if self.asm_runner_path.is_none() {
             MinimalTraceExecutionMode::Emulator
         } else {
             MinimalTraceExecutionMode::AsmWithCounter
         };
         let min_traces = self.compute_minimal_traces(min_traces_execution_mode);
-        timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
+        // timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
-        timer_start_info!(COUNT);
+        // timer_start_info!(COUNT);
         // Count the metrics for the Secondary SM instances
         let (main_count, secn_count) = if self.main_count.lock().unwrap().is_none() {
             self.count(&min_traces)
@@ -660,15 +660,15 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
             (main_count, secn_count)
         };
-        timer_stop_and_log_info!(COUNT);
+        // timer_stop_and_log_info!(COUNT);
 
         // Plan the main and secondary instances using the counted metrics
-        timer_start_info!(PLAN);
+        // timer_start_info!(PLAN);
         let (mut main_planning, public_values) =
             MainPlanner::plan::<F>(&min_traces, main_count, Self::MIN_TRACE_SIZE);
 
         let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
-        timer_stop_and_log_info!(PLAN);
+        // timer_stop_and_log_info!(PLAN);
 
         // Configure the instances
         self.sm_bundle.configure_instances(&pctx, &secn_planning);

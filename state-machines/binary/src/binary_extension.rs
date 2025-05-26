@@ -311,7 +311,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
 
         // Store the range check
         if op_is_shift {
-            self.std.range_check(in2_0 as i64 + 1, 1, self.range_id);
+            self.std.range_check(in2_0 as i64, 1, self.range_id);
         }
 
         // Return successfully

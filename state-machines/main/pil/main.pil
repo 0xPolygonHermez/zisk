@@ -317,9 +317,9 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // Range check for register operations, to check that previous register access is greater than
     // the current register access.
 
-    range_check(expression: a_mem_step - a_reg_prev_mem_step, min: 1, max: MAX_RANGE, sel: a_src_reg);
-    range_check(expression: b_mem_step - b_reg_prev_mem_step, min: 1, max: MAX_RANGE, sel: b_src_reg);
-    range_check(expression: store_mem_step - store_reg_prev_mem_step, min: 1, max: MAX_RANGE, sel: store_reg);
+    range_check(expression: a_mem_step - a_reg_prev_mem_step - 1, min: 0, max: MAX_RANGE, sel: a_src_reg);
+    range_check(expression: b_mem_step - b_reg_prev_mem_step - 1, min: 0, max: MAX_RANGE, sel: b_src_reg);
+    range_check(expression: store_mem_step - store_reg_prev_mem_step -1 , min: 0, max: MAX_RANGE, sel: store_reg);
 
     // Sent to bus the external operation
 
@@ -423,7 +423,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
 
     for (int ireg = 0; ireg < REGS_IN_MAIN; ++ireg) {
         // Range check to verify that thre previous access was before the last access.
-        range_check(expression: last_segment_reg_mem_step - last_reg_mem_step[ireg], min: 1, max: MEMORY_MAX_DIFF);
+        range_check(expression: last_segment_reg_mem_step - last_reg_mem_step[ireg] + 1, min: 0, max: 2**24 - 1);
 
         // Proves the last access.
         reg_pre_load(prev_mem_step: last_reg_mem_step[ireg], addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[ireg]);

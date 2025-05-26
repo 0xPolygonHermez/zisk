@@ -280,11 +280,11 @@ impl MainSM {
                     let mem_step = reg_trace.first_step_uses[reg_index].unwrap();
                     let slot = MemHelpers::mem_step_to_slot(mem_step);
                     let row = MemHelpers::mem_step_to_row(mem_step) % num_rows;
-                    let range = mem_step - reg_prev_mem_step;
-                    if range > max_range {
+                    let range = mem_step - reg_prev_mem_step - 1;
+                    if range >= max_range {
                         large_range_checks.push(range as u32);
                     } else {
-                        step_range_check[(range - 1) as usize].fetch_add(1, Ordering::Relaxed);
+                        step_range_check[range as usize].fetch_add(1, Ordering::Relaxed);
                     }
                     match slot {
                         0 => {

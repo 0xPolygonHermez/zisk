@@ -86,8 +86,7 @@ impl MemModuleCollector {
         if addr_w == self.mem_check_point.from_addr && self.skip > 0 {
             if self.skip == 1 && self.mem_check_point.is_first_chunk() {
                 // The last discart before accept, we need to store the previous segment data
-                self.prev_segment =
-                    Some(MemPreviousSegment { addr: addr_w, step, value, extra_zero_step: false });
+                self.prev_segment = Some(MemPreviousSegment { addr: addr_w, step, value });
                 self.debug_discard(3, addr_w, step, value);
             } else {
                 self.debug_discard(4, addr_w, step, value);

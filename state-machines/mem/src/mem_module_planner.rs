@@ -1,9 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{
-    MemCounters, MemCountersCursor, MemHelpers, MemModuleCheckPoint, MemPlanCalculator,
-    CHUNK_MAX_DISTANCE, STEP_MEMORY_MAX_DIFF,
-};
+use crate::{MemCounters, MemCountersCursor, MemModuleCheckPoint, MemPlanCalculator};
 use std::cmp::min;
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 
@@ -49,11 +46,6 @@ pub struct MemModulePlanner {
     reference_addr: u32,
     reference_skip: u32,
     cursor: MemCountersCursor,
-    // intermediate_extra_rows: u64,
-    // intermediate_count: u64,
-    // intermediate_max: u64,
-    // intermediate_max_count: u64,
-    // intermediate_rows: u64,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -64,7 +56,6 @@ pub struct MemModulePlannerConfig {
     pub from_addr: u32,
     pub rows: u32,
     pub consecutive_addr: bool,
-    pub intermediate_step_reads: bool,
 }
 impl MemModulePlanner {
     pub fn new(
@@ -84,11 +75,6 @@ impl MemModulePlanner {
             reference_skip: 0,
             last_chunk: None,
             cursor: MemCountersCursor::new(counters, config.addr_index),
-            // intermediate_extra_rows: 0,
-            // intermediate_rows: 0,
-            // intermediate_count: 0,
-            // intermediate_max: 0,
-            // intermediate_max_count: 0,
         }
     }
     pub fn module_plan(&mut self) {
@@ -104,17 +90,6 @@ impl MemModulePlanner {
             self.add_to_current_instance(chunk_id, addr, count);
         }
         self.close_last_segment();
-        // log::info!(
-        //     "MemPlan : ··· Intermediate rows[{}:{}] 0x{:X} => {} {} {} {} {} (rows,#,extra,max,#max)",
-        //     self.config.airgroup_id,
-        //     self.config.air_id,
-        //     self.config.from_addr * 8,
-        //     self.intermediate_rows,
-        //     self.intermediate_count,
-        //     self.intermediate_extra_rows,
-        //     self.intermediate_max,
-        //     self.intermediate_max_count
-        // );
     }
     fn close_last_segment(&mut self) {
         if self.rows_available < self.config.rows {
@@ -158,14 +133,6 @@ impl MemModulePlanner {
         if let Some(reference_chunk) = self.reference_addr_chunk {
             // not use skip, because we use accumulated skip over reference, after open this segment,
             // add a block, if this block is the same chunk, local skips is ignored
-            // println!(
-            //     "OPEN SEGMENT #{}: REFERENCE 0x{:X}+C:{}+{} {:?}",
-            //     segment_id,
-            //     self.reference_addr * 8,
-            //     reference_chunk,
-            //     self.reference_skip,
-            //     intermediate_skip
-            // );
             self.current_segment_chunks.insert(
                 reference_chunk,
                 MemModuleCheckPoint::new(
@@ -184,29 +151,10 @@ impl MemModulePlanner {
     }
     fn add_next_addr_to_segment(&mut self, addr: u32) {
         let chunk_id = self.current_chunk_id.unwrap();
-        // println!(
-        //     "ADDING NEXT ADDR TO SEGMENT #{}: 0x{:X} C:{}",
-        //     self.segments.len(),
-        //     addr * 8,
-        //     chunk_id
-        // );
         self.add_chunk_to_segment(chunk_id, addr, 1, 0);
     }
 
     fn add_chunk_to_segment(&mut self, chunk_id: ChunkId, addr: u32, count: u32, skip: u32) {
-        // if addr >= 268435456 && addr <= 301989880 {
-        //     println!(
-        //         "ADD CHUNK #{}: 0x{:X} C:{}+{} 0x{:X}+C:{}+{} SKIP:{}",
-        //         self.segments.len(),
-        //         addr * 8,
-        //         chunk_id,
-        //         count,
-        //         self.reference_addr * 8,
-        //         self.reference_addr_chunk.unwrap_or_default(),
-        //         self.reference_skip,
-        //         skip
-        //     );
-        // }
         self.current_segment_chunks
             .entry(chunk_id)
             .and_modify(|checkpoint| checkpoint.add_rows(addr, count))
@@ -222,23 +170,6 @@ impl MemModulePlanner {
         }
     }
     fn consume_rows(&mut self, addr: u32, rows: u32, skip: u32) {
-        // if addr >= 268435456 && addr <= 301989880 {
-        //     let chunk = self.current_chunk_id.unwrap_or_default();
-        //     let last_chunk = self.last_chunk.unwrap_or_default();
-        //     println!(
-        //         "CONSUME[{},{}] {} 0x{:X},C:{} LC:{} REF({}):0x{:X}+{} SKIP:{}",
-        //         self.segments.len(),
-        //         self.config.rows - self.rows_available,
-        //         rows,
-        //         addr * 8,
-        //         chunk,
-        //         last_chunk,
-        //         self.reference_addr_chunk.unwrap_or_default(),
-        //         self.reference_addr * 8,
-        //         self.reference_skip,
-        //         skip
-        //     );
-        // }
         if rows == 0 && self.rows_available > 0 {
             return;
         }
@@ -258,24 +189,6 @@ impl MemModulePlanner {
         self.reference_skip += rows;
     }
     fn consume_intermediate_rows(&mut self, addr: u32, rows: u32, skip: u32) {
-        // if addr >= 268435456 && addr <= 301989880 {
-        //     let chunk = self.current_chunk_id.unwrap_or_default();
-        //     let last_chunk = self.last_chunk.unwrap_or_default();
-        //     println!(
-        //         "CONSUME_INTERMEDIATE[{},{}] {} 0x{:X},C:{} LC:{} REF({}):0x{:X}+{} SKIP:{}",
-        //         self.segments.len(),
-        //         self.config.rows - self.rows_available,
-        //         rows,
-        //         addr * 8,
-        //         chunk,
-        //         last_chunk,
-        //         self.reference_addr_chunk.unwrap_or_default(),
-        //         self.reference_addr * 8,
-        //         self.reference_skip,
-        //         skip
-        //     );
-        // }
-
         if rows == 0 && self.rows_available > 0 {
             return;
         }
@@ -289,9 +202,7 @@ impl MemModulePlanner {
         if self.rows_available == 0 {
             self.open_segment(Some(skip));
         }
-        if !self.config.intermediate_step_reads {
-            self.add_chunk_to_segment(chunk_id, addr, rows, skip);
-        }
+        self.add_chunk_to_segment(chunk_id, addr, rows, skip);
         self.rows_available -= rows;
     }
 
@@ -307,23 +218,6 @@ impl MemModulePlanner {
     }
 
     fn add_rows(&mut self, addr: u32, count: u32) {
-        // if addr >= 268435456 && addr <= 301989880 {
-        //     let chunk = self.current_chunk_id.unwrap_or_default();
-        //     let last_chunk = self.last_chunk.unwrap_or_default();
-        //     println!(
-        //         "ADD_ROWS[{},{}] {} 0x{:X},C:{} LC:{} REF({}):0x{:X}+{}",
-        //         self.segments.len(),
-        //         self.config.rows - self.rows_available,
-        //         count,
-        //         addr * 8,
-        //         chunk,
-        //         last_chunk,
-        //         self.reference_addr_chunk.unwrap_or_default(),
-        //         self.reference_addr * 8,
-        //         self.reference_skip
-        //     );
-        // }
-
         let mut pending = count;
         while pending > 0 {
             let rows = min(pending, self.rows_available);
@@ -342,14 +236,6 @@ impl MemModulePlanner {
             assert_eq!(to_addr, from_addr);
             self.add_intermediate_rows(to_addr, 1);
         }
-        // self.intermediate_rows += count as u64;
-        // self.intermediate_count += 1;
-        // if count as u64 > self.intermediate_max {
-        //    self.intermediate_max_count = 1;
-        //    self.intermediate_max = count as u64;
-        // } else if count as u64 == self.intermediate_max {
-        //    self.intermediate_max_count += 1;
-        //}
     }
     fn add_intermediates(&mut self, addr: u32) -> u32 {
         if self.last_addr != addr {
@@ -357,54 +243,8 @@ impl MemModulePlanner {
                 self.add_intermediate_addr(self.last_addr + 1, addr - 1);
             }
             self.last_addr = addr;
-        } else if self.config.intermediate_step_reads {
-            return self.add_intermediate_steps(addr);
         }
         0
-    }
-    fn add_intermediate_steps(&mut self, addr: u32) -> u32 {
-        // check if the distance between the last chunk and the current is too large,
-        // if so then we need to add intermediate rows
-        let mut intermediate_rows = 0;
-        if let Some(last_chunk) = self.last_chunk {
-            let chunk = self.current_chunk_id.unwrap();
-            let chunk_distance = chunk.0 - last_chunk.0;
-            if chunk_distance > CHUNK_MAX_DISTANCE {
-                let distance = MemHelpers::max_distance_between_chunks(last_chunk, chunk);
-                intermediate_rows = (distance - 1) / STEP_MEMORY_MAX_DIFF;
-                if intermediate_rows == 0 {
-                    // self.intermediate_extra_rows += 1;
-                    intermediate_rows = 1;
-                }
-                // let segment_id = self.segments.len();
-                // if segment_id >= 52 || segment_id <= 54 {
-                //     println!(
-                //         "INTERMEDIATE_STEPS[{},{}] {} 0x{:X},C:{} LC:{} CD:{} D:{} REF({}):0x{:X}+{}",
-                //         self.segments.len(),
-                //         self.config.rows - self.rows_available,
-                //         intermediate_rows,
-                //         addr * 8,
-                //         chunk,
-                //         last_chunk,
-                //         chunk_distance,
-                //         distance,
-                //         self.reference_addr_chunk.unwrap_or_default(),
-                //         self.reference_addr * 8,
-                //         self.reference_skip
-                //     );
-                // }
-                self.add_intermediate_rows(addr, intermediate_rows as u32);
-                // self.intermediate_rows += intermediate_rows;
-                // self.intermediate_count += 1;
-                // if intermediate_rows > self.intermediate_max {
-                //     self.intermediate_max_count = 1;
-                //     self.intermediate_max = intermediate_rows;
-                // } else if intermediate_rows == self.intermediate_max {
-                //     self.intermediate_max_count += 1;
-                // }
-            }
-        }
-        intermediate_rows as u32
     }
 }
 
@@ -421,14 +261,6 @@ impl MemPlanCalculator for MemModulePlanner {
 
         let segments = std::mem::take(&mut self.segments);
         for (segment_id, segment) in segments.into_iter().enumerate() {
-            // for (ck_id, checkpoint) in &segment.chunks {
-            //     if segment_id >= 52 && segment_id <= 55 {
-            //         println!(
-            //             "[{}:{},{}]: {} {:?}",
-            //             self.config.airgroup_id, self.config.air_id, segment_id, ck_id, checkpoint
-            //         );
-            //     }
-            // }
             let keys = segment.chunks.keys().cloned().collect::<Vec<_>>();
             plans.push(Plan::new(
                 self.config.airgroup_id,

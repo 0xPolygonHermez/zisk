@@ -109,7 +109,6 @@ impl MemPlanner {
                 from_addr: RAM_W_ADDR_INIT,
                 rows: MemTrace::<usize>::NUM_ROWS as u32,
                 consecutive_addr: false,
-                intermediate_step_reads: true,
             },
             counters.clone(),
         )));
@@ -122,7 +121,6 @@ impl MemPlanner {
                 from_addr: ROM_DATA_W_ADDR_INIT,
                 rows: RomDataTrace::<usize>::NUM_ROWS as u32,
                 consecutive_addr: true,
-                intermediate_step_reads: false,
             },
             counters.clone(),
         )));
@@ -135,7 +133,6 @@ impl MemPlanner {
                 from_addr: INPUT_DATA_W_ADDR_INIT,
                 rows: InputDataTrace::<usize>::NUM_ROWS as u32,
                 consecutive_addr: true,
-                intermediate_step_reads: false,
             },
             counters.clone(),
         )));

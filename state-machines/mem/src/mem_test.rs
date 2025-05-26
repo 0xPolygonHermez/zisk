@@ -26,7 +26,6 @@ fn generate_test_plans(
             from_addr: from_addr >> 3,
             rows,
             consecutive_addr: true,
-            intermediate_step_reads: true,
         },
         Arc::new(counters),
     );
