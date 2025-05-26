@@ -11,11 +11,11 @@ pub fn fcall_bn254_twist_add_line_coeffs(params: &[u64], results: &mut [u64]) ->
     let x2: &[u64; 8] = &params[16..24].try_into().unwrap();
     let y2: &[u64; 8] = &params[24..32].try_into().unwrap();
 
-    // Compute 𝜆
+    // Compute 𝜆 = (y2 - y1)/(x2 - x1)
     let mut lambda = bn254_fp2_inv(&bn254_fp2_sub(x2, x1));
     lambda = bn254_fp2_mul(&lambda, &bn254_fp2_sub(y2, y1));
 
-    // Compute 𝜇
+    // Compute 𝜇 = y - 𝜆x
     let mu = bn254_fp2_sub(y1, &bn254_fp2_mul(&lambda, x1));
 
     // Store the result
@@ -31,12 +31,12 @@ pub fn fcall_bn254_twist_dbl_line_coeffs(params: &[u64], results: &mut [u64]) ->
     let x: &[u64; 8] = &params[0..8].try_into().unwrap();
     let y: &[u64; 8] = &params[8..16].try_into().unwrap();
 
-    // Compute 𝜆
+    // Compute 𝜆 = 3x²/2y
     let mut lambda = bn254_fp2_inv(&bn254_fp2_dbl(y));
     let x_sq = bn254_fp2_square(x);
     lambda = bn254_fp2_mul(&lambda, &bn254_fp2_scalar_mul(&x_sq, &[3, 0, 0, 0]));
 
-    // Compute 𝜇
+    // Compute 𝜇 = y - 𝜆x
     let mu = bn254_fp2_sub(y, &bn254_fp2_mul(&lambda, x));
 
     // Store the result

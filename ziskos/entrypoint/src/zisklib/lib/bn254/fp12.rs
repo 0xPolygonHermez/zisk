@@ -1,3 +1,5 @@
+use crate::{fcall_msb_pos_256, zisklib::lib::utils::eq};
+
 use super::{
     constants::{
         FROBENIUS_GAMMA11, FROBENIUS_GAMMA12, FROBENIUS_GAMMA13, FROBENIUS_GAMMA14,
@@ -193,6 +195,58 @@ pub fn frobenius3_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     result[32..40].copy_from_slice(&mul_fp2_bn254(&tmp, &FROBENIUS_GAMMA33));
     tmp = conjugate_fp2_bn254(a23);
     result[40..48].copy_from_slice(&mul_fp2_bn254(&tmp, &FROBENIUS_GAMMA35));
+
+    result
+}
+
+// expCycloFp12BN254:
+//             in: e, (a1 + a2·w) ∈ Fp12, where e ∈ [0,p¹²-2] ai ∈ Fp6
+//             out: (c1 + c2·w) = (a1 + a2·w)^e ∈ Fp12
+pub fn exp_fp12_bn254(e: u64, a: &[u64; 48]) -> [u64; 48] {
+    let mut one = [0; 48];
+    one[0] = 1;
+    if eq(a, &[0; 48]) {
+        return [0; 48];
+    } else if eq(a, &one) {
+        return one;
+    }
+
+    if e == 0 {
+        return one;
+    } else if e == 1 {
+        return a.clone();
+    }
+
+    let (_, max_bit) = fcall_msb_pos_256(&[e, 0, 0, 0], &[0, 0, 0, 0]);
+
+    // Perform the loop, based on the binary representation of e
+
+    // We do the first iteration separately
+    let e_bit = (e >> max_bit) & 1;
+    assert_eq!(e_bit, 1); // the first received bit should be 1
+
+    // Start the loop at a
+    let mut result = a.clone();
+    let mut e_rec = 1 << max_bit;
+
+    // Perform the rest of the loop
+    let _max_bit = max_bit as usize;
+    for i in (0.._max_bit).rev() {
+        // Always square
+        result = square_fp12_bn254(&result);
+
+        // Get the next bit b of e
+        // If b == 1, we should multiply it by a, otherwise start the next iteration
+        if ((e >> i) & 1) == 1 {
+            result = mul_fp12_bn254(&result, a);
+
+            // Reconstruct e
+            e_rec |= 1 << i;
+        }
+    }
+
+    // Check that the reconstructed e is equal to the input e
+    assert_eq!(e_rec, e);
 
     result
 }

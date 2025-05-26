@@ -43,15 +43,23 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
         let (lambda, mu) = fcall_bn254_dbl_line_coeffs(&r);
 
         // Check that the line is correct
-        assert!(is_tangent_bn254(&r, &lambda, &mu));
+        assert!(is_tangent_twist_bn254(&r, &lambda, &mu));
 
-        // Compute f = f² · line_{twist(R),twist(R)}(P)
+        // Compute f = f² · line_{twist(r),twist(r)}(p)
         f = square_fp12_bn254(&f);
-        let l = line_eval_bn254(&lambda, &mu, &xp_prime, &yp_prime);
-        f = mul_fp12_bn254(&f, &l);
+        let l = line_eval_twist_bn254(&lambda, &mu, &xp_prime, &yp_prime);
+        // a0 + a2·w + a4·w² + a1·w³ + a3·w⁴ + a5·w⁵ ~ (a0 + a4·v + a3·v²) + (a2 + a1·v + a5·v²)·w
+        let mut _l = l;
+        // _l[0..8].copy_from_slice(&l[0..8]);
+        _l[8..16].copy_from_slice(&l[16..24]);
+        _l[16..24].copy_from_slice(&l[32..40]);
+        _l[24..32].copy_from_slice(&l[8..16]);
+        _l[32..40].copy_from_slice(&l[24..32]);
+        // _l[40..48].copy_from_slice(&l[40..48]);
+        f = mul_fp12_bn254(&f, &_l); // TODO: This mul is sparse
 
         // Double r
-        r = line_dbl_bn254(&r, &lambda, &mu);
+        r = line_dbl_twist_bn254(&r, &lambda, &mu);
 
         if bit * bit == 1 {
             let q_prime = if bit == 1 { q } else { &neg_twist_bn254(&q) };
@@ -60,38 +68,62 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
             let (lambda, mu) = fcall_bn254_add_line_coeffs(&r, q_prime);
 
             // Check that the line is correct
-            assert!(is_line_bn254(&r, q_prime, &lambda, &mu));
+            assert!(is_line_twist_bn254(&r, q_prime, &lambda, &mu));
 
-            // Compute f = f · line_{twist(R),twist(Q')}
-            f = mul_fp12_bn254(&f, &line_eval_bn254(&lambda, &mu, &xp_prime, &yp_prime));
+            // Compute f = f · line_{twist(r),twist(q')}
+            let l = line_eval_twist_bn254(&lambda, &mu, &xp_prime, &yp_prime);
+            let mut _l = l;
+            // _l[0..8].copy_from_slice(&l[0..8]);
+            _l[8..16].copy_from_slice(&l[16..24]);
+            _l[16..24].copy_from_slice(&l[32..40]);
+            _l[24..32].copy_from_slice(&l[8..16]);
+            _l[32..40].copy_from_slice(&l[24..32]);
+            // _l[40..48].copy_from_slice(&l[40..48]);
+            f = mul_fp12_bn254(&f, &_l); // TODO: This mul is sparse
 
             // Add r and q'
-            r = line_add_bn254(&r, q_prime, &lambda, &mu);
+            r = line_add_twist_bn254(&r, q_prime, &lambda, &mu);
         }
     }
 
     // Compute the last two lines
 
-    // f = f · line_{twist(R),twist(UTF(Q))}(P)
+    // f = f · line_{twist(r),twist(utf(q))}(p)
     let q_frob = utf_endomorphism_twist_bn254(&q);
 
     // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(utf(q))}
     let (lambda, mu) = fcall_bn254_add_line_coeffs(&r, &q_frob);
-    assert!(is_line_bn254(&r, &q_frob, &lambda, &mu));
+    assert!(is_line_twist_bn254(&r, &q_frob, &lambda, &mu));
 
-    f = mul_fp12_bn254(&f, &line_eval_bn254(&lambda, &mu, &xp_prime, &yp_prime));
+    let l = line_eval_twist_bn254(&lambda, &mu, &xp_prime, &yp_prime);
+    let mut _l = l;
+    // _l[0..8].copy_from_slice(&l[0..8]);
+    _l[8..16].copy_from_slice(&l[16..24]);
+    _l[16..24].copy_from_slice(&l[32..40]);
+    _l[24..32].copy_from_slice(&l[8..16]);
+    _l[32..40].copy_from_slice(&l[24..32]);
+    // _l[40..48].copy_from_slice(&l[40..48]);
+    f = mul_fp12_bn254(&f, &_l); // TODO: This mul is sparse
 
     // Update r by r + utf(q)
-    r = line_add_bn254(&r, &q_frob, &lambda, &mu);
+    r = line_add_twist_bn254(&r, &q_frob, &lambda, &mu);
 
-    // f = f · line_{twist(R),twist(-UTF(UTF(Q)))}(P)
+    // f = f · line_{twist(r),twist(-utf(utf(q)))}(p)
     let q_frob2 = neg_twist_bn254(&utf_endomorphism_twist_bn254(&q_frob));
 
     // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(-utf(utf(q)))}
     let (lambda, mu) = fcall_bn254_add_line_coeffs(&r, &q_frob2);
-    assert!(is_line_bn254(&r, &q_frob2, &lambda, &mu));
+    assert!(is_line_twist_bn254(&r, &q_frob2, &lambda, &mu));
 
-    f = mul_fp12_bn254(&f, &line_eval_bn254(&lambda, &mu, &xp_prime, &yp_prime));
+    let l = line_eval_twist_bn254(&lambda, &mu, &xp_prime, &yp_prime);
+    let mut _l = l;
+    // _l[0..8].copy_from_slice(&l[0..8]);
+    _l[8..16].copy_from_slice(&l[16..24]);
+    _l[16..24].copy_from_slice(&l[32..40]);
+    _l[24..32].copy_from_slice(&l[8..16]);
+    _l[32..40].copy_from_slice(&l[24..32]);
+    // _l[40..48].copy_from_slice(&l[40..48]);
+    f = mul_fp12_bn254(&f, &_l); // TODO: This mul is sparse
 
     f
 }
@@ -106,30 +138,24 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
 // In fact, one can use the coefficients of the line to compute the
 // evaluation of the line at p and compute the addition q1 + q2
 
-fn is_line_bn254(q1: &[u64; 16], q2: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bool {
-    // Check if the line passes through q1 and q2
-    let x1: &[u64; 8] = q1[0..8].try_into().unwrap();
-    let y1: &[u64; 8] = q1[8..16].try_into().unwrap();
-    let x2: &[u64; 8] = q2[0..8].try_into().unwrap();
-    let y2: &[u64; 8] = q2[8..16].try_into().unwrap();
-
+fn is_line_twist_bn254(q1: &[u64; 16], q2: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bool {
     // Check if the line passes through q1
-    let check_q1 = line_check(x1, y1, lambda, mu);
+    let check_q1 = line_check_twist_bn254(q1, lambda, mu);
     // Check if the line passes through q2
-    let check_q2 = line_check(x2, y2, lambda, mu);
+    let check_q2 = line_check_twist_bn254(q2, lambda, mu);
 
     check_q1 && check_q2
 }
 
-fn is_tangent_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bool {
+fn is_tangent_twist_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bool {
     // Check if the line is tangent to the curve at q
-    let x: &[u64; 8] = q[0..8].try_into().unwrap();
-    let y: &[u64; 8] = q[8..16].try_into().unwrap();
 
-    // Check if the line is tangent to the curve at q
-    let check_q = line_check(x, y, lambda, mu);
+    // Check if the line passes through q
+    let check_q = line_check_twist_bn254(q, lambda, mu);
 
     // Check that 2𝜆y = 3x²
+    let x: &[u64; 8] = q[0..8].try_into().unwrap();
+    let y: &[u64; 8] = q[8..16].try_into().unwrap();
     let mut lhs = mul_fp2_bn254(lambda, y);
     lhs = dbl_fp2_bn254(&lhs);
 
@@ -139,7 +165,10 @@ fn is_tangent_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bool {
     check_q && eq(&lhs, &rhs)
 }
 
-fn line_check(x: &[u64; 8], y: &[u64; 8], lambda: &[u64; 8], mu: &[u64; 8]) -> bool {
+fn line_check_twist_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bool {
+    let x: &[u64; 8] = q[0..8].try_into().unwrap();
+    let y: &[u64; 8] = q[8..16].try_into().unwrap();
+
     // Check if y = λx + μ
     let mut rhs = mul_fp2_bn254(lambda, x);
     rhs = add_fp2_bn254(&rhs, mu);
@@ -147,7 +176,12 @@ fn line_check(x: &[u64; 8], y: &[u64; 8], lambda: &[u64; 8], mu: &[u64; 8]) -> b
 }
 
 /// Evaluates the line function l(x,y) := 1 + λxw - μyw³
-fn line_eval_bn254(lambda: &[u64; 8], mu: &[u64; 8], x: &[u64; 4], y: &[u64; 4]) -> [u64; 48] {
+fn line_eval_twist_bn254(
+    lambda: &[u64; 8],
+    mu: &[u64; 8],
+    x: &[u64; 4],
+    y: &[u64; 4],
+) -> [u64; 48] {
     let coeff1 = scalar_mul_fp2_bn254(lambda, x);
     let coeff2 = scalar_mul_fp2_bn254(mu, &neg_fp_bn254(y));
 
@@ -159,7 +193,12 @@ fn line_eval_bn254(lambda: &[u64; 8], mu: &[u64; 8], x: &[u64; 4], y: &[u64; 4])
     result
 }
 
-fn line_add_bn254(q1: &[u64; 16], q2: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> [u64; 16] {
+fn line_add_twist_bn254(
+    q1: &[u64; 16],
+    q2: &[u64; 16],
+    lambda: &[u64; 8],
+    mu: &[u64; 8],
+) -> [u64; 16] {
     let x1: &[u64; 8] = q1[0..8].try_into().unwrap();
     let x2: &[u64; 8] = q2[0..8].try_into().unwrap();
 
@@ -168,7 +207,7 @@ fn line_add_bn254(q1: &[u64; 16], q2: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 
     x3 = sub_fp2_bn254(&x3, x1);
     x3 = sub_fp2_bn254(&x3, x2);
 
-    // Compute y3 = - μ - λx3
+    // Compute y3 = -λx3 - μ
     let mut y3 = mul_fp2_bn254(lambda, &x3);
     y3 = add_fp2_bn254(mu, &y3);
     y3 = neg_fp2_bn254(&y3);
@@ -179,14 +218,14 @@ fn line_add_bn254(q1: &[u64; 16], q2: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 
     ]
 }
 
-fn line_dbl_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> [u64; 16] {
+fn line_dbl_twist_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> [u64; 16] {
     let x: &[u64; 8] = q[0..8].try_into().unwrap();
 
     // Compute x3 = λ² - 2x
     let mut x3 = square_fp2_bn254(lambda);
     x3 = sub_fp2_bn254(&x3, &dbl_fp2_bn254(x));
 
-    // Compute y3 = - μ - λx3
+    // Compute y3 = -λx3 - μ
     let mut y3 = mul_fp2_bn254(lambda, &x3);
     y3 = add_fp2_bn254(mu, &y3);
     y3 = neg_fp2_bn254(&y3);

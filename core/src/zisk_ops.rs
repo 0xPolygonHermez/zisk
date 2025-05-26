@@ -1734,9 +1734,9 @@ pub fn opc_fcall_param(ctx: &mut InstContext) {
     let param = ctx.b;
 
     // Check for consistency
-    if (ctx.fcall.parameters_size + words) as usize >= FCALL_PARAMS_MAX_SIZE {
+    if (ctx.fcall.parameters_size + words) as usize > FCALL_PARAMS_MAX_SIZE {
         panic!(
-            "opc_fcall_param({0}) called with ctx.fcall.parameters_size({1}) + param({0})>={2}",
+            "opc_fcall_param({0}) called with ctx.fcall.parameters_size({1}) + param({0})>{2}",
             words, ctx.fcall.parameters_size, FCALL_PARAMS_MAX_SIZE
         );
     }
