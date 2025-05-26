@@ -962,7 +962,17 @@ void configure (void)
         port = arguments_port;
     }
 
-    if (verbose) printf("ziskemuasm configuration: gen_method=%u port=%u shmem_input=%s shmem_output=%s sem_chunk_done=%s\n", gen_method, port, shmem_input_name, shmem_output_name, sem_chunk_done_name);
+    if (verbose)
+    {
+        printf("ziskemuasm configuration: gen_method=%u port=%u chunk_done=%u chunk_size=%lu shmem_input=%s shmem_output=%s sem_chunk_done=%s\n",
+            gen_method,
+            port,
+            chunk_done,
+            chunk_size,
+            shmem_input_name,
+            shmem_output_name,
+            sem_chunk_done_name);
+    }
 }
 
 void client_run (void)
@@ -1341,7 +1351,7 @@ void client_run (void)
                     fflush(stderr);
                     exit(-1);
                 }
-                if (response[0] != TYPE_MO_RESPONSE)
+                if (response[0] != TYPE_MA_RESPONSE)
                 {
                     printf("recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
                     fflush(stdout);
@@ -1768,15 +1778,15 @@ void server_run (void)
         pOutput[1] = 0; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
         pOutput[2] = trace_size; // MT allocated size [8]
         //assert(final_trace_size > 32);
-        if ((gen_method == MinimalTrace) || (gen_method == Zip))
-        {
-            pOutput[3] = final_trace_size; // MT used size [8]
-        }
-        else
+        if (gen_method == RomHistogram)
         {
             pOutput[3] = MEM_STEP;
             pOutput[4] = bios_size;
             pOutput[4 + bios_size + 1] = program_size;
+        }
+        else
+        {
+            pOutput[3] = trace_used_size; // MT used size [8]
         }
     }
 
@@ -1967,8 +1977,12 @@ extern int _print_regs()
     // printf("\n");
 }
 
+//uint64_t chunk_done_counter = 0;
 extern void _chunk_done()
 {
+    //chunk_done_counter++;
+    //printf("chunk_done() counter=%lu\n", chunk_done_counter);
+
     // Notify the caller that a new chunk is done and its trace is ready to be consumed
     assert(chunk_done);
     int result = sem_post(sem_chunk_done);
@@ -1984,9 +1998,6 @@ extern void _chunk_done()
 extern void _realloc_trace (void)
 {
     realloc_counter++;
-#ifdef DEBUG
-    if (verbose) printf("realloc_trace() realloc counter=%lu trace_address=0x%lx trace_size=%lu\n", realloc_counter, trace_address, trace_size);
-#endif
 
     // Calculate new trace size
     uint64_t new_trace_size = trace_size * 2;
@@ -2013,6 +2024,10 @@ extern void _realloc_trace (void)
 
     // Update trace global variables
     set_trace_size(new_trace_size);
+
+#ifdef DEBUG
+    if (verbose) printf("realloc_trace() realloc counter=%lu trace_address=0x%lx trace_size=%lu=%lx max_address=0x%lx trace_address_threshold=0x%lx chunk_size=%lu\n", realloc_counter, trace_address, trace_size, trace_size, trace_address + trace_size, trace_address_threshold, chunk_size);
+#endif
 }
 
 /* Trace data structure
@@ -2203,7 +2218,6 @@ void log_histogram(void)
 */
 void log_main_trace(void)
 {
-
     uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
     printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
     printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
