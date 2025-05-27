@@ -13,13 +13,11 @@
     - Immutable free-input memory, always reading the same value for each address.
 
 
-    - Allows to define a memory on a region. Initially the distance between address could
-      be up to 2^24 (2^24 * 8 bytes = 128MB). But now it's possible to use a bigger memory, ziskos
-      during boot execute internal reads each 128 MB to avoid distances greater than 2^24.
-      but this distance is divided in two chunks of 16 bits, to verify that this distance is "positive"
+    - Allows to define a memory on a region. Initially the distance between address could up
+      to 2^(36+3) bits = 2^39 = 512 GB, but executor use only 32 bits for address, so the maximum
+      memory size is 4 GB
     - Inside this component the address are mem-byte address, to translate internal adress to
       external need to multiply by bytes.
-    - For executors optimization, external addresses use 32-bits.
     - The memory regions must be exclusive, to avoid collisions between different memories.
     - The constraints over instances guarantees that the memory access are inside definited region.
     - The constraints guarantees that only one cyle for memory region is allowed.
@@ -230,7 +228,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         range_check(expression: distance_base[1], min: 0, max: 0xFFFF);
     } else {
 
-        range_check(expression: previous_segment_addr - internal_base_address, min: 0, max: 2**24);
+        range_check(expression: previous_segment_addr - internal_base_address, min: 0, max: 2**24 - 1);
     }
 
     // Final memory control: the last address must be within the memory area.
@@ -322,17 +320,16 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         const expr delta_step = step - previous_step + (1 - wr);
 
         col witness increment[2];
-        increment[0] + 0x40000 * increment[1] - 1 === addr_changes * (delta_addr - delta_step) + delta_step;
+        increment[0] + 2**18 * increment[1] + 1 === addr_changes * (delta_addr - delta_step) + delta_step;
 
         is_first_segment * SEGMENT_L1 * (1 - addr_changes) === 0;
 
-        range_check(expression: increment[0], min: 0, max: 0x3FFFF);
+        // addr_change == 1 => [0,2^18-1] => 18 + 18 = 36 bits + 3 => 39 bits => 512 GB
+        // addr_change == 0 => [0,2^18-1] => 18 + 18 = 36 bits => STEP upto 2^34 => 16 GB steps
+        // 36 bits x 2^22 = 2^58 + 2^32 address = 2^59 secure.
 
-        // addr_change == 1 => [0,2^8-1] => 18 + 8 = 26 bits + 3 => 29 bits => 512 MB
-        // addr_change == 0 => [0,2^18-1] => 18 + 18 = 36 bits => STEP upto 2^34 => 16GB steps
-        assert(size_mb <= 512);
-        multi_range_check(min1: 0, max1: 0xFF, min2: 0, max2: 0x3FFFF,
-                          range_sel: addr_changes, expression: increment[1]);
+        range_check(expression: increment[0], min: 0, max: 2**18 - 1);
+        range_check(expression: increment[1], min: 0, max: 2**18 - 1);
 
         // to avoid intermediate column
         col witness air.read_same_addr;

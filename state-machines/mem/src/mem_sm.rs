@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 #[cfg(feature = "debug_mem")]
 use num_bigint::ToBigInt;
+use rayon::range;
 #[cfg(feature = "debug_mem")]
 use std::{
     fs::File,
@@ -10,8 +11,8 @@ use std::{
 use zisk_common::SegmentId;
 
 use crate::{
-    MemHelpers, MemInput, MemModule, MEMORY_MAX_DIFF, MEM_BYTES_BITS, STEP_MEMORY_LIMIT_TO_VERIFY,
-    STEP_MEMORY_MAX_DIFF,
+    MemHelpers, MemInput, MemModule, MEM_BYTES_BITS, MEM_INC_C_BITS, MEM_INC_C_MASK,
+    MEM_INC_C_MAX_RANGE, MEM_INC_C_SIZE,
 };
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
@@ -102,10 +103,8 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 
         let std = self.std.clone();
 
-        let range_id = std.get_range(1, MEMORY_MAX_DIFF as i64, None);
-        let mut range_check_data: Vec<u16> = vec![0; MEMORY_MAX_DIFF as usize];
-        let mut hsb_range_data = [0u64; 256];
-        let f_range_check_max_value = 0xFFFF + 1;
+        let range_id = std.get_range(0, MEM_INC_C_MAX_RANGE as i64, None);
+        let mut range_check_data: Vec<u32> = vec![0; MEM_INC_C_SIZE];
 
         // use special counter for internal reads
         let distance_base = previous_segment.addr - RAM_W_ADDR_INIT;
@@ -114,10 +113,10 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         let mut last_value = previous_segment.value;
 
         let mut i = 0;
-        let mut increment;
+        let mut increment: usize = 0;
 
         for mem_op in mem_ops {
-            let mut step = mem_op.step;
+            let step = mem_op.step;
 
             if i >= trace.num_rows {
                 break;
@@ -129,7 +128,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             trace[i].addr_changes = if addr_changes { F::ONE } else { F::ZERO };
 
             if addr_changes {
-                increment = (mem_op.addr - last_addr) as u64;
+                increment = (mem_op.addr - last_addr) as usize;
             } else {
                 if step < last_step {
                     panic!(
@@ -137,7 +136,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                         step, last_step, addr_changes as u8, mem_op.addr * 8, last_addr * 8, mem_op.step, last_step, i, previous_segment
                     );
                 }
-                increment = step - last_step;
+                increment = (step - last_step) as usize;
             }
 
             if i >= trace.num_rows {
@@ -150,15 +149,20 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             trace[i].step = F::from_u64(step);
             trace[i].sel = F::ONE;
 
-            if !addr_changes && !mem_op.is_write {
+            if addr_changes || mem_op.is_write {
                 // in case of read operations of same address, add one to allow many reads
                 // over same address and step
-                increment += 1;
+                trace[i].read_same_addr = F::ZERO;
+                increment -= 1;
+            } else {
+                trace[i].read_same_addr = F::ONE;
             }
-            let lsb_increment = increment & 0xFFFFFF;
-            let msb_increment = (increment >> 24) & 0xFF;
-            trace[i].increment = [F::from_u64(lsb_increment), F::from_u64(msb_increment)];
+            let lsb_increment = increment & MEM_INC_C_MASK;
+            let msb_increment = increment >> MEM_INC_C_BITS;
+            trace[i].increment[0] = F::from_usize(lsb_increment);
+            trace[i].increment[1] = F::from_usize(msb_increment);
             trace[i].wr = F::from_bool(mem_op.is_write);
+
             // println!("TRACE[{}] = [0x{:X},{}] {}", i, mem_op.addr * 8, mem_op.step, mem_op.value,);
 
             #[cfg(feature = "debug_mem")]
@@ -166,19 +170,14 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                 _mem_op_done += 1;
             }
 
-            // Store the value of incremenet so it can be range checked
-            let range_index = msb_increment as usize - 1;
-            if range_index < MEMORY_MAX_DIFF as usize {
-                if range_check_data[range_index] == 0xFFFF {
-                    range_check_data[range_index] = 0;
-                    std.range_check(increment as i64, f_range_check_max_value, range_id);
-                } else {
-                    range_check_data[range_index] += 1;
-                }
-            } else {
+            #[cfg(feature = "debug_mem")]
+            if (lsb_increment >= MEM_INC_C_SIZE) || (msb_increment > MEM_INC_C_SIZE) {
                 panic!("MemSM: increment's out of range: {} i:{} addr_changes:{} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{}",
                     increment, i, addr_changes as u8, mem_op.addr, last_addr, mem_op.step, last_step);
             }
+
+            range_check_data[lsb_increment] += 1;
+            range_check_data[msb_increment] += 1;
 
             last_addr = mem_op.addr;
             last_step = step;
@@ -193,18 +192,13 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         let last_row_idx = count - 1;
         let addr = trace[last_row_idx].addr;
         let value = trace[last_row_idx].value;
+        let step = trace[last_row_idx].step;
 
-        // Two situations with padding, at end of all segments, where there aren't more operations,
-        // in this case we increment step one-by-one. The second situation is in the middle of
-        // padding between step with distance too large, in this case we increment with maximum
-        // allowed distance.
         let padding_size = trace.num_rows - count;
-        let padding_step = if is_last_segment { 1 } else { STEP_MEMORY_MAX_DIFF };
-
-        let padding_increment = [F::ONE, F::ZERO];
+        let padding_increment = [F::ZERO, F::ZERO];
         for i in count..trace.num_rows {
             trace[i].addr = addr;
-            trace[i].step = F::ZERO;
+            trace[i].step = step;
             trace[i].sel = F::ZERO;
             trace[i].wr = F::ZERO;
 
@@ -212,10 +206,12 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
 
             trace[i].addr_changes = F::ZERO;
             trace[i].increment = padding_increment;
+            trace[i].read_same_addr = F::ONE;
         }
+
         if padding_size > 0 {
             // Store the padding range checks
-            self.std.range_check((padding_step + 1) as i64, padding_size as u64, range_id);
+            range_check_data[0] += (2 * padding_size) as u32;
         }
 
         // no add extra +1 because index = value - 1
@@ -226,7 +222,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             if multiplicity == 0 {
                 continue;
             }
-            self.std.range_check((value + 1) as i64, multiplicity as u64, range_id);
+            self.std.range_check(value as i64, multiplicity as u64, range_id);
         }
         // Add one in range_check_data_max because it's used by intermediate reads, and reads
         // add one to distance to allow same step on read operations.

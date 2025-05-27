@@ -6,7 +6,7 @@ const int BOOT_ADDR = 0x1000;
 const int END_PC_ADDR = 0x1004;
 const int INITIAL_SP = 0;
 const int END_SP = 0;
-const int MAX_RANGE = 1 << 24;
+const int MAX_RANGE = (1 << 24) - 1;
 const int REG_BASE_ADDR = 0xA000_0000;
 
 airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int operation_bus_id,
@@ -422,8 +422,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // In the case of the last segment, the current access isn't send to closed the cycle.
 
     for (int ireg = 0; ireg < REGS_IN_MAIN; ++ireg) {
-        // Range check to verify that thre previous access was before the last access.
-        range_check(expression: last_segment_reg_mem_step - last_reg_mem_step[ireg] + 1, min: 0, max: 2**24 - 1);
+        // Range check to verify that the previous access was before the last access.
+        range_check(expression: last_segment_reg_mem_step - last_reg_mem_step[ireg] - 1, min: 0, max: MAX_RANGE);
 
         // Proves the last access.
         reg_pre_load(prev_mem_step: last_reg_mem_step[ireg], addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[ireg]);

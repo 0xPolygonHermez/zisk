@@ -64,7 +64,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         std: Arc<Std<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
     ) -> Arc<Self> {
-        let range_id = std.get_range(1, 0x1000000, None);
+        let range_id = std.get_range(0, 0xFFFFFF, None);
 
         Arc::new(Self { std, binary_extension_table_sm, range_id })
     }
