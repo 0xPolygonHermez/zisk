@@ -43,11 +43,11 @@ impl ArithEqLtTableSM {
     }
 
     pub fn set_calculated(&self) {
-        self.calculated.store(true, Ordering::SeqCst);
+        self.calculated.store(true, Ordering::Relaxed);
     }
 
     pub fn reset_calculated(&self) {
-        self.calculated.store(false, Ordering::SeqCst);
+        self.calculated.store(false, Ordering::Relaxed);
     }
 
     /// Calculates the table row offset based on the provided parameters.
@@ -60,7 +60,7 @@ impl ArithEqLtTableSM {
     /// # Returns
     /// The calculated table row offset.
     pub fn update_input(&self, prev_lt: bool, lt: bool, delta: i64) {
-        if self.calculated.load(Ordering::SeqCst) {
+        if self.calculated.load(Ordering::Relaxed) {
             return;
         }
 
