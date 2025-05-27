@@ -5,8 +5,8 @@
 use std::{collections::VecDeque, ops::Add};
 
 use zisk_common::{
-    BusDevice, BusDeviceMode, BusId, Counter, Metrics, MEM_BUS_ID,
-    OPERATION_BUS_ID, OPERATION_BUS_SHA256F_DATA_SIZE, OP_TYPE,
+    BusDevice, BusDeviceMode, BusId, Counter, Metrics, MEM_BUS_ID, OPERATION_BUS_ID,
+    OPERATION_BUS_SHA256F_DATA_SIZE, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 
