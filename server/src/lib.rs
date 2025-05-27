@@ -1,11 +1,3 @@
-mod handlers;
-mod protocol;
-mod prove;
-mod server;
-mod verify_constraints;
+mod zisk_service;
 
-pub use handlers::*;
-pub use protocol::*;
-pub use prove::*;
-pub use server::*;
-pub use verify_constraints::*;
+pub use zisk_service::*;

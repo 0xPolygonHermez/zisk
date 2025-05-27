@@ -6,7 +6,7 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
-use server::{Server, ServerConfig};
+use server::{ServerConfig, ZiskService};
 use std::collections::HashMap;
 use std::path::Path;
 use std::{env, fs};
@@ -78,7 +78,6 @@ pub struct ZiskServer {
 impl ZiskServer {
     pub fn run(&mut self) -> Result<()> {
         init_tracing(LOG_PATH);
-        // initialize_logger(self.verbose.into());
 
         if !self.elf.exists() {
             eprintln!("Error: ELF file '{}' not found.", self.elf.display());
@@ -129,7 +128,7 @@ impl ZiskServer {
             let hash = get_elf_data_hash(&self.elf)
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
             let new_filename = format!("{stem}-{hash}-mt.bin");
-            let asm_rom_filename = format!("{stem}-{hash}-rom.bin");
+            let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
             asm_rom = Some(default_cache_path.join(asm_rom_filename));
             self.asm = Some(default_cache_path.join(new_filename));
         }
@@ -174,7 +173,7 @@ impl ZiskServer {
             sha256f_script,
         );
 
-        if let Err(e) = Server::new(config).run() {
+        if let Err(e) = ZiskService::new(config)?.run() {
             eprintln!("Error starting server: {}", e);
             process::exit(1);
         }

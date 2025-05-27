@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use tracing::info;
 use p3_field::PrimeField64;
+use tracing::info;
 
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};

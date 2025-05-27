@@ -9,6 +9,7 @@ use crate::{
 };
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use std::collections::VecDeque;
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
 use zisk_common::{
@@ -144,22 +145,23 @@ impl BusDevice<PayloadType> for ArithEqCollector {
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
-    ) -> Option<Vec<(BusId, Vec<PayloadType>)>> {
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() == self.num_operations as usize {
-            return None;
+            return;
         }
 
         let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
         if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::ArithEq as u32 {
-            return None;
+            return;
         }
 
         if self.collect_skipper.should_skip() {
-            return None;
+            return;
         }
 
         self.inputs.push(match data {
@@ -178,7 +180,6 @@ impl BusDevice<PayloadType> for ArithEqCollector {
             // Add here new operations
             _ => panic!("Expected ExtOperationData::OperationData"),
         });
-        None
     }
 
     /// Returns the bus IDs associated with this instance.

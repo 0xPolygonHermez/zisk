@@ -4,11 +4,11 @@
 
 use std::sync::Arc;
 
-use tracing::info;
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
+use tracing::info;
 use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow};
 
 const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;

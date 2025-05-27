@@ -8,11 +8,11 @@ use std::sync::{
 };
 
 use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput};
-use tracing::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use std::cmp::Ordering as CmpOrdering;
+use tracing::info;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryTrace, BinaryTraceRow};
 

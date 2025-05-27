@@ -1,4 +1,4 @@
-use std::any::Any;
+use std::{any::Any, collections::VecDeque};
 
 use super::BusId;
 
@@ -19,7 +19,7 @@ pub trait BusDevice<D>: Any + Send {
     /// # Returns
     /// An optional vector of tuples containing the bus ID and data payload to be sent to other
     /// devices. If no data is to be sent, `None` is returned.
-    fn process_data(&mut self, bus_id: &BusId, data: &[D]) -> Option<Vec<(BusId, Vec<D>)>>;
+    fn process_data(&mut self, bus_id: &BusId, data: &[D], pending: &mut VecDeque<(BusId, Vec<D>)>);
 
     /// Returns the bus IDs associated with this instance.
     ///
@@ -35,8 +35,13 @@ pub trait BusDevice<D>: Any + Send {
 }
 
 impl BusDevice<u64> for Box<dyn BusDevice<u64>> {
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
-        (**self).process_data(bus_id, data)
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
+        (**self).process_data(bus_id, data, pending);
     }
 
     fn bus_id(&self) -> Vec<BusId> {

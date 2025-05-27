@@ -33,11 +33,13 @@ use crate::{DataBusCollectorCollection, DummyCounter};
 use data_bus::DataBusTrait;
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::{
-    BusDevice, BusDeviceMetrics, CheckPoint, Instance, InstanceCtx, InstanceType, Plan,
+    BusDevice, BusDeviceMetrics, CheckPoint, DebugBusTime, Instance, InstanceCtx, InstanceType,
+    Plan,
 };
 use zisk_common::{ChunkId, PayloadType};
 use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
 
+use std::time::Duration;
 use std::{
     collections::HashMap,
     fmt::Debug,
@@ -63,7 +65,6 @@ pub struct ZiskExecutionResult {
 #[allow(dead_code)]
 enum MinimalTraceExecutionMode {
     Emulator,
-    Asm,
     AsmWithCounter,
 }
 
@@ -154,7 +155,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     fn compute_minimal_traces(&self, mode: MinimalTraceExecutionMode) -> MinimalTraces {
         let min_traces = match mode {
             MinimalTraceExecutionMode::Emulator => self.run_emulator(Self::NUM_THREADS),
-            MinimalTraceExecutionMode::Asm => self.run_assembly(),
             MinimalTraceExecutionMode::AsmWithCounter => self.run_and_count_assembly(),
         };
 
@@ -176,23 +176,13 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         min_traces
     }
 
-    fn run_assembly(&self) -> MinimalTraces {
-        MinimalTraces::AsmEmuTrace(AsmRunnerMT::run(
-            self.asm_runner_path.as_ref().unwrap(),
-            self.input_data_path.as_ref().unwrap(),
-            Self::MAX_NUM_STEPS,
-            Self::MIN_TRACE_SIZE,
-            asm_runner::AsmRunnerOptions::default(),
-        ))
-    }
-
     fn run_and_count_assembly(&self) -> MinimalTraces {
         struct CounterTask<F, DB>
         where
             DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>,
         {
             chunk_id: ChunkId,
-            emu_trace: EmuTrace,
+            emu_trace: Arc<EmuTrace>,
             data_bus: Mutex<Option<DB>>,
             zisk_rom: Arc<ZiskRom>,
             _phantom: std::marker::PhantomData<F>,
@@ -203,13 +193,13 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             F: PrimeField64,
             DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static,
         {
-            type Output = (ChunkId, DB);
+            type Output = (ChunkId, DB, Duration);
 
             fn execute(&self) -> Self::Output {
                 let mut data_bus = self.data_bus.lock().unwrap();
                 let mut data_bus = std::mem::take(&mut *data_bus).unwrap();
 
-                ZiskEmulator::process_emu_trace::<F, _, _>(
+                let duration = ZiskEmulator::process_emu_trace::<F, _, _>(
                     &self.zisk_rom,
                     &self.emu_trace,
                     &mut data_bus,
@@ -217,47 +207,43 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
                 data_bus.on_close();
 
-                (self.chunk_id, data_bus)
+                (self.chunk_id, data_bus, duration)
             }
         }
 
-        impl<F, DB> Drop for CounterTask<F, DB>
-        where
-            DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>,
-        {
-            fn drop(&mut self) {
-                std::mem::forget(std::mem::take(&mut self.emu_trace.mem_reads));
-            }
-        }
-
-        let task_factory: TaskFactory<_> = Box::new(|chunk_id: ChunkId, emu_trace: EmuTrace| {
-            let data_bus = self.sm_bundle.build_data_bus_counters();
-            CounterTask {
-                chunk_id,
-                emu_trace,
-                data_bus: Mutex::new(Some(data_bus)),
-                zisk_rom: self.zisk_rom.clone(),
-                _phantom: std::marker::PhantomData::<F>,
-            }
-        });
+        let task_factory: TaskFactory<_> =
+            Box::new(|chunk_id: ChunkId, emu_trace: Arc<EmuTrace>| {
+                let data_bus = self.sm_bundle.build_data_bus_counters();
+                CounterTask {
+                    chunk_id,
+                    emu_trace,
+                    data_bus: Mutex::new(Some(data_bus)),
+                    zisk_rom: self.zisk_rom.clone(),
+                    _phantom: std::marker::PhantomData::<F>,
+                }
+            });
 
         let (asm_runner_mt, mut data_buses) = AsmRunnerMT::run_and_count(
-            self.asm_runner_path.as_ref().unwrap(),
             self.input_data_path.as_ref().unwrap(),
             Self::MAX_NUM_STEPS,
             Self::MIN_TRACE_SIZE,
-            asm_runner::AsmRunnerOptions::default(),
+            // asm_runner::AsmRunnerOptions::default(),
             task_factory,
-        );
+        )
+        .expect("Error during ASM execution");
 
-        data_buses.sort_by_key(|(chunk_id, _)| chunk_id.0);
+        data_buses.sort_by_key(|(chunk_id, _, _)| chunk_id.0);
 
         let mut main_count = Vec::with_capacity(data_buses.len());
         let mut secn_count = Vec::with_capacity(data_buses.len());
 
         let main_idx = self.sm_bundle.main_counter_idx();
-        for (chunk_id, data_bus) in data_buses {
-            let databus_counters = data_bus.into_devices(false);
+        let mut total_debug_bus_time = DebugBusTime::default();
+        let mut total_duration = Duration::from_secs(0);
+        let data_buses_len = data_buses.len() as u128;
+        for (chunk_id, data_bus, duration) in data_buses {
+            let (debug_bus_time, databus_counters) = data_bus.into_devices(false);
+            total_debug_bus_time += debug_bus_time;
 
             let mut secondary = Vec::new();
 
@@ -271,8 +257,13 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 }
             }
 
+            total_duration += duration;
             secn_count.push(secondary);
         }
+
+        println!("Avg duration by chunk: {:?} ns", total_duration.as_nanos() / data_buses_len);
+
+        println!("{}", total_debug_bus_time);
 
         // Group counters by chunk_id and counter type
         let mut secn_vec_counters =
@@ -389,7 +380,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
                 let (mut main_count, mut secn_count) = (Vec::new(), Vec::new());
 
-                let databus_counters = data_bus.into_devices(true);
+                let (debug_bus_time, databus_counters) = data_bus.into_devices(true);
                 let main_idx = self.sm_bundle.main_counter_idx();
                 for (idx, counter) in databus_counters.into_iter().enumerate() {
                     match main_idx {
@@ -619,7 +610,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let mut collectors_by_instance = Vec::new();
         for (chunk_id, data_bus) in data_buses.iter_mut().enumerate() {
             if let Some(data_bus) = data_bus.take() {
-                let mut detached = data_bus.into_devices(false);
+                let (debug_bus_time, mut detached) = data_bus.into_devices(false);
 
                 // As a convention the first element is the main collector the others are input generators
                 let first_collector = detached.swap_remove(0);

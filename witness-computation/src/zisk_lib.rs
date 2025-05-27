@@ -75,8 +75,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         // Step 3: Initialize the secondary state machines
         let std = Std::new(wcm.clone());
-        let rom_sm =
-            RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone(), self.input_data_path.clone());
+        let rom_sm = RomSM::new(zisk_rom.clone(), None, self.input_data_path.clone());
         let binary_sm = BinarySM::new(std.clone());
         let arith_sm = ArithSM::new();
         let mem_sm = Mem::new(std.clone());

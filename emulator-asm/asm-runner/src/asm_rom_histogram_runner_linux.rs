@@ -11,7 +11,7 @@ use std::path::Path;
 use std::process::{self, Command};
 use std::{fs, ptr};
 
-use log::{error, info};
+use tracing::{error, info};
 
 use crate::{AsmRHData, AsmRHHeader, AsmRunnerOptions, AsmRunnerTraceLevel};
 

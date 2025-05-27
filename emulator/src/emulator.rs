@@ -22,7 +22,7 @@ use p3_field::PrimeField;
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::Instant,
+    time::{Duration, Instant},
 };
 use sysinfo::System;
 use zisk_common::EmuTrace;
@@ -222,12 +222,15 @@ impl ZiskEmulator {
         rom: &ZiskRom,
         emu_trace: &EmuTrace,
         data_bus: &mut DB,
-    ) {
+    ) -> Duration {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom);
 
+        let start = Instant::now();
         // Run the emulation
         emu.process_emu_trace(emu_trace, data_bus);
+
+        start.elapsed()
     }
 
     /// EXPAND phase

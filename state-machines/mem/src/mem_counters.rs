@@ -1,6 +1,6 @@
 use rayon::prelude::*;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     fs::File,
     io::{Read, Write},
     slice,
@@ -157,14 +157,17 @@ impl Metrics for MemCounters {
 
 impl BusDevice<u64> for MemCounters {
     #[inline(always)]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(bus_id == &MEM_BUS_ID);
 
         // let chunk_id = MemHelpers::mem_step_to_chunk(MemBusData::get_step(data));
         // self.save_to_file(chunk_id, data);
         self.measure(data);
-
-        None
     }
 
     fn bus_id(&self) -> Vec<BusId> {

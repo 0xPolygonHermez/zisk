@@ -1,36 +1,53 @@
-use libc::{
-    close, ftruncate, mmap, munmap, shm_open, shm_unlink, MAP_SHARED, O_CREAT, PROT_READ,
-    PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR,
-};
+use libc::{close, shm_unlink, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR};
 
 use named_sem::NamedSemaphore;
 use rayon::ThreadPoolBuilder;
 use zisk_common::{ChunkId, EmuTrace};
 
-use std::ffi::{c_uint, c_void, CString};
+use std::ffi::c_void;
 use std::fmt::Debug;
 use std::path::Path;
-use std::process::{self, Command};
-use std::sync::mpsc;
-use std::time::Duration;
+use std::sync::{mpsc, Arc};
+use std::time::{Duration, Instant};
 use std::{fs, ptr};
 
-use log::{error, info};
+use tracing::{error, info};
 
-use crate::{AsmInputC, AsmMTChunk, AsmMTHeader, AsmRunnerOptions, AsmRunnerTraceLevel};
+use crate::{shmem_utils, AsmInputC2, AsmMTChunk, AsmMTHeader, AsmServices};
+
+use anyhow::{Context, Result};
+use thiserror::Error;
 
 pub trait Task: Send + Sync + 'static {
     type Output: Send + 'static;
     fn execute(&self) -> Self::Output;
 }
 
-pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, EmuTrace) -> T + Send + Sync + 'a>;
+pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, Arc<EmuTrace>) -> T + Send + Sync + 'a>;
 
 #[derive(Debug)]
 pub enum MinimalTraces {
     None,
     EmuTrace(Vec<EmuTrace>),
     AsmEmuTrace(AsmRunnerMT),
+}
+
+#[derive(Debug, Error)]
+pub enum AsmRunError {
+    #[error("Failed to create semaphore '{0}': {1}")]
+    SemaphoreError(&'static str, #[source] named_sem::Error),
+    #[error("Thread pool creation failed")]
+    ThreadPoolError(#[from] rayon::ThreadPoolBuildError),
+    #[error("Semaphore wait failed: {0}")]
+    SemaphoreWaitError(#[from] std::io::Error),
+    #[error("Child process exited with code: {0}")]
+    ExitCode(u32),
+    #[error("Thread join failed")]
+    JoinPanic,
+    #[error("Child service returned error: {0}")]
+    ServiceError(#[source] anyhow::Error),
+    #[error("Arc unwrap failed")]
+    ArcUnwrap,
 }
 
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
@@ -46,20 +63,19 @@ unsafe impl Sync for AsmRunnerMT {}
 
 impl Drop for AsmRunnerMT {
     fn drop(&mut self) {
+        for chunk in &mut self.vec_chunks {
+            std::mem::forget(std::mem::take(&mut chunk.mem_reads));
+        }
+        let total_size = self.total_size();
         unsafe {
-            // Forget all mem_reads Vec<u64> before unmapping
-            for chunk in &mut self.vec_chunks {
-                std::mem::forget(std::mem::take(&mut chunk.mem_reads));
+            shmem_utils::unmap(self.mapped_ptr, total_size);
+        }
+        let c_name =
+            std::ffi::CString::new(self.shmem_output_name.clone()).expect("CString::new failed");
+        unsafe {
+            if shm_unlink(c_name.as_ptr()) != 0 {
+                error!("shm_unlink failed: {:?}", std::io::Error::last_os_error());
             }
-
-            // Unmap shared memory
-            libc::munmap(self.mapped_ptr, self.total_size());
-
-            let shmem_output_name =
-                CString::new(self.shmem_output_name.clone()).expect("CString::new failed");
-            let shmem_output_name_ptr = shmem_output_name.as_ptr();
-
-            shm_unlink(shmem_output_name_ptr);
         }
     }
 }
@@ -67,231 +83,82 @@ impl Drop for AsmRunnerMT {
 impl AsmRunnerMT {
     pub fn new(
         shmem_output_name: String,
-        mapped_ptr: *mut c_void,
+        mapped_ptr: *mut std::ffi::c_void,
         vec_chunks: Vec<EmuTrace>,
     ) -> Self {
-        AsmRunnerMT { shmem_output_name, mapped_ptr, vec_chunks }
+        Self { shmem_output_name, mapped_ptr, vec_chunks }
     }
 
-    fn total_size(&self) -> usize {
-        self.vec_chunks.iter().map(|chunk| std::mem::size_of_val(&chunk.mem_reads)).sum::<usize>()
-            + std::mem::size_of::<AsmMTHeader>()
-    }
-
-    pub fn run(
-        ziskemuasm_path: &Path,
-        inputs_path: &Path,
-        shm_size: u64,
-        chunk_size: u64,
-        options: AsmRunnerOptions,
-    ) -> AsmRunnerMT {
-        let pid = unsafe { libc::getpid() };
-
-        let shmem_prefix = format!("ZISKMT{}", pid);
-        let shmem_input_name = format!("/{}_input", shmem_prefix);
-        let shmem_output_name = format!("/{}_output", shmem_prefix);
-
-        // Build semaphores names, and create them (if they do not already exist)
-        let sem_output_name = format!("/{}_semout", shmem_prefix);
-        let sem_input_name = format!("/{}_semin", shmem_prefix);
-
-        let mut sem_in = NamedSemaphore::create(sem_input_name.clone(), 0).unwrap_or_else(|e| {
-            panic!(
-                "AsmRunnerMT::run() failed calling NamedSemaphore::create({}), error: {}",
-                sem_input_name, e
-            )
-        });
-
-        let mut sem_out = NamedSemaphore::create(sem_output_name.clone(), 0).unwrap_or_else(|e| {
-            panic!(
-                "AsmRunnerMT::run() failed calling NamedSemaphore::create({}), error: {}",
-                sem_output_name, e
-            )
-        });
-
-        Self::write_input(inputs_path, &shmem_input_name, shm_size, chunk_size);
-
-        // Prepare command
-        let mut command = Command::new(ziskemuasm_path);
-
-        command.arg("--generate_minimal_trace");
-
-        if !options.log_output {
-            command.arg("-o");
-            command.stdout(process::Stdio::null());
-            command.stderr(process::Stdio::null());
-        }
-        if options.metrics {
-            command.arg("-m");
-        }
-        if options.verbose {
-            command.arg("-v");
-        }
-        match options.trace_level {
-            AsmRunnerTraceLevel::None => {}
-            AsmRunnerTraceLevel::Trace => {
-                command.arg("-t");
-            }
-            AsmRunnerTraceLevel::ExtendedTrace => {
-                command.arg("-tt");
-            }
-        }
-        if options.keccak_trace {
-            command.arg("-k");
-        }
-
-        // Spawn child process
-        let start = std::time::Instant::now();
-        if let Err(e) = command.arg(&shmem_prefix).spawn() {
-            error!("Child process failed: {:?}", e);
-        } else if options.verbose || options.log_output {
-            info!("Child process launched successfully");
-        }
-
-        // Wait for the assembly emulator to complete writing the trace
-        if let Err(e) = sem_in.wait() {
-            panic!(
-                "AsmRunnerMT::run() failed calling semin.wait({}), error: {}",
-                sem_input_name, e
-            );
-        }
-
-        let stop = start.elapsed();
-
-        let (mapped_ptr, vec_chunks) = Self::map_output(shmem_output_name.clone());
-
-        let total_steps = vec_chunks.iter().map(|x| x.steps).sum::<u64>();
-        let mhz = (total_steps as f64 / stop.as_secs_f64()) / 1_000_000.0;
-        info!("··· Assembly execution speed: {:.2} MHz", mhz);
-
-        // Tell the assembly that we are done reading the trace
-        if let Err(e) = sem_out.post() {
-            panic!(
-                "AsmRunnerMT::run() failed calling semout.post({}), error: {}",
-                sem_output_name, e
-            );
-        }
-
-        AsmRunnerMT::new(shmem_output_name, mapped_ptr, vec_chunks)
+    pub fn total_size(&self) -> usize {
+        self.vec_chunks.iter().map(|chunk| chunk.mem_reads.len() * size_of::<u64>()).sum::<usize>()
+            + size_of::<AsmMTHeader>()
     }
 
     pub fn run_and_count<T: Task>(
-        ziskemuasm_path: &Path,
         inputs_path: &Path,
-        shm_size: u64,
+        max_steps: u64,
         chunk_size: u64,
-        options: AsmRunnerOptions,
         task_factory: TaskFactory<T>,
-    ) -> (AsmRunnerMT, Vec<T::Output>) {
-        let pid = unsafe { libc::getpid() };
+    ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
+        const SHMEM_INPUT_NAME: &str = "ZISKMT_input";
+        const SHMEM_OUTPUT_NAME: &str = "ZISKMT_output";
+        const SEM_CHUNK_DONE_NAME: &str = "/ZISKMT_chunk_done";
+        const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
-        let shmem_prefix = format!("ZISKMT{}", pid);
-        let shmem_input_name = format!("/{}_input", shmem_prefix);
-        let shmem_output_name = format!("/{}_output", shmem_prefix);
+        let mut sem_chunk_done = NamedSemaphore::create(SEM_CHUNK_DONE_NAME, 0)
+            .map_err(|e| AsmRunError::SemaphoreError(SEM_CHUNK_DONE_NAME, e))?;
 
-        // Build semaphores names, and create them (if they do not already exist)
-        let sem_output_name = format!("/{}_semout", shmem_prefix);
-        let sem_input_name = format!("/{}_semin", shmem_prefix);
-        let sem_chunk_done_name = format!("/{}_semckd", shmem_prefix);
+        Self::write_input(inputs_path, SHMEM_INPUT_NAME);
 
-        let mut sem_in = NamedSemaphore::create(sem_input_name.clone(), 0).unwrap_or_else(|e| {
-            panic!(
-                "AsmRunnerMT::run() failed calling NamedSemaphore::create({}), error: {}",
-                sem_input_name, e
-            )
+        let start = Instant::now();
+
+        let handle = std::thread::spawn(move || {
+            AsmServices::send_minimal_trace_request(max_steps, chunk_size)
         });
 
-        let mut sem_out = NamedSemaphore::create(sem_output_name.clone(), 0).unwrap_or_else(|e| {
-            panic!(
-                "AsmRunnerMT::run() failed calling NamedSemaphore::create({}), error: {}",
-                sem_output_name, e
-            )
-        });
-
-        let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
-            .unwrap_or_else(|e| {
-                panic!(
-                    "AsmRunnerMT::run() failed calling NamedSemaphore::create({}), error: {}",
-                    sem_chunk_done_name, e
-                )
-            });
-
-        Self::write_input(inputs_path, &shmem_input_name, shm_size, chunk_size);
-
-        // Prepare command
-        let mut command = Command::new(ziskemuasm_path);
-
-        command.arg("--generate_minimal_trace");
-
-        if !options.log_output {
-            command.arg("-o");
-        }
-        if options.metrics {
-            command.arg("-m");
-        }
-        if options.verbose {
-            command.arg("-v");
-        }
-        match options.trace_level {
-            AsmRunnerTraceLevel::None => {}
-            AsmRunnerTraceLevel::Trace => {
-                command.arg("-t");
-            }
-            AsmRunnerTraceLevel::ExtendedTrace => {
-                command.arg("-tt");
-            }
-        }
-        if options.keccak_trace {
-            command.arg("-k");
-        }
-
-        let start = std::time::Instant::now();
-        if let Err(e) = command.arg(&shmem_prefix).spawn() {
-            error!("Child process failed: {:?}", e);
-        } else if options.verbose || options.log_output {
-            info!("Child process launched successfully");
-        }
-
-        let pool = ThreadPoolBuilder::new().num_threads(16).build().unwrap();
-
-        let mut chunk_id = ChunkId(0);
-        let mut header_ptr: Option<*mut c_void> = None;
-        let mut data_ptr: Option<*mut c_void> = None;
-
-        let mut should_exit = false;
-
+        let pool = ThreadPoolBuilder::new().num_threads(24).build().map_err(AsmRunError::from)?;
         let (sender, receiver) = mpsc::channel();
 
+        let mut chunk_id = ChunkId(0);
+
+        // Read the header data
+        let header_ptr = Self::get_output_ptr(SHMEM_OUTPUT_NAME) as *const AsmMTHeader;
+
+        // From header, skips the header size and 8 bytes more to get the data pointer.
+        // The 8 bytes are for the number of chunks.
+        let mut data_ptr = unsafe {
+            (header_ptr as *mut u8).add(std::mem::size_of::<AsmMTHeader>() + 8) as *const AsmMTChunk
+        };
+
+        let mut emu_traces = Vec::new();
         let exit_code = loop {
-            match sem_chunk_done.timed_wait(Duration::from_millis(10000)) {
+            match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
-                    // Read the header data
-                    if data_ptr.is_none() {
-                        header_ptr.get_or_insert_with(|| Self::get_output_ptr(&shmem_output_name));
+                    let emu_trace = loop {
+                        // Read only memory reads size
+                        let chunk = unsafe { std::ptr::read(data_ptr) };
 
-                        let output_header_size = std::mem::size_of::<AsmMTHeader>();
+                        if chunk.mem_reads_size == MEM_READS_SIZE_DUMMY {
+                            std::thread::sleep(Duration::from_nanos(1));
+                        } else {
+                            break AsmMTChunk::to_emu_trace(&mut data_ptr);
+                        }
+                    };
 
-                        data_ptr = Some(unsafe {
-                            (header_ptr.unwrap() as *mut u8).add(output_header_size + 8)
-                                as *mut c_void
-                        });
-                    }
+                    let should_exit = emu_trace.end;
+                    let emu_trace = Arc::new(emu_trace);
+                    let task = task_factory(chunk_id, emu_trace.clone());
+                    emu_traces.push(emu_trace);
 
-                    let emu_trace = AsmMTChunk::to_emu_trace(data_ptr.as_mut().unwrap());
-
-                    let task = task_factory(chunk_id, emu_trace);
                     let sender = sender.clone();
                     pool.spawn(move || {
                         sender.send(task.execute()).unwrap();
                     });
 
-                    chunk_id.0 += 1;
-
-                    // Check exit_code after processing the chunk
-                    if !should_exit {
-                        let header = Self::read_output_header(&mut header_ptr, &shmem_output_name);
-                        should_exit = header.exit_code == 0;
+                    if should_exit {
+                        break 0;
                     }
+                    chunk_id.0 += 1;
                 }
                 Err(e) => {
                     error!("Semaphore sem_chunk_done error: {:?}", e);
@@ -300,236 +167,75 @@ impl AsmRunnerMT {
                         break 1;
                     }
 
-                    let output_header =
-                        Self::read_output_header(&mut header_ptr, &shmem_output_name);
-                    break output_header.exit_code;
+                    let header = unsafe { std::ptr::read(header_ptr) };
+                    break header.exit_code;
                 }
-            }
-
-            if should_exit {
-                while let Ok(()) = sem_chunk_done.try_wait() {
-                    let emu_trace = AsmMTChunk::to_emu_trace(data_ptr.as_mut().unwrap());
-                    let task = task_factory(chunk_id, emu_trace);
-                    let sender = sender.clone();
-                    pool.spawn(move || {
-                        sender.send(task.execute()).unwrap();
-                    });
-
-                    chunk_id.0 += 1;
-                }
-
-                break 0;
             }
         };
 
         if exit_code != 0 {
-            panic!("Child process terminated with error code: {}", exit_code,);
+            return Err(AsmRunError::ExitCode(exit_code as u32))
+                .context("Child process returned error");
         }
 
         // Collect results
         drop(sender);
         let tasks: Vec<T::Output> = receiver.iter().collect();
 
-        // Wait for the assembly emulator to complete writing the trace
-        let result = sem_in.wait();
-        if result.is_err() {
-            panic!("AsmRunnerMT::run() failed calling semin.wait({})", sem_input_name);
-        }
-
-        let stop = start.elapsed();
-
-        let (mapped_ptr, vec_chunks) = Self::map_output(shmem_output_name.clone());
-
-        let total_steps = vec_chunks.iter().map(|x| x.steps).sum::<u64>();
-        let mhz = (total_steps as f64 / stop.as_secs_f64()) / 1_000_000.0;
+        let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
+        let mhz = (total_steps as f64 / start.elapsed().as_secs_f64()) / 1_000_000.0;
         info!("··· Assembly execution speed: {:.2} MHz", mhz);
 
-        // Tell the assembly that we are done reading the trace
-        let result = sem_out.post();
-        if result.is_err() {
-            panic!("AsmRunnerMT::run() failed calling semout.post({})", sem_output_name);
-        }
+        // Wait for the assembly emulator to complete writing the trace
+        let response = handle
+            .join()
+            .map_err(|_| AsmRunError::JoinPanic)?
+            .map_err(AsmRunError::ServiceError)?;
 
-        (AsmRunnerMT::new(shmem_output_name, mapped_ptr, vec_chunks), tasks)
+        assert_eq!(response.result, 0);
+        assert!(response.trace_len > 0);
+        assert!(response.trace_len <= response.allocated_len);
+
+        // Unwrap the Arc pointers
+        let emu_traces: Vec<EmuTrace> = emu_traces
+            .into_iter()
+            .map(|arc| Arc::try_unwrap(arc).map_err(|_| AsmRunError::ArcUnwrap))
+            .collect::<std::result::Result<_, _>>()?;
+
+        Ok((
+            AsmRunnerMT::new(SHMEM_OUTPUT_NAME.to_string(), header_ptr as *mut c_void, emu_traces),
+            tasks,
+        ))
     }
 
-    fn write_input(inputs_path: &Path, shmem_input_name: &str, max_steps: u64, chunk_size: u64) {
-        let shmem_input_name = CString::new(shmem_input_name).expect("CString::new failed");
-        let shmem_input_name_ptr = shmem_input_name.as_ptr();
+    pub fn write_input(inputs_path: &Path, shmem_input_name: &str) {
+        let inputs = fs::read(inputs_path).expect("Failed to read input file");
+        let asm_input = AsmInputC2 { zero: 0, input_data_size: inputs.len() as u64 };
+        let shmem_input_size = (inputs.len() + size_of::<AsmInputC2>() + 7) & !7;
 
-        let inputs = fs::read(inputs_path).expect("Could not read inputs file");
+        let mut full_input = Vec::with_capacity(shmem_input_size);
+        full_input.extend_from_slice(&asm_input.to_bytes());
+        full_input.extend_from_slice(&inputs);
 
-        let asm_input = AsmInputC {
-            chunk_size,
-            max_steps,
-            initial_trace_size: 1u64 << 32, // 4GB
-            input_data_size: inputs.len() as u64,
-        };
-
-        // Shared memory size (aligned to 8 bytes)
-        let shmem_input_size = (inputs.len() + std::mem::size_of::<AsmInputC>() + 7) & !7;
-
-        let mut shmem_input_data = Vec::with_capacity(shmem_input_size);
-        shmem_input_data.extend_from_slice(&asm_input.to_bytes());
-        shmem_input_data.extend_from_slice(&inputs);
-
-        // Remove old shared memory if it exists
-        unsafe { shm_unlink(shmem_input_name_ptr) };
-
-        let shm_fd = unsafe {
-            shm_open(
-                shmem_input_name_ptr,
-                libc::O_RDWR | O_CREAT,
-                (S_IRUSR | S_IWUSR | S_IXUSR) as c_uint,
-            )
-        };
-        Self::check_shm_open(shm_fd, shmem_input_name_ptr);
-
-        if unsafe { ftruncate(shm_fd, shmem_input_size as i64) } < 0 {
-            panic!("ftruncate failed");
-        }
-
-        let mapped_ptr = unsafe {
-            mmap(
-                std::ptr::null_mut(),
-                shmem_input_size,
-                PROT_READ | PROT_WRITE,
-                MAP_SHARED,
-                shm_fd,
-                0,
-            )
-        };
-        Self::check_mmap(mapped_ptr, shmem_input_size, file!(), line!());
-
+        let fd =
+            shmem_utils::open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR | S_IXUSR);
+        let ptr = shmem_utils::map(fd, shmem_input_size, PROT_READ | PROT_WRITE, "input mmap");
         unsafe {
-            std::ptr::copy_nonoverlapping(
-                shmem_input_data.as_ptr(),
-                mapped_ptr as *mut u8,
-                shmem_input_size,
-            );
-
-            munmap(mapped_ptr, shmem_input_size);
-            close(shm_fd);
+            ptr::copy_nonoverlapping(full_input.as_ptr(), ptr as *mut u8, shmem_input_size);
+            shmem_utils::unmap(ptr, shmem_input_size);
+            close(fd);
         }
     }
 
-    fn map_output(shmem_output_name: String) -> (*mut c_void, Vec<EmuTrace>) {
-        let shmem_output_name = CString::new(shmem_output_name).expect("CString::new failed");
-        let shmem_output_name_ptr = shmem_output_name.as_ptr();
-
-        let shm_fd = unsafe {
-            shm_open(shmem_output_name_ptr, libc::O_RDONLY, (S_IRUSR | S_IWUSR | S_IXUSR) as c_uint)
-        };
-
-        Self::check_shm_open(shm_fd, shmem_output_name_ptr);
-
-        // Read Output Header
-        let output_header_size = size_of::<AsmMTHeader>();
-        let mapped_ptr =
-            unsafe { mmap(ptr::null_mut(), output_header_size, PROT_READ, MAP_SHARED, shm_fd, 0) };
-        Self::check_mmap(mapped_ptr, output_header_size, file!(), line!());
-
-        let output_header = AsmMTHeader::from_ptr(mapped_ptr);
-
-        // Read Output
-        let output_size = output_header_size + output_header.mt_used_size as usize;
-
-        let mut mapped_ptr =
-            unsafe { mmap(ptr::null_mut(), output_size, PROT_READ, MAP_SHARED, shm_fd, 0) };
-        Self::check_mmap(mapped_ptr, output_size, file!(), line!());
-
-        // println!("Output Header: {:?}", output_header);
-
-        let mut vec_chunks;
-        unsafe {
-            mapped_ptr = mapped_ptr.add(output_header_size);
-            let num_chunks = std::ptr::read(mapped_ptr as *const u64);
-            mapped_ptr = (mapped_ptr as *mut u8).add(8) as *mut c_void;
-
-            vec_chunks = Vec::with_capacity(num_chunks as usize);
-            for _ in 0..num_chunks {
-                let data = AsmMTChunk::to_emu_trace(&mut mapped_ptr);
-                vec_chunks.push(data);
-            }
-        }
-
-        (mapped_ptr, vec_chunks)
-    }
-
-    fn read_output_header(
-        header_ptr: &mut Option<*mut c_void>,
-        shmem_output_name: &str,
-    ) -> AsmMTHeader {
-        header_ptr.get_or_insert_with(|| {
-            let cstr = CString::new(shmem_output_name).expect("CString::new failed");
-            let ptr = cstr.as_ptr();
-
-            // Open shared memory read-only
-            let shm_fd = unsafe { shm_open(ptr, libc::O_RDONLY, S_IRUSR | S_IWUSR | S_IXUSR) };
-            Self::check_shm_open(shm_fd, ptr);
-
-            let header_size = size_of::<AsmMTHeader>();
-
-            // Map the header from the shared memory
-            let mapped =
-                unsafe { mmap(ptr::null_mut(), header_size, PROT_READ, MAP_SHARED, shm_fd, 0) };
-            Self::check_mmap(mapped, header_size, file!(), line!());
-
-            mapped
-        });
-        unsafe { std::ptr::read(header_ptr.unwrap() as *const AsmMTHeader) }
-    }
-
-    fn get_output_ptr(shmem_output_name: &str) -> *mut c_void {
-        let cstr = CString::new(shmem_output_name).expect("CString::new failed");
-        let ptr = cstr.as_ptr();
-
-        // Open shared memory read-only
-        let shm_fd = unsafe { shm_open(ptr, libc::O_RDONLY, S_IRUSR | S_IWUSR | S_IXUSR) };
-        Self::check_shm_open(shm_fd, ptr);
-
+    pub fn get_output_ptr(shmem_output_name: &str) -> *mut std::ffi::c_void {
+        let fd =
+            shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR | S_IXUSR);
         let header_size = size_of::<AsmMTHeader>();
-
-        // Map the header from the shared memory
-        let mapped =
-            unsafe { mmap(ptr::null_mut(), header_size, PROT_READ, MAP_SHARED, shm_fd, 0) };
-        Self::check_mmap(mapped, header_size, file!(), line!());
-
-        // Read the header
-        let header = unsafe { ptr::read(mapped as *const AsmMTHeader) };
-
-        // Unmap the small mapping
+        let temp = shmem_utils::map(fd, header_size, PROT_READ, "header temp map");
+        let header = unsafe { (temp as *const AsmMTHeader).read() };
         unsafe {
-            munmap(mapped, header_size);
+            shmem_utils::unmap(temp, header_size);
         }
-
-        // Step 4: Map the full allocated size
-        let mapped = unsafe {
-            mmap(
-                ptr::null_mut(),
-                header.mt_allocated_size as usize,
-                PROT_READ,
-                MAP_SHARED,
-                shm_fd,
-                0,
-            )
-        };
-        Self::check_mmap(mapped, header.mt_allocated_size as usize, file!(), line!());
-
-        mapped
-    }
-
-    fn check_shm_open(shm_fd: i32, name: *const i8) {
-        if shm_fd == -1 {
-            let err = std::io::Error::last_os_error();
-            panic!("shm_open({:?}) failed: {:?}", name, err);
-        }
-    }
-
-    fn check_mmap(ptr: *mut libc::c_void, size: usize, file: &str, line: u32) {
-        if ptr == libc::MAP_FAILED {
-            let err = std::io::Error::last_os_error();
-            panic!("mmap failed: {:?} (size: {} bytes) at {}:{}", err, size, file, line);
-        }
+        shmem_utils::map(fd, header.mt_allocated_size as usize, PROT_READ, "output full map")
     }
 }

@@ -85,6 +85,7 @@ pub trait Instance<F: PrimeField>: Send + Sync {
 #[macro_export]
 macro_rules! table_instance {
     ($InstanceName:ident, $TableSM:ident, $Trace:ident) => {
+        use std::collections::VecDeque;
         use std::sync::Arc;
 
         use p3_field::PrimeField;
@@ -156,8 +157,8 @@ macro_rules! table_instance {
                 &mut self,
                 bus_id: &BusId,
                 data: &[u64],
-            ) -> Option<Vec<(BusId, Vec<u64>)>> {
-                None
+                _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+            ) {
             }
 
             fn bus_id(&self) -> Vec<BusId> {
@@ -184,6 +185,7 @@ macro_rules! table_instance {
 #[macro_export]
 macro_rules! table_instance_array {
     ($InstanceName:ident, $TableSM:ident, $Trace:ident) => {
+        use std::collections::VecDeque;
         use std::sync::Arc;
 
         use p3_field::PrimeField;
@@ -258,8 +260,8 @@ macro_rules! table_instance_array {
                 &mut self,
                 bus_id: &BusId,
                 data: &[u64],
-            ) -> Option<Vec<(BusId, Vec<u64>)>> {
-                None
+                _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+            ) {
             }
 
             fn bus_id(&self) -> Vec<BusId> {

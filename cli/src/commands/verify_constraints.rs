@@ -3,7 +3,6 @@ use clap::Parser;
 use colored::Colorize;
 use executor::ZiskExecutionResult;
 use libloading::{Library, Symbol};
-use log::info;
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ProofOptions};
@@ -16,6 +15,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
 };
+use tracing::info;
 use zisk_common::ZiskLibInitFn;
 
 use crate::{commands::Field, ux::print_banner, ZISK_VERSION_MESSAGE};
@@ -123,7 +123,7 @@ impl ZiskVerifyConstraints {
             let hash = get_elf_data_hash(&self.elf)
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
             let new_filename = format!("{stem}-{hash}-mt.bin");
-            let asm_rom_filename = format!("{stem}-{hash}-rom.bin");
+            let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
             asm_rom = Some(default_cache_path.join(asm_rom_filename));
             self.asm = Some(default_cache_path.join(new_filename));
         }

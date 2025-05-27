@@ -1,9 +1,9 @@
 use core::panic;
 use std::sync::Arc;
 
-use tracing::info;
 use p3_field::PrimeField64;
 use tiny_keccak::keccakf;
+use tracing::info;
 
 use circuit::{Gate, GateOperation, PinId};
 use precompiles_common::MemBusHelpers;

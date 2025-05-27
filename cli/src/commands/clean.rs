@@ -4,8 +4,8 @@ use clap::Parser;
 use colored::Colorize;
 
 use anyhow::{Context, Result};
-use log::info;
 use proofman_common::initialize_logger;
+use tracing::info;
 
 use crate::{commands::get_home_zisk_path, ux::print_banner};
 

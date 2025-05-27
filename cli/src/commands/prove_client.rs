@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use server::{ProveRequest, Request, Response, VerifyConstraintsRequest};
+use server::{ZiskProveRequest, ZiskRequest, ZiskResponse, ZiskVerifyConstraintsRequest};
 use std::{
     io::{BufRead, BufReader, Write},
     net::TcpStream,
@@ -54,11 +54,11 @@ pub enum ClientCommand {
 impl ZiskProveClient {
     pub fn run(&self) -> Result<()> {
         let request = match &self.command {
-            ClientCommand::Status => Request::Status,
-            ClientCommand::Shutdown => Request::Shutdown,
+            ClientCommand::Status => ZiskRequest::Status,
+            ClientCommand::Shutdown => ZiskRequest::Shutdown,
             ClientCommand::Prove { input, aggregation, final_snark, verify_proofs } => {
-                Request::Prove {
-                    payload: ProveRequest {
+                ZiskRequest::Prove {
+                    payload: ZiskProveRequest {
                         input: input.clone(),
                         aggregation: *aggregation,
                         final_snark: *final_snark,
@@ -66,8 +66,8 @@ impl ZiskProveClient {
                     },
                 }
             }
-            ClientCommand::VerifyConstraints { input } => Request::VerifyConstraints {
-                payload: VerifyConstraintsRequest { input: input.clone() },
+            ClientCommand::VerifyConstraints { input } => ZiskRequest::VerifyConstraints {
+                payload: ZiskVerifyConstraintsRequest { input: input.clone() },
             },
         };
 
@@ -85,13 +85,13 @@ impl ZiskProveClient {
         let mut response_line = String::new();
         reader.read_line(&mut response_line)?;
 
-        let response: Response = serde_json::from_str(&response_line)
-            .unwrap_or(Response::Error { message: "Failed to parse response".to_string() });
+        let response: ZiskResponse = serde_json::from_str(&response_line)
+            .unwrap_or(ZiskResponse::Error { message: "Failed to parse response".to_string() });
 
         // Handle response
         match response {
-            Response::Ok { message } => println!("Success: {}", message),
-            Response::Error { message } => eprintln!("Error: {}", message),
+            ZiskResponse::Ok { message } => println!("Success: {}", message),
+            ZiskResponse::Error { message } => eprintln!("Error: {}", message),
         }
 
         Ok(())

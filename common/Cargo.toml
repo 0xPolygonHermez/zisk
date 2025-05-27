@@ -16,8 +16,7 @@ p3-field = { workspace = true }
 tracing = { workspace = true}
 
 libc = "0.2"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-
+tracing-subscriber = { workspace = true }
 
 [features]
 default = []

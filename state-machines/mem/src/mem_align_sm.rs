@@ -3,10 +3,10 @@ use std::sync::Arc;
 #[cfg(feature = "debug_mem_align")]
 use std::sync::Mutex;
 
-use tracing::info;
 use num_traits::cast::ToPrimitive;
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
+use tracing::info;
 
 use proofman_common::{AirInstance, FromTrace};
 use zisk_pil::{MemAlignTrace, MemAlignTraceRow};

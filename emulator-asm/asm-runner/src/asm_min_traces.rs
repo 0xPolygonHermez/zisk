@@ -20,8 +20,8 @@ impl AsmMTHeader {
             output_header = std::ptr::read(mapped_ptr as *const AsmMTHeader);
         }
 
-        assert!(output_header.mt_allocated_size > 0);
-        assert!(output_header.mt_used_size > 0);
+        // assert!(output_header.mt_allocated_size > 0);
+        // assert!(output_header.mt_used_size > 0);
 
         output_header
     }
@@ -46,12 +46,10 @@ impl AsmMTChunk {
     ///
     /// # Safety
     /// This function is unsafe because it reads from a raw pointer in shared memory.
-    pub fn to_emu_trace(mapped_ptr: &mut *mut c_void) -> EmuTrace {
+    pub fn to_emu_trace(mapped_ptr: &mut *const AsmMTChunk) -> EmuTrace {
         // Read chunk data
-        let chunk = unsafe { std::ptr::read(*mapped_ptr as *const AsmMTChunk) };
-        *mapped_ptr = unsafe {
-            (*mapped_ptr as *mut u8).add(std::mem::size_of::<AsmMTChunk>()) as *mut c_void
-        };
+        let chunk = unsafe { std::ptr::read(*mapped_ptr) };
+        *mapped_ptr = unsafe { mapped_ptr.add(1) };
 
         // Convert mem_reads into a Vec<u64> without copying
         let mem_reads_ptr = *mapped_ptr as *mut u64;
@@ -59,7 +57,7 @@ impl AsmMTChunk {
         let mem_reads = unsafe { Vec::from_raw_parts(mem_reads_ptr, mem_reads_len, mem_reads_len) };
 
         // Advance the pointer after reading memory reads
-        *mapped_ptr = unsafe { (*mapped_ptr as *mut u64).add(mem_reads_len) as *mut c_void };
+        *mapped_ptr = unsafe { (*mapped_ptr as *mut u64).add(mem_reads_len) as *const AsmMTChunk };
 
         let mut registers = [0u64; REGS_IN_MAIN_TOTAL_NUMBER];
         registers[REGS_IN_MAIN_FROM..].copy_from_slice(&chunk.registers[..REGS_IN_MAIN_TO]);
@@ -96,6 +94,22 @@ impl AsmInputC {
         bytes.extend_from_slice(&self.chunk_size.to_le_bytes());
         bytes.extend_from_slice(&self.max_steps.to_le_bytes());
         bytes.extend_from_slice(&self.initial_trace_size.to_le_bytes());
+        bytes.extend_from_slice(&self.input_data_size.to_le_bytes());
+        bytes
+    }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct AsmInputC2 {
+    pub zero: u64, // Not used
+    pub input_data_size: u64,
+}
+
+impl AsmInputC2 {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(32);
+        bytes.extend_from_slice(&0u64.to_le_bytes());
         bytes.extend_from_slice(&self.input_data_size.to_le_bytes());
         bytes
     }

@@ -29,7 +29,7 @@ pub fn generate_assembly(
     let bin_mt_file = format!("{}-mt.bin", file_stem);
     let bin_mt_file = base_path.with_file_name(bin_mt_file);
 
-    let bin_rom_file = format!("{}-rom.bin", file_stem);
+    let bin_rom_file = format!("{}-rh.bin", file_stem);
     let bin_rom_file = base_path.with_file_name(bin_rom_file);
 
     [

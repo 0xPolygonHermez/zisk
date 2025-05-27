@@ -2,9 +2,9 @@ use core::panic;
 use std::{fs, path::PathBuf, sync::Arc};
 
 use generic_array::{typenum::U64, GenericArray};
-use tracing::info;
 use p3_field::PrimeField64;
 use sha2::compress256;
+use tracing::info;
 
 use precompiles_common::MemBusHelpers;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};

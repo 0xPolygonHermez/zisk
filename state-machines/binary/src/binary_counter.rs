@@ -5,6 +5,8 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
+use std::collections::VecDeque;
+
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, OP, OPERATION_BUS_ID, OP_TYPE,
 };
@@ -96,14 +98,17 @@ impl BusDevice<u64> for BinaryCounter {
     /// # Returns
     /// A vector of derived inputs to be sent back to the bus.
     #[inline(always)]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.mode == BusDeviceMode::Counter {
             self.measure(data);
         }
-
-        None
     }
 
     /// Returns the bus IDs associated with this counter.

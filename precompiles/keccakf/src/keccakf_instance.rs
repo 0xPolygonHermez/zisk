@@ -7,7 +7,11 @@
 use crate::KeccakfSM;
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use std::{any::Any, collections::HashMap, sync::Arc};
+use std::{
+    any::Any,
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+};
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
     InstanceType, OperationKeccakData, PayloadType, OPERATION_BUS_ID, OP_TYPE,
@@ -141,26 +145,26 @@ impl BusDevice<PayloadType> for KeccakfCollector {
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
-    ) -> Option<Vec<(BusId, Vec<PayloadType>)>> {
+        _pending: &mut VecDeque<(BusId, Vec<PayloadType>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() == self.num_operations as usize {
-            return None;
+            return;
         }
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Keccak as u32 {
-            return None;
+            return;
         }
 
         if self.collect_skipper.should_skip() {
-            return None;
+            return;
         }
 
         let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         if let ExtOperationData::OperationKeccakData(data) = data {
             self.inputs.push(data);
-            None
         } else {
             panic!("Expected ExtOperationData::OperationData");
         }
