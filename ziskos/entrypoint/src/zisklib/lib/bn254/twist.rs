@@ -1,4 +1,5 @@
-///! Module for operations on the twist E': y² = x³ + 3 / (9 + u) of the BN254 curve
+//! Operations on the twist E': y² = x³ + 3 / (9 + u) of the BN254 curve
+
 use crate::zisklib::lib::utils::eq;
 
 use super::{
@@ -14,6 +15,7 @@ const X_BIN_BE: [u8; 63] = [
     1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1,
 ];
 
+/// Check if a point `p` is on the BN254 twist
 pub fn is_on_curve_twist_bn254(p: &[u64; 16]) -> bool {
     // q in E' iff y² == x³ + 3 / (9 + u)
     let x: [u64; 8] = p[0..8].try_into().unwrap();
@@ -25,6 +27,7 @@ pub fn is_on_curve_twist_bn254(p: &[u64; 16]) -> bool {
     eq(&x_cubed_plus_b, &y_sq)
 }
 
+/// Check if a point `p` is on the BN254 twist subgroup
 pub fn is_on_subgroup_twist_bn254(p: &[u64; 16]) -> bool {
     // p in subgroup iff:
     //      (x+1)·Q + 𝜓(x·Q) + 𝜓²(x·Q) == 𝜓³((2x)·Q)
@@ -126,6 +129,7 @@ pub fn dbl_twist_bn254(p: &[u64; 16]) -> [u64; 16] {
     ]
 }
 
+/// Negation of a point
 pub fn neg_twist_bn254(p: &[u64; 16]) -> [u64; 16] {
     let x: [u64; 8] = p[0..8].try_into().unwrap();
     let y: [u64; 8] = p[8..16].try_into().unwrap();
@@ -138,7 +142,7 @@ pub fn neg_twist_bn254(p: &[u64; 16]) -> [u64; 16] {
     ]
 }
 
-/// Scalar multiplication of a non-zero point by an scalar
+/// Scalar multiplication of a non-zero point by x
 pub fn scalar_mul_by_x_twist_bn254(p: &[u64; 16]) -> [u64; 16] {
     let mut q = *p;
     for &bit in X_BIN_BE.iter().skip(1) {

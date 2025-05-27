@@ -1,3 +1,5 @@
+//! Operations in the base field Fp of the BN254 curve
+
 use crate::{
     arith256_mod::{syscall_arith256_mod, SyscallArith256ModParams},
     fcall_bn254_fp_inv,
@@ -6,6 +8,8 @@ use crate::{
 
 use super::constants::{P, P_MINUS_ONE};
 
+/// Addition in the base field of the BN254 curve
+#[inline]
 pub fn add_fp_bn254(x: &[u64; 4], y: &[u64; 4]) -> [u64; 4] {
     // x·1 + y
     let mut params =
@@ -14,6 +18,8 @@ pub fn add_fp_bn254(x: &[u64; 4], y: &[u64; 4]) -> [u64; 4] {
     *params.d
 }
 
+/// Negation in the base field of the BN254 curve
+#[inline]
 pub fn neg_fp_bn254(x: &[u64; 4]) -> [u64; 4] {
     // x·(-1) + 0
     let mut params = SyscallArith256ModParams {
@@ -27,6 +33,8 @@ pub fn neg_fp_bn254(x: &[u64; 4]) -> [u64; 4] {
     *params.d
 }
 
+/// Multiplication in the base field of the BN254 curve
+#[inline]
 pub fn mul_fp_bn254(x: &[u64; 4], y: &[u64; 4]) -> [u64; 4] {
     // x·y + 0
     let mut params =
@@ -35,6 +43,8 @@ pub fn mul_fp_bn254(x: &[u64; 4], y: &[u64; 4]) -> [u64; 4] {
     *params.d
 }
 
+/// Squaring in the base field of the BN254 curve
+#[inline]
 pub fn square_fp_bn254(x: &[u64; 4]) -> [u64; 4] {
     // x·x + 0
     let mut params =
@@ -43,6 +53,8 @@ pub fn square_fp_bn254(x: &[u64; 4]) -> [u64; 4] {
     *params.d
 }
 
+/// Inversion in the base field of the BN254 curve
+#[inline]
 pub fn inv_fp_bn254(x: &[u64; 4]) -> [u64; 4] {
     // if x == 0, return 0
     if eq(x, &[0, 0, 0, 0]) {

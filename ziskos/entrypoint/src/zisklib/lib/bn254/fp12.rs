@@ -1,3 +1,5 @@
+//! Operations in the degree 12 extension Fp12 of the BN254 curve
+
 use crate::{fcall_msb_pos_256, zisklib::lib::utils::eq};
 
 use super::{
@@ -7,7 +9,7 @@ use super::{
         FROBENIUS_GAMMA24, FROBENIUS_GAMMA25, FROBENIUS_GAMMA31, FROBENIUS_GAMMA32,
         FROBENIUS_GAMMA33, FROBENIUS_GAMMA34, FROBENIUS_GAMMA35,
     },
-    fp2::{add_fp2_bn254, conjugate_fp2_bn254, mul_fp2_bn254, scalar_mul_fp2_bn254},
+    fp2::{conjugate_fp2_bn254, mul_fp2_bn254, scalar_mul_fp2_bn254},
     fp6::{
         add_fp6_bn254, dbl_fp6_bn254, inv_fp6_bn254, mul_fp6_bn254, neg_fp6_bn254,
         sparse_mula_fp6_bn254, sparse_mulb_fp6_bn254, sparse_mulc_fp6_bn254, square_fp6_bn254,
@@ -15,6 +17,8 @@ use super::{
     },
 };
 
+/// Multiplication in the degree 12 extension of the BN254 curve
+//
 // in: (a1 + a2·w),(b1 + b2·w) ∈ Fp12, where ai,bi ∈ Fp6
 // out: (a1 + a2·w)·(b1 + b2·w) = (c1 + c2·w) ∈ Fp12, where:
 //      - c1 = a1·b1 + a2·b2·v
@@ -43,92 +47,8 @@ pub fn mul_fp12_bn254(a: &[u64; 48], b: &[u64; 48]) -> [u64; 48] {
     result
 }
 
-// in: (a1 + a2·w + a3·w² + a4·w³ + a5·w⁴ + a6·w⁵),(b1 + b2·w + b3·w² + b4·w³ + b5·w⁴ + b6·w⁵) ∈ Fp12,
-//      where ai,bi ∈ Fp2
-// out: c1 + c2·w + c3·w² + c4·w³ + c5·w⁴ + c6·w⁵ ∈ Fp12, where:
-//      - c1 = a1·b1 + (a2·b6 + a3·b5 + a4·b4 + a5·b3 + a6·b2)·(9+u)
-//      - c2 = a1·b2 + a2·b1 + (a3·b6 + a4·b5 + a5·b4 + a6·b3)·(9+u)
-//      - c3 = a1·b3 + a2·b2 + a3·b1 + (a4·b6 + a5·b5 + a6·b4)·(9+u)
-//      - c4 = a1·b4 + a2·b3 + a3·b2 + a4·b1 + (a5·b6 + a6·b5)·(9+u)
-//      - c5 = a1·b5 + a2·b4 + a3·b3 + a4·b2 + a5·b1 + a6·b6·(9+u)
-//      - c6 = a1·b6 + a2·b5 + a3·b4 + a4·b3 + a5·b2 + a6·b1
-pub fn mulb_fp12_bn254(a: &[u64; 48], b: &[u64; 48]) -> [u64; 48] {
-    let a1 = &a[0..8].try_into().unwrap();
-    let a2 = &a[8..16].try_into().unwrap();
-    let a3 = &a[16..24].try_into().unwrap();
-    let a4 = &a[24..32].try_into().unwrap();
-    let a5 = &a[32..40].try_into().unwrap();
-    let a6 = &a[40..48].try_into().unwrap();
-    let b1 = &b[0..8].try_into().unwrap();
-    let b2 = &b[8..16].try_into().unwrap();
-    let b3 = &b[16..24].try_into().unwrap();
-    let b4 = &b[24..32].try_into().unwrap();
-    let b5 = &b[32..40].try_into().unwrap();
-    let b6 = &b[40..48].try_into().unwrap();
-
-    // c1 = a1·b1 + (a2·b6 + a3·b5 + a4·b4 + a5·b3 + a6·b2)·(9+u)
-    let mut c1 = mul_fp2_bn254(a2, b6);
-    c1 = add_fp2_bn254(&c1, &mul_fp2_bn254(a3, b5));
-    c1 = add_fp2_bn254(&c1, &mul_fp2_bn254(a4, b4));
-    c1 = add_fp2_bn254(&c1, &mul_fp2_bn254(a5, b3));
-    c1 = add_fp2_bn254(&c1, &mul_fp2_bn254(a6, b2));
-    c1 = mul_fp2_bn254(&c1, &[9, 0, 0, 0, 1, 0, 0, 0]);
-    c1 = add_fp2_bn254(&c1, &mul_fp2_bn254(a1, b1));
-
-    // c2 = a1·b2 + a2·b1 + (a3·b6 + a4·b5 + a5·b4 + a6·b3)·(9+u)
-    let mut c2 = mul_fp2_bn254(a3, b6);
-    c2 = add_fp2_bn254(&c2, &mul_fp2_bn254(a4, b5));
-    c2 = add_fp2_bn254(&c2, &mul_fp2_bn254(a5, b4));
-    c2 = add_fp2_bn254(&c2, &mul_fp2_bn254(a6, b3));
-    c2 = mul_fp2_bn254(&c2, &[9, 0, 0, 0, 1, 0, 0, 0]);
-    c2 = add_fp2_bn254(&c2, &mul_fp2_bn254(a1, b2));
-    c2 = add_fp2_bn254(&c2, &mul_fp2_bn254(a2, b1));
-
-    // c3 = a1·b3 + a2·b2 + a3·b1 + (a4·b6 + a5·b5 + a6·b4)·(9+u)
-    let mut c3 = mul_fp2_bn254(a4, b6);
-    c3 = add_fp2_bn254(&c3, &mul_fp2_bn254(a5, b5));
-    c3 = add_fp2_bn254(&c3, &mul_fp2_bn254(a6, b4));
-    c3 = mul_fp2_bn254(&c3, &[9, 0, 0, 0, 1, 0, 0, 0]);
-    c3 = add_fp2_bn254(&c3, &mul_fp2_bn254(a1, b3));
-    c3 = add_fp2_bn254(&c3, &mul_fp2_bn254(a2, b2));
-    c3 = add_fp2_bn254(&c3, &mul_fp2_bn254(a3, b1));
-
-    // c4 = a1·b4 + a2·b3 + a3·b2 + a4·b1 + (a5·b6 + a6·b5)·(9+u)
-    let mut c4 = mul_fp2_bn254(a5, b6);
-    c4 = add_fp2_bn254(&c4, &mul_fp2_bn254(a6, b5));
-    c4 = mul_fp2_bn254(&c4, &[9, 0, 0, 0, 1, 0, 0, 0]);
-    c4 = add_fp2_bn254(&c4, &mul_fp2_bn254(a1, b4));
-    c4 = add_fp2_bn254(&c4, &mul_fp2_bn254(a2, b3));
-    c4 = add_fp2_bn254(&c4, &mul_fp2_bn254(a3, b2));
-    c4 = add_fp2_bn254(&c4, &mul_fp2_bn254(a4, b1));
-
-    // c5 = a1·b5 + a2·b4 + a3·b3 + a4·b2 + a5·b1 + a6·b6·(9+u)
-    let mut c5 = mul_fp2_bn254(a6, b6);
-    c5 = mul_fp2_bn254(&c5, &[9, 0, 0, 0, 1, 0, 0, 0]);
-    c5 = add_fp2_bn254(&c5, &mul_fp2_bn254(a1, b5));
-    c5 = add_fp2_bn254(&c5, &mul_fp2_bn254(a2, b4));
-    c5 = add_fp2_bn254(&c5, &mul_fp2_bn254(a3, b3));
-    c5 = add_fp2_bn254(&c5, &mul_fp2_bn254(a4, b2));
-    c5 = add_fp2_bn254(&c5, &mul_fp2_bn254(a5, b1));
-
-    // c6 = a1·b6 + a2·b5 + a3·b4 + a4·b3 + a5·b2 + a6·b1
-    let mut c6 = mul_fp2_bn254(a1, b6);
-    c6 = add_fp2_bn254(&c6, &mul_fp2_bn254(a2, b5));
-    c6 = add_fp2_bn254(&c6, &mul_fp2_bn254(a3, b4));
-    c6 = add_fp2_bn254(&c6, &mul_fp2_bn254(a4, b3));
-    c6 = add_fp2_bn254(&c6, &mul_fp2_bn254(a5, b2));
-    c6 = add_fp2_bn254(&c6, &mul_fp2_bn254(a6, b1));
-
-    let mut result = [0; 48];
-    result[0..8].copy_from_slice(&c1);
-    result[8..16].copy_from_slice(&c2);
-    result[16..24].copy_from_slice(&c3);
-    result[24..32].copy_from_slice(&c4);
-    result[32..40].copy_from_slice(&c5);
-    result[40..48].copy_from_slice(&c6);
-    result
-}
-
+/// Multiplication of a = a1 + a2·w and b = 1 + (b21 + b22·v)·w in the degree 12 extension of the BN254 curve
+//
 // in: (a1 + a2·w),(b1 + b2·w) ∈ Fp12, where ai ∈ Fp6, b1 = 1 and b2 = b21 + b22·v, with b21,b22 ∈ Fp2
 // out: (a1 + a2·w)·(b1 + b2·w) = (c1 + c2·w) ∈ Fp12, where:
 //      - c1 = a1 + a2·(b21·v + b22·v²)
@@ -149,6 +69,8 @@ pub fn sparse_mul_fp12_bn254(a: &[u64; 48], b: &[u64; 16]) -> [u64; 48] {
     result
 }
 
+/// Squaring in the degree 12 extension of the BN254 curve
+//
 // in: (a1 + a2·w) ∈ Fp12, where ai ∈ Fp6
 // out: (a1 + a2·w)² = (c1 + c2·w) ∈ Fp12, where:
 //      - c1 = (a1-a2)·(a1-a2·v) + a1·a2 + a1·a2·v
@@ -178,6 +100,8 @@ pub fn square_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     result
 }
 
+/// Inversion in the degree 12 extension of the BN254 curve
+//
 // in: (a1 + a2·w) ∈ Fp12, where ai ∈ Fp6
 // out: (a1 + a2·w)⁻¹ = (c1 + c2·w) ∈ Fp12, where:
 //      - c1 = a1·(a1² - a2²·v)⁻¹
@@ -202,6 +126,7 @@ pub fn inv_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     result
 }
 
+/// Conjugation in the degree 12 extension of the BN254 curve
 pub fn conjugate_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     let mut result = [0; 48];
     result[0..24].copy_from_slice(&a[0..24]);
@@ -209,6 +134,8 @@ pub fn conjugate_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     result
 }
 
+/// First Frobenius operator in the degree 12 extension of the BN254 curve
+//
 // in: (a1 + a2·w) = ((a11 + a12v + a13v²) + (a21 + a22v + a23v²)·w) ∈ Fp12, where ai ∈ Fp6 and aij ∈ Fp2
 // out: (a1 + a2·w)ᵖ = (c1 + c2·w) ∈ Fp12, where:
 //      - c1 = a̅11     + a̅12·γ12·v + a̅13·γ14·v²
@@ -241,6 +168,8 @@ pub fn frobenius1_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     result
 }
 
+/// Second Frobenius operator in the degree 12 extension of the BN254 curve
+//
 // in: (a1 + a2·w) = ((a11 + a12v + a13v²) + (a21 + a22v + a23v²)) ∈ Fp12, where ai ∈ Fp6 and aij ∈ Fp2
 // out: (a1 + a2·w)ᵖ˙ᵖ = (c1 + c2·w) ∈ Fp12, where:
 //      - c1 = a11     + a12·γ22·v + a13·γ24·v²
@@ -268,6 +197,8 @@ pub fn frobenius2_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     result
 }
 
+/// Third Frobenius operator in the degree 12 extension of the BN254 curve
+//
 // in: (a1 + a2·w) = ((a11 + a12v + a13v²) + (a21 + a22v + a23v²)) ∈ Fp12, where ai ∈ Fp6 and aij ∈ Fp2
 // out: (a1 + a2·w)ᵖ˙ᵖ˙ᵖ = (c1 + c2·w) ∈ Fp12, where:
 //      - c1 = a̅11     + a̅12·γ32·v + a̅13·γ34·v²
@@ -300,6 +231,8 @@ pub fn frobenius3_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     result
 }
 
+/// Exponentiation in the degree 12 extension of the BN254 curve
+//
 // in: e, (a1 + a2·w) ∈ Fp12, where e ∈ [0,p¹²-2] ai ∈ Fp6
 // out: (c1 + c2·w) = (a1 + a2·w)^e ∈ Fp12
 pub fn exp_fp12_bn254(e: u64, a: &[u64; 48]) -> [u64; 48] {

@@ -1,3 +1,5 @@
+//! Miller Loop for the pairings over BN254
+
 use crate::{
     bn254::fp12::sparse_mul_fp12_bn254,
     fcall_bn254_add_line_coeffs, fcall_bn254_dbl_line_coeffs,
@@ -24,6 +26,7 @@ const LOOP_LENGHT_BE: [i8; 65] = [
     0, 1, 0, 0, 0,
 ];
 
+/// Computes the Miller loop for the BN254 curve
 pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
     // Before the loop starts, compute xp' = -xp/yp and yp' = 1/yp
     let mut xp_prime: [u64; 4] = p[0..4].try_into().unwrap();
@@ -107,6 +110,7 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
 // In fact, one can use the coefficients of the line to compute the
 // evaluation of the line at p and compute the addition q1 + q2
 
+#[inline]
 fn is_line_twist_bn254(q1: &[u64; 16], q2: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bool {
     // Check if the line passes through q1
     let check_q1 = line_check_twist_bn254(q1, lambda, mu);
@@ -116,6 +120,7 @@ fn is_line_twist_bn254(q1: &[u64; 16], q2: &[u64; 16], lambda: &[u64; 8], mu: &[
     check_q1 && check_q2
 }
 
+#[inline]
 fn is_tangent_twist_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bool {
     // Check if the line is tangent to the curve at q
 
@@ -134,6 +139,7 @@ fn is_tangent_twist_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bo
     check_q && eq(&lhs, &rhs)
 }
 
+#[inline]
 fn line_check_twist_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bool {
     let x: &[u64; 8] = q[0..8].try_into().unwrap();
     let y: &[u64; 8] = q[8..16].try_into().unwrap();
@@ -145,6 +151,7 @@ fn line_check_twist_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> bo
 }
 
 /// Evaluates the line function l(x,y) := (1 + 0·v + 0·v²) + (λx + μy·v + 0·v²)·w
+#[inline]
 fn line_eval_twist_bn254(
     lambda: &[u64; 8],
     mu: &[u64; 8],
@@ -161,6 +168,7 @@ fn line_eval_twist_bn254(
     result
 }
 
+#[inline]
 fn line_add_twist_bn254(
     q1: &[u64; 16],
     q2: &[u64; 16],
@@ -186,6 +194,7 @@ fn line_add_twist_bn254(
     ]
 }
 
+#[inline]
 fn line_dbl_twist_bn254(q: &[u64; 16], lambda: &[u64; 8], mu: &[u64; 8]) -> [u64; 16] {
     let x: &[u64; 8] = q[0..8].try_into().unwrap();
 

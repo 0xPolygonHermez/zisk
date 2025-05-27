@@ -1,3 +1,5 @@
+//! Operations in the degree 2 extension Fp2 of the BN254 curve
+
 use crate::{
     bn254_complex_add::{syscall_bn254_complex_add, SyscallBn254ComplexAddParams},
     bn254_complex_mul::{syscall_bn254_complex_mul, SyscallBn254ComplexMulParams},
@@ -9,6 +11,8 @@ use crate::{
 
 use super::constants::P_MINUS_ONE;
 
+/// Addition in the degree 2 extension of the BN254 curve
+#[inline]
 pub fn add_fp2_bn254(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
     let mut f1 =
         SyscallComplex256 { x: a[0..4].try_into().unwrap(), y: a[4..8].try_into().unwrap() };
@@ -21,6 +25,8 @@ pub fn add_fp2_bn254(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
     [res_x[0], res_x[1], res_x[2], res_x[3], res_y[0], res_y[1], res_y[2], res_y[3]]
 }
 
+/// Doubling in the degree 2 extension of the BN254 curve
+#[inline]
 pub fn dbl_fp2_bn254(a: &[u64; 8]) -> [u64; 8] {
     let mut f1 =
         SyscallComplex256 { x: a[0..4].try_into().unwrap(), y: a[4..8].try_into().unwrap() };
@@ -33,6 +39,8 @@ pub fn dbl_fp2_bn254(a: &[u64; 8]) -> [u64; 8] {
     [res_x[0], res_x[1], res_x[2], res_x[3], res_y[0], res_y[1], res_y[2], res_y[3]]
 }
 
+/// Negation in the degree 2 extension of the BN254 curve
+#[inline]
 pub fn neg_fp2_bn254(a: &[u64; 8]) -> [u64; 8] {
     let mut f1 =
         SyscallComplex256 { x: a[0..4].try_into().unwrap(), y: a[4..8].try_into().unwrap() };
@@ -45,6 +53,8 @@ pub fn neg_fp2_bn254(a: &[u64; 8]) -> [u64; 8] {
     [res_x[0], res_x[1], res_x[2], res_x[3], res_y[0], res_y[1], res_y[2], res_y[3]]
 }
 
+/// Subtraction in the degree 2 extension of the BN254 curve
+#[inline]
 pub fn sub_fp2_bn254(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
     let mut f1 =
         SyscallComplex256 { x: a[0..4].try_into().unwrap(), y: a[4..8].try_into().unwrap() };
@@ -57,6 +67,8 @@ pub fn sub_fp2_bn254(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
     [res_x[0], res_x[1], res_x[2], res_x[3], res_y[0], res_y[1], res_y[2], res_y[3]]
 }
 
+/// Multiplication in the degree 2 extension of the BN254 curve
+#[inline]
 pub fn mul_fp2_bn254(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
     let mut f1 =
         SyscallComplex256 { x: a[0..4].try_into().unwrap(), y: a[4..8].try_into().unwrap() };
@@ -69,6 +81,8 @@ pub fn mul_fp2_bn254(a: &[u64; 8], b: &[u64; 8]) -> [u64; 8] {
     [res_x[0], res_x[1], res_x[2], res_x[3], res_y[0], res_y[1], res_y[2], res_y[3]]
 }
 
+/// Scalar multiplication in the degree 2 extension of the BN254 curve
+#[inline]
 pub fn scalar_mul_fp2_bn254(a: &[u64; 8], b: &[u64; 4]) -> [u64; 8] {
     let mut f1 =
         SyscallComplex256 { x: a[0..4].try_into().unwrap(), y: a[4..8].try_into().unwrap() };
@@ -81,6 +95,8 @@ pub fn scalar_mul_fp2_bn254(a: &[u64; 8], b: &[u64; 4]) -> [u64; 8] {
     [res_x[0], res_x[1], res_x[2], res_x[3], res_y[0], res_y[1], res_y[2], res_y[3]]
 }
 
+/// Squaring in the degree 2 extension of the BN254 curve
+#[inline]
 pub fn square_fp2_bn254(a: &[u64; 8]) -> [u64; 8] {
     let mut f1 =
         SyscallComplex256 { x: a[0..4].try_into().unwrap(), y: a[4..8].try_into().unwrap() };
@@ -93,6 +109,8 @@ pub fn square_fp2_bn254(a: &[u64; 8]) -> [u64; 8] {
     [res_x[0], res_x[1], res_x[2], res_x[3], res_y[0], res_y[1], res_y[2], res_y[3]]
 }
 
+/// Inversion in the degree 2 extension of the BN254 curve
+#[inline]
 pub fn inv_fp2_bn254(a: &[u64; 8]) -> [u64; 8] {
     // if a == 0, return 0
     if eq(a, &[0, 0, 0, 0, 0, 0, 0, 0]) {
@@ -117,6 +135,8 @@ pub fn inv_fp2_bn254(a: &[u64; 8]) -> [u64; 8] {
     inv
 }
 
+/// Conjugation in the degree 2 extension of the BN254 curve
+#[inline]
 pub fn conjugate_fp2_bn254(a: &[u64; 8]) -> [u64; 8] {
     let mut f1 = SyscallComplex256 { x: a[0..4].try_into().unwrap(), y: [0, 0, 0, 0] };
     let f2 = SyscallComplex256 { x: [0, 0, 0, 0], y: a[4..8].try_into().unwrap() };

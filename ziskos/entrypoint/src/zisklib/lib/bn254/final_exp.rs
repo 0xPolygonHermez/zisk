@@ -1,3 +1,5 @@
+//! Final exponentiation for the pairings over BN254
+
 use super::{
     cyclotomic::exp_by_x_cyclo_bn254,
     fp12::{
@@ -28,41 +30,10 @@ pub fn final_exp_bn254(f: &[u64; 48]) -> [u64; 48] {
     // The hard part: exp by (p⁴-p²+1)/r
     //////////////////
 
-    // TODO: The exponentiations can be optimized by using a single representation of Fp12
-    //       you can avoid the permutations before the function call entirely
     // m^x, (m^x)^x, (m^{x²})^x
-    // (a0 + a4·v + a3·v²) + (a2 + a1·v + a5·v²)·w ~ a0 + a2·w + a4·w² + a1·w³ + a3·w⁴ + a5·w⁵
-    let mut _m = m;
-    // _m[0..8].copy_from_slice(&m[0..8]);
-    _m[8..16].copy_from_slice(&m[24..32]);
-    _m[16..24].copy_from_slice(&m[8..16]);
-    _m[24..32].copy_from_slice(&m[32..40]);
-    _m[32..40].copy_from_slice(&m[16..24]);
-    // _m[40..48].copy_from_slice(&m[40..48]);
-    let _mx = exp_by_x_cyclo_bn254(&_m);
-    let mut mx = _mx;
-    // mx[0..8].copy_from_slice(&_mx[0..8]);
-    mx[8..16].copy_from_slice(&_mx[16..24]);
-    mx[16..24].copy_from_slice(&_mx[32..40]);
-    mx[24..32].copy_from_slice(&_mx[8..16]);
-    mx[32..40].copy_from_slice(&_mx[24..32]);
-    // mx[40..48].copy_from_slice(&_mx[40..48]);
-    let _mxx = exp_by_x_cyclo_bn254(&_mx);
-    let mut mxx = _mxx;
-    // mxx[0..8].copy_from_slice(&_mxx[0..8]);
-    mxx[8..16].copy_from_slice(&_mxx[16..24]);
-    mxx[16..24].copy_from_slice(&_mxx[32..40]);
-    mxx[24..32].copy_from_slice(&_mxx[8..16]);
-    mxx[32..40].copy_from_slice(&_mxx[24..32]);
-    // mxx[40..48].copy_from_slice(&_mxx[40..48]);
-    let _mxxx = exp_by_x_cyclo_bn254(&_mxx);
-    let mut mxxx = _mxxx;
-    // mxxx[0..8].copy_from_slice(&_mxxx[0..8]);
-    mxxx[8..16].copy_from_slice(&_mxxx[16..24]);
-    mxxx[16..24].copy_from_slice(&_mxxx[32..40]);
-    mxxx[24..32].copy_from_slice(&_mxxx[8..16]);
-    mxxx[32..40].copy_from_slice(&_mxxx[24..32]);
-    // mxxx[40..48].copy_from_slice(&_mxxx[40..48]);
+    let mx = exp_by_x_cyclo_bn254(&m);
+    let mxx = exp_by_x_cyclo_bn254(&mx);
+    let mxxx = exp_by_x_cyclo_bn254(&mxx);
 
     // m^p, m^p², m^p³, (m^x)^p, (m^x²)^p, (m^x³)^p, (m^x²)^p²
     let mp = frobenius1_fp12_bn254(&m);

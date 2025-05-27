@@ -1,3 +1,5 @@
+//! Pairing over BN254
+
 use crate::zisklib::lib::{
     bn254::{
         constants::P_MINUS_ONE,

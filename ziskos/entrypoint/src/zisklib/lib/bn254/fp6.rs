@@ -1,8 +1,12 @@
+//! Operations in the degree 6 extension Fp6 of the BN254 curve
+
 use super::fp2::{
     add_fp2_bn254, dbl_fp2_bn254, inv_fp2_bn254, mul_fp2_bn254, neg_fp2_bn254, square_fp2_bn254,
     sub_fp2_bn254,
 };
 
+/// Addition in the degree 6 extension of the BN254 curve
+#[inline]
 pub fn add_fp6_bn254(a: &[u64; 24], b: &[u64; 24]) -> [u64; 24] {
     let mut result = [0; 24];
     for i in 0..3 {
@@ -14,6 +18,8 @@ pub fn add_fp6_bn254(a: &[u64; 24], b: &[u64; 24]) -> [u64; 24] {
     result
 }
 
+/// Doubling in the degree 6 extension of the BN254 curve
+#[inline]
 pub fn dbl_fp6_bn254(a: &[u64; 24]) -> [u64; 24] {
     let mut result = [0; 24];
     for i in 0..3 {
@@ -24,6 +30,8 @@ pub fn dbl_fp6_bn254(a: &[u64; 24]) -> [u64; 24] {
     result
 }
 
+/// Negation in the degree 6 extension of the BN254 curve
+#[inline]
 pub fn neg_fp6_bn254(a: &[u64; 24]) -> [u64; 24] {
     let mut result = [0; 24];
     for i in 0..3 {
@@ -34,6 +42,8 @@ pub fn neg_fp6_bn254(a: &[u64; 24]) -> [u64; 24] {
     result
 }
 
+/// Subtraction in the degree 6 extension of the BN254 curve
+#[inline]
 pub fn sub_fp6_bn254(a: &[u64; 24], b: &[u64; 24]) -> [u64; 24] {
     let mut result = [0; 24];
     for i in 0..3 {
@@ -45,11 +55,14 @@ pub fn sub_fp6_bn254(a: &[u64; 24], b: &[u64; 24]) -> [u64; 24] {
     result
 }
 
+/// Multiplication in the degree 6 extension of the BN254 curve
+//
 // in: (a1 + a2·v + a3·v²),(b1 + b2·v + b3·v²) ∈ Fp6, where ai,bi ∈ Fp2
 // out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
 //      - c1 = [(a2+a3)·(b2+b3) - a2·b2 - a3·b3]·(9+u) + a1·b1
 //      - c2 = (a1+a2)·(b1+b2) - a1·b1 - a2·b2 + a3·b3·(9+u)
 //      - c3 = (a1+a3)·(b1+b3) - a1·b1 + a2·b2 - a3·b3
+#[inline]
 pub fn mul_fp6_bn254(a: &[u64; 24], b: &[u64; 24]) -> [u64; 24] {
     let a1 = &a[0..8].try_into().unwrap();
     let a2 = &a[8..16].try_into().unwrap();
@@ -98,11 +111,14 @@ pub fn mul_fp6_bn254(a: &[u64; 24], b: &[u64; 24]) -> [u64; 24] {
     result
 }
 
+/// Multiplication of a = a1 + a2·v + a3·v² and b = b2·v in the degree 6 extension of the BN254 curve
+//
 // in: (a1 + a2·v + a3·v²),b2·v ∈ Fp6, where ai,b2 ∈ Fp2
 // out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
 //      - c1 = b2·a3·(9+u)
 //      - c2 = b2·a1
 //      - c3 = b2·a2
+#[inline]
 pub fn sparse_mula_fp6_bn254(a: &[u64; 24], b2: &[u64; 8]) -> [u64; 24] {
     let a1 = &a[0..8].try_into().unwrap();
     let a2 = &a[8..16].try_into().unwrap();
@@ -125,11 +141,14 @@ pub fn sparse_mula_fp6_bn254(a: &[u64; 24], b2: &[u64; 8]) -> [u64; 24] {
     result
 }
 
+/// Multiplication of a = a1 + a2·v + a3·v² and b = b1 + b2·v in the degree 6 extension of the BN254 curve
+//
 // in: (a1 + a2·v + a3·v²),(b1 + b2·v) ∈ Fp6, where ai,bi ∈ Fp2
 // out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
 //      - c1 = a1·b1 + a3·b2·(9+u)
 //      - c2 = a1·b2 + a2·b1
 //      - c3 = a2·b2 + a3·b1
+#[inline]
 pub fn sparse_mulb_fp6_bn254(a: &[u64; 24], b: &[u64; 16]) -> [u64; 24] {
     let a1 = &a[0..8].try_into().unwrap();
     let a2 = &a[8..16].try_into().unwrap();
@@ -156,11 +175,14 @@ pub fn sparse_mulb_fp6_bn254(a: &[u64; 24], b: &[u64; 16]) -> [u64; 24] {
     result
 }
 
+/// Multiplication of a = a1 + a2·v + a3·v² and b = b2·v + b3·v² in the degree 6 extension of the BN254 curve
+//
 // in: (a1 + a2·v + a3·v²),(b2·v + b3·v²) ∈ Fp6, where ai,bi ∈ Fp2
 // out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
 //      - c1 = (a2·b3 + a3·b2)·(9+u)
 //      - c2 = a1·b2 + a3·b3·(9+u)
 //      - c3 = a1·b3 + a2·b2
+#[inline]
 pub fn sparse_mulc_fp6_bn254(a: &[u64; 24], b: &[u64; 16]) -> [u64; 24] {
     let a1 = &a[0..8].try_into().unwrap();
     let a2 = &a[8..16].try_into().unwrap();
@@ -189,11 +211,14 @@ pub fn sparse_mulc_fp6_bn254(a: &[u64; 24], b: &[u64; 16]) -> [u64; 24] {
     result
 }
 
+/// Squaring in the degree 6 extension of the BN254 curve
+//
 // in: (a1 + a2·v + a3·v²) ∈ Fp6, where ai ∈ Fp2
 // out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
 //      - c1 = 2·a2·a3·(9 + u) + a1²
 //      - c2 = a3²·(9 + u) + 2·a1·a2
 //      - c3 = 2·a1·a2 - a3² + (a1 - a2 + a3)² + 2·a2·a3 - a1²
+#[inline]
 pub fn square_fp6_bn254(a: &[u64; 24]) -> [u64; 24] {
     let a1 = &a[0..8].try_into().unwrap();
     let a2 = &a[8..16].try_into().unwrap();
@@ -233,6 +258,8 @@ pub fn square_fp6_bn254(a: &[u64; 24]) -> [u64; 24] {
     result
 }
 
+/// Inversion in the degree 6 extension of the BN254 curve
+//
 // in: (a1 + a2·v + a3·v²) ∈ Fp6, where ai ∈ Fp2
 // out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
 //      - c1 = (a1² - (9 + u)·(a2·a3))·(a1·c1mid + xi·(a3·c2mid + a2·c3mid))⁻¹
@@ -242,6 +269,7 @@ pub fn square_fp6_bn254(a: &[u64; 24]) -> [u64; 24] {
 //      * c1mid = a1² - (9 + u)·(a2·a3)
 //      * c2mid = (9 + u)·a3² - (a1·a2)
 //      * c3mid = a2² - (a1·a3)
+#[inline]
 pub fn inv_fp6_bn254(a: &[u64; 24]) -> [u64; 24] {
     let a1 = &a[0..8].try_into().unwrap();
     let a2 = &a[8..16].try_into().unwrap();
