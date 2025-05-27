@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use zisk_common::{
     table_instance, BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance,
     InstanceCtx, InstanceInfo, PayloadType, Planner, TableInfo, OPERATION_BUS_ID,
@@ -53,7 +53,7 @@ impl ArithSM {
     }
 }
 
-impl<F: PrimeField> ComponentBuilder<F> for ArithSM {
+impl<F: PrimeField64> ComponentBuilder<F> for ArithSM {
     /// Builds and returns a new counter for monitoring arithmetic operations.
     ///
     /// # Returns

@@ -2,7 +2,7 @@ use crate::{
     mem_module_collector::MemModuleCollector, MemHelpers, MemInput, MemModule,
     MemModuleSegmentCheckPoint, MemPreviousSegment, STEP_MEMORY_MAX_DIFF,
 };
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
 
-pub struct MemModuleInstance<F: PrimeField> {
+pub struct MemModuleInstance<F: PrimeField64> {
     /// Instance context
     ictx: InstanceCtx,
 
@@ -23,7 +23,7 @@ pub struct MemModuleInstance<F: PrimeField> {
     limited_step_distance: bool,
 }
 
-impl<F: PrimeField> MemModuleInstance<F> {
+impl<F: PrimeField64> MemModuleInstance<F> {
     pub fn new(
         module: Arc<dyn MemModule<F>>,
         ictx: InstanceCtx,
@@ -98,7 +98,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
     }
 }
 
-impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
+impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
     fn compute_witness(
         &mut self,
         _pctx: &ProofCtx<F>,

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use data_bus::{DataBus, DataBusTrait};
 use executor::SMBundle;
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
 use precomp_sha256f::Sha256fManager;

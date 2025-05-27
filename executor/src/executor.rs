@@ -20,7 +20,7 @@
 //! maintaining clarity and modularity in the computation process.
 
 use asm_runner::{AsmRunnerMT, MinimalTraces, Task, TaskFactory};
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};

@@ -1,6 +1,6 @@
 use crate::{MemAlignCheckPoint, MemAlignInput, MemAlignSM, MemHelpers};
 use core::panic;
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::sync::Arc;
 use zisk_common::{

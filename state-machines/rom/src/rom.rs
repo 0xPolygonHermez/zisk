@@ -15,8 +15,8 @@ use std::{
 
 use crate::{rom_asm_worker::RomAsmWorker, RomInstance, RomPlanner};
 use asm_runner::AsmRHData;
+use fields::PrimeField64;
 use itertools::Itertools;
-use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_common::{
     create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, Instance, InstanceCtx,
@@ -88,7 +88,7 @@ impl RomSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness trace data.
-    pub fn compute_witness<F: PrimeField>(
+    pub fn compute_witness<F: PrimeField64>(
         rom: &ZiskRom,
         counter_stats: &CounterStats,
     ) -> AirInstance<F> {
@@ -139,7 +139,7 @@ impl RomSM {
         AirInstance::new_from_trace(FromTrace::new(&mut rom_trace))
     }
 
-    pub fn compute_witness_from_asm<F: PrimeField>(
+    pub fn compute_witness_from_asm<F: PrimeField64>(
         rom: &ZiskRom,
         asm_romh: &AsmRHData,
     ) -> AirInstance<F> {
@@ -223,7 +223,7 @@ impl RomSM {
     /// # Arguments
     /// * `rom` - Reference to the Zisk ROM.
     /// * `rom_custom_trace` - Reference to the custom ROM trace.
-    fn compute_trace_rom<F: PrimeField>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {
+    fn compute_trace_rom<F: PrimeField64>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {
         // For every instruction in the rom, fill its corresponding ROM trace
         for (i, key) in rom.insts.keys().sorted().enumerate() {
             // Get the Zisk instruction
@@ -292,7 +292,7 @@ impl RomSM {
     /// # Arguments
     /// * `rom_path` - The path to the ELF file.
     /// * `rom_custom_trace` - Reference to the custom ROM trace.
-    pub fn compute_custom_trace_rom<F: PrimeField>(
+    pub fn compute_custom_trace_rom<F: PrimeField64>(
         rom_path: PathBuf,
         rom_custom_trace: &mut RomRomTrace<F>,
     ) {
@@ -312,7 +312,7 @@ impl RomSM {
     }
 }
 
-impl<F: PrimeField> ComponentBuilder<F> for RomSM {
+impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
     /// Builds and returns a new counter for monitoring ROM operations.
     ///
     /// # Returns

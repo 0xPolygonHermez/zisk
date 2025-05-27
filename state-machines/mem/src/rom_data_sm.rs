@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{MemInput, MemModule, MemPreviousSegment, MEMORY_MAX_DIFF, MEM_BYTES_BITS};
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_common::SegmentId;

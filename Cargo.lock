@@ -316,7 +316,7 @@ dependencies = [
  "bitflags 2.9.1",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.10.5",
  "lazy_static",
  "lazycell",
  "log",
@@ -401,11 +401,10 @@ dependencies = [
  "colored",
  "dirs",
  "executor",
+ "fields",
  "futures",
  "indicatif",
  "libloading",
- "p3-field",
- "p3-goldilocks",
  "proofman",
  "proofman-common",
  "rand 0.9.1",
@@ -702,12 +701,11 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fgoldilocks2#b9ba63f06327e7e5b08d0f3a5624216caccd6b28"
 dependencies = [
+ "fields",
  "num-bigint",
  "num-traits",
- "p3-field",
- "p3-goldilocks",
  "rand 0.9.1",
 ]
 
@@ -945,8 +943,8 @@ version = "0.9.0"
 dependencies = [
  "asm-runner",
  "data-bus",
+ "fields",
  "itertools 0.14.0",
- "p3-field",
  "pil-std-lib",
  "proofman",
  "proofman-common",
@@ -980,6 +978,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fields"
+version = "0.9.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fgoldilocks2#b9ba63f06327e7e5b08d0f3a5624216caccd6b28"
+dependencies = [
+ "num-bigint",
+ "paste",
+ "proofman-starks-lib-c",
+ "rand 0.9.1",
+ "serde",
+]
+
+[[package]]
 name = "findshlibs"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1005,12 +1015,6 @@ checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
  "percent-encoding",
 ]
-
-[[package]]
-name = "forward_ref"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8cbd1169bd7b4a0a20d92b9af7a7e0422888bd38a6f5ec29c1fd8c1558a272e"
 
 [[package]]
 name = "futures"
@@ -1503,15 +1507,6 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
@@ -1855,7 +1850,6 @@ checksum = "a5e44f723f1133c9deac646763579fdb3ac745e418f2a7af9cd0c431da1f20b9"
 dependencies = [
  "num-integer",
  "num-traits",
- "rand 0.8.5",
 ]
 
 [[package]]
@@ -1906,18 +1900,6 @@ name = "number_prefix"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
-
-[[package]]
-name = "nums"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf3c74f925fb8cfc49a8022f2afce48a0683b70f9e439885594e84c5edbf5b01"
-dependencies = [
- "num-bigint",
- "num-integer",
- "num-traits",
- "rand 0.8.5",
-]
 
 [[package]]
 name = "objc2-core-foundation"
@@ -1978,131 +1960,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
-name = "p3-dft"
-version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
-dependencies = [
- "itertools 0.14.0",
- "p3-field",
- "p3-matrix",
- "p3-maybe-rayon",
- "p3-util",
- "tracing",
-]
-
-[[package]]
-name = "p3-field"
-version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
-dependencies = [
- "forward_ref",
- "itertools 0.14.0",
- "num-bigint",
- "num-integer",
- "num-traits",
- "nums",
- "p3-maybe-rayon",
- "p3-util",
- "paste",
- "rand 0.9.1",
- "serde",
- "tracing",
-]
-
-[[package]]
-name = "p3-goldilocks"
-version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
-dependencies = [
- "num-bigint",
- "p3-dft",
- "p3-field",
- "p3-mds",
- "p3-poseidon",
- "p3-poseidon2",
- "p3-symmetric",
- "p3-util",
- "paste",
- "rand 0.9.1",
- "serde",
-]
-
-[[package]]
-name = "p3-matrix"
-version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
-dependencies = [
- "itertools 0.14.0",
- "p3-field",
- "p3-maybe-rayon",
- "p3-util",
- "rand 0.9.1",
- "serde",
- "tracing",
- "transpose",
-]
-
-[[package]]
-name = "p3-maybe-rayon"
-version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
-
-[[package]]
-name = "p3-mds"
-version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
-dependencies = [
- "itertools 0.14.0",
- "p3-dft",
- "p3-field",
- "p3-matrix",
- "p3-symmetric",
- "p3-util",
- "rand 0.9.1",
-]
-
-[[package]]
-name = "p3-poseidon"
-version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
-dependencies = [
- "p3-field",
- "p3-mds",
- "p3-symmetric",
- "rand 0.9.1",
-]
-
-[[package]]
-name = "p3-poseidon2"
-version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
-dependencies = [
- "p3-field",
- "p3-mds",
- "p3-symmetric",
- "p3-util",
- "rand 0.9.1",
-]
-
-[[package]]
-name = "p3-symmetric"
-version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
-dependencies = [
- "itertools 0.14.0",
- "p3-field",
- "serde",
-]
-
-[[package]]
-name = "p3-util"
-version = "0.1.0"
-source = "git+https://github.com/Plonky3/Plonky3.git?rev=f00191a5303f2ff6ec99b9889aa66bee9f1f66ac#f00191a5303f2ff6ec99b9889aa66bee9f1f66ac"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "parking_lot"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2146,13 +2003,12 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fgoldilocks2#b9ba63f06327e7e5b08d0f3a5624216caccd6b28"
 dependencies = [
  "colored",
+ "fields",
  "num-bigint",
  "num-traits",
- "p3-field",
- "p3-goldilocks",
  "proofman-common",
  "proofman-hints",
  "proofman-util",
@@ -2286,6 +2142,7 @@ dependencies = [
  "ark-ff",
  "ark-secp256k1",
  "ark-std",
+ "fields",
  "generic-array",
  "k256",
  "lazy_static",
@@ -2293,8 +2150,6 @@ dependencies = [
  "nom",
  "num-bigint",
  "num-traits",
- "p3-field",
- "p3-goldilocks",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -2321,8 +2176,7 @@ version = "0.9.0"
 dependencies = [
  "circuit",
  "clap",
- "p3-field",
- "p3-goldilocks",
+ "fields",
  "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
@@ -2345,9 +2199,8 @@ dependencies = [
  "circuit",
  "clap",
  "data-bus",
+ "fields",
  "generic-array",
- "p3-field",
- "p3-goldilocks",
  "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
@@ -2369,7 +2222,7 @@ dependencies = [
 name = "precompiles-common"
 version = "0.9.0"
 dependencies = [
- "p3-goldilocks",
+ "fields",
  "zisk-core",
 ]
 
@@ -2408,16 +2261,15 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fgoldilocks2#b9ba63f06327e7e5b08d0f3a5624216caccd6b28"
 dependencies = [
  "blake3",
  "colored",
  "curves",
+ "fields",
  "libloading",
  "num-bigint",
  "num-traits",
- "p3-field",
- "p3-goldilocks",
  "proofman-common",
  "proofman-hints",
  "proofman-macros",
@@ -2433,12 +2285,11 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fgoldilocks2#b9ba63f06327e7e5b08d0f3a5624216caccd6b28"
 dependencies = [
+ "fields",
  "libloading",
  "mpi",
- "p3-field",
- "p3-goldilocks",
  "proofman-macros",
  "proofman-starks-lib-c",
  "proofman-util",
@@ -2455,9 +2306,9 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fgoldilocks2#b9ba63f06327e7e5b08d0f3a5624216caccd6b28"
 dependencies = [
- "p3-field",
+ "fields",
  "proofman-common",
  "proofman-starks-lib-c",
  "proofman-util",
@@ -2467,7 +2318,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fgoldilocks2#b9ba63f06327e7e5b08d0f3a5624216caccd6b28"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2478,7 +2329,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fgoldilocks2#b9ba63f06327e7e5b08d0f3a5624216caccd6b28"
 dependencies = [
  "tracing",
 ]
@@ -2486,10 +2337,10 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fgoldilocks2#b9ba63f06327e7e5b08d0f3a5624216caccd6b28"
 dependencies = [
  "colored",
- "p3-field",
+ "fields",
  "sysinfo",
  "tracing",
 ]
@@ -2793,7 +2644,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "colored",
- "p3-goldilocks",
+ "fields",
  "proofman-common",
  "sm-rom",
  "tracing",
@@ -3076,8 +2927,8 @@ dependencies = [
 name = "sm-arith"
 version = "0.9.0"
 dependencies = [
+ "fields",
  "num-bigint",
- "p3-field",
  "pil-std-lib",
  "proofman-common",
  "proofman-macros",
@@ -3094,8 +2945,8 @@ dependencies = [
 name = "sm-binary"
 version = "0.9.0"
 dependencies = [
+ "fields",
  "num-bigint",
- "p3-field",
  "pil-std-lib",
  "proofman-common",
  "proofman-macros",
@@ -3112,8 +2963,8 @@ name = "sm-main"
 version = "0.9.0"
 dependencies = [
  "asm-runner",
+ "fields",
  "num-bigint",
- "p3-field",
  "pil-std-lib",
  "proofman-common",
  "proofman-macros",
@@ -3131,9 +2982,9 @@ dependencies = [
 name = "sm-mem"
 version = "0.9.0"
 dependencies = [
+ "fields",
  "num-bigint",
  "num-traits",
- "p3-field",
  "pil-std-lib",
  "proofman-common",
  "proofman-macros",
@@ -3151,8 +3002,8 @@ name = "sm-rom"
 version = "0.9.0"
 dependencies = [
  "asm-runner",
+ "fields",
  "itertools 0.14.0",
- "p3-field",
  "proofman-common",
  "proofman-macros",
  "proofman-util",
@@ -3206,12 +3057,6 @@ name = "str_stack"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9091b6114800a5f2141aee1d1b9d6ca3592ac062dc5decb3764ec5895a47b4eb"
-
-[[package]]
-name = "strength_reduce"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe895eb47f22e2ddd4dabc02bce419d2e643c8e3b585c78158b349195bc24d82"
 
 [[package]]
 name = "strsim"
@@ -3641,19 +3486,9 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fgoldilocks2#b9ba63f06327e7e5b08d0f3a5624216caccd6b28"
 dependencies = [
  "proofman-starks-lib-c",
-]
-
-[[package]]
-name = "transpose"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ad61aed86bc3faea4300c7aee358b4c6d0c8d6ccc36524c96e4c92ccf26e77e"
-dependencies = [
- "num-integer",
- "strength_reduce",
 ]
 
 [[package]]
@@ -4311,11 +4146,10 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fgoldilocks2#b9ba63f06327e7e5b08d0f3a5624216caccd6b28"
 dependencies = [
  "colored",
- "p3-field",
- "p3-goldilocks",
+ "fields",
  "proofman-common",
  "proofman-util",
  "serde_json",
@@ -4456,8 +4290,8 @@ dependencies = [
 name = "zisk-common"
 version = "0.9.0"
 dependencies = [
+ "fields",
  "libc",
- "p3-field",
  "proofman-common",
  "zisk-core",
 ]
@@ -4467,11 +4301,11 @@ name = "zisk-core"
 version = "0.9.0"
 dependencies = [
  "elf",
+ "fields",
  "generic-array",
  "indexmap",
  "json",
  "lib-c",
- "p3-field",
  "precompiles-helpers",
  "rayon",
  "riscv",
@@ -4510,8 +4344,7 @@ dependencies = [
  "data-bus",
  "env_logger",
  "executor",
- "p3-field",
- "p3-goldilocks",
+ "fields",
  "pil-std-lib",
  "precomp-arith-eq",
  "precomp-keccakf",
@@ -4547,7 +4380,7 @@ dependencies = [
  "clap",
  "criterion",
  "data-bus",
- "p3-field",
+ "fields",
  "pprof",
  "rayon",
  "riscv",

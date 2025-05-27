@@ -10,7 +10,7 @@ use std::sync::{
 
 use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
 
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;

@@ -1,4 +1,4 @@
-use p3_goldilocks::Goldilocks;
+use fields::Goldilocks;
 
 /*
     # List of generators of groups of size power of 2

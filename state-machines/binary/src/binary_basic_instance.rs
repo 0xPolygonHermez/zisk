@@ -5,7 +5,7 @@
 //! execution plans.
 
 use crate::{BinaryBasicCollector, BinaryBasicSM};
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::{
@@ -42,7 +42,7 @@ impl BinaryBasicInstance {
     }
 }
 
-impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
+impl<F: PrimeField64> Instance<F> for BinaryBasicInstance {
     /// Computes the witness for the binary execution plan.
     ///
     /// This method leverages the `BinaryBasicSM` to generate an `AirInstance` using the collected

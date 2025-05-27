@@ -3,8 +3,8 @@ use std::sync::Arc;
 #[cfg(feature = "debug_mem_align")]
 use std::sync::Mutex;
 
+use fields::PrimeField64;
 use num_traits::cast::ToPrimitive;
-use p3_field::PrimeField64;
 use pil_std_lib::Std;
 
 use proofman_common::{AirInstance, FromTrace};

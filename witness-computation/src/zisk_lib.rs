@@ -6,8 +6,7 @@
 
 use crate::StaticSMBundle;
 use executor::{/*DynSMBundle,*/ ZiskExecutor};
-use p3_field::PrimeField64;
-use p3_goldilocks::Goldilocks;
+use fields::{Goldilocks, PrimeField64};
 use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;

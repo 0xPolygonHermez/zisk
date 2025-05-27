@@ -5,8 +5,7 @@ use proofman_common::initialize_logger;
 use std::io::Read;
 use std::{fs::File, path::PathBuf};
 
-use p3_field::PrimeCharacteristicRing;
-use p3_goldilocks::Goldilocks;
+use fields::{Goldilocks, PrimeField64};
 
 use proofman::verify_proof_from_file;
 

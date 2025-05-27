@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use zisk_common::{
     table_instance_array, BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance,
     InstanceCtx, InstanceInfo, PayloadType, Planner, TableInfo, OPERATION_BUS_ID,

@@ -32,7 +32,7 @@ generic-array = "0.14"
 precompiles-helpers = { path = "../precompiles/helpers" }
 lib-c = { path = "../lib-c" }
 ziskos = { path = "../ziskos/entrypoint" }
-p3-field = { workspace=true }
+fields = { workspace=true }
 
 [features]
 default = []
