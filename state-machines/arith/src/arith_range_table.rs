@@ -35,7 +35,7 @@ impl ArithRangeTableSM {
     }
 
     pub fn process_slice(&self, inputs: &ArithRangeTableInputs) {
-        if self.calculated.load(Ordering::SeqCst) {
+        if self.calculated.load(Ordering::Relaxed) {
             return;
         }
         for (row, value) in inputs {
@@ -52,10 +52,10 @@ impl ArithRangeTableSM {
     }
 
     pub fn set_calculated(&self) {
-        self.calculated.store(true, Ordering::SeqCst);
+        self.calculated.store(true, Ordering::Relaxed);
     }
 
     pub fn reset_calculated(&self) {
-        self.calculated.store(false, Ordering::SeqCst);
+        self.calculated.store(false, Ordering::Relaxed);
     }
 }

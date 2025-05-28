@@ -26,7 +26,7 @@ ziskemu = { path = "../emulator" }
 zisk-core = { path = "../core" }
 zisk-common = { path = "../common" }
 
-
+proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 proofman-macros = { workspace = true }

@@ -77,7 +77,7 @@ impl Sha256fTableSM {
     }
 
     pub fn reset_calculated(&self) {
-        self.calculated.store(false, Ordering::SeqCst);
+        self.calculated.store(false, Ordering::Relaxed);
     }
 
     /// Calculates the table row offset based on the provided parameters.

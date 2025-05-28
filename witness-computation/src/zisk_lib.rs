@@ -19,6 +19,7 @@ use sm_rom::RomSM;
 use std::{any::Any, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
 use zisk_core::Riscv2zisk;
+use proofman::register_std;
 
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
@@ -71,7 +72,9 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let zisk_rom = Arc::new(zisk_rom);
 
         // Step 3: Initialize the secondary state machines
-        let std = Std::new(wcm.clone());
+        let std = Std::new(wcm.get_pctx(), wcm.get_sctx());
+        register_std(&wcm, &std);
+        
         let rom_sm = RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone());
         let binary_sm = BinarySM::new(std.clone());
         let arith_sm = ArithSM::new();
