@@ -191,7 +191,7 @@ impl ZiskStats {
                 proofman.register_witness(&mut *witness_lib, library);
 
                 proofman
-                    .compute_witness(self.input.clone(), &debug_info)
+                    .compute_witness_from_lib(self.input.clone(), &debug_info)
                     .map_err(|e| anyhow::anyhow!("Error generating stats: {}", e))?;
             }
         };
