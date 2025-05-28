@@ -15,18 +15,19 @@ path = "src/mem_sim.rs"
 zisk-core = { path = "../../core" }
 zisk-common = { path = "../../common" }
 zisk-pil = { path = "../../pil" }
-num-traits = "0.2"
+mem-cpp = { path = "../mem-cpp" }
 
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
 witness = { workspace = true }
 pil-std-lib = { workspace = true }
-
 p3-field = { workspace=true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 num-bigint = { workspace = true }
+
+num-traits = "0.2"
 
 [features]
 default = []

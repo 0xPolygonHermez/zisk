@@ -120,7 +120,7 @@ impl BusDevice<u64> for KeccakfCounterInputGen {
             self.measure(data);
         }
 
-        let mem_inputs = KeccakfSM::generate_inputs(&data, self.mode == BusDeviceMode::Counter);
+        let mem_inputs = KeccakfSM::generate_inputs(data, self.mode == BusDeviceMode::Counter);
         pending.extend(mem_inputs.into_iter().map(|x| (MEM_BUS_ID, x)));
     }
 

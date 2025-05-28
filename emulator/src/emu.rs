@@ -5,8 +5,7 @@ use p3_field::PrimeField;
 use riscv::RiscVRegisters;
 use sm_mem::MemHelpers;
 use zisk_common::{
-    ExtOperationData, OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID,
-    OPERATION_BUS_ID, ROM_BUS_ID,
+    OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID, ROM_BUS_ID,
 };
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
@@ -1774,31 +1773,15 @@ impl<'a> Emu<'a> {
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
         // Get operation bus data
-        let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
-
-        // Write operation bus data to operation bus
-        match operation_payload {
-            ExtOperationData::OperationData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationKeccakData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationSha256Data(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationArith256Data(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationArith256ModData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationSecp256k1AddData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationSecp256k1DblData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
+        if instruction.op_type > ZiskOperationType::Internal
+            && instruction.op_type < ZiskOperationType::FcallParam
+        {
+            let operation_payload: &[u64] = OperationBusData::write_instruction_payload(
+                instruction,
+                &self.ctx.inst_ctx,
+                &mut self.static_array,
+            );
+            data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload);
         }
 
         // Get rom bus data

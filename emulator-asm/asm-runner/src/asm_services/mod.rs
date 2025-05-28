@@ -1,11 +1,11 @@
-mod asm_services;
+mod services;
 mod memory_ops;
 mod minimal_traces;
 mod rom_histogram;
 mod shutdown;
 mod status;
 
-pub use asm_services::*;
+pub use services::*;
 pub use memory_ops::*;
 pub use minimal_traces::*;
 pub use rom_histogram::*;

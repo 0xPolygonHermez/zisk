@@ -13,6 +13,7 @@ use crate::{
     MemHelpers, MemInput, MemModule, MEMORY_MAX_DIFF, MEM_BYTES_BITS, STEP_MEMORY_LIMIT_TO_VERIFY,
     STEP_MEMORY_MAX_DIFF,
 };
+
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};

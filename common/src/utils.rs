@@ -15,9 +15,8 @@ pub fn create_atomic_vec<DT>(size: usize) -> Vec<DT> {
 }
 
 #[inline(always)]
-pub fn uninit_array<const N: usize>() -> [u64; N] {
-    // SAFETY: caller must overwrite all elements before use
-    unsafe { std::mem::MaybeUninit::uninit().assume_init() }
+pub fn uninit_array<const N: usize>() -> MaybeUninit<[u64; N]> {
+    MaybeUninit::uninit()
 }
 
 #[macro_export]

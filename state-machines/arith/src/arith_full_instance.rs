@@ -170,7 +170,8 @@ impl BusDevice<u64> for ArithInstanceCollector {
             return;
         }
 
-        let data: ExtOperationData<u64> = data.try_into().ok().expect("Failed to convert data");
+        let data: ExtOperationData<u64> = data.try_into().expect("Failed to convert data");
+
         if let ExtOperationData::OperationData(data) = data {
             self.inputs.push(data);
         }
