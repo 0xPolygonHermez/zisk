@@ -6,6 +6,7 @@ mod prove;
 mod rom_setup;
 mod run;
 mod sdk;
+mod stats;
 mod verify_constraints;
 mod verify_stark;
 
@@ -17,5 +18,6 @@ pub use prove::*;
 pub use rom_setup::*;
 pub use run::*;
 pub use sdk::*;
+pub use stats::*;
 pub use verify_constraints::*;
 pub use verify_stark::*;
