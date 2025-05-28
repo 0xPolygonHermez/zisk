@@ -113,19 +113,6 @@ pub struct ZiskAsmContext {
                  //assert_rsp_counter: u64,
 }
 
-// Local variables, used in library:
-//   registers[35] -> RSP - 34*8
-//   trace_address -> RSP - (35-16 = 19)*8
-//   trace_size -> RSP - 20*8
-//   fcall_ctx[70] -> RSP - 90*8
-//   mem_step -> RSP - 91*8
-const RSP_REGS_OFFSET: u64 = 34 * 8;
-// const RSP_TRACE_ADDRESS_OFFSET: u64 = 19 * 8;
-// const RSP_TRACE_SIZE_OFFSET: u64 = 20 * 8;
-const RSP_FCALL_CTX_OFFSET: u64 = 90 * 8;
-const RSP_MEM_STEP_OFFSET: u64 = 91 * 8;
-const RSP_OFFSET: u64 = 91 * 8;
-
 impl ZiskAsmContext {
     pub fn fast(&self) -> bool {
         self.mode == AsmGenerationMethod::AsmFast
@@ -142,30 +129,13 @@ impl ZiskAsmContext {
     pub fn chunks(&self) -> bool {
         self.mode == AsmGenerationMethod::AsmChunks
     }
-    pub fn bus_op(&self) -> bool {
-        self.mode == AsmGenerationMethod::AsmBusOp
-    }
     pub fn zip(&self) -> bool {
         self.mode == AsmGenerationMethod::AsmZip
     }
     pub fn mem_op(&self) -> bool {
         self.mode == AsmGenerationMethod::AsmMemOp
     }
-    pub fn process(&self) -> bool {
-        match self.mode {
-            AsmGenerationMethod::AsmFast
-            | AsmGenerationMethod::AsmMinimalTraces
-            | AsmGenerationMethod::AsmRomHistogram
-            | AsmGenerationMethod::AsmMainTrace
-            | AsmGenerationMethod::AsmChunks
-            | AsmGenerationMethod::AsmZip
-            | AsmGenerationMethod::AsmMemOp => true,
-            AsmGenerationMethod::AsmBusOp => false,
-        }
-    }
-    pub fn lib(&self) -> bool {
-        !self.process()
-    }
+
     // Creates a comment with the specified prefix and sufix, i.e. with the requested syntax
     pub fn comment(&self, c: String) -> String {
         let mut s = String::new();
@@ -242,35 +212,25 @@ impl ZiskRom2Asm {
             ..Default::default()
         };
 
-        if ctx.process() {
-            ctx.ptr = "ptr ".to_string();
-            ctx.mem_step = format!("qword {}[MEM_STEP]", ctx.ptr);
-            ctx.mem_sp = format!("qword {}[MEM_SP]", ctx.ptr);
-            ctx.mem_end = format!("qword {}[MEM_END]", ctx.ptr);
-            ctx.mem_trace_address = format!("qword {}[MEM_TRACE_ADDRESS]", ctx.ptr);
-            ctx.mem_chunk_address = format!("qword {}[MEM_CHUNK_ADDRESS]", ctx.ptr);
-            ctx.mem_chunk_start_step = format!("qword {}[MEM_CHUNK_START_STEP]", ctx.ptr);
-            ctx.fcall_ctx = "fcall_ctx".to_string();
-            ctx.mem_chunk_id = format!("qword {}[MEM_CHUNK_ID]", ctx.ptr);
-            ctx.mem_chunk_mask = format!("qword {}[chunk_mask]", ctx.ptr);
-            ctx.mem_rsp = format!("qword {}[MEM_RSP]", ctx.ptr);
-        }
-
-        if ctx.lib() {
-            ctx.ptr = "ptr ".to_string();
-            ctx.mem_step = format!("qword {}[rsp + {}]", ctx.ptr, RSP_MEM_STEP_OFFSET);
-            ctx.fcall_ctx = format!("rsp + {}", RSP_FCALL_CTX_OFFSET);
-        }
+        ctx.ptr = "ptr ".to_string();
+        ctx.mem_step = format!("qword {}[MEM_STEP]", ctx.ptr);
+        ctx.mem_sp = format!("qword {}[MEM_SP]", ctx.ptr);
+        ctx.mem_end = format!("qword {}[MEM_END]", ctx.ptr);
+        ctx.mem_trace_address = format!("qword {}[MEM_TRACE_ADDRESS]", ctx.ptr);
+        ctx.mem_chunk_address = format!("qword {}[MEM_CHUNK_ADDRESS]", ctx.ptr);
+        ctx.mem_chunk_start_step = format!("qword {}[MEM_CHUNK_START_STEP]", ctx.ptr);
+        ctx.fcall_ctx = "fcall_ctx".to_string();
+        ctx.mem_chunk_id = format!("qword {}[MEM_CHUNK_ID]", ctx.ptr);
+        ctx.mem_chunk_mask = format!("qword {}[chunk_mask]", ctx.ptr);
+        ctx.mem_rsp = format!("qword {}[MEM_RSP]", ctx.ptr);
 
         *code += ".intel_syntax noprefix\n";
         *code += ".code64\n";
 
-        // if ctx.process() {
         //     //*code += "bits 64\n";
         //     *code += ".section .rodata\n";
         //     *code += "msg: .ascii \"Zisk assembly emulator\\n\"\n";
         //     *code += ".set msglen, (. - msg)\n\n";
-        // }
 
         if ctx.fast()
             || ctx.minimal_trace()
@@ -343,9 +303,7 @@ impl ZiskRom2Asm {
         //     *s += &format!(".set pc_{}_log_len, (. - pc_{}_log)\n", pc, pc);
         // }
 
-        if ctx.process() {
-            *code += ".section .text\n";
-        }
+        *code += ".section .text\n";
         *code += ".extern print_abcflag\n";
         *code += ".extern print_char\n";
         *code += ".extern print_step\n";
@@ -430,20 +388,8 @@ impl ZiskRom2Asm {
             *code += ".global emulator_start\n";
             *code += "emulator_start:\n";
         }
-        if ctx.bus_op() {
-            *code += ".global emulator_chunk_bus_op\n";
-            *code += "emulator_chunk_bus_op:\n";
-        }
 
         Self::push_external_registers(&mut ctx, code);
-
-        if ctx.lib() {
-            *code += &format!(
-                "\tadd rsp, {}{}\n",
-                RSP_OFFSET,
-                ctx.comment_str("Reserve space for local variables")
-            );
-        }
 
         *code += &format!("\n{}\n", ctx.comment_str("ZisK registers initialization"));
         *code += &format!("\txor {}, {} {}\n", REG_A, REG_A, ctx.comment_str("a = 0"));
@@ -527,28 +473,12 @@ impl ZiskRom2Asm {
         }
 
         *code += &ctx.full_line_comment("fcall_context initialization".to_string());
-        if ctx.fast()
-            || ctx.minimal_trace()
-            || ctx.rom_histogram()
-            || ctx.main_trace()
-            || ctx.chunks()
-            || ctx.zip()
-        {
-            *code += &format!(
-                "\tlea {}, {} {}\n",
-                REG_ADDRESS,
-                ctx.fcall_ctx,
-                ctx.comment_str("address = fcall context")
-            );
-        } else {
-            *code += &format!("\tmov {}, rsp {}\n", REG_ADDRESS, ctx.comment_str("address = rsp"));
-            *code += &format!(
-                "\tadd {}, {} {}\n",
-                REG_ADDRESS,
-                RSP_FCALL_CTX_OFFSET,
-                ctx.comment_str("address += fcall_ctx_offset")
-            );
-        }
+        *code += &format!(
+            "\tlea {}, {} {}\n",
+            REG_ADDRESS,
+            ctx.fcall_ctx,
+            ctx.comment_str("address = fcall context")
+        );
         for i in 0..70 {
             if (i == FCALL_PARAMS_CAPACITY) || (i == FCALL_RESULT_CAPACITY) {
                 *code += &format!("\tmov qword {}[{} + {}*8], 32\n", ctx.ptr, REG_ADDRESS, i);
@@ -2180,15 +2110,10 @@ impl ZiskRom2Asm {
 
             // Decrement step counter
             *code += &ctx.full_line_comment("STEP".to_string());
-            if ctx.fast() || ctx.rom_histogram() || ctx.main_trace() {
+            if ctx.fast() || ctx.rom_histogram() {
                 *code += &format!("\tinc {} {}\n", REG_STEP, ctx.comment_str("increment step"));
             }
-            if ctx.chunks()
-                || ctx.minimal_trace()
-                || ctx.main_trace()
-                || ctx.bus_op()
-                || ctx.zip()
-                || ctx.mem_op()
+            if ctx.chunks() || ctx.minimal_trace() || ctx.main_trace() || ctx.zip() || ctx.mem_op()
             {
                 *code += &format!(
                     "\tdec {} {}\n",
@@ -2196,36 +2121,31 @@ impl ZiskRom2Asm {
                     ctx.comment_str("decrement step count down")
                 );
                 if instruction.end {
-                    if ctx.process() {
-                        *code +=
-                            &format!("\tmov {}, 1 {}\n", ctx.mem_end, ctx.comment_str("end = 1"));
-                        *code += &format!(
-                            "\tmov {}, 0x{:08x} {}\n",
-                            REG_PC,
-                            ctx.pc,
-                            ctx.comment_str("value = pc")
-                        );
-                        *code += "\tcall chunk_end\n";
-                    }
+                    *code += &format!("\tmov {}, 1 {}\n", ctx.mem_end, ctx.comment_str("end = 1"));
+                    *code += &format!(
+                        "\tmov {}, 0x{:08x} {}\n",
+                        REG_PC,
+                        ctx.pc,
+                        ctx.comment_str("value = pc")
+                    );
+                    *code += "\tcall chunk_end\n";
                 } else {
                     *code += &format!("\tjz pc_{:x}_step_zero\n", ctx.pc);
                     unusual_code += &format!("pc_{:x}_step_zero:\n", ctx.pc);
                     Self::set_pc(&mut ctx, instruction, &mut unusual_code, "z");
-                    if ctx.process() {
-                        unusual_code += "\tcall chunk_end_and_start\n";
-                        unusual_code += &format!(
-                            "\tmov {}, {} {}\n",
-                            REG_VALUE,
-                            ctx.mem_step,
-                            ctx.comment_str("value = step")
-                        );
-                        unusual_code += &format!(
-                            "\tcmp {}, qword ptr [max_steps] {}\n",
-                            REG_VALUE,
-                            ctx.comment_str("step ?= max_steps")
-                        );
-                        unusual_code += "\tjae execute_end\n";
-                    }
+                    unusual_code += "\tcall chunk_end_and_start\n";
+                    unusual_code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_VALUE,
+                        ctx.mem_step,
+                        ctx.comment_str("value = step")
+                    );
+                    unusual_code += &format!(
+                        "\tcmp {}, qword ptr [max_steps] {}\n",
+                        REG_VALUE,
+                        ctx.comment_str("step ?= max_steps")
+                    );
+                    unusual_code += "\tjae execute_end\n";
                     unusual_code += &format!("\tjmp pc_{:x}_step_done\n", ctx.pc);
                     Self::set_pc(&mut ctx, instruction, code, "nz");
                     *code += &format!("pc_{:x}_step_done:\n", ctx.pc);
@@ -2345,14 +2265,6 @@ impl ZiskRom2Asm {
                 ctx.mem_step,
                 REG_STEP,
                 ctx.comment_str("update step variable")
-            );
-        }
-
-        if ctx.lib() {
-            *code += &format!(
-                "\tsub rsp, {} {}\n",
-                RSP_OFFSET,
-                ctx.comment_str("Unreserve space for local variables")
             );
         }
 
@@ -4315,27 +4227,11 @@ impl ZiskRom2Asm {
                 );
 
                 // Set the fcall context address as the first parameter
-                if ctx.fast()
-                    || ctx.minimal_trace()
-                    || ctx.rom_histogram()
-                    || ctx.main_trace()
-                    || ctx.chunks()
-                    || ctx.zip()
-                    || ctx.mem_op()
-                {
-                    *code += &format!(
-                        "\tlea rdi, {} {}\n",
-                        ctx.fcall_ctx,
-                        ctx.comment_str("rdi = fcall context")
-                    );
-                } else {
-                    *code += &format!("\tmov rdi, rsp {}\n", ctx.comment_str("rdi = rsp"));
-                    *code += &format!(
-                        "\tadd rdi, {} {}\n",
-                        RSP_FCALL_CTX_OFFSET,
-                        ctx.comment_str("rdi = fcall context")
-                    );
-                }
+                *code += &format!(
+                    "\tlea rdi, {} {}\n",
+                    ctx.fcall_ctx,
+                    ctx.comment_str("rdi = fcall context")
+                );
 
                 // Call the fcall function
                 Self::push_internal_registers(ctx, code, false);
@@ -5769,6 +5665,7 @@ impl ZiskRom2Asm {
         *code += "\tpop rax\n";
     }
 
+    // Experimental code
     fn trace_reg_access(ctx: &mut ZiskAsmContext, code: &mut String, reg: u64, slot: u64) {
         // REG_VALUE is reg_step = STEP << 4 + 1 + slot
         *code +=
@@ -5846,6 +5743,7 @@ impl ZiskRom2Asm {
         );
     }
 
+    // Experimental code
     fn clear_reg_step_ranges(ctx: &mut ZiskAsmContext, code: &mut String, slot: u64) {
         *code += &format!(
             "\tmov qword {}[reg_step_ranges_{}], 0 {}\n",
@@ -5883,32 +5781,32 @@ impl ZiskRom2Asm {
         }
     }
 
-    fn reg_to_rsp_index(reg: u64) -> u64 {
-        match reg {
-            0 => 0,
-            3 => 1,
-            4 => 2,
-            19 => 3,
-            20 => 4,
-            21 => 5,
-            22 => 6,
-            23 => 7,
-            24 => 8,
-            25 => 9,
-            26 => 10,
-            27 => 11,
-            28 => 12,
-            29 => 13,
-            30 => 14,
-            31 => 15,
-            32 => 16,
-            33 => 17,
-            34 => 18,
-            _ => {
-                panic!("ZiskRom2Asm::reg_to_rsp_index() found invalid source slot={}", reg);
-            }
-        }
-    }
+    // fn reg_to_rsp_index(reg: u64) -> u64 {
+    //     match reg {
+    //         0 => 0,
+    //         3 => 1,
+    //         4 => 2,
+    //         19 => 3,
+    //         20 => 4,
+    //         21 => 5,
+    //         22 => 6,
+    //         23 => 7,
+    //         24 => 8,
+    //         25 => 9,
+    //         26 => 10,
+    //         27 => 11,
+    //         28 => 12,
+    //         29 => 13,
+    //         30 => 14,
+    //         31 => 15,
+    //         32 => 16,
+    //         33 => 17,
+    //         34 => 18,
+    //         _ => {
+    //             panic!("ZiskRom2Asm::reg_to_rsp_index() found invalid source slot={}", reg);
+    //         }
+    //     }
+    // }
 
     fn read_riscv_reg(
         ctx: &mut ZiskAsmContext,
@@ -5923,16 +5821,6 @@ impl ZiskRom2Asm {
                 "\tmovq {}, xmm{} {}\n",
                 dest_reg,
                 xmm_index,
-                ctx.comment(format!("{} = reg[{}]", dest_desc, src_slot))
-            );
-        } else if ctx.bus_op() {
-            let rsp_index = Self::reg_to_rsp_index(src_slot);
-            *code += &format!(
-                "\tmov {}, qword {}[rsp - {}*8 + {}*8] {}\n",
-                dest_reg,
-                ctx.ptr,
-                RSP_REGS_OFFSET,
-                rsp_index,
                 ctx.comment(format!("{} = reg[{}]", dest_desc, src_slot))
             );
         } else {
@@ -5957,16 +5845,6 @@ impl ZiskRom2Asm {
         if XMM_MAPPED_REGS.contains(&dest_slot) {
             let xmm_index = Self::reg_to_xmm_index(dest_slot);
             *code += &format!("\tmovq xmm{}, {} {}\n", xmm_index, src_reg, ctx.comment(comment));
-        } else if ctx.bus_op() {
-            let rsp_index = Self::reg_to_rsp_index(dest_slot);
-            *code += &format!(
-                "\tmov qword {}[rsp - {}*8 + {}*8], {} {}\n",
-                ctx.ptr,
-                RSP_REGS_OFFSET,
-                rsp_index,
-                src_reg,
-                ctx.comment(comment)
-            );
         } else {
             *code += &format!(
                 "\tmov qword {}[reg_{}], {} {}\n",
@@ -5993,25 +5871,13 @@ impl ZiskRom2Asm {
             *code += &format!("\tmovq xmm{}, {} {}\n", xmm_index, REG_AUX, ctx.comment(comment));
         } else {
             *code += &format!("\tmov {}, {}\n", REG_AUX, value);
-            if ctx.bus_op() {
-                let rsp_index = Self::reg_to_rsp_index(dest_slot);
-                *code += &format!(
-                    "\tmov qword {}[rsp - {}*8 + {}*8], {} {}\n",
-                    ctx.ptr,
-                    RSP_REGS_OFFSET,
-                    rsp_index,
-                    REG_AUX,
-                    ctx.comment(comment)
-                );
-            } else {
-                *code += &format!(
-                    "\tmov qword {}[reg_{}], {} {}\n",
-                    ctx.ptr,
-                    dest_slot,
-                    REG_AUX,
-                    ctx.comment(comment)
-                );
-            }
+            *code += &format!(
+                "\tmov qword {}[reg_{}], {} {}\n",
+                ctx.ptr,
+                dest_slot,
+                REG_AUX,
+                ctx.comment(comment)
+            );
         }
     }
 
