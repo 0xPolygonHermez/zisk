@@ -6,7 +6,7 @@ mod fcall;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub use fcall::*;
 
-mod zisklib;
+pub mod zisklib;
 pub use zisklib::*;
 
 mod syscalls;
