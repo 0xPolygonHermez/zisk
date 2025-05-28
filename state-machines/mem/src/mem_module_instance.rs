@@ -63,7 +63,6 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
 
         // let mut last_value = MemLastValue::new(SegmentId(0), 0, 0);
         let mut prev_segment: Option<MemPreviousSegment> = None;
-        let mut intermediate_skip: Option<u32> = None;
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| {
@@ -73,10 +72,6 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
                 if mem_module_collector.prev_segment.is_some() {
                     assert!(prev_segment.is_none());
                     prev_segment = mem_module_collector.prev_segment;
-                }
-                if mem_module_collector.mem_check_point.intermediate_skip.is_some() {
-                    assert!(intermediate_skip.is_none());
-                    intermediate_skip = mem_module_collector.mem_check_point.intermediate_skip;
                 }
                 mem_module_collector.inputs
             })
@@ -93,8 +88,7 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         // This method calculates intermediate accesses without adding inputs and trims
         // the inputs while considering skipped rows for this instance.
         // Additionally, it computes the necessary information for memory continuations.
-        let skip_rows = intermediate_skip.unwrap_or(0);
-        let mut prev_segment =
+        let prev_segment =
             prev_segment.unwrap_or(MemPreviousSegment { addr: self.min_addr, step: 0, value: 0 });
 
         // Extract segment id from instance context
@@ -117,6 +111,7 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
             chunk_check_point,
             self.min_addr,
             self.ictx.plan.segment_id.unwrap(),
+            Some(chunk_id) == self.check_point.first_chunk_id,
         )))
     }
 

@@ -5,20 +5,11 @@ pub struct MemModuleCheckPoint {
     pub to_addr: u32,
     pub to_count: u32,
     pub count: u32,
-    // Some if it's first chunk
-    pub intermediate_skip: Option<u32>,
 }
 
 impl MemModuleCheckPoint {
-    pub fn new(from_addr: u32, skip: u32, count: u32, intermediate_skip: Option<u32>) -> Self {
-        Self {
-            from_addr,
-            from_skip: skip,
-            to_addr: from_addr,
-            to_count: count,
-            intermediate_skip,
-            count,
-        }
+    pub fn new(from_addr: u32, skip: u32, count: u32) -> Self {
+        Self { from_addr, from_skip: skip, to_addr: from_addr, to_count: count, count }
     }
     pub fn add_rows(&mut self, addr: u32, count: u32) {
         // data is processed by order address, an only one address by chunk/step
@@ -36,9 +27,5 @@ impl MemModuleCheckPoint {
             self.to_addr = addr;
             self.to_count = count;
         }
-    }
-    #[inline(always)]
-    pub fn is_first_chunk(&self) -> bool {
-        self.intermediate_skip.is_some()
     }
 }

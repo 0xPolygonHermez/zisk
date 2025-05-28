@@ -7,17 +7,18 @@ use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 #[derive(Debug, Default, Clone)]
 pub struct MemModuleSegmentCheckPoint {
     pub chunks: HashMap<ChunkId, MemModuleCheckPoint>,
+    pub first_chunk_id: Option<ChunkId>,
     pub is_last_segment: bool,
 }
 
 impl MemModuleSegmentCheckPoint {
     #[allow(dead_code)]
-    fn to_string(&self, segment_id: usize) -> String {
+    pub fn to_string(&self, segment_id: usize) -> String {
         let mut result = String::new();
         for (chunk_id, checkpoint) in &self.chunks {
             result = result
                 + &format!(
-                    "#{}@{}  [0x{:08X} s:{}], [0x{:08X} C:{}] C:{} intermediate_skip:{:?}\n",
+                    "MEM #{}@{}  [0x{:08X} s:{}], [0x{:08X} C:{}] C:{}\n",
                     segment_id,
                     chunk_id,
                     checkpoint.from_addr * 8,
@@ -25,7 +26,6 @@ impl MemModuleSegmentCheckPoint {
                     checkpoint.to_addr * 8,
                     checkpoint.to_count,
                     checkpoint.count,
-                    checkpoint.intermediate_skip
                 );
         }
         result
@@ -40,6 +40,7 @@ pub struct MemModulePlanner {
     segments: Vec<MemModuleSegmentCheckPoint>,
     current_segment_chunks: HashMap<ChunkId, MemModuleCheckPoint>,
 
+    first_chunk_id: Option<ChunkId>, // first chunk in segment, used for open segment
     last_chunk: Option<ChunkId>,
     current_chunk_id: Option<ChunkId>,
     reference_addr_chunk: Option<ChunkId>,
@@ -75,6 +76,7 @@ impl MemModulePlanner {
             reference_skip: 0,
             last_chunk: None,
             cursor: MemCountersCursor::new(counters, config.addr_index),
+            first_chunk_id: None,
         }
     }
     pub fn module_plan(&mut self) {
@@ -123,10 +125,14 @@ impl MemModulePlanner {
     }
     fn close_segment(&mut self, is_last_segment: bool) {
         let chunks = std::mem::take(&mut self.current_segment_chunks);
-        self.segments.push(MemModuleSegmentCheckPoint { chunks, is_last_segment });
+        self.segments.push(MemModuleSegmentCheckPoint {
+            chunks,
+            is_last_segment,
+            first_chunk_id: self.first_chunk_id,
+        });
     }
 
-    fn open_segment(&mut self, intermediate_skip: Option<u32>) {
+    fn open_segment(&mut self) {
         // open a segment, must be set the reference chunk;
         // let segment_id = self.segments.len();
         self.close_segment(false);
@@ -135,15 +141,9 @@ impl MemModulePlanner {
             // add a block, if this block is the same chunk, local skips is ignored
             self.current_segment_chunks.insert(
                 reference_chunk,
-                MemModuleCheckPoint::new(
-                    self.reference_addr,
-                    self.reference_skip,
-                    0,
-                    intermediate_skip,
-                ),
+                MemModuleCheckPoint::new(self.reference_addr, self.reference_skip, 0),
             );
-        } else {
-            // println!("OPEN SEGMENT #{}: NO_REFERENCE", segment_id);
+            self.first_chunk_id = Some(reference_chunk);
         }
 
         // all rows are available
@@ -155,10 +155,13 @@ impl MemModulePlanner {
     }
 
     fn add_chunk_to_segment(&mut self, chunk_id: ChunkId, addr: u32, count: u32, skip: u32) {
+        if self.current_segment_chunks.is_empty() {
+            self.first_chunk_id = Some(chunk_id);
+        }
         self.current_segment_chunks
             .entry(chunk_id)
             .and_modify(|checkpoint| checkpoint.add_rows(addr, count))
-            .or_insert(MemModuleCheckPoint::new(addr, skip, count, None));
+            .or_insert(MemModuleCheckPoint::new(addr, skip, count));
     }
     fn preopen_segment(&mut self, addr: u32, intermediate_rows: u32) {
         if self.rows_available == 0 {
@@ -166,7 +169,7 @@ impl MemModulePlanner {
                 // prevent last intermediate row zero
                 self.add_next_addr_to_segment(addr);
             }
-            self.open_segment(Some(intermediate_rows));
+            self.open_segment();
         }
     }
     fn consume_rows(&mut self, addr: u32, rows: u32, skip: u32) {
@@ -181,7 +184,7 @@ impl MemModulePlanner {
         let chunk_id = self.current_chunk_id.unwrap();
 
         if self.rows_available == 0 {
-            self.open_segment(Some(0));
+            self.open_segment();
         }
 
         self.add_chunk_to_segment(chunk_id, addr, rows, skip);
@@ -200,7 +203,7 @@ impl MemModulePlanner {
         let chunk_id = self.current_chunk_id.unwrap();
 
         if self.rows_available == 0 {
-            self.open_segment(Some(skip));
+            self.open_segment();
         }
         self.add_chunk_to_segment(chunk_id, addr, rows, skip);
         self.rows_available -= rows;
