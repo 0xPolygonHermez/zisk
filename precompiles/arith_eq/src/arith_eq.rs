@@ -1,7 +1,5 @@
-use std::sync::Arc;
-
-use log::info;
 use p3_field::PrimeField64;
+use std::sync::Arc;
 
 use pil_std_lib::Std;
 use proofman_common::{create_pool, AirInstance, FromTrace, SetupCtx};
@@ -42,8 +40,6 @@ struct ArithEqStepAddr {
 }
 
 impl<F: PrimeField64> ArithEqSM<F> {
-    const MY_NAME: &'static str = "ArithEq  ";
-
     /// Creates a new ArithEq State Machine instance.
     ///
     /// # Returns
@@ -322,13 +318,12 @@ impl<F: PrimeField64> ArithEqSM<F> {
             let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
             let num_rows_needed = total_inputs * ARITH_EQ_ROWS_BY_OP;
 
-            info!(
-                "{}: ··· Creating ArithEq instance [{} / {} rows filled {:.2}%]",
-                Self::MY_NAME,
-                num_rows_needed,
-                num_rows,
-                num_rows_needed as f64 / num_rows as f64 * 100.0
-            );
+        tracing::info!(
+            "··· Creating ArithEq instance [{} / {} rows filled {:.2}%]",
+            num_rows_needed,
+            num_rows,
+            num_rows_needed as f64 / num_rows as f64 * 100.0
+        );
 
             timer_start_trace!(ARITH_EQ_TRACE);
 

@@ -33,7 +33,7 @@ proofman-macros = { workspace = true }
 witness = { workspace = true }
 p3-field = { workspace=true }
 pil-std-lib = { workspace = true }
-log = { workspace = true }
+tracing = { workspace = true }
 
 env_logger = "0.11"
 p3-goldilocks = { workspace = true}

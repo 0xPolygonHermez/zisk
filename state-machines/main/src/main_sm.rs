@@ -12,8 +12,6 @@ use std::sync::{
     Arc,
 };
 
-use log::info;
-
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{create_pool, AirInstance, FromTrace, ProofCtx, SetupCtx};
@@ -53,8 +51,6 @@ impl MainInstance {
 pub struct MainSM {}
 
 impl MainSM {
-    const MY_NAME: &'static str = "MainSM  ";
-
     /// Computes the main witness trace for a given segment based on the provided proof context,
     /// ROM, and emulation traces.
     ///
@@ -95,14 +91,13 @@ impl MainSM {
             let filled_rows: usize =
                 segment_min_traces.iter().map(|min_trace| min_trace.steps as usize).sum();
 
-            info!(
-                "{}: ··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
-                Self::MY_NAME,
-                segment_id,
-                filled_rows,
-                num_rows,
-                filled_rows as f64 / num_rows as f64 * 100.0
-            );
+        tracing::info!(
+            "··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
+            segment_id,
+            filled_rows,
+            num_rows,
+            filled_rows as f64 / num_rows as f64 * 100.0
+        );
 
             // Calculate final_step of instance, last mem slot of last row. The initial_step is 0 for the
             // first segment, for the rest is the final_step of the previous segment

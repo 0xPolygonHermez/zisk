@@ -16,7 +16,6 @@ use std::{
 use crate::{rom_asm_worker::RomAsmWorker, RomInstance, RomPlanner};
 use asm_runner::AsmRHData;
 use itertools::Itertools;
-use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_common::{
@@ -46,8 +45,6 @@ pub struct RomSM {
 }
 
 impl RomSM {
-    const MY_NAME: &'static str = "RomSM   ";
-
     /// Creates a new instance of the `RomSM` state machine.
     ///
     /// # Arguments
@@ -99,7 +96,7 @@ impl RomSM {
 
         let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
-        info!("{}: ··· Creating Rom instance [{} rows]", Self::MY_NAME, rom_trace.num_rows());
+        tracing::info!("··· Creating Rom instance [{} rows]", rom_trace.num_rows());
 
         // For every instruction in the rom, fill its corresponding ROM trace
         for (i, key) in rom.insts.keys().sorted().enumerate() {
@@ -148,7 +145,7 @@ impl RomSM {
     ) -> AirInstance<F> {
         let mut rom_trace = RomTrace::new_zeroes();
 
-        info!("{}: ··· Creating Rom instance [{} rows]", Self::MY_NAME, rom_trace.num_rows());
+        tracing::info!("··· Creating Rom instance [{} rows]", rom_trace.num_rows());
 
         const MAIN_TRACE_LEN: u64 = MainTrace::<usize>::NUM_ROWS as u64;
 
@@ -301,7 +298,7 @@ impl RomSM {
     ) {
         // Get the ELF file path as a string
         let elf_filename: String = rom_path.to_str().unwrap().into();
-        info!("Computing custom trace ROM");
+        tracing::info!("Computing custom trace ROM");
 
         // Load and parse the ELF file, and transpile it into a ZisK ROM using Riscv2zisk
 

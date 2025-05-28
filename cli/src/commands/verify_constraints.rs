@@ -3,7 +3,6 @@ use clap::Parser;
 use colored::Colorize;
 use executor::ZiskExecutionResult;
 use libloading::{Library, Symbol};
-use log::info;
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ParamsGPU};
@@ -203,15 +202,13 @@ impl ZiskVerifyConstraints {
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
         println!();
-        info!(
+        tracing::info!(
             "{}",
-            "    Zisk: --- VERIFY CONSTRAINTS SUMMARY ------------------------"
-                .bright_green()
-                .bold()
+            "--- VERIFY CONSTRAINTS SUMMARY ------------------------".bright_green().bold()
         );
-        info!("              ► Statistics");
-        info!(
-            "                time: {} seconds, steps: {}",
+        tracing::info!("    ► Statistics");
+        tracing::info!(
+            "      time: {} seconds, steps: {}",
             elapsed.as_secs_f32(),
             result.executed_steps
         );
