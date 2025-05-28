@@ -128,7 +128,7 @@ impl<F: PrimeField> Instance<F> for RomInstance {
                     counter_stats += &collector.rom_counter.counter_stats;
                 }
 
-                *self.counter_stats.lock().unwrap() = Some(counter_stats).into();
+                *self.counter_stats.lock().unwrap() = Some(counter_stats);
             }
 
             Some(RomSM::compute_witness(

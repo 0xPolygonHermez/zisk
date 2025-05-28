@@ -91,13 +91,13 @@ impl MainSM {
             let filled_rows: usize =
                 segment_min_traces.iter().map(|min_trace| min_trace.steps as usize).sum();
 
-        tracing::info!(
-            "··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
-            segment_id,
-            filled_rows,
-            num_rows,
-            filled_rows as f64 / num_rows as f64 * 100.0
-        );
+            tracing::info!(
+                "··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
+                segment_id,
+                filled_rows,
+                num_rows,
+                filled_rows as f64 / num_rows as f64 * 100.0
+            );
 
             // Calculate final_step of instance, last mem slot of last row. The initial_step is 0 for the
             // first segment, for the rest is the final_step of the previous segment

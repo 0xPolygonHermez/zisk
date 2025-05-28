@@ -788,12 +788,12 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
             let num_rows = trace.num_rows();
 
-        tracing::info!(
-            "··· Creating Mem Align instance [{} / {} rows filled {:.2}%]",
-            used_rows,
-            num_rows,
-            used_rows as f64 / num_rows as f64 * 100.0
-        );
+            tracing::info!(
+                "··· Creating Mem Align instance [{} / {} rows filled {:.2}%]",
+                used_rows,
+                num_rows,
+                used_rows as f64 / num_rows as f64 * 100.0
+            );
 
             let mut index = 0;
             for inner_memp_ops in mem_ops {

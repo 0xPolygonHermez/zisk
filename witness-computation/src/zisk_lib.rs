@@ -12,6 +12,7 @@ use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
 use precomp_sha256f::Sha256fManager;
+use proofman::register_std;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
@@ -19,7 +20,6 @@ use sm_rom::RomSM;
 use std::{any::Any, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
 use zisk_core::Riscv2zisk;
-use proofman::register_std;
 
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
@@ -74,7 +74,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         // Step 3: Initialize the secondary state machines
         let std = Std::new(wcm.get_pctx(), wcm.get_sctx());
         register_std(&wcm, &std);
-        
+
         let rom_sm = RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone());
         let binary_sm = BinarySM::new(std.clone());
         let arith_sm = ArithSM::new();

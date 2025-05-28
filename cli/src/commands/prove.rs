@@ -248,7 +248,7 @@ impl ZiskProve {
         )
         .expect("Failed to initialize witness library");
 
-        proofman.register_witness(&mut *witness_lib);
+        proofman.register_witness(&mut *witness_lib, library);
 
         let start = std::time::Instant::now();
 

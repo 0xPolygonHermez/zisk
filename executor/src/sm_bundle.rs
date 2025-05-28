@@ -43,6 +43,7 @@ pub trait SMBundle<F: Field>: Send + Sync {
     ///
     /// # Returns
     /// A vector of data buses with attached collectors for each chunk to be executed
+    #[allow(clippy::borrowed_box)]
     fn build_data_bus_collectors(
         &self,
         secn_instance: &Box<dyn Instance<F>>,

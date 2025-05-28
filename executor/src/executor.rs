@@ -738,7 +738,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
             secn_instances
                 .entry(*global_id)
                 .or_insert_with(|| self.create_secn_instance(*global_id));
-            secn_instances[&global_id].reset();
+            secn_instances[global_id].reset();
         }
 
         [main_global_ids, secn_global_ids_vec].concat()

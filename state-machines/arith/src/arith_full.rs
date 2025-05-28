@@ -73,12 +73,11 @@ impl ArithFullSM {
             let mut range_table_inputs = ArithRangeTableInputs::new();
             let mut table_inputs = ArithTableInputs::new();
 
-tracing::info!(
-    "··· Creating Arith instance [{} / {} rows filled {:.2}%]",
-    total_inputs,
-    num_rows,
-    total_inputs as f64 / num_rows as f64 * 100.0
-);
+            tracing::info!(
+                "··· Creating Arith instance [{} / {} rows filled {:.2}%]",
+                total_inputs,
+                num_rows,
+                total_inputs as f64 / num_rows as f64 * 100.0
             );
 
             // Split the arith_trace.buffer into slices matching each inner vector’s length.

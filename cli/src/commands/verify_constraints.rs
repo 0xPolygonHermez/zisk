@@ -185,7 +185,7 @@ impl ZiskVerifyConstraints {
                 )
                 .expect("Failed to initialize witness library");
 
-                proofman.register_witness(&mut *witness_lib);
+                proofman.register_witness(&mut *witness_lib, library);
 
                 proofman
                     .verify_proof_constraints_from_lib(self.input.clone(), &debug_info)
