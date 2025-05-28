@@ -68,6 +68,13 @@ enum MinimalTraceExecutionMode {
     AsmWithCounter,
 }
 
+#[derive(Debug, Clone)]
+pub struct Stats {
+    pub collect_time: u64,
+    pub witness_time: u64,
+    pub num_chunks: usize,
+}
+
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
 pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
@@ -94,6 +101,8 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     secn_count: Mutex<Option<NestedDeviceMetricsList>>,
     sm_bundle: BD,
     rom_sm: Option<Arc<RomSM>>,
+
+    stats: Mutex<Vec<(usize, usize, Stats)>>,
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
@@ -134,11 +143,16 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             secn_count: Mutex::new(None),
             sm_bundle,
             rom_sm,
+            stats: Mutex::new(Vec::new()),
         }
     }
 
-    pub fn get_execution_result(&self) -> ZiskExecutionResult {
-        self.execution_result.lock().unwrap().clone()
+    pub fn get_execution_result(&self) -> (ZiskExecutionResult, Vec<(usize, usize, Stats)>) {
+        (self.execution_result.lock().unwrap().clone(), self.get_stats())
+    }
+
+    pub fn get_stats(&self) -> Vec<(usize, usize, Stats)> {
+        self.stats.lock().unwrap().clone()
     }
 
     /// Computes minimal traces by processing the ZisK ROM with given public inputs.
@@ -490,6 +504,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         core_id: usize,
         n_cores: usize,
     ) {
+        let witness_start = std::time::Instant::now();
+
         let min_traces_guard = self.min_traces.read().unwrap();
         let min_traces = &*min_traces_guard;
 
@@ -510,6 +526,15 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         );
 
         pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
+
+        let witness_time = witness_start.elapsed().as_millis() as u64;
+        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(main_instance.ictx.global_id);
+
+        self.stats.lock().unwrap().push((
+            airgroup_id,
+            air_id,
+            Stats { collect_time: 0, witness_time, num_chunks: 1 },
+        ));
     }
 
     /// Expands and computes witness for a secondary state machines instance.
@@ -529,6 +554,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         core_id: usize,
         n_cores: usize,
     ) {
+        let collect_start = std::time::Instant::now();
         assert_eq!(secn_instance.instance_type(), InstanceType::Instance, "Instance is a table");
 
         let min_traces = self.min_traces.read().unwrap();
@@ -541,6 +567,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         // Group the instances by the chunk they need to process
         let chunks_to_execute = self.chunks_to_execute(min_traces, secn_instance);
+        let num_chunks = chunks_to_execute.iter().filter(|&&x| x).count();
 
         // Create data buses for each chunk
         let mut data_buses =
@@ -561,11 +588,21 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         // Close the data buses and get for each instance its collectors
         let collectors_by_instance = self.close_data_bus_collectors(data_buses);
 
+        let collect_time = collect_start.elapsed().as_millis() as u64;
+        let witness_start = std::time::Instant::now();
         if let Some(air_instance) =
             secn_instance.compute_witness(pctx, sctx, collectors_by_instance, core_id, n_cores)
         {
             pctx.add_air_instance(air_instance, global_id);
         }
+        let witness_time = witness_start.elapsed().as_millis() as u64;
+        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+
+        self.stats.lock().unwrap().push((
+            airgroup_id,
+            air_id,
+            Stats { collect_time, witness_time, num_chunks },
+        ));
     }
 
     /// Computes and generates witness for secondary state machine instance of type `Table`.
@@ -585,6 +622,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         core_id: usize,
         n_cores: usize,
     ) {
+        let witness_start = std::time::Instant::now();
         assert_eq!(table_instance.instance_type(), InstanceType::Table, "Instance is not a table");
 
         if let Some(air_instance) =
@@ -594,6 +632,15 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 pctx.add_air_instance(air_instance, global_id);
             }
         }
+
+        let witness_time = witness_start.elapsed().as_millis() as u64;
+        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+
+        self.stats.lock().unwrap().push((
+            airgroup_id,
+            air_id,
+            Stats { collect_time: 0, witness_time, num_chunks: 0 },
+        ));
     }
 
     /// Computes all the chunks to be executed to generate the witness given an instance.
