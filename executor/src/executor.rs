@@ -33,13 +33,11 @@ use crate::{DataBusCollectorCollection, DummyCounter};
 use data_bus::DataBusTrait;
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::{
-    BusDevice, BusDeviceMetrics, CheckPoint, DebugBusTime, Instance, InstanceCtx, InstanceType,
-    Plan,
+    BusDevice, BusDeviceMetrics, CheckPoint, Instance, InstanceCtx, InstanceType, Plan,
 };
 use zisk_common::{ChunkId, PayloadType};
 use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
 
-use std::time::Duration;
 use std::{
     collections::HashMap,
     fmt::Debug,
@@ -193,13 +191,13 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             F: PrimeField64,
             DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static,
         {
-            type Output = (ChunkId, DB, Duration);
+            type Output = (ChunkId, DB);
 
             fn execute(&self) -> Self::Output {
                 let mut data_bus = self.data_bus.lock().unwrap();
                 let mut data_bus = std::mem::take(&mut *data_bus).unwrap();
 
-                let duration = ZiskEmulator::process_emu_trace::<F, _, _>(
+                ZiskEmulator::process_emu_trace::<F, _, _>(
                     &self.zisk_rom,
                     &self.emu_trace,
                     &mut data_bus,
@@ -207,7 +205,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
                 data_bus.on_close();
 
-                (self.chunk_id, data_bus, duration)
+                (self.chunk_id, data_bus)
             }
         }
 
@@ -232,18 +230,14 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         )
         .expect("Error during ASM execution");
 
-        data_buses.sort_by_key(|(chunk_id, _, _)| chunk_id.0);
+        data_buses.sort_by_key(|(chunk_id, _)| chunk_id.0);
 
         let mut main_count = Vec::with_capacity(data_buses.len());
         let mut secn_count = Vec::with_capacity(data_buses.len());
 
         let main_idx = self.sm_bundle.main_counter_idx();
-        let mut total_debug_bus_time = DebugBusTime::default();
-        let mut total_duration = Duration::from_secs(0);
-        let data_buses_len = data_buses.len() as u128;
-        for (chunk_id, data_bus, duration) in data_buses {
-            let (debug_bus_time, databus_counters) = data_bus.into_devices(false);
-            total_debug_bus_time += debug_bus_time;
+        for (chunk_id, data_bus) in data_buses {
+            let databus_counters = data_bus.into_devices(false);
 
             let mut secondary = Vec::new();
 
@@ -257,13 +251,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 }
             }
 
-            total_duration += duration;
             secn_count.push(secondary);
         }
-
-        println!("Avg duration by chunk: {:?} ns", total_duration.as_nanos() / data_buses_len);
-
-        println!("{}", total_debug_bus_time);
 
         // Group counters by chunk_id and counter type
         let mut secn_vec_counters =
@@ -380,7 +369,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
                 let (mut main_count, mut secn_count) = (Vec::new(), Vec::new());
 
-                let (debug_bus_time, databus_counters) = data_bus.into_devices(true);
+                let databus_counters = data_bus.into_devices(true);
                 let main_idx = self.sm_bundle.main_counter_idx();
                 for (idx, counter) in databus_counters.into_iter().enumerate() {
                     match main_idx {
@@ -610,7 +599,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let mut collectors_by_instance = Vec::new();
         for (chunk_id, data_bus) in data_buses.iter_mut().enumerate() {
             if let Some(data_bus) = data_bus.take() {
-                let (debug_bus_time, mut detached) = data_bus.into_devices(false);
+                let mut detached = data_bus.into_devices(false);
 
                 // As a convention the first element is the main collector the others are input generators
                 let first_collector = detached.swap_remove(0);

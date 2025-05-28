@@ -1,14 +1,14 @@
-mod services;
 mod memory_ops;
 mod minimal_traces;
 mod rom_histogram;
+mod services;
 mod shutdown;
 mod status;
 
-pub use services::*;
 pub use memory_ops::*;
 pub use minimal_traces::*;
 pub use rom_histogram::*;
+pub use services::*;
 pub use shutdown::*;
 pub use status::*;
 

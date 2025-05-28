@@ -12,9 +12,7 @@ use sm_arith::ArithCounterInputGen;
 use sm_binary::BinaryCounter;
 use sm_main::MainCounter;
 use sm_mem::MemCounters;
-use zisk_common::{
-    BusDevice, BusDeviceMetrics, BusId, DebugBusTime, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID,
-};
+use zisk_common::{BusDevice, BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
 use zisk_core::{
     ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID,
     KECCAK_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID, SHA256_OP_TYPE_ID,
@@ -30,7 +28,6 @@ use zisk_core::{
 /// * `BD` - The type of devices (subscribers) connected to the bus, implementing the `BusDevice`
 ///   trait.
 pub struct StaticDataBus<D> {
-    debug_bus_time: DebugBusTime,
     /// List of devices connected to the bus.
     pub main_counter: MainCounter,
     pub mem_counter: MemCounters,
@@ -55,7 +52,6 @@ impl StaticDataBus<PayloadType> {
         arith_eq_counter: ArithEqCounterInputGen,
     ) -> Self {
         Self {
-            debug_bus_time: DebugBusTime::default(),
             main_counter: MainCounter::new(),
             mem_counter,
             binary_counter,
@@ -136,16 +132,12 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
         self.arith_eq_counter.on_close();
     }
 
-    fn into_devices(
-        mut self,
-        execute_on_close: bool,
-    ) -> (DebugBusTime, Vec<Option<Box<dyn BusDeviceMetrics>>>) {
+    fn into_devices(mut self, execute_on_close: bool) -> Vec<Option<Box<dyn BusDeviceMetrics>>> {
         if execute_on_close {
             self.on_close();
         }
 
         let StaticDataBus {
-            debug_bus_time,
             main_counter,
             mem_counter,
             binary_counter,
@@ -167,6 +159,6 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
             Some(Box::new(arith_eq_counter)),
         ];
 
-        (debug_bus_time, counters)
+        counters
     }
 }

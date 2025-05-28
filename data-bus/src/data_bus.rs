@@ -5,7 +5,7 @@
 
 use std::collections::VecDeque;
 
-use zisk_common::{BusDevice, BusId, DebugBusTime};
+use zisk_common::{BusDevice, BusId};
 
 pub trait DataBusTrait<D, T> {
     /// Writes data to the bus and processes it through the registered devices.
@@ -17,7 +17,7 @@ pub trait DataBusTrait<D, T> {
 
     fn on_close(&mut self);
 
-    fn into_devices(self, execute_on_close: bool) -> (DebugBusTime, Vec<Option<T>>);
+    fn into_devices(self, execute_on_close: bool) -> Vec<Option<T>>;
 }
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
@@ -118,7 +118,7 @@ impl<D, BD: BusDevice<D>> DataBusTrait<D, BD> for DataBus<D, BD> {
         }
     }
 
-    fn into_devices(self, execute_on_close: bool) -> (DebugBusTime, Vec<Option<BD>>) {
+    fn into_devices(self, execute_on_close: bool) -> Vec<Option<BD>> {
         let total_len = self.devices.len() + self.none_devices.len();
         let mut result = Vec::with_capacity(total_len);
 
@@ -141,6 +141,6 @@ impl<D, BD: BusDevice<D>> DataBusTrait<D, BD> for DataBus<D, BD> {
             }
         }
 
-        (DebugBusTime::default(), result)
+        result
     }
 }
