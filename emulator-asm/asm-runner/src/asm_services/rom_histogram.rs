@@ -13,10 +13,10 @@ impl ToRequestPayload for RomHistogramRequest {
 }
 
 pub struct RomHistogramResponse {
-    result: u8,
-    allocated_len: u64,
-    trace_len: u64,
-    last_step: u64,
+    pub result: u8,
+    pub allocated_len: u64,
+    pub trace_len: u64,
+    pub last_step: u64,
 }
 
 impl FromResponsePayload for RomHistogramResponse {

@@ -1,6 +1,7 @@
 use super::{
-    FromResponsePayload, MinimalTraceRequest, MinimalTraceResponse, PingRequest, PingResponse,
-    ResponseData, ShutdownRequest, ShutdownResponse, ToRequestPayload,
+    FromResponsePayload, MemoryOperationsRequest, MemoryOperationsResponse, MinimalTraceRequest,
+    MinimalTraceResponse, PingRequest, PingResponse, ResponseData, ShutdownRequest,
+    ShutdownResponse, ToRequestPayload,
 };
 use crate::{AsmRunnerOptions, AsmRunnerTraceLevel};
 use anyhow::{Context, Result};
@@ -14,6 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsmService {
     MT,
     RH,
@@ -46,7 +48,7 @@ impl AsmServices {
         let services = [
             AsmService::MT,
             // AsmService::RH,
-            // AsmService::MO,
+            AsmService::MO,
         ];
 
         // Check if a service is already running
@@ -123,18 +125,18 @@ impl AsmServices {
                 command.arg("--generate_rom_histogram");
             }
             AsmService::MO => {
-                unimplemented!("MO service is not implemented yet");
+                command.arg("--generate_mem_op");
             }
         }
 
         command.arg("-s");
 
-        // command.stdout(std::process::Stdio::inherit()).stderr(std::process::Stdio::inherit());
+        command.stdout(std::process::Stdio::inherit()).stderr(std::process::Stdio::inherit());
 
         if !options.log_output {
             command.arg("-o");
-            command.stdout(process::Stdio::null());
-            command.stderr(process::Stdio::null());
+            // command.stdout(process::Stdio::null());
+            // command.stderr(process::Stdio::null());
         }
         if options.metrics {
             command.arg("-m");
@@ -183,6 +185,13 @@ impl AsmServices {
         chunk_len: u64,
     ) -> Result<MinimalTraceResponse> {
         Self::send_request(&AsmService::MT, &MinimalTraceRequest { max_steps, chunk_len })
+    }
+
+    pub fn send_memory_ops_request(
+        max_steps: u64,
+        chunk_len: u64,
+    ) -> Result<MemoryOperationsResponse> {
+        Self::send_request(&AsmService::MO, &MemoryOperationsRequest { max_steps, chunk_len })
     }
 
     fn send_request<Req, Res>(service: &AsmService, req: &Req) -> Result<Res>

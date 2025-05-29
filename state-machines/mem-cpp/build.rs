@@ -23,4 +23,21 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", build_dir.display());
     println!("cargo:rustc-link-lib=static=memcpp");
     println!("cargo:rustc-link-lib=dylib=stdc++");
+
+    watch_dir_recursive("cpp");
+}
+
+fn watch_dir_recursive<P: AsRef<Path>>(dir: P) {
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+
+        if path.is_dir() {
+            watch_dir_recursive(&path);
+        } else if let Some(ext) = path.extension() {
+            if ext == "cpp" || ext == "hpp" {
+                println!("cargo:rerun-if-changed={}", path.display());
+            }
+        }
+    }
 }

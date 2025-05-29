@@ -1,3 +1,5 @@
+use std::os::raw::c_void;
+
 use crate::*;
 
 pub struct MemPlanner {
@@ -24,12 +26,12 @@ impl MemPlanner {
     }
 
     /// Adds a chunk of memory data
-    pub fn add_chunk(&self, data: &mut [bindings::MemCountersBusData]) {
+    pub fn add_chunk(&self, len: u64, data: *const c_void) {
         unsafe {
             bindings::add_chunk_mem_count_and_plan(
                 self.inner,
-                data.as_mut_ptr(),
-                data.len() as u32,
+                data as *mut bindings::MemCountersBusData,
+                len as u32,
             );
         }
     }

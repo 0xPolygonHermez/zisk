@@ -1,8 +1,8 @@
 use super::{FromResponsePayload, RequestData, ResponseData, ToRequestPayload, CMD_MO_REQUEST_ID};
 
 pub struct MemoryOperationsRequest {
-    max_steps: u64,
-    chunk_len: u64,
+    pub max_steps: u64,
+    pub chunk_len: u64,
 }
 
 impl ToRequestPayload for MemoryOperationsRequest {
@@ -12,9 +12,9 @@ impl ToRequestPayload for MemoryOperationsRequest {
 }
 
 pub struct MemoryOperationsResponse {
-    result: u8,
-    allocated_len: u64,
-    trace_len: u64,
+    pub result: u8,
+    pub allocated_len: u64,
+    pub trace_len: u64,
 }
 
 impl FromResponsePayload for MemoryOperationsResponse {

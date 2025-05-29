@@ -1,4 +1,23 @@
 use std::process::Command;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum AsmRunError {
+    #[error("Failed to create semaphore '{0}': {1}")]
+    SemaphoreError(&'static str, #[source] named_sem::Error),
+    #[error("Thread pool creation failed")]
+    ThreadPoolError(#[from] rayon::ThreadPoolBuildError),
+    #[error("Semaphore wait failed: {0}")]
+    SemaphoreWaitError(#[from] std::io::Error),
+    #[error("Child process exited with code: {0}")]
+    ExitCode(u32),
+    #[error("Thread join failed")]
+    JoinPanic,
+    #[error("Child service returned error: {0}")]
+    ServiceError(#[source] anyhow::Error),
+    #[error("Arc unwrap failed")]
+    ArcUnwrap,
+}
 
 pub enum AsmRunnerTraceLevel {
     None,

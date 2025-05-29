@@ -29,12 +29,16 @@ pub fn generate_assembly(
     let bin_mt_file = format!("{}-mt.bin", file_stem);
     let bin_mt_file = base_path.with_file_name(bin_mt_file);
 
-    let bin_rom_file = format!("{}-rh.bin", file_stem);
-    let bin_rom_file = base_path.with_file_name(bin_rom_file);
+    let bin_rh_file = format!("{}-rh.bin", file_stem);
+    let bin_rh_file = base_path.with_file_name(bin_rh_file);
+
+    let bin_mo_file = format!("{}-mo.bin", file_stem);
+    let bin_mo_file = base_path.with_file_name(bin_mo_file);
 
     [
         (bin_mt_file, AsmGenerationMethod::AsmMinimalTraces),
-        (bin_rom_file, AsmGenerationMethod::AsmRomHistogram),
+        (bin_rh_file, AsmGenerationMethod::AsmRomHistogram),
+        (bin_mo_file, AsmGenerationMethod::AsmMemOp),
     ]
     .iter()
     .for_each(|(file, gen_method)| {

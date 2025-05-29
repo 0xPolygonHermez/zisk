@@ -1,70 +1,41 @@
 use libc::{close, shm_unlink, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR};
 
+use mem_planner_cpp::MemPlanner;
 use named_sem::NamedSemaphore;
-use rayon::ThreadPoolBuilder;
-use zisk_common::{ChunkId, EmuTrace};
+use zisk_common::ChunkId;
 
 use std::ffi::c_void;
 use std::fmt::Debug;
 use std::path::Path;
-use std::sync::{mpsc, Arc};
-use std::time::{Duration, Instant};
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use std::time::Duration;
 use std::{fs, ptr};
 
-use tracing::{error, info};
+use tracing::error;
 
-use crate::{shmem_utils, AsmInputC2, AsmMTChunk, AsmMTHeader, AsmServices};
+use crate::{
+    shmem_utils, AsmInputC2, AsmMOChunk, AsmMOHeader, AsmRunError, AsmServices, MemOpsTrace,
+};
 
 use anyhow::{Context, Result};
-use thiserror::Error;
-
-pub trait Task: Send + Sync + 'static {
-    type Output: Send + 'static;
-    fn execute(&self) -> Self::Output;
-}
-
-pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, Arc<EmuTrace>) -> T + Send + Sync + 'a>;
-
-#[derive(Debug)]
-pub enum MinimalTraces {
-    None,
-    EmuTrace(Vec<EmuTrace>),
-    AsmEmuTrace(AsmRunnerMT),
-}
-
-#[derive(Debug, Error)]
-pub enum AsmRunError {
-    #[error("Failed to create semaphore '{0}': {1}")]
-    SemaphoreError(&'static str, #[source] named_sem::Error),
-    #[error("Thread pool creation failed")]
-    ThreadPoolError(#[from] rayon::ThreadPoolBuildError),
-    #[error("Semaphore wait failed: {0}")]
-    SemaphoreWaitError(#[from] std::io::Error),
-    #[error("Child process exited with code: {0}")]
-    ExitCode(u32),
-    #[error("Thread join failed")]
-    JoinPanic,
-    #[error("Child service returned error: {0}")]
-    ServiceError(#[source] anyhow::Error),
-    #[error("Arc unwrap failed")]
-    ArcUnwrap,
-}
 
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
 #[derive(Debug)]
-pub struct AsmRunnerMT {
+pub struct AsmRunnerMO {
     shmem_output_name: String,
     mapped_ptr: *mut c_void,
-    pub vec_chunks: Vec<EmuTrace>,
+    pub vec_chunks: Vec<MemOpsTrace>,
 }
 
-unsafe impl Send for AsmRunnerMT {}
-unsafe impl Sync for AsmRunnerMT {}
+unsafe impl Send for AsmRunnerMO {}
+unsafe impl Sync for AsmRunnerMO {}
 
-impl Drop for AsmRunnerMT {
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+impl Drop for AsmRunnerMO {
     fn drop(&mut self) {
         for chunk in &mut self.vec_chunks {
-            std::mem::forget(std::mem::take(&mut chunk.mem_reads));
+            std::mem::forget(std::mem::take(&mut chunk.mem_ops));
         }
         let total_size = self.total_size();
         unsafe {
@@ -80,29 +51,25 @@ impl Drop for AsmRunnerMT {
     }
 }
 
-impl AsmRunnerMT {
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+impl AsmRunnerMO {
     pub fn new(
         shmem_output_name: String,
         mapped_ptr: *mut std::ffi::c_void,
-        vec_chunks: Vec<EmuTrace>,
+        vec_chunks: Vec<MemOpsTrace>,
     ) -> Self {
         Self { shmem_output_name, mapped_ptr, vec_chunks }
     }
 
     pub fn total_size(&self) -> usize {
-        self.vec_chunks.iter().map(|chunk| chunk.mem_reads.len() * size_of::<u64>()).sum::<usize>()
-            + size_of::<AsmMTHeader>()
+        self.vec_chunks.iter().map(|chunk| chunk.mem_ops.len() * size_of::<u64>()).sum::<usize>()
+            + size_of::<AsmMOHeader>()
     }
 
-    pub fn run_and_count<T: Task>(
-        inputs_path: &Path,
-        max_steps: u64,
-        chunk_size: u64,
-        task_factory: TaskFactory<T>,
-    ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
-        const SHMEM_INPUT_NAME: &str = "ZISKMT_input";
-        const SHMEM_OUTPUT_NAME: &str = "ZISKMT_output";
-        const SEM_CHUNK_DONE_NAME: &str = "/ZISKMT_chunk_done";
+    pub fn run(inputs_path: &Path, max_steps: u64, chunk_size: u64) -> Result<AsmRunnerMO> {
+        const SHMEM_INPUT_NAME: &str = "ZISKMO_input";
+        const SHMEM_OUTPUT_NAME: &str = "ZISKMO_output";
+        const SEM_CHUNK_DONE_NAME: &str = "/ZISKMO_chunk_done";
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
         let mut sem_chunk_done = NamedSemaphore::create(SEM_CHUNK_DONE_NAME, 0)
@@ -110,55 +77,70 @@ impl AsmRunnerMT {
 
         Self::write_input(inputs_path, SHMEM_INPUT_NAME);
 
-        let start = Instant::now();
-
+        let should_exit = Arc::new(AtomicBool::new(false));
+        let should_exit_cloned = Arc::clone(&should_exit);
         let handle = std::thread::spawn(move || {
-            AsmServices::send_minimal_trace_request(max_steps, chunk_size)
-        });
+            let mut sem_chunk_done = NamedSemaphore::create(SEM_CHUNK_DONE_NAME, 0)
+                .expect("Failed to create named semaphore");
+            let response = AsmServices::send_memory_ops_request(max_steps, chunk_size);
 
-        let pool = ThreadPoolBuilder::new().num_threads(24).build().map_err(AsmRunError::from)?;
-        let (sender, receiver) = mpsc::channel();
+            should_exit_cloned.store(true, std::sync::atomic::Ordering::SeqCst);
+            sem_chunk_done.post().expect("Failed to post semaphore sem_chunk_done");
+            response
+        });
 
         let mut chunk_id = ChunkId(0);
 
         // Read the header data
-        let header_ptr = Self::get_output_ptr(SHMEM_OUTPUT_NAME) as *const AsmMTHeader;
+        let header_ptr = Self::get_output_ptr(SHMEM_OUTPUT_NAME) as *const AsmMOHeader;
+        let header = unsafe { std::ptr::read(header_ptr) };
+        println!("Header: {:?}", header);
 
         // From header, skips the header size and 8 bytes more to get the data pointer.
         // The 8 bytes are for the number of chunks.
-        let mut data_ptr = unsafe {
-            (header_ptr as *mut u8).add(std::mem::size_of::<AsmMTHeader>() + 8) as *const AsmMTChunk
-        };
+        let mut data_ptr = unsafe { header_ptr.add(1) } as *const AsmMOChunk;
 
-        let mut emu_traces = Vec::new();
+        // TODO! REMOVE !!!
+        std::thread::sleep(Duration::from_millis(50));
+
+        // Initialize C++ memory operations trace
+        let mem_planner = MemPlanner::new();
+        mem_planner.execute();
+
+        let mut mo_traces = Vec::new();
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
-                    let emu_trace = loop {
-                        // Read only memory reads size
-                        let chunk = unsafe { std::ptr::read(data_ptr) };
-
-                        if chunk.mem_reads_size == MEM_READS_SIZE_DUMMY {
-                            std::thread::sleep(Duration::from_nanos(1));
-                        } else {
-                            break AsmMTChunk::to_emu_trace(&mut data_ptr);
-                        }
-                    };
-
-                    let should_exit = emu_trace.end;
-                    let emu_trace = Arc::new(emu_trace);
-                    let task = task_factory(chunk_id, emu_trace.clone());
-                    emu_traces.push(emu_trace);
-
-                    let sender = sender.clone();
-                    pool.spawn(move || {
-                        sender.send(task.execute()).unwrap();
-                    });
-
-                    if should_exit {
+                    let header = unsafe { std::ptr::read(header_ptr) };
+                    println!("Header after wait: {:?}", header);
+                    if should_exit.load(std::sync::atomic::Ordering::SeqCst)
+                        && chunk_id.0 == header.num_chunks as usize
+                    {
                         break 0;
                     }
+
+                    let mo_trace = loop {
+                        // Read only memory reads size
+                        let chunk = unsafe { std::ptr::read(data_ptr) };
+                        println!(
+                            "Pre-reading to check if it is  a 0xFFFFFFFFFFFFFFFF ? {:?}",
+                            chunk.mem_ops_size
+                        );
+
+                        if chunk.mem_ops_size == MEM_READS_SIZE_DUMMY {
+                            std::thread::sleep(Duration::from_nanos(1));
+                        } else {
+                            println!("{:?}", chunk);
+                            mem_planner.add_chunk(chunk.mem_ops_size, unsafe {
+                                (data_ptr as *const u8).add(8) as *const c_void
+                            });
+                            break AsmMOChunk::to_mem_ops(&mut data_ptr);
+                        }
+                    };
+                    mo_traces.push(mo_trace);
+
                     chunk_id.0 += 1;
+                    println!("Memory operation chunk ID: {}", chunk_id.0);
                 }
                 Err(e) => {
                     error!("Semaphore sem_chunk_done error: {:?}", e);
@@ -178,14 +160,6 @@ impl AsmRunnerMT {
                 .context("Child process returned error");
         }
 
-        // Collect results
-        drop(sender);
-        let tasks: Vec<T::Output> = receiver.iter().collect();
-
-        let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
-        let mhz = (total_steps as f64 / start.elapsed().as_secs_f64()) / 1_000_000.0;
-        info!("··· Assembly execution speed: {:.2} MHz", mhz);
-
         // Wait for the assembly emulator to complete writing the trace
         let response = handle
             .join()
@@ -196,16 +170,11 @@ impl AsmRunnerMT {
         assert!(response.trace_len > 0);
         assert!(response.trace_len <= response.allocated_len);
 
-        // Unwrap the Arc pointers
-        let emu_traces: Vec<EmuTrace> = emu_traces
-            .into_iter()
-            .map(|arc| Arc::try_unwrap(arc).map_err(|_| AsmRunError::ArcUnwrap))
-            .collect::<std::result::Result<_, _>>()?;
+        println!("Memory operations trace length: {}", mo_traces.len());
+        mem_planner.set_completed();
+        mem_planner.wait();
 
-        Ok((
-            AsmRunnerMT::new(SHMEM_OUTPUT_NAME.to_string(), header_ptr as *mut c_void, emu_traces),
-            tasks,
-        ))
+        Ok(AsmRunnerMO::new(SHMEM_OUTPUT_NAME.to_string(), header_ptr as *mut c_void, mo_traces))
     }
 
     pub fn write_input(inputs_path: &Path, shmem_input_name: &str) {
@@ -230,12 +199,32 @@ impl AsmRunnerMT {
     pub fn get_output_ptr(shmem_output_name: &str) -> *mut std::ffi::c_void {
         let fd =
             shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR | S_IXUSR);
-        let header_size = size_of::<AsmMTHeader>();
+        let header_size = size_of::<AsmMOHeader>();
         let temp = shmem_utils::map(fd, header_size, PROT_READ, "header temp map");
-        let header = unsafe { (temp as *const AsmMTHeader).read() };
+        let header = unsafe { (temp as *const AsmMOHeader).read() };
         unsafe {
             shmem_utils::unmap(temp, header_size);
         }
         shmem_utils::map(fd, header.mt_allocated_size as usize, PROT_READ, "output full map")
+    }
+}
+
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+impl AsmRunnerMO {
+    pub fn new(_: String, _: *mut c_void, _: Vec<EmuTrace>) -> Self {
+        panic!(
+            "AsmRunnerMO::new() is not supported on this platform. Only Linux x86_64 is supported."
+        )
+    }
+
+    pub fn run_and_count<T: Task>(
+        _: &Path,
+        _: &Path,
+        _: u64,
+        _: u64,
+        _: AsmRunnerOptions,
+        _: TaskFactory<T>,
+    ) -> (AsmRunnerMO, Vec<T::Output>) {
+        panic!("AsmRunnerMO::run_and_count() is not supported on this platform. Only Linux x86_64 is supported.")
     }
 }

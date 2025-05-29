@@ -25,6 +25,7 @@ pub struct AsmRunnerRomH {
 unsafe impl Send for AsmRunnerRomH {}
 unsafe impl Sync for AsmRunnerRomH {}
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl Drop for AsmRunnerRomH {
     fn drop(&mut self) {
         unsafe {
@@ -43,6 +44,7 @@ impl Drop for AsmRunnerRomH {
     }
 }
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerRomH {
     pub fn new(
         shmem_output_name: String,
@@ -260,5 +262,25 @@ impl AsmRunnerRomH {
             let err = std::io::Error::last_os_error();
             panic!("mmap failed: {:?} (size: {} bytes) at {}:{}", err, size, file, line);
         }
+    }
+}
+
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+impl AsmRunnerRomH {
+    pub fn new(
+        _shmem_output_name: String,
+        _mapped_ptr: *mut c_void,
+        _asm_rowh_output: AsmRHData,
+    ) -> Self {
+        panic!("AsmRunnerRomH::new() is not supported on this platform. Only Linux x86_64 is supported.");
+    }
+
+    pub fn run(
+        _rom_asm_path: &Path,
+        _inputs_path: Option<&Path>,
+        _shm_size: u64,
+        _options: AsmRunnerOptions,
+    ) -> AsmRunnerRomH {
+        panic!("AsmRunnerRomH::run() is not supported on this platform. Only Linux x86_64 is supported.");
     }
 }

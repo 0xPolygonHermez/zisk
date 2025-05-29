@@ -259,6 +259,7 @@ dependencies = [
  "anyhow",
  "clap",
  "libc",
+ "mem-planner-cpp",
  "named-sem",
  "rayon",
  "thiserror 2.0.12",
@@ -1768,7 +1769,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mem-cpp"
+name = "mem-planner-cpp"
 version = "0.9.0"
 
 [[package]]
@@ -3218,7 +3219,7 @@ dependencies = [
 name = "sm-mem"
 version = "0.9.0"
 dependencies = [
- "mem-cpp",
+ "mem-planner-cpp",
  "num-bigint",
  "num-traits",
  "p3-field",

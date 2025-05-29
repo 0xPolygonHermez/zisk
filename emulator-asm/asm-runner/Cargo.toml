@@ -14,6 +14,7 @@ path = "src/lib.rs"
 [dependencies]
 zisk-common = { path = "../../common" }
 zisk-core = { path = "../../core" }
+mem-planner-cpp = { path = "../../state-machines/mem-cpp" }
 
 tracing = { workspace = true}
 rayon = { workspace = true}
