@@ -6,6 +6,7 @@ use crate::{
 };
 use anyhow::Result;
 use colored::Colorize;
+use executor::Stats;
 use executor::ZiskExecutionResult;
 use libloading::{Library, Symbol};
 use p3_goldilocks::Goldilocks;
@@ -283,10 +284,10 @@ impl ZiskProve {
 
         let elapsed = start.elapsed();
 
-        let result: ZiskExecutionResult = *witness_lib
+        let (result, _): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
             .get_execution_result()
             .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-            .downcast::<ZiskExecutionResult>()
+            .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
         let elapsed = elapsed.as_secs_f64();
