@@ -15,6 +15,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
 };
+use zisk_pil::*;
 
 use crate::{
     commands::{cli_fail_if_gpu_mode, cli_fail_if_macos, Field, ZiskLibInitFn},
@@ -33,7 +34,7 @@ use super::{get_default_proving_key, get_default_witness_computation_lib};
         .multiple(false)
         .required(false)
 ))]
-pub struct ZiskVerifyConstraints {
+pub struct ZiskStats {
     /// Witness computation dynamic library path
     #[clap(short = 'w', long)]
     pub witness_lib: Option<PathBuf>,
@@ -76,7 +77,7 @@ pub struct ZiskVerifyConstraints {
     pub sha256f_script: Option<PathBuf>,
 }
 
-impl ZiskVerifyConstraints {
+impl ZiskStats {
     pub fn run(&mut self) -> Result<()> {
         cli_fail_if_macos()?;
         cli_fail_if_gpu_mode()?;
@@ -103,8 +104,6 @@ impl ZiskVerifyConstraints {
         };
 
         print_banner();
-
-        let start = std::time::Instant::now();
 
         let default_cache_path =
             std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
@@ -176,7 +175,7 @@ impl ZiskVerifyConstraints {
                 )
                 .expect("Failed to initialize witness library");
 
-                ProofMan::<Goldilocks>::verify_proof_constraints_from_lib(
+                ProofMan::<Goldilocks>::compute_witness(
                     &mut *witness_lib,
                     self.get_proving_key(),
                     PathBuf::new(),
@@ -187,9 +186,7 @@ impl ZiskVerifyConstraints {
             }
         };
 
-        let elapsed = start.elapsed();
-
-        let (result, _): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
+        let (_, stats): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
             .get_execution_result()
             .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
             .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
@@ -197,15 +194,14 @@ impl ZiskVerifyConstraints {
 
         println!();
         tracing::info!(
-            "{}",
-            "--- VERIFY CONSTRAINTS SUMMARY ------------------------".bright_green().bold()
+            "{} {}",
+            "--- STATS SUMMARY ".bright_green().bold(),
+            "-".repeat(55).bright_green().bold()
         );
-        tracing::info!("    ► Statistics");
-        tracing::info!(
-            "      time: {} seconds, steps: {}",
-            elapsed.as_secs_f32(),
-            result.executed_steps
-        );
+
+        Self::print_stats(stats);
+
+        println!();
 
         Ok(())
     }
@@ -268,6 +264,141 @@ impl ZiskVerifyConstraints {
             get_default_proving_key()
         } else {
             self.proving_key.clone().unwrap()
+        }
+    }
+
+    /// Prints stats individually and grouped, with aligned columns.
+    ///
+    /// # Arguments
+    /// * `stats_mutex` - A reference to the Mutex holding the stats vector.
+    pub fn print_stats(stats: Vec<(usize, usize, Stats)>) {
+        tracing::info!("    Stats by Air:");
+        tracing::info!(
+            "    {:<8} {:<25} {:<8} {:<12} {:<12}",
+            "air id",
+            "Name",
+            "chunks",
+            "collect (ms)",
+            "witness (ms)",
+        );
+        tracing::info!("    {}", "-".repeat(70));
+
+        // Sort individual stats by (airgroup_id, air_id)
+        let mut sorted_stats = stats.clone();
+        sorted_stats.sort_by_key(|(airgroup_id, air_id, _)| (*airgroup_id, *air_id));
+
+        for (airgroup_id, air_id, stats) in sorted_stats.iter() {
+            tracing::info!(
+                "    {:<8} {:<25} {:<8} {:<12} {:<12}",
+                air_id,
+                Self::air_name(*airgroup_id, *air_id),
+                stats.num_chunks,
+                stats.collect_time,
+                stats.witness_time,
+            );
+        }
+
+        // Group stats
+        let mut grouped: HashMap<(usize, usize), Vec<Stats>> = HashMap::new();
+        for (airgroup_id, air_id, stats) in stats.iter() {
+            grouped.entry((*airgroup_id, *air_id)).or_default().push(stats.clone());
+        }
+
+        println!();
+        tracing::info!("    Grouped Stats:");
+        tracing::info!(
+            "    {:<8} {:<25}   {:<6}   {:<20}   {:<20}   {:<20}",
+            "Air id",
+            "Name",
+            "Count",
+            "Chunks",
+            "Collect (ms)",
+            "Witness (ms)",
+        );
+        tracing::info!(
+            "    {:<8} {:<25}   {:<6}   {:<6} {:<6} {:<6}   {:<6} {:<6} {:<6}   {:<6} {:<6} {:<6}",
+            "",
+            "",
+            "",
+            "min",
+            "max",
+            "avg",
+            "min",
+            "max",
+            "avg",
+            "min",
+            "max",
+            "avg",
+        );
+        tracing::info!("    {}", "-".repeat(109));
+
+        let mut grouped_sorted: Vec<_> = grouped.into_iter().collect();
+        grouped_sorted.sort_by_key(|((airgroup_id, air_id), _)| (*airgroup_id, *air_id));
+
+        for ((airgroup_id, air_id), entries) in grouped_sorted {
+            let count = entries.len() as u64;
+
+            let (mut c_min, mut c_max, mut c_sum) = (u64::MAX, 0, 0);
+            let (mut w_min, mut w_max, mut w_sum) = (u64::MAX, 0, 0);
+            let (mut n_min, mut n_max, mut n_sum) = (usize::MAX, 0, 0usize);
+
+            for e in &entries {
+                c_min = c_min.min(e.collect_time);
+                c_max = c_max.max(e.collect_time);
+                c_sum += e.collect_time;
+
+                w_min = w_min.min(e.witness_time);
+                w_max = w_max.max(e.witness_time);
+                w_sum += e.witness_time;
+
+                n_min = n_min.min(e.num_chunks);
+                n_max = n_max.max(e.num_chunks);
+                n_sum += e.num_chunks;
+            }
+
+            tracing::info!(
+                "    {:<8} {:<25} | {:<6} | {:<6} {:<6} {:<6} | {:<6} {:<6} {:<6} | {:<6} {:<6} {:<6}",
+                air_id,
+                Self::air_name(airgroup_id, air_id),
+                count,
+                n_min,
+                n_max,
+                n_sum as u64 / count,
+                c_min,
+                c_max,
+                c_sum / count,
+                w_min,
+                w_max,
+                w_sum / count,
+            );
+        }
+    }
+
+    fn air_name(_airgroup_id: usize, air_id: usize) -> String {
+        match air_id {
+            val if val == MAIN_AIR_IDS[0] => "Main".to_string(),
+            val if val == ROM_AIR_IDS[0] => "ROM".to_string(),
+            val if val == MEM_AIR_IDS[0] => "MEM".to_string(),
+            val if val == ROM_DATA_AIR_IDS[0] => "ROM_DATA".to_string(),
+            val if val == INPUT_DATA_AIR_IDS[0] => "INPUT_DATA".to_string(),
+            val if val == MEM_ALIGN_AIR_IDS[0] => "MEM_ALIGN".to_string(),
+            val if val == MEM_ALIGN_ROM_AIR_IDS[0] => "MEM_ALIGN_ROM".to_string(),
+            val if val == ARITH_AIR_IDS[0] => "ARITH".to_string(),
+            val if val == ARITH_TABLE_AIR_IDS[0] => "ARITH_TABLE".to_string(),
+            val if val == ARITH_RANGE_TABLE_AIR_IDS[0] => "ARITH_RANGE_TABLE".to_string(),
+            val if val == ARITH_EQ_AIR_IDS[0] => "ARITH_EQ".to_string(),
+            val if val == ARITH_EQ_LT_TABLE_AIR_IDS[0] => "ARITH_EQ_LT_TABLE".to_string(),
+            val if val == BINARY_AIR_IDS[0] => "BINARY".to_string(),
+            val if val == BINARY_ADD_AIR_IDS[0] => "BINARY_ADD".to_string(),
+            val if val == BINARY_TABLE_AIR_IDS[0] => "BINARY_TABLE".to_string(),
+            val if val == BINARY_EXTENSION_AIR_IDS[0] => "BINARY_EXTENSION".to_string(),
+            val if val == BINARY_EXTENSION_TABLE_AIR_IDS[0] => "BINARY_EXTENSION_TABLE".to_string(),
+            val if val == KECCAKF_AIR_IDS[0] => "KECCAKF".to_string(),
+            val if val == KECCAKF_TABLE_AIR_IDS[0] => "KECCAKF_TABLE".to_string(),
+            val if val == SHA_256_F_AIR_IDS[0] => "SHA_256_F".to_string(),
+            val if val == SHA_256_F_TABLE_AIR_IDS[0] => "SHA_256_F_TABLE".to_string(),
+            val if val == SPECIFIED_RANGES_AIR_IDS[0] => "SPECIFIED_RANGES".to_string(),
+            _ => format!("Unknown air_id: {}", air_id),
         }
     }
 }

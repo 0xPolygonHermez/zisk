@@ -26,13 +26,14 @@ proofman = { workspace = true }
 proofman-common = { workspace = true }
 witness = { workspace = true }
 sysinfo = { workspace = true }
-log = { workspace = true }
+tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 executor = { path = "../executor" }
 rom-setup = { path = "../rom-setup" }
 zisk-core = { path = "../core" }
+zisk-pil = { path = "../pil" }
 
 anyhow = { version = "1.0.86", features = ["backtrace"] }
 clap = { version = "4.5.7", features = ["derive", "env"] }

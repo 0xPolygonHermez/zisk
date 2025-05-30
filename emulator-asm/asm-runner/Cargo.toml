@@ -19,7 +19,7 @@ path = "src/main.rs"
 zisk-common = { path = "../../common" }
 zisk-core = { path = "../../core" }
 
-log = { workspace = true}
+tracing = { workspace = true}
 rayon = { workspace = true}
 
 clap = { version = "4", features = ["derive"] }

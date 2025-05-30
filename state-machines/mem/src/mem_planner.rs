@@ -51,8 +51,6 @@ impl MemPlanner {
 
     #[cfg(feature = "debug_mem")]
     fn debug_plans(&self, plans: &[Plan]) {
-        use log::info;
-
         use crate::MemModuleSegmentCheckPoint;
 
         for (index, plan) in plans.iter().enumerate() {
@@ -66,7 +64,7 @@ impl MemPlanner {
                     .unwrap()
                     .downcast_ref::<MemModuleSegmentCheckPoint>()
                     .unwrap();
-                info!(
+                tracing::info!(
                     "[Mem] PLAN #{} [{}:{}:{}] [0x{:X},{}] => [0x{:X},{}] skip:{} last:{} {:?}",
                     index,
                     plan.airgroup_id,

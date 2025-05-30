@@ -4,7 +4,6 @@ use clap::Parser;
 use colored::Colorize;
 
 use anyhow::{Context, Result};
-use log::info;
 use proofman_common::initialize_logger;
 
 use crate::{
@@ -32,15 +31,19 @@ impl ZiskClean {
         let cache_zisk_path = home_zisk_path.join("cache");
 
         if home_zisk_path.exists() {
-            info!("Removing default zisk path at: {}", cache_zisk_path.display());
+            tracing::info!("Removing default zisk path at: {}", cache_zisk_path.display());
 
             fs::remove_dir_all(&cache_zisk_path).with_context(|| {
                 format!("Failed to remove directory {}", cache_zisk_path.display())
             })?;
 
-            info!("{} Successfully removed {}", "[OK]".green().bold(), cache_zisk_path.display());
+            tracing::info!(
+                "{} Successfully removed {}",
+                "[OK]".green().bold(),
+                cache_zisk_path.display()
+            );
         } else {
-            info!(
+            tracing::info!(
                 "{} No zisk setup directory found at {}",
                 "[WARN]".yellow(),
                 cache_zisk_path.display()
