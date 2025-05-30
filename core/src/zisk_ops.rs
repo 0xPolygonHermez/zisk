@@ -23,6 +23,7 @@ use std::{
 use tiny_keccak::keccakf;
 
 use crate::{
+    convert_u32s_back_to_u64_be, convert_u64_to_u32_be_words, u64s_to_generic_array_be,
     EmulationMode, InstContext, Mem, ZiskOperationType, ZiskRequiredOperation, M64, REG_A0,
     SYS_ADDR,
 };
@@ -339,7 +340,7 @@ define_ops! {
     (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xf6, 0, opc_fcall_param, op_fcall_param),
     (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, opc_fcall, op_fcall),
     (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, opc_fcall_get, op_fcall_get),
-    (Sha256, "sha256", Sha256, SHA256_COST, 0xf9, 96, opc_sha256, op_sha256),
+    (Sha256, "sha256", Sha256, SHA256_COST, 0xf9, 112, opc_sha256, op_sha256),
 }
 
 /* INTERNAL operations */
@@ -1220,54 +1221,8 @@ pub fn opc_sha256(ctx: &mut InstContext) {
         ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
     }
 
-    // Set input data to the precompiled context
-    match ctx.emulation_mode {
-        EmulationMode::Mem => {}
-        EmulationMode::GenerateMemReads => {
-            // Write data to the precompiled context
-            ctx.precompiled.output_data.clear();
-            for (i, d) in data.iter_mut().enumerate() {
-                ctx.precompiled.output_data.push(*d);
-            }
-            // Write the input data address to the precompiled context
-            // ctx.precompiled.output_data_address = address;
-        }
-        EmulationMode::ConsumeMemReads => {}
-    }
-
     ctx.c = 0;
     ctx.flag = false;
-
-    fn convert_u64_to_u32_be_words(input: &[u64; 4]) -> [u32; 8] {
-        let mut out = [0u32; 8];
-        for (i, &word) in input.iter().enumerate() {
-            let bytes = word.to_be_bytes();
-            out[2 * i] = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-            out[2 * i + 1] = u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
-        }
-        out
-    }
-
-    fn u64s_to_generic_array_be(input: &[u64; 8]) -> GenericArray<u8, U64> {
-        let mut out = [0u8; 64];
-        for (i, word) in input.iter().enumerate() {
-            let bytes = word.to_be_bytes();
-            out[i * 8..(i + 1) * 8].copy_from_slice(&bytes);
-        }
-        GenericArray::<u8, U64>::clone_from_slice(&out)
-    }
-
-    fn convert_u32s_back_to_u64_be(words: &[u32; 8]) -> [u64; 4] {
-        let mut out = [0u64; 4];
-        for i in 0..4 {
-            let high = words[2 * i].to_be_bytes();
-            let low = words[2 * i + 1].to_be_bytes();
-            out[i] = u64::from_be_bytes([
-                high[0], high[1], high[2], high[3], low[0], low[1], low[2], low[3],
-            ]);
-        }
-        out
-    }
 }
 
 /// Unimplemented.  Sha256 can only be called from the system call context via InstContext.
@@ -1288,6 +1243,7 @@ pub fn precompiled_load_data(
     title: &str,
 ) {
     let address = ctx.b;
+    println!("Address: {:#x}", address);
     if address & 0x7 != 0 {
         panic!("precompiled_check_address() found address not aligned to 8 bytes");
     }
@@ -1296,13 +1252,14 @@ pub fn precompiled_load_data(
         // Check input data has the expected length
         if ctx.precompiled.input_data.len() != expected_len {
             panic!(
-                "[{}] ctx.precompiled.input_data.len={} != {} [1+{}+{}*{}]",
+                "[{}] ctx.precompiled.input_data.len={} != {} [{}+{}*{}+{}]",
                 title,
                 ctx.precompiled.input_data.len(),
                 expected_len,
                 indirections_count,
+                loads_count,
                 load_chunks,
-                loads_count
+                load_rem
             );
         }
         // Read data from the precompiled context
@@ -1314,6 +1271,7 @@ pub fn precompiled_load_data(
         return;
     }
 
+    // Write the indirections to data
     for (i, data) in data.iter_mut().enumerate().take(indirections_count) {
         let indirection = ctx.mem.read(address + (8 * i as u64), 8);
         if address & 0x7 != 0 {
@@ -1321,10 +1279,11 @@ pub fn precompiled_load_data(
         }
         *data = indirection;
     }
+
     let mut data_offset = indirections_count;
     for i in 0..loads_count {
-        // if there aren't indirections, take directly from the address
         let data_offset = i * load_chunks + data_offset;
+        // if there aren't indirections, take directly from the address
         let param_address =
             if indirections_count == 0 { address + data_offset as u64 } else { data[i] };
         for j in 0..load_chunks {
