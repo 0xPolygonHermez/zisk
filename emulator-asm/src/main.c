@@ -2667,6 +2667,7 @@ void buffer2file (const void * buffer_address, size_t buffer_length, const char 
     [8B] Number of chunks = C
 
     Chunk 0:
+        [8b] end
         [8B] mem_op_trace_size
         [8B] mem_op_trace[0]
         [8B] mem_op_trace[1]
@@ -2703,6 +2704,10 @@ void log_mem_op(void)
     {
         uint64_t i=0;
         printf("Chunk %lu:\n", c);
+
+        uint64_t end = chunk[i];
+        printf("\tend=%lu\n", end);
+        i++;
 
         uint64_t mem_op_trace_size = chunk[i];
         printf("\tmem_op_trace_size=%lu\n", mem_op_trace_size);

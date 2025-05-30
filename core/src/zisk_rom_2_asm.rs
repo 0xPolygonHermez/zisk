@@ -5939,6 +5939,11 @@ impl ZiskRom2Asm {
             if ctx.minimal_trace() || ctx.zip() {
                 *code += &format!("\tadd {}, 40*8 {}\n", REG_AUX, ctx.comment_str("aux += 40*8"));
             }
+            if ctx.mem_op() {
+                // Skip chunk.end
+                *code += &format!("\tadd {}, 8 {}\n", REG_AUX, ctx.comment_str("aux += 8"));
+            }
+
             // Set mem reads size to all F's
             *code += &format!(
                 "\tmov {}, 0xFFFFFFFFFFFFFFFF {}\n",
@@ -6034,6 +6039,8 @@ impl ZiskRom2Asm {
 
             *code += &ctx.full_line_comment("Write chunk end data".to_string());
             *code += &format!("\tadd {}, 8 {}\n", REG_ADDRESS, ctx.comment_str("address += 8"));
+
+            // Write chunk.last.end
             *code += &format!(
                 "\tmov {}, {} {}\n",
                 REG_VALUE,
@@ -6046,8 +6053,8 @@ impl ZiskRom2Asm {
                 REG_VALUE,
                 ctx.comment_str("chunk.end = value = end")
             );
-
             *code += &format!("\tadd {}, 8 {}\n", REG_ADDRESS, ctx.comment_str("address += 8"));
+
             *code += &format!(
                 "\tmov {}, {} {}\n",
                 REG_VALUE,
@@ -6111,13 +6118,32 @@ impl ZiskRom2Asm {
         }
 
         if ctx.main_trace() || ctx.mem_op() {
-            // Write size
+            // Store chunk address in reg address
             *code += &format!(
                 "\tmov {}, {} {}\n",
                 REG_ADDRESS,
                 ctx.mem_chunk_address,
                 ctx.comment_str("address = chunk_address")
             );
+
+            // Write chunk.end
+            if ctx.mem_op() {
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_VALUE,
+                    ctx.mem_end,
+                    ctx.comment_str("value = end")
+                );
+                *code += &format!(
+                    "\tmov [{}], {} {}\n",
+                    REG_ADDRESS,
+                    REG_VALUE,
+                    ctx.comment_str("chunk.end = value = end")
+                );
+                *code += &format!("\tadd {}, 8 {}\n", REG_ADDRESS, ctx.comment_str("address += 8"));
+            }
+
+            // Write chunk.mem_reads_size
             *code += &format!(
                 "\tmov [{}], {} {}\n",
                 REG_ADDRESS,
