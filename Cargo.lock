@@ -2518,7 +2518,6 @@ name = "proofman-common"
 version = "0.9.0"
 dependencies = [
  "core_affinity",
- "dashmap",
  "libloading",
  "mpi",
  "p3-field",

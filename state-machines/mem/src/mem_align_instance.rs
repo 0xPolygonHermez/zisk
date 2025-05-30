@@ -27,8 +27,6 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        core_id: usize,
-        n_cores: usize,
     ) -> Option<AirInstance<F>> {
         let mut total_rows = 0;
         let inputs: Vec<_> = collectors
@@ -41,7 +39,7 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
                 collector.inputs
             })
             .collect();
-        Some(self.mem_align_sm.compute_witness(&inputs, total_rows as usize, core_id, n_cores))
+        Some(self.mem_align_sm.compute_witness(&inputs, total_rows as usize))
     }
 
     fn check_point(&self) -> CheckPoint {

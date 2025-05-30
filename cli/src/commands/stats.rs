@@ -18,7 +18,7 @@ use std::{
 use zisk_pil::*;
 
 use crate::{
-    commands::{cli_fail_if_gpu_mode, cli_fail_if_macos, Field, ZiskLibInitFn},
+    commands::{cli_fail_if_macos, Field, ZiskLibInitFn},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -80,7 +80,6 @@ pub struct ZiskStats {
 impl ZiskStats {
     pub fn run(&mut self) -> Result<()> {
         cli_fail_if_macos()?;
-        cli_fail_if_gpu_mode()?;
 
         initialize_logger(self.verbose.into());
 
@@ -159,7 +158,8 @@ impl ZiskStats {
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
-        let gpu_params = ParamsGPU::new(false);
+        let mut gpu_params = ParamsGPU::new(false);
+        gpu_params.with_max_number_streams(1);
 
         let proofman = ProofMan::<Goldilocks>::new(
             self.get_proving_key(),

@@ -2,7 +2,7 @@ use p3_field::PrimeField64;
 use std::sync::Arc;
 
 use pil_std_lib::Std;
-use proofman_common::{create_pool, AirInstance, FromTrace, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::ArithEqTrace;
 
@@ -304,59 +304,53 @@ impl<F: PrimeField64> ArithEqSM<F> {
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<ArithEqInput>],
-        core_id: usize,
-        n_cores: usize,
     ) -> AirInstance<F> {
-        let pool = create_pool(core_id, n_cores);
-        let air_instance = pool.install(|| {
-            // Get the fixed cols
-            let _airgroup_id = ArithEqTrace::<usize>::AIRGROUP_ID;
-            let _air_id = ArithEqTrace::<usize>::AIR_ID;
+        // Get the fixed cols
+        let _airgroup_id = ArithEqTrace::<usize>::AIRGROUP_ID;
+        let _air_id = ArithEqTrace::<usize>::AIR_ID;
 
-            let mut trace = ArithEqTrace::<F>::new();
-            let num_rows = trace.num_rows();
-            let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
-            let num_rows_needed = total_inputs * ARITH_EQ_ROWS_BY_OP;
+        let mut trace = ArithEqTrace::<F>::new();
+        let num_rows = trace.num_rows();
+        let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
+        let num_rows_needed = total_inputs * ARITH_EQ_ROWS_BY_OP;
 
-            tracing::info!(
-                "··· Creating ArithEq instance [{} / {} rows filled {:.2}%]",
-                num_rows_needed,
-                num_rows,
-                num_rows_needed as f64 / num_rows as f64 * 100.0
-            );
+        tracing::info!(
+            "··· Creating ArithEq instance [{} / {} rows filled {:.2}%]",
+            num_rows_needed,
+            num_rows,
+            num_rows_needed as f64 / num_rows as f64 * 100.0
+        );
 
-            timer_start_trace!(ARITH_EQ_TRACE);
+        timer_start_trace!(ARITH_EQ_TRACE);
 
-            let mut index = 0;
-            for inputs in inputs.iter() {
-                for input in inputs.iter() {
-                    let row_offset = index * ARITH_EQ_ROWS_BY_OP;
-                    match input {
-                        ArithEqInput::Arith256(idata) => {
-                            self.process_arith256(idata, &mut trace, row_offset)
-                        }
-                        ArithEqInput::Arith256Mod(idata) => {
-                            self.process_arith256_mod(idata, &mut trace, row_offset)
-                        }
-                        ArithEqInput::Secp256k1Add(idata) => {
-                            self.process_secp256k1_add(idata, &mut trace, row_offset)
-                        }
-                        ArithEqInput::Secp256k1Dbl(idata) => {
-                            self.process_secp256k1_dbl(idata, &mut trace, row_offset)
-                        }
+        let mut index = 0;
+        for inputs in inputs.iter() {
+            for input in inputs.iter() {
+                let row_offset = index * ARITH_EQ_ROWS_BY_OP;
+                match input {
+                    ArithEqInput::Arith256(idata) => {
+                        self.process_arith256(idata, &mut trace, row_offset)
                     }
-                    index += 1;
+                    ArithEqInput::Arith256Mod(idata) => {
+                        self.process_arith256_mod(idata, &mut trace, row_offset)
+                    }
+                    ArithEqInput::Secp256k1Add(idata) => {
+                        self.process_secp256k1_add(idata, &mut trace, row_offset)
+                    }
+                    ArithEqInput::Secp256k1Dbl(idata) => {
+                        self.process_secp256k1_dbl(idata, &mut trace, row_offset)
+                    }
                 }
+                index += 1;
             }
-            let padding_ops = (self.num_available_ops - index) as u64;
-            self.std.range_check(0, 3 * padding_ops, self.q_hsc_range_id);
-            self.std.range_check(0, 157 * padding_ops, self.chunk_range_id);
-            self.std.range_check(0, 96 * padding_ops, self.carry_range_id);
+        }
+        let padding_ops = (self.num_available_ops - index) as u64;
+        self.std.range_check(0, 3 * padding_ops, self.q_hsc_range_id);
+        self.std.range_check(0, 157 * padding_ops, self.chunk_range_id);
+        self.std.range_check(0, 96 * padding_ops, self.carry_range_id);
 
-            timer_stop_and_log_trace!(ARITH_EQ_TRACE);
+        timer_stop_and_log_trace!(ARITH_EQ_TRACE);
 
-            AirInstance::new_from_trace(FromTrace::new(&mut trace))
-        });
-        air_instance
+        AirInstance::new_from_trace(FromTrace::new(&mut trace))
     }
 }

@@ -3,7 +3,7 @@ use crate::{
     MemModuleSegmentCheckPoint, MemPreviousSegment, STEP_MEMORY_MAX_DIFF,
 };
 use p3_field::PrimeField;
-use proofman_common::{create_pool, AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use std::sync::Arc;
 use zisk_common::{
@@ -104,62 +104,57 @@ impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        core_id: usize,
-        n_cores: usize,
     ) -> Option<AirInstance<F>> {
-        let pool = create_pool(core_id, n_cores);
-        pool.install(|| {
-            // Collect inputs from all collectors. At most, one of them has `prev_last_value` non zero,
-            // we take this `prev_last_value`, which represents the last value of the previous segment.
+        // Collect inputs from all collectors. At most, one of them has `prev_last_value` non zero,
+        // we take this `prev_last_value`, which represents the last value of the previous segment.
 
-            // let mut last_value = MemLastValue::new(SegmentId(0), 0, 0);
-            let mut prev_segment: Option<MemPreviousSegment> = None;
-            let mut intermediate_skip: Option<u32> = None;
-            let inputs: Vec<_> = collectors
-                .into_iter()
-                .map(|(_, collector)| {
-                    let mem_module_collector =
-                        collector.as_any().downcast::<MemModuleCollector>().unwrap();
+        // let mut last_value = MemLastValue::new(SegmentId(0), 0, 0);
+        let mut prev_segment: Option<MemPreviousSegment> = None;
+        let mut intermediate_skip: Option<u32> = None;
+        let inputs: Vec<_> = collectors
+            .into_iter()
+            .map(|(_, collector)| {
+                let mem_module_collector =
+                    collector.as_any().downcast::<MemModuleCollector>().unwrap();
 
-                    if mem_module_collector.prev_segment.is_some() {
-                        assert!(prev_segment.is_none());
-                        prev_segment = mem_module_collector.prev_segment;
-                    }
-                    if mem_module_collector.mem_check_point.intermediate_skip.is_some() {
-                        assert!(intermediate_skip.is_none());
-                        intermediate_skip = mem_module_collector.mem_check_point.intermediate_skip;
-                    }
-                    mem_module_collector.inputs
-                })
-                .collect();
-            let mut inputs = inputs.into_iter().flatten().collect::<Vec<_>>();
+                if mem_module_collector.prev_segment.is_some() {
+                    assert!(prev_segment.is_none());
+                    prev_segment = mem_module_collector.prev_segment;
+                }
+                if mem_module_collector.mem_check_point.intermediate_skip.is_some() {
+                    assert!(intermediate_skip.is_none());
+                    intermediate_skip = mem_module_collector.mem_check_point.intermediate_skip;
+                }
+                mem_module_collector.inputs
+            })
+            .collect();
+        let mut inputs = inputs.into_iter().flatten().collect::<Vec<_>>();
 
-            if inputs.is_empty() {
-                return None;
-            }
+        if inputs.is_empty() {
+            return None;
+        }
 
-            // This method sorts all inputs
-            self.prepare_inputs(&mut inputs);
+        // This method sorts all inputs
+        self.prepare_inputs(&mut inputs);
 
-            // This method calculates intermediate accesses without adding inputs and trims
-            // the inputs while considering skipped rows for this instance.
-            // Additionally, it computes the necessary information for memory continuations.
-            let skip_rows = intermediate_skip.unwrap_or(0);
-            let mut prev_segment = prev_segment.unwrap_or(MemPreviousSegment {
-                addr: self.min_addr,
-                step: 0,
-                value: 0,
-                extra_zero_step: false,
-            });
+        // This method calculates intermediate accesses without adding inputs and trims
+        // the inputs while considering skipped rows for this instance.
+        // Additionally, it computes the necessary information for memory continuations.
+        let skip_rows = intermediate_skip.unwrap_or(0);
+        let mut prev_segment = prev_segment.unwrap_or(MemPreviousSegment {
+            addr: self.min_addr,
+            step: 0,
+            value: 0,
+            extra_zero_step: false,
+        });
 
-            self.fit_inputs_and_get_prev_segment(&mut inputs, &mut prev_segment, skip_rows);
+        self.fit_inputs_and_get_prev_segment(&mut inputs, &mut prev_segment, skip_rows);
 
-            // Extract segment id from instance context
-            let segment_id = self.ictx.plan.segment_id.unwrap();
+        // Extract segment id from instance context
+        let segment_id = self.ictx.plan.segment_id.unwrap();
 
-            let is_last_segment = self.check_point.is_last_segment;
-            Some(self.module.compute_witness(&inputs, segment_id, is_last_segment, &prev_segment))
-        })
+        let is_last_segment = self.check_point.is_last_segment;
+        Some(self.module.compute_witness(&inputs, segment_id, is_last_segment, &prev_segment))
     }
 
     /// Builds an input collector for the instance.

@@ -60,15 +60,13 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance {
         _pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        core_id: usize,
-        n_cores: usize,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<Sha256fCollector>().unwrap().inputs)
             .collect();
 
-        Some(self.sha256f_sm.compute_witness(sctx, &inputs, core_id, n_cores))
+        Some(self.sha256f_sm.compute_witness(sctx, &inputs))
     }
 
     /// Retrieves the checkpoint associated with this instance.

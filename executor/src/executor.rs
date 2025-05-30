@@ -22,7 +22,7 @@
 use asm_runner::{AsmRunnerMT, MinimalTraces, Task, TaskFactory};
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{ProofCtx, SetupCtx};
+use proofman_common::{create_pool, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::gen_elf_hash;
 use sm_rom::RomSM;
@@ -347,7 +347,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// * `main_planning` - Planning information for main state machines.
     fn assign_main_instances(&self, pctx: &ProofCtx<F>, main_planning: &mut [Plan]) {
         for plan in main_planning.iter_mut() {
-            plan.set_global_id(pctx.add_instance(plan.airgroup_id, plan.air_id));
+            plan.set_global_id(pctx.add_instance_fast(plan.airgroup_id, plan.air_id));
         }
     }
 
@@ -497,13 +497,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// # Arguments
     /// * `pctx` - Proof context.
     /// * `main_instance` - Main instance to compute witness for
-    fn witness_main_instance(
-        &self,
-        pctx: &ProofCtx<F>,
-        main_instance: &MainInstance,
-        core_id: usize,
-        n_cores: usize,
-    ) {
+    fn witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &MainInstance) {
         let witness_start = std::time::Instant::now();
 
         let min_traces_guard = self.min_traces.read().unwrap();
@@ -521,8 +515,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             Self::MIN_TRACE_SIZE,
             main_instance,
             self.std.clone(),
-            core_id,
-            n_cores,
         );
 
         pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
@@ -551,8 +543,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         sctx: &SetupCtx<F>,
         global_id: usize,
         secn_instance: &Box<dyn Instance<F>>,
-        core_id: usize,
-        n_cores: usize,
     ) {
         let collect_start = std::time::Instant::now();
         assert_eq!(secn_instance.instance_type(), InstanceType::Instance, "Instance is a table");
@@ -591,7 +581,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let collect_time = collect_start.elapsed().as_millis() as u64;
         let witness_start = std::time::Instant::now();
         if let Some(air_instance) =
-            secn_instance.compute_witness(pctx, sctx, collectors_by_instance, core_id, n_cores)
+            secn_instance.compute_witness(pctx, sctx, collectors_by_instance)
         {
             pctx.add_air_instance(air_instance, global_id);
         }
@@ -619,15 +609,11 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         sctx: &SetupCtx<F>,
         global_id: usize,
         table_instance: &Box<dyn Instance<F>>,
-        core_id: usize,
-        n_cores: usize,
     ) {
         let witness_start = std::time::Instant::now();
         assert_eq!(table_instance.instance_type(), InstanceType::Table, "Instance is not a table");
 
-        if let Some(air_instance) =
-            table_instance.compute_witness(pctx, sctx, vec![], core_id, n_cores)
-        {
+        if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![]) {
             if pctx.dctx_is_my_instance(global_id) {
                 pctx.add_air_instance(air_instance, global_id);
             }
@@ -804,38 +790,35 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         pctx: Arc<ProofCtx<F>>,
         sctx: Arc<SetupCtx<F>>,
         global_ids: &[usize],
-        core_id: usize,
         n_cores: usize,
     ) {
         if stage != 1 {
             return;
         }
 
-        for &global_id in global_ids {
-            let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+        let pool = create_pool(n_cores);
+        pool.install(|| {
+            for &global_id in global_ids {
+                let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
 
-            if MAIN_AIR_IDS.contains(&air_id) {
-                let main_instance = &self.main_instances.read().unwrap()[&global_id];
+                if MAIN_AIR_IDS.contains(&air_id) {
+                    let main_instance = &self.main_instances.read().unwrap()[&global_id];
 
-                self.witness_main_instance(&pctx, main_instance, core_id, n_cores);
-            } else {
-                let secn_instance = &self.secn_instances.read().unwrap()[&global_id];
+                    self.witness_main_instance(&pctx, main_instance);
+                } else {
+                    let secn_instance = &self.secn_instances.read().unwrap()[&global_id];
 
-                match secn_instance.instance_type() {
-                    InstanceType::Instance => self.witness_secn_instance(
-                        &pctx,
-                        &sctx,
-                        global_id,
-                        secn_instance,
-                        core_id,
-                        n_cores,
-                    ),
-                    InstanceType::Table => {
-                        self.witness_table(&pctx, &sctx, global_id, secn_instance, core_id, n_cores)
+                    match secn_instance.instance_type() {
+                        InstanceType::Instance => {
+                            self.witness_secn_instance(&pctx, &sctx, global_id, secn_instance)
+                        }
+                        InstanceType::Table => {
+                            self.witness_table(&pctx, &sctx, global_id, secn_instance)
+                        }
                     }
                 }
             }
-        }
+        });
     }
 
     /// Debugs the main and secondary state machines.

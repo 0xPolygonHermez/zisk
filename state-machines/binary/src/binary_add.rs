@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{create_pool, AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow};
 
@@ -93,12 +93,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(
-        &self,
-        inputs: &[Vec<[u64; 2]>],
-        core_id: usize,
-        n_cores: usize,
-    ) -> AirInstance<F> {
+    pub fn compute_witness(&self, inputs: &[Vec<[u64; 2]>]) -> AirInstance<F> {
         let mut add_trace = BinaryAddTrace::new();
 
         let num_rows = add_trace.num_rows();
@@ -124,22 +119,19 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         }
 
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
-        let pool = create_pool(core_id, n_cores);
-        let range_checks: Vec<i64> = pool.install(|| {
-            slices
-                .into_par_iter()
-                .enumerate()
-                .flat_map(|(i, slice)| {
-                    let mut local_range_checks = Vec::new();
+        let range_checks: Vec<i64> = slices
+            .into_par_iter()
+            .enumerate()
+            .flat_map(|(i, slice)| {
+                let mut local_range_checks = Vec::new();
 
-                    slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
-                        *trace_row = self.process_slice(&inputs[i][j], &mut local_range_checks);
-                    });
+                slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
+                    *trace_row = self.process_slice(&inputs[i][j], &mut local_range_checks);
+                });
 
-                    local_range_checks
-                })
-                .collect()
-        });
+                local_range_checks
+            })
+            .collect();
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows

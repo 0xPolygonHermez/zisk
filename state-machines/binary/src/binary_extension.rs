@@ -9,7 +9,7 @@ use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
 
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{create_pool, AirInstance, FromTrace};
+use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow};
@@ -320,12 +320,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` representing the computed witness.
-    pub fn compute_witness(
-        &self,
-        inputs: &[Vec<BinaryInput>],
-        core_id: usize,
-        n_cores: usize,
-    ) -> AirInstance<F> {
+    pub fn compute_witness(&self, inputs: &[Vec<BinaryInput>]) -> AirInstance<F> {
         let mut binary_e_trace = BinaryExtensionTrace::new();
 
         let num_rows = binary_e_trace.num_rows();
@@ -357,26 +352,23 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         }
 
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
-        let pool = create_pool(core_id, n_cores);
-        let range_checks: Vec<i64> = pool.install(|| {
-            slices
-                .into_par_iter()
-                .enumerate()
-                .flat_map(|(i, slice)| {
-                    let mut local_range_checks = Vec::new();
+        let range_checks: Vec<i64> = slices
+            .into_par_iter()
+            .enumerate()
+            .flat_map(|(i, slice)| {
+                let mut local_range_checks = Vec::new();
 
-                    slice.iter_mut().enumerate().for_each(|(j, cell)| {
-                        *cell = self.process_slice(
-                            &inputs[i][j],
-                            &self.binary_extension_table_sm,
-                            &mut local_range_checks,
-                        );
-                    });
+                slice.iter_mut().enumerate().for_each(|(j, cell)| {
+                    *cell = self.process_slice(
+                        &inputs[i][j],
+                        &self.binary_extension_table_sm,
+                        &mut local_range_checks,
+                    );
+                });
 
-                    local_range_checks
-                })
-                .collect()
-        });
+                local_range_checks
+            })
+            .collect();
 
         for value in range_checks {
             self.std.range_check(value, 1, self.range_id);

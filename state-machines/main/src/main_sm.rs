@@ -14,7 +14,7 @@ use std::sync::{
 
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{create_pool, AirInstance, FromTrace, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 use sm_mem::{MemHelpers, MEMORY_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx};
@@ -68,136 +68,130 @@ impl MainSM {
         min_trace_size: u64,
         main_instance: &MainInstance,
         std: Arc<Std<F>>,
-        core_id: usize,
-        n_cores: usize,
     ) -> AirInstance<F> {
-        let pool = create_pool(core_id, n_cores);
-        let air_instance = pool.install(|| {
-            // Create the main trace buffer
-            let mut main_trace = MainTrace::new();
+        // Create the main trace buffer
+        let mut main_trace = MainTrace::new();
 
-            let segment_id = main_instance.ictx.plan.segment_id.unwrap();
+        let segment_id = main_instance.ictx.plan.segment_id.unwrap();
 
-            // Determine the number of minimal traces per segment
-            let num_within = MainTrace::<F>::NUM_ROWS / min_trace_size as usize;
-            let num_rows = MainTrace::<F>::NUM_ROWS;
+        // Determine the number of minimal traces per segment
+        let num_within = MainTrace::<F>::NUM_ROWS / min_trace_size as usize;
+        let num_rows = MainTrace::<F>::NUM_ROWS;
 
-            // Determine trace slice for the current segment
-            let start_idx = segment_id.as_usize() * num_within;
-            let end_idx = (start_idx + num_within).min(min_traces.len());
-            let segment_min_traces = &min_traces[start_idx..end_idx];
+        // Determine trace slice for the current segment
+        let start_idx = segment_id.as_usize() * num_within;
+        let end_idx = (start_idx + num_within).min(min_traces.len());
+        let segment_min_traces = &min_traces[start_idx..end_idx];
 
-            // Calculate total filled rows
-            let filled_rows: usize =
-                segment_min_traces.iter().map(|min_trace| min_trace.steps as usize).sum();
+        // Calculate total filled rows
+        let filled_rows: usize =
+            segment_min_traces.iter().map(|min_trace| min_trace.steps as usize).sum();
 
-            tracing::info!(
-                "··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
-                segment_id,
-                filled_rows,
-                num_rows,
-                filled_rows as f64 / num_rows as f64 * 100.0
-            );
+        tracing::info!(
+            "··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
+            segment_id,
+            filled_rows,
+            num_rows,
+            filled_rows as f64 / num_rows as f64 * 100.0
+        );
 
-            // Calculate final_step of instance, last mem slot of last row. The initial_step is 0 for the
-            // first segment, for the rest is the final_step of the previous segment
+        // Calculate final_step of instance, last mem slot of last row. The initial_step is 0 for the
+        // first segment, for the rest is the final_step of the previous segment
 
-            let last_row_previous_segment =
-                if segment_id == 0 { 0 } else { (segment_id.as_usize() * num_rows) as u64 - 1 };
+        let last_row_previous_segment =
+            if segment_id == 0 { 0 } else { (segment_id.as_usize() * num_rows) as u64 - 1 };
 
-            let initial_step = MemHelpers::main_step_to_special_mem_step(last_row_previous_segment);
+        let initial_step = MemHelpers::main_step_to_special_mem_step(last_row_previous_segment);
 
-            let final_step = MemHelpers::main_step_to_special_mem_step(
-                ((segment_id.as_usize() + 1) * num_rows) as u64 - 1,
-            );
+        let final_step = MemHelpers::main_step_to_special_mem_step(
+            ((segment_id.as_usize() + 1) * num_rows) as u64 - 1,
+        );
 
-            // To reduce memory used, only take memory for the maximum range of mem_step inside the
-            // minimal trace.
-            let max_range = min_trace_size * MEM_STEPS_BY_MAIN_STEP;
+        // To reduce memory used, only take memory for the maximum range of mem_step inside the
+        // minimal trace.
+        let max_range = min_trace_size * MEM_STEPS_BY_MAIN_STEP;
 
-            // Vector of atomics of u32, it's enough to count all range check values of the trace.
-            let step_range_check =
-                Arc::new((0..max_range).map(|_| AtomicU32::new(0)).collect::<Vec<_>>());
+        // Vector of atomics of u32, it's enough to count all range check values of the trace.
+        let step_range_check =
+            Arc::new((0..max_range).map(|_| AtomicU32::new(0)).collect::<Vec<_>>());
 
-            // We know each register's previous step, but only by instance. We don't have this
-            // information by chunk, so we need to store in the EmuRegTrace the location of the
-            // first mem_step register is used in the chunk and information about the last step
-            // where the register is used. The register's last steps of one chunk are the initial
-            // steps of the next chunk. In the end, we need to update with the correct values.
+        // We know each register's previous step, but only by instance. We don't have this
+        // information by chunk, so we need to store in the EmuRegTrace the location of the
+        // first mem_step register is used in the chunk and information about the last step
+        // where the register is used. The register's last steps of one chunk are the initial
+        // steps of the next chunk. In the end, we need to update with the correct values.
 
-            let fill_trace_outputs = main_trace
-                .par_iter_mut_chunks(num_within)
-                .enumerate()
-                .take(segment_min_traces.len())
-                .map(|(chunk_id, chunk)| {
-                    let init_chunk_step = if chunk_id == 0 { initial_step } else { 0 };
-                    let mut reg_trace = EmuRegTrace::from_init_step(init_chunk_step, chunk_id == 0);
-                    let (pc, regs) = Self::fill_partial_trace(
-                        zisk_rom,
-                        chunk,
-                        &segment_min_traces[chunk_id],
-                        &mut reg_trace,
-                        step_range_check.clone(),
-                        chunk_id == (end_idx - start_idx - 1),
-                    );
-                    (pc, regs, reg_trace)
-                })
-                .collect::<Vec<(u64, Vec<u64>, EmuRegTrace)>>();
-            let last_result = fill_trace_outputs.last().unwrap();
-            let next_pc = last_result.0;
+        let fill_trace_outputs = main_trace
+            .par_iter_mut_chunks(num_within)
+            .enumerate()
+            .take(segment_min_traces.len())
+            .map(|(chunk_id, chunk)| {
+                let init_chunk_step = if chunk_id == 0 { initial_step } else { 0 };
+                let mut reg_trace = EmuRegTrace::from_init_step(init_chunk_step, chunk_id == 0);
+                let (pc, regs) = Self::fill_partial_trace(
+                    zisk_rom,
+                    chunk,
+                    &segment_min_traces[chunk_id],
+                    &mut reg_trace,
+                    step_range_check.clone(),
+                    chunk_id == (end_idx - start_idx - 1),
+                );
+                (pc, regs, reg_trace)
+            })
+            .collect::<Vec<(u64, Vec<u64>, EmuRegTrace)>>();
+        let last_result = fill_trace_outputs.last().unwrap();
+        let next_pc = last_result.0;
 
-            // In the range checks are values too large to store in steps_range_check, but there
-            // are only a few values that exceed this limit, for this reason, are stored in a vector
+        // In the range checks are values too large to store in steps_range_check, but there
+        // are only a few values that exceed this limit, for this reason, are stored in a vector
 
-            let mut reg_steps = [initial_step; REGS_IN_MAIN];
-            let mut large_range_checks = Self::complete_trace_with_initial_reg_steps_per_chunk(
-                num_rows,
-                &fill_trace_outputs,
-                &mut main_trace,
-                step_range_check.clone(),
-                &mut reg_steps,
-            );
+        let mut reg_steps = [initial_step; REGS_IN_MAIN];
+        let mut large_range_checks = Self::complete_trace_with_initial_reg_steps_per_chunk(
+            num_rows,
+            &fill_trace_outputs,
+            &mut main_trace,
+            step_range_check.clone(),
+            &mut reg_steps,
+        );
 
-            Self::update_reg_steps_with_last_chunk(&last_result.2, &mut reg_steps);
+        Self::update_reg_steps_with_last_chunk(&last_result.2, &mut reg_steps);
 
-            // Pad remaining rows with the last valid row
-            // In padding row must be clear of registers access, if not need to calculate previous
-            // register step and range check conntribution
-            let last_row = main_trace.buffer[filled_rows - 1];
-            main_trace.buffer[filled_rows..num_rows].fill(last_row);
+        // Pad remaining rows with the last valid row
+        // In padding row must be clear of registers access, if not need to calculate previous
+        // register step and range check conntribution
+        let last_row = main_trace.buffer[filled_rows - 1];
+        main_trace.buffer[filled_rows..num_rows].fill(last_row);
 
-            // Determine the last row of the previous segment
-            let prev_segment_last_c = if start_idx > 0 {
-                Emu::intermediate_value(min_traces[start_idx - 1].last_c)
-            } else {
-                [F::ZERO, F::ZERO]
-            };
+        // Determine the last row of the previous segment
+        let prev_segment_last_c = if start_idx > 0 {
+            Emu::intermediate_value(min_traces[start_idx - 1].last_c)
+        } else {
+            [F::ZERO, F::ZERO]
+        };
 
-            // Prepare main AIR values
-            let mut air_values = MainAirValues::<F>::new();
+        // Prepare main AIR values
+        let mut air_values = MainAirValues::<F>::new();
 
-            air_values.main_segment = F::from_usize(segment_id.into());
-            air_values.main_last_segment = F::from_bool(main_instance.is_last_segment);
-            air_values.segment_initial_pc = main_trace.buffer[0].pc;
-            air_values.segment_next_pc = F::from_u64(next_pc);
-            air_values.segment_previous_c = prev_segment_last_c;
-            air_values.segment_last_c = last_row.c;
+        air_values.main_segment = F::from_usize(segment_id.into());
+        air_values.main_last_segment = F::from_bool(main_instance.is_last_segment);
+        air_values.segment_initial_pc = main_trace.buffer[0].pc;
+        air_values.segment_next_pc = F::from_u64(next_pc);
+        air_values.segment_previous_c = prev_segment_last_c;
+        air_values.segment_last_c = last_row.c;
 
-            Self::update_reg_airvalues(
-                &mut air_values,
-                final_step,
-                &last_result.1,
-                &reg_steps,
-                step_range_check.clone(),
-                &mut large_range_checks,
-            );
-            Self::update_std_range_checks(std, step_range_check, &large_range_checks);
+        Self::update_reg_airvalues(
+            &mut air_values,
+            final_step,
+            &last_result.1,
+            &reg_steps,
+            step_range_check.clone(),
+            &mut large_range_checks,
+        );
+        Self::update_std_range_checks(std, step_range_check, &large_range_checks);
 
-            // Generate and add the AIR instance
-            let from_trace = FromTrace::new(&mut main_trace).with_air_values(&mut air_values);
-            AirInstance::new_from_trace(from_trace)
-        });
-        air_instance
+        // Generate and add the AIR instance
+        let from_trace = FromTrace::new(&mut main_trace).with_air_values(&mut air_values);
+        AirInstance::new_from_trace(from_trace)
     }
 
     /// Fills a partial trace in the main trace buffer based on the minimal trace.
