@@ -692,19 +692,30 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     first_read_row.reg[i] = Self::from_ranged_u8(
                         Self::get_byte(value_first_read, i, 0),
                         reg_range_check,
-                        if i < offset {
-                            first_read_row.sel[i] = F::from_bool(true);
-                            2
-                        } else {
-                            1
-                        },
+                        1,
                     );
+                    if i < offset {
+                        first_read_row.sel[i] = F::from_bool(true);
+                    }
 
                     first_write_row.reg[i] = Self::from_ranged_u8(
                         Self::get_byte(value_first_write, i, 0),
                         reg_range_check,
-                        if i >= offset {
-                            first_write_row.sel[i] = F::from_bool(true);
+                        if i >= rem_bytes && i >= offset { 2 } else { 1 },
+                    );
+                    if i >= offset {
+                        first_write_row.sel[i] = F::from_bool(true);
+                    }
+
+                    if i == offset {
+                        value_row.sel[i] = F::from_bool(true);
+                    }
+
+                    second_write_row.reg[i] = Self::from_ranged_u8(
+                        Self::get_byte(value_second_write, i, 0),
+                        reg_range_check,
+                        if i < rem_bytes {
+                            second_write_row.sel[i] = F::from_bool(true);
                             2
                         } else {
                             1
@@ -722,18 +733,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
                             1,
                         )
                     };
-                    if i == offset {
-                        value_row.sel[i] = F::from_bool(true);
-                    }
-
-                    second_write_row.reg[i] = Self::from_ranged_u8(
-                        Self::get_byte(value_second_write, i, 0),
-                        reg_range_check,
-                        1,
-                    );
-                    if i < rem_bytes {
-                        second_write_row.sel[i] = F::from_bool(true);
-                    }
 
                     second_read_row.reg[i] = Self::from_ranged_u8(
                         Self::get_byte(value_second_read, i, 0),
