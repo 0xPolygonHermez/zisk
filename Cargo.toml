@@ -50,12 +50,12 @@ proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", 
 pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.9.0"}
 witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.9.0"}
 # Local development
-proofman = { path = "../pil2-proofman/proofman" }
-proofman-common = { path = "../pil2-proofman/common" }
-proofman-macros = { path = "../pil2-proofman/macros" }
-proofman-util = { path = "../pil2-proofman/util" }
-pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
-witness = { path = "../pil2-proofman/witness" }
+# proofman = { path = "../pil2-proofman/proofman" }
+# proofman-common = { path = "../pil2-proofman/common" }
+# proofman-macros = { path = "../pil2-proofman/macros" }
+# proofman-util = { path = "../pil2-proofman/util" }
+# pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
+# witness = { path = "../pil2-proofman/witness" }
 
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "f00191a5303f2ff6ec99b9889aa66bee9f1f66ac" }
 p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "f00191a5303f2ff6ec99b9889aa66bee9f1f66ac" }
@@ -71,4 +71,3 @@ ark-secp256k1 = "0.5"
 sysinfo = "0.35.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
-tracing = { version = "0.1", features = ["macros"] }

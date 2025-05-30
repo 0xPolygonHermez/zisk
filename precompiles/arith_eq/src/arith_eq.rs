@@ -321,7 +321,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
             num_rows_needed as f64 / num_rows as f64 * 100.0
         );
 
-        // timer_start_trace!(ARITH_EQ_TRACE);
+        timer_start_trace!(ARITH_EQ_TRACE);
 
         let mut index = 0;
         for inputs in inputs.iter() {
@@ -349,7 +349,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
         self.std.range_check(0, 157 * padding_ops, self.chunk_range_id);
         self.std.range_check(0, 96 * padding_ops, self.carry_range_id);
 
-        // timer_stop_and_log_trace!(ARITH_EQ_TRACE);
+        timer_stop_and_log_trace!(ARITH_EQ_TRACE);
 
         AirInstance::new_from_trace(FromTrace::new(&mut trace))
     }

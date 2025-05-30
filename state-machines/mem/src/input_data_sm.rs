@@ -77,11 +77,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
 
         // range of instance
         let range_id = self.std.get_range(0, SEGMENT_ADDR_MAX_RANGE as i64, None);
-        self.std.range_check(
-            (previous_segment.addr - INPUT_DATA_W_ADDR_INIT + 0) as i64,
-            1,
-            range_id,
-        );
+        self.std.range_check((previous_segment.addr - INPUT_DATA_W_ADDR_INIT) as i64, 1, range_id);
 
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;

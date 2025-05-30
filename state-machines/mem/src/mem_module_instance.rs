@@ -1,6 +1,6 @@
 use crate::{
-    mem_module_collector::MemModuleCollector, MemHelpers, MemInput, MemModule,
-    MemModuleSegmentCheckPoint, MemPreviousSegment,
+    mem_module_collector::MemModuleCollector, MemInput, MemModule, MemModuleSegmentCheckPoint,
+    MemPreviousSegment,
 };
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
@@ -20,34 +20,22 @@ pub struct MemModuleInstance<F: PrimeField> {
     min_addr: u32,
     #[allow(dead_code)]
     max_addr: u32,
-    limited_step_distance: bool,
 }
 
 impl<F: PrimeField> MemModuleInstance<F> {
-    pub fn new(
-        module: Arc<dyn MemModule<F>>,
-        ictx: InstanceCtx,
-        limited_step_distance: bool,
-    ) -> Self {
+    pub fn new(module: Arc<dyn MemModule<F>>, ictx: InstanceCtx) -> Self {
         let meta = ictx.plan.meta.as_ref().unwrap();
         let mem_check_point = meta.downcast_ref::<MemModuleSegmentCheckPoint>().unwrap().clone();
 
         let (min_addr, max_addr) = module.get_addr_range();
-        Self {
-            ictx,
-            module: module.clone(),
-            check_point: mem_check_point,
-            min_addr,
-            max_addr,
-            limited_step_distance,
-        }
+        Self { ictx, module: module.clone(), check_point: mem_check_point, min_addr, max_addr }
     }
 
     fn prepare_inputs(&mut self, inputs: &mut [MemInput]) {
         // sort all instance inputs
-        // timer_start_debug!(MEM_SORT);
+        timer_start_debug!(MEM_SORT);
         inputs.sort_by_key(|input| (input.addr, input.step));
-        // timer_stop_and_log_debug!(MEM_SORT);
+        timer_stop_and_log_debug!(MEM_SORT);
     }
 }
 
