@@ -3,7 +3,7 @@ use std::sync::Arc;
 #[cfg(feature = "debug_mem_align")]
 use std::sync::Mutex;
 
-use num_traits::cast::ToPrimitive;
+// use num_traits::cast::ToPrimitive;
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 
@@ -77,7 +77,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
     }
 
     #[inline(always)]
-    fn from_ranged_u8(value: u8, reg_range_check: &mut [u64], count: u64) -> F {
+    fn from_ranged_u8(value: u8, reg_range_check: &mut [u32], count: u32) -> F {
         reg_range_check[value as usize] += count;
         F::from_u8(value)
     }
@@ -86,7 +86,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         input: &MemAlignInput,
         trace: &mut MemAlignTrace<F>,
         index: usize,
-        reg_range_check: &mut [u64],
+        reg_range_check: &mut [u32],
     ) -> usize {
         let addr = input.addr;
         let width = input.width;
@@ -314,7 +314,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     }
 
                     write_row.reg[i] = Self::from_ranged_u8(
-                        Self::get_byte(value_read, i, 0),
+                        Self::get_byte(value_write, i, 0),
                         reg_range_check,
                         if use_write {
                             write_row.sel[i] = F::from_bool(true);
@@ -465,18 +465,29 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 };
 
                 for i in 0..CHUNK_NUM {
-                    first_read_row.reg[i] = F::from_u8(Self::get_byte(value_first_read, i, 0));
+                    first_read_row.reg[i] = Self::from_ranged_u8(
+                        Self::get_byte(value_first_read, i, 0),
+                        reg_range_check,
+                        1,
+                    );
                     if i >= offset {
                         first_read_row.sel[i] = F::from_bool(true);
                     }
 
-                    value_row.reg[i] = F::from_u8(Self::get_byte(value, i, CHUNK_NUM - offset));
-
+                    value_row.reg[i] = Self::from_ranged_u8(
+                        Self::get_byte(value, i, CHUNK_NUM - offset),
+                        reg_range_check,
+                        1,
+                    );
                     if i == offset {
                         value_row.sel[i] = F::from_bool(true);
                     }
 
-                    second_read_row.reg[i] = F::from_u8(Self::get_byte(value_second_read, i, 0));
+                    second_read_row.reg[i] = Self::from_ranged_u8(
+                        Self::get_byte(value_second_read, i, 0),
+                        reg_range_check,
+                        1,
+                    );
                     if i < rem_bytes {
                         second_read_row.sel[i] = F::from_bool(true);
                     }
@@ -609,7 +620,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
                 // Get the next pc
                 let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::TwoWrites, offset, width);
+                    self.mem_align_rom_sm.calculate_next_pc(MemOp::TwoWrites, offset, width) as u32;
 
                 // RWVWR
                 let mut first_read_row = MemAlignTraceRow::<F> {
@@ -678,35 +689,57 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 };
 
                 for i in 0..CHUNK_NUM {
-                    first_read_row.reg[i] = F::from_u8(Self::get_byte(value_first_read, i, 0));
-                    if i < offset {
-                        first_read_row.sel[i] = F::from_bool(true);
-                    }
-
-                    first_write_row.reg[i] = F::from_u8(Self::get_byte(value_first_write, i, 0));
-                    if i >= offset {
-                        first_write_row.sel[i] = F::from_bool(true);
-                    }
-
-                    value_row.reg[i] = {
-                        if i < rem_bytes {
-                            second_write_row.reg[i]
-                        } else if i >= offset {
-                            first_write_row.reg[i]
+                    first_read_row.reg[i] = Self::from_ranged_u8(
+                        Self::get_byte(value_first_read, i, 0),
+                        reg_range_check,
+                        if i < offset {
+                            first_read_row.sel[i] = F::from_bool(true);
+                            2
                         } else {
-                            F::from_u8(Self::get_byte(value, i, CHUNK_NUM - offset))
-                        }
+                            1
+                        },
+                    );
+
+                    first_write_row.reg[i] = Self::from_ranged_u8(
+                        Self::get_byte(value_first_write, i, 0),
+                        reg_range_check,
+                        if i >= offset {
+                            first_write_row.sel[i] = F::from_bool(true);
+                            2
+                        } else {
+                            1
+                        },
+                    );
+
+                    value_row.reg[i] = if i < rem_bytes {
+                        second_write_row.reg[i]
+                    } else if i >= offset {
+                        first_write_row.reg[i]
+                    } else {
+                        Self::from_ranged_u8(
+                            Self::get_byte(value, i, CHUNK_NUM - offset),
+                            reg_range_check,
+                            1,
+                        )
                     };
                     if i == offset {
                         value_row.sel[i] = F::from_bool(true);
                     }
 
-                    second_write_row.reg[i] = F::from_u8(Self::get_byte(value_second_write, i, 0));
+                    second_write_row.reg[i] = Self::from_ranged_u8(
+                        Self::get_byte(value_second_write, i, 0),
+                        reg_range_check,
+                        1,
+                    );
                     if i < rem_bytes {
                         second_write_row.sel[i] = F::from_bool(true);
                     }
 
-                    second_read_row.reg[i] = F::from_u8(Self::get_byte(value_second_read, i, 0));
+                    second_read_row.reg[i] = Self::from_ranged_u8(
+                        Self::get_byte(value_second_read, i, 0),
+                        reg_range_check,
+                        1,
+                    );
                     if i >= rem_bytes {
                         second_read_row.sel[i] = F::from_bool(true);
                     }
@@ -818,17 +851,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         let mut index = 0;
         for inner_memp_ops in mem_ops {
             for input in inner_memp_ops {
-                let count = self.prove_mem_align_op(input, &mut trace, index, reg_range_check);
-                for i in 0..count {
-                    for j in 0..CHUNK_NUM {
-                        let element = trace[index + i].reg[j]
-                            .as_canonical_biguint()
-                            .to_usize()
-                            .expect("Cannot convert to usize");
-                        reg_range_check[element] += 1;
-                    }
-                }
-                index += count;
+                index += self.prove_mem_align_op(input, &mut trace, index, &mut reg_range_check);
             }
         }
 
@@ -853,7 +876,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         let std = self._std.clone();
         let range_id = std.get_range(0, CHUNK_BITS_MASK as i64, None);
         for (value, &multiplicity) in reg_range_check.iter().enumerate() {
-            std.range_check(value as i64, multiplicity as u32, range_id);
+            std.range_check(value as i64, multiplicity as u64, range_id);
         }
     }
 }
