@@ -167,7 +167,10 @@ public:
 
 };
 
-MemCountAndPlan *create_mem_count_and_plan(void) {
+#endif
+
+MemCountAndPlan *create_mem_count_and_plan(void)
+{
     MemCountAndPlan *mcp = new MemCountAndPlan();
     printf("MemCountAndPlan created. Preparing ....\n");
     mcp->prepare();
@@ -175,33 +178,56 @@ MemCountAndPlan *create_mem_count_and_plan(void) {
     return mcp;
 }
 
-void destroy_mem_count_and_plan(MemCountAndPlan *mcp) {
-    if (mcp) {
+void destroy_mem_count_and_plan(MemCountAndPlan *mcp)
+{
+    if (mcp)
+    {
         mcp->clear();
         delete mcp;
     }
 }
 
-void execute_mem_count_and_plan(MemCountAndPlan *mcp) {
+void execute_mem_count_and_plan(MemCountAndPlan *mcp)
+{
     mcp->execute();
 }
 
-void add_chunk_mem_count_and_plan(MemCountAndPlan *mcp, MemCountersBusData *chunk_data, uint32_t chunk_size) {
+void add_chunk_mem_count_and_plan(MemCountAndPlan *mcp, MemCountersBusData *chunk_data, uint32_t chunk_size)
+{
     mcp->add_chunk(chunk_data, chunk_size);
 }
 
-void stats_mem_count_and_plan(MemCountAndPlan *mcp) {
+void stats_mem_count_and_plan(MemCountAndPlan *mcp)
+{
     mcp->stats();
 }
 
-
-void set_completed_mem_count_and_plan(MemCountAndPlan *mcp) {
+void set_completed_mem_count_and_plan(MemCountAndPlan *mcp)
+{
     mcp->set_completed();
 }
 
-void wait_mem_count_and_plan(MemCountAndPlan *mcp) {
+void wait_mem_count_and_plan(MemCountAndPlan *mcp)
+{
     mcp->wait();
 }
 
+uint32_t get_mem_segment_count(MemCountAndPlan *mcp)
+{
+    return 0;
+}
 
-#endif
+MemCheckPoint *get_mem_segment_check_point(MemCountAndPlan *mcp, uint32_t segment_id, uint32_t &count)
+{
+    return nullptr;
+}
+
+uint32_t get_mem_align_segment_count(MemCountAndPlan *mcp)
+{
+    return 0;
+}
+
+MemAlignCheckPoint *get_mem_align_segment_check_point(MemCountAndPlan *mcp, uint32_t segment_id, uint32_t &count)
+{
+    return nullptr;
+}

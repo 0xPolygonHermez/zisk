@@ -93,15 +93,10 @@ impl AsmRunnerMO {
 
         // Read the header data
         let header_ptr = Self::get_output_ptr(SHMEM_OUTPUT_NAME) as *const AsmMOHeader;
-        let header = unsafe { std::ptr::read(header_ptr) };
-        println!("Header: {:?}", header);
 
         // From header, skips the header size and 8 bytes more to get the data pointer.
         // The 8 bytes are for the number of chunks.
         let mut data_ptr = unsafe { header_ptr.add(1) } as *const AsmMOChunk;
-
-        // TODO! REMOVE !!!
-        std::thread::sleep(Duration::from_millis(50));
 
         // Initialize C++ memory operations trace
         let mem_planner = MemPlanner::new();
@@ -112,25 +107,27 @@ impl AsmRunnerMO {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
                     let header = unsafe { std::ptr::read(header_ptr) };
-                    println!("Header after wait: {:?}", header);
                     if should_exit.load(std::sync::atomic::Ordering::SeqCst)
                         && chunk_id.0 == header.num_chunks as usize
                     {
                         break 0;
                     }
 
+                    // Used to ensure that the reads after this point see the latest writes from the C++ side.
+                    use std::sync::atomic::{fence, Ordering};
+                    fence(Ordering::Acquire);
+
                     let mo_trace = loop {
                         // Read only memory reads size
                         let chunk = unsafe { std::ptr::read(data_ptr) };
                         println!(
-                            "Pre-reading to check if it is  a 0xFFFFFFFFFFFFFFFF ? {:?}",
+                            "Pre-reading to check if it is  a 0xFFFFFFFFFFFFFFFF ? {:x?}",
                             chunk.mem_ops_size
                         );
 
                         if chunk.mem_ops_size == MEM_READS_SIZE_DUMMY {
                             std::thread::sleep(Duration::from_nanos(1));
                         } else {
-                            println!("{:?}", chunk);
                             mem_planner.add_chunk(chunk.mem_ops_size, unsafe {
                                 (data_ptr as *const u8).add(8) as *const c_void
                             });

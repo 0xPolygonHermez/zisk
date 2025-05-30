@@ -1651,7 +1651,7 @@ void server_setup (void)
     if (chunk_done)
     {
         assert(strlen(sem_chunk_done_name) > 0);
-        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0644, 1);
+        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0644, 0);
         if (sem_chunk_done == SEM_FAILED)
         {
             printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
@@ -1982,7 +1982,8 @@ extern void _chunk_done()
 {
     //chunk_done_counter++;
     //printf("chunk_done() counter=%lu\n", chunk_done_counter);
-
+    __sync_synchronize();
+    
     // Notify the caller that a new chunk is done and its trace is ready to be consumed
     assert(chunk_done);
     int result = sem_post(sem_chunk_done);

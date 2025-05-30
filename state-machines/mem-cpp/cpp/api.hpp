@@ -10,6 +10,8 @@ extern "C"
     // 👇 This makes `MemCountAndPlan*` a valid pointer type for C ABI consumers
     typedef struct MemCountAndPlan MemCountAndPlan;
     typedef struct MemCountersBusData MemCountersBusData;
+    typedef struct MemCheckPoint MemCheckPoint;
+    typedef struct MemAlignCheckPoint MemAlignCheckPoint;
 
     // C-compatible API (opaque to Rust)
     MemCountAndPlan *create_mem_count_and_plan(void);
@@ -19,6 +21,11 @@ extern "C"
     void stats_mem_count_and_plan(MemCountAndPlan *mcp);
     void set_completed_mem_count_and_plan(MemCountAndPlan *mcp);
     void wait_mem_count_and_plan(MemCountAndPlan *mcp);
+
+    uint32_t get_mem_segment_count(MemCountAndPlan *mcp);
+    MemCheckPoint *get_mem_segment_check_point(MemCountAndPlan *mcp, uint32_t segment_id, uint32_t &count);
+    uint32_t get_mem_align_segment_count(MemCountAndPlan *mcp);
+    MemAlignCheckPoint *get_mem_align_segment_check_point(MemCountAndPlan *mcp, uint32_t segment_id, uint32_t &count);
 
 #ifdef __cplusplus
 }

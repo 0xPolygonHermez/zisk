@@ -268,6 +268,16 @@ pub struct MemCountAndPlan {
 pub struct MemCountersBusData {
     _unused: [u8; 0],
 }
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct MemCheckPoint {
+    _unused: [u8; 0],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct MemAlignCheckPoint {
+    _unused: [u8; 0],
+}
 extern "C" {
     pub fn create_mem_count_and_plan() -> *mut MemCountAndPlan;
 }
@@ -292,4 +302,24 @@ extern "C" {
 }
 extern "C" {
     pub fn wait_mem_count_and_plan(mcp: *mut MemCountAndPlan);
+}
+extern "C" {
+    pub fn get_mem_segment_count(mcp: *mut MemCountAndPlan) -> u32;
+}
+extern "C" {
+    pub fn get_mem_segment_check_point(
+        mcp: *mut MemCountAndPlan,
+        segment_id: u32,
+        count: *mut u32,
+    ) -> *mut MemCheckPoint;
+}
+extern "C" {
+    pub fn get_mem_align_segment_count(mcp: *mut MemCountAndPlan) -> u32;
+}
+extern "C" {
+    pub fn get_mem_align_segment_check_point(
+        mcp: *mut MemCountAndPlan,
+        segment_id: u32,
+        count: *mut u32,
+    ) -> *mut MemAlignCheckPoint;
 }
