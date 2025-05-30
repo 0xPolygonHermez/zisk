@@ -2312,10 +2312,17 @@ extern int _print_pc (uint64_t pc, uint64_t c)
 }
 
 //uint64_t chunk_done_counter = 0;
+// struct timeval sync_start, sync_stop;
+// uint64_t sync_duration = 0;
 extern void _chunk_done()
 {
     //chunk_done_counter++;
     //printf("chunk_done() counter=%lu\n", chunk_done_counter);
+    //gettimeofday(&sync_start, NULL);
+    __sync_synchronize();
+    // gettimeofday(&sync_stop, NULL);
+    // sync_duration += TimeDiff(sync_start, sync_stop);
+    // printf("chunk_done() sync_duration=%lu\n", sync_duration);
 
     // Notify the caller that a new chunk is done and its trace is ready to be consumed
     assert(chunk_done);
