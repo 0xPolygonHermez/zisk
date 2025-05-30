@@ -1,7 +1,5 @@
 use std::path::Path;
 
-use log::info;
-
 use crate::{gen_elf_hash, get_elf_bin_file_path_with_hash, get_rom_blowup_factor};
 
 pub fn rom_merkle_setup(
@@ -13,7 +11,7 @@ pub fn rom_merkle_setup(
 ) -> Result<(), anyhow::Error> {
     // Check if the path is a file and not a directory
     if !elf.is_file() {
-        log::error!("Error: The specified ROM path is not a file: {}", elf.display());
+        tracing::error!("Error: The specified ROM path is not a file: {}", elf.display());
         std::process::exit(1);
     }
 
@@ -27,7 +25,7 @@ pub fn rom_merkle_setup(
 
     let root = gen_elf_hash(elf, elf_bin_path.as_path(), blowup_factor, check)?;
 
-    info!("Root hash: {:?}", root);
+    tracing::info!("Root hash: {:?}", root);
 
     Ok(())
 }

@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use cargo_zisk::{
     commands::{
-        ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskProve, ZiskRomSetup, ZiskRun, ZiskSdk,
+        ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskProve, ZiskRomSetup, ZiskRun, ZiskSdk, ZiskStats,
         ZiskVerify, ZiskVerifyConstraints,
     },
     ZISK_VERSION_MESSAGE,
@@ -25,6 +25,7 @@ pub enum Cargo {
     RomSetup(ZiskRomSetup),
     Run(ZiskRun),
     Sdk(ZiskSdk),
+    Stats(ZiskStats),
     Verify(ZiskVerify),
     VerifyConstraints(ZiskVerifyConstraints),
 }
@@ -51,6 +52,9 @@ fn main() -> Result<()> {
         }
         Cargo::Run(cmd) => {
             cmd.run().context("Error executing Run command")?;
+        }
+        Cargo::Stats(mut cmd) => {
+            cmd.run().context("Error executing SDK command")?;
         }
         Cargo::Sdk(cmd) => {
             cmd.command.run().context("Error executing SDK command")?;

@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 #[cfg(feature = "debug_mem")]
 use num_bigint::ToBigInt;
-use rayon::range;
 #[cfg(feature = "debug_mem")]
 use std::{
     fs::File,
@@ -11,8 +10,8 @@ use std::{
 use zisk_common::SegmentId;
 
 use crate::{
-    MemHelpers, MemInput, MemModule, MEM_BYTES_BITS, MEM_INC_C_BITS, MEM_INC_C_MASK,
-    MEM_INC_C_MAX_RANGE, MEM_INC_C_SIZE,
+    MemInput, MemModule, MEM_BYTES_BITS, MEM_INC_C_BITS, MEM_INC_C_MASK, MEM_INC_C_MAX_RANGE,
+    MEM_INC_C_SIZE,
 };
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
@@ -113,7 +112,6 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         let mut last_value = previous_segment.value;
 
         let mut i = 0;
-        let mut increment: usize = 0;
 
         for mem_op in mem_ops {
             let step = mem_op.step;
@@ -127,8 +125,8 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             let addr_changes = last_addr != mem_op.addr;
             trace[i].addr_changes = if addr_changes { F::ONE } else { F::ZERO };
 
-            if addr_changes {
-                increment = (mem_op.addr - last_addr) as usize;
+            let mut increment = if addr_changes {
+                (mem_op.addr - last_addr) as usize
             } else {
                 if step < last_step {
                     panic!(
@@ -136,8 +134,8 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                         step, last_step, addr_changes as u8, mem_op.addr * 8, last_addr * 8, mem_op.step, last_step, i, previous_segment
                     );
                 }
-                increment = (step - last_step) as usize;
-            }
+                (step - last_step) as usize
+            };
 
             if i >= trace.num_rows {
                 break;
@@ -164,11 +162,6 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             trace[i].wr = F::from_bool(mem_op.is_write);
 
             // println!("TRACE[{}] = [0x{:X},{}] {}", i, mem_op.addr * 8, mem_op.step, mem_op.value,);
-
-            #[cfg(feature = "debug_mem")]
-            {
-                _mem_op_done += 1;
-            }
 
             #[cfg(feature = "debug_mem")]
             if (lsb_increment >= MEM_INC_C_SIZE) || (msb_increment > MEM_INC_C_SIZE) {
@@ -263,13 +256,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         #[cfg(feature = "debug_mem")]
         {
             self.save_to_file(&trace, &format!("/tmp/mem_trace_{}.txt", segment_id));
-            println!(
-                "[Mem:{}] mem_ops:{}/{} padding:{}",
-                segment_id,
-                _mem_op_done,
-                mem_ops.len(),
-                padding_size
-            );
+            println!("[Mem:{}] mem_ops:{} padding:{}", segment_id, mem_ops.len(), padding_size);
         }
         AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values))
     }

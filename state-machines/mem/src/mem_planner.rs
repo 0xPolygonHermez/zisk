@@ -1,24 +1,25 @@
 use rayon::prelude::*;
-use std::{
-    env, fs,
-    ops::Deref,
-    sync::{Arc, Mutex},
-};
+#[cfg(feature = "save_mem_bus_data")]
+use std::{env, fs};
 
-#[cfg(feature = "debug_mem")]
-use crate::MemDebug;
-use zisk_common::{BusDeviceMetrics, CheckPoint, ChunkId, Metrics, Plan, Planner, SegmentId};
+use std::sync::{Arc, Mutex};
 
-#[cfg(feature = "debug_mem")]
-use crate::MemHelpers;
+#[cfg(feature = "save_mem_bus_data")]
+use zisk_common::{CheckPoint, SegmentId};
+
+use zisk_common::{BusDeviceMetrics, ChunkId, Metrics, Plan, Planner};
 
 use zisk_pil::{
     InputDataTrace, MemTrace, RomDataTrace, INPUT_DATA_AIR_IDS, MEM_AIR_IDS, ROM_DATA_AIR_IDS,
     ZISK_AIRGROUP_ID,
 };
 
+#[cfg(feature = "save_mem_bus_data")]
 use crate::{
     mem_align_planner::MemAlignCheckPoint, mem_module_planner::MemModuleSegmentCheckPoint,
+};
+
+use crate::{
     MemAlignPlanner, MemCounters, MemModulePlanner, MemModulePlannerConfig, INPUT_DATA_W_ADDR_INIT,
     RAM_W_ADDR_INIT, ROM_DATA_W_ADDR_INIT,
 };
@@ -36,62 +37,6 @@ impl MemPlanner {
         Self {}
     }
 
-    #[cfg(feature = "debug_mem")]
-    fn collect_debug_data(&self, counters: Arc<Vec<(ChunkId, &MemCounters)>>) {
-        let mut debug = MemDebug::new();
-        let mut i = 0;
-        while i < counters.len() {
-            debug.add(&counters[i].1.debug);
-            i += 1;
-        }
-        if !debug.is_empty() {
-            debug.save_to_file("/tmp/mem_debug.txt");
-        }
-    }
-
-    #[cfg(feature = "debug_mem")]
-    fn debug_plans(&self, plans: &[Plan]) {
-        use log::info;
-
-        use crate::MemModuleSegmentCheckPoint;
-
-        for (index, plan) in plans.iter().enumerate() {
-            if plan.air_id == MEM_AIR_IDS[0]
-                || plan.air_id == INPUT_DATA_AIR_IDS[0]
-                || plan.air_id == ROM_DATA_AIR_IDS[0]
-            {
-                let meta = plan
-                    .meta
-                    .as_ref()
-                    .unwrap()
-                    .downcast_ref::<MemModuleSegmentCheckPoint>()
-                    .unwrap();
-                info!(
-                    "[Mem] PLAN #{} [{}:{}:{}] [0x{:X},{}] => [0x{:X},{}] skip:{} last:{} {:?}",
-                    index,
-                    plan.airgroup_id,
-                    plan.air_id,
-                    plan.segment_id.unwrap_or(0),
-                    MemHelpers::get_addr(meta.prev_addr),
-                    meta.prev_step,
-                    MemHelpers::get_addr(meta.last_addr),
-                    meta.last_step,
-                    meta.skip_rows,
-                    meta.is_last_segment,
-                    plan.check_point,
-                );
-            } else {
-                info!(
-                    "[Mem] PLAN #{} [{}:{}:{}] {:?}",
-                    index,
-                    plan.airgroup_id,
-                    plan.air_id,
-                    plan.segment_id.unwrap_or(0),
-                    plan.check_point,
-                );
-            }
-        }
-    }
     pub fn generate_plans(&self, metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
         // convert generic information to specific information
         let mut counters: Vec<(ChunkId, &MemCounters)> = metrics
@@ -102,9 +47,6 @@ impl MemPlanner {
             .collect();
         counters.par_sort_by_key(|(chunk_id, _)| *chunk_id);
         let counters = Arc::new(counters);
-
-        #[cfg(feature = "debug_mem")]
-        self.collect_debug_data(counters.clone());
 
         let mem_planner = Arc::new(Mutex::new(MemModulePlanner::new(
             MemModulePlannerConfig {
@@ -163,12 +105,12 @@ impl MemPlanner {
         // plans.append(&mut mem_align_planner.lock().unwrap().collect_plans());
         plans.append(&mut mem_align_planner.collect_plans());
 
-        #[cfg(feature = "debug_mem")]
-        self.debug_plans(plans.as_ref());
         #[cfg(feature = "save_mem_bus_data")]
         self.save_plans(&plans);
         plans
     }
+
+    #[cfg(feature = "save_mem_bus_data")]
     fn save_plans(&self, plans: &[Plan]) {
         let path = env::var("BUS_DATA_DIR").unwrap_or("tmp/bus_data".to_string());
 

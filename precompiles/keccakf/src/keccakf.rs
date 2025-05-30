@@ -1,7 +1,6 @@
 use core::panic;
 use std::sync::Arc;
 
-use log::info;
 use p3_field::PrimeField64;
 use tiny_keccak::keccakf;
 
@@ -39,8 +38,6 @@ pub struct KeccakfSM {
 type KeccakfInput = [u64; INPUT_DATA_SIZE_BITS];
 
 impl KeccakfSM {
-    const MY_NAME: &'static str = "Keccakf ";
-
     pub const NUM_KECCAKF_PER_SLOT: usize = CHUNKS_KECCAKF * BITS_KECCAKF;
 
     const RB_SIZE: usize = Self::NUM_KECCAKF_PER_SLOT * RB;
@@ -472,7 +469,7 @@ impl KeccakfSM {
         let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
         let fixed = KeccakfFixed::from_vec(fixed_pols);
 
-        // timer_start_trace!(KECCAKF_TRACE);
+        timer_start_trace!(KECCAKF_TRACE);
         let mut keccakf_trace = KeccakfTrace::new();
         let num_rows = keccakf_trace.num_rows();
 
@@ -495,9 +492,8 @@ impl KeccakfSM {
         debug_assert!(num_slots_needed <= self.num_available_slots);
         debug_assert!(num_rows_needed <= num_rows);
 
-        info!(
-            "{}: ··· Creating Keccakf instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
+        tracing::info!(
+            "··· Creating Keccakf instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,
             num_rows_needed as f64 / num_rows as f64 * 100.0
@@ -529,9 +525,9 @@ impl KeccakfSM {
 
         // Fill the rest of the trace
         self.process_slice(&fixed, &mut keccakf_trace, num_rows_constants, &inputs);
-        // timer_stop_and_log_trace!(KECCAKF_TRACE);
+        timer_stop_and_log_trace!(KECCAKF_TRACE);
 
-        // timer_start_trace!(KECCAKF_PADDING);
+        timer_start_trace!(KECCAKF_PADDING);
         // A row with all zeros satisfies the constraints (since both XOR(0,0) and ANDP(0,0) are 0)
         let padding_row: KeccakfTraceRow<F> = Default::default();
         for i in (num_rows_constants + self.slot_size * self.num_available_slots)..num_rows {
@@ -548,7 +544,7 @@ impl KeccakfSM {
 
             keccakf_trace[i] = padding_row;
         }
-        // timer_stop_and_log_trace!(KECCAKF_PADDING);
+        timer_stop_and_log_trace!(KECCAKF_PADDING);
 
         AirInstance::new_from_trace(FromTrace::new(&mut keccakf_trace))
     }
