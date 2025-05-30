@@ -64,6 +64,10 @@ uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
 #define TYPE_MO_RESPONSE 8
 #define TYPE_MA_REQUEST 9 // Main packed trace
 #define TYPE_MA_RESPONSE 10
+#define TYPE_CM_REQUEST 11 // Collect memory trace
+#define TYPE_CM_RESPONSE 12
+#define TYPE_FA_REQUEST 13 // Fast mode, do not generate any trace
+#define TYPE_FA_RESPONSE 14
 #define TYPE_SD_REQUEST 1000000 // Shutdown
 #define TYPE_SD_RESPONSE 1000001
 
@@ -74,9 +78,10 @@ typedef enum {
     RomHistogram = 2,
     MainTrace = 3,
     ChunksOnly = 4,
-    BusOp = 5,
+    //BusOp = 5,
     Zip = 6,
     MemOp = 7,
+    ChunkPlayerMTCollectMem = 8,
 } GenMethod;
 GenMethod gen_method = Fast;
 
@@ -126,6 +131,10 @@ bool is_power_of_two (uint64_t number) {
 uint64_t chunk_size = INITIAL_CHUNK_SIZE;
 uint64_t chunk_size_mask = INITIAL_CHUNK_SIZE - 1;
 uint64_t max_steps = (1ULL << 32);
+
+// Chunk player globals
+uint64_t chunk_player_address = 0;
+uint64_t chunk_player_mt_size = INITIAL_TRACE_SIZE; // TODO
 
 void set_max_steps (uint64_t new_max_steps)
 {
@@ -209,16 +218,18 @@ uint64_t chunk_mask = 0x0; // 0, 1, 2, 3, 4, 5, 6 or 7
 #define MAX_SHM_PREFIX_LENGTH 32
 
 // Input shared memory
-char * shmem_input_sufix = "_input";
 char shmem_input_name[128];
 int shmem_input_fd = -1;
 uint64_t shmem_input_size = 0;
 void * shmem_input_address = NULL;
 
-// Output shared memory
-char * shmem_output_sufix = "_output";
+// Output trace shared memory
 char shmem_output_name[128];
 int shmem_output_fd = -1;
+
+// Input MT trace shared memory
+char shmem_mt_name[128];
+int shmem_mt_fd = -1;
 
 // Chunk done semaphore: notifies the caller when a new chunk has been processed
 char * sem_chunk_done_sufix = "_semckd";
@@ -361,7 +372,7 @@ int main(int argc, char *argv[])
 #ifdef DEBUG
             if (verbose) printf("recv() returned: %ld\n", bytes_read);
 #endif
-            if (verbose) printf("recv()'d request=[%lu, %lu, %lu, %lu, %lu]\n", request[0], request[1], request[2], request[3], request[4]);
+            if (verbose) printf("recv()'d request=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", request[0], request[1], request[2], request[3], request[4]);
 
             uint64_t response[5];
             bReset = false;
@@ -498,6 +509,67 @@ int main(int argc, char *argv[])
                     }
                     break;
                 }
+                case TYPE_CM_REQUEST:
+                {
+#ifdef DEBUG
+                    if (verbose) printf("COLLECT MEMORY received\n");
+#endif
+                    if (gen_method == ChunkPlayerMTCollectMem)
+                    {
+                        set_max_steps(request[1]);
+                        set_chunk_size(request[2]);
+                        chunk_player_address = request[3];
+
+                        server_run();
+
+                        response[0] = TYPE_CM_RESPONSE;
+                        response[1] = MEM_END ? 0 : 1;
+                        response[2] = trace_size;
+                        response[3] = trace_used_size;
+                        response[4] = 0;
+
+                        bReset = true;
+                    }
+                    else
+                    {
+                        response[0] = TYPE_CM_RESPONSE;
+                        response[1] = 1;
+                        response[2] = trace_size;
+                        response[3] = trace_used_size;
+                        response[4] = 0;
+                    }
+                    break;
+                }
+                case TYPE_FA_REQUEST:
+                {
+#ifdef DEBUG
+                    if (verbose) printf("FAST received\n");
+#endif
+                    if (gen_method == Fast)
+                    {
+                        set_max_steps(request[1]);
+                        set_chunk_size(request[2]);
+
+                        server_run();
+
+                        response[0] = TYPE_FA_RESPONSE;
+                        response[1] = MEM_END ? 0 : 1;
+                        response[2] = 0;
+                        response[3] = 0;
+                        response[4] = 0;
+
+                        bReset = true;
+                    }
+                    else
+                    {
+                        response[0] = TYPE_FA_RESPONSE;
+                        response[1] = 1;
+                        response[2] = 0;
+                        response[3] = 0;
+                        response[4] = 0;
+                    }
+                    break;
+                }
                 case TYPE_SD_REQUEST:
                 {
                     printf("SHUTDOWN received\n");
@@ -519,7 +591,7 @@ int main(int argc, char *argv[])
                 }
             }
 
-            if (verbose) printf("send()'ing response=[%lu, %lu, %lu, %lu, %lu]\n", response[0], response[1], response[2], response[3], response[4]);
+            if (verbose) printf("send()'ing response=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", response[0], response[1], response[2], response[3], response[4]);
 
             ssize_t bytes_sent = send(client_fd, response, sizeof(response), MSG_WAITALL);
             if (bytes_sent != sizeof(response))
@@ -578,7 +650,7 @@ int main(int argc, char *argv[])
 
 void print_usage (void)
 {
-    char * usage = "Usage: ziskemuasm -s(server) -c(client) -i <input_file> -p <port_number> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [--chunk <chunk_number>] [--shutdown] [--mt <number_of_mt_requests>] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-f(save to file)] [-h/--help print this]";
+    char * usage = "Usage: ziskemuasm -s(server) -c(client) -i <input_file> -p <port_number> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [--chunk <chunk_number>] [--shutdown] [--mt <number_of_mt_requests>] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-f(save to file)] [-a chunk_address] [-h/--help print this]";
 #ifdef DEBUG
     printf("%s [-v verbose on] [-k keccak trace on]\n", usage);
 #else
@@ -642,6 +714,12 @@ void parse_arguments(int argc, char *argv[])
             if ( (strcmp(argv[i], "--gen=7") == 0) || (strcmp(argv[i], "--generate_mem_op") == 0))
             {
                 gen_method = MemOp;
+                number_of_selected_generation_methods++;
+                continue;
+            }
+            if ( (strcmp(argv[i], "--gen=8") == 0) || (strcmp(argv[i], "--generate_chunk_player_mt_collect_mem") == 0))
+            {
+                gen_method = ChunkPlayerMTCollectMem;
                 number_of_selected_generation_methods++;
                 continue;
             }
@@ -822,6 +900,39 @@ void parse_arguments(int argc, char *argv[])
                 save_to_file = true;
                 continue;
             }
+            if (strcmp(argv[i], "-a") == 0)
+            {
+                i++;
+                if (i >= argc)
+                {
+                    printf("Detected argument -a in the last position; please provide chunk address after it\n");
+                    print_usage();
+                    exit(-1);
+                }
+                errno = 0;
+                char *endptr;
+                char * argument = argv[i];
+                if ((argument[0] == '0') && (argument[1] == 'x')) argument += 2;
+                chunk_player_address = strtoul(argv[i], &endptr, 16);
+
+                // Check for errors
+                if (errno == ERANGE) {
+                    printf("Error: Chunk address is too large\n");
+                    print_usage();
+                    exit(-1);
+                } else if (endptr == argument) {
+                    printf("Error: No digits found while parsing chunk addresss\n");
+                    print_usage();
+                    exit(-1);
+                } else if (*endptr != '\0') {
+                    printf("Error: Extra characters after chunk address: %s\n", endptr);
+                    print_usage();
+                    exit(-1);
+                } else {
+                    printf("Got chunk address= %p\n", (void *)chunk_player_address);
+                }
+                continue;
+            }
             printf("Unrecognized argument: %s\n", argv[i]);
             print_usage();
             fflush(stdout);
@@ -881,15 +992,17 @@ void configure (void)
         case Fast:
         {
             strcpy(shmem_input_name, "ZISKFT_input");
-            strcpy(shmem_output_name, "ZISKFT_output");
+            strcpy(shmem_output_name, "");
+            strcpy(shmem_mt_name, "");
             strcpy(sem_chunk_done_name, "");
-            port = 23115;
+            port = 23120;
             break;
         }
         case MinimalTrace:
         {
             strcpy(shmem_input_name, "ZISKMT_input");
             strcpy(shmem_output_name, "ZISKMT_output");
+            strcpy(shmem_mt_name, "");
             strcpy(sem_chunk_done_name, "ZISKMT_chunk_done");
             chunk_done = true;
             port = 23115;
@@ -899,6 +1012,7 @@ void configure (void)
         {
             strcpy(shmem_input_name, "ZISKRH_input");
             strcpy(shmem_output_name, "ZISKRH_output");
+            strcpy(shmem_mt_name, "");
             strcpy(sem_chunk_done_name, "");
             port = 23116;
             break;
@@ -907,6 +1021,7 @@ void configure (void)
         {
             strcpy(shmem_input_name, "ZISKMA_input");
             strcpy(shmem_output_name, "ZISKMA_output");
+            strcpy(shmem_mt_name, "");
             strcpy(sem_chunk_done_name, "ZISKMA_chunk_done");
             chunk_done = true;
             port = 23118;
@@ -916,24 +1031,26 @@ void configure (void)
         {
             strcpy(shmem_input_name, "ZISKCH_input");
             strcpy(shmem_output_name, "ZISKCH_output");
+            strcpy(shmem_mt_name, "");
             strcpy(sem_chunk_done_name, "ZISKCH_chunk_done");
             chunk_done = true;
             port = 23115;
             break;
         }
-        case BusOp:
-        {
-            strcpy(shmem_input_name, "ZISKBO_input");
-            strcpy(shmem_output_name, "ZISKBO_output");
-            strcpy(sem_chunk_done_name, "ZISKBO_chunk_done");
-            chunk_done = true;
-            port = 23115;
-            break;
-        }
+        // case BusOp:
+        // {
+        //     strcpy(shmem_input_name, "ZISKBO_input");
+        //     strcpy(shmem_output_name, "ZISKBO_output");
+        //     strcpy(sem_chunk_done_name, "ZISKBO_chunk_done");
+        //     chunk_done = true;
+        //     port = 23115;
+        //     break;
+        // }
         case Zip:
         {
             strcpy(shmem_input_name, "ZISKZP_input");
             strcpy(shmem_output_name, "ZISKZP_output");
+            strcpy(shmem_mt_name, "");
             strcpy(sem_chunk_done_name, "ZISKZP_chunk_done");
             chunk_done = true;
             port = 23115;
@@ -943,9 +1060,20 @@ void configure (void)
         {
             strcpy(shmem_input_name, "ZISKMO_input");
             strcpy(shmem_output_name, "ZISKMO_output");
+            strcpy(shmem_mt_name, "");
             strcpy(sem_chunk_done_name, "ZISKMO_chunk_done");
             chunk_done = true;
             port = 23117;
+            break;
+        }
+        case ChunkPlayerMTCollectMem:
+        {
+            strcpy(shmem_input_name, "ZISKCM_input");
+            strcpy(shmem_output_name, "ZISKCM_output");
+            strcpy(shmem_mt_name, "ZISKMT_output");
+            strcpy(sem_chunk_done_name, "");
+            chunk_done = false;
+            port = 23119;
             break;
         }
         default:
@@ -964,13 +1092,14 @@ void configure (void)
 
     if (verbose)
     {
-        printf("ziskemuasm configuration: gen_method=%u port=%u chunk_done=%u chunk_size=%lu shmem_input=%s shmem_output=%s sem_chunk_done=%s\n",
+        printf("ziskemuasm configuration:\n\tgen_method=%u\n\tport=%u\n\tchunk_done=%u\n\tchunk_size=%lu\n\tshmem_input=%s\n\tshmem_output=%s\n\tshmem_mt=%s\n\tsem_chunk_done=%s\n",
             gen_method,
             port,
             chunk_done,
             chunk_size,
             shmem_input_name,
             shmem_output_name,
+            shmem_mt_name,
             sem_chunk_done_name);
     }
 }
@@ -985,108 +1114,112 @@ void client_run (void)
     /************************/
     /* Read input file data */
     /************************/
+    if (gen_method != ChunkPlayerMTCollectMem)
+    {
 
 #ifdef DEBUG
-    gettimeofday(&start_time, NULL);
+        gettimeofday(&start_time, NULL);
 #endif
 
-    // Open input file
-    FILE * input_fp = fopen(input_file, "r");
-    if (input_fp == NULL)
-    {
-        printf("Failed calling fopen(%s) errno=%d=%s; does it exist?\n", input_file, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
+        // Open input file
+        FILE * input_fp = fopen(input_file, "r");
+        if (input_fp == NULL)
+        {
+            printf("Failed calling fopen(%s) errno=%d=%s; does it exist?\n", input_file, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
 
-    // Get input file size
-    if (fseek(input_fp, 0, SEEK_END) == -1)
-    {
-        printf("Failed calling fseek(%s) errno=%d=%s\n", input_file, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    long input_data_size = ftell(input_fp);
-    if (input_data_size == -1)
-    {
-        printf("Failed calling ftell(%s) errno=%d=%s\n", input_file, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
+        // Get input file size
+        if (fseek(input_fp, 0, SEEK_END) == -1)
+        {
+            printf("Failed calling fseek(%s) errno=%d=%s\n", input_file, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        long input_data_size = ftell(input_fp);
+        if (input_data_size == -1)
+        {
+            printf("Failed calling ftell(%s) errno=%d=%s\n", input_file, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
 
-    // Go back to the first byte
-    if (fseek(input_fp, 0, SEEK_SET) == -1)
-    {
-        printf("Failed calling fseek(%s, 0) errno=%d=%s\n", input_file, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
+        // Go back to the first byte
+        if (fseek(input_fp, 0, SEEK_SET) == -1)
+        {
+            printf("Failed calling fseek(%s, 0) errno=%d=%s\n", input_file, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
 
-    // Check the input data size is inside the proper range
-    if (input_data_size > (MAX_INPUT_SIZE - 16))
-    {
-        printf("Size of input file (%s) is too long (%lu)\n", input_file, input_data_size);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
+        // Check the input data size is inside the proper range
+        if (input_data_size > (MAX_INPUT_SIZE - 16))
+        {
+            printf("Size of input file (%s) is too long (%lu)\n", input_file, input_data_size);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
 
-    // Open input shared memory
-    shmem_input_fd = shm_open(shmem_input_name, O_RDWR, 0644);
-    if (shmem_input_fd < 0)
-    {
-        printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
+        // Open input shared memory
+        shmem_input_fd = shm_open(shmem_input_name, O_RDWR, 0644);
+        if (shmem_input_fd < 0)
+        {
+            printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
 
-    // Map the shared memory object into the process address space
-    shmem_input_address = mmap(NULL, MAX_INPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_input_fd, 0);
-    if (shmem_input_address == MAP_FAILED)
-    {
-        printf("Failed calling mmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
+        // Map the shared memory object into the process address space
+        shmem_input_address = mmap(NULL, MAX_INPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_input_fd, 0);
+        if (shmem_input_address == MAP_FAILED)
+        {
+            printf("Failed calling mmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
 
-    // Write the input size in the first 64 bits
-    *(uint64_t *)shmem_input_address = (uint64_t)0; // free input
-    *(uint64_t *)(shmem_input_address + 8)= (uint64_t)input_data_size;
+        // Write the input size in the first 64 bits
+        *(uint64_t *)shmem_input_address = (uint64_t)0; // free input
+        *(uint64_t *)(shmem_input_address + 8)= (uint64_t)input_data_size;
 
-    // Copy input data into input memory
-    size_t input_read = fread(shmem_input_address + 16, 1, input_data_size, input_fp);
-    if (input_read != input_data_size)
-    {
-        printf("Input read (%lu) != input file size (%lu)\n", input_read, input_data_size);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
+        // Copy input data into input memory
+        size_t input_read = fread(shmem_input_address + 16, 1, input_data_size, input_fp);
+        if (input_read != input_data_size)
+        {
+            printf("Input read (%lu) != input file size (%lu)\n", input_read, input_data_size);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
 
-    // Close the file pointer
-    fclose(input_fp);
+        // Close the file pointer
+        fclose(input_fp);
 
-    // Unmap input
-    result = munmap(shmem_input_address, MAX_INPUT_SIZE);
-    if (result == -1)
-    {
-        printf("Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
+        // Unmap input
+        result = munmap(shmem_input_address, MAX_INPUT_SIZE);
+        if (result == -1)
+        {
+            printf("Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
 
 #ifdef DEBUG
-    gettimeofday(&stop_time, NULL);
-    duration = TimeDiff(start_time, stop_time);
-    printf("client (input): done in %lu us\n", duration);
+        gettimeofday(&stop_time, NULL);
+        duration = TimeDiff(start_time, stop_time);
+        printf("client (input): done in %lu us\n", duration);
 #endif
+
+    }
 
     /*************************/
     /* Connect to the server */
@@ -1122,6 +1255,7 @@ void client_run (void)
         printf("connect() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
+    if (verbose) printf("connect()'d to port=%u\n", port);
 
     // Request and response
     uint64_t request[5];
@@ -1217,28 +1351,28 @@ void client_run (void)
                 bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
                 if (bytes_received < 0)
                 {
-                    printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (bytes_received != sizeof(response))
                 {
-                    printf("recv_all_with_timeout() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[0] != TYPE_MT_RESPONSE)
                 {
-                    printf("recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
+                    printf("recv() returned unexpected type=%lu\n", response[0]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[1] != 0)
                 {
-                    printf("recv_all_with_timeout() returned unexpected result=%lu\n", response[1]);
+                    printf("recv() returned unexpected result=%lu\n", response[1]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
@@ -1278,28 +1412,28 @@ void client_run (void)
                 bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
                 if (bytes_received < 0)
                 {
-                    printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (bytes_received != sizeof(response))
                 {
-                    printf("recv_all_with_timeout() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[0] != TYPE_MO_RESPONSE)
                 {
-                    printf("recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
+                    printf("recv() returned unexpected type=%lu\n", response[0]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[1] != 0)
                 {
-                    printf("recv_all_with_timeout() returned unexpected result=%lu\n", response[1]);
+                    printf("recv() returned unexpected result=%lu\n", response[1]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
@@ -1339,28 +1473,28 @@ void client_run (void)
                 bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
                 if (bytes_received < 0)
                 {
-                    printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (bytes_received != sizeof(response))
                 {
-                    printf("recv_all_with_timeout() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[0] != TYPE_MA_RESPONSE)
                 {
-                    printf("recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
+                    printf("recv() returned unexpected type=%lu\n", response[0]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[1] != 0)
                 {
-                    printf("recv_all_with_timeout() returned unexpected result=%lu\n", response[1]);
+                    printf("recv() returned unexpected result=%lu\n", response[1]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
@@ -1369,6 +1503,128 @@ void client_run (void)
                 gettimeofday(&stop_time, NULL);
                 duration = TimeDiff(start_time, stop_time);
                 printf("client (MA)[%lu]: done in %lu us\n", i, duration);
+
+                // Pretend to spend some time processing the incoming data
+                usleep((1000000));
+                
+                break;
+            }
+            case ChunkPlayerMTCollectMem:
+            {
+                gettimeofday(&start_time, NULL);
+
+                // Prepare message to send
+                request[0] = TYPE_CM_REQUEST;
+                request[1] = 1ULL << 32; // max_steps
+                request[2] = 1ULL << 18; // chunk_len
+                request[3] = chunk_player_address;
+                request[4] = 0;
+
+                // Send data to server
+                result = send(socket_fd, request, sizeof(request), 0);
+                if (result < 0)
+                {
+                    printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+
+                // Read server response
+                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
+                if (bytes_received < 0)
+                {
+                    printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (bytes_received != sizeof(response))
+                {
+                    printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[0] != TYPE_CM_RESPONSE)
+                {
+                    printf("recv() returned unexpected type=%lu\n", response[0]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[1] != 0)
+                {
+                    printf("recv() returned unexpected result=%lu\n", response[1]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                printf("client (CM)[%lu]: done in %lu us\n", i, duration);
+
+                // Pretend to spend some time processing the incoming data
+                usleep((1000000));
+                
+                break;
+            }
+            case Fast:
+            {
+                gettimeofday(&start_time, NULL);
+
+                // Prepare message to send
+                request[0] = TYPE_FA_REQUEST;
+                request[1] = 1ULL << 32; // max_steps
+                request[2] = 1ULL << 18; // chunk_len
+                request[3] = 0;
+                request[4] = 0;
+
+                // Send data to server
+                result = send(socket_fd, request, sizeof(request), 0);
+                if (result < 0)
+                {
+                    printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+
+                // Read server response
+                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
+                if (bytes_received < 0)
+                {
+                    printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (bytes_received != sizeof(response))
+                {
+                    printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[0] != TYPE_FA_RESPONSE)
+                {
+                    printf("recv() returned unexpected type=%lu\n", response[0]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[1] != 0)
+                {
+                    printf("recv() returned unexpected result=%lu\n", response[1]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                printf("client (FA)[%lu]: done in %lu us\n", i, duration);
 
                 // Pretend to spend some time processing the incoming data
                 usleep((1000000));
@@ -1459,120 +1715,127 @@ void server_setup (void)
     /*******/
     /* ROM */
     /*******/
-#ifdef DEBUG
-    gettimeofday(&start_time, NULL);
-#endif
-    void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_LOCKED, -1, 0);
-#ifdef DEBUG
-    gettimeofday(&stop_time, NULL);
-    duration = TimeDiff(start_time, stop_time);
-#endif
-    if (pRom == NULL)
+    if (gen_method != ChunkPlayerMTCollectMem)
     {
-        printf("Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
+
+        if (verbose) gettimeofday(&start_time, NULL);
+        void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_LOCKED, -1, 0);
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+        }
+        if (pRom == MAP_FAILED)
+        {
+            printf("Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if ((uint64_t)pRom != ROM_ADDR)
+        {
+            printf("Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if (verbose) printf("mmap(rom) returned %p in %lu us\n", pRom, duration);
+
     }
-    if ((uint64_t)pRom != ROM_ADDR)
-    {
-        printf("Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-#ifdef DEBUG
-    if (verbose) printf("mmap(rom) returned %p in %lu us\n", pRom, duration);
-#endif
 
     /*********/
     /* INPUT */
     /*********/
 
-    // Make sure the input shared memory is deleted
-    shm_unlink(shmem_input_name);
+    if (gen_method != ChunkPlayerMTCollectMem)
+    {
 
-    // Create the input shared memory
-    shmem_input_fd = shm_open(shmem_input_name, O_RDWR | O_CREAT, 0666);
-    if (shmem_input_fd < 0)
-    {
-        printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
+        // Make sure the input shared memory is deleted
+        shm_unlink(shmem_input_name);
 
-    // Size it
-    result = ftruncate(shmem_input_fd, MAX_INPUT_SIZE);
-    if (result != 0)
-    {
-        printf("Failed calling ftruncate(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
+        // Create the input shared memory
+        shmem_input_fd = shm_open(shmem_input_name, O_RDWR | O_CREAT, 0666);
+        if (shmem_input_fd < 0)
+        {
+            printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
 
-    // Map input address space
-#ifdef DEBUG
-    gettimeofday(&start_time, NULL);
-#endif
-    void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | /*MAP_ANONYMOUS |*/ MAP_FIXED | MAP_LOCKED, shmem_input_fd, 0);
-#ifdef DEBUG
-    gettimeofday(&stop_time, NULL);
-    duration = TimeDiff(start_time, stop_time);
-#endif
-    if (pInput == NULL)
-    {
-        printf("Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
+        // Size it
+        result = ftruncate(shmem_input_fd, MAX_INPUT_SIZE);
+        if (result != 0)
+        {
+            printf("Failed calling ftruncate(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        // Map input address space
+        if (verbose) gettimeofday(&start_time, NULL);
+        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | /*MAP_ANONYMOUS |*/ MAP_FIXED | MAP_LOCKED, shmem_input_fd, 0);
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+        }
+        if (pInput == MAP_FAILED)
+        {
+            printf("Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if ((uint64_t)pInput != INPUT_ADDR)
+        {
+            printf("Called mmap(pInput) but returned address = %p != 0x%lx\n", pInput, INPUT_ADDR);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if (verbose) printf("mmap(input) returned %p in %lu us\n", pInput, duration);
+
     }
-    if ((uint64_t)pInput != INPUT_ADDR)
-    {
-        printf("Called mmap(pInput) but returned address = %p != 0x%lx\n", pInput, INPUT_ADDR);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-#ifdef DEBUG
-    if (verbose) printf("mmap(input) returned %p in %lu us\n", pInput, duration);
-#endif
 
     /*******/
     /* RAM */
     /*******/
 
-#ifdef DEBUG
-    gettimeofday(&start_time, NULL);
-#endif
-    void * pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_LOCKED, -1, 0);
-#ifdef DEBUG
-    gettimeofday(&stop_time, NULL);
-    duration = TimeDiff(start_time, stop_time);
-#endif
-    if (pRam == NULL)
+    if (gen_method != ChunkPlayerMTCollectMem)
     {
-        printf("Failed calling mmap(ram) errno=%d=%s\n", errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if ((uint64_t)pRam != RAM_ADDR)
-    {
-        printf("Called mmap(ram) but returned address = %p != 0x%08lx\n", pRam, RAM_ADDR);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-#ifdef DEBUG
-    if (verbose) printf("mmap(ram) returned %p in %lu us\n", pRam, duration);
-#endif
 
-    /*********/
-    /* TRACE */
-    /*********/
+        if (verbose) gettimeofday(&start_time, NULL);
+        void * pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_LOCKED, -1, 0);
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+        }
+        if (pRam == MAP_FAILED)
+        {
+            printf("Failed calling mmap(ram) errno=%d=%s\n", errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if ((uint64_t)pRam != RAM_ADDR)
+        {
+            printf("Called mmap(ram) but returned address = %p != 0x%08lx\n", pRam, RAM_ADDR);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if (verbose) printf("mmap(ram) returned %p in %lu us\n", pRam, duration);
 
+    }
+
+    /****************/
+    /* OUTPUT TRACE */
+    /****************/
+
+    // If ROM histogram, configure trace size
     if (gen_method == RomHistogram)
     {
         // Get max PC values for low and high addresses
@@ -1591,7 +1854,8 @@ void server_setup (void)
         trace_size = initial_trace_size;
     }
 
-    if ((gen_method == MinimalTrace) || (gen_method == RomHistogram) || (gen_method == MainTrace) || (gen_method == Zip) || (gen_method == MemOp))
+    // Output trace
+    if ((gen_method == MinimalTrace) || (gen_method == RomHistogram) || (gen_method == MainTrace) || (gen_method == Zip) || (gen_method == MemOp) || (gen_method == ChunkPlayerMTCollectMem))
     {
         // Make sure the output shared memory is deleted
         shm_unlink(shmem_output_name);
@@ -1617,31 +1881,87 @@ void server_setup (void)
         }
 
         // Map it to the trace address
-#ifdef DEBUG
-        gettimeofday(&start_time, NULL);
-#endif
-        void * pTrace = mmap((void *)TRACE_ADDR, trace_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | MAP_LOCKED, shmem_output_fd, 0);
-#ifdef DEBUG
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-#endif
-        if (pTrace == NULL)
+        if (verbose) gettimeofday(&start_time, NULL);
+        void * requested_address;
+        if (gen_method == ChunkPlayerMTCollectMem)
         {
-            printf("Failed calling mmap(pTrace) errno=%d=%s\n", errno, strerror(errno));
+            requested_address = 0;
+        }
+        else
+        {
+            requested_address = (void *)TRACE_ADDR;
+        }
+        int flags = MAP_SHARED | MAP_LOCKED;
+        if (gen_method != ChunkPlayerMTCollectMem)
+        {
+            flags |= MAP_FIXED;
+        }
+        void * pTrace = mmap(requested_address, trace_size, PROT_READ | PROT_WRITE, flags, shmem_output_fd, 0);
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+        }
+        if (pTrace == MAP_FAILED)
+        {
+            printf("Failed calling mmap(pTrace) name=%s errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
         }
-        if ((uint64_t)pTrace != TRACE_ADDR)
+        if ((gen_method != ChunkPlayerMTCollectMem) && ((uint64_t)pTrace != TRACE_ADDR))
         {
             printf("Called mmap(trace) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
             fflush(stdout);
             fflush(stderr);
             exit(-1);
         }
-    #ifdef DEBUG
         if (verbose) printf("mmap(trace) returned %p in %lu us\n", pTrace, duration);
-    #endif
+
+        trace_address = (uint64_t)pTrace;
+    }
+
+    /***********************/
+    /* INPUT MINIMAL TRACE */
+    /***********************/
+
+    // Input MT trace
+    if (gen_method == ChunkPlayerMTCollectMem)
+    {
+        // Create the output shared memory
+        shmem_mt_fd = shm_open(shmem_mt_name, O_RDONLY, 0644);
+        if (shmem_mt_fd < 0)
+        {
+            printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_mt_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        // Map it to the trace address
+#ifdef DEBUG
+        gettimeofday(&start_time, NULL);
+#endif
+        void * pTrace = mmap((void *)TRACE_ADDR, chunk_player_mt_size, PROT_READ, MAP_SHARED | MAP_FIXED | MAP_LOCKED, shmem_mt_fd, 0);
+#ifdef DEBUG
+        gettimeofday(&stop_time, NULL);
+        duration = TimeDiff(start_time, stop_time);
+#endif
+        if (pTrace == MAP_FAILED)
+        {
+            printf("Failed calling mmap(MT) errno=%d=%s\n", errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if ((uint64_t)pTrace != TRACE_ADDR)
+        {
+            printf("Called mmap(MT) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if (verbose) printf("mmap(MT) returned %p in %lu us\n", pTrace, duration);
     }
 
     /******************/
@@ -1665,24 +1985,29 @@ void server_setup (void)
 void server_reset (void)
 {
     // Reset RAM data for next emulation
+    if (gen_method != ChunkPlayerMTCollectMem)
+    {
 #ifdef DEBUG
-    gettimeofday(&start_time, NULL);
+        gettimeofday(&start_time, NULL);
 #endif
-    memset((void *)RAM_ADDR, 0, RAM_SIZE);
+        memset((void *)RAM_ADDR, 0, RAM_SIZE);
 #ifdef DEBUG
-    gettimeofday(&stop_time, NULL);
-    duration = TimeDiff(start_time, stop_time);
-    if (verbose) printf("memset(ram) in %lu us\n", duration);
+        gettimeofday(&stop_time, NULL);
+        duration = TimeDiff(start_time, stop_time);
+        if (verbose) printf("memset(ram) in %lu us\n", duration);
 #endif
-
-    // Reset trace: init output header data
-    pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
-    pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    pOutput[2] = trace_size; // MT allocated size [8] -> to be updated after reallocation
-    pOutput[3] = 0; // MT used size [8] -> to be updated after completion
-    
-    // Reset trace used size
-    trace_used_size = 0;
+        if (gen_method != Fast)
+        {
+            // Reset trace: init output header data
+            pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
+            pOutput[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+            pOutput[2] = trace_size; // MT allocated size [8] -> to be updated after reallocation
+            pOutput[3] = 0; // MT used size [8] -> to be updated after completion
+            
+            // Reset trace used size
+            trace_used_size = 0;
+        }
+    }
 }
 
 void server_run (void)
@@ -1977,6 +2302,15 @@ extern int _print_regs()
     // printf("\n");
 }
 
+uint64_t print_pc_counter = 0;
+extern int _print_pc (uint64_t pc, uint64_t c)
+{
+    if (print_pc_counter < 35000) {
+        printf("print_pc() counter=%lu pc=%lx c=%lx\n", print_pc_counter, pc, c);
+    }
+    print_pc_counter++;
+}
+
 //uint64_t chunk_done_counter = 0;
 extern void _chunk_done()
 {
@@ -2084,7 +2418,7 @@ void log_minimal_trace(void)
     for (uint64_t c=0; c<number_of_chunks; c++)
     {
         uint64_t i=0;
-        printf("Chunk %lu:\n", c);
+        printf("Chunk %lu (@=%p):\n", c, chunk);
 
         // Log current chunk start state
         printf("\tStart state:\n");
@@ -2096,26 +2430,25 @@ void log_minimal_trace(void)
         i++;
         printf("\t\tstep=%lu\n", chunk[i]);
         i++;
+        printf("\t\t");
         for (uint64_t r=1; r<34; r++)
         {
-            printf("\t\tregister[%lu]=0x%lx\n", r, chunk[i]);
+            printf("reg[%lu]=0x%lx ", r, chunk[i]);
             i++;
         }
+        printf("\n");
 
         // Log current chunk last state
-        printf("\tLast state:\n");
+        printf("\tEnd state:\n");
         printf("\t\tc=0x%lx\n", chunk[i]);
         i++;
-
         // Log current chunk end
-        printf("\tEnd:\n");
         printf("\t\tend=%lu\n", chunk[i]);
         i++;
-
         // Log current chunk steps
-        printf("\tSteps:\n");
         printf("\t\tsteps=%lu\n", chunk[i]);
         i++;
+
         uint64_t mem_reads_size = chunk[i];
         printf("\t\tmem_reads_size=%lu\n", mem_reads_size);
         i++;

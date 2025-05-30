@@ -20,7 +20,7 @@ pub enum AsmGenerationMethod {
     /// Generate assembly code to stop at chunks, but do not generate any trace
     AsmChunks,
     /// Generate assembly code to compute bus op [op, a, b, mem_read_index] traces
-    AsmBusOp,
+    //AsmBusOp,
     /// Generate assembly code to compute the minimal trace, but only at the requrested chunks,
     /// e.g. [0,8,16...], [1,9,17...], etc.  This is done to distribute the minimal trace generation
     /// accross 8 processes, to increase speed and memory bus saturation.  It's called zip because
@@ -28,6 +28,8 @@ pub enum AsmGenerationMethod {
     AsmZip,
     /// Generate assembly code to compute the memory operations [w/r, width, address] trace
     AsmMemOp,
+    /// Generate assembly code to play a chunk from its minimal trace and collect the memory WC data
+    AsmChunkPlayerMTCollectMem,
 }
 /// RISCV-to-ZisK struct containing the input ELF RISCV file name and the output ZISK ASM file name
 pub struct Riscv2zisk {
