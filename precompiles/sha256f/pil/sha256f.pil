@@ -85,15 +85,24 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
 
     // --> Constraints to read inputs from memory and write outputs to memory
 
-    // Circuit inputs are represented as a vector of bits, where each bit is
-    // from a different Sha256f invocation. However, the Mem treats one
-    // Sha256f invocation at a time, so we need to relate these two
-    // representations. For that, we will use a bit decomposition and prove
-    // that the bit decomposition is consistent with the Sha256f circuit.
-    col witness bit[bits_in_parallel];
-    col witness val[bits_in_parallel];
-
     /*
+        We should take care of how we handle the memory access.
+
+        The Sha256f inputs are received via two indirections inside a structure.
+        The address received from the MainSM is the address of the structure
+        The first indirection is the adress of the Sha256f state
+        The second indirection is the address of the Sha256f input
+        We have to relate all these addresses, by proving that:
+            · ADDR_STATE === ADDR_IND_0
+            · ADDR_INPUT === ADDR_IND_1
+        while sending both addr_ind_0 and addr_ind_1 to the memory.
+
+        Circuit inputs are represented as a vector of bits, where each bit is
+        from a different Sha256f invocation. However, the Mem treats one
+        Sha256f invocation at a time, so we need to relate these two
+        representations. For that, we will use a bit decomposition and prove
+        that the bit decomposition is consistent with the Sha256f circuit.
+
           STEP       BIT     BIT[0]    VAL[0]        BIT     BIT[1]    VAL[1]        BLOCK   TYPE  
         |  1      |   1     |  X   |   0bX        |   2     |  X   |   0bX        |    1    | IN  | 
         |  2      |   1     |  Y   |   0bYX       |   2     |  Y   |   0bYX       |    1    | IN  |       
@@ -137,6 +146,9 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
         |  30.464 |   63    |  Z   |   0bZ...YX   |   64    |  Z   |   0bZ...YX   |   32    | IND |           
     */
 
+    col witness bit[bits_in_parallel];
+    col witness val[bits_in_parallel];
+
     // Ensure that bit[i] is a bit
     for (int i = 0; i < bits_in_parallel; i++) {
         bit[i] * (1 - bit[i]) === 0; // (1)
@@ -146,15 +158,15 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     const int INPUT_SIZE_BITS = 512;
     const int INPUT_DATA_SIZE_BITS = STATE_SIZE_BITS + INPUT_SIZE_BITS;
     const int OUTPUT_SIZE_BITS = STATE_SIZE_BITS;
-    const int INDIRECTION_SIZE_BITS = 32;
+    const int INDIRECTION_SIZE_BITS = 2*32; // There are two indirections
     const int IN_OUT_SIZE_BITS = INPUT_DATA_SIZE_BITS + OUTPUT_SIZE_BITS;
-    const int IN_OUT_IND_SIZE_BITS = IN_OUT_SIZE_BITS + 2 * INDIRECTION_SIZE_BITS;
+    const int IN_OUT_IND_SIZE_BITS = IN_OUT_SIZE_BITS + INDIRECTION_SIZE_BITS;
 
     const int IN_SIZE = INPUT_DATA_SIZE_BITS * NUM_SHA256F_PER_CIRCUIT / bits_in_parallel;
     const int OUT_SIZE = OUTPUT_SIZE_BITS * NUM_SHA256F_PER_CIRCUIT / bits_in_parallel;
     const int IND_SIZE = INDIRECTION_SIZE_BITS * NUM_SHA256F_PER_CIRCUIT / bits_in_parallel;
     const int IN_OUT_SIZE = IN_SIZE + OUT_SIZE;
-    const int IN_OUT_IND_SIZE = IN_OUT_SIZE + 2 * IND_SIZE;
+    const int IN_OUT_IND_SIZE = IN_OUT_SIZE + IND_SIZE;
     if (IN_OUT_IND_SIZE > CIRCUIT_SIZE) {
         error(`The Sha256-f circuit size ${CIRCUIT_SIZE} is too small for the template configuration.`);  
     }
@@ -217,7 +229,7 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     // sha_val[0] = bit[0]'(896)·2³¹ + bit[1]'(896)·2³⁰ + bit[0]'(952)·2²⁹ + bit[1]'(952)·2²⁸ + ... + bit[0]'(1736)·2 + bit[1]'(1736)
     // sha_val[1] = bit[0]·2³¹       + bit[1]·2³⁰       + bit[0]'(56)·2²⁹  + bit[1]'(56)·2²⁸  + ... + bit[0]'(840)·2  + bit[1]'(840)
 
-    // Finally, we must address the step and the address associated to each Sha256f invocation
+    // Finally, we must address the rest mem values
 
     // A single col is sufficient for storing the step and the address
     col witness step_addr; 
@@ -253,35 +265,36 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     const int ADDR_IND_0 = ADDR_INPUT + MEM_DIST;
     const int ADDR_IND_1 = ADDR_IND_0 + MEM_DIST;
 
-    // We should take care of how we handle the memory access.
-
-    // The Sha256f inputs are received via two indirections inside a structure.
-    // The address received from the MainSM is the address of the structure
-    // The first indirection is the adress of the Sha256f state
-    // The second indirection is the address of the Sha256f input
-    // We have to relate all these addresses, by proving that:
-    //      · ADDR_STATE === ADDR_IND_0
-    //      · ADDR_INPUT === ADDR_IND_1
-    // while sending both addr_ind_0 and addr_ind_1 to the memory.
-    col fixed CLK_0 = [0, [1:NUM_SHA256F_PER_CIRCUIT, 0:(CIRCUIT_SIZE-NUM_SHA256F_PER_CIRCUIT)]:NUM_CIRCUITS, 0...];
+    col fixed CLK_0 = [0, [1:MEM_DIST, 0:(CIRCUIT_SIZE-MEM_DIST)]:NUM_CIRCUITS, 0...];
 
     clock_eq(step_addr, ADDR_STATE, ADDR_IND_0) === 0;
     clock_eq(step_addr, ADDR_INPUT, ADDR_IND_1) === 0;
 
-    const expr mem_addr = clock_map(step_addr, ADDR_STATE, start: 0,  end: 3,  delta: 8, factor: MEM_DIST) +
-                          clock_map(step_addr, ADDR_INPUT, start: 4,  end: 11, delta: 8, factor: MEM_DIST) +
-                          clock_map(step_addr, ADDR_STATE, start: 12, end: 15, delta: 8, factor: MEM_DIST) +
-                          clock_map(step_addr, ADDR_OP,    start: 16, end: 17, delta: 8, factor: MEM_DIST);
+    const int STATE_BLOCKS = STATE_SIZE_BITS / (RB * RC);
+    const int INPUT_BLOCKS = INPUT_SIZE_BITS / (RB * RC);
+    const int OUTPUT_BLOCKS = OUTPUT_SIZE_BITS / (RB * RC);
+    const int INDIRECTION_BLOCKS = INDIRECTION_SIZE_BITS / (RB * RC);
 
-    const expr main_step = clock_map(step_addr, STEP_MAIN, start: 0, end: 17, factor: MEM_DIST);
+    // Precompute boundaries for clarity
+    const int END_STATE    = STATE_BLOCKS;
+    const int END_INPUT    = END_STATE + INPUT_BLOCKS;
+    const int END_OUTPUT   = END_INPUT + OUTPUT_BLOCKS;
+    const int TOTAL_BLOCKS = END_OUTPUT + INDIRECTION_BLOCKS;
+
+    const expr mem_addr = clock_map(step_addr, ADDR_STATE, start: 0,          end: END_STATE,    delta: 8, factor: MEM_DIST) +
+                          clock_map(step_addr, ADDR_INPUT, start: END_STATE,  end: END_INPUT,    delta: 8, factor: MEM_DIST) +
+                          clock_map(step_addr, ADDR_STATE, start: END_INPUT,  end: END_OUTPUT,   delta: 8, factor: MEM_DIST) +
+                          clock_map(step_addr, ADDR_OP,    start: END_OUTPUT, end: TOTAL_BLOCKS, delta: 8, factor: MEM_DIST);
+
+    const expr main_step = clock_map(step_addr, STEP_MAIN, start: 0, end: TOTAL_BLOCKS, factor: MEM_DIST);
 
     const expr mem_value[2];
 
-    mem_value[0] = clock_set(sha_val[0], start: 0, end: 15, factor: MEM_DIST) +
-                   clock_map(step_addr, ADDR_IND_0, start: 16, end: 16, factor: MEM_DIST) +
-                   clock_map(step_addr, ADDR_IND_1, start: 17, end: 17, factor: MEM_DIST);
+    mem_value[0] = clock_set(sha_val[0], start: 0, end: END_OUTPUT, factor: MEM_DIST) +
+                   clock_map(step_addr, ADDR_IND_0, start: END_OUTPUT, end: END_OUTPUT, factor: MEM_DIST) +
+                   clock_map(step_addr, ADDR_IND_1, start: TOTAL_BLOCKS, end: TOTAL_BLOCKS, factor: MEM_DIST);
 
-    mem_value[1] = clock_set(sha_val[1], start: 0, end: 15, factor: MEM_DIST);
+    mem_value[1] = clock_set(sha_val[1], start: 0, end: END_OUTPUT, factor: MEM_DIST);
                    // high bits of indirect addresses are 0.
 
     col witness in_use_clk_0;
@@ -292,13 +305,12 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     in_use * (1 - in_use) === 0; // binary
     (1 - CLK_0) * (in_use - (MEM_DIST)'in_use) === 0; // it must keep the same value after CLK_0
 
-    // in_use_clk_0 is a subset of in_use
+    // in_use is active iff in_use_clk_0 is active
     CLK_0 * (in_use - in_use_clk_0) === 0;
 
-    const expr mem_sel = clock_set(in_use, start: 0, end: 17, factor: MEM_DIST);
+    const expr mem_sel = clock_set(in_use, start: 0, end: TOTAL_BLOCKS, factor: MEM_DIST);
 
-    const int INPUT_BLOCKS = MEM_DIST * INPUT_DATA_SIZE_BITS / (RB * RC);
-    const expr mem_is_write = clock_ref(start: 0, end: 3, offset: INPUT_BLOCKS, factor: MEM_DIST);
+    const expr mem_is_write = clock_ref(start: 0, end: OUTPUT_BLOCKS, offset: MEM_DIST*INPUT_BLOCKS, factor: MEM_DIST);
 
     precompiled_mem_op(
             is_write: mem_is_write,
@@ -321,7 +333,7 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
             end = start;
         }
         int offset = 0;
-        for (int index = start; index <= end; index++) {
+        for (int index = start; index < end; index++) {
             int _index = index*factor;
             int iclock = (pos - _index) % air.CIRCUIT_SIZE;
             if (offset != 0) {
@@ -339,7 +351,7 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
         if (end == -1) {
             end = start;
         }
-        for (int index = start; index <= end; ++index) {
+        for (int index = start; index < end; ++index) {
             if (offset != 0) {
                 res += (index*factor)'air.CLK_0 * (cl + offset);
             } else {
@@ -355,7 +367,7 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
         if (end == -1) {
             end = start;
         }
-        for (int index = start; index <= end; ++index) {
+        for (int index = start; index < end; ++index) {
             if (offset != 0) {
                 res += (offset + index*factor)'air.CLK_0;
             } else {
