@@ -2,21 +2,16 @@ use libc::{close, shm_unlink, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR};
 
 use mem_planner_cpp::MemPlanner;
 use named_sem::NamedSemaphore;
-use zisk_common::ChunkId;
 
 use std::ffi::c_void;
 use std::fmt::Debug;
 use std::path::Path;
-use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
+use std::sync::atomic::{fence, Ordering};
 use std::time::Duration;
 use std::{fs, ptr};
-
 use tracing::error;
 
-use crate::{
-    shmem_utils, AsmInputC2, AsmMOChunk, AsmMOHeader, AsmRunError, AsmServices, MemOpsTrace,
-};
+use crate::{shmem_utils, AsmInputC2, AsmMOChunk, AsmMOHeader, AsmRunError, AsmServices};
 
 use anyhow::{Context, Result};
 
@@ -25,7 +20,7 @@ use anyhow::{Context, Result};
 pub struct AsmRunnerMO {
     shmem_output_name: String,
     mapped_ptr: *mut c_void,
-    pub vec_chunks: Vec<MemOpsTrace>,
+    total_size: u64,
 }
 
 unsafe impl Send for AsmRunnerMO {}
@@ -34,12 +29,8 @@ unsafe impl Sync for AsmRunnerMO {}
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl Drop for AsmRunnerMO {
     fn drop(&mut self) {
-        for chunk in &mut self.vec_chunks {
-            std::mem::forget(std::mem::take(&mut chunk.mem_ops));
-        }
-        let total_size = self.total_size();
         unsafe {
-            shmem_utils::unmap(self.mapped_ptr, total_size);
+            shmem_utils::unmap(self.mapped_ptr, self.total_size as usize);
         }
         let c_name =
             std::ffi::CString::new(self.shmem_output_name.clone()).expect("CString::new failed");
@@ -56,14 +47,9 @@ impl AsmRunnerMO {
     pub fn new(
         shmem_output_name: String,
         mapped_ptr: *mut std::ffi::c_void,
-        vec_chunks: Vec<MemOpsTrace>,
+        total_size: u64,
     ) -> Self {
-        Self { shmem_output_name, mapped_ptr, vec_chunks }
-    }
-
-    pub fn total_size(&self) -> usize {
-        self.vec_chunks.iter().map(|chunk| chunk.mem_ops.len() * size_of::<u64>()).sum::<usize>()
-            + size_of::<AsmMOHeader>()
+        Self { shmem_output_name, mapped_ptr, total_size }
     }
 
     pub fn run(inputs_path: &Path, max_steps: u64, chunk_size: u64) -> Result<AsmRunnerMO> {
@@ -77,22 +63,12 @@ impl AsmRunnerMO {
 
         Self::write_input(inputs_path, SHMEM_INPUT_NAME);
 
-        let should_exit = Arc::new(AtomicBool::new(false));
-        let should_exit_cloned = Arc::clone(&should_exit);
-        let handle = std::thread::spawn(move || {
-            let mut sem_chunk_done = NamedSemaphore::create(SEM_CHUNK_DONE_NAME, 0)
-                .expect("Failed to create named semaphore");
-            let response = AsmServices::send_memory_ops_request(max_steps, chunk_size);
-
-            should_exit_cloned.store(true, std::sync::atomic::Ordering::SeqCst);
-            sem_chunk_done.post().expect("Failed to post semaphore sem_chunk_done");
-            response
-        });
-
-        let mut chunk_id = ChunkId(0);
+        let handle =
+            std::thread::spawn(move || AsmServices::send_memory_ops_request(max_steps, chunk_size));
 
         // Read the header data
         let header_ptr = Self::get_output_ptr(SHMEM_OUTPUT_NAME) as *const AsmMOHeader;
+        let header = unsafe { std::ptr::read(header_ptr) };
 
         // From header, skips the header size and 8 bytes more to get the data pointer.
         // The 8 bytes are for the number of chunks.
@@ -102,49 +78,31 @@ impl AsmRunnerMO {
         let mem_planner = MemPlanner::new();
         mem_planner.execute();
 
-        let mut mo_traces = Vec::new();
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
-                    let header = unsafe { std::ptr::read(header_ptr) };
-                    if should_exit.load(std::sync::atomic::Ordering::SeqCst)
-                        && chunk_id.0 == header.num_chunks as usize
-                    {
+                    // Synchronize with memory changes from the C++ side
+                    fence(Ordering::Acquire);
+
+                    let chunk = unsafe { std::ptr::read(data_ptr) };
+
+                    if chunk.mem_ops_size == MEM_READS_SIZE_DUMMY {
+                        panic!("Unexpected state: invalid data received from C++");
+                    }
+
+                    data_ptr = unsafe { data_ptr.add(1) };
+                    mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
+
+                    if chunk.end == 1 {
                         break 0;
                     }
 
-                    // Used to ensure that the reads after this point see the latest writes from the C++ side.
-                    use std::sync::atomic::{fence, Ordering};
-                    fence(Ordering::Acquire);
-
-                    let mo_trace = loop {
-                        // Read only memory reads size
-                        let chunk = unsafe { std::ptr::read(data_ptr) };
-                        println!(
-                            "Pre-reading to check if it is  a 0xFFFFFFFFFFFFFFFF ? {:x?}",
-                            chunk.mem_ops_size
-                        );
-
-                        if chunk.mem_ops_size == MEM_READS_SIZE_DUMMY {
-                            std::thread::sleep(Duration::from_nanos(1));
-                        } else {
-                            mem_planner.add_chunk(chunk.mem_ops_size, unsafe {
-                                (data_ptr as *const u8).add(8) as *const c_void
-                            });
-                            break AsmMOChunk::to_mem_ops(&mut data_ptr);
-                        }
+                    data_ptr = unsafe {
+                        (data_ptr as *mut u64).add(chunk.mem_ops_size as usize) as *const AsmMOChunk
                     };
-                    mo_traces.push(mo_trace);
-
-                    chunk_id.0 += 1;
-                    println!("Memory operation chunk ID: {}", chunk_id.0);
                 }
                 Err(e) => {
                     error!("Semaphore sem_chunk_done error: {:?}", e);
-
-                    if chunk_id.0 == 0 {
-                        break 1;
-                    }
 
                     let header = unsafe { std::ptr::read(header_ptr) };
                     break header.exit_code;
@@ -167,11 +125,15 @@ impl AsmRunnerMO {
         assert!(response.trace_len > 0);
         assert!(response.trace_len <= response.allocated_len);
 
-        println!("Memory operations trace length: {}", mo_traces.len());
         mem_planner.set_completed();
         mem_planner.wait();
 
-        Ok(AsmRunnerMO::new(SHMEM_OUTPUT_NAME.to_string(), header_ptr as *mut c_void, mo_traces))
+        println!("Memory operations trace completed");
+        Ok(AsmRunnerMO::new(
+            SHMEM_OUTPUT_NAME.to_string(),
+            header_ptr as *mut c_void,
+            header.mt_allocated_size,
+        ))
     }
 
     pub fn write_input(inputs_path: &Path, shmem_input_name: &str) {

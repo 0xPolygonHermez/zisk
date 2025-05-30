@@ -28,6 +28,7 @@ impl AsmMOHeader {
 #[repr(C)]
 #[derive(Debug)]
 pub struct AsmMOChunk {
+    pub end: u64,
     pub mem_ops_size: u64,
 }
 
