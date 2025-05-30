@@ -27,6 +27,16 @@ pub struct MemAlignCheckPoint {
     pub rows: u32,
 }
 
+impl MemAlignCheckPoint {
+    #[allow(dead_code)]
+    pub fn to_string(&self, segment_id: usize, chunk_id: usize) -> String {
+        format!(
+            "MEM_ALIGN #{}@{}  S:{} C:{} R:{}\n",
+            segment_id, chunk_id, self.skip, self.count, self.rows,
+        )
+    }
+}
+
 impl<'a> MemAlignPlanner<'a> {
     pub fn new(counters: Arc<Vec<(ChunkId, &'a MemCounters)>>) -> Self {
         let num_rows = MemAlignTrace::<usize>::NUM_ROWS as u32;

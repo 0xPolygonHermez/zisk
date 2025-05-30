@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "d9c4fcd06f6490b921ca1dc61f9d22d0f9af82654940e1fb6ffecebe0f582f32";
+pub const PILOUT_HASH: &str = "dae15173caa33ddec3324f9ff6334a814b72d5b07939021f95e6deab5760418d";
 
 //AIRGROUP CONSTANTS
 
@@ -124,7 +124,7 @@ trace!(MemFixed<F> {
 },  0, 2, 4194304 );
 
 trace!(MemTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: F,
+ addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: [F; 2], read_same_addr: F,
 },  0, 2, 4194304 );
 
 trace!(RomDataFixed<F> {
@@ -272,12 +272,12 @@ trace!(Sha256fTableTrace<F> {
 },  0, 20, 8388608 );
 
 trace!(SpecifiedRangesFixed<F> {
- RANGE: [F; 16], __L1__: F,
-},  0, 21, 2097152 );
+ RANGE: [F; 26], __L1__: F,
+},  0, 19, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
- mul: [F; 16],
-},  0, 21, 2097152 );
+ mul: [F; 26],
+},  0, 19, 2097152 );
 
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
