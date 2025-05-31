@@ -1243,7 +1243,6 @@ pub fn precompiled_load_data(
     title: &str,
 ) {
     let address = ctx.b;
-    println!("Address: {:#x}", address);
     if address & 0x7 != 0 {
         panic!("precompiled_check_address() found address not aligned to 8 bytes");
     }
