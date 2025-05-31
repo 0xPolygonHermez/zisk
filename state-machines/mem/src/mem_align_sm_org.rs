@@ -3,7 +3,7 @@ use std::sync::Arc;
 #[cfg(feature = "debug_mem_align")]
 use std::sync::Mutex;
 
-// use num_traits::cast::ToPrimitive;
+use num_traits::cast::ToPrimitive;
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
 
@@ -52,8 +52,6 @@ pub struct MemAlignSM<F: PrimeField64> {
 
     // Secondary State machines
     mem_align_rom_sm: Arc<MemAlignRomSM>,
-    default_offset: F,
-    default_width: F,
 }
 
 macro_rules! debug_info {
@@ -72,22 +70,14 @@ impl<F: PrimeField64> MemAlignSM<F> {
             #[cfg(feature = "debug_mem_align")]
             num_computed_rows: Mutex::new(0),
             mem_align_rom_sm,
-            default_offset: F::from_u32(DEFAULT_OFFSET as u32),
-            default_width: F::from_u32(DEFAULT_WIDTH as u32),
         })
     }
 
-    #[inline]
-    fn from_ranged_u8(value: u8, reg_range_check: &mut [u32], count: u32) -> F {
-        reg_range_check[value as usize] += count;
-        F::from_u8(value)
-    }
     pub fn prove_mem_align_op(
         &self,
         input: &MemAlignInput,
         trace: &mut MemAlignTrace<F>,
         index: usize,
-        reg_range_check: &mut [u32],
     ) -> usize {
         let addr = input.addr;
         let width = input.width;
@@ -129,91 +119,61 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value = input.value;
 
                 // Get the aligned address
-                let addr_read = F::from_u32(addr >> OFFSET_BITS);
+                let addr_read = addr >> OFFSET_BITS;
 
                 // Get the aligned value
                 let value_read = input.mem_values[0];
 
                 // Get the next pc
                 let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::OneRead, offset, width) as u32;
+                    self.mem_align_rom_sm.calculate_next_pc(MemOp::OneRead, offset, width);
 
-                // let mut read_row = MemAlignTraceRow::<F> {
-                //     step: F::from_u64(step),
-                //     addr: addr_read,
-                //     // delta_addr: F::ZERO,
-                //     offset: self.default_offset,
-                //     width: self.default_width,
-                //     // wr: F::from_bool(false),
-                //     // pc: F::from_u64(0),
-                //     reset: F::from_bool(true),
-                //     sel_up_to_down: F::from_bool(true),
-                //     ..Default::default()
-                // };
+                let mut read_row = MemAlignTraceRow::<F> {
+                    step: F::from_u64(step),
+                    addr: F::from_u32(addr_read),
+                    // delta_addr: F::ZERO,
+                    offset: F::from_u64(DEFAULT_OFFSET),
+                    width: F::from_u64(DEFAULT_WIDTH),
+                    // wr: F::from_bool(false),
+                    // pc: F::from_u64(0),
+                    reset: F::from_bool(true),
+                    sel_up_to_down: F::from_bool(true),
+                    ..Default::default()
+                };
 
-                // let mut value_row = MemAlignTraceRow::<F> {
-                //     step: F::from_u64(step),
-                //     addr: addr_read,
-                //     // delta_addr: F::ZERO,
-                //     offset: F::from_usize(offset),
-                //     width: F::from_usize(width),
-                //     // wr: F::from_bool(false),
-                //     pc: F::from_u32(next_pc),
-                //     // reset: F::from_bool(false),
-                //     sel_prove: F::from_bool(true),
-                //     ..Default::default()
-                // };
-
-                trace[index].step = F::from_u64(step);
-                trace[index].addr = addr_read;
-                trace[index].delta_addr = F::ZERO;
-                trace[index].offset = self.default_offset;
-                trace[index].width = self.default_width;
-                trace[index].wr = F::from_bool(false);
-                trace[index].pc = F::ZERO;
-                trace[index].reset = F::from_bool(true);
-                trace[index].sel_up_to_down = F::from_bool(true);
-
-                trace[index + 1].step = F::from_u64(step);
-                trace[index + 1].addr = addr_read;
-                trace[index + 1].delta_addr = F::ZERO;
-                trace[index + 1].offset = F::from_usize(offset);
-                trace[index + 1].width = F::from_usize(width);
-                trace[index + 1].wr = F::from_bool(false);
-                trace[index + 1].pc = F::from_u32(next_pc);
-                trace[index + 1].reset = F::from_bool(false);
-                trace[index + 1].sel_prove = F::from_bool(true);
+                let mut value_row = MemAlignTraceRow::<F> {
+                    step: F::from_u64(step),
+                    addr: F::from_u32(addr_read),
+                    // delta_addr: F::ZERO,
+                    offset: F::from_usize(offset),
+                    width: F::from_usize(width),
+                    // wr: F::from_bool(false),
+                    pc: F::from_u64(next_pc),
+                    // reset: F::from_bool(false),
+                    sel_prove: F::from_bool(true),
+                    ..Default::default()
+                };
 
                 for i in 0..CHUNK_NUM {
-                    trace[index].reg[i] =
-                        Self::from_ranged_u8(Self::get_byte(value_read, i, 0), reg_range_check, 1);
+                    read_row.reg[i] = F::from_u64(Self::get_byte(value_read, i, 0));
                     if i >= offset && i < offset + width {
-                        trace[index].sel[i] = F::from_bool(true);
+                        read_row.sel[i] = F::from_bool(true);
                     }
 
-                    trace[index + 1].reg[i] = Self::from_ranged_u8(
-                        Self::get_byte(value, i, CHUNK_NUM - offset),
-                        reg_range_check,
-                        1,
-                    );
+                    value_row.reg[i] = F::from_u64(Self::get_byte(value, i, CHUNK_NUM - offset));
                     if i == offset {
-                        trace[index + 1].sel[i] = F::from_bool(true);
+                        value_row.sel[i] = F::from_bool(true);
                     }
                 }
 
                 let mut _value_read = value_read;
                 let mut _value = value;
                 for i in 0..RC {
-                    trace[index].value[i] = F::from_u32((_value_read & RC_MASK) as u32);
-                    trace[index + 1].value[i] = F::from_u32((_value & RC_MASK) as u32);
+                    read_row.value[i] = F::from_u64(_value_read & RC_MASK);
+                    value_row.value[i] = F::from_u64(_value & RC_MASK);
                     _value_read >>= RC_BITS;
                     _value >>= RC_BITS;
                 }
-
-                // trace[index].value[0] = F::from_u32(value_read as u32);
-                // trace[index + 1].value[0] = F::from_u32(value as u32);
-                // trace[index].value[1] = F::from_u32((value_read >> RC_BITS) as u32);
-                // trace[index + 1].value[1] = F::from_u32((value >> RC_BITS) as u32);
 
                 #[rustfmt::skip]
                 debug_info!(
@@ -244,8 +204,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 drop(num_rows);
 
                 // Prove the generated rows
-                // trace[index] = read_row;
-                // trace[index + 1] = value_row;
+                trace[index] = read_row;
+                trace[index + 1] = value_row;
                 2
             }
             (true, false) => {
@@ -268,14 +228,14 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value = input.value;
 
                 // Get the aligned address
-                let addr_read = F::from_u32(addr >> OFFSET_BITS);
+                let addr_read = addr >> OFFSET_BITS;
 
                 // Get the aligned value
                 let value_read = input.mem_values[0];
 
                 // Get the next pc
                 let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::OneWrite, offset, width) as u32;
+                    self.mem_align_rom_sm.calculate_next_pc(MemOp::OneWrite, offset, width);
 
                 // Compute the write value
                 let value_write = {
@@ -292,171 +252,120 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     (value_read & !mask) | value_to_write
                 };
 
-                // let mut read_row = MemAlignTraceRow::<F> {
-                //     step: F::from_u64(step),
-                //     addr: addr_read,
-                //     // delta_addr: F::ZERO,
-                //     offset: self.default_offset,
-                //     width: self.default_width,
-                //     // wr: F::from_bool(false),
-                //     // pc: F::from_u64(0),
-                //     reset: F::from_bool(true),
-                //     sel_up_to_down: F::from_bool(true),
-                //     ..Default::default()
-                // };
-
-                // let mut write_row = MemAlignTraceRow::<F> {
-                //     step: F::from_u64(step + 1),
-                //     addr: addr_read,
-                //     // delta_addr: F::ZERO,
-                //     offset: self.default_offset,
-                //     width: self.default_width,
-                //     wr: F::from_bool(true),
-                //     pc: F::from_u32(next_pc),
-                //     // reset: F::from_bool(false),
-                //     sel_up_to_down: F::from_bool(true),
-                //     ..Default::default()
-                // };
-
-                // let mut value_row = MemAlignTraceRow::<F> {
-                //     step: F::from_u64(step),
-                //     addr: addr_read,
-                //     // delta_addr: F::ZERO,
-                //     offset: F::from_u32(offset as u32),
-                //     width: F::from_u32(width as u32),
-                //     wr: F::from_bool(true),
-                //     pc: F::from_u32(next_pc + 1),
-                //     // reset: F::from_bool(false),
-                //     sel_prove: F::from_bool(true),
-                //     ..Default::default()
-                // };
-
-                // read_row
-                let read_row = {
-                    let t = &mut trace[index];
-                    t.step = F::from_u64(step);
-                    t.addr = addr_read;
-                    t.delta_addr = F::ZERO;
-                    t.offset = self.default_offset;
-                    t.width = self.default_width;
-                    t.wr = F::from_bool(false);
-                    t.pc = F::ZERO;
-                    t.reset = F::from_bool(true);
-                    t.sel_up_to_down = F::from_bool(true);
-                    index
+                let mut read_row = MemAlignTraceRow::<F> {
+                    step: F::from_u64(step),
+                    addr: F::from_u32(addr_read),
+                    // delta_addr: F::ZERO,
+                    offset: F::from_u64(DEFAULT_OFFSET),
+                    width: F::from_u64(DEFAULT_WIDTH),
+                    // wr: F::from_bool(false),
+                    // pc: F::from_u64(0),
+                    reset: F::from_bool(true),
+                    sel_up_to_down: F::from_bool(true),
+                    ..Default::default()
                 };
 
-                let write_row = {
-                    let t = &mut trace[index + 1];
-                    t.step = F::from_u64(step + 1);
-                    t.addr = addr_read;
-                    t.delta_addr = F::ZERO;
-                    t.offset = self.default_offset;
-                    t.width = self.default_width;
-                    t.wr = F::from_bool(true);
-                    t.pc = F::from_u32(next_pc);
-                    t.reset = F::from_bool(false);
-                    t.sel_up_to_down = F::from_bool(true);
-                    index + 1
+                let mut write_row = MemAlignTraceRow::<F> {
+                    step: F::from_u64(step + 1),
+                    addr: F::from_u32(addr_read),
+                    // delta_addr: F::ZERO,
+                    offset: F::from_u64(DEFAULT_OFFSET),
+                    width: F::from_u64(DEFAULT_WIDTH),
+                    wr: F::from_bool(true),
+                    pc: F::from_u64(next_pc),
+                    // reset: F::from_bool(false),
+                    sel_up_to_down: F::from_bool(true),
+                    ..Default::default()
                 };
 
-                let value_row = {
-                    let t = &mut trace[index + 2];
-                    t.step = F::from_u64(step);
-                    t.addr = addr_read;
-                    t.delta_addr = F::ZERO;
-                    t.offset = F::from_u32(offset as u32);
-                    t.width = F::from_u32(width as u32);
-                    t.wr = F::from_bool(true);
-                    t.pc = F::from_u32(next_pc + 1);
-                    t.reset = F::from_bool(false);
-                    t.sel_prove = F::from_bool(true);
-                    index + 2
+                let mut value_row = MemAlignTraceRow::<F> {
+                    step: F::from_u64(step),
+                    addr: F::from_u32(addr_read),
+                    // delta_addr: F::ZERO,
+                    offset: F::from_usize(offset),
+                    width: F::from_usize(width),
+                    wr: F::from_bool(true),
+                    pc: F::from_u64(next_pc + 1),
+                    // reset: F::from_bool(false),
+                    sel_prove: F::from_bool(true),
+                    ..Default::default()
                 };
 
                 for i in 0..CHUNK_NUM {
-                    let use_write = i >= offset && i < offset + width;
-                    trace[read_row].reg[i] =
-                        Self::from_ranged_u8(Self::get_byte(value_read, i, 0), reg_range_check, 1);
-                    if !use_write {
-                        trace[read_row].sel[i] = F::from_bool(true);
+                    read_row.reg[i] = F::from_u64(Self::get_byte(value_read, i, 0));
+                    if i < offset || i >= offset + width {
+                        read_row.sel[i] = F::from_bool(true);
                     }
 
-                    trace[write_row].reg[i] = Self::from_ranged_u8(
-                        Self::get_byte(value_write, i, 0),
-                        reg_range_check,
-                        if use_write {
-                            trace[write_row].sel[i] = F::from_bool(true);
-                            2 // double range check done by (1)
-                        } else {
-                            1
-                        },
-                    );
+                    write_row.reg[i] = F::from_u64(Self::get_byte(value_write, i, 0));
+                    if i >= offset && i < offset + width {
+                        write_row.sel[i] = F::from_bool(true);
+                    }
 
-                    trace[index + 2].reg[i] = {
-                        if use_write {
-                            // range check done in (1)
-                            trace[write_row].reg[i]
+                    value_row.reg[i] = {
+                        if i >= offset && i < offset + width {
+                            write_row.reg[i]
                         } else {
-                            Self::from_ranged_u8(
-                                Self::get_byte(value, i, CHUNK_NUM - offset),
-                                reg_range_check,
-                                1,
-                            )
+                            F::from_u64(Self::get_byte(value, i, CHUNK_NUM - offset))
                         }
                     };
                     if i == offset {
-                        trace[value_row].sel[i] = F::from_bool(true);
+                        value_row.sel[i] = F::from_bool(true);
                     }
                 }
 
-                trace[read_row].value[0] = F::from_u32(value_read as u32);
-                trace[write_row].value[0] = F::from_u32(value_write as u32);
-                trace[value_row].value[0] = F::from_u32(value as u32);
-                trace[read_row].value[1] = F::from_u32((value_read >> RC_BITS) as u32);
-                trace[write_row].value[1] = F::from_u32((value_write >> RC_BITS) as u32);
-                trace[value_row].value[1] = F::from_u32((value >> RC_BITS) as u32);
+                let mut _value_read = value_read;
+                let mut _value_write = value_write;
+                let mut _value = value;
+                for i in 0..RC {
+                    read_row.value[i] = F::from_u64(_value_read & RC_MASK);
+                    write_row.value[i] = F::from_u64(_value_write & RC_MASK);
+                    value_row.value[i] = F::from_u64(_value & RC_MASK);
+                    _value_read >>= RC_BITS;
+                    _value_write >>= RC_BITS;
+                    _value >>= RC_BITS;
+                }
 
-                // #[rustfmt::skip]
-                // debug_info!(
-                //     "\nOne Word Write\n\
-                //      Num Rows: {:?}\n\
-                //      Input: {:?}\n\
-                //      Value Read: {:?}\n\
-                //      Value Write: {:?}\n\
-                //      Value: {:?}\n\
-                //      Flags Read: {:?}\n\
-                //      Flags Write: {:?}\n\
-                //      Flags Value: {:?}",
-                //     [*num_rows, *num_rows + 2],
-                //     input,
-                //     value_read.to_le_bytes(),
-                //     value_write.to_le_bytes(),
-                //     value.to_le_bytes(),
-                //     [
-                //         read_row.sel[0], read_row.sel[1], read_row.sel[2], read_row.sel[3],
-                //         read_row.sel[4], read_row.sel[5], read_row.sel[6], read_row.sel[7],
-                //         read_row.wr, read_row.reset, read_row.sel_up_to_down, read_row.sel_down_to_up
-                //     ],
-                //     [
-                //         write_row.sel[0], write_row.sel[1], write_row.sel[2], write_row.sel[3],
-                //         write_row.sel[4], write_row.sel[5], write_row.sel[6], write_row.sel[7],
-                //         write_row.wr, write_row.reset, write_row.sel_up_to_down, write_row.sel_down_to_up
-                //     ],
-                //     [
-                //         value_row.sel[0], value_row.sel[1], value_row.sel[2], value_row.sel[3],
-                //         value_row.sel[4], value_row.sel[5], value_row.sel[6], value_row.sel[7],
-                //         value_row.wr, value_row.reset, value_row.sel_up_to_down, value_row.sel_down_to_up
-                //     ]
-                // );
+                #[rustfmt::skip]
+                debug_info!(
+                    "\nOne Word Write\n\
+                     Num Rows: {:?}\n\
+                     Input: {:?}\n\
+                     Value Read: {:?}\n\
+                     Value Write: {:?}\n\
+                     Value: {:?}\n\
+                     Flags Read: {:?}\n\
+                     Flags Write: {:?}\n\
+                     Flags Value: {:?}",
+                    [*num_rows, *num_rows + 2],
+                    input,
+                    value_read.to_le_bytes(),
+                    value_write.to_le_bytes(),
+                    value.to_le_bytes(),
+                    [
+                        read_row.sel[0], read_row.sel[1], read_row.sel[2], read_row.sel[3],
+                        read_row.sel[4], read_row.sel[5], read_row.sel[6], read_row.sel[7],
+                        read_row.wr, read_row.reset, read_row.sel_up_to_down, read_row.sel_down_to_up
+                    ],
+                    [
+                        write_row.sel[0], write_row.sel[1], write_row.sel[2], write_row.sel[3],
+                        write_row.sel[4], write_row.sel[5], write_row.sel[6], write_row.sel[7],
+                        write_row.wr, write_row.reset, write_row.sel_up_to_down, write_row.sel_down_to_up
+                    ],
+                    [
+                        value_row.sel[0], value_row.sel[1], value_row.sel[2], value_row.sel[3],
+                        value_row.sel[4], value_row.sel[5], value_row.sel[6], value_row.sel[7],
+                        value_row.wr, value_row.reset, value_row.sel_up_to_down, value_row.sel_down_to_up
+                    ]
+                );
 
                 #[cfg(feature = "debug_mem_align")]
                 drop(num_rows);
 
                 // Prove the generated rows
-                // trace[index] = read_row;
-                // trace[index + 1] = write_row;
-                // trace[index + 2] = value_row;
+                trace[index] = read_row;
+                trace[index + 1] = write_row;
+                trace[index + 2] = value_row;
                 3
             }
             (false, true) => {
@@ -475,16 +384,15 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 */
 
                 // Unaligned memory op information thrown into the bus
-                let step = F::from_u64(input.step);
+                let step = input.step;
                 let value = input.value;
 
                 // Compute the remaining bytes
                 let rem_bytes = (offset + width) % CHUNK_NUM;
 
                 // Get the aligned address
-                let base_addr = (addr >> OFFSET_BITS) as u32;
-                let addr_first_read = F::from_u32(base_addr);
-                let addr_second_read = F::from_u32(base_addr + 1);
+                let addr_first_read = addr >> OFFSET_BITS;
+                let addr_second_read = addr_first_read + 1;
 
                 // Get the aligned value
                 let value_first_read = input.mem_values[0];
@@ -492,14 +400,14 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
                 // Get the next pc
                 let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::TwoReads, offset, width) as u32;
+                    self.mem_align_rom_sm.calculate_next_pc(MemOp::TwoReads, offset, width);
 
                 let mut first_read_row = MemAlignTraceRow::<F> {
-                    step,
-                    addr: addr_first_read,
+                    step: F::from_u64(step),
+                    addr: F::from_u32(addr_first_read),
                     // delta_addr: F::ZERO,
-                    offset: self.default_offset,
-                    width: self.default_width,
+                    offset: F::from_u64(DEFAULT_OFFSET),
+                    width: F::from_u64(DEFAULT_WIDTH),
                     // wr: F::from_bool(false),
                     // pc: F::from_u64(0),
                     reset: F::from_bool(true),
@@ -508,55 +416,44 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 };
 
                 let mut value_row = MemAlignTraceRow::<F> {
-                    step,
-                    addr: addr_first_read,
+                    step: F::from_u64(step),
+                    addr: F::from_u32(addr_first_read),
                     // delta_addr: F::ZERO,
-                    offset: F::from_u32(offset as u32),
-                    width: F::from_u32(width as u32),
+                    offset: F::from_usize(offset),
+                    width: F::from_usize(width),
                     // wr: F::from_bool(false),
-                    pc: F::from_u32(next_pc),
+                    pc: F::from_u64(next_pc),
                     // reset: F::from_bool(false),
                     sel_prove: F::from_bool(true),
                     ..Default::default()
                 };
 
                 let mut second_read_row = MemAlignTraceRow::<F> {
-                    step,
-                    addr: addr_second_read,
+                    step: F::from_u64(step),
+                    addr: F::from_u32(addr_second_read),
                     delta_addr: F::ONE,
-                    offset: self.default_offset,
-                    width: self.default_width,
+                    offset: F::from_u64(DEFAULT_OFFSET),
+                    width: F::from_u64(DEFAULT_WIDTH),
                     // wr: F::from_bool(false),
-                    pc: F::from_u32(next_pc + 1),
+                    pc: F::from_u64(next_pc + 1),
                     // reset: F::from_bool(false),
                     sel_down_to_up: F::from_bool(true),
                     ..Default::default()
                 };
 
                 for i in 0..CHUNK_NUM {
-                    first_read_row.reg[i] = Self::from_ranged_u8(
-                        Self::get_byte(value_first_read, i, 0),
-                        reg_range_check,
-                        1,
-                    );
+                    first_read_row.reg[i] = F::from_u64(Self::get_byte(value_first_read, i, 0));
                     if i >= offset {
                         first_read_row.sel[i] = F::from_bool(true);
                     }
 
-                    value_row.reg[i] = Self::from_ranged_u8(
-                        Self::get_byte(value, i, CHUNK_NUM - offset),
-                        reg_range_check,
-                        1,
-                    );
+                    value_row.reg[i] = F::from_u64(Self::get_byte(value, i, CHUNK_NUM - offset));
+
                     if i == offset {
                         value_row.sel[i] = F::from_bool(true);
                     }
 
-                    second_read_row.reg[i] = Self::from_ranged_u8(
-                        Self::get_byte(value_second_read, i, 0),
-                        reg_range_check,
-                        1,
-                    );
+                    second_read_row.reg[i] = F::from_u64(Self::get_byte(value_second_read, i, 0));
                     if i < rem_bytes {
                         second_read_row.sel[i] = F::from_bool(true);
                     }
@@ -566,9 +463,9 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let mut _value = value;
                 let mut _value_second_read = value_second_read;
                 for i in 0..RC {
-                    first_read_row.value[i] = F::from_u32((_value_first_read & RC_MASK) as u32);
-                    value_row.value[i] = F::from_u32((_value & RC_MASK) as u32);
-                    second_read_row.value[i] = F::from_u32((_value_second_read & RC_MASK) as u32);
+                    first_read_row.value[i] = F::from_u64(_value_first_read & RC_MASK);
+                    value_row.value[i] = F::from_u64(_value & RC_MASK);
+                    second_read_row.value[i] = F::from_u64(_value_second_read & RC_MASK);
                     _value_first_read >>= RC_BITS;
                     _value >>= RC_BITS;
                     _value_second_read >>= RC_BITS;
@@ -689,15 +586,15 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
                 // Get the next pc
                 let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::TwoWrites, offset, width) as u32;
+                    self.mem_align_rom_sm.calculate_next_pc(MemOp::TwoWrites, offset, width);
 
                 // RWVWR
                 let mut first_read_row = MemAlignTraceRow::<F> {
                     step: F::from_u64(step),
                     addr: F::from_u32(addr_first_read_write),
                     // delta_addr: F::ZERO,
-                    offset: self.default_offset,
-                    width: self.default_width,
+                    offset: F::from_u64(DEFAULT_OFFSET),
+                    width: F::from_u64(DEFAULT_WIDTH),
                     // wr: F::from_bool(false),
                     // pc: F::from_u64(0),
                     reset: F::from_bool(true),
@@ -709,10 +606,10 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     step: F::from_u64(step + 1),
                     addr: F::from_u32(addr_first_read_write),
                     // delta_addr: F::ZERO,
-                    offset: self.default_offset,
-                    width: self.default_width,
+                    offset: F::from_u64(DEFAULT_OFFSET),
+                    width: F::from_u64(DEFAULT_WIDTH),
                     wr: F::from_bool(true),
-                    pc: F::from_u32(next_pc),
+                    pc: F::from_u64(next_pc),
                     // reset: F::from_bool(false),
                     sel_up_to_down: F::from_bool(true),
                     ..Default::default()
@@ -722,10 +619,10 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     step: F::from_u64(step),
                     addr: F::from_u32(addr_first_read_write),
                     // delta_addr: F::ZERO,
-                    offset: F::from_u32(offset as u32),
-                    width: F::from_u32(width as u32),
+                    offset: F::from_usize(offset),
+                    width: F::from_usize(width),
                     wr: F::from_bool(true),
-                    pc: F::from_u32(next_pc + 1),
+                    pc: F::from_u64(next_pc + 1),
                     // reset: F::from_bool(false),
                     sel_prove: F::from_bool(true),
                     ..Default::default()
@@ -735,10 +632,10 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     step: F::from_u64(step + 1),
                     addr: F::from_u32(addr_second_read_write),
                     delta_addr: F::ONE,
-                    offset: self.default_offset,
-                    width: self.default_width,
+                    offset: F::from_u64(DEFAULT_OFFSET),
+                    width: F::from_u64(DEFAULT_WIDTH),
                     wr: F::from_bool(true),
-                    pc: F::from_u32(next_pc + 2),
+                    pc: F::from_u64(next_pc + 2),
                     // reset: F::from_bool(false),
                     sel_down_to_up: F::from_bool(true),
                     ..Default::default()
@@ -748,66 +645,45 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     step: F::from_u64(step),
                     addr: F::from_u32(addr_second_read_write),
                     // delta_addr: F::ZERO,
-                    offset: self.default_offset,
-                    width: self.default_width,
+                    offset: F::from_u64(DEFAULT_OFFSET),
+                    width: F::from_u64(DEFAULT_WIDTH),
                     // wr: F::from_bool(false),
-                    pc: F::from_u32(next_pc + 3),
+                    pc: F::from_u64(next_pc + 3),
                     reset: F::from_bool(false),
                     sel_down_to_up: F::from_bool(true),
                     ..Default::default()
                 };
 
                 for i in 0..CHUNK_NUM {
-                    first_read_row.reg[i] = Self::from_ranged_u8(
-                        Self::get_byte(value_first_read, i, 0),
-                        reg_range_check,
-                        1,
-                    );
+                    first_read_row.reg[i] = F::from_u64(Self::get_byte(value_first_read, i, 0));
                     if i < offset {
                         first_read_row.sel[i] = F::from_bool(true);
                     }
 
-                    first_write_row.reg[i] = Self::from_ranged_u8(
-                        Self::get_byte(value_first_write, i, 0),
-                        reg_range_check,
-                        if i >= rem_bytes && i >= offset { 2 } else { 1 },
-                    );
+                    first_write_row.reg[i] = F::from_u64(Self::get_byte(value_first_write, i, 0));
                     if i >= offset {
                         first_write_row.sel[i] = F::from_bool(true);
                     }
 
+                    value_row.reg[i] = {
+                        if i < rem_bytes {
+                            second_write_row.reg[i]
+                        } else if i >= offset {
+                            first_write_row.reg[i]
+                        } else {
+                            F::from_u64(Self::get_byte(value, i, CHUNK_NUM - offset))
+                        }
+                    };
                     if i == offset {
                         value_row.sel[i] = F::from_bool(true);
                     }
 
-                    second_write_row.reg[i] = Self::from_ranged_u8(
-                        Self::get_byte(value_second_write, i, 0),
-                        reg_range_check,
-                        if i < rem_bytes {
-                            second_write_row.sel[i] = F::from_bool(true);
-                            2
-                        } else {
-                            1
-                        },
-                    );
+                    second_write_row.reg[i] = F::from_u64(Self::get_byte(value_second_write, i, 0));
+                    if i < rem_bytes {
+                        second_write_row.sel[i] = F::from_bool(true);
+                    }
 
-                    value_row.reg[i] = if i < rem_bytes {
-                        second_write_row.reg[i]
-                    } else if i >= offset {
-                        first_write_row.reg[i]
-                    } else {
-                        Self::from_ranged_u8(
-                            Self::get_byte(value, i, CHUNK_NUM - offset),
-                            reg_range_check,
-                            1,
-                        )
-                    };
-
-                    second_read_row.reg[i] = Self::from_ranged_u8(
-                        Self::get_byte(value_second_read, i, 0),
-                        reg_range_check,
-                        1,
-                    );
+                    second_read_row.reg[i] = F::from_u64(Self::get_byte(value_second_read, i, 0));
                     if i >= rem_bytes {
                         second_read_row.sel[i] = F::from_bool(true);
                     }
@@ -894,10 +770,9 @@ impl<F: PrimeField64> MemAlignSM<F> {
         }
     }
 
-    #[inline]
-    fn get_byte(value: u64, index: usize, offset: usize) -> u8 {
-        let chunk = (offset + index) & 0x07;
-        (value >> (chunk * CHUNK_BITS)) as u8
+    fn get_byte(value: u64, index: usize, offset: usize) -> u64 {
+        let chunk = (offset + index) % CHUNK_NUM;
+        (value >> (chunk * CHUNK_BITS)) & CHUNK_BITS_MASK
     }
 
     pub fn compute_witness(
@@ -907,7 +782,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
     ) -> AirInstance<F> {
         let mut trace = MemAlignTrace::<F>::new();
         timer_start_info!(MEM_ALIGN_TRACE);
-        let mut reg_range_check = [0u32; 1 << CHUNK_BITS];
+
+        let mut reg_range_check = [0u64; 1 << CHUNK_BITS];
 
         let num_rows = trace.num_rows();
 
@@ -921,7 +797,17 @@ impl<F: PrimeField64> MemAlignSM<F> {
         let mut index = 0;
         for inner_memp_ops in mem_ops {
             for input in inner_memp_ops {
-                index += self.prove_mem_align_op(input, &mut trace, index, &mut reg_range_check);
+                let count = self.prove_mem_align_op(input, &mut trace, index);
+                for i in 0..count {
+                    for j in 0..CHUNK_NUM {
+                        let element = trace[index + i].reg[j]
+                            .as_canonical_biguint()
+                            .to_usize()
+                            .expect("Cannot convert to usize");
+                        reg_range_check[element] += 1;
+                    }
+                }
+                index += count;
             }
         }
 
@@ -932,23 +818,22 @@ impl<F: PrimeField64> MemAlignSM<F> {
         trace.buffer[index..num_rows].fill(padding_row);
 
         // Compute the program multiplicity
-
-        timer_stop_and_log_info!(MEM_ALIGN_TRACE);
         let mem_align_rom_sm = self.mem_align_rom_sm.clone();
         mem_align_rom_sm.update_padding_row(padding_size as u64);
 
-        reg_range_check[0] += CHUNK_NUM as u32 * padding_size as u32;
+        reg_range_check[0] += CHUNK_NUM as u64 * padding_size as u64;
         self.update_std_range_check(&reg_range_check);
 
+        timer_stop_and_log_info!(MEM_ALIGN_TRACE);
         AirInstance::new_from_trace(FromTrace::new(&mut trace))
     }
 
-    fn update_std_range_check(&self, reg_range_check: &[u32]) {
+    fn update_std_range_check(&self, reg_range_check: &[u64]) {
         // Perform the range checks
         let std = self._std.clone();
         let range_id = std.get_range(0, CHUNK_BITS_MASK as i64, None);
         for (value, &multiplicity) in reg_range_check.iter().enumerate() {
-            std.range_check(value as i64, multiplicity as u64, range_id);
+            std.range_check(value as i64, multiplicity, range_id);
         }
     }
 }
