@@ -2303,11 +2303,10 @@ extern int _print_regs()
 }
 
 uint64_t print_pc_counter = 0;
-extern int _print_pc (uint64_t pc, uint64_t c)
+extern int _print_pc (uint64_t pc, uint64_t c, uint64_t chunk_address)
 {
-    if (print_pc_counter < 35000) {
-        printf("print_pc() counter=%lu pc=%lx c=%lx\n", print_pc_counter, pc, c);
-    }
+    printf("print_pc() counter=%lu pc=%lx c=%lx chunk_address=%lx\n", print_pc_counter, pc, c, chunk_address);
+    fflush(stdout);
     print_pc_counter++;
 }
 

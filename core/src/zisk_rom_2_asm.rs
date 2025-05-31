@@ -525,6 +525,13 @@ impl ZiskRom2Asm {
             // Self::push_internal_registers(&mut ctx, code, false);
             // *code += &format!("\tmov rdi, {}\n", ctx.pc);
             // *code += &format!("\tmov rsi, {}\n", REG_C);
+            // if ctx.chunk_player_mt_collect_mem() {
+            //     *code += &format!("\tmov rdx, {}\n", REG_CHUNK_PLAYER_ADDRESS);
+            // } else {
+            //     *code += &format!("\tmov rdx, {}\n", REG_MEM_READS_SIZE);
+            //     *code += &format!("\tshl rdx, 3\n");
+            //     *code += &format!("\tadd rdx, {}\n", REG_MEM_READS_ADDRESS);
+            // }
             // *code += &format!("\tcall _print_pc\n");
             // Self::pop_internal_registers(&mut ctx, code, false);
 
@@ -1950,44 +1957,28 @@ impl ZiskRom2Asm {
                     }
                 }
                 STORE_MEM => {
-                    // Avoid writing to memory when running a chunk player
-                    if !ctx.chunk_player_mt_collect_mem() {
-                        *code += &ctx.full_line_comment("STORE_MEM".to_string());
+                    *code += &ctx.full_line_comment("STORE_MEM".to_string());
 
-                        // Calculate memory address and store it in REG_ADDRESS
+                    // Calculate memory address and store it in REG_ADDRESS
+                    *code += &format!(
+                        "\tmov {}, 0x{:x} {}\n",
+                        REG_ADDRESS,
+                        instruction.store_offset,
+                        ctx.comment_str("address = i.store_offset")
+                    );
+                    if instruction.store_use_sp {
                         *code += &format!(
-                            "\tmov {}, 0x{:x} {}\n",
+                            "\tadd {}, {} {}\n",
                             REG_ADDRESS,
-                            instruction.store_offset,
-                            ctx.comment_str("address = i.store_offset")
+                            ctx.mem_sp,
+                            ctx.comment_str("address += sp")
                         );
-                        if instruction.store_use_sp {
-                            *code += &format!(
-                                "\tadd {}, {} {}\n",
-                                REG_ADDRESS,
-                                ctx.mem_sp,
-                                ctx.comment_str("address += sp")
-                            );
-                        }
+                    }
 
-                        // Mem reads
-                        if ctx.minimal_trace() || ctx.zip() {
-                            if !instruction.store_use_sp {
-                                if (instruction.store_offset & 0x7) != 0 {
-                                    // If zip, check if chunk is active
-                                    if ctx.zip() {
-                                        *code += &format!(
-                                            "\ttest {}, 1 {}\n",
-                                            REG_ACTIVE_CHUNK,
-                                            ctx.comment_str("active_chunk == 1 ?")
-                                        );
-                                        *code += &format!("\tjnz pc_{:x}_c_active_chunk\n", ctx.pc);
-                                        *code += &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
-                                        *code += &format!("pc_{:x}_c_active_chunk:\n", ctx.pc);
-                                    }
-                                    Self::c_store_mem_not_aligned(&mut ctx, code);
-                                }
-                            } else {
+                    // Generate mem reads
+                    if ctx.minimal_trace() || ctx.zip() {
+                        if !instruction.store_use_sp {
+                            if (instruction.store_offset & 0x7) != 0 {
                                 // If zip, check if chunk is active
                                 if ctx.zip() {
                                     *code += &format!(
@@ -1999,21 +1990,65 @@ impl ZiskRom2Asm {
                                     *code += &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
                                     *code += &format!("pc_{:x}_c_active_chunk:\n", ctx.pc);
                                 }
-                                *code += &format!(
-                                    "\ttest {}, 0x7 {}\n",
-                                    REG_ADDRESS,
-                                    ctx.comment_str("address &= 7")
-                                );
-                                *code += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
-                                unusual_code +=
-                                    &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
-                                Self::c_store_mem_not_aligned(&mut ctx, &mut unusual_code);
-                                unusual_code += &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
+                                Self::c_store_mem_not_aligned(&mut ctx, code);
                             }
-                            *code += &format!("pc_{:x}_c_address_done:\n", ctx.pc);
+                        } else {
+                            // If zip, check if chunk is active
+                            if ctx.zip() {
+                                *code += &format!(
+                                    "\ttest {}, 1 {}\n",
+                                    REG_ACTIVE_CHUNK,
+                                    ctx.comment_str("active_chunk == 1 ?")
+                                );
+                                *code += &format!("\tjnz pc_{:x}_c_active_chunk\n", ctx.pc);
+                                *code += &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
+                                *code += &format!("pc_{:x}_c_active_chunk:\n", ctx.pc);
+                            }
+                            *code += &format!(
+                                "\ttest {}, 0x7 {}\n",
+                                REG_ADDRESS,
+                                ctx.comment_str("address &= 7")
+                            );
+                            *code += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
+                            unusual_code += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                            Self::c_store_mem_not_aligned(&mut ctx, &mut unusual_code);
+                            unusual_code += &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
                         }
+                        *code += &format!("pc_{:x}_c_address_done:\n", ctx.pc);
+                    }
 
-                        // Store mem[address] = value
+                    // Consume mem reads
+                    if ctx.chunk_player_mt_collect_mem() {
+                        if !instruction.store_use_sp {
+                            if (instruction.store_offset & 0x7) != 0 {
+                                // Increment chunk player address
+                                *code += &format!(
+                                    "\tadd {}, 16 {}\n",
+                                    REG_CHUNK_PLAYER_ADDRESS,
+                                    ctx.comment_str("chunk_address += 16")
+                                );
+                            }
+                        } else {
+                            *code += &format!(
+                                "\ttest {}, 0x7 {}\n",
+                                REG_ADDRESS,
+                                ctx.comment_str("address &= 7")
+                            );
+                            *code += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
+                            unusual_code += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                            // Increment chunk player address
+                            unusual_code += &format!(
+                                "\tadd {}, 16 {}\n",
+                                REG_CHUNK_PLAYER_ADDRESS,
+                                ctx.comment_str("chunk_address += 16")
+                            );
+                            unusual_code += &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
+                        }
+                        *code += &format!("pc_{:x}_c_address_done:\n", ctx.pc);
+                    }
+
+                    // Store mem[address] = value
+                    if !ctx.chunk_player_mt_collect_mem() {
                         if instruction.store_ra {
                             *code += &format!(
                                 "\tmov {}, 0x{:x} {}\n",
@@ -2035,98 +2070,222 @@ impl ZiskRom2Asm {
                                 ctx.comment_str("mem[address] = c")
                             );
                         }
+                    }
 
-                        if ctx.main_trace() {
-                            Self::clear_reg_step_ranges(&mut ctx, code, 2);
-                        }
+                    if ctx.main_trace() {
+                        Self::clear_reg_step_ranges(&mut ctx, code, 2);
+                    }
 
-                        if ctx.mem_op() {
-                            Self::c_store_mem_mem_op(&mut ctx, code);
-                        }
+                    if ctx.mem_op() {
+                        Self::c_store_mem_mem_op(&mut ctx, code);
                     }
                 }
                 STORE_IND => {
                     *code += &ctx
                         .full_line_comment(format!("STORE_IND width={}", instruction.ind_width));
 
-                    // Avoid writing to memory when running a chunk player
-                    if !ctx.chunk_player_mt_collect_mem() {
-                        // Calculate memory address and store it in REG_ADDRESS
+                    // Calculate memory address and store it in REG_ADDRESS
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_ADDRESS,
+                        ctx.a.string_value,
+                        ctx.comment_str("address = a")
+                    );
+                    if instruction.store_offset != 0 {
                         *code += &format!(
-                            "\tmov {}, {} {}\n",
+                            "\tadd {}, 0x{:x} {}\n",
                             REG_ADDRESS,
-                            ctx.a.string_value,
-                            ctx.comment_str("address = a")
+                            instruction.store_offset as u64,
+                            ctx.comment_str("address += i.store_offset")
                         );
-                        if instruction.store_offset != 0 {
-                            *code += &format!(
-                                "\tadd {}, 0x{:x} {}\n",
-                                REG_ADDRESS,
-                                instruction.store_offset as u64,
-                                ctx.comment_str("address += i.store_offset")
-                            );
-                        }
-                        if instruction.store_use_sp {
-                            *code += &format!(
-                                "\tadd {}, {} {}\n",
-                                REG_ADDRESS,
-                                ctx.mem_sp,
-                                ctx.comment_str("address += sp")
-                            );
-                        }
+                    }
+                    if instruction.store_use_sp {
+                        *code += &format!(
+                            "\tadd {}, {} {}\n",
+                            REG_ADDRESS,
+                            ctx.mem_sp,
+                            ctx.comment_str("address += sp")
+                        );
+                    }
 
-                        let address_is_constant = ctx.a.is_constant && !instruction.store_use_sp;
-                        let address_constant_value = if address_is_constant {
-                            (ctx.a.constant_value as i64 + instruction.store_offset) as u64
-                        } else {
-                            0
-                        };
-                        let address_is_aligned =
-                            address_is_constant && ((address_constant_value & 0x7) == 0);
+                    let address_is_constant = ctx.a.is_constant && !instruction.store_use_sp;
+                    let address_constant_value = if address_is_constant {
+                        (ctx.a.constant_value as i64 + instruction.store_offset) as u64
+                    } else {
+                        0
+                    };
+                    let address_is_aligned =
+                        address_is_constant && ((address_constant_value & 0x7) == 0);
 
-                        // Generate mem_reads
-                        if ctx.minimal_trace() || ctx.zip() {
-                            // If zip, check if chunk is active
-                            if ctx.zip() {
-                                *code += &format!(
-                                    "\ttest {}, 1 {}\n",
-                                    REG_ACTIVE_CHUNK,
-                                    ctx.comment_str("active_chunk == 1 ?")
-                                );
-                                *code += &format!("\tjnz pc_{:x}_c_active_chunk\n", ctx.pc);
-                                *code += &format!("\tjmp pc_{:x}_c_active_chunk_done\n", ctx.pc);
-                                *code += &format!("pc_{:x}_c_active_chunk:\n", ctx.pc);
-                            }
-                            match instruction.ind_width {
-                                8 => {
-                                    // Check if address is aligned, i.e. it is a multiple of 8
-                                    if address_is_constant {
-                                        if !address_is_aligned {
-                                            Self::c_store_ind_8_not_aligned(&mut ctx, code);
-                                        }
-                                    } else {
-                                        *code += &format!(
-                                            "\ttest {}, 0x7 {}\n",
-                                            REG_ADDRESS,
-                                            ctx.comment_str("address &= 7")
-                                        );
-                                        *code += &format!(
-                                            "\tjnz pc_{:x}_c_address_not_aligned\n",
-                                            ctx.pc
-                                        );
-                                        unusual_code +=
-                                            &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
-                                        Self::c_store_ind_8_not_aligned(
-                                            &mut ctx,
-                                            &mut unusual_code,
-                                        );
-                                        unusual_code +=
-                                            &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
-                                        *code += &format!("pc_{:x}_c_address_done:\n", ctx.pc);
+                    // Generate mem_reads
+                    if ctx.minimal_trace() || ctx.zip() {
+                        // If zip, check if chunk is active
+                        if ctx.zip() {
+                            *code += &format!(
+                                "\ttest {}, 1 {}\n",
+                                REG_ACTIVE_CHUNK,
+                                ctx.comment_str("active_chunk == 1 ?")
+                            );
+                            *code += &format!("\tjnz pc_{:x}_c_active_chunk\n", ctx.pc);
+                            *code += &format!("\tjmp pc_{:x}_c_active_chunk_done\n", ctx.pc);
+                            *code += &format!("pc_{:x}_c_active_chunk:\n", ctx.pc);
+                        }
+                        match instruction.ind_width {
+                            8 => {
+                                // Check if address is aligned, i.e. it is a multiple of 8
+                                if address_is_constant {
+                                    if !address_is_aligned {
+                                        Self::c_store_ind_8_not_aligned(&mut ctx, code);
                                     }
+                                } else {
+                                    *code += &format!(
+                                        "\ttest {}, 0x7 {}\n",
+                                        REG_ADDRESS,
+                                        ctx.comment_str("address &= 7")
+                                    );
+                                    *code +=
+                                        &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
+                                    unusual_code +=
+                                        &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                                    Self::c_store_ind_8_not_aligned(&mut ctx, &mut unusual_code);
+                                    unusual_code +=
+                                        &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
+                                    *code += &format!("pc_{:x}_c_address_done:\n", ctx.pc);
                                 }
-                                4 | 2 => {
-                                    // Get a copy of the address to preserve it: aux = address
+                            }
+                            4 | 2 => {
+                                // Get a copy of the address to preserve it: aux = address
+                                *code += &format!(
+                                    "\tmov {}, {} {}\n",
+                                    REG_AUX,
+                                    REG_ADDRESS,
+                                    ctx.comment_str("aux = address")
+                                );
+
+                                // Calculate previous aligned address
+                                *code += &format!(
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
+                                    REG_AUX,
+                                    ctx.comment_str("address = previous aligned address")
+                                );
+
+                                // Store previous aligned address value in mem_reads, advancing address
+                                *code += &format!(
+                                    "\tmov {}, [{}] {}\n",
+                                    REG_VALUE,
+                                    REG_AUX,
+                                    ctx.comment_str("value = mem[prev_address]")
+                                );
+                                *code += &format!(
+                                    "\tmov [{} + {}*8], {} {}\n",
+                                    REG_MEM_READS_ADDRESS,
+                                    REG_MEM_READS_SIZE,
+                                    REG_VALUE,
+                                    ctx.comment_str("mem_reads[@+size*8] = prev_c")
+                                );
+
+                                // Calculate next aligned address, keeping a copy of previous aligned
+                                // address in value
+                                *code += &format!(
+                                    "\tmov {}, {} {}\n",
+                                    REG_VALUE,
+                                    REG_AUX,
+                                    ctx.comment_str("value = copy of prev_address")
+                                );
+                                let address_increment = instruction.ind_width - 1;
+                                *code += &format!(
+                                    "\tadd {}, {} {}\n",
+                                    REG_AUX,
+                                    address_increment,
+                                    ctx.comment(format!("address += {}", address_increment))
+                                );
+                                *code += &format!(
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
+                                    REG_AUX,
+                                    ctx.comment_str("address = next aligned address")
+                                );
+                                *code += &format!(
+                                    "\tcmp {}, {} {}\n",
+                                    REG_VALUE,
+                                    REG_AUX,
+                                    ctx.comment_str("prev_address = next_address ?")
+                                );
+                                *code +=
+                                    &format!("\tjnz pc_{:x}_c_ind_different_address\n", ctx.pc);
+
+                                // Same address
+
+                                // Increment chunk.steps.mem_reads_size
+                                *code += &format!(
+                                    "\tinc {} {}\n",
+                                    REG_MEM_READS_SIZE,
+                                    ctx.comment_str("mem_reads_size++")
+                                );
+
+                                // Different address
+
+                                unusual_code +=
+                                    &format!("pc_{:x}_c_ind_different_address:\n", ctx.pc);
+
+                                // Store next aligned address value in mem_reads
+                                unusual_code += &format!(
+                                    "\tmov {}, [{}] {}\n",
+                                    REG_VALUE,
+                                    REG_AUX,
+                                    ctx.comment_str("value = mem[next_address]")
+                                );
+
+                                // Copy read data into mem_reads_address and advance it
+                                unusual_code += &format!(
+                                    "\tmov [{} + {}*8 + 8], {} {}\n",
+                                    REG_MEM_READS_ADDRESS,
+                                    REG_MEM_READS_SIZE,
+                                    REG_VALUE,
+                                    ctx.comment_str("mem_reads[@+size*8+8] = next_c")
+                                );
+
+                                // Increment chunk.steps.mem_reads_size
+                                unusual_code += &format!(
+                                    "\tadd {}, 2 {}\n",
+                                    REG_MEM_READS_SIZE,
+                                    ctx.comment_str("mem_reads_size += 2")
+                                );
+
+                                unusual_code +=
+                                    &format!("\tjmp pc_{:x}_c_ind_address_done\n", ctx.pc);
+
+                                // Done
+
+                                *code += &format!("pc_{:x}_c_ind_address_done:\n", ctx.pc);
+                            }
+                            1 => {
+                                // Since 1 byte always fits into one alligned 8B chunk, we always
+                                // store the chunk in mem_reads
+
+                                if address_is_constant && address_is_aligned {
+                                    // Store  aligned address value in mem_reads, and increment address
+                                    *code += &format!(
+                                        "\tmov {}, [{}] {}\n",
+                                        REG_VALUE,
+                                        REG_ADDRESS,
+                                        ctx.comment_str("value = mem[address]")
+                                    );
+                                    *code += &format!(
+                                        "\tmov [{} + {}*8], {} {}\n",
+                                        REG_MEM_READS_ADDRESS,
+                                        REG_MEM_READS_SIZE,
+                                        REG_VALUE,
+                                        ctx.comment_str("mem_reads[@+size*8] = prev_c")
+                                    );
+
+                                    // Increment chunk.steps.mem_reads_size
+                                    *code += &format!(
+                                        "\tinc {} {}\n",
+                                        REG_MEM_READS_SIZE,
+                                        ctx.comment_str("mem_reads_size++")
+                                    );
+                                } else {
+                                    // Get a copy of the address to preserve it
                                     *code += &format!(
                                         "\tmov {}, {} {}\n",
                                         REG_AUX,
@@ -2141,7 +2300,7 @@ impl ZiskRom2Asm {
                                         ctx.comment_str("address = previous aligned address")
                                     );
 
-                                    // Store previous aligned address value in mem_reads, advancing address
+                                    // Store previous aligned address value in mem_reads, and increment address
                                     *code += &format!(
                                         "\tmov {}, [{}] {}\n",
                                         REG_VALUE,
@@ -2156,297 +2315,165 @@ impl ZiskRom2Asm {
                                         ctx.comment_str("mem_reads[@+size*8] = prev_c")
                                     );
 
-                                    // Calculate next aligned address, keeping a copy of previous aligned
-                                    // address in value
-                                    *code += &format!(
-                                        "\tmov {}, {} {}\n",
-                                        REG_VALUE,
-                                        REG_AUX,
-                                        ctx.comment_str("value = copy of prev_address")
-                                    );
-                                    let address_increment = instruction.ind_width - 1;
-                                    *code += &format!(
-                                        "\tadd {}, {} {}\n",
-                                        REG_AUX,
-                                        address_increment,
-                                        ctx.comment(format!("address += {}", address_increment))
-                                    );
-                                    *code += &format!(
-                                        "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
-                                        REG_AUX,
-                                        ctx.comment_str("address = next aligned address")
-                                    );
-                                    *code += &format!(
-                                        "\tcmp {}, {} {}\n",
-                                        REG_VALUE,
-                                        REG_AUX,
-                                        ctx.comment_str("prev_address = next_address ?")
-                                    );
-                                    *code +=
-                                        &format!("\tjnz pc_{:x}_c_ind_different_address\n", ctx.pc);
-
-                                    // Same address
-
                                     // Increment chunk.steps.mem_reads_size
                                     *code += &format!(
                                         "\tinc {} {}\n",
                                         REG_MEM_READS_SIZE,
                                         ctx.comment_str("mem_reads_size++")
                                     );
-
-                                    // Different address
-
-                                    unusual_code +=
-                                        &format!("pc_{:x}_c_ind_different_address:\n", ctx.pc);
-
-                                    // Store next aligned address value in mem_reads
-                                    unusual_code += &format!(
-                                        "\tmov {}, [{}] {}\n",
-                                        REG_VALUE,
-                                        REG_AUX,
-                                        ctx.comment_str("value = mem[next_address]")
-                                    );
-
-                                    // Copy read data into mem_reads_address and advance it
-                                    unusual_code += &format!(
-                                        "\tmov [{} + {}*8 + 8], {} {}\n",
-                                        REG_MEM_READS_ADDRESS,
-                                        REG_MEM_READS_SIZE,
-                                        REG_VALUE,
-                                        ctx.comment_str("mem_reads[@+size*8+8] = next_c")
-                                    );
-
-                                    // Increment chunk.steps.mem_reads_size
-                                    unusual_code += &format!(
-                                        "\tadd {}, 2 {}\n",
-                                        REG_MEM_READS_SIZE,
-                                        ctx.comment_str("mem_reads_size += 2")
-                                    );
-
-                                    unusual_code +=
-                                        &format!("\tjmp pc_{:x}_c_ind_address_done\n", ctx.pc);
-
-                                    // Done
-
-                                    *code += &format!("pc_{:x}_c_ind_address_done:\n", ctx.pc);
                                 }
-                                1 => {
-                                    // Since 1 byte always fits into one alligned 8B chunk, we always
-                                    // store the chunk in mem_reads
-
-                                    if address_is_constant && address_is_aligned {
-                                        // Store  aligned address value in mem_reads, and increment address
-                                        *code += &format!(
-                                            "\tmov {}, [{}] {}\n",
-                                            REG_VALUE,
-                                            REG_ADDRESS,
-                                            ctx.comment_str("value = mem[address]")
-                                        );
-                                        *code += &format!(
-                                            "\tmov [{} + {}*8], {} {}\n",
-                                            REG_MEM_READS_ADDRESS,
-                                            REG_MEM_READS_SIZE,
-                                            REG_VALUE,
-                                            ctx.comment_str("mem_reads[@+size*8] = prev_c")
-                                        );
-
-                                        // Increment chunk.steps.mem_reads_size
-                                        *code += &format!(
-                                            "\tinc {} {}\n",
-                                            REG_MEM_READS_SIZE,
-                                            ctx.comment_str("mem_reads_size++")
-                                        );
-                                    } else {
-                                        // Get a copy of the address to preserve it
-                                        *code += &format!(
-                                            "\tmov {}, {} {}\n",
-                                            REG_AUX,
-                                            REG_ADDRESS,
-                                            ctx.comment_str("aux = address")
-                                        );
-
-                                        // Calculate previous aligned address
-                                        *code += &format!(
-                                            "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
-                                            REG_AUX,
-                                            ctx.comment_str("address = previous aligned address")
-                                        );
-
-                                        // Store previous aligned address value in mem_reads, and increment address
-                                        *code += &format!(
-                                            "\tmov {}, [{}] {}\n",
-                                            REG_VALUE,
-                                            REG_AUX,
-                                            ctx.comment_str("value = mem[prev_address]")
-                                        );
-                                        *code += &format!(
-                                            "\tmov [{} + {}*8], {} {}\n",
-                                            REG_MEM_READS_ADDRESS,
-                                            REG_MEM_READS_SIZE,
-                                            REG_VALUE,
-                                            ctx.comment_str("mem_reads[@+size*8] = prev_c")
-                                        );
-
-                                        // Increment chunk.steps.mem_reads_size
-                                        *code += &format!(
-                                            "\tinc {} {}\n",
-                                            REG_MEM_READS_SIZE,
-                                            ctx.comment_str("mem_reads_size++")
-                                        );
-                                    }
-                                }
-                                _ => panic!(
-                                    "ZiskRom2Asm::save_to_asm() Invalid ind_width={} pc={}",
-                                    instruction.ind_width, ctx.pc
-                                ),
                             }
-                            if ctx.zip() {
-                                *code += &format!("pc_{:x}_c_active_chunk_done:\n", ctx.pc);
-                            }
+                            _ => panic!(
+                                "ZiskRom2Asm::save_to_asm() Invalid ind_width={} pc={}",
+                                instruction.ind_width, ctx.pc
+                            ),
                         }
+                        if ctx.zip() {
+                            *code += &format!("pc_{:x}_c_active_chunk_done:\n", ctx.pc);
+                        }
+                    }
 
-                        // Consume mem_reads
-                        if ctx.chunk_player_mt_collect_mem() {
-                            match instruction.ind_width {
-                                8 => {
-                                    // Check if address is aligned, i.e. it is a multiple of 8
-                                    if address_is_constant {
-                                        if !address_is_aligned {
-                                            // Increment chunk player address
-                                            *code += &format!(
-                                                "\tadd {}, 16 {}\n",
-                                                REG_CHUNK_PLAYER_ADDRESS,
-                                                ctx.comment_str("chunk_address += 16")
-                                            );
-                                        }
-                                    } else {
+                    // Consume mem_reads
+                    if ctx.chunk_player_mt_collect_mem() {
+                        match instruction.ind_width {
+                            8 => {
+                                // Check if address is aligned, i.e. it is a multiple of 8
+                                if address_is_constant {
+                                    if !address_is_aligned {
+                                        // Increment chunk player address
                                         *code += &format!(
-                                            "\ttest {}, 0x7 {}\n",
-                                            REG_ADDRESS,
-                                            ctx.comment_str("address &= 7")
-                                        );
-                                        *code += &format!(
-                                            "\tjnz pc_{:x}_c_address_not_aligned\n",
-                                            ctx.pc
-                                        );
-                                        unusual_code +=
-                                            &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
-                                        unusual_code += &format!(
                                             "\tadd {}, 16 {}\n",
                                             REG_CHUNK_PLAYER_ADDRESS,
                                             ctx.comment_str("chunk_address += 16")
                                         );
-                                        unusual_code +=
-                                            &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
-                                        *code += &format!("pc_{:x}_c_address_done:\n", ctx.pc);
                                     }
-                                }
-                                4 | 2 => {
-                                    // Get a copy of the address to preserve it: aux = address
+                                } else {
                                     *code += &format!(
-                                        "\tmov {}, {} {}\n",
-                                        REG_AUX,
+                                        "\ttest {}, 0x7 {}\n",
                                         REG_ADDRESS,
-                                        ctx.comment_str("aux = address")
-                                    );
-
-                                    // Calculate previous aligned address
-                                    *code += &format!(
-                                        "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
-                                        REG_AUX,
-                                        ctx.comment_str("address = previous aligned address")
-                                    );
-
-                                    // Store previous aligned address value in mem_reads, advancing address
-                                    *code += &format!(
-                                        "\tmov {}, [{}] {}\n",
-                                        REG_VALUE,
-                                        REG_AUX,
-                                        ctx.comment_str("value = mem[prev_address]")
-                                    );
-
-                                    // Calculate next aligned address, keeping a copy of previous aligned
-                                    // address in value
-                                    *code += &format!(
-                                        "\tmov {}, {} {}\n",
-                                        REG_VALUE,
-                                        REG_AUX,
-                                        ctx.comment_str("value = copy of prev_address")
-                                    );
-                                    let address_increment = instruction.ind_width - 1;
-                                    *code += &format!(
-                                        "\tadd {}, {} {}\n",
-                                        REG_AUX,
-                                        address_increment,
-                                        ctx.comment(format!("address += {}", address_increment))
-                                    );
-                                    *code += &format!(
-                                        "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
-                                        REG_AUX,
-                                        ctx.comment_str("address = next aligned address")
-                                    );
-                                    *code += &format!(
-                                        "\tcmp {}, {} {}\n",
-                                        REG_VALUE,
-                                        REG_AUX,
-                                        ctx.comment_str("prev_address = next_address ?")
+                                        ctx.comment_str("address &= 7")
                                     );
                                     *code +=
-                                        &format!("\tjnz pc_{:x}_c_ind_different_address\n", ctx.pc);
-
-                                    // Same address
-                                    ///////////////
-
-                                    // Pretend to consume mem reads
-                                    unusual_code += &format!(
-                                        "\tadd {}, 8 {}\n",
-                                        REG_CHUNK_PLAYER_ADDRESS,
-                                        ctx.comment_str("chunk_address += 8")
-                                    );
-
-                                    // Different address
-                                    ////////////////////
-
+                                        &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
                                     unusual_code +=
-                                        &format!("pc_{:x}_c_ind_different_address:\n", ctx.pc);
-
-                                    // Pretend to consume mem reads
+                                        &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
                                     unusual_code += &format!(
                                         "\tadd {}, 16 {}\n",
                                         REG_CHUNK_PLAYER_ADDRESS,
                                         ctx.comment_str("chunk_address += 16")
                                     );
-
                                     unusual_code +=
-                                        &format!("\tjmp pc_{:x}_c_ind_address_done\n", ctx.pc);
-
-                                    // Done
-                                    ///////
-
-                                    *code += &format!("pc_{:x}_c_ind_address_done:\n", ctx.pc);
+                                        &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
+                                    *code += &format!("pc_{:x}_c_address_done:\n", ctx.pc);
                                 }
-                                1 => {
-                                    // Since 1 byte always fits into one alligned 8B chunk, we always
-                                    // store the chunk in mem_reads
+                            }
+                            4 | 2 => {
+                                // Get a copy of the address to preserve it: aux = address
+                                *code += &format!(
+                                    "\tmov {}, {} {}\n",
+                                    REG_AUX,
+                                    REG_ADDRESS,
+                                    ctx.comment_str("aux = address")
+                                );
 
-                                    // Pretend to consume mem reads
-                                    unusual_code += &format!(
-                                        "\tadd {}, 8 {}\n",
-                                        REG_CHUNK_PLAYER_ADDRESS,
-                                        ctx.comment_str("chunk_address += 8")
-                                    );
-                                }
-                                _ => panic!(
-                                    "ZiskRom2Asm::save_to_asm() Invalid ind_width={} pc={}",
-                                    instruction.ind_width, ctx.pc
-                                ),
+                                // Calculate previous aligned address
+                                *code += &format!(
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
+                                    REG_AUX,
+                                    ctx.comment_str("address = previous aligned address")
+                                );
+
+                                // Store previous aligned address value in mem_reads, advancing address
+                                *code += &format!(
+                                    "\tmov {}, [{}] {}\n",
+                                    REG_VALUE,
+                                    REG_AUX,
+                                    ctx.comment_str("value = mem[prev_address]")
+                                );
+
+                                // Calculate next aligned address, keeping a copy of previous aligned
+                                // address in value
+                                *code += &format!(
+                                    "\tmov {}, {} {}\n",
+                                    REG_VALUE,
+                                    REG_AUX,
+                                    ctx.comment_str("value = copy of prev_address")
+                                );
+                                let address_increment = instruction.ind_width - 1;
+                                *code += &format!(
+                                    "\tadd {}, {} {}\n",
+                                    REG_AUX,
+                                    address_increment,
+                                    ctx.comment(format!("address += {}", address_increment))
+                                );
+                                *code += &format!(
+                                    "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
+                                    REG_AUX,
+                                    ctx.comment_str("address = next aligned address")
+                                );
+                                *code += &format!(
+                                    "\tcmp {}, {} {}\n",
+                                    REG_VALUE,
+                                    REG_AUX,
+                                    ctx.comment_str("prev_address = next_address ?")
+                                );
+                                *code +=
+                                    &format!("\tjnz pc_{:x}_c_ind_different_address\n", ctx.pc);
+
+                                // Same address
+                                ///////////////
+
+                                // Pretend to consume mem reads
+                                *code += &format!(
+                                    "\tadd {}, 8 {}\n",
+                                    REG_CHUNK_PLAYER_ADDRESS,
+                                    ctx.comment_str("chunk_address += 8")
+                                );
+
+                                // Different address
+                                ////////////////////
+
+                                unusual_code +=
+                                    &format!("pc_{:x}_c_ind_different_address:\n", ctx.pc);
+
+                                // Pretend to consume mem reads
+                                unusual_code += &format!(
+                                    "\tadd {}, 16 {}\n",
+                                    REG_CHUNK_PLAYER_ADDRESS,
+                                    ctx.comment_str("chunk_address += 16")
+                                );
+
+                                unusual_code +=
+                                    &format!("\tjmp pc_{:x}_c_ind_address_done\n", ctx.pc);
+
+                                // Done
+                                ///////
+
+                                *code += &format!("pc_{:x}_c_ind_address_done:\n", ctx.pc);
                             }
-                            if ctx.zip() {
-                                *code += &format!("pc_{:x}_c_active_chunk_done:\n", ctx.pc);
+                            1 => {
+                                // Since 1 byte always fits into one alligned 8B chunk, we always
+                                // store the chunk in mem_reads
+
+                                // Pretend to consume mem reads
+                                *code += &format!(
+                                    "\tadd {}, 8 {}\n",
+                                    REG_CHUNK_PLAYER_ADDRESS,
+                                    ctx.comment_str("chunk_address += 8")
+                                );
                             }
+                            _ => panic!(
+                                "ZiskRom2Asm::save_to_asm() Invalid ind_width={} pc={}",
+                                instruction.ind_width, ctx.pc
+                            ),
                         }
+                        if ctx.zip() {
+                            *code += &format!("pc_{:x}_c_active_chunk_done:\n", ctx.pc);
+                        }
+                    }
 
-                        // Store mem[address] = value
+                    // Store mem[address] = value
+                    if !ctx.chunk_player_mt_collect_mem() {
                         match instruction.ind_width {
                             8 => {
                                 if instruction.store_ra {
@@ -2564,14 +2591,14 @@ impl ZiskRom2Asm {
                                 instruction.ind_width, ctx.pc
                             ),
                         }
+                    }
 
-                        if ctx.main_trace() {
-                            Self::clear_reg_step_ranges(&mut ctx, code, 2);
-                        }
+                    if ctx.main_trace() {
+                        Self::clear_reg_step_ranges(&mut ctx, code, 2);
+                    }
 
-                        if ctx.mem_op() {
-                            Self::c_store_ind_mem_op(&mut ctx, code, instruction.ind_width);
-                        }
+                    if ctx.mem_op() {
+                        Self::c_store_ind_mem_op(&mut ctx, code, instruction.ind_width);
                     }
                 }
                 _ => panic!(
@@ -6537,11 +6564,11 @@ impl ZiskRom2Asm {
         let comment = format!("reg[{}]={}", dest_slot, value_desc);
         if XMM_MAPPED_REGS.contains(&dest_slot) {
             let xmm_index = Self::reg_to_xmm_index(dest_slot);
-            *code += &format!("\tmov {}, {}\n", REG_AUX, value);
+            *code += &format!("\tmov {}, 0x{:x}\n", REG_AUX, value);
 
             *code += &format!("\tmovq xmm{}, {} {}\n", xmm_index, REG_AUX, ctx.comment(comment));
         } else {
-            *code += &format!("\tmov {}, {}\n", REG_AUX, value);
+            *code += &format!("\tmov {}, 0x{:x}\n", REG_AUX, value);
             *code += &format!(
                 "\tmov qword {}[reg_{}], {} {}\n",
                 ctx.ptr,
@@ -6728,8 +6755,8 @@ impl ZiskRom2Asm {
 
         // Shift it left 8 - the number of address misaligned bits
         // Calculate address misalignment: 1, 2, 3, 4, 5, 6 or 7 bytes
-        *code += &format!("\tsub rcx, 0x64 {}\n", ctx.comment_str("rcx = 64 - rcx"));
-        *code += &format!("\tand rcx, 0x63 {}\n", ctx.comment_str("rcx = 64 - rcx"));
+        *code += &format!("\tneg rcx {}\n", ctx.comment_str("rcx = 64 - rcx"));
+        *code += &format!("\tadd rcx, 0x64 {}\n", ctx.comment_str("rcx = 64 - rcx"));
 
         // Shif it left the number of address misaligned bits
         *code += &format!("\tshl {}, cl {}\n", REG_AUX, ctx.comment_str("aux << bits"));
@@ -6798,7 +6825,7 @@ impl ZiskRom2Asm {
 
         // Shift it left 8 - the number of address misaligned bits
         // Calculate address misalignment: 1, 2, 3, 4, 5, 6 or 7 bytes
-        *code += &format!("\tnot rcx {}\n", ctx.comment_str("rcx = - rcx"));
+        *code += &format!("\tneg rcx {}\n", ctx.comment_str("rcx = - rcx"));
         *code += &format!("\tadd rcx, 64 {}\n", ctx.comment_str("rcx = 64 - rcx"));
 
         // Shif it left the number of address misaligned bits
