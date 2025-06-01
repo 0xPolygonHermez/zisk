@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "df616ee460896cb328a7a4e6b68cc631ad3453a9e4f3cca134bc0fb060ca311e";
+pub const PILOUT_HASH: &str = "0926bafc4c04604786d08fc6ad9ef6f3fe3bbe2a87d7ff39b390115f75b8f48b";
 
 //AIRGROUP CONSTANTS
 
@@ -124,7 +124,7 @@ trace!(MemFixed<F> {
 },  0, 2, 4194304 );
 
 trace!(MemTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: F,
+ addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: [F; 2], read_same_addr: F,
 },  0, 2, 4194304 );
 
 trace!(RomDataFixed<F> {
@@ -272,11 +272,11 @@ trace!(Sha256fTableTrace<F> {
 },  0, 20, 8388608 );
 
 trace!(SpecifiedRangesFixed<F> {
- RANGE: [F; 16], __L1__: F,
+ RANGE: [F; 17], __L1__: F,
 },  0, 21, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
- mul: [F; 16],
+ mul: [F; 17],
 },  0, 21, 2097152 );
 
 trace!(RomRomTrace<F> {

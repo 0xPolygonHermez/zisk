@@ -92,7 +92,7 @@ To put `0x0100`, reverse hex sequence:
 echo -en "\x00\x01\x00\x00\x00\x00\x00\x00" > input_two_segments.bin
 ```
 To input `0x0234`:
-```bash 
+```bash
 echo -en "\x34\x02\x00\x00\x00\x00\x00\x00" > input_two_segments.bin
 ```
 
