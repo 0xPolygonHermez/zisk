@@ -84,22 +84,24 @@ impl Sha256fSM {
     /// * `input` - The operation data to process.
     /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
     #[inline(always)]
-    pub fn process_slice<F: PrimeField64>(
+    pub fn process_trace<'a, I, F: PrimeField64>(
         &self,
         trace: &mut Sha256fTrace<F>,
         num_rows_constants: usize,
-        inputs: &[Sha256fInput],
-    ) {
-        let num_inputs = inputs.len();
+        inputs: I,
+        num_inputs: usize,
+    ) where
+        I: IntoIterator<Item = &'a Sha256fInput>,
+    {
         let mut inputs_bits: Vec<[u64; INPUT_DATA_SIZE_BITS]> =
             vec![[0u64; INPUT_DATA_SIZE_BITS]; self.num_available_circuits];
 
         // Process the inputs
         let initial_offset = num_rows_constants;
-        let input_offset = INPUT_SIZE; // Length of the input data
-        let output_offset = OUTPUT_SIZE; // Length of the output data
+        let input_offset = INPUT_SIZE;
+        let output_offset = OUTPUT_SIZE;
         let mut circuit = 0;
-        inputs.iter().enumerate().for_each(|(i, input)| {
+        for (i, input) in inputs.into_iter().enumerate() {
             // Get the basic data from the input
             let step_received = input.step_main;
             let addr_received = input.addr_main;
@@ -109,9 +111,9 @@ impl Sha256fSM {
             let input_received = &input.input;
 
             // Collect the raw sha256f input
-            let mut sha256f_data = [0u64; INPUT_DATA_SIZE_U64];
-            sha256f_data[..4].copy_from_slice(state_received);
-            sha256f_data[4..].copy_from_slice(input_received);
+            let mut sha256f_input_data = [0u64; INPUT_DATA_SIZE_U64];
+            sha256f_input_data[..4].copy_from_slice(state_received);
+            sha256f_input_data[4..].copy_from_slice(input_received);
 
             circuit = i / NUM_SHA256F_PER_CIRCUIT;
             let circuit_pos = i % NUM_SHA256F_PER_CIRCUIT;
@@ -122,7 +124,7 @@ impl Sha256fSM {
             trace[initial_pos].in_use_clk_0 = F::ONE; // The pair (step_received, addr_received) is unique each time
 
             // Process the sha256f input
-            sha256f_data.iter().enumerate().for_each(|(j, &value)| {
+            sha256f_input_data.iter().enumerate().for_each(|(j, &value)| {
                 let chunk_offset = j * RB_SIZE;
                 let pos = initial_pos + chunk_offset;
 
@@ -200,7 +202,7 @@ impl Sha256fSM {
                 let pos = offset + j * RB_SIZE;
                 trace[pos].in_use = F::ONE;
             }
-        });
+        }
 
         // It the number of inputs is less than the available sha256fs, we need to fill the remaining inputs
         if num_inputs < self.num_available_sha256fs {
@@ -466,15 +468,15 @@ impl Sha256fSM {
         // Get the fixed cols
         let airgroup_id = Sha256fTrace::<usize>::AIRGROUP_ID;
         let air_id = Sha256fTrace::<usize>::AIR_ID;
-        let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
-        let fixed = Sha256fFixed::from_vec(fixed_pols);
+        let fixed_cols = sctx.get_fixed(airgroup_id, air_id);
+        let fixed = Sha256fFixed::from_vec(fixed_cols);
 
         timer_start_trace!(SHA256F_TRACE);
         let mut sha256f_trace = Sha256fTrace::new();
         let num_rows = sha256f_trace.num_rows();
 
         // Check that we can fit all the sha256fs in the trace
-        let num_inputs: usize = inputs.iter().map(|x| x.len()).sum();
+        let num_inputs = inputs.iter().map(|v| v.len()).sum::<usize>();
         let num_circuits_needed = num_inputs.div_ceil(NUM_SHA256F_PER_CIRCUIT);
         let num_rows_constants = 1; // Number of rows used for the constants
         let num_padding_rows = (num_rows - num_rows_constants) % self.circuit_size;
@@ -522,9 +524,9 @@ impl Sha256fSM {
         self.sha256f_table_sm.update_input(table_row, CHUNKS_SHA256F as u64);
 
         // Fill the rest of the trace
-        for inputs in inputs.iter() {
-            self.process_slice(&mut sha256f_trace, num_rows_constants, inputs);
-        }
+        // Flatten all the inputs, since I need to process them at least in chunks of NUM_SHA256F_PER_CIRCUIT
+        let inputs = inputs.iter().flatten();
+        self.process_trace(&mut sha256f_trace, num_rows_constants, inputs, num_inputs);
         timer_stop_and_log_trace!(SHA256F_TRACE);
 
         timer_start_trace!(SHA256F_PADDING);
