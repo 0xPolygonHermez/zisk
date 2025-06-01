@@ -165,8 +165,8 @@ impl Sha256fSM {
             });
 
             // Apply the sha256f function
-            let mut state_u32 = convert_u64_to_u32_be_words(&state_received);
-            let block: GenericArray<u8, U64> = u64s_to_generic_array_be(&input_received);
+            let mut state_u32 = convert_u64_to_u32_be_words(state_received);
+            let block: GenericArray<u8, U64> = u64s_to_generic_array_be(input_received);
             let blocks = &[block];
             compress256(&mut state_u32, blocks);
             let sha256f_output = convert_u32s_back_to_u64_be(&state_u32);

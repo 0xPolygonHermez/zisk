@@ -59,7 +59,7 @@ pub fn generate_sha256f_mem_inputs(
     let params_count = read_params + write_params;
     let params_offset = OPERATION_BUS_DATA_SIZE + indirect_params;
     let mut read_chunks = 0;
-    for iparam in 0..params_count {
+    for (iparam, &chunks) in chunks_per_param.iter().enumerate().take(params_count) {
         let is_write = iparam >= read_params;
         let param_index = if is_write { iparam - read_params } else { iparam };
         let param_addr = data[OPERATION_BUS_DATA_SIZE + param_index] as u32;
@@ -67,14 +67,14 @@ pub fn generate_sha256f_mem_inputs(
         // read/write all chunks of the iparam parameter
         let current_param_offset = if is_write {
             // if write calculate index over write_data
-            chunks_per_param[iparam] * param_index
+            chunks * param_index
         } else {
             // if read calculate param
             let offset = params_offset + read_chunks;
-            read_chunks += chunks_per_param[iparam];
+            read_chunks += chunks;
             offset
         };
-        for ichunk in 0..chunks_per_param[iparam] {
+        for ichunk in 0..chunks {
             let chunk_data = if only_counters && is_write {
                 0
             } else if is_write {
