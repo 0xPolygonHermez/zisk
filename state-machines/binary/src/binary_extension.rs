@@ -61,7 +61,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         std: Arc<Std<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
     ) -> Arc<Self> {
-        let range_id = std.get_range(1, 0x1000000, None);
+        let range_id = std.get_range(0, 0xFFFFFF, None);
 
         Arc::new(Self { std, binary_extension_table_sm, range_id })
     }
@@ -308,7 +308,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
 
         // Store the range check
         if op_is_shift {
-            self.std.range_check(in2_0 as i64 + 1, 1, self.range_id);
+            self.std.range_check(in2_0 as i64, 1, self.range_id);
         }
 
         // Return successfully
