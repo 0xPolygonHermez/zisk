@@ -10,7 +10,7 @@ use std::{
     io::{Read, Write},
     net::TcpStream,
     path::Path,
-    process::{self, Command},
+    process::Command,
     thread::sleep,
     time::{Duration, Instant},
 };
@@ -131,19 +131,19 @@ impl AsmServices {
 
         command.arg("-s");
 
-        command.stdout(std::process::Stdio::inherit()).stderr(std::process::Stdio::inherit());
+        // command.stdout(std::process::Stdio::inherit()).stderr(std::process::Stdio::inherit());
 
         if !options.log_output {
             command.arg("-o");
-            // command.stdout(process::Stdio::null());
-            // command.stderr(process::Stdio::null());
+            command.stdout(std::process::Stdio::null());
+            command.stderr(std::process::Stdio::null());
         }
         if options.metrics {
             command.arg("-m");
         }
-        // if options.verbose {
-        command.arg("-v");
-        // }
+        if options.verbose {
+            command.arg("-v");
+        }
         match options.trace_level {
             AsmRunnerTraceLevel::None => {}
             AsmRunnerTraceLevel::Trace => {

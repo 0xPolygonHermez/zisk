@@ -172,12 +172,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     fn execute_with_assembly(&self) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList) {
         let input_data_cloned = self.input_data_path.clone();
         let handle_mo = std::thread::spawn(move || {
-            let xxx = AsmRunnerMO::run(
+            AsmRunnerMO::run(
                 input_data_cloned.as_ref().unwrap(),
                 Self::MAX_NUM_STEPS,
                 Self::MIN_TRACE_SIZE,
             )
-            .expect("Error during Assembly Memory Operations execution");
+            .expect("Error during Assembly Memory Operations execution")
         });
 
         let (min_traces, main_count, secn_count) = self.run_mt_assembly();
@@ -190,6 +190,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         };
 
         self.execution_result.lock().unwrap().executed_steps = steps;
+
+        // Wait for the memory operations thread to finish
+        let (mem_segments, mem_align_segments) =
+            handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
 
         (min_traces, main_count, secn_count)
     }

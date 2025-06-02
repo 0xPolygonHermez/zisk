@@ -1,5 +1,7 @@
 use libc::{close, shm_unlink, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR};
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use mem_planner_cpp::{MemAlignCheckPoint, MemCheckPoint};
 use mem_planner_cpp::MemPlanner;
 use named_sem::NamedSemaphore;
 
@@ -52,7 +54,7 @@ impl AsmRunnerMO {
         Self { shmem_output_name, mapped_ptr, total_size }
     }
 
-    pub fn run(inputs_path: &Path, max_steps: u64, chunk_size: u64) -> Result<AsmRunnerMO> {
+    pub fn run(inputs_path: &Path, max_steps: u64, chunk_size: u64) -> Result<( Vec<Vec<MemCheckPoint>>, Vec<Vec<MemAlignCheckPoint>> )> {
         const SHMEM_INPUT_NAME: &str = "ZISKMO_input";
         const SHMEM_OUTPUT_NAME: &str = "ZISKMO_output";
         const SEM_CHUNK_DONE_NAME: &str = "/ZISKMO_chunk_done";
@@ -70,13 +72,12 @@ impl AsmRunnerMO {
         let header_ptr = Self::get_output_ptr(SHMEM_OUTPUT_NAME) as *const AsmMOHeader;
         let header = unsafe { std::ptr::read(header_ptr) };
 
-        // From header, skips the header size and 8 bytes more to get the data pointer.
-        // The 8 bytes are for the number of chunks.
+        // Skips the header size to get the data pointer.
         let mut data_ptr = unsafe { header_ptr.add(1) } as *const AsmMOChunk;
 
         // Initialize C++ memory operations trace
-        let mem_planner = MemPlanner::new();
-        mem_planner.execute();
+        // let mem_planner = MemPlanner::new();
+        // mem_planner.execute();
 
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
@@ -86,12 +87,13 @@ impl AsmRunnerMO {
 
                     let chunk = unsafe { std::ptr::read(data_ptr) };
 
+                    // TODO! Remove this check in the near future
                     if chunk.mem_ops_size == MEM_READS_SIZE_DUMMY {
                         panic!("Unexpected state: invalid data received from C++");
                     }
 
                     data_ptr = unsafe { data_ptr.add(1) };
-                    mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
+                    // mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
 
                     if chunk.end == 1 {
                         break 0;
@@ -125,15 +127,24 @@ impl AsmRunnerMO {
         assert!(response.trace_len > 0);
         assert!(response.trace_len <= response.allocated_len);
 
-        mem_planner.set_completed();
-        mem_planner.wait();
+        // mem_planner.set_completed();
+        // mem_planner.wait();
 
         println!("Memory operations trace completed");
-        Ok(AsmRunnerMO::new(
-            SHMEM_OUTPUT_NAME.to_string(),
-            header_ptr as *mut c_void,
-            header.mt_allocated_size,
-        ))
+
+        // let (_mem_segments, _mem_align_segments) = mem_planner.mem_segments();
+
+        unsafe {
+            shmem_utils::unmap(header_ptr as *mut c_void, header.mt_allocated_size as usize);
+        }
+        let c_name = std::ffi::CString::new(SHMEM_OUTPUT_NAME).expect("CString::new failed");
+        unsafe {
+            if shm_unlink(c_name.as_ptr()) != 0 {
+                error!("shm_unlink failed: {:?}", std::io::Error::last_os_error());
+            }
+        }
+
+        Ok((vec![], vec![]))
     }
 
     pub fn write_input(inputs_path: &Path, shmem_input_name: &str) {

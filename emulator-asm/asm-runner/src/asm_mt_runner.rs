@@ -7,6 +7,7 @@ use zisk_common::{ChunkId, EmuTrace};
 use std::ffi::c_void;
 use std::fmt::Debug;
 use std::path::Path;
+use std::sync::atomic::{fence, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 use std::{fs, ptr};
@@ -107,26 +108,26 @@ impl AsmRunnerMT {
         // Read the header data
         let header_ptr = Self::get_output_ptr(SHMEM_OUTPUT_NAME) as *const AsmMTHeader;
 
-        // From header, skips the header size and 8 bytes more to get the data pointer.
-        // The 8 bytes are for the number of chunks.
-        let mut data_ptr = unsafe {
-            (header_ptr as *mut u8).add(std::mem::size_of::<AsmMTHeader>() + 8) as *const AsmMTChunk
-        };
+        // Skips the header size to get the data pointer.
+        let data_ptr = unsafe { header_ptr.add(1) } as *const u64;
+        // Skips the first u64 which is used for mem_reads_size.
+        let mut data_ptr = unsafe { data_ptr.add(1) as *const AsmMTChunk };
 
         let mut emu_traces = Vec::new();
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
-                    let emu_trace = loop {
-                        // Read only memory reads size
-                        let chunk = unsafe { std::ptr::read(data_ptr) };
+                    // Synchronize with memory changes from the C++ side
+                    fence(Ordering::Acquire);
 
-                        if chunk.mem_reads_size == MEM_READS_SIZE_DUMMY {
-                            std::thread::sleep(Duration::from_nanos(1));
-                        } else {
-                            break AsmMTChunk::to_emu_trace(&mut data_ptr);
-                        }
-                    };
+                    let chunk = unsafe { std::ptr::read(data_ptr) };
+
+                    // TODO! Remove this check in the near future
+                    if chunk.mem_reads_size == MEM_READS_SIZE_DUMMY {
+                        panic!("Unexpected state: invalid data received from C++");
+                    }
+
+                    let emu_trace = AsmMTChunk::to_emu_trace(&mut data_ptr);
 
                     let should_exit = emu_trace.end;
                     let emu_trace = Arc::new(emu_trace);
