@@ -490,12 +490,32 @@ impl ZiskRom2Asm {
 
             // Call chunk_start the first time, for the first chunk
             if (ctx.minimal_trace() || ctx.main_trace() || ctx.zip() || ctx.mem_op()) && (k == 0) {
+                // Update pc
                 *code += &format!(
                     "\tmov {}, 0x{:08x} {}\n",
                     REG_PC,
                     ctx.pc,
                     ctx.comment_str("value = pc")
                 );
+
+                // Reset number of chunks
+                *code += &ctx.full_line_comment(
+                    "Reset number of chunks to 0 (first position in trace)".to_string(),
+                );
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_ADDRESS,
+                    ctx.mem_trace_address,
+                    ctx.comment_str("address = trace_addr")
+                );
+                *code += &format!(
+                    "\tmov qword {} [{}], 0 {}\n",
+                    ctx.ptr,
+                    REG_ADDRESS,
+                    ctx.comment_str("number of chunks = 0")
+                );
+
+                // Call chunk start
                 *code += &format!(
                     "\tcall chunk_start {}\n",
                     ctx.comment_str("Call chunk_start the first time")
