@@ -59,7 +59,7 @@ impl MemPlanner {
     /// # Safety
     /// This function assumes the underlying C++ memory is valid and the pointer returned
     /// is safe to read for `count` elements.
-    pub fn get_segments(&self) -> (Vec<Vec<MemCheckPoint>>, Vec<Vec<MemAlignCheckPoint>>) {
+    pub fn mem_segments(&self) -> (Vec<Vec<MemCheckPoint>>, Vec<Vec<MemAlignCheckPoint>>) {
         let mem_segments_count: u32 = unsafe { bindings::get_mem_segment_count(self.inner) };
 
         let mut mem_segments = Vec::new();
