@@ -63,6 +63,7 @@ pub struct ServerConfig {
     pub server_id: Uuid,
 }
 
+#[allow(clippy::too_many_arguments)]
 impl ServerConfig {
     pub fn new(
         port: u16,
