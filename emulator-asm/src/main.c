@@ -157,6 +157,8 @@ uint64_t trace_used_size = 0;
 #define MAX_CHUNK_TRACE_SIZE (INITIAL_CHUNK_SIZE * 200) + (44 * 8) + 32
 uint64_t trace_address_threshold = TRACE_ADDR + INITIAL_TRACE_SIZE - MAX_CHUNK_TRACE_SIZE;
 
+uint64_t print_pc_counter = 0;
+
 void set_chunk_size (uint64_t new_chunk_size)
 {
     if (!is_power_of_two(new_chunk_size))
@@ -519,11 +521,13 @@ int main(int argc, char *argv[])
                         set_max_steps(request[1]);
                         set_chunk_size(request[2]);
                         chunk_player_address = request[3];
+                        uint64_t * pChunk = (uint64_t *)chunk_player_address;
+                        print_pc_counter = pChunk[3];
 
                         server_run();
 
                         response[0] = TYPE_CM_RESPONSE;
-                        response[1] = MEM_END ? 0 : 1;
+                        response[1] = 0;
                         response[2] = trace_size;
                         response[3] = trace_used_size;
                         response[4] = 0;
@@ -1074,6 +1078,14 @@ void configure (void)
             strcpy(sem_chunk_done_name, "");
             chunk_done = false;
             port = 23119;
+            if ((chunk_player_address == 0) && client)
+            {
+                printf("configure() found gen_method==ChunkPlayerMTCollectMem but chunk_player_address == 0; please specify a chunk address\n");
+                print_usage();
+                fflush(stdout);
+                fflush(stderr);
+                exit(-1);
+            }
             break;
         }
         default:
@@ -2302,7 +2314,6 @@ extern int _print_regs()
     // printf("\n");
 }
 
-uint64_t print_pc_counter = 0;
 extern int _print_pc (uint64_t pc, uint64_t c, uint64_t chunk_address)
 {
     printf("print_pc() counter=%lu pc=%lx c=%lx chunk_address=%lx\n", print_pc_counter, pc, c, chunk_address);
