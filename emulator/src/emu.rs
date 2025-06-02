@@ -1738,6 +1738,21 @@ impl<'a> Emu<'a> {
             ExtOperationData::OperationSecp256k1DblData(data) => {
                 data_bus.write_to_bus(OPERATION_BUS_ID, &data);
             }
+            ExtOperationData::OperationBn254CurveAddData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+            }
+            ExtOperationData::OperationBn254CurveDblData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+            }
+            ExtOperationData::OperationBn254ComplexAddData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+            }
+            ExtOperationData::OperationBn254ComplexSubData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+            }
+            ExtOperationData::OperationBn254ComplexMulData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+            }
         }
 
         // #[cfg(feature = "sp")]
@@ -1852,6 +1867,21 @@ impl<'a> Emu<'a> {
                 data_bus.write_to_bus(OPERATION_BUS_ID, &data);
             }
             ExtOperationData::OperationSecp256k1DblData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+            }
+            ExtOperationData::OperationBn254CurveAddData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+            }
+            ExtOperationData::OperationBn254CurveDblData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+            }
+            ExtOperationData::OperationBn254ComplexAddData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+            }
+            ExtOperationData::OperationBn254ComplexSubData(data) => {
+                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+            }
+            ExtOperationData::OperationBn254ComplexMulData(data) => {
                 data_bus.write_to_bus(OPERATION_BUS_ID, &data);
             }
         }

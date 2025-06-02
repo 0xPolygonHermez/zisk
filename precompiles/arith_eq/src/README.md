@@ -1,55 +1,55 @@
-# ArithEq: Arith Equations
+# ArithEq: Arithmetic Equations
 
-**TODO: In construction**
+> ⚠️ **Status**: Work in progress
 
-## Add new 256 bit operations
-It's possible to add new operations with up to 3 equations for operation.
+## ➕ Adding New Operations
 
-Different operations could share more than one equations
+You can define new 256-bit operations by specifying up to **three equations per operation**. Multiple operations can share one or more equations.
 
-To avoid pay an extra cost, all terms of each equation must be segon degree or less.
+**Important constraint:**  
+To avoid unnecessary performance overhead, **all terms in an equation must be at most quadratic (degree ≤ 2)**.
 
-## Equations generation
-Add the new equations to generator (`arith_eq_generator.rs`), in this file add the description of
-of equations and their files names. An example:
+### 🧮 Equation Definition and Code Generation
+
+Equations are added in the `arith_eq_generator.rs` file. Each equation is written in a simple linear form, and associated with constant parameters.
+
+> 🔤 Equations must be expressed as a flat sum of products, with no parentheses or spaces.
+
+Example:
 
 ```rust
-    let mut eq = Equation::new(&config);
-    eq.parse(
-        "s*x2-s*x1-y2+y1-p*q0+p*offset",
-        &[
-            ("p", "0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"),
-            ("offset", "0x20000000000000000000000000000000000000000000000000000000000000000"),
-        ],
-    );
+let mut eq = Equation::new(&config);
+eq.parse(
+    "s*x2-s*x1-y2+y1-p*q0+p*offset",
+    &[
+        ("p", "0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"),
+        ("offset", "0x20000000000000000000000000000000000000000000000000000000000000000"),
+    ],
+);
 
-    let rust_file = rust_code_path.join("secp256k1_add.rs");
-    eq.generate_rust_code_to_file("Secp256k1Add", "x1,y1,x2,y2,s,q0", rust_file.to_str().unwrap());
+let rust_file = rust_code_path.join("secp256k1_add.rs");
+eq.generate_rust_code_to_file("Secp256k1Add", "x1,y1,x2,y2,s,q0", rust_file.to_str().unwrap());
 
-    let pil_file = pil_code_path.join("secp256k1_add.pil");
-    eq.generate_pil_code_to_file("eq_secp256k1_add", pil_file.to_str().unwrap());
+let pil_file = pil_code_path.join("secp256k1_add.pil");
+eq.generate_pil_code_to_file("eq_secp256k1_add", pil_file.to_str().unwrap());
 ```
-In this example, it's defined the equation as an expression = 0, without parentesis, only with
-a sequence of products additions.
 
-### Helpers generation
+In this example, a equation is defined and code is generated for both Rust and PIL.
 
-After source `arith_eq_generator.rs` was update, to regenerate rust helpers and pil, execute:
+Constants like `qi` **must always be positive**, because they are split into 16-bit chunks. To ensure positivity, an **offset** is added to shift values into a valid range.
 
+### ⚙️ Code Generation Helpers
+
+After modifying `arith_eq_generator.rs`, regenerate the Rust and PIL code by running:
 ```bash
 cargo run --bin arith_eq_generator --features "test_data"
 ```
 
-### Defined Constants
+### 📏 Range Check Guidelines
 
-`qi` must be a possitive number because is divided in possitive chunks of 16, for these reason use
-an addition offset to be sure that always it's possitive.
+Ensure that **all intermediate values and carries are range-checked**. For operations involving `qi`, the range check rules are:
+- **Most significant chunk (MSB)**: 22 bits.
+- **Remaining chunks**: 16 bits each.
+- **Carry values**: must be in the range from -(2^22) - 1 to 2^22.
 
-### Range Check
-
-Be carefull, that all calculations are inside range check. In case of `qi` range check it's __22 bits__
-for the __most significant chunk__, and __16 bits__ for the rest of chunks. The valid range check of carry was from -(2^22)-1 to 2^22
-
-## Pil modification
-
-
+## PIL Modification

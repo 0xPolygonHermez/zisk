@@ -341,6 +341,11 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_arith256_mod\n";
         *code += ".extern opcode_secp256k1_add\n";
         *code += ".extern opcode_secp256k1_dbl\n";
+        *code += ".extern opcode_bn254_curve_add\n";
+        *code += ".extern opcode_bn254_curve_dbl\n";
+        *code += ".extern opcode_bn254_complex_add\n";
+        *code += ".extern opcode_bn254_complex_sub\n";
+        *code += ".extern opcode_bn254_complex_mul\n";
         *code += ".extern opcode_fcall\n";
         *code += ".extern chunk_done\n";
         *code += ".extern print_fcall_ctx\n";
@@ -3944,7 +3949,7 @@ impl ZiskRom2Asm {
                     }
                 }
 
-                // Call the secp256k1_add function
+                // Call the arith256 function
                 Self::push_internal_registers(ctx, code);
                 *code += "\tcall _opcode_arith256\n";
                 Self::pop_internal_registers(ctx, code);
@@ -3983,7 +3988,7 @@ impl ZiskRom2Asm {
                     }
                 }
 
-                // Call the secp256k1_add function
+                // Call the arith256_mod function
                 Self::push_internal_registers(ctx, code);
                 *code += "\tcall _opcode_arith256_mod\n";
                 Self::pop_internal_registers(ctx, code);
@@ -4094,6 +4099,21 @@ impl ZiskRom2Asm {
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Bn254CurveAdd => {
+                // TODO!
+            }
+            ZiskOp::Bn254CurveDbl => {
+                // TODO!
+            }
+            ZiskOp::Bn254ComplexAdd => {
+                // TODO!
+            }
+            ZiskOp::Bn254ComplexSub => {
+                // TODO!
+            }
+            ZiskOp::Bn254ComplexMul => {
+                // TODO!
             }
             ZiskOp::FcallParam => {
                 assert!(ctx.store_b_in_c);

@@ -5,11 +5,7 @@ use crate::{
     secp256k1_dbl::syscall_secp256k1_dbl,
 };
 
-/// Secp256k1 group of points generator
-pub(crate) const G_X: [u64; 4] =
-    [0x59F2815B16F81798, 0x029BFCDB2DCE28D9, 0x55A06295CE870B07, 0x79BE667EF9DCBBAC];
-pub(crate) const G_Y: [u64; 4] =
-    [0x9C47D08FFB10D4B8, 0xFD17B448A6855419, 0x5DA4FBFC0E1108A8, 0x483ADA7726A3C465];
+use super::constants::{G_X, G_Y};
 
 /// Given points `p1` and `p2`, performs the point addition `p1 + p2` and assigns the result to `p1`.
 /// It assumes that `p1` and `p2` are from the Secp256k1 curve, that `p1,p2 != 𝒪` and that `p2 != p1,-p1`
@@ -44,7 +40,7 @@ fn add_points_complete_assign(
 
 /// Given a point `p` and scalars `k1` and `k2`, computes the double scalar multiplication `k1·G + k2·p`
 /// It assumes that `k1,k2 ∈ [1, N-1]` and that `p != 𝒪`
-pub(super) fn secp256k1_double_scalar_mul_with_g(
+pub fn secp256k1_double_scalar_mul_with_g(
     k1: &[u64; 4],
     k2: &[u64; 4],
     p: &SyscallPoint256,
