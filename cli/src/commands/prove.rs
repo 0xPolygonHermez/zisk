@@ -8,7 +8,6 @@ use anyhow::Result;
 use colored::Colorize;
 use executor::ZiskExecutionResult;
 use libloading::{Library, Symbol};
-use log::info;
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::{
@@ -274,12 +273,12 @@ impl ZiskProve {
 
         let elapsed = elapsed.as_secs_f64();
         println!();
-        info!("{}", "    Zisk: --- PROVE SUMMARY ------------------------".bright_green().bold());
+        tracing::info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
         if let Some(proof_id) = &proof_id {
-            info!("                Proof ID: {}", proof_id);
+            tracing::info!("      Proof ID: {}", proof_id);
         }
-        info!("              ► Statistics");
-        info!("                time: {} seconds, steps: {}", elapsed, result.executed_steps);
+        tracing::info!("    ► Statistics");
+        tracing::info!("      time: {} seconds, steps: {}", elapsed, result.executed_steps);
 
         if let Some(proof_id) = proof_id {
             let logs = proof_log::ProofLog::new(result.executed_steps, proof_id, elapsed);

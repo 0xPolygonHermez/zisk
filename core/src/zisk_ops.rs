@@ -23,6 +23,7 @@ use std::{
 use tiny_keccak::keccakf;
 
 use crate::{
+    convert_u32s_back_to_u64_be, convert_u64_to_u32_be_words, u64s_to_generic_array_be,
     EmulationMode, InstContext, Mem, ZiskOperationType, ZiskRequiredOperation, M64, REG_A0,
     SYS_ADDR,
 };
@@ -339,7 +340,7 @@ define_ops! {
     (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xf6, 0, opc_fcall_param, op_fcall_param),
     (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, opc_fcall, op_fcall),
     (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, opc_fcall_get, op_fcall_get),
-    (Sha256, "sha256", Sha256, SHA256_COST, 0xf9, 96, opc_sha256, op_sha256),
+    (Sha256, "sha256", Sha256, SHA256_COST, 0xf9, 112, opc_sha256, op_sha256),
     (Bn254CurveAdd, "bn254_curve_add", ArithEq, ARITH_EQ_COST, 0xfa, 144, opc_bn254_curve_add, op_bn254_curve_add),
     (Bn254CurveDbl, "bn254_curve_dbl", ArithEq, ARITH_EQ_COST, 0xfb, 64, opc_bn254_curve_dbl, op_bn254_curve_dbl),
     (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_EQ_COST, 0xfc, 144, opc_bn254_complex_add, op_bn254_complex_add),
@@ -1198,60 +1199,20 @@ pub fn op_keccak(_a: u64, _b: u64) -> (u64, bool) {
 /// specified by register A0, and stores the output state in the same memory address
 #[inline(always)]
 pub fn opc_sha256(ctx: &mut InstContext) {
-    // Get address from b (a = step)
-    let address = ctx.b;
-    if address & 0x7 != 0 {
-        panic!("opc_sha256() found address not aligned to 8 bytes");
-    }
-
-    // Allocate room for 12 u64 = 96 bytes = 768 bits
-    const WORDS: usize = 12;
+    // Allocate room for 12 u64 = 96 bytes = 768 bits (2 extra for indirections)
+    const WORDS: usize = 2 + 2 * 4 + 4;
     let mut data = [0u64; WORDS];
 
-    // Get input data from memory or from the precompiled context
-    match ctx.emulation_mode {
-        EmulationMode::Mem => {
-            // Read data from the memory address
-            for (i, d) in data.iter_mut().enumerate() {
-                *d = ctx.mem.read(address + (8 * i as u64), 8);
-            }
-        }
-        EmulationMode::GenerateMemReads => {
-            // Read data from the memory address
-            for (i, d) in data.iter_mut().enumerate() {
-                *d = ctx.mem.read(address + (8 * i as u64), 8);
-            }
-
-            // Copy data to the precompiled context
-            ctx.precompiled.input_data.clear();
-            for (i, d) in data.iter_mut().enumerate() {
-                ctx.precompiled.input_data.push(*d);
-            }
-            // Write the input data address to the precompiled context
-            // ctx.precompiled.input_data_address = address;
-        }
-        EmulationMode::ConsumeMemReads => {
-            // Check input data has the expected length
-            if ctx.precompiled.input_data.len() != WORDS {
-                panic!(
-                    "opc_sha256() found ctx.precompiled.input_data.len={} != {}",
-                    ctx.precompiled.input_data.len(),
-                    WORDS
-                );
-            }
-            // Read data from the precompiled context
-            for (i, d) in data.iter_mut().enumerate() {
-                *d = ctx.precompiled.input_data[i];
-            }
-            // Write the input data address to the precompiled context
-            // ctx.precompiled.input_data_address = address;
-        }
-    }
+    precompiled_load_data(ctx, 2, 2, 4, 4, &mut data, "sha256");
 
     // Get the state and input slices
-    let (state_slice, input_slice) = data.split_at_mut(4);
-    let state: &mut [u64; 4] = state_slice.try_into().unwrap();
+    let (_, rest) = data.split_at(2);
+    let (state_slice, input_slice) = rest.split_at(4);
+    let state: &[u64; 4] = state_slice.try_into().unwrap();
     let input: &[u64; 8] = input_slice[..8].try_into().unwrap();
+
+    // Compute the sha output with the fastest implementation available
+    // For that we use the `sha2` crate, and we should adapt to their API
 
     // Convert both the state and the input to appropriate types
     let mut state_u32 = convert_u64_to_u32_be_words(state);
@@ -1259,62 +1220,14 @@ pub fn opc_sha256(ctx: &mut InstContext) {
     let blocks = &[block];
     compress256(&mut state_u32, blocks);
 
-    // Convert the state back to u64
-    state.copy_from_slice(&convert_u32s_back_to_u64_be(&state_u32));
-
-    // Write data to the memory address
-    for (i, d) in data.iter().enumerate() {
-        ctx.mem.write(address + (8 * i as u64), *d, 8);
-    }
-
-    // Set input data to the precompiled context
-    match ctx.emulation_mode {
-        EmulationMode::Mem => {}
-        EmulationMode::GenerateMemReads => {
-            // Write data to the precompiled context
-            ctx.precompiled.output_data.clear();
-            for (i, d) in data.iter_mut().enumerate() {
-                ctx.precompiled.output_data.push(*d);
-            }
-            // Write the input data address to the precompiled context
-            // ctx.precompiled.output_data_address = address;
-        }
-        EmulationMode::ConsumeMemReads => {}
+    // Convert the state back to u64 and write it to the memory address
+    let state_output = convert_u32s_back_to_u64_be(&state_u32);
+    for (i, d) in state_output.iter().enumerate() {
+        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
     }
 
     ctx.c = 0;
     ctx.flag = false;
-
-    fn convert_u64_to_u32_be_words(input: &mut [u64; 4]) -> [u32; 8] {
-        let mut out = [0u32; 8];
-        for (i, &word) in input.iter().enumerate() {
-            let bytes = word.to_be_bytes();
-            out[2 * i] = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-            out[2 * i + 1] = u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
-        }
-        out
-    }
-
-    fn u64s_to_generic_array_be(input: &[u64; 8]) -> GenericArray<u8, U64> {
-        let mut out = [0u8; 64];
-        for (i, word) in input.iter().enumerate() {
-            let bytes = word.to_be_bytes();
-            out[i * 8..(i + 1) * 8].copy_from_slice(&bytes);
-        }
-        GenericArray::<u8, U64>::clone_from_slice(&out)
-    }
-
-    fn convert_u32s_back_to_u64_be(words: &[u32; 8]) -> [u64; 4] {
-        let mut out = [0u64; 4];
-        for i in 0..4 {
-            let high = words[2 * i].to_be_bytes();
-            let low = words[2 * i + 1].to_be_bytes();
-            out[i] = u64::from_be_bytes([
-                high[0], high[1], high[2], high[3], low[0], low[1], low[2], low[3],
-            ]);
-        }
-        out
-    }
 }
 
 /// Unimplemented.  Sha256 can only be called from the system call context via InstContext.
@@ -1330,6 +1243,7 @@ pub fn precompiled_load_data(
     indirections_count: usize,
     loads_count: usize,
     load_chunks: usize,
+    load_rem: usize,
     data: &mut [u64],
     title: &str,
 ) {
@@ -1338,17 +1252,18 @@ pub fn precompiled_load_data(
         panic!("precompiled_check_address() found address not aligned to 8 bytes");
     }
     if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
-        let expected_len = indirections_count + loads_count * load_chunks;
+        let expected_len = indirections_count + loads_count * load_chunks + load_rem;
         // Check input data has the expected length
         if ctx.precompiled.input_data.len() != expected_len {
             panic!(
-                "[{}] ctx.precompiled.input_data.len={} != {} [1+{}+{}*{}]",
+                "[{}] ctx.precompiled.input_data.len={} != {} [{}+{}*{}+{}]",
                 title,
                 ctx.precompiled.input_data.len(),
                 expected_len,
                 indirections_count,
+                loads_count,
                 load_chunks,
-                loads_count
+                load_rem
             );
         }
         // Read data from the precompiled context
@@ -1360,6 +1275,7 @@ pub fn precompiled_load_data(
         return;
     }
 
+    // Write the indirections to data
     for (i, data) in data.iter_mut().enumerate().take(indirections_count) {
         let indirection = ctx.mem.read(address + (8 * i as u64), 8);
         if address & 0x7 != 0 {
@@ -1367,10 +1283,11 @@ pub fn precompiled_load_data(
         }
         *data = indirection;
     }
-    let data_offset = indirections_count;
+
+    let mut data_offset = indirections_count;
     for i in 0..loads_count {
-        // if there aren't indirections, take directly from the address
         let data_offset = i * load_chunks + data_offset;
+        // if there aren't indirections, take directly from the address
         let param_address =
             if indirections_count == 0 { address + data_offset as u64 } else { data[i] };
         for j in 0..load_chunks {
@@ -1378,8 +1295,23 @@ pub fn precompiled_load_data(
             data[data_offset + j] = ctx.mem.read(addr, 8);
         }
     }
+
+    // Process the remanent of the last chunk
+    if load_rem > 0 {
+        data_offset += (loads_count - 1) * load_chunks;
+        let param_address = if indirections_count == 0 {
+            address + data_offset as u64
+        } else {
+            data[loads_count - 1]
+        };
+        for j in load_chunks..load_chunks + load_rem {
+            let addr = param_address + (8 * j as u64);
+            data[data_offset + j] = ctx.mem.read(addr, 8);
+        }
+    }
+
     if let EmulationMode::GenerateMemReads = ctx.emulation_mode {
-        let expected_len = indirections_count + loads_count * load_chunks;
+        let expected_len = indirections_count + loads_count * load_chunks + load_rem;
 
         ctx.precompiled.input_data.clear();
         for (i, d) in data.iter_mut().enumerate() {
@@ -1395,7 +1327,7 @@ pub fn opc_arith256(ctx: &mut InstContext) {
     const WORDS: usize = 5 + 3 * 4;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 5, 3, 4, &mut data, "arith256");
+    precompiled_load_data(ctx, 5, 3, 4, 0, &mut data, "arith256");
 
     // ignore 5 indirections
     let (_, rest) = data.split_at(5);
@@ -1435,7 +1367,7 @@ pub fn opc_arith256_mod(ctx: &mut InstContext) {
     const WORDS: usize = 5 + 4 * 4;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 5, 4, 4, &mut data, "arith256_mod");
+    precompiled_load_data(ctx, 5, 4, 4, 0, &mut data, "arith256_mod");
 
     // ignore 5 indirections
     let (_, rest) = data.split_at(5);
@@ -1474,7 +1406,7 @@ pub fn opc_secp256k1_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, &mut data, "secp256k1_add");
+    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "secp256k1_add");
 
     // ignore 2 indirections
     let (_, rest) = data.split_at(2);
@@ -1507,7 +1439,7 @@ pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 0, 1, 8, &mut data, "secp256k1_dbl");
+    precompiled_load_data(ctx, 0, 1, 8, 0, &mut data, "secp256k1_dbl");
 
     let p1: &[u64; 8] = &data;
     let mut p3 = [0u64; 8];

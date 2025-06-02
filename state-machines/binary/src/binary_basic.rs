@@ -8,7 +8,6 @@ use std::sync::{
 };
 
 use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput};
-use log::info;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
@@ -27,8 +26,6 @@ pub struct BinaryBasicSM {
 }
 
 impl BinaryBasicSM {
-    const MY_NAME: &'static str = "Binary  ";
-
     /// Creates a new Binary Basic State Machine instance.
     ///
     /// # Arguments
@@ -893,9 +890,8 @@ impl BinaryBasicSM {
         let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
         assert!(total_inputs <= num_rows);
 
-        info!(
-            "{}: ··· Creating Binary instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
+        tracing::info!(
+            "··· Creating Binary instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,
             total_inputs as f64 / num_rows as f64 * 100.0

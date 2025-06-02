@@ -47,7 +47,7 @@ pil-std-lib = { workspace = true }
 
 p3-field = { workspace=true }
 p3-goldilocks = { workspace=true }
-log = { workspace = true }
+tracing = { workspace = true }
 rayon = { workspace = true }
 ark-ff = { workspace = true }
 ark-std = { workspace = true }

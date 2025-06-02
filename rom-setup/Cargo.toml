@@ -8,7 +8,7 @@ repository.workspace = true
 categories.workspace = true
 
 [dependencies]
-log = { workspace = true }
+tracing = { workspace = true }
 p3-goldilocks = { workspace = true }
 proofman-common = { workspace = true }
 colored = { workspace = true }

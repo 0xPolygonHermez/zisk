@@ -131,7 +131,7 @@ trace!(MemFixed<F> {
 },  0, 2, 4194304 );
 
 trace!(MemTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: F,
+ addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: [F; 2], read_same_addr: F,
 },  0, 2, 4194304 );
 
 trace!(RomDataFixed<F> {
@@ -263,11 +263,11 @@ trace!(KeccakfTableTrace<F> {
 },  0, 18, 2097152 );
 
 trace!(Sha256fFixed<F> {
- L1: F, GATE_OP: F, CARRY_ENABLED: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, latch_num_sha256f: F, factor_num_sha256f: F, latch_in_out: F, addr_inc: F, latch_in: F, latch_out: F, __L1__: F,
+ L1: F, GATE_OP: F, CARRY_ENABLED: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, latch_num_sha256f: F, factor_num_sha256f: F, CLK_0: F, __L1__: F,
 },  0, 19, 4194304 );
 
 trace!(Sha256fTrace<F> {
- free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], free_in_d: [F; 8], step: F, addr: F, multiplicity: F, bit: [F; 2], val: [F; 2], is_val: F,
+ free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], free_in_d: [F; 8], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
 },  0, 19, 4194304 );
 
 trace!(Sha256fTableFixed<F> {
@@ -279,12 +279,12 @@ trace!(Sha256fTableTrace<F> {
 },  0, 20, 8388608 );
 
 trace!(SpecifiedRangesFixed<F> {
- RANGE: [F; 16], __L1__: F,
-},  0, 21, 2097152 );
+ RANGE: [F; 26], __L1__: F,
+},  0, 19, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
- mul: [F; 16],
-},  0, 21, 2097152 );
+ mul: [F; 26],
+},  0, 19, 2097152 );
 
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
