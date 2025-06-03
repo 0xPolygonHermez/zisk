@@ -1466,7 +1466,7 @@ pub fn opc_bn254_curve_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, &mut data, "bn254_curve_add");
+    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_curve_add");
 
     // ignore 2 indirections
     let (_, rest) = data.split_at(2);
@@ -1499,7 +1499,7 @@ pub fn opc_bn254_curve_dbl(ctx: &mut InstContext) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 0, 1, 8, &mut data, "bn254_curve_dbl");
+    precompiled_load_data(ctx, 0, 1, 8, 0, &mut data, "bn254_curve_dbl");
 
     let p1: &[u64; 8] = &data;
     let mut p3 = [0u64; 8];
@@ -1526,7 +1526,7 @@ pub fn opc_bn254_complex_add(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, &mut data, "bn254_complex_add");
+    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_add");
 
     // ignore 2 indirections
     let (_, rest) = data.split_at(2);
@@ -1559,7 +1559,7 @@ pub fn opc_bn254_complex_sub(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, &mut data, "bn254_complex_sub");
+    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_sub");
 
     // ignore 2 indirections
     let (_, rest) = data.split_at(2);
@@ -1592,7 +1592,7 @@ pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
-    precompiled_load_data(ctx, 2, 2, 8, &mut data, "bn254_complex_mul");
+    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_mul");
 
     // ignore 2 indirections
     let (_, rest) = data.split_at(2);
