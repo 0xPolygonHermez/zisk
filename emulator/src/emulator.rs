@@ -18,7 +18,7 @@
 use crate::{Emu, EmuOptions, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr};
 
 use data_bus::DataBusTrait;
-use p3_field::PrimeField;
+use fields::PrimeField;
 use std::{
     fs,
     path::{Path, PathBuf},

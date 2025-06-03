@@ -1,8 +1,8 @@
 use core::panic;
 use std::{fs, path::PathBuf, sync::Arc};
 
+use fields::PrimeField64;
 use generic_array::{typenum::U64, GenericArray};
-use p3_field::PrimeField64;
 use sha2::compress256;
 
 use proofman_common::{AirInstance, FromTrace, SetupCtx};

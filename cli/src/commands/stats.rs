@@ -2,8 +2,8 @@ use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
 use executor::{Stats, ZiskExecutionResult};
+use fields::Goldilocks;
 use libloading::{Library, Symbol};
-use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use rom_setup::{

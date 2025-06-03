@@ -5,7 +5,7 @@
 use std::sync::{atomic::AtomicU32, Arc};
 
 use crate::{rom_asm_worker::RomAsmWorker, rom_counter::RomCounter, RomSM};
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::sync::Mutex;
 use zisk_common::{
@@ -69,7 +69,7 @@ impl RomInstance {
     }
 }
 
-impl<F: PrimeField> Instance<F> for RomInstance {
+impl<F: PrimeField64> Instance<F> for RomInstance {
     /// Computes the witness for the ROM execution plan.
     ///
     /// This method leverages the `RomSM` to generate an `AirInstance` based on the

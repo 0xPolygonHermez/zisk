@@ -24,7 +24,7 @@ data-bus = { path = "../data-bus" }
 rayon = { workspace = true }
 sm-mem = { path = "../state-machines/mem" }
 
-p3-field = { workspace=true }
+fields = { workspace=true }
 clap = { version = "4.5.9", features = ["derive", "env"] }
 sysinfo = { workspace = true }
 

@@ -6,7 +6,7 @@ use colored::Colorize;
 use proofman_common::initialize_logger;
 use std::path::PathBuf;
 
-use p3_goldilocks::Goldilocks;
+use fields::Goldilocks;
 
 use proofman::ProofMan;
 use proofman_common::{ParamsGPU, VerboseMode};

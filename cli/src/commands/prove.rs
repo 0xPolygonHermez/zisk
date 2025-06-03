@@ -8,8 +8,8 @@ use anyhow::Result;
 use colored::Colorize;
 use executor::Stats;
 use executor::ZiskExecutionResult;
+use fields::Goldilocks;
 use libloading::{Library, Symbol};
-use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::{
     initialize_logger, json_to_debug_instances_map, DebugInfo, ModeName, ParamsGPU, ProofOptions,

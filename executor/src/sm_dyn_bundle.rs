@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use data_bus::{DataBus, DataBusTrait};
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use sm_main::MainSM;
 use zisk_common::{

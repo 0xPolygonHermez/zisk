@@ -1,8 +1,7 @@
 use std::error::Error;
 
 use clap::{Arg, Command};
-use p3_field::PrimeCharacteristicRing;
-use p3_goldilocks::Goldilocks;
+use fields::{Field, Goldilocks, PrimeField64};
 
 use zisk_pil::KeccakfTrace;
 

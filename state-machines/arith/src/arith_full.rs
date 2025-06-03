@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crate::{
     ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
 };
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
@@ -55,7 +55,7 @@ impl ArithFullSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed arithmetic trace.
-    pub fn compute_witness<F: PrimeField>(
+    pub fn compute_witness<F: PrimeField64>(
         &self,
         inputs: &[Vec<OperationData<u64>>],
     ) -> AirInstance<F> {
@@ -192,7 +192,7 @@ impl ArithFullSM {
         }
     }
 
-    fn process_slice<F: PrimeField>(
+    fn process_slice<F: PrimeField64>(
         range_table_inputs: &mut ArithRangeTableInputs,
         table_inputs: &mut ArithTableInputs,
         aop: &mut ArithOperation,
