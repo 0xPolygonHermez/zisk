@@ -76,6 +76,10 @@ impl BinaryExtensionTableSM {
         self.calculated.store(true, Ordering::Relaxed);
     }
 
+    pub fn reset_calculated(&self) {
+        self.calculated.store(false, Ordering::Relaxed);
+    }
+
     /// Calculates the row index in the Binary Extension Table based on the operation and its
     /// inputs.
     ///

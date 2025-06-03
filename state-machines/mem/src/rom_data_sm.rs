@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{MemInput, MemModule, MemPreviousSegment, MEMORY_MAX_DIFF, MEM_BYTES_BITS};
+use crate::{MemInput, MemModule, MemPreviousSegment, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
@@ -64,12 +64,8 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         );
 
         // range of instance
-        let range_id = self.std.get_range(1, MEMORY_MAX_DIFF as i64, None);
-        self.std.range_check(
-            (previous_segment.addr - ROM_DATA_W_ADDR_INIT + 1) as i64,
-            1,
-            range_id,
-        );
+        let range_id = self.std.get_range(0, SEGMENT_ADDR_MAX_RANGE as i64, None);
+        self.std.range_check((previous_segment.addr - ROM_DATA_W_ADDR_INIT) as i64, 1, range_id);
 
         // Fill the remaining rows
         let mut last_addr: u32 = previous_segment.addr;
@@ -157,7 +153,7 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
             }
         }
 
-        self.std.range_check((ROM_DATA_W_ADDR_END - last_addr + 1) as i64, 1, range_id);
+        self.std.range_check((ROM_DATA_W_ADDR_END - last_addr) as i64, 1, range_id);
 
         let mut air_values = RomDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());

@@ -16,7 +16,7 @@ use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
-use sm_mem::{MemHelpers, MEMORY_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
+use sm_mem::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx};
 use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
@@ -66,7 +66,7 @@ impl MainSM {
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
         min_trace_size: u64,
-        main_instance: &mut MainInstance,
+        main_instance: &MainInstance,
         std: Arc<Std<F>>,
     ) -> AirInstance<F> {
         // Create the main trace buffer
@@ -275,11 +275,11 @@ impl MainSM {
                     let mem_step = reg_trace.first_step_uses[reg_index].unwrap();
                     let slot = MemHelpers::mem_step_to_slot(mem_step);
                     let row = MemHelpers::mem_step_to_row(mem_step) % num_rows;
-                    let range = mem_step - reg_prev_mem_step;
-                    if range > max_range {
+                    let range = mem_step - reg_prev_mem_step - 1;
+                    if range >= max_range {
                         large_range_checks.push(range as u32);
                     } else {
-                        step_range_check[(range - 1) as usize].fetch_add(1, Ordering::Relaxed);
+                        step_range_check[range as usize].fetch_add(1, Ordering::Relaxed);
                     }
                     match slot {
                         0 => {
@@ -330,11 +330,11 @@ impl MainSM {
             let values = [F::from_u32(reg_value as u32), F::from_u32((reg_value >> 32) as u32)];
             air_values.last_reg_value[ireg] = values;
             air_values.last_reg_mem_step[ireg] = F::from_u64(reg_steps[ireg]);
-            let range = (final_step - reg_steps[ireg]) as usize;
+            let range = (final_step - reg_steps[ireg] - 1) as usize;
             if range > max_range as usize {
                 large_range_checks.push(range as u32);
             } else {
-                step_range_check[range - 1].fetch_add(1, Ordering::Relaxed);
+                step_range_check[range].fetch_add(1, Ordering::Relaxed);
             }
         }
     }
@@ -343,11 +343,11 @@ impl MainSM {
         step_range_check: Arc<Vec<AtomicU32>>,
         large_range_checks: &[u32],
     ) {
-        let range_id = std.get_range(1, MEMORY_MAX_DIFF as i64, None);
+        let range_id = std.get_range(0, MEM_REGS_MAX_DIFF as i64, None);
         for (value, _multiplicity) in step_range_check.iter().enumerate() {
             let multiplicity = _multiplicity.load(Ordering::Relaxed);
             if multiplicity != 0 {
-                std.range_check((value + 1) as i64, multiplicity as u64, range_id);
+                std.range_check(value as i64, multiplicity as u64, range_id);
             }
         }
         for range in large_range_checks {

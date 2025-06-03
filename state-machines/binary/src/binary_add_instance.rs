@@ -55,7 +55,7 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,

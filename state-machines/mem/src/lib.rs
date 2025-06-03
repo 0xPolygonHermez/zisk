@@ -40,6 +40,3 @@ use mem_module_planner::*;
 use mem_planner::*;
 use mem_sm::*;
 use rom_data_sm::*;
-
-#[cfg(feature = "debug_mem")]
-use mem_debug::*;

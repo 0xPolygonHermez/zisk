@@ -43,13 +43,13 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/goldilocks2"}
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/goldilocks2"}
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/goldilocks2"}
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/goldilocks2"}
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/goldilocks2"}
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/goldilocks2"}
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/goldilocks2"}
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/one-process-multigpu-0.9.0-cpu-channels"}
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/one-process-multigpu-0.9.0-cpu-channels"}
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/one-process-multigpu-0.9.0-cpu-channels"}
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/one-process-multigpu-0.9.0-cpu-channels"}
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/one-process-multigpu-0.9.0-cpu-channels"}
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/one-process-multigpu-0.9.0-cpu-channels"}
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/one-process-multigpu-0.9.0-cpu-channels"}
 # Local development
 # proofman = { path = "../pil2-proofman/proofman" }
 # proofman-common = { path = "../pil2-proofman/common" }
@@ -71,3 +71,4 @@ ark-secp256k1 = "0.5"
 sysinfo = "0.35.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
+crossbeam-queue = "0.3"

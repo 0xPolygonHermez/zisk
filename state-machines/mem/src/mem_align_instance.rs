@@ -23,7 +23,7 @@ impl<F: PrimeField64> MemAlignInstance<F> {
 
 impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,

@@ -5,7 +5,7 @@ use std::{
 
 use zisk_pil::MemTrace;
 
-use crate::{MemHelpers, STEP_MEMORY_MAX_DIFF};
+use crate::MemHelpers;
 
 #[derive(Default, Debug, Clone)]
 struct MemOp {
@@ -130,25 +130,6 @@ impl MemDebug {
         println!("[MemDebug] sorting information .....");
         self.ops.sort_by_key(|op| (op.addr, op.step));
 
-        println!("[MemDebug] adding internal reads .....");
-        let mut i = 1;
-        let mut last_step = self.ops[0].step;
-        let mut last_addr = self.ops[0].addr;
-        while i < self.ops.len() {
-            let addr = self.ops[i].addr;
-            let step = self.ops[i].step;
-            let flags = Self::flags_set_internal(self.ops[i].flags);
-            if last_addr == addr {
-                while (step - last_step) > STEP_MEMORY_MAX_DIFF {
-                    last_step += STEP_MEMORY_MAX_DIFF;
-                    self.ops.insert(i, MemOp { addr, step: last_step, flags });
-                    i += 1;
-                }
-            }
-            last_step = step;
-            last_addr = addr;
-            i += 1;
-        }
         true
     }
     pub fn save_to_file(&mut self, file_name: &str) {

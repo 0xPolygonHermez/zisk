@@ -11,6 +11,7 @@ use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
 use precomp_sha256f::Sha256fManager;
+use proofman::register_std;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
@@ -23,7 +24,6 @@ pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
-    input_data_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
     executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
 }
@@ -34,7 +34,6 @@ fn init_library(
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
-    input_data_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode);
@@ -42,7 +41,6 @@ fn init_library(
         elf_path,
         asm_path,
         asm_rom_path,
-        input_data_path,
         sha256f_script_path,
         executor: None,
     });
@@ -73,9 +71,10 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let zisk_rom = Arc::new(zisk_rom);
 
         // Step 3: Initialize the secondary state machines
-        let std = Std::new(wcm.clone());
-        let rom_sm =
-            RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone(), self.input_data_path.clone());
+        let std = Std::new(wcm.get_pctx(), wcm.get_sctx());
+        register_std(&wcm, &std);
+
+        let rom_sm = RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone());
         let binary_sm = BinarySM::new(std.clone());
         let arith_sm = ArithSM::new();
         let mem_sm = Mem::new(std.clone());
@@ -111,10 +110,10 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             self.elf_path.clone(),
             self.asm_path.clone(),
             self.asm_rom_path.clone(),
-            self.input_data_path.clone(),
             zisk_rom,
             std,
             sm_bundle,
+            Some(rom_sm.clone()),
         );
 
         let executor = Arc::new(executor);

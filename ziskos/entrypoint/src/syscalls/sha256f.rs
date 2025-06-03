@@ -1,9 +1,9 @@
 //! Sha256 system call interception
 
-#[cfg(target_os = "ziskos")]
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use core::arch::asm;
 
-#[cfg(target_os = "ziskos")]
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use crate::ziskos_syscall;
 
 /// Executes the SHA-256 extend and compress function on the given state and input.
@@ -21,8 +21,8 @@ use crate::ziskos_syscall;
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn syscall_sha256_f(state: *mut [u64; 4], input: *const [u64; 8]) {
-    #[cfg(target_os = "ziskos")]
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     ziskos_syscall!(0x805, state);
-    #[cfg(not(target_os = "ziskos"))]
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     unreachable!()
 }

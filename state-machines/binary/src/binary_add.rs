@@ -44,7 +44,11 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// # Returns
     /// A `BinaryAddTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice(&self, input: &[u64; 2]) -> BinaryAddTraceRow<F> {
+    pub fn process_slice(
+        &self,
+        input: &[u64; 2],
+        range_checks: &mut Vec<i64>,
+    ) -> BinaryAddTraceRow<F> {
         // Create an empty trace
         let mut row: BinaryAddTraceRow<F> = Default::default();
 
@@ -70,8 +74,8 @@ impl<F: PrimeField64> BinaryAddSM<F> {
                 row.cout[i] = F::ZERO;
                 cin = 0
             };
-            self.std.range_check(c_chunks[0] as i64, 1, self.range_id);
-            self.std.range_check(c_chunks[1] as i64, 1, self.range_id);
+            range_checks.push(c_chunks[0] as i64);
+            range_checks.push(c_chunks[1] as i64);
             a >>= 32;
             b >>= 32;
         }
@@ -115,17 +119,30 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         }
 
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
-        slices.into_par_iter().enumerate().for_each(|(i, slice)| {
-            //let std = self.std.clone();
-            slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
-                *trace_row = self.process_slice(&inputs[i][j]);
-            });
-        });
+        let range_checks: Vec<i64> = slices
+            .into_par_iter()
+            .enumerate()
+            .flat_map(|(i, slice)| {
+                let mut local_range_checks = Vec::new();
+
+                slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
+                    *trace_row = self.process_slice(&inputs[i][j], &mut local_range_checks);
+                });
+
+                local_range_checks
+            })
+            .collect();
+
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
         let padding_row = BinaryAddTraceRow::<F> { ..Default::default() };
 
         add_trace.buffer[total_inputs..num_rows].fill(padding_row);
+
+        for value in range_checks {
+            self.std.range_check(value, 1, self.range_id);
+        }
+
         self.std.range_check(0, 4 * (num_rows - total_inputs) as u64, self.range_id);
 
         AirInstance::new_from_trace(FromTrace::new(&mut add_trace))

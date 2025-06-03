@@ -59,4 +59,8 @@ impl ArithTableSM {
     pub fn set_calculated(&self) {
         self.calculated.store(true, Ordering::Relaxed);
     }
+
+    pub fn reset_calculated(&self) {
+        self.calculated.store(false, Ordering::Relaxed);
+    }
 }
