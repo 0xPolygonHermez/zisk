@@ -6,6 +6,7 @@ use crate::{
 use super::constants::{P, P_MINUS_ONE};
 
 pub fn secp256k1_fp_add(x: &[u64; 4], y: &[u64; 4]) -> [u64; 4] {
+    // x·1 + y
     let mut params = SyscallArith256ModParams {
         a: &x,
         b: &[1, 0, 0, 0],
@@ -19,6 +20,7 @@ pub fn secp256k1_fp_add(x: &[u64; 4], y: &[u64; 4]) -> [u64; 4] {
 }
 
 pub fn secp256k1_fp_mul(x: &[u64; 4], y: &[u64; 4]) -> [u64; 4] {
+    // x·y + 0
     let mut params = SyscallArith256ModParams {
         a: &x,
         b: &y,
@@ -32,6 +34,7 @@ pub fn secp256k1_fp_mul(x: &[u64; 4], y: &[u64; 4]) -> [u64; 4] {
 }
 
 pub fn secp256k1_fp_square(x: &[u64; 4]) -> [u64; 4] {
+    // x·x + 0
     let mut params = SyscallArith256ModParams {
         a: &x,
         b: &x,
