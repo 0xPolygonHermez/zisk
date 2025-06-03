@@ -199,7 +199,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     fn run_assembly(&self, input_data_path: Option<PathBuf>) -> MinimalTraces {
         MinimalTraces::AsmEmuTrace(AsmRunnerMT::run(
             self.asm_runner_path.as_ref().unwrap(),
-            self.input_data_path.as_deref(),
+            input_data_path.as_deref(),
             Self::MAX_NUM_STEPS,
             Self::MIN_TRACE_SIZE,
             asm_runner::AsmRunnerOptions::default(),
@@ -263,7 +263,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         let (asm_runner_mt, mut data_buses) = AsmRunnerMT::run_and_count(
             self.asm_runner_path.as_ref().unwrap(),
-            self.input_data_path.as_deref(),
+            input_data_path.as_deref(),
             Self::MAX_NUM_STEPS,
             Self::MIN_TRACE_SIZE,
             asm_runner::AsmRunnerOptions::default(),
