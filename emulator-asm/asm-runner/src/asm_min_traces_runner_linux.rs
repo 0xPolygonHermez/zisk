@@ -78,7 +78,7 @@ impl AsmRunnerMT {
 
     pub fn run(
         ziskemuasm_path: &Path,
-        inputs_path: &Path,
+        inputs_path: Option<&Path>,
         shm_size: u64,
         chunk_size: u64,
         options: AsmRunnerOptions,
@@ -175,7 +175,7 @@ impl AsmRunnerMT {
 
     pub fn run_and_count<T: Task>(
         ziskemuasm_path: &Path,
-        inputs_path: &Path,
+        inputs_path: Option<&Path>,
         shm_size: u64,
         chunk_size: u64,
         options: AsmRunnerOptions,
@@ -351,11 +351,19 @@ impl AsmRunnerMT {
         (AsmRunnerMT::new(shmem_output_name, mapped_ptr, vec_chunks), tasks)
     }
 
-    fn write_input(inputs_path: &Path, shmem_input_name: &str, max_steps: u64, chunk_size: u64) {
+    fn write_input(
+        inputs_path: Option<&Path>,
+        shmem_input_name: &str,
+        max_steps: u64,
+        chunk_size: u64,
+    ) {
         let shmem_input_name = CString::new(shmem_input_name).expect("CString::new failed");
         let shmem_input_name_ptr = shmem_input_name.as_ptr();
 
-        let inputs = fs::read(inputs_path).expect("Could not read inputs file");
+        let inputs = match inputs_path {
+            Some(path) => fs::read(path).expect("Could not read inputs file"),
+            None => vec![],
+        };
 
         let asm_input = AsmInputC {
             chunk_size,

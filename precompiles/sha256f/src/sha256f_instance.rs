@@ -4,14 +4,14 @@
 //! It manages collected inputs and interacts with the `Sha256fSM` to compute witnesses for
 //! execution plans.
 
-use crate::Sha256fSM;
+use crate::{Sha256fInput, Sha256fSM};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, OperationSha256Data, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::Sha256fTrace;
@@ -102,7 +102,7 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance {
 
 pub struct Sha256fCollector {
     /// Collected inputs for witness computation.
-    inputs: Vec<OperationSha256Data<u64>>,
+    inputs: Vec<Sha256fInput>,
 
     /// The number of operations to collect.
     num_operations: u64,
@@ -160,7 +160,7 @@ impl BusDevice<PayloadType> for Sha256fCollector {
         let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         if let ExtOperationData::OperationSha256Data(data) = data {
-            self.inputs.push(data);
+            self.inputs.push(Sha256fInput::from(&data));
             None
         } else {
             panic!("Expected ExtOperationData::OperationData");

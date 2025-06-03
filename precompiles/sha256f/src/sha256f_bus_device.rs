@@ -5,12 +5,11 @@
 use std::ops::Add;
 
 use zisk_common::{
-    BusDevice, BusDeviceMode, BusId, Counter, ExtOperationData, Metrics, MEM_BUS_ID,
-    OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 
-use crate::Sha256fSM;
+use crate::generate_sha256f_mem_inputs;
 
 /// The `Sha256fCounter` struct represents a counter that monitors and measures
 /// sha256f-related operations on the data bus.
@@ -106,20 +105,15 @@ impl BusDevice<u64> for Sha256fCounterInputGen {
             return None;
         }
 
-        let data: ExtOperationData<u64> = data.try_into().ok()?;
+        let step_main = data[A];
+        let addr_main = data[B] as u32;
 
-        match data {
-            ExtOperationData::OperationSha256Data(data) => {
-                if self.mode == BusDeviceMode::Counter {
-                    self.measure(&data);
-                }
-
-                let mem_inputs =
-                    Sha256fSM::generate_inputs(&data, self.mode == BusDeviceMode::Counter);
-                Some(mem_inputs.into_iter().map(|x| (MEM_BUS_ID, x)).collect())
-            }
-            _ => panic!("Expected ExtOperationData::OperationData"),
+        let only_counters = self.mode == BusDeviceMode::Counter;
+        if only_counters {
+            self.measure(data);
         }
+
+        generate_sha256f_mem_inputs(addr_main, step_main, data, only_counters)
     }
 
     /// Returns the bus IDs associated with this counter.

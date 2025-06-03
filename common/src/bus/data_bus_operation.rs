@@ -11,8 +11,6 @@ pub const OPERATION_BUS_ID: BusId = BusId(0);
 
 /// The size of the operation data payload.
 pub const OPERATION_BUS_DATA_SIZE: usize = 4;
-pub const OPERATION_BUS_KECCAKF_DATA_SIZE: usize = 5;
-pub const OPERATION_BUS_SHA256F_DATA_SIZE: usize = 5;
 
 // worst case: 4 x 256 + 2 addr = 4 * 4 + 2 = 18 (secp256k1_add, arith_256_mod)
 // arith_256: 3 x 256 + 2 addr = 3 * 4 + 2 = 14
@@ -24,6 +22,9 @@ const POINT_256_BITS_SIZE: usize = 2 * DATA_256_BITS_SIZE;
 const INDIRECTION_SIZE: usize = 1;
 
 // use OPERATION_BUS_DATA_SIZE because a = step, b = addr
+pub const OPERATION_BUS_KECCAKF_DATA_SIZE: usize = OPERATION_BUS_DATA_SIZE + 25;
+pub const OPERATION_BUS_SHA256F_DATA_SIZE: usize =
+    OPERATION_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 3 * DATA_256_BITS_SIZE;
 pub const OPERATION_BUS_ARITH_256_DATA_SIZE: usize =
     OPERATION_BUS_DATA_SIZE + 5 * INDIRECTION_SIZE + 3 * DATA_256_BITS_SIZE;
 pub const OPERATION_BUS_ARITH_256_MOD_DATA_SIZE: usize =
@@ -49,8 +50,8 @@ pub const B: usize = 3;
 pub type OperationData<D> = [D; OPERATION_BUS_DATA_SIZE];
 
 /// Type alias for precompiles operation data payload.
-pub type OperationKeccakData<D> = [D; OPERATION_BUS_KECCAKF_DATA_SIZE + 25]; // 25·64 = 1600 bits
-pub type OperationSha256Data<D> = [D; OPERATION_BUS_SHA256F_DATA_SIZE + 12]; // 12·64 = 768 bits
+pub type OperationKeccakData<D> = [D; OPERATION_BUS_KECCAKF_DATA_SIZE];
+pub type OperationSha256Data<D> = [D; OPERATION_BUS_SHA256F_DATA_SIZE];
 pub type OperationArith256Data<D> = [D; OPERATION_BUS_ARITH_256_DATA_SIZE];
 pub type OperationArith256ModData<D> = [D; OPERATION_BUS_ARITH_256_MOD_DATA_SIZE];
 pub type OperationSecp256k1AddData<D> = [D; OPERATION_BUS_SECP256K1_ADD_DATA_SIZE];
@@ -160,25 +161,21 @@ impl OperationBusData<u64> {
 
         match inst.op_type {
             ZiskOperationType::Keccak => {
-                assert!(inst_ctx.precompiled.input_data.len() == 25);
-                let mut data: OperationKeccakData<u64> = [0; OPERATION_BUS_KECCAKF_DATA_SIZE + 25];
+                let mut data: OperationKeccakData<u64> = [0; OPERATION_BUS_KECCAKF_DATA_SIZE];
                 data[0] = inst.op as u64; // OP
                 data[1] = inst.op_type as u64; // OP_TYPE
                 data[2] = a; // A
                 data[3] = b; // B
-                data[4] = inst_ctx.step; // STEP
-                data[5..(5 + 25)].copy_from_slice(&inst_ctx.precompiled.input_data[..25]);
+                data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
                 ExtOperationData::OperationKeccakData(data)
             }
             ZiskOperationType::Sha256 => {
-                assert!(inst_ctx.precompiled.input_data.len() == 12);
-                let mut data: OperationSha256Data<u64> = [0; OPERATION_BUS_SHA256F_DATA_SIZE + 12];
+                let mut data: OperationSha256Data<u64> = [0; OPERATION_BUS_SHA256F_DATA_SIZE];
                 data[0] = inst.op as u64; // OP
                 data[1] = inst.op_type as u64; // OP_TYPE
                 data[2] = a; // A
                 data[3] = b; // B
-                data[4] = inst_ctx.step; // STEP
-                data[5..(5 + 12)].copy_from_slice(&inst_ctx.precompiled.input_data[..12]);
+                data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
                 ExtOperationData::OperationSha256Data(data)
             }
             ZiskOperationType::ArithEq => {
@@ -334,8 +331,8 @@ impl OperationBusData<u64> {
     #[inline(always)]
     pub fn get_extra_data(data: &ExtOperationData<u64>) -> Vec<PayloadType> {
         match data {
-            ExtOperationData::OperationKeccakData(d) => d[5..(5 + 25)].to_vec(),
-            ExtOperationData::OperationSha256Data(d) => d[5..(5 + 12)].to_vec(),
+            ExtOperationData::OperationKeccakData(d) => d[4..].to_vec(),
+            ExtOperationData::OperationSha256Data(d) => d[4..].to_vec(),
             ExtOperationData::OperationArith256Data(d) => d[4..].to_vec(),
             ExtOperationData::OperationArith256ModData(d) => d[4..].to_vec(),
             ExtOperationData::OperationSecp256k1AddData(d) => d[4..].to_vec(),
