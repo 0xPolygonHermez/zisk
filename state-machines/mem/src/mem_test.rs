@@ -2,8 +2,8 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use crate::{
-    MemCounters, MemModulePlanner, MemModulePlannerConfig, MemPlanCalculator, CHUNK_MAX_DISTANCE,
-    CHUNK_SIZE, CHUNK_SIZE_STEPS, MEMORY_LOAD_OP, MEMORY_STORE_OP,
+    MemCounters, MemModulePlanner, MemModulePlannerConfig, MemPlanCalculator, MEMORY_LOAD_OP,
+    MEMORY_STORE_OP,
 };
 use zisk_common::{BusDevice, ChunkId, Plan, MEM_BUS_ID};
 
@@ -26,7 +26,6 @@ fn generate_test_plans(
             from_addr: from_addr >> 3,
             rows,
             consecutive_addr: true,
-            intermediate_step_reads: true,
         },
         Arc::new(counters),
     );
@@ -159,32 +158,6 @@ fn test_counters() {
     assert_eq!(format!("{:?}", counter), "[MEM_0,#:10 => 0x80000000:2 0x80000008:2 0x80000010:2 0x80000018:2 0x80000020:2 0x80000028:2 0x80000030:2 0x80000038:2 0x80000040:2 0x80000048:2][MEM_1,#:10 => 0x90000000:1 0x90000008:1 0x90000010:1 0x90000018:1 0x90000020:1 0x90000028:1 0x90000030:1 0x90000038:1 0x90000040:1 0x90000048:1][MEM_2,#:4 => 0xA0000000:4 0xA0000008:2 0xA0000010:1 0xA0000018:1]");
 }
 
-#[test]
-fn test_intermediate_steps() {
-    let mut counters: Vec<(ChunkId, &MemCounters)> = Vec::new();
-    let mut counter = MemCounters::new();
-    let _cfg = ConfigNextOp { step_delta: 1, step_cycle: 0, addr_delta: 8, addr_cycle: 0 };
-    add_mem_write64(&mut counter, 0xA000_0002, 18, 0x2222_2222_2222_2222);
-    add_mem_read64(&mut counter, 0xA000_0000, 12, 0x1111_1111_1111_1111);
-    add_mem_read64(&mut counter, 0xA000_0000, 40, 0x2222_2222_2222_1111);
-    add_mem_read64(&mut counter, 0xA000_0016, 50, 0x3333_3333_3333_3333);
-    counter.close();
-    counters.push((ChunkId(0), &counter));
-
-    let mut counter = MemCounters::new();
-    let chunk = CHUNK_MAX_DISTANCE + 1;
-    let step_base = (chunk * CHUNK_SIZE_STEPS) as u64;
-    let _cfg = ConfigNextOp { step_delta: 1, step_cycle: 0, addr_delta: 8, addr_cycle: 0 };
-    add_mem_write64(&mut counter, 0xA000_0002, step_base + 18, 0x2222_2222_2222_2222);
-    add_mem_read64(&mut counter, 0xA000_0000, step_base + 12, 0x1111_1111_1111_1111);
-    add_mem_read64(&mut counter, 0xA000_0000, step_base + 40, 0x2222_2222_2222_1111);
-    add_mem_read64(&mut counter, 0xA000_0016, step_base + 50, 0x3333_3333_3333_3333);
-    counter.close();
-    counters.push((ChunkId(chunk), &counter));
-
-    let _plans = generate_test_plans(0xA000_0000, (CHUNK_SIZE * 4) as u32, counters);
-    // println!("{:?}", plans);
-}
 /*
 #[test]
 fn test_mem() {

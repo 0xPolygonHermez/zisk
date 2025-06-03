@@ -13,7 +13,6 @@ use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
-use tracing::info;
 use zisk_common::{ExtOperationData, OperationBusData, OperationData, PayloadType};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 use zisk_pil::*;
@@ -70,7 +69,7 @@ impl ArithFullSM {
         let mut range_table_inputs = ArithRangeTableInputs::new();
         let mut table_inputs = ArithTableInputs::new();
 
-        info!(
+        tracing::info!(
             "··· Creating Arith instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,

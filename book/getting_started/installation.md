@@ -1,12 +1,12 @@
 # Installation Guide
 
-ZisK can be installed from prebuilt binaries (recommended) or by building ZisK tools, toolchain and setup files from source.
+ZisK can be installed from prebuilt binaries (recommended) or by building the ZisK tools, toolchain and setup files from source.
 
 ## System Requirements
 
-ZisK currently supports **Linux x86_64** systems.
+ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below).
 
-> **Note:** macOS is not yet supported, but we are actively working on adding support.
+>**Note:** Proof generation and verification on **macOS** are not yet supported. We’re actively working to add this functionality.
 
 ### Required Tools
 
@@ -25,6 +25,17 @@ Install all required dependencies with:
 sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common libclang-dev clang
 ```
 
+### macOS
+
+macOS 14 or higher is required.
+
+You must have [Homebrew](https://brew.sh/) installed.
+
+Install all required dependencies with:
+```bash
+brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
+```
+
 ## Installing ZisK
 
 ### Option 1: Prebuilt Binaries (Recommended)
@@ -40,7 +51,7 @@ sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev 
     2. **Install verify key** – Needed only if you want to verify proofs.
     3. **None** – Choose this if you only want to compile programs and execute them using the ZisK emulator.
 
-3. Verify the Rust toolchain: (which includes support for the `riscv64ima-polygon-ziskos` compilation target):
+3. Verify the Rust toolchain: (which includes support for the `riscv64ima-zisk-zkvm` compilation target):
     ```bash
     rustup toolchain list
     ```
@@ -186,9 +197,11 @@ Please note that the process can be long, taking approximately 2–3 hours depen
 
 6. Generate fixed data:
     ```bash
-    cargo run --release --bin keccakf_fixed_gen && cargo run --release --bin sha256f_fixed_gen
+    cargo run --release --bin keccakf_fixed_gen
+    cargo run --release --bin sha256f_fixed_gen
     mkdir -p build
-    mv precompiles/keccakf/src/keccakf_fixed.bin build && mv precompiles/sha256f/src/sha256f_fixed.bin build
+    mv precompiles/keccakf/src/keccakf_fixed.bin build 
+    mv precompiles/sha256f/src/sha256f_fixed.bin build
     ```
 
     These commands generate the `keccakf_fixed.bin` and `sha256f_fixed.bin` files in the `build` directory.

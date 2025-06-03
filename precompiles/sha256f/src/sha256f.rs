@@ -4,7 +4,6 @@ use std::{fs, path::PathBuf, sync::Arc};
 use generic_array::{typenum::U64, GenericArray};
 use p3_field::PrimeField64;
 use sha2::compress256;
-use tracing::info;
 
 use precompiles_common::MemBusHelpers;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
@@ -469,7 +468,7 @@ impl Sha256fSM {
         assert!(num_circuits_needed <= self.num_available_circuits);
         assert!(num_rows_needed <= num_rows);
 
-        info!(
+        tracing::info!(
             "··· Creating Sha256f instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,

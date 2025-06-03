@@ -129,7 +129,7 @@ dependencies = [
  "ark-std",
  "educe",
  "fnv",
- "hashbrown",
+ "hashbrown 0.15.3",
  "itertools 0.13.0",
  "num-bigint",
  "num-integer",
@@ -192,7 +192,7 @@ dependencies = [
  "ark-std",
  "educe",
  "fnv",
- "hashbrown",
+ "hashbrown 0.15.3",
 ]
 
 [[package]]
@@ -420,10 +420,10 @@ dependencies = [
  "tokio",
  "tracing",
  "vergen",
- "witness",
  "yansi",
  "zisk-common",
  "zisk-core",
+ "zisk-pil",
 ]
 
 [[package]]
@@ -434,9 +434,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.2.24"
+version = "1.2.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16595d3be041c03b09d08d0858631facccee9221e579704070e6e9e4915d3bc7"
+checksum = "d0fc897dc1e865cc67c0e05a836d9d3f1df3cbe442aa4a9473b18e12624a4951"
 dependencies = [
  "jobserver",
  "libc",
@@ -596,6 +596,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "core_affinity"
+version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a034b3a7b624016c6e13f5df875747cc25f884156aad2abd12b6c46797971342"
+dependencies = [
+ "libc",
+ "num_cpus",
+ "winapi",
+]
+
+[[package]]
 name = "cpp_demangle"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -659,6 +670,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-channel"
+version = "0.5.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "crossbeam-deque"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -673,6 +693,15 @@ name = "crossbeam-epoch"
 version = "0.9.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-queue"
+version = "0.3.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f58bbc28f91df819d0aa2a2c00cd19754769c2fad90579b3592b1c9ba7a3115"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -714,7 +743,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -728,6 +757,20 @@ name = "custom_derive"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef8ae57c4978a2acd8b869ce6b9ca1dfe817bff704c220209fdef2c0b75a01b9"
+
+[[package]]
+name = "dashmap"
+version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5041cc499144891f3790297212f32a74fb938e5136a14943f338ef9e0ae276cf"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
 
 [[package]]
 name = "data-bus"
@@ -1209,6 +1252,12 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
+version = "0.14.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
+
+[[package]]
+name = "hashbrown"
 version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84b26c544d002229e640969970a2e74021aadf6e2f96372b9c58eff97de08eb3"
@@ -1460,7 +1509,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cea70ddb795996207ad57735b50c5982d8844f38ba9ee5f1aedcfb708a2aa11e"
 dependencies = [
  "equivalent",
- "hashbrown",
+ "hashbrown 0.15.3",
  "serde",
 ]
 
@@ -1739,9 +1788,9 @@ checksum = "241eaef5fd12c88705a01fc1066c48c4b36e0dd4377dcdc7ec3942cea7a69956"
 
 [[package]]
 name = "lock_api"
-version = "0.4.12"
+version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07af8b9cdd281b7915f413fa73f29ebd5d55d0d3f0155584dade1ff18cea1b17"
+checksum = "96936507f153605bddfcda068dd804796c84324ed2510809e5b2a624c81da765"
 dependencies = [
  "autocfg",
  "scopeguard",
@@ -1939,6 +1988,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "num_cpus"
+version = "1.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91df4bbde75afed763b708b7eee1e8e7651e02d97f6d5dd763e89367e957b23b"
+dependencies = [
+ "hermit-abi",
+ "libc",
 ]
 
 [[package]]
@@ -2153,9 +2212,9 @@ dependencies = [
 
 [[package]]
 name = "parking_lot"
-version = "0.12.3"
+version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1bf18183cf54e8d6059647fc3063646a1801cf30896933ec2311622cc4b9a27"
+checksum = "70d58bf43669b5795d1576d0641cfb6fbb2057bf629506267a92807158584a13"
 dependencies = [
  "lock_api",
  "parking_lot_core",
@@ -2163,9 +2222,9 @@ dependencies = [
 
 [[package]]
 name = "parking_lot_core"
-version = "0.9.10"
+version = "0.9.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e401f977ab385c9e4e3ab30627d6f26d00e2c73eef317493c4ec6d468726cf8"
+checksum = "bc838d2a56b5b1a6c25f55575dfc605fabb63bb2365f6c2353ef9159aa69e4a5"
 dependencies = [
  "cfg-if",
  "libc",
@@ -2195,7 +2254,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
 dependencies = [
  "colored",
  "num-bigint",
@@ -2437,9 +2496,9 @@ dependencies = [
 
 [[package]]
 name = "prettyplease"
-version = "0.2.32"
+version = "0.2.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "664ec5419c51e34154eec046ebcba56312d5a2fc3b09a06da188e1ad21afadf6"
+checksum = "9dee91521343f4c5c6a63edd65e54f31f5c92fe8978c40a4282f8372194c6a7d"
 dependencies = [
  "proc-macro2",
  "syn",
@@ -2457,21 +2516,26 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
 dependencies = [
  "blake3",
  "colored",
+ "crossbeam-channel",
+ "crossbeam-queue",
  "curves",
+ "dashmap",
  "libloading",
  "num-bigint",
  "num-traits",
  "p3-field",
  "p3-goldilocks",
+ "pil-std-lib",
  "proofman-common",
  "proofman-hints",
  "proofman-macros",
  "proofman-starks-lib-c",
  "proofman-util",
+ "rand 0.9.1",
  "rayon",
  "serde_json",
  "tracing",
@@ -2482,8 +2546,9 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
 dependencies = [
+ "core_affinity",
  "libloading",
  "mpi",
  "p3-field",
@@ -2493,7 +2558,6 @@ dependencies = [
  "proofman-util",
  "rayon",
  "serde",
- "serde_derive",
  "serde_json",
  "sysinfo",
  "tracing",
@@ -2504,7 +2568,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
 dependencies = [
  "p3-field",
  "proofman-common",
@@ -2516,7 +2580,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2527,15 +2591,16 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
 dependencies = [
+ "crossbeam-channel",
  "tracing",
 ]
 
 [[package]]
 name = "proofman-util"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
 dependencies = [
  "colored",
  "p3-field",
@@ -2767,9 +2832,9 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "reqwest"
-version = "0.12.16"
+version = "0.12.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bf597b113be201cb2269b4c39b39a804d01b99ee95a4278f0ed04e45cff1c71"
+checksum = "a2f8e5513d63f2e5b386eb5106dc67eaf3f84e95258e210489136b8b92ad6119"
 dependencies = [
  "base64",
  "bytes",
@@ -3660,9 +3725,9 @@ dependencies = [
 
 [[package]]
 name = "tower-http"
-version = "0.6.4"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fdb0c213ca27a9f57ab69ddb290fd80d970922355b83ae380b395d3986b8a2e"
+checksum = "5cc2d9e086a412a451384326f521c8123a99a466b329941a9403696bff9b0da2"
 dependencies = [
  "bitflags 2.9.1",
  "bytes",
@@ -3752,7 +3817,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -4439,9 +4504,10 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#e49e4b0edca05e9b4329779bf0fa5297e8dd010e"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
 dependencies = [
  "colored",
+ "libloading",
  "p3-field",
  "p3-goldilocks",
  "proofman-common",
@@ -4647,6 +4713,7 @@ dependencies = [
  "precomp-arith-eq",
  "precomp-keccakf",
  "precomp-sha256f",
+ "proofman",
  "proofman-common",
  "proofman-macros",
  "proofman-util",

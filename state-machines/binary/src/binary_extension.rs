@@ -3,13 +3,9 @@
 //! This state machine handles binary extension-related operations, computes traces, and manages
 //! range checks and multiplicities for table rows based on the operations provided.
 
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc,
-};
+use std::sync::Arc;
 
 use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
-use tracing::info;
 
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
@@ -62,7 +58,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         std: Arc<Std<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
     ) -> Arc<Self> {
-        let range_id = std.get_range(1, 0x1000000, None);
+        let range_id = std.get_range(0, 0xFFFFFF, None);
 
         Arc::new(Self { std, binary_extension_table_sm, range_id })
     }
@@ -111,7 +107,8 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     pub fn process_slice(
         &self,
         input: &BinaryInput,
-        multiplicity: &[AtomicU64],
+        binary_extension_table_sm: &BinaryExtensionTableSM,
+        range_checks: &mut Vec<i64>,
     ) -> BinaryExtensionTraceRow<F> {
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
@@ -304,12 +301,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 *a_byte as u64,
                 in2_low,
             );
-            multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
+            binary_extension_table_sm.update_multiplicity(row, 1);
         }
 
         // Store the range check
         if op_is_shift {
-            self.std.range_check(in2_0 as i64 + 1, 1, self.range_id);
+            range_checks.push(in2_0 as i64);
         }
 
         // Return successfully
@@ -337,7 +334,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             BinaryExtensionTrace::<usize>::NUM_ROWS
         );
 
-        info!(
+        tracing::info!(
             "··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,
@@ -355,14 +352,27 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         }
 
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
-        slices.into_par_iter().enumerate().for_each(|(i, slice)| {
-            slice.iter_mut().enumerate().for_each(|(j, cell)| {
-                *cell = self.process_slice(
-                    &inputs[i][j],
-                    self.binary_extension_table_sm.detach_multiplicity(),
-                );
-            });
-        });
+        let range_checks: Vec<i64> = slices
+            .into_par_iter()
+            .enumerate()
+            .flat_map(|(i, slice)| {
+                let mut local_range_checks = Vec::new();
+
+                slice.iter_mut().enumerate().for_each(|(j, cell)| {
+                    *cell = self.process_slice(
+                        &inputs[i][j],
+                        &self.binary_extension_table_sm,
+                        &mut local_range_checks,
+                    );
+                });
+
+                local_range_checks
+            })
+            .collect();
+
+        for value in range_checks {
+            self.std.range_check(value, 1, self.range_id);
+        }
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows

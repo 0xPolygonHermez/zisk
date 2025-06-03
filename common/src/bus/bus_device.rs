@@ -9,7 +9,7 @@ use super::BusId;
 ///
 /// # Associated Type
 /// * `D` - The type of data handled by the `BusDevice`.
-pub trait BusDevice<D>: Any + Send {
+pub trait BusDevice<D>: Any + Send + Sync {
     /// Processes incoming data sent to the device.
     ///
     /// # Arguments

@@ -18,7 +18,6 @@ use asm_runner::AsmRHData;
 use itertools::Itertools;
 use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
-use tracing::info;
 use zisk_common::{
     create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, Instance, InstanceCtx,
     Planner,
@@ -41,6 +40,8 @@ pub struct RomSM {
 
     /// The ROM assembly worker
     rom_asm_worker: Mutex<Option<RomAsmWorker>>,
+
+    asm_rom_path: Option<PathBuf>,
 }
 
 impl RomSM {
@@ -51,18 +52,8 @@ impl RomSM {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `RomSM`.
-    pub fn new(
-        zisk_rom: Arc<ZiskRom>,
-        asm_rom_path: Option<PathBuf>,
-        input_data_path: Option<PathBuf>,
-    ) -> Arc<Self> {
-        let rom_asm_worker = asm_rom_path.map(|asm_rom_path| {
-            let mut worker = RomAsmWorker::new();
-            worker.launch_task(asm_rom_path, input_data_path);
-            worker
-        });
-
-        let (bios_inst_count, prog_inst_count) = if rom_asm_worker.is_some() {
+    pub fn new(zisk_rom: Arc<ZiskRom>, asm_rom_path: Option<PathBuf>) -> Arc<Self> {
+        let (bios_inst_count, prog_inst_count) = if asm_rom_path.is_some() {
             (vec![], vec![])
         } else {
             (
@@ -71,14 +62,22 @@ impl RomSM {
             )
         };
 
-        let rom_asm_worker = Mutex::new(rom_asm_worker);
-
         Arc::new(Self {
             zisk_rom,
             bios_inst_count: Arc::new(bios_inst_count),
             prog_inst_count: Arc::new(prog_inst_count),
-            rom_asm_worker,
+            asm_rom_path,
+            rom_asm_worker: Mutex::new(None),
         })
+    }
+
+    pub fn set_asm_rom_worker(&self, input_data_path: Option<PathBuf>) {
+        let rom_asm_worker = self.asm_rom_path.as_ref().map(|asm_rom_path| {
+            let mut worker = RomAsmWorker::new();
+            worker.launch_task(asm_rom_path.clone(), input_data_path);
+            worker
+        });
+        *self.rom_asm_worker.lock().unwrap() = rom_asm_worker;
     }
 
     /// Computes the witness for the provided plan using the given ROM.
@@ -97,7 +96,7 @@ impl RomSM {
 
         let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
-        info!("··· Creating Rom instance [{} rows]", rom_trace.num_rows());
+        tracing::info!("··· Creating Rom instance [{} rows]", rom_trace.num_rows());
 
         // For every instruction in the rom, fill its corresponding ROM trace
         for (i, key) in rom.insts.keys().sorted().enumerate() {
@@ -146,7 +145,7 @@ impl RomSM {
     ) -> AirInstance<F> {
         let mut rom_trace = RomTrace::new_zeroes();
 
-        info!("··· Creating Rom instance [{} rows]", rom_trace.num_rows());
+        tracing::info!("··· Creating Rom instance [{} rows]", rom_trace.num_rows());
 
         const MAIN_TRACE_LEN: u64 = MainTrace::<usize>::NUM_ROWS as u64;
 
@@ -299,7 +298,7 @@ impl RomSM {
     ) {
         // Get the ELF file path as a string
         let elf_filename: String = rom_path.to_str().unwrap().into();
-        info!("Computing custom trace ROM");
+        tracing::info!("Computing custom trace ROM");
 
         // Load and parse the ELF file, and transpile it into a ZisK ROM using Riscv2zisk
 

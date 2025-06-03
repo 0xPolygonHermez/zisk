@@ -1,7 +1,7 @@
 //! fcall_secp256k1_fn_inv free call
 use cfg_if::cfg_if;
 cfg_if! {
-    if #[cfg(target_os = "ziskos")] {
+    if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
         use core::arch::asm;
         use crate::{ziskos_fcall, ziskos_fcall_get, ziskos_fcall_param};
         use crate::FCALL_SECP256K1_FN_INV_ID;
@@ -24,9 +24,9 @@ cfg_if! {
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
 pub fn fcall_secp256k1_fn_inv(p_value: &[u64; 4]) -> [u64; 4] {
-    #[cfg(not(target_os = "ziskos"))]
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     unreachable!();
-    #[cfg(target_os = "ziskos")]
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
         ziskos_fcall_param!(p_value, 4);
         ziskos_fcall!(FCALL_SECP256K1_FN_INV_ID);
@@ -36,9 +36,9 @@ pub fn fcall_secp256k1_fn_inv(p_value: &[u64; 4]) -> [u64; 4] {
 
 #[allow(unused_variables)]
 pub fn fcall2_secp256k1_fn_inv(p_value: &[u64; 4]) {
-    #[cfg(not(target_os = "ziskos"))]
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     unreachable!();
-    #[cfg(target_os = "ziskos")]
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
         ziskos_fcall_param!(p_value, 4);
         ziskos_fcall!(FCALL_SECP256K1_FN_INV_ID);

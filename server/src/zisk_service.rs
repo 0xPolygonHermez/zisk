@@ -10,13 +10,13 @@ use std::{
 
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use colored::Colorize;
-use executor::ZiskExecutionResult;
+use executor::{Stats, ZiskExecutionResult};
 use libloading::{Library, Symbol};
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
-use proofman_common::{DebugInfo, ProofOptions};
+use proofman_common::{DebugInfo, ParamsGPU};
 use serde::{Deserialize, Serialize};
-use tracing::{error, info};
+use tracing::error;
 use uuid::Uuid;
 use zisk_common::{info_file, ZiskLibInitFn};
 
@@ -51,7 +51,7 @@ pub struct ServerConfig {
     pub verbose: u8,
 
     /// Debug information
-    pub debug: DebugInfo,
+    pub debug_info: DebugInfo,
 
     /// Path to the SHA256f script
     pub sha256f_script: PathBuf,
@@ -88,7 +88,7 @@ impl ServerConfig {
             emulator,
             proving_key,
             verbose,
-            debug,
+            debug_info: debug,
             sha256f_script,
             launch_time: Instant::now(),
             server_id: Uuid::new_v4(),
@@ -286,50 +286,47 @@ impl ZiskService {
             config.elf.clone(),
             config.asm.clone(),
             config.asm_rom.clone(),
-            Some(request.input),
             config.sha256f_script.clone(),
         )
         .expect("Failed to initialize witness library");
 
-        ProofMan::<Goldilocks>::verify_proof_constraints_from_lib(
-            &mut *witness_lib,
+        let proofman = ProofMan::<Goldilocks>::new(
             config.proving_key.clone(),
-            PathBuf::new(),
             config.custom_commits_map.clone(),
-            ProofOptions::new(
-                true,
-                config.verbose.into(),
-                false,
-                false,
-                false,
-                config.debug.clone(),
-            ),
+            true,
+            false,
+            false,
+            ParamsGPU::default(),
         )
-        .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))
-        .expect("Failed to generate proof");
+        .expect("Failed to initialize proofman");
+
+        proofman.register_witness(&mut *witness_lib, library);
+
+        proofman
+            .verify_proof_constraints_from_lib(Some(request.input), &self.config.debug_info)
+            .map_err(|e| anyhow::anyhow!("Error verifying proof: {}", e))
+            .expect("Failed to generate proof");
 
         let elapsed = start.elapsed();
 
-        let result: ZiskExecutionResult = *witness_lib
+        let result: (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
             .get_execution_result()
             .ok_or_else(|| anyhow::anyhow!("No execution result found"))
             .expect("Failed to get execution result")
-            .downcast::<ZiskExecutionResult>()
+            .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))
             .expect("Failed to downcast execution result");
 
         println!();
-        info!(
+        tracing::info!(
             "{}",
-            "    Zisk: --- VERIFY CONSTRAINTS SUMMARY ------------------------"
-                .bright_green()
-                .bold()
+            "--- VERIFY CONSTRAINTS SUMMARY ------------------------".bright_green().bold()
         );
-        info!("              ► Statistics");
-        info!(
-            "                time: {} seconds, steps: {}",
+        tracing::info!("    ► Statistics");
+        tracing::info!(
+            "      time: {} seconds, steps: {}",
             elapsed.as_secs_f32(),
-            result.executed_steps
+            result.0.executed_steps
         );
 
         ZiskResponse::Ok { message: status.to_string() }

@@ -70,6 +70,10 @@ impl KeccakfTableSM {
         self.calculated.store(true, Ordering::Relaxed);
     }
 
+    pub fn reset_calculated(&self) {
+        self.calculated.store(false, Ordering::Relaxed);
+    }
+
     /// Calculates the table row offset based on the provided parameters.
     ///
     /// # Arguments

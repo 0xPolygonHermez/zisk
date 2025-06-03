@@ -1,6 +1,6 @@
 use crate::{
     MemAlignResponse, CHUNK_SIZE_STEPS, MEMORY_LOAD_OP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK,
-    MEM_BYTES_BITS, MEM_STEPS_BY_MAIN_STEP, MEM_STEP_BASE, RAM_W_ADDR_INIT, STEP_MEMORY_MAX_DIFF,
+    MEM_BYTES_BITS, MEM_STEPS_BY_MAIN_STEP, MEM_STEP_BASE, RAM_W_ADDR_INIT,
 };
 use std::fmt;
 use zisk_common::ChunkId;
@@ -67,27 +67,6 @@ impl MemHelpers {
     #[inline(always)]
     pub fn get_byte_offset(addr: u32) -> u8 {
         (addr & MEM_ADDR_ALIGN_MASK) as u8
-    }
-    #[inline(always)]
-    pub fn step_extra_reads_enabled(addr_w: u32) -> bool {
-        addr_w as u64 >= RAM_ADDR
-    }
-    #[inline(always)]
-    pub fn get_extra_internal_reads(previous_step: u64, step: u64) -> u64 {
-        let diff = step - previous_step;
-        if diff > STEP_MEMORY_MAX_DIFF {
-            (diff - 1) / STEP_MEMORY_MAX_DIFF
-        } else {
-            0
-        }
-    }
-    #[inline(always)]
-    pub fn get_extra_internal_reads_by_addr(addr_w: u32, previous_step: u64, step: u64) -> u64 {
-        if Self::step_extra_reads_enabled(addr_w) {
-            Self::get_extra_internal_reads(previous_step, step)
-        } else {
-            0
-        }
     }
 
     #[inline(always)]
@@ -208,36 +187,6 @@ impl MemHelpers {
         let from_chunk = Self::mem_step_to_chunk(from_step);
         let to_chunk = Self::mem_step_to_chunk(to_step);
         Self::max_distance_between_chunks(from_chunk, to_chunk)
-    }
-
-    #[inline(always)]
-    pub fn get_intermediate_rows(last_step: u64, step: u64) -> Option<(u64, u64)> {
-        Self::forced_get_intermediate_rows(last_step, step, false)
-    }
-    #[inline(always)]
-    pub fn forced_get_intermediate_rows(
-        last_step: u64,
-        step: u64,
-        force_extra_zero_step: bool,
-    ) -> Option<(u64, u64)> {
-        debug_assert!(last_step <= step);
-        let distance_by_chunks = Self::get_distance_by_chunks(last_step, step);
-        if distance_by_chunks > STEP_MEMORY_MAX_DIFF {
-            let intermediate_rows = (distance_by_chunks - 1) / STEP_MEMORY_MAX_DIFF;
-            let internal_reads = (step - last_step - 1) / STEP_MEMORY_MAX_DIFF;
-            if internal_reads < intermediate_rows {
-                // exists an unncessary intermediate row, but needed to obtains same results
-                // as counters, last step is zero
-                assert_eq!(internal_reads + 1, intermediate_rows);
-                Some((intermediate_rows - 1, 1))
-            } else {
-                Some((intermediate_rows, 0))
-            }
-        } else if force_extra_zero_step {
-            Some((0, 1))
-        } else {
-            None
-        }
     }
 }
 impl fmt::Debug for MemAlignResponse {

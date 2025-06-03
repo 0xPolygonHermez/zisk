@@ -1,7 +1,5 @@
-use std::sync::Arc;
-
 use p3_field::PrimeField64;
-use tracing::info;
+use std::sync::Arc;
 
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
@@ -316,7 +314,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
         let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
         let num_rows_needed = total_inputs * ARITH_EQ_ROWS_BY_OP;
 
-        info!(
+        tracing::info!(
             "··· Creating ArithEq instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,

@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "d9c4fcd06f6490b921ca1dc61f9d22d0f9af82654940e1fb6ffecebe0f582f32";
+pub const PILOUT_HASH: &str = "0926bafc4c04604786d08fc6ad9ef6f3fe3bbe2a87d7ff39b390115f75b8f48b";
 
 //AIRGROUP CONSTANTS
 
@@ -124,7 +124,7 @@ trace!(MemFixed<F> {
 },  0, 2, 4194304 );
 
 trace!(MemTrace<F> {
- addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: F,
+ addr: F, step: F, sel: F, addr_changes: F, value: [F; 2], wr: F, increment: [F; 2], read_same_addr: F,
 },  0, 2, 4194304 );
 
 trace!(RomDataFixed<F> {
@@ -185,11 +185,11 @@ trace!(ArithRangeTableTrace<F> {
 
 trace!(ArithEqFixed<F> {
  CLK_0: F, CHUNK_ID: F, __L1__: F,
-},  0, 10, 2097152 );
+},  0, 10, 524288 );
 
 trace!(ArithEqTrace<F> {
  x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 4], sel_op_clk0: [F; 4], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
-},  0, 10, 2097152 );
+},  0, 10, 524288 );
 
 trace!(ArithEqLtTableFixed<F> {
  LT_T: F, DELTA: F, __L1__: F,
@@ -257,11 +257,11 @@ trace!(KeccakfTableTrace<F> {
 
 trace!(Sha256fFixed<F> {
  L1: F, GATE_OP: F, CARRY_ENABLED: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, latch_num_sha256f: F, factor_num_sha256f: F, latch_in_out: F, addr_inc: F, latch_in: F, latch_out: F, __L1__: F,
-},  0, 19, 4194304 );
+},  0, 19, 2097152 );
 
 trace!(Sha256fTrace<F> {
  free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], free_in_d: [F; 8], step: F, addr: F, multiplicity: F, bit: [F; 2], val: [F; 2], is_val: F,
-},  0, 19, 4194304 );
+},  0, 19, 2097152 );
 
 trace!(Sha256fTableFixed<F> {
  A: [F; 1], B: F, C: F, GATE_OP: F, D: [F; 1], CARRY: [F; 1], __L1__: F,
@@ -272,11 +272,11 @@ trace!(Sha256fTableTrace<F> {
 },  0, 20, 8388608 );
 
 trace!(SpecifiedRangesFixed<F> {
- RANGE: [F; 16], __L1__: F,
+ RANGE: [F; 17], __L1__: F,
 },  0, 21, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
- mul: [F; 16],
+ mul: [F; 17],
 },  0, 21, 2097152 );
 
 trace!(RomRomTrace<F> {

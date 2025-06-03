@@ -19,12 +19,13 @@
 //! By structuring these phases, the `ZiskExecutor` ensures high-performance execution while
 //! maintaining clarity and modularity in the computation process.
 
-use asm_runner::{AsmRunnerMO, AsmRunnerMT, MinimalTraces, Task, TaskFactory};
+use asm_runner::{/*AsmRunnerMO,*/ AsmRunnerMT, MinimalTraces, Task, TaskFactory};
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{ProofCtx, SetupCtx};
+use proofman_common::{create_pool, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::gen_elf_hash;
+use sm_rom::RomSM;
 use witness::WitnessComponent;
 
 use rayon::prelude::*;
@@ -66,14 +67,18 @@ enum MinimalTraceExecutionMode {
     AsmWithCounter,
 }
 
+#[derive(Debug, Clone)]
+pub struct Stats {
+    pub collect_time: u64,
+    pub witness_time: u64,
+    pub num_chunks: usize,
+}
+
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
 pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     /// ZisK ROM, a binary file containing the ZisK program to be executed.
     pub zisk_rom: Arc<ZiskRom>,
-
-    /// Path to the input data file.
-    pub input_data_path: Option<PathBuf>,
 
     pub rom_path: PathBuf,
 
@@ -92,6 +97,9 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     execution_result: Mutex<ZiskExecutionResult>,
 
     sm_bundle: BD,
+    rom_sm: Option<Arc<RomSM>>,
+
+    stats: Mutex<Vec<(usize, usize, Stats)>>,
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
@@ -106,19 +114,17 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// Creates a new instance of the `ZiskExecutor`.
     ///
     /// # Arguments
-    /// * `input_data_path` - Path to the input data file.
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
     pub fn new(
         rom_path: PathBuf,
         asm_path: Option<PathBuf>,
         asm_rom_path: Option<PathBuf>,
-        input_data_path: Option<PathBuf>,
         zisk_rom: Arc<ZiskRom>,
         std: Arc<Std<F>>,
         sm_bundle: BD,
+        rom_sm: Option<Arc<RomSM>>,
     ) -> Self {
         Self {
-            input_data_path,
             rom_path,
             asm_runner_path: asm_path,
             asm_rom_path,
@@ -131,11 +137,17 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             std,
             execution_result: Mutex::new(ZiskExecutionResult::default()),
             sm_bundle,
+            rom_sm,
+            stats: Mutex::new(Vec::new()),
         }
     }
 
-    pub fn get_execution_result(&self) -> ZiskExecutionResult {
-        self.execution_result.lock().unwrap().clone()
+    pub fn get_execution_result(&self) -> (ZiskExecutionResult, Vec<(usize, usize, Stats)>) {
+        (self.execution_result.lock().unwrap().clone(), self.get_stats())
+    }
+
+    pub fn get_stats(&self) -> Vec<(usize, usize, Stats)> {
+        self.stats.lock().unwrap().clone()
     }
 
     /// Computes minimal traces by processing the ZisK ROM with given public inputs.
@@ -146,8 +158,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     ///
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
-    fn execute_with_emulator(&self) -> MinimalTraces {
-        let min_traces = self.run_emulator(Self::NUM_THREADS);
+    fn execute_with_emulator(&self, input_data_path: Option<PathBuf>) -> MinimalTraces {
+        let min_traces = self.run_emulator(Self::NUM_THREADS, input_data_path);
 
         // Store execute steps
         let steps = if let MinimalTraces::EmuTrace(min_traces) = &min_traces {
@@ -169,18 +181,21 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     ///
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
-    fn execute_with_assembly(&self) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList) {
-        let input_data_cloned = self.input_data_path.clone();
-        let handle_mo = std::thread::spawn(move || {
-            AsmRunnerMO::run(
-                input_data_cloned.as_ref().unwrap(),
-                Self::MAX_NUM_STEPS,
-                Self::MIN_TRACE_SIZE,
-            )
-            .expect("Error during Assembly Memory Operations execution")
-        });
+    fn execute_with_assembly(
+        &self,
+        input_data_path: Option<PathBuf>,
+    ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList) {
+        // let input_data_cloned = input_data_path.clone();
+        // let handle_mo = std::thread::spawn(move || {
+        //     AsmRunnerMO::run(
+        //         input_data_cloned.as_ref().unwrap(),
+        //         Self::MAX_NUM_STEPS,
+        //         Self::MIN_TRACE_SIZE,
+        //     )
+        //     .expect("Error during Assembly Memory Operations execution")
+        // });
 
-        let (min_traces, main_count, secn_count) = self.run_mt_assembly();
+        let (min_traces, main_count, secn_count) = self.run_mt_assembly(input_data_path);
 
         // Store execute steps
         let steps = if let MinimalTraces::AsmEmuTrace(asm_min_traces) = &min_traces {
@@ -192,13 +207,16 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         self.execution_result.lock().unwrap().executed_steps = steps;
 
         // Wait for the memory operations thread to finish
-        let (mem_segments, mem_align_segments) =
-            handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
+        // let (mem_segments, mem_align_segments) =
+        //     handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
 
         (min_traces, main_count, secn_count)
     }
 
-    fn run_mt_assembly(&self) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList) {
+    fn run_mt_assembly(
+        &self,
+        input_data_path: Option<PathBuf>,
+    ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList) {
         struct CounterTask<F, DB>
         where
             DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>,
@@ -246,7 +264,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             });
 
         let (asm_runner_mt, mut data_buses) = AsmRunnerMT::run_and_count(
-            self.input_data_path.as_ref().unwrap(),
+            input_data_path.as_ref().unwrap(),
             Self::MAX_NUM_STEPS,
             Self::MIN_TRACE_SIZE,
             // asm_runner::AsmRunnerOptions::default(),
@@ -291,13 +309,13 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         (MinimalTraces::AsmEmuTrace(asm_runner_mt), main_count, secn_vec_counters)
     }
 
-    fn run_emulator(&self, num_threads: usize) -> MinimalTraces {
+    fn run_emulator(&self, num_threads: usize, input_data_path: Option<PathBuf>) -> MinimalTraces {
         assert!(Self::MIN_TRACE_SIZE.is_power_of_two());
 
         // Call emulate with these options
-        let input_data = if self.input_data_path.is_some() {
+        let input_data = if input_data_path.is_some() {
             // Read inputs data from the provided inputs path
-            let path = PathBuf::from(self.input_data_path.as_ref().unwrap().display().to_string());
+            let path = PathBuf::from(input_data_path.as_ref().unwrap().display().to_string());
             fs::read(path).expect("Could not read inputs file")
         } else {
             Vec::new()
@@ -328,7 +346,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// * `main_planning` - Planning information for main state machines.
     fn assign_main_instances(&self, pctx: &ProofCtx<F>, main_planning: &mut [Plan]) {
         for plan in main_planning.iter_mut() {
-            plan.set_global_id(pctx.add_instance(plan.airgroup_id, plan.air_id));
+            plan.set_global_id(pctx.add_instance_fast(plan.airgroup_id, plan.air_id));
         }
     }
 
@@ -478,7 +496,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// # Arguments
     /// * `pctx` - Proof context.
     /// * `main_instance` - Main instance to compute witness for
-    fn witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &mut MainInstance) {
+    fn witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &MainInstance) {
+        let witness_start = std::time::Instant::now();
+
         let min_traces_guard = self.min_traces.read().unwrap();
         let min_traces = &*min_traces_guard;
 
@@ -497,6 +517,15 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         );
 
         pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
+
+        let witness_time = witness_start.elapsed().as_millis() as u64;
+        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(main_instance.ictx.global_id);
+
+        self.stats.lock().unwrap().push((
+            airgroup_id,
+            air_id,
+            Stats { collect_time: 0, witness_time, num_chunks: 1 },
+        ));
     }
 
     /// Expands and computes witness for a secondary state machines instance.
@@ -511,8 +540,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
         global_id: usize,
-        secn_instance: &mut Box<dyn Instance<F>>,
+        secn_instance: &dyn Instance<F>,
     ) {
+        let collect_start = std::time::Instant::now();
         assert_eq!(secn_instance.instance_type(), InstanceType::Instance, "Instance is a table");
 
         let min_traces = self.min_traces.read().unwrap();
@@ -525,6 +555,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         // Group the instances by the chunk they need to process
         let chunks_to_execute = self.chunks_to_execute(min_traces, secn_instance);
+        let num_chunks = chunks_to_execute.iter().filter(|&&x| x).count();
 
         // Create data buses for each chunk
         let mut data_buses =
@@ -545,11 +576,21 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         // Close the data buses and get for each instance its collectors
         let collectors_by_instance = self.close_data_bus_collectors(data_buses);
 
+        let collect_time = collect_start.elapsed().as_millis() as u64;
+        let witness_start = std::time::Instant::now();
         if let Some(air_instance) =
             secn_instance.compute_witness(pctx, sctx, collectors_by_instance)
         {
             pctx.add_air_instance(air_instance, global_id);
         }
+        let witness_time = witness_start.elapsed().as_millis() as u64;
+        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+
+        self.stats.lock().unwrap().push((
+            airgroup_id,
+            air_id,
+            Stats { collect_time, witness_time, num_chunks },
+        ));
     }
 
     /// Computes and generates witness for secondary state machine instance of type `Table`.
@@ -564,8 +605,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
         global_id: usize,
-        table_instance: &mut Box<dyn Instance<F>>,
+        table_instance: &dyn Instance<F>,
     ) {
+        let witness_start = std::time::Instant::now();
         assert_eq!(table_instance.instance_type(), InstanceType::Table, "Instance is not a table");
 
         if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![]) {
@@ -573,6 +615,15 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 pctx.add_air_instance(air_instance, global_id);
             }
         }
+
+        let witness_time = witness_start.elapsed().as_millis() as u64;
+        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+
+        self.stats.lock().unwrap().push((
+            airgroup_id,
+            air_id,
+            Stats { collect_time: 0, witness_time, num_chunks: 0 },
+        ));
     }
 
     /// Computes all the chunks to be executed to generate the witness given an instance.
@@ -586,7 +637,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     fn chunks_to_execute(
         &self,
         min_traces: &[EmuTrace],
-        secn_instance: &mut Box<dyn Instance<F>>,
+        secn_instance: &dyn Instance<F>,
     ) -> Vec<bool> {
         let mut chunks_to_execute = vec![false; min_traces.len()];
 
@@ -640,7 +691,11 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
     ///
     /// # Returns
     /// A vector of global IDs for the instances to compute witness for.
-    fn execute(&self, pctx: Arc<ProofCtx<F>>) -> Vec<usize> {
+    fn execute(&self, pctx: Arc<ProofCtx<F>>, input_data_path: Option<PathBuf>) -> Vec<usize> {
+        // Set ASM ROM worker
+        if self.rom_sm.is_some() {
+            self.rom_sm.as_ref().unwrap().set_asm_rom_worker(input_data_path.clone());
+        }
         // Process the ROM to collect the Minimal Traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
 
@@ -648,10 +703,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
         let (min_traces, main_count, secn_count) = if self.asm_runner_path.is_some() {
             // If we are executing in assembly mode
-            self.execute_with_assembly()
+            self.execute_with_assembly(input_data_path)
         } else {
             // Otherwise, use the emulator
-            let min_traces = self.execute_with_emulator();
+            let min_traces = self.execute_with_emulator(input_data_path);
 
             timer_start_info!(COUNT);
             let (main_count, secn_count) = self.count(&min_traces);
@@ -659,7 +714,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
             (min_traces, main_count, secn_count)
         };
-
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
         // Plan the main and secondary instances using the counted metrics
@@ -698,6 +752,22 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         *self.main_planning.write().unwrap() = main_planning;
         *self.secn_planning.write().unwrap() = secn_planning;
 
+        let mut main_instances = self.main_instances.write().unwrap();
+
+        for global_id in &main_global_ids {
+            main_instances
+                .entry(*global_id)
+                .or_insert_with(|| self.create_main_instance(*global_id));
+        }
+
+        let mut secn_instances = self.secn_instances.write().unwrap();
+        for global_id in &secn_global_ids_vec {
+            secn_instances
+                .entry(*global_id)
+                .or_insert_with(|| self.create_secn_instance(*global_id));
+            secn_instances[global_id].reset();
+        }
+
         [main_global_ids, secn_global_ids_vec].concat()
     }
 
@@ -714,39 +784,38 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         pctx: Arc<ProofCtx<F>>,
         sctx: Arc<SetupCtx<F>>,
         global_ids: &[usize],
+        n_cores: usize,
     ) {
         if stage != 1 {
             return;
         }
 
-        for &global_id in global_ids {
-            let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+        let pool = create_pool(n_cores);
+        pool.install(|| {
+            for &global_id in global_ids {
+                let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
 
-            if MAIN_AIR_IDS.contains(&air_id) {
-                let mut main_instances = self.main_instances.write().unwrap();
+                if MAIN_AIR_IDS.contains(&air_id) {
+                    let main_instance = &self.main_instances.read().unwrap()[&global_id];
 
-                let main_instance = main_instances
-                    .entry(global_id)
-                    .or_insert_with(|| self.create_main_instance(global_id));
+                    self.witness_main_instance(&pctx, main_instance);
+                } else {
+                    let secn_instance = &self.secn_instances.read().unwrap()[&global_id];
 
-                self.witness_main_instance(&pctx, main_instance);
-            } else {
-                let mut secn_instances = self.secn_instances.write().unwrap();
-
-                let secn_instance = secn_instances
-                    .entry(global_id)
-                    .or_insert_with(|| self.create_secn_instance(global_id));
-
-                match secn_instance.instance_type() {
-                    InstanceType::Instance => {
-                        self.witness_secn_instance(&pctx, &sctx, global_id, secn_instance)
-                    }
-                    InstanceType::Table => {
-                        self.witness_table(&pctx, &sctx, global_id, secn_instance)
+                    match secn_instance.instance_type() {
+                        InstanceType::Instance => self.witness_secn_instance(
+                            &pctx,
+                            &sctx,
+                            global_id,
+                            secn_instance.as_ref(),
+                        ),
+                        InstanceType::Table => {
+                            self.witness_table(&pctx, &sctx, global_id, secn_instance.as_ref())
+                        }
                     }
                 }
             }
-        }
+        });
     }
 
     /// Debugs the main and secondary state machines.

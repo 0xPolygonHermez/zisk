@@ -45,7 +45,7 @@ pub trait SMBundle<F: Field>: Send + Sync {
     /// A vector of data buses with attached collectors for each chunk to be executed
     fn build_data_bus_collectors(
         &self,
-        secn_instance: &mut Box<dyn Instance<F>>,
+        secn_instance: &dyn Instance<F>,
         chunks_to_execute: Vec<bool>,
     ) -> DataBusCollectorCollection;
 }

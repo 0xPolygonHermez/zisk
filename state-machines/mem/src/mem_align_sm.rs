@@ -6,7 +6,6 @@ use std::sync::Mutex;
 use num_traits::cast::ToPrimitive;
 use p3_field::PrimeField64;
 use pil_std_lib::Std;
-use tracing::info;
 
 use proofman_common::{AirInstance, FromTrace};
 use zisk_pil::{MemAlignTrace, MemAlignTraceRow};
@@ -58,7 +57,7 @@ macro_rules! debug_info {
     ($prefix:expr, $($arg:tt)*) => {
         #[cfg(feature = "debug_mem_align")]
         {
-            info!(concat!("MemAlign: ",$prefix), $($arg)*);
+            tracing::info!(concat!("MemAlign: ",$prefix), $($arg)*);
         }
     };
 }
@@ -785,7 +784,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
         let num_rows = trace.num_rows();
 
-        info!(
+        tracing::info!(
             "··· Creating Mem Align instance [{} / {} rows filled {:.2}%]",
             used_rows,
             num_rows,

@@ -11,8 +11,6 @@ use std::path::Path;
 use std::process::{self, Command};
 use std::{fs, ptr};
 
-use tracing::{error, info};
-
 use crate::{AsmRHData, AsmRHHeader, AsmRunnerOptions, AsmRunnerTraceLevel};
 
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
@@ -121,9 +119,9 @@ impl AsmRunnerRomH {
 
         // Spawn child process
         if let Err(e) = command.arg(&shmem_prefix).spawn() {
-            error!("Child process failed: {:?}", e);
+            tracing::error!("Child process failed: {:?}", e);
         } else if options.verbose || options.log_output {
-            info!("Child process launched successfully");
+            tracing::info!("Child process launched successfully");
         }
 
         // Wait for the assembly emulator to complete writing the trace

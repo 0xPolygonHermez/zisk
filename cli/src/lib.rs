@@ -28,7 +28,7 @@ pub const ZISK_VERSION_MESSAGE: &str = concat!(
     ")"
 );
 
-const ZISK_TARGET: &str = "riscv64ima-polygon-ziskos-elf";
+const ZISK_TARGET: &str = "riscv64ima-zisk-zkvm-elf";
 
 trait CommandExecutor {
     fn run(&mut self) -> Result<()>;

@@ -13,13 +13,11 @@
     - Immutable free-input memory, always reading the same value for each address.
 
 
-    - Allows to define a memory on a region. Initially the distance between address could
-      be up to 2^24 (2^24 * 8 bytes = 128MB). But now it's possible to use a bigger memory, ziskos
-      during boot execute internal reads each 128 MB to avoid distances greater than 2^24.
-      but this distance is divided in two chunks of 16 bits, to verify that this distance is "positive"
+    - Allows to define a memory on a region. Initially the distance between address could up
+      to 2^(36+3) bits = 2^39 = 512 GB, but executor use only 32 bits for address, so the maximum
+      memory size is 4 GB
     - Inside this component the address are mem-byte address, to translate internal adress to
       external need to multiply by bytes.
-    - For executors optimization, external addresses use 32-bits.
     - The memory regions must be exclusive, to avoid collisions between different memories.
     - The constraints over instances guarantees that the memory access are inside definited region.
     - The constraints guarantees that only one cyle for memory region is allowed.
@@ -63,8 +61,6 @@ const int MEMORY_CONT_ID = 11;
 const int MEMORY_LOAD_OP = 1;
 const int MEMORY_STORE_OP = 2;
 const int MEMORY_REG_OP = 3;
-
-const int MEMORY_MAX_DIFF = 2**24;
 
 const int RESERVED_MEM_STEPS = 1;
 const int MAX_MEM_STEP_OFFSET = 2;
@@ -232,7 +228,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         range_check(expression: distance_base[1], min: 0, max: 0xFFFF);
     } else {
 
-        range_check(expression: previous_segment_addr - internal_base_address + 1, min: 1, max: MEMORY_MAX_DIFF);
+        range_check(expression: previous_segment_addr - internal_base_address, min: 0, max: 2**24 - 1);
     }
 
     // Final memory control: the last address must be within the memory area.
@@ -249,8 +245,10 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
         range_check(expression: distance_end[0], min: 0, max: 0xFFFF);
         range_check(expression: distance_end[1], min: 0, max: 0xFFFF);
+        assert(size_mb <= 4096);
     } else {
-        range_check(expression: internal_end_address - segment_last_addr + 1, min: 1, max: MEMORY_MAX_DIFF);
+        range_check(expression: internal_end_address - segment_last_addr, min: 0, max: 2**24 - 1);
+        assert(size_mb <= 128);
     }
 
     // Check the order of operations inside segment
@@ -278,7 +276,6 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
             // use 0 as previous value on global constraint of first segment.
 
             const expr air.previous_addr = SEGMENT_L1 * (previous_segment_addr - 'addr) + 'addr;
-
         } else {
 
             // In the case of immutable, no free-input memory, the first row must be "different" to
@@ -290,6 +287,15 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
         const expr delta_addr = addr - previous_addr;
 
+        // read_same_addr = (1 - addr_changes) * (1 - wr)
+        // - free_input_mem, wr = 0, so read_same_addr = (1 - addr_changes)
+        // - immutable, wr = addr_changes * sel, so read_same_addr = (1 - addr_changes) * (1 - addr_changes * sel)
+        //      addr_changes = 0, read_same_addr = 1 (not matter if sel = 0 or 1)
+        //      addr_changes = 1, read_same_addr = 0 (not matter if sel = 0 or 1)
+        //   means for immutable read_same_addr = (1 - addr_changes)
+
+        const expr air.read_same_addr = (1 - addr_changes);
+
         // If the address changes, the difference must be one
 
         addr_changes * (delta_addr - 1) === 0;
@@ -297,6 +303,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         // If the address does not change, the current address and previous must be the same.
 
         (1 - addr_changes) * (addr - previous_addr) === 0;
+
 
     } else {
 
@@ -312,12 +319,22 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         const expr previous_step = SEGMENT_L1 * (previous_segment_step - 'step) + 'step;
         const expr delta_step = step - previous_step + (1 - wr);
 
-        col witness increment;
-        increment === addr_changes * (delta_addr - delta_step) + delta_step;
+        col witness increment[2];
+        increment[0] + 2**18 * increment[1] + 1 === addr_changes * (delta_addr - delta_step) + delta_step;
 
         is_first_segment * SEGMENT_L1 * (1 - addr_changes) === 0;
 
-        range_check(expression: increment, min: 1, max: MEMORY_MAX_DIFF);
+        // addr_change == 1 => [0,2^18-1] => 18 + 18 = 36 bits + 3 => 39 bits => 512 GB
+        // addr_change == 0 => [0,2^18-1] => 18 + 18 = 36 bits => STEP upto 2^34 => 16 GB steps
+        // 36 bits x 2^22 = 2^58 + 2^32 address = 2^59 secure.
+
+        range_check(expression: increment[0], min: 0, max: 2**18 - 1);
+        range_check(expression: increment[1], min: 0, max: 2**18 - 1);
+
+        // to avoid intermediate column
+        col witness air.read_same_addr;
+
+        read_same_addr === (1 - addr_changes) * (1 - wr);
     }
 
     (1 - addr_changes) * (addr - previous_addr) === 0;
@@ -340,7 +357,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
 
         } else {
             // if address not change and it isn't write, value must be equal to previous value
-            (1 - addr_changes) * (1 - wr) * (value[index] - previous_value)  ===  0;
+            read_same_addr * (value[index] - previous_value)  ===  0;
 
             // if address changes, and it isn't a write, value must be 0.
             addr_changes * (1 - wr) * value[index]  ===  0;

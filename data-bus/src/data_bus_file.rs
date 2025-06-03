@@ -118,7 +118,7 @@ impl DataBusFileWriter {
             writeln!(file, "{} {}", bus_id, payload_str)?;
             Ok(())
         } else {
-            Err(io::Error::new(io::ErrorKind::Other, "Attempted to write to a closed file."))
+            Err(io::Error::other("Attempted to write to a closed file."))
         }
     }
 

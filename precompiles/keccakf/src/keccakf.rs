@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use p3_field::PrimeField64;
 use tiny_keccak::keccakf;
-use tracing::info;
 
 use circuit::{Gate, GateOperation, PinId};
 use precompiles_common::MemBusHelpers;
@@ -493,7 +492,7 @@ impl KeccakfSM {
         debug_assert!(num_slots_needed <= self.num_available_slots);
         debug_assert!(num_rows_needed <= num_rows);
 
-        info!(
+        tracing::info!(
             "··· Creating Keccakf instance [{} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,

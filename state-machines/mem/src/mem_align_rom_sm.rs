@@ -125,6 +125,10 @@ impl MemAlignRomSM {
         self.calculated.store(true, Ordering::Relaxed);
     }
 
+    pub fn reset_calculated(&self) {
+        self.calculated.store(false, Ordering::Relaxed);
+    }
+
     pub fn update_padding_row(&self, padding_len: u64) {
         // Update entry at the padding row (pos = 0) with the given padding length
         self.update_multiplicity_by_row_idx(0, padding_len);

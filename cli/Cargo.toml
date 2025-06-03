@@ -25,7 +25,6 @@ p3-field = { workspace = true }
 p3-goldilocks = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
-witness = { workspace = true }
 sysinfo = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
@@ -36,6 +35,7 @@ libloading = { workspace = true }
 executor = { path = "../executor" }
 rom-setup = { path = "../rom-setup" }
 zisk-core = { path = "../core" }
+zisk-pil = { path = "../pil" }
 
 server = { path = "../server" }
 clap = { version = "4.5.7", features = ["derive", "env"] }
@@ -55,3 +55,4 @@ yansi = "1.0.1"
 [features]
 default = []
 disable-distributed = ["proofman-common/disable-distributed"]
+gpu = []

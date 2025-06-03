@@ -1,15 +1,15 @@
 // extern crate env_logger;
-use crate::commands::Field;
+use crate::commands::{cli_fail_if_macos, Field};
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
-use proofman_common::{initialize_logger, DebugInfo};
+use proofman_common::initialize_logger;
 use std::path::PathBuf;
 
 use p3_goldilocks::Goldilocks;
 
 use proofman::ProofMan;
-use proofman_common::{ProofOptions, VerboseMode};
+use proofman_common::{ParamsGPU, VerboseMode};
 
 use super::get_default_proving_key;
 
@@ -33,6 +33,8 @@ pub struct ZiskCheckSetup {
 
 impl ZiskCheckSetup {
     pub fn run(&self) -> Result<()> {
+        cli_fail_if_macos()?;
+
         println!("{} CheckSetup", format!("{: >12}", "Command").bright_green().bold());
         println!();
 
@@ -43,14 +45,9 @@ impl ZiskCheckSetup {
         match self.field {
             Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
                 self.get_proving_key(),
-                ProofOptions::new(
-                    false,
-                    verbose_mode,
-                    self.aggregation,
-                    self.final_snark,
-                    false,
-                    DebugInfo::default(),
-                ),
+                self.aggregation,
+                self.final_snark,
+                ParamsGPU::default(),
             )
             .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
         };

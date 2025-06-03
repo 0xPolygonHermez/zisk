@@ -18,7 +18,7 @@ proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
 
-tracing = { workspace = true}
+tracing = { workspace = true }
 rayon = { workspace = true }
 itertools = { workspace = true }
 

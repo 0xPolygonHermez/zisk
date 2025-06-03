@@ -63,10 +63,7 @@ main() {
   # macOS (Darwin) is explicitly unsupported and will trigger an error.
   case "${PLATFORM}" in
     linux) ;;
-    darwin | mac*)
-      err "macOS is currently not supported! We are actively working on adding support soon" >&2
-      exit 1
-      ;;
+    darwin | mac*) ;;
     *)
       err "unsupported platform ${PLATFORM}"
       exit 1
@@ -103,22 +100,27 @@ main() {
     ARCHITECTURE="amd64" # Amd.
   fi
 
-  # Ask user about key installation in case it was not provided as an argument
+  # If the plaform is macOS darwin we don't install any key
+  if [ "${PLATFORM}" = "darwin" ]; then
+    SETUP_KEY="none"
+  fi
+
+  # If we are running in a GitHub action, we install the proving key by default
+  if [[ -n "${GH_RUNNER}" ]]; then
+    warn "Running from GitHub action, installing proving key"
+    SETUP_KEY="proving"
+  fi
+
+  # Ask user about key installation if SETUP_KEY is not set
   if [[ -z "${SETUP_KEY}" ]]; then
     step "Setup installation options:"
     say "1) Install proving key (default - just press enter)"
     say "2) Install verify key"
     say "3) None"
 
-    # Check if we are running in a GitHub runner, in that case we use the default option
-    if [[ -n "${GH_RUNNER}" ]]; then
-      warn "Running from GitHub action, using default option 1"
-      user_choice=1
-    else
-      # Read user input with default option set to 1
-      read -p ">" user_choice < /dev/tty
-      user_choice=${user_choice:-1}
-    fi
+    # Read user input with default option set to 1
+    read -p ">" user_choice < /dev/tty
+    user_choice=${user_choice:-1}
 
     case "${user_choice}" in
         1)
@@ -147,14 +149,18 @@ main() {
   BIN_ARCHIVE_URL="${RELEASE_URL}cargo_zisk_${PLATFORM}_${ARCHITECTURE}.${EXT}"
 
   # Download and extract the binaries archive
-  if [ "${PLATFORM}" = "linux" ]; then
+  if [ "${PLATFORM}" = "linux" ] || [ "${PLATFORM}" = "darwin" ]; then
     tmp="$(mktemp -d)/cargo_zisk.tar.gz"
 
     step "Downloading ZisK ${ZISK_VERSION} version..."
     ensure download "${BIN_ARCHIVE_URL}" "${tmp}"
 
     step "Installing ZisK ${ZISK_VERSION} version..."
-    ensure tar --overwrite -xzf "${tmp}" -C "${ZISK_DIR}"
+    if [ "${PLATFORM}" = "linux" ]; then
+      ensure tar --overwrite -xzf "${tmp}" -C "${ZISK_DIR}"
+    else
+      ensure tar -xzf "${tmp}" -C "${ZISK_DIR}"
+    fi
 
     rm -f "${tmp}"
   fi
@@ -203,27 +209,36 @@ EOF
       ;;
   esac
 
+  # Determine the profile file and preferred shell based on the current shell
+  case "${SHELL}" in
+    */zsh)
+      PROFILE=${ZDOTDIR:-${HOME}}/.zshenv
+      PREF_SHELL="zsh"
+      ;;
+    */bash)
+      PROFILE=${HOME}/.bashrc
+      PREF_SHELL="bash"
+      ;;
+    */fish)
+      PROFILE=${HOME}/.config/fish/config.fish
+      PREF_SHELL="fish"
+      ;;
+    */ash)
+      PROFILE=${HOME}/.profile
+      PREF_SHELL="ash"
+      ;;
+    *)
+      warn "could not detect shell, manually add ${ZISK_BIN_DIR} to your PATH"
+      exit 1
+      ;;
+  esac
+
   # Only add ziskup if it isn't already in PATH.
   if [[ ":${PATH}:" != *":${ZISK_BIN_DIR}:"* ]]; then
       # Add the ziskup directory to the path and ensure the old PATH variables remain.
+      echo "Adding ZisK to your PATH..."
       echo >>"${PROFILE}" && echo "export PATH=\"\${PATH}:${ZISK_BIN_DIR}\"" >>"${PROFILE}"
   fi
-
-  # Warn MacOS users that they may need to manually install libusb via Homebrew:
-  if [[ "${OSTYPE}" =~ ^darwin ]] && [[ ! -f /usr/local/opt/libusb/lib/libusb-1.0.0.dylib && ! -f /opt/homebrew/opt/libusb/lib/libusb-1.0.0.dylib ]]; then
-      echo
-      warn "libusb not found. You may need to install it manually on macOS via Homebrew (brew install libusb)."
-  fi
-
-  # Warn MacOS users that they may need to manually install opensll via Homebrew:
-  if [[ "${OSTYPE}" =~ ^darwin ]] && [[ ! -f /usr/local/opt/openssl/lib/libssl.3.dylib && ! -f /opt/homebrew/opt/openssl/lib/libssl.3.dylib ]]; then
-      echo
-      warn "libusb not found. You may need to install it manually on macOS via Homebrew (brew install openssl)."
-  fi
-
-  results=($(get_profile_and_shell))
-  PROFILE="${results[0]}"
-  PREF_SHELL="${results[1]}"
 
   step "Done! ZisK version ${ZISK_VERSION} has been installed."
   say "Your preferred shell '${PREF_SHELL}' was detected and ZisK has been added to your PATH. To start using the ZisK CLI tools, run 'source ${PROFILE}' or open a new terminal session."
@@ -339,36 +354,6 @@ install_setup() {
       ensure_silent "${CARGO_ZISK}" check-setup -a
       say "Constant tree files generated successfully."
     fi
-}
-
-get_profile_and_shell() {
-  local profile=""
-  local pref_shell=""
-  # Determine the profile file and preferred shell based on the current shell
-  case "${SHELL}" in
-    */zsh)
-      profile=${ZDOTDIR:-${HOME}}/.zshenv
-      pref_shell="zsh"
-      ;;
-    */bash)
-      profile=${HOME}/.bashrc
-      pref_shell="bash"
-      ;;
-    */fish)
-      profile=${HOME}/.config/fish/config.fish
-      pref_shell="fish"
-      ;;
-    */ash)
-      profile=${HOME}/.profile
-      pref_shell="ash"
-      ;;
-    *)
-      warn "could not detect shell, manually add ${ZISK_BIN_DIR} to your PATH"
-      exit 1
-      ;;
-  esac
-  echo "${profile}"
-  echo "${pref_shell}"
 }
 
 # Banner Function for ZisK

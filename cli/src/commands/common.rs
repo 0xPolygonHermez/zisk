@@ -81,3 +81,21 @@ pub fn get_default_verkey() -> String {
         format!("{}/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.json", get_home_dir());
     verkey
 }
+
+/// If the target_os is macOS returns an error indicating that the command is not supported.
+pub fn cli_fail_if_macos() -> anyhow::Result<()> {
+    if cfg!(target_os = "macos") {
+        Err(anyhow::anyhow!("Command is not supported on macOS"))
+    } else {
+        Ok(())
+    }
+}
+
+/// If the feature "gpu" is enabled, returns an error indicating that the command is not supported.
+pub fn cli_fail_if_gpu_mode() -> anyhow::Result<()> {
+    if cfg!(feature = "gpu") {
+        Err(anyhow::anyhow!("Command is not supported on GPU mode"))
+    } else {
+        Ok(())
+    }
+}

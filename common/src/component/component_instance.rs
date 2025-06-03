@@ -31,7 +31,7 @@ pub trait Instance<F: PrimeField>: Send + Sync {
     /// # Returns
     /// An optional `AirInstance` object representing the computed witness.
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
@@ -71,6 +71,8 @@ pub trait Instance<F: PrimeField>: Send + Sync {
     /// * `_pctx` - The proof context, unused in this implementation.
     /// * `_sctx` - The setup context, unused in this implementation.
     fn debug(&self, _pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {}
+
+    fn reset(&self) {}
 }
 
 /// Macro to define a table-backed instance.
@@ -123,7 +125,7 @@ macro_rules! table_instance {
 
         impl<F: PrimeField> Instance<F> for $InstanceName {
             fn compute_witness(
-                &mut self,
+                &self,
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
@@ -149,6 +151,10 @@ macro_rules! table_instance {
 
             fn instance_type(&self) -> InstanceType {
                 InstanceType::Table
+            }
+
+            fn reset(&self) {
+                self.table_sm.reset_calculated();
             }
         }
 
@@ -223,7 +229,7 @@ macro_rules! table_instance_array {
 
         impl<F: PrimeField> Instance<F> for $InstanceName {
             fn compute_witness(
-                &mut self,
+                &self,
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
@@ -252,6 +258,10 @@ macro_rules! table_instance_array {
 
             fn instance_type(&self) -> InstanceType {
                 InstanceType::Table
+            }
+
+            fn reset(&self) {
+                self.table_sm.reset_calculated();
             }
         }
 
@@ -318,7 +328,7 @@ macro_rules! instance {
 
         impl<F: PrimeField> Instance<F> for $name {
             fn compute_witness(
-                &mut self,
+                &self,
                 _pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
             ) -> Option<AirInstance<F>> {
