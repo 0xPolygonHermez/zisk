@@ -51,7 +51,7 @@ uint8_t * pInput = (uint8_t *)INPUT_ADDR;
 uint8_t * pInputLast = (uint8_t *)(INPUT_ADDR + 10440504 - 64);
 uint8_t * pRam = (uint8_t *)RAM_ADDR;
 uint8_t * pRom = (uint8_t *)ROM_ADDR;
-uint8_t * pTrace = (uint8_t *)TRACE_ADDR;
+uint64_t * pTrace = (uint64_t *)TRACE_ADDR;
 uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
 
 #define TYPE_PING 1 // Ping
@@ -185,11 +185,14 @@ void parse_arguments(int argc, char *argv[]);
 uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime);
 
 void configure (void);
-void client_run (void);
 void server_setup (void);
 void server_reset (void);
 void server_run (void);
 void server_cleanup (void);
+
+void client_setup (void);
+void client_run (void);
+void client_cleanup (void);
 
 void log_minimal_trace(void);
 void log_histogram(void);
@@ -264,7 +267,15 @@ int main(int argc, char *argv[])
     // If this is a client, run it and quit
     if (client)
     {
+        // Setup the client
+        client_setup();
+
+        // Run the client
         client_run();
+
+        // Cleanup the client
+        client_cleanup();
+
         return 0;
     }
 
@@ -1078,14 +1089,6 @@ void configure (void)
             strcpy(sem_chunk_done_name, "");
             chunk_done = false;
             port = 23119;
-            if ((chunk_player_address == 0) && client)
-            {
-                printf("configure() found gen_method==ChunkPlayerMTCollectMem but chunk_player_address == 0; please specify a chunk address\n");
-                print_usage();
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
             break;
         }
         default:
@@ -1113,6 +1116,57 @@ void configure (void)
             shmem_output_name,
             shmem_mt_name,
             sem_chunk_done_name);
+    }
+}
+
+void client_setup (void)
+{
+    assert(!server);
+    assert(client);
+
+    int result;
+
+    /***********************/
+    /* INPUT MINIMAL TRACE */
+    /***********************/
+
+    // Input MT trace
+    if (gen_method == ChunkPlayerMTCollectMem)
+    {
+        // Create the output shared memory
+        shmem_mt_fd = shm_open(shmem_mt_name, O_RDONLY, 0644);
+        if (shmem_mt_fd < 0)
+        {
+            printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_mt_name, errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+
+        // Map it to the trace address
+#ifdef DEBUG
+        gettimeofday(&start_time, NULL);
+#endif
+        void * pTrace = mmap((void *)TRACE_ADDR, chunk_player_mt_size, PROT_READ, MAP_SHARED | MAP_FIXED | MAP_LOCKED, shmem_mt_fd, 0);
+#ifdef DEBUG
+        gettimeofday(&stop_time, NULL);
+        duration = TimeDiff(start_time, stop_time);
+#endif
+        if (pTrace == MAP_FAILED)
+        {
+            printf("Failed calling mmap(MT) errno=%d=%s\n", errno, strerror(errno));
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if ((uint64_t)pTrace != TRACE_ADDR)
+        {
+            printf("Called mmap(MT) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
+            fflush(stdout);
+            fflush(stderr);
+            exit(-1);
+        }
+        if (verbose) printf("mmap(MT) returned %p in %lu us\n", pTrace, duration);
     }
 }
 
@@ -1523,62 +1577,144 @@ void client_run (void)
             }
             case ChunkPlayerMTCollectMem:
             {
-                gettimeofday(&start_time, NULL);
+                if (chunk_player_address != 0)
+                {
+                    gettimeofday(&start_time, NULL);
 
-                // Prepare message to send
-                request[0] = TYPE_CM_REQUEST;
-                request[1] = 1ULL << 32; // max_steps
-                request[2] = 1ULL << 18; // chunk_len
-                request[3] = chunk_player_address;
-                request[4] = 0;
+                    // Prepare message to send
+                    request[0] = TYPE_CM_REQUEST;
+                    request[1] = 1ULL << 32; // max_steps
+                    request[2] = 1ULL << 18; // chunk_len
+                    request[3] = chunk_player_address;
+                    request[4] = 0;
 
-                // Send data to server
-                result = send(socket_fd, request, sizeof(request), 0);
-                if (result < 0)
-                {
-                    printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
+                    // Send data to server
+                    result = send(socket_fd, request, sizeof(request), 0);
+                    if (result < 0)
+                    {
+                        printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                        fflush(stdout);
+                        fflush(stderr);
+                        exit(-1);
+                    }
 
-                // Read server response
-                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                if (bytes_received < 0)
-                {
-                    printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (bytes_received != sizeof(response))
-                {
-                    printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (response[0] != TYPE_CM_RESPONSE)
-                {
-                    printf("recv() returned unexpected type=%lu\n", response[0]);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (response[1] != 0)
-                {
-                    printf("recv() returned unexpected result=%lu\n", response[1]);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                
-                gettimeofday(&stop_time, NULL);
-                duration = TimeDiff(start_time, stop_time);
-                printf("client (CM)[%lu]: done in %lu us\n", i, duration);
+                    // Read server response
+                    bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
+                    if (bytes_received < 0)
+                    {
+                        printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                        fflush(stdout);
+                        fflush(stderr);
+                        exit(-1);
+                    }
+                    if (bytes_received != sizeof(response))
+                    {
+                        printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                        fflush(stdout);
+                        fflush(stderr);
+                        exit(-1);
+                    }
+                    if (response[0] != TYPE_CM_RESPONSE)
+                    {
+                        printf("recv() returned unexpected type=%lu\n", response[0]);
+                        fflush(stdout);
+                        fflush(stderr);
+                        exit(-1);
+                    }
+                    if (response[1] != 0)
+                    {
+                        printf("recv() returned unexpected result=%lu\n", response[1]);
+                        fflush(stdout);
+                        fflush(stderr);
+                        exit(-1);
+                    }
+                    
+                    gettimeofday(&stop_time, NULL);
+                    duration = TimeDiff(start_time, stop_time);
+                    printf("client (CM)[%lu]: done in %lu us\n", i, duration);
 
-                // Pretend to spend some time processing the incoming data
-                usleep((1000000));
+                    // Pretend to spend some time processing the incoming data
+                    usleep((1000000));
+                }
+                else
+                {
+                    uint64_t number_of_chunks = pTrace[4];
+                    printf("client (CM)[%lu]: sending requests for %lu chunks\n", i, number_of_chunks);
+
+                    for (uint64_t c = 0; c < number_of_chunks; c++)
+                    {
+                        if (c == 0)
+                        {
+                            chunk_player_address = 0xc0000028;
+                        }
+                        else
+                        {
+                            uint64_t * chunk = (uint64_t *)chunk_player_address;
+                            uint64_t mem_reads_size = chunk[40];
+                            chunk_player_address += (41 + mem_reads_size) * 8;
+                        }
+
+                        printf("client (CM)[%lu][%lu]: @=0x%lx sending request...\n", i, c, chunk_player_address);
+
+                        gettimeofday(&start_time, NULL);
+    
+                        // Prepare message to send
+                        request[0] = TYPE_CM_REQUEST;
+                        request[1] = 1ULL << 32; // max_steps
+                        request[2] = 1ULL << 18; // chunk_len
+                        request[3] = chunk_player_address;
+                        request[4] = 0;
+    
+                        // Send data to server
+                        result = send(socket_fd, request, sizeof(request), 0);
+                        if (result < 0)
+                        {
+                            printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                            fflush(stdout);
+                            fflush(stderr);
+                            exit(-1);
+                        }
+    
+                        // Read server response
+                        bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
+                        if (bytes_received < 0)
+                        {
+                            printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                            fflush(stdout);
+                            fflush(stderr);
+                            exit(-1);
+                        }
+                        if (bytes_received != sizeof(response))
+                        {
+                            printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                            fflush(stdout);
+                            fflush(stderr);
+                            exit(-1);
+                        }
+                        if (response[0] != TYPE_CM_RESPONSE)
+                        {
+                            printf("recv() returned unexpected type=%lu\n", response[0]);
+                            fflush(stdout);
+                            fflush(stderr);
+                            exit(-1);
+                        }
+                        if (response[1] != 0)
+                        {
+                            printf("recv() returned unexpected result=%lu\n", response[1]);
+                            fflush(stdout);
+                            fflush(stderr);
+                            exit(-1);
+                        }
+                        
+                        gettimeofday(&stop_time, NULL);
+                        duration = TimeDiff(start_time, stop_time);
+                        printf("client (CM)[%lu][%lu]: @=0x%lx done in %lu us\n", i, c, chunk_player_address, duration);
+    
+                        // Pretend to spend some time processing the incoming data
+                        usleep((1000000));
+                    }
+
+                } 
                 
                 break;
             }
@@ -1715,6 +1851,27 @@ void client_run (void)
 
     // Close the socket
     close(socket_fd);
+}
+
+void client_cleanup (void)
+{
+    // Cleanup trace
+    int result = munmap((void *)TRACE_ADDR, trace_size);
+    if (result == -1)
+    {
+        printf("Failed calling munmap(trace) for size=%lu errno=%d=%s\n", trace_size, errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+    result = shm_unlink(shmem_output_name);
+    if (result == -1)
+    {
+        printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
 }
 
 void server_setup (void)
@@ -2765,6 +2922,161 @@ void log_mem_op(void)
         chunk = chunk + i;
     }
     printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+}
+
+/* Memory trace structure (for 1 chunk)
+    [8B] mem_trace_size
+    [16B] mem_trace[0]
+        [8B] mem operacion
+            [4B] address (LE)
+            [1B] width (1, 2, 4, 8) + write (0, 1) << 4
+            [3B] 
+    [16B] mem_trace[1]
+    …
+    [16B] mem_trace[mem_trace_size - 1]
+*/
+void log_mem_trace(void)
+{
+    printf("Trace content:\n");
+    uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
+    uint64_t i=0;
+    uint64_t number_of_entries = trace[i];
+    i++;
+    printf("Trace size=%lu\n", number_of_entries);
+
+    for (uint64_t m = 0; m < number_of_entries; m++)
+    {
+        uint64_t addr_step = trace[i];
+        i++;
+
+        // addr_step = [@0, @1, @2, @3, width + write<<4, supra_step]        
+        uint64_t address = addr_step & 0xFFFFFFFF;
+        uint64_t width = (addr_step >> (4*8)) & 0xF;
+        uint64_t write = (addr_step >> ((4*8) + 4)) & 0x1;
+        uint64_t micro_step = (addr_step >> (5*8)) & 0x3;
+        uint64_t incremental_step = (addr_step >> ((5*8) + 2));
+        bool address_is_inside_range =
+            ((address >= RAM_ADDR) && (address < (RAM_ADDR + RAM_SIZE))) ||
+            ((address >= ROM_ADDR) && (address < (ROM_ADDR + ROM_SIZE))) ||
+            ((address >= INPUT_ADDR) && (address < (INPUT_ADDR + MAX_INPUT_SIZE)));
+        bool width_is_valid = (width == 1) || (width == 2) || (width == 4) || (width == 8);
+        if (trace_trace || !address_is_inside_range)
+        {
+            printf("\tmem_trace[%lu] = %016lx = [inc_step=%lu, u_step=%lu, write=%lx, width=%lx, address=%lx] %s\n",
+                m,
+                trace[i],
+                incremental_step,
+                micro_step,
+                write,
+                width,
+                address,
+                (address_is_inside_range && width_is_valid) ? "" : " ERROR!!!!!!!!!!!!!!"
+            );
+        }
+
+        // u-step:
+        //   0: a=SRC_MEM
+        //   1: b=SRC_MEM or b=SRC_IND
+        //   2: precompiled_read
+        //   3: c=STORE_MEM, c=STORE_IND or precompiled_write
+
+        bool address_is_aligned = (address & 0x7) == 0;
+        bool aligned_address = address & 0xFFFFFFF8;
+        uint64_t number_of_read_values = 0;
+        uint64_t number_of_write_values = 0;
+
+        switch (micro_step)
+        {
+            case 0: // a=SRC_MEM
+            {
+                assert_perror(width == 8);
+                if (address_is_aligned)
+                {
+                    number_of_read_values = 1;
+                }
+                else
+                {
+                    number_of_read_values = 2;
+                }
+                break;
+            }
+            case 1: // b=SRC_MEM or b=SRC_IND
+            {
+                if (address_is_aligned)
+                {
+                    number_of_read_values = 1;
+                }
+                else
+                {
+                    if ((aligned_address + width - 1) == aligned_address)
+                    {
+                        number_of_read_values = 1;
+                    }
+                    else
+                    {
+                        number_of_read_values = 2;
+                    }
+                }
+                break;
+            }
+            case 2: // precompiled_read
+            {
+                assert_perror(width == 8);
+                if (address_is_aligned)
+                {
+                    number_of_read_values = 1;
+                }
+                else
+                {
+                    number_of_read_values = 2;
+                }
+                break;
+            }
+            case 3: // c=STORE_MEM, c=STORE_IND or precompiled_write
+            {
+                if (address_is_aligned)
+                {
+                    number_of_read_values = 0;
+                }
+                else
+                {
+                    if ((aligned_address + width - 1) == aligned_address)
+                    {
+                        number_of_read_values = 1;
+                    }
+                    else
+                    {
+                        number_of_read_values = 2;
+                    }
+                }
+                number_of_write_values = 1;
+                break;
+            }
+        }
+
+        for (uint64_t i = 0; i < number_of_read_values; i++)
+        {
+            uint64_t value = trace[i];
+            i++;
+            m++;
+            if (trace_trace)
+            {
+                printf("\t\tread_value[%lu] = %lu\n", i, value);
+            }
+        }
+
+        for (uint64_t i = 0; i < number_of_write_values; i++)
+        {
+            uint64_t value = trace[i];
+            i++;
+            m++;
+            if (trace_trace)
+            {
+                printf("\t\twrite_value[%lu] = %lu\n", i, value);
+            }
+        }
+    }
+    printf("Trace=%p number_of_entries=%lu\n", trace, number_of_entries);
 }
 
 void save_mem_op_to_files(void)
