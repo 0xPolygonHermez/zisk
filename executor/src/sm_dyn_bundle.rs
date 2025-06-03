@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use data_bus::{DataBus, DataBusTrait};
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use sm_main::MainSM;
 use zisk_common::{
@@ -65,7 +65,7 @@ impl<F: PrimeField64> SMBundle<F> for DynSMBundle<F> {
 
     fn build_data_bus_collectors(
         &self,
-        secn_instance: &mut Box<dyn Instance<F>>,
+        secn_instance: &Box<dyn Instance<F>>,
         chunks_to_execute: Vec<bool>,
     ) -> Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>> {
         chunks_to_execute

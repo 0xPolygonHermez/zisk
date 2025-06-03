@@ -1,7 +1,7 @@
 use core::panic;
 use std::sync::Arc;
 
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use tiny_keccak::keccakf;
 
 use circuit::{Gate, GateOperation, PinId};

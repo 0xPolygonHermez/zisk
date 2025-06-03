@@ -1,6 +1,6 @@
 use crate::{MemAlignCheckPoint, MemAlignInput, MemAlignSM, MemHelpers};
 use core::panic;
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::sync::Arc;
 use zisk_common::{
@@ -23,7 +23,7 @@ impl<F: PrimeField64> MemAlignInstance<F> {
 
 impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,

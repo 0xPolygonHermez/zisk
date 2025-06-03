@@ -4,7 +4,7 @@ use crate::{
     InputDataSM, MemAlignInstance, MemAlignRomSM, MemAlignSM, MemCounters, MemModuleInstance,
     MemPlanner, MemSM, RomDataSM,
 };
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
 use zisk_common::{

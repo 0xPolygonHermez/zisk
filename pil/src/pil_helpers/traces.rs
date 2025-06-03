@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "1b1d166e2e9cb67b1a5ebc395572fcfce8a6a1d31187b9d79b078542e23fa98a";
+pub const PILOUT_HASH: &str = "15b1cb0e31b12cb877d528c1b1d7a9dcc263e4061687e3bfddb35aebe257f08b";
 
 //AIRGROUP CONSTANTS
 
@@ -98,11 +98,11 @@ impl Default for ZiskPublics {
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],
 });
-
+ 
 values!(ZiskProofValues<F> {
  enable_input_data: F,
 });
-
+ 
 trace!(MainFixed<F> {
  SEGMENT_L1: F, SEGMENT_STEP: F, __L1__: F,
 },  0, 0, 4194304 );
@@ -185,11 +185,11 @@ trace!(ArithRangeTableTrace<F> {
 
 trace!(ArithEqFixed<F> {
  CLK_0: F, CHUNK_ID: F, __L1__: F,
-},  0, 10, 2097152 );
+},  0, 10, 524288 );
 
 trace!(ArithEqTrace<F> {
  x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 4], sel_op_clk0: [F; 4], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
-},  0, 10, 2097152 );
+},  0, 10, 524288 );
 
 trace!(ArithEqLtTableFixed<F> {
  LT_T: F, DELTA: F, __L1__: F,
@@ -257,11 +257,11 @@ trace!(KeccakfTableTrace<F> {
 
 trace!(Sha256fFixed<F> {
  L1: F, GATE_OP: F, CARRY_ENABLED: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, latch_num_sha256f: F, factor_num_sha256f: F, CLK_0: F, __L1__: F,
-},  0, 19, 4194304 );
+},  0, 19, 2097152 );
 
 trace!(Sha256fTrace<F> {
  free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], free_in_d: [F; 8], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
-},  0, 19, 4194304 );
+},  0, 19, 2097152 );
 
 trace!(Sha256fTableFixed<F> {
  A: [F; 1], B: F, C: F, GATE_OP: F, D: [F; 1], CARRY: [F; 1], __L1__: F,
@@ -272,12 +272,12 @@ trace!(Sha256fTableTrace<F> {
 },  0, 20, 8388608 );
 
 trace!(SpecifiedRangesFixed<F> {
- RANGE: [F; 26], __L1__: F,
-},  0, 19, 2097152 );
+ RANGE: [F; 17], __L1__: F,
+},  0, 21, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
- mul: [F; 26],
-},  0, 19, 2097152 );
+ mul: [F; 17],
+},  0, 21, 2097152 );
 
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,

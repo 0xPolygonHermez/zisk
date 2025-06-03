@@ -5,16 +5,16 @@
 //! input generators, enabling flexible and modular integration of components.
 
 use crate::{BusDevice, BusDeviceMetrics, Instance, InstanceCtx, PayloadType, Plan, Planner};
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use proofman_common::ProofCtx;
 
 /// The `ComponentBuilder` trait provides an interface for building components
 /// such as counters, planners, input collectors, and optional input generators.
 ///
 /// # Type Parameters
-/// * `F` - A type that implements the `PrimeField` trait, representing the field over which
+/// * `F` - A type that implements the `PrimeField64` trait, representing the field over which
 ///   operations are performed.
-pub trait ComponentBuilder<F: PrimeField>: Send + Sync {
+pub trait ComponentBuilder<F: PrimeField64>: Send + Sync {
     /// Builds and returns a bus device counter for monitoring metrics.
     ///
     /// # Returns

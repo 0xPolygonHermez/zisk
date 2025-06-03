@@ -7,7 +7,7 @@
 use crate::{
     Arith256Input, Arith256ModInput, ArithEqInput, ArithEqSM, Secp256k1AddInput, Secp256k1DblInput,
 };
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
@@ -58,7 +58,7 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,

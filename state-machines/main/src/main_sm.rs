@@ -12,7 +12,7 @@ use std::sync::{
     Arc,
 };
 
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
@@ -66,7 +66,7 @@ impl MainSM {
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
         min_trace_size: u64,
-        main_instance: &mut MainInstance,
+        main_instance: &MainInstance,
         std: Arc<Std<F>>,
     ) -> AirInstance<F> {
         // Create the main trace buffer

@@ -5,7 +5,7 @@
 //! execution plans.
 
 use crate::ArithFullSM;
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::{
@@ -42,7 +42,7 @@ impl ArithFullInstance {
     }
 }
 
-impl<F: PrimeField> Instance<F> for ArithFullInstance {
+impl<F: PrimeField64> Instance<F> for ArithFullInstance {
     /// Computes the witness for the arithmetic execution plan.
     ///
     /// This method leverages the `ArithFullSM` to generate an `AirInstance` using the collected
@@ -56,7 +56,7 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,

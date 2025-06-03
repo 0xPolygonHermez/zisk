@@ -2,10 +2,10 @@ use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
 use executor::{Stats, ZiskExecutionResult};
+use fields::Goldilocks;
 use libloading::{Library, Symbol};
-use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
-use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ProofOptions};
+use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -18,7 +18,7 @@ use std::{
 use zisk_pil::*;
 
 use crate::{
-    commands::{cli_fail_if_gpu_mode, cli_fail_if_macos, Field, ZiskLibInitFn},
+    commands::{cli_fail_if_macos, Field, ZiskLibInitFn},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -80,7 +80,6 @@ pub struct ZiskStats {
 impl ZiskStats {
     pub fn run(&mut self) -> Result<()> {
         cli_fail_if_macos()?;
-        cli_fail_if_gpu_mode()?;
 
         initialize_logger(self.verbose.into());
 
@@ -159,6 +158,19 @@ impl ZiskStats {
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
+        let mut gpu_params = ParamsGPU::new(false);
+        gpu_params.with_max_number_streams(1);
+
+        let proofman = ProofMan::<Goldilocks>::new(
+            self.get_proving_key(),
+            custom_commits_map,
+            true,
+            false,
+            false,
+            gpu_params,
+        )
+        .expect("Failed to initialize proofman");
+
         let mut witness_lib;
         match self.field {
             Field::Goldilocks => {
@@ -170,19 +182,15 @@ impl ZiskStats {
                     self.elf.clone(),
                     self.asm.clone(),
                     asm_rom,
-                    self.input.clone(),
                     sha256f_script,
                 )
                 .expect("Failed to initialize witness library");
 
-                ProofMan::<Goldilocks>::compute_witness(
-                    &mut *witness_lib,
-                    self.get_proving_key(),
-                    PathBuf::new(),
-                    custom_commits_map,
-                    ProofOptions::new(true, self.verbose.into(), false, false, false, debug_info),
-                )
-                .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
+                proofman.register_witness(&mut *witness_lib, library);
+
+                proofman
+                    .compute_witness_from_lib(self.input.clone(), &debug_info)
+                    .map_err(|e| anyhow::anyhow!("Error generating stats: {}", e))?;
             }
         };
 
