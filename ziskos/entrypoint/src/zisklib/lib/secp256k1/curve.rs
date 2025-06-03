@@ -5,7 +5,41 @@ use crate::{
     secp256k1_dbl::syscall_secp256k1_dbl,
 };
 
-use super::constants::{G_X, G_Y};
+use super::{
+    constants::{E_B, G_X, G_Y},
+    field::{secp256k1_fp_add, secp256k1_fp_mul, secp256k1_fp_sqrt, secp256k1_fp_square},
+};
+
+/// Given a x-coordinate `x_bytes` and a parity `y_is_odd`,
+/// this function decompresses the point on the secp256k1 curve.
+pub fn secp256k1_decompress(x_bytes: &[u8; 32], y_is_odd: bool) -> (([u8; 32], [u8; 32]), bool) {
+    // Convert the x-coordinate from BEu8 to LEu64
+    let mut x = [0u64; 4];
+    for i in 0..32 {
+        x[3 - i / 8] |= (x_bytes[i] as u64) << (8 * (7 - (i % 8)));
+    }
+
+    // Calculate the y-coordinate of the point: y = sqrt(x³ + 7)
+    let x_sq = secp256k1_fp_square(&x);
+    let x_cb = secp256k1_fp_mul(&x_sq, &x);
+    let y_sq = secp256k1_fp_add(&x_cb, &E_B);
+    let (y, has_sqrt) = secp256k1_fp_sqrt(&y_sq, y_is_odd as u64);
+    if !has_sqrt {
+        return (([0u8; 32], [0u8; 32]), false);
+    }
+
+    // Check the received parity of the y-coordinate is correct
+    let parity = (y[0] & 1) != 0;
+    assert_eq!(parity, y_is_odd);
+
+    // Convert the y-coordinate from LEu64 to BEu8
+    let mut y_bytes = [0u8; 32];
+    for i in 0..4 {
+        y_bytes[i * 8..(i + 1) * 8].copy_from_slice(&y[3 - i].to_be_bytes());
+    }
+
+    ((x_bytes.clone(), y_bytes), true)
+}
 
 /// Given points `p1` and `p2`, performs the point addition `p1 + p2` and assigns the result to `p1`.
 /// It assumes that `p1` and `p2` are from the Secp256k1 curve, that `p1,p2 != 𝒪` and that `p2 != p1,-p1`

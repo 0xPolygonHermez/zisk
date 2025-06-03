@@ -1,3 +1,4 @@
 pub mod constants;
-pub mod fp_assert_nqr;
-pub mod msm;
+pub mod curve;
+pub mod field;
+pub mod scalar;
