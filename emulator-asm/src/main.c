@@ -197,6 +197,7 @@ void client_cleanup (void);
 void log_minimal_trace(void);
 void log_histogram(void);
 void log_main_trace(void);
+void log_mem_trace(void);
 void log_mem_op(void);
 void save_mem_op_to_files(void);
 
@@ -1632,9 +1633,6 @@ void client_run (void)
                     gettimeofday(&stop_time, NULL);
                     duration = TimeDiff(start_time, stop_time);
                     printf("client (CM)[%lu]: done in %lu us\n", i, duration);
-
-                    // Pretend to spend some time processing the incoming data
-                    usleep((1000000));
                 }
                 else
                 {
@@ -1654,7 +1652,7 @@ void client_run (void)
                             chunk_player_address += (41 + mem_reads_size) * 8;
                         }
 
-                        printf("client (CM)[%lu][%lu]: @=0x%lx sending request...\n", i, c, chunk_player_address);
+                        printf("client (CM)[%lu][%lu]: @=0x%lx sending request...", i, c, chunk_player_address);
 
                         gettimeofday(&start_time, NULL);
     
@@ -1708,10 +1706,7 @@ void client_run (void)
                         
                         gettimeofday(&stop_time, NULL);
                         duration = TimeDiff(start_time, stop_time);
-                        printf("client (CM)[%lu][%lu]: @=0x%lx done in %lu us\n", i, c, chunk_player_address, duration);
-    
-                        // Pretend to spend some time processing the incoming data
-                        usleep((1000000));
+                        printf("done in %lu us\n", duration);
                     }
 
                 } 
@@ -2024,7 +2019,12 @@ void server_setup (void)
     }
 
     // Output trace
-    if ((gen_method == MinimalTrace) || (gen_method == RomHistogram) || (gen_method == MainTrace) || (gen_method == Zip) || (gen_method == MemOp) || (gen_method == ChunkPlayerMTCollectMem))
+    if ((gen_method == MinimalTrace) ||
+        (gen_method == RomHistogram) ||
+        (gen_method == MainTrace) ||
+        (gen_method == Zip) ||
+        (gen_method == MemOp) ||
+        (gen_method == ChunkPlayerMTCollectMem))
     {
         // Make sure the output shared memory is deleted
         shm_unlink(shmem_output_name);
@@ -2187,6 +2187,7 @@ void server_run (void)
 
     // Call emulator assembly code
     gettimeofday(&start_time,NULL);
+    printf("trace_address=%lx\n", trace_address);
     emulator_start();
     gettimeofday(&stop_time,NULL);
     assembly_duration = TimeDiff(start_time, stop_time);
@@ -2317,6 +2318,10 @@ void server_run (void)
     if ((gen_method == MemOp) && save_to_file)
     {
         save_mem_op_to_files();
+    }
+    if ((gen_method == ChunkPlayerMTCollectMem) && trace)
+    {
+        log_mem_trace();
     }
 }
 
@@ -2938,8 +2943,14 @@ void log_mem_op(void)
 void log_mem_trace(void)
 {
     printf("Trace content:\n");
-    uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
+    uint64_t * trace = (uint64_t *)trace_address;
+    printf("log_mem_trace() trace_address=%p\n", trace);
     uint64_t i=0;
+    printf("Version = 0x%06lx\n", trace[0]); // Version, e.g. v1.0.0 [8]
+    printf("Exit code = %lu\n", trace[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    printf("Allocated size = %lu B\n", trace[2]); // Allocated size [8]
+    printf("Memory operations trace used size = %lu B\n", trace[3]); // Main trace used size [8]
+    i += 4;
     uint64_t number_of_entries = trace[i];
     i++;
     printf("Trace size=%lu\n", number_of_entries);
@@ -2960,17 +2971,18 @@ void log_mem_trace(void)
             ((address >= ROM_ADDR) && (address < (ROM_ADDR + ROM_SIZE))) ||
             ((address >= INPUT_ADDR) && (address < (INPUT_ADDR + MAX_INPUT_SIZE)));
         bool width_is_valid = (width == 1) || (width == 2) || (width == 4) || (width == 8);
-        if (trace_trace || !address_is_inside_range)
+        bool bError = !(address_is_inside_range && width_is_valid);
+        if (trace_trace || bError)
         {
             printf("\tmem_trace[%lu] = %016lx = [inc_step=%lu, u_step=%lu, write=%lx, width=%lx, address=%lx] %s\n",
                 m,
-                trace[i],
+                addr_step,
                 incremental_step,
                 micro_step,
                 write,
                 width,
                 address,
-                (address_is_inside_range && width_is_valid) ? "" : " ERROR!!!!!!!!!!!!!!"
+                bError ? " ERROR!!!!!!!!!!!!!!" : ""
             );
         }
 
@@ -2981,7 +2993,7 @@ void log_mem_trace(void)
         //   3: c=STORE_MEM, c=STORE_IND or precompiled_write
 
         bool address_is_aligned = (address & 0x7) == 0;
-        bool aligned_address = address & 0xFFFFFFF8;
+        uint64_t aligned_address = address & 0xFFFFFFF8;
         uint64_t number_of_read_values = 0;
         uint64_t number_of_write_values = 0;
 
@@ -3008,7 +3020,7 @@ void log_mem_trace(void)
                 }
                 else
                 {
-                    if ((aligned_address + width - 1) == aligned_address)
+                    if (((address + width - 1) & 0xFFFFFFF8) == aligned_address)
                     {
                         number_of_read_values = 1;
                     }
@@ -3034,13 +3046,13 @@ void log_mem_trace(void)
             }
             case 3: // c=STORE_MEM, c=STORE_IND or precompiled_write
             {
-                if (address_is_aligned)
+                if (address_is_aligned && (width == 8))
                 {
                     number_of_read_values = 0;
                 }
                 else
                 {
-                    if ((aligned_address + width - 1) == aligned_address)
+                    if (((address + width - 1) & 0xFFFFFFF8) == aligned_address)
                     {
                         number_of_read_values = 1;
                     }
@@ -3054,25 +3066,25 @@ void log_mem_trace(void)
             }
         }
 
-        for (uint64_t i = 0; i < number_of_read_values; i++)
+        for (uint64_t r = 0; r < number_of_read_values; r++)
         {
             uint64_t value = trace[i];
             i++;
             m++;
             if (trace_trace)
             {
-                printf("\t\tread_value[%lu] = %lu\n", i, value);
+                printf("\t\tread_value[%lu] = 0x%lx\n", i, value);
             }
         }
 
-        for (uint64_t i = 0; i < number_of_write_values; i++)
+        for (uint64_t w = 0; w < number_of_write_values; w++)
         {
             uint64_t value = trace[i];
             i++;
             m++;
             if (trace_trace)
             {
-                printf("\t\twrite_value[%lu] = %lu\n", i, value);
+                printf("\t\twrite_value[%lu] = 0x%lx\n", i, value);
             }
         }
     }
