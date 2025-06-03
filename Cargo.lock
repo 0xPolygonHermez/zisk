@@ -129,7 +129,7 @@ dependencies = [
  "ark-std",
  "educe",
  "fnv",
- "hashbrown 0.15.3",
+ "hashbrown",
  "itertools 0.13.0",
  "num-bigint",
  "num-integer",
@@ -192,7 +192,7 @@ dependencies = [
  "ark-std",
  "educe",
  "fnv",
- "hashbrown 0.15.3",
+ "hashbrown",
 ]
 
 [[package]]
@@ -596,17 +596,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "core_affinity"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a034b3a7b624016c6e13f5df875747cc25f884156aad2abd12b6c46797971342"
-dependencies = [
- "libc",
- "num_cpus",
- "winapi",
-]
-
-[[package]]
 name = "cpp_demangle"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -743,7 +732,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#8ba3ede955f50597e6d4dbc2b83bb3419256adf2"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -757,20 +746,6 @@ name = "custom_derive"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef8ae57c4978a2acd8b869ce6b9ca1dfe817bff704c220209fdef2c0b75a01b9"
-
-[[package]]
-name = "dashmap"
-version = "6.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5041cc499144891f3790297212f32a74fb938e5136a14943f338ef9e0ae276cf"
-dependencies = [
- "cfg-if",
- "crossbeam-utils",
- "hashbrown 0.14.5",
- "lock_api",
- "once_cell",
- "parking_lot_core",
-]
 
 [[package]]
 name = "data-bus"
@@ -1252,12 +1227,6 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.14.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
-
-[[package]]
-name = "hashbrown"
 version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84b26c544d002229e640969970a2e74021aadf6e2f96372b9c58eff97de08eb3"
@@ -1509,7 +1478,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cea70ddb795996207ad57735b50c5982d8844f38ba9ee5f1aedcfb708a2aa11e"
 dependencies = [
  "equivalent",
- "hashbrown 0.15.3",
+ "hashbrown",
  "serde",
 ]
 
@@ -1991,16 +1960,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "num_cpus"
-version = "1.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91df4bbde75afed763b708b7eee1e8e7651e02d97f6d5dd763e89367e957b23b"
-dependencies = [
- "hermit-abi",
- "libc",
-]
-
-[[package]]
 name = "num_threads"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2254,7 +2213,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#8ba3ede955f50597e6d4dbc2b83bb3419256adf2"
 dependencies = [
  "colored",
  "num-bigint",
@@ -2516,14 +2475,13 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#8ba3ede955f50597e6d4dbc2b83bb3419256adf2"
 dependencies = [
  "blake3",
  "colored",
  "crossbeam-channel",
  "crossbeam-queue",
  "curves",
- "dashmap",
  "libloading",
  "num-bigint",
  "num-traits",
@@ -2546,9 +2504,8 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#8ba3ede955f50597e6d4dbc2b83bb3419256adf2"
 dependencies = [
- "core_affinity",
  "libloading",
  "mpi",
  "p3-field",
@@ -2568,7 +2525,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#8ba3ede955f50597e6d4dbc2b83bb3419256adf2"
 dependencies = [
  "p3-field",
  "proofman-common",
@@ -2580,7 +2537,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#8ba3ede955f50597e6d4dbc2b83bb3419256adf2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2591,7 +2548,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#8ba3ede955f50597e6d4dbc2b83bb3419256adf2"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -2600,7 +2557,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#8ba3ede955f50597e6d4dbc2b83bb3419256adf2"
 dependencies = [
  "colored",
  "p3-field",
@@ -3817,7 +3774,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#8ba3ede955f50597e6d4dbc2b83bb3419256adf2"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -4504,7 +4461,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#b841a8373c893faf8c863ad494ad46e8cb2c5ba5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fone-process-multigpu-0.9.0-cpu-channels#8ba3ede955f50597e6d4dbc2b83bb3419256adf2"
 dependencies = [
  "colored",
  "libloading",
