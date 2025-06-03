@@ -1,8 +1,8 @@
 use libc::{close, shm_unlink, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR};
 
+// use mem_planner_cpp::MemPlanner;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use mem_planner_cpp::{MemAlignCheckPoint, MemCheckPoint};
-use mem_planner_cpp::MemPlanner;
+// use mem_planner_cpp::{MemAlignCheckPoint, MemCheckPoint};
 use named_sem::NamedSemaphore;
 
 use std::ffi::c_void;
@@ -54,7 +54,12 @@ impl AsmRunnerMO {
         Self { shmem_output_name, mapped_ptr, total_size }
     }
 
-    pub fn run(inputs_path: &Path, max_steps: u64, chunk_size: u64) -> Result<( Vec<Vec<MemCheckPoint>>, Vec<Vec<MemAlignCheckPoint>> )> {
+    pub fn run(
+        inputs_path: &Path,
+        max_steps: u64,
+        chunk_size: u64,
+    ) -> Result<(Vec<u64>, Vec<u64>)> {
+        // ) -> Result<(Vec<Vec<MemCheckPoint>>, Vec<Vec<MemAlignCheckPoint>>)> {
         const SHMEM_INPUT_NAME: &str = "ZISKMO_input";
         const SHMEM_OUTPUT_NAME: &str = "ZISKMO_output";
         const SEM_CHUNK_DONE_NAME: &str = "/ZISKMO_chunk_done";

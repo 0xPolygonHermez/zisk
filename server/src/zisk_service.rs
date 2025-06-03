@@ -9,8 +9,6 @@ use std::{
 };
 
 use asm_runner::{AsmRunnerOptions, AsmServices};
-use colored::Colorize;
-use executor::{Stats, ZiskExecutionResult};
 use libloading::{Library, Symbol};
 use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
@@ -18,9 +16,19 @@ use proofman_common::{DebugInfo, ParamsGPU};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use uuid::Uuid;
+use witness::WitnessLibrary;
 use zisk_common::{info_file, ZiskLibInitFn};
 
 use anyhow::Result;
+
+use crate::{
+    handler_prove::{ZiskProveRequest, ZiskServiceProveHandler},
+    handler_shutdown::ZiskServiceShutdownHandler,
+    handler_verify_constraints::{
+        ZiskServiceVerifyConstraintsHandler, ZiskVerifyConstraintsRequest,
+    },
+    ZiskServiceStatusHandler,
+};
 
 pub struct ServerConfig {
     /// Port number for the server to listen on
@@ -118,34 +126,10 @@ pub enum ZiskResponse {
     Error { message: String },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct ZiskProveRequest {
-    pub input: PathBuf,
-    pub aggregation: bool,
-    pub final_snark: bool,
-    pub verify_proofs: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ZiskProveResponse {
-    pub success: bool,
-    pub details: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct ZiskVerifyConstraintsRequest {
-    pub input: PathBuf,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ZiskVerifyConstraintsResponse {
-    pub success: bool,
-    pub details: String,
-}
-
 pub struct ZiskService {
     config: Arc<ServerConfig>,
-    // witness_lib: Option<Box<dyn WitnessLibrary<Goldilocks>>>,
+    proofman: ProofMan<Goldilocks>,
+    witness_lib: Box<dyn WitnessLibrary<Goldilocks>>,
 }
 
 impl ZiskService {
@@ -154,7 +138,32 @@ impl ZiskService {
         let options = AsmRunnerOptions::default();
         AsmServices::start_asm_services(config.asm.as_ref().unwrap(), options)?;
 
-        Ok(Self { config: Arc::new(config) /*witness_lib: None*/ })
+        let library =
+            unsafe { Library::new(config.witness_lib.clone()).expect("Failed to load library") };
+        let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
+            unsafe { library.get(b"init_library").expect("Failed to get symbol") };
+        let mut witness_lib = witness_lib_constructor(
+            config.verbose.into(),
+            config.elf.clone(),
+            config.asm.clone(),
+            config.asm_rom.clone(),
+            config.sha256f_script.clone(),
+        )
+        .expect("Failed to initialize witness library");
+
+        let proofman = ProofMan::<Goldilocks>::new(
+            config.proving_key.clone(),
+            config.custom_commits_map.clone(),
+            true,
+            false,
+            false,
+            ParamsGPU::default(),
+        )
+        .expect("Failed to initialize proofman");
+
+        proofman.register_witness(witness_lib.as_mut(), library);
+
+        Ok(Self { config: Arc::new(config), proofman, witness_lib })
     }
 
     pub fn run(&mut self) -> std::io::Result<()> {
@@ -208,128 +217,26 @@ impl ZiskService {
 
         let mut must_shutdown = false;
         let response = match request {
-            ZiskRequest::Status => self.handle_status(config.as_ref()),
+            ZiskRequest::Status => ZiskServiceStatusHandler::handle(&config),
             ZiskRequest::Shutdown => {
                 must_shutdown = true;
-                self.handle_shutdown()
+                ZiskServiceShutdownHandler::handle()
             }
             ZiskRequest::VerifyConstraints { payload } => {
-                self.handle_verify_constraints(config.as_ref(), payload)
+                ZiskServiceVerifyConstraintsHandler::handle(
+                    &config,
+                    payload,
+                    &self.proofman,
+                    self.witness_lib.as_mut(),
+                    &self.config.debug_info,
+                )
             }
-            ZiskRequest::Prove { payload } => self.handle_prove(config.as_ref(), payload),
+
+            ZiskRequest::Prove { payload } => ZiskServiceProveHandler::handle(&config, payload),
         };
 
         Self::send_json(&mut stream, &response)?;
         Ok(must_shutdown)
-    }
-
-    fn handle_status(&self, config: &ServerConfig) -> ZiskResponse {
-        let uptime = config.launch_time.elapsed();
-        let status = serde_json::json!({
-            "server_id": config.server_id.to_string(),
-            "elf_file": config.elf.display().to_string(),
-            "uptime": format!("{:.2?}", uptime)
-        });
-        ZiskResponse::Ok { message: status.to_string() }
-    }
-
-    fn handle_shutdown(&self) -> ZiskResponse {
-        let msg = serde_json::json!({
-            "info": "Shutting down server"
-        });
-        ZiskResponse::Ok { message: msg.to_string() }
-    }
-
-    fn handle_prove(&self, config: &ServerConfig, payload: ZiskProveRequest) -> ZiskResponse {
-        let uptime = config.launch_time.elapsed();
-        let status = serde_json::json!({
-            "server_id": config.server_id.to_string(),
-            "elf_file": config.elf.display().to_string(),
-            "uptime": format!("{:.2?}", uptime),
-            "command:": "prove",
-            "payload:": {
-                "input": payload.input.display().to_string(),
-                "aggregation": payload.aggregation,
-                "final_snark": payload.final_snark,
-                "verify_proofs": payload.verify_proofs,
-            },
-        });
-
-        ZiskResponse::Ok { message: status.to_string() }
-    }
-
-    fn handle_verify_constraints(
-        &mut self,
-        config: &ServerConfig,
-        request: ZiskVerifyConstraintsRequest,
-    ) -> ZiskResponse {
-        let uptime = config.launch_time.elapsed();
-
-        let status = serde_json::json!({
-            "server_id": config.server_id.to_string(),
-            "elf_file": config.elf.display().to_string(),
-            "uptime": format!("{:.2?}", uptime),
-            "command:": "VerifyConstraints",
-            "payload:": {
-                "input": request.input.display().to_string(),
-            },
-        });
-
-        let start = std::time::Instant::now();
-
-        let library =
-            unsafe { Library::new(config.witness_lib.clone()).expect("Failed to load library") };
-        let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
-            unsafe { library.get(b"init_library").expect("Failed to get symbol") };
-        let mut witness_lib = witness_lib_constructor(
-            config.verbose.into(),
-            config.elf.clone(),
-            config.asm.clone(),
-            config.asm_rom.clone(),
-            config.sha256f_script.clone(),
-        )
-        .expect("Failed to initialize witness library");
-
-        let proofman = ProofMan::<Goldilocks>::new(
-            config.proving_key.clone(),
-            config.custom_commits_map.clone(),
-            true,
-            false,
-            false,
-            ParamsGPU::default(),
-        )
-        .expect("Failed to initialize proofman");
-
-        proofman.register_witness(&mut *witness_lib, library);
-
-        proofman
-            .verify_proof_constraints_from_lib(Some(request.input), &self.config.debug_info)
-            .map_err(|e| anyhow::anyhow!("Error verifying proof: {}", e))
-            .expect("Failed to generate proof");
-
-        let elapsed = start.elapsed();
-
-        let result: (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
-            .get_execution_result()
-            .ok_or_else(|| anyhow::anyhow!("No execution result found"))
-            .expect("Failed to get execution result")
-            .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
-            .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))
-            .expect("Failed to downcast execution result");
-
-        println!();
-        tracing::info!(
-            "{}",
-            "--- VERIFY CONSTRAINTS SUMMARY ------------------------".bright_green().bold()
-        );
-        tracing::info!("    ► Statistics");
-        tracing::info!(
-            "      time: {} seconds, steps: {}",
-            elapsed.as_secs_f32(),
-            result.0.executed_steps
-        );
-
-        ZiskResponse::Ok { message: status.to_string() }
     }
 
     fn send_json(stream: &mut TcpStream, response: &ZiskResponse) -> std::io::Result<()> {
