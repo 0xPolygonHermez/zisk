@@ -8,7 +8,7 @@ use std::sync::{
     Arc,
 };
 
-use p3_field::Field;
+use fields::Field;
 use zisk_common::create_atomic_vec;
 use zisk_pil::Sha256fTableTrace;
 

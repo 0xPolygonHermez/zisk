@@ -3,7 +3,7 @@
 //! and integrating them with state machines and proofs.
 
 use crate::{BusDevice, CheckPoint, ChunkId, PayloadType};
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 
 /// Represents the type of an instance, either a standalone instance or a table.
@@ -19,7 +19,7 @@ pub enum InstanceType {
 /// The `Instance` trait defines the interface for any computation instance used in proof systems.
 ///
 /// It provides methods to compute witnesses, retrieve checkpoints, and specify instance types.
-pub trait Instance<F: PrimeField>: Send + Sync {
+pub trait Instance<F: PrimeField64>: Send + Sync {
     /// Computes the witness for the instance based on the proof context.
     ///
     /// # Arguments
@@ -89,7 +89,7 @@ macro_rules! table_instance {
     ($InstanceName:ident, $TableSM:ident, $Trace:ident) => {
         use std::sync::Arc;
 
-        use p3_field::PrimeField;
+        use fields::PrimeField64;
 
         use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
         use zisk_common::{
@@ -122,7 +122,7 @@ macro_rules! table_instance {
             }
         }
 
-        impl<F: PrimeField> Instance<F> for $InstanceName {
+        impl<F: PrimeField64> Instance<F> for $InstanceName {
             fn compute_witness(
                 &self,
                 pctx: &ProofCtx<F>,
@@ -192,7 +192,7 @@ macro_rules! table_instance_array {
     ($InstanceName:ident, $TableSM:ident, $Trace:ident) => {
         use std::sync::Arc;
 
-        use p3_field::PrimeField;
+        use fields::PrimeField64;
 
         use proofman_common::{AirInstance, ProofCtx, SetupCtx, TraceInfo};
         use zisk_common::{
@@ -225,7 +225,7 @@ macro_rules! table_instance_array {
             }
         }
 
-        impl<F: PrimeField> Instance<F> for $InstanceName {
+        impl<F: PrimeField64> Instance<F> for $InstanceName {
             fn compute_witness(
                 &self,
                 pctx: &ProofCtx<F>,
@@ -313,7 +313,7 @@ macro_rules! instance {
             inputs: Vec<zisk_core::ZiskRequiredOperation>,
         }
 
-        impl<F: PrimeField> $name<F> {
+        impl<F: PrimeField64> $name<F> {
             /// Creates a new instance of the standalone computation instance.
             ///
             /// # Arguments
@@ -324,7 +324,7 @@ macro_rules! instance {
             }
         }
 
-        impl<F: PrimeField> Instance<F> for $name {
+        impl<F: PrimeField64> Instance<F> for $name {
             fn compute_witness(
                 &self,
                 _pctx: &ProofCtx<F>,
@@ -342,6 +342,6 @@ macro_rules! instance {
             }
         }
 
-        impl<F: PrimeField> data_bus::BusDevice<u64> for $name {}
+        impl<F: PrimeField64> data_bus::BusDevice<u64> for $name {}
     };
 }

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use p3_goldilocks::Goldilocks;
+use fields::Goldilocks;
 use proofman_common::{write_custom_commit_trace, GlobalInfo, ProofType, StarkInfo};
 use sm_rom::RomSM;
 use std::fs;
