@@ -695,7 +695,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     ///
     /// # Returns
     /// * `Result<usize, Box<dyn std::error::Error>>` - The weight of the witness computation.
-    /// 
+    ///
     pub fn get_witness_weight(
         &self,
         pctx: &ProofCtx<F>,
