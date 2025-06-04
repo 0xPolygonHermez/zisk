@@ -13,8 +13,9 @@ use data_bus::DataBusTrait;
 use zisk_common::{EmuTrace, EmuTraceStart};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{
-    EmulationMode, InstContext, Mem, ZiskInst, ZiskRom, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM,
-    SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, OUTPUT_ADDR, ROM_ENTRY,
+    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
+    STORE_REG,
 };
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -1712,34 +1713,40 @@ impl<'a> Emu<'a> {
         //     }
         //     println!();
         // }
-        // Get operation bus data
-        let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
 
-        // Write operation bus data to operation bus
-        match operation_payload {
-            ExtOperationData::OperationData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationKeccakData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationSha256Data(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationArith256Data(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationArith256ModData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationSecp256k1AddData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationSecp256k1DblData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+        if instruction.op_type > ZiskOperationType::Internal
+            && instruction.op_type < ZiskOperationType::FcallParam
+        {
+            // Get operation bus data
+            let operation_payload =
+                OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
+
+            // Write operation bus data to operation bus
+            match operation_payload {
+                ExtOperationData::OperationData(data) => {
+                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+                }
+                ExtOperationData::OperationKeccakData(data) => {
+                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+                }
+                ExtOperationData::OperationSha256Data(data) => {
+                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+                }
+                ExtOperationData::OperationArith256Data(data) => {
+                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+                }
+                ExtOperationData::OperationArith256ModData(data) => {
+                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+                }
+                ExtOperationData::OperationSecp256k1AddData(data) => {
+                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+                }
+                ExtOperationData::OperationSecp256k1DblData(data) => {
+                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+                }
             }
         }
-
+        
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
         self.set_pc(instruction);
@@ -1828,31 +1835,36 @@ impl<'a> Emu<'a> {
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
-        // Get operation bus data
-        let operation_payload = OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
+        if instruction.op_type > ZiskOperationType::Internal
+            && instruction.op_type < ZiskOperationType::FcallParam
+        {
+            // Get operation bus data
+            let operation_payload =
+                OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
 
-        // Write operation bus data to operation bus
-        match operation_payload {
-            ExtOperationData::OperationData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationKeccakData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationSha256Data(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationArith256Data(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationArith256ModData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationSecp256k1AddData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationSecp256k1DblData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+            // Write operation bus data to operation bus
+            match operation_payload {
+                ExtOperationData::OperationData(data) => {
+                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+                }
+                ExtOperationData::OperationKeccakData(data) => {
+                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+                }
+                ExtOperationData::OperationSha256Data(data) => {
+                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+                }
+                ExtOperationData::OperationArith256Data(data) => {
+                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+                }
+                ExtOperationData::OperationArith256ModData(data) => {
+                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+                }
+                ExtOperationData::OperationSecp256k1AddData(data) => {
+                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+                }
+                ExtOperationData::OperationSecp256k1DblData(data) => {
+                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
+                }
             }
         }
 
