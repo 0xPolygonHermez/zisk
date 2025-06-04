@@ -37,7 +37,7 @@ use zisk_common::{
     BusDevice, BusDeviceMetrics, CheckPoint, Instance, InstanceCtx, InstanceType, Plan,
 };
 use zisk_common::{ChunkId, PayloadType};
-use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
+use zisk_pil::{MainTrace, RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
 
 use std::{
     collections::HashMap,
@@ -684,6 +684,44 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         }
 
         collectors_by_instance
+    }
+
+    /// Returns the weight indicating the complexity of the witness computation.
+    /// Used as a heuristic for estimating computational cost.
+    ///
+    /// # Arguments
+    /// * `pctx` - A reference to the `ProofCtx` containing proof context information.
+    /// * `global_id` - The global ID of the witness computation.
+    ///
+    /// # Returns
+    /// * `Result<usize, Box<dyn std::error::Error>>` - The weight of the witness computation.
+    /// 
+    pub fn get_witness_weight(
+        &self,
+        pctx: &ProofCtx<F>,
+        global_id: usize,
+    ) -> Result<usize, Box<dyn std::error::Error>> {
+        let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+
+        let num_chunks = if MAIN_AIR_IDS.contains(&air_id) {
+            MainTrace::<F>::NUM_ROWS / Self::MIN_TRACE_SIZE as usize
+        } else {
+            let secn_instance = &self.secn_instances.read().unwrap()[&global_id];
+
+            match secn_instance.instance_type() {
+                InstanceType::Instance => {
+                    let checkpoint = secn_instance.check_point();
+                    match checkpoint {
+                        CheckPoint::None => 0,
+                        CheckPoint::Single(_) => 1,
+                        CheckPoint::Multiple(chunk_ids) => chunk_ids.len(),
+                    }
+                }
+                InstanceType::Table => 0,
+            }
+        };
+
+        Ok(std::cmp::min(1usize, num_chunks))
     }
 }
 

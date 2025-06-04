@@ -12,6 +12,7 @@ use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
 use precomp_sha256f::Sha256fManager;
 use proofman::register_std;
+use proofman_common::ProofCtx;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
@@ -133,5 +134,24 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             None => Some(Box::new(0u64) as Box<dyn Any>),
             Some(executor) => Some(Box::new(executor.get_execution_result()) as Box<dyn Any>),
         }
+    }
+
+    /// Returns the weight indicating the complexity of the witness computation.
+    /// Used as a heuristic for estimating computational cost.
+    ///
+    /// # Arguments
+    /// * `pctx` - A reference to the `ProofCtx` containing proof context information.
+    /// * `global_id` - The global ID of the witness computation.
+    ///
+    /// # Returns
+    /// * `Result<usize, Box<dyn std::error::Error>>` - The weight of the witness computation.
+    fn get_witness_weight(
+        &self,
+        pctx: &ProofCtx<F>,
+        global_id: usize,
+    ) -> Result<usize, Box<dyn std::error::Error>> {
+        let executor = self.executor.as_ref().ok_or("Executor is not available")?;
+
+        executor.get_witness_weight(pctx, global_id)
     }
 }
