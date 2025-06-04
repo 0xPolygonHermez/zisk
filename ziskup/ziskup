@@ -328,10 +328,11 @@ download() {
 install_setup() {
     local KEY_TYPE=$1  # proving or verify
     local KEY_FILE="zisk-${KEY_TYPE}key-${SETUP_VERSION}.tar.gz"
-
+    local BUCKET_URL="https://storage.googleapis.com/zisk-setup"
+    
     step "Downloading ${KEY_TYPE} key version ${SETUP_VERSION}..."
-    ensure download "https://storage.googleapis.com/zisk-setup/${KEY_FILE}" "${KEY_FILE}"
-    ensure download "https://storage.googleapis.com/zisk-setup/${KEY_FILE}.md5" "${KEY_FILE}.md5"
+    ensure download "${BUCKET_URL}/${KEY_FILE}" "${KEY_FILE}"
+    ensure download "${BUCKET_URL}/${KEY_FILE}.md5" "${KEY_FILE}.md5"
 
     # Verify the md5 checksum
     ensure md5sum -c "${KEY_FILE}.md5"
