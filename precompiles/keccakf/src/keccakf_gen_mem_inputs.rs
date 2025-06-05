@@ -19,20 +19,18 @@ pub fn generate_keccakf_mem_inputs(
 ) -> Option<Vec<(BusId, Vec<u64>)>> {
     // Get the basic data from the input
     // op,op_type,a,b,...
-    let mut state: &mut [u64; 25] = &mut data[4..29].try_into().unwrap();
+    let state: &mut [u64; 25] = &mut data[4..29].try_into().unwrap();
 
     // Apply the keccakf function
-    keccakf(&mut state);
+    keccakf(state);
 
     // Generate the memory reads/writes
-    let mut mem_inputs = Vec::new();
-
-    // Now we can treat the raw inputs
     let read_params = 1;
     let write_params = 1;
     let chunks_per_param = 25;
     let params_count = read_params + write_params;
     let params_offset = OPERATION_BUS_DATA_SIZE;
+    let mut mem_inputs = Vec::new();
     for iparam in 0..params_count {
         let is_write = iparam >= read_params;
         let param_index = if is_write { iparam - read_params } else { iparam };

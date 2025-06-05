@@ -145,7 +145,7 @@ impl KeccakfSM {
             });
 
             // Apply the keccakf function and get the output
-            let mut keccakf_output = state_received.clone();
+            let mut keccakf_output = *state_received;
             keccakf(&mut keccakf_output);
 
             // Process the output
