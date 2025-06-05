@@ -1,4 +1,4 @@
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use std::sync::Arc;
 
 use pil_std_lib::Std;

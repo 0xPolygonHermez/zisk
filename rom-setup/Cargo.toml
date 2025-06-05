@@ -9,7 +9,7 @@ categories.workspace = true
 
 [dependencies]
 tracing = { workspace = true }
-p3-goldilocks = { workspace = true }
+fields = { workspace = true }
 proofman-common = { workspace = true }
 colored = { workspace = true }
 

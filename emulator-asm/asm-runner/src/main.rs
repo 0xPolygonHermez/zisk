@@ -11,7 +11,7 @@ struct Args {
     asm_runner_path: PathBuf,
 
     /// Path to the inputs file
-    inputs_path: PathBuf,
+    inputs_path: Option<PathBuf>,
 }
 
 fn main() {
@@ -21,7 +21,7 @@ fn main() {
 
     let _ = AsmRunnerMT::run(
         &args.asm_runner_path,
-        &args.inputs_path,
+        args.inputs_path.as_deref(),
         1 << 32,
         1 << 15,
         runner_options,

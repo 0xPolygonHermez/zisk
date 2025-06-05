@@ -5,8 +5,7 @@ use proofman_common::initialize_logger;
 use std::io::Read;
 use std::{fs::File, path::PathBuf};
 
-use p3_field::PrimeCharacteristicRing;
-use p3_goldilocks::Goldilocks;
+use fields::{Goldilocks, PrimeField64};
 
 use proofman::verify_proof_from_file;
 
@@ -40,15 +39,16 @@ pub struct ZiskVerify {
 }
 
 impl ZiskVerify {
-    const NAME: &'static str = "VStark  ";
-
     pub fn run(&self) -> Result<()> {
         cli_fail_if_macos()?;
 
-        println!("{} ZiskVerify", format!("{: >12}", "Command").bright_green().bold());
-        println!();
+        initialize_logger(self.verbose.into(), None);
 
-        initialize_logger(self.verbose.into());
+        tracing::info!(
+            "{}",
+            format!("{} ZiskVerify", format!("{: >12}", "Command").bright_green().bold())
+        );
+        tracing::info!("");
 
         let publics = if let Some(publics) = &self.public_inputs {
             let mut contents = String::new();
@@ -78,16 +78,14 @@ impl ZiskVerify {
         );
 
         if !valid {
-            println!(
-                "{}: ··· {}",
-                Self::NAME,
+            tracing::info!(
+                "VStark  : ··· {}",
                 "\u{2717} Stark proof was not verified".bright_red().bold()
             );
             Err(anyhow!("Stark proof was not verified"))
         } else {
-            println!(
-                "{}:     {}",
-                Self::NAME,
+            tracing::info!(
+                "VStark  :     {}",
                 "\u{2713} Stark proof was verified".bright_green().bold()
             );
             Ok(())

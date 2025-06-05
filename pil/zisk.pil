@@ -53,7 +53,7 @@ airgroup Zisk {
     BinaryExtensionTable();
 
     // Precompiles
-    ArithEq(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    ArithEq(N: 2**19, operation_bus_id: OPERATION_BUS_ID);
     ArithEqLtTable();
 
     const int KECCAKF_BITS = 10;
@@ -62,7 +62,7 @@ airgroup Zisk {
 
     const int SHA256F_BITS = 7;
     // TODO: Explore how to fit the sha256f circuit with chunks = 9
-    Sha256f(N: 2**22, RC: 2, RB: 32, bits_in_parallel: 2, chunks: 8, bits: SHA256F_BITS, operation_bus_id: OPERATION_BUS_ID);
+    Sha256f(N: 2**21, RC: 2, RB: 32, bits_in_parallel: 2, chunks: 8, bits: SHA256F_BITS, operation_bus_id: OPERATION_BUS_ID);
     Sha256fTable(N: 2**23, chunks: 1, bits: SHA256F_BITS);
 
     // Public Inputs

@@ -15,8 +15,8 @@ use std::{
 
 use crate::{rom_asm_worker::RomAsmWorker, RomInstance, RomPlanner};
 use asm_runner::AsmRHData;
+use fields::PrimeField64;
 use itertools::Itertools;
-use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_common::{
     create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, Instance, InstanceCtx,
@@ -40,6 +40,8 @@ pub struct RomSM {
 
     /// The ROM assembly worker
     rom_asm_worker: Mutex<Option<RomAsmWorker>>,
+
+    asm_rom_path: Option<PathBuf>,
 }
 
 impl RomSM {
@@ -50,18 +52,8 @@ impl RomSM {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `RomSM`.
-    pub fn new(
-        zisk_rom: Arc<ZiskRom>,
-        asm_rom_path: Option<PathBuf>,
-        input_data_path: Option<PathBuf>,
-    ) -> Arc<Self> {
-        let rom_asm_worker = asm_rom_path.map(|asm_rom_path| {
-            let mut worker = RomAsmWorker::new();
-            worker.launch_task(asm_rom_path, input_data_path);
-            worker
-        });
-
-        let (bios_inst_count, prog_inst_count) = if rom_asm_worker.is_some() {
+    pub fn new(zisk_rom: Arc<ZiskRom>, asm_rom_path: Option<PathBuf>) -> Arc<Self> {
+        let (bios_inst_count, prog_inst_count) = if asm_rom_path.is_some() {
             (vec![], vec![])
         } else {
             (
@@ -70,14 +62,22 @@ impl RomSM {
             )
         };
 
-        let rom_asm_worker = Mutex::new(rom_asm_worker);
-
         Arc::new(Self {
             zisk_rom,
             bios_inst_count: Arc::new(bios_inst_count),
             prog_inst_count: Arc::new(prog_inst_count),
-            rom_asm_worker,
+            asm_rom_path,
+            rom_asm_worker: Mutex::new(None),
         })
+    }
+
+    pub fn set_asm_rom_worker(&self, input_data_path: Option<PathBuf>) {
+        let rom_asm_worker = self.asm_rom_path.as_ref().map(|asm_rom_path| {
+            let mut worker = RomAsmWorker::new();
+            worker.launch_task(asm_rom_path.clone(), input_data_path);
+            worker
+        });
+        *self.rom_asm_worker.lock().unwrap() = rom_asm_worker;
     }
 
     /// Computes the witness for the provided plan using the given ROM.
@@ -88,7 +88,7 @@ impl RomSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness trace data.
-    pub fn compute_witness<F: PrimeField>(
+    pub fn compute_witness<F: PrimeField64>(
         rom: &ZiskRom,
         counter_stats: &CounterStats,
     ) -> AirInstance<F> {
@@ -139,7 +139,7 @@ impl RomSM {
         AirInstance::new_from_trace(FromTrace::new(&mut rom_trace))
     }
 
-    pub fn compute_witness_from_asm<F: PrimeField>(
+    pub fn compute_witness_from_asm<F: PrimeField64>(
         rom: &ZiskRom,
         asm_romh: &AsmRHData,
     ) -> AirInstance<F> {
@@ -223,7 +223,7 @@ impl RomSM {
     /// # Arguments
     /// * `rom` - Reference to the Zisk ROM.
     /// * `rom_custom_trace` - Reference to the custom ROM trace.
-    fn compute_trace_rom<F: PrimeField>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {
+    fn compute_trace_rom<F: PrimeField64>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {
         // For every instruction in the rom, fill its corresponding ROM trace
         for (i, key) in rom.insts.keys().sorted().enumerate() {
             // Get the Zisk instruction
@@ -292,7 +292,7 @@ impl RomSM {
     /// # Arguments
     /// * `rom_path` - The path to the ELF file.
     /// * `rom_custom_trace` - Reference to the custom ROM trace.
-    pub fn compute_custom_trace_rom<F: PrimeField>(
+    pub fn compute_custom_trace_rom<F: PrimeField64>(
         rom_path: PathBuf,
         rom_custom_trace: &mut RomRomTrace<F>,
     ) {
@@ -312,7 +312,7 @@ impl RomSM {
     }
 }
 
-impl<F: PrimeField> ComponentBuilder<F> for RomSM {
+impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
     /// Builds and returns a new counter for monitoring ROM operations.
     ///
     /// # Returns

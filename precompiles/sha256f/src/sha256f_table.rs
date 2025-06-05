@@ -8,7 +8,7 @@ use std::sync::{
     Arc,
 };
 
-use p3_field::Field;
+use fields::Field;
 use zisk_common::create_atomic_vec;
 use zisk_pil::Sha256fTableTrace;
 
@@ -74,6 +74,10 @@ impl Sha256fTableSM {
 
     pub fn set_calculated(&self) {
         self.calculated.store(true, Ordering::Relaxed);
+    }
+
+    pub fn reset_calculated(&self) {
+        self.calculated.store(false, Ordering::Relaxed);
     }
 
     /// Calculates the table row offset based on the provided parameters.

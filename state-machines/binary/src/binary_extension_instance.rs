@@ -5,7 +5,7 @@
 //! execution plans.
 
 use crate::{BinaryExtensionCollector, BinaryExtensionSM};
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::{
@@ -57,7 +57,7 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,

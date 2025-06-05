@@ -14,7 +14,7 @@ use crate::{
     BinaryCounter, BinaryExtensionInstance, BinaryExtensionSM, BinaryExtensionTableSM,
     BinaryPlanner,
 };
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use pil_std_lib::Std;
 use zisk_common::{
     table_instance, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
