@@ -7118,4 +7118,125 @@ impl ZiskRom2Asm {
         );
         *code += &format!("\tinc {} {}\n", REG_MEM_READS_SIZE, ctx.comment_str("mem_reads_size++"));
     }
+
+    fn chunk_player_buffer_read(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        buffer_address_register: &str,
+        buffer_size: u64,
+    ) {
+        assert!(buffer_size > 0);
+
+        // Store address in aux
+        *code += &format!(
+            "\tmov {}, {} {}\n",
+            REG_AUX,
+            buffer_address_register,
+            ctx.comment_str("aux += buffer_address")
+        );
+
+        // Build the mask for this case
+        const WIDTH: u64 = 8;
+        const WRITE: u64 = 0;
+        const MICRO_STEP: u64 = 2;
+        let addr_step_mask: u64 = (WIDTH << 32) + (WRITE << 36) + (MICRO_STEP << 40);
+
+        // For every element
+        for i in 0..buffer_size {
+            // Load address first, increment it later
+            if i == 0 {
+                // Store address in aux
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_AUX,
+                    buffer_address_register,
+                    ctx.comment_str("aux += buffer_address")
+                );
+            } else {
+                *code +=
+                    &format!("\tadd {}, 8 {}\n", REG_AUX, ctx.comment_str("buffer_address += 8"));
+            }
+
+            // Trace memory
+            ///////////////
+
+            // Build the step into value
+            *code += &format!(
+                "\tmov {}, chunk_size {}\n",
+                REG_VALUE,
+                ctx.comment_str("value = chunk_size")
+            );
+            *code += &format!(
+                "\tsub {}, {} {}\n",
+                REG_VALUE,
+                REG_STEP,
+                ctx.comment_str("value -= step_count_down")
+            );
+            *code += &format!("\tshl {}, 42 {}\n", REG_VALUE, ctx.comment_str("value <<= 40"));
+
+            // Add mask to value
+            *code += &format!(
+                "\tadd {}, 0x{:x} {}\n",
+                REG_VALUE,
+                addr_step_mask,
+                ctx.comment_str("value = addr_step_mask")
+            );
+
+            // Add address to value
+            *code += &format!(
+                "\tadd {}, {} {}\n",
+                REG_VALUE,
+                REG_AUX,
+                ctx.comment_str("value += address")
+            );
+
+            // Copy read data into mem_reads_address and increment it
+            *code += &format!(
+                "\tmov [{} + {}*8 + {}*8], {} {}\n",
+                REG_MEM_READS_ADDRESS,
+                REG_MEM_READS_SIZE,
+                2 * i,
+                REG_VALUE,
+                ctx.comment_str("mem_reads[@+size*8] = addr_step")
+            );
+
+            // Trace value
+            //////////////
+
+            // Read value
+            *code += &format!(
+                "\tmov {}, [{} + {}*8] {}\n",
+                REG_VALUE,
+                REG_CHUNK_PLAYER_ADDRESS,
+                i,
+                ctx.comment(format!("value = mt[address]"))
+            );
+
+            // Trace value
+            *code += &format!(
+                "\tmov [{} + {}*8 + {}*8], {} {}\n",
+                REG_MEM_READS_ADDRESS,
+                REG_MEM_READS_SIZE,
+                (2 * i) + 1,
+                REG_VALUE,
+                ctx.comment_str("mem_reads[@+size*8] = value")
+            );
+        }
+
+        // Increment mem reads size
+        *code += &format!(
+            "\tadd {}, {} {}\n",
+            REG_MEM_READS_SIZE,
+            buffer_size * 2,
+            ctx.comment_str("mem_reads_size += buffer_size")
+        );
+
+        // Increment chunk player address
+        *code += &format!(
+            "\tadd {}, 8*{} {}\n",
+            REG_CHUNK_PLAYER_ADDRESS,
+            buffer_size,
+            ctx.comment_str("chunk_address += 8*buffer_size")
+        );
+    }
 }
