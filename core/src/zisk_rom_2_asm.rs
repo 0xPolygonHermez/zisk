@@ -4363,6 +4363,7 @@ impl ZiskRom2Asm {
                 // Use the memory address as the first and unique parameter
                 *code += &ctx.full_line_comment("Keccak: rdi = A0".to_string());
 
+                // Generate mem reads
                 if !ctx.chunk_player_mt_collect_mem() {
                     Self::read_riscv_reg(ctx, code, 10, "rdi", "rdi");
 
@@ -7119,11 +7120,12 @@ impl ZiskRom2Asm {
         *code += &format!("\tinc {} {}\n", REG_MEM_READS_SIZE, ctx.comment_str("mem_reads_size++"));
     }
 
-    fn chunk_player_buffer_read(
+    fn chunk_player_buffer(
         ctx: &mut ZiskAsmContext,
         code: &mut String,
         buffer_address_register: &str,
         buffer_size: u64,
+        write: u64,
     ) {
         assert!(buffer_size > 0);
 
@@ -7137,9 +7139,8 @@ impl ZiskRom2Asm {
 
         // Build the mask for this case
         const WIDTH: u64 = 8;
-        const WRITE: u64 = 0;
         const MICRO_STEP: u64 = 2;
-        let addr_step_mask: u64 = (WIDTH << 32) + (WRITE << 36) + (MICRO_STEP << 40);
+        let addr_step_mask: u64 = (WIDTH << 32) + (write << 36) + (MICRO_STEP << 40);
 
         // For every element
         for i in 0..buffer_size {
