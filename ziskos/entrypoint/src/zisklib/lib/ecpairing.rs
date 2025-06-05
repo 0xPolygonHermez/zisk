@@ -1,4 +1,4 @@
-use crate::zisklib::lib::{
+use super::{
     bn254::{
         constants::P_MINUS_ONE,
         curve::is_on_curve_bn254,

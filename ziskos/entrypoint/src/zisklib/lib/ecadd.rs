@@ -5,10 +5,7 @@ use crate::{
 };
 
 use super::{
-    bn254::{
-        constants::{E_B, P_MINUS_ONE},
-        fp::{add_fp_bn254, mul_fp_bn254, square_fp_bn254},
-    },
+    bn254::{constants::P_MINUS_ONE, curve::is_on_curve_bn254},
     utils::{eq, gt},
 };
 
@@ -67,12 +64,7 @@ pub fn ecadd(p1: &[u64; 8], p2: &[u64; 8]) -> ([u64; 8], u8) {
             return ([0u64; 8], 0);
         } else {
             // Is p2 on the curve?
-            // p2 in E iff y² == x³ + 3 (mod p)
-            let x_sq = square_fp_bn254(&x2);
-            let x_cubed = mul_fp_bn254(&x_sq, &x2);
-            let x_cubed_plus_3 = add_fp_bn254(&x_cubed, &E_B);
-            let y_sq = square_fp_bn254(&y2);
-            if eq(&x_cubed_plus_3, &y_sq) {
+            if is_on_curve_bn254(p2) {
                 // Return p2
                 return (*p2, 0);
             } else {
@@ -88,11 +80,7 @@ pub fn ecadd(p1: &[u64; 8], p2: &[u64; 8]) -> ([u64; 8], u8) {
     if *p2 == [0, 0, 0, 0, 0, 0, 0, 0] {
         // Is p1 on the curve?
         // p1 in E iff y² == x³ + 3 (mod p)
-        let x_sq = square_fp_bn254(&x1);
-        let x_cubed = mul_fp_bn254(&x_sq, &x1);
-        let x_cubed_plus_3 = add_fp_bn254(&x_cubed, &E_B);
-        let y_sq = square_fp_bn254(&y1);
-        if eq(&x_cubed_plus_3, &y_sq) {
+        if is_on_curve_bn254(p1) {
             // Return p1
             return (*p1, 0);
         } else {
@@ -104,11 +92,7 @@ pub fn ecadd(p1: &[u64; 8], p2: &[u64; 8]) -> ([u64; 8], u8) {
     }
 
     // Is p1 on the curve?
-    let x_sq = square_fp_bn254(&x1);
-    let x_cubed = mul_fp_bn254(&x_sq, &x1);
-    let x_cubed_plus_3 = add_fp_bn254(&x_cubed, &E_B);
-    let y_sq = square_fp_bn254(&y1);
-    if !eq(&x_cubed_plus_3, &y_sq) {
+    if !is_on_curve_bn254(p1) {
         #[cfg(debug_assertions)]
         println!("p1 is not on the curve");
 
@@ -116,11 +100,7 @@ pub fn ecadd(p1: &[u64; 8], p2: &[u64; 8]) -> ([u64; 8], u8) {
     }
 
     // Is p2 on the curve?
-    let x_sq = square_fp_bn254(&x2);
-    let x_cubed = mul_fp_bn254(&x_sq, &x2);
-    let x_cubed_plus_3 = add_fp_bn254(&x_cubed, &E_B);
-    let y_sq = square_fp_bn254(&y2);
-    if !eq(&x_cubed_plus_3, &y_sq) {
+    if !is_on_curve_bn254(p2) {
         #[cfg(debug_assertions)]
         println!("p2 is not on the curve");
 

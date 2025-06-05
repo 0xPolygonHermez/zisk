@@ -1,14 +1,79 @@
 use crate::{
     arith256_mod::{syscall_arith256_mod, SyscallArith256ModParams},
-    fcall_secp256k1_fp_inv,
-    zisklib::lib::utils::exp_power_of_two,
+    exp_power_of_two, fcall_secp256k1_fp_inv, fcall_secp256k1_fp_sqrt,
 };
 
 use super::constants::{P, P_MINUS_ONE};
 
+pub fn secp256k1_fp_add(x: &[u64; 4], y: &[u64; 4]) -> [u64; 4] {
+    // x·1 + y
+    let mut params = SyscallArith256ModParams {
+        a: &x,
+        b: &[1, 0, 0, 0],
+        c: &y,
+        module: &P,
+        d: &mut [0, 0, 0, 0],
+    };
+    syscall_arith256_mod(&mut params);
+
+    *params.d
+}
+
+pub fn secp256k1_fp_mul(x: &[u64; 4], y: &[u64; 4]) -> [u64; 4] {
+    // x·y + 0
+    let mut params = SyscallArith256ModParams {
+        a: &x,
+        b: &y,
+        c: &[0, 0, 0, 0],
+        module: &P,
+        d: &mut [0, 0, 0, 0],
+    };
+    syscall_arith256_mod(&mut params);
+
+    *params.d
+}
+
+pub fn secp256k1_fp_square(x: &[u64; 4]) -> [u64; 4] {
+    // x·x + 0
+    let mut params = SyscallArith256ModParams {
+        a: &x,
+        b: &x,
+        c: &[0, 0, 0, 0],
+        module: &P,
+        d: &mut [0, 0, 0, 0],
+    };
+    syscall_arith256_mod(&mut params);
+
+    *params.d
+}
+
+pub fn secp256k1_fp_sqrt(x: &[u64; 4], parity: u64) -> ([u64; 4], bool) {
+    // Hint the sqrt
+    match fcall_secp256k1_fp_sqrt(x, parity) {
+        // If there is a square root, check that x_sqrt·x_sqrt = x (p)
+        Some(x_sqrt) => {
+            let mut params = SyscallArith256ModParams {
+                a: &x_sqrt,
+                b: &x_sqrt,
+                c: &[0, 0, 0, 0],
+                module: &P,
+                d: &mut [0, 0, 0, 0],
+            };
+            syscall_arith256_mod(&mut params);
+            assert_eq!(*params.d, *x);
+            (x_sqrt, true)
+        }
+        // If there is no square root, check that x is a non-quadratic residue
+        None => {
+            secp256k1_fp_assert_nqr(x);
+            ([0u64; 4], false)
+        }
+    }
+}
+
 /// Given a 256-bit number `x`, uses the Euler's Criterion `x^{(p-1)/2} == -1 (mod p)` to assert it is not a quadratic residue.
 /// It assumes that `x` is a field element.
-pub fn secp256k1_fp_assert_nqr(x: &[u64; 4]) {
+fn secp256k1_fp_assert_nqr(x: &[u64; 4]) {
     // Note: (p-1)/2 = 2^255 - 2^32 + 2^31 - 2^9 + 2^4 + 2^3 - 1
 
     //                x^(2^255) · x^(2^31) · x^(2^4) · x^(2^3)
