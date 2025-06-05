@@ -21,8 +21,8 @@ pub const INPUT_SIZE: usize = NUM_SHA256F_PER_CIRCUIT * INPUT_DATA_SIZE_BITS / B
 pub const OUTPUT_SIZE: usize = NUM_SHA256F_PER_CIRCUIT * OUTPUT_SIZE_BITS / BITS_IN_PARALLEL;
 
 // Sha256f Table Parameters
-pub const CHUNKS_SHA256F_TABLE: usize = 1;
 pub const BITS_SHA256F_TABLE: usize = BITS_SHA256F;
+pub const CHUNKS_SHA256F_TABLE: usize = 1;
 pub const BITS_A: usize = BITS_SHA256F_TABLE - CHUNKS_SHA256F_TABLE + 1;
 pub const BITS_B: usize = BITS_SHA256F_TABLE;
 pub const BITS_C: usize = BITS_SHA256F_TABLE;

@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "15b1cb0e31b12cb877d528c1b1d7a9dcc263e4061687e3bfddb35aebe257f08b";
+pub const PILOUT_HASH: &str = "84ea62d239dede8ad425ceb737581cc9d5280f19b3b18573cdc6cb5c410f5c24";
 
 //AIRGROUP CONSTANTS
 
@@ -68,10 +68,12 @@ pub const SHA_256_F_TABLE_AIR_IDS: &[usize] = &[20];
 
 pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[21];
 
+
 //PUBLICS
 use serde::Deserialize;
 use serde::Serialize;
 use serde_arrays;
+
 
 fn default_array_rom_root() -> [u64; 4] {
     [0; 4]
@@ -81,17 +83,22 @@ fn default_array_inputs() -> [u64; 64] {
     [0; 64]
 }
 
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ZiskPublics {
     #[serde(default = "default_array_rom_root", with = "serde_arrays")]
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
+    
 }
 
 impl Default for ZiskPublics {
     fn default() -> Self {
-        Self { rom_root: [0; 4], inputs: [0; 64] }
+        Self {  
+            rom_root: [0; 4],  
+            inputs: [0; 64], 
+        }
     }
 }
 
@@ -240,11 +247,11 @@ trace!(BinaryExtensionTableTrace<F> {
 },  0, 16, 4194304 );
 
 trace!(KeccakfFixed<F> {
- L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, ID: F, latch_num_keccakf: F, factor_num_keccakf: F, latch_in_out: F, addr_inc: F, latch_in: F, latch_out: F, __L1__: F,
+ L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, ID: F, latch_num_keccakf: F, factor_num_keccakf: F, CLK_0: F, __L1__: F,
 },  0, 17, 4194304 );
 
 trace!(KeccakfTrace<F> {
- free_in_a: [F; 6], free_in_b: [F; 6], free_in_c: [F; 6], step: F, addr: F, multiplicity: F, bit: [F; 2], val: [F; 2], is_val: F,
+ free_in_a: [F; 6], free_in_b: [F; 6], free_in_c: [F; 6], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
 },  0, 17, 4194304 );
 
 trace!(KeccakfTableFixed<F> {

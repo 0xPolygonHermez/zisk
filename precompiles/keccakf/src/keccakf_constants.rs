@@ -3,23 +3,28 @@
 /// Generic Parameters
 pub const INPUT_DATA_SIZE_BITS: usize = 1600;
 pub const INPUT_DATA_SIZE_BYTES: usize = INPUT_DATA_SIZE_BITS / 8; // 200
+pub const OUTPUT_SIZE_BITS: usize = 1600;
 pub const RB: usize = 32;
-pub const P2_RB: u64 = 1 << RB;
-pub const MASK_RB: u64 = P2_RB - 1;
+pub const RC: usize = 2;
+pub const BITS_IN_PARALLEL: usize = 2;
+
 pub const RB_BLOCKS_TO_PROCESS: usize = INPUT_DATA_SIZE_BITS / RB; // 50
 
-/// Keccakf Parameters
-pub const BITS_IN_PARALLEL_KECCAKF: usize = 2;
-pub const CHUNKS_KECCAKF: usize = 6;
+/// Keccakf circuit Parameters
 pub const BITS_KECCAKF: usize = 10;
+pub const CHUNKS_KECCAKF: usize = 6;
 pub const P2_BITS_KECCAKF: u64 = 1 << BITS_KECCAKF;
 pub const P2_CHUNK_BITS_KECCAKF: u64 = 1 << (BITS_KECCAKF * CHUNKS_KECCAKF);
 pub const MASK_BITS_KECCAKF: u64 = P2_BITS_KECCAKF - 1;
 pub const MASK_CHUNK_BITS_KECCAKF: u64 = P2_CHUNK_BITS_KECCAKF - 1;
+pub const NUM_KECCAKF_PER_CIRCUIT: usize = BITS_KECCAKF * CHUNKS_KECCAKF;
+pub const RB_SIZE: usize = NUM_KECCAKF_PER_CIRCUIT * RB * RC / BITS_IN_PARALLEL;
+pub const INPUT_SIZE: usize = NUM_KECCAKF_PER_CIRCUIT * INPUT_DATA_SIZE_BITS / BITS_IN_PARALLEL;
+pub const OUTPUT_SIZE: usize = NUM_KECCAKF_PER_CIRCUIT * OUTPUT_SIZE_BITS / BITS_IN_PARALLEL;
 
 /// Keccakf Table Parameters
-pub const CHUNKS_KECCAKF_TABLE: usize = 1;
 pub const BITS_KECCAKF_TABLE: usize = BITS_KECCAKF;
+pub const CHUNKS_KECCAKF_TABLE: usize = 1;
 pub const BITS_A: usize = BITS_KECCAKF_TABLE - CHUNKS_KECCAKF_TABLE + 1;
 pub const BITS_B: usize = BITS_KECCAKF_TABLE;
 pub const P2_BITS_A: u64 = 1 << BITS_A;

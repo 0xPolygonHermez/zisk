@@ -266,7 +266,6 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     clock_eq(step_addr, ADDR_STATE, ADDR_IND_0) === 0;
     clock_eq(step_addr, ADDR_INPUT, ADDR_IND_1) === 0;
 
-    // Boundaries for clarity
     const expr mem_addr = clock_map(step_addr, ADDR_STATE, start: 0,              end: STATE_BLOCKS,      delta: 8, factor: MEM_SIZE) +
                           clock_map(step_addr, ADDR_INPUT, start: STATE_BLOCKS,   end: IN_DATA_BLOCKS,    delta: 8, factor: MEM_SIZE) +
                           clock_map(step_addr, ADDR_STATE, start: IN_DATA_BLOCKS, end: IN_OUT_BLOCKS,     delta: 8, factor: MEM_SIZE) +
