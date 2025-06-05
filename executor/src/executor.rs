@@ -102,6 +102,7 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     sm_bundle: BD,
     rom_sm: Option<Arc<RomSM>>,
 
+    #[allow(clippy::type_complexity)]
     collectors_by_instance: RwLock<HashMap<usize, (Stats, Vec<(usize, Box<dyn BusDevice<u64>>)>)>>,
     stats: Mutex<Vec<(usize, usize, Stats)>>,
 }
