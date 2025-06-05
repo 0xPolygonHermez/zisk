@@ -3,7 +3,6 @@ use crate::commands::{cli_fail_if_macos, Field};
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
-use proofman_common::initialize_logger;
 use std::path::PathBuf;
 
 use fields::Goldilocks;
@@ -40,14 +39,13 @@ impl ZiskCheckSetup {
 
         let verbose_mode = VerboseMode::Debug;
 
-        initialize_logger(verbose_mode);
-
         match self.field {
             Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
                 self.get_proving_key(),
                 self.aggregation,
                 self.final_snark,
                 ParamsGPU::default(),
+                verbose_mode,
             )
             .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
         };

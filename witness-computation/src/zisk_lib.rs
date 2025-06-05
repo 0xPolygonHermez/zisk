@@ -36,8 +36,9 @@ fn init_library(
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
+    rank: Option<i32>,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
-    proofman_common::initialize_logger(verbose_mode);
+    proofman_common::initialize_logger(verbose_mode, rank);
     let result = Box::new(WitnessLib {
         elf_path,
         asm_path,

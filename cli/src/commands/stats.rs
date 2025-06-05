@@ -5,7 +5,7 @@ use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
-use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ParamsGPU};
+use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -80,8 +80,6 @@ pub struct ZiskStats {
 impl ZiskStats {
     pub fn run(&mut self) -> Result<()> {
         cli_fail_if_macos()?;
-
-        initialize_logger(self.verbose.into());
 
         let debug_info = match &self.debug {
             None => DebugInfo::default(),
@@ -168,6 +166,7 @@ impl ZiskStats {
             false,
             false,
             gpu_params,
+            self.verbose.into(),
         )
         .expect("Failed to initialize proofman");
 
@@ -183,6 +182,7 @@ impl ZiskStats {
                     self.asm.clone(),
                     asm_rom,
                     sha256f_script,
+                    proofman.get_rank(),
                 )
                 .expect("Failed to initialize witness library");
 
@@ -200,7 +200,7 @@ impl ZiskStats {
             .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
-        println!();
+        tracing::info!("");
         tracing::info!(
             "{} {}",
             "--- STATS SUMMARY ".bright_green().bold(),
@@ -209,7 +209,7 @@ impl ZiskStats {
 
         Self::print_stats(stats);
 
-        println!();
+        tracing::info!("");
 
         Ok(())
     }
@@ -312,7 +312,7 @@ impl ZiskStats {
             grouped.entry((*airgroup_id, *air_id)).or_default().push(stats.clone());
         }
 
-        println!();
+        tracing::info!("");
         tracing::info!("    Grouped Stats:");
         tracing::info!(
             "    {:<8} {:<25}   {:<6}   {:<20}   {:<20}   {:<20}",

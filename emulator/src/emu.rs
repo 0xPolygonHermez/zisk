@@ -1746,7 +1746,7 @@ impl<'a> Emu<'a> {
                 }
             }
         }
-        
+
         // #[cfg(feature = "sp")]
         // self.set_sp(instruction);
         self.set_pc(instruction);
