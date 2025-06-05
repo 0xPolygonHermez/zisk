@@ -352,7 +352,7 @@ pub const fn op_flag(_a: u64, _b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_flag()
 #[inline(always)]
-pub fn opc_flag(ctx: &mut InstContext) {
+pub const fn opc_flag(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_flag(ctx.a, ctx.b);
 }
 
@@ -364,7 +364,7 @@ pub const fn op_copyb(_a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_copyb()
 #[inline(always)]
-pub fn opc_copyb(ctx: &mut InstContext) {
+pub const fn opc_copyb(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_copyb(ctx.a, ctx.b);
 }
 
@@ -382,7 +382,7 @@ pub const fn op_signextend_b(_a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_signextend_b()
 #[inline(always)]
-pub fn opc_signextend_b(ctx: &mut InstContext) {
+pub const fn opc_signextend_b(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_signextend_b(ctx.a, ctx.b);
 }
 
@@ -398,7 +398,7 @@ pub const fn op_signextend_h(_a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_signextend_h()
 #[inline(always)]
-pub fn opc_signextend_h(ctx: &mut InstContext) {
+pub const fn opc_signextend_h(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_signextend_h(ctx.a, ctx.b);
 }
 
@@ -414,7 +414,7 @@ pub const fn op_signextend_w(_a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_signextend_w()
 #[inline(always)]
-pub fn opc_signextend_w(ctx: &mut InstContext) {
+pub const fn opc_signextend_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_signextend_w(ctx.a, ctx.b);
 }
 
@@ -479,7 +479,7 @@ pub const fn op_sll(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_sll()
 #[inline(always)]
-pub fn opc_sll(ctx: &mut InstContext) {
+pub const fn opc_sll(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_sll(ctx.a, ctx.b);
 }
 
@@ -505,7 +505,7 @@ pub const fn op_sra(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_sra()
 #[inline(always)]
-pub fn opc_sra(ctx: &mut InstContext) {
+pub const fn opc_sra(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_sra(ctx.a, ctx.b);
 }
 
@@ -518,7 +518,7 @@ pub const fn op_srl(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_srl()
 #[inline(always)]
-pub fn opc_srl(ctx: &mut InstContext) {
+pub const fn opc_srl(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_srl(ctx.a, ctx.b);
 }
 
@@ -562,7 +562,7 @@ pub const fn op_eq(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_eq()
 #[inline(always)]
-pub fn opc_eq(ctx: &mut InstContext) {
+pub const fn opc_eq(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_eq(ctx.a, ctx.b);
 }
 
@@ -579,7 +579,7 @@ pub const fn op_eq_w(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_eq_w()
 #[inline(always)]
-pub fn opc_eq_w(ctx: &mut InstContext) {
+pub const fn opc_eq_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_eq_w(ctx.a, ctx.b);
 }
 
@@ -596,7 +596,7 @@ pub const fn op_ltu(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_ltu()
 #[inline(always)]
-pub fn opc_ltu(ctx: &mut InstContext) {
+pub const fn opc_ltu(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_ltu(ctx.a, ctx.b);
 }
 
@@ -613,7 +613,7 @@ pub const fn op_lt(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_lt()
 #[inline(always)]
-pub fn opc_lt(ctx: &mut InstContext) {
+pub const fn opc_lt(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_lt(ctx.a, ctx.b);
 }
 
@@ -630,7 +630,7 @@ pub const fn op_ltu_w(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_ltu_w()
 #[inline(always)]
-pub fn opc_ltu_w(ctx: &mut InstContext) {
+pub const fn opc_ltu_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_ltu_w(ctx.a, ctx.b);
 }
 
@@ -647,7 +647,7 @@ pub const fn op_lt_w(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_lt_w()
 #[inline(always)]
-pub fn opc_lt_w(ctx: &mut InstContext) {
+pub const fn opc_lt_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_lt_w(ctx.a, ctx.b);
 }
 
@@ -664,7 +664,7 @@ pub const fn op_leu(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_leu()
 #[inline(always)]
-pub fn opc_leu(ctx: &mut InstContext) {
+pub const fn opc_leu(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_leu(ctx.a, ctx.b);
 }
 
@@ -681,7 +681,7 @@ pub const fn op_le(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_le()
 #[inline(always)]
-pub fn opc_le(ctx: &mut InstContext) {
+pub const fn opc_le(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_le(ctx.a, ctx.b);
 }
 
@@ -698,7 +698,7 @@ pub const fn op_leu_w(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_leu_w()
 #[inline(always)]
-pub fn opc_leu_w(ctx: &mut InstContext) {
+pub const fn opc_leu_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_leu_w(ctx.a, ctx.b);
 }
 
@@ -715,7 +715,7 @@ pub const fn op_le_w(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_le_w()
 #[inline(always)]
-pub fn opc_le_w(ctx: &mut InstContext) {
+pub const fn opc_le_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_le_w(ctx.a, ctx.b);
 }
 
@@ -729,7 +729,7 @@ pub const fn op_and(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_and()
 #[inline(always)]
-pub fn opc_and(ctx: &mut InstContext) {
+pub const fn opc_and(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_and(ctx.a, ctx.b);
 }
 
@@ -741,7 +741,7 @@ pub const fn op_or(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_or()
 #[inline(always)]
-pub fn opc_or(ctx: &mut InstContext) {
+pub const fn opc_or(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_or(ctx.a, ctx.b);
 }
 
@@ -753,7 +753,7 @@ pub const fn op_xor(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_xor()
 #[inline(always)]
-pub fn opc_xor(ctx: &mut InstContext) {
+pub const fn opc_xor(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_xor(ctx.a, ctx.b);
 }
 
@@ -803,7 +803,7 @@ pub const fn op_muluh(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_muluh()
 #[inline(always)]
-pub fn opc_muluh(ctx: &mut InstContext) {
+pub const fn opc_muluh(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_muluh(ctx.a, ctx.b);
 }
 
@@ -815,7 +815,7 @@ pub const fn op_mulh(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_mulh()
 #[inline(always)]
-pub fn opc_mulh(ctx: &mut InstContext) {
+pub const fn opc_mulh(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_mulh(ctx.a, ctx.b);
 }
 
@@ -827,7 +827,7 @@ pub const fn op_mulsuh(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_mulsuh()
 #[inline(always)]
-pub fn opc_mulsuh(ctx: &mut InstContext) {
+pub const fn opc_mulsuh(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_mulsuh(ctx.a, ctx.b);
 }
 
@@ -844,7 +844,7 @@ pub const fn op_divu(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_divu()
 #[inline(always)]
-pub fn opc_divu(ctx: &mut InstContext) {
+pub const fn opc_divu(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_divu(ctx.a, ctx.b);
 }
 
@@ -863,7 +863,7 @@ pub const fn op_div(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_div()
 #[inline(always)]
-pub fn opc_div(ctx: &mut InstContext) {
+pub const fn opc_div(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_div(ctx.a, ctx.b);
 }
 
@@ -880,7 +880,7 @@ pub const fn op_divu_w(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_divu_w()
 #[inline(always)]
-pub fn opc_divu_w(ctx: &mut InstContext) {
+pub const fn opc_divu_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_divu_w(ctx.a, ctx.b);
 }
 
@@ -897,7 +897,7 @@ pub const fn op_div_w(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_div_w()
 #[inline(always)]
-pub fn opc_div_w(ctx: &mut InstContext) {
+pub const fn opc_div_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_div_w(ctx.a, ctx.b);
 }
 
@@ -914,7 +914,7 @@ pub const fn op_remu(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_remu()
 #[inline(always)]
-pub fn opc_remu(ctx: &mut InstContext) {
+pub const fn opc_remu(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_remu(ctx.a, ctx.b);
 }
 
@@ -931,7 +931,7 @@ pub const fn op_rem(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_rem()
 #[inline(always)]
-pub fn opc_rem(ctx: &mut InstContext) {
+pub const fn opc_rem(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_rem(ctx.a, ctx.b);
 }
 
@@ -948,7 +948,7 @@ pub const fn op_remu_w(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_remu_w()
 #[inline(always)]
-pub fn opc_remu_w(ctx: &mut InstContext) {
+pub const fn opc_remu_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_remu_w(ctx.a, ctx.b);
 }
 
@@ -965,7 +965,7 @@ pub const fn op_rem_w(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_rem_w()
 #[inline(always)]
-pub fn opc_rem_w(ctx: &mut InstContext) {
+pub const fn opc_rem_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_rem_w(ctx.a, ctx.b);
 }
 
@@ -983,7 +983,7 @@ pub const fn op_minu(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_minu()
 #[inline(always)]
-pub fn opc_minu(ctx: &mut InstContext) {
+pub const fn opc_minu(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_minu(ctx.a, ctx.b);
 }
 
@@ -999,7 +999,7 @@ pub const fn op_min(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_min()
 #[inline(always)]
-pub fn opc_min(ctx: &mut InstContext) {
+pub const fn opc_min(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_min(ctx.a, ctx.b);
 }
 
@@ -1015,7 +1015,7 @@ pub const fn op_minu_w(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_minu_w()
 #[inline(always)]
-pub fn opc_minu_w(ctx: &mut InstContext) {
+pub const fn opc_minu_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_minu_w(ctx.a, ctx.b);
 }
 
@@ -1031,7 +1031,7 @@ pub const fn op_min_w(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_min_w()
 #[inline(always)]
-pub fn opc_min_w(ctx: &mut InstContext) {
+pub const fn opc_min_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_min_w(ctx.a, ctx.b);
 }
 
@@ -1047,7 +1047,7 @@ pub const fn op_maxu(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_maxu()
 #[inline(always)]
-pub fn opc_maxu(ctx: &mut InstContext) {
+pub const fn opc_maxu(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_maxu(ctx.a, ctx.b);
 }
 
@@ -1063,7 +1063,7 @@ pub const fn op_max(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_max()
 #[inline(always)]
-pub fn opc_max(ctx: &mut InstContext) {
+pub const fn opc_max(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_max(ctx.a, ctx.b);
 }
 
@@ -1079,7 +1079,7 @@ pub const fn op_maxu_w(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_maxu_w()
 #[inline(always)]
-pub fn opc_maxu_w(ctx: &mut InstContext) {
+pub const fn opc_maxu_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_maxu_w(ctx.a, ctx.b);
 }
 
@@ -1095,7 +1095,7 @@ pub const fn op_max_w(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_max_w()
 #[inline(always)]
-pub fn opc_max_w(ctx: &mut InstContext) {
+pub const fn opc_max_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_max_w(ctx.a, ctx.b);
 }
 
@@ -1185,8 +1185,8 @@ pub fn opc_keccak(ctx: &mut InstContext) {
 /// Unimplemented.  Keccak can only be called from the system call context via InstContext.
 /// This is provided just for completeness.
 #[inline(always)]
-pub fn op_keccak(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_keccak() is not implemented");
+pub const fn op_keccak(_a: u64, _b: u64) -> (u64, bool) {
+    panic!("op_keccak() is not implemented");
 }
 
 /// Performs a Sha256-f hash over a 256-bits input state and 512-bits hash state stored in memory at the address
@@ -1539,7 +1539,7 @@ pub const fn op_pubout(a: u64, b: u64) -> (u64, bool) {
 
 /// InstContext-based wrapper over op_pubout()
 #[inline(always)]
-pub fn opc_pubout(ctx: &mut InstContext) {
+pub const fn opc_pubout(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_pubout(ctx.a, ctx.b);
     //println!("public ${} = {:#018x}", ctx.a, ctx.b);
 }
