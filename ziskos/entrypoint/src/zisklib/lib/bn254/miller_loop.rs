@@ -1,21 +1,15 @@
 //! Miller Loop for the pairings over BN254
 
-use crate::{
-    bn254::fp12::sparse_mul_fp12_bn254,
-    fcall_bn254_add_line_coeffs, fcall_bn254_dbl_line_coeffs,
-    zisklib::lib::{
-        bn254::{fp12::square_fp12_bn254, twist::neg_twist_bn254},
-        utils::eq,
-    },
-};
+use crate::{fcall_bn254_add_line_coeffs, fcall_bn254_dbl_line_coeffs, zisklib::lib::utils::eq};
 
 use super::{
     fp::{inv_fp_bn254, mul_fp_bn254, neg_fp_bn254},
+    fp12::{sparse_mul_fp12_bn254, square_fp12_bn254},
     fp2::{
         add_fp2_bn254, dbl_fp2_bn254, mul_fp2_bn254, neg_fp2_bn254, scalar_mul_fp2_bn254,
         square_fp2_bn254, sub_fp2_bn254,
     },
-    twist::utf_endomorphism_twist_bn254,
+    twist::{neg_twist_bn254, utf_endomorphism_twist_bn254},
 };
 
 /// Pseudobinary representation of the loop length 6·X+2 of the
@@ -96,6 +90,102 @@ pub fn miller_loop_bn254(p: &[u64; 8], q: &[u64; 16]) -> [u64; 48] {
 
     let l = line_eval_twist_bn254(&lambda, &mu, &xp_prime, &yp_prime);
     f = sparse_mul_fp12_bn254(&f, &l);
+
+    f
+}
+
+/// Computes the Miller loop for the BN254 curve for a batch of points
+pub fn miller_loop_batch_bn254(g1_points: &[[u64; 8]], g2_points: &[[u64; 16]]) -> [u64; 48] {
+    // Before the loop starts, compute xp' = -xp/yp and yp' = 1/yp for each point p
+    let mut xp_primes: Vec<[u64; 4]> = Vec::with_capacity(g1_points.len());
+    let mut yp_primes: Vec<[u64; 4]> = Vec::with_capacity(g1_points.len());
+    for p in g1_points.iter() {
+        let mut xp_prime: [u64; 4] = p[0..4].try_into().unwrap();
+        let mut yp_prime: [u64; 4] = p[4..8].try_into().unwrap();
+        yp_prime = inv_fp_bn254(&yp_prime);
+        xp_prime = neg_fp_bn254(&xp_prime);
+        xp_prime = mul_fp_bn254(&xp_prime, &yp_prime);
+
+        xp_primes.push(xp_prime);
+        yp_primes.push(yp_prime);
+    }
+
+    // Initialize the Miller loop with r_i = q_i and f = 1
+    let mut r: Vec<[u64; 16]> = g2_points.iter().map(|q| q[0..16].try_into().unwrap()).collect();
+    let mut f = [0u64; 48];
+    f[0] = 1;
+    let n = g1_points.len();
+    for &bit in LOOP_LENGHT_BE.iter().skip(1) {
+        // Compute f = f² · line_{twist(r),twist(r)}(p)
+        f = square_fp12_bn254(&f);
+
+        for i in 0..n {
+            let r = &mut r[i];
+
+            // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(r)}
+            let (lambda, mu) = fcall_bn254_dbl_line_coeffs(&r);
+
+            // Check that the line is correct
+            assert!(is_tangent_twist_bn254(&r, &lambda, &mu));
+
+            let xp_prime = &xp_primes[i];
+            let yp_prime = &yp_primes[i];
+            let l = line_eval_twist_bn254(&lambda, &mu, &xp_prime, &yp_prime);
+            f = sparse_mul_fp12_bn254(&f, &l);
+
+            // Double r
+            *r = line_dbl_twist_bn254(&r, &lambda, &mu);
+
+            if bit * bit == 1 {
+                let q = &g2_points[i];
+                let q_prime = if bit == 1 { q } else { &neg_twist_bn254(&q) };
+
+                // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(q')}
+                let (lambda, mu) = fcall_bn254_add_line_coeffs(&r, q_prime);
+
+                // Check that the line is correct
+                assert!(is_line_twist_bn254(&r, q_prime, &lambda, &mu));
+
+                // Compute f = f · line_{twist(r),twist(q')}
+                let l = line_eval_twist_bn254(&lambda, &mu, &xp_prime, &yp_prime);
+                f = sparse_mul_fp12_bn254(&f, &l);
+
+                // Add r and q'
+                *r = line_add_twist_bn254(&r, q_prime, &lambda, &mu);
+            }
+        }
+    }
+
+    // Compute the last two lines
+    for i in 0..n {
+        let q = &g2_points[i];
+        let r = &mut r[i];
+        let xp_prime = &xp_primes[i];
+        let yp_prime = &yp_primes[i];
+
+        // f = f · line_{twist(r),twist(utf(q))}(p)
+        let q_frob = utf_endomorphism_twist_bn254(&q);
+
+        // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(utf(q))}
+        let (lambda, mu) = fcall_bn254_add_line_coeffs(&r, &q_frob);
+        assert!(is_line_twist_bn254(&r, &q_frob, &lambda, &mu));
+
+        let l = line_eval_twist_bn254(&lambda, &mu, &xp_prime, &yp_prime);
+        f = sparse_mul_fp12_bn254(&f, &l);
+
+        // Update r by r + utf(q)
+        *r = line_add_twist_bn254(&r, &q_frob, &lambda, &mu);
+
+        // f = f · line_{twist(r),twist(-utf(utf(q)))}(p)
+        let q_frob2 = neg_twist_bn254(&utf_endomorphism_twist_bn254(&q_frob));
+
+        // Hint the coefficients (𝜆,𝜇) of the line l_{twist(r),twist(-utf(utf(q)))}
+        let (lambda, mu) = fcall_bn254_add_line_coeffs(&r, &q_frob2);
+        assert!(is_line_twist_bn254(&r, &q_frob2, &lambda, &mu));
+
+        let l = line_eval_twist_bn254(&lambda, &mu, &xp_prime, &yp_prime);
+        f = sparse_mul_fp12_bn254(&f, &l);
+    }
 
     f
 }

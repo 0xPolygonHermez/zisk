@@ -23,6 +23,7 @@ use super::{
 // out: (a1 + a2·w)·(b1 + b2·w) = (c1 + c2·w) ∈ Fp12, where:
 //      - c1 = a1·b1 + a2·b2·v
 //      - c2 = (a1+a2)·(b1+b2) - a1·b1 - a2·b2
+#[inline]
 pub fn mul_fp12_bn254(a: &[u64; 48], b: &[u64; 48]) -> [u64; 48] {
     let a1 = &a[0..24].try_into().unwrap();
     let a2 = &a[24..48].try_into().unwrap();
@@ -53,6 +54,7 @@ pub fn mul_fp12_bn254(a: &[u64; 48], b: &[u64; 48]) -> [u64; 48] {
 // out: (a1 + a2·w)·(b1 + b2·w) = (c1 + c2·w) ∈ Fp12, where:
 //      - c1 = a1 + a2·(b21·v + b22·v²)
 //      - c2 = a2 + a1·(b21 + b22·v)
+#[inline]
 pub fn sparse_mul_fp12_bn254(a: &[u64; 48], b: &[u64; 16]) -> [u64; 48] {
     let a1 = &a[0..24].try_into().unwrap();
     let a2 = &a[24..48].try_into().unwrap();
@@ -75,6 +77,7 @@ pub fn sparse_mul_fp12_bn254(a: &[u64; 48], b: &[u64; 16]) -> [u64; 48] {
 // out: (a1 + a2·w)² = (c1 + c2·w) ∈ Fp12, where:
 //      - c1 = (a1-a2)·(a1-a2·v) + a1·a2 + a1·a2·v
 //      - c2 = 2·a1·a2
+#[inline]
 pub fn square_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     let a1 = &a[0..24].try_into().unwrap();
     let a2 = &a[24..48].try_into().unwrap();
@@ -106,6 +109,7 @@ pub fn square_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
 // out: (a1 + a2·w)⁻¹ = (c1 + c2·w) ∈ Fp12, where:
 //      - c1 = a1·(a1² - a2²·v)⁻¹
 //      - c2 = -a2·(a1² - a2²·v)⁻¹
+#[inline]
 pub fn inv_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     let a1 = &a[0..24].try_into().unwrap();
     let a2 = &a[24..48].try_into().unwrap();
@@ -127,6 +131,7 @@ pub fn inv_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
 }
 
 /// Conjugation in the degree 12 extension of the BN254 curve
+#[inline]
 pub fn conjugate_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     let mut result = [0; 48];
     result[0..24].copy_from_slice(&a[0..24]);
@@ -140,6 +145,7 @@ pub fn conjugate_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
 // out: (a1 + a2·w)ᵖ = (c1 + c2·w) ∈ Fp12, where:
 //      - c1 = a̅11     + a̅12·γ12·v + a̅13·γ14·v²
 //      - c2 = a̅21·γ11 + a̅22·γ13·v + a̅23·γ15·v²
+#[inline]
 pub fn frobenius1_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     let a11 = &a[0..8].try_into().unwrap();
     let a12 = &a[8..16].try_into().unwrap();
@@ -174,6 +180,7 @@ pub fn frobenius1_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
 // out: (a1 + a2·w)ᵖ˙ᵖ = (c1 + c2·w) ∈ Fp12, where:
 //      - c1 = a11     + a12·γ22·v + a13·γ24·v²
 //      - c2 = a21·γ21 + a22·γ23·v + a23·γ25·v²
+#[inline]
 pub fn frobenius2_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     let a11: &[u64; 8] = &a[0..8].try_into().unwrap();
     let a12 = &a[8..16].try_into().unwrap();
@@ -203,6 +210,7 @@ pub fn frobenius2_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
 // out: (a1 + a2·w)ᵖ˙ᵖ˙ᵖ = (c1 + c2·w) ∈ Fp12, where:
 //      - c1 = a̅11     + a̅12·γ32·v + a̅13·γ34·v²
 //      - c2 = a̅21·γ31 + a̅22·γ33·v + a̅23·γ35·v²
+#[inline]
 pub fn frobenius3_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
     let a11 = &a[0..8].try_into().unwrap();
     let a12 = &a[8..16].try_into().unwrap();
@@ -235,6 +243,7 @@ pub fn frobenius3_fp12_bn254(a: &[u64; 48]) -> [u64; 48] {
 //
 // in: e, (a1 + a2·w) ∈ Fp12, where e ∈ [0,p¹²-2] ai ∈ Fp6
 // out: (c1 + c2·w) = (a1 + a2·w)^e ∈ Fp12
+#[inline]
 pub fn exp_fp12_bn254(e: u64, a: &[u64; 48]) -> [u64; 48] {
     let mut one = [0; 48];
     one[0] = 1;

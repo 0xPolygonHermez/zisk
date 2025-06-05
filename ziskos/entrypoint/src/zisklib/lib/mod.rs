@@ -8,6 +8,8 @@ mod sha256f_compress;
 mod utils;
 
 // For public consumption
+pub use bn254::curve::{add_bn254, mul_bn254, to_affine_bn254};
+pub use bn254::pairing::pairing_batch_bn254;
 pub use ecadd::ecadd;
 pub use ecmul::ecmul;
 pub use ecpairing::ecpairing;

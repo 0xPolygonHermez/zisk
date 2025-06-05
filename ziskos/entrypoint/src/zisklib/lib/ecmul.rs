@@ -3,13 +3,14 @@ use crate::{
     bn254_curve_dbl::syscall_bn254_curve_dbl,
     fcall_msb_pos_256,
     point256::SyscallPoint256,
-    zisklib::lib::utils::gt,
 };
 
 use super::{
-    bn254::constants::{E_B, P_MINUS_ONE, R_MINUS_ONE},
-    bn254::fp::{add_fp_bn254, mul_fp_bn254, square_fp_bn254},
-    utils::eq,
+    bn254::{
+        constants::{P_MINUS_ONE, R_MINUS_ONE},
+        curve::is_on_curve_bn254,
+    },
+    utils::gt,
 };
 
 /// Given an scalar k and a point p, this function computes the point q = k·p.
@@ -55,11 +56,7 @@ pub fn ecmul(k: &[u64; 4], p: &[u64; 8]) -> ([u64; 8], u8) {
     }
 
     // Check if p is on curve: y² == x³ + 3 mod p
-    let x_sq = square_fp_bn254(&x1);
-    let x_cubed = mul_fp_bn254(&x_sq, &x1);
-    let x_cubed_plus_3 = add_fp_bn254(&x_cubed, &E_B);
-    let y_sq = square_fp_bn254(&y1);
-    if !eq(&x_cubed_plus_3, &y_sq) {
+    if !is_on_curve_bn254(p) {
         #[cfg(debug_assertions)]
         println!("p is not on the curve");
 

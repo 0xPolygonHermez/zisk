@@ -1,14 +1,13 @@
 //! Pairing over BN254
 
-use crate::zisklib::lib::{
-    bn254::{
-        constants::P_MINUS_ONE,
-        curve::is_on_curve_bn254,
-        final_exp::final_exp_bn254,
-        miller_loop::miller_loop_bn254,
-        twist::{is_on_curve_twist_bn254, is_on_subgroup_twist_bn254},
-    },
-    utils::gt,
+use crate::zisklib::lib::utils::gt;
+
+use super::{
+    constants::P_MINUS_ONE,
+    curve::is_on_curve_bn254,
+    final_exp::final_exp_bn254,
+    miller_loop::{miller_loop_batch_bn254, miller_loop_bn254},
+    twist::{is_on_curve_twist_bn254, is_on_subgroup_twist_bn254},
 };
 
 /// Optimal Ate Pairing e: G1 x G2 -> GT over the BN254 curve
@@ -29,7 +28,7 @@ use crate::zisklib::lib::{
 /// - 7: p is not on the curve (nor on the subgroup).
 /// - 8: q is not on the curve.
 /// - 9: q is not on the subgroup.
-pub fn pairing(p: &[u64; 8], q: &[u64; 16]) -> ([u64; 48], u8) {
+pub fn pairing_bn254(p: &[u64; 8], q: &[u64; 16]) -> ([u64; 48], u8) {
     // Check p and q are valid
 
     // Verify the coordinates of p
@@ -160,4 +159,47 @@ pub fn pairing(p: &[u64; 8], q: &[u64; 16]) -> ([u64; 48], u8) {
     let final_exp = final_exp_bn254(&miller_loop);
 
     (final_exp, 0)
+}
+
+/// Computes the optimal Ate pairing for a batch of G1 and G2 points over the BN254 curve
+/// and multiplies the results together, i.e.:
+///     e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) ∈ GT
+pub fn pairing_batch_bn254(g1_points: &[[u64; 8]], g2_points: &[[u64; 16]]) -> [u64; 48] {
+    // Since each e(Pi, Qi) := FinalExp(MillerLoop(Pi, Qi))
+    // We have:
+    //  e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) = FinalExp(MillerLoop(P₁, Q₁) · MillerLoop(P₂, Q₂) · ... · MillerLoop(Pₙ, Qₙ))
+    // We can compute the Miller loop for each pair, multiplying the results together
+    // and then just do the final exponentiation once at the end.
+
+    let num_points = g1_points.len();
+    assert_eq!(num_points, g2_points.len(), "Number of G1 and G2 points must be equal");
+
+    // Miller loop and multiplication
+    let mut g1_points_ml = Vec::with_capacity(num_points);
+    let mut g2_points_ml = Vec::with_capacity(num_points);
+    for (p, q) in g1_points.iter().zip(g2_points.iter()) {
+        // Is p = 𝒪 or q = 𝒪?
+        if *p == [0u64; 8] || *q == [0u64; 16] {
+            // MillerLoop(P, 𝒪) = MillerLoop(𝒪, Q) = 1; we can skip
+            continue;
+        }
+
+        g1_points_ml.push(*p);
+        g2_points_ml.push(*q);
+    }
+
+    if g1_points_ml.is_empty() {
+        // If all pairing computations were skipped, return 1
+        let mut one = [0; 48];
+        one[0] = 1;
+        return one;
+    }
+
+    // Compute the Miller loop for the batch
+    let miller_loop = miller_loop_batch_bn254(&g1_points_ml, &g2_points_ml);
+
+    // Final exponentiation
+    let res = final_exp_bn254(&miller_loop);
+
+    res
 }
