@@ -37,9 +37,13 @@ impl ZiskRomSetup {
     pub fn run(&self) -> Result<()> {
         cli_fail_if_macos()?;
 
-        println!("{} Rom Setup", format!("{: >12}", "Command").bright_green().bold());
+        initialize_logger(proofman_common::VerboseMode::Info, None);
 
-        initialize_logger(proofman_common::VerboseMode::Info);
+        tracing::info!(
+            "{}",
+            format!("{} Rom Setup", format!("{: >12}", "Command").bright_green().bold())
+        );
+        tracing::info!("");
 
         print_banner();
 

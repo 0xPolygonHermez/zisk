@@ -20,12 +20,14 @@ impl ZiskClean {
     pub fn run(&self) -> Result<()> {
         cli_fail_if_macos()?;
 
-        initialize_logger(proofman_common::VerboseMode::Info);
+        initialize_logger(proofman_common::VerboseMode::Info, None);
 
         print_banner();
-        println!("{} Clean", format!("{: >12}", "Command").bright_green().bold());
-
-        println!();
+        tracing::info!(
+            "{}",
+            format!("{} Clean", format!("{: >12}", "Command").bright_green().bold())
+        );
+        tracing::info!("");
 
         let home_zisk_path = get_home_zisk_path();
         let cache_zisk_path = home_zisk_path.join("cache");
