@@ -1,8 +1,8 @@
 use crate::{
     mem_bus_data_to_input::MemBusDataToInput, MemInput, MemModuleCheckPoint, MemPreviousSegment,
 };
-use zisk_common::{BusDevice, BusId, SegmentId, MEM_BUS_ID};
 use std::collections::VecDeque;
+use zisk_common::{BusDevice, BusId, SegmentId, MEM_BUS_ID};
 
 #[derive(Debug)]
 pub struct MemModuleCollector {

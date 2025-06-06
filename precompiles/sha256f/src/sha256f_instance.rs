@@ -7,6 +7,7 @@
 use crate::{Sha256fInput, Sha256fSM};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use std::collections::VecDeque;
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
 use zisk_common::{
@@ -15,7 +16,6 @@ use zisk_common::{
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::Sha256fTrace;
-use std::collections::VecDeque;
 
 /// The `Sha256fInstance` struct represents an instance for the Sha256f State Machine.
 ///
@@ -163,7 +163,6 @@ impl BusDevice<PayloadType> for Sha256fCollector {
             data.try_into().expect("Regular Metrics: Failed to convert data");
         if let ExtOperationData::OperationSha256Data(data) = data {
             self.inputs.push(Sha256fInput::from(&data));
-            return;
         } else {
             panic!("Expected ExtOperationData::OperationData");
         }

@@ -4,13 +4,13 @@
 
 use std::ops::Add;
 
+use std::collections::VecDeque;
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OPERATION_BUS_ARITH_256_DATA_SIZE,
     OPERATION_BUS_ARITH_256_MOD_DATA_SIZE, OPERATION_BUS_ID, OPERATION_BUS_SECP256K1_ADD_DATA_SIZE,
     OPERATION_BUS_SECP256K1_DBL_DATA_SIZE, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
-use std::collections::VecDeque;
 
 use crate::mem_inputs::{
     generate_arith256_mem_inputs, generate_arith256_mod_mem_inputs,
@@ -128,7 +128,12 @@ impl BusDevice<u64> for ArithEqCounterInputGen {
 
         match data.len() {
             OPERATION_BUS_ARITH_256_DATA_SIZE => {
-                pending.extend(generate_arith256_mem_inputs(addr_main, step_main, data, only_counters));
+                pending.extend(generate_arith256_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
             }
             OPERATION_BUS_ARITH_256_MOD_DATA_SIZE => {
                 pending.extend(generate_arith256_mod_mem_inputs(

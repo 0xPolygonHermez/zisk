@@ -5,11 +5,11 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
+use std::collections::VecDeque;
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, OP, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
-use std::collections::VecDeque;
 
 /// The `BinaryCounter` struct represents a counter that monitors and measures
 /// binary-related operations on the data bus.

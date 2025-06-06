@@ -92,10 +92,10 @@ macro_rules! table_instance {
         use fields::PrimeField64;
 
         use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
+        use std::collections::VecDeque;
         use zisk_common::{
             BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
         };
-        use std::collections::VecDeque;
         use zisk_pil::$Trace;
 
         use rayon::prelude::*;
@@ -195,11 +195,11 @@ macro_rules! table_instance_array {
         use fields::PrimeField64;
 
         use proofman_common::{AirInstance, ProofCtx, SetupCtx, TraceInfo};
+        use std::collections::VecDeque;
         use zisk_common::{
             BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
         };
         use zisk_pil::$Trace;
-        use std::collections::VecDeque;
 
         use rayon::prelude::*;
 

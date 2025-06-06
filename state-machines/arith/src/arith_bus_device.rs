@@ -6,9 +6,9 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
+use std::collections::VecDeque;
 use zisk_common::{BusDevice, BusDeviceMode, BusId, Counter, Metrics, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::ZiskOperationType;
-use std::collections::VecDeque;
 
 use crate::ArithFullSM;
 

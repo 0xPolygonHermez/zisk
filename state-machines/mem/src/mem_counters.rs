@@ -6,9 +6,9 @@ use std::{collections::HashMap, fs::File, io::Read};
 use zisk_common::ChunkId;
 
 use crate::MemHelpers;
+use std::collections::VecDeque;
 use std::fmt;
 use zisk_common::{BusDevice, BusId, MemBusData, Metrics, MEM_BUS_DATA_SIZE, MEM_BUS_ID};
-use std::collections::VecDeque;
 
 // inside a chunk no more than 2^32 access by one address
 

@@ -1,10 +1,10 @@
 //! The `BinaryAddCollector` struct represents an input collector for binary add operations.
 
+use std::collections::VecDeque;
 use zisk_common::{
     BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID,
 };
 use zisk_core::zisk_ops::ZiskOp;
-use std::collections::VecDeque;
 
 /// The `BinaryAddCollector` struct represents an input collector for binary add operations.
 pub struct BinaryAddCollector {

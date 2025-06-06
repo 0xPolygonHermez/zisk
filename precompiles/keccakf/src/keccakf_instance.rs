@@ -3,10 +3,10 @@
 //!
 //! It manages collected inputs and interacts with the `KeccakfSM` to compute witnesses for
 //! execution plans.
-use std::collections::VecDeque;
 use crate::KeccakfSM;
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use std::collections::VecDeque;
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,

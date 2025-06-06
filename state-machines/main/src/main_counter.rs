@@ -2,9 +2,9 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::PubOut` instructions.
 
+use std::collections::VecDeque;
 use zisk_common::{BusDevice, BusId, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::ZiskOperationType;
-use std::collections::VecDeque;
 
 /// The `MainCounter` struct represents a counter that monitors and measures
 /// pubOuts-related operations on the data bus.

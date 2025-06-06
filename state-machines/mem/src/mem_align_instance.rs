@@ -2,12 +2,12 @@ use crate::{MemAlignCheckPoint, MemAlignInput, MemAlignSM, MemHelpers};
 use core::panic;
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, MemBusData,
     PayloadType, MEM_BUS_ID,
 };
-use std::collections::VecDeque;
 
 pub struct MemAlignInstance<F: PrimeField64> {
     /// Instance context

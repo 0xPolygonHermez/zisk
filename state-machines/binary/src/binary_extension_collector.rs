@@ -3,11 +3,11 @@
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
 use crate::BinaryInput;
+use std::collections::VecDeque;
 use zisk_common::{
     BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
-use std::collections::VecDeque;
 
 /// The `BinaryExtensionCollector` struct represents an input collector for binary extension
 pub struct BinaryExtensionCollector {

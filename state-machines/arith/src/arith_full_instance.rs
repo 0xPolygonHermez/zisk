@@ -7,6 +7,7 @@
 use crate::ArithFullSM;
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use std::collections::VecDeque;
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
@@ -14,7 +15,6 @@ use zisk_common::{
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
-use std::collections::VecDeque;
 
 /// The `ArithFullInstance` struct represents an instance for arithmetic-related witness
 /// computations.
