@@ -133,7 +133,10 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
         self.arith_eq_counter.on_close();
     }
 
-    fn into_devices(mut self, execute_on_close: bool) -> Vec<Option<Box<dyn BusDeviceMetrics>>> {
+    fn into_devices(
+        mut self,
+        execute_on_close: bool,
+    ) -> Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> {
         if execute_on_close {
             self.on_close();
         }
@@ -149,15 +152,15 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
             pending_transfers: _,
         } = self;
 
-        let counters: Vec<Option<Box<dyn BusDeviceMetrics>>> = vec![
-            Some(Box::new(main_counter)),
-            Some(Box::new(mem_counter)),
-            None,
-            Some(Box::new(binary_counter)),
-            Some(Box::new(arith_counter)),
-            Some(Box::new(keccakf_counter)),
-            Some(Box::new(sha256f_counter)),
-            Some(Box::new(arith_eq_counter)),
+        let counters: Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> = vec![
+            (None, Some(Box::new(main_counter))),
+            (None, Some(Box::new(mem_counter))),
+            (None, None),
+            (None, Some(Box::new(binary_counter))),
+            (None, Some(Box::new(arith_counter))),
+            (None, Some(Box::new(keccakf_counter))),
+            (None, Some(Box::new(sha256f_counter))),
+            (None, Some(Box::new(arith_eq_counter))),
         ];
 
         counters

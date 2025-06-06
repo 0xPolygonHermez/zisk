@@ -17,7 +17,7 @@ pub trait DataBusTrait<D, T> {
 
     fn on_close(&mut self);
 
-    fn into_devices(self, execute_on_close: bool) -> Vec<Option<T>>;
+    fn into_devices(self, execute_on_close: bool) -> Vec<(Option<usize>, Option<T>)>;
 }
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
@@ -31,7 +31,7 @@ pub trait DataBusTrait<D, T> {
 ///   trait.
 pub struct DataBus<D, BD: BusDevice<D>> {
     /// List of devices connected to the bus.
-    pub devices: Vec<BD>,
+    pub devices: Vec<(Option<usize>, BD)>,
 
     /// Mapping from `BusId` to indices of devices listening to that ID.
     devices_bus_id_map: Vec<Vec<usize>>,
@@ -65,11 +65,11 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// # Arguments
     /// * `bus_ids` - A vector of `BusId` values the device subscribes to.
     /// * `bus_device` - The device to be added to the bus.
-    pub fn connect_device(&mut self, bus_device: Option<BD>) {
+    pub fn connect_device(&mut self, instance_idx: Option<usize>, bus_device: Option<BD>) {
         if let Some(bus_device) = bus_device {
             let bus_ids = bus_device.bus_id();
 
-            self.devices.push(bus_device);
+            self.devices.push((instance_idx, bus_device));
             let device_idx = self.devices.len() - 1;
 
             for bus_id in bus_ids {
@@ -90,7 +90,8 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
         // Notify specific subscribers
         let bus_id_devices = &self.devices_bus_id_map[*bus_id];
         for device_idx in bus_id_devices {
-            self.devices[*device_idx].process_data(&bus_id, payload, &mut self.pending_transfers);
+            self.devices[*device_idx].1.process_data(&bus_id, payload, &mut self.pending_transfers);
+
         }
     }
 
@@ -114,11 +115,11 @@ impl<D, BD: BusDevice<D>> DataBusTrait<D, BD> for DataBus<D, BD> {
 
     fn on_close(&mut self) {
         for device in &mut self.devices {
-            device.on_close();
+            device.1.on_close();
         }
     }
 
-    fn into_devices(self, execute_on_close: bool) -> Vec<Option<BD>> {
+    fn into_devices(self, execute_on_close: bool) -> Vec<(Option<usize>, Option<BD>)> {
         let total_len = self.devices.len() + self.none_devices.len();
         let mut result = Vec::with_capacity(total_len);
 
@@ -127,17 +128,17 @@ impl<D, BD: BusDevice<D>> DataBusTrait<D, BD> for DataBus<D, BD> {
 
         for idx in 0..total_len {
             if Some(&idx) == none_iter.peek() {
-                result.push(None);
+                result.push((None, None));
                 none_iter.next();
             } else {
                 let mut device =
                     dev_iter.next().expect("Mismatch between device and none-device count");
 
                 if execute_on_close {
-                    device.on_close();
+                    device.1.on_close();
                 }
 
-                result.push(Some(device));
+                result.push((device.0, Some(device.1)));
             }
         }
 
