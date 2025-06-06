@@ -14,6 +14,7 @@ use sm_rom::RomSM;
 use zisk_common::{
     BusDevice, BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan,
 };
+use std::collections::HashMap;
 
 use executor::NestedDeviceMetricsList;
 
@@ -128,42 +129,52 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
 
     fn build_data_bus_collectors(
         &self,
-        secn_instance: &Box<dyn Instance<F>>,
-        chunks_to_execute: Vec<bool>,
+        secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
+        chunks_to_execute: Vec<Vec<usize>>,
     ) -> Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>> {
         chunks_to_execute
             .iter()
             .enumerate()
-            .map(|(chunk_id, to_be_executed)| {
-                if !to_be_executed {
+            .map(|(chunk_id, global_idxs)| {
+                if global_idxs.is_empty() {
                     return None;
                 }
 
                 let mut data_bus = DataBus::new();
 
-                if let Some(bus_device) = secn_instance.build_inputs_collector(ChunkId(chunk_id)) {
-                    data_bus.connect_device(Some(bus_device));
+                let mut used = false;
+                for global_idx in global_idxs {
+                    let secn_instance = secn_instances.get(global_idx).unwrap();
+                    if let Some(bus_device) =
+                        secn_instance.build_inputs_collector(ChunkId(chunk_id))
+                    {
+                        data_bus.connect_device(Some(*global_idx), Some(bus_device));
 
-                    macro_rules! add_generator {
-                        ($field:ident, $type:ty) => {
-                            if let Some(inputs_generator) =
-                                <$type as ComponentBuilder<F>>::build_inputs_generator(
-                                    &*self.$field,
-                                )
-                            {
-                                data_bus.connect_device(Some(inputs_generator));
-                            }
-                        };
+                        macro_rules! add_generator {
+                            ($field:ident, $type:ty) => {
+                                if let Some(inputs_generator) =
+                                    <$type as ComponentBuilder<F>>::build_inputs_generator(
+                                        &*self.$field,
+                                    )
+                                {
+                                    data_bus.connect_device(None, Some(inputs_generator));
+                                }
+                            };
+                        }
+
+                        add_generator!(mem_sm, Mem<F>);
+                        add_generator!(rom_sm, RomSM);
+                        add_generator!(binary_sm, BinarySM<F>);
+                        add_generator!(arith_sm, ArithSM);
+                        add_generator!(keccakf_sm, KeccakfManager);
+                        add_generator!(sha256f_sm, Sha256fManager);
+                        add_generator!(arith_eq_sm, ArithEqManager<F>);
+
+                        used = true;
                     }
+                }
 
-                    add_generator!(mem_sm, Mem<F>);
-                    add_generator!(rom_sm, RomSM);
-                    add_generator!(binary_sm, BinarySM<F>);
-                    add_generator!(arith_sm, ArithSM);
-                    add_generator!(keccakf_sm, KeccakfManager);
-                    add_generator!(sha256f_sm, Sha256fManager);
-                    add_generator!(arith_eq_sm, ArithEqManager<F>);
-
+                if used {
                     Some(data_bus)
                 } else {
                     None
