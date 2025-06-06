@@ -15,7 +15,7 @@ pub fn generate_arith256_mem_inputs(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-) -> Option<Vec<(BusId, Vec<u64>)>> {
+) -> Vec<(BusId, Vec<u64>)> {
     // op,op_type,a,b,addr[5],...
     let a: &[u64; 4] = &data[9..13].try_into().unwrap();
     let b: &[u64; 4] = &data[13..17].try_into().unwrap();
@@ -29,12 +29,12 @@ pub fn generate_arith256_mem_inputs(
     let dl: &mut [u64; 4] = dl.try_into().expect("slice dl without correct length");
 
     Arith256::calculate(a, b, c, dl, dh);
-    Some(super::generate_mem_inputs(
+    super::generate_mem_inputs(
         addr_main,
         step_main,
         data,
         Some(&d),
         only_counters,
         &ARITH_256_MEM_CONFIG,
-    ))
+    )
 }

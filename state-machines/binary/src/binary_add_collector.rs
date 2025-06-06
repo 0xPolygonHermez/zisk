@@ -4,6 +4,7 @@ use zisk_common::{
     BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID,
 };
 use zisk_core::zisk_ops::ZiskOp;
+use std::collections::VecDeque;
 
 /// The `BinaryAddCollector` struct represents an input collector for binary add operations.
 pub struct BinaryAddCollector {
@@ -39,11 +40,16 @@ impl BusDevice<u64> for BinaryAddCollector {
     /// An optional vector of tuples where:
     /// - The first element is the bus ID.
     /// - The second element is always empty indicating there are no derived inputs.
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() >= self.num_operations {
-            return None;
+            return;
         }
 
         let data: ExtOperationData<u64> =
@@ -52,15 +58,14 @@ impl BusDevice<u64> for BinaryAddCollector {
         let op = OperationBusData::get_op(&data);
 
         if op != ZiskOp::Add.code() {
-            return None;
+            return;
         }
 
         if self.collect_skipper.should_skip() {
-            return None;
+            return;
         }
 
         self.inputs.push([OperationBusData::get_a(&data), OperationBusData::get_b(&data)]);
-        None
     }
 
     /// Returns the bus IDs associated with this instance.

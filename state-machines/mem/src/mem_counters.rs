@@ -8,6 +8,7 @@ use zisk_common::ChunkId;
 use crate::MemHelpers;
 use std::fmt;
 use zisk_common::{BusDevice, BusId, MemBusData, Metrics, MEM_BUS_DATA_SIZE, MEM_BUS_ID};
+use std::collections::VecDeque;
 
 // inside a chunk no more than 2^32 access by one address
 
@@ -164,7 +165,12 @@ impl Metrics for MemCounters {
 
 impl BusDevice<u64> for MemCounters {
     #[inline(always)]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(bus_id == &MEM_BUS_ID);
 
         #[cfg(feature = "save_mem_bus_data")]
@@ -174,8 +180,6 @@ impl BusDevice<u64> for MemCounters {
         }
 
         self.measure(data);
-
-        None
     }
 
     fn bus_id(&self) -> Vec<BusId> {

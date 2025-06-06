@@ -14,6 +14,7 @@ use zisk_common::{
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
+use std::collections::VecDeque;
 
 /// The `ArithFullInstance` struct represents an instance for arithmetic-related witness
 /// computations.
@@ -147,27 +148,31 @@ impl BusDevice<u64> for ArithInstanceCollector {
     /// An optional vector of tuples where:
     /// - The first element is the bus ID.
     /// - The second element is always empty indicating there are no derived inputs.
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() == self.num_operations as usize {
-            return None;
+            return;
         }
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Arith as u32 {
-            return None;
+            return;
         }
 
         if self.collect_skipper.should_skip() {
-            return None;
+            return;
         }
 
-        let data: ExtOperationData<u64> = data.try_into().ok()?;
+        let data: ExtOperationData<u64> = data.try_into().expect("Failed to convert data");
+
         if let ExtOperationData::OperationData(data) = data {
             self.inputs.push(data);
         }
-
-        None
     }
 
     /// Returns the bus IDs associated with this instance.

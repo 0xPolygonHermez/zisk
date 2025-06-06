@@ -1,5 +1,5 @@
 #![cfg(test)]
-use std::sync::Arc;
+use std::{collections::VecDeque, sync::Arc};
 
 use crate::{
     MemCounters, MemModulePlanner, MemModulePlannerConfig, MemPlanCalculator, MEMORY_LOAD_OP,
@@ -45,6 +45,7 @@ fn add_test_aligned_mem_reads(
         counter.process_data(
             &MEM_BUS_ID,
             &[MEMORY_LOAD_OP as u64, addr as u64, step + i * step_delta, 8, value],
+            &mut VecDeque::new(),
         );
     }
 }
@@ -71,7 +72,7 @@ fn add_mem_data(
     let mut step = step;
     let op = if is_write { MEMORY_STORE_OP } else { MEMORY_LOAD_OP } as u64;
     for i in 0..count {
-        counter.process_data(&MEM_BUS_ID, &[op, addr, step, width, value]);
+        counter.process_data(&MEM_BUS_ID, &[op, addr, step, width, value], &mut VecDeque::new());
         if config.step_cycle > 0 {
             if i > 0 && (config.step_cycle % i) == 0 {
                 step += config.step_delta;
@@ -98,11 +99,19 @@ fn add_mem_data(
 // }
 
 fn add_mem_read64(counter: &mut MemCounters, addr: u32, step: u64, value: u64) {
-    counter.process_data(&MEM_BUS_ID, &[MEMORY_LOAD_OP as u64, addr as u64, step, 8, value]);
+    counter.process_data(
+        &MEM_BUS_ID,
+        &[MEMORY_LOAD_OP as u64, addr as u64, step, 8, value],
+        &mut VecDeque::new(),
+    );
 }
 
 fn add_mem_write64(counter: &mut MemCounters, addr: u32, step: u64, value: u64) {
-    counter.process_data(&MEM_BUS_ID, &[MEMORY_STORE_OP as u64, addr as u64, step, 8, value]);
+    counter.process_data(
+        &MEM_BUS_ID,
+        &[MEMORY_STORE_OP as u64, addr as u64, step, 8, value],
+        &mut VecDeque::new(),
+    );
 }
 
 #[test]

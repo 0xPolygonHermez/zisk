@@ -3,7 +3,7 @@
 //! It is responsible for computing witnesses for ROM-related execution plans,
 
 use std::sync::{atomic::AtomicU32, Arc};
-
+use std::collections::VecDeque;
 use crate::{rom_asm_worker::RomAsmWorker, rom_counter::RomCounter, RomSM};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
@@ -202,14 +202,17 @@ impl BusDevice<u64> for RomCollector {
     /// - The first element is the bus ID.
     /// - The second element is always empty indicating there are no derived inputs.
     #[inline(always)]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == ROM_BUS_ID);
 
         if !self.already_computed {
             self.rom_counter.measure(data);
         }
-
-        None
     }
 
     /// Returns the bus IDs associated with this counter.

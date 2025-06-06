@@ -87,7 +87,18 @@ pub enum ZiskOperationType {
     FcallGet,
 }
 
-pub const ZISK_OP_TYPE_COUNT: usize = 10;
+pub const NONE_OP_TYPE_ID: u32 = 0;
+pub const INTERNAL_OP_TYPE_ID: u32 = 1;
+pub const ARITH_OP_TYPE_ID: u32 = 2;
+pub const BINARY_OP_TYPE_ID: u32 = 3;
+pub const BINARY_E_OP_TYPE_ID: u32 = 4;
+pub const KECCAK_OP_TYPE_ID: u32 = 5;
+pub const SHA256_OP_TYPE_ID: u32 = 6;
+pub const PUB_OUT_OP_TYPE_ID: u32 = 7;
+pub const ARITH_EQ_OP_TYPE_ID: u32 = 8;
+pub const FCALL_PARAM_OP_TYPE_ID: u32 = 9;
+pub const FCALL_OP_TYPE_ID: u32 = 10;
+pub const FCALL_GET_OP_TYPE_ID: u32 = 11;
 
 /// ZisK instruction definition
 ///

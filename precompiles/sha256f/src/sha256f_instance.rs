@@ -15,6 +15,7 @@ use zisk_common::{
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::Sha256fTrace;
+use std::collections::VecDeque;
 
 /// The `Sha256fInstance` struct represents an instance for the Sha256f State Machine.
 ///
@@ -142,26 +143,27 @@ impl BusDevice<PayloadType> for Sha256fCollector {
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
-    ) -> Option<Vec<(BusId, Vec<PayloadType>)>> {
+        _pending: &mut VecDeque<(BusId, Vec<PayloadType>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() == self.num_operations as usize {
-            return None;
+            return;
         }
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Sha256 as u32 {
-            return None;
+            return;
         }
 
         if self.collect_skipper.should_skip() {
-            return None;
+            return;
         }
 
         let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         if let ExtOperationData::OperationSha256Data(data) = data {
             self.inputs.push(Sha256fInput::from(&data));
-            None
+            return;
         } else {
             panic!("Expected ExtOperationData::OperationData");
         }

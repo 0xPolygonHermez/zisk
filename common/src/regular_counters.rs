@@ -5,6 +5,7 @@
 use crate::{BusDevice, BusId, Counter, ExtOperationData, Metrics, OperationBusData};
 use std::ops::Add;
 use zisk_core::ZiskOperationType;
+use std::collections::VecDeque;
 
 /// The `RegularCounters` struct represents a generic counter that monitors and measures
 /// operations on the data bus.
@@ -121,12 +122,15 @@ impl BusDevice<u64> for RegularCounters {
     /// - The first element is the bus ID.
     /// - The second element is always empty indicating there are no derived inputs.
     #[inline(always)]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == self.bus_id);
 
         self.measure(data);
-
-        None
     }
 
     /// Returns the bus IDs associated with this counter.

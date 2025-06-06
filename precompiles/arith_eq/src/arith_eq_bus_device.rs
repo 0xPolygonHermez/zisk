@@ -10,6 +10,7 @@ use zisk_common::{
     OPERATION_BUS_SECP256K1_DBL_DATA_SIZE, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
+use std::collections::VecDeque;
 
 use crate::mem_inputs::{
     generate_arith256_mem_inputs, generate_arith256_mod_mem_inputs,
@@ -103,13 +104,18 @@ impl BusDevice<u64> for ArithEqCounterInputGen {
     /// # Returns
     /// A vector of derived inputs to be sent back to the bus.
     #[inline(always)]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         const ARITH_EQ: u64 = ZiskOperationType::ArithEq as u64;
 
         if data[OP_TYPE] != ARITH_EQ {
-            return None;
+            return;
         }
 
         let step_main = data[A];
@@ -122,19 +128,26 @@ impl BusDevice<u64> for ArithEqCounterInputGen {
 
         match data.len() {
             OPERATION_BUS_ARITH_256_DATA_SIZE => {
-                generate_arith256_mem_inputs(addr_main, step_main, data, only_counters)
+                pending.extend(generate_arith256_mem_inputs(addr_main, step_main, data, only_counters));
             }
             OPERATION_BUS_ARITH_256_MOD_DATA_SIZE => {
-                generate_arith256_mod_mem_inputs(addr_main, step_main, data, only_counters)
+                pending.extend(generate_arith256_mod_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
             }
-            OPERATION_BUS_SECP256K1_ADD_DATA_SIZE => {
-                generate_secp256k1_add_mem_inputs(addr_main, step_main, data, only_counters)
-            }
-            OPERATION_BUS_SECP256K1_DBL_DATA_SIZE => {
-                generate_secp256k1_dbl_mem_inputs(addr_main, step_main, data, only_counters)
-            }
+            OPERATION_BUS_SECP256K1_ADD_DATA_SIZE => pending.extend(
+                generate_secp256k1_add_mem_inputs(addr_main, step_main, data, only_counters),
+            ),
+            OPERATION_BUS_SECP256K1_DBL_DATA_SIZE => pending.extend(
+                generate_secp256k1_dbl_mem_inputs(addr_main, step_main, data, only_counters),
+            ),
 
-            _ => None,
+            _ => {
+                panic!("ArithEqCounterInputGen: Unsupported data length {}", data.len(),);
+            }
         }
     }
 

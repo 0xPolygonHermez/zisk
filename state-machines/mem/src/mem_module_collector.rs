@@ -2,6 +2,7 @@ use crate::{
     mem_bus_data_to_input::MemBusDataToInput, MemInput, MemModuleCheckPoint, MemPreviousSegment,
 };
 use zisk_common::{BusDevice, BusId, SegmentId, MEM_BUS_ID};
+use std::collections::VecDeque;
 
 #[derive(Debug)]
 pub struct MemModuleCollector {
@@ -111,13 +112,16 @@ impl MemModuleCollector {
 }
 
 impl BusDevice<u64> for MemModuleCollector {
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
         let inputs = MemBusDataToInput::bus_data_to_input(data);
         self.filtered_inputs_push(inputs);
-
-        None
     }
 
     fn bus_id(&self) -> Vec<BusId> {

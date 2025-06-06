@@ -95,6 +95,7 @@ macro_rules! table_instance {
         use zisk_common::{
             BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
         };
+        use std::collections::VecDeque;
         use zisk_pil::$Trace;
 
         use rayon::prelude::*;
@@ -162,10 +163,9 @@ macro_rules! table_instance {
                 &mut self,
                 bus_id: &BusId,
                 data: &[u64],
-            ) -> Option<Vec<(BusId, Vec<u64>)>> {
-                None
+                _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+            ) {
             }
-
             fn bus_id(&self) -> Vec<BusId> {
                 vec![self.bus_id]
             }
@@ -199,6 +199,7 @@ macro_rules! table_instance_array {
             BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
         };
         use zisk_pil::$Trace;
+        use std::collections::VecDeque;
 
         use rayon::prelude::*;
 
@@ -268,8 +269,8 @@ macro_rules! table_instance_array {
                 &mut self,
                 bus_id: &BusId,
                 data: &[u64],
-            ) -> Option<Vec<(BusId, Vec<u64>)>> {
-                None
+                _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+            ) {
             }
 
             fn bus_id(&self) -> Vec<BusId> {
