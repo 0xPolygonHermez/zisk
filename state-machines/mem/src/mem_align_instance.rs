@@ -2,6 +2,7 @@ use crate::{MemAlignCheckPoint, MemAlignInput, MemAlignSM, MemHelpers};
 use core::panic;
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, MemBusData,
@@ -92,21 +93,26 @@ impl MemAlignCollector {
 }
 
 impl BusDevice<u64> for MemAlignCollector {
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
         let addr = MemBusData::get_addr(data);
         let bytes = MemBusData::get_bytes(data);
         if MemHelpers::is_aligned(addr, bytes) {
-            return None;
+            return;
         }
         if self.skip_pending > 0 {
             self.skip_pending -= 1;
-            return None;
+            return;
         }
 
         if self.pending_count == 0 {
-            return None;
+            return;
         }
         self.pending_count -= 1;
         let is_write = MemHelpers::is_write(MemBusData::get_op(data));
@@ -126,8 +132,6 @@ impl BusDevice<u64> for MemAlignCollector {
             value,
             mem_values,
         });
-
-        None
     }
 
     fn bus_id(&self) -> Vec<BusId> {
