@@ -405,6 +405,7 @@ dependencies = [
  "futures",
  "indicatif",
  "libloading",
+ "mpi",
  "proofman",
  "proofman-common",
  "rand 0.9.1",
@@ -720,7 +721,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#5a56b11cf02f08708cc11000b24d39a26ccf143c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-bench#bca940036861526a606831799b89a2017cc2c620"
 dependencies = [
  "fields",
  "num-bigint",
@@ -999,7 +1000,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#5a56b11cf02f08708cc11000b24d39a26ccf143c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-bench#bca940036861526a606831799b89a2017cc2c620"
 dependencies = [
  "num-bigint",
  "paste",
@@ -2045,7 +2046,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#5a56b11cf02f08708cc11000b24d39a26ccf143c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-bench#bca940036861526a606831799b89a2017cc2c620"
 dependencies = [
  "colored",
  "fields",
@@ -2303,7 +2304,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#5a56b11cf02f08708cc11000b24d39a26ccf143c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-bench#bca940036861526a606831799b89a2017cc2c620"
 dependencies = [
  "blake3",
  "colored",
@@ -2312,6 +2313,7 @@ dependencies = [
  "curves",
  "fields",
  "libloading",
+ "mpi",
  "num-bigint",
  "num-traits",
  "pil-std-lib",
@@ -2331,7 +2333,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#5a56b11cf02f08708cc11000b24d39a26ccf143c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-bench#bca940036861526a606831799b89a2017cc2c620"
 dependencies = [
  "fields",
  "libloading",
@@ -2351,7 +2353,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#5a56b11cf02f08708cc11000b24d39a26ccf143c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-bench#bca940036861526a606831799b89a2017cc2c620"
 dependencies = [
  "fields",
  "proofman-common",
@@ -2363,7 +2365,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#5a56b11cf02f08708cc11000b24d39a26ccf143c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-bench#bca940036861526a606831799b89a2017cc2c620"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2374,7 +2376,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#5a56b11cf02f08708cc11000b24d39a26ccf143c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-bench#bca940036861526a606831799b89a2017cc2c620"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -2383,7 +2385,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#5a56b11cf02f08708cc11000b24d39a26ccf143c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-bench#bca940036861526a606831799b89a2017cc2c620"
 dependencies = [
  "colored",
  "fields",
@@ -3540,7 +3542,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#5a56b11cf02f08708cc11000b24d39a26ccf143c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-bench#bca940036861526a606831799b89a2017cc2c620"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -4171,7 +4173,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#5a56b11cf02f08708cc11000b24d39a26ccf143c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fwitness-bench#bca940036861526a606831799b89a2017cc2c620"
 dependencies = [
  "colored",
  "fields",

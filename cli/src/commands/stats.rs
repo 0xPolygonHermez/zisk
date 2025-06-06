@@ -14,6 +14,7 @@ use std::{
     collections::HashMap,
     env, fs,
     path::{Path, PathBuf},
+    thread,
 };
 use zisk_pil::*;
 
@@ -75,10 +76,32 @@ pub struct ZiskStats {
     // PRECOMPILES OPTIONS
     /// Sha256f script path
     pub sha256f_script: Option<PathBuf>,
+
+    #[clap(long)]
+    pub mpi_node: usize,
 }
 
 impl ZiskStats {
     pub fn run(&mut self) -> Result<()> {
+        let (universe, _threading) = mpi::initialize_with_threading(mpi::Threading::Multiple)
+            .ok_or_else(|| anyhow::anyhow!("Failed to initialize MPI with threading"))?;
+
+        use mpi::traits::*;
+        let world = universe.world();
+        let rank = world.rank();
+
+        let m2 = self.mpi_node as i32 * 2;
+        if rank < m2 || rank >= m2 + 2 {
+            world.split_shared(rank);
+            world.barrier();
+            println!(
+                "{}: {}",
+                format!("Rank {}", rank).bright_yellow().bold(),
+                "Exiting stats command.".bright_yellow()
+            );
+            return Ok(());
+        }
+
         cli_fail_if_macos()?;
 
         initialize_logger(self.verbose.into());
@@ -168,6 +191,7 @@ impl ZiskStats {
             false,
             false,
             gpu_params,
+            Some(universe),
         )
         .expect("Failed to initialize proofman");
 
@@ -200,14 +224,17 @@ impl ZiskStats {
             .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
+        if rank % 2 == 1 {
+            thread::sleep(std::time::Duration::from_millis(2000));
+        }
         println!();
-        tracing::info!(
+        println!(
             "{} {}",
-            "--- STATS SUMMARY ".bright_green().bold(),
-            "-".repeat(55).bright_green().bold()
+            format!("--- STATS SUMMARY RANK {}/{}", rank as usize, world.size() as usize),
+            "-".repeat(55)
         );
 
-        Self::print_stats(stats);
+        Self::print_stats(&stats);
 
         println!();
 
@@ -279,24 +306,24 @@ impl ZiskStats {
     ///
     /// # Arguments
     /// * `stats_mutex` - A reference to the Mutex holding the stats vector.
-    pub fn print_stats(stats: Vec<(usize, usize, Stats)>) {
-        tracing::info!("    Stats by Air:");
-        tracing::info!(
+    pub fn print_stats(stats: &Vec<(usize, usize, Stats)>) {
+        println!("    Number of airs: {}", stats.len());
+        println!();
+        println!("    Stats by Air:");
+        println!(
             "    {:<8} {:<25} {:<8} {:<12} {:<12}",
-            "air id",
-            "Name",
-            "chunks",
-            "collect (ms)",
-            "witness (ms)",
+            "air id", "Name", "chunks", "collect (ms)", "witness (ms)",
         );
-        tracing::info!("    {}", "-".repeat(70));
+        println!("    {}", "-".repeat(70));
 
         // Sort individual stats by (airgroup_id, air_id)
         let mut sorted_stats = stats.clone();
         sorted_stats.sort_by_key(|(airgroup_id, air_id, _)| (*airgroup_id, *air_id));
 
+        let mut total_collect_time = 0;
+        let mut total_witness_time = 0;
         for (airgroup_id, air_id, stats) in sorted_stats.iter() {
-            tracing::info!(
+            println!(
                 "    {:<8} {:<25} {:<8} {:<12} {:<12}",
                 air_id,
                 Self::air_name(*airgroup_id, *air_id),
@@ -304,6 +331,9 @@ impl ZiskStats {
                 stats.collect_time,
                 stats.witness_time,
             );
+            // Accumulate total times
+            total_collect_time += stats.collect_time;
+            total_witness_time += stats.witness_time;
         }
 
         // Group stats
@@ -313,32 +343,16 @@ impl ZiskStats {
         }
 
         println!();
-        tracing::info!("    Grouped Stats:");
-        tracing::info!(
+        println!("    Grouped Stats:");
+        println!(
             "    {:<8} {:<25}   {:<6}   {:<20}   {:<20}   {:<20}",
-            "Air id",
-            "Name",
-            "Count",
-            "Chunks",
-            "Collect (ms)",
-            "Witness (ms)",
+            "Air id", "Name", "Count", "Chunks", "Collect (ms)", "Witness (ms)",
         );
-        tracing::info!(
+        println!(
             "    {:<8} {:<25}   {:<6}   {:<6} {:<6} {:<6}   {:<6} {:<6} {:<6}   {:<6} {:<6} {:<6}",
-            "",
-            "",
-            "",
-            "min",
-            "max",
-            "avg",
-            "min",
-            "max",
-            "avg",
-            "min",
-            "max",
-            "avg",
+            "", "", "", "min", "max", "avg", "min", "max", "avg", "min", "max", "avg",
         );
-        tracing::info!("    {}", "-".repeat(109));
+        println!("    {}", "-".repeat(109));
 
         let mut grouped_sorted: Vec<_> = grouped.into_iter().collect();
         grouped_sorted.sort_by_key(|((airgroup_id, air_id), _)| (*airgroup_id, *air_id));
@@ -364,7 +378,7 @@ impl ZiskStats {
                 n_sum += e.num_chunks;
             }
 
-            tracing::info!(
+            println!(
                 "    {:<8} {:<25} | {:<6} | {:<6} {:<6} {:<6} | {:<6} {:<6} {:<6} | {:<6} {:<6} {:<6}",
                 air_id,
                 Self::air_name(airgroup_id, air_id),
@@ -380,6 +394,14 @@ impl ZiskStats {
                 w_sum / count,
             );
         }
+        println!();
+        println!("    Total Stats:");
+        println!(
+            "    Collect: {:10}ms Witness: {:10}ms Total: {:10}ms",
+            total_collect_time,
+            total_witness_time,
+            total_collect_time + total_witness_time
+        );
     }
 
     fn air_name(_airgroup_id: usize, air_id: usize) -> String {

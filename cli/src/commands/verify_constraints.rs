@@ -167,6 +167,7 @@ impl ZiskVerifyConstraints {
             false,
             false,
             ParamsGPU::default(),
+            None,
         )
         .expect("Failed to initialize proofman");
 

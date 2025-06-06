@@ -234,6 +234,7 @@ impl ZiskProve {
             self.aggregation,
             self.final_snark,
             gpu_params,
+            None,
         )
         .expect("Failed to initialize proofman");
 
