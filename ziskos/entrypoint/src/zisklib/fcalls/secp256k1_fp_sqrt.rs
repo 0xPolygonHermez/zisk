@@ -35,15 +35,6 @@ pub fn fcall_secp256k1_fp_sqrt(p_value: &[u64; 4], parity: u64) -> Option<[u64; 
         if ziskos_fcall_get() == 0 {
             return None;
         }
-        /* let mut result = [0u64; 4];
-        result[0] = ziskos_fcall_get();
-        println!("\x1B[33m----> result1: {:?}\x1B[0m", result);
-        result[1] = ziskos_fcall_get();
-        println!("\x1B[33m----> result2: {:?}\x1B[0m", result);
-        result[2] = ziskos_fcall_get();
-        println!("\x1B[33m----> result3: {:?}\x1B[0m", result);
-        result[3] = ziskos_fcall_get();
-        println!("\x1B[33m----> result4: {:?}\x1B[0m", result);*/
         Some([ziskos_fcall_get(), ziskos_fcall_get(), ziskos_fcall_get(), ziskos_fcall_get()])
     }
 }
