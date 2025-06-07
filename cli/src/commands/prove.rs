@@ -274,6 +274,7 @@ impl ZiskProve {
                                 self.save_proofs,
                                 self.output_dir.clone(),
                             ),
+                            Some(&*witness_lib),
                         )
                         .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
                 }

@@ -112,7 +112,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     const NUM_THREADS: usize = 16;
 
     /// The size in rows of the minimal traces
-    const MIN_TRACE_SIZE: u64 = 1 << 18;
+    const MIN_TRACE_SIZE: u64 = 1 << 14;
 
     const MAX_NUM_STEPS: u64 = 1 << 32;
 
@@ -732,22 +732,28 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let num_chunks = if MAIN_AIR_IDS.contains(&air_id) {
             MainTrace::<F>::NUM_ROWS / Self::MIN_TRACE_SIZE as usize
         } else {
-            let secn_instance = &self.secn_instances.read().unwrap()[&global_id];
+            //id the global_is is in the map
+            if self.secn_instances.read().unwrap().contains_key(&global_id) {
+                let secn_instance: &Box<dyn Instance<F> + 'static> =
+                    &self.secn_instances.read().unwrap()[&global_id];
 
-            match secn_instance.instance_type() {
-                InstanceType::Instance => {
-                    let checkpoint = secn_instance.check_point();
-                    match checkpoint {
-                        CheckPoint::None => 0,
-                        CheckPoint::Single(_) => 1,
-                        CheckPoint::Multiple(chunk_ids) => chunk_ids.len(),
+                match secn_instance.instance_type() {
+                    InstanceType::Instance => {
+                        let checkpoint = secn_instance.check_point();
+                        match checkpoint {
+                            CheckPoint::None => 0,
+                            CheckPoint::Single(_) => 1,
+                            CheckPoint::Multiple(chunk_ids) => chunk_ids.len(),
+                        }
                     }
+                    InstanceType::Table => 0,
                 }
-                InstanceType::Table => 0,
+            } else {
+                1
             }
         };
 
-        Ok(std::cmp::min(1usize, num_chunks))
+        Ok(std::cmp::max(1usize, num_chunks))
     }
 }
 
