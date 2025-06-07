@@ -2,7 +2,7 @@
 pub const STATE_SIZE_BITS: usize = 256;
 pub const INPUT_SIZE_BITS: usize = 512;
 pub const INPUT_DATA_SIZE_BITS: usize = STATE_SIZE_BITS + INPUT_SIZE_BITS; // 768
-pub const INPUT_DATA_SIZE_U64: usize = INPUT_DATA_SIZE_BITS / 64; // 12
+pub const INPUT_DATA_SIZE_U32: usize = INPUT_DATA_SIZE_BITS / 32; // 24
 pub const OUTPUT_SIZE_BITS: usize = 256;
 pub const RB: usize = 32;
 pub const RC: usize = 2;
@@ -17,8 +17,11 @@ pub const MASK_BITS_SHA256F: u64 = P2_BITS_SHA256F - 1;
 pub const MASK_CHUNK_BITS_SHA256F: u64 = P2_CHUNK_BITS_SHA256F - 1;
 pub const NUM_SHA256F_PER_CIRCUIT: usize = BITS_SHA256F * CHUNKS_SHA256F;
 pub const RB_SIZE: usize = NUM_SHA256F_PER_CIRCUIT * RB * RC / BITS_IN_PARALLEL;
+pub const BLOCK_SIZE: usize = NUM_SHA256F_PER_CIRCUIT * 32 / BITS_IN_PARALLEL;
 pub const INPUT_SIZE: usize = NUM_SHA256F_PER_CIRCUIT * INPUT_DATA_SIZE_BITS / BITS_IN_PARALLEL;
 pub const OUTPUT_SIZE: usize = NUM_SHA256F_PER_CIRCUIT * OUTPUT_SIZE_BITS / BITS_IN_PARALLEL;
+pub const IN_DATA_BLOCKS: usize = INPUT_DATA_SIZE_BITS / (RB * RC);
+pub const OUT_BLOCKS: usize = OUTPUT_SIZE_BITS / (RB * RC);
 
 // Sha256f Table Parameters
 pub const BITS_SHA256F_TABLE: usize = BITS_SHA256F;

@@ -193,7 +193,8 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
     for (int i = 0; i < RC; i++) {
         keccakf_val[i] = 0;
     }
-    // Update the keccakf_val, the Keccakf state is represented in little endian
+    // Update the keccakf_val: the Keccakf works over words of 64 bits
+    // so it aligns perfectly with our memory of 64 bits
     const int RB_OFFSET = RB / bits_in_parallel;
     for (int i = 0; i < RB; i++) {
         const int keccakf_val_bit = i % bits_in_parallel;

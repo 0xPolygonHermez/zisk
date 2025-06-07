@@ -23,9 +23,8 @@ use std::{
 use tiny_keccak::keccakf;
 
 use crate::{
-    convert_u32s_back_to_u64_be, convert_u64_to_u32_be_words, u64s_to_generic_array_be,
-    EmulationMode, InstContext, Mem, ZiskOperationType, ZiskRequiredOperation, M64, REG_A0,
-    SYS_ADDR,
+    convert_u32_to_u64, convert_u64_to_generic_array_bytes, convert_u64_to_u32, EmulationMode,
+    InstContext, Mem, ZiskOperationType, ZiskRequiredOperation, M64, REG_A0, SYS_ADDR,
 };
 
 use lib_c::{inverse_fn_ec_c, inverse_fp_ec_c, sqrt_fp_ec_parity_c, Fcall, FcallContext};
@@ -1210,13 +1209,12 @@ pub fn opc_sha256(ctx: &mut InstContext) {
     // For that we use the `sha2` crate, and we should adapt to their API
 
     // Convert both the state and the input to appropriate types
-    let mut state_u32 = convert_u64_to_u32_be_words(state);
-    let block: GenericArray<u8, U64> = u64s_to_generic_array_be(input);
-    let blocks = &[block];
-    compress256(&mut state_u32, blocks);
+    let mut state_u32: [u32; 8] = convert_u64_to_u32(state).try_into().unwrap();
+    let block: GenericArray<u8, U64> = convert_u64_to_generic_array_bytes(input);
+    compress256(&mut state_u32, &[block]);
 
     // Convert the state back to u64 and write it to the memory address
-    let state_output = convert_u32s_back_to_u64_be(&state_u32);
+    let state_output = convert_u32_to_u64(&state_u32);
     for (i, d) in state_output.iter().enumerate() {
         ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
     }

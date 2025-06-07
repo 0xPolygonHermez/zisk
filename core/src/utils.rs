@@ -70,33 +70,29 @@ pub fn is_elf_file(file_data: &[u8]) -> std::io::Result<bool> {
     Ok(file_data[0..4] == [0x7F, b'E', b'L', b'F'])
 }
 
-pub fn convert_u64_to_u32_be_words(input: &[u64; 4]) -> [u32; 8] {
-    let mut out = [0u32; 8];
-    for (i, &word) in input.iter().enumerate() {
-        let bytes = word.to_be_bytes();
-        out[2 * i] = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-        out[2 * i + 1] = u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+pub fn convert_u64_to_u32(input: &[u64]) -> Vec<u32> {
+    let mut out = Vec::with_capacity(input.len() * 2);
+    for &word in input {
+        out.push((word >> 32) as u32);
+        out.push((word & 0xFFFFFFFF) as u32);
     }
     out
 }
 
-pub fn u64s_to_generic_array_be(input: &[u64; 8]) -> GenericArray<u8, U64> {
+pub fn convert_u64_to_generic_array_bytes(input: &[u64; 8]) -> GenericArray<u8, U64> {
     let mut out = [0u8; 64];
     for (i, word) in input.iter().enumerate() {
-        let bytes = word.to_be_bytes();
-        out[i * 8..(i + 1) * 8].copy_from_slice(&bytes);
+        for j in 0..8 {
+            out[i * 8 + j] = (word >> (56 - j * 8)) as u8;
+        }
     }
     GenericArray::<u8, U64>::clone_from_slice(&out)
 }
 
-pub fn convert_u32s_back_to_u64_be(words: &[u32; 8]) -> [u64; 4] {
+pub fn convert_u32_to_u64(words: &[u32; 8]) -> [u64; 4] {
     let mut out = [0u64; 4];
     for i in 0..4 {
-        let high = words[2 * i].to_be_bytes();
-        let low = words[2 * i + 1].to_be_bytes();
-        out[i] = u64::from_be_bytes([
-            high[0], high[1], high[2], high[3], low[0], low[1], low[2], low[3],
-        ]);
+        out[i] = ((words[2 * i] as u64) << 32) | (words[2 * i + 1] as u64);
     }
     out
 }
