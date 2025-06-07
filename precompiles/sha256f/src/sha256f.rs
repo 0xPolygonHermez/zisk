@@ -7,9 +7,7 @@ use sha2::compress256;
 
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_core::{
-    convert_u32s_back_to_u64_be, convert_u64_to_u32_be_words, u64s_to_generic_array_be,
-};
+use zisk_core::{convert_u64_to_generic_array_bytes, convert_u64_to_u32};
 use zisk_pil::{Sha256fFixed, Sha256fTrace, Sha256fTraceRow};
 
 use crate::Sha256fInput;
@@ -110,10 +108,14 @@ impl Sha256fSM {
             let state_received = &input.state;
             let input_received = &input.input;
 
-            // Collect the raw sha256f input
-            let mut sha256f_input_data = [0u64; INPUT_DATA_SIZE_U64];
-            sha256f_input_data[..4].copy_from_slice(state_received);
-            sha256f_input_data[4..].copy_from_slice(input_received);
+            // Convert the input data to 32-bit words
+            let mut state_u32: [u32; 8] = convert_u64_to_u32(state_received).try_into().unwrap();
+            let input_u32: [u32; 16] = convert_u64_to_u32(input_received).try_into().unwrap();
+
+            // And collect them
+            let mut sha256f_input_data = [0u32; INPUT_DATA_SIZE_U32];
+            sha256f_input_data[..8].copy_from_slice(&state_u32);
+            sha256f_input_data[8..].copy_from_slice(&input_u32);
 
             circuit = i / NUM_SHA256F_PER_CIRCUIT;
             let circuit_pos = i % NUM_SHA256F_PER_CIRCUIT;
@@ -123,12 +125,14 @@ impl Sha256fSM {
             let initial_pos = initial_offset + circuit_offset + circuit_pos;
             trace[initial_pos].in_use_clk_0 = F::ONE; // The pair (step_received, addr_received) is unique each time
 
-            // Process the sha256f input
-            sha256f_input_data.iter().enumerate().for_each(|(j, &value)| {
-                let chunk_offset = j * RB_SIZE;
-                let pos = initial_pos + chunk_offset;
+            // Update the step_addr and in_use as expected
+            let mut offset = initial_pos;
+            for j in 0..IN_DATA_BLOCKS {
+                let rb_offset = j * RB_SIZE;
+                let pos = offset + rb_offset;
 
-                // We set step_addr as expected
+                trace[pos].in_use = F::ONE;
+
                 trace[pos].step_addr = match j {
                     0 => F::from_u64(step_received),       // STEP_MAIN
                     1 => F::from_u32(addr_received),       // ADDR_OP
@@ -138,17 +142,23 @@ impl Sha256fSM {
                     5 => F::from_u32(input_addr_received), // ADDR_IND_1
                     _ => F::ZERO,
                 };
-                trace[pos].in_use = F::ONE;
+            }
 
-                // Process the 64-bit chunk
-                for k in 0..64 {
+            // Process the input data
+            sha256f_input_data.iter().enumerate().for_each(|(j, &value)| {
+                let block_offset = j * BLOCK_SIZE;
+                let pos = offset + block_offset;
+
+                // Process the 32-bit chunk
+                for k in 0..32 {
+                    let bit = ((value >> k) & 1) as u64;
+
                     // Divide the value in bits:
                     //    (circuit i) [0b1011,  0b0011,  0b1000,  0b0010]
                     //    (circuit i) [1,0,1,1, 0,0,1,1, 1,0,0,0, 0,0,1,0]
-                    let bit_pos = k + 64 * j;
+                    let bit_pos = k + 32 * j;
                     let old_value = inputs_bits[circuit][bit_pos];
-                    let new_bit = (value >> (63 - k)) & 1;
-                    inputs_bits[circuit][bit_pos] = (new_bit << circuit_pos) | old_value;
+                    inputs_bits[circuit][bit_pos] = (bit << circuit_pos) | old_value;
 
                     // We update bit[i] and val[i]
                     let bit_pos = k % BITS_IN_PARALLEL;
@@ -156,7 +166,7 @@ impl Sha256fSM {
                     update_bit_val(
                         trace,
                         pos + bit_offset,
-                        new_bit,
+                        bit,
                         circuit_pos,
                         bit_pos,
                         circuit_pos == 0 && (pos + bit_offset > 1),
@@ -164,31 +174,35 @@ impl Sha256fSM {
                 }
             });
 
-            // Apply the sha256f function
-            let mut state_u32 = convert_u64_to_u32_be_words(state_received);
-            let block: GenericArray<u8, U64> = u64s_to_generic_array_be(input_received);
-            let blocks = &[block];
-            compress256(&mut state_u32, blocks);
-            let sha256f_output = convert_u32s_back_to_u64_be(&state_u32);
+            // Activate the in_use for the output data
+            offset += input_offset;
+            for j in 0..OUT_BLOCKS {
+                let rb_offset = j * RB_SIZE;
+                let pos = offset + rb_offset;
+
+                trace[pos].in_use = F::ONE;
+            }
+
+            // Obtain the sha256f output
+            let block: GenericArray<u8, U64> = convert_u64_to_generic_array_bytes(input_received);
+            compress256(&mut state_u32, &[block]);
 
             // Process the output
-            sha256f_output.iter().enumerate().for_each(|(j, &value)| {
-                let chunk_offset = j * RB_SIZE;
-                let pos = initial_pos + input_offset + chunk_offset;
+            state_u32.iter().enumerate().for_each(|(j, &value)| {
+                let block_offset = j * BLOCK_SIZE;
+                let pos = offset + block_offset;
 
-                // At the beginning of each 64-bit chunk, we set the step and address
-                trace[pos].in_use = F::ONE;
+                // Process the 32-bit chunk
+                for k in 0..32 {
+                    let bit = ((value >> k) & 1) as u64;
 
-                // Process the 64-bit chunk
-                for k in 0..64 {
                     // We update bit[i] and val[i]
-                    let new_bit = (value >> (63 - k)) & 1;
                     let bit_pos = k % BITS_IN_PARALLEL;
                     let bit_offset = (k - bit_pos) * NUM_SHA256F_PER_CIRCUIT / BITS_IN_PARALLEL;
                     update_bit_val(
                         trace,
                         pos + bit_offset,
-                        new_bit,
+                        bit,
                         circuit_pos,
                         bit_pos,
                         circuit_pos == 0,
@@ -196,10 +210,12 @@ impl Sha256fSM {
                 }
             });
 
-            // Activate the in_use for the two indirections
-            let offset = initial_pos + input_offset + output_offset;
+            // Finally, activate the in_use for the two indirections
+            offset += output_offset;
             for j in 0..2 {
-                let pos = offset + j * RB_SIZE;
+                let rb_offset = j * RB_SIZE;
+                let pos = offset + rb_offset;
+
                 trace[pos].in_use = F::ONE;
             }
         }
@@ -209,10 +225,8 @@ impl Sha256fSM {
             // Compute the hash of zero
             let mut zero_state = [0u32; 8];
             let block_zeros: GenericArray<u8, U64> = GenericArray::default();
-            let blocks_zeros = &[block_zeros];
-            compress256(&mut zero_state, blocks_zeros);
-            // hash_of_0: [0x7ca51614425c3ba8, 0xce54dd2fc2020ae7, 0xb6e574d198136d0f, 0xae7e26ccbf0be7a6]
-            let zero_state: [u64; 4] = convert_u32s_back_to_u64_be(&zero_state);
+            compress256(&mut zero_state, &[block_zeros]);
+            // hash_of_0: [0x7ca51614, 0x425c3ba8, 0xce54dd2f, 0xc2020ae7, 0xb6e574d1, 0x98136d0f, 0xae7e26cc, 0xbf0be7a6]
 
             // If the number of inputs is not a multiple of NUM_SHA256F_PER_CIRCUIT,
             // we fill the last processed circuit
@@ -237,15 +251,15 @@ impl Sha256fSM {
                 offset += input_offset;
                 // Since the new bits are all zero, we have to set the hash of 0 as the respective output
                 zero_state.iter().enumerate().for_each(|(j, &value)| {
-                    let rb_offset = j * RB_SIZE;
-                    let rb_pos = offset + rb_offset;
-                    for k in 0..64 {
-                        let new_bit = (value >> (63 - k)) & 1;
+                    let block_offset = j * BLOCK_SIZE;
+                    let block_pos = offset + block_offset;
+                    for k in 0..32 {
+                        let bit = ((value >> k) & 1) as u64;
                         let bit_pos = k % BITS_IN_PARALLEL;
                         let bit_offset = (k - bit_pos) * NUM_SHA256F_PER_CIRCUIT / BITS_IN_PARALLEL;
-                        let pos = rb_pos + bit_offset;
+                        let pos = block_pos + bit_offset;
                         for w in rem_inputs..NUM_SHA256F_PER_CIRCUIT {
-                            update_bit_val(trace, pos + w, new_bit, w, bit_pos, w == 0);
+                            update_bit_val(trace, pos + w, bit, w, bit_pos, w == 0);
                         }
                     }
                 });
@@ -256,18 +270,18 @@ impl Sha256fSM {
             zero_state.iter().enumerate().for_each(|(j, &value)| {
                 for s in next_circuit..self.num_available_circuits {
                     let circuit_offset = s * self.circuit_size;
-                    let chunk_offset = j * RB_SIZE;
-                    for k in 0..64 {
-                        let new_bit = (value >> (63 - k)) & 1;
+                    let block_offset = j * BLOCK_SIZE;
+                    for k in 0..32 {
+                        let bit = ((value >> k) & 1) as u64;
                         let bit_pos = k % BITS_IN_PARALLEL;
                         let bit_offset = (k - bit_pos) * NUM_SHA256F_PER_CIRCUIT / BITS_IN_PARALLEL;
                         let pos = initial_offset
                             + circuit_offset
                             + input_offset
-                            + chunk_offset
+                            + block_offset
                             + bit_offset;
                         for w in 0..NUM_SHA256F_PER_CIRCUIT {
-                            update_bit_val(trace, pos + w, new_bit, w, bit_pos, w == 0);
+                            update_bit_val(trace, pos + w, bit, w, bit_pos, w == 0);
                         }
                     }
                 }
@@ -350,16 +364,16 @@ impl Sha256fSM {
         fn update_bit_val<F: PrimeField64>(
             trace: &mut Sha256fTrace<F>,
             pos: usize,
-            new_bit: u64,
+            bit: u64,
             circuit_pos: usize,
             bit_pos: usize,
             reset: bool,
         ) {
-            trace[pos].bit[bit_pos] = F::from_u64(new_bit);
+            trace[pos].bit[bit_pos] = F::from_u64(bit);
             trace[pos + 1].val[bit_pos] = if reset {
-                F::from_u64(new_bit << circuit_pos)
+                F::from_u64(bit << circuit_pos)
             } else {
-                trace[pos].val[bit_pos] + F::from_u64(new_bit << circuit_pos)
+                trace[pos].val[bit_pos] + F::from_u64(bit << circuit_pos)
             };
         }
 

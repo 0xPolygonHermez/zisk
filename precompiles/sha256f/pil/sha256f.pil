@@ -215,17 +215,19 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     for (int i = 0; i < RC; i++) {
         sha_val[i] = 0;
     }
-    // Update the sha_val, the Sha256 state is represented in big endian
+    // Update the sha_val: the Sha256 works over words of 32 bits
+    // but the memory works over words of 64 bits. So we must
+    // read the RB MSB first
     const int RB_OFFSET = RB / bits_in_parallel;
     for (int i = 0; i < RB; i++) {
         const int sha_val_bit = i % bits_in_parallel;
         const int sha_val_idx = (i - sha_val_bit) / bits_in_parallel;
         for (int j = 0; j < RC; j++) {
-            sha_val[RC - 1 - j] += bit[sha_val_bit]'(NUM_SHA256F_PER_CIRCUIT*(RB_OFFSET * j + sha_val_idx)) * 2**(RB - 1 - i);
+            sha_val[RC - 1 - j] += bit[sha_val_bit]'(NUM_SHA256F_PER_CIRCUIT*(RB_OFFSET * j + sha_val_idx)) * 2**i;
         }
     }
-    // sha_val[0] = bit[0]'(896)·2³¹ + bit[1]'(896)·2³⁰ + bit[0]'(952)·2²⁹ + bit[1]'(952)·2²⁸ + ... + bit[0]'(1736)·2 + bit[1]'(1736)
-    // sha_val[1] = bit[0]·2³¹       + bit[1]·2³⁰       + bit[0]'(56)·2²⁹  + bit[1]'(56)·2²⁸  + ... + bit[0]'(840)·2  + bit[1]'(840)
+    // sha_val[0] = bit[0]'(896) + bit[1]'(896)·2 + bit[0]'(952)·2²  + bit[1]'(952)·2³  + ... + bit[0]'(1736)·2³⁰ + bit[1]'(1736)·2³¹
+    // sha_val[1] = bit[0]       + bit[1]·2       + bit[0]'(56)·2²   + bit[1]'(56)·2³   + ... + bit[0]'(840)·2³⁰  + bit[1]'(840)·2³¹
 
     // Finally, we must address the rest mem values
 
