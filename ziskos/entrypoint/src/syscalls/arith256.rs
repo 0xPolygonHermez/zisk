@@ -6,6 +6,16 @@ use core::arch::asm;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use crate::ziskos_syscall;
 
+#[derive(Debug)]
+#[repr(C)]
+pub struct SyscallArith256Params<'a> {
+    pub a: &'a [u64; 4],
+    pub b: &'a [u64; 4],
+    pub c: &'a [u64; 4],
+    pub dl: &'a mut [u64; 4],
+    pub dh: &'a mut [u64; 4],
+}
+
 /// Executes the `Arith256` operation, performing a 256-bit multiplication and addition:
 /// `a * b + c = dh | dl`.
 ///
@@ -20,17 +30,6 @@ use crate::ziskos_syscall;
 /// ### Safety
 ///
 /// The caller must ensure that the data is aligned to a 64-bit boundary.
-
-#[derive(Debug)]
-#[repr(C)]
-pub struct SyscallArith256Params<'a> {
-    pub a: &'a [u64; 4],
-    pub b: &'a [u64; 4],
-    pub c: &'a [u64; 4],
-    pub dl: &'a mut [u64; 4],
-    pub dh: &'a mut [u64; 4],
-}
-
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn syscall_arith256(params: &mut SyscallArith256Params) {

@@ -2,6 +2,7 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::Keccakf` instructions.
 
+use std::collections::VecDeque;
 use std::ops::Add;
 
 use zisk_common::{
@@ -98,11 +99,16 @@ impl BusDevice<u64> for KeccakfCounterInputGen {
     /// # Returns
     /// A vector of derived inputs to be sent back to the bus.
     #[inline(always)]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Keccak as u32 {
-            return None;
+            return;
         }
 
         let step_main = data[A];

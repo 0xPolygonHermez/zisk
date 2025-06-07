@@ -19,7 +19,7 @@ pub fn generate_sha256f_mem_inputs(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-) -> Option<Vec<(BusId, Vec<u64>)>> {
+) -> Vec<(BusId, Vec<u64>)> {
     // Get the basic data from the input
     // op,op_type,a,b,addr[2],...
     let state: &mut [u64; 4] = &mut data[6..10].try_into().unwrap();
@@ -92,5 +92,5 @@ pub fn generate_sha256f_mem_inputs(
         }
     }
 
-    Some(mem_inputs)
+    mem_inputs
 }

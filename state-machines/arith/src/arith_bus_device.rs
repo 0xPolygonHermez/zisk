@@ -6,6 +6,7 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
+use std::collections::VecDeque;
 use zisk_common::{BusDevice, BusDeviceMode, BusId, Counter, Metrics, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::ZiskOperationType;
 
@@ -80,13 +81,18 @@ impl BusDevice<u64> for ArithCounterInputGen {
     /// # Returns
     /// A vector of derived inputs to be sent back to the bus.
     #[inline(always)]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         const ARITH: u64 = ZiskOperationType::Arith as u64;
 
         if data[OP_TYPE] != ARITH {
-            return None;
+            return;
         }
 
         debug_assert_eq!(data.len(), 4);
@@ -98,7 +104,7 @@ impl BusDevice<u64> for ArithCounterInputGen {
         let bin_inputs =
             ArithFullSM::generate_inputs(unsafe { &*(data.as_ptr() as *const [u64; 4]) });
 
-        Some(bin_inputs.into_iter().map(|x| (OPERATION_BUS_ID, x)).collect())
+        pending.extend(bin_inputs.into_iter().map(|x| (OPERATION_BUS_ID, x)).collect::<Vec<_>>());
     }
 
     /// Returns the bus IDs associated with this counter.

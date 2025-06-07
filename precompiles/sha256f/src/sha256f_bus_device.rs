@@ -2,7 +2,7 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::Sha256f` instructions.
 
-use std::ops::Add;
+use std::{collections::VecDeque, ops::Add};
 
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE,
@@ -98,11 +98,16 @@ impl BusDevice<u64> for Sha256fCounterInputGen {
     /// # Returns
     /// A vector of derived inputs to be sent back to the bus.
     #[inline(always)]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Sha256 as u32 {
-            return None;
+            return;
         }
 
         let step_main = data[A];
@@ -113,7 +118,7 @@ impl BusDevice<u64> for Sha256fCounterInputGen {
             self.measure(data);
         }
 
-        generate_sha256f_mem_inputs(addr_main, step_main, data, only_counters)
+        pending.extend(generate_sha256f_mem_inputs(addr_main, step_main, data, only_counters));
     }
 
     /// Returns the bus IDs associated with this counter.
