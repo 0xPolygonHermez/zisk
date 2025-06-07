@@ -28,7 +28,7 @@
 
 class ImmutableMemPlanner {
 private:
-    uint32_t rows;
+    uint32_t rows_by_segment;
     uint32_t from_page;
     uint32_t to_page;
     uint32_t rows_available;
@@ -57,7 +57,7 @@ private:
     std::vector<MemSegment *> segments;
 
 public:
-    ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint32_t mb_size):rows(rows) {
+    ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint32_t mb_size):rows_by_segment(rows) {
         #ifndef MEM_CHECK_POINT_MAP
         hash_table = new MemSegmentHashTable(MAX_CHUNKS);   // 2^18 * 2^18 = 2^36   // 2^14 * 2^18 = 2^32
         #endif
@@ -128,7 +128,7 @@ public:
         last_offset = workers[0]->last_offset[page];
         for (int i = 1; i < MAX_THREADS; ++i) {
             first_offset = std::min(first_offset, workers[i]->first_offset[page]);
-            last_offset = std::min(last_offset, workers[i]->last_offset[page]);
+            last_offset = std::max(last_offset, workers[i]->last_offset[page]);
         }
     }
 
@@ -148,7 +148,7 @@ public:
         current_chunk = chunk_id;
     }
     void close_last_segment() {
-        if (rows_available < rows) {
+        if (rows_available < rows_by_segment) {
             close_segment(true);
         }/* else if (segments.size() > 0) {
             segments.back()->is_last_segment = true;
@@ -182,12 +182,12 @@ public:
         close_segment(false);
         if (reference_addr_chunk != NO_CHUNK_ID) {
             #ifdef MEM_CHECK_POINT_MAP
-            current_segment->add_or_update(reference_addr_chunk, reference_addr, 0, reference_skip);
+            current_segment->add_or_update(reference_addr_chunk, reference_addr, reference_skip, 0);
             #else
-            current_segment->add_or_update(hash_table, reference_addr_chunk, reference_addr, 0, reference_skip);
+            current_segment->add_or_update(hash_table, reference_addr_chunk, reference_addr, reference_skip, 0);
             #endif
         }
-        rows_available = rows;
+        rows_available = rows_by_segment;
         // printf("MemPlanner::open_segment: rows_available: %d from_page:%d\n", rows_available, from_page);
     }
     void add_next_addr_to_segment(uint32_t addr) {
@@ -195,9 +195,9 @@ public:
     }
     void add_chunk_to_segment(uint32_t chunk_id, uint32_t addr, uint32_t count, uint32_t skip) {
             #ifdef MEM_CHECK_POINT_MAP
-        current_segment->add_or_update(chunk_id, addr, count, skip);
+        current_segment->add_or_update(chunk_id, addr, skip, count);
             #else
-        current_segment->add_or_update(hash_table, chunk_id, addr, count, skip);
+        current_segment->add_or_update(hash_table, chunk_id, addr, skip, count);
             #endif
     }
     void preopen_segment(uint32_t addr, uint32_t intermediate_rows) {
@@ -225,7 +225,7 @@ public:
         reference_skip += row_count;
     }
 
-    void consume_intermediate_rows(uint32_t addr, uint32_t row_count, uint32_t skip) {
+    void consume_intermediate_rows(uint32_t addr, uint32_t row_count) {
         if (row_count == 0 && rows_available > 0) {
             return;
         }
@@ -245,26 +245,25 @@ public:
     void add_intermediate_rows(uint32_t addr, uint32_t count) {
         uint32_t pending = count;
         while (pending > 0) {
-            uint32_t rows = std::min(pending, rows_available);
-            uint32_t skip = count - pending;
-            consume_intermediate_rows(addr, rows, skip);
-            pending -= rows;
+            uint32_t rows_consumed = std::min(pending, rows_available);
+            consume_intermediate_rows(addr, rows_consumed);
+            pending -= rows_consumed;
         }
     }
 
     void add_rows(uint32_t addr, uint32_t count) {
         uint32_t pending = count;
         while (pending > 0) {
-            uint32_t rows = std::min(pending, rows_available);
+            uint32_t rows_consumed = std::min(pending, rows_available);
             uint32_t skip = count - pending;
-            consume_rows(addr, rows, skip);
-            pending -= rows;
+            consume_rows(addr, rows_consumed, skip);
+            pending -= rows_consumed;
         }
     }
 
     uint32_t add_intermediate_addr(uint32_t from_addr, uint32_t to_addr) {
         // adding internal reads of zero for consecutive addresses
-        uint32_t count = to_addr - from_addr + 1;
+        uint32_t count = (to_addr - from_addr + 8) >> 3;
         if (count > 1) {
             add_intermediate_rows(from_addr, 1);
             add_intermediate_rows(to_addr, count - 1);
@@ -276,13 +275,20 @@ public:
 
     uint32_t add_intermediates(uint32_t addr) {
         uint32_t count = 0;
-        if ((addr - last_addr) > 1) {
-            count = add_intermediate_addr(last_addr + 1, addr - 1);
+        if ((addr - last_addr) > 8) {
+            count = add_intermediate_addr(last_addr + 8, addr - 8);
         }
         last_addr = addr;
         return count;
     }
 
+    void collect_segments(MemSegments &mem_segments) {
+        uint32_t segment_id = 0;
+        for (auto segment :segments) {
+            mem_segments.set(segment_id++, segment);
+        }
+        segments.clear();
+    }
     void stats() {
 
     }

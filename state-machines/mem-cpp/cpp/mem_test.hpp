@@ -48,17 +48,63 @@ public:
             free(chunk.chunk_data);
         }
     }
-    void load() {
+    void load(const char *path) {
         printf("Loading compact data...\n");
         uint32_t tot_chunks = 0;
         uint32_t tot_ops = 0;
         uint32_t chunk_id;
         int32_t chunk_size;
         MemCountersBusData *chunk_data;
-        while ((chunk_id = chunks.size()) < MAX_CHUNKS && (chunk_size = load_from_compact_file(chunk_id, &chunk_data)) >=0) {
+        bool convert = false;
+        while ((chunk_id = chunks.size()) < MAX_CHUNKS && (chunk_size = load_from_compact_file(path, chunk_id, &chunk_data)) >=0) {
             chunks.emplace_back(chunk_data, chunk_size);
             tot_ops += count_operations(chunk_data, chunk_size);
             tot_chunks += chunk_size;
+            if (chunk_id == 0 && (chunk_data[0].flags & 0xF000000)) {
+                printf("converting format ....\n");
+                convert = true;
+            }
+            if (convert) {
+                for (int32_t index = 0; index < chunk_size; ++index) {
+                    chunk_data[index].flags = ((chunk_data[index].flags & 0x08000000) >> 11) | ((chunk_data[index].flags & 0xF0000000) >> 28);
+                }
+            }
+            // #ifdef DEBUG_INFO
+            // if (chunk_id == 999999) {
+                for (int32_t i = 0; i < chunk_size; ++i) {
+                    const uint32_t addr = chunk_data[i].addr;
+                    if (addr < 0x80000000 || addr >= 0x90000000) continue;
+                    const uint8_t bytes = chunk_data[i].flags & 0xFF; 
+                    const uint8_t is_write = chunk_data[i].flags >> 16;
+                    if (addr == 0x80000000) printf("=================> ADDR 0x80000000\n");
+                    if ((addr & 0x7) == 0 && bytes == 8) {
+                        printf("MEM_OP 0x%08X %04d:%07d:0\n", addr, chunk_id, i);
+                    } else if ((addr & 0x7) != 0 || bytes != 8) {
+                        uint32_t aligned_addr = addr & 0xFFFFFFF8;
+                        if ((addr & 0x7) + bytes > 8) {
+                            printf("MEM_OP 0x%08X %04d:%07d:0 offset %d bytes %d RD1\n", aligned_addr, chunk_id, i, addr & 0x7, bytes);
+                            if (is_write) {
+                                printf("MEM_OP 0x%08X %04d:%07d:1 offset %d bytes %d WR1\n", aligned_addr, chunk_id, i ,addr & 0x7, bytes);
+                            }
+                            aligned_addr += 8;
+                            printf("MEM_OP 0x%08X %04d:%07d:0 offset %d bytes %d RD2\n", aligned_addr, chunk_id, i, addr & 0x7, bytes);
+                            if (is_write) {
+                                printf("MEM_OP 0x%08X %04d:%07d:1 offset %d bytes %d WR2\n", aligned_addr, chunk_id, i, addr & 0x7, bytes);
+                            }
+                        } else {
+                            printf("MEM_OP 0x%08X %04d:%07d:0 offset %d bytes %d RD\n", aligned_addr, chunk_id, i, addr & 0x7, bytes);
+                            if (is_write) printf("MEM_ALIGN_OP 0x%08X %04d:%07d:1 offset %d bytes %d WR\n", aligned_addr, chunk_id, i, addr & 0x7, bytes);
+                        }
+                    }
+
+                    // if (chunk_data[i].addr >= 0xA797E770 && chunk_data[i].addr < 0xA8014B08) {
+                    //     printf("MEM_OP 0x%08X %d W:%d\n", chunk_data[i].addr, bytes, is_write);
+                    // } else if (((chunk_data[i].addr + (chunk_data[i].flags & 0xFF)) & 0xFFFFFFF8) == (0xA797E770 - 8)) {
+                    //     printf("MEM_OP 0x%08X %d W:%d UNALIGNED\n", chunk_data[i].addr, bytes, is_write);
+                    // }
+                }
+            // }
+            // #endif
             if (chunk_id % 100 == 0) printf("Loaded chunk %d with size %d\n", chunk_id, chunk_size);
         }
         printf("chunks: %ld  tot_chunks: %d tot_ops: %d tot_time:%ld (ms)\n", chunks.size(), tot_chunks, tot_ops, (chunks.size() * TIME_US_BY_CHUNK)/1000);

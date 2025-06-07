@@ -275,7 +275,7 @@ public:
         return ((offset & RELATIVE_OFFSET_MASK) << ADDR_LOW_BITS) + base_addr + thread_index * 8;
     }
 
-    inline static uint32_t addr_to_offset(uint32_t addr, uint32_t chunk_id = 0, uint32_t index = 0) {
+    inline static uint32_t addr_to_offset(uint32_t addr, uint32_t chunk_id = 0) {
         switch((uint8_t)((addr >> 24) & 0xFC)) {
             case 0x80: return ((addr - 0x80000000) >> (ADDR_LOW_BITS));
             case 0x84: return ((addr - 0x84000000) >> (ADDR_LOW_BITS)) + ADDR_PAGE_SIZE;
@@ -303,7 +303,7 @@ public:
         throw std::runtime_error(msg.str());
     }
 
-    inline static uint32_t addr_to_page(uint32_t addr, uint32_t chunk_id = 0, uint32_t index = 0) {
+    inline static uint32_t addr_to_page(uint32_t addr, uint32_t chunk_id = 0) {
         switch((uint8_t)((addr >> 24) & 0xFC)) {
             case 0x80: return 0;
             case 0x84: return 1;
@@ -327,7 +327,7 @@ public:
             case 0xDC: return 19;
         }
         std::ostringstream msg;
-        msg << "ERROR: addr_to_page: 0x" << std::hex << addr << " (" << std::dec << chunk_id << ":" << index << ")";
+        msg << "ERROR: addr_to_page: 0x" << std::hex << addr << " (" << std::dec << chunk_id << ")";
         throw std::runtime_error(msg.str());
     }
     inline static uint32_t page_to_addr(uint8_t page) {

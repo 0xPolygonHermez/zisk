@@ -4,14 +4,18 @@
 #define MAX_LOCATORS 2048
 #define MAX_MEM_PLANNERS 16
 #define USE_ADDR_COUNT_TABLE
+#define MAX_SEGMENTS 512
 // #define MEM_PLANNER_STATS
 
 #define MEM_CHECK_POINT_MAP
 #define SEGMENT_STATS
 #define SEGMENT_LARGE_CHUNKS 512
 
+#define RAM_ROWS (1 << 22)
+#define ROM_ROWS (1 << 21)
+#define INPUT_ROWS (1 << 21)
 #define MEM_ROWS (1 << 22)
-#define MEM_ALIGN_ROWS (1 << 21)
+#define MEM_ALIGN_ROWS (1 << 22)
 #define MAX_CHUNKS 8192     // 2^13 * 2^18 = 2^31
 
 #define THREAD_BITS 3

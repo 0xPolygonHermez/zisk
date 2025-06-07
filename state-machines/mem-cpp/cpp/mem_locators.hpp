@@ -39,7 +39,7 @@ public:
         locators[pos].skip = skip;
         write_pos.store(pos + 1, std::memory_order_relaxed);
     }
-    MemLocator *get_locator() {
+    MemLocator *get_locator(uint32_t &segment_id) {
         size_t current_read = read_pos.load(std::memory_order_relaxed);
         size_t current_write;
         MemLocator *item;
@@ -54,6 +54,7 @@ public:
             std::memory_order_release,
             std::memory_order_relaxed
         ));
+        segment_id = current_read;
         return item;
     }
     void set_completed() {
@@ -61,6 +62,9 @@ public:
     }
     bool is_completed() {
         return completed.load(std::memory_order_acquire);
+    }
+    size_t size() {
+        return write_pos.load(std::memory_order_relaxed);
     }
 };
 

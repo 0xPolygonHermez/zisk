@@ -18,12 +18,12 @@
 typedef struct {
     uint64_t data[MEM_BUS_DATA_SIZE];
 } BusDataChunk;
-
-// typedef struct {
-//     uint32_t addr;
-//     uint32_t flags;
-// } MemCountersBusData;
-
+/*
+typedef struct {
+    uint32_t addr;
+    uint32_t flags;
+} MemCountersBusData;
+*/
 int load_from_file(size_t chunk_id, BusDataChunk** chunk) {
     char filename[256];
     snprintf(filename, sizeof(filename), "../bus_data/mem_%ld.bin", chunk_id);
