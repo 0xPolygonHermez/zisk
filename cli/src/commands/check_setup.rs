@@ -46,6 +46,7 @@ impl ZiskCheckSetup {
                 self.final_snark,
                 ParamsGPU::default(),
                 verbose_mode,
+                None,
             )
             .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
         };
