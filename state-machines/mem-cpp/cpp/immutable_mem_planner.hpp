@@ -25,6 +25,7 @@
 #include "mem_check_point.hpp"
 #include "mem_locators.hpp"
 #include "mem_locator.hpp"
+#include "mem_segments.hpp"
 
 class ImmutableMemPlanner {
 private:
