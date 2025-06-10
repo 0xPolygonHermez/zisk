@@ -9,7 +9,6 @@
 
 #![allow(unused)]
 
-use precompiles_helpers::sha256f;
 use ziskos::fcall_proxy;
 
 use generic_array::{typenum::U64, GenericArray};

@@ -59,7 +59,7 @@ pub fn keccak(
         state.copy_sout_to_sin_and_reset_refs();
     }
 
-    state.get_output(output);
+    state.get_output(output, false);
 
     None
 }

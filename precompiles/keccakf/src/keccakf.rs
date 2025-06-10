@@ -310,6 +310,7 @@ impl KeccakfSM {
                                 get_col_row(&row0, |row| &row.free_in_c)
                             };
                         }
+                        PinId::E => panic!("Input pin E is not used by the Keccakf circuit"),
                     }
                 }
                 set_col(par_trace, |row| &mut row.free_in_a, row, value_a);
@@ -362,6 +363,7 @@ impl KeccakfSM {
                                 get_col_row(&row0, |row| &row.free_in_c)
                             };
                         }
+                        PinId::E => panic!("Input pin E is not used by the Keccakf circuit"),
                     }
                 }
                 set_col(par_trace, |row| &mut row.free_in_b, row, value_b);
