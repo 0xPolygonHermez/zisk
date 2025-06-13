@@ -58,8 +58,11 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     col witness free_in_a[chunks], free_in_b[chunks], free_in_c[chunks], free_in_d[chunks];
 
     // --> Circuit gates constraints
+    col witness carry[chunks];
     for (int i = 0; i < chunks; i++) {
-        lookup_assumes(SHA256F_TABLE_ID, [GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i], free_in_d[i], free_in_c[i]' * CARRY_ENABLED]);
+        carry[i] === free_in_c[i]' * CARRY_ENABLED;
+
+        lookup_assumes(SHA256F_TABLE_ID, [GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i], free_in_d[i], carry[i]]);
     }
 
     // --> Circuit connections constraints
@@ -173,7 +176,7 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     //  - When there are circuits.
     //  - Every NUM_SHA256F_PER_CIRCUIT clocks.
     //  - When there are still bits to process.
-    col fixed latch_num_sha256f  = [0,[0,[0:(NUM_SHA256F_PER_CIRCUIT-1),1]:(INPUT_OUTPUT_BITS / bits_in_parallel),
+    col fixed LATCH_NUM_SHA256F  = [0,[0,[0:(NUM_SHA256F_PER_CIRCUIT-1),1]:(INPUT_OUTPUT_BITS / bits_in_parallel),
                                        0:(CIRCUIT_SIZE - (INPUT_OUTPUT_SIZE+1))]:NUM_CIRCUITS,
                                     0...];
 
@@ -181,27 +184,27 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     //  - When there are circuits.
     //  - Every clock, for the clock in the circuit, we add the factor 1 << clk.
     //  - When there are still bits to process (i.e., we repeat the previous instruction INPUT_DATA_BITS times).
-    col fixed factor_num_sha256f;
+    col fixed FACTOR_NUM_SHA256F;
     if (NUM_SHA256F_PER_CIRCUIT != 1) {
-        factor_num_sha256f = [0,[[1,2..*..2**(NUM_SHA256F_PER_CIRCUIT-1)]:(INPUT_OUTPUT_BITS / bits_in_parallel), 
+        FACTOR_NUM_SHA256F = [0,[[1,2..*..2**(NUM_SHA256F_PER_CIRCUIT-1)]:(INPUT_OUTPUT_BITS / bits_in_parallel), 
                                   0:(CIRCUIT_SIZE - INPUT_OUTPUT_SIZE)]:NUM_CIRCUITS,
                               0...];
     } else {
-        factor_num_sha256f = [0, [1:(INPUT_OUTPUT_BITS / bits_in_parallel), 
+        FACTOR_NUM_SHA256F = [0, [1:(INPUT_OUTPUT_BITS / bits_in_parallel), 
                                   0:(CIRCUIT_SIZE - INPUT_OUTPUT_SIZE)]:NUM_CIRCUITS, 
                               0...];
     }
 
     // val[i] accumulates the bits
     for (int i = 0; i < bits_in_parallel; i++) {
-        val[i]' === val[i] * (1 - latch_num_sha256f) + bit[i] * factor_num_sha256f; // (2)
+        val[i]' === val[i] * (1 - LATCH_NUM_SHA256F) + bit[i] * FACTOR_NUM_SHA256F; // (2)
     }
     // In each j-th latch, val[i] has accumulated the j-th bit of all the sha256f's 
 
     // In each j-th latch, val[i] has to coincide with the a-th gate entry,
     // whose positions where reserved for the inputs and outputs of the Sha256f circuit
     for (int i = 0; i < bits_in_parallel; i++) {
-        latch_num_sha256f * (val[i] - a'(i)) === 0; // (3)
+        LATCH_NUM_SHA256F * (val[i] - a'(i)) === 0; // (3)
     }
 
     // (1),(2) and (3) prove that the bit decomposition is correct

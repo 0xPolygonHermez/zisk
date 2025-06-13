@@ -343,6 +343,7 @@ impl Sha256fSM {
 
                     // Compute and set the carry
                     let carry = (a_val & b_val) | (a_val & c_val) | (b_val & c_val);
+                    set_col(par_trace, |row| &mut row.carry, row, carry);
                     set_col(par_trace, |row| &mut row.free_in_c, row + 1, carry);
                 } else {
                     panic!("Invalid operation: {}", op);
