@@ -42,8 +42,7 @@ uint64_t get_gen_method(void);
 #define OUTPUT_ADDR (SYS_ADDR + SYS_SIZE)
 
 #define TRACE_ADDR         (uint64_t)0xc0000000
-//#define INITIAL_TRACE_SIZE (uint64_t)0x100000000 // 4GB
-#define INITIAL_TRACE_SIZE (uint64_t)0x40000000 // 4GB
+#define INITIAL_TRACE_SIZE (uint64_t)0x100000000 // 4GB
 
 #define REG_ADDR (uint64_t)0x70000000
 #define REG_SIZE (uint64_t)0x1000 // 4kB
