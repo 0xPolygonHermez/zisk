@@ -139,6 +139,12 @@ impl ZiskAsmContext {
     pub fn chunk_player_mt_collect_mem(&self) -> bool {
         self.mode == AsmGenerationMethod::AsmChunkPlayerMTCollectMem
     }
+    pub fn mem_reads(&self) -> bool {
+        self.mode == AsmGenerationMethod::AsmMemReads
+    }
+    pub fn chunk_player_mem_reads_collect_main(&self) -> bool {
+        self.mode == AsmGenerationMethod::AsmChunkPlayerMemReadsCollectMain
+    }
 
     // Creates a comment with the specified prefix and sufix, i.e. with the requested syntax
     pub fn comment(&self, c: String) -> String {
@@ -162,7 +168,173 @@ impl ZiskAsmContext {
         }
         s
     }
+
+    pub fn op_is_precompiled(&self, zisk_op: &ZiskOp) -> bool {
+        match zisk_op {
+            ZiskOp::Keccak
+            | ZiskOp::Sha256
+            | ZiskOp::Arith256
+            | ZiskOp::Arith256Mod
+            | ZiskOp::Secp256k1Add
+            | ZiskOp::Secp256k1Dbl => true,
+            _ => false,
+        }
+    }
 }
+
+// One-pass (single emulation) memory trace, used to count, plan and collect.
+// If ZisK instruction contains at least one memory operation:
+//   [32b] header (from higher bits to lower bits)
+//     [1b] read_a
+//       0 = no reg a mem op
+//       1 = one reg a mem op
+//     [3b] read_b
+//       0 = no reg b mem op
+//       1 = one reg b mem op of width 1
+//       2 = one reg b mem op of width 2
+//       3 = one reg b mem op of width 4
+//       4 = one reg b mem op of width 8
+//     [3b] write
+//       0 = no write op
+//       1 = one write c mem op of width 1
+//       2 = one write c mem op of width 2
+//       3 = one write c mem op of width 4
+//       4 = one write c mem op of width 8
+//       5 = one precompiled mem op of contiguous addresses
+//       6 = one precompiled mem op of non-contiguous addresses
+//     [25b] relative step: lower bits of step
+// If header.read_a == 1:
+//   [32b] a mem address
+// If header.read_b == 1, 2, 3 or 4:
+//   [32b] b mem address
+// If header.write == 1, 2, 3 or 4
+//   [32b] c mem address
+//   [64b] c write value
+// If header.write == 5
+//   [32b] prec_cont_count = prec_read_count + prec_write_count<<16
+//   [32b] prec_const_address
+//   [64b x prec_write_count] prec_cont_write_data
+// If header.write == 6
+//   [32b] prec_non_cont_count = prec_read_count + prec_write_count<<16
+//   [32b x prec_read_count] prec_non_cont_read_address = precompiled read addresses
+//   [32b x prec_write_count] prec_non_const_write_address = precompiled write addresses
+//   [64b x prec_write_count] prec_non_const_write_data = precompiled write data
+// If not aligned to 64b
+//   [32b] padding zeros
+
+// pub struct ZiskAsmMemTraceContext {
+//     // Header mask
+//     header_mask: u32,
+
+//     // a, b and c
+//     a_mem_address_offset: u64,
+//     b_mem_address_offset: u64,
+//     c_mem_address_offset: u64,
+//     c_write_value_offset: u64,
+
+//     // Precompiled with continuous data
+//     prec_cont_count_offset: u64,
+//     prec_cont_address_offset: u64,
+//     prec_cont_write_data_offset: u64,
+
+//     // Precompiled with non-continuous data
+//     prec_non_cont_count_offset: u64,
+//     prec_non_cont_read_address_offset: u64,
+//     prec_non_cont_write_address_offset: u64,
+//     prec_non_cont_write_data_offset: u64,
+// }
+// const MEM_TRACE_HEADER_READ_A: u32 = 1u32 << 31;
+// const MEM_TRACE_HEADER_READ_B_1: u32 = 1u32 << 27;
+// const MEM_TRACE_HEADER_READ_B_2: u32 = 2u32 << 27;
+// const MEM_TRACE_HEADER_READ_B_4: u32 = 3u32 << 27;
+// const MEM_TRACE_HEADER_READ_B_8: u32 = 4u32 << 27;
+// const MEM_TRACE_HEADER_WRITE_C_1: u32 = 1u32 << 24;
+// const MEM_TRACE_HEADER_WRITE_C_2: u32 = 2u32 << 24;
+// const MEM_TRACE_HEADER_WRITE_C_4: u32 = 3u32 << 24;
+// const MEM_TRACE_HEADER_WRITE_C_8: u32 = 4u32 << 24;
+// const MEM_TRACE_HEADER_WRITE_PREC_CONT: u32 = 5u32 << 24;
+// const MEM_TRACE_HEADER_WRITE_PREC_NON_CONT: u32 = 6u32 << 24;
+
+// impl ZiskAsmMemTraceContext {
+//     pub fn reset(&mut self) {
+//         self.header_mask = 0;
+//         self.a_mem_address_offset = 0;
+//         self.b_mem_address_offset = 0;
+//         self.c_mem_address_offset = 0;
+//         self.c_write_value_offset = 0;
+
+//         self.prec_cont_count_offset = 0;
+//         self.prec_cont_address_offset = 0;
+//         self.prec_cont_write_data_offset = 0;
+
+//         self.prec_non_cont_count_offset = 0;
+//         self.prec_non_cont_read_address_offset = 0;
+//         self.prec_non_cont_write_address_offset = 0;
+//         self.prec_non_cont_write_data_offset = 0;
+//     }
+//     pub fn configure(&mut self, instruction: &ZiskInst) {
+//         let mut offset: u64 = 4;
+
+//         if instruction.a_src == SRC_MEM {
+//             self.header_mask |= TRACE_CONTEXT_HEADER_READ_A;
+//             self.a_mem_address_offset = offset;
+//             offset += 4;
+//         }
+//         if instruction.b_src == SRC_MEM {
+//             self.header_mask |= TRACE_CONTEXT_HEADER_READ_B_8;
+//             self.b_mem_address_offset = offset;
+//             offset += 4;
+//         }
+//         if instruction.b_src == SRC_IND {
+//             match instruction.ind_width {
+//                 1 => self.header_mask |= TRACE_CONTEXT_HEADER_READ_B_1,
+//                 2 => self.header_mask |= TRACE_CONTEXT_HEADER_READ_B_2,
+//                 4 => self.header_mask |= TRACE_CONTEXT_HEADER_READ_B_4,
+//                 8 => self.header_mask |= TRACE_CONTEXT_HEADER_READ_B_8,
+//                 _ => {
+//                     panic!(
+//                         "ZiskAsmMemTraceContext::configure() invalid instruction.ind_width={}",
+//                         instruction.ind_width
+//                     );
+//                 }
+//             }
+//             self.b_mem_address_offset = offset;
+//             offset += 4;
+//         }
+//         if instruction.store == STORE_MEM {
+//             self.header_mask |= TRACE_CONTEXT_HEADER_WRITE_C_8;
+//             self.c_mem_address_offset = offset;
+//             offset += 4;
+//         }
+//         if instruction.store == STORE_IND {
+//             match instruction.ind_width {
+//                 1 => self.header_mask |= TRACE_CONTEXT_HEADER_WRITE_C_1,
+//                 2 => self.header_mask |= TRACE_CONTEXT_HEADER_WRITE_C_2,
+//                 4 => self.header_mask |= TRACE_CONTEXT_HEADER_WRITE_C_4,
+//                 8 => self.header_mask |= TRACE_CONTEXT_HEADER_WRITE_C_4,
+//                 _ => {
+//                     panic!(
+//                         "ZiskAsmMemTraceContext::configure() invalid instruction.ind_width={}",
+//                         instruction.ind_width
+//                     );
+//                 }
+//             }
+//             self.c_mem_address_offset = offset;
+//             offset += 4;
+//             self.c_write_value_offset = offset;
+//             offset += 8;
+//         }
+//         if instruction.op == ZiskOp::Keccak.code() || instruction.op == ZiskOp::Sha256.code() {
+//             self.header_mask |= TRACE_CONTEXT_HEADER_WRITE_PREC_CONT;
+//             self.prec_cont_count_offset = offset;
+//             offset += 4;
+//             self.prec_cont_address_offset = offset;
+//             offset += 4;
+//             self.prec_cont_write_data_offset = offset;
+//             offset += 4;
+//         }
+//     }
+// }
 
 pub struct ZiskRom2Asm {}
 
@@ -307,6 +479,8 @@ impl ZiskRom2Asm {
             || ctx.zip()
             || ctx.mem_op()
             || ctx.chunk_player_mt_collect_mem()
+            || ctx.mem_reads()
+            || ctx.chunk_player_mem_reads_collect_main()
         {
             *code += ".extern max_steps\n";
             *code += ".extern chunk_size\n";
@@ -318,11 +492,17 @@ impl ZiskRom2Asm {
             *code += ".extern chunk_mask\n";
         }
 
-        if ctx.chunk_player_mt_collect_mem() {
+        if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
             *code += ".extern chunk_player_address\n";
         }
 
-        if ctx.chunks() || ctx.minimal_trace() || ctx.main_trace() || ctx.zip() || ctx.mem_op() {
+        if ctx.chunks()
+            || ctx.minimal_trace()
+            || ctx.main_trace()
+            || ctx.zip()
+            || ctx.mem_op()
+            || ctx.mem_reads()
+        {
             // Chunk start
             *code += "chunk_start:\n";
             Self::chunk_start(&mut ctx, code, "start");
@@ -370,6 +550,10 @@ impl ZiskRom2Asm {
             *code += "\tmov rax, 7\n";
         } else if ctx.chunk_player_mt_collect_mem() {
             *code += "\tmov rax, 8\n";
+        } else if ctx.mem_reads() {
+            *code += "\tmov rax, 9\n";
+        } else if ctx.chunk_player_mem_reads_collect_main() {
+            *code += "\tmov rax, 10\n";
         } else {
             panic!("ZiskRom2Asm::save_to_asm() invalid generation method");
         }
@@ -381,7 +565,7 @@ impl ZiskRom2Asm {
 
         Self::push_external_registers(&mut ctx, code);
 
-        if !ctx.chunk_player_mt_collect_mem() {
+        if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main() {
             *code += &format!("\n{}\n", ctx.comment_str("ZisK registers initialization"));
             *code += &format!("\txor {}, {} {}\n", REG_A, REG_A, ctx.comment_str("a = 0"));
             *code += &format!("\txor {}, {} {}\n", REG_B, REG_B, ctx.comment_str("b = 0"));
@@ -412,6 +596,7 @@ impl ZiskRom2Asm {
             || ctx.chunks()
             || ctx.zip()
             || ctx.mem_op()
+            || ctx.mem_reads()
         {
             *code += &format!("\tmov {}, 0 {}\n", ctx.mem_step, ctx.comment_str("step = 0"));
             *code += &format!("\tmov {}, 0 {}\n", ctx.mem_sp, ctx.comment_str("sp = 0"));
@@ -431,6 +616,8 @@ impl ZiskRom2Asm {
             || ctx.zip()
             || ctx.mem_op()
             || ctx.chunk_player_mt_collect_mem()
+            || ctx.mem_reads()
+            || ctx.chunk_player_mem_reads_collect_main()
         {
             *code += &format!(
                 "\tmov {}, qword {}[trace_address] {}\n",
@@ -445,7 +632,7 @@ impl ZiskRom2Asm {
                 REG_VALUE,
                 ctx.comment_str("trace_address = value")
             );
-            if !ctx.chunk_player_mt_collect_mem() {
+            if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main() {
                 // Skip number of chunks
                 *code += &format!("\tadd {}, 8 {}\n", REG_VALUE, ctx.comment_str("value+=8"));
             }
@@ -477,7 +664,7 @@ impl ZiskRom2Asm {
             }
         }
 
-        if ctx.chunk_player_mt_collect_mem() {
+        if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
             Self::chunk_player_start(&mut ctx, code);
         }
 
@@ -492,7 +679,13 @@ impl ZiskRom2Asm {
             ctx.pc = rom.sorted_pc_list[k];
 
             // Call chunk_start the first time, for the first chunk
-            if (ctx.minimal_trace() || ctx.main_trace() || ctx.zip() || ctx.mem_op()) && (k == 0) {
+            if (ctx.minimal_trace()
+                || ctx.main_trace()
+                || ctx.zip()
+                || ctx.mem_op()
+                || ctx.mem_reads())
+                && (k == 0)
+            {
                 // Update pc
                 *code += &format!(
                     "\tmov {}, 0x{:08x} {}\n",
@@ -577,6 +770,25 @@ impl ZiskRom2Asm {
             ctx.store_a_in_a = false;
             ctx.store_b_in_c = false;
             ctx.store_b_in_b = false;
+
+            // Store opcode in main trace
+            if ctx.chunk_player_mem_reads_collect_main() {
+                *code += &ctx.full_line_comment("Main[0] = op".to_string());
+                // Copy read data into mem_reads_address
+                *code += &format!(
+                    "\tmov {}, 0x{:x} {}\n",
+                    REG_VALUE,
+                    instruction.op,
+                    ctx.comment_str("value = op")
+                );
+                *code += &format!(
+                    "\tmov [{} + {}*8], {} {}\n",
+                    REG_MEM_READS_ADDRESS,
+                    REG_MEM_READS_SIZE,
+                    REG_VALUE,
+                    ctx.comment_str("mem_reads[@+size*8] = op")
+                );
+            }
 
             match zisk_op {
                 ZiskOp::CopyB
@@ -716,23 +928,27 @@ impl ZiskRom2Asm {
                     *code += &ctx.full_line_comment("a=SRC_MEM".to_string());
 
                     // Calculate memory address
-                    *code += &format!(
-                        "\tmov {}, 0x{:x} {}\n",
-                        REG_ADDRESS,
-                        instruction.a_offset_imm0,
-                        ctx.comment_str("address = a_offset_imm0")
-                    );
-                    if instruction.a_use_sp_imm1 != 0 {
+                    if !ctx.chunk_player_mem_reads_collect_main() {
                         *code += &format!(
-                            "\tadd {}, {} {}\n",
+                            "\tmov {}, 0x{:x} {}\n",
                             REG_ADDRESS,
-                            ctx.mem_sp,
-                            ctx.comment_str("address += sp")
+                            instruction.a_offset_imm0,
+                            ctx.comment_str("address = a_offset_imm0")
                         );
+                        if instruction.a_use_sp_imm1 != 0 {
+                            *code += &format!(
+                                "\tadd {}, {} {}\n",
+                                REG_ADDRESS,
+                                ctx.mem_sp,
+                                ctx.comment_str("address += sp")
+                            );
+                        }
                     }
 
                     // Read value from memory and store in the proper register: a or c
-                    if !ctx.chunk_player_mt_collect_mem() {
+                    if !ctx.chunk_player_mt_collect_mem()
+                        && !ctx.chunk_player_mem_reads_collect_main()
+                    {
                         *code += &format!(
                             "\tmov {}, [{}] {}\n",
                             if ctx.store_a_in_c { REG_C } else { REG_A },
@@ -784,6 +1000,9 @@ impl ZiskRom2Asm {
                         }
                         *code += &format!("pc_{:x}_a_address_check_done:\n", ctx.pc);
                     }
+                    if ctx.mem_reads() {
+                        Self::a_src_mem_aligned(&mut ctx, code);
+                    }
 
                     // Consume mem reads
                     if ctx.chunk_player_mt_collect_mem() {
@@ -827,6 +1046,25 @@ impl ZiskRom2Asm {
                                 &format!("\tjmp pc_{:x}_a_address_check_done\n", ctx.pc);
                         }
                         *code += &format!("pc_{:x}_a_address_check_done:\n", ctx.pc);
+                    }
+                    if ctx.chunk_player_mem_reads_collect_main() {
+                        // Read value from mem reads and store in the proper register: a or c
+                        *code += &format!(
+                            "\tmov {}, [{}] {}\n",
+                            if ctx.store_a_in_c { REG_C } else { REG_A },
+                            REG_CHUNK_PLAYER_ADDRESS,
+                            ctx.comment(format!(
+                                "{} = mem_reads[address]",
+                                if ctx.store_a_in_c { "c" } else { "a" }
+                            ))
+                        );
+
+                        // Increment chunk player address
+                        *code += &format!(
+                            "\tadd {}, 8 {}\n",
+                            REG_CHUNK_PLAYER_ADDRESS,
+                            ctx.comment_str("chunk_address += 8")
+                        );
                     }
 
                     if ctx.main_trace() {
@@ -881,7 +1119,12 @@ impl ZiskRom2Asm {
                         ctx.mem_step,
                         ctx.comment(format!("{} = step", store_a_reg_name))
                     );
-                    if ctx.minimal_trace() || ctx.zip() || ctx.chunk_player_mt_collect_mem() {
+                    if ctx.minimal_trace()
+                        || ctx.zip()
+                        || ctx.chunk_player_mt_collect_mem()
+                        || ctx.mem_reads()
+                        || ctx.chunk_player_mem_reads_collect_main()
+                    {
                         *code += &format!(
                             "\tadd {}, chunk_size {}\n",
                             store_a_reg,
@@ -908,6 +1151,26 @@ impl ZiskRom2Asm {
             // Copy a value to main trace
             if ctx.main_trace() {
                 *code += &ctx.full_line_comment("Main[1]=a".to_string());
+                if ctx.store_a_in_c {
+                    *code += &format!(
+                        "\tmov [{} + {}*8 + 1*8], {}\n",
+                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_C
+                    );
+                } else if ctx.a.is_constant && !ctx.store_a_in_a {
+                    *code += &format!("\tmov {}, 0x{:x}\n", REG_A, ctx.a.constant_value);
+                    *code += &format!(
+                        "\tmov [{} + {}*8 + 1*8], {}\n",
+                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_A
+                    );
+                } else {
+                    *code += &format!(
+                        "\tmov [{} + {}*8 + 1*8], {}\n",
+                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_A
+                    );
+                }
+            }
+            if ctx.chunk_player_mem_reads_collect_main() {
+                *code += &ctx.full_line_comment("Main[1] = a".to_string());
                 if ctx.store_a_in_c {
                     *code += &format!(
                         "\tmov [{} + {}*8 + 1*8], {}\n",
@@ -1034,24 +1297,28 @@ impl ZiskRom2Asm {
                 SRC_MEM => {
                     *code += &ctx.full_line_comment("b=SRC_MEM".to_string());
 
-                    // Calculate memory address
-                    *code += &format!(
-                        "\tmov {}, 0x{:x} {}\n",
-                        REG_ADDRESS,
-                        instruction.b_offset_imm0,
-                        ctx.comment_str("address = b_offset_imm0")
-                    );
-                    if instruction.b_use_sp_imm1 != 0 {
+                    if !ctx.chunk_player_mem_reads_collect_main() {
+                        // Calculate memory address
                         *code += &format!(
-                            "\tadd {}, {} {}\n",
+                            "\tmov {}, 0x{:x} {}\n",
                             REG_ADDRESS,
-                            ctx.mem_sp,
-                            ctx.comment_str("address += sp")
+                            instruction.b_offset_imm0,
+                            ctx.comment_str("address = b_offset_imm0")
                         );
+                        if instruction.b_use_sp_imm1 != 0 {
+                            *code += &format!(
+                                "\tadd {}, {} {}\n",
+                                REG_ADDRESS,
+                                ctx.mem_sp,
+                                ctx.comment_str("address += sp")
+                            );
+                        }
                     }
 
                     // Read value from memory and store in the proper register: b or c
-                    if !ctx.chunk_player_mt_collect_mem() {
+                    if !ctx.chunk_player_mt_collect_mem()
+                        && !ctx.chunk_player_mem_reads_collect_main()
+                    {
                         *code += &format!(
                             "\tmov {}, [{}] {}\n",
                             if ctx.store_b_in_c { REG_C } else { REG_B },
@@ -1102,6 +1369,9 @@ impl ZiskRom2Asm {
                         }
                         *code += &format!("pc_{:x}_b_address_check_done:\n", ctx.pc);
                     }
+                    if ctx.mem_reads() {
+                        Self::b_src_mem_aligned(&mut ctx, code);
+                    }
 
                     // Consume mem reads
                     if ctx.chunk_player_mt_collect_mem() {
@@ -1146,6 +1416,25 @@ impl ZiskRom2Asm {
                                 &format!("\tjmp pc_{:x}_b_address_check_done\n", ctx.pc);
                         }
                         *code += &format!("pc_{:x}_b_address_check_done:\n", ctx.pc);
+                    }
+                    if ctx.chunk_player_mem_reads_collect_main() {
+                        // Read value from mem reads and store in the proper register: b or c
+                        *code += &format!(
+                            "\tmov {}, [{}] {}\n",
+                            if ctx.store_b_in_c { REG_C } else { REG_B },
+                            REG_CHUNK_PLAYER_ADDRESS,
+                            ctx.comment(format!(
+                                "{} = mem_reads[address]",
+                                if ctx.store_a_in_c { "c" } else { "b" }
+                            ))
+                        );
+
+                        // Increment chunk player address
+                        *code += &format!(
+                            "\tadd {}, 8 {}\n",
+                            REG_CHUNK_PLAYER_ADDRESS,
+                            ctx.comment_str("chunk_address += 8")
+                        );
                     }
 
                     ctx.b.is_saved = !ctx.store_b_in_c;
@@ -1221,25 +1510,29 @@ impl ZiskRom2Asm {
                     }
 
                     // Calculate memory address
-                    if instruction.b_offset_imm0 != 0 {
-                        *code += &format!(
-                            "\tadd {}, 0x{:x} {}\n",
-                            reg_address,
-                            instruction.b_offset_imm0,
-                            ctx.comment_str("address += b_offset_imm0")
-                        );
-                    }
-                    if instruction.b_use_sp_imm1 != 0 {
-                        *code += &format!(
-                            "\tadd {}, {} {}\n",
-                            reg_address,
-                            ctx.mem_sp,
-                            ctx.comment_str("address += sp")
-                        );
+                    if !ctx.chunk_player_mem_reads_collect_main() {
+                        if instruction.b_offset_imm0 != 0 {
+                            *code += &format!(
+                                "\tadd {}, 0x{:x} {}\n",
+                                reg_address,
+                                instruction.b_offset_imm0,
+                                ctx.comment_str("address += b_offset_imm0")
+                            );
+                        }
+                        if instruction.b_use_sp_imm1 != 0 {
+                            *code += &format!(
+                                "\tadd {}, {} {}\n",
+                                reg_address,
+                                ctx.mem_sp,
+                                ctx.comment_str("address += sp")
+                            );
+                        }
                     }
 
                     // Read from memory and store in the proper register: b or c
-                    if !ctx.chunk_player_mt_collect_mem() {
+                    if !ctx.chunk_player_mt_collect_mem()
+                        && !ctx.chunk_player_mem_reads_collect_main()
+                    {
                         match instruction.ind_width {
                             8 => {
                                 // Read 8-bytes value from address
@@ -1541,6 +1834,9 @@ impl ZiskRom2Asm {
                         if ctx.zip() {
                             *code += &format!("pc_{:x}_b_ind_done:\n", ctx.pc);
                         }
+                    }
+                    if ctx.mem_reads() {
+                        Self::b_src_mem_aligned(&mut ctx, code);
                     }
                     ctx.b.is_saved = !ctx.store_b_in_c;
 
@@ -1867,6 +2163,25 @@ impl ZiskRom2Asm {
                             ),
                         }
                     }
+                    if ctx.chunk_player_mem_reads_collect_main() {
+                        // Read value from mem reads and store in the proper register: a or c
+                        *code += &format!(
+                            "\tmov {}, [{}] {}\n",
+                            if ctx.store_b_in_c { REG_C } else { REG_B },
+                            REG_CHUNK_PLAYER_ADDRESS,
+                            ctx.comment(format!(
+                                "{} = mem_reads[address]",
+                                if ctx.store_a_in_c { "c" } else { "b" }
+                            ))
+                        );
+
+                        // Increment chunk player address
+                        *code += &format!(
+                            "\tadd {}, 8 {}\n",
+                            REG_CHUNK_PLAYER_ADDRESS,
+                            ctx.comment_str("chunk_address += 8")
+                        );
+                    }
 
                     if ctx.main_trace() {
                         Self::clear_reg_step_ranges(&mut ctx, code, 1);
@@ -1916,6 +2231,51 @@ impl ZiskRom2Asm {
                         ctx.comment_str("b")
                     );
                 }
+            }
+
+            // Copy b value to main trace
+            if ctx.chunk_player_mem_reads_collect_main() {
+                *code += &ctx.full_line_comment("Main[2] = b".to_string());
+                if ctx.store_b_in_c {
+                    *code += &format!(
+                        "\tmov [{} + {}*8 + 2*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_C,
+                        ctx.comment_str("b = c")
+                    );
+                } else if ctx.b.is_constant && !ctx.store_b_in_b {
+                    *code += &format!(
+                        "\tmov {}, 0x{:x} {}\n",
+                        REG_B,
+                        ctx.b.constant_value,
+                        ctx.comment_str("value = b_const")
+                    );
+                    *code += &format!(
+                        "\tmov [{} + {}*8 + 2*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_B,
+                        ctx.comment_str("b = const")
+                    );
+                } else {
+                    *code += &format!(
+                        "\tmov [{} + {}*8 + 2*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_B,
+                        ctx.comment_str("b")
+                    );
+                }
+            }
+
+            // Increment chunk.steps.mem_reads_size 3 times: op, a and b
+            if ctx.chunk_player_mem_reads_collect_main() {
+                *code += &format!(
+                    "\t add {}, 3 {}\n",
+                    REG_MEM_READS_SIZE,
+                    ctx.comment_str("mem_reads_size += 3")
+                );
             }
 
             /*************/
@@ -2005,19 +2365,21 @@ impl ZiskRom2Asm {
                     *code += &ctx.full_line_comment("STORE_MEM".to_string());
 
                     // Calculate memory address and store it in REG_ADDRESS
-                    *code += &format!(
-                        "\tmov {}, 0x{:x} {}\n",
-                        REG_ADDRESS,
-                        instruction.store_offset,
-                        ctx.comment_str("address = i.store_offset")
-                    );
-                    if instruction.store_use_sp {
+                    if !ctx.chunk_player_mem_reads_collect_main() {
                         *code += &format!(
-                            "\tadd {}, {} {}\n",
+                            "\tmov {}, 0x{:x} {}\n",
                             REG_ADDRESS,
-                            ctx.mem_sp,
-                            ctx.comment_str("address += sp")
+                            instruction.store_offset,
+                            ctx.comment_str("address = i.store_offset")
                         );
+                        if instruction.store_use_sp {
+                            *code += &format!(
+                                "\tadd {}, {} {}\n",
+                                REG_ADDRESS,
+                                ctx.mem_sp,
+                                ctx.comment_str("address += sp")
+                            );
+                        }
                     }
 
                     // Generate mem reads
@@ -2093,7 +2455,9 @@ impl ZiskRom2Asm {
                     }
 
                     // Store mem[address] = value
-                    if !ctx.chunk_player_mt_collect_mem() {
+                    if !ctx.chunk_player_mt_collect_mem()
+                        && !ctx.chunk_player_mem_reads_collect_main()
+                    {
                         if instruction.store_ra {
                             *code += &format!(
                                 "\tmov {}, 0x{:x} {}\n",
@@ -2130,27 +2494,29 @@ impl ZiskRom2Asm {
                         .full_line_comment(format!("STORE_IND width={}", instruction.ind_width));
 
                     // Calculate memory address and store it in REG_ADDRESS
-                    *code += &format!(
-                        "\tmov {}, {} {}\n",
-                        REG_ADDRESS,
-                        ctx.a.string_value,
-                        ctx.comment_str("address = a")
-                    );
-                    if instruction.store_offset != 0 {
+                    if !ctx.chunk_player_mem_reads_collect_main() {
                         *code += &format!(
-                            "\tadd {}, 0x{:x} {}\n",
+                            "\tmov {}, {} {}\n",
                             REG_ADDRESS,
-                            instruction.store_offset as u64,
-                            ctx.comment_str("address += i.store_offset")
+                            ctx.a.string_value,
+                            ctx.comment_str("address = a")
                         );
-                    }
-                    if instruction.store_use_sp {
-                        *code += &format!(
-                            "\tadd {}, {} {}\n",
-                            REG_ADDRESS,
-                            ctx.mem_sp,
-                            ctx.comment_str("address += sp")
-                        );
+                        if instruction.store_offset != 0 {
+                            *code += &format!(
+                                "\tadd {}, 0x{:x} {}\n",
+                                REG_ADDRESS,
+                                instruction.store_offset as u64,
+                                ctx.comment_str("address += i.store_offset")
+                            );
+                        }
+                        if instruction.store_use_sp {
+                            *code += &format!(
+                                "\tadd {}, {} {}\n",
+                                REG_ADDRESS,
+                                ctx.mem_sp,
+                                ctx.comment_str("address += sp")
+                            );
+                        }
                     }
 
                     let address_is_constant = ctx.a.is_constant && !instruction.store_use_sp;
@@ -2507,7 +2873,9 @@ impl ZiskRom2Asm {
                     }
 
                     // Store mem[address] = value
-                    if !ctx.chunk_player_mt_collect_mem() {
+                    if !ctx.chunk_player_mt_collect_mem()
+                        && !ctx.chunk_player_mem_reads_collect_main()
+                    {
                         match instruction.ind_width {
                             8 => {
                                 if instruction.store_ra {
@@ -2737,6 +3105,8 @@ impl ZiskRom2Asm {
                 || ctx.zip()
                 || ctx.mem_op()
                 || ctx.chunk_player_mt_collect_mem()
+                || ctx.mem_reads()
+                || ctx.chunk_player_mem_reads_collect_main()
             {
                 *code += &format!(
                     "\tdec {} {}\n",
@@ -2751,12 +3121,16 @@ impl ZiskRom2Asm {
                         ctx.pc,
                         ctx.comment_str("value = pc")
                     );
-                    if ctx.chunk_player_mt_collect_mem() {
+                    if ctx.chunk_player_mt_collect_mem()
+                        || ctx.chunk_player_mem_reads_collect_main()
+                    {
                         *code += "\tjz execute_end\n";
                     } else {
                         *code += "\tcall chunk_end\n";
                     }
-                } else if ctx.chunk_player_mt_collect_mem() {
+                } else if ctx.chunk_player_mt_collect_mem()
+                    || ctx.chunk_player_mem_reads_collect_main()
+                {
                     *code += "\tjz execute_end\n";
                     Self::set_pc(&mut ctx, instruction, code, "nz");
                 } else {
@@ -2857,7 +3231,7 @@ impl ZiskRom2Asm {
             );
         }
 
-        if ctx.chunk_player_mt_collect_mem() {
+        if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
             Self::chunk_player_end(&mut ctx, code);
         }
 
@@ -4364,11 +4738,12 @@ impl ZiskRom2Asm {
                 *code += &ctx.full_line_comment("Keccak: rdi = A0".to_string());
 
                 // Generate mem reads
-                if !ctx.chunk_player_mt_collect_mem() {
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
                     Self::read_riscv_reg(ctx, code, 10, "rdi", "rdi");
 
                     // Copy read data into mem_reads_address and advance it
-                    if ctx.minimal_trace() || ctx.zip() {
+                    if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
                         // If zip, check if chunk is active
                         if ctx.zip() {
                             *code += &format!(
@@ -4425,7 +4800,21 @@ impl ZiskRom2Asm {
                 }
 
                 // Consume mem reads
-                if ctx.chunk_player_mt_collect_mem() {
+                if ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tmov [{} + {}*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("Main[4] = precompiler data address")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                }
+                if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
                     *code += &format!(
                         "\tadd {}, 25*8 {}\n",
                         REG_CHUNK_PLAYER_ADDRESS,
@@ -4443,7 +4832,8 @@ impl ZiskRom2Asm {
                 // Use the memory address as the first and unique parameter
                 *code += &ctx.full_line_comment("SHA256: rdi = b".to_string());
 
-                if !ctx.chunk_player_mt_collect_mem() {
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
                     // Use the memory address as the first and unique parameter
                     *code += &format!(
                         "\tmov rdi, {} {}\n",
@@ -4452,7 +4842,7 @@ impl ZiskRom2Asm {
                     );
 
                     // Copy read data into mem_reads_address and advance it
-                    if ctx.minimal_trace() || ctx.zip() {
+                    if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
                         // If zip, check if chunk is active
                         if ctx.zip() {
                             *code += &format!(
@@ -4509,7 +4899,21 @@ impl ZiskRom2Asm {
                 }
 
                 // Consume mem reads
-                if ctx.chunk_player_mt_collect_mem() {
+                if ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tmov [{} + {}*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("Main[4] = precompiler data address")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                }
+                if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
                     *code += &format!(
                         "\tadd {}, 12*8 {}\n",
                         REG_CHUNK_PLAYER_ADDRESS,
@@ -4534,7 +4938,8 @@ impl ZiskRom2Asm {
                 *code += &ctx.full_line_comment("Arith256".to_string());
 
                 // Use the memory address as the first and unique parameter
-                if !ctx.chunk_player_mt_collect_mem() {
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
                     *code += &format!(
                         "\tmov rdi, {} {}\n",
                         ctx.b.string_value,
@@ -4543,7 +4948,7 @@ impl ZiskRom2Asm {
                 }
 
                 // Save data into mem_reads
-                if ctx.minimal_trace() || ctx.zip() {
+                if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
                     // If zip, check if chunk is active
                     if ctx.zip() {
                         *code += &format!(
@@ -4562,7 +4967,21 @@ impl ZiskRom2Asm {
                 }
 
                 // Consume mem reads
-                if ctx.chunk_player_mt_collect_mem() {
+                if ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tmov [{} + {}*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("Main[4] = precompiler data address")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                }
+                if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
                     *code += &format!(
                         "\tadd {}, 17*8 {}\n",
                         REG_CHUNK_PLAYER_ADDRESS,
@@ -4579,7 +4998,8 @@ impl ZiskRom2Asm {
                     Self::mem_op_precompiled_write(ctx, code, 5, 3, 4, 4);
                 }
 
-                if !ctx.chunk_player_mt_collect_mem() {
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
                     // Call the secp256k1_add function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
@@ -4597,7 +5017,8 @@ impl ZiskRom2Asm {
                 *code += &ctx.full_line_comment("Arith256Mod".to_string());
 
                 // Use the memory address as the first and unique parameter
-                if !ctx.chunk_player_mt_collect_mem() {
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
                     *code += &format!(
                         "\tmov rdi, {} {}\n",
                         ctx.b.string_value,
@@ -4606,7 +5027,7 @@ impl ZiskRom2Asm {
                 }
 
                 // Save data into mem_reads
-                if ctx.minimal_trace() || ctx.zip() {
+                if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
                     // If zip, check if chunk is active
                     if ctx.zip() {
                         *code += &format!(
@@ -4633,7 +5054,8 @@ impl ZiskRom2Asm {
                     Self::mem_op_precompiled_write(ctx, code, 5, 4, 4, 4);
                 }
 
-                if !ctx.chunk_player_mt_collect_mem() {
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
                     // Call the secp256k1_add function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
@@ -4643,7 +5065,21 @@ impl ZiskRom2Asm {
                 }
 
                 // Consume mem reads
-                if ctx.chunk_player_mt_collect_mem() {
+                if ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tmov [{} + {}*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("Main[4] = precompiler data address")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                }
+                if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
                     *code += &format!(
                         "\tadd {}, 21*8 {}\n",
                         REG_CHUNK_PLAYER_ADDRESS,
@@ -4660,7 +5096,8 @@ impl ZiskRom2Asm {
                 *code += &ctx.full_line_comment("Secp256k1Add".to_string());
 
                 // Use the memory address as the first and unique parameter
-                if !ctx.chunk_player_mt_collect_mem() {
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
                     *code += &format!(
                         "\tmov rdi, {} {}\n",
                         ctx.b.string_value,
@@ -4669,7 +5106,7 @@ impl ZiskRom2Asm {
                 }
 
                 // Save data into mem_reads
-                if ctx.minimal_trace() || ctx.zip() {
+                if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
                     // If zip, check if chunk is active
                     if ctx.zip() {
                         *code += &format!(
@@ -4696,7 +5133,8 @@ impl ZiskRom2Asm {
                     Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 8);
                 }
 
-                if !ctx.chunk_player_mt_collect_mem() {
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
                     // Call the secp256k1_add function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
@@ -4706,7 +5144,21 @@ impl ZiskRom2Asm {
                 }
 
                 // Consume mem reads
-                if ctx.chunk_player_mt_collect_mem() {
+                if ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tmov [{} + {}*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("Main[4] = precompiler data address")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                }
+                if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
                     *code += &format!(
                         "\tadd {}, 18*8 {}\n",
                         REG_CHUNK_PLAYER_ADDRESS,
@@ -4723,7 +5175,8 @@ impl ZiskRom2Asm {
                 *code += &ctx.full_line_comment("Secp256k1Dbl".to_string());
 
                 // Use the memory address as the first and unique parameter
-                if !ctx.chunk_player_mt_collect_mem() {
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
                     *code += &format!(
                         "\tmov rdi, {} {}\n",
                         ctx.b.string_value,
@@ -4732,7 +5185,7 @@ impl ZiskRom2Asm {
                 }
 
                 // Copy read data into mem_reads
-                if ctx.minimal_trace() || ctx.zip() {
+                if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
                     // If zip, check if chunk is active
                     if ctx.zip() {
                         *code += &format!(
@@ -4780,7 +5233,8 @@ impl ZiskRom2Asm {
                     Self::mem_op_array(ctx, code, "rdi", true, 8, 8);
                 }
 
-                if !ctx.chunk_player_mt_collect_mem() {
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
                     // Call the secp256k1_dbl function
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
@@ -4790,7 +5244,21 @@ impl ZiskRom2Asm {
                 }
 
                 // Consume mem reads
-                if ctx.chunk_player_mt_collect_mem() {
+                if ctx.chunk_player_mem_reads_collect_main() {
+                    *code += &format!(
+                        "\tmov [{} + {}*8], {} {}\n",
+                        REG_MEM_READS_ADDRESS,
+                        REG_MEM_READS_SIZE,
+                        REG_CHUNK_PLAYER_ADDRESS,
+                        ctx.comment_str("Main[4] = precompiler data address")
+                    );
+                    *code += &format!(
+                        "\tinc {} {}\n",
+                        REG_MEM_READS_SIZE,
+                        ctx.comment_str("mem_reads_size++")
+                    );
+                }
+                if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
                     *code += &format!(
                         "\tadd {}, 8*8 {}\n",
                         REG_CHUNK_PLAYER_ADDRESS,
@@ -5897,7 +6365,7 @@ impl ZiskRom2Asm {
                 &format!("\tmov {}, 1 {}\n", REG_ACTIVE_CHUNK, ctx.comment_str("activate chunk"));
         }
 
-        if !ctx.chunk_player_mt_collect_mem() {
+        if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main() {
             *code += &ctx.full_line_comment(
                 "Increment number of chunks (first position in trace)".to_string(),
             );
@@ -5922,7 +6390,7 @@ impl ZiskRom2Asm {
             );
         }
 
-        if ctx.minimal_trace() || ctx.zip() {
+        if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
             *code += &ctx.full_line_comment("Write chunk start data".to_string());
 
             // Write chunk.start.pc
@@ -5996,7 +6464,7 @@ impl ZiskRom2Asm {
                 &format!("\tadd {}, 33*8 {}\n", REG_ADDRESS, ctx.comment_str("address += 33*8"));
         }
 
-        if ctx.minimal_trace() || ctx.main_trace() || ctx.zip() || ctx.mem_op() {
+        if ctx.minimal_trace() || ctx.main_trace() || ctx.zip() || ctx.mem_op() || ctx.mem_reads() {
             *code += &ctx.full_line_comment("Write mem reads size".to_string());
             *code += &format!(
                 "\tmov {}, {} {}\n",
@@ -6004,7 +6472,7 @@ impl ZiskRom2Asm {
                 ctx.mem_chunk_address,
                 ctx.comment_str("aux = chunk_size")
             );
-            if ctx.minimal_trace() || ctx.zip() {
+            if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
                 *code += &format!("\tadd {}, 40*8 {}\n", REG_AUX, ctx.comment_str("aux += 40*8"));
             }
             if ctx.mem_op() {
@@ -6081,7 +6549,7 @@ impl ZiskRom2Asm {
             *code += &format!("chunk_end_{}_active_chunk:\n", id);
         }
 
-        if ctx.minimal_trace() || ctx.zip() {
+        if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
             *code += &ctx.full_line_comment("Write chunk last data".to_string());
 
             // Search position of chunk.last
@@ -6246,7 +6714,7 @@ impl ZiskRom2Asm {
             );
         }
 
-        if ctx.minimal_trace() || ctx.main_trace() || ctx.zip() || ctx.mem_op() {
+        if ctx.minimal_trace() || ctx.main_trace() || ctx.zip() || ctx.mem_op() || ctx.mem_reads() {
             *code += &ctx.full_line_comment("Realloc trace if threshold is passed".to_string());
             *code += &format!(
                 "\tmov {}, qword {}[trace_address_threshold] {}\n",
@@ -7078,7 +7546,7 @@ impl ZiskRom2Asm {
         // Read values from minimal trace
         /////////////////////////////////
 
-        for i in 0..number_of_memory_reads {
+        for _i in 0..number_of_memory_reads {
             // Read value from memory and store in the proper register: a or c
             *code += &format!(
                 "\tmov {}, [{}] {}\n",
@@ -7120,6 +7588,7 @@ impl ZiskRom2Asm {
         *code += &format!("\tinc {} {}\n", REG_MEM_READS_SIZE, ctx.comment_str("mem_reads_size++"));
     }
 
+    #[allow(dead_code)]
     fn chunk_player_buffer(
         ctx: &mut ZiskAsmContext,
         code: &mut String,

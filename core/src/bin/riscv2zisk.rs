@@ -40,6 +40,8 @@ fn main() {
         "--gen=6" => zisk_core::AsmGenerationMethod::AsmZip,
         "--gen=7" => zisk_core::AsmGenerationMethod::AsmMemOp,
         "--gen=8" => zisk_core::AsmGenerationMethod::AsmChunkPlayerMTCollectMem,
+        "--gen=9" => zisk_core::AsmGenerationMethod::AsmMemReads,
+        "--gen=10" => zisk_core::AsmGenerationMethod::AsmChunkPlayerMemReadsCollectMain,
         _ => {
             eprintln!("Invalid generation method. Use --gen=0 (fast), =1 (minimal trace), =2 (rom histogram), =3 (main trace), =4 (chunks), =5 (bus op), =6 (zip) or =7 (mem op).");
             process::exit(1);
