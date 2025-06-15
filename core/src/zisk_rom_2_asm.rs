@@ -3263,7 +3263,7 @@ impl ZiskRom2Asm {
         // Init previous key to the first ROM entry
         let mut previous_key: u64 = ROM_ENTRY;
         for key in &rom.sorted_pc_list {
-            if (*key != ROM_ADDR) && (*key != (previous_key + 1)) {
+            if (*key > ROM_ADDR) && (*key != (previous_key + 1)) {
                 for _ in previous_key + 1..*key {
                     *code += "\t.quad 0\n";
                 }
@@ -5635,7 +5635,7 @@ impl ZiskRom2Asm {
             ctx.comment_str("address = map[0x1000]")
         );
         *code += &format!(
-            "\tmov {}, [{} + {}*8] {}\n",
+            "\tmov {}, [{} + {}*2] {}\n",
             REG_ADDRESS,
             REG_ADDRESS,
             REG_PC,
