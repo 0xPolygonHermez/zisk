@@ -3259,11 +3259,16 @@ impl ZiskRom2Asm {
         *code += "\n";
         *code += ".section .rodata\n";
         *code += ".align 64\n";
+
+        // Init previous key to the first ROM entry
+        let mut previous_key: u64 = ROM_ENTRY;
         for key in &rom.sorted_pc_list {
-            // Skip internal pc addresses
-            if (key & 0x03) != 0 {
-                continue;
+            if (*key != ROM_ADDR) && (*key != (previous_key + 1)) {
+                for _ in previous_key + 1..*key {
+                    *code += "\t.quad 0\n";
+                }
             }
+
             // Map fixed-length pc labels to real variable-length instruction labels
             // This is used to implement dynamic jumps, i.e. to jump to an address that is not
             // a constant in the instruction, but dynamically built as part of the emulation
@@ -3278,6 +3283,9 @@ impl ZiskRom2Asm {
 
             // Use labels always
             *code += &format!("map_pc_{:x}: \t.quad pc_{:x}\n", key, key);
+
+            // Update previous key
+            previous_key = *key;
         }
         *code += "\n";
 
@@ -5277,71 +5285,74 @@ impl ZiskRom2Asm {
                 assert!(ctx.a.constant_value <= 32);
                 *code += &ctx.full_line_comment("FcallParam".to_string());
 
-                if ctx.a.constant_value == 1 {
-                    // Store param in params
-                    *code += &format!(
-                        "\tmov {}, qword {}[{} + {}*8] {}\n",
-                        REG_AUX,
-                        ctx.ptr,
-                        ctx.fcall_ctx,
-                        FCALL_PARAMS_SIZE,
-                        ctx.comment_str("aux = params size")
-                    );
-                    *code += &format!(
-                        "\tmov qword {}[{} + {}*8 + {}*8], {} {}\n",
-                        ctx.ptr,
-                        ctx.fcall_ctx,
-                        REG_AUX,
-                        FCALL_PARAMS,
-                        REG_C,
-                        ctx.comment_str("ctx.params[size] = b")
-                    );
-                    *code += &format!(
-                        "\tinc qword {}[{} + {}*8] {}\n",
-                        ctx.ptr,
-                        ctx.fcall_ctx,
-                        FCALL_PARAMS_SIZE,
-                        ctx.comment_str("inc ctx.params_size")
-                    );
-                } else {
-                    // Store params in params
-                    *code += &format!(
-                        "\tmov {}, qword {}[{} + {}*8] {}\n",
-                        REG_AUX,
-                        ctx.ptr,
-                        ctx.fcall_ctx,
-                        FCALL_PARAMS_SIZE,
-                        ctx.comment_str("aux = params size")
-                    );
-                    for i in 0..ctx.a.constant_value {
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    if ctx.a.constant_value == 1 {
+                        // Store param in params
                         *code += &format!(
                             "\tmov {}, qword {}[{} + {}*8] {}\n",
-                            REG_VALUE,
+                            REG_AUX,
                             ctx.ptr,
-                            REG_C,
-                            i,
-                            ctx.comment_str("value = params[b]")
+                            ctx.fcall_ctx,
+                            FCALL_PARAMS_SIZE,
+                            ctx.comment_str("aux = params size")
                         );
-
                         *code += &format!(
                             "\tmov qword {}[{} + {}*8 + {}*8], {} {}\n",
                             ctx.ptr,
                             ctx.fcall_ctx,
                             REG_AUX,
                             FCALL_PARAMS,
-                            REG_VALUE,
-                            ctx.comment_str("params[aux] = param")
+                            REG_C,
+                            ctx.comment_str("ctx.params[size] = b")
                         );
-                        *code += &format!("\tinc {} {}\n", REG_AUX, ctx.comment_str("inc aux"));
+                        *code += &format!(
+                            "\tinc qword {}[{} + {}*8] {}\n",
+                            ctx.ptr,
+                            ctx.fcall_ctx,
+                            FCALL_PARAMS_SIZE,
+                            ctx.comment_str("inc ctx.params_size")
+                        );
+                    } else {
+                        // Store params in params
+                        *code += &format!(
+                            "\tmov {}, qword {}[{} + {}*8] {}\n",
+                            REG_AUX,
+                            ctx.ptr,
+                            ctx.fcall_ctx,
+                            FCALL_PARAMS_SIZE,
+                            ctx.comment_str("aux = params size")
+                        );
+                        for i in 0..ctx.a.constant_value {
+                            *code += &format!(
+                                "\tmov {}, qword {}[{} + {}*8] {}\n",
+                                REG_VALUE,
+                                ctx.ptr,
+                                REG_C,
+                                i,
+                                ctx.comment_str("value = params[b]")
+                            );
+
+                            *code += &format!(
+                                "\tmov qword {}[{} + {}*8 + {}*8], {} {}\n",
+                                ctx.ptr,
+                                ctx.fcall_ctx,
+                                REG_AUX,
+                                FCALL_PARAMS,
+                                REG_VALUE,
+                                ctx.comment_str("params[aux] = param")
+                            );
+                            *code += &format!("\tinc {} {}\n", REG_AUX, ctx.comment_str("inc aux"));
+                        }
+                        *code += &format!(
+                            "\tmov qword {}[{} + {}*8], {} {}\n",
+                            ctx.ptr,
+                            ctx.fcall_ctx,
+                            FCALL_PARAMS_SIZE,
+                            REG_AUX,
+                            ctx.comment_str("ctx.params_size = aux")
+                        );
                     }
-                    *code += &format!(
-                        "\tmov qword {}[{} + {}*8], {} {}\n",
-                        ctx.ptr,
-                        ctx.fcall_ctx,
-                        FCALL_PARAMS_SIZE,
-                        REG_AUX,
-                        ctx.comment_str("ctx.params_size = aux")
-                    );
                 }
 
                 ctx.c.is_saved = true;
@@ -5351,90 +5362,92 @@ impl ZiskRom2Asm {
                 *code += &ctx.full_line_comment("Fcall".to_string());
 
                 assert!(ctx.store_b_in_c);
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    // Store a (function id) in context
+                    assert!(ctx.a.is_constant);
+                    *code += &format!(
+                        "\tmov qword {}[{} + {}*8], {} {}\n",
+                        ctx.ptr,
+                        ctx.fcall_ctx,
+                        FCALL_FUNCTION_ID,
+                        ctx.a.constant_value,
+                        ctx.comment_str("ctx.function id = a")
+                    );
 
-                // Store a (function id) in context
-                assert!(ctx.a.is_constant);
-                *code += &format!(
-                    "\tmov qword {}[{} + {}*8], {} {}\n",
-                    ctx.ptr,
-                    ctx.fcall_ctx,
-                    FCALL_FUNCTION_ID,
-                    ctx.a.constant_value,
-                    ctx.comment_str("ctx.function id = a")
-                );
+                    // Set the fcall context address as the first parameter
+                    *code += &format!(
+                        "\tlea rdi, {} {}\n",
+                        ctx.fcall_ctx,
+                        ctx.comment_str("rdi = fcall context")
+                    );
 
-                // Set the fcall context address as the first parameter
-                *code += &format!(
-                    "\tlea rdi, {} {}\n",
-                    ctx.fcall_ctx,
-                    ctx.comment_str("rdi = fcall context")
-                );
+                    // Call the fcall function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_fcall\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
 
-                // Call the fcall function
-                Self::push_internal_registers(ctx, code, false);
-                //Self::assert_rsp_is_aligned(ctx, code);
-                *code += "\tcall _opcode_fcall\n";
-                Self::pop_internal_registers(ctx, code, false);
-                //Self::assert_rsp_is_aligned(ctx, code);
+                    // Get free input address
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_ADDRESS,
+                        FREE_INPUT_ADDR,
+                        ctx.comment_str("address = free_input")
+                    );
 
-                // Get free input address
-                *code += &format!(
-                    "\tmov {}, {} {}\n",
-                    REG_ADDRESS,
-                    FREE_INPUT_ADDR,
-                    ctx.comment_str("address = free_input")
-                );
+                    // Copy ctx.result[0] or 0 into free input
+                    *code += &format!(
+                        "\tmov {}, qword {}[{} + {}*8] {}\n",
+                        REG_AUX,
+                        ctx.ptr,
+                        ctx.fcall_ctx,
+                        FCALL_RESULT_SIZE,
+                        ctx.comment_str("aux = ctx.result_size")
+                    );
+                    *code += &format!("\tcmp {}, 0\n", REG_AUX);
+                    *code += &format!("\tjz pc_{:x}_fcall_result_zero\n", ctx.pc);
+                    *code += &format!(
+                        "\tmov {}, qword {}[{} + {}*8] {}\n",
+                        REG_VALUE,
+                        ctx.ptr,
+                        ctx.fcall_ctx,
+                        FCALL_RESULT,
+                        ctx.comment_str("value = ctx.result[0]")
+                    );
+                    *code += &format!(
+                        "\tmov [{}], {} {}\n",
+                        REG_ADDRESS,
+                        REG_VALUE,
+                        ctx.comment_str("free_input = value")
+                    );
+                    *code += &format!("\tjmp pc_{:x}_fcall_result_done\n", ctx.pc);
+                    *code += &format!("pc_{:x}_fcall_result_zero:\n", ctx.pc);
+                    *code += &format!(
+                        "\tmov qword {}[{}], 0 {}\n",
+                        ctx.ptr,
+                        REG_ADDRESS,
+                        ctx.comment_str("free_input = 0")
+                    );
+                    *code += &format!("pc_{:x}_fcall_result_done:\n", ctx.pc);
 
-                // Copy ctx.result[0] or 0 into free input
-                *code += &format!(
-                    "\tmov {}, qword {}[{} + {}*8] {}\n",
-                    REG_AUX,
-                    ctx.ptr,
-                    ctx.fcall_ctx,
-                    FCALL_RESULT_SIZE,
-                    ctx.comment_str("aux = ctx.result_size")
-                );
-                *code += &format!("\tcmp {}, 0\n", REG_AUX);
-                *code += &format!("\tjz pc_{:x}_fcall_result_zero\n", ctx.pc);
-                *code += &format!(
-                    "\tmov {}, qword {}[{} + {}*8] {}\n",
-                    REG_VALUE,
-                    ctx.ptr,
-                    ctx.fcall_ctx,
-                    FCALL_RESULT,
-                    ctx.comment_str("value = ctx.result[0]")
-                );
-                *code += &format!(
-                    "\tmov [{}], {} {}\n",
-                    REG_ADDRESS,
-                    REG_VALUE,
-                    ctx.comment_str("free_input = value")
-                );
-                *code += &format!("\tjmp pc_{:x}_fcall_result_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_fcall_result_zero:\n", ctx.pc);
-                *code += &format!(
-                    "\tmov qword {}[{}], 0 {}\n",
-                    ctx.ptr,
-                    REG_ADDRESS,
-                    ctx.comment_str("free_input = 0")
-                );
-                *code += &format!("pc_{:x}_fcall_result_done:\n", ctx.pc);
-
-                // Update fcall counters
-                *code += &format!(
-                    "\tmov qword {}[{} + {}*8], 0 {}\n",
-                    ctx.ptr,
-                    ctx.fcall_ctx,
-                    FCALL_PARAMS_SIZE,
-                    ctx.comment_str("ctx.params_size = 0")
-                );
-                *code += &format!(
-                    "\tmov qword {}[{} + {}*8], 1 {}\n",
-                    ctx.ptr,
-                    ctx.fcall_ctx,
-                    FCALL_RESULT_GOT,
-                    ctx.comment_str("ctx.result_got = 1")
-                );
+                    // Update fcall counters
+                    *code += &format!(
+                        "\tmov qword {}[{} + {}*8], 0 {}\n",
+                        ctx.ptr,
+                        ctx.fcall_ctx,
+                        FCALL_PARAMS_SIZE,
+                        ctx.comment_str("ctx.params_size = 0")
+                    );
+                    *code += &format!(
+                        "\tmov qword {}[{} + {}*8], 1 {}\n",
+                        ctx.ptr,
+                        ctx.fcall_ctx,
+                        FCALL_RESULT_GOT,
+                        ctx.comment_str("ctx.result_got = 1")
+                    );
+                }
 
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -5444,44 +5457,47 @@ impl ZiskRom2Asm {
 
                 assert!(ctx.store_b_in_c);
 
-                // Get value from fcall_ctx.result[got] and store it in free input address
-                *code += &format!(
-                    "\tmov {}, qword {}[{} + {}*8] {}\n",
-                    REG_AUX,
-                    ctx.ptr,
-                    ctx.fcall_ctx,
-                    FCALL_RESULT_GOT,
-                    ctx.comment_str("aux = ctx.result_got")
-                );
-                *code += &format!(
-                    "\tmov {}, qword {}[{} + {}*8 + {}*8] {}\n",
-                    REG_VALUE,
-                    ctx.ptr,
-                    ctx.fcall_ctx,
-                    REG_AUX,
-                    FCALL_RESULT,
-                    ctx.comment_str("value = ctx.result_got")
-                );
-                *code += &format!(
-                    "\tmov {}, {} {}\n",
-                    REG_ADDRESS,
-                    FREE_INPUT_ADDR,
-                    ctx.comment_str("address = free_input")
-                );
-                *code += &format!(
-                    "\tmov qword {}[{}], {} {}\n",
-                    ctx.ptr,
-                    REG_ADDRESS,
-                    REG_VALUE,
-                    ctx.comment_str("free_input = value")
-                );
-                *code += &format!(
-                    "\tinc qword {}[{} + {}*8] {}\n",
-                    ctx.ptr,
-                    ctx.fcall_ctx,
-                    FCALL_RESULT_GOT,
-                    ctx.comment_str("inc ctx.result_got")
-                );
+                if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
+                {
+                    // Get value from fcall_ctx.result[got] and store it in free input address
+                    *code += &format!(
+                        "\tmov {}, qword {}[{} + {}*8] {}\n",
+                        REG_AUX,
+                        ctx.ptr,
+                        ctx.fcall_ctx,
+                        FCALL_RESULT_GOT,
+                        ctx.comment_str("aux = ctx.result_got")
+                    );
+                    *code += &format!(
+                        "\tmov {}, qword {}[{} + {}*8 + {}*8] {}\n",
+                        REG_VALUE,
+                        ctx.ptr,
+                        ctx.fcall_ctx,
+                        REG_AUX,
+                        FCALL_RESULT,
+                        ctx.comment_str("value = ctx.result_got")
+                    );
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_ADDRESS,
+                        FREE_INPUT_ADDR,
+                        ctx.comment_str("address = free_input")
+                    );
+                    *code += &format!(
+                        "\tmov qword {}[{}], {} {}\n",
+                        ctx.ptr,
+                        REG_ADDRESS,
+                        REG_VALUE,
+                        ctx.comment_str("free_input = value")
+                    );
+                    *code += &format!(
+                        "\tinc qword {}[{} + {}*8] {}\n",
+                        ctx.ptr,
+                        ctx.fcall_ctx,
+                        FCALL_RESULT_GOT,
+                        ctx.comment_str("inc ctx.result_got")
+                    );
+                }
 
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
@@ -5604,7 +5620,7 @@ impl ZiskRom2Asm {
             ctx.comment_str("address = map[0x80000000]")
         );
         *code += &format!(
-            "\tmov {}, [{} + {}*2] {}\n",
+            "\tmov {}, [{} + {}*8] {}\n",
             REG_ADDRESS,
             REG_ADDRESS,
             REG_PC,
@@ -5619,7 +5635,7 @@ impl ZiskRom2Asm {
             ctx.comment_str("address = map[0x1000]")
         );
         *code += &format!(
-            "\tmov {}, [{} + {}*2] {}\n",
+            "\tmov {}, [{} + {}*8] {}\n",
             REG_ADDRESS,
             REG_ADDRESS,
             REG_PC,
