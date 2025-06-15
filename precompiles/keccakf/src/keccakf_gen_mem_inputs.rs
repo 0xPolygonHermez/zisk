@@ -16,7 +16,7 @@ pub fn generate_keccakf_mem_inputs(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-) -> Option<Vec<(BusId, Vec<u64>)>> {
+) -> Vec<(BusId, Vec<u64>)> {
     // Get the basic data from the input
     // op,op_type,a,b,...
     let state: &mut [u64; 25] = &mut data[4..29].try_into().unwrap();
@@ -64,5 +64,5 @@ pub fn generate_keccakf_mem_inputs(
         }
     }
 
-    Some(mem_inputs)
+    mem_inputs
 }

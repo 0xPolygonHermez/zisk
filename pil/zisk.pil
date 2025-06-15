@@ -56,14 +56,19 @@ airgroup Zisk {
 
 
     // Precompiles
-    const int KECCAKF_BITS = 10;
-    Keccakf(N: 2**22, RC: 2, RB: 32, bits_in_parallel: 2, chunks: 6, bits: KECCAKF_BITS, operation_bus_id: OPERATION_BUS_ID);
-    KeccakfTable(N: 2**21, chunks: 1, bits: KECCAKF_BITS);
+    const int KECCAKF_CHUNKS = 7;
+    const int KECCAKF_BITS = 9;
+    Keccakf(N: 2**22, RC: 2, RB: 32, bits_in_parallel: 2, chunks: KECCAKF_CHUNKS, bits: KECCAKF_BITS, operation_bus_id: OPERATION_BUS_ID);
+    const int KECCAKF_TABLE_CHUNKS = 1;
+    const int KECCAKF_TABLE_BITS = (KECCAKF_BITS - KECCAKF_TABLE_CHUNKS + 1) + KECCAKF_BITS + 1;
+    KeccakfTable(N: 2**KECCAKF_TABLE_BITS, chunks: KECCAKF_TABLE_CHUNKS, bits: KECCAKF_BITS);
 
+    const int SHA256F_CHUNKS = 8;
     const int SHA256F_BITS = 7;
-    // TODO: Explore how to fit the sha256f circuit with chunks = 9
-    Sha256f(N: 2**21, RC: 2, RB: 32, bits_in_parallel: 2, chunks: 8, bits: SHA256F_BITS, operation_bus_id: OPERATION_BUS_ID);
-    Sha256fTable(N: 2**23, chunks: 1, bits: SHA256F_BITS);
+    Sha256f(N: 2**21, RC: 2, RB: 32, bits_in_parallel: 2, chunks: SHA256F_CHUNKS, bits: SHA256F_BITS, operation_bus_id: OPERATION_BUS_ID);
+    const int SHA256F_TABLE_CHUNKS = 1;
+    const int SHA256F_TABLE_BITS = (SHA256F_BITS - SHA256F_TABLE_CHUNKS + 1) + SHA256F_BITS + SHA256F_BITS + 2;
+    Sha256fTable(N: 2**SHA256F_TABLE_BITS, chunks: SHA256F_TABLE_CHUNKS, bits: SHA256F_BITS);
 
     // public inputs
     for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {

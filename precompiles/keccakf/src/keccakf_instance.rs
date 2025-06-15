@@ -161,7 +161,6 @@ impl BusDevice<PayloadType> for KeccakfCollector {
             data.try_into().expect("Regular Metrics: Failed to convert data");
         if let ExtOperationData::OperationKeccakData(data) = data {
             self.inputs.push(KeccakfInput::from(&data));
-            None
         } else {
             panic!("Expected ExtOperationData::OperationData");
         }

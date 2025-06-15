@@ -119,7 +119,7 @@ impl BusDevice<u64> for KeccakfCounterInputGen {
             self.measure(data);
         }
 
-        generate_keccakf_mem_inputs(addr_main, step_main, data, only_counters)
+        pending.extend(generate_keccakf_mem_inputs(addr_main, step_main, data, only_counters))
     }
 
     /// Returns the bus IDs associated with this counter.

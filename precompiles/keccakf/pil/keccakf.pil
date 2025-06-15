@@ -151,7 +151,7 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
     //  - When there are circuits.
     //  - Every NUM_KECCAKF_PER_CIRCUIT clocks.
     //  - When there are still bits to process.
-    col fixed latch_num_keccakf  = [0,[0,[0:(NUM_KECCAKF_PER_CIRCUIT-1),1]:(INPUT_OUTPUT_BITS / bits_in_parallel),
+    col fixed LATCH_NUM_KECCAKF  = [0,[0,[0:(NUM_KECCAKF_PER_CIRCUIT-1),1]:(INPUT_OUTPUT_BITS / bits_in_parallel),
                                        0:(CIRCUIT_SIZE - (INPUT_OUTPUT_SIZE+1))]:NUM_CIRCUITS,
                                     0...];
 
@@ -159,27 +159,27 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
     //  - When there are circuits.
     //  - Every clock, for the clock in the circuit, we add the factor 1 << clk.
     //  - When there are still bits to process (i.e., we repeat the previous instruction KECCAKF_SIZE_BITS times).
-    col fixed factor_num_keccakf;
+    col fixed FACTOR_NUM_KECCAKF;
     if (NUM_KECCAKF_PER_CIRCUIT != 1) {
-        factor_num_keccakf = [0,[[1,2..*..2**(NUM_KECCAKF_PER_CIRCUIT-1)]:(INPUT_OUTPUT_BITS / bits_in_parallel), 
+        FACTOR_NUM_KECCAKF = [0,[[1,2..*..2**(NUM_KECCAKF_PER_CIRCUIT-1)]:(INPUT_OUTPUT_BITS / bits_in_parallel), 
                                   0:(CIRCUIT_SIZE - INPUT_OUTPUT_SIZE)]:NUM_CIRCUITS,
                               0...];
     } else {
-        factor_num_keccakf = [0, [1:(INPUT_OUTPUT_BITS / bits_in_parallel), 
+        FACTOR_NUM_KECCAKF = [0, [1:(INPUT_OUTPUT_BITS / bits_in_parallel), 
                                   0:(CIRCUIT_SIZE - INPUT_OUTPUT_SIZE)]:NUM_CIRCUITS, 
                               0...];
     }
 
     // val[i] accumulates the bits
     for (int i = 0; i < bits_in_parallel; i++) {
-        val[i]' === val[i] * (1 - latch_num_keccakf) + bit[i] * factor_num_keccakf; // (2)
+        val[i]' === val[i] * (1 - LATCH_NUM_KECCAKF) + bit[i] * FACTOR_NUM_KECCAKF; // (2)
     }
     // In each j-th latch, val[i] has accumulated the j-th bit of all the keccakf's 
 
     // In each j-th latch, val[i] has to coincide with the a-th gate entry,
     // whose positions where reserved for the inputs and outputs of the Keccakf circuit
     for (int i = 0; i < bits_in_parallel; i++) {
-        latch_num_keccakf * (val[i] - a'(i)) === 0; // (3)
+        LATCH_NUM_KECCAKF * (val[i] - a'(i)) === 0; // (3)
     }
 
     // (1),(2) and (3) prove that the bit decomposition is correct
