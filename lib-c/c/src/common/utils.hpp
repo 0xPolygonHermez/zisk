@@ -55,4 +55,20 @@ inline void fe2array (const RawFnec::Element &fe, uint64_t * a)
     scalar2array(s, a);
 }
 
+// Converts an array of 4 u64 LE to a Fq (BN254) element
+inline void array2fe (const uint64_t * a, RawFq::Element &fe)
+{
+    mpz_class s;
+    array2scalar(a, s);
+    bn254.fromMpz(fe, s.get_mpz_t());
+}
+
+// Converts a Fq (BN254) element to an array of 4 u64 LE
+inline void fe2array (const RawFq::Element &fe, uint64_t * a)
+{
+    mpz_class s;
+    bn254.toMpz(s.get_mpz_t(), fe);
+    scalar2array(s, a);
+}
+
 #endif
