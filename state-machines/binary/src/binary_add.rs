@@ -44,11 +44,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// # Returns
     /// A `BinaryAddTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice(
-        &self,
-        input: &[u64; 2],
-        range_checks: &mut Vec<i64>,
-    ) -> BinaryAddTraceRow<F> {
+    pub fn process_slice(&self, input: &[u64; 2]) -> BinaryAddTraceRow<F> {
         // Create an empty trace
         let mut row: BinaryAddTraceRow<F> = Default::default();
 
@@ -74,8 +70,6 @@ impl<F: PrimeField64> BinaryAddSM<F> {
                 row.cout[i] = F::ZERO;
                 cin = 0
             };
-            range_checks.push(c_chunks[0] as i64);
-            range_checks.push(c_chunks[1] as i64);
             a >>= 32;
             b >>= 32;
         }
@@ -119,19 +113,11 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         }
 
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
-        let range_checks: Vec<i64> = slices
-            .into_par_iter()
-            .enumerate()
-            .flat_map(|(i, slice)| {
-                let mut local_range_checks = Vec::new();
-
-                slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
-                    *trace_row = self.process_slice(&inputs[i][j], &mut local_range_checks);
-                });
-
-                local_range_checks
-            })
-            .collect();
+        slices.into_par_iter().enumerate().for_each(|(i, slice)| {
+            slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
+                *trace_row = self.process_slice(&inputs[i][j]);
+            });
+        });
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
@@ -139,8 +125,31 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             .par_iter_mut()
             .for_each(|slot| *slot = BinaryAddTraceRow::<F> { ..Default::default() });
 
-        for value in range_checks {
-            self.std.range_check(value, 1, self.range_id);
+        for row in inputs.iter() {
+            for input in row.iter() {
+                let mut a = input[0];
+                let mut b = input[1];
+                let mut cin = 0;
+
+                for _ in 0..2 {
+                    let _a = a & 0xFFFF_FFFF;
+                    let _b = b & 0xFFFF_FFFF;
+                    let c = _a + _b + cin;
+                    let _c = c & 0xFFFF_FFFF;
+
+                    let c_chunks = [_c & 0xFFFF, _c >> 16];
+
+                    if c > MASK_U32 {
+                        cin = 1
+                    } else {
+                        cin = 0
+                    };
+                    self.std.range_check(c_chunks[0] as i64, 1, self.range_id);
+                    self.std.range_check(c_chunks[1] as i64, 1, self.range_id);
+                    a >>= 32;
+                    b >>= 32;
+                }
+            }
         }
 
         self.std.range_check(0, 4 * (num_rows - total_inputs) as u64, self.range_id);

@@ -108,7 +108,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         &self,
         input: &BinaryInput,
         binary_extension_table_sm: &BinaryExtensionTableSM,
-        range_checks: &mut Vec<i64>,
     ) -> BinaryExtensionTraceRow<F> {
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
@@ -304,11 +303,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             binary_extension_table_sm.update_multiplicity(row, 1);
         }
 
-        // Store the range check
-        if op_is_shift {
-            range_checks.push(in2_0 as i64);
-        }
-
         // Return successfully
         row
     }
@@ -352,26 +346,23 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         }
 
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
-        let range_checks: Vec<i64> = slices
-            .into_par_iter()
-            .enumerate()
-            .flat_map(|(i, slice)| {
-                let mut local_range_checks = Vec::new();
+        slices.into_par_iter().enumerate().for_each(|(i, slice)| {
+            slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
+                *trace_row = self.process_slice(&inputs[i][j], &self.binary_extension_table_sm);
+            });
+        });
 
-                slice.iter_mut().enumerate().for_each(|(j, cell)| {
-                    *cell = self.process_slice(
-                        &inputs[i][j],
-                        &self.binary_extension_table_sm,
-                        &mut local_range_checks,
-                    );
-                });
-
-                local_range_checks
-            })
-            .collect();
-
-        for value in range_checks {
-            self.std.range_check(value, 1, self.range_id);
+        // Iterate over all inputs and check opcode
+        // to update multiplicity for the corresponding table row.
+        for row in inputs.iter() {
+            for input in row.iter() {
+                let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
+                let op_is_shift = Self::opcode_is_shift(opcode);
+                if op_is_shift {
+                    let row = (input.b >> 8) & 0xFFFFFF;
+                    self.std.range_check(row as i64, 1, self.range_id);
+                }
+            }
         }
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
