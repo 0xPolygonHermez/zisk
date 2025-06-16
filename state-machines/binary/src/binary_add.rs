@@ -135,9 +135,9 @@ impl<F: PrimeField64> BinaryAddSM<F> {
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
-        let padding_row = BinaryAddTraceRow::<F> { ..Default::default() };
-
-        add_trace.buffer[total_inputs..num_rows].fill(padding_row);
+        add_trace.buffer[total_inputs..num_rows]
+        .par_iter_mut()
+        .for_each(|slot| *slot = BinaryAddTraceRow::<F> { ..Default::default() });
 
         for value in range_checks {
             self.std.range_check(value, 1, self.range_id);

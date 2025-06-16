@@ -7,10 +7,10 @@ use fields::PrimeField64;
 use num_traits::cast::ToPrimitive;
 use pil_std_lib::Std;
 
-use proofman_common::{AirInstance, FromTrace};
-use zisk_pil::{MemAlignTrace, MemAlignTraceRow};
-
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
+use proofman_common::{AirInstance, FromTrace};
+use rayon::prelude::*;
+use zisk_pil::{MemAlignTrace, MemAlignTraceRow};
 
 const RC: usize = 2;
 const CHUNK_NUM: usize = 8;
@@ -812,7 +812,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         let padding_row = MemAlignTraceRow::<F> { reset: F::from_bool(true), ..Default::default() };
 
         // Store the padding rows
-        trace.buffer[index..num_rows].fill(padding_row);
+        trace.buffer[index..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row.clone());
 
         // Compute the program multiplicity
         let mem_align_rom_sm = self.mem_align_rom_sm.clone();

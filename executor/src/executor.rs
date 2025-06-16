@@ -556,8 +556,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             .remove(&global_id)
             .expect("Missing collectors for given global_id");
 
-        println!("{} {:?} {:?}", global_id, stats, collectors_by_instance.len());
-
         let witness_start = std::time::Instant::now();
         if let Some(air_instance) =
             secn_instance.compute_witness(pctx, sctx, collectors_by_instance)
@@ -593,8 +591,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         // Group the instances by the chunk they need to process
         let chunks_to_execute = self.chunks_to_execute(min_traces, &secn_instances);
 
-        println!("CHUNKS TO EXECUTE {:?}", chunks_to_execute);
-
         // Create data buses for each chunk
         let mut data_buses =
             self.sm_bundle.build_data_bus_collectors(&secn_instances, chunks_to_execute);
@@ -618,7 +614,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         for global_idx in secn_instances.keys() {
             let collector = collectors_by_instance.remove(global_idx).unwrap_or_else(|| Vec::new());
             let stats = Stats { collect_time, witness_time: 0, num_chunks: collector.len() };
-            println!("GLOBAL ID {} and num chunks {}", *global_idx, collector.len());
             self.collectors_by_instance.write().unwrap().insert(*global_idx, (stats, collector));
         }
     }
@@ -719,7 +714,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         for (global_id, collectors) in &collectors_by_instance {
             let chunk_ids: Vec<usize> = collectors.iter().map(|(chunk_id, _)| *chunk_id).collect();
-            println!("Global ID {} has chunks: {:?}", global_id, chunk_ids);
         }
         
         collectors_by_instance
@@ -910,7 +904,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
             return;
         }
 
-        println!("N CORES {}", n_cores);
         let pool = create_pool(n_cores);
         pool.install(|| {
             let secn_instances_guard = self.secn_instances.read().unwrap();
@@ -919,14 +912,11 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
             for &global_id in global_ids {
                 let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
 
-                println!("YESSS {} [{}:{}]", global_id, _airgroup_id, air_id);
                 if !MAIN_AIR_IDS.contains(&air_id) {
                     let secn_instance = &secn_instances_guard[&global_id];
 
                     if secn_instance.instance_type() == InstanceType::Instance {
                         secn_instances.insert(global_id, secn_instance);
-                    } else {
-                        println!("BOO {} [{}:{}]", global_id, _airgroup_id, air_id);
                     }
                 }
             }

@@ -9,6 +9,7 @@ use std::sync::Arc;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
+use rayon::prelude::*;
 
 pub struct MemModuleInstance<F: PrimeField64> {
     /// Instance context
@@ -34,7 +35,7 @@ impl<F: PrimeField64> MemModuleInstance<F> {
     fn prepare_inputs(&self, inputs: &mut [MemInput]) {
         // sort all instance inputs
         timer_start_debug!(MEM_SORT);
-        inputs.sort_by_key(|input| (input.addr, input.step));
+        inputs.par_sort_by_key(|input| (input.addr, input.step));
         timer_stop_and_log_debug!(MEM_SORT);
     }
 }

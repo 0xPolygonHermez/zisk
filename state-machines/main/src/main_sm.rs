@@ -15,13 +15,12 @@ use std::sync::{
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
-use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 use sm_mem::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx};
 use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
 use ziskemu::{Emu, EmuRegTrace};
-
+use rayon::prelude::*;
 use crate::MainCounter;
 
 /// Represents an instance of the main state machine,
@@ -160,7 +159,9 @@ impl MainSM {
         // In padding row must be clear of registers access, if not need to calculate previous
         // register step and range check conntribution
         let last_row = main_trace.buffer[filled_rows - 1];
-        main_trace.buffer[filled_rows..num_rows].fill(last_row);
+        main_trace.buffer[filled_rows..num_rows]
+            .par_iter_mut()
+            .for_each(|slot| *slot = last_row);
 
         // Determine the last row of the previous segment
         let prev_segment_last_c = if start_idx > 0 {

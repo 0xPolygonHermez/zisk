@@ -17,7 +17,7 @@ use super::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM};
 use rayon::prelude::*;
 
 /// The `KeccakfSM` struct encapsulates the logic of the Keccakf State Machine.
-pub struct KeccakfSM {
+pub struct KeccakfSM<F: PrimeField64> {
     /// Reference to the Keccakf Table State Machine.
     keccakf_table_sm: Arc<KeccakfTableSM>,
 
@@ -33,11 +33,13 @@ pub struct KeccakfSM {
 
     /// Number of available keccakfs in the trace.
     pub num_available_keccakfs: usize,
+
+    keccakf_fixed: KeccakfFixed<F>,
 }
 
 type KeccakfInput = [u64; INPUT_DATA_SIZE_BITS];
 
-impl KeccakfSM {
+impl<F: PrimeField64> KeccakfSM<F> {
     pub const NUM_KECCAKF_PER_SLOT: usize = CHUNKS_KECCAKF * BITS_KECCAKF;
 
     const RB_SIZE: usize = Self::NUM_KECCAKF_PER_SLOT * RB;
@@ -50,7 +52,7 @@ impl KeccakfSM {
     ///
     /// # Returns
     /// A new `KeccakfSM` instance.
-    pub fn new(keccakf_table_sm: Arc<KeccakfTableSM>) -> Arc<Self> {
+    pub fn new(sctx: Arc<SetupCtx<F>>, keccakf_table_sm: Arc<KeccakfTableSM>) -> Arc<Self> {
         // Get the slot size
         let keccakf_top = keccakf_topology();
         let keccakf_program = keccakf_top.program;
@@ -61,6 +63,11 @@ impl KeccakfSM {
         let num_available_slots = (KeccakfTrace::<usize>::NUM_ROWS - 1) / slot_size;
         let num_available_keccakfs = Self::NUM_KECCAKF_PER_SLOT * num_available_slots;
 
+        let airgroup_id = KeccakfTrace::<usize>::AIRGROUP_ID;
+        let air_id = KeccakfTrace::<usize>::AIR_ID;
+        let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
+        let keccakf_fixed = KeccakfFixed::from_vec(fixed_pols);
+
         Arc::new(Self {
             keccakf_table_sm,
             program: keccakf_program,
@@ -68,6 +75,7 @@ impl KeccakfSM {
             slot_size,
             num_available_slots,
             num_available_keccakfs,
+            keccakf_fixed,
         })
     }
 
@@ -79,9 +87,8 @@ impl KeccakfSM {
     /// * `input` - The operation data to process.
     /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
     #[inline(always)]
-    pub fn process_slice<F: PrimeField64>(
+    pub fn process_slice(
         &self,
-        fixed: &KeccakfFixed<F>,
         trace: &mut KeccakfTrace<F>,
         num_rows_constants: usize,
         inputs: &[OperationKeccakData<u64>],
@@ -136,7 +143,7 @@ impl KeccakfSM {
                     let bit_pos = k % BITS_IN_PARALLEL_KECCAKF;
                     let bit_offset =
                         (k - bit_pos) * Self::NUM_KECCAKF_PER_SLOT / BITS_IN_PARALLEL_KECCAKF;
-                    update_bit_val(fixed, trace, pos + bit_offset, new_bit, slot_pos, bit_pos);
+                    update_bit_val(&self.keccakf_fixed, trace, pos + bit_offset, new_bit, slot_pos, bit_pos);
                 }
             });
 
@@ -161,7 +168,7 @@ impl KeccakfSM {
                     let bit_pos = k % BITS_IN_PARALLEL_KECCAKF;
                     let bit_offset =
                         (k - bit_pos) * Self::NUM_KECCAKF_PER_SLOT / BITS_IN_PARALLEL_KECCAKF;
-                    update_bit_val(fixed, trace, pos + bit_offset, new_bit, slot_pos, bit_pos);
+                    update_bit_val(&self.keccakf_fixed, trace, pos + bit_offset, new_bit, slot_pos, bit_pos);
                 }
             });
 
@@ -207,7 +214,7 @@ impl KeccakfSM {
                         let bit_offset =
                             (k - bit_pos) * Self::NUM_KECCAKF_PER_SLOT / BITS_IN_PARALLEL_KECCAKF;
                         for w in rem_inputs..Self::NUM_KECCAKF_PER_SLOT {
-                            update_bit_val(fixed, trace, pos + bit_offset + w, new_bit, w, bit_pos);
+                            update_bit_val(&self.keccakf_fixed, trace, pos + bit_offset + w, new_bit, w, bit_pos);
                         }
                     }
                 });
@@ -227,7 +234,7 @@ impl KeccakfSM {
                         let pos =
                             initial_offset + slot_offset + input_offset + chunk_offset + bit_offset;
                         for w in 0..Self::NUM_KECCAKF_PER_SLOT {
-                            update_bit_val(fixed, trace, pos + w, new_bit, w, bit_pos);
+                            update_bit_val(&self.keccakf_fixed, trace, pos + w, new_bit, w, bit_pos);
                         }
                     }
                 }
@@ -375,7 +382,7 @@ impl KeccakfSM {
             for k in 0..self.slot_size {
                 let a = par_trace[k].free_in_a;
                 let b = par_trace[k].free_in_b;
-                let gate_op = fixed[k + 1 + i * self.slot_size].GATE_OP;
+                let gate_op = self.keccakf_fixed[k + 1 + i * self.slot_size].GATE_OP;
                 let gate_op_val = match F::as_canonical_u64(&gate_op) {
                     0u64 => KeccakfTableGateOp::Xor,
                     1u64 => KeccakfTableGateOp::Andp,
@@ -458,21 +465,13 @@ impl KeccakfSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<F: PrimeField64>(
+    pub fn compute_witness(
         &self,
-        sctx: &SetupCtx<F>,
         inputs: &[Vec<OperationKeccakData<u64>>],
-    ) -> AirInstance<F> {
-        // Get the fixed cols
-        let airgroup_id = KeccakfTrace::<usize>::AIRGROUP_ID;
-        let air_id = KeccakfTrace::<usize>::AIR_ID;
-        let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
-        let fixed = KeccakfFixed::from_vec(fixed_pols);
-
+    ) -> AirInstance<F> {    
         timer_start_trace!(KECCAKF_TRACE);
         let mut keccakf_trace = KeccakfTrace::new();
         let num_rows = keccakf_trace.num_rows();
-
         // Flatten the inputs
         let inputs: Vec<OperationKeccakData<u64>> = inputs.iter().flatten().cloned().collect();
 
@@ -504,7 +503,7 @@ impl KeccakfSM {
         let mut row: KeccakfTraceRow<F> = Default::default();
         let zeros = 0u64;
         let ones = MASK_BITS_KECCAKF;
-        let gate_op = fixed[0].GATE_OP.as_canonical_u64();
+        let gate_op = self.keccakf_fixed[0].GATE_OP.as_canonical_u64();
         // Sanity check
         debug_assert_eq!(
             gate_op,
@@ -524,14 +523,14 @@ impl KeccakfSM {
         keccakf_trace[0] = row;
 
         // Fill the rest of the trace
-        self.process_slice(&fixed, &mut keccakf_trace, num_rows_constants, &inputs);
+        self.process_slice(&mut keccakf_trace, num_rows_constants, &inputs);
         timer_stop_and_log_trace!(KECCAKF_TRACE);
 
         timer_start_trace!(KECCAKF_PADDING);
         // A row with all zeros satisfies the constraints (since both XOR(0,0) and ANDP(0,0) are 0)
         let padding_row: KeccakfTraceRow<F> = Default::default();
         for i in (num_rows_constants + self.slot_size * self.num_available_slots)..num_rows {
-            let gate_op = fixed[i].GATE_OP.as_canonical_u64();
+            let gate_op = self.keccakf_fixed[i].GATE_OP.as_canonical_u64();
             // Sanity check
             debug_assert_eq!(
                 gate_op,
@@ -548,60 +547,60 @@ impl KeccakfSM {
 
         AirInstance::new_from_trace(FromTrace::new(&mut keccakf_trace))
     }
+}
 
-    /// Generates memory inputs.
-    pub fn generate_inputs(
-        input: &OperationKeccakData<u64>,
-        counters_mode: bool,
-    ) -> Vec<Vec<PayloadType>> {
-        // Get the basic data from the input
-        let input_data = ExtOperationData::OperationKeccakData(*input);
+/// Generates memory inputs.
+pub fn generate_inputs(
+    input: &OperationKeccakData<u64>,
+    counters_mode: bool,
+) -> Vec<Vec<PayloadType>> {
+    // Get the basic data from the input
+    let input_data = ExtOperationData::OperationKeccakData(*input);
 
-        let step_main = OperationBusData::get_a(&input_data);
-        let addr = OperationBusData::get_b(&input_data) as u32;
+    let step_main = OperationBusData::get_a(&input_data);
+    let addr = OperationBusData::get_b(&input_data) as u32;
 
-        let mut mem_data = vec![];
-        if counters_mode {
-            // On counter phase we don't need final values, we only need the
-            // address and step
-            // Compute the reads
-            for i in 0..25 {
-                let new_addr = addr + 8 * i as u32;
-                let read = MemBusHelpers::mem_aligned_load(new_addr, step_main, 0);
-                mem_data.push(read.to_vec());
-            }
-
-            // Compute the writes
-            for i in 0..25 {
-                let new_addr = addr + 8 * i as u32;
-                let write = MemBusHelpers::mem_aligned_write(new_addr, step_main, 0);
-                mem_data.push(write.to_vec());
-            }
-
-            return mem_data;
-        }
-        // Get the raw keccakf input as 25 u64 values
-        let keccakf_input: [u64; 25] =
-            OperationBusData::get_extra_data(&input_data).try_into().unwrap();
-
-        // Apply the keccakf function and get the output
-        let mut keccakf_output = keccakf_input;
-        keccakf(&mut keccakf_output);
-
+    let mut mem_data = vec![];
+    if counters_mode {
+        // On counter phase we don't need final values, we only need the
+        // address and step
         // Compute the reads
-        for (i, &input) in keccakf_input.iter().enumerate() {
+        for i in 0..25 {
             let new_addr = addr + 8 * i as u32;
-            let read = MemBusHelpers::mem_aligned_load(new_addr, step_main, input);
+            let read = MemBusHelpers::mem_aligned_load(new_addr, step_main, 0);
             mem_data.push(read.to_vec());
         }
 
         // Compute the writes
-        for (i, &output) in keccakf_output.iter().enumerate() {
+        for i in 0..25 {
             let new_addr = addr + 8 * i as u32;
-            let write = MemBusHelpers::mem_aligned_write(new_addr, step_main, output);
+            let write = MemBusHelpers::mem_aligned_write(new_addr, step_main, 0);
             mem_data.push(write.to_vec());
         }
 
-        mem_data
+        return mem_data;
     }
+    // Get the raw keccakf input as 25 u64 values
+    let keccakf_input: [u64; 25] =
+        OperationBusData::get_extra_data(&input_data).try_into().unwrap();
+
+    // Apply the keccakf function and get the output
+    let mut keccakf_output = keccakf_input;
+    keccakf(&mut keccakf_output);
+
+    // Compute the reads
+    for (i, &input) in keccakf_input.iter().enumerate() {
+        let new_addr = addr + 8 * i as u32;
+        let read = MemBusHelpers::mem_aligned_load(new_addr, step_main, input);
+        mem_data.push(read.to_vec());
+    }
+
+    // Compute the writes
+    for (i, &output) in keccakf_output.iter().enumerate() {
+        let new_addr = addr + 8 * i as u32;
+        let write = MemBusHelpers::mem_aligned_write(new_addr, step_main, output);
+        mem_data.push(write.to_vec());
+    }
+
+    mem_data
 }

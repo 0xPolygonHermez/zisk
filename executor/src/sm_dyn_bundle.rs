@@ -87,16 +87,16 @@ impl<F: PrimeField64> SMBundle<F> for DynSMBundle<F> {
                     {
                         data_bus.connect_device(Some(*global_idx), Some(bus_device));
 
-                        for sm in &self.secondary_sm {
-                            if let Some(inputs_generator) = sm.build_inputs_generator() {
-                                data_bus.connect_device(None, Some(inputs_generator));
-                            }
-                        }
                         used = true;
                     }
                 }
 
                 if used {
+                    for sm in &self.secondary_sm {
+                        if let Some(inputs_generator) = sm.build_inputs_generator() {
+                            data_bus.connect_device(None, Some(inputs_generator));
+                        }
+                    }
                     Some(data_bus)
                 } else {
                     None

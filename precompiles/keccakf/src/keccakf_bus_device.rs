@@ -10,8 +10,7 @@ use zisk_common::{
     OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
-
-use crate::KeccakfSM;
+use crate::generate_inputs;
 
 /// The `KeccakfCounter` struct represents a counter that monitors and measures
 /// keccakf-related operations on the data bus.
@@ -121,7 +120,7 @@ impl BusDevice<u64> for KeccakfCounterInputGen {
                 }
 
                 let mem_inputs =
-                    KeccakfSM::generate_inputs(&data, self.mode == BusDeviceMode::Counter);
+                    generate_inputs(&data, self.mode == BusDeviceMode::Counter);
                 pending.extend(mem_inputs.into_iter().map(|x| (MEM_BUS_ID, x)).collect::<Vec<_>>());
             }
             _ => panic!("Expected ExtOperationData::OperationData"),
