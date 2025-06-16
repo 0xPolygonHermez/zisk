@@ -228,7 +228,8 @@ uint64_t chunk_mask = 0x0; // 0, 1, 2, 3, 4, 5, 6 or 7
 #define MAX_CHUNK_MASK 7
 
 // Maximum length of the shared memory prefix, e.g. SHMZISK12345678
-#define MAX_SHM_PREFIX_LENGTH 32
+#define MAX_SHM_PREFIX_LENGTH 64
+char shm_prefix[MAX_SHM_PREFIX_LENGTH];
 
 // Input shared memory
 char shmem_input_name[128];
@@ -245,7 +246,6 @@ char shmem_mt_name[128];
 int shmem_mt_fd = -1;
 
 // Chunk done semaphore: notifies the caller when a new chunk has been processed
-char * sem_chunk_done_sufix = "_semckd";
 char sem_chunk_done_name[128];
 sem_t * sem_chunk_done = NULL;
 
@@ -736,9 +736,9 @@ int main(int argc, char *argv[])
 
 void print_usage (void)
 {
-    char * usage = "Usage: ziskemuasm -s(server) -c(client) -i <input_file> -p <port_number> [--gen=0|--generate_fast] [--gen=1|--generate_minimal_trace] [--gen=2|--generate_rom_histogram] [--gen=3|--generate_main_trace] [--gen=4|--generate_chunks] [--gen=6|--generate_zip] [--chunk <chunk_number>] [--shutdown] [--mt <number_of_mt_requests>] [-o output off] [-m metrics on] [-t trace on] [-tt trace on] [-f(save to file)] [-a chunk_address] [-h/--help print this]";
+    char * usage = "Usage: ziskemuasm\n\t-s(server)\n\t-c(client)\n\t-i <input_file>\n\t-p <port_number>\n\t--gen=0|--generate_fast\n\t--gen=1|--generate_minimal_trace\n\t--gen=2|--generate_rom_histogram\n\t--gen=3|--generate_main_trace\n\t--gen=4|--generate_chunks\n\t--gen=6|--generate_zip\n\t--gen=9|--generate_mem_reads\n\t--gen=10|--generate_chunk_player_mem_reads\n\t--chunk <chunk_number>\n\t--shutdown\n\t--mt <number_of_mt_requests>\n\t-o output off\n\t-m metrics on\n\t-t trace on\n\t-tt trace_trace on\n\t-f(save to file)\n\t-a chunk_address\n\t-v verbose on\n\t-h/--help print this";
 #ifdef DEBUG
-    printf("%s [-v verbose on] [-k keccak trace on]\n", usage);
+    printf("%s\n\t-k keccak trace on\n", usage);
 #else
     printf("%s\n", usage);
 #endif
@@ -746,6 +746,7 @@ void print_usage (void)
 
 void parse_arguments(int argc, char *argv[])
 {
+    strcpy(shm_prefix, "ZISK");
     uint64_t number_of_selected_generation_methods = 0;
     if (argc > 1)
     {
@@ -862,7 +863,7 @@ void parse_arguments(int argc, char *argv[])
             if (strcmp(argv[i], "-h") == 0)
             {
                 print_usage();
-                continue;
+                exit(0);
             }
             if (strcmp(argv[i], "--help") == 0)
             {
@@ -880,11 +881,29 @@ void parse_arguments(int argc, char *argv[])
                 }
                 if (strlen(argv[i]) > 4095)
                 {
-                    printf("Detected argument -i but next argumet is too long\n");
+                    printf("Detected argument -i but next argument is too long\n");
                     print_usage();
                     exit(-1);
                 }
                 strcpy(input_file, argv[i]);
+                continue;
+            }
+            if (strcmp(argv[i], "--shm_prefix") == 0)
+            {
+                i++;
+                if (i >= argc)
+                {
+                    printf("Detected argument -i in the last position; please provide shared mem prefix after it\n");
+                    print_usage();
+                    exit(-1);
+                }
+                if (strlen(argv[i]) > MAX_SHM_PREFIX_LENGTH)
+                {
+                    printf("Detected argument -i but next argument is too long\n");
+                    print_usage();
+                    exit(-1);
+                }
+                strcpy(shm_prefix, argv[i]);
                 continue;
             }
             if (strcmp(argv[i], "--chunk") == 0)
@@ -1089,48 +1108,60 @@ void configure (void)
     {
         case Fast:
         {
-            strcpy(shmem_input_name, "ZISKFT_input");
+            strcpy(shmem_input_name, shm_prefix);
+            strcat(shmem_input_name, "_FT_input");
             strcpy(shmem_output_name, "");
-            strcpy(shmem_mt_name, "");
             strcpy(sem_chunk_done_name, "");
+            strcpy(shmem_mt_name, "");
             port = 23120;
             break;
         }
         case MinimalTrace:
         {
-            strcpy(shmem_input_name, "ZISKMT_input");
-            strcpy(shmem_output_name, "ZISKMT_output");
+            strcpy(shmem_input_name, shm_prefix);
+            strcat(shmem_input_name, "_MT_input");
+            strcpy(shmem_output_name, shm_prefix);
+            strcat(shmem_output_name, "_MT_output");
+            strcpy(sem_chunk_done_name, shm_prefix);
+            strcat(sem_chunk_done_name, "_MT_chunk_done");
             strcpy(shmem_mt_name, "");
-            strcpy(sem_chunk_done_name, "ZISKMT_chunk_done");
             chunk_done = true;
             port = 23115;
             break;
         }
         case RomHistogram:
         {
-            strcpy(shmem_input_name, "ZISKRH_input");
-            strcpy(shmem_output_name, "ZISKRH_output");
-            strcpy(shmem_mt_name, "");
+            strcpy(shmem_input_name, shm_prefix);
+            strcat(shmem_input_name, "_RH_input");
+            strcpy(shmem_output_name, shm_prefix);
+            strcat(shmem_output_name, "_RH_output");
             strcpy(sem_chunk_done_name, "");
+            strcpy(shmem_mt_name, "");
             port = 23116;
             break;
         }
         case MainTrace:
         {
-            strcpy(shmem_input_name, "ZISKMA_input");
-            strcpy(shmem_output_name, "ZISKMA_output");
+            strcpy(shmem_input_name, shm_prefix);
+            strcat(shmem_input_name, "_MA_input");
+            strcpy(shmem_output_name, shm_prefix);
+            strcat(shmem_output_name, "_MA_output");
+            strcpy(sem_chunk_done_name, shm_prefix);
+            strcat(sem_chunk_done_name, "_MA_chunk_done");
             strcpy(shmem_mt_name, "");
-            strcpy(sem_chunk_done_name, "ZISKMA_chunk_done");
             chunk_done = true;
             port = 23118;
             break;
         }
         case ChunksOnly:
         {
-            strcpy(shmem_input_name, "ZISKCH_input");
-            strcpy(shmem_output_name, "ZISKCH_output");
+            strcpy(shmem_input_name, shm_prefix);
+            strcat(shmem_input_name, "_CH_input");
+            strcpy(shmem_output_name, shm_prefix);
+            strcat(shmem_output_name, "_CH_output");
+            strcpy(sem_chunk_done_name, shm_prefix);
+            strcat(sem_chunk_done_name, "_CH_chunk_done");
             strcpy(shmem_mt_name, "");
-            strcpy(sem_chunk_done_name, "ZISKCH_chunk_done");
             chunk_done = true;
             port = 23115;
             break;
@@ -1146,50 +1177,63 @@ void configure (void)
         // }
         case Zip:
         {
-            strcpy(shmem_input_name, "ZISKZP_input");
-            strcpy(shmem_output_name, "ZISKZP_output");
+            strcpy(shmem_input_name, shm_prefix);
+            strcat(shmem_input_name, "_ZP_input");
+            strcpy(shmem_output_name, shm_prefix);
+            strcat(shmem_output_name, "_ZP_output");
+            strcpy(sem_chunk_done_name, shm_prefix);
+            strcat(sem_chunk_done_name, "_ZP_chunk_done");
             strcpy(shmem_mt_name, "");
-            strcpy(sem_chunk_done_name, "ZISKZP_chunk_done");
             chunk_done = true;
             port = 23115;
             break;
         }
         case MemOp:
         {
-            strcpy(shmem_input_name, "ZISKMO_input");
-            strcpy(shmem_output_name, "ZISKMO_output");
+            strcpy(shmem_input_name, shm_prefix);
+            strcat(shmem_input_name, "_MO_input");
+            strcpy(shmem_output_name, shm_prefix);
+            strcat(shmem_output_name, "_MO_output");
+            strcpy(sem_chunk_done_name, shm_prefix);
+            strcat(sem_chunk_done_name, "_MO_chunk_done");
             strcpy(shmem_mt_name, "");
-            strcpy(sem_chunk_done_name, "ZISKMO_chunk_done");
             chunk_done = true;
             port = 23117;
             break;
         }
         case ChunkPlayerMTCollectMem:
         {
-            strcpy(shmem_input_name, "ZISKCM_input");
-            strcpy(shmem_output_name, "ZISKCM_output");
-            strcpy(shmem_mt_name, "ZISKMT_output");
+            strcpy(shmem_input_name, "");
+            strcpy(shmem_output_name, shm_prefix);
+            strcat(shmem_output_name, "_CM_output");
             strcpy(sem_chunk_done_name, "");
+            strcpy(shmem_mt_name, shm_prefix);
+            strcat(shmem_mt_name, "_MT_output");
             chunk_done = false;
             port = 23119;
             break;
         }
         case MemReads:
         {
-            strcpy(shmem_input_name, "ZISKMT_input");
-            strcpy(shmem_output_name, "ZISKMT_output");
+            strcpy(shmem_input_name, shm_prefix);
+            strcat(shmem_input_name, "_MT_input");
+            strcpy(shmem_output_name, shm_prefix);
+            strcat(shmem_output_name, "_MT_output");
+            strcpy(sem_chunk_done_name, shm_prefix);
+            strcat(sem_chunk_done_name, "_MT_chunk_done");
             strcpy(shmem_mt_name, "");
-            strcpy(sem_chunk_done_name, "ZISKMT_chunk_done");
             chunk_done = true;
             port = 23115;
             break;
         }
         case ChunkPlayerMemReadsCollectMain:
         {
-            strcpy(shmem_input_name, "ZISKCMA_input");
-            strcpy(shmem_output_name, "ZISKCA_output");
-            strcpy(shmem_mt_name, "ZISKMT_output");
+            strcpy(shmem_input_name, "");
+            strcpy(shmem_output_name, shm_prefix);
+            strcat(shmem_output_name, "_CA_output");
             strcpy(sem_chunk_done_name, "");
+            strcpy(shmem_mt_name, shm_prefix);
+            strcat(shmem_mt_name, "_MT_output");
             chunk_done = false;
             port = 23120;
             break;
@@ -2212,7 +2256,6 @@ void server_setup (void)
 
     if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
-
         // Make sure the input shared memory is deleted
         shm_unlink(shmem_input_name);
 
@@ -2238,7 +2281,7 @@ void server_setup (void)
 
         // Map input address space
         if (verbose) gettimeofday(&start_time, NULL);
-        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | /*MAP_ANONYMOUS |*/ MAP_FIXED | MAP_LOCKED, shmem_input_fd, 0);
+        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | MAP_LOCKED, shmem_input_fd, 0);
         if (verbose)
         {
             gettimeofday(&stop_time, NULL);
