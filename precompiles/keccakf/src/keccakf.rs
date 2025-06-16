@@ -143,7 +143,14 @@ impl<F: PrimeField64> KeccakfSM<F> {
                     let bit_pos = k % BITS_IN_PARALLEL_KECCAKF;
                     let bit_offset =
                         (k - bit_pos) * Self::NUM_KECCAKF_PER_SLOT / BITS_IN_PARALLEL_KECCAKF;
-                    update_bit_val(&self.keccakf_fixed, trace, pos + bit_offset, new_bit, slot_pos, bit_pos);
+                    update_bit_val(
+                        &self.keccakf_fixed,
+                        trace,
+                        pos + bit_offset,
+                        new_bit,
+                        slot_pos,
+                        bit_pos,
+                    );
                 }
             });
 
@@ -168,7 +175,14 @@ impl<F: PrimeField64> KeccakfSM<F> {
                     let bit_pos = k % BITS_IN_PARALLEL_KECCAKF;
                     let bit_offset =
                         (k - bit_pos) * Self::NUM_KECCAKF_PER_SLOT / BITS_IN_PARALLEL_KECCAKF;
-                    update_bit_val(&self.keccakf_fixed, trace, pos + bit_offset, new_bit, slot_pos, bit_pos);
+                    update_bit_val(
+                        &self.keccakf_fixed,
+                        trace,
+                        pos + bit_offset,
+                        new_bit,
+                        slot_pos,
+                        bit_pos,
+                    );
                 }
             });
 
@@ -214,7 +228,14 @@ impl<F: PrimeField64> KeccakfSM<F> {
                         let bit_offset =
                             (k - bit_pos) * Self::NUM_KECCAKF_PER_SLOT / BITS_IN_PARALLEL_KECCAKF;
                         for w in rem_inputs..Self::NUM_KECCAKF_PER_SLOT {
-                            update_bit_val(&self.keccakf_fixed, trace, pos + bit_offset + w, new_bit, w, bit_pos);
+                            update_bit_val(
+                                &self.keccakf_fixed,
+                                trace,
+                                pos + bit_offset + w,
+                                new_bit,
+                                w,
+                                bit_pos,
+                            );
                         }
                     }
                 });
@@ -234,7 +255,14 @@ impl<F: PrimeField64> KeccakfSM<F> {
                         let pos =
                             initial_offset + slot_offset + input_offset + chunk_offset + bit_offset;
                         for w in 0..Self::NUM_KECCAKF_PER_SLOT {
-                            update_bit_val(&self.keccakf_fixed, trace, pos + w, new_bit, w, bit_pos);
+                            update_bit_val(
+                                &self.keccakf_fixed,
+                                trace,
+                                pos + w,
+                                new_bit,
+                                w,
+                                bit_pos,
+                            );
                         }
                     }
                 }
@@ -379,9 +407,9 @@ impl<F: PrimeField64> KeccakfSM<F> {
             }
 
             // Update the multiplicity table for the slot
-            for k in 0..self.slot_size {
-                let a = par_trace[k].free_in_a;
-                let b = par_trace[k].free_in_b;
+            for (k, trace) in par_trace.iter().enumerate().take(self.slot_size) {
+                let a = trace.free_in_a;
+                let b = trace.free_in_b;
                 let gate_op = self.keccakf_fixed[k + 1 + i * self.slot_size].GATE_OP;
                 let gate_op_val = match F::as_canonical_u64(&gate_op) {
                     0u64 => KeccakfTableGateOp::Xor,
@@ -465,10 +493,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(
-        &self,
-        inputs: &[Vec<OperationKeccakData<u64>>],
-    ) -> AirInstance<F> {    
+    pub fn compute_witness(&self, inputs: &[Vec<OperationKeccakData<u64>>]) -> AirInstance<F> {
         timer_start_trace!(KECCAKF_TRACE);
         let mut keccakf_trace = KeccakfTrace::new();
         let num_rows = keccakf_trace.num_rows();

@@ -18,7 +18,8 @@ path = "src/bin/riscv2zisk.rs"
 [dependencies]
 riscv = { path = "../riscv" }
 zisk-pil = { path = "../pil" }
-
+proofman-util.workspace = true
+tracing.workspace = true
 rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

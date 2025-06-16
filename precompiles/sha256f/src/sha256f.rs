@@ -36,7 +36,6 @@ pub struct Sha256fSM<F: PrimeField64> {
     pub num_available_sha256fs: usize,
 
     sha256f_fixed: Sha256fFixed<F>,
-
 }
 
 impl<F: PrimeField64> Sha256fSM<F> {
@@ -47,7 +46,11 @@ impl<F: PrimeField64> Sha256fSM<F> {
     ///
     /// # Returns
     /// A new `Sha256fSM` instance.
-    pub fn new(sctx: Arc<SetupCtx<F>>, sha256f_table_sm: Arc<Sha256fTableSM>, script_path: PathBuf) -> Arc<Self> {
+    pub fn new(
+        sctx: Arc<SetupCtx<F>>,
+        sha256f_table_sm: Arc<Sha256fTableSM>,
+        script_path: PathBuf,
+    ) -> Arc<Self> {
         let script = fs::read_to_string(script_path).expect("Failed to read sha256f_script.json");
         let script: Script =
             serde_json::from_str(&script).expect("Failed to parse sha256f_script.json");
@@ -469,10 +472,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(
-        &self,
-        inputs: &[Vec<Sha256fInput>],
-    ) -> AirInstance<F> {
+    pub fn compute_witness(&self, inputs: &[Vec<Sha256fInput>]) -> AirInstance<F> {
         timer_start_trace!(SHA256F_TRACE);
         let mut sha256f_trace = Sha256fTrace::new();
         let num_rows = sha256f_trace.num_rows();

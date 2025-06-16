@@ -152,6 +152,7 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
             pending_transfers: _,
         } = self;
 
+        #[allow(clippy::type_complexity)]
         let counters: Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> = vec![
             (None, Some(Box::new(main_counter))),
             (None, Some(Box::new(mem_counter))),

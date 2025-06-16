@@ -1,9 +1,9 @@
+use crate::NestedDeviceMetricsList;
 use data_bus::{DataBus, DataBusTrait};
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
-use zisk_common::{BusDevice, BusDeviceMetrics, Instance, InstanceCtx, PayloadType, Plan};
 use std::collections::HashMap;
-use crate::NestedDeviceMetricsList;
+use zisk_common::{BusDevice, BusDeviceMetrics, Instance, InstanceCtx, PayloadType, Plan};
 
 pub type DataBusCollectorCollection = Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>>;
 pub trait SMBundle<F: PrimeField64>: Send + Sync {

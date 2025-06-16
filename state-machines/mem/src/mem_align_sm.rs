@@ -812,7 +812,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         let padding_row = MemAlignTraceRow::<F> { reset: F::from_bool(true), ..Default::default() };
 
         // Store the padding rows
-        trace.buffer[index..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row.clone());
+        trace.buffer[index..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
 
         // Compute the program multiplicity
         let mem_align_rom_sm = self.mem_align_rom_sm.clone();

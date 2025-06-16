@@ -381,7 +381,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
 
         binary_e_trace.buffer[total_inputs..num_rows]
             .par_iter_mut()
-            .for_each(|slot| *slot = padding_row.clone());
+            .for_each(|slot| *slot = padding_row);
 
         let padding_size = num_rows - total_inputs;
         for i in 0..8 {

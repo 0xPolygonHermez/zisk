@@ -5,12 +5,12 @@
 use std::collections::VecDeque;
 use std::ops::Add;
 
+use crate::generate_inputs;
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, ExtOperationData, Metrics, MEM_BUS_ID,
     OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
-use crate::generate_inputs;
 
 /// The `KeccakfCounter` struct represents a counter that monitors and measures
 /// keccakf-related operations on the data bus.
@@ -119,8 +119,7 @@ impl BusDevice<u64> for KeccakfCounterInputGen {
                     self.measure(&data);
                 }
 
-                let mem_inputs =
-                    generate_inputs(&data, self.mode == BusDeviceMode::Counter);
+                let mem_inputs = generate_inputs(&data, self.mode == BusDeviceMode::Counter);
                 pending.extend(mem_inputs.into_iter().map(|x| (MEM_BUS_ID, x)).collect::<Vec<_>>());
             }
             _ => panic!("Expected ExtOperationData::OperationData"),

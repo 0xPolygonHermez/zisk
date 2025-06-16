@@ -5,11 +5,11 @@ use crate::{
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
+use rayon::prelude::*;
 use std::sync::Arc;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use rayon::prelude::*;
 
 pub struct MemModuleInstance<F: PrimeField64> {
     /// Instance context

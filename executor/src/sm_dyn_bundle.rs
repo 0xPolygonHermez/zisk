@@ -9,8 +9,8 @@ use zisk_common::{
     Plan,
 };
 
-use std::collections::HashMap;
 use crate::{NestedDeviceMetricsList, SMBundle};
+use std::collections::HashMap;
 
 pub struct DynSMBundle<F: PrimeField64> {
     secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,

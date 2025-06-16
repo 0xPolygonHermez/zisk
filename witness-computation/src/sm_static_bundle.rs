@@ -11,10 +11,10 @@ use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
+use std::collections::HashMap;
 use zisk_common::{
     BusDevice, BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan,
 };
-use std::collections::HashMap;
 
 use executor::NestedDeviceMetricsList;
 
@@ -77,10 +77,8 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
             self.binary_sm.build_planner().plan(it.next().unwrap()),
             <ArithSM as ComponentBuilder<F>>::build_planner(&*self.arith_sm)
                 .plan(it.next().unwrap()),
-                self.keccakf_sm.build_planner()
-                .plan(it.next().unwrap()),
-                self.sha256f_sm.build_planner()
-                .plan(it.next().unwrap()),
+            self.keccakf_sm.build_planner().plan(it.next().unwrap()),
+            self.sha256f_sm.build_planner().plan(it.next().unwrap()),
             self.arith_eq_sm.build_planner().plan(it.next().unwrap()),
         ]
     }
@@ -174,7 +172,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                     add_generator!(keccakf_sm, KeccakfManager<F>);
                     add_generator!(sha256f_sm, Sha256fManager<F>);
                     add_generator!(arith_eq_sm, ArithEqManager<F>);
-                    
+
                     Some(data_bus)
                 } else {
                     None

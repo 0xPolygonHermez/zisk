@@ -91,7 +91,6 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
         let bus_id_devices = &self.devices_bus_id_map[*bus_id];
         for device_idx in bus_id_devices {
             self.devices[*device_idx].1.process_data(&bus_id, payload, &mut self.pending_transfers);
-
         }
     }
 

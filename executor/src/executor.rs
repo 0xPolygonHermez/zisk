@@ -612,7 +612,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         let collect_time = collect_start.elapsed().as_millis() as u64;
         for global_idx in secn_instances.keys() {
-            let collector = collectors_by_instance.remove(global_idx).unwrap_or_else(|| Vec::new());
+            let collector = collectors_by_instance.remove(global_idx).unwrap_or_default();
             let stats = Stats { collect_time, witness_time: 0, num_chunks: collector.len() };
             self.collectors_by_instance.write().unwrap().insert(*global_idx, (stats, collector));
         }
@@ -692,6 +692,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// # Returns
     /// A vector of tuples containing the global ID, secondary state machine instance, and a vector
     /// of collectors for each instance.
+    #[allow(clippy::type_complexity)]
     fn close_data_bus_collectors(
         &self,
         mut data_buses: DataBusCollectorCollection,
@@ -712,10 +713,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             }
         }
 
-        for (global_id, collectors) in &collectors_by_instance {
-            let chunk_ids: Vec<usize> = collectors.iter().map(|(chunk_id, _)| *chunk_id).collect();
-        }
-        
         collectors_by_instance
     }
 
@@ -881,6 +878,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
                     match secn_instance.instance_type() {
                         InstanceType::Instance => {
+                            if !self.collectors_by_instance.read().unwrap().contains_key(&global_id)
+                            {
+                                let mut secn_instances = HashMap::new();
+                                secn_instances.insert(global_id, secn_instance);
+                                self.witness_collect_instances(secn_instances);
+                            }
                             self.witness_secn_instance(&pctx, &sctx, global_id, secn_instance)
                         }
                         InstanceType::Table => {
@@ -915,7 +918,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                 if !MAIN_AIR_IDS.contains(&air_id) {
                     let secn_instance = &secn_instances_guard[&global_id];
 
-                    if secn_instance.instance_type() == InstanceType::Instance {
+                    if secn_instance.instance_type() == InstanceType::Instance
+                        && !self.collectors_by_instance.read().unwrap().contains_key(&global_id)
+                    {
                         secn_instances.insert(global_id, secn_instance);
                     }
                 }

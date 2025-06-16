@@ -920,9 +920,9 @@ impl BinaryBasicSM {
         };
 
         binary_trace.buffer[total_inputs..num_rows]
-        .par_iter_mut()
-        .for_each(|slot| *slot = padding_row.clone());
-    
+            .par_iter_mut()
+            .for_each(|slot| *slot = padding_row);
+
         let padding_size = num_rows - total_inputs;
         for last in 0..2 {
             let multiplicity = (7 - 6 * last as u64) * padding_size as u64;
