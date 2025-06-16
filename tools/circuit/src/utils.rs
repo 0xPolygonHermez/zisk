@@ -15,7 +15,6 @@ pub fn byte_to_bits_msb(byte: u8) -> [u8; 8] {
 
 /// Converts 8 bits to a byte (LSB first)
 pub fn bits_to_byte(bits: &[u8; 8], byte: &mut u8) {
-    // bits.iter().rev().fold(0, |byte, &bit| (byte << 1) | (bit & 1))
     *byte = 0;
     for i in 0..8 {
         *byte = (*byte << 1) | (bits[7 - i] & 1);
@@ -23,10 +22,9 @@ pub fn bits_to_byte(bits: &[u8; 8], byte: &mut u8) {
 }
 
 pub fn bits_to_byte_msb(bits: &[u8; 8], byte: &mut u8) {
-    // bits.iter().fold(0, |byte, &bit| (byte << 1) | (bit & 1))
     *byte = 0;
-    for i in 0..8 {
-        *byte = (*byte << 1) | (bits[i] & 1);
+    for bit in bits.iter() {
+        *byte = (*byte << 1) | (*bit & 1);
     }
 }
 
