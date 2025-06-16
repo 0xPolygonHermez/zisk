@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{MemCounters, MemCountersCursor, MemModuleCheckPoint, MemPlanCalculator};
+use proofman_common::PreCalculate;
 use std::cmp::min;
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 
@@ -257,6 +258,7 @@ impl MemPlanCalculator for MemModulePlanner {
     }
     fn collect_plans(&mut self) -> Vec<Plan> {
         let mut plans: Vec<Plan> = Vec::new();
+        println!("MEMORY PLANS: {} segments", self.segments.len());
         if self.segments.is_empty() {
             // no data => no plans
             return plans;
@@ -271,6 +273,7 @@ impl MemPlanCalculator for MemModulePlanner {
                 Some(SegmentId(segment_id)),
                 InstanceType::Instance,
                 CheckPoint::Multiple(keys),
+                PreCalculate::Slow,
                 Some(Box::new(segment)),
             ));
         }

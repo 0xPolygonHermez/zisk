@@ -8,6 +8,7 @@ use std::any::Any;
 
 use crate::Sha256fCounterInputGen;
 
+use proofman_common::PreCalculate;
 use zisk_common::{
     plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics,
     Plan, Planner, TableInfo,
@@ -110,6 +111,7 @@ impl Planner for Sha256fPlanner {
                         None,
                         InstanceType::Instance,
                         check_point,
+                        PreCalculate::Fast,
                         Some(converted),
                     )
                 })
@@ -126,6 +128,7 @@ impl Planner for Sha256fPlanner {
                     None,
                     InstanceType::Table,
                     CheckPoint::None,
+                    PreCalculate::Fast,
                     None,
                 ));
             }

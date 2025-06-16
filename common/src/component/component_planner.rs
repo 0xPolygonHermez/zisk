@@ -5,6 +5,7 @@
 use std::any::Any;
 
 use crate::{BusDeviceMetrics, ChunkId, InstanceType, SegmentId};
+use proofman_common::PreCalculate;
 
 /// The `CollectSkipper` struct defines logic for skipping instructions during input collection.
 ///
@@ -88,6 +89,8 @@ pub struct Plan {
     /// Additional metadata associated with the plan.
     pub meta: Option<Box<dyn Any>>,
 
+    pub precalculate: PreCalculate,
+
     pub global_id: Option<usize>,
 }
 
@@ -111,9 +114,19 @@ impl Plan {
         segment_id: Option<SegmentId>,
         instance_type: InstanceType,
         check_point: CheckPoint,
+        precalculate: PreCalculate,
         meta: Option<Box<dyn Any>>,
     ) -> Self {
-        Plan { airgroup_id, air_id, segment_id, instance_type, check_point, meta, global_id: None }
+        Plan {
+            airgroup_id,
+            air_id,
+            segment_id,
+            instance_type,
+            check_point,
+            meta,
+            precalculate,
+            global_id: None,
+        }
     }
 
     pub fn set_global_id(&mut self, global_id: usize) {
