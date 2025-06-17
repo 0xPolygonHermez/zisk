@@ -4,7 +4,7 @@ use std::sync::Arc;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_pil::ArithEqTrace;
+use zisk_pil::{ArithEqTrace, ArithEqTraceRow};
 
 use crate::{
     arith_eq_constants::*, executors, Arith256Input, Arith256ModInput, ArithEqInput,
@@ -76,6 +76,9 @@ impl<F: PrimeField64> ArithEqSM<F> {
         trace[row_offset + 7].step_addr = F::from_u32(data.addr_y3);
         for (i, addr_ind) in data.addr_ind.iter().enumerate() {
             trace[row_offset + i + 8].step_addr = F::from_u32(*addr_ind);
+        }
+        for i in 0..(ARITH_EQ_ROWS_BY_OP - 8 - data.addr_ind.len()) {
+            trace[row_offset + i + 8 + data.addr_ind.len()].step_addr = F::ZERO;
         }
     }
 
@@ -348,6 +351,10 @@ impl<F: PrimeField64> ArithEqSM<F> {
         self.std.range_check(0, 3 * padding_ops, self.q_hsc_range_id);
         self.std.range_check(0, 157 * padding_ops, self.chunk_range_id);
         self.std.range_check(0, 96 * padding_ops, self.carry_range_id);
+
+        let padding_row = ArithEqTraceRow::<F> { ..Default::default() };
+
+        trace.buffer[num_rows_needed..num_rows].fill(padding_row);
 
         timer_stop_and_log_trace!(ARITH_EQ_TRACE);
 

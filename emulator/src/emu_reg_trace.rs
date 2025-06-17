@@ -30,6 +30,8 @@ impl EmuRegTrace {
     }
     pub fn clear_reg_step_ranges(&mut self) {
         self.reg_step_ranges = [0; 3];
+        self.reg_prev_steps = [0; 3];
+        self.store_reg_prev_value = 0;
     }
     pub fn update_step_range_check(&self, step_range_check: &mut [u32]) {
         for range in self.reg_step_ranges.iter() {

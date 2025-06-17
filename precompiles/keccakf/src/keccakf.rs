@@ -498,7 +498,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness(&self, inputs: &[Vec<OperationKeccakData<u64>>]) -> AirInstance<F> {
         timer_start_trace!(KECCAKF_TRACE);
-        let mut keccakf_trace = KeccakfTrace::new();
+        let mut keccakf_trace = KeccakfTrace::new_zeroes();
         let num_rows = keccakf_trace.num_rows();
         // Flatten the inputs
         let inputs: Vec<OperationKeccakData<u64>> = inputs.iter().flatten().cloned().collect();
