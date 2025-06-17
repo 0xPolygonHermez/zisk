@@ -83,6 +83,12 @@ pub struct ZiskStats {
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
+    #[clap(short = 'n', long)]
+    pub number_threads_witness: Option<usize>,
+
+    #[clap(short = 'x', long)]
+    pub max_witness_stored: Option<usize>,
+
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
 
@@ -199,6 +205,12 @@ impl ZiskStats {
 
         let mut gpu_params = ParamsGPU::new(false);
         gpu_params.with_max_number_streams(1);
+        if self.number_threads_witness.is_some() {
+            gpu_params.with_number_threads_pools_witness(self.number_threads_witness.unwrap());
+        }
+        if self.max_witness_stored.is_some() {
+            gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
+        }
 
         let proofman = ProofMan::<Goldilocks>::new(
             proving_key,
