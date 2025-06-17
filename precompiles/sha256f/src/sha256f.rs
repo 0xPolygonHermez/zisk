@@ -284,7 +284,6 @@ impl Sha256fSM {
 
         let trace_rows = trace.row_slice_mut();
 
-        trace_rows[0] = Sha256fTraceRow::default();
         let row0 = trace_rows[0];
 
         let mut trace_slice = &mut trace_rows[1..];
