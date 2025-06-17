@@ -106,7 +106,9 @@ impl ArithFullSM {
             t.op = F::from_u8(padding_opcode);
             t.fab = F::ONE;
 
-            arith_trace.row_slice_mut()[padding_offset..num_rows].par_iter_mut().for_each(|elem| *elem = t);
+            arith_trace.row_slice_mut()[padding_offset..num_rows]
+                .par_iter_mut()
+                .for_each(|elem| *elem = t);
 
             range_table_inputs.multi_use_chunk_range_check(padding_rows * 10, 0, 0);
             range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 26, 0);

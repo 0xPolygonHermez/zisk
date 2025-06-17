@@ -879,7 +879,11 @@ impl BinaryBasicSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<F: PrimeField64>(&self, inputs: &[Vec<BinaryInput>],trace_buffer: Vec<F>) -> AirInstance<F> {
+    pub fn compute_witness<F: PrimeField64>(
+        &self,
+        inputs: &[Vec<BinaryInput>],
+        trace_buffer: Vec<F>,
+    ) -> AirInstance<F> {
         let mut binary_trace = BinaryTrace::new_from_vec(trace_buffer);
 
         let num_rows = binary_trace.num_rows();
@@ -919,7 +923,9 @@ impl BinaryBasicSM {
             ..Default::default()
         };
 
-        binary_trace.row_slice_mut()[total_inputs..num_rows].fill(padding_row);
+        binary_trace.row_slice_mut()[total_inputs..num_rows]
+            .par_iter_mut()
+            .for_each(|slot| *slot = padding_row);
 
         let padding_size = num_rows - total_inputs;
         for last in 0..2 {

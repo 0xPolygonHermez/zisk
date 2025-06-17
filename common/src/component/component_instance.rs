@@ -132,19 +132,18 @@ macro_rules! table_instance {
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
                 _trace_buffer: Vec<F>,
             ) -> Option<AirInstance<F>> {
-
                 let multiplicity = self.table_sm.detach_multiplicity();
                 self.table_sm.set_calculated();
 
                 pctx.dctx_distribute_multiplicity(multiplicity, self.ictx.global_id);
 
                 if pctx.dctx_is_my_instance(self.ictx.global_id) {
-
                     let mut trace = $Trace::new();
 
                     trace.row_slice_mut().par_iter_mut().enumerate().for_each(|(i, input)| {
-                        input.multiplicity =
-                            F::from_u64(multiplicity[i].swap(0, std::sync::atomic::Ordering::Relaxed))
+                        input.multiplicity = F::from_u64(
+                            multiplicity[i].swap(0, std::sync::atomic::Ordering::Relaxed),
+                        )
                     });
 
                     Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
@@ -242,17 +241,15 @@ macro_rules! table_instance_array {
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
                 _trace_buffer: Vec<F>,
             ) -> Option<AirInstance<F>> {
-
                 let multiplicities = self.table_sm.detach_multiplicities();
                 self.table_sm.set_calculated();
                 pctx.dctx_distribute_multiplicities(multiplicities, self.ictx.global_id);
 
                 if pctx.dctx_is_my_instance(self.ictx.global_id) {
-
                     let mut trace = $Trace::new();
 
                     let mut buffer = trace.get_buffer();
-                    
+
                     buffer.par_chunks_mut(trace.row_size).enumerate().for_each(|(row, chunk)| {
                         for (col, vec) in multiplicities.iter().enumerate() {
                             chunk[col] =

@@ -81,8 +81,8 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let mem_sm = Mem::new(std.clone());
 
         // Step 4: Initialize the precompiles state machines
-        let keccakf_sm = KeccakfManager::new::<F>();
-        let sha256f_sm = Sha256fManager::new::<F>(self.sha256f_script_path.clone());
+        let keccakf_sm = KeccakfManager::new(wcm.get_sctx());
+        let sha256f_sm = Sha256fManager::new(wcm.get_sctx(), self.sha256f_script_path.clone());
         let arith_eq_sm = ArithEqManager::new(std.clone());
 
         // let sm_bundle = DynSMBundle::new(vec![

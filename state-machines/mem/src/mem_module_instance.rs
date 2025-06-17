@@ -84,7 +84,13 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         let segment_id = self.ictx.plan.segment_id.unwrap();
 
         let is_last_segment = self.check_point.is_last_segment;
-        Some(self.module.compute_witness(&inputs, segment_id, is_last_segment, &prev_segment, trace_buffer))
+        Some(self.module.compute_witness(
+            &inputs,
+            segment_id,
+            is_last_segment,
+            &prev_segment,
+            trace_buffer,
+        ))
     }
 
     /// Builds an input collector for the instance.

@@ -502,7 +502,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// # Arguments
     /// * `pctx` - Proof context.
     /// * `main_instance` - Main instance to compute witness for
-    fn witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &MainInstance, trace_buffer: Vec<F>) {
+    fn witness_main_instance(
+        &self,
+        pctx: &ProofCtx<F>,
+        main_instance: &MainInstance,
+        trace_buffer: Vec<F>,
+    ) {
         let witness_start = std::time::Instant::now();
 
         let min_traces_guard = self.min_traces.read().unwrap();
@@ -642,7 +647,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let witness_start = std::time::Instant::now();
         assert_eq!(table_instance.instance_type(), InstanceType::Table, "Instance is not a table");
 
-        if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![], trace_buffer) {
+        if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![], trace_buffer)
+        {
             if pctx.dctx_is_my_instance(global_id) {
                 pctx.add_air_instance(air_instance, global_id);
             }
@@ -850,9 +856,13 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                     let secn_instance = &self.secn_instances.read().unwrap()[&global_id];
 
                     match secn_instance.instance_type() {
-                        InstanceType::Instance => {
-                            self.witness_secn_instance(&pctx, &sctx, global_id, secn_instance, witness_buffer.remove(0))
-                        }
+                        InstanceType::Instance => self.witness_secn_instance(
+                            &pctx,
+                            &sctx,
+                            global_id,
+                            secn_instance,
+                            witness_buffer.remove(0),
+                        ),
                         InstanceType::Table => {
                             self.witness_table(&pctx, &sctx, global_id, secn_instance, Vec::new())
                         }

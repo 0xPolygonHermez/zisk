@@ -14,7 +14,10 @@ pub fn gen_elf_hash(
     blowup_factor: u64,
     check: bool,
 ) -> Result<Vec<Goldilocks>, anyhow::Error> {
-    let buffer = vec![Goldilocks::ZERO; RomRomTrace::<Goldilocks>::NUM_ROWS * RomRomTrace::<Goldilocks>::ROW_SIZE];
+    let buffer = vec![
+        Goldilocks::ZERO;
+        RomRomTrace::<Goldilocks>::NUM_ROWS * RomRomTrace::<Goldilocks>::ROW_SIZE
+    ];
     let mut custom_rom_trace: RomRomTrace<Goldilocks> = RomRomTrace::new_from_vec(buffer);
 
     RomSM::compute_custom_trace_rom(rom_path.to_path_buf(), &mut custom_rom_trace);
