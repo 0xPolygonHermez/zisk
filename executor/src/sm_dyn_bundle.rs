@@ -10,6 +10,7 @@ use zisk_common::{
 };
 
 use crate::{NestedDeviceMetricsList, SMBundle};
+use std::collections::HashMap;
 
 pub struct DynSMBundle<F: PrimeField64> {
     secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,
@@ -48,12 +49,12 @@ impl<F: PrimeField64> SMBundle<F> for DynSMBundle<F> {
 
         let counter = MainSM::build_counter();
 
-        data_bus.connect_device(Some(counter));
+        data_bus.connect_device(None, Some(counter));
 
         self.secondary_sm.iter().for_each(|sm| {
             let counter = sm.build_counter();
 
-            data_bus.connect_device(counter);
+            data_bus.connect_device(None, counter);
         });
 
         data_bus
@@ -65,28 +66,37 @@ impl<F: PrimeField64> SMBundle<F> for DynSMBundle<F> {
 
     fn build_data_bus_collectors(
         &self,
-        secn_instance: &Box<dyn Instance<F>>,
-        chunks_to_execute: Vec<bool>,
+        secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
+        chunks_to_execute: Vec<Vec<usize>>,
     ) -> Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>> {
         chunks_to_execute
             .iter()
             .enumerate()
-            .map(|(chunk_id, to_be_executed)| {
-                if !to_be_executed {
+            .map(|(chunk_id, global_idxs)| {
+                if global_idxs.is_empty() {
                     return None;
                 }
 
                 let mut data_bus = DataBus::new();
 
-                if let Some(bus_device) = secn_instance.build_inputs_collector(ChunkId(chunk_id)) {
-                    data_bus.connect_device(Some(bus_device));
+                let mut used = false;
+                for global_idx in global_idxs {
+                    let secn_instance = secn_instances.get(global_idx).unwrap();
+                    if let Some(bus_device) =
+                        secn_instance.build_inputs_collector(ChunkId(chunk_id))
+                    {
+                        data_bus.connect_device(Some(*global_idx), Some(bus_device));
 
+                        used = true;
+                    }
+                }
+
+                if used {
                     for sm in &self.secondary_sm {
                         if let Some(inputs_generator) = sm.build_inputs_generator() {
-                            data_bus.connect_device(Some(inputs_generator));
+                            data_bus.connect_device(None, Some(inputs_generator));
                         }
                     }
-
                     Some(data_bus)
                 } else {
                     None
