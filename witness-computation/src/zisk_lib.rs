@@ -6,8 +6,7 @@
 
 use crate::StaticSMBundle;
 use executor::{/*DynSMBundle,*/ ZiskExecutor};
-use p3_field::PrimeField64;
-use p3_goldilocks::Goldilocks;
+use fields::{Goldilocks, PrimeField64};
 use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
@@ -36,8 +35,9 @@ fn init_library(
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
+    rank: Option<i32>,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
-    proofman_common::initialize_logger(verbose_mode);
+    proofman_common::initialize_logger(verbose_mode, rank);
     let result = Box::new(WitnessLib {
         elf_path,
         asm_path,

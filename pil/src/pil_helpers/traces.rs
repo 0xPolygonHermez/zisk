@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "0926bafc4c04604786d08fc6ad9ef6f3fe3bbe2a87d7ff39b390115f75b8f48b";
+pub const PILOUT_HASH: &str = "15b1cb0e31b12cb877d528c1b1d7a9dcc263e4061687e3bfddb35aebe257f08b";
 
 //AIRGROUP CONSTANTS
 
@@ -98,11 +98,11 @@ impl Default for ZiskPublics {
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],
 });
-
+ 
 values!(ZiskProofValues<F> {
  enable_input_data: F,
 });
-
+ 
 trace!(MainFixed<F> {
  SEGMENT_L1: F, SEGMENT_STEP: F, __L1__: F,
 },  0, 0, 4194304 );
@@ -256,11 +256,11 @@ trace!(KeccakfTableTrace<F> {
 },  0, 18, 2097152 );
 
 trace!(Sha256fFixed<F> {
- L1: F, GATE_OP: F, CARRY_ENABLED: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, latch_num_sha256f: F, factor_num_sha256f: F, latch_in_out: F, addr_inc: F, latch_in: F, latch_out: F, __L1__: F,
+ L1: F, GATE_OP: F, CARRY_ENABLED: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, latch_num_sha256f: F, factor_num_sha256f: F, CLK_0: F, __L1__: F,
 },  0, 19, 2097152 );
 
 trace!(Sha256fTrace<F> {
- free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], free_in_d: [F; 8], step: F, addr: F, multiplicity: F, bit: [F; 2], val: [F; 2], is_val: F,
+ free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], free_in_d: [F; 8], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
 },  0, 19, 2097152 );
 
 trace!(Sha256fTableFixed<F> {

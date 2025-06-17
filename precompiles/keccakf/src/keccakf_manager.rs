@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use zisk_common::{BusDevice, PayloadType, OPERATION_BUS_ID};
 
 use zisk_common::{

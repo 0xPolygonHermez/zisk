@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crate::{
     ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
 };
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
@@ -55,7 +55,7 @@ impl ArithFullSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed arithmetic trace.
-    pub fn compute_witness<F: PrimeField>(
+    pub fn compute_witness<F: PrimeField64>(
         &self,
         inputs: &[Vec<OperationData<u64>>],
     ) -> AirInstance<F> {
@@ -77,30 +77,24 @@ impl ArithFullSM {
         );
 
         // Split the arith_trace.buffer into slices matching each inner vector’s length.
-        let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
-        let mut slices = Vec::with_capacity(inputs.len());
-        let mut rest = arith_trace.buffer.as_mut_slice();
-        for size in sizes {
-            let (head, tail) = rest.split_at_mut(size);
-            slices.push(head);
-            rest = tail;
-        }
+        let flat_inputs: Vec<_> = inputs.iter().flatten().collect(); // Vec<&OperationData<u64>>
+        let flat_buffer = arith_trace.buffer.as_mut_slice();
+        let chunk_size = total_inputs.div_ceil(rayon::current_num_threads());
 
-        let results: Vec<(ArithRangeTableInputs, ArithTableInputs)> = slices
-            .into_par_iter()
-            .zip(inputs)
-            .map(|(slice, input)| {
+        flat_buffer.par_chunks_mut(chunk_size).zip(flat_inputs.par_chunks(chunk_size)).for_each(
+            |(trace_slice, input_slice)| {
                 let mut aop = ArithOperation::new();
                 let mut range_table = ArithRangeTableInputs::new();
                 let mut table = ArithTableInputs::new();
 
-                slice.iter_mut().zip(input).for_each(|(trace_row, input)| {
+                trace_slice.iter_mut().zip(input_slice.iter()).for_each(|(trace_row, input)| {
                     *trace_row = Self::process_slice(&mut range_table, &mut table, &mut aop, input);
                 });
 
-                (range_table, table) // return partial result
-            })
-            .collect();
+                self.arith_table_sm.process_slice(&table);
+                self.arith_range_table_sm.process_slice(&range_table);
+            },
+        );
 
         let padding_offset = total_inputs;
         let padding_rows: usize = num_rows.saturating_sub(padding_offset);
@@ -130,11 +124,6 @@ impl ArithFullSM {
                 false,
             );
         }
-
-        results.par_iter().for_each(|(range_table_inputs, table_inputs)| {
-            self.arith_table_sm.process_slice(table_inputs);
-            self.arith_range_table_sm.process_slice(range_table_inputs);
-        });
 
         self.arith_table_sm.process_slice(&table_inputs);
         self.arith_range_table_sm.process_slice(&range_table_inputs);
@@ -192,7 +181,7 @@ impl ArithFullSM {
         }
     }
 
-    fn process_slice<F: PrimeField>(
+    fn process_slice<F: PrimeField64>(
         range_table_inputs: &mut ArithRangeTableInputs,
         table_inputs: &mut ArithTableInputs,
         aop: &mut ArithOperation,

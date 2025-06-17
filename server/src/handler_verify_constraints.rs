@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use crate::{ServerConfig, ZiskResponse};
 use colored::Colorize;
 use executor::{Stats, ZiskExecutionResult};
-use p3_goldilocks::Goldilocks;
+use fields::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::DebugInfo;
 use serde::{Deserialize, Serialize};

@@ -21,8 +21,7 @@ vergen = { version = "8", default-features = false, features = [
 [dependencies]
 zisk-common = { path = "../common" }
 colored = { workspace = true }
-p3-field = { workspace = true }
-p3-goldilocks = { workspace = true }
+fields = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
 sysinfo = { workspace = true }
@@ -51,6 +50,7 @@ tokio = { version = "1", features = ["full"] }
 indicatif = "0.17.8"
 futures = "0.3.30"
 yansi = "1.0.1"
+mpi = "0.8.0"
 
 [features]
 default = []

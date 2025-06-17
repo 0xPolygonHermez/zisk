@@ -5,8 +5,8 @@
 use std::{collections::VecDeque, ops::Add};
 
 use zisk_common::{
-    BusDevice, BusDeviceMode, BusId, Counter, Metrics, MEM_BUS_ID, OPERATION_BUS_ID,
-    OPERATION_BUS_KECCAKF_DATA_SIZE, OP_TYPE,
+    BusDevice, BusDeviceMode, BusId, Counter, ExtOperationData, Metrics, MEM_BUS_ID,
+    OPERATION_BUS_ID, OPERATION_BUS_KECCAKF_DATA_SIZE, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 
@@ -111,17 +111,20 @@ impl BusDevice<u64> for KeccakfCounterInputGen {
             return;
         }
 
-        debug_assert_eq!(data.len(), OPERATION_BUS_KECCAKF_DATA_SIZE + 25);
+        let data: ExtOperationData<u64> = data.try_into().ok().unwrap();
 
-        let data_ptr = data.as_ptr() as *const [u64; OPERATION_BUS_KECCAKF_DATA_SIZE + 25];
-        let data = unsafe { &*data_ptr };
+        match data {
+            ExtOperationData::OperationKeccakData(data) => {
+                if self.mode == BusDeviceMode::Counter {
+                    self.measure(&data);
+                }
 
-        if self.mode == BusDeviceMode::Counter {
-            self.measure(data);
+                let mem_inputs =
+                    KeccakfSM::generate_inputs(&data, self.mode == BusDeviceMode::Counter);
+                pending.extend(mem_inputs.into_iter().map(|x| (MEM_BUS_ID, x)).collect::<Vec<_>>());
+            }
+            _ => panic!("Expected ExtOperationData::OperationData"),
         }
-
-        let mem_inputs = KeccakfSM::generate_inputs(data, self.mode == BusDeviceMode::Counter);
-        pending.extend(mem_inputs.into_iter().map(|x| (MEM_BUS_ID, x)));
     }
 
     /// Returns the bus IDs associated with this counter.

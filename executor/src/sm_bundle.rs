@@ -1,12 +1,12 @@
 use data_bus::{DataBus, DataBusTrait};
-use p3_field::Field;
+use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use zisk_common::{BusDevice, BusDeviceMetrics, Instance, InstanceCtx, PayloadType, Plan};
 
 use crate::NestedDeviceMetricsList;
 
 pub type DataBusCollectorCollection = Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>>;
-pub trait SMBundle<F: Field>: Send + Sync {
+pub trait SMBundle<F: PrimeField64>: Send + Sync {
     /// Plans the secondary state machines by generating plans from the counted metrics.
     ///
     /// # Arguments

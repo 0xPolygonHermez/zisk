@@ -2,20 +2,21 @@ use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
 use executor::{Stats, ZiskExecutionResult};
+use fields::Goldilocks;
 use libloading::{Library, Symbol};
-use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
-use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ParamsGPU};
+use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
+use zisk_common::ZiskLibInitFn;
 use std::{
     collections::HashMap,
     env, fs,
     path::{Path, PathBuf},
+    thread,
 };
-use zisk_common::ZiskLibInitFn;
 use zisk_pil::*;
 
 use crate::{
@@ -76,13 +77,33 @@ pub struct ZiskStats {
     // PRECOMPILES OPTIONS
     /// Sha256f script path
     pub sha256f_script: Option<PathBuf>,
+
+    #[clap(long)]
+    pub mpi_node: usize,
 }
 
 impl ZiskStats {
     pub fn run(&mut self) -> Result<()> {
-        cli_fail_if_macos()?;
+        let (universe, _threading) = mpi::initialize_with_threading(mpi::Threading::Multiple)
+            .ok_or_else(|| anyhow::anyhow!("Failed to initialize MPI with threading"))?;
 
-        initialize_logger(self.verbose.into());
+        use mpi::traits::*;
+        let world = universe.world();
+        let rank = world.rank();
+
+        let m2 = self.mpi_node as i32 * 2;
+        if rank < m2 || rank >= m2 + 2 {
+            world.split_shared(rank);
+            world.barrier();
+            println!(
+                "{}: {}",
+                format!("Rank {}", rank).bright_yellow().bold(),
+                "Exiting stats command.".bright_yellow()
+            );
+            return Ok(());
+        }
+
+        cli_fail_if_macos()?;
 
         let debug_info = match &self.debug {
             None => DebugInfo::default(),
@@ -127,7 +148,7 @@ impl ZiskStats {
             let hash = get_elf_data_hash(&self.elf)
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
             let new_filename = format!("{stem}-{hash}-mt.bin");
-            let asm_rom_filename = format!("{stem}-{hash}-rom.bin");
+            let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
             asm_rom = Some(default_cache_path.join(asm_rom_filename));
             self.asm = Some(default_cache_path.join(new_filename));
         }
@@ -169,6 +190,8 @@ impl ZiskStats {
             false,
             false,
             gpu_params,
+            self.verbose.into(),
+            Some(universe),
         )
         .expect("Failed to initialize proofman");
 
@@ -201,23 +224,26 @@ impl ZiskStats {
             .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
-        println!();
+        if rank % 2 == 1 {
+            thread::sleep(std::time::Duration::from_millis(2000));
+        }
+        tracing::info!("");
         tracing::info!(
             "{} {}",
-            "--- STATS SUMMARY ".bright_green().bold(),
-            "-".repeat(55).bright_green().bold()
+            format!("--- STATS SUMMARY RANK {}/{}", rank as usize, world.size() as usize),
+            "-".repeat(55)
         );
 
-        Self::print_stats(stats);
+        Self::print_stats(&stats);
 
-        println!();
+        tracing::info!("");
 
         Ok(())
     }
 
     fn print_command_info(&self, sha256f_script: &Path) {
-        // Print Verify Contraints command info
-        println!("{} VerifyConstraints", format!("{: >12}", "Command").bright_green().bold());
+        // Print Stats command info
+        println!("{} Stats", format!("{: >12}", "Command").bright_green().bold());
         println!(
             "{: >12} {}",
             "Witness Lib".bright_green().bold(),
@@ -280,24 +306,24 @@ impl ZiskStats {
     ///
     /// # Arguments
     /// * `stats_mutex` - A reference to the Mutex holding the stats vector.
-    pub fn print_stats(stats: Vec<(usize, usize, Stats)>) {
-        tracing::info!("    Stats by Air:");
-        tracing::info!(
+    pub fn print_stats(stats: &Vec<(usize, usize, Stats)>) {
+        println!("    Number of airs: {}", stats.len());
+        println!();
+        println!("    Stats by Air:");
+        println!(
             "    {:<8} {:<25} {:<8} {:<12} {:<12}",
-            "air id",
-            "Name",
-            "chunks",
-            "collect (ms)",
-            "witness (ms)",
+            "air id", "Name", "chunks", "collect (ms)", "witness (ms)",
         );
-        tracing::info!("    {}", "-".repeat(70));
+        println!("    {}", "-".repeat(70));
 
         // Sort individual stats by (airgroup_id, air_id)
         let mut sorted_stats = stats.clone();
         sorted_stats.sort_by_key(|(airgroup_id, air_id, _)| (*airgroup_id, *air_id));
 
+        let mut total_collect_time = 0;
+        let mut total_witness_time = 0;
         for (airgroup_id, air_id, stats) in sorted_stats.iter() {
-            tracing::info!(
+            println!(
                 "    {:<8} {:<25} {:<8} {:<12} {:<12}",
                 air_id,
                 Self::air_name(*airgroup_id, *air_id),
@@ -305,6 +331,9 @@ impl ZiskStats {
                 stats.collect_time,
                 stats.witness_time,
             );
+            // Accumulate total times
+            total_collect_time += stats.collect_time;
+            total_witness_time += stats.witness_time;
         }
 
         // Group stats
@@ -313,7 +342,7 @@ impl ZiskStats {
             grouped.entry((*airgroup_id, *air_id)).or_default().push(stats.clone());
         }
 
-        println!();
+        tracing::info!("");
         tracing::info!("    Grouped Stats:");
         tracing::info!(
             "    {:<8} {:<25}   {:<6}   {:<20}   {:<20}   {:<20}",
@@ -324,22 +353,11 @@ impl ZiskStats {
             "Collect (ms)",
             "Witness (ms)",
         );
-        tracing::info!(
+        println!(
             "    {:<8} {:<25}   {:<6}   {:<6} {:<6} {:<6}   {:<6} {:<6} {:<6}   {:<6} {:<6} {:<6}",
-            "",
-            "",
-            "",
-            "min",
-            "max",
-            "avg",
-            "min",
-            "max",
-            "avg",
-            "min",
-            "max",
-            "avg",
+            "", "", "", "min", "max", "avg", "min", "max", "avg", "min", "max", "avg",
         );
-        tracing::info!("    {}", "-".repeat(109));
+        println!("    {}", "-".repeat(109));
 
         let mut grouped_sorted: Vec<_> = grouped.into_iter().collect();
         grouped_sorted.sort_by_key(|((airgroup_id, air_id), _)| (*airgroup_id, *air_id));
@@ -365,7 +383,7 @@ impl ZiskStats {
                 n_sum += e.num_chunks;
             }
 
-            tracing::info!(
+            println!(
                 "    {:<8} {:<25} | {:<6} | {:<6} {:<6} {:<6} | {:<6} {:<6} {:<6} | {:<6} {:<6} {:<6}",
                 air_id,
                 Self::air_name(airgroup_id, air_id),
@@ -381,6 +399,14 @@ impl ZiskStats {
                 w_sum / count,
             );
         }
+        println!();
+        println!("    Total Stats:");
+        println!(
+            "    Collect: {:10}ms Witness: {:10}ms Total: {:10}ms",
+            total_collect_time,
+            total_witness_time,
+            total_collect_time + total_witness_time
+        );
     }
 
     fn air_name(_airgroup_id: usize, air_id: usize) -> String {

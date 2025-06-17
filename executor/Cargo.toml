@@ -22,7 +22,7 @@ proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 witness = { workspace = true }
-p3-field = { workspace=true }
+fields = { workspace=true }
 tracing = { workspace = true }
 itertools = { workspace = true }
 rayon = { workspace = true }
