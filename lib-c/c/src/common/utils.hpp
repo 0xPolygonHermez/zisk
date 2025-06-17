@@ -4,6 +4,7 @@
 #include <gmpxx.h>
 #include "../ffiasm/fec.hpp"
 #include "../ffiasm/fnec.hpp"
+#include "../ffiasm/fq.hpp"
 #include "globals.hpp"
 
 // Converts and array of 4 u64 LE to a scalar
