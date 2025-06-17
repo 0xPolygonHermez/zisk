@@ -124,11 +124,11 @@ int inline BN254ComplexInvFe (const RawFq::Element &real, const RawFq::Element &
     bn254.inv(denominator, denominator);
 
     // inverse_real = real/denominator = real*inverse_denominator
-    bn254.mul(inverse_real, denominator);
+    bn254.mul(inverse_real, real, denominator);
 
     // inverse_imaginary = -imaginary/denominator = -imaginary*inverse_denominator
-    bn254.neg(inverse_imaginary, imaginary);
-    bn254.mul(inverse_imaginary, inverse_imaginary, denominator);
+    bn254.neg(aux, imaginary);
+    bn254.mul(inverse_imaginary, aux, denominator);
 
     return 0;
 };
