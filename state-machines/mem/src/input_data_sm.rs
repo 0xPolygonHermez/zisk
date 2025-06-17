@@ -73,7 +73,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             trace.num_rows()
         );
 
-        let mut range_check_data = Box::new([0u64; 1 << 16]);
+        let mut range_check_data: Vec<u32> = vec![0; 1 << 16];
 
         // range of instance
         let range_id = self.std.get_range(0, SEGMENT_ADDR_MAX_RANGE as i64, None);
@@ -122,7 +122,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
 
                     i += 1;
                 }
-                range_check_data[0] += 4 * internal_reads as u64;
+                range_check_data[0] += 4 * internal_reads;
                 if incomplete {
                     break;
                 }
@@ -178,17 +178,11 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
 
         // range of chunks
         let range_id = self.std.get_range(0, (1 << 16) - 1, None);
-        for (value, &multiplicity) in range_check_data.iter().enumerate() {
-            if multiplicity == 0 {
-                continue;
-            }
-
-            self.std.range_check(value as i64, multiplicity, range_id);
-        }
         for value_chunk in &value {
             let value = value_chunk.as_canonical_u64();
-            self.std.range_check(value as i64, padding_size as u64, range_id);
+            range_check_data[value as usize] += padding_size as u32;
         }
+        self.std.range_checks(range_check_data, range_id);
 
         let mut air_values = InputDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());

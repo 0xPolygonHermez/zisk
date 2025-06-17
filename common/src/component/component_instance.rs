@@ -130,19 +130,24 @@ macro_rules! table_instance {
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
             ) -> Option<AirInstance<F>> {
-                let mut trace = $Trace::new();
-
                 let multiplicity = self.table_sm.detach_multiplicity();
                 self.table_sm.set_calculated();
 
                 pctx.dctx_distribute_multiplicity(multiplicity, self.ictx.global_id);
 
-                trace.buffer.par_iter_mut().enumerate().for_each(|(i, input)| {
-                    input.multiplicity =
-                        F::from_u64(multiplicity[i].swap(0, std::sync::atomic::Ordering::Relaxed))
-                });
+                if pctx.dctx_is_my_instance(self.ictx.global_id) {
+                    let mut trace = $Trace::new();
 
-                Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
+                    trace.buffer.par_iter_mut().enumerate().for_each(|(i, input)| {
+                        input.multiplicity = F::from_u64(
+                            multiplicity[i].swap(0, std::sync::atomic::Ordering::Relaxed),
+                        )
+                    });
+
+                    Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
+                } else {
+                    None
+                }
             }
 
             fn check_point(&self) -> CheckPoint {
@@ -233,22 +238,26 @@ macro_rules! table_instance_array {
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
             ) -> Option<AirInstance<F>> {
-                let mut trace = $Trace::new();
-
                 let multiplicities = self.table_sm.detach_multiplicities();
                 self.table_sm.set_calculated();
                 pctx.dctx_distribute_multiplicities(multiplicities, self.ictx.global_id);
 
-                let mut buffer = trace.get_buffer();
+                if pctx.dctx_is_my_instance(self.ictx.global_id) {
+                    let mut trace = $Trace::new();
 
-                buffer.par_chunks_mut(trace.row_size).enumerate().for_each(|(row, chunk)| {
-                    for (col, vec) in multiplicities.iter().enumerate() {
-                        chunk[col] =
-                            F::from_u64(vec[row].swap(0, std::sync::atomic::Ordering::Relaxed));
-                    }
-                });
+                    let mut buffer = trace.get_buffer();
 
-                Some(AirInstance::new(TraceInfo::new(trace.airgroup_id, trace.air_id, buffer)))
+                    buffer.par_chunks_mut(trace.row_size).enumerate().for_each(|(row, chunk)| {
+                        for (col, vec) in multiplicities.iter().enumerate() {
+                            chunk[col] =
+                                F::from_u64(vec[row].swap(0, std::sync::atomic::Ordering::Relaxed));
+                        }
+                    });
+
+                    Some(AirInstance::new(TraceInfo::new(trace.airgroup_id, trace.air_id, buffer)))
+                } else {
+                    None
+                }
             }
 
             fn check_point(&self) -> CheckPoint {

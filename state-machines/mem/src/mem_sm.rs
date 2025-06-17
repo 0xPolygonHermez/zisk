@@ -211,12 +211,8 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         // RAM_W_ADDR_END - last_addr + 1 - 1 = RAM_W_ADDR_END - last_addr
         let distance_end = RAM_W_ADDR_END - last_addr;
 
-        for (value, &multiplicity) in range_check_data.iter().enumerate() {
-            if multiplicity == 0 {
-                continue;
-            }
-            self.std.range_check(value as i64, multiplicity as u64, range_id);
-        }
+        self.std.range_checks(range_check_data, range_id);
+
         // Add one in range_check_data_max because it's used by intermediate reads, and reads
         // add one to distance to allow same step on read operations.
 

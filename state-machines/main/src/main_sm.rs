@@ -7,23 +7,18 @@
 //!   segment.
 //! - Methods for computing the witness and setting up trace rows.
 
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc,
-};
+use std::sync::Arc;
 
+use crate::MainCounter;
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
-use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use rayon::prelude::*;
 use sm_mem::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use zisk_common::{BusDeviceMetrics, EmuTrace, InstanceCtx};
 use zisk_core::{ZiskRom, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 use zisk_pil::{MainAirValues, MainTrace, MainTraceRow};
 use ziskemu::{Emu, EmuRegTrace};
-
-use crate::MainCounter;
-
 /// Represents an instance of the main state machine,
 /// containing context for managing a specific segment of the main trace.
 pub struct MainInstance {
@@ -112,10 +107,6 @@ impl MainSM {
         // minimal trace.
         let max_range = chunk_size * MEM_STEPS_BY_MAIN_STEP;
 
-        // Vector of atomics of u32, it's enough to count all range check values of the trace.
-        let step_range_check =
-            Arc::new((0..max_range).map(|_| AtomicU32::new(0)).collect::<Vec<_>>());
-
         // We know each register's previous step, but only by instance. We don't have this
         // information by chunk, so we need to store in the EmuRegTrace the location of the
         // first mem_step register is used in the chunk and information about the last step
@@ -127,6 +118,7 @@ impl MainSM {
             .enumerate()
             .take(segment_min_traces.len())
             .map(|(chunk_id, chunk)| {
+                let mut step_range_check = vec![0; max_range as usize];
                 let init_chunk_step = if chunk_id == 0 { initial_step } else { 0 };
                 let mut reg_trace = EmuRegTrace::from_init_step(init_chunk_step, chunk_id == 0);
                 let (pc, regs) = Self::fill_partial_trace(
@@ -135,14 +127,19 @@ impl MainSM {
                     &segment_min_traces[chunk_id],
                     chunk_size,
                     &mut reg_trace,
-                    step_range_check.clone(),
+                    &mut step_range_check,
                     chunk_id == (end_idx - start_idx - 1),
                 );
-                (pc, regs, reg_trace)
+                (pc, regs, reg_trace, step_range_check)
             })
-            .collect::<Vec<(u64, Vec<u64>, EmuRegTrace)>>();
+            .collect::<Vec<(u64, Vec<u64>, EmuRegTrace, Vec<u32>)>>();
         let last_result = fill_trace_outputs.last().unwrap();
         let next_pc = last_result.0;
+
+        let mut step_range_check: Vec<u32> = (0..max_range as usize)
+            .into_par_iter()
+            .map(|i| fill_trace_outputs.iter().map(|(_, _, _, local)| local[i]).sum())
+            .collect();
 
         // In the range checks are values too large to store in steps_range_check, but there
         // are only a few values that exceed this limit, for this reason, are stored in a vector
@@ -152,7 +149,7 @@ impl MainSM {
             num_rows,
             &fill_trace_outputs,
             &mut main_trace,
-            step_range_check.clone(),
+            &mut step_range_check,
             &mut reg_steps,
         );
 
@@ -162,7 +159,9 @@ impl MainSM {
         // In padding row must be clear of registers access, if not need to calculate previous
         // register step and range check conntribution
         let last_row = main_trace.buffer[filled_rows - 1];
-        main_trace.buffer[filled_rows..num_rows].fill(last_row);
+        main_trace.buffer[filled_rows..num_rows]
+            .par_iter_mut()
+            .for_each(|row| *row = last_row);
 
         // Determine the last row of the previous segment
         let prev_segment_last_c = if start_idx > 0 {
@@ -186,7 +185,7 @@ impl MainSM {
             final_step,
             &last_result.1,
             &reg_steps,
-            step_range_check.clone(),
+            &mut step_range_check,
             &mut large_range_checks,
         );
         Self::update_std_range_checks(std, step_range_check, &large_range_checks);
@@ -212,37 +211,20 @@ impl MainSM {
         min_trace: &EmuTrace,
         chunk_size: u64,
         reg_trace: &mut EmuRegTrace,
-        step_range_check: Arc<Vec<AtomicU32>>,
+        step_range_check: &mut [u32],
         last_reg_values: bool,
     ) -> (u64, Vec<u64>) {
         // Initialize the emulator with the start state of the emu trace
         let mut emu = Emu::from_emu_trace_start(zisk_rom, chunk_size, &min_trace.start_state);
         let mut mem_reads_index: usize = 0;
 
-        // Total number of rows to fill from the emu trace
-        let total_rows = min_trace.steps as usize;
-
-        const BATCH_SIZE: usize = 1 << 12; // 2^12 rows per batch
-
-        // Process rows in batches
-        let mut batch_buffer = MainTrace::with_capacity(BATCH_SIZE);
-
-        for batch_start in (0..total_rows).step_by(BATCH_SIZE) {
-            let batch_end = (batch_start + BATCH_SIZE).min(total_rows);
-            let batch_size = batch_end - batch_start;
-
-            // Process the batch
-            for i in 0..batch_size {
-                batch_buffer.buffer[i] = emu.step_slice_full_trace(
-                    &min_trace.mem_reads,
-                    &mut mem_reads_index,
-                    reg_trace,
-                    Some(&**step_range_check),
-                );
-            }
-
-            // Copy processed batch into main trace buffer
-            main_trace[batch_start..batch_end].copy_from_slice(&batch_buffer.buffer[..batch_size]);
+        for trace in main_trace {
+            *trace = emu.step_slice_full_trace(
+                &min_trace.mem_reads,
+                &mut mem_reads_index,
+                reg_trace,
+                Some(step_range_check),
+            );
         }
 
         (
@@ -257,14 +239,14 @@ impl MainSM {
 
     fn complete_trace_with_initial_reg_steps_per_chunk<F: PrimeField64>(
         num_rows: usize,
-        fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace)],
+        fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace, Vec<u32>)],
         main_trace: &mut MainTrace<F>,
-        step_range_check: Arc<Vec<AtomicU32>>,
+        step_range_check: &mut [u32],
         reg_steps: &mut [u64; REGS_IN_MAIN],
     ) -> Vec<u32> {
         let mut large_range_checks: Vec<u32> = vec![];
         let max_range = step_range_check.len() as u64;
-        for (index, (_, _, reg_trace)) in fill_trace_outputs.iter().enumerate().skip(1) {
+        for (index, (_, _, reg_trace, _)) in fill_trace_outputs.iter().enumerate().skip(1) {
             #[allow(clippy::needless_range_loop)]
             for reg_index in 0..REGS_IN_MAIN {
                 let reg_prev_mem_step = if fill_trace_outputs[index - 1].2.reg_steps[reg_index] == 0
@@ -282,7 +264,7 @@ impl MainSM {
                     if range >= max_range {
                         large_range_checks.push(range as u32);
                     } else {
-                        step_range_check[range as usize].fetch_add(1, Ordering::Relaxed);
+                        step_range_check[range as usize] += 1;
                     }
                     match slot {
                         0 => {
@@ -324,7 +306,7 @@ impl MainSM {
         final_step: u64,
         last_reg_values: &[u64],
         reg_steps: &[u64; REGS_IN_MAIN],
-        step_range_check: Arc<Vec<AtomicU32>>,
+        step_range_check: &mut [u32],
         large_range_checks: &mut Vec<u32>,
     ) {
         let max_range = step_range_check.len() as u64;
@@ -334,25 +316,21 @@ impl MainSM {
             air_values.last_reg_value[ireg] = values;
             air_values.last_reg_mem_step[ireg] = F::from_u64(reg_steps[ireg]);
             let range = (final_step - reg_steps[ireg] - 1) as usize;
-            if range > max_range as usize {
+            if range >= max_range as usize {
                 large_range_checks.push(range as u32);
             } else {
-                step_range_check[range].fetch_add(1, Ordering::Relaxed);
+                step_range_check[range] += 1;
             }
         }
     }
     fn update_std_range_checks<F: PrimeField64>(
         std: Arc<Std<F>>,
-        step_range_check: Arc<Vec<AtomicU32>>,
+        step_range_check: Vec<u32>,
         large_range_checks: &[u32],
     ) {
         let range_id = std.get_range(0, MEM_REGS_MAX_DIFF as i64, None);
-        for (value, _multiplicity) in step_range_check.iter().enumerate() {
-            let multiplicity = _multiplicity.load(Ordering::Relaxed);
-            if multiplicity != 0 {
-                std.range_check(value as i64, multiplicity as u64, range_id);
-            }
-        }
+        std.range_checks(step_range_check, range_id);
+
         for range in large_range_checks {
             std.range_check(*range as i64, 1, range_id);
         }
