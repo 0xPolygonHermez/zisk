@@ -60,6 +60,7 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -68,7 +69,7 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance {
             })
             .collect();
 
-        Some(self.binary_basic_sm.compute_witness(&inputs))
+        Some(self.binary_basic_sm.compute_witness(&inputs, trace_buffer))
     }
 
     /// Retrieves the checkpoint associated with this instance.

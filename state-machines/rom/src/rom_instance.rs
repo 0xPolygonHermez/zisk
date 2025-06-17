@@ -88,6 +88,7 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         if self.is_asm_execution() {
             // Case 1: Use ROM assembly output
@@ -102,6 +103,7 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
             return Some(RomSM::compute_witness_from_asm(
                 &self.zisk_rom,
                 &asm_runner_romh.asm_rowh_output,
+                trace_buffer,
             ));
         }
 
@@ -128,6 +130,7 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         Some(RomSM::compute_witness(
             &self.zisk_rom,
             self.counter_stats.lock().unwrap().as_ref().unwrap(),
+            trace_buffer,
         ))
     }
 

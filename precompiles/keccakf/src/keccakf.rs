@@ -238,9 +238,11 @@ impl KeccakfSM {
         let program = &self.program;
         let gates = &self.gates;
 
-        let row0 = trace.buffer[0];
+        let trace_rows = trace.row_slice_mut();
 
-        let mut trace_slice = &mut trace.buffer[1..];
+        let row0 = trace_rows[0];
+
+        let mut trace_slice = &mut trace_rows[1..];
         let mut par_traces = Vec::new();
 
         for _ in 0..inputs_bits.len() {
@@ -462,6 +464,7 @@ impl KeccakfSM {
         &self,
         sctx: &SetupCtx<F>,
         inputs: &[Vec<OperationKeccakData<u64>>],
+        trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
         // Get the fixed cols
         let airgroup_id = KeccakfTrace::<usize>::AIRGROUP_ID;
@@ -470,7 +473,7 @@ impl KeccakfSM {
         let fixed = KeccakfFixed::from_vec(fixed_pols);
 
         timer_start_trace!(KECCAKF_TRACE);
-        let mut keccakf_trace = KeccakfTrace::new_zeroes();
+        let mut keccakf_trace = KeccakfTrace::new_from_vec_zeroes(trace_buffer);
         let num_rows = keccakf_trace.num_rows();
 
         // Flatten the inputs

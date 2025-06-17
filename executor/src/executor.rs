@@ -502,7 +502,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// # Arguments
     /// * `pctx` - Proof context.
     /// * `main_instance` - Main instance to compute witness for
-    fn witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &MainInstance) {
+    fn witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &MainInstance, trace_buffer: Vec<F>) {
         let witness_start = std::time::Instant::now();
 
         let min_traces_guard = self.min_traces.read().unwrap();
@@ -520,6 +520,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             Self::MIN_TRACE_SIZE,
             main_instance,
             self.std.clone(),
+            trace_buffer,
         );
 
         pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
@@ -548,6 +549,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         sctx: &SetupCtx<F>,
         global_id: usize,
         secn_instance: &Box<dyn Instance<F>>,
+        trace_buffer: Vec<F>,
     ) {
         let (mut stats, collectors_by_instance) = self
             .collectors_by_instance
@@ -558,7 +560,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         let witness_start = std::time::Instant::now();
         if let Some(air_instance) =
-            secn_instance.compute_witness(pctx, sctx, collectors_by_instance)
+            secn_instance.compute_witness(pctx, sctx, collectors_by_instance, trace_buffer)
         {
             pctx.add_air_instance(air_instance, global_id);
         }
@@ -635,11 +637,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         sctx: &SetupCtx<F>,
         global_id: usize,
         table_instance: &Box<dyn Instance<F>>,
+        trace_buffer: Vec<F>,
     ) {
         let witness_start = std::time::Instant::now();
         assert_eq!(table_instance.instance_type(), InstanceType::Table, "Instance is not a table");
 
-        if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![]) {
+        if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![], trace_buffer) {
             if pctx.dctx_is_my_instance(global_id) {
                 pctx.add_air_instance(air_instance, global_id);
             }
@@ -828,6 +831,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         sctx: Arc<SetupCtx<F>>,
         global_ids: &[usize],
         n_cores: usize,
+        witness_buffer: &mut Vec<Vec<F>>,
     ) {
         if stage != 1 {
             return;
@@ -841,16 +845,16 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                 if MAIN_AIR_IDS.contains(&air_id) {
                     let main_instance = &self.main_instances.read().unwrap()[&global_id];
 
-                    self.witness_main_instance(&pctx, main_instance);
+                    self.witness_main_instance(&pctx, main_instance, witness_buffer.remove(0));
                 } else {
                     let secn_instance = &self.secn_instances.read().unwrap()[&global_id];
 
                     match secn_instance.instance_type() {
                         InstanceType::Instance => {
-                            self.witness_secn_instance(&pctx, &sctx, global_id, secn_instance)
+                            self.witness_secn_instance(&pctx, &sctx, global_id, secn_instance, witness_buffer.remove(0))
                         }
                         InstanceType::Table => {
-                            self.witness_table(&pctx, &sctx, global_id, secn_instance)
+                            self.witness_table(&pctx, &sctx, global_id, secn_instance, Vec::new())
                         }
                     }
                 }
