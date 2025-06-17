@@ -48,7 +48,7 @@ impl AsmServices {
         let services = [
             AsmService::MT,
             // AsmService::RH,
-            AsmService::MO,
+            // AsmService::MO,
         ];
 
         // Check if a service is already running
@@ -120,6 +120,7 @@ impl AsmServices {
         match asm_service {
             AsmService::MT => {
                 command.arg("--generate_minimal_trace");
+                command.arg("--shm_prefix").arg("ZISK");
             }
             AsmService::RH => {
                 command.arg("--generate_rom_histogram");
