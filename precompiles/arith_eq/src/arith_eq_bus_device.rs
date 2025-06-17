@@ -139,30 +139,77 @@ impl BusDevice<u64> for ArithEqCounterInputGen {
         }
 
         match op {
-            ARITH256_OP => generate_arith256_mem_inputs(addr_main, step_main, data, only_counters),
+            ARITH256_OP => {
+                pending.extend(generate_arith256_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
+            }
             ARITH256_MOD_OP => {
-                generate_arith256_mod_mem_inputs(addr_main, step_main, data, only_counters)
+                pending.extend(generate_arith256_mod_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
             }
             SECP256K1_ADD_OP => {
-                generate_secp256k1_add_mem_inputs(addr_main, step_main, data, only_counters)
+                pending.extend(generate_secp256k1_add_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
             }
             SECP256K1_DBL_OP => {
-                generate_secp256k1_dbl_mem_inputs(addr_main, step_main, data, only_counters)
+                pending.extend(generate_secp256k1_dbl_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
             }
             BN254_CURVE_ADD_OP => {
-                generate_bn254_curve_add_mem_inputs(addr_main, step_main, data, only_counters)
+                pending.extend(generate_bn254_curve_add_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
             }
             BN254_CURVE_DBL_OP => {
-                generate_bn254_curve_dbl_mem_inputs(addr_main, step_main, data, only_counters)
+                pending.extend(generate_bn254_curve_dbl_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
             }
             BN254_COMPLEX_ADD_OP => {
-                generate_bn254_complex_add_mem_inputs(addr_main, step_main, data, only_counters)
+                pending.extend(generate_bn254_complex_add_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
             }
             BN254_COMPLEX_SUB_OP => {
-                generate_bn254_complex_sub_mem_inputs(addr_main, step_main, data, only_counters)
+                pending.extend(generate_bn254_complex_sub_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
             }
             BN254_COMPLEX_MUL_OP => {
-                generate_bn254_complex_mul_mem_inputs(addr_main, step_main, data, only_counters)
+                pending.extend(generate_bn254_complex_mul_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
             }
 
             _ => {
