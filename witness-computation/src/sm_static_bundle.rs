@@ -11,6 +11,7 @@ use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
+use std::collections::HashMap;
 use zisk_common::{
     BusDevice, BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan,
 };
@@ -128,22 +129,32 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
 
     fn build_data_bus_collectors(
         &self,
-        secn_instance: &Box<dyn Instance<F>>,
-        chunks_to_execute: Vec<bool>,
+        secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
+        chunks_to_execute: Vec<Vec<usize>>,
     ) -> Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>> {
         chunks_to_execute
             .iter()
             .enumerate()
-            .map(|(chunk_id, to_be_executed)| {
-                if !to_be_executed {
+            .map(|(chunk_id, global_idxs)| {
+                if global_idxs.is_empty() {
                     return None;
                 }
 
                 let mut data_bus = DataBus::new();
 
-                if let Some(bus_device) = secn_instance.build_inputs_collector(ChunkId(chunk_id)) {
-                    data_bus.connect_device(Some(bus_device));
+                let mut used = false;
+                for global_idx in global_idxs {
+                    let secn_instance = secn_instances.get(global_idx).unwrap();
+                    if let Some(bus_device) =
+                        secn_instance.build_inputs_collector(ChunkId(chunk_id))
+                    {
+                        data_bus.connect_device(Some(*global_idx), Some(bus_device));
 
+                        used = true;
+                    }
+                }
+
+                if used {
                     macro_rules! add_generator {
                         ($field:ident, $type:ty) => {
                             if let Some(inputs_generator) =
@@ -151,7 +162,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                                     &*self.$field,
                                 )
                             {
-                                data_bus.connect_device(Some(inputs_generator));
+                                data_bus.connect_device(None, Some(inputs_generator));
                             }
                         };
                     }
