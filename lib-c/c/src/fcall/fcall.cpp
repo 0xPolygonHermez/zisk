@@ -32,7 +32,7 @@ int Fcall (
         }
         default:
         {
-            printf("Fcall() found unsupported function_id=%llu\n", ctx->function_id);
+            printf("Fcall() found unsupported function_id=%lu\n", ctx->function_id);
             return -1;
         }
     }
