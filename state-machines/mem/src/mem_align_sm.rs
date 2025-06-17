@@ -778,8 +778,9 @@ impl<F: PrimeField64> MemAlignSM<F> {
         &self,
         mem_ops: &[Vec<MemAlignInput>],
         used_rows: usize,
+        trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = MemAlignTrace::<F>::new();
+        let mut trace = MemAlignTrace::<F>::new_from_vec(trace_buffer);
         let mut reg_range_check = [0u64; 1 << CHUNK_BITS];
 
         let num_rows = trace.num_rows();
@@ -812,7 +813,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         let padding_row = MemAlignTraceRow::<F> { reset: F::from_bool(true), ..Default::default() };
 
         // Store the padding rows
-        trace.buffer[index..num_rows].fill(padding_row);
+        trace.row_slice_mut()[index..num_rows].fill(padding_row);
 
         // Compute the program multiplicity
         let mem_align_rom_sm = self.mem_align_rom_sm.clone();

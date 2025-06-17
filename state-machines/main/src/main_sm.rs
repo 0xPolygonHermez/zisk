@@ -68,9 +68,10 @@ impl MainSM {
         min_trace_size: u64,
         main_instance: &MainInstance,
         std: Arc<Std<F>>,
+        trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
         // Create the main trace buffer
-        let mut main_trace = MainTrace::new();
+        let mut main_trace = MainTrace::new_from_vec(trace_buffer);
 
         let segment_id = main_instance.ictx.plan.segment_id.unwrap();
 
@@ -159,8 +160,8 @@ impl MainSM {
         // Pad remaining rows with the last valid row
         // In padding row must be clear of registers access, if not need to calculate previous
         // register step and range check conntribution
-        let last_row = main_trace.buffer[filled_rows - 1];
-        main_trace.buffer[filled_rows..num_rows].fill(last_row);
+        let last_row = main_trace.row_slice()[filled_rows - 1];
+        main_trace.row_slice_mut()[filled_rows..num_rows].fill(last_row);
 
         // Determine the last row of the previous segment
         let prev_segment_last_c = if start_idx > 0 {
@@ -174,7 +175,7 @@ impl MainSM {
 
         air_values.main_segment = F::from_usize(segment_id.into());
         air_values.main_last_segment = F::from_bool(main_instance.is_last_segment);
-        air_values.segment_initial_pc = main_trace.buffer[0].pc;
+        air_values.segment_initial_pc = main_trace.row_slice()[0].pc;
         air_values.segment_next_pc = F::from_u64(next_pc);
         air_values.segment_previous_c = prev_segment_last_c;
         air_values.segment_last_c = last_row.c;
@@ -216,30 +217,13 @@ impl MainSM {
         let mut emu = Emu::from_emu_trace_start(zisk_rom, &min_trace.start_state);
         let mut mem_reads_index: usize = 0;
 
-        // Total number of rows to fill from the emu trace
-        let total_rows = min_trace.steps as usize;
-
-        const BATCH_SIZE: usize = 1 << 12; // 2^12 rows per batch
-
-        // Process rows in batches
-        let mut batch_buffer = MainTrace::with_capacity(BATCH_SIZE);
-
-        for batch_start in (0..total_rows).step_by(BATCH_SIZE) {
-            let batch_end = (batch_start + BATCH_SIZE).min(total_rows);
-            let batch_size = batch_end - batch_start;
-
-            // Process the batch
-            for i in 0..batch_size {
-                batch_buffer.buffer[i] = emu.step_slice_full_trace(
-                    &min_trace.mem_reads,
-                    &mut mem_reads_index,
-                    reg_trace,
-                    Some(&**step_range_check),
-                );
-            }
-
-            // Copy processed batch into main trace buffer
-            main_trace[batch_start..batch_end].copy_from_slice(&batch_buffer.buffer[..batch_size]);
+        for trace in main_trace {
+            *trace = emu.step_slice_full_trace(
+                &min_trace.mem_reads,
+                &mut mem_reads_index,
+                reg_trace,
+                Some(&**step_range_check),
+            );
         }
 
         (
@@ -283,15 +267,15 @@ impl MainSM {
                     }
                     match slot {
                         0 => {
-                            main_trace.buffer[row].a_reg_prev_mem_step =
+                            main_trace.row_slice_mut()[row].a_reg_prev_mem_step =
                                 F::from_u64(reg_prev_mem_step)
                         }
                         1 => {
-                            main_trace.buffer[row].b_reg_prev_mem_step =
+                            main_trace.row_slice_mut()[row].b_reg_prev_mem_step =
                                 F::from_u64(reg_prev_mem_step)
                         }
                         2 => {
-                            main_trace.buffer[row].store_reg_prev_mem_step =
+                            main_trace.row_slice_mut()[row].store_reg_prev_mem_step =
                                 F::from_u64(reg_prev_mem_step)
                         }
                         _ => panic!("Invalid slot {}", slot),

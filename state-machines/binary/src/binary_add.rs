@@ -93,8 +93,8 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(&self, inputs: &[Vec<[u64; 2]>]) -> AirInstance<F> {
-        let mut add_trace = BinaryAddTrace::new();
+    pub fn compute_witness(&self, inputs: &[Vec<[u64; 2]>], trace_buffer: Vec<F>) -> AirInstance<F> {
+        let mut add_trace = BinaryAddTrace::new_from_vec(trace_buffer);
 
         let num_rows = add_trace.num_rows();
 
@@ -111,7 +111,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         // Split the add_e_trace.buffer into slices matching each inner vector’s length.
         let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
         let mut slices = Vec::with_capacity(inputs.len());
-        let mut rest = add_trace.buffer.as_mut_slice();
+        let mut rest = add_trace.row_slice_mut();
         for size in sizes {
             let (head, tail) = rest.split_at_mut(size);
             slices.push(head);
@@ -137,7 +137,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         // rows
         let padding_row = BinaryAddTraceRow::<F> { ..Default::default() };
 
-        add_trace.buffer[total_inputs..num_rows].fill(padding_row);
+        add_trace.row_slice_mut()[total_inputs..num_rows].fill(padding_row);
 
         for value in range_checks {
             self.std.range_check(value, 1, self.range_id);

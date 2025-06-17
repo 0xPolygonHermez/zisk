@@ -45,6 +45,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         // Collect inputs from all collectors. At most, one of them has `prev_last_value` non zero,
         // we take this `prev_last_value`, which represents the last value of the previous segment.
@@ -83,7 +84,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         let segment_id = self.ictx.plan.segment_id.unwrap();
 
         let is_last_segment = self.check_point.is_last_segment;
-        Some(self.module.compute_witness(&inputs, segment_id, is_last_segment, &prev_segment))
+        Some(self.module.compute_witness(&inputs, segment_id, is_last_segment, &prev_segment, trace_buffer))
     }
 
     /// Builds an input collector for the instance.
