@@ -5,7 +5,7 @@ use fields::PrimeField64;
 use riscv::RiscVRegisters;
 use sm_mem::MemHelpers;
 use zisk_common::{
-    ExtOperationData, OperationBusData, RomBusData, MEM_BUS_ID, OPERATION_BUS_ID, ROM_BUS_ID,
+    OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID, ROM_BUS_ID,
 };
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
@@ -26,6 +26,10 @@ pub struct Emu<'a> {
     pub rom: &'a ZiskRom,
     /// Context, where the state of the execution is stored and modified at every execution step
     pub ctx: EmuContext,
+
+    // This array is used to store static data to avoid heap allocations and speed up the
+    // conversion of data to be written to the bus
+    static_array: [u64; MAX_OPERATION_DATA_SIZE],
 }
 
 /// ZisK emulator structure implementation
@@ -37,7 +41,7 @@ pub struct Emu<'a> {
 ///   and required input data for secondary state machines)
 impl<'a> Emu<'a> {
     pub fn new(rom: &ZiskRom) -> Emu {
-        Emu { rom, ctx: EmuContext::default() }
+        Emu { rom, ctx: EmuContext::default(), static_array: [0; MAX_OPERATION_DATA_SIZE] }
     }
 
     pub fn from_emu_trace_start(rom: &'a ZiskRom, trace_start: &'a EmuTraceStart) -> Emu<'a> {
@@ -1647,33 +1651,6 @@ impl<'a> Emu<'a> {
         data_bus: &mut DB,
     ) -> bool {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
-        // let debug = instruction.op >= 0xF6;
-        // let initial_regs = if debug {
-        //     print!(
-        //         "\x1B[1;36m>==IN ==>\x1B[0m SE #{} 0x{:X} ({}) {}",
-        //         self.ctx.inst_ctx.step,
-        //         self.ctx.inst_ctx.pc,
-        //         instruction.op_str,
-        //         instruction.verbose
-        //     );
-        //     for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
-        //         print!(" {:}:0x{:X}", index, value);
-        //     }
-        //     println!(
-        //         " self.ctx.inst_ctx.emulation_mode={:?} instruction:{:?}",
-        //         self.ctx.inst_ctx.emulation_mode, instruction
-        //     );
-        //     self.ctx.inst_ctx.regs
-        // } else {
-        //     /* println!(
-        //         "#{} 0x{:X} ({}) {}",
-        //         self.ctx.inst_ctx.step,
-        //         self.ctx.inst_ctx.pc,
-        //         instruction.op_str,
-        //         instruction.verbose
-        //     );*/
-        //     [0u64; 32]
-        // };
 
         self.source_a_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         self.source_b_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
@@ -1695,71 +1672,16 @@ impl<'a> Emu<'a> {
 
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
-        // if debug {
-        //     print!(
-        //         ">==OUT==> #{} 0x{:X} ({}) {} {:?}",
-        //         self.ctx.inst_ctx.step,
-        //         self.ctx.inst_ctx.pc,
-        //         instruction.op_str,
-        //         instruction.verbose,
-        //         self.ctx.inst_ctx.regs,
-        //     );
-        //     for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
-        //         if initial_regs[index] == value {
-        //             print!(" {:}:0x{:X}", index, value);
-        //         } else {
-        //             print!(" {:}:\x1B[1;31m0x{:X}\x1B[0m", index, value);
-        //         }
-        //     }
-        //     println!();
-        // }
-
+        // Get operation bus data
         if instruction.op_type > ZiskOperationType::Internal
             && instruction.op_type < ZiskOperationType::FcallParam
         {
-            // Get operation bus data
-            let operation_payload =
-                OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
-
-            // Write operation bus data to operation bus
-            match operation_payload {
-                ExtOperationData::OperationData(data) => {
-                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-                }
-                ExtOperationData::OperationKeccakData(data) => {
-                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-                }
-                ExtOperationData::OperationSha256Data(data) => {
-                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-                }
-                ExtOperationData::OperationArith256Data(data) => {
-                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-                }
-                ExtOperationData::OperationArith256ModData(data) => {
-                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-                }
-                ExtOperationData::OperationSecp256k1AddData(data) => {
-                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-                }
-                ExtOperationData::OperationSecp256k1DblData(data) => {
-                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-                }
-            }
-            ExtOperationData::OperationBn254CurveAddData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationBn254CurveDblData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationBn254ComplexAddData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationBn254ComplexSubData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationBn254ComplexMulData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
+            let operation_payload: &[u64] = OperationBusData::write_instruction_payload(
+                instruction,
+                &self.ctx.inst_ctx,
+                &mut self.static_array,
+            );
+            data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload);
         }
 
         // #[cfg(feature = "sp")]
@@ -1850,52 +1772,16 @@ impl<'a> Emu<'a> {
         (instruction.func)(&mut self.ctx.inst_ctx);
         self.store_c_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
 
+        // Get operation bus data
         if instruction.op_type > ZiskOperationType::Internal
             && instruction.op_type < ZiskOperationType::FcallParam
         {
-            // Get operation bus data
-            let operation_payload =
-                OperationBusData::from_instruction(instruction, &self.ctx.inst_ctx);
-
-            // Write operation bus data to operation bus
-            match operation_payload {
-                ExtOperationData::OperationData(data) => {
-                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-                }
-                ExtOperationData::OperationKeccakData(data) => {
-                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-                }
-                ExtOperationData::OperationSha256Data(data) => {
-                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-                }
-                ExtOperationData::OperationArith256Data(data) => {
-                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-                }
-                ExtOperationData::OperationArith256ModData(data) => {
-                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-                }
-                ExtOperationData::OperationSecp256k1AddData(data) => {
-                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-                }
-                ExtOperationData::OperationSecp256k1DblData(data) => {
-                    data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-                }
-            }
-            ExtOperationData::OperationBn254CurveAddData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationBn254CurveDblData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationBn254ComplexAddData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationBn254ComplexSubData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
-            ExtOperationData::OperationBn254ComplexMulData(data) => {
-                data_bus.write_to_bus(OPERATION_BUS_ID, &data);
-            }
+            let operation_payload: &[u64] = OperationBusData::write_instruction_payload(
+                instruction,
+                &self.ctx.inst_ctx,
+                &mut self.static_array,
+            );
+            data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload);
         }
 
         // Get rom bus data

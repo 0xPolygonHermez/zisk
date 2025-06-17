@@ -14,6 +14,10 @@ use sm_binary::BinaryCounter;
 use sm_main::MainCounter;
 use sm_mem::MemCounters;
 use zisk_common::{BusDevice, BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
+use zisk_core::{
+    ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID,
+    KECCAK_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID, SHA256_OP_TYPE_ID,
+};
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
 ///
@@ -68,32 +72,42 @@ impl StaticDataBus<PayloadType> {
     #[inline(always)]
     fn route_data(&mut self, bus_id: BusId, payload: &[PayloadType]) {
         match bus_id {
-            // Handle specific bus IDs
             MEM_BUS_ID => {
-                if let Some(result) = self.mem_counter.process_data(&bus_id, payload) {
-                    self.pending_transfers.extend(result);
-                }
+                self.mem_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
             }
-            OPERATION_BUS_ID => {
-                if let Some(result) = self.main_counter.process_data(&bus_id, payload) {
-                    self.pending_transfers.extend(result);
+            OPERATION_BUS_ID => match payload[1] as u32 {
+                PUB_OUT_OP_TYPE_ID => {
+                    self.main_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
                 }
-                if let Some(result) = self.binary_counter.process_data(&bus_id, payload) {
-                    self.pending_transfers.extend(result);
+                BINARY_OP_TYPE_ID | BINARY_E_OP_TYPE_ID => {
+                    self.binary_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
                 }
-                if let Some(result) = self.arith_counter.process_data(&bus_id, payload) {
-                    self.pending_transfers.extend(result);
+                ARITH_OP_TYPE_ID => {
+                    self.arith_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
                 }
-                if let Some(result) = self.keccakf_counter.process_data(&bus_id, payload) {
-                    self.pending_transfers.extend(result);
+                KECCAK_OP_TYPE_ID => {
+                    self.keccakf_counter.process_data(
+                        &bus_id,
+                        payload,
+                        &mut self.pending_transfers,
+                    );
                 }
-                if let Some(result) = self.sha256f_counter.process_data(&bus_id, payload) {
-                    self.pending_transfers.extend(result);
+                SHA256_OP_TYPE_ID => {
+                    self.sha256f_counter.process_data(
+                        &bus_id,
+                        payload,
+                        &mut self.pending_transfers,
+                    );
                 }
-                if let Some(result) = self.arith_eq_counter.process_data(&bus_id, payload) {
-                    self.pending_transfers.extend(result);
+                ARITH_EQ_OP_TYPE_ID => {
+                    self.arith_eq_counter.process_data(
+                        &bus_id,
+                        payload,
+                        &mut self.pending_transfers,
+                    );
                 }
-            }
+                _ => {}
+            },
             _ => (),
         }
     }

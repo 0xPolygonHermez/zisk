@@ -2,6 +2,7 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::PubOut` instructions.
 
+use std::collections::VecDeque;
 use zisk_common::{BusDevice, BusId, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::ZiskOperationType;
 
@@ -59,13 +60,18 @@ impl BusDevice<u64> for MainCounter {
     /// - The first element indicates whether processing should continue.
     /// - The second element contains derived inputs to be sent back to the bus.
     #[inline(always)]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         const PUBOUT: u64 = ZiskOperationType::PubOut as u64;
 
         if data[OP_TYPE] != PUBOUT {
-            return None;
+            return;
         }
 
         let pub_index = 2 * data[A];
@@ -75,8 +81,6 @@ impl BusDevice<u64> for MainCounter {
 
         self.publics.push((pub_index, values[0]));
         self.publics.push((pub_index + 1, values[1]));
-
-        None
     }
 
     /// Returns the bus IDs associated with this counter.

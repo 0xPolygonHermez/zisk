@@ -4,6 +4,7 @@
 
 use std::ops::Add;
 
+use std::collections::VecDeque;
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
@@ -114,13 +115,18 @@ impl BusDevice<u64> for ArithEqCounterInputGen {
     /// # Returns
     /// A vector of derived inputs to be sent back to the bus.
     #[inline(always)]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         const ARITH_EQ: u64 = ZiskOperationType::ArithEq as u64;
 
         if data[OP_TYPE] != ARITH_EQ {
-            return None;
+            return;
         }
 
         let op = data[OP] as u8;
@@ -159,7 +165,9 @@ impl BusDevice<u64> for ArithEqCounterInputGen {
                 generate_bn254_complex_mul_mem_inputs(addr_main, step_main, data, only_counters)
             }
 
-            _ => None,
+            _ => {
+                panic!("ArithEqCounterInputGen: Unsupported data length {}", data.len(),);
+            }
         }
     }
 

@@ -4,7 +4,7 @@
 //! collection is required.
 
 use std::any::Any;
-
+use std::collections::VecDeque;
 use zisk_common::{BusDevice, BusId, Metrics};
 
 /// The `DummyCounter` struct serves as a placeholder counter that performs no actions
@@ -37,8 +37,12 @@ impl Metrics for DummyCounter {
 
 impl BusDevice<u64> for DummyCounter {
     #[inline(always)]
-    fn process_data(&mut self, _bus_id: &BusId, _data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
-        None
+    fn process_data(
+        &mut self,
+        _bus_id: &BusId,
+        _data: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
     }
 
     /// Returns an empty vector as this counter is not associated with any bus IDs.

@@ -92,6 +92,7 @@ macro_rules! table_instance {
         use fields::PrimeField64;
 
         use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
+        use std::collections::VecDeque;
         use zisk_common::{
             BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
         };
@@ -162,10 +163,9 @@ macro_rules! table_instance {
                 &mut self,
                 bus_id: &BusId,
                 data: &[u64],
-            ) -> Option<Vec<(BusId, Vec<u64>)>> {
-                None
+                _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+            ) {
             }
-
             fn bus_id(&self) -> Vec<BusId> {
                 vec![self.bus_id]
             }
@@ -195,6 +195,7 @@ macro_rules! table_instance_array {
         use fields::PrimeField64;
 
         use proofman_common::{AirInstance, ProofCtx, SetupCtx, TraceInfo};
+        use std::collections::VecDeque;
         use zisk_common::{
             BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
         };
@@ -268,8 +269,8 @@ macro_rules! table_instance_array {
                 &mut self,
                 bus_id: &BusId,
                 data: &[u64],
-            ) -> Option<Vec<(BusId, Vec<u64>)>> {
-                None
+                _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+            ) {
             }
 
             fn bus_id(&self) -> Vec<BusId> {

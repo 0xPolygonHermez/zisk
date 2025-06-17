@@ -2,7 +2,7 @@
 //! data for communication over the operation bus. This includes data extraction from instructions
 //! and managing the format of operation data.
 
-use crate::{BusId, PayloadType};
+use crate::{uninit_array, BusId, PayloadType};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
 
@@ -87,6 +87,8 @@ pub enum ExtOperationData<D> {
     OperationBn254ComplexSubData(OperationBn254ComplexSubData<D>),
     OperationBn254ComplexMulData(OperationBn254ComplexMulData<D>),
 }
+
+pub const MAX_OPERATION_DATA_SIZE: usize = 29; // 5 + 25 for keccak
 
 const KECCAK_OP: u8 = ZiskOp::Keccak.code();
 const SHA256_OP: u8 = ZiskOp::Sha256.code();
@@ -206,138 +208,170 @@ impl OperationBusData<u64> {
     /// # Returns
     /// An array representing the operation data payload.
     #[inline(always)]
-    pub fn from_instruction(inst: &ZiskInst, inst_ctx: &InstContext) -> ExtOperationData<u64> {
-        let a = if inst.m32 { inst_ctx.a & 0xffffffff } else { inst_ctx.a };
-        let b = if inst.m32 { inst_ctx.b & 0xffffffff } else { inst_ctx.b };
+    pub fn from_instruction(inst: &ZiskInst, ctx: &InstContext) -> ExtOperationData<u64> {
+        let a = if inst.m32 { ctx.a & 0xffff_ffff } else { ctx.a };
+        let b = if inst.m32 { ctx.b & 0xffff_ffff } else { ctx.b };
+        let op = inst.op as u64;
+        let op_type = inst.op_type as u64;
 
         match inst.op_type {
             ZiskOperationType::Keccak => {
-                let mut data: OperationKeccakData<u64> = [0; OPERATION_BUS_KECCAKF_DATA_SIZE];
-                data[0] = inst.op as u64; // OP
-                data[1] = inst.op_type as u64; // OP_TYPE
-                data[2] = a; // A
-                data[3] = b; // B
-                data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
+                let mut data =
+                    unsafe { uninit_array::<OPERATION_BUS_KECCAKF_DATA_SIZE>().assume_init() };
+                data[0..4].copy_from_slice(&[op, op_type, a, b]);
+                data[4..].copy_from_slice(&ctx.precompiled.input_data);
                 ExtOperationData::OperationKeccakData(data)
             }
+
             ZiskOperationType::Sha256 => {
-                let mut data: OperationSha256Data<u64> = [0; OPERATION_BUS_SHA256F_DATA_SIZE];
-                data[0] = inst.op as u64; // OP
-                data[1] = inst.op_type as u64; // OP_TYPE
-                data[2] = a; // A
-                data[3] = b; // B
-                data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
+                let mut data =
+                    unsafe { uninit_array::<OPERATION_BUS_SHA256F_DATA_SIZE>().assume_init() };
+                data[0..4].copy_from_slice(&[op, op_type, a, b]);
+                data[4..].copy_from_slice(&ctx.precompiled.input_data);
                 ExtOperationData::OperationSha256Data(data)
             }
-            ZiskOperationType::ArithEq => {
-                match inst.op {
-                    ARITH256_OP => {
-                        let mut data: OperationArith256Data<u64> =
-                            [0; OPERATION_BUS_ARITH_256_DATA_SIZE];
-                        data[0] = inst.op as u64; // OP
-                        data[1] = inst.op_type as u64; // OP_TYPE
-                        data[2] = a; // A step
-                        data[3] = b; // B addr
-                        data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
-                        ExtOperationData::OperationArith256Data(data)
-                    }
-                    ARITH256_MOD_OP => {
-                        let mut data: OperationArith256ModData<u64> =
-                            [0; OPERATION_BUS_ARITH_256_MOD_DATA_SIZE];
-                        data[0] = inst.op as u64; // OP
-                        data[1] = inst.op_type as u64; // OP_TYPE
-                        data[2] = a; // A step
-                        data[3] = b; // B addr
-                        data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
-                        ExtOperationData::OperationArith256ModData(data)
-                    }
-                    SECP256K1_ADD_OP => {
-                        let mut data: OperationSecp256k1AddData<u64> =
-                            [0; OPERATION_BUS_SECP256K1_ADD_DATA_SIZE];
-                        data[0] = inst.op as u64; // OP
-                        data[1] = inst.op_type as u64; // OP_TYPE
-                        data[2] = a; // A step
-                        data[3] = b; // B addr
-                        data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
-                        ExtOperationData::OperationSecp256k1AddData(data)
-                    }
-                    SECP256K1_DBL_OP => {
-                        let mut data: OperationSecp256k1DblData<u64> =
-                            [0; OPERATION_BUS_SECP256K1_DBL_DATA_SIZE];
-                        data[0] = inst.op as u64; // OP
-                        data[1] = inst.op_type as u64; // OP_TYPE
-                        data[2] = a; // A step
-                        data[3] = b; // B addr
-                        data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
-                        ExtOperationData::OperationSecp256k1DblData(data)
-                    }
-                    BN254_CURVE_ADD_OP => {
-                        let mut data: OperationBn254CurveAddData<u64> =
-                            [0; OPERATION_BUS_BN254_CURVE_ADD_DATA_SIZE];
-                        data[0] = inst.op as u64; // OP
-                        data[1] = inst.op_type as u64; // OP_TYPE
-                        data[2] = a; // A step
-                        data[3] = b; // B addr
-                        data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
-                        ExtOperationData::OperationBn254CurveAddData(data)
-                    }
-                    BN254_CURVE_DBL_OP => {
-                        let mut data: OperationBn254CurveDblData<u64> =
-                            [0; OPERATION_BUS_BN254_CURVE_DBL_DATA_SIZE];
-                        data[0] = inst.op as u64; // OP
-                        data[1] = inst.op_type as u64; // OP_TYPE
-                        data[2] = a; // A step
-                        data[3] = b; // B addr
-                        data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
-                        ExtOperationData::OperationBn254CurveDblData(data)
-                    }
-                    BN254_COMPLEX_ADD_OP => {
-                        let mut data: OperationBn254ComplexAddData<u64> =
-                            [0; OPERATION_BUS_BN254_COMPLEX_ADD_DATA_SIZE];
-                        data[0] = inst.op as u64; // OP
-                        data[1] = inst.op_type as u64; // OP_TYPE
-                        data[2] = a; // A step
-                        data[3] = b; // B addr
-                        data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
-                        ExtOperationData::OperationBn254ComplexAddData(data)
-                    }
-                    BN254_COMPLEX_SUB_OP => {
-                        let mut data: OperationBn254ComplexSubData<u64> =
-                            [0; OPERATION_BUS_BN254_COMPLEX_SUB_DATA_SIZE];
-                        data[0] = inst.op as u64; // OP
-                        data[1] = inst.op_type as u64; // OP_TYPE
-                        data[2] = a; // A step
-                        data[3] = b; // B addr
-                        data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
-                        ExtOperationData::OperationBn254ComplexSubData(data)
-                    }
-                    BN254_COMPLEX_MUL_OP => {
-                        let mut data: OperationBn254ComplexMulData<u64> =
-                            [0; OPERATION_BUS_BN254_COMPLEX_MUL_DATA_SIZE];
-                        data[0] = inst.op as u64; // OP
-                        data[1] = inst.op_type as u64; // OP_TYPE
-                        data[2] = a; // A step
-                        data[3] = b; // B addr
-                        data[4..].copy_from_slice(&inst_ctx.precompiled.input_data);
-                        ExtOperationData::OperationBn254ComplexMulData(data)
-                    }
-                    _ => {
-                        ExtOperationData::OperationData([
-                            inst.op as u64,      // OP
-                            inst.op_type as u64, // OP_TYPE
-                            a,                   // A
-                            b,                   // B
-                        ])
-                    }
+            ZiskOperationType::ArithEq => match inst.op {
+                ARITH256_OP => {
+                    let mut data = unsafe {
+                        uninit_array::<OPERATION_BUS_ARITH_256_DATA_SIZE>().assume_init()
+                    };
+                    data[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    data[4..].copy_from_slice(&ctx.precompiled.input_data);
+                    ExtOperationData::OperationArith256Data(data)
                 }
+                ARITH256_MOD_OP => {
+                    let mut data = unsafe {
+                        uninit_array::<OPERATION_BUS_ARITH_256_MOD_DATA_SIZE>().assume_init()
+                    };
+                    data[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    data[4..].copy_from_slice(&ctx.precompiled.input_data);
+                    ExtOperationData::OperationArith256ModData(data)
+                }
+                SECP256K1_ADD_OP => {
+                    let mut data = unsafe {
+                        uninit_array::<OPERATION_BUS_SECP256K1_ADD_DATA_SIZE>().assume_init()
+                    };
+                    data[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    data[4..].copy_from_slice(&ctx.precompiled.input_data);
+                    ExtOperationData::OperationSecp256k1AddData(data)
+                }
+                SECP256K1_DBL_OP => {
+                    let mut data = unsafe {
+                        uninit_array::<OPERATION_BUS_SECP256K1_DBL_DATA_SIZE>().assume_init()
+                    };
+                    data[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    data[4..].copy_from_slice(&ctx.precompiled.input_data);
+                    ExtOperationData::OperationSecp256k1DblData(data)
+                }
+                BN254_CURVE_ADD_OP => {
+                    let mut data = unsafe {
+                        uninit_array::<OPERATION_BUS_BN254_CURVE_ADD_DATA_SIZE>().assume_init()
+                    };
+                    data[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    data[4..].copy_from_slice(&ctx.precompiled.input_data);
+                    ExtOperationData::OperationBn254CurveAddData(data)
+                }
+                BN254_CURVE_DBL_OP => {
+                    let mut data = unsafe {
+                        uninit_array::<OPERATION_BUS_BN254_CURVE_DBL_DATA_SIZE>().assume_init()
+                    };
+                    data[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    data[4..].copy_from_slice(&ctx.precompiled.input_data);
+                    ExtOperationData::OperationBn254CurveDblData(data)
+                }
+                BN254_COMPLEX_ADD_OP => {
+                    let mut data = unsafe {
+                        uninit_array::<OPERATION_BUS_BN254_COMPLEX_ADD_DATA_SIZE>().assume_init()
+                    };
+                    data[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    data[4..].copy_from_slice(&ctx.precompiled.input_data);
+                    ExtOperationData::OperationBn254ComplexAddData(data)
+                }
+                BN254_COMPLEX_SUB_OP => {
+                    let mut data = unsafe {
+                        uninit_array::<OPERATION_BUS_BN254_COMPLEX_SUB_DATA_SIZE>().assume_init()
+                    };
+                    data[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    data[4..].copy_from_slice(&ctx.precompiled.input_data);
+                    ExtOperationData::OperationBn254ComplexSubData(data)
+                }
+                BN254_COMPLEX_MUL_OP => {
+                    let mut data = unsafe {
+                        uninit_array::<OPERATION_BUS_BN254_COMPLEX_MUL_DATA_SIZE>().assume_init()
+                    };
+                    data[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    data[4..].copy_from_slice(&ctx.precompiled.input_data);
+                    ExtOperationData::OperationBn254ComplexMulData(data)
+                }
+                _ => ExtOperationData::OperationData([op, op_type, a, b]),
+            },
+
+            _ => ExtOperationData::OperationData([op, op_type, a, b]),
+        }
+    }
+
+    #[inline(always)]
+    pub fn write_instruction_payload<'a>(
+        inst: &ZiskInst,
+        ctx: &InstContext,
+        buffer: &'a mut [u64; MAX_OPERATION_DATA_SIZE],
+    ) -> &'a [u64] {
+        let a = if inst.m32 { ctx.a & 0xffff_ffff } else { ctx.a };
+        let b = if inst.m32 { ctx.b & 0xffff_ffff } else { ctx.b };
+        let op = inst.op as u64;
+        let op_type = inst.op_type as u64;
+
+        match inst.op_type {
+            ZiskOperationType::Keccak => {
+                debug_assert_eq!(ctx.precompiled.input_data.len(), 25);
+                buffer[0..OPERATION_BUS_DATA_SIZE].copy_from_slice(&[op, op_type, a, b]);
+                buffer[OPERATION_BUS_DATA_SIZE..OPERATION_BUS_KECCAKF_DATA_SIZE]
+                    .copy_from_slice(&ctx.precompiled.input_data);
+                &buffer[..OPERATION_BUS_KECCAKF_DATA_SIZE]
             }
+
+            ZiskOperationType::Sha256 => {
+                debug_assert_eq!(ctx.precompiled.input_data.len(), 12);
+                buffer[0..OPERATION_BUS_DATA_SIZE].copy_from_slice(&[op, op_type, a, b]);
+                buffer[OPERATION_BUS_DATA_SIZE..OPERATION_BUS_SHA256F_DATA_SIZE]
+                    .copy_from_slice(&ctx.precompiled.input_data);
+                &buffer[..OPERATION_BUS_SHA256F_DATA_SIZE]
+            }
+
+            ZiskOperationType::ArithEq => match inst.op {
+                ARITH256_OP => {
+                    let len = 4 + ctx.precompiled.input_data.len();
+                    buffer[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    buffer[4..len].copy_from_slice(&ctx.precompiled.input_data);
+                    &buffer[..len]
+                }
+                ARITH256_MOD_OP => {
+                    let len = 4 + ctx.precompiled.input_data.len();
+                    buffer[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    buffer[4..len].copy_from_slice(&ctx.precompiled.input_data);
+                    &buffer[..len]
+                }
+                SECP256K1_ADD_OP => {
+                    let len = 4 + ctx.precompiled.input_data.len();
+                    buffer[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    buffer[4..len].copy_from_slice(&ctx.precompiled.input_data);
+                    &buffer[..len]
+                }
+                SECP256K1_DBL_OP => {
+                    let len = 4 + ctx.precompiled.input_data.len();
+                    buffer[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    buffer[4..len].copy_from_slice(&ctx.precompiled.input_data);
+                    &buffer[..len]
+                }
+                _ => {
+                    buffer[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    &buffer[..4]
+                }
+            },
+
             _ => {
-                ExtOperationData::OperationData([
-                    inst.op as u64,      // OP
-                    inst.op_type as u64, // OP_TYPE
-                    a,                   // A
-                    b,                   // B
-                ])
+                buffer[0..4].copy_from_slice(&[op, op_type, a, b]);
+                &buffer[..4]
             }
         }
     }
@@ -452,8 +486,12 @@ impl OperationBusData<u64> {
     #[inline(always)]
     pub fn get_extra_data(data: &ExtOperationData<u64>) -> Vec<PayloadType> {
         match data {
-            ExtOperationData::OperationKeccakData(d) => d[4..].to_vec(),
-            ExtOperationData::OperationSha256Data(d) => d[4..].to_vec(),
+            ExtOperationData::OperationKeccakData(d) => {
+                d[OPERATION_BUS_DATA_SIZE..OPERATION_BUS_KECCAKF_DATA_SIZE].to_vec()
+            }
+            ExtOperationData::OperationSha256Data(d) => {
+                d[OPERATION_BUS_DATA_SIZE..OPERATION_BUS_SHA256F_DATA_SIZE].to_vec()
+            }
             ExtOperationData::OperationArith256Data(d) => d[4..].to_vec(),
             ExtOperationData::OperationArith256ModData(d) => d[4..].to_vec(),
             ExtOperationData::OperationSecp256k1AddData(d) => d[4..].to_vec(),
