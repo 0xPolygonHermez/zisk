@@ -16,10 +16,11 @@ use std::{
 };
 
 use crate::{
-    commands::{cli_fail_if_gpu_mode, cli_fail_if_macos, Field, ZiskLibInitFn},
+    commands::{cli_fail_if_gpu_mode, cli_fail_if_macos, Field},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
+use zisk_common::ZiskLibInitFn;
 
 use super::{get_default_proving_key, get_default_witness_computation_lib};
 

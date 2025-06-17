@@ -2,9 +2,8 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::ArithEq` instructions.
 
-use std::ops::Add;
+use std::{collections::VecDeque, ops::Add};
 
-use std::collections::VecDeque;
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };

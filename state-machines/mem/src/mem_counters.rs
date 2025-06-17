@@ -2,11 +2,14 @@ use rayon::prelude::*;
 #[cfg(feature = "save_mem_bus_data")]
 use std::{env, io::Write, slice};
 
-use std::{collections::HashMap, fs::File, io::Read};
+use std::{
+    collections::{HashMap, VecDeque},
+    fs::File,
+    io::Read,
+};
 use zisk_common::ChunkId;
 
 use crate::MemHelpers;
-use std::collections::VecDeque;
 use std::fmt;
 use zisk_common::{BusDevice, BusId, MemBusData, Metrics, MEM_BUS_DATA_SIZE, MEM_BUS_ID};
 

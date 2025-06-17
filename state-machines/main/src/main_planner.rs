@@ -37,7 +37,6 @@ impl MainPlanner {
         min_traces_size: u64,
     ) -> (Vec<Plan>, Vec<(u64, u32)>) {
         let min_traces = match min_traces {
-            MinimalTraces::EmuTrace(min_traces) => min_traces,
             MinimalTraces::AsmEmuTrace(asm_min_traces) => &asm_min_traces.vec_chunks,
             _ => unreachable!(),
         };
