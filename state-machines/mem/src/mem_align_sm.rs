@@ -7,10 +7,10 @@ use fields::PrimeField64;
 use num_traits::cast::ToPrimitive;
 use pil_std_lib::Std;
 
-use proofman_common::{AirInstance, FromTrace};
-use zisk_pil::{MemAlignTrace, MemAlignTraceRow};
-
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
+use proofman_common::{AirInstance, FromTrace};
+use rayon::prelude::*;
+use zisk_pil::{MemAlignTrace, MemAlignTraceRow};
 
 const RC: usize = 2;
 const CHUNK_NUM: usize = 8;
@@ -44,7 +44,7 @@ pub struct MemAlignResponse {
 }
 pub struct MemAlignSM<F: PrimeField64> {
     /// PIL2 standard library
-    _std: Arc<Std<F>>,
+    std: Arc<Std<F>>,
 
     #[cfg(feature = "debug_mem_align")]
     num_computed_rows: Mutex<usize>,
@@ -65,7 +65,7 @@ macro_rules! debug_info {
 impl<F: PrimeField64> MemAlignSM<F> {
     pub fn new(std: Arc<Std<F>>, mem_align_rom_sm: Arc<MemAlignRomSM>) -> Arc<Self> {
         Arc::new(Self {
-            _std: std.clone(),
+            std: std.clone(),
             #[cfg(feature = "debug_mem_align")]
             num_computed_rows: Mutex::new(0),
             mem_align_rom_sm,
@@ -780,7 +780,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         used_rows: usize,
     ) -> AirInstance<F> {
         let mut trace = MemAlignTrace::<F>::new();
-        let mut reg_range_check = [0u64; 1 << CHUNK_BITS];
+        let mut reg_range_check = [0u32; 1 << CHUNK_BITS];
 
         let num_rows = trace.num_rows();
 
@@ -812,24 +812,21 @@ impl<F: PrimeField64> MemAlignSM<F> {
         let padding_row = MemAlignTraceRow::<F> { reset: F::from_bool(true), ..Default::default() };
 
         // Store the padding rows
-        trace.buffer[index..num_rows].fill(padding_row);
+        trace.buffer[index..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
 
         // Compute the program multiplicity
         let mem_align_rom_sm = self.mem_align_rom_sm.clone();
         mem_align_rom_sm.update_padding_row(padding_size as u64);
 
-        reg_range_check[0] += CHUNK_NUM as u64 * padding_size as u64;
-        self.update_std_range_check(&reg_range_check);
+        reg_range_check[0] += CHUNK_NUM as u32 * padding_size as u32;
+        self.update_std_range_check(reg_range_check.to_vec());
 
         AirInstance::new_from_trace(FromTrace::new(&mut trace))
     }
 
-    fn update_std_range_check(&self, reg_range_check: &[u64]) {
+    fn update_std_range_check(&self, reg_range_check: Vec<u32>) {
         // Perform the range checks
-        let std = self._std.clone();
-        let range_id = std.get_range(0, CHUNK_BITS_MASK as i64, None);
-        for (value, &multiplicity) in reg_range_check.iter().enumerate() {
-            std.range_check(value as i64, multiplicity, range_id);
-        }
+        let range_id = self.std.get_range(0, CHUNK_BITS_MASK as i64, None);
+        self.std.range_checks(reg_range_check, range_id);
     }
 }

@@ -1,4 +1,4 @@
-use std::{mem, sync::atomic::AtomicU32};
+use std::mem;
 
 use crate::{EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, ParEmuOptions};
 use fields::PrimeField64;
@@ -1805,7 +1805,7 @@ impl<'a> Emu<'a> {
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
         reg_trace: &mut EmuRegTrace,
-        step_range_check: Option<&[AtomicU32]>,
+        step_range_check: Option<&mut [u32]>,
     ) -> EmuFullTraceStep<F> {
         if self.ctx.inst_ctx.pc == 0 {
             println!("PC=0 CRASH (step:{})", self.ctx.inst_ctx.step);
