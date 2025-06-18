@@ -409,6 +409,7 @@ name = "cargo-zisk"
 version = "0.9.0"
 dependencies = [
  "anyhow",
+ "asm-runner",
  "clap",
  "colored",
  "dirs",

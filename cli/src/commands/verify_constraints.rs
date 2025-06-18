@@ -4,6 +4,7 @@ use crate::{
     ZISK_VERSION_MESSAGE,
 };
 use anyhow::Result;
+use asm_runner::{AsmRunnerOptions, AsmServices};
 use clap::Parser;
 use colored::Colorize;
 use executor::{Stats, ZiskExecutionResult};
@@ -23,6 +24,8 @@ use std::{
 use zisk_common::ZiskLibInitFn;
 
 use super::{get_default_proving_key, get_default_witness_computation_lib};
+
+use mpi::traits::*;
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -81,6 +84,12 @@ impl ZiskVerifyConstraints {
         cli_fail_if_macos()?;
         cli_fail_if_gpu_mode()?;
 
+        let (universe, _threading) = mpi::initialize_with_threading(mpi::Threading::Multiple)
+            .ok_or_else(|| anyhow::anyhow!("Failed to initialize MPI with threading"))?;
+
+        let world = universe.world();
+        let rank = world.rank();
+
         let debug_info = match &self.debug {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
@@ -101,8 +110,6 @@ impl ZiskVerifyConstraints {
         };
 
         print_banner();
-
-        let start = std::time::Instant::now();
 
         let default_cache_path =
             std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
@@ -166,11 +173,12 @@ impl ZiskVerifyConstraints {
             false,
             ParamsGPU::default(),
             self.verbose.into(),
-            None,
+            Some(universe),
         )
         .expect("Failed to initialize proofman");
 
         let mut witness_lib;
+        let start = std::time::Instant::now();
         match self.field {
             Field::Goldilocks => {
                 let library = unsafe { Library::new(self.get_witness_computation_lib())? };
@@ -182,11 +190,23 @@ impl ZiskVerifyConstraints {
                     self.asm.clone(),
                     asm_rom,
                     sha256f_script,
-                    None,
+                    Some(rank),
                 )
                 .expect("Failed to initialize witness library");
 
                 proofman.register_witness(&mut *witness_lib, library);
+
+                // Start ASM microservices
+                tracing::info!(
+                    "[{}] Starting ASM microservices. {}",
+                    rank,
+                    "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
+                );
+                AsmServices::start_asm_services(
+                    self.asm.as_ref().unwrap(),
+                    AsmRunnerOptions::default(),
+                    Some(rank),
+                )?;
 
                 proofman
                     .verify_proof_constraints_from_lib(self.input.clone(), &debug_info)
@@ -213,6 +233,10 @@ impl ZiskVerifyConstraints {
             elapsed.as_secs_f32(),
             result.executed_steps
         );
+
+        // Shut down ASM microservices
+        tracing::info!("[{}] Shutting down ASM microservices.", rank);
+        AsmServices::stop_asm_services()?;
 
         Ok(())
     }

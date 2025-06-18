@@ -4,7 +4,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum AsmRunError {
     #[error("Failed to create semaphore '{0}': {1}")]
-    SemaphoreError(&'static str, #[source] named_sem::Error),
+    SemaphoreError(String, #[source] named_sem::Error),
     #[error("Thread pool creation failed")]
     ThreadPoolError(#[from] rayon::ThreadPoolBuildError),
     #[error("Semaphore wait failed: {0}")]

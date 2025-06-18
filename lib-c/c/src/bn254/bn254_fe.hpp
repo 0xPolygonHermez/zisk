@@ -100,15 +100,17 @@ int inline BN254ComplexMulFe (const RawFq::Element &x1, const RawFq::Element &y1
     // x3 = x1 * x2 - y1 * y2 -> real parts are multiplied, minus the multiplication of the imaginary parts (i*i = -1)
     // y3 = y1 * x2 + x1 * y2 -> imaginary parts are multiplied by the opposite real parts
 
-    RawFq::Element aux1, aux2;
+    RawFq::Element aux1, aux2, x3_temp;
 
     bn254.mul(aux1, x1, x2);
     bn254.mul(aux2, y1, y2);
-    bn254.sub(x3, aux1, aux2);
+    bn254.sub(x3_temp, aux1, aux2);
     
     bn254.mul(aux1, y1, x2);
     bn254.mul(aux2, x1, y2);
     bn254.add(y3, aux1, aux2);
+
+    x3 = x3_temp;
 
     return 0;
 }
@@ -124,11 +126,11 @@ int inline BN254ComplexInvFe (const RawFq::Element &real, const RawFq::Element &
     bn254.inv(denominator, denominator);
 
     // inverse_real = real/denominator = real*inverse_denominator
-    bn254.mul(inverse_real, denominator);
+    bn254.mul(inverse_real, real, denominator);
 
     // inverse_imaginary = -imaginary/denominator = -imaginary*inverse_denominator
-    bn254.neg(inverse_imaginary, imaginary);
-    bn254.mul(inverse_imaginary, inverse_imaginary, denominator);
+    bn254.neg(aux, imaginary);
+    bn254.mul(inverse_imaginary, aux, denominator);
 
     return 0;
 };
