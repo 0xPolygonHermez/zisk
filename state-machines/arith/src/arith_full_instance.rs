@@ -5,7 +5,7 @@
 //! execution plans.
 
 use crate::ArithFullSM;
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{
     collections::{HashMap, VecDeque},
@@ -45,7 +45,7 @@ impl ArithFullInstance {
     }
 }
 
-impl<F: PrimeField> Instance<F> for ArithFullInstance {
+impl<F: PrimeField64> Instance<F> for ArithFullInstance {
     /// Computes the witness for the arithmetic execution plan.
     ///
     /// This method leverages the `ArithFullSM` to generate an `AirInstance` using the collected

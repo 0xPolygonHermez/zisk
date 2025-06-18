@@ -1,6 +1,6 @@
 use crate::{mem_module_collector::MemModuleCollector, MemInput, MemModule, MemPreviousSegment};
+use fields::PrimeField64;
 use mem_common::MemModuleSegmentCheckPoint;
-use p3_field::PrimeField;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use std::sync::Arc;
@@ -8,7 +8,7 @@ use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
 
-pub struct MemModuleInstance<F: PrimeField> {
+pub struct MemModuleInstance<F: PrimeField64> {
     /// Instance context
     ictx: InstanceCtx,
 
@@ -20,7 +20,7 @@ pub struct MemModuleInstance<F: PrimeField> {
     max_addr: u32,
 }
 
-impl<F: PrimeField> MemModuleInstance<F> {
+impl<F: PrimeField64> MemModuleInstance<F> {
     pub fn new(module: Arc<dyn MemModule<F>>, ictx: InstanceCtx) -> Self {
         let meta = ictx.plan.meta.as_ref().unwrap();
         let mem_check_point = meta.downcast_ref::<MemModuleSegmentCheckPoint>().unwrap().clone();
@@ -37,7 +37,7 @@ impl<F: PrimeField> MemModuleInstance<F> {
     }
 }
 
-impl<F: PrimeField> Instance<F> for MemModuleInstance<F> {
+impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
     fn compute_witness(
         &self,
         _pctx: &ProofCtx<F>,

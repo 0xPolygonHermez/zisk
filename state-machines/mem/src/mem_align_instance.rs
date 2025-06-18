@@ -1,7 +1,7 @@
 use crate::{MemAlignInput, MemAlignSM, MemHelpers};
 use mem_common::MemAlignCheckPoint;
 
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{
     collections::{HashMap, VecDeque},

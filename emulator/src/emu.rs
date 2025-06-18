@@ -1,7 +1,7 @@
 use std::{mem, sync::atomic::AtomicU32};
 
 use crate::{EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, ParEmuOptions};
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use riscv::RiscVRegisters;
 use sm_mem::MemHelpers;
 use zisk_common::{
@@ -1800,7 +1800,7 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn step_slice_full_trace<F: PrimeField>(
+    pub fn step_slice_full_trace<F: PrimeField64>(
         &mut self,
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
@@ -1850,12 +1850,12 @@ impl<'a> Emu<'a> {
         full_trace_step
     }
 
-    pub fn intermediate_value<F: PrimeField>(value: u64) -> [F; 2] {
+    pub fn intermediate_value<F: PrimeField64>(value: u64) -> [F; 2] {
         [F::from_u64(value & 0xFFFFFFFF), F::from_u64((value >> 32) & 0xFFFFFFFF)]
     }
 
     #[inline(always)]
-    pub fn build_full_trace_step<F: PrimeField>(
+    pub fn build_full_trace_step<F: PrimeField64>(
         inst: &ZiskInst,
         inst_ctx: &InstContext,
         reg_trace: &EmuRegTrace,

@@ -3,7 +3,6 @@
 //! `ZiskOperationType::PubOut` instructions.
 
 use std::collections::VecDeque;
-
 use zisk_common::{BusDevice, BusId, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::ZiskOperationType;
 

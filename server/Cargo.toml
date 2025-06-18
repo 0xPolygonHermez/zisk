@@ -15,12 +15,11 @@ asm-runner = { path = "../emulator-asm/asm-runner" }
 
 proofman = { workspace = true }
 proofman-common = { workspace = true }
-p3-field = { workspace = true }
-p3-goldilocks = { workspace = true }
 witness = { workspace = true }
 anyhow = { workspace = true}
 libloading = { workspace = true }
 colored = { workspace = true }
+fields = { workspace = true }
 tracing = { workspace = true}
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 named-sem = { workspace = true }

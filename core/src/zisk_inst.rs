@@ -37,7 +37,7 @@
 
 use crate::zisk_ops::ZiskOp;
 use crate::{source_to_str, store_to_str, InstContext};
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use zisk_pil::MainTraceRow;
 
 /// a or b registers source is the current value of the c register
@@ -274,7 +274,7 @@ impl ZiskInst {
     }
 
     #[inline(always)]
-    pub fn build_constant_trace<F: PrimeField>(&self) -> MainTraceRow<F> {
+    pub fn build_constant_trace<F: PrimeField64>(&self) -> MainTraceRow<F> {
         let jmp_offset1 = if self.jmp_offset1 >= 0 {
             F::from_u64(self.jmp_offset1 as u64)
         } else {
@@ -370,7 +370,7 @@ impl ZiskInst {
     }
 
     #[inline(always)]
-    pub fn write_constant_trace<F: PrimeField>(&self, trace: &mut MainTraceRow<F>) {
+    pub fn write_constant_trace<F: PrimeField64>(&self, trace: &mut MainTraceRow<F>) {
         // Write the trace fields
         trace.a = [F::ZERO, F::ZERO];
         trace.b = [F::ZERO, F::ZERO];

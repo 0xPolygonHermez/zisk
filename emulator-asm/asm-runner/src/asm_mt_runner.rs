@@ -84,9 +84,9 @@ impl AsmRunnerMT {
         chunk_size: u64,
         task_factory: TaskFactory<T>,
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
-        const SHMEM_INPUT_NAME: &str = "ZISKMT_input";
-        const SHMEM_OUTPUT_NAME: &str = "ZISKMT_output";
-        const SEM_CHUNK_DONE_NAME: &str = "/ZISKMT_chunk_done";
+        const SHMEM_INPUT_NAME: &str = "ZISK_MT_input";
+        const SHMEM_OUTPUT_NAME: &str = "ZISK_MT_output";
+        const SEM_CHUNK_DONE_NAME: &str = "/ZISK_MT_chunk_done";
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
         let mut sem_chunk_done = NamedSemaphore::create(SEM_CHUNK_DONE_NAME, 0)

@@ -9,6 +9,7 @@
 #include "../../lib-c/c/src/ec/ec.hpp"
 #include "../../lib-c/c/src/fcall/fcall.hpp"
 #include "../../lib-c/c/src/arith256/arith256.hpp"
+#include "../../lib-c/c/src/bn254/bn254.hpp"
 #include "bcon/bcon_sha256.hpp"
 
 extern void keccakf1600_generic(uint64_t state[25]);
@@ -21,6 +22,11 @@ bool arith256_metrics = false;
 bool arith256_mod_metrics = false;
 bool secp256k1_add_metrics = false;
 bool secp256k1_dbl_metrics = false;
+bool bn254_curve_add_metrics = false;
+bool bn254_curve_dbl_metrics = false;
+bool bn254_complex_add_metrics = false;
+bool bn254_complex_sub_metrics = false;
+bool bn254_complex_mul_metrics = false;
 #endif
 
 struct timeval keccak_start, keccak_stop;
@@ -46,6 +52,26 @@ uint64_t secp256k1_add_duration = 0;
 struct timeval secp256k1_dbl_start, secp256k1_dbl_stop;
 uint64_t secp256k1_dbl_counter = 0;
 uint64_t secp256k1_dbl_duration = 0;
+
+struct timeval bn254_curve_add_start, bn254_curve_add_stop;
+uint64_t bn254_curve_add_counter = 0;
+uint64_t bn254_curve_add_duration = 0;
+
+struct timeval bn254_curve_dbl_start, bn254_curve_dbl_stop;
+uint64_t bn254_curve_dbl_counter = 0;
+uint64_t bn254_curve_dbl_duration = 0;
+
+struct timeval bn254_complex_add_start, bn254_complex_add_stop;
+uint64_t bn254_complex_add_counter = 0;
+uint64_t bn254_complex_add_duration = 0;
+
+struct timeval bn254_complex_sub_start, bn254_complex_sub_stop;
+uint64_t bn254_complex_sub_counter = 0;
+uint64_t bn254_complex_sub_duration = 0;
+
+struct timeval bn254_complex_mul_start, bn254_complex_mul_stop;
+uint64_t bn254_complex_mul_counter = 0;
+uint64_t bn254_complex_mul_duration = 0;
 
 uint64_t print_abcflag_counter = 0;
 
@@ -423,5 +449,220 @@ extern int _opcode_sqrt_fp_ec_parity(uint64_t params, uint64_t result)
         printf("_opcode_sqrt_fp_ec_parity() failed callilng SqrtFpEcParity() result=%d;", iresult);
         exit(-1);
     }
+    return 0;
+}
+
+/*********/
+/* BN254 */
+/*********/
+
+extern int _opcode_bn254_curve_add(uint64_t * address)
+{
+#ifdef DEBUG
+    if (bn254_curve_add_metrics || emu_verbose) gettimeofday(&bn254_curve_add_start, NULL);
+#endif
+    uint64_t * p1 = (uint64_t *)address[0];
+    uint64_t * p2 = (uint64_t *)address[1];
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("_opcode_bn254_curve_add() calling AddPointEcP() counter=%lu address=%p p1_address=%p p2_address=%p\n", bn254_curve_add_counter, address, p1, p2);
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+        printf("p2.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0], p2[3], p2[2], p2[1], p2[0]);
+        printf("p2.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4], p2[7], p2[6], p2[5], p2[4]);
+    }
+#endif
+    int result = BN254CurveAddP (
+        p1, // p1 = [x1, y1] = 8x64bits
+        p2, // p2 = [x2, y2] = 8x64bits
+        p1 // p3 = [x3, y3] = 8x64bits
+    );
+    if (result != 0)
+    {
+        printf("_opcode_bn254_curve_add() failed callilng BN254CurveAddP() result=%d;", result);
+        exit(-1);
+    }
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+    }
+    bn254_curve_add_counter++;
+    if (bn254_curve_add_metrics || emu_verbose)
+    {
+        gettimeofday(&bn254_curve_add_stop, NULL);
+        bn254_curve_add_duration += TimeDiff(bn254_curve_add_start, bn254_curve_add_stop);
+    }
+#endif
+    return 0;
+}
+
+extern int _opcode_bn254_curve_dbl(uint64_t * address)
+{
+#ifdef DEBUG
+    if (bn254_curve_dbl_metrics || emu_verbose) gettimeofday(&bn254_curve_dbl_start, NULL);
+#endif
+    uint64_t * p1 = address;
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("_opcode_bn254_curve_dbl() calling BN254CurveDblP() counter=%lu address=%p p1_address=%p\n", bn254_curve_dbl_counter, address, p1);
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+    }
+#endif
+    int result = BN254CurveDblP (
+        p1, // p1 = [x1, y1] = 8x64bits
+        p1 // p1 = [x1, y1] = 8x64bits
+    );
+    if (result != 0)
+    {
+        printf("_opcode_bn254_curve_dbl() failed callilng BN254CurveDblP() result=%d;", result);
+        exit(-1);
+    }
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+    }
+    bn254_curve_dbl_counter++;
+    if (bn254_curve_dbl_metrics || emu_verbose)
+    {
+        gettimeofday(&bn254_curve_dbl_stop, NULL);
+        bn254_curve_dbl_duration += TimeDiff(bn254_curve_dbl_start, bn254_curve_dbl_stop);
+    }
+#endif
+    return 0;
+}
+
+extern int _opcode_bn254_complex_add(uint64_t * address)
+{
+#ifdef DEBUG
+    if (bn254_complex_add_metrics || emu_verbose) gettimeofday(&bn254_complex_add_start, NULL);
+#endif
+    uint64_t * p1 = (uint64_t *)address[0];
+    uint64_t * p2 = (uint64_t *)address[1];
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("_opcode_bn254_complex_add() calling BN254ComplexAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", bn254_complex_add_counter, address, p1, p2);
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+        printf("p2.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0], p2[3], p2[2], p2[1], p2[0]);
+        printf("p2.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4], p2[7], p2[6], p2[5], p2[4]);
+    }
+#endif
+    int result = BN254ComplexAddP (
+        p1, // p1 = [x1, y1] = 8x64bits
+        p2, // p2 = [x2, y2] = 8x64bits
+        p1 // p3 = [x3, y3] = 8x64bits
+    );
+    if (result != 0)
+    {
+        printf("_opcode_bn254_complex_add() failed callilng BN254ComplexAddP() result=%d;", result);
+        exit(-1);
+    }
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+    }
+    bn254_complex_add_counter++;
+    if (bn254_complex_add_metrics || emu_verbose)
+    {
+        gettimeofday(&bn254_complex_add_stop, NULL);
+        bn254_complex_add_duration += TimeDiff(bn254_complex_add_start, bn254_complex_add_stop);
+    }
+#endif
+    return 0;
+}
+
+extern int _opcode_bn254_complex_sub(uint64_t * address)
+{
+#ifdef DEBUG
+    if (bn254_complex_sub_metrics || emu_verbose) gettimeofday(&bn254_complex_sub_start, NULL);
+#endif
+    uint64_t * p1 = (uint64_t *)address[0];
+    uint64_t * p2 = (uint64_t *)address[1];
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("_opcode_bn254_complex_sub() calling BN254ComplexSubP() counter=%lu address=%p p1_address=%p p2_address=%p\n", bn254_complex_sub_counter, address, p1, p2);
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+        printf("p2.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0], p2[3], p2[2], p2[1], p2[0]);
+        printf("p2.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4], p2[7], p2[6], p2[5], p2[4]);
+    }
+#endif
+    int result = BN254ComplexSubP (
+        p1, // p1 = [x1, y1] = 8x64bits
+        p2, // p2 = [x2, y2] = 8x64bits
+        p1 // p3 = [x3, y3] = 8x64bits
+    );
+    if (result != 0)
+    {
+        printf("_opcode_bn254_complex_sub() failed callilng BN254ComplexSubP() result=%d;", result);
+        exit(-1);
+    }
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+    }
+    bn254_complex_sub_counter++;
+    if (bn254_complex_sub_metrics || emu_verbose)
+    {
+        gettimeofday(&bn254_complex_sub_stop, NULL);
+        bn254_complex_sub_duration += TimeDiff(bn254_complex_sub_start, bn254_complex_sub_stop);
+    }
+#endif
+    return 0;
+}
+
+extern int _opcode_bn254_complex_mul(uint64_t * address)
+{
+#ifdef DEBUG
+    if (bn254_complex_mul_metrics || emu_verbose) gettimeofday(&bn254_complex_mul_start, NULL);
+#endif
+    uint64_t * p1 = (uint64_t *)address[0];
+    uint64_t * p2 = (uint64_t *)address[1];
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("_opcode_bn254_complex_mul() calling BN254ComplexMulP() counter=%lu address=%p p1_address=%p p2_address=%p\n", bn254_complex_mul_counter, address, p1, p2);
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+        printf("p2.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0], p2[3], p2[2], p2[1], p2[0]);
+        printf("p2.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4], p2[7], p2[6], p2[5], p2[4]);
+    }
+#endif
+    int result = BN254ComplexMulP (
+        p1, // p1 = [x1, y1] = 8x64bits
+        p2, // p2 = [x2, y2] = 8x64bits
+        p1 // p3 = [x3, y3] = 8x64bits
+    );
+    if (result != 0)
+    {
+        printf("_opcode_bn254_complex_mul() failed callilng BN254ComplexMulP() result=%d;", result);
+        exit(-1);
+    }
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+    }
+    bn254_complex_mul_counter++;
+    if (bn254_complex_mul_metrics || emu_verbose)
+    {
+        gettimeofday(&bn254_complex_mul_stop, NULL);
+        bn254_complex_mul_duration += TimeDiff(bn254_complex_mul_start, bn254_complex_mul_stop);
+    }
+#endif
     return 0;
 }

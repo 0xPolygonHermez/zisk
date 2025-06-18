@@ -9,12 +9,10 @@ use anyhow::Result;
 use colored::Colorize;
 use executor::Stats;
 use executor::ZiskExecutionResult;
+use fields::Goldilocks;
 use libloading::{Library, Symbol};
-use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
-use proofman_common::{
-    initialize_logger, json_to_debug_instances_map, DebugInfo, ModeName, ParamsGPU, ProofOptions,
-};
+use proofman_common::{json_to_debug_instances_map, DebugInfo, ModeName, ParamsGPU, ProofOptions};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -116,8 +114,6 @@ impl ZiskProve {
 
         println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
         println!();
-
-        initialize_logger(self.verbose.into());
 
         let debug_info = match &self.debug {
             None => DebugInfo::default(),
@@ -234,6 +230,8 @@ impl ZiskProve {
             self.aggregation,
             self.final_snark,
             gpu_params,
+            self.verbose.into(),
+            None,
         )
         .expect("Failed to initialize proofman");
 
@@ -282,28 +280,33 @@ impl ZiskProve {
             };
         }
 
-        let elapsed = start.elapsed();
+        if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
+            let elapsed = start.elapsed();
 
-        let (result, _): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
-            .get_execution_result()
-            .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-            .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
-            .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+            let (result, _): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
+                .get_execution_result()
+                .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
+                .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
+                .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
-        let elapsed = elapsed.as_secs_f64();
-        println!();
-        tracing::info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
-        if let Some(proof_id) = &proof_id {
-            tracing::info!("      Proof ID: {}", proof_id);
-        }
-        tracing::info!("    ► Statistics");
-        tracing::info!("      time: {} seconds, steps: {}", elapsed, result.executed_steps);
+            let elapsed = elapsed.as_secs_f64();
+            tracing::info!("");
+            tracing::info!(
+                "{}",
+                "--- PROVE SUMMARY ------------------------".bright_green().bold()
+            );
+            if let Some(proof_id) = &proof_id {
+                tracing::info!("      Proof ID: {}", proof_id);
+            }
+            tracing::info!("    ► Statistics");
+            tracing::info!("      time: {} seconds, steps: {}", elapsed, result.executed_steps);
 
-        if let Some(proof_id) = proof_id {
-            let logs = proof_log::ProofLog::new(result.executed_steps, proof_id, elapsed);
-            let log_path = self.output_dir.join("result.json");
-            proof_log::ProofLog::write_json_log(&log_path, &logs)
-                .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
+            if let Some(proof_id) = proof_id {
+                let logs = proof_log::ProofLog::new(result.executed_steps, proof_id, elapsed);
+                let log_path = self.output_dir.join("result.json");
+                proof_log::ProofLog::write_json_log(&log_path, &logs)
+                    .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
+            }
         }
 
         Ok(())

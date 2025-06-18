@@ -12,7 +12,7 @@ zisk-core = { path = "../core" }
 
 witness = { workspace = true }
 proofman-common = { workspace = true }
-p3-field = { workspace = true }
+fields = { workspace = true }
 tracing = { workspace = true}
 
 libc = "0.2"

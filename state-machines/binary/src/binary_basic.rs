@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput};
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use std::cmp::Ordering as CmpOrdering;
@@ -134,7 +134,7 @@ impl BinaryBasicSM {
     /// # Returns
     /// A `BinaryTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice<F: PrimeField>(
+    pub fn process_slice<F: PrimeField64>(
         input: &BinaryInput,
         binary_table_sm: &BinaryBasicTableSM,
     ) -> BinaryTraceRow<F> {
@@ -879,7 +879,7 @@ impl BinaryBasicSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<F: PrimeField>(&self, inputs: &[Vec<BinaryInput>]) -> AirInstance<F> {
+    pub fn compute_witness<F: PrimeField64>(&self, inputs: &[Vec<BinaryInput>]) -> AirInstance<F> {
         let mut binary_trace = BinaryTrace::new();
 
         let num_rows = binary_trace.num_rows();

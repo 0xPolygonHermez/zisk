@@ -8,6 +8,13 @@ use core::arch::asm;
 
 use super::point256::SyscallPoint256;
 
+#[derive(Debug)]
+#[repr(C)]
+pub struct SyscallSecp256k1AddParams<'a> {
+    pub p1: &'a mut SyscallPoint256,
+    pub p2: &'a SyscallPoint256,
+}
+
 /// Performs the addition of two points on the Secp256k1 curve, storing the result in the first point.
 ///
 /// The `Secp256k1Add` system call executes a CSR set on a custom port. When transpiling from RISC-V to Zisk,
@@ -21,14 +28,10 @@ use super::point256::SyscallPoint256;
 /// ### Safety
 ///
 /// The caller must ensure that `p1` is a valid pointer to data that is aligned to an eight-byte boundary.
-
-#[derive(Debug)]
-#[repr(C)]
-pub struct SyscallSecp256k1AddParams<'a> {
-    pub p1: &'a mut SyscallPoint256,
-    pub p2: &'a SyscallPoint256,
-}
-
+///
+/// The caller must ensure that both `p1` and `p2` coordinates are within the range of the Secp256k1 base field.
+///
+/// The resulting point will have both coordinates in the range of the Secp256k1 base field.
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn syscall_secp256k1_add(params: &mut SyscallSecp256k1AddParams) {

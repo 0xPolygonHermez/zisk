@@ -25,8 +25,7 @@ proofman-util = { workspace = true }
 witness = { workspace = true }
 pil-std-lib = { workspace = true }
 
-p3-field = { workspace=true }
-p3-goldilocks = { workspace = true }
+fields = { workspace=true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 

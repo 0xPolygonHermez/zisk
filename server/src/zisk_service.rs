@@ -9,8 +9,8 @@ use std::{
 };
 
 use asm_runner::{AsmRunnerOptions, AsmServices};
+use fields::Goldilocks;
 use libloading::{Library, Symbol};
-use p3_goldilocks::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::{DebugInfo, ParamsGPU};
 use serde::{Deserialize, Serialize};
@@ -158,6 +158,8 @@ impl ZiskService {
             false,
             false,
             ParamsGPU::default(),
+            config.verbose.into(),
+            None,
         )
         .expect("Failed to initialize proofman");
 

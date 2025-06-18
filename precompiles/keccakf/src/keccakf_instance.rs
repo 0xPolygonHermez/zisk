@@ -3,9 +3,8 @@
 //!
 //! It manages collected inputs and interacts with the `KeccakfSM` to compute witnesses for
 //! execution plans.
-
 use crate::KeccakfSM;
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{
     any::Any,
