@@ -98,9 +98,9 @@ public:
         context->add_chunk(chunk_data, chunk_size);
     }
     void detach_execute() {
-        // printf("MemCountAndPlan::count_phase\n");
+        printf("MemCountAndPlan::count_phase\n");
         count_phase();
-        // printf("MemCountAndPlan::plan_phase\n");
+        printf("MemCountAndPlan::plan_phase\n");
         plan_phase();
     }
     void execute(void) {
