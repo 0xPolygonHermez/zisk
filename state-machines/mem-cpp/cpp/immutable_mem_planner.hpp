@@ -96,7 +96,6 @@ public:
     ~ImmutableMemPlanner() {
     }
     void execute(const std::vector<MemCounter *> &workers) {
-        uint32_t max_addr;
         uint32_t addr = 0;
         uint32_t offset;
         uint32_t last_offset;
@@ -150,12 +149,12 @@ public:
     }
     void close_last_segment() {
         if (rows_available < rows_by_segment) {
-            close_segment(true);
+            close_segment();
         }/* else if (segments.size() > 0) {
             segments.back()->is_last_segment = true;
         }*/
     }
-    void close_segment(bool last = false) {
+    void close_segment() {
         // current_segment->is_last_segment = last;
         // printf("MemPlanner::close_segment: %d chunks from_page:%d\n", current_segment->chunks.size(), from_page);
         #ifdef SEGMENT_STATS
@@ -176,11 +175,11 @@ public:
         current_segment = new MemSegment(hash_table);
         #endif
     }
-    void open_segment(uint32_t intermediate_skip) {
+    void open_segment() {
         #ifndef MEM_CHECK_POINT_MAP
         limit_pos = (segments.size() + 1) << 16;
         #endif
-        close_segment(false);
+        close_segment();
         if (reference_addr_chunk != NO_CHUNK_ID) {
             #ifdef MEM_CHECK_POINT_MAP
             current_segment->add_or_update(reference_addr_chunk, reference_addr, reference_skip, 0);
@@ -206,7 +205,7 @@ public:
             if (intermediate_rows > 0) {
                 add_next_addr_to_segment(addr);
             }
-            open_segment(intermediate_rows);
+            open_segment();
         }
     }
     void consume_rows(uint32_t addr, uint32_t row_count, uint32_t skip) {
@@ -219,13 +218,14 @@ public:
             throw std::runtime_error(msg.str());
         }
         if (rows_available == 0) {
-            open_segment(0);
+            open_segment();
         }
         add_chunk_to_segment(current_chunk, addr, row_count, skip);
         rows_available -= row_count;
         reference_skip += row_count;
     }
 
+    // TODO: REVIEW remove addr parameter
     void consume_intermediate_rows(uint32_t addr, uint32_t row_count) {
         if (row_count == 0 && rows_available > 0) {
             return;
@@ -236,7 +236,7 @@ public:
             throw std::runtime_error(msg.str());
         }
         if (rows_available == 0) {
-            open_segment(0);
+            open_segment();
         }
         // TODO: REVIEW
         // add_chunk_to_segment(current_chunk, addr, rows, skip);

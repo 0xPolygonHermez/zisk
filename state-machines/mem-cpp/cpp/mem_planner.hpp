@@ -240,7 +240,6 @@ public:
                     }
                     uint32_t cpos = workers[thread_index]->get_initial_pos(pos);
                     while (true) {
-                        uint32_t chunk_id = workers[thread_index]->get_pos_value(cpos);
                         count = workers[thread_index]->get_pos_value(cpos+1);
                         uint32_t initial_count = count;
                         while (count > 0) {

@@ -8,3 +8,8 @@ repository.workspace = true
 categories.workspace = true
 
 build = "build.rs"
+
+[dependencies]
+zisk-common = { path = "../../common" }
+mem-common = { path = "../mem-common" }
+zisk-pil = { path = "../../pil" }

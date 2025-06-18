@@ -1787,8 +1787,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "mem-common"
+version = "0.9.0"
+dependencies = [
+ "num-bigint",
+ "num-traits",
+ "p3-field",
+ "pil-std-lib",
+ "proofman-common",
+ "proofman-macros",
+ "proofman-util",
+ "rayon",
+ "tracing",
+ "witness",
+ "zisk-common",
+ "zisk-core",
+ "zisk-pil",
+]
+
+[[package]]
 name = "mem-planner-cpp"
 version = "0.9.0"
+dependencies = [
+ "mem-common",
+ "zisk-common",
+ "zisk-pil",
+]
 
 [[package]]
 name = "memchr"
@@ -3241,6 +3265,7 @@ dependencies = [
 name = "sm-mem"
 version = "0.9.0"
 dependencies = [
+ "mem-common",
  "mem-planner-cpp",
  "num-bigint",
  "num-traits",

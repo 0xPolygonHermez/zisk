@@ -1,8 +1,12 @@
-use crate::{MemAlignCheckPoint, MemAlignInput, MemAlignSM, MemHelpers};
-use core::panic;
+use crate::{MemAlignInput, MemAlignSM, MemHelpers};
+use mem_common::MemAlignCheckPoint;
+
 use p3_field::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+};
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, MemBusData,
     PayloadType, MEM_BUS_ID,
@@ -59,15 +63,9 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         let meta = self.ictx.plan.meta.as_ref().unwrap();
-        let checkpoint = meta.downcast_ref::<Vec<MemAlignCheckPoint>>().unwrap();
+        let checkpoint = meta.downcast_ref::<HashMap<ChunkId, MemAlignCheckPoint>>().unwrap();
 
-        if let CheckPoint::Multiple(plan_checkpoints) = &self.ictx.plan.check_point {
-            // Find in xxx the idx of the chunk_id
-            let idx = plan_checkpoints.iter().position(|&x| x == chunk_id).unwrap();
-            Some(Box::new(MemAlignCollector::new(&checkpoint[idx])))
-        } else {
-            panic!("Invalid checkpoint type");
-        }
+        Some(Box::new(MemAlignCollector::new(&checkpoint[&chunk_id])))
     }
 }
 

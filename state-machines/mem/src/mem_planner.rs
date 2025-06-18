@@ -15,9 +15,7 @@ use zisk_pil::{
 };
 
 #[cfg(feature = "save_mem_bus_data")]
-use crate::{
-    mem_align_planner::MemAlignCheckPoint, mem_module_planner::MemModuleSegmentCheckPoint,
-};
+use mem_common::{MemAlignCheckPoint, MemModuleSegmentCheckPoint};
 
 use crate::{
     MemAlignPlanner, MemCounters, MemModulePlanner, MemModulePlannerConfig, INPUT_DATA_W_ADDR_INIT,

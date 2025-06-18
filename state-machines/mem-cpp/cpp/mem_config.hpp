@@ -11,6 +11,11 @@
 #define SEGMENT_STATS
 #define SEGMENT_LARGE_CHUNKS 512
 
+#define MEM_TYPES 3
+#define ROM_ID 0
+#define INPUT_ID 1
+#define RAM_ID 2
+
 #define RAM_ROWS (1 << 22)
 #define ROM_ROWS (1 << 21)
 #define INPUT_ROWS (1 << 21)

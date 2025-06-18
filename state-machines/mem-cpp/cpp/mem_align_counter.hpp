@@ -86,8 +86,11 @@ public:
         checkpoints.emplace_back(MemAlignCheckPoint{(uint32_t)segment_id, chunk_id, skip, count, ops, 0});
         available_rows = rows;
     }
-    uint32_t get_instances_count() {
+    uint32_t size() {
         return checkpoints.size();
+    }
+    const MemAlignCheckPoint *get_checkpoints() {
+        return checkpoints.data();
     }
     uint32_t get_elapsed_ms() {
         return elapsed_ms;

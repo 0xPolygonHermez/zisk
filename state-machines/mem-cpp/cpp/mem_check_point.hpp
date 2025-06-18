@@ -2,7 +2,8 @@
 #define __MEM_CHECK_POINT_HPP__
 #include <stdint.h>
 #include "mem_config.hpp"
-class MemCheckPoint {
+
+struct MemCheckPoint {
     public:
         uint32_t chunk_id;
         uint32_t from_addr;
@@ -11,14 +12,13 @@ class MemCheckPoint {
         uint32_t to_count;
         uint32_t count;
     public:
-        MemCheckPoint(uint32_t chunk_id, uint32_t from_addr, uint32_t skip, uint32_t count) : chunk_id(chunk_id),
-            from_addr(from_addr),
-            from_skip(skip),
-            to_addr(from_addr),
-            to_count(count),
-            count(count) {
-        }
-        ~MemCheckPoint() {
+        void set(uint32_t chunk_id, uint32_t from_addr, uint32_t skip, uint32_t count) {
+            this->chunk_id = chunk_id;
+            this->from_addr = from_addr;
+            this->from_skip = skip;
+            this->to_addr = from_addr;
+            this->to_count = count;
+            this->count = count;
         }
         void add_rows(uint32_t addr, uint32_t count) {
             this->count += count;

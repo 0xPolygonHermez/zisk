@@ -43,7 +43,6 @@ private:
     uint32_t max_chunks;
     std::vector<std::thread> plan_threads;
     std::vector<MemCounter *> count_workers;
-    MemAlignCounter *mem_align_counter;
     MemContext *context;
     MemPlanner *quick_mem_planner;
     ImmutableMemPlanner *rom_data_planner;
@@ -54,7 +53,11 @@ private:
     uint64_t t_count_us;
     uint64_t t_prepare_us;
     uint64_t t_plan_us;
+
 public:
+    MemSegments segments[MEM_TYPES];
+    MemAlignCounter *mem_align_counter;
+
     MemCountAndPlan() {
         context = new MemContext();
     }
@@ -123,12 +126,13 @@ public:
         uint64_t init = get_usec();
         std::vector<std::thread> threads;
 
+    
         plan_threads.emplace_back([this](){ quick_mem_planner->generate_locators(count_workers, context->locators);});
         plan_threads.emplace_back([this](){ rom_data_planner->execute(count_workers);});
         plan_threads.emplace_back([this](){ input_data_planner->execute(count_workers);});
-        MemSegments ram_segments;
+        segments[RAM_ID].clear();
         for (int i = 0; i < MAX_MEM_PLANNERS; ++i) {
-            threads.emplace_back([this, i, &ram_segments](){ plan_workers[i].execute_from_locators(count_workers, context->locators, ram_segments);});
+            threads.emplace_back([this, i](){ plan_workers[i].execute_from_locators(count_workers, context->locators, segments[RAM_ID]);});
         }
         for (auto& t : threads) {
             t.join();
@@ -138,16 +142,17 @@ public:
         }
         t_plan_us = (uint32_t) (get_usec() - init);
 
-        MemSegments rom_segments;
-        rom_data_planner->collect_segments(rom_segments);
+        segments[ROM_ID].clear();
+        rom_data_planner->collect_segments(segments[ROM_ID]);
 
-        MemSegments input_segments;
-        input_data_planner->collect_segments(input_segments);
-        ram_segments.debug();
-        rom_segments.debug();
-        input_segments.debug();
+        segments[INPUT_ID].clear();
+        input_data_planner->collect_segments(segments[INPUT_ID]);
+        segments[ROM_ID].debug();
+        segments[INPUT_ID].debug();
+        segments[RAM_ID].debug();
         mem_align_counter->debug();
     }
+
     void stats() {
         uint32_t tot_used_slots = 0;
         for (size_t i = 0; i < MAX_THREADS; ++i) {
@@ -224,24 +229,25 @@ void wait_mem_count_and_plan(MemCountAndPlan *mcp)
     mcp->wait();
 }
 
-uint32_t get_mem_segment_count(MemCountAndPlan *mcp)
+uint32_t get_segment_count(MemCountAndPlan *mcp, uint32_t mem_id)
 {
-    return 0;
+    return mcp->segments[mem_id].size();
 }
 
-MemCheckPoint *get_mem_segment_check_point(MemCountAndPlan *mcp, uint32_t segment_id, uint32_t &count)
+const MemCheckPoint *get_segment_check_point(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id, uint32_t &count)
 {
-    return nullptr;
+    auto segment = mcp->segments[mem_id].get(segment_id);
+    count = segment ? segment->size() : 0;
+    return segment->get_chunks();
 }
 
-uint32_t get_mem_align_segment_count(MemCountAndPlan *mcp)
+const MemAlignCheckPoint *get_mem_align_check_point(MemCountAndPlan *mcp, uint32_t &count)
 {
-    return 0;
-}
-
-MemAlignCheckPoint *get_mem_align_segment_check_point(MemCountAndPlan *mcp, uint32_t segment_id, uint32_t &count)
-{
-    return nullptr;
+    count = mcp->mem_align_counter->size();
+    if (count == 0) {
+        return nullptr;
+    }
+    return mcp->mem_align_counter->get_checkpoints();
 }
 
 #endif
