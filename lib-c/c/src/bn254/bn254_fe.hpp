@@ -1,8 +1,9 @@
-#ifndef BN254_HPP
-#define BN254_HPP
+#ifndef BN254_FE_HPP
+#define BN254_FE_HPP
 
 #include <stdint.h>
 #include "../ffiasm/fq.hpp"
+#include "../common/globals.hpp"
 
 #ifdef __cplusplus
 extern "C" {

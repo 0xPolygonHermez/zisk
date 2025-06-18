@@ -1281,7 +1281,7 @@ void client_setup (void)
     if ((gen_method == ChunkPlayerMTCollectMem) || (gen_method == ChunkPlayerMemReadsCollectMain))
     {
         // Create the output shared memory
-        shmem_mt_fd = shm_open(shmem_mt_name, O_RDONLY, 0644);
+        shmem_mt_fd = shm_open(shmem_mt_name, O_RDONLY, 0666);
         if (shmem_mt_fd < 0)
         {
             printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_mt_name, errno, strerror(errno));
@@ -1380,7 +1380,7 @@ void client_run (void)
         }
 
         // Open input shared memory
-        shmem_input_fd = shm_open(shmem_input_name, O_RDWR, 0644);
+        shmem_input_fd = shm_open(shmem_input_name, O_RDWR, 0666);
         if (shmem_input_fd < 0)
         {
             printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
@@ -2248,6 +2248,7 @@ void server_setup (void)
             exit(-1);
         }
         if (verbose) printf("mmap(rom) mapped %ld B and returned address %p in %lu us\n", ROM_SIZE, pRom, duration);
+        if (verbose) system("ls -l /dev/shm/*ZISK*");
     }
 
     /*********/
@@ -2302,7 +2303,7 @@ void server_setup (void)
             exit(-1);
         }
         if (verbose) printf("mmap(input) mapped %lu B and returned address %p in %lu us\n", MAX_INPUT_SIZE, pInput, duration);
-
+        if (verbose) system("ls -l /dev/shm/*ZISK*");
     }
 
     /*******/
@@ -2334,7 +2335,7 @@ void server_setup (void)
             exit(-1);
         }
         if (verbose) printf("mmap(ram) mapped %lu B and returned address %p in %lu us\n", RAM_SIZE, pRam, duration);
-
+        if (verbose) system("ls -l /dev/shm/*ZISK*");
     }
 
     /****************/
@@ -2430,6 +2431,7 @@ void server_setup (void)
             exit(-1);
         }
         if (verbose) printf("mmap(trace) mapped %lu B and returned address %p in %lu us\n", trace_size, pTrace, duration);
+        if (verbose) system("ls -l /dev/shm/*ZISK*");
 
         trace_address = (uint64_t)pTrace;
         pOutputTrace = pTrace;
@@ -2443,7 +2445,7 @@ void server_setup (void)
     if ((gen_method == ChunkPlayerMTCollectMem) || (gen_method == ChunkPlayerMemReadsCollectMain))
     {
         // Create the output shared memory
-        shmem_mt_fd = shm_open(shmem_mt_name, O_RDONLY, 0644);
+        shmem_mt_fd = shm_open(shmem_mt_name, O_RDONLY, 0666);
         if (shmem_mt_fd < 0)
         {
             printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_mt_name, errno, strerror(errno));
@@ -2476,6 +2478,7 @@ void server_setup (void)
             exit(-1);
         }
         if (verbose) printf("mmap(MT) returned %p in %lu us\n", pTrace, duration);
+        if (verbose) system("ls -l /dev/shm/*ZISK*");
     }
 
     /******************/
@@ -2493,6 +2496,8 @@ void server_setup (void)
             fflush(stderr);
             exit(-1);
         }
+        if (verbose) printf("sem_open(chunk_done) succeeded\n");
+        if (verbose) system("ls -l /dev/shm/*ZISK*");
     }
 }
 
