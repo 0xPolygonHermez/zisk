@@ -25,6 +25,14 @@ Install all required dependencies with:
 sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common libclang-dev clang
 ```
 
+ZisK uses shared memory to exchange data between processes.  The system must be configured to allow enough locked memory per process:
+```text
+$ ulimit -l
+unlimited
+```
+A way to achieve it is to edit the file `/etc/systemd/system.conf` and add the line `DefaultLimitMEMLOCK=infinity`.
+
+
 ## Installing ZisK
 
 ### Option 1: Prebuilt Binaries (Recommended)
