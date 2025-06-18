@@ -867,7 +867,13 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                                 secn_instances.insert(global_id, secn_instance);
                                 self.witness_collect_instances(secn_instances);
                             }
-                            self.witness_secn_instance(&pctx, &sctx, global_id, secn_instance, witness_buffer.remove(0));
+                            self.witness_secn_instance(
+                                &pctx,
+                                &sctx,
+                                global_id,
+                                secn_instance,
+                                witness_buffer.remove(0),
+                            );
                         }
                         InstanceType::Table => {
                             self.witness_table(&pctx, &sctx, global_id, secn_instance, Vec::new())
