@@ -40,19 +40,23 @@ const MO_ASM_SERVICE_DEFAULT_PORT: u16 = 23117;
 pub struct AsmServices;
 
 impl AsmServices {
-    pub fn start_asm_services(ziskemuasm_path: &Path, options: AsmRunnerOptions) -> Result<()> {
+    const SERVICES: [AsmService; 1] = [
+        AsmService::MT,
+        // AsmService::RH,
+        // AsmService::MO,
+    ];
+
+    pub fn start_asm_services(
+        ziskemuasm_path: &Path,
+        options: AsmRunnerOptions,
+        rank: Option<i32>,
+    ) -> Result<()> {
         // ! TODO Remove this when we have a proper way to find the path
         let path_str = ziskemuasm_path.to_string_lossy();
         let trimmed_path = &path_str[..path_str.len().saturating_sub(7)];
 
-        let services = [
-            AsmService::MT,
-            // AsmService::RH,
-            // AsmService::MO,
-        ];
-
         // Check if a service is already running
-        for service in &services {
+        for service in &Self::SERVICES {
             let port = Self::port_for(service);
             let addr = format!("127.0.0.1:{}", port);
 
@@ -70,17 +74,17 @@ impl AsmServices {
 
         let start = std::time::Instant::now();
 
-        for service in &services {
-            Self::start_asm_service(service, trimmed_path, &options);
+        for service in &Self::SERVICES {
+            Self::start_asm_service(service, trimmed_path, &options, rank.unwrap_or(0));
         }
 
-        for service in &services {
+        for service in &Self::SERVICES {
             let port = Self::port_for(service);
             Self::wait_for_service_ready(service, port);
         }
 
         // Ping status for all services
-        for service in &services {
+        for service in &Self::SERVICES {
             Self::send_status_request(service)
                 .with_context(|| format!("Service {} failed to respond to ping", service))?;
         }
@@ -89,6 +93,24 @@ impl AsmServices {
             "All ASM services are ready. Time taken: {} seconds",
             start.elapsed().as_secs_f32()
         );
+
+        Ok(())
+    }
+
+    pub fn stop_asm_services() -> Result<()> {
+        // Check if a service is already running
+        for service in &Self::SERVICES {
+            let port = Self::port_for(service);
+            let addr = format!("127.0.0.1:{}", port);
+
+            if TcpStream::connect(&addr).is_ok() {
+                tracing::info!("Shutting down service {} running on {}.", service, addr);
+
+                Self::send_shutdown_request(service).with_context(|| {
+                    format!("Service {} failed to respond to shutdown", service)
+                })?;
+            }
+        }
 
         Ok(())
     }
@@ -111,16 +133,23 @@ impl AsmServices {
         panic!("Timeout: service `{}` not ready on {}", service, addr);
     }
 
-    fn start_asm_service(asm_service: &AsmService, trimmed_path: &str, options: &AsmRunnerOptions) {
+    fn start_asm_service(
+        asm_service: &AsmService,
+        trimmed_path: &str,
+        options: &AsmRunnerOptions,
+        rank: i32,
+    ) {
         // Prepare command
         let command_path = trimmed_path.to_string() + &format!("-{}.bin", asm_service);
 
         let mut command = Command::new(command_path);
 
+        let prefix = format!("ZISK_{}", rank);
+        command.arg("--shm_prefix").arg(prefix);
+
         match asm_service {
             AsmService::MT => {
                 command.arg("--generate_minimal_trace");
-                command.arg("--shm_prefix").arg("ZISK");
             }
             AsmService::RH => {
                 command.arg("--generate_rom_histogram");

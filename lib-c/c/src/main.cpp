@@ -166,5 +166,354 @@ int main(int argc, char *argv[])
         printf("SqrtFpEcParity() duration=%lu TP = %f Mcalls/sec\n", duration, tp);
     }
 
-    return 0;
+    /**************/
+    /* BN254FpInv */
+    /**************/
+
+    {
+        uint64_t x[4] = {1, 0, 0, 0};
+        uint64_t expected_result[4] = {1, 0, 0, 0};
+        uint64_t result[4] = {0, 0, 0, 0};
+        int iresult = BN254FpInv (x, result);
+        if ( (result[0] != expected_result[0]) ||
+             (result[1] != expected_result[1]) ||
+             (result[2] != expected_result[2]) ||
+             (result[3] != expected_result[3]) )
+        {
+            printf("ERROR! BN254FpInv(1) returned unexpected result\n");
+            printf("result =\n[%lu, %lu, %lu, %lu] = [0x%lx, 0x%lx, 0x%lx, 0x%lx]\n",
+                result[0], result[1], result[2], result[3],
+                result[0], result[1], result[2], result[3]);
+            printf("expected_result =\n[%lu, %lu, %lu, %lu] = [0x%lx, 0x%lx, 0x%lx, 0x%lx]\n",
+                expected_result[0], expected_result[1], expected_result[2], expected_result[3],
+                expected_result[0], expected_result[1], expected_result[2], expected_result[3]);
+        }
+        else
+        {
+            printf("BN254FpInv(1) succeeded\n");
+        }
+    }
+
+    {
+        uint64_t x[4] = {0xf9ee4256a589409f, 0xa21a3985f17502d0, 0xb3eb393d00dc480c, 0x142def02c537eced};
+        uint64_t expected_result[4] = {0x7258dab6e90d1680, 0x779f7ec5cad25c1d, 0xb9c114d250bcaa3c, 0x2525db1f6832d97d};
+        uint64_t result[4] = {0, 0, 0, 0};
+        int iresult = BN254FpInv (x, result);
+        if ( (result[0] != expected_result[0]) ||
+             (result[1] != expected_result[1]) ||
+             (result[2] != expected_result[2]) ||
+             (result[3] != expected_result[3]) )
+        {
+            printf("ERROR! BN254FpInv() returned unexpected result\n");
+            printf("input =\n[%lu, %lu, %lu, %lu] = [0x%lx, 0x%lx, 0x%lx, 0x%lx]\n",
+                x[0], x[1], x[2], x[3],
+                x[0], x[1], x[2], x[3]);
+            printf("result =\n[%lu, %lu, %lu, %lu] = [0x%lx, 0x%lx, 0x%lx, 0x%lx]\n",
+                result[0], result[1], result[2], result[3],
+                result[0], result[1], result[2], result[3]);
+            printf("expected_result =\n[%lu, %lu, %lu, %lu] = [0x%lx, 0x%lx, 0x%lx, 0x%lx]\n",
+                expected_result[0], expected_result[1], expected_result[2], expected_result[3],
+                expected_result[0], expected_result[1], expected_result[2], expected_result[3]);
+        }
+        else
+        {
+            printf("BN254FpInv() succeeded\n");
+        }
+    }
+
+    {
+        uint64_t a[4] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
+        uint64_t r[4] = {0, 0, 0, 0};
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<1000000; i++)
+        {
+            int result = BN254FpInv(a, r);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(1000000)/duration;
+        printf("BN254FpInv() duration=%lu TP = %f Mcalls/sec\n", duration, tp);
+    }
+
+    /*******************/
+    /* BN254ComplexInv */
+    /*******************/
+
+    {
+        uint64_t x[8] = {1, 0, 0, 0, 0, 0, 0, 0};
+        uint64_t expected_result[8] = {1, 0, 0, 0, 0, 0, 0, 0};
+        uint64_t result[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+        int iresult = BN254ComplexInv (x, result);
+        if ( (result[0] != expected_result[0]) ||
+             (result[1] != expected_result[1]) ||
+             (result[2] != expected_result[2]) ||
+             (result[3] != expected_result[3]) ||
+             (result[4] != expected_result[4]) ||
+             (result[5] != expected_result[5]) ||
+             (result[6] != expected_result[6]) ||
+             (result[7] != expected_result[7]) )
+        {
+            printf("ERROR! BN254ComplexInv(1) returned unexpected result\n");
+            printf("result =\n[%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu] = [0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n",
+                result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7],
+                result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7]);
+            printf("expected_result =\n[%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu] = [0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n",
+                expected_result[0], expected_result[1], expected_result[2], expected_result[3], expected_result[4], expected_result[5], expected_result[6], expected_result[7],
+                expected_result[0], expected_result[1], expected_result[2], expected_result[3], expected_result[4], expected_result[5], expected_result[6], expected_result[7]);
+        }
+        else
+        {
+            printf("BN254ComplexInv(1) succeeded\n");
+        }
+    }
+
+    {
+        uint64_t x[8] = {
+            0xa4528921da9661b8,
+            0xc13514a2f09d4f06,
+            0x52406705a0d612b8,
+            0x2b02b26b72efef38,
+            0xb64cd3ecb5b08b28,
+            0xe29c6143da89de45,
+            0xdfa4f8b46115f7f6,
+            0x17abb41fc8d1b2c7
+        };
+        uint64_t expected_result[8] = {
+            0x163d11f5aa617bfc,
+            0x825bc78934e518e5,
+            0x31485988143cff2e,
+            0x0551d3643b94a0ba,
+            0xbd2738b4b0c67843,
+            0xbed5ac50b31d3cef,
+            0x516d2e7c293eef52,
+            0x302d79e76ed154c1
+        };
+        uint64_t result[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+        int iresult = BN254ComplexInv (x, result);
+        if ( (result[0] != expected_result[0]) ||
+             (result[1] != expected_result[1]) ||
+             (result[2] != expected_result[2]) ||
+             (result[3] != expected_result[3]) ||
+             (result[4] != expected_result[4]) ||
+             (result[5] != expected_result[5]) ||
+             (result[6] != expected_result[6]) ||
+             (result[7] != expected_result[7]) )
+        {
+            printf("ERROR! BN254ComplexInv() returned unexpected result\n");
+            printf("result =\n[%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu] = [0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n",
+                result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7],
+                result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7]);
+            printf("expected_result =\n[%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu] = [0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n",
+                expected_result[0], expected_result[1], expected_result[2], expected_result[3], expected_result[4], expected_result[5], expected_result[6], expected_result[7],
+                expected_result[0], expected_result[1], expected_result[2], expected_result[3], expected_result[4], expected_result[5], expected_result[6], expected_result[7]);
+        }
+        else
+        {
+            printf("BN254ComplexInv() succeeded\n");
+        }
+    }
+
+    {
+        uint64_t a[8] = {(uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand(), (uint64_t)rand()};
+        uint64_t r[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<1000000; i++)
+        {
+            int result = BN254ComplexInv(a, r);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(1000000)/duration;
+        printf("BN254ComplexInv() duration=%lu TP = %f Mcalls/sec\n", duration, tp);
+    }
+
+    /***************************/
+    /* BN254TwistAddLineCoeffs */
+    /***************************/
+
+    {
+        uint64_t input[32] = {
+            // p
+            0x66f0731159b54cd6,
+            0xb630013739a5a053,
+            0x31045e15f3a54bc2,
+            0x214275f5c7d57155,
+            0xfaf80b929d13179a,
+            0xf63689aef8ecc6ff,
+            0x26ffe67c5b2f3a49,
+            0x04d4ad74230d1e83,
+            0x46246b07a2ce41fd,
+            0x65cd5922607deeee,
+            0xe4ae145fac34c502,
+            0x1e977a2280041e87,
+            0x20ca11200df6b3c4,
+            0x00bed9e88dfb7f8d,
+            0x735adb5c7981edda,
+            0x226adef094e4c626,
+            
+            // q
+            0x4b70ada95bc43412,
+            0x38f6cc990d30c020,
+            0xca7d1f2becd3258a,
+            0x2f9041da70888180,
+            0x8d940679d41b2409,
+            0xb28d0f4c5ea7672c,
+            0xaa05b19dfad3217a,
+            0x04ff3ef00c3f7d32,
+            0x0cf3024d5172b33a,
+            0xb3f5b354255ea1ee,
+            0x70f37619880ce080,
+            0x0e35dfd0b8edaa9c,
+            0xf0e610b9d6ba7228,
+            0x8d4202db12ceed20,
+            0xdab0c37f22e05f42,
+            0x172945c562cea2c7
+        };
+        uint64_t expected_result[16] = {
+            // lambda
+            0x70a3dd9659d4661d,
+            0x272dad27777b65c9,
+            0x0d3ed5d3d8417100,
+            0x28b3fb64bf5e0593,
+            0x84591f2f3fcbbf52,
+            0x14fd5d4745900016,
+            0xf620661dd1c5db97,
+            0x0352e891aa056e3a,
+
+            // mu
+            0x7ae5d34cb3796d62,
+            0x72e9885302380fda,
+            0x90ba3e6a5edbad26,
+            0x0da370e47b9854d6,
+            0x337d5300e9a1f793,
+            0x8e74c5f9836fb364,
+            0x9207b0b313b312b5,
+            0x263c38b6fef528c5
+        };
+        uint64_t result[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+        BN254TwistAddLineCoeffs(input, result);
+
+        bool failed = false;
+        for (uint64_t i=0; i<16; i++)
+        {
+            if (result[i] != expected_result[i])
+            {
+                printf("ERROR! BN254TwistAddLineCoeffs() returned unexpected result\n");
+                printf("result =\n[0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n",
+                    result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7],
+                    result[8], result[9], result[10], result[11], result[12], result[13], result[14], result[15]);
+                printf("expected_result =\n[0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n",
+                    expected_result[0], expected_result[1], expected_result[2], expected_result[3], expected_result[4], expected_result[5], expected_result[6], expected_result[7],
+                    expected_result[8], expected_result[9], expected_result[10], expected_result[11], expected_result[12], expected_result[13], expected_result[14], expected_result[15]);
+                failed = true;
+                break;
+            }
+        }
+        if (!failed) printf("BN254TwistAddLineCoeffs() succeeded\n");
+    }
+
+    {
+        uint64_t a[32];
+        for (uint64_t i=0; i<32; i++) { a[i] = (uint64_t)rand(); }
+        uint64_t r[16];
+        for (uint64_t i=0; i<16; i++) { r[i] = 0; }
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<1000000; i++)
+        {
+            int result = BN254TwistAddLineCoeffs(a, r);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(1000000)/duration;
+        printf("BN254TwistAddLineCoeffs() duration=%lu TP = %f Mcalls/sec\n", duration, tp);
+    }
+
+    /***************************/
+    /* BN254TwistDblLineCoeffs */
+    /***************************/
+
+    {
+        uint64_t input[16] = {
+            // p
+            0x66f0731159b54cd6,
+            0xb630013739a5a053,
+            0x31045e15f3a54bc2,
+            0x214275f5c7d57155,
+            0xfaf80b929d13179a,
+            0xf63689aef8ecc6ff,
+            0x26ffe67c5b2f3a49,
+            0x04d4ad74230d1e83,
+            0x46246b07a2ce41fd,
+            0x65cd5922607deeee,
+            0xe4ae145fac34c502,
+            0x1e977a2280041e87,
+            0x20ca11200df6b3c4,
+            0x00bed9e88dfb7f8d,
+            0x735adb5c7981edda,
+            0x226adef094e4c626
+        };
+        uint64_t expected_result[16] = {
+            // lambda
+            0xfa23df0596bf5ac0,
+            0x1d60eabc30697e27,
+            0xde847f8d09ff3261,
+            0x0d2b35469ba57c1a,
+            0x0e441461c8b02f6c,
+            0x43ea3964b1f2af60,
+            0x371d248d3d09e45f,
+            0x260ac06e4d6faf7d,
+
+            // mu
+            0xf1e9e54da61ae409,
+            0x1473486505dd6aeb,
+            0xb6cb8f0ad3d51eea,
+            0x2e6234f03865fd67,
+            0xab884e4411c6b07b,
+            0x0fafd74a66389f1c,
+            0x9b91b3503e4834d0,
+            0x0bb2e0552b697667,
+        };
+        uint64_t result[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+        BN254TwistDblLineCoeffs(input, result);
+
+        bool failed = false;
+        for (uint64_t i=0; i<16; i++)
+        {
+            if (result[i] != expected_result[i])
+            {
+                printf("ERROR! BN254TwistDblLineCoeffs() returned unexpected result\n");
+                printf("result =\n[0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n",
+                    result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7],
+                    result[8], result[9], result[10], result[11], result[12], result[13], result[14], result[15]);
+                printf("expected_result =\n[0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n",
+                    expected_result[0], expected_result[1], expected_result[2], expected_result[3], expected_result[4], expected_result[5], expected_result[6], expected_result[7],
+                    expected_result[8], expected_result[9], expected_result[10], expected_result[11], expected_result[12], expected_result[13], expected_result[14], expected_result[15]);
+                failed = true;
+                break;
+            }
+        }
+        if (!failed) printf("BN254TwistDblLineCoeffs() succeeded\n");
+    }
+
+    {
+        uint64_t a[32];
+        for (uint64_t i=0; i<32; i++) { a[i] = (uint64_t)rand(); }
+        uint64_t r[16];
+        for (uint64_t i=0; i<16; i++) { r[i] = 0; }
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<1000000; i++)
+        {
+            int result = BN254TwistDblLineCoeffs(a, r);
+        }
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(1000000)/duration;
+        printf("BN254TwistDblLineCoeffs() duration=%lu TP = %f Mcalls/sec\n", duration, tp);
+    }
 }

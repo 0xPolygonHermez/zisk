@@ -83,16 +83,18 @@ impl AsmRunnerMT {
         max_steps: u64,
         chunk_size: u64,
         task_factory: TaskFactory<T>,
+        rank: i32,
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
-        const SHMEM_INPUT_NAME: &str = "ZISK_MT_input";
-        const SHMEM_OUTPUT_NAME: &str = "ZISK_MT_output";
-        const SEM_CHUNK_DONE_NAME: &str = "/ZISK_MT_chunk_done";
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
-        let mut sem_chunk_done = NamedSemaphore::create(SEM_CHUNK_DONE_NAME, 0)
-            .map_err(|e| AsmRunError::SemaphoreError(SEM_CHUNK_DONE_NAME, e))?;
+        let shmem_input_name = format!("ZISK_{}_MT_input", rank);
+        let shmem_output_name = format!("ZISK_{}_MT_output", rank);
+        let sem_chunk_done_name = format!("/ZISK_{}_MT_chunk_done", rank);
 
-        Self::write_input(inputs_path, SHMEM_INPUT_NAME);
+        let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
+            .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name, e))?;
+
+        Self::write_input(inputs_path, &shmem_input_name);
 
         let start = Instant::now();
 
@@ -106,7 +108,7 @@ impl AsmRunnerMT {
         let mut chunk_id = ChunkId(0);
 
         // Read the header data
-        let header_ptr = Self::get_output_ptr(SHMEM_OUTPUT_NAME) as *const AsmMTHeader;
+        let header_ptr = Self::get_output_ptr(&shmem_output_name) as *const AsmMTHeader;
 
         // Skips the header size to get the data pointer.
         let data_ptr = unsafe { header_ptr.add(1) } as *const u64;
@@ -187,7 +189,7 @@ impl AsmRunnerMT {
             .collect::<std::result::Result<_, _>>()?;
 
         Ok((
-            AsmRunnerMT::new(SHMEM_OUTPUT_NAME.to_string(), header_ptr as *mut c_void, emu_traces),
+            AsmRunnerMT::new(shmem_output_name.to_string(), header_ptr as *mut c_void, emu_traces),
             tasks,
         ))
     }

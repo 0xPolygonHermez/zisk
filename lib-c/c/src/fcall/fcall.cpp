@@ -342,10 +342,11 @@ int BN254ComplexInv (
     array2fe(a, real);
     array2fe(a + 4, imaginary);
 
-    BN254ComplexInvFe(real, imaginary, real, imaginary);
+    RawFq::Element r_real, r_imaginary;
+    BN254ComplexInvFe(real, imaginary, r_real, r_imaginary);
 
-    fe2array(real, r);
-    fe2array(imaginary, r + 4);
+    fe2array(r_real, r);
+    fe2array(r_imaginary, r + 4);
 
     return 0;
 }

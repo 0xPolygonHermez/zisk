@@ -207,6 +207,7 @@ impl ZiskStats {
                     self.asm.clone(),
                     asm_rom,
                     sha256f_script,
+                    Some(rank),
                 )
                 .expect("Failed to initialize witness library");
 
