@@ -102,6 +102,8 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     #[allow(clippy::type_complexity)]
     collectors_by_instance: RwLock<HashMap<usize, (Stats, Vec<(usize, Box<dyn BusDevice<u64>>)>)>>,
     stats: Mutex<Vec<(usize, usize, Stats)>>,
+
+    rank: Option<i32>,
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
@@ -125,6 +127,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         std: Arc<Std<F>>,
         sm_bundle: BD,
         rom_sm: Option<Arc<RomSM>>,
+        rank: Option<i32>,
     ) -> Self {
         Self {
             rom_path,
@@ -142,6 +145,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             sm_bundle,
             rom_sm,
             stats: Mutex::new(Vec::new()),
+            rank,
         }
     }
 
@@ -272,6 +276,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             Self::MIN_TRACE_SIZE,
             // asm_runner::AsmRunnerOptions::default(),
             task_factory,
+            self.rank.unwrap_or(0),
         )
         .expect("Error during ASM execution");
 

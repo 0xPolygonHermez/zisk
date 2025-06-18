@@ -58,23 +58,25 @@ impl AsmRunnerMO {
         inputs_path: &Path,
         max_steps: u64,
         chunk_size: u64,
+        rank: i32,
     ) -> Result<(Vec<u64>, Vec<u64>)> {
         // ) -> Result<(Vec<Vec<MemCheckPoint>>, Vec<Vec<MemAlignCheckPoint>>)> {
-        const SHMEM_INPUT_NAME: &str = "ZISKMO_input";
-        const SHMEM_OUTPUT_NAME: &str = "ZISKMO_output";
-        const SEM_CHUNK_DONE_NAME: &str = "/ZISKMO_chunk_done";
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
-        let mut sem_chunk_done = NamedSemaphore::create(SEM_CHUNK_DONE_NAME, 0)
-            .map_err(|e| AsmRunError::SemaphoreError(SEM_CHUNK_DONE_NAME, e))?;
+        let shmem_input_name = format!("ZISK_{}_MO_input", rank);
+        let shmem_output_name = format!("ZISK_{}_MO_output", rank);
+        let sem_chunk_done_name = format!("/ZISK_{}_MO_chunk_done", rank);
 
-        Self::write_input(inputs_path, SHMEM_INPUT_NAME);
+        let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
+            .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name, e))?;
+
+        Self::write_input(inputs_path, &shmem_input_name);
 
         let handle =
             std::thread::spawn(move || AsmServices::send_memory_ops_request(max_steps, chunk_size));
 
         // Read the header data
-        let header_ptr = Self::get_output_ptr(SHMEM_OUTPUT_NAME) as *const AsmMOHeader;
+        let header_ptr = Self::get_output_ptr(&shmem_output_name) as *const AsmMOHeader;
         let header = unsafe { std::ptr::read(header_ptr) };
 
         // Skips the header size to get the data pointer.
@@ -142,7 +144,7 @@ impl AsmRunnerMO {
         unsafe {
             shmem_utils::unmap(header_ptr as *mut c_void, header.mt_allocated_size as usize);
         }
-        let c_name = std::ffi::CString::new(SHMEM_OUTPUT_NAME).expect("CString::new failed");
+        let c_name = std::ffi::CString::new(shmem_output_name).expect("CString::new failed");
         unsafe {
             if shm_unlink(c_name.as_ptr()) != 0 {
                 error!("shm_unlink failed: {:?}", std::io::Error::last_os_error());
