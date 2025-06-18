@@ -1796,9 +1796,9 @@ dependencies = [
 name = "mem-common"
 version = "0.9.0"
 dependencies = [
+ "fields",
  "num-bigint",
  "num-traits",
- "p3-field",
  "pil-std-lib",
  "proofman-common",
  "proofman-macros",
@@ -3116,6 +3116,7 @@ name = "sm-mem"
 version = "0.9.0"
 dependencies = [
  "fields",
+ "mem-common",
  "mem-planner-cpp",
  "num-bigint",
  "num-traits",
