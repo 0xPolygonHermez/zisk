@@ -778,7 +778,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         used_rows: usize,
     ) -> AirInstance<F> {
         let mut trace = MemAlignTrace::<F>::new();
-        let mut reg_range_check = [0u32; 1 << CHUNK_BITS];
+        let mut reg_range_check = vec![0u32; 1 << CHUNK_BITS];
 
         let num_rows = trace.num_rows();
 
@@ -838,7 +838,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         mem_align_rom_sm.update_padding_row(padding_size as u64);
 
         reg_range_check[0] += CHUNK_NUM as u32 * padding_size as u32;
-        self.update_std_range_check(reg_range_check.to_vec());
+        self.update_std_range_check(reg_range_check);
 
         AirInstance::new_from_trace(FromTrace::new(&mut trace))
     }
