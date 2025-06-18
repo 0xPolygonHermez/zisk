@@ -472,10 +472,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(
-        &self,
-        inputs: &[Vec<Sha256fInput>],
-    ) -> AirInstance<F> {
+    pub fn compute_witness(&self, inputs: &[Vec<Sha256fInput>]) -> AirInstance<F> {
         timer_start_trace!(SHA256F_TRACE);
         let mut sha256f_trace = Sha256fTrace::new_zeroes();
         let num_rows = sha256f_trace.num_rows();
