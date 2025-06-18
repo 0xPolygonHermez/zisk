@@ -94,9 +94,6 @@ pub struct ZiskProve {
     #[clap(short = 'n', long)]
     pub number_threads_witness: Option<usize>,
 
-    #[clap(short = 'm', long)]
-    pub max_number_witness_pools: Option<usize>,
-
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
@@ -215,9 +212,6 @@ impl ZiskProve {
         }
         if self.number_threads_witness.is_some() {
             gpu_params.with_number_threads_pools_witness(self.number_threads_witness.unwrap());
-        }
-        if self.max_number_witness_pools.is_some() {
-            gpu_params.with_max_number_witness_pools(self.max_number_witness_pools.unwrap());
         }
         if self.max_witness_stored.is_some() {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
