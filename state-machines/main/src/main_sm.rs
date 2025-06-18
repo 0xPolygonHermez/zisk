@@ -157,9 +157,7 @@ impl MainSM {
         // In padding row must be clear of registers access, if not need to calculate previous
         // register step and range check conntribution
         let last_row = main_trace.buffer[filled_rows - 1];
-        main_trace.buffer[filled_rows..num_rows]
-            .par_iter_mut()
-            .for_each(|row| *row = last_row);
+        main_trace.buffer[filled_rows..num_rows].par_iter_mut().for_each(|row| *row = last_row);
 
         // Determine the last row of the previous segment
         let prev_segment_last_c = if start_idx > 0 {

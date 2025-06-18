@@ -112,14 +112,14 @@ impl<F: PrimeField64> BinaryAddSM<F> {
 
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
         flat_inputs
-        .into_par_iter()
-        .zip(trace_rows.par_iter_mut())
-        .zip(range_checks.par_iter_mut())
-        .for_each(|((input, trace_row), range_check)| {
-            let (row, checks) = self.process_slice(input);
-            *trace_row = row;
-            *range_check = checks;
-        });
+            .into_par_iter()
+            .zip(trace_rows.par_iter_mut())
+            .zip(range_checks.par_iter_mut())
+            .for_each(|((input, trace_row), range_check)| {
+                let (row, checks) = self.process_slice(input);
+                *trace_row = row;
+                *range_check = checks;
+            });
 
         let mut multiplicities = vec![0u32; 0xFFFF + 1];
         for range_check in range_checks {
