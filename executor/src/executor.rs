@@ -22,7 +22,7 @@
 use asm_runner::{AsmRunnerMT, MinimalTraces, Task, TaskFactory};
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{create_pool, ProofCtx, SetupCtx};
+use proofman_common::{create_pool, BufferPool, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::gen_elf_hash;
 use sm_rom::RomSM;
@@ -831,7 +831,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         sctx: Arc<SetupCtx<F>>,
         global_ids: &[usize],
         n_cores: usize,
-        witness_buffer: &mut Vec<Vec<F>>,
+        buffer_pool: &dyn BufferPool<F>,
     ) {
         if stage != 1 {
             return;
@@ -845,13 +845,13 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                 if MAIN_AIR_IDS.contains(&air_id) {
                     let main_instance = &self.main_instances.read().unwrap()[&global_id];
 
-                    self.witness_main_instance(&pctx, main_instance, witness_buffer.remove(0));
+                    self.witness_main_instance(&pctx, main_instance, buffer_pool.take_buffer());
                 } else {
                     let secn_instance = &self.secn_instances.read().unwrap()[&global_id];
 
                     match secn_instance.instance_type() {
                         InstanceType::Instance => {
-                            self.witness_secn_instance(&pctx, &sctx, global_id, secn_instance, witness_buffer.remove(0))
+                            self.witness_secn_instance(&pctx, &sctx, global_id, secn_instance, buffer_pool.take_buffer())
                         }
                         InstanceType::Table => {
                             self.witness_table(&pctx, &sctx, global_id, secn_instance, Vec::new())

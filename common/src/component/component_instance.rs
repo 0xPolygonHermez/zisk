@@ -260,7 +260,7 @@ macro_rules! table_instance_array {
                         }
                     });
 
-                    Some(AirInstance::new(TraceInfo::new(trace.airgroup_id, trace.air_id, buffer)))
+                    Some(AirInstance::new(TraceInfo::new(trace.airgroup_id, trace.air_id, buffer, false)))
                 } else {
                     None
                 }
