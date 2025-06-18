@@ -72,10 +72,8 @@ pub struct ZiskStats {
     #[clap(short = 'n', long)]
     pub number_threads_witness: Option<usize>,
 
-
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
-
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
