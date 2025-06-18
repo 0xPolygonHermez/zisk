@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use fields::PrimeField64;
-use num_traits::cast::ToPrimitive;
 use pil_std_lib::Std;
 
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
@@ -75,8 +74,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
     pub fn prove_mem_align_op(
         &self,
         input: &MemAlignInput,
-        trace: &mut MemAlignTrace<F>,
-        index: usize,
+        trace: &mut [MemAlignTraceRow<F>],
     ) -> usize {
         let addr = input.addr;
         let width = input.width;
@@ -203,8 +201,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 drop(num_rows);
 
                 // Prove the generated rows
-                trace[index] = read_row;
-                trace[index + 1] = value_row;
+                trace[0] = read_row;
+                trace[1] = value_row;
                 2
             }
             (true, false) => {
@@ -362,9 +360,9 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 drop(num_rows);
 
                 // Prove the generated rows
-                trace[index] = read_row;
-                trace[index + 1] = write_row;
-                trace[index + 2] = value_row;
+                trace[0] = read_row;
+                trace[1] = write_row;
+                trace[2] = value_row;
                 3
             }
             (false, true) => {
@@ -507,9 +505,9 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 drop(num_rows);
 
                 // Prove the generated rows
-                trace[index] = first_read_row;
-                trace[index + 1] = value_row;
-                trace[index + 2] = second_read_row;
+                trace[0] = first_read_row;
+                trace[1] = value_row;
+                trace[2] = second_read_row;
                 3
             }
             (true, true) => {
@@ -759,11 +757,11 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 drop(num_rows);
 
                 // Prove the generated rows
-                trace[index] = first_read_row;
-                trace[index + 1] = first_write_row;
-                trace[index + 2] = value_row;
-                trace[index + 3] = second_write_row;
-                trace[index + 4] = second_read_row;
+                trace[0] = first_read_row;
+                trace[1] = first_write_row;
+                trace[2] = value_row;
+                trace[3] = second_write_row;
+                trace[4] = second_read_row;
                 5
             }
         }
@@ -792,28 +790,50 @@ impl<F: PrimeField64> MemAlignSM<F> {
             used_rows as f64 / num_rows as f64 * 100.0
         );
 
-        let mut index = 0;
-        for inner_memp_ops in mem_ops {
-            for input in inner_memp_ops {
-                let count = self.prove_mem_align_op(input, &mut trace, index);
-                for i in 0..count {
-                    for j in 0..CHUNK_NUM {
-                        let element = trace[index + i].reg[j]
-                            .as_canonical_biguint()
-                            .to_usize()
-                            .expect("Cannot convert to usize");
-                        reg_range_check[element] += 1;
-                    }
-                }
-                index += count;
+        let mut trace_rows = trace.row_slice_mut();
+        let mut par_traces = Vec::new();
+        let mut inputs_indexes = Vec::new();
+        let mut total_index = 0;
+        for (i, inner_memp_ops) in mem_ops.iter().enumerate() {
+            for (j, input) in inner_memp_ops.iter().enumerate() {
+                let addr = input.addr;
+                let width = input.width as usize;
+                let offset = (addr & OFFSET_MASK) as usize;
+                let n_rows = match (input.is_write, offset + width > CHUNK_NUM) {
+                    (false, false) => 2,
+                    (true, false) => 3,
+                    (false, true) => 3,
+                    (true, true) => 5,
+                };
+                total_index += n_rows;
+                let (head, tail) = trace_rows.split_at_mut(n_rows);
+                par_traces.push(head);
+                inputs_indexes.push((i, j));
+                trace_rows = tail;
             }
         }
 
-        let padding_size = num_rows - index;
+        // Prove the memory operations in parallel
+        par_traces.into_par_iter().enumerate().for_each(|(index, trace)| {
+            let input_index = inputs_indexes[index];
+            let input = &mem_ops[input_index.0][input_index.1];
+            self.prove_mem_align_op(input, trace);
+        });
+
+        // Iterate over all traces to set range checks
+        trace.row_slice_mut()[0..total_index].iter_mut().for_each(|row| {
+            for j in 0..CHUNK_NUM {
+                let element = row.reg[j]
+                    .as_canonical_u64() as usize;
+                reg_range_check[element] += 1;
+            }
+        });
+
+        let padding_size = num_rows - total_index;
         let padding_row = MemAlignTraceRow::<F> { reset: F::from_bool(true), ..Default::default() };
 
         // Store the padding rows
-        trace.row_slice_mut()[index..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
+        trace.row_slice_mut()[total_index..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
 
         // Compute the program multiplicity
         let mem_align_rom_sm = self.mem_align_rom_sm.clone();
