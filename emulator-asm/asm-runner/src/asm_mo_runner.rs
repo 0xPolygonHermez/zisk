@@ -34,13 +34,6 @@ impl Drop for AsmRunnerMO {
         unsafe {
             shmem_utils::unmap(self.mapped_ptr, self.total_size as usize);
         }
-        let c_name =
-            std::ffi::CString::new(self.shmem_output_name.clone()).expect("CString::new failed");
-        unsafe {
-            if shm_unlink(c_name.as_ptr()) != 0 {
-                error!("shm_unlink failed: {:?}", std::io::Error::last_os_error());
-            }
-        }
     }
 }
 

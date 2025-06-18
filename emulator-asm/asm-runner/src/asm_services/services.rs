@@ -144,6 +144,8 @@ impl AsmServices {
 
         let mut command = Command::new(command_path);
 
+        command.arg("-p").arg(Self::port_for(asm_service).to_string());
+
         let prefix = format!("ZISK_{}", rank);
         command.arg("--shm_prefix").arg(prefix);
 
