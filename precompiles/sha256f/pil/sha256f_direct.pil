@@ -1,0 +1,385 @@
+require "std_constants.pil"
+require "std_lookup.pil"
+require "std_range_check.pil"
+require "std_connection.pil"
+
+// Precompile in charge of performing the SHA2-256 permutation (named here Sha256-f). 
+// For reference: https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf
+
+// SHA256-f opcode
+const int SHA256F_OP = 0xF9;
+
+// SHA256 round constants (first 32 bits of the fractional parts of the cube roots of the first 64 primes)
+const int SHA256F_RC[64] = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+];
+
+airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 32) {
+    if (RC != 2) {
+        error(`Sha256-f is only implemented for RC=2, but received RC=${RC}`);
+    }
+
+    /*
+           ROW     a[0..32]      e[0..32]        w[0..32]          STAGE
+        |  0   | 0bD₁D₂..D₃₂ | 0bH₁H₂..H₃₂ | XXXXXXXXXXXXXXXX |  LOAD STATE  |
+        |  1   | 0bC₁C₂..C₃₂ | 0bG₁G₂..G₃₂ | XXXXXXXXXXXXXXXX |  LOAD STATE  | 
+        |  2   | 0bB₁B₂..B₃₂ | 0bF₁F₂..F₃₂ | XXXXXXXXXXXXXXXX |  LOAD STATE  | 
+        |  3   | 0bA₁A₂..A₃₂ | 0bE₁E₂..E₃₂ | XXXXXXXXXXXXXXXX |  LOAD STATE  |
+        |--------------------------------------------------------------------|
+        |  4   | 0bX₁X₂..X₃₂ | 0bX₁X₂..X₃₂ | 0bM₁M₂......M₃₂  |  LOAD INPUT  |      
+        |  ... |     ...     |     ...     |        ...       |      ...     |
+        |  19  | 0bX₁X₂..X₃₂ | 0bX₁X₂..X₃₂ | 0bM₄₈₁M₄₈₂..M₅₁₂ |  LOAD INPUT  |
+        |--------------------------------------------------------------------|
+        |  20  | 0bX₁X₂..X₃₂ | 0bX₁X₂..X₃₂ | 0bX₁X₂......X₃₂  |    MIXING    |
+        |  ... |     ...     |     ...     |        ...       |      ...     |
+        |  67  | 0bX₁X₂..X₃₂ | 0bX₁X₂..X₃₂ | 0bX₁X₂......X₃₂  |    MIXING    |
+        |--------------------------------------------------------------------|
+        |  68  | 0bD₁D₂..D₃₂ | 0bH₁H₂..H₃₂ | XXXXXXXXXXXXXXXX | WRITE STATE  |
+        |  69  | 0bC₁C₂..C₃₂ | 0bG₁G₂..G₃₂ | XXXXXXXXXXXXXXXX | WRITE STATE  |
+        |  70  | 0bB₁B₂..B₃₂ | 0bF₁F₂..F₃₂ | XXXXXXXXXXXXXXXX | WRITE STATE  |
+        |  71  | 0bA₁A₂..A₃₂ | 0bE₁E₂..E₃₂ | XXXXXXXXXXXXXXXX | WRITE STATE  |
+    */
+
+    const int CLOCKS_LOAD_STATE = 4; // 4 clocks to load the state
+    const int CLOCKS_LOAD_INPUT = 16; // 16 clocks to load the input
+    const int CLOCKS_MIXING = 48; // 48 clocks to perform the mixing
+    const int CLOCKS_WRITE_STATE = 4; // 4 clocks to write the state
+    const int CLOCKS = CLOCKS_LOAD_STATE + CLOCKS_LOAD_INPUT + CLOCKS_MIXING + CLOCKS_WRITE_STATE;
+
+    // Ensure that the Sha256-f fits
+    if (N < CLOCKS) {
+        error(`N must be at least ${CLOCKS} to fit the Sha256-f arithmetization, but received N=${N}`);
+    }
+
+    col fixed CLK_0 = [1, 0:(CLOCKS-1)]...;
+
+    const expr CLK[CLOCKS];
+    for (int i = 0; i < CLOCKS; ++i) {
+        CLK[i] = (i)'CLK_0;
+    }
+
+    int offset = 0;
+    expr is_loading_state = 0;
+    for (int i = 0; i < CLOCKS_LOAD_STATE; ++i) {
+        is_loading_state += CLK[i];
+    }
+    offset += CLOCKS_LOAD_STATE;
+
+    expr is_loading_input = 0;
+    for (int i = 0; i < CLOCKS_LOAD_INPUT; ++i) {
+        is_loading_input += CLK[offset + i];
+    }
+    offset += CLOCKS_LOAD_INPUT;
+
+    expr is_mixing = 0;
+    for (int i = 0; i < CLOCKS_MIXING; ++i) {
+        is_mixing += CLK[offset + i];
+    }
+    offset += CLOCKS_MIXING;
+
+    expr is_writing_state = 0;
+    for (int i = 0; i < CLOCKS_WRITE_STATE; ++i) {
+        is_writing_state += CLK[offset + i];
+    }
+
+    col witness a[32];
+    col witness e[32];
+    col witness w[32];
+
+    // a,e and w are bits
+    for (int i = 0; i < 32; i++) {
+        a[i] * (1 - a[i]) === 0;
+        e[i] * (1 - e[i]) === 0;
+        w[i] * (1 - w[i]) === 0;
+    }
+
+    const expr old_a[4][32] = ['a, 2'a, 3'a, 4'a];
+    const expr old_e[4][32] = ['e, 2'e, 3'e, 4'e];
+    const expr old_w[4][32] = [2'w, 7'w, 15'w, 16'w];
+
+    const expr new_ae[2] = compute_ae(old_a, old_e, w, get_k(CLK[CLOCKS_LOAD_STATE..(CLOCKS_LOAD_STATE + CLOCKS_LOAD_INPUT + CLOCKS_MIXING - 1)]));
+    const expr new_a_packed = new_ae[0];
+    const expr new_e_packed = new_ae[1];
+    const expr new_w_packed = compute_w(old_w);
+
+    // The new a/e/w values are packed values of at most 35 bits, we should prove that the unpacking is correct:
+    //  We add up to 6 32-bit numbers and this can generate
+    //  a number of at most 35 bits, since 2^34 < 6*(2^32-1) < 2^35
+    //  therefore the addition modulo 2^32 is equivalent to
+    //  extract the bits 33,34,35 from the given number
+    col witness new_a_carry_bits;
+    col witness new_e_carry_bits;
+    col witness new_w_carry_bits;
+    range_check(expression: new_a_carry_bits, min: 0, max: 2**3 - 1);
+    range_check(expression: new_e_carry_bits, min: 0, max: 2**3 - 1);
+    range_check(expression: new_w_carry_bits, min: 0, max: 2**3 - 1);
+
+    expr new_a = 0;
+    expr new_e = 0;
+    expr new_w = 0;
+    for (int i = 0; i < 32; i++) {
+        new_a += w[i] * 2**i;
+        new_e += e[i] * 2**i;
+        new_w += a[i] * 2**i;
+    }
+    (is_loading_input + is_mixing) * (new_a + new_a_carry_bits * 0x1_0000_0000 - new_a_packed) === 0;
+    (is_loading_input + is_mixing) * (new_e + new_e_carry_bits * 0x1_0000_0000 - new_e_packed) === 0;
+    is_mixing * (new_w + new_w_carry_bits * 0x1_0000_0000 - new_w_packed) === 0;
+
+    // Finally, we should copy the resulting values
+    for (int i = 0; i < 32; i++) {
+        is_writing_state * (a[i] - 4'a[i]) === 0;
+    }
+
+
+    // --> Constraints to read inputs from memory and write outputs to memory
+
+    /*
+        We should take care of how we handle the memory access.
+
+        The Sha256f inputs are received via two indirections inside a structure.
+        The address received from the MainSM is the address of the structure
+        The first indirection is the adress of the Sha256f state
+        The second indirection is the address of the Sha256f input
+        We have to relate all these addresses, by proving that:
+            · ADDR_STATE === ADDR_IND_0
+            · ADDR_INPUT === ADDR_IND_1
+        while sending both addr_ind_0 and addr_ind_1 to the memory.         
+    */
+
+    col witness step_addr; 
+
+    // MEMORY ACCESS MAP
+    // ======================================================
+    //   0  STEP      | R |  ADDR_STATE       |  state[0]
+    //   1  STEP      | R |  ADDR_STATE + 8   |  state[1]    
+    //   2  STEP      | R |  ADDR_STATE + 16  |  state[2]        
+    //   3  STEP      | R |  ADDR_STATE + 24  |  state[3]  
+    //   4  STEP      | R |  ADDR_INPUT       |  input[0]         
+    //   5  STEP      | R |  ADDR_INPUT + 8   |  input[1]         
+    //   6  STEP      | R |  ADDR_INPUT + 16  |  input[2]        
+    //   7  STEP      | R |  ADDR_INPUT + 24  |  input[3]
+    //   8  STEP      | R |  ADDR_INPUT + 32  |  input[4]         
+    //   9  STEP      | R |  ADDR_INPUT + 40  |  input[5]         
+    //  10  STEP      | R |  ADDR_INPUT + 48  |  input[6]        
+    //  11  STEP      | R |  ADDR_INPUT + 56  |  input[7]     
+    //  12  STEP + 1  | W |  ADDR_STATE       |  state[0]          
+    //  13  STEP + 1  | W |  ADDR_STATE + 8   |  state[1]       
+    //  14  STEP + 1  | W |  ADDR_STATE + 16  |  state[2]      
+    //  15  STEP + 1  | W |  ADDR_STATE + 24  |  state[3]     
+    //  16  STEP      | R |  ADDR_OP + 0      |  ADDR_IND_0
+    //  17  STEP      | R |  ADDR_OP + 8      |  ADDR_IND_1
+    // ======================================================
+
+    const int STEP_MAIN = 0;
+    const int ADDR_OP = STEP_MAIN + 1;
+    const int ADDR_STATE = ADDR_OP + 1;
+    const int ADDR_INPUT = ADDR_STATE + 1;
+    const int ADDR_IND_0 = ADDR_INPUT + 1;
+    const int ADDR_IND_1 = ADDR_IND_0 + 1;
+
+    clock_eq(step_addr, ADDR_STATE, ADDR_IND_0) === 0;
+    clock_eq(step_addr, ADDR_INPUT, ADDR_IND_1) === 0;
+
+    const expr mem_addr = clock_map(step_addr, ADDR_STATE, start: 0,  end: 3,  delta: 8) +
+                          clock_map(step_addr, ADDR_INPUT, start: 4,  end: 19, delta: 8) + // FIX
+                          clock_map(step_addr, ADDR_STATE, start: 68, end: 71, delta: 8); // FIX
+                        //   clock_map(step_addr, ADDR_OP,    start: 16, end: 18, delta: 8);  // FIX
+
+    const expr main_step = clock_map(step_addr, STEP_MAIN, start: 0, end: 10); // Adjust
+
+    const expr mem_value[2];
+
+    mem_value[0] = clock_set(pack32(a), start: 0, end: 3) + // a[0] + a[1]·2 + a[2]·2² + ... + a[31]·2³¹
+                   clock_set(pack32(w), start: 4, end: 19) + // w[0] + w[1]·2 + w[2]·2² + ... + w[31]·2³¹
+                   clock_set(pack32(a), start: 68, end: 71); // a[0] + a[1]·2 + a[2]·2² + ... + a[31]·2³¹
+                //    clock_map(step_addr, ADDR_IND_0, start: IN_OUT_BLOCKS) +
+                //    clock_map(step_addr, ADDR_IND_1, start: IN_OUT_BLOCKS+1);
+
+    mem_value[1] = clock_set(pack32(e), start: 0, end: 3) + // e[0] + e[1]·2 + e[2]·2² + ... + e[31]·2³¹
+                   // high bits of indirect addresses are 0.
+                   clock_set(pack32(e), start: 68, end: 71); // e[0] + e[1]·2 + e[2]·2² + ... + e[31]·2³¹
+
+    col witness in_use_clk_0;
+    in_use_clk_0 * (1 - in_use_clk_0) === 0; // it is a selector
+    (1 - CLK_0) * in_use_clk_0 === 0; // it can only be active when CLK_0 is active
+
+    col witness in_use;
+    in_use * (1 - in_use) === 0; // it is a selector
+    (1 - CLK_0) * (in_use - 'in_use) === 0; // if activated, it must keep the
+                                            // keep the same value during the circuit
+    // Note: We needed to cancel the constraint in the last block because the last block of the circuit is not used
+
+    // in_use is active iff in_use_clk_0 is active
+    CLK_0 * (in_use - in_use_clk_0) === 0;
+
+    const expr mem_sel = clock_set(in_use, start: 0, end: 19) + clock_set(in_use, start: 68, end: 71);
+
+    precompiled_mem_op(
+            is_write: is_writing_state,
+            sel: mem_sel,
+            main_step: main_step,
+            addr: mem_addr,
+            value: mem_value
+    );
+
+    // --> Constraints to make sure that this coprocessor is called from the main processor
+    lookup_proves(OPERATION_BUS_ID, [SHA256F_OP, step_addr'(STEP_MAIN), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], mul: in_use_clk_0);
+
+
+    function pack32(const expr a[]): expr[] {
+        assert(length(a) == 32); // TODO: Remove
+        expr packed = 0;
+        for (int j = 0; j < 32; j++) {
+            packed += a[j] * 2**j;
+        }
+        return packed;
+    }
+
+    function unpack32(const expr a[]): expr[] {
+        const int n = length(a);
+        expr unpacked[n * p];
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < p; j++) {
+                unpacked[i*p + j] = (a[i] / 2**j) % 2;
+            }
+        }
+        return unpacked;
+    }
+
+    function get_k(const expr rounds[]): expr {
+        assert(length(rounds) == 64); // TODO: Remove
+        expr k = 0;
+        for (int i = 0; i < 64; i++) {
+            k += rounds[i] * SHA256F_RC[i];
+        }
+        return k;
+    }
+
+    // Given an old W, computes the new W for the next round
+    function compute_w(const expr old_w[][]): expr {
+        expr [old_w2, old_w7, old_w15, old_w16] = [old_w[0], old_w[1], old_w[2], old_w[3]];
+        expr s0 = xor(rotate_right(old_w15, 7), xor(rotate_right(old_w15, 18), shift_right(old_w15, 3)));
+        expr s1 = xor(rotate_right(old_w2, 17), xor(rotate_right(old_w2, 19), shift_right(old_w2, 10)));
+        expr new_w = pack32(s1) + pack32(old_w7) + pack32(s0) + pack32(old_w16);
+        assert(length(new_w) == 0); // TODO: Remove
+        return new_w;
+    }
+    
+    // Given an old A,E and the round W and K, computes the round A and E
+    function compute_ae(const expr old_a[][], const expr old_e[][], const expr w[], const expr k): expr[] {
+        assert(length(old_a) == 4); // TODO: Remove
+        assert(length(old_e) == 4); // TODO: Remove
+        expr [a, b, c, d] = [old_a[0], old_a[1], old_a[2], old_a[3]];
+        expr [e, f, g, h] = [old_e[0], old_e[1], old_e[2], old_e[3]];
+        expr s0 = xor(rotate_right(a, 2), xor(rotate_right(a, 13), rotate_right(a, 22)));
+        expr s1 = xor(rotate_right(e, 6), xor(rotate_right(e, 11), rotate_right(e, 25)));
+        expr stage1 = pack32(w) + k + pack32(h) + pack32(ch(e, f, g)) + pack32(s1);
+        expr new_a = stage1 + pack32(maj(a, b, c)) + pack32(s0);
+        expr new_e = stage1 + pack32(d);
+        assert(length(new_a) == 0); // TODO: Remove
+        assert(length(new_e) == 0); // TODO: Remove
+        expr result[2] = [new_a, new_e];
+        return result;
+    }
+
+    function xor(const expr a[], const expr b[]): expr[] {
+        const int len = length(a);
+        expr result[len];
+        for (int i = 0; i < len; i++) {
+            result[i] = a[i] + b[i] - 2 * a[i] * b[i];
+        }
+        return result;
+    }
+
+    function rotate_right(const expr state[], const int n): expr[] {
+        const int len = length(state);
+        expr result[len];
+        for (int i = 0; i < len; i++) {
+            if (i + n < len) {
+                result[i] = state[i + n];
+            } else {
+                result[i] = state[i + n - len];
+            }
+        }
+        return result;
+    }
+
+    function shift_right(const expr state[], const int n): expr[] {
+        const int len = length(state);
+        expr result[len];
+        for (int i = 0; i < len; i++) {
+            if (i + n < len) {
+                result[i] = state[i + n];
+            } else {
+                result[i] = 0;
+            }
+        }
+        return result;
+    }
+
+    function maj(const expr a[], const expr b[], const expr c[]): expr[] {
+        const int len = length(a);
+        expr result[len];
+        for (int i = 0; i < len; i++) {
+            result[i] = a[i] * b[i] * (1 - c[i]) +
+                        a[i] * (1 - b[i]) * c[i] +
+                        (1 - a[i]) * b[i] * c[i] +
+                        a[i] * b[i] * c[i];
+        }
+        return result;
+    }
+
+    function ch(const expr a[], const expr b[], const expr c[]): expr[] {
+        const int len = length(a);
+        expr result[len];
+        for (int i = 0; i < len; i++) {
+            result[i] = a[i] * b[i] + (1 - a[i]) * c[i];
+        }
+        return result;
+    }
+
+    function clock_eq(const expr mvcol, int pos1, int pos2): const expr {
+        return air.CLK_0 * (mvcol'(pos1) - mvcol'(pos2));
+    }
+
+    function clock_map(const expr mvcol, int pos, int start = 0, int end = -1, int offset = 0, int delta = 0): const expr {
+        expr res = 0;
+        if (end == -1) {
+            end = start;
+        }
+        for (int index = start; index <= end; ++index) {
+            int iclock = (pos - index ) % air.CLOCKS;
+            if (offset != 0) {
+                res += air.CLK[index] * (mvcol'(iclock) + offset);
+            } else {
+                res += air.CLK[index] * mvcol'(iclock);
+            }
+            offset += delta;
+        }
+        return res;
+    }
+
+    function clock_set(const expr cl, int start = 0, int end = -1, int offset = 0, int delta = 0): const expr {
+        expr res = 0;
+        if (end == -1) {
+            end = start;
+        }
+        for (int index = start; index <= end; ++index) {
+            if (offset != 0) {
+                res += air.CLK[index] * (cl + offset);
+            } else {
+                res += air.CLK[index] * cl;
+            }
+            offset += delta;
+        }
+        return res;
+    }
+}
