@@ -247,27 +247,27 @@ trace!(ArithEqLtTableTrace<F> {
 },  0, 16, 262144 );
 
 trace!(KeccakfFixed<F> {
- L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, ID: F, latch_num_keccakf: F, factor_num_keccakf: F, latch_in_out: F, addr_inc: F, latch_in: F, latch_out: F, __L1__: F,
+ L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, ID: F, LATCH_NUM_KECCAKF: F, FACTOR_NUM_KECCAKF: F, CLK_0: F, __L1__: F,
 },  0, 17, 4194304 );
 
 trace!(KeccakfTrace<F> {
- free_in_a: [F; 6], free_in_b: [F; 6], free_in_c: [F; 6], step: F, addr: F, multiplicity: F, bit: [F; 2], val: [F; 2], is_val: F,
+ free_in_a: [F; 7], free_in_b: [F; 7], free_in_c: [F; 7], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
 },  0, 17, 4194304 );
 
 trace!(KeccakfTableFixed<F> {
  A: [F; 1], B: F, GATE_OP: F, C: [F; 1], __L1__: F,
-},  0, 18, 2097152 );
+},  0, 18, 524288 );
 
 trace!(KeccakfTableTrace<F> {
  multiplicity: [F; 1],
-},  0, 18, 2097152 );
+},  0, 18, 524288 );
 
 trace!(Sha256fFixed<F> {
- L1: F, GATE_OP: F, CARRY_ENABLED: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, latch_num_sha256f: F, factor_num_sha256f: F, CLK_0: F, __L1__: F,
+ L1: F, GATE_OP: F, CARRY_ENABLED: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, LATCH_NUM_SHA256F: F, FACTOR_NUM_SHA256F: F, CLK_0: F, __L1__: F,
 },  0, 19, 2097152 );
 
 trace!(Sha256fTrace<F> {
- free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], free_in_d: [F; 8], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
+ free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], free_in_d: [F; 8], carry: [F; 8], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
 },  0, 19, 2097152 );
 
 trace!(Sha256fTableFixed<F> {
