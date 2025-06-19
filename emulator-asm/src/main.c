@@ -249,6 +249,10 @@ int shmem_mt_fd = -1;
 char sem_chunk_done_name[128];
 sem_t * sem_chunk_done = NULL;
 
+// Shutdown done semaphore: notifies the caller when a shutdown has been processed
+char sem_shutdown_done_name[128];
+sem_t * sem_shutdown_done = NULL;
+
 int process_id = 0;
 
 uint64_t input_size = 0;
@@ -383,7 +387,7 @@ int main(int argc, char *argv[])
             }
             if (bytes_read != sizeof(request))
             {
-                if (errno != 0)
+                if ((errno != 0) && (errno != 2))
                 {
                     printf("ERROR: Failed calling recv() invalid bytes_read=%ld errno=%d=%s\n", bytes_read, errno, strerror(errno));
                 }
@@ -1109,6 +1113,8 @@ void configure (void)
             strcat(shmem_input_name, "_FT_input");
             strcpy(shmem_output_name, "");
             strcpy(sem_chunk_done_name, "");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_FT_shutdown_done");
             strcpy(shmem_mt_name, "");
             port = 23120;
             break;
@@ -1121,6 +1127,8 @@ void configure (void)
             strcat(shmem_output_name, "_MT_output");
             strcpy(sem_chunk_done_name, shm_prefix);
             strcat(sem_chunk_done_name, "_MT_chunk_done");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_MT_shutdown_done");
             strcpy(shmem_mt_name, "");
             chunk_done = true;
             port = 23115;
@@ -1133,6 +1141,8 @@ void configure (void)
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_RH_output");
             strcpy(sem_chunk_done_name, "");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_RH_shutdown_done");
             strcpy(shmem_mt_name, "");
             port = 23116;
             break;
@@ -1145,6 +1155,8 @@ void configure (void)
             strcat(shmem_output_name, "_MA_output");
             strcpy(sem_chunk_done_name, shm_prefix);
             strcat(sem_chunk_done_name, "_MA_chunk_done");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_MA_shutdown_done");
             strcpy(shmem_mt_name, "");
             chunk_done = true;
             port = 23118;
@@ -1158,6 +1170,8 @@ void configure (void)
             strcat(shmem_output_name, "_CH_output");
             strcpy(sem_chunk_done_name, shm_prefix);
             strcat(sem_chunk_done_name, "_CH_chunk_done");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_CH_shutdown_done");
             strcpy(shmem_mt_name, "");
             chunk_done = true;
             port = 23115;
@@ -1180,6 +1194,8 @@ void configure (void)
             strcat(shmem_output_name, "_ZP_output");
             strcpy(sem_chunk_done_name, shm_prefix);
             strcat(sem_chunk_done_name, "_ZP_chunk_done");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_ZP_shutdown_done");
             strcpy(shmem_mt_name, "");
             chunk_done = true;
             port = 23115;
@@ -1193,6 +1209,8 @@ void configure (void)
             strcat(shmem_output_name, "_MO_output");
             strcpy(sem_chunk_done_name, shm_prefix);
             strcat(sem_chunk_done_name, "_MO_chunk_done");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_MO_shutdown_done");
             strcpy(shmem_mt_name, "");
             chunk_done = true;
             port = 23117;
@@ -1204,6 +1222,7 @@ void configure (void)
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_CM_output");
             strcpy(sem_chunk_done_name, "");
+            strcpy(sem_shutdown_done_name, "");
             strcpy(shmem_mt_name, shm_prefix);
             strcat(shmem_mt_name, "_MT_output");
             chunk_done = false;
@@ -1218,6 +1237,8 @@ void configure (void)
             strcat(shmem_output_name, "_MT_output");
             strcpy(sem_chunk_done_name, shm_prefix);
             strcat(sem_chunk_done_name, "_MT_chunk_done");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_MT_shutdown_done");
             strcpy(shmem_mt_name, "");
             chunk_done = true;
             port = 23115;
@@ -1229,6 +1250,7 @@ void configure (void)
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_CA_output");
             strcpy(sem_chunk_done_name, "");
+            strcpy(sem_shutdown_done_name, "");
             strcpy(shmem_mt_name, shm_prefix);
             strcat(shmem_mt_name, "_MT_output");
             chunk_done = false;
@@ -1251,7 +1273,7 @@ void configure (void)
 
     if (verbose)
     {
-        printf("ziskemuasm configuration:\n\tgen_method=%u\n\tport=%u\n\tchunk_done=%u\n\tchunk_size=%lu\n\tshmem_input=%s\n\tshmem_output=%s\n\tshmem_mt=%s\n\tsem_chunk_done=%s\n",
+        printf("ziskemuasm configuration:\n\tgen_method=%u\n\tport=%u\n\tchunk_done=%u\n\tchunk_size=%lu\n\tshmem_input=%s\n\tshmem_output=%s\n\tshmem_mt=%s\n\tsem_chunk_done=%s\n\tsem_shutdown_done=%s\n",
             gen_method,
             port,
             chunk_done,
@@ -1259,7 +1281,8 @@ void configure (void)
             shmem_input_name,
             shmem_output_name,
             shmem_mt_name,
-            sem_chunk_done_name);
+            sem_chunk_done_name,
+            sem_shutdown_done_name);
     }
 }
 
@@ -2469,7 +2492,7 @@ void server_setup (void)
     if (chunk_done)
     {
         assert(strlen(sem_chunk_done_name) > 0);
-        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0644, 0);
+        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0666, 0);
         if (sem_chunk_done == SEM_FAILED)
         {
             printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
@@ -2479,6 +2502,21 @@ void server_setup (void)
         }
         if (verbose) printf("sem_open(chunk_done) succeeded\n");
     }
+
+    /*********************/
+    /* SEM SHUTDOWN DONE */
+    /*********************/
+    
+    assert(strlen(sem_shutdown_done_name) > 0);
+    sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT, 0666, 0);
+    if (sem_chunk_done == SEM_FAILED)
+    {
+        printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+    if (verbose) printf("sem_open(shutdown_done) succeeded\n");
 }
 
 void server_reset (void)
@@ -2709,7 +2747,7 @@ void server_cleanup (void)
         printf("ERROR: Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
     }
 
-    // Cleanup semaphore
+    // Cleanup chunk done semaphore
     if (chunk_done)
     {
         result = sem_close(sem_chunk_done);
@@ -2722,6 +2760,13 @@ void server_cleanup (void)
         {
             printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
         }
+    }
+
+    // Post shutdown donw semaphore
+    result = sem_post(sem_shutdown_done);
+    if (result == -1)
+    {
+        printf("ERROR: Failed calling sem_post(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
     }
 }
 
