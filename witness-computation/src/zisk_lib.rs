@@ -20,12 +20,15 @@ use std::{any::Any, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
 use zisk_core::Riscv2zisk;
 
+pub const CHUNK_SIZE: u64 = 1 << 18;
+
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
     executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
+    chunk_size: u64,
 }
 
 #[no_mangle]
@@ -36,14 +39,17 @@ fn init_library(
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
     rank: Option<i32>,
+    chunk_size: Option<u64>,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode, rank);
+    let chunk_size = chunk_size.map(|s| 1 << s).unwrap_or(CHUNK_SIZE);
     let result = Box::new(WitnessLib {
         elf_path,
         asm_path,
         asm_rom_path,
         sha256f_script_path,
         executor: None,
+        chunk_size,
     });
 
     Ok(result)
@@ -115,6 +121,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             std,
             sm_bundle,
             Some(rom_sm.clone()),
+            self.chunk_size,
         );
 
         let executor = Arc::new(executor);

@@ -69,6 +69,9 @@ pub struct ZiskStats {
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
+    #[clap(short = 'c', long)]
+    pub chunk_size: Option<u64>,
+
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
 
@@ -184,6 +187,7 @@ impl ZiskStats {
                     asm_rom,
                     sha256f_script,
                     proofman.get_rank(),
+                    self.chunk_size,
                 )
                 .expect("Failed to initialize witness library");
 

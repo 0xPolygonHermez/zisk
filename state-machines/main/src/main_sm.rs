@@ -65,7 +65,7 @@ impl MainSM {
     pub fn compute_witness<F: PrimeField64>(
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
-        min_trace_size: u64,
+        chunk_size: u64,
         main_instance: &MainInstance,
         std: Arc<Std<F>>,
     ) -> AirInstance<F> {
@@ -75,7 +75,7 @@ impl MainSM {
         let segment_id = main_instance.ictx.plan.segment_id.unwrap();
 
         // Determine the number of minimal traces per segment
-        let num_within = MainTrace::<F>::NUM_ROWS / min_trace_size as usize;
+        let num_within = MainTrace::<F>::NUM_ROWS / chunk_size as usize;
         let num_rows = MainTrace::<F>::NUM_ROWS;
 
         // Determine trace slice for the current segment
@@ -101,15 +101,16 @@ impl MainSM {
         let last_row_previous_segment =
             if segment_id == 0 { 0 } else { (segment_id.as_usize() * num_rows) as u64 - 1 };
 
-        let initial_step = MemHelpers::main_step_to_special_mem_step(last_row_previous_segment);
+        let mem_helpers = MemHelpers::new(chunk_size);
 
-        let final_step = MemHelpers::main_step_to_special_mem_step(
-            ((segment_id.as_usize() + 1) * num_rows) as u64 - 1,
-        );
+        let initial_step = mem_helpers.main_step_to_special_mem_step(last_row_previous_segment);
+
+        let final_step = mem_helpers
+            .main_step_to_special_mem_step(((segment_id.as_usize() + 1) * num_rows) as u64 - 1);
 
         // To reduce memory used, only take memory for the maximum range of mem_step inside the
         // minimal trace.
-        let max_range = min_trace_size * MEM_STEPS_BY_MAIN_STEP;
+        let max_range = chunk_size * MEM_STEPS_BY_MAIN_STEP;
 
         // Vector of atomics of u32, it's enough to count all range check values of the trace.
         let step_range_check =
@@ -132,6 +133,7 @@ impl MainSM {
                     zisk_rom,
                     chunk,
                     &segment_min_traces[chunk_id],
+                    chunk_size,
                     &mut reg_trace,
                     step_range_check.clone(),
                     chunk_id == (end_idx - start_idx - 1),
@@ -208,12 +210,13 @@ impl MainSM {
         zisk_rom: &ZiskRom,
         main_trace: &mut [MainTraceRow<F>],
         min_trace: &EmuTrace,
+        chunk_size: u64,
         reg_trace: &mut EmuRegTrace,
         step_range_check: Arc<Vec<AtomicU32>>,
         last_reg_values: bool,
     ) -> (u64, Vec<u64>) {
         // Initialize the emulator with the start state of the emu trace
-        let mut emu = Emu::from_emu_trace_start(zisk_rom, &min_trace.start_state);
+        let mut emu = Emu::from_emu_trace_start(zisk_rom, chunk_size, &min_trace.start_state);
         let mut mem_reads_index: usize = 0;
 
         // Total number of rows to fill from the emu trace

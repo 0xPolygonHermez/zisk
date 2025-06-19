@@ -183,6 +183,7 @@ impl ZiskVerifyConstraints {
                     asm_rom,
                     sha256f_script,
                     proofman.get_rank(),
+                    None,
                 )
                 .expect("Failed to initialize witness library");
 
