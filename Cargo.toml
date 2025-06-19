@@ -43,13 +43,13 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/batch-collect"}
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/batch-collect"}
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/batch-collect"}
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/batch-collect"}
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/batch-collect"}
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/batch-collect"}
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/batch-collect"}
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/batch-collect-memory"}
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/batch-collect-memory"}
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/batch-collect-memory"}
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/batch-collect-memory"}
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/batch-collect-memory"}
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/batch-collect-memory"}
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/batch-collect-memory"}
 # Local development
 # proofman = { path = "../pil2-proofman/proofman" }
 # proofman-common = { path = "../pil2-proofman/common" }

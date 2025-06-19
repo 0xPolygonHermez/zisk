@@ -35,6 +35,7 @@ pub trait Instance<F: PrimeField64>: Send + Sync {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        _trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         None
     }
@@ -129,6 +130,7 @@ macro_rules! table_instance {
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+                _trace_buffer: Vec<F>,
             ) -> Option<AirInstance<F>> {
                 let multiplicity = self.table_sm.detach_multiplicity();
                 self.table_sm.set_calculated();
@@ -138,7 +140,7 @@ macro_rules! table_instance {
                 if pctx.dctx_is_my_instance(self.ictx.global_id) {
                     let mut trace = $Trace::new();
 
-                    trace.buffer.par_iter_mut().enumerate().for_each(|(i, input)| {
+                    trace.row_slice_mut().par_iter_mut().enumerate().for_each(|(i, input)| {
                         input.multiplicity = F::from_u64(
                             multiplicity[i].swap(0, std::sync::atomic::Ordering::Relaxed),
                         )
@@ -237,6 +239,7 @@ macro_rules! table_instance_array {
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+                _trace_buffer: Vec<F>,
             ) -> Option<AirInstance<F>> {
                 let multiplicities = self.table_sm.detach_multiplicities();
                 self.table_sm.set_calculated();
@@ -254,7 +257,12 @@ macro_rules! table_instance_array {
                         }
                     });
 
-                    Some(AirInstance::new(TraceInfo::new(trace.airgroup_id, trace.air_id, buffer)))
+                    Some(AirInstance::new(TraceInfo::new(
+                        trace.airgroup_id,
+                        trace.air_id,
+                        buffer,
+                        false,
+                    )))
                 } else {
                     None
                 }

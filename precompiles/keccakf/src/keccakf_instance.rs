@@ -59,13 +59,14 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<KeccakfCollector>().unwrap().inputs)
             .collect();
 
-        Some(self.keccakf_sm.compute_witness(&inputs))
+        Some(self.keccakf_sm.compute_witness(&inputs, trace_buffer))
     }
 
     /// Retrieves the checkpoint associated with this instance.

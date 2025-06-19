@@ -90,8 +90,12 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(&self, inputs: &[Vec<[u64; 2]>]) -> AirInstance<F> {
-        let mut add_trace = BinaryAddTrace::new();
+    pub fn compute_witness(
+        &self,
+        inputs: &[Vec<[u64; 2]>],
+        trace_buffer: Vec<F>,
+    ) -> AirInstance<F> {
+        let mut add_trace = BinaryAddTrace::new_from_vec(trace_buffer);
 
         let num_rows = add_trace.num_rows();
 
@@ -107,7 +111,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
 
         // Split the add_e_trace.buffer into slices matching each inner vector’s length.
         let flat_inputs: Vec<_> = inputs.iter().flatten().collect();
-        let trace_rows = add_trace.buffer.as_mut_slice();
+        let trace_rows = add_trace.row_slice_mut();
         let mut range_checks: Vec<[u64; 4]> = vec![[0u64; 4]; flat_inputs.len()];
 
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
@@ -134,7 +138,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
-        add_trace.buffer[total_inputs..num_rows]
+        add_trace.row_slice_mut()[total_inputs..num_rows]
             .par_iter_mut()
             .for_each(|slot| *slot = BinaryAddTraceRow::<F> { ..Default::default() });
 

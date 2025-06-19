@@ -63,8 +63,9 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
+        trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = InputDataTrace::<F>::new();
+        let mut trace = InputDataTrace::<F>::new_from_vec(trace_buffer);
 
         debug_assert!(
             !mem_ops.is_empty() && mem_ops.len() <= trace.num_rows(),

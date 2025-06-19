@@ -273,9 +273,11 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let program = &self.program;
         let gates = &self.gates;
 
-        let row0 = trace.buffer[0];
+        let trace_rows = trace.row_slice_mut();
 
-        let mut trace_slice = &mut trace.buffer[1..];
+        let row0 = trace_rows[0];
+
+        let mut trace_slice = &mut trace_rows[1..];
         let mut par_traces = Vec::new();
 
         for _ in 0..inputs_bits.len() {
@@ -496,9 +498,13 @@ impl<F: PrimeField64> KeccakfSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(&self, inputs: &[Vec<OperationKeccakData<u64>>]) -> AirInstance<F> {
+    pub fn compute_witness(
+        &self,
+        inputs: &[Vec<OperationKeccakData<u64>>],
+        trace_buffer: Vec<F>,
+    ) -> AirInstance<F> {
         timer_start_trace!(KECCAKF_TRACE);
-        let mut keccakf_trace = KeccakfTrace::new_zeroes();
+        let mut keccakf_trace = KeccakfTrace::new_from_vec_zeroes(trace_buffer);
         let num_rows = keccakf_trace.num_rows();
 
         // Flatten the inputs

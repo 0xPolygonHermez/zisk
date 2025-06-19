@@ -88,8 +88,9 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
+        trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = MemTrace::<F>::new();
+        let mut trace = MemTrace::<F>::new_from_vec(trace_buffer);
 
         // println!(
         //     "[MemSM] segment_id:{} mem_ops:{} rows:{}  [0]{:?} previous_segment:{:?}",

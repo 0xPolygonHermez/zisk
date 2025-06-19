@@ -277,12 +277,13 @@ impl<F: PrimeField64> ArithEqSM<F> {
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<ArithEqInput>],
+        trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
         // Get the fixed cols
         let _airgroup_id = ArithEqTrace::<usize>::AIRGROUP_ID;
         let _air_id = ArithEqTrace::<usize>::AIR_ID;
 
-        let mut trace = ArithEqTrace::<F>::new();
+        let mut trace = ArithEqTrace::<F>::new_from_vec(trace_buffer);
         let num_rows = trace.num_rows();
         let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
         let num_rows_needed = total_inputs * ARITH_EQ_ROWS_BY_OP;
@@ -296,7 +297,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
 
         timer_start_trace!(ARITH_EQ_TRACE);
 
-        let mut trace_rows = trace.buffer.as_mut_slice();
+        let mut trace_rows = trace.row_slice_mut();
         let mut par_traces = Vec::new();
         let mut inputs_indexes = Vec::new();
         for (i, inputs) in inputs.iter().enumerate() {
@@ -327,7 +328,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
 
         let padding_row = ArithEqTraceRow::<F> { ..Default::default() };
 
-        trace.buffer[num_rows_needed..num_rows].fill(padding_row);
+        trace.row_slice_mut()[num_rows_needed..num_rows].fill(padding_row);
 
         timer_stop_and_log_trace!(ARITH_EQ_TRACE);
 

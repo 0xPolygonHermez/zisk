@@ -63,9 +63,10 @@ impl MainSM {
         chunk_size: u64,
         main_instance: &MainInstance,
         std: Arc<Std<F>>,
+        trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
         // Create the main trace buffer
-        let mut main_trace = MainTrace::new();
+        let mut main_trace = MainTrace::new_from_vec(trace_buffer);
 
         let segment_id = main_instance.ictx.plan.segment_id.unwrap();
 
@@ -158,8 +159,10 @@ impl MainSM {
         // Pad remaining rows with the last valid row
         // In padding row must be clear of registers access, if not need to calculate previous
         // register step and range check conntribution
-        let last_row = main_trace.buffer[filled_rows - 1];
-        main_trace.buffer[filled_rows..num_rows].par_iter_mut().for_each(|row| *row = last_row);
+        let last_row = main_trace.row_slice_mut()[filled_rows - 1];
+        main_trace.row_slice_mut()[filled_rows..num_rows]
+            .par_iter_mut()
+            .for_each(|row| *row = last_row);
 
         // Determine the last row of the previous segment
         let prev_segment_last_c = if start_idx > 0 {
@@ -173,7 +176,7 @@ impl MainSM {
 
         air_values.main_segment = F::from_usize(segment_id.into());
         air_values.main_last_segment = F::from_bool(main_instance.is_last_segment);
-        air_values.segment_initial_pc = main_trace.buffer[0].pc;
+        air_values.segment_initial_pc = main_trace.row_slice()[0].pc;
         air_values.segment_next_pc = F::from_u64(next_pc);
         air_values.segment_previous_c = prev_segment_last_c;
         air_values.segment_last_c = last_row.c;
@@ -266,15 +269,15 @@ impl MainSM {
                     }
                     match slot {
                         0 => {
-                            main_trace.buffer[row].a_reg_prev_mem_step =
+                            main_trace.row_slice_mut()[row].a_reg_prev_mem_step =
                                 F::from_u64(reg_prev_mem_step)
                         }
                         1 => {
-                            main_trace.buffer[row].b_reg_prev_mem_step =
+                            main_trace.row_slice_mut()[row].b_reg_prev_mem_step =
                                 F::from_u64(reg_prev_mem_step)
                         }
                         2 => {
-                            main_trace.buffer[row].store_reg_prev_mem_step =
+                            main_trace.row_slice_mut()[row].store_reg_prev_mem_step =
                                 F::from_u64(reg_prev_mem_step)
                         }
                         _ => panic!("Invalid slot {}", slot),

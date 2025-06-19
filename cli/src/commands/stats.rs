@@ -74,7 +74,7 @@ pub struct ZiskStats {
 
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
-    
+
     #[clap(short = 'c', long)]
     pub chunk_size: Option<u64>,
 

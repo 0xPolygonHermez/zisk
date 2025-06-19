@@ -64,13 +64,14 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
         _pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<ArithEqCollector>().unwrap().inputs)
             .collect();
 
-        Some(self.arith_eq_sm.compute_witness(sctx, &inputs))
+        Some(self.arith_eq_sm.compute_witness(sctx, &inputs, trace_buffer))
     }
 
     /// Retrieves the checkpoint associated with this instance.
