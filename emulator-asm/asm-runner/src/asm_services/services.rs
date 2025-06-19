@@ -72,6 +72,9 @@ impl AsmServices {
             }
         }
 
+        // TODO: Fix this sleep, it's a workaround for the issue with the services not shutting down properly
+        std::thread::sleep(Duration::from_secs(5));
+
         let start = std::time::Instant::now();
 
         for service in &Self::SERVICES {
