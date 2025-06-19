@@ -71,13 +71,13 @@ impl AsmRunnerMT {
         max_steps: u64,
         chunk_size: u64,
         task_factory: TaskFactory<T>,
-        rank: i32,
+        local_rank: i32,
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
-        let shmem_input_name = format!("ZISK_{}_MT_input", rank);
-        let shmem_output_name = format!("ZISK_{}_MT_output", rank);
-        let sem_chunk_done_name = format!("/ZISK_{}_MT_chunk_done", rank);
+        let shmem_input_name = format!("ZISK_{}_MT_input", local_rank);
+        let shmem_output_name = format!("ZISK_{}_MT_output", local_rank);
+        let sem_chunk_done_name = format!("/ZISK_{}_MT_chunk_done", local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name, e))?;
@@ -87,7 +87,7 @@ impl AsmRunnerMT {
         let start = Instant::now();
 
         let handle = std::thread::spawn(move || {
-            AsmServices::send_minimal_trace_request(max_steps, chunk_size)
+            AsmServices::send_minimal_trace_request(max_steps, chunk_size, local_rank)
         });
 
         let pool = ThreadPoolBuilder::new().num_threads(24).build().map_err(AsmRunError::from)?;
@@ -207,7 +207,7 @@ impl AsmRunnerMT {
         unsafe {
             shmem_utils::unmap(temp, header_size);
         }
-        shmem_utils::map(fd, header.mt_allocated_size as usize, PROT_READ, "output full map")
+        shmem_utils::map(fd, header.mt_allocated_size as usize, PROT_READ, shmem_output_name)
     }
 }
 

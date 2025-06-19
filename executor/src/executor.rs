@@ -103,7 +103,8 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     collectors_by_instance: RwLock<HashMap<usize, (Stats, Vec<(usize, Box<dyn BusDevice<u64>>)>)>>,
     stats: Mutex<Vec<(usize, usize, Stats)>>,
 
-    rank: i32,
+    world_rank: i32,
+    local_rank: i32,
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
@@ -127,7 +128,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         std: Arc<Std<F>>,
         sm_bundle: BD,
         rom_sm: Option<Arc<RomSM>>,
-        rank: i32,
+        world_rank: i32,
+        local_rank: i32,
     ) -> Self {
         Self {
             rom_path,
@@ -145,7 +147,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             sm_bundle,
             rom_sm,
             stats: Mutex::new(Vec::new()),
-            rank,
+            world_rank,
+            local_rank,
         }
     }
 
@@ -193,13 +196,13 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         input_data_path: Option<PathBuf>,
     ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<Vec<Plan>>) {
         let input_data_cloned = input_data_path.clone();
-        let rank = self.rank;
+        let local_rank = self.local_rank;
         let handle_mo = std::thread::spawn(move || {
             AsmRunnerMO::run(
                 input_data_cloned.as_ref().unwrap(),
                 Self::MAX_NUM_STEPS,
                 Self::MIN_TRACE_SIZE,
-                rank,
+                local_rank,
             )
             .expect("Error during Assembly Memory Operations execution")
         });
@@ -278,7 +281,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             Self::MIN_TRACE_SIZE,
             // asm_runner::AsmRunnerOptions::default(),
             task_factory,
-            self.rank,
+            self.local_rank,
         )
         .expect("Error during ASM execution");
 

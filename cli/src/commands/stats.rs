@@ -89,15 +89,16 @@ impl ZiskStats {
 
         use mpi::traits::*;
         let world = universe.world();
-        let rank = world.rank();
+        let world_rank = world.rank();
+        let local_rank = world_rank; // TODO!!!! Change this!
 
         let m2 = self.mpi_node as i32 * 2;
-        if rank < m2 || rank >= m2 + 2 {
-            world.split_shared(rank);
+        if world_rank < m2 || world_rank >= m2 + 2 {
+            world.split_shared(world_rank);
             world.barrier();
             println!(
                 "{}: {}",
-                format!("Rank {}", rank).bright_yellow().bold(),
+                format!("Rank {}", world_rank).bright_yellow().bold(),
                 "Exiting stats command.".bright_yellow()
             );
             return Ok(());
@@ -207,7 +208,8 @@ impl ZiskStats {
                     self.asm.clone(),
                     asm_rom,
                     sha256f_script,
-                    Some(rank),
+                    Some(world_rank),
+                    Some(local_rank),
                 )
                 .expect("Failed to initialize witness library");
 
@@ -225,13 +227,13 @@ impl ZiskStats {
             .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
-        if rank % 2 == 1 {
+        if world_rank % 2 == 1 {
             thread::sleep(std::time::Duration::from_millis(2000));
         }
         tracing::info!("");
         tracing::info!(
             "{} {}",
-            format!("--- STATS SUMMARY RANK {}/{}", rank as usize, world.size() as usize),
+            format!("--- STATS SUMMARY RANK {}/{}", world_rank as usize, world.size() as usize),
             "-".repeat(55)
         );
 
