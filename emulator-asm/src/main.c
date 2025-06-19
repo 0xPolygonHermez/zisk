@@ -2488,7 +2488,7 @@ void server_setup (void)
     if (chunk_done)
     {
         assert(strlen(sem_chunk_done_name) > 0);
-        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0666, 1);
+        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0644, 0);
         if (sem_chunk_done == SEM_FAILED)
         {
             printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));

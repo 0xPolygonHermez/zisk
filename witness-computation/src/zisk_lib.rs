@@ -26,7 +26,7 @@ pub struct WitnessLib<F: PrimeField64> {
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
     executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
-    rank: Option<i32>,
+    rank: i32,
 }
 
 #[no_mangle]
@@ -45,7 +45,7 @@ fn init_library(
         asm_rom_path,
         sha256f_script_path,
         executor: None,
-        rank,
+        rank: rank.unwrap_or(0),
     });
 
     Ok(result)

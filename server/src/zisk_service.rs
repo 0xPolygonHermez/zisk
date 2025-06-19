@@ -136,7 +136,7 @@ impl ZiskService {
     pub fn new(config: ServerConfig) -> Result<Self> {
         info_file!("Starting asm microservices...");
         let options = AsmRunnerOptions::default();
-        AsmServices::start_asm_services(config.asm.as_ref().unwrap(), options, None)?;
+        AsmServices::start_asm_services(config.asm.as_ref().unwrap(), options, 0)?;
 
         let library =
             unsafe { Library::new(config.witness_lib.clone()).expect("Failed to load library") };
