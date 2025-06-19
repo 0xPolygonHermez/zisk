@@ -1,8 +1,8 @@
 use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use mem_planner_cpp::{MemAlignCheckPoint, MemCheckPoint};
 use named_sem::NamedSemaphore;
+use zisk_common::Plan;
 
 use std::ffi::c_void;
 use std::fmt::Debug;
@@ -46,7 +46,9 @@ impl AsmRunnerMO {
         max_steps: u64,
         chunk_size: u64,
         rank: i32,
-    ) -> Result<(Vec<Vec<MemCheckPoint>>, Vec<Vec<MemAlignCheckPoint>>)> {
+    ) -> Result<Vec<Plan>> {
+        use mem_planner_cpp::MemPlanner;
+
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
         let shmem_input_name = format!("ZISK_{}_MO_input", rank);
@@ -69,8 +71,8 @@ impl AsmRunnerMO {
         let mut data_ptr = unsafe { header_ptr.add(1) } as *const AsmMOChunk;
 
         // Initialize C++ memory operations trace
-        // let mem_planner = MemPlanner::new();
-        // mem_planner.execute();
+        let mem_planner = MemPlanner::new();
+        mem_planner.execute();
 
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
@@ -86,7 +88,7 @@ impl AsmRunnerMO {
                     }
 
                     data_ptr = unsafe { data_ptr.add(1) };
-                    // mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
+                    mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
 
                     if chunk.end == 1 {
                         break 0;
@@ -120,8 +122,9 @@ impl AsmRunnerMO {
         assert!(response.trace_len > 0);
         assert!(response.trace_len <= response.allocated_len);
 
-        // mem_planner.set_completed();
-        // mem_planner.wait();
+        mem_planner.set_completed();
+        mem_planner.wait();
+        let plans = mem_planner.mem_segments();
 
         // let (mem_segments, mem_align_segments) = mem_planner.mem_segments();
 
@@ -130,7 +133,7 @@ impl AsmRunnerMO {
         }
 
         // Ok((mem_segments, mem_align_segments))
-        Ok((vec![], vec![]))
+        Ok(plans)
     }
 
     pub fn write_input(inputs_path: &Path, shmem_input_name: &str) {

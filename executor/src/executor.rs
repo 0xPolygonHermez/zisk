@@ -21,7 +21,6 @@
 
 use asm_runner::{AsmRunnerMO, AsmRunnerMT, MinimalTraces, Task, TaskFactory};
 use fields::PrimeField64;
-use mem_planner_cpp::{MemAlignCheckPoint, MemCheckPoint};
 use pil_std_lib::Std;
 use proofman_common::{create_pool, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
@@ -192,12 +191,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     fn execute_with_assembly(
         &self,
         input_data_path: Option<PathBuf>,
-    ) -> (
-        MinimalTraces,
-        DeviceMetricsList,
-        NestedDeviceMetricsList,
-        Option<(Vec<Vec<MemCheckPoint>>, Vec<Vec<MemAlignCheckPoint>>)>,
-    ) {
+    ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<Vec<Plan>>) {
         let input_data_cloned = input_data_path.clone();
         let rank = self.rank;
         let handle_mo = std::thread::spawn(move || {
@@ -222,10 +216,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         self.execution_result.lock().unwrap().executed_steps = steps;
 
         // Wait for the memory operations thread to finish
-        let (mem_segments, mem_align_segments) =
+        let plans =
             handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
 
-        (min_traces, main_count, secn_count, Some((mem_segments, mem_align_segments)))
+        (min_traces, main_count, secn_count, Some(plans))
     }
 
     fn run_mt_assembly(
@@ -762,7 +756,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
 
         // If we have memory segments, add them to the planning
-        if let Some((mem_segments, mem_align_segments)) = mem_cpp {
+        if let Some(plans) = mem_cpp {
+            println!("Adding memory segments to the planning: {:?}", plans);
             // TODO!!!!!
         }
 

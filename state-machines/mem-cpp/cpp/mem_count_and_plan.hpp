@@ -229,19 +229,19 @@ void wait_mem_count_and_plan(MemCountAndPlan *mcp)
     mcp->wait();
 }
 
-uint32_t get_segment_count(MemCountAndPlan *mcp, uint32_t mem_id)
+uint32_t get_mem_segment_count(MemCountAndPlan *mcp, uint32_t mem_id)
 {
     return mcp->segments[mem_id].size();
 }
 
-const MemCheckPoint *get_segment_check_point(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id, uint32_t &count)
+const MemCheckPoint *get_mem_segment_check_points(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id, uint32_t &count)
 {
     auto segment = mcp->segments[mem_id].get(segment_id);
     count = segment ? segment->size() : 0;
     return segment->get_chunks();
 }
 
-const MemAlignCheckPoint *get_mem_align_check_point(MemCountAndPlan *mcp, uint32_t &count)
+const MemAlignCheckPoint *get_mem_align_check_points(MemCountAndPlan *mcp, uint32_t &count)
 {
     count = mcp->mem_align_counter->size();
     if (count == 0) {
