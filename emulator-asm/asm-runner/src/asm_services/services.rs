@@ -40,16 +40,16 @@ const MO_ASM_SERVICE_DEFAULT_PORT: u16 = 23117;
 pub struct AsmServices;
 
 impl AsmServices {
-    const SERVICES: [AsmService; 1] = [
+    const SERVICES: [AsmService; 2] = [
+        AsmService::MO,
         AsmService::MT,
         // AsmService::RH,
-        // AsmService::MO,
     ];
 
     pub fn start_asm_services(
         ziskemuasm_path: &Path,
         options: AsmRunnerOptions,
-        rank: Option<i32>,
+        rank: i32,
     ) -> Result<()> {
         // ! TODO Remove this when we have a proper way to find the path
         let path_str = ziskemuasm_path.to_string_lossy();
@@ -75,7 +75,7 @@ impl AsmServices {
         let start = std::time::Instant::now();
 
         for service in &Self::SERVICES {
-            Self::start_asm_service(service, trimmed_path, &options, rank.unwrap_or(0));
+            Self::start_asm_service(service, trimmed_path, &options, rank);
         }
 
         for service in &Self::SERVICES {
@@ -90,7 +90,8 @@ impl AsmServices {
         }
 
         tracing::info!(
-            "All ASM services are ready. Time taken: {} seconds",
+            ">>> [{}] All ASM services are ready. Time taken: {} seconds",
+            rank,
             start.elapsed().as_secs_f32()
         );
 

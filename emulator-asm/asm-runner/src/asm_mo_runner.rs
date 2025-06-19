@@ -1,8 +1,7 @@
-use libc::{close, shm_unlink, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR};
+use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR};
 
-// use mem_planner_cpp::MemPlanner;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-// use mem_planner_cpp::{MemAlignCheckPoint, MemCheckPoint};
+use mem_planner_cpp::{MemAlignCheckPoint, MemCheckPoint};
 use named_sem::NamedSemaphore;
 
 use std::ffi::c_void;
@@ -47,8 +46,7 @@ impl AsmRunnerMO {
         max_steps: u64,
         chunk_size: u64,
         rank: i32,
-    ) -> Result<(Vec<u64>, Vec<u64>)> {
-        // ) -> Result<(Vec<Vec<MemCheckPoint>>, Vec<Vec<MemAlignCheckPoint>>)> {
+    ) -> Result<(Vec<Vec<MemCheckPoint>>, Vec<Vec<MemAlignCheckPoint>>)> {
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
         let shmem_input_name = format!("ZISK_{}_MO_input", rank);
@@ -125,20 +123,13 @@ impl AsmRunnerMO {
         // mem_planner.set_completed();
         // mem_planner.wait();
 
-        println!("Memory operations trace completed");
-
-        // let (_mem_segments, _mem_align_segments) = mem_planner.mem_segments();
+        // let (mem_segments, mem_align_segments) = mem_planner.mem_segments();
 
         unsafe {
             shmem_utils::unmap(header_ptr as *mut c_void, header.mt_allocated_size as usize);
         }
-        let c_name = std::ffi::CString::new(shmem_output_name).expect("CString::new failed");
-        unsafe {
-            if shm_unlink(c_name.as_ptr()) != 0 {
-                error!("shm_unlink failed: {:?}", std::io::Error::last_os_error());
-            }
-        }
 
+        // Ok((mem_segments, mem_align_segments))
         Ok((vec![], vec![]))
     }
 

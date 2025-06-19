@@ -204,14 +204,14 @@ impl ZiskVerifyConstraints {
 
                 // Start ASM microservices
                 tracing::info!(
-                    "[{}] Starting ASM microservices. {}",
+                    ">>> [{}] Starting ASM microservices. {}",
                     rank,
                     "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
                 );
                 AsmServices::start_asm_services(
                     self.asm.as_ref().unwrap(),
                     AsmRunnerOptions::default(),
-                    Some(rank),
+                    rank,
                 )?;
 
                 proofman
@@ -241,7 +241,7 @@ impl ZiskVerifyConstraints {
         );
 
         // Shut down ASM microservices
-        tracing::info!("[{}] Shutting down ASM microservices.", rank);
+        tracing::info!("<<< [{}] Shutting down ASM microservices.", rank);
         AsmServices::stop_asm_services()?;
 
         Ok(())
