@@ -19,8 +19,9 @@
 //! By structuring these phases, the `ZiskExecutor` ensures high-performance execution while
 //! maintaining clarity and modularity in the computation process.
 
-use asm_runner::{/*AsmRunnerMO,*/ AsmRunnerMT, MinimalTraces, Task, TaskFactory};
+use asm_runner::{AsmRunnerMO, AsmRunnerMT, MinimalTraces, Task, TaskFactory};
 use fields::PrimeField64;
+use mem_planner_cpp::{MemAlignCheckPoint, MemCheckPoint};
 use pil_std_lib::Std;
 use proofman_common::{create_pool, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
@@ -103,7 +104,7 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     collectors_by_instance: RwLock<HashMap<usize, (Stats, Vec<(usize, Box<dyn BusDevice<u64>>)>)>>,
     stats: Mutex<Vec<(usize, usize, Stats)>>,
 
-    rank: Option<i32>,
+    rank: i32,
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
@@ -127,7 +128,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         std: Arc<Std<F>>,
         sm_bundle: BD,
         rom_sm: Option<Arc<RomSM>>,
-        rank: Option<i32>,
+        rank: i32,
     ) -> Self {
         Self {
             rom_path,
@@ -191,16 +192,23 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     fn execute_with_assembly(
         &self,
         input_data_path: Option<PathBuf>,
-    ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList) {
-        // let input_data_cloned = input_data_path.clone();
-        // let handle_mo = std::thread::spawn(move || {
-        //     AsmRunnerMO::run(
-        //         input_data_cloned.as_ref().unwrap(),
-        //         Self::MAX_NUM_STEPS,
-        //         Self::MIN_TRACE_SIZE,
-        //     )
-        //     .expect("Error during Assembly Memory Operations execution")
-        // });
+    ) -> (
+        MinimalTraces,
+        DeviceMetricsList,
+        NestedDeviceMetricsList,
+        Option<(Vec<Vec<MemCheckPoint>>, Vec<Vec<MemAlignCheckPoint>>)>,
+    ) {
+        let input_data_cloned = input_data_path.clone();
+        let rank = self.rank;
+        let handle_mo = std::thread::spawn(move || {
+            AsmRunnerMO::run(
+                input_data_cloned.as_ref().unwrap(),
+                Self::MAX_NUM_STEPS,
+                Self::MIN_TRACE_SIZE,
+                rank,
+            )
+            .expect("Error during Assembly Memory Operations execution")
+        });
 
         let (min_traces, main_count, secn_count) = self.run_mt_assembly(input_data_path);
 
@@ -214,10 +222,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         self.execution_result.lock().unwrap().executed_steps = steps;
 
         // Wait for the memory operations thread to finish
-        // let (mem_segments, mem_align_segments) =
-        //     handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
+        let (mem_segments, mem_align_segments) =
+            handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
 
-        (min_traces, main_count, secn_count)
+        (min_traces, main_count, secn_count, Some((mem_segments, mem_align_segments)))
     }
 
     fn run_mt_assembly(
@@ -276,7 +284,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             Self::MIN_TRACE_SIZE,
             // asm_runner::AsmRunnerOptions::default(),
             task_factory,
-            self.rank.unwrap_or(0),
+            self.rank,
         )
         .expect("Error during ASM execution");
 
@@ -731,7 +739,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
         assert_eq!(self.asm_runner_path.is_some(), self.asm_rom_path.is_some());
 
-        let (min_traces, main_count, secn_count) = if self.asm_runner_path.is_some() {
+        let (min_traces, main_count, secn_count, mem_cpp) = if self.asm_runner_path.is_some() {
             // If we are executing in assembly mode
             self.execute_with_assembly(input_data_path)
         } else {
@@ -742,7 +750,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
             let (main_count, secn_count) = self.count(&min_traces);
             timer_stop_and_log_info!(COUNT);
 
-            (min_traces, main_count, secn_count)
+            (min_traces, main_count, secn_count, None)
         };
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
@@ -752,6 +760,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
             MainPlanner::plan::<F>(&min_traces, main_count, Self::MIN_TRACE_SIZE);
 
         let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
+
+        // If we have memory segments, add them to the planning
+        if let Some((mem_segments, mem_align_segments)) = mem_cpp {
+            // TODO!!!!!
+        }
+
         timer_stop_and_log_info!(PLAN);
 
         // Configure the instances

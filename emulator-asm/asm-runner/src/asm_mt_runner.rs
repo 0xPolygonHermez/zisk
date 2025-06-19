@@ -1,4 +1,4 @@
-use libc::{close, shm_unlink, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR};
+use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR};
 
 use named_sem::NamedSemaphore;
 use rayon::ThreadPoolBuilder;
@@ -35,7 +35,6 @@ pub enum MinimalTraces {
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
 #[derive(Debug)]
 pub struct AsmRunnerMT {
-    shmem_output_name: String,
     mapped_ptr: *mut c_void,
     pub vec_chunks: Vec<EmuTrace>,
 }
@@ -53,24 +52,13 @@ impl Drop for AsmRunnerMT {
         unsafe {
             shmem_utils::unmap(self.mapped_ptr, total_size);
         }
-        let c_name =
-            std::ffi::CString::new(self.shmem_output_name.clone()).expect("CString::new failed");
-        unsafe {
-            if shm_unlink(c_name.as_ptr()) != 0 {
-                error!("shm_unlink failed: {:?}", std::io::Error::last_os_error());
-            }
-        }
     }
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerMT {
-    pub fn new(
-        shmem_output_name: String,
-        mapped_ptr: *mut std::ffi::c_void,
-        vec_chunks: Vec<EmuTrace>,
-    ) -> Self {
-        Self { shmem_output_name, mapped_ptr, vec_chunks }
+    pub fn new(mapped_ptr: *mut std::ffi::c_void, vec_chunks: Vec<EmuTrace>) -> Self {
+        Self { mapped_ptr, vec_chunks }
     }
 
     pub fn total_size(&self) -> usize {
@@ -188,10 +176,7 @@ impl AsmRunnerMT {
             .map(|arc| Arc::try_unwrap(arc).map_err(|_| AsmRunError::ArcUnwrap))
             .collect::<std::result::Result<_, _>>()?;
 
-        Ok((
-            AsmRunnerMT::new(shmem_output_name.to_string(), header_ptr as *mut c_void, emu_traces),
-            tasks,
-        ))
+        Ok((AsmRunnerMT::new(header_ptr as *mut c_void, emu_traces), tasks))
     }
 
     pub fn write_input(inputs_path: &Path, shmem_input_name: &str) {

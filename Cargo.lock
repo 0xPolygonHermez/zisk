@@ -977,6 +977,7 @@ dependencies = [
  "data-bus",
  "fields",
  "itertools 0.14.0",
+ "mem-planner-cpp",
  "pil-std-lib",
  "proofman",
  "proofman-common",
