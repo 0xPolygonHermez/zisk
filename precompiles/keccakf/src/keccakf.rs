@@ -506,7 +506,7 @@ impl KeccakfSM {
         let fixed = KeccakfFixed::from_vec(fixed_pols);
 
         timer_start_trace!(KECCAKF_TRACE);
-        let mut keccakf_trace = KeccakfTrace::new();
+        let mut keccakf_trace = KeccakfTrace::new_zeroes();
         let num_rows = keccakf_trace.num_rows();
 
         // Check that we can fit all the keccakfs in the trace

@@ -19,22 +19,25 @@ vergen = { version = "8", default-features = false, features = [
 ] }
 
 [dependencies]
+zisk-common = { path = "../common" }
 colored = { workspace = true }
 fields = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
-witness = { workspace = true }
 sysinfo = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+anyhow = { workspace = true }
+libloading = { workspace = true }
 
 executor = { path = "../executor" }
 rom-setup = { path = "../rom-setup" }
 zisk-core = { path = "../core" }
 zisk-pil = { path = "../pil" }
+asm-runner = { path = "../emulator-asm/asm-runner" }
 
-anyhow = { version = "1.0.86", features = ["backtrace"] }
+server = { path = "../server" }
 clap = { version = "4.5.7", features = ["derive", "env"] }
 dirs = "6"
 rand = "0.9"
@@ -48,7 +51,6 @@ tokio = { version = "1", features = ["full"] }
 indicatif = "0.17.8"
 futures = "0.3.30"
 yansi = "1.0.1"
-libloading = "0.8.4"
 mpi = "0.8.0"
 
 [features]

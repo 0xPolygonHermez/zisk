@@ -5,12 +5,12 @@
         "editor.formatOnSave": true,
         "editor.hover.enabled": true
     },
-    "editor.rulers": [
-        100
-    ],
-    "rust-analyzer.linkedProjects": [
-        "Cargo.toml",
-    ],
+    "editor.rulers": [100],
+    "rust-analyzer.linkedProjects": ["Cargo.toml"],
+    "files.associations": {
+        "*.ejs": "html",
+        "new": "cpp"
+    }
     //"rust-analyzer.showUnlinkedFileNotification": false,
     // "rust-analyzer.showUnlinkedFileNotification": false,
     // "rust-analyzer.check.workspace": false,

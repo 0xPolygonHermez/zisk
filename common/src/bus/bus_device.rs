@@ -1,5 +1,4 @@
-use std::any::Any;
-use std::collections::VecDeque;
+use std::{any::Any, collections::VecDeque};
 
 use super::BusId;
 

@@ -2,8 +2,7 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::Keccakf` instructions.
 
-use std::collections::VecDeque;
-use std::ops::Add;
+use std::{collections::VecDeque, ops::Add};
 
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OPERATION_BUS_ID, OP_TYPE,

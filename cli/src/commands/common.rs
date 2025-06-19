@@ -1,10 +1,8 @@
 use clap::{Parser, ValueEnum};
-use proofman_common::VerboseMode;
 use std::env;
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::str::FromStr;
-use witness::WitnessLibrary;
 
 #[derive(Parser, Debug, Clone, ValueEnum)]
 pub enum Field {
@@ -101,12 +99,3 @@ pub fn cli_fail_if_gpu_mode() -> anyhow::Result<()> {
         Ok(())
     }
 }
-
-pub type ZiskLibInitFn<F> = fn(
-    VerboseMode,
-    PathBuf,         // Rom path
-    Option<PathBuf>, // Asm path
-    Option<PathBuf>, // Asm ROM path
-    PathBuf,         // Sha256f script path
-    Option<i32>,     // Rank
-) -> Result<Box<dyn WitnessLibrary<F>>, Box<dyn std::error::Error>>;

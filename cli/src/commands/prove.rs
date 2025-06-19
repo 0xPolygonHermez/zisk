@@ -1,5 +1,6 @@
+use super::{get_default_proving_key, get_default_witness_computation_lib};
 use crate::{
-    commands::{cli_fail_if_macos, Field, ZiskLibInitFn},
+    commands::{cli_fail_if_macos, Field},
     proof_log,
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
@@ -21,8 +22,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
 };
-
-use super::{get_default_proving_key, get_default_witness_computation_lib};
+use zisk_common::ZiskLibInitFn;
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -175,7 +175,7 @@ impl ZiskProve {
             let hash = get_elf_data_hash(&self.elf)
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
             let new_filename = format!("{stem}-{hash}-mt.bin");
-            let asm_rom_filename = format!("{stem}-{hash}-rom.bin");
+            let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
             asm_rom = Some(default_cache_path.join(asm_rom_filename));
             self.asm = Some(default_cache_path.join(new_filename));
         }
@@ -244,7 +244,8 @@ impl ZiskProve {
             self.asm.clone(),
             asm_rom,
             sha256f_script,
-            proofman.get_rank(),
+            None,
+            None,
         )
         .expect("Failed to initialize witness library");
 

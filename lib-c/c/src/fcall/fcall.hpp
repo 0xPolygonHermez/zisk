@@ -12,6 +12,10 @@ extern "C" {
 #define FCALL_ID_INVERSE_FN_EC 2
 #define FCALL_ID_SQRT_FP_EC_PARITY 3
 #define FCALL_ID_MSB_POS_256 4
+#define FCALL_ID_BN254_FP_INV 6
+#define FCALL_ID_BN254_FP2_INV 7
+#define FCALL_ID_BN254_TWIST_ADD_LINE_COEFFS 8
+#define FCALL_ID_BN254_TWIST_DBL_LINE_COEFFS 9
 
 // Fcall context
 struct FcallContext
@@ -43,24 +47,52 @@ int SqrtFpEcParityCtx (
 int MsbPos256Ctx (
     struct FcallContext * ctx  // fcall context
 );
+int BN254FpInvCtx (
+    struct FcallContext * ctx  // fcall context
+);
+int BN254ComplexInvCtx (
+    struct FcallContext * ctx  // fcall context
+);
+int BN254TwistAddLineCoeffsCtx (
+    struct FcallContext * ctx  // fcall context
+);
+int BN254TwistDblLineCoeffsCtx (
+    struct FcallContext * ctx  // fcall context
+);
 
 // Functions supported by fcall, in u64 array format
 int InverseFpEc (
-    const uint64_t * a, // 8 x 64 bits
-          uint64_t * r  // 8 x 64 bits
+    const uint64_t * a, // 4 x 64 bits
+          uint64_t * r  // 4 x 64 bits
 );
 int InverseFnEc (
-    const uint64_t * a, // 8 x 64 bits
-          uint64_t * r  // 8 x 64 bits
+    const uint64_t * a, // 4 x 64 bits
+          uint64_t * r  // 4 x 64 bits
 );
 int SqrtFpEcParity (
-    const uint64_t * a,  // 8 x 64 bits
+    const uint64_t * a,  // 4 x 64 bits
     const uint64_t   parity,
-          uint64_t * r  // 8 x 64 bits
+          uint64_t * r  // 4 x 64 bits
 );
 int MsbPos256 (
     const uint64_t * a, // 8 x 64 bits
           uint64_t * r  // 2 x 64 bits
+);
+int BN254FpInv (
+    const uint64_t * a, // 4 x 64 bits
+          uint64_t * r  // 4 x 64 bits
+);
+int BN254ComplexInv (
+    const uint64_t * a, // 8 x 64 bits
+          uint64_t * r  // 8 x 64 bits
+);
+int BN254TwistAddLineCoeffs (
+    const uint64_t * a, // 32 x 64 bits
+          uint64_t * r  // 16 x 64 bits
+);
+int BN254TwistDblLineCoeffs (
+    const uint64_t * a, // 16 x 64 bits
+          uint64_t * r  // 16 x 64 bits
 );
 
 #ifdef __cplusplus

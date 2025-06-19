@@ -12,7 +12,6 @@ use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
 use precomp_sha256f::Sha256fManager;
 use proofman::register_std;
-use proofman_common::ProofCtx;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
@@ -27,6 +26,8 @@ pub struct WitnessLib<F: PrimeField64> {
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
     executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
+    world_rank: i32,
+    local_rank: i32,
 }
 
 #[no_mangle]
@@ -36,15 +37,18 @@ fn init_library(
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
-    rank: Option<i32>,
+    world_rank: Option<i32>,
+    local_rank: Option<i32>,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
-    proofman_common::initialize_logger(verbose_mode, rank);
+    proofman_common::initialize_logger(verbose_mode, world_rank);
     let result = Box::new(WitnessLib {
         elf_path,
         asm_path,
         asm_rom_path,
         sha256f_script_path,
         executor: None,
+        world_rank: world_rank.unwrap_or(0),
+        local_rank: local_rank.unwrap_or(0),
     });
 
     Ok(result)
@@ -76,7 +80,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let std = Std::new(wcm.get_pctx(), wcm.get_sctx());
         register_std(&wcm, &std);
 
-        let rom_sm = RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone());
+        let rom_sm = RomSM::new(zisk_rom.clone(), None /*self.asm_rom_path.clone()*/);
         let binary_sm = BinarySM::new(std.clone());
         let arith_sm = ArithSM::new();
         let mem_sm = Mem::new(std.clone());
@@ -116,6 +120,8 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             std,
             sm_bundle,
             Some(rom_sm.clone()),
+            self.world_rank,
+            self.local_rank,
         );
 
         let executor = Arc::new(executor);
@@ -135,24 +141,5 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             None => Some(Box::new(0u64) as Box<dyn Any>),
             Some(executor) => Some(Box::new(executor.get_execution_result()) as Box<dyn Any>),
         }
-    }
-
-    /// Returns the weight indicating the complexity of the witness computation.
-    /// Used as a heuristic for estimating computational cost.
-    ///
-    /// # Arguments
-    /// * `pctx` - A reference to the `ProofCtx` containing proof context information.
-    /// * `global_id` - The global ID of the witness computation.
-    ///
-    /// # Returns
-    /// * `Result<usize, Box<dyn std::error::Error>>` - The weight of the witness computation.
-    fn get_witness_weight(
-        &self,
-        pctx: &ProofCtx<F>,
-        global_id: usize,
-    ) -> Result<usize, Box<dyn std::error::Error>> {
-        let executor = self.executor.as_ref().ok_or("Executor is not available")?;
-
-        executor.get_witness_weight(pctx, global_id)
     }
 }

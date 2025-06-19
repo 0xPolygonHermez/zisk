@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "0ba16e38456661f305cf1c529fa20cffec78038eb035a24a04fb0a20d16760c7";
+pub const PILOUT_HASH: &str = "900af8d8212c1032e470b0337df6bea42537d4f51768372c1ef3656136614ee6";
 
 //AIRGROUP CONSTANTS
 
@@ -44,19 +44,19 @@ pub const ARITH_TABLE_AIR_IDS: &[usize] = &[8];
 
 pub const ARITH_RANGE_TABLE_AIR_IDS: &[usize] = &[9];
 
-pub const ARITH_EQ_AIR_IDS: &[usize] = &[10];
+pub const BINARY_AIR_IDS: &[usize] = &[10];
 
-pub const ARITH_EQ_LT_TABLE_AIR_IDS: &[usize] = &[11];
+pub const BINARY_ADD_AIR_IDS: &[usize] = &[11];
 
-pub const BINARY_AIR_IDS: &[usize] = &[12];
+pub const BINARY_TABLE_AIR_IDS: &[usize] = &[12];
 
-pub const BINARY_ADD_AIR_IDS: &[usize] = &[13];
+pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[13];
 
-pub const BINARY_TABLE_AIR_IDS: &[usize] = &[14];
+pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[14];
 
-pub const BINARY_EXTENSION_AIR_IDS: &[usize] = &[15];
+pub const ARITH_EQ_AIR_IDS: &[usize] = &[15];
 
-pub const BINARY_EXTENSION_TABLE_AIR_IDS: &[usize] = &[16];
+pub const ARITH_EQ_LT_TABLE_AIR_IDS: &[usize] = &[16];
 
 pub const KECCAKF_AIR_IDS: &[usize] = &[17];
 
@@ -190,61 +190,61 @@ trace!(ArithRangeTableTrace<F> {
  multiplicity: F,
 },  0, 9, 4194304 );
 
-trace!(ArithEqFixed<F> {
- CLK_0: F, CHUNK_ID: F, __L1__: F,
-},  0, 10, 524288 );
-
-trace!(ArithEqTrace<F> {
- x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 4], sel_op_clk0: [F; 4], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
-},  0, 10, 524288 );
-
-trace!(ArithEqLtTableFixed<F> {
- LT_T: F, DELTA: F, __L1__: F,
-},  0, 11, 262144 );
-
-trace!(ArithEqLtTableTrace<F> {
- multiplicity: F,
-},  0, 11, 262144 );
-
 trace!(BinaryFixed<F> {
  __L1__: F,
-},  0, 12, 4194304 );
+},  0, 10, 4194304 );
 
 trace!(BinaryTrace<F> {
  m_op: F, mode32: F, free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], carry: [F; 8], use_last_carry: F, op_is_min_max: F, has_initial_carry: F, cout: F, result_is_a: F, use_last_carry_mode32: F, use_last_carry_mode64: F, m_op_or_ext: F, free_in_a_or_c: [F; 4], free_in_b_or_zero: [F; 4], multiplicity: F,
-},  0, 12, 4194304 );
+},  0, 10, 4194304 );
 
 trace!(BinaryAddFixed<F> {
  __L1__: F,
-},  0, 13, 4194304 );
+},  0, 11, 4194304 );
 
 trace!(BinaryAddTrace<F> {
  a: [F; 2], b: [F; 2], c_chunks: [F; 4], cout: [F; 2], multiplicity: F,
-},  0, 13, 4194304 );
+},  0, 11, 4194304 );
 
 trace!(BinaryTableFixed<F> {
  A: F, B: F, LAST: F, CIN: F, OP: F, C: F, FLAGS: F, __L1__: F,
-},  0, 14, 8388608 );
+},  0, 12, 8388608 );
 
 trace!(BinaryTableTrace<F> {
  multiplicity: F,
-},  0, 14, 8388608 );
+},  0, 12, 8388608 );
 
 trace!(BinaryExtensionFixed<F> {
  __L1__: F,
-},  0, 15, 4194304 );
+},  0, 13, 4194304 );
 
 trace!(BinaryExtensionTrace<F> {
  op: F, in1: [F; 8], in2_low: F, out: [[F; 2]; 8], op_is_shift: F, in2: [F; 2], multiplicity: F,
-},  0, 15, 4194304 );
+},  0, 13, 4194304 );
 
 trace!(BinaryExtensionTableFixed<F> {
  A: F, OFFSET: F, B: F, OP_IS_SHIFT: F, OP: F, C0: F, C1: F, __L1__: F,
-},  0, 16, 4194304 );
+},  0, 14, 4194304 );
 
 trace!(BinaryExtensionTableTrace<F> {
  multiplicity: F,
-},  0, 16, 4194304 );
+},  0, 14, 4194304 );
+
+trace!(ArithEqFixed<F> {
+ CLK_0: F, CHUNK_ID: F, __L1__: F,
+},  0, 15, 524288 );
+
+trace!(ArithEqTrace<F> {
+ x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 9], sel_op_clk0: [F; 9], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
+},  0, 15, 524288 );
+
+trace!(ArithEqLtTableFixed<F> {
+ LT_T: F, DELTA: F, __L1__: F,
+},  0, 16, 262144 );
+
+trace!(ArithEqLtTableTrace<F> {
+ multiplicity: F,
+},  0, 16, 262144 );
 
 trace!(KeccakfFixed<F> {
  L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, ID: F, LATCH_NUM_KECCAKF: F, FACTOR_NUM_KECCAKF: F, CLK_0: F, __L1__: F,
@@ -346,14 +346,6 @@ values!(ArithRangeTableAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(ArithEqAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(ArithEqLtTableAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
 values!(BinaryAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
@@ -371,6 +363,14 @@ values!(BinaryExtensionAirGroupValues<F> {
 });
 
 values!(BinaryExtensionTableAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(ArithEqAirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(ArithEqLtTableAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 

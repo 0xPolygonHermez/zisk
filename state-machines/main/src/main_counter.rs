@@ -54,11 +54,6 @@ impl BusDevice<u64> for MainCounter {
     /// # Arguments
     /// * `bus_id` - The ID of the bus sending the data.
     /// * `data` - The data received from the bus.
-    ///
-    /// # Returns
-    /// A tuple where:
-    /// - The first element indicates whether processing should continue.
-    /// - The second element contains derived inputs to be sent back to the bus.
     #[inline(always)]
     fn process_data(
         &mut self,
@@ -74,13 +69,11 @@ impl BusDevice<u64> for MainCounter {
             return;
         }
 
-        let pub_index = 2 * data[A];
+        let pub_index = data[A] << 1;
         let pub_value = data[B];
 
-        let values = [(pub_value & 0xFFFFFFFF) as u32, ((pub_value >> 32) & 0xFFFFFFFF) as u32];
-
-        self.publics.push((pub_index, values[0]));
-        self.publics.push((pub_index + 1, values[1]));
+        self.publics.push((pub_index, (pub_value & 0xFFFFFFFF) as u32));
+        self.publics.push((pub_index + 1, ((pub_value >> 32) & 0xFFFFFFFF) as u32));
     }
 
     /// Returns the bus IDs associated with this counter.

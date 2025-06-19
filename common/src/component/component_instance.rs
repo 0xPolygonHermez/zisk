@@ -87,12 +87,12 @@ pub trait Instance<F: PrimeField64>: Send + Sync {
 #[macro_export]
 macro_rules! table_instance {
     ($InstanceName:ident, $TableSM:ident, $Trace:ident) => {
+        use std::collections::VecDeque;
         use std::sync::Arc;
 
         use fields::PrimeField64;
 
         use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
-        use std::collections::VecDeque;
         use zisk_common::{
             BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
         };
@@ -190,12 +190,12 @@ macro_rules! table_instance {
 #[macro_export]
 macro_rules! table_instance_array {
     ($InstanceName:ident, $TableSM:ident, $Trace:ident) => {
+        use std::collections::VecDeque;
         use std::sync::Arc;
 
         use fields::PrimeField64;
 
         use proofman_common::{AirInstance, ProofCtx, SetupCtx, TraceInfo};
-        use std::collections::VecDeque;
         use zisk_common::{
             BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
         };

@@ -8,11 +8,15 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-libc = "0.2"
 zisk-core = { path = "../core" }
 
+witness = { workspace = true }
 proofman-common = { workspace = true }
 fields = { workspace = true }
+tracing = { workspace = true}
+
+libc = "0.2"
+tracing-subscriber = { workspace = true }
 
 [features]
 default = []

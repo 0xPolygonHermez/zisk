@@ -97,14 +97,16 @@ impl BusDevice<u64> for ArithCounterInputGen {
 
         debug_assert_eq!(data.len(), 4);
 
+        let data_ptr = data.as_ptr() as *const [u64; 4];
+        let data = unsafe { &*data_ptr };
+
         if self.mode == BusDeviceMode::Counter {
             self.measure(data);
         }
 
-        let bin_inputs =
-            ArithFullSM::generate_inputs(unsafe { &*(data.as_ptr() as *const [u64; 4]) });
+        let bin_inputs = ArithFullSM::generate_inputs(data);
 
-        pending.extend(bin_inputs.into_iter().map(|x| (OPERATION_BUS_ID, x)).collect::<Vec<_>>());
+        pending.extend(bin_inputs.into_iter().map(|x| (OPERATION_BUS_ID, x)));
     }
 
     /// Returns the bus IDs associated with this counter.
