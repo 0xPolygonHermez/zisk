@@ -4873,11 +4873,10 @@ impl ZiskRom2Asm {
                             *code += &format!("pc_{:x}_sha256_active_chunk:\n", ctx.pc);
                         }
                         *code += &format!("\tmov {}, rdi\n", REG_ADDRESS);
-                        for k in 0..12 {
+                        for k in 0..14 {
                             *code += &format!(
-                                "\tmov {}, [{} + {}] {}\n",
+                                "\tmov {}, [rdi + {}] {}\n",
                                 REG_VALUE,
-                                REG_ADDRESS,
                                 k * 8,
                                 ctx.comment(format!("value = mem[sha256_address[{}]]", k))
                             );
@@ -4891,11 +4890,11 @@ impl ZiskRom2Asm {
                             );
                         }
 
-                        // Increment chunk.steps.mem_reads_size in 12 units
+                        // Increment chunk.steps.mem_reads_size in 14 units
                         *code += &format!(
-                            "\tadd {}, 12 {}\n",
+                            "\tadd {}, 14 {}\n",
                             REG_MEM_READS_SIZE,
-                            ctx.comment_str("mem_reads_size += 12")
+                            ctx.comment_str("mem_reads_size += 14")
                         );
 
                         *code += &format!("pc_{:x}_sha256_active_chunk_done:\n", ctx.pc);
@@ -4909,6 +4908,8 @@ impl ZiskRom2Asm {
                     }
 
                     // Call the SHA256 function
+                    *code +=
+                        &format!("\tadd rdi, 2*8 {}\n", ctx.comment_str("rdi += 2 (indirections)"));
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                     *code += "\tcall _opcode_sha256\n";
@@ -4933,7 +4934,7 @@ impl ZiskRom2Asm {
                 }
                 if ctx.chunk_player_mt_collect_mem() || ctx.chunk_player_mem_reads_collect_main() {
                     *code += &format!(
-                        "\tadd {}, 12*8 {}\n",
+                        "\tadd {}, 14*8 {}\n",
                         REG_CHUNK_PLAYER_ADDRESS,
                         ctx.comment_str("chunk_address += 12*8")
                     );
