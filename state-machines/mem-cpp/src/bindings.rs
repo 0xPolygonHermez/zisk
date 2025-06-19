@@ -275,6 +275,7 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     pub fn add_chunk_mem_count_and_plan(
+        id: u32,
         mcp: *mut MemCountAndPlan,
         chunk_data: *mut MemCountersBusData,
         chunk_size: u32,
@@ -304,5 +305,5 @@ unsafe extern "C" {
     pub fn get_mem_align_check_points(
         mcp: *mut MemCountAndPlan,
         count: *mut u32,
-    ) -> *mut MemAlignCheckPoint;
+    ) -> *const MemAlignCheckPoint;
 }

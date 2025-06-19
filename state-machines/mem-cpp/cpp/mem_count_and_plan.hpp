@@ -209,9 +209,15 @@ void execute_mem_count_and_plan(MemCountAndPlan *mcp)
     mcp->execute();
 }
 
-void add_chunk_mem_count_and_plan(MemCountAndPlan *mcp, MemCountersBusData *chunk_data, uint32_t chunk_size)
+void add_chunk_mem_count_and_plan(uint32_t id, MemCountAndPlan *mcp, MemCountersBusData *chunk_data, uint32_t chunk_size)
 {
-    mcp->add_chunk(chunk_data, chunk_size);
+   char filename[200];
+   snprintf(filename, sizeof(filename), "mem_%d.txt", id);
+   int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+   write(fd, chunk_data, sizeof(MemCountersBusData) * chunk_size);
+   close(fd);
+   
+   mcp->add_chunk(chunk_data, chunk_size);
 }
 
 void stats_mem_count_and_plan(MemCountAndPlan *mcp)

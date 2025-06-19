@@ -3,7 +3,9 @@ use std::{collections::HashMap, os::raw::c_void};
 use crate::*;
 use mem_common::{MemAlignCheckPoint, MemModuleCheckPoint, MemModuleSegmentCheckPoint};
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
-use zisk_pil::{INPUT_DATA_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{
+    INPUT_DATA_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
+};
 
 pub struct MemPlanner {
     inner: *mut bindings::MemCountAndPlan,
@@ -33,9 +35,10 @@ impl MemPlanner {
     }
 
     /// Adds a chunk of memory data
-    pub fn add_chunk(&self, len: u64, data: *const c_void) {
+    pub fn add_chunk(&self, len: u64, data: *const c_void, chunk_id: u32) {
         unsafe {
             bindings::add_chunk_mem_count_and_plan(
+                chunk_id,
                 self.inner,
                 data as *mut bindings::MemCountersBusData,
                 len as u32,
@@ -66,7 +69,7 @@ impl MemPlanner {
         let mut plans: Vec<Plan> = Vec::new();
 
         for (mem_id, air_id) in
-            [ROM_AIR_IDS[0], INPUT_DATA_AIR_IDS[0], MEM_AIR_IDS[0]].iter().enumerate()
+            [ROM_DATA_AIR_IDS[0], INPUT_DATA_AIR_IDS[0], MEM_AIR_IDS[0]].iter().enumerate()
         {
             let mem_segments_count: u32 =
                 unsafe { bindings::get_mem_segment_count(self.inner, mem_id as u32) };
@@ -100,6 +103,9 @@ impl MemPlanner {
         }
 
         let mem_align_check_points = CppMemAlignCheckPoint::from_cpp(self);
+
+        println!("mem_align_check_points len: {:?}", mem_align_check_points.len());
+
         let mut last_segment_id = None;
         let mut segment: HashMap<ChunkId, MemAlignCheckPoint> = HashMap::new();
         let mut chunks: Vec<ChunkId> = Vec::new();
@@ -119,6 +125,9 @@ impl MemPlanner {
                 }
                 last_segment_id = Some(current_segment_id);
             }
+
+            chunks.push(ChunkId(checkpoint.chunk_id as usize));
+
             segment.insert(
                 ChunkId(checkpoint.chunk_id as usize),
                 MemAlignCheckPoint {

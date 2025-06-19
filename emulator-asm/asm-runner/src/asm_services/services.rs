@@ -97,6 +97,8 @@ impl AsmServices {
             }
         }
 
+        std::thread::sleep(Duration::from_secs(2));
+        
         let start = std::time::Instant::now();
 
         for service in &Self::SERVICES {

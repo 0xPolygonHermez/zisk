@@ -756,12 +756,16 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         let (mut main_planning, public_values) =
             MainPlanner::plan::<F>(&min_traces, main_count, Self::MIN_TRACE_SIZE);
 
+        println!("CPP Planning: {:?}", mem_cpp);
         let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
-
-        // If we have memory segments, add them to the planning
+        for plan in &secn_planning {
+            // println!("---Plan: {:?}", plan);
+        }
         if let Some(plans) = mem_cpp {
-            println!("Adding memory segments to the planning: {:?}", plans);
-            // TODO!!!!!
+            secn_planning[0].extend(plans);
+        }
+        for plan in &secn_planning {
+            // println!("---Plan: {:?}", plan);
         }
 
         timer_stop_and_log_info!(PLAN);
@@ -769,9 +773,18 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         // Configure the instances
         self.sm_bundle.configure_instances(&pctx, &secn_planning);
 
+        // If we have memory segments, add them to the planning
+        // if let Some(plans) = &mem_cpp {
+        //     self.sm_bundle.configure_mem_instance(&pctx, &plans);
+        // }
+
         // Assign the instances
         self.assign_main_instances(&pctx, &mut main_planning);
         self.assign_secn_instances(&pctx, &mut secn_planning);
+
+        // if let Some(plans) = mem_cpp {
+        //     self.assign_secn_instances(&pctx, &mut [plans]);
+        // }
 
         // Get the global IDs of the instances to compute witness for
         let main_global_ids =
