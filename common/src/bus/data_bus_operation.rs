@@ -363,6 +363,36 @@ impl OperationBusData<u64> {
                     buffer[4..len].copy_from_slice(&ctx.precompiled.input_data);
                     &buffer[..len]
                 }
+                BN254_CURVE_ADD_OP => {
+                    let len = 4 + ctx.precompiled.input_data.len();
+                    buffer[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    buffer[4..len].copy_from_slice(&ctx.precompiled.input_data);
+                    &buffer[..len]
+                }
+                BN254_CURVE_DBL_OP => {
+                    let len = 4 + ctx.precompiled.input_data.len();
+                    buffer[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    buffer[4..len].copy_from_slice(&ctx.precompiled.input_data);
+                    &buffer[..len]
+                }
+                BN254_COMPLEX_ADD_OP => {
+                    let len = 4 + ctx.precompiled.input_data.len();
+                    buffer[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    buffer[4..len].copy_from_slice(&ctx.precompiled.input_data);
+                    &buffer[..len]
+                }
+                BN254_COMPLEX_SUB_OP => {
+                    let len = 4 + ctx.precompiled.input_data.len();
+                    buffer[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    buffer[4..len].copy_from_slice(&ctx.precompiled.input_data);
+                    &buffer[..len]
+                }
+                BN254_COMPLEX_MUL_OP => {
+                    let len = 4 + ctx.precompiled.input_data.len();
+                    buffer[0..4].copy_from_slice(&[op, op_type, a, b]);
+                    buffer[4..len].copy_from_slice(&ctx.precompiled.input_data);
+                    &buffer[..len]
+                }
                 _ => {
                     buffer[0..4].copy_from_slice(&[op, op_type, a, b]);
                     &buffer[..4]

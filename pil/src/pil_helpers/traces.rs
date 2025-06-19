@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "5816dcc3880df0ae2f4188e8ab8841792048c5db450e91da66580fcbcb45aad1";
+pub const PILOUT_HASH: &str = "900af8d8212c1032e470b0337df6bea42537d4f51768372c1ef3656136614ee6";
 
 //AIRGROUP CONSTANTS
 
@@ -232,11 +232,11 @@ trace!(BinaryExtensionTableTrace<F> {
 
 trace!(ArithEqFixed<F> {
  CLK_0: F, CHUNK_ID: F, __L1__: F,
-},  0, 15, 2097152 );
+},  0, 15, 524288 );
 
 trace!(ArithEqTrace<F> {
  x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 9], sel_op_clk0: [F; 9], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
-},  0, 15, 2097152 );
+},  0, 15, 524288 );
 
 trace!(ArithEqLtTableFixed<F> {
  LT_T: F, DELTA: F, __L1__: F,
@@ -264,11 +264,11 @@ trace!(KeccakfTableTrace<F> {
 
 trace!(Sha256fFixed<F> {
  L1: F, GATE_OP: F, CARRY_ENABLED: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, latch_num_sha256f: F, factor_num_sha256f: F, CLK_0: F, __L1__: F,
-},  0, 19, 4194304 );
+},  0, 19, 2097152 );
 
 trace!(Sha256fTrace<F> {
  free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], free_in_d: [F; 8], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
-},  0, 19, 4194304 );
+},  0, 19, 2097152 );
 
 trace!(Sha256fTableFixed<F> {
  A: [F; 1], B: F, C: F, GATE_OP: F, D: [F; 1], CARRY: [F; 1], __L1__: F,
