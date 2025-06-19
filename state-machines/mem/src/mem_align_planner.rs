@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{MemCounters, MemPlanCalculator};
+use proofman_common::PreCalculate;
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 use zisk_pil::{MemAlignTrace, MEM_ALIGN_AIR_IDS, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
@@ -132,6 +133,7 @@ impl<'a> MemAlignPlanner<'a> {
             Some(SegmentId(self.instances.len())),
             InstanceType::Instance,
             CheckPoint::Multiple(chunks),
+            PreCalculate::Fast,
             Some(Box::new(check_points)),
         );
         self.instances.push(instance);
@@ -171,6 +173,7 @@ impl MemPlanCalculator for MemAlignPlanner<'_> {
             None,
             InstanceType::Table,
             CheckPoint::None,
+            PreCalculate::None,
             None,
         ));
         std::mem::take(&mut self.instances)

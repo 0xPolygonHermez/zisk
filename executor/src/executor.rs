@@ -22,7 +22,7 @@
 use asm_runner::{AsmRunnerMT, MinimalTraces, Task, TaskFactory};
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{create_pool, ProofCtx, SetupCtx};
+use proofman_common::{create_pool, PreCalculate, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::gen_elf_hash;
 use sm_rom::RomSM;
@@ -350,7 +350,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// * `main_planning` - Planning information for main state machines.
     fn assign_main_instances(&self, pctx: &ProofCtx<F>, main_planning: &mut [Plan]) {
         for plan in main_planning.iter_mut() {
-            plan.set_global_id(pctx.add_instance(plan.airgroup_id, plan.air_id, false, 1));
+            plan.set_global_id(pctx.add_instance_assign(
+                plan.airgroup_id,
+                plan.air_id,
+                PreCalculate::None,
+                1,
+            ));
         }
     }
 
@@ -459,7 +464,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             for plan in plans_by_sm.iter_mut() {
                 let global_id = match plan.instance_type {
                     InstanceType::Instance => {
-                        pctx.add_instance(plan.airgroup_id, plan.air_id, true, 1)
+                        pctx.add_instance(plan.airgroup_id, plan.air_id, plan.pre_calculate, 1)
                     }
                     InstanceType::Table => pctx.add_instance_all(plan.airgroup_id, plan.air_id),
                 };
