@@ -9,5 +9,6 @@ pub type ZiskLibInitFn<F> = fn(
     Option<PathBuf>, // Asm path
     Option<PathBuf>, // Asm ROM path
     PathBuf,         // Sha256f script path
-    Option<i32>,     // mpi Rank
+    Option<i32>,     // mpi World Rank
+    Option<i32>,     // mpi Local Rank
 ) -> Result<Box<dyn WitnessLibrary<F>>, Box<dyn std::error::Error>>;
