@@ -1,7 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use cargo_zisk::{
     commands::{
-        ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskExecute, ZiskProve, ZiskProveClient, ZiskRomSetup, ZiskRun, ZiskSdk, ZiskServer, ZiskStats, ZiskVerify, ZiskVerifyConstraints
+        ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskExecute, ZiskProve, ZiskProveClient,
+        ZiskRomSetup, ZiskRun, ZiskSdk, ZiskServer, ZiskStats, ZiskVerify, ZiskVerifyConstraints,
     },
     ZISK_VERSION_MESSAGE,
 };

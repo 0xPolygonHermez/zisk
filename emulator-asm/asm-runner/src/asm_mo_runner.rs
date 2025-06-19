@@ -59,8 +59,9 @@ impl AsmRunnerMO {
 
         Self::write_input(inputs_path, &shmem_input_name);
 
-        let handle =
-            std::thread::spawn(move || AsmServices::send_memory_ops_request(max_steps, chunk_size, local_rank));
+        let handle = std::thread::spawn(move || {
+            AsmServices::send_memory_ops_request(max_steps, chunk_size, local_rank)
+        });
 
         // Read the header data
         let header_ptr = Self::get_output_ptr(&shmem_output_name) as *const AsmMOHeader;
