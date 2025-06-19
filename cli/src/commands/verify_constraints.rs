@@ -88,7 +88,8 @@ impl ZiskVerifyConstraints {
             .ok_or_else(|| anyhow::anyhow!("Failed to initialize MPI with threading"))?;
 
         let world = universe.world();
-        let rank = world.rank();
+        let world_rank = world.rank();
+        let local_rank = world_rank; // TODO!!!! Change this!
 
         let debug_info = match &self.debug {
             None => DebugInfo::default(),
@@ -196,7 +197,8 @@ impl ZiskVerifyConstraints {
                     self.asm.clone(),
                     asm_rom,
                     sha256f_script,
-                    Some(rank),
+                    Some(world_rank),
+                    Some(local_rank),
                 )
                 .expect("Failed to initialize witness library");
 
@@ -205,13 +207,14 @@ impl ZiskVerifyConstraints {
                 // Start ASM microservices
                 tracing::info!(
                     ">>> [{}] Starting ASM microservices. {}",
-                    rank,
+                    world_rank,
                     "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
                 );
                 AsmServices::start_asm_services(
                     self.asm.as_ref().unwrap(),
                     AsmRunnerOptions::default(),
-                    rank,
+                    world_rank,
+                    local_rank,
                 )?;
 
                 proofman
@@ -241,8 +244,8 @@ impl ZiskVerifyConstraints {
         );
 
         // Shut down ASM microservices
-        tracing::info!("<<< [{}] Shutting down ASM microservices.", rank);
-        AsmServices::stop_asm_services()?;
+        tracing::info!("<<< [{}] Shutting down ASM microservices.", world_rank);
+        AsmServices::stop_asm_services(local_rank)?;
 
         Ok(())
     }

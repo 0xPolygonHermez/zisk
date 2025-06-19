@@ -136,7 +136,7 @@ impl ZiskService {
     pub fn new(config: ServerConfig) -> Result<Self> {
         info_file!("Starting asm microservices...");
         let options = AsmRunnerOptions::default();
-        AsmServices::start_asm_services(config.asm.as_ref().unwrap(), options, 0)?;
+        AsmServices::start_asm_services(config.asm.as_ref().unwrap(), options, 0, 0)?;
 
         let library =
             unsafe { Library::new(config.witness_lib.clone()).expect("Failed to load library") };
@@ -149,6 +149,7 @@ impl ZiskService {
             config.asm_rom.clone(),
             config.sha256f_script.clone(),
             None, // mpi Rank is not used in this context
+            None, // mpi Local Rank is not used in this context
         )
         .expect("Failed to initialize witness library");
 

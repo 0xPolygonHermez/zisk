@@ -249,6 +249,10 @@ int shmem_mt_fd = -1;
 char sem_chunk_done_name[128];
 sem_t * sem_chunk_done = NULL;
 
+// Shutdown done semaphore: notifies the caller when a shutdown has been processed
+char sem_shutdown_done_name[128];
+sem_t * sem_shutdown_done = NULL;
+
 int process_id = 0;
 
 uint64_t input_size = 0;
@@ -298,7 +302,7 @@ int main(int argc, char *argv[])
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == 0)
     {
-        printf("Failed calling socket() errno=%d=%s\n", errno, strerror(errno));
+        printf("ERROR: Failed calling socket() errno=%d=%s\n", errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -309,7 +313,7 @@ int main(int argc, char *argv[])
     result = setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt));
     if (result != 0)
     {
-        printf("Failed calling setsockopt() result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        printf("ERROR: Failed calling setsockopt() result=%d errno=%d=%s\n", result, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -324,7 +328,7 @@ int main(int argc, char *argv[])
     result = bind(server_fd, (struct sockaddr *)&address, sizeof(address));
     if (result != 0)
     {
-        printf("Failed calling bind() result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        printf("ERROR: Failed calling bind() result=%d errno=%d=%s\n", result, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -334,7 +338,7 @@ int main(int argc, char *argv[])
     result = listen(server_fd, 5);
     if (result != 0)
     {
-        printf("Failed calling listen() result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        printf("ERROR: Failed calling listen() result=%d errno=%d=%s\n", result, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -350,7 +354,7 @@ int main(int argc, char *argv[])
         client_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
         if (client_fd < 0)
         {
-            printf("Failed calling accept() client_fd=%d errno=%d=%s\n", client_fd, errno, strerror(errno));
+            printf("ERROR: Failed calling accept() client_fd=%d errno=%d=%s\n", client_fd, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -378,16 +382,15 @@ int main(int argc, char *argv[])
             ssize_t bytes_read = recv(client_fd, request, sizeof(request), MSG_WAITALL);
             if (bytes_read < 0)
             {
-                printf("Failed calling recv() bytes_read=%ld errno=%d=%s\n", bytes_read, errno, strerror(errno));
-                fflush(stdout);
-                fflush(stderr);
+                printf("ERROR: Failed calling recv() bytes_read=%ld errno=%d=%s\n", bytes_read, errno, strerror(errno));
                 break;
             }
             if (bytes_read != sizeof(request))
             {
-                printf("Failed calling recv() invalid bytes_read=%ld errno=%d=%s\n", bytes_read, errno, strerror(errno));
-                fflush(stdout);
-                fflush(stderr);
+                if ((errno != 0) && (errno != 2))
+                {
+                    printf("ERROR: Failed calling recv() invalid bytes_read=%ld errno=%d=%s\n", bytes_read, errno, strerror(errno));
+                }
                 break;
             }
 #ifdef DEBUG
@@ -670,7 +673,7 @@ int main(int argc, char *argv[])
                 }
                 default:
                 {
-                    printf("invalid request id=%lu\n", request[0]);
+                    printf("ERROR: Invalid request id=%lu\n", request[0]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);                
@@ -682,13 +685,11 @@ int main(int argc, char *argv[])
             ssize_t bytes_sent = send(client_fd, response, sizeof(response), MSG_WAITALL);
             if (bytes_sent != sizeof(response))
             {
-                printf("Failed calling send() invalid bytes_sent=%ld errno=%d=%s\n", bytes_sent, errno, strerror(errno));
-                fflush(stdout);
-                fflush(stderr);
+                printf("ERROR: Failed calling send() invalid bytes_sent=%ld errno=%d=%s\n", bytes_sent, errno, strerror(errno));
                 break;
             }
 #ifdef DEBUG
-            if (verbose) printf("Response sent to client\n");
+            else if (verbose) printf("Response sent to client\n");
 #endif
             if (bReset)
             {
@@ -875,13 +876,13 @@ void parse_arguments(int argc, char *argv[])
                 i++;
                 if (i >= argc)
                 {
-                    printf("Detected argument -i in the last position; please provide input file after it\n");
+                    printf("ERROR: Detected argument -i in the last position; please provide input file after it\n");
                     print_usage();
                     exit(-1);
                 }
                 if (strlen(argv[i]) > 4095)
                 {
-                    printf("Detected argument -i but next argument is too long\n");
+                    printf("ERROR: Detected argument -i but next argument is too long\n");
                     print_usage();
                     exit(-1);
                 }
@@ -893,13 +894,13 @@ void parse_arguments(int argc, char *argv[])
                 i++;
                 if (i >= argc)
                 {
-                    printf("Detected argument -i in the last position; please provide shared mem prefix after it\n");
+                    printf("ERROR: Detected argument -i in the last position; please provide shared mem prefix after it\n");
                     print_usage();
                     exit(-1);
                 }
                 if (strlen(argv[i]) > MAX_SHM_PREFIX_LENGTH)
                 {
-                    printf("Detected argument -i but next argument is too long\n");
+                    printf("ERROR: Detected argument -i but next argument is too long\n");
                     print_usage();
                     exit(-1);
                 }
@@ -911,7 +912,7 @@ void parse_arguments(int argc, char *argv[])
                 i++;
                 if (i >= argc)
                 {
-                    printf("Detected argument -c in the last position; please provide chunk number after it\n");
+                    printf("ERROR: Detected argument -c in the last position; please provide chunk number after it\n");
                     print_usage();
                     exit(-1);
                 }
@@ -921,19 +922,19 @@ void parse_arguments(int argc, char *argv[])
 
                 // Check for errors
                 if (errno == ERANGE) {
-                    printf("Error: Chunk number is too large\n");
+                    printf("ERROR: Chunk number is too large\n");
                     print_usage();
                     exit(-1);
                 } else if (endptr == argv[i]) {
-                    printf("Error: No digits found while parsing chunk number\n");
+                    printf("ERROR: No digits found while parsing chunk number\n");
                     print_usage();
                     exit(-1);
                 } else if (*endptr != '\0') {
-                    printf("Error: Extra characters after chunk number: %s\n", endptr);
+                    printf("ERROR: Extra characters after chunk number: %s\n", endptr);
                     print_usage();
                     exit(-1);
                 } else if (chunk_mask > MAX_CHUNK_MASK) {
-                    printf("Error: Invalid chunk number: %lu\n", chunk_mask);
+                    printf("ERROR: Invalid chunk number: %lu\n", chunk_mask);
                     print_usage();
                     exit(-1);
                 } else {
@@ -951,7 +952,7 @@ void parse_arguments(int argc, char *argv[])
                 i++;
                 if (i >= argc)
                 {
-                    printf("Detected argument -mt in the last position; please provide number of MT requests after it\n");
+                    printf("ERROR: Detected argument -mt in the last position; please provide number of MT requests after it\n");
                     print_usage();
                     exit(-1);
                 }
@@ -961,19 +962,19 @@ void parse_arguments(int argc, char *argv[])
 
                 // Check for errors
                 if (errno == ERANGE) {
-                    printf("Error: Number of MT requests is too large\n");
+                    printf("ERROR: Number of MT requests is too large\n");
                     print_usage();
                     exit(-1);
                 } else if (endptr == argv[i]) {
-                    printf("Error: No digits found while parsing number of MT requests\n");
+                    printf("ERROR: No digits found while parsing number of MT requests\n");
                     print_usage();
                     exit(-1);
                 } else if (*endptr != '\0') {
-                    printf("Error: Extra characters after number of MT requests: %s\n", endptr);
+                    printf("ERROR: Extra characters after number of MT requests: %s\n", endptr);
                     print_usage();
                     exit(-1);
                 } else if (number_of_mt_requests > 1000000) {
-                    printf("Error: Invalid number of MT requests: %lu\n", number_of_mt_requests);
+                    printf("ERROR: Invalid number of MT requests: %lu\n", number_of_mt_requests);
                     print_usage();
                     exit(-1);
                 } else {
@@ -986,7 +987,7 @@ void parse_arguments(int argc, char *argv[])
                 i++;
                 if (i >= argc)
                 {
-                    printf("Detected argument -p in the last position; please provide port number after it\n");
+                    printf("ERROR: Detected argument -p in the last position; please provide port number after it\n");
                     print_usage();
                     exit(-1);
                 }
@@ -996,15 +997,15 @@ void parse_arguments(int argc, char *argv[])
 
                 // Check for errors
                 if (errno == ERANGE) {
-                    printf("Error: Port number is too large\n");
+                    printf("ERROR: Port number is too large\n");
                     print_usage();
                     exit(-1);
                 } else if (endptr == argv[i]) {
-                    printf("Error: No digits found while parsing port number\n");
+                    printf("ERROR: No digits found while parsing port number\n");
                     print_usage();
                     exit(-1);
                 } else if (*endptr != '\0') {
-                    printf("Error: Extra characters after port number: %s\n", endptr);
+                    printf("ERROR: Extra characters after port number: %s\n", endptr);
                     print_usage();
                     exit(-1);
                 } else {
@@ -1022,7 +1023,7 @@ void parse_arguments(int argc, char *argv[])
                 i++;
                 if (i >= argc)
                 {
-                    printf("Detected argument -a in the last position; please provide chunk address after it\n");
+                    printf("ERROR: Detected argument -a in the last position; please provide chunk address after it\n");
                     print_usage();
                     exit(-1);
                 }
@@ -1034,15 +1035,15 @@ void parse_arguments(int argc, char *argv[])
 
                 // Check for errors
                 if (errno == ERANGE) {
-                    printf("Error: Chunk address is too large\n");
+                    printf("ERROR: Chunk address is too large\n");
                     print_usage();
                     exit(-1);
                 } else if (endptr == argument) {
-                    printf("Error: No digits found while parsing chunk addresss\n");
+                    printf("ERROR: No digits found while parsing chunk addresss\n");
                     print_usage();
                     exit(-1);
                 } else if (*endptr != '\0') {
-                    printf("Error: Extra characters after chunk address: %s\n", endptr);
+                    printf("ERROR: Extra characters after chunk address: %s\n", endptr);
                     print_usage();
                     exit(-1);
                 } else {
@@ -1050,7 +1051,7 @@ void parse_arguments(int argc, char *argv[])
                 }
                 continue;
             }
-            printf("ERROR! parse_arguments() Unrecognized argument: %s\n", argv[i]);
+            printf("ERROR: parse_arguments() Unrecognized argument: %s\n", argv[i]);
             print_usage();
             fflush(stdout);
             fflush(stderr);
@@ -1112,6 +1113,8 @@ void configure (void)
             strcat(shmem_input_name, "_FT_input");
             strcpy(shmem_output_name, "");
             strcpy(sem_chunk_done_name, "");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_FT_shutdown_done");
             strcpy(shmem_mt_name, "");
             port = 23120;
             break;
@@ -1124,6 +1127,8 @@ void configure (void)
             strcat(shmem_output_name, "_MT_output");
             strcpy(sem_chunk_done_name, shm_prefix);
             strcat(sem_chunk_done_name, "_MT_chunk_done");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_MT_shutdown_done");
             strcpy(shmem_mt_name, "");
             chunk_done = true;
             port = 23115;
@@ -1136,6 +1141,8 @@ void configure (void)
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_RH_output");
             strcpy(sem_chunk_done_name, "");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_RH_shutdown_done");
             strcpy(shmem_mt_name, "");
             port = 23116;
             break;
@@ -1148,6 +1155,8 @@ void configure (void)
             strcat(shmem_output_name, "_MA_output");
             strcpy(sem_chunk_done_name, shm_prefix);
             strcat(sem_chunk_done_name, "_MA_chunk_done");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_MA_shutdown_done");
             strcpy(shmem_mt_name, "");
             chunk_done = true;
             port = 23118;
@@ -1161,6 +1170,8 @@ void configure (void)
             strcat(shmem_output_name, "_CH_output");
             strcpy(sem_chunk_done_name, shm_prefix);
             strcat(sem_chunk_done_name, "_CH_chunk_done");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_CH_shutdown_done");
             strcpy(shmem_mt_name, "");
             chunk_done = true;
             port = 23115;
@@ -1183,6 +1194,8 @@ void configure (void)
             strcat(shmem_output_name, "_ZP_output");
             strcpy(sem_chunk_done_name, shm_prefix);
             strcat(sem_chunk_done_name, "_ZP_chunk_done");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_ZP_shutdown_done");
             strcpy(shmem_mt_name, "");
             chunk_done = true;
             port = 23115;
@@ -1196,6 +1209,8 @@ void configure (void)
             strcat(shmem_output_name, "_MO_output");
             strcpy(sem_chunk_done_name, shm_prefix);
             strcat(sem_chunk_done_name, "_MO_chunk_done");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_MO_shutdown_done");
             strcpy(shmem_mt_name, "");
             chunk_done = true;
             port = 23117;
@@ -1207,6 +1222,7 @@ void configure (void)
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_CM_output");
             strcpy(sem_chunk_done_name, "");
+            strcpy(sem_shutdown_done_name, "");
             strcpy(shmem_mt_name, shm_prefix);
             strcat(shmem_mt_name, "_MT_output");
             chunk_done = false;
@@ -1221,6 +1237,8 @@ void configure (void)
             strcat(shmem_output_name, "_MT_output");
             strcpy(sem_chunk_done_name, shm_prefix);
             strcat(sem_chunk_done_name, "_MT_chunk_done");
+            strcpy(sem_shutdown_done_name, shm_prefix);
+            strcat(sem_shutdown_done_name, "_MT_shutdown_done");
             strcpy(shmem_mt_name, "");
             chunk_done = true;
             port = 23115;
@@ -1232,6 +1250,7 @@ void configure (void)
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_CA_output");
             strcpy(sem_chunk_done_name, "");
+            strcpy(sem_shutdown_done_name, "");
             strcpy(shmem_mt_name, shm_prefix);
             strcat(shmem_mt_name, "_MT_output");
             chunk_done = false;
@@ -1254,7 +1273,7 @@ void configure (void)
 
     if (verbose)
     {
-        printf("ziskemuasm configuration:\n\tgen_method=%u\n\tport=%u\n\tchunk_done=%u\n\tchunk_size=%lu\n\tshmem_input=%s\n\tshmem_output=%s\n\tshmem_mt=%s\n\tsem_chunk_done=%s\n",
+        printf("ziskemuasm configuration:\n\tgen_method=%u\n\tport=%u\n\tchunk_done=%u\n\tchunk_size=%lu\n\tshmem_input=%s\n\tshmem_output=%s\n\tshmem_mt=%s\n\tsem_chunk_done=%s\n\tsem_shutdown_done=%s\n",
             gen_method,
             port,
             chunk_done,
@@ -1262,7 +1281,8 @@ void configure (void)
             shmem_input_name,
             shmem_output_name,
             shmem_mt_name,
-            sem_chunk_done_name);
+            sem_chunk_done_name,
+            sem_shutdown_done_name);
     }
 }
 
@@ -1284,7 +1304,7 @@ void client_setup (void)
         shmem_mt_fd = shm_open(shmem_mt_name, O_RDONLY, 0666);
         if (shmem_mt_fd < 0)
         {
-            printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_mt_name, errno, strerror(errno));
+            printf("ERROR: Failed calling shm_open(%s) errno=%d=%s\n", shmem_mt_name, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -1301,14 +1321,14 @@ void client_setup (void)
 #endif
         if (pTrace == MAP_FAILED)
         {
-            printf("Failed calling mmap(MT) errno=%d=%s\n", errno, strerror(errno));
+            printf("ERROR: Failed calling mmap(MT) errno=%d=%s\n", errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
         }
         if ((uint64_t)pTrace != TRACE_ADDR)
         {
-            printf("Called mmap(MT) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
+            printf("ERROR: Called mmap(MT) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -1338,7 +1358,7 @@ void client_run (void)
         FILE * input_fp = fopen(input_file, "r");
         if (input_fp == NULL)
         {
-            printf("Failed calling fopen(%s) errno=%d=%s; does it exist?\n", input_file, errno, strerror(errno));
+            printf("ERROR: Failed calling fopen(%s) errno=%d=%s; does it exist?\n", input_file, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -1347,7 +1367,7 @@ void client_run (void)
         // Get input file size
         if (fseek(input_fp, 0, SEEK_END) == -1)
         {
-            printf("Failed calling fseek(%s) errno=%d=%s\n", input_file, errno, strerror(errno));
+            printf("ERROR: Failed calling fseek(%s) errno=%d=%s\n", input_file, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -1355,7 +1375,7 @@ void client_run (void)
         long input_data_size = ftell(input_fp);
         if (input_data_size == -1)
         {
-            printf("Failed calling ftell(%s) errno=%d=%s\n", input_file, errno, strerror(errno));
+            printf("ERROR: Failed calling ftell(%s) errno=%d=%s\n", input_file, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -1364,7 +1384,7 @@ void client_run (void)
         // Go back to the first byte
         if (fseek(input_fp, 0, SEEK_SET) == -1)
         {
-            printf("Failed calling fseek(%s, 0) errno=%d=%s\n", input_file, errno, strerror(errno));
+            printf("ERROR: Failed calling fseek(%s, 0) errno=%d=%s\n", input_file, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -1373,7 +1393,7 @@ void client_run (void)
         // Check the input data size is inside the proper range
         if (input_data_size > (MAX_INPUT_SIZE - 16))
         {
-            printf("Size of input file (%s) is too long (%lu)\n", input_file, input_data_size);
+            printf("ERROR: Size of input file (%s) is too long (%lu)\n", input_file, input_data_size);
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -1383,7 +1403,7 @@ void client_run (void)
         shmem_input_fd = shm_open(shmem_input_name, O_RDWR, 0666);
         if (shmem_input_fd < 0)
         {
-            printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            printf("ERROR: Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -1393,7 +1413,7 @@ void client_run (void)
         shmem_input_address = mmap(NULL, MAX_INPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_input_fd, 0);
         if (shmem_input_address == MAP_FAILED)
         {
-            printf("Failed calling mmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            printf("ERROR: Failed calling mmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -1407,7 +1427,7 @@ void client_run (void)
         size_t input_read = fread(shmem_input_address + 16, 1, input_data_size, input_fp);
         if (input_read != input_data_size)
         {
-            printf("Input read (%lu) != input file size (%lu)\n", input_read, input_data_size);
+            printf("ERROR: Input read (%lu) != input file size (%lu)\n", input_read, input_data_size);
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -1420,7 +1440,7 @@ void client_run (void)
         result = munmap(shmem_input_address, MAX_INPUT_SIZE);
         if (result == -1)
         {
-            printf("Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
+            printf("ERROR: Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -1443,7 +1463,7 @@ void client_run (void)
     socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_fd < 0)
     {
-        printf("socket() failed socket_fd=%d errno=%d=%s\n", socket_fd, errno, strerror(errno));
+        printf("ERROR: socket() failed socket_fd=%d errno=%d=%s\n", socket_fd, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -1457,16 +1477,16 @@ void client_run (void)
     result = inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr);
     if (result <= 0)
     {
-        printf("inet_pton() failed.  Invalid address/Address not supported result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        exit(EXIT_FAILURE);
+        printf("ERROR: inet_pton() failed.  Invalid address/Address not supported result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        exit(-1);
     }
 
     // Connect to server
     result = connect(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
     if (result < 0)
     {
-        printf("connect() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        exit(EXIT_FAILURE);
+        printf("ERROR: connect() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        exit(-1);
     }
     if (verbose) printf("connect()'d to port=%u\n", port);
 
@@ -1491,7 +1511,7 @@ void client_run (void)
     result = send(socket_fd, request, sizeof(request), 0);
     if (result < 0)
     {
-        printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -1501,28 +1521,28 @@ void client_run (void)
     ssize_t bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
     if (bytes_received < 0)
     {
-        printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        printf("ERROR: recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
     }
     if (bytes_received != sizeof(response))
     {
-        printf("recv_all_with_timeout() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+        printf("ERROR: recv_all_with_timeout() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
     }
     if (response[0] != TYPE_PONG)
     {
-        printf("recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
+        printf("ERROR: recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
         fflush(stdout);
         fflush(stderr);
         exit(-1);
     }
     if (response[1] != gen_method)
     {
-        printf("recv_all_with_timeout() returned unexpected gen_method=%lu\n", response[1]);
+        printf("ERROR: recv_all_with_timeout() returned unexpected gen_method=%lu\n", response[1]);
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -1554,7 +1574,7 @@ void client_run (void)
                 result = send(socket_fd, request, sizeof(request), 0);
                 if (result < 0)
                 {
-                    printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
@@ -1564,28 +1584,28 @@ void client_run (void)
                 bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
                 if (bytes_received < 0)
                 {
-                    printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (bytes_received != sizeof(response))
                 {
-                    printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[0] != TYPE_MT_RESPONSE)
                 {
-                    printf("recv() returned unexpected type=%lu\n", response[0]);
+                    printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[1] != 0)
                 {
-                    printf("recv() returned unexpected result=%lu\n", response[1]);
+                    printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
@@ -1615,7 +1635,7 @@ void client_run (void)
                 result = send(socket_fd, request, sizeof(request), 0);
                 if (result < 0)
                 {
-                    printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
@@ -1625,28 +1645,28 @@ void client_run (void)
                 bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
                 if (bytes_received < 0)
                 {
-                    printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (bytes_received != sizeof(response))
                 {
-                    printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[0] != TYPE_MO_RESPONSE)
                 {
-                    printf("recv() returned unexpected type=%lu\n", response[0]);
+                    printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[1] != 0)
                 {
-                    printf("recv() returned unexpected result=%lu\n", response[1]);
+                    printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
@@ -1676,7 +1696,7 @@ void client_run (void)
                 result = send(socket_fd, request, sizeof(request), 0);
                 if (result < 0)
                 {
-                    printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
@@ -1686,28 +1706,28 @@ void client_run (void)
                 bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
                 if (bytes_received < 0)
                 {
-                    printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (bytes_received != sizeof(response))
                 {
-                    printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[0] != TYPE_MA_RESPONSE)
                 {
-                    printf("recv() returned unexpected type=%lu\n", response[0]);
+                    printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[1] != 0)
                 {
-                    printf("recv() returned unexpected result=%lu\n", response[1]);
+                    printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
@@ -1739,7 +1759,7 @@ void client_run (void)
                     result = send(socket_fd, request, sizeof(request), 0);
                     if (result < 0)
                     {
-                        printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                        printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                         fflush(stdout);
                         fflush(stderr);
                         exit(-1);
@@ -1749,28 +1769,28 @@ void client_run (void)
                     bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
                     if (bytes_received < 0)
                     {
-                        printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                        printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                         fflush(stdout);
                         fflush(stderr);
                         exit(-1);
                     }
                     if (bytes_received != sizeof(response))
                     {
-                        printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                        printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
                         fflush(stdout);
                         fflush(stderr);
                         exit(-1);
                     }
                     if (response[0] != TYPE_CM_RESPONSE)
                     {
-                        printf("recv() returned unexpected type=%lu\n", response[0]);
+                        printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
                         fflush(stdout);
                         fflush(stderr);
                         exit(-1);
                     }
                     if (response[1] != 0)
                     {
-                        printf("recv() returned unexpected result=%lu\n", response[1]);
+                        printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
                         fflush(stdout);
                         fflush(stderr);
                         exit(-1);
@@ -1813,7 +1833,7 @@ void client_run (void)
                         result = send(socket_fd, request, sizeof(request), 0);
                         if (result < 0)
                         {
-                            printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                            printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                             fflush(stdout);
                             fflush(stderr);
                             exit(-1);
@@ -1823,28 +1843,28 @@ void client_run (void)
                         bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
                         if (bytes_received < 0)
                         {
-                            printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                            printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                             fflush(stdout);
                             fflush(stderr);
                             exit(-1);
                         }
                         if (bytes_received != sizeof(response))
                         {
-                            printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                            printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
                             fflush(stdout);
                             fflush(stderr);
                             exit(-1);
                         }
                         if (response[0] != TYPE_CM_RESPONSE)
                         {
-                            printf("recv() returned unexpected type=%lu\n", response[0]);
+                            printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
                             fflush(stdout);
                             fflush(stderr);
                             exit(-1);
                         }
                         if (response[1] != 0)
                         {
-                            printf("recv() returned unexpected result=%lu\n", response[1]);
+                            printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
                             fflush(stdout);
                             fflush(stderr);
                             exit(-1);
@@ -1874,7 +1894,7 @@ void client_run (void)
                 result = send(socket_fd, request, sizeof(request), 0);
                 if (result < 0)
                 {
-                    printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
@@ -1884,28 +1904,28 @@ void client_run (void)
                 bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
                 if (bytes_received < 0)
                 {
-                    printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (bytes_received != sizeof(response))
                 {
-                    printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[0] != TYPE_FA_RESPONSE)
                 {
-                    printf("recv() returned unexpected type=%lu\n", response[0]);
+                    printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[1] != 0)
                 {
-                    printf("recv() returned unexpected result=%lu\n", response[1]);
+                    printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
@@ -1935,7 +1955,7 @@ void client_run (void)
                 result = send(socket_fd, request, sizeof(request), 0);
                 if (result < 0)
                 {
-                    printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
@@ -1945,28 +1965,28 @@ void client_run (void)
                 bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
                 if (bytes_received < 0)
                 {
-                    printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (bytes_received != sizeof(response))
                 {
-                    printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[0] != TYPE_MR_RESPONSE)
                 {
-                    printf("recv() returned unexpected type=%lu\n", response[0]);
+                    printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
                 }
                 if (response[1] != 0)
                 {
-                    printf("recv() returned unexpected result=%lu\n", response[1]);
+                    printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
                     fflush(stdout);
                     fflush(stderr);
                     exit(-1);
@@ -1998,7 +2018,7 @@ void client_run (void)
                     result = send(socket_fd, request, sizeof(request), 0);
                     if (result < 0)
                     {
-                        printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                        printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                         fflush(stdout);
                         fflush(stderr);
                         exit(-1);
@@ -2008,28 +2028,28 @@ void client_run (void)
                     bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
                     if (bytes_received < 0)
                     {
-                        printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                        printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                         fflush(stdout);
                         fflush(stderr);
                         exit(-1);
                     }
                     if (bytes_received != sizeof(response))
                     {
-                        printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                        printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
                         fflush(stdout);
                         fflush(stderr);
                         exit(-1);
                     }
                     if (response[0] != TYPE_CA_RESPONSE)
                     {
-                        printf("recv() returned unexpected type=%lu\n", response[0]);
+                        printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
                         fflush(stdout);
                         fflush(stderr);
                         exit(-1);
                     }
                     if (response[1] != 0)
                     {
-                        printf("recv() returned unexpected result=%lu\n", response[1]);
+                        printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
                         fflush(stdout);
                         fflush(stderr);
                         exit(-1);
@@ -2072,7 +2092,7 @@ void client_run (void)
                         result = send(socket_fd, request, sizeof(request), 0);
                         if (result < 0)
                         {
-                            printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                            printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                             fflush(stdout);
                             fflush(stderr);
                             exit(-1);
@@ -2082,28 +2102,28 @@ void client_run (void)
                         bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
                         if (bytes_received < 0)
                         {
-                            printf("recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                            printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
                             fflush(stdout);
                             fflush(stderr);
                             exit(-1);
                         }
                         if (bytes_received != sizeof(response))
                         {
-                            printf("recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                            printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
                             fflush(stdout);
                             fflush(stderr);
                             exit(-1);
                         }
                         if (response[0] != TYPE_CA_RESPONSE)
                         {
-                            printf("recv() returned unexpected type=%lu\n", response[0]);
+                            printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
                             fflush(stdout);
                             fflush(stderr);
                             exit(-1);
                         }
                         if (response[1] != 0)
                         {
-                            printf("recv() returned unexpected result=%lu\n", response[1]);
+                            printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
                             fflush(stdout);
                             fflush(stderr);
                             exit(-1);
@@ -2148,7 +2168,7 @@ void client_run (void)
     result = send(socket_fd, request, sizeof(request), 0);
     if (result < 0)
     {
-        printf("send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -2158,21 +2178,21 @@ void client_run (void)
     bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
     if (bytes_received < 0)
     {
-        printf("recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
     }
     if (bytes_received != sizeof(response))
     {
-        printf("recv_all_with_timeout() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+        printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
     }
     if (response[0] != TYPE_SD_RESPONSE)
     {
-        printf("recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
+        printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -2198,19 +2218,8 @@ void client_cleanup (void)
     int result = munmap((void *)TRACE_ADDR, trace_size);
     if (result == -1)
     {
-        printf("Failed calling munmap(trace) for size=%lu errno=%d=%s\n", trace_size, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
+        printf("ERROR: Failed calling munmap(trace) for size=%lu errno=%d=%s\n", trace_size, errno, strerror(errno));
     }
-    // result = shm_unlink(shmem_output_name);
-    // if (result == -1)
-    // {
-    //     printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
-    //     fflush(stdout);
-    //     fflush(stderr);
-    //     exit(-1);
-    // }
 }
 
 void server_setup (void)
@@ -2235,20 +2244,19 @@ void server_setup (void)
         }
         if (pRom == MAP_FAILED)
         {
-            printf("Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
+            printf("ERROR: Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
         }
         if ((uint64_t)pRom != ROM_ADDR)
         {
-            printf("Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
+            printf("ERROR: Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
             fflush(stdout);
             fflush(stderr);
             exit(-1);
         }
         if (verbose) printf("mmap(rom) mapped %ld B and returned address %p in %lu us\n", ROM_SIZE, pRom, duration);
-        if (verbose) system("ls -l /dev/shm/*ZISK*");
     }
 
     /*********/
@@ -2264,7 +2272,7 @@ void server_setup (void)
         shmem_input_fd = shm_open(shmem_input_name, O_RDWR | O_CREAT, 0666);
         if (shmem_input_fd < 0)
         {
-            printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            printf("ERROR: Failed calling shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -2274,7 +2282,7 @@ void server_setup (void)
         result = ftruncate(shmem_input_fd, MAX_INPUT_SIZE);
         if (result != 0)
         {
-            printf("Failed calling ftruncate(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -2290,20 +2298,19 @@ void server_setup (void)
         }
         if (pInput == MAP_FAILED)
         {
-            printf("Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
+            printf("ERROR: Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
         }
         if ((uint64_t)pInput != INPUT_ADDR)
         {
-            printf("Called mmap(pInput) but returned address = %p != 0x%lx\n", pInput, INPUT_ADDR);
+            printf("ERROR: Called mmap(pInput) but returned address = %p != 0x%lx\n", pInput, INPUT_ADDR);
             fflush(stdout);
             fflush(stderr);
             exit(-1);
         }
         if (verbose) printf("mmap(input) mapped %lu B and returned address %p in %lu us\n", MAX_INPUT_SIZE, pInput, duration);
-        if (verbose) system("ls -l /dev/shm/*ZISK*");
     }
 
     /*******/
@@ -2322,20 +2329,19 @@ void server_setup (void)
         }
         if (pRam == MAP_FAILED)
         {
-            printf("Failed calling mmap(ram) errno=%d=%s\n", errno, strerror(errno));
+            printf("ERROR: Failed calling mmap(ram) errno=%d=%s\n", errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
         }
         if ((uint64_t)pRam != RAM_ADDR)
         {
-            printf("Called mmap(ram) but returned address = %p != 0x%08lx\n", pRam, RAM_ADDR);
+            printf("ERROR: Called mmap(ram) but returned address = %p != 0x%08lx\n", pRam, RAM_ADDR);
             fflush(stdout);
             fflush(stderr);
             exit(-1);
         }
         if (verbose) printf("mmap(ram) mapped %lu B and returned address %p in %lu us\n", RAM_SIZE, pRam, duration);
-        if (verbose) system("ls -l /dev/shm/*ZISK*");
     }
 
     /****************/
@@ -2378,7 +2384,7 @@ void server_setup (void)
         shmem_output_fd = shm_open(shmem_output_name, O_RDWR | O_CREAT, 0666);
         if (shmem_output_fd < 0)
         {
-            printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
+            printf("ERROR: Failed calling shm_open(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -2388,7 +2394,7 @@ void server_setup (void)
         result = ftruncate(shmem_output_fd, trace_size);
         if (result != 0)
         {
-            printf("Failed calling ftruncate(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
+            printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -2418,20 +2424,19 @@ void server_setup (void)
         }
         if (pTrace == MAP_FAILED)
         {
-            printf("Failed calling mmap(pTrace) name=%s errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
+            printf("ERROR: Failed calling mmap(pTrace) name=%s errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
         }
         if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain) && ((uint64_t)pTrace != TRACE_ADDR))
         {
-            printf("Called mmap(trace) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
+            printf("ERROR: Called mmap(trace) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
             fflush(stdout);
             fflush(stderr);
             exit(-1);
         }
         if (verbose) printf("mmap(trace) mapped %lu B and returned address %p in %lu us\n", trace_size, pTrace, duration);
-        if (verbose) system("ls -l /dev/shm/*ZISK*");
 
         trace_address = (uint64_t)pTrace;
         pOutputTrace = pTrace;
@@ -2448,7 +2453,7 @@ void server_setup (void)
         shmem_mt_fd = shm_open(shmem_mt_name, O_RDONLY, 0666);
         if (shmem_mt_fd < 0)
         {
-            printf("Failed calling shm_open(%s) errno=%d=%s\n", shmem_mt_name, errno, strerror(errno));
+            printf("ERROR: Failed calling shm_open(%s) errno=%d=%s\n", shmem_mt_name, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -2465,20 +2470,19 @@ void server_setup (void)
 #endif
         if (pTrace == MAP_FAILED)
         {
-            printf("Failed calling mmap(MT) errno=%d=%s\n", errno, strerror(errno));
+            printf("ERROR: Failed calling mmap(MT) errno=%d=%s\n", errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
         }
         if ((uint64_t)pTrace != TRACE_ADDR)
         {
-            printf("Called mmap(MT) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
+            printf("ERROR: Called mmap(MT) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
             fflush(stdout);
             fflush(stderr);
             exit(-1);
         }
         if (verbose) printf("mmap(MT) returned %p in %lu us\n", pTrace, duration);
-        if (verbose) system("ls -l /dev/shm/*ZISK*");
     }
 
     /******************/
@@ -2488,17 +2492,31 @@ void server_setup (void)
     if (chunk_done)
     {
         assert(strlen(sem_chunk_done_name) > 0);
-        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0644, 0);
+        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0666, 0);
         if (sem_chunk_done == SEM_FAILED)
         {
-            printf("Failed calling sem_open(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
+            printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
             fflush(stdout);
             fflush(stderr);
             exit(-1);
         }
         if (verbose) printf("sem_open(chunk_done) succeeded\n");
-        if (verbose) system("ls -l /dev/shm/*ZISK*");
     }
+
+    /*********************/
+    /* SEM SHUTDOWN DONE */
+    /*********************/
+    
+    assert(strlen(sem_shutdown_done_name) > 0);
+    sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT, 0666, 0);
+    if (sem_chunk_done == SEM_FAILED)
+    {
+        printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
+        fflush(stdout);
+        fflush(stderr);
+        exit(-1);
+    }
+    if (verbose) printf("sem_open(shutdown_done) succeeded\n");
 }
 
 void server_reset (void)
@@ -2695,71 +2713,60 @@ void server_cleanup (void)
     int result = munmap((void *)ROM_ADDR, ROM_SIZE);
     if (result == -1)
     {
-        printf("Failed calling munmap(rom) errno=%d=%s\n", errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
+        printf("ERROR: Failed calling munmap(rom) errno=%d=%s\n", errno, strerror(errno));
     }
 
     // Cleanup RAM
     result = munmap((void *)RAM_ADDR, RAM_SIZE);
     if (result == -1)
     {
-        printf("Failed calling munmap(ram) errno=%d=%s\n", errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
+        printf("ERROR: Failed calling munmap(ram) errno=%d=%s\n", errno, strerror(errno));
     }
 
     // Cleanup INPUT
     result = munmap((void *)INPUT_ADDR, MAX_INPUT_SIZE);
     if (result == -1)
     {
-        printf("Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
+        printf("ERROR: Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
     }
     result = shm_unlink(shmem_input_name);
     if (result == -1)
     {
-        printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
+        printf("ERROR: Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
     }
 
     // Cleanup trace
     result = munmap((void *)TRACE_ADDR, trace_size);
     if (result == -1)
     {
-        printf("Failed calling munmap(trace) for size=%lu errno=%d=%s\n", trace_size, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
+        printf("ERROR: Failed calling munmap(trace) for size=%lu errno=%d=%s\n", trace_size, errno, strerror(errno));
     }
     result = shm_unlink(shmem_output_name);
     if (result == -1)
     {
-        printf("Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
+        printf("ERROR: Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_output_name, errno, strerror(errno));
     }
 
-    // Cleanup semaphore
+    // Cleanup chunk done semaphore
     if (chunk_done)
     {
         result = sem_close(sem_chunk_done);
         if (result == -1)
         {
-            printf("Failed calling sem_close(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
+            printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
         }
         result = sem_unlink(sem_chunk_done_name);
         if (result == -1)
         {
-            printf("Failed calling sem_unlink(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
+            printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
         }
+    }
+
+    // Post shutdown donw semaphore
+    result = sem_post(sem_shutdown_done);
+    if (result == -1)
+    {
+        printf("ERROR: Failed calling sem_post(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
     }
 }
 
@@ -2865,7 +2872,7 @@ extern void _chunk_done()
     int result = sem_post(sem_chunk_done);
     if (result == -1)
     {
-        printf("Failed calling sem_post(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
+        printf("ERROR: Failed calling sem_post(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -2883,7 +2890,7 @@ extern void _realloc_trace (void)
     int result = ftruncate(shmem_output_fd, new_trace_size);
     if (result != 0)
     {
-        printf("realloc_trace() failed calling ftruncate(%s) of new size=%lu errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
+        printf("ERROR: realloc_trace() failed calling ftruncate(%s) of new size=%lu errno=%d=%s\n", shmem_output_name, new_trace_size, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -2893,7 +2900,7 @@ extern void _realloc_trace (void)
     void * new_address = mremap((void *)trace_address, trace_size, new_trace_size, 0);
     if ((uint64_t)new_address != trace_address)
     {
-        printf("realloc_trace() failed calling mremap() from size=%lu to %lu got new_address=%p errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
+        printf("ERROR: realloc_trace() failed calling mremap() from size=%lu to %lu got new_address=%p errno=%d=%s\n", trace_size, new_trace_size, new_address, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -2952,7 +2959,7 @@ void log_minimal_trace(void)
     printf("Number of chunks=%lu\n", number_of_chunks);
     if (number_of_chunks > 1000000)
     {
-        printf("Number of chunks is too high=%lu\n", number_of_chunks);
+        printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -2997,7 +3004,7 @@ void log_minimal_trace(void)
         i++;
         if (mem_reads_size > 10000000)
         {
-            printf("Mem reads size is too high=%lu\n", mem_reads_size);
+            printf("ERROR: Mem reads size is too high=%lu\n", mem_reads_size);
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -3038,7 +3045,7 @@ void log_histogram(void)
     printf("BIOS size=%lu\n", bios_size);
     if (bios_size > 100000000)
     {
-        printf("Bios size is too high=%lu\n", bios_size);
+        printf("ERROR: Bios size is too high=%lu\n", bios_size);
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -3057,7 +3064,7 @@ void log_histogram(void)
     printf("Program size=%lu\n", program_size);
     if (program_size > 100000000)
     {
-        printf("Program size is too high=%lu\n", program_size);
+        printf("ERROR: Program size is too high=%lu\n", program_size);
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -3106,7 +3113,7 @@ void log_main_trace(void)
     printf("Number of chunks=%lu\n", number_of_chunks);
     if (number_of_chunks > 1000000)
     {
-        printf("Number of chunks is too high=%lu\n", number_of_chunks);
+        printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -3123,7 +3130,7 @@ void log_main_trace(void)
         main_trace_size /= 7;
         if (main_trace_size > 10000000)
         {
-            printf("Main_trace size is too high=%lu\n", main_trace_size);
+            printf("ERROR: Main_trace size is too high=%lu\n", main_trace_size);
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -3237,7 +3244,7 @@ void log_mem_op(void)
     printf("Number of chunks=%lu\n", number_of_chunks);
     if (number_of_chunks > 1000000)
     {
-        printf("Number of chunks is too high=%lu\n", number_of_chunks);
+        printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -3257,7 +3264,7 @@ void log_mem_op(void)
         i++;
         if (mem_op_trace_size > 10000000)
         {
-            printf("Mem op trace size is too high=%lu\n", mem_op_trace_size);
+            printf("ERROR: Mem op trace size is too high=%lu\n", mem_op_trace_size);
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -3470,7 +3477,7 @@ void save_mem_op_to_files(void)
     printf("Number of chunks=%lu\n", number_of_chunks);
     if (number_of_chunks > 1000000)
     {
-        printf("Number of chunks is too high=%lu\n", number_of_chunks);
+        printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
         fflush(stdout);
         fflush(stderr);
         exit(-1);
@@ -3486,7 +3493,7 @@ void save_mem_op_to_files(void)
         i++;
         if (mem_op_trace_size > 10000000)
         {
-            printf("Mem op trace size is too high=%lu\n", mem_op_trace_size);
+            printf("ERROR: Mem op trace size is too high=%lu\n", mem_op_trace_size);
             fflush(stdout);
             fflush(stderr);
             exit(-1);
@@ -3527,7 +3534,7 @@ void log_chunk_player_main_trace(void)
     printf("mem_reads_size=%lu\n", mem_reads_size);
     if (mem_reads_size > 10000000)
     {
-        printf("Mem reads size is too high=%lu\n", mem_reads_size);
+        printf("ERROR: Mem reads size is too high=%lu\n", mem_reads_size);
         fflush(stdout);
         fflush(stderr);
         exit(-1);

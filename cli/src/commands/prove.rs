@@ -245,6 +245,7 @@ impl ZiskProve {
             asm_rom,
             sha256f_script,
             None,
+            None,
         )
         .expect("Failed to initialize witness library");
 

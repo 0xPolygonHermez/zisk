@@ -3,8 +3,9 @@ use super::{
     MinimalTraceResponse, PingRequest, PingResponse, ResponseData, ShutdownRequest,
     ShutdownResponse, ToRequestPayload,
 };
-use crate::{AsmRunnerOptions, AsmRunnerTraceLevel};
+use crate::{AsmRunError, AsmRunnerOptions, AsmRunnerTraceLevel};
 use anyhow::{Context, Result};
+use named_sem::NamedSemaphore;
 use std::{
     fmt,
     io::{Read, Write},
@@ -20,6 +21,16 @@ pub enum AsmService {
     MT,
     RH,
     MO,
+}
+
+impl AsmService {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AsmService::MT => "MT",
+            AsmService::RH => "RH",
+            AsmService::MO => "MO",
+        }
+    }
 }
 
 impl fmt::Display for AsmService {
@@ -49,7 +60,8 @@ impl AsmServices {
     pub fn start_asm_services(
         ziskemuasm_path: &Path,
         options: AsmRunnerOptions,
-        rank: i32,
+        world_rank: i32,
+        local_rank: i32,
     ) -> Result<()> {
         // ! TODO Remove this when we have a proper way to find the path
         let path_str = ziskemuasm_path.to_string_lossy();
@@ -57,7 +69,7 @@ impl AsmServices {
 
         // Check if a service is already running
         for service in &Self::SERVICES {
-            let port = Self::port_for(service);
+            let port = Self::port_for(service, local_rank);
             let addr = format!("127.0.0.1:{}", port);
 
             if TcpStream::connect(&addr).is_ok() {
@@ -66,51 +78,61 @@ impl AsmServices {
                     service,
                     addr
                 );
-                Self::send_shutdown_request(service).with_context(|| {
+                let sem_chunk_done_name =
+                    format!("/ZISK_{}_{}_shutdown_done", local_rank, service.as_str());
+                let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
+                    .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
+
+                Self::send_shutdown_request(service, local_rank).with_context(|| {
                     format!("Service {} failed to respond to shutdown", service)
                 })?;
+
+                match sem_chunk_done.timed_wait(Duration::from_secs(30)) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        tracing::error!("[{}] Failed to wait for shutdown: {}", world_rank, e);
+                        return Err(AsmRunError::SemaphoreError(sem_chunk_done_name, e).into());
+                    }
+                }
             }
         }
-
-        // TODO: Fix this sleep, it's a workaround for the issue with the services not shutting down properly
-        std::thread::sleep(Duration::from_secs(5));
 
         let start = std::time::Instant::now();
 
         for service in &Self::SERVICES {
-            Self::start_asm_service(service, trimmed_path, &options, rank);
+            Self::start_asm_service(service, trimmed_path, &options, local_rank);
         }
 
         for service in &Self::SERVICES {
-            let port = Self::port_for(service);
+            let port = Self::port_for(service, local_rank);
             Self::wait_for_service_ready(service, port);
         }
 
         // Ping status for all services
         for service in &Self::SERVICES {
-            Self::send_status_request(service)
+            Self::send_status_request(service, local_rank)
                 .with_context(|| format!("Service {} failed to respond to ping", service))?;
         }
 
         tracing::info!(
             ">>> [{}] All ASM services are ready. Time taken: {} seconds",
-            rank,
+            world_rank,
             start.elapsed().as_secs_f32()
         );
 
         Ok(())
     }
 
-    pub fn stop_asm_services() -> Result<()> {
+    pub fn stop_asm_services(local_rank: i32) -> Result<()> {
         // Check if a service is already running
         for service in &Self::SERVICES {
-            let port = Self::port_for(service);
+            let port = Self::port_for(service, local_rank);
             let addr = format!("127.0.0.1:{}", port);
 
             if TcpStream::connect(&addr).is_ok() {
                 tracing::info!("Shutting down service {} running on {}.", service, addr);
 
-                Self::send_shutdown_request(service).with_context(|| {
+                Self::send_shutdown_request(service, local_rank).with_context(|| {
                     format!("Service {} failed to respond to shutdown", service)
                 })?;
             }
@@ -141,16 +163,16 @@ impl AsmServices {
         asm_service: &AsmService,
         trimmed_path: &str,
         options: &AsmRunnerOptions,
-        rank: i32,
+        local_rank: i32,
     ) {
         // Prepare command
         let command_path = trimmed_path.to_string() + &format!("-{}.bin", asm_service);
 
         let mut command = Command::new(command_path);
 
-        command.arg("-p").arg(Self::port_for(asm_service).to_string());
+        command.arg("-p").arg(Self::port_for(asm_service, local_rank).to_string());
 
-        let prefix = format!("ZISK_{}", rank);
+        let prefix = format!("ZISK_{}", local_rank);
         command.arg("--shm_prefix").arg(prefix);
 
         match asm_service {
@@ -200,42 +222,58 @@ impl AsmServices {
         }
     }
 
-    const fn port_for(asm_service: &AsmService) -> u16 {
+    const fn port_for(asm_service: &AsmService, local_rank: i32) -> u16 {
+        let offset = 0;
+        local_rank as u16 * Self::SERVICES.len() as u16;
+
         match asm_service {
-            AsmService::MT => MT_ASM_SERVICE_DEFAULT_PORT,
-            AsmService::RH => RH_ASM_SERVICE_DEFAULT_PORT,
-            AsmService::MO => MO_ASM_SERVICE_DEFAULT_PORT,
+            AsmService::MT => MT_ASM_SERVICE_DEFAULT_PORT + offset,
+            AsmService::RH => RH_ASM_SERVICE_DEFAULT_PORT + offset,
+            AsmService::MO => MO_ASM_SERVICE_DEFAULT_PORT + offset,
         }
     }
 
-    pub fn send_status_request(service: &AsmService) -> Result<PingResponse> {
-        Self::send_request(service, &PingRequest {})
+    pub fn send_status_request(service: &AsmService, local_rank: i32) -> Result<PingResponse> {
+        Self::send_request(service, &PingRequest {}, local_rank)
     }
 
-    pub fn send_shutdown_request(service: &AsmService) -> Result<ShutdownResponse> {
-        Self::send_request(service, &ShutdownRequest {})
+    pub fn send_shutdown_request(
+        service: &AsmService,
+        local_rank: i32,
+    ) -> Result<ShutdownResponse> {
+        Self::send_request(service, &ShutdownRequest {}, local_rank)
     }
 
     pub fn send_minimal_trace_request(
         max_steps: u64,
         chunk_len: u64,
+        local_rank: i32,
     ) -> Result<MinimalTraceResponse> {
-        Self::send_request(&AsmService::MT, &MinimalTraceRequest { max_steps, chunk_len })
+        Self::send_request(
+            &AsmService::MT,
+            &MinimalTraceRequest { max_steps, chunk_len },
+            local_rank,
+        )
     }
 
     pub fn send_memory_ops_request(
         max_steps: u64,
         chunk_len: u64,
+        local_rank: i32,
     ) -> Result<MemoryOperationsResponse> {
-        Self::send_request(&AsmService::MO, &MemoryOperationsRequest { max_steps, chunk_len })
+        Self::send_request(
+            &AsmService::MO,
+            &MemoryOperationsRequest { max_steps, chunk_len },
+            local_rank,
+        )
     }
 
-    fn send_request<Req, Res>(service: &AsmService, req: &Req) -> Result<Res>
+    fn send_request<Req, Res>(service: &AsmService, req: &Req, local_rank: i32) -> Result<Res>
     where
         Req: ToRequestPayload,
         Res: FromResponsePayload,
     {
-        let port = Self::port_for(service);
+        let port = Self::port_for(service, local_rank);
         let addr = format!("127.0.0.1:{}", port);
 
         let request = req.to_request_payload();
