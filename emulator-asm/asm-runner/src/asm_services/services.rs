@@ -223,8 +223,7 @@ impl AsmServices {
     }
 
     const fn port_for(asm_service: &AsmService, local_rank: i32) -> u16 {
-        let offset = 0;
-        local_rank as u16 * Self::SERVICES.len() as u16;
+        let offset = local_rank as u16 * Self::SERVICES.len() as u16;
 
         match asm_service {
             AsmService::MT => MT_ASM_SERVICE_DEFAULT_PORT + offset,

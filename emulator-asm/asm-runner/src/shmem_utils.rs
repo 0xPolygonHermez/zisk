@@ -15,7 +15,7 @@ pub fn map(fd: i32, size: usize, prot: i32, desc: &str) -> *mut c_void {
     let mapped = unsafe { mmap(ptr::null_mut(), size, prot, MAP_SHARED, fd, 0) };
     if mapped == MAP_FAILED {
         let err = io::Error::last_os_error();
-        panic!("mmap failed for {}: {:?} ({} bytes)", desc, err, size);
+        panic!("mmap failed for '{}': {:?} ({} bytes)", desc, err, size);
     }
     mapped
 }

@@ -202,14 +202,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         Option<(Vec<Vec<MemCheckPoint>>, Vec<Vec<MemAlignCheckPoint>>)>,
     ) {
         let input_data_cloned = input_data_path.clone();
-        let world_rank = self.world_rank;
         let local_rank = self.local_rank;
         let handle_mo = std::thread::spawn(move || {
             AsmRunnerMO::run(
                 input_data_cloned.as_ref().unwrap(),
                 Self::MAX_NUM_STEPS,
                 Self::MIN_TRACE_SIZE,
-                world_rank,
                 local_rank,
             )
             .expect("Error during Assembly Memory Operations execution")
@@ -289,7 +287,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             Self::MIN_TRACE_SIZE,
             // asm_runner::AsmRunnerOptions::default(),
             task_factory,
-            self.world_rank,
             self.local_rank,
         )
         .expect("Error during ASM execution");
