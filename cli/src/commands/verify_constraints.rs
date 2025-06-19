@@ -150,6 +150,12 @@ impl ZiskVerifyConstraints {
             }
         }
 
+        if let Some(input) = &self.input {
+            if !input.exists() {
+                return Err(anyhow::anyhow!("Input file not found at {:?}", input.display()));
+            }
+        }
+
         let blowup_factor = get_rom_blowup_factor(&self.get_proving_key());
 
         let rom_bin_path =

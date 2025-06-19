@@ -20,7 +20,6 @@ use anyhow::{Context, Result};
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
 #[derive(Debug)]
 pub struct AsmRunnerMO {
-    shmem_output_name: String,
     mapped_ptr: *mut c_void,
     total_size: u64,
 }
@@ -39,12 +38,8 @@ impl Drop for AsmRunnerMO {
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerMO {
-    pub fn new(
-        shmem_output_name: String,
-        mapped_ptr: *mut std::ffi::c_void,
-        total_size: u64,
-    ) -> Self {
-        Self { shmem_output_name, mapped_ptr, total_size }
+    pub fn new(mapped_ptr: *mut std::ffi::c_void, total_size: u64) -> Self {
+        Self { mapped_ptr, total_size }
     }
 
     pub fn run(
