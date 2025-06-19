@@ -105,14 +105,13 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     #[allow(clippy::type_complexity)]
     collectors_by_instance: RwLock<HashMap<usize, (Stats, Vec<(usize, Box<dyn BusDevice<u64>>)>)>>,
     stats: Mutex<Vec<(usize, usize, Stats)>>,
+
+    chunk_size: u64,
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// The number of threads to use for parallel processing when computing minimal traces.
     const NUM_THREADS: usize = 16;
-
-    /// The size in rows of the minimal traces
-    const MIN_TRACE_SIZE: u64 = 1 << 18;
 
     const MAX_NUM_STEPS: u64 = 1 << 32;
 
@@ -120,6 +119,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     ///
     /// # Arguments
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         rom_path: PathBuf,
         asm_path: Option<PathBuf>,
@@ -128,6 +128,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         std: Arc<Std<F>>,
         sm_bundle: BD,
         rom_sm: Option<Arc<RomSM>>,
+        chunk_size: u64,
     ) -> Self {
         Self {
             rom_path,
@@ -147,6 +148,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             sm_bundle,
             rom_sm,
             stats: Mutex::new(Vec::new()),
+            chunk_size,
         }
     }
 
@@ -204,7 +206,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             self.asm_runner_path.as_ref().unwrap(),
             input_data_path.as_deref(),
             Self::MAX_NUM_STEPS,
-            Self::MIN_TRACE_SIZE,
+            self.chunk_size,
             asm_runner::AsmRunnerOptions::default(),
         ))
     }
@@ -218,6 +220,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             emu_trace: EmuTrace,
             data_bus: Mutex<Option<DB>>,
             zisk_rom: Arc<ZiskRom>,
+            chunk_size: u64,
             _phantom: std::marker::PhantomData<F>,
         }
 
@@ -236,6 +239,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     &self.zisk_rom,
                     &self.emu_trace,
                     &mut data_bus,
+                    self.chunk_size,
                 );
 
                 data_bus.on_close();
@@ -260,6 +264,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 emu_trace,
                 data_bus: Mutex::new(Some(data_bus)),
                 zisk_rom: self.zisk_rom.clone(),
+                chunk_size: self.chunk_size,
                 _phantom: std::marker::PhantomData::<F>,
             }
         });
@@ -268,7 +273,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             self.asm_runner_path.as_ref().unwrap(),
             input_data_path.as_deref(),
             Self::MAX_NUM_STEPS,
-            Self::MIN_TRACE_SIZE,
+            self.chunk_size,
             asm_runner::AsmRunnerOptions::default(),
             task_factory,
         );
@@ -314,8 +319,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     }
 
     fn run_emulator(&self, num_threads: usize, input_data_path: Option<PathBuf>) -> MinimalTraces {
-        assert!(Self::MIN_TRACE_SIZE.is_power_of_two());
-
         // Call emulate with these options
         let input_data = if input_data_path.is_some() {
             // Read inputs data from the provided inputs path
@@ -327,7 +330,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         // Settings for the emulator
         let emu_options = EmuOptions {
-            trace_steps: Some(Self::MIN_TRACE_SIZE),
+            trace_steps: Some(self.chunk_size),
             max_steps: Self::MAX_NUM_STEPS,
             ..EmuOptions::default()
         };
@@ -413,6 +416,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     &self.zisk_rom,
                     minimal_trace,
                     &mut data_bus,
+                    self.chunk_size,
                 );
 
                 let (mut main_count, mut secn_count) = (Vec::new(), Vec::new());
@@ -522,7 +526,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let air_instance = MainSM::compute_witness(
             &self.zisk_rom,
             min_traces,
-            Self::MIN_TRACE_SIZE,
+            self.chunk_size,
             main_instance,
             self.std.clone(),
         );
@@ -608,6 +612,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     min_traces,
                     chunk_id,
                     data_bus,
+                    self.chunk_size,
                 );
             }
         });
@@ -760,7 +765,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         // Plan the main and secondary instances using the counted metrics
         timer_start_info!(PLAN);
         let (mut main_planning, public_values) =
-            MainPlanner::plan::<F>(&min_traces, main_count, Self::MIN_TRACE_SIZE);
+            MainPlanner::plan::<F>(&min_traces, main_count, self.chunk_size);
 
         let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
         timer_stop_and_log_info!(PLAN);

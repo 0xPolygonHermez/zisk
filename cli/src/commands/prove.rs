@@ -103,6 +103,9 @@ pub struct ZiskProve {
     #[clap(short = 'b', long, default_value_t = false)]
     pub save_proofs: bool,
 
+    #[clap(short = 'c', long)]
+    pub chunk_size: Option<u64>,
+
     // PRECOMPILES OPTIONS
     /// Sha256f script path
     pub sha256f_script: Option<PathBuf>,
@@ -245,6 +248,7 @@ impl ZiskProve {
             asm_rom,
             sha256f_script,
             proofman.get_rank(),
+            self.chunk_size,
         )
         .expect("Failed to initialize witness library");
 

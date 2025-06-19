@@ -74,6 +74,9 @@ pub struct ZiskStats {
 
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
+    
+    #[clap(short = 'c', long)]
+    pub chunk_size: Option<u64>,
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
@@ -196,6 +199,7 @@ impl ZiskStats {
                     asm_rom,
                     sha256f_script,
                     proofman.get_rank(),
+                    self.chunk_size,
                 )
                 .expect("Failed to initialize witness library");
 

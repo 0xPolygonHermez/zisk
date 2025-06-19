@@ -24,6 +24,3 @@ pub const MEM_INC_C_BITS: usize = 18;
 pub const MEM_INC_C_SIZE: usize = 1 << MEM_INC_C_BITS;
 pub const MEM_INC_C_MAX_RANGE: usize = MEM_INC_C_SIZE - 1;
 pub const MEM_INC_C_MASK: usize = MEM_INC_C_SIZE - 1;
-
-pub const CHUNK_SIZE: usize = 1 << 18;
-pub const CHUNK_SIZE_STEPS: usize = CHUNK_SIZE * MEM_STEPS_BY_MAIN_STEP as usize;
