@@ -37,7 +37,7 @@ use zisk_common::{
     BusDevice, BusDeviceMetrics, CheckPoint, Instance, InstanceCtx, InstanceType, Plan,
 };
 use zisk_common::{ChunkId, PayloadType};
-use zisk_pil::{MainTrace, RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
+use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
 
 use std::{
     collections::HashMap,
@@ -102,6 +102,8 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     sm_bundle: BD,
     rom_sm: Option<Arc<RomSM>>,
 
+    #[allow(clippy::type_complexity)]
+    collectors_by_instance: RwLock<HashMap<usize, (Stats, Vec<(usize, Box<dyn BusDevice<u64>>)>)>>,
     stats: Mutex<Vec<(usize, usize, Stats)>>,
 }
 
@@ -137,6 +139,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             secn_planning: RwLock::new(Vec::new()),
             main_instances: RwLock::new(HashMap::new()),
             secn_instances: RwLock::new(HashMap::new()),
+            collectors_by_instance: RwLock::new(HashMap::new()),
             std,
             execution_result: Mutex::new(ZiskExecutionResult::default()),
             main_count: Mutex::new(None),
@@ -347,7 +350,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// * `main_planning` - Planning information for main state machines.
     fn assign_main_instances(&self, pctx: &ProofCtx<F>, main_planning: &mut [Plan]) {
         for plan in main_planning.iter_mut() {
-            plan.set_global_id(pctx.add_instance_fast(plan.airgroup_id, plan.air_id));
+            plan.set_global_id(pctx.add_instance(plan.airgroup_id, plan.air_id, false, 1));
         }
     }
 
@@ -455,7 +458,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         for plans_by_sm in secn_planning.iter_mut() {
             for plan in plans_by_sm.iter_mut() {
                 let global_id = match plan.instance_type {
-                    InstanceType::Instance => pctx.add_instance(plan.airgroup_id, plan.air_id),
+                    InstanceType::Instance => {
+                        pctx.add_instance(plan.airgroup_id, plan.air_id, true, 1)
+                    }
                     InstanceType::Table => pctx.add_instance_all(plan.airgroup_id, plan.air_id),
                 };
                 plan.set_global_id(global_id);
@@ -529,7 +534,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         ));
     }
 
-    /// Expands and computes witness for a secondary state machines instance.
+    /// computes witness for a secondary state machines instance.
     ///
     /// # Arguments
     /// * `pctx` - Proof context.
@@ -544,6 +549,35 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         global_id: usize,
         secn_instance: &Box<dyn Instance<F>>,
     ) {
+        let (mut stats, collectors_by_instance) = self
+            .collectors_by_instance
+            .write()
+            .unwrap()
+            .remove(&global_id)
+            .expect("Missing collectors for given global_id");
+
+        let witness_start = std::time::Instant::now();
+        if let Some(air_instance) =
+            secn_instance.compute_witness(pctx, sctx, collectors_by_instance)
+        {
+            pctx.add_air_instance(air_instance, global_id);
+        }
+        let witness_time = witness_start.elapsed().as_millis() as u64;
+        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+
+        stats.witness_time = witness_time;
+        self.stats.lock().unwrap().push((airgroup_id, air_id, stats));
+    }
+
+    /// Expands for a secondary state machines instance.
+    ///
+    /// # Arguments
+    /// * `pctx` - Proof context.
+    /// * `sctx` - Setup context.
+    /// * `global_id` - Global ID of the secondary state machine instance.
+    /// * `secn_instance` - Secondary state machine instance to compute witness for
+    #[allow(clippy::borrowed_box)]
+    fn witness_collect_instance(&self, global_id: usize, secn_instance: &Box<dyn Instance<F>>) {
         let collect_start = std::time::Instant::now();
         assert_eq!(secn_instance.instance_type(), InstanceType::Instance, "Instance is a table");
 
@@ -579,20 +613,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let collectors_by_instance = self.close_data_bus_collectors(data_buses);
 
         let collect_time = collect_start.elapsed().as_millis() as u64;
-        let witness_start = std::time::Instant::now();
-        if let Some(air_instance) =
-            secn_instance.compute_witness(pctx, sctx, collectors_by_instance)
-        {
-            pctx.add_air_instance(air_instance, global_id);
-        }
-        let witness_time = witness_start.elapsed().as_millis() as u64;
-        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+        let stats = Stats { collect_time, witness_time: 0, num_chunks };
 
-        self.stats.lock().unwrap().push((
-            airgroup_id,
-            air_id,
-            Stats { collect_time, witness_time, num_chunks },
-        ));
+        self.collectors_by_instance
+            .write()
+            .unwrap()
+            .insert(global_id, (stats, collectors_by_instance));
     }
 
     /// Computes and generates witness for secondary state machine instance of type `Table`.
@@ -685,43 +711,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         collectors_by_instance
     }
-
-    /// Returns the weight indicating the complexity of the witness computation.
-    /// Used as a heuristic for estimating computational cost.
-    ///
-    /// # Arguments
-    /// * `pctx` - A reference to the `ProofCtx` containing proof context information.
-    /// * `global_id` - The global ID of the witness computation.
-    ///
-    /// # Returns
-    /// * `Result<usize, Box<dyn std::error::Error>>` - The weight of the witness computation.
-    pub fn get_witness_weight(
-        &self,
-        pctx: &ProofCtx<F>,
-        global_id: usize,
-    ) -> Result<usize, Box<dyn std::error::Error>> {
-        let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
-
-        let num_chunks = if MAIN_AIR_IDS.contains(&air_id) {
-            MainTrace::<F>::NUM_ROWS / Self::MIN_TRACE_SIZE as usize
-        } else {
-            let secn_instance = &self.secn_instances.read().unwrap()[&global_id];
-
-            match secn_instance.instance_type() {
-                InstanceType::Instance => {
-                    let checkpoint = secn_instance.check_point();
-                    match checkpoint {
-                        CheckPoint::None => 0,
-                        CheckPoint::Single(_) => 1,
-                        CheckPoint::Multiple(chunk_ids) => chunk_ids.len(),
-                    }
-                }
-                InstanceType::Table => 0,
-            }
-        };
-
-        Ok(std::cmp::min(1usize, num_chunks))
-    }
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, BD> {
@@ -809,6 +798,17 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                 .entry(*global_id)
                 .or_insert_with(|| self.create_secn_instance(*global_id));
             secn_instances[global_id].reset();
+            if secn_instances[global_id].instance_type() == InstanceType::Instance {
+                let checkpoint = secn_instances[global_id].check_point();
+                let chunks = match checkpoint {
+                    CheckPoint::None => vec![],
+                    CheckPoint::Single(chunk_id) => vec![chunk_id.as_usize()],
+                    CheckPoint::Multiple(chunk_ids) => {
+                        chunk_ids.into_iter().map(|id| id.as_usize()).collect()
+                    }
+                };
+                pctx.dctx_set_chunks(*global_id, chunks);
+            }
         }
 
         [main_global_ids, secn_global_ids_vec].concat()
@@ -852,6 +852,34 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                         InstanceType::Table => {
                             self.witness_table(&pctx, &sctx, global_id, secn_instance)
                         }
+                    }
+                }
+            }
+        });
+    }
+
+    fn pre_calculate_witness(
+        &self,
+        stage: u32,
+        pctx: Arc<ProofCtx<F>>,
+        _sctx: Arc<SetupCtx<F>>,
+        global_ids: &[usize],
+        n_cores: usize,
+    ) {
+        if stage != 1 {
+            return;
+        }
+
+        let pool = create_pool(n_cores);
+        pool.install(|| {
+            for &global_id in global_ids {
+                let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+
+                if !MAIN_AIR_IDS.contains(&air_id) {
+                    let secn_instance = &self.secn_instances.read().unwrap()[&global_id];
+
+                    if secn_instance.instance_type() == InstanceType::Instance {
+                        self.witness_collect_instance(global_id, secn_instance);
                     }
                 }
             }

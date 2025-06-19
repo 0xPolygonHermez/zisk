@@ -15,18 +15,18 @@ pub fn generate_secp256k1_dbl_mem_inputs(
     step_main: u64,
     data: &[u64],
     only_counters: bool,
-) -> Option<Vec<(BusId, Vec<u64>)>> {
+) -> Vec<(BusId, Vec<u64>)> {
     // op,op_type,a,b,addr[2],...
     let p1: &[u64; 8] = &data[4..12].try_into().unwrap();
     let mut p3 = [0u64; 8];
 
     Secp256k1::calculate_dbl(p1, &mut p3);
-    Some(super::generate_mem_inputs(
+    super::generate_mem_inputs(
         addr_main,
         step_main,
         data,
         Some(&p3),
         only_counters,
         &SECP256K1_DBL_MEM_CONFIG,
-    ))
+    )
 }

@@ -5,7 +5,7 @@ use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
-use proofman_common::{initialize_logger, json_to_debug_instances_map, DebugInfo, ParamsGPU};
+use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -80,8 +80,6 @@ impl ZiskVerifyConstraints {
     pub fn run(&mut self) -> Result<()> {
         cli_fail_if_macos()?;
         cli_fail_if_gpu_mode()?;
-
-        initialize_logger(self.verbose.into());
 
         let debug_info = match &self.debug {
             None => DebugInfo::default(),
@@ -167,6 +165,8 @@ impl ZiskVerifyConstraints {
             false,
             false,
             ParamsGPU::default(),
+            self.verbose.into(),
+            None,
         )
         .expect("Failed to initialize proofman");
 
@@ -182,6 +182,7 @@ impl ZiskVerifyConstraints {
                     self.asm.clone(),
                     asm_rom,
                     sha256f_script,
+                    proofman.get_rank(),
                 )
                 .expect("Failed to initialize witness library");
 
@@ -201,7 +202,7 @@ impl ZiskVerifyConstraints {
             .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
-        println!();
+        tracing::info!("");
         tracing::info!(
             "{}",
             "--- VERIFY CONSTRAINTS SUMMARY ------------------------".bright_green().bold()
