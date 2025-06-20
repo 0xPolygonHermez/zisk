@@ -194,6 +194,8 @@ public:
                     while (cpos != 0) {
                         uint32_t chunk_id = workers[thread_index]->get_pos_value(cpos);
                         uint32_t count = workers[thread_index]->get_pos_value(cpos+1);
+                        printf("ADD_CHUNK #%d T:%d O:%d (0x%08X) cpos %d chunk_id %d count %d skip %d\n", 
+                            segment_id, thread_index, offset, MemCounter::offset_to_addr(offset, thread_index), cpos, chunk_id, count, skip);
                         if (add_chunk(chunk_id, addr, count - skip, skip) == false) {
                             #ifdef MEM_PLANNER_STATS
                             update_segment_stats(addr_count, offset_count, first_segment_addr, last_segment_addr);
@@ -237,6 +239,11 @@ public:
                     if (inserted_first_locator == false) {
                         inserted_first_locator = true;
                         locators.push_locator(thread_index, offset, pos, 0);
+                    }
+                    uint32_t addr_count = workers[thread_index]->get_count_table(offset);
+                    if (rows_available > addr_count) {
+                        rows_available -= addr_count;
+                        continue;
                     }
                     uint32_t cpos = workers[thread_index]->get_initial_pos(pos);
                     while (true) {

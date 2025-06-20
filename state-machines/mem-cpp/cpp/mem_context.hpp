@@ -47,7 +47,13 @@ public:
     MemContext() : chunks_count(0), chunks_completed(false) {
     }
     void add_chunk(MemCountersBusData *data, uint32_t count) {
-        uint32_t chunk_id = chunks_count.load(std::memory_order_relaxed);
+        uint32_t chunk_id = chunks_count.load(std::memory_order_relaxed);        
+        // MemCountersBusData *_data = (MemCountersBusData *)malloc(sizeof(MemCountersBusData) * count);
+        // if (_data == nullptr) {
+        //     throw std::runtime_error("Failed to allocate memory for chunk data");
+        // }
+        // memcpy(_data, data, sizeof(MemCountersBusData) * count);
+        // chunks[chunk_id].data = _data;
         chunks[chunk_id].data = data;
         chunks[chunk_id].count = count;
         chunks_count.store(chunk_id + 1, std::memory_order_release);

@@ -4,7 +4,8 @@ use crate::*;
 use mem_common::{MemAlignCheckPoint, MemModuleCheckPoint, MemModuleSegmentCheckPoint};
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 use zisk_pil::{
-    INPUT_DATA_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
+    INPUT_DATA_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_ALIGN_ROM_AIR_IDS, ROM_DATA_AIR_IDS,
+    ZISK_AIRGROUP_ID,
 };
 
 pub struct MemPlanner {
@@ -76,6 +77,7 @@ impl MemPlanner {
             for segment_id in 0..mem_segments_count {
                 let mut chunks: Vec<ChunkId> = Vec::new();
                 let mut segment = MemModuleSegmentCheckPoint::new();
+                segment.is_last_segment = segment_id == mem_segments_count - 1;
                 let checkpoints = CppMemCheckPoint::from_cpp(self, mem_id as u32, segment_id);
                 for checkpoint in checkpoints {
                     let chunk_id = ChunkId(checkpoint.chunk_id as usize);
@@ -103,6 +105,7 @@ impl MemPlanner {
         }
 
         let mem_align_check_points = CppMemAlignCheckPoint::from_cpp(self);
+        let enable_mem_align_rom = !mem_align_check_points.is_empty();
 
         println!("mem_align_check_points len: {:?}", mem_align_check_points.len());
 
@@ -146,6 +149,16 @@ impl MemPlanner {
                 InstanceType::Instance,
                 CheckPoint::Multiple(std::mem::take(&mut chunks)),
                 Some(Box::new(std::mem::take(&mut segment))),
+            ));
+        }
+        if enable_mem_align_rom {
+            plans.push(Plan::new(
+                ZISK_AIRGROUP_ID,
+                MEM_ALIGN_ROM_AIR_IDS[0],
+                None,
+                InstanceType::Table,
+                CheckPoint::None,
+                None,
             ));
         }
 

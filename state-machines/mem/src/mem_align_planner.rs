@@ -142,14 +142,16 @@ impl MemPlanCalculator for MemAlignPlanner<'_> {
         self.align_plan();
     }
     fn collect_plans(&mut self) -> Vec<Plan> {
-        self.instances.push(Plan::new(
-            ZISK_AIRGROUP_ID,
-            MEM_ALIGN_ROM_AIR_IDS[0],
-            None,
-            InstanceType::Table,
-            CheckPoint::None,
-            None,
-        ));
+        if !self.instances.is_empty() {
+            self.instances.push(Plan::new(
+                ZISK_AIRGROUP_ID,
+                MEM_ALIGN_ROM_AIR_IDS[0],
+                None,
+                InstanceType::Table,
+                CheckPoint::None,
+                None,
+            ));
+        }
         std::mem::take(&mut self.instances)
     }
 }

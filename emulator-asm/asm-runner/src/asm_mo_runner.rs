@@ -60,8 +60,9 @@ impl AsmRunnerMO {
 
         Self::write_input(inputs_path, &shmem_input_name);
 
-        let handle =
-            std::thread::spawn(move || AsmServices::send_memory_ops_request(max_steps, chunk_size, local_rank));
+        let handle = std::thread::spawn(move || {
+            AsmServices::send_memory_ops_request(max_steps, chunk_size, local_rank)
+        });
 
         // Read the header data
         let header_ptr = Self::get_output_ptr(&shmem_output_name) as *const AsmMOHeader;
@@ -89,7 +90,7 @@ impl AsmRunnerMO {
                     }
 
                     data_ptr = unsafe { data_ptr.add(1) };
-                    
+
                     mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void, chunk_id);
                     chunk_id += 1;
 
@@ -127,6 +128,7 @@ impl AsmRunnerMO {
 
         mem_planner.set_completed();
         mem_planner.wait();
+        println!("MEM_PLANNER: wait EXIT");
         let plans = mem_planner.mem_segments();
 
         // let (mem_segments, mem_align_segments) = mem_planner.mem_segments();

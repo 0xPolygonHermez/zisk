@@ -48,7 +48,7 @@ private:
     ImmutableMemPlanner *rom_data_planner;
     ImmutableMemPlanner *input_data_planner;
     std::vector<MemPlanner> plan_workers;
-    std::thread *parallel_execute;
+    std::unique_ptr<std::thread> parallel_execute;
     uint64_t t_init_us;
     uint64_t t_count_us;
     uint64_t t_prepare_us;
@@ -62,6 +62,8 @@ public:
         context = new MemContext();
     }
     ~MemCountAndPlan() {
+        printf("MemCountAndPlan::~MemCountAndPlan DESTROY\n");
+        sleep(1);
     }
     void clear() {
         // for (auto& chunk : chunks) {
@@ -97,15 +99,18 @@ public:
     void add_chunk(MemCountersBusData *chunk_data, uint32_t chunk_size) {
         context->add_chunk(chunk_data, chunk_size);
     }
-    void detach_execute() {
-        printf("MemCountAndPlan::count_phase\n");
-        count_phase();
-        printf("MemCountAndPlan::plan_phase\n");
-        plan_phase();
-    }
+    void detach_execute();
+    // {
+    //     printf("MemCountAndPlan::count_phase\n");
+    //     count_phase();
+    //     printf("MemCountAndPlan::plan_phase\n");
+    //     plan_phase();
+    //     printf("MemCountAndPlan::END\n");
+    // }
     void execute(void) {
-        parallel_execute = new std::thread([this](){ this->detach_execute();});
-        // parallel_execute.detach();
+        // parallel_execute = new std::thread([this](){ this->detach_execute();});
+        parallel_execute = std::make_unique<std::thread>(&MemCountAndPlan::detach_execute, this);
+        // parallel_execute->detach();
     }
     void count_phase() {
         uint64_t init = t_init_us = get_usec();
@@ -142,14 +147,21 @@ public:
         }
         t_plan_us = (uint32_t) (get_usec() - init);
 
+        printf("RAM segments: %ld\n", segments[RAM_ID].size());
+        segments[RAM_ID].debug();
+
         segments[ROM_ID].clear();
         rom_data_planner->collect_segments(segments[ROM_ID]);
+        printf("ROM segments: %ld\n", segments[ROM_ID].size());
+        segments[ROM_ID].debug();
+        printf("ROM segments END\n");
 
         segments[INPUT_ID].clear();
         input_data_planner->collect_segments(segments[INPUT_ID]);
-        segments[ROM_ID].debug();
+        printf("INPUT segments: %ld\n", segments[INPUT_ID].size());
         segments[INPUT_ID].debug();
-        segments[RAM_ID].debug();
+        
+        printf("MEM_ALIGN segments\n");
         mem_align_counter->debug();
     }
 
@@ -179,11 +191,23 @@ public:
     void set_completed() {
         context->set_completed();
     }
-    void wait() {
-        parallel_execute->join();
-        delete parallel_execute;
-        parallel_execute = nullptr;
-    }
+    void wait(); 
+    // {
+    //     printf("WAIT EXECUTE\n");
+    //     parallel_execute->join();
+    //     printf("WAIT EXECUTE 1\n");
+    //     delete parallel_execute;
+    //     printf("WAIT EXECUTE 2\n");
+    //     parallel_execute = nullptr;
+    //     printf("WAIT END 0\n");
+    //     printf("WAIT END 1\n");
+    //     printf("WAIT END 2\n");
+    //     printf("WAIT END 3\n");
+    //     printf("WAIT END 4\n");
+    //     printf("WAIT END 5\n");
+    //     printf("WAIT END 6\n");
+    //     sleep(1);
+    // }
 
 };
 
@@ -211,11 +235,11 @@ void execute_mem_count_and_plan(MemCountAndPlan *mcp)
 
 void add_chunk_mem_count_and_plan(uint32_t id, MemCountAndPlan *mcp, MemCountersBusData *chunk_data, uint32_t chunk_size)
 {
-   char filename[200];
-   snprintf(filename, sizeof(filename), "mem_%d.txt", id);
-   int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-   write(fd, chunk_data, sizeof(MemCountersBusData) * chunk_size);
-   close(fd);
+   // char filename[200];
+   // snprintf(filename, sizeof(filename), "mem_%d.txt", id);
+   // int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+   // write(fd, chunk_data, sizeof(MemCountersBusData) * chunk_size);
+   // close(fd);
    
    mcp->add_chunk(chunk_data, chunk_size);
 }

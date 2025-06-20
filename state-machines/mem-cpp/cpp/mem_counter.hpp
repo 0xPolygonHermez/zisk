@@ -111,6 +111,17 @@ public:
         for (const MemCountersBusData *chunk_eod = chunk_data + chunk_size; chunk_eod != chunk_data; chunk_data++) {
             const uint8_t bytes = chunk_data->flags & 0xFF;
             const uint32_t addr = chunk_data->addr;
+            switch (bytes) {
+                case 1: // byte
+                case 2: // half word
+                case 4: // word
+                case 8: // double word
+                    break;
+                default:
+                    std::ostringstream msg;
+                    msg << "ERROR: MemCounter execute_chunk: invalid bytes size " << bytes << " at chunk_id " << chunk_id << " addr 0x" << std::hex << addr;
+                    throw std::runtime_error(msg.str());
+            }
             if (bytes == 8 && (addr & 0x07) == 0) {
                 // aligned access
                 if ((addr & ADDR_MASK) != addr_mask) {

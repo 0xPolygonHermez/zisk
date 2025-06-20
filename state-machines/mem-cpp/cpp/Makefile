@@ -5,7 +5,7 @@ CXXFLAGS := -O3 -std=c++17 -mavx2 -march=native -Wall -Wextra -pthread -Iinclude
 
 TARGET := libmemcpp.a
 
-SRCS := tools.cpp api.cpp
+SRCS := tools.cpp api.cpp mem_count_and_plan.cpp
 OBJS := $(addprefix $(OUT_DIR)/, $(SRCS:.cpp=.o))
 
 all: $(OUT_DIR)/$(TARGET)
