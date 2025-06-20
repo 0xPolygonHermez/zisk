@@ -36,8 +36,8 @@ rom-setup = { path = "../rom-setup" }
 zisk-core = { path = "../core" }
 zisk-pil = { path = "../pil" }
 asm-runner = { path = "../emulator-asm/asm-runner" }
-
 server = { path = "../server" }
+
 clap = { version = "4.5.7", features = ["derive", "env"] }
 dirs = "6"
 rand = "0.9"

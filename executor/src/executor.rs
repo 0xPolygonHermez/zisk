@@ -294,7 +294,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             input_data_path.as_ref().unwrap(),
             Self::MAX_NUM_STEPS,
             Self::MIN_TRACE_SIZE,
-            // asm_runner::AsmRunnerOptions::default(),
             task_factory,
             self.world_rank,
             self.local_rank,
