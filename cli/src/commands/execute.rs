@@ -198,8 +198,8 @@ impl ZiskExecute {
                     self.asm.clone(),
                     asm_rom,
                     sha256f_script,
-                    proofman.get_rank(),
-                    proofman.get_rank(),
+                    Some(world_rank),
+                    Some(local_rank),
                     self.port,
                 )
                 .expect("Failed to initialize witness library");
