@@ -2301,7 +2301,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "precomp-sha256f"
+name = "precomp-sha256f-direct"
 version = "0.9.0"
 dependencies = [
  "circuit",
@@ -4555,7 +4555,7 @@ dependencies = [
  "pil-std-lib",
  "precomp-arith-eq",
  "precomp-keccakf",
- "precomp-sha256f",
+ "precomp-sha256f-direct",
  "proofman",
  "proofman-common",
  "proofman-macros",

@@ -10,7 +10,8 @@ use fields::{Goldilocks, PrimeField64};
 use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
-use precomp_sha256f::Sha256fManager;
+// use precomp_sha256f::Sha256fManager;
+use precomp_sha256f_direct::Sha256fManager;
 use proofman::register_std;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
@@ -87,7 +88,8 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         // Step 4: Initialize the precompiles state machines
         let keccakf_sm = KeccakfManager::new::<F>();
-        let sha256f_sm = Sha256fManager::new::<F>(self.sha256f_script_path.clone());
+        // let sha256f_sm = Sha256fManager::new::<F>(self.sha256f_script_path.clone());
+        let sha256f_sm = Sha256fManager::new::<F>();
         let arith_eq_sm = ArithEqManager::new(std.clone());
 
         // let sm_bundle = DynSMBundle::new(vec![

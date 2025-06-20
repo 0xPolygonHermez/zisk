@@ -27,31 +27,30 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
     }
 
     /*
-           ROW     a[0..32]      e[0..32]        w[0..32]          STAGE
-        |  0   | 0bD₁D₂..D₃₂ | 0bH₁H₂..H₃₂ | XXXXXXXXXXXXXXXX |  LOAD STATE  |
-        |  1   | 0bC₁C₂..C₃₂ | 0bG₁G₂..G₃₂ | XXXXXXXXXXXXXXXX |  LOAD STATE  | 
-        |  2   | 0bB₁B₂..B₃₂ | 0bF₁F₂..F₃₂ | XXXXXXXXXXXXXXXX |  LOAD STATE  | 
-        |  3   | 0bA₁A₂..A₃₂ | 0bE₁E₂..E₃₂ | XXXXXXXXXXXXXXXX |  LOAD STATE  |
-        |--------------------------------------------------------------------|
-        |  4   | 0bX₁X₂..X₃₂ | 0bX₁X₂..X₃₂ | 0bM₁M₂......M₃₂  |  LOAD INPUT  |      
-        |  ... |     ...     |     ...     |        ...       |      ...     |
-        |  19  | 0bX₁X₂..X₃₂ | 0bX₁X₂..X₃₂ | 0bM₄₈₁M₄₈₂..M₅₁₂ |  LOAD INPUT  |
-        |--------------------------------------------------------------------|
-        |  20  | 0bX₁X₂..X₃₂ | 0bX₁X₂..X₃₂ | 0bX₁X₂......X₃₂  |    MIXING    |
-        |  ... |     ...     |     ...     |        ...       |      ...     |
-        |  67  | 0bX₁X₂..X₃₂ | 0bX₁X₂..X₃₂ | 0bX₁X₂......X₃₂  |    MIXING    |
-        |--------------------------------------------------------------------|
-        |  68  | 0bD₁D₂..D₃₂ | 0bH₁H₂..H₃₂ | XXXXXXXXXXXXXXXX | WRITE STATE  |
-        |  69  | 0bC₁C₂..C₃₂ | 0bG₁G₂..G₃₂ | XXXXXXXXXXXXXXXX | WRITE STATE  |
-        |  70  | 0bB₁B₂..B₃₂ | 0bF₁F₂..F₃₂ | XXXXXXXXXXXXXXXX | WRITE STATE  |
-        |  71  | 0bA₁A₂..A₃₂ | 0bE₁E₂..E₃₂ | XXXXXXXXXXXXXXXX | WRITE STATE  |
+           ROW     a[0..32]      e[0..32]        w[0..32]             STAGE
+        |  0   | 0bD₁D₂..D₃₂ | 0bH₁H₂..H₃₂ | XXXXXXXXXXXXXXXX |      LOAD STATE      |
+        |  1   | 0bC₁C₂..C₃₂ | 0bG₁G₂..G₃₂ | XXXXXXXXXXXXXXXX |      LOAD STATE      | 
+        |  2   | 0bB₁B₂..B₃₂ | 0bF₁F₂..F₃₂ | XXXXXXXXXXXXXXXX |      LOAD STATE      | 
+        |  3   | 0bA₁A₂..A₃₂ | 0bE₁E₂..E₃₂ | XXXXXXXXXXXXXXXX |      LOAD STATE      |
+        |----------------------------------------------------------------------------|
+        |  4   | 0bX₁X₂..X₃₂ | 0bX₁X₂..X₃₂ | 0bM₁M₂.......M₃₂ |  MIXING & LOAD INPUT |      
+        |  ... |     ...     |     ...     |        ...       |         ...          |
+        |  19  | 0bX₁X₂..X₃₂ | 0bX₁X₂..X₃₂ | 0bM₄₈₁M₄₈₂..M₅₁₂ |  MIXING & LOAD INPUT |
+        |----------------------------------------------------------------------------|
+        |  20  | 0bX₁X₂..X₃₂ | 0bX₁X₂..X₃₂ | 0bX₁X₂.......X₃₂ |        MIXING        |
+        |  ... |     ...     |     ...     |        ...       |         ...          |
+        |  63  | 0bX₁X₂..X₃₂ | 0bX₁X₂..X₃₂ | 0bX₁X₂.......X₃₂ |        MIXING        |
+        |  64  | 0bD₁D₂..D₃₂ | 0bH₁H₂..H₃₂ | 0bX₁X₂.......X₃₂ | MIXING & WRITE STATE |
+        |  65  | 0bC₁C₂..C₃₂ | 0bG₁G₂..G₃₂ | 0bX₁X₂.......X₃₂ | MIXING & WRITE STATE |
+        |  66  | 0bB₁B₂..B₃₂ | 0bF₁F₂..F₃₂ | 0bX₁X₂.......X₃₂ | MIXING & WRITE STATE |
+        |  67  | 0bA₁A₂..A₃₂ | 0bE₁E₂..E₃₂ | 0bX₁X₂.......X₃₂ | MIXING & WRITE STATE |
     */
 
     const int CLOCKS_LOAD_STATE = 4; // 4 clocks to load the state
     const int CLOCKS_LOAD_INPUT = 16; // 16 clocks to load the input
     const int CLOCKS_MIXING = 48; // 48 clocks to perform the mixing
     const int CLOCKS_WRITE_STATE = 4; // 4 clocks to write the state
-    const int CLOCKS = CLOCKS_LOAD_STATE + CLOCKS_LOAD_INPUT + CLOCKS_MIXING + CLOCKS_WRITE_STATE;
+    const int CLOCKS = CLOCKS_LOAD_STATE + CLOCKS_LOAD_INPUT + CLOCKS_MIXING;
 
     // Ensure that the Sha256-f fits
     if (N < CLOCKS) {
@@ -61,33 +60,14 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
     col fixed CLK_0 = [1, 0:(CLOCKS-1)]...;
 
     const expr CLK[CLOCKS];
-    for (int i = 0; i < CLOCKS; ++i) {
+    for (int i = 0; i < CLOCKS; i++) {
         CLK[i] = (i)'CLK_0;
     }
 
-    int offset = 0;
-    expr is_loading_state = 0;
-    for (int i = 0; i < CLOCKS_LOAD_STATE; ++i) {
-        is_loading_state += CLK[i];
-    }
-    offset += CLOCKS_LOAD_STATE;
-
-    expr is_loading_input = 0;
-    for (int i = 0; i < CLOCKS_LOAD_INPUT; ++i) {
-        is_loading_input += CLK[offset + i];
-    }
-    offset += CLOCKS_LOAD_INPUT;
-
-    expr is_mixing = 0;
-    for (int i = 0; i < CLOCKS_MIXING; ++i) {
-        is_mixing += CLK[offset + i];
-    }
-    offset += CLOCKS_MIXING;
-
-    expr is_writing_state = 0;
-    for (int i = 0; i < CLOCKS_WRITE_STATE; ++i) {
-        is_writing_state += CLK[offset + i];
-    }
+    const expr is_loading_state = clock_set(start: 0, end: CLOCKS_LOAD_STATE - 1,  offset: 0);
+    const expr is_loading_input = clock_set(start: 0, end: CLOCKS_LOAD_INPUT - 1,  offset: CLOCKS_LOAD_STATE);
+    const expr is_mixing        = clock_set(start: 0, end: CLOCKS_MIXING - 1,      offset: CLOCKS_LOAD_STATE + CLOCKS_LOAD_INPUT);
+    const expr is_writing_state = clock_set(start: 0, end: CLOCKS_WRITE_STATE - 1, offset: CLOCKS - CLOCKS_WRITE_STATE);
 
     col witness a[32];
     col witness e[32];
@@ -104,7 +84,8 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
     const expr old_e[4][32] = ['e, 2'e, 3'e, 4'e];
     const expr old_w[4][32] = [2'w, 7'w, 15'w, 16'w];
 
-    const expr new_ae[2] = compute_ae(old_a, old_e, w, get_k(CLK[CLOCKS_LOAD_STATE..(CLOCKS_LOAD_STATE + CLOCKS_LOAD_INPUT + CLOCKS_MIXING - 1)]));
+    const expr k = clock_set_weighted(start: 0, end: CLOCKS_LOAD_INPUT + CLOCKS_MIXING - 1, offset: CLOCKS_LOAD_STATE, weights: SHA256F_RC);
+    const expr new_ae[2] = compute_ae(old_a, old_e, w, k);
     const expr new_a_packed = new_ae[0];
     const expr new_e_packed = new_ae[1];
     const expr new_w_packed = compute_w(old_w);
@@ -133,11 +114,6 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
     (is_loading_input + is_mixing) * (new_e + new_e_carry_bits * 0x1_0000_0000 - new_e_packed) === 0;
     is_mixing * (new_w + new_w_carry_bits * 0x1_0000_0000 - new_w_packed) === 0;
 
-    // Finally, we should copy the resulting values
-    for (int i = 0; i < 32; i++) {
-        is_writing_state * (a[i] - 4'a[i]) === 0;
-    }
-
 
     // --> Constraints to read inputs from memory and write outputs to memory
 
@@ -162,20 +138,30 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
     //   1  STEP      | R |  ADDR_STATE + 8   |  state[1]    
     //   2  STEP      | R |  ADDR_STATE + 16  |  state[2]        
     //   3  STEP      | R |  ADDR_STATE + 24  |  state[3]  
-    //   4  STEP      | R |  ADDR_INPUT       |  input[0]         
-    //   5  STEP      | R |  ADDR_INPUT + 8   |  input[1]         
-    //   6  STEP      | R |  ADDR_INPUT + 16  |  input[2]        
-    //   7  STEP      | R |  ADDR_INPUT + 24  |  input[3]
-    //   8  STEP      | R |  ADDR_INPUT + 32  |  input[4]         
-    //   9  STEP      | R |  ADDR_INPUT + 40  |  input[5]         
-    //  10  STEP      | R |  ADDR_INPUT + 48  |  input[6]        
-    //  11  STEP      | R |  ADDR_INPUT + 56  |  input[7]     
-    //  12  STEP + 1  | W |  ADDR_STATE       |  state[0]          
-    //  13  STEP + 1  | W |  ADDR_STATE + 8   |  state[1]       
-    //  14  STEP + 1  | W |  ADDR_STATE + 16  |  state[2]      
-    //  15  STEP + 1  | W |  ADDR_STATE + 24  |  state[3]     
-    //  16  STEP      | R |  ADDR_OP + 0      |  ADDR_IND_0
-    //  17  STEP      | R |  ADDR_OP + 8      |  ADDR_IND_1
+    //   4  STEP      | R |  ADDR_INPUT       |  input[0]  
+    //   5  STEP      | R |  ADDR_INPUT       |  input[0]         
+    //   6  STEP      | R |  ADDR_INPUT + 8   |  input[1]
+    //   7  STEP      | R |  ADDR_INPUT + 8   |  input[1]         
+    //   8  STEP      | R |  ADDR_INPUT + 16  |  input[2]
+    //   9  STEP      | R |  ADDR_INPUT + 16  |  input[2]        
+    //  10  STEP      | R |  ADDR_INPUT + 24  |  input[3]
+    //  11  STEP      | R |  ADDR_INPUT + 24  |  input[3]
+    //  12  STEP      | R |  ADDR_INPUT + 32  |  input[4]
+    //  13  STEP      | R |  ADDR_INPUT + 32  |  input[4]         
+    //  14  STEP      | R |  ADDR_INPUT + 40  |  input[5]
+    //  15  STEP      | R |  ADDR_INPUT + 40  |  input[5]         
+    //  16  STEP      | R |  ADDR_INPUT + 48  |  input[6]
+    //  17  STEP      | R |  ADDR_INPUT + 48  |  input[6]        
+    //  18  STEP      | R |  ADDR_INPUT + 56  |  input[7] 
+    //  19  STEP      | R |  ADDR_INPUT + 56  |  input[7]
+    //  ..   ...      |   |       ...         |    ...
+    //  ??  STEP      | R |  ADDR_OP + 0      |  ADDR_IND_0
+    //  ??  STEP      | R |  ADDR_OP + 8      |  ADDR_IND_1
+    //  ..   ...      |   |       ...         |    ...
+    //  64  STEP + 1  | W |  ADDR_STATE       |  state[0]          
+    //  65  STEP + 1  | W |  ADDR_STATE + 8   |  state[1]       
+    //  66  STEP + 1  | W |  ADDR_STATE + 16  |  state[2]      
+    //  67  STEP + 1  | W |  ADDR_STATE + 24  |  state[3]     
     // ======================================================
 
     const int STEP_MAIN = 0;
@@ -189,23 +175,23 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
     clock_eq(step_addr, ADDR_INPUT, ADDR_IND_1) === 0;
 
     const expr mem_addr = clock_map(step_addr, ADDR_STATE, start: 0,  end: 3,  delta: 8) +
-                          clock_map(step_addr, ADDR_INPUT, start: 4,  end: 19, delta: 8) + // FIX
-                          clock_map(step_addr, ADDR_STATE, start: 68, end: 71, delta: 8); // FIX
+                          clock_map(step_addr, ADDR_INPUT, start: 4,  end: 19, delta: 8) +
+                          clock_map(step_addr, ADDR_STATE, start: 64, end: 67, delta: 8);
                         //   clock_map(step_addr, ADDR_OP,    start: 16, end: 18, delta: 8);  // FIX
 
     const expr main_step = clock_map(step_addr, STEP_MAIN, start: 0, end: 10); // Adjust
 
     const expr mem_value[2];
 
-    mem_value[0] = clock_set(pack32(a), start: 0, end: 3) + // a[0] + a[1]·2 + a[2]·2² + ... + a[31]·2³¹
-                   clock_set(pack32(w), start: 4, end: 19) + // w[0] + w[1]·2 + w[2]·2² + ... + w[31]·2³¹
-                   clock_set(pack32(a), start: 68, end: 71); // a[0] + a[1]·2 + a[2]·2² + ... + a[31]·2³¹
+    mem_value[0] = clock_set2(pack32(a), start: 0, end: 3) + // a[0] + a[1]·2 + a[2]·2² + ... + a[31]·2³¹
+                   clock_set2(pack32(w), start: 4, end: 19) + // w[0] + w[1]·2 + w[2]·2² + ... + w[31]·2³¹
+                   clock_set2(pack32(a), start: 64, end: 67); // a[0] + a[1]·2 + a[2]·2² + ... + a[31]·2³¹
                 //    clock_map(step_addr, ADDR_IND_0, start: IN_OUT_BLOCKS) +
                 //    clock_map(step_addr, ADDR_IND_1, start: IN_OUT_BLOCKS+1);
 
-    mem_value[1] = clock_set(pack32(e), start: 0, end: 3) + // e[0] + e[1]·2 + e[2]·2² + ... + e[31]·2³¹
+    mem_value[1] = clock_set2(pack32(e), start: 0, end: 3) + // e[0] + e[1]·2 + e[2]·2² + ... + e[31]·2³¹
                    // high bits of indirect addresses are 0.
-                   clock_set(pack32(e), start: 68, end: 71); // e[0] + e[1]·2 + e[2]·2² + ... + e[31]·2³¹
+                   clock_set2(pack32(e), start: 64, end: 67); // e[0] + e[1]·2 + e[2]·2² + ... + e[31]·2³¹
 
     col witness in_use_clk_0;
     in_use_clk_0 * (1 - in_use_clk_0) === 0; // it is a selector
@@ -220,7 +206,7 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
     // in_use is active iff in_use_clk_0 is active
     CLK_0 * (in_use - in_use_clk_0) === 0;
 
-    const expr mem_sel = clock_set(in_use, start: 0, end: 19) + clock_set(in_use, start: 68, end: 71);
+    const expr mem_sel = clock_set2(in_use, start: 0, end: 19) + clock_set2(in_use, start: 64, end: 67);
 
     precompiled_mem_op(
             is_write: is_writing_state,
@@ -235,7 +221,6 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
 
 
     function pack32(const expr a[]): expr[] {
-        assert(length(a) == 32); // TODO: Remove
         expr packed = 0;
         for (int j = 0; j < 32; j++) {
             packed += a[j] * 2**j;
@@ -255,7 +240,6 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
     }
 
     function get_k(const expr rounds[]): expr {
-        assert(length(rounds) == 64); // TODO: Remove
         expr k = 0;
         for (int i = 0; i < 64; i++) {
             k += rounds[i] * SHA256F_RC[i];
@@ -269,14 +253,11 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
         expr s0 = xor(rotate_right(old_w15, 7), xor(rotate_right(old_w15, 18), shift_right(old_w15, 3)));
         expr s1 = xor(rotate_right(old_w2, 17), xor(rotate_right(old_w2, 19), shift_right(old_w2, 10)));
         expr new_w = pack32(s1) + pack32(old_w7) + pack32(s0) + pack32(old_w16);
-        assert(length(new_w) == 0); // TODO: Remove
         return new_w;
     }
     
     // Given an old A,E and the round W and K, computes the round A and E
     function compute_ae(const expr old_a[][], const expr old_e[][], const expr w[], const expr k): expr[] {
-        assert(length(old_a) == 4); // TODO: Remove
-        assert(length(old_e) == 4); // TODO: Remove
         expr [a, b, c, d] = [old_a[0], old_a[1], old_a[2], old_a[3]];
         expr [e, f, g, h] = [old_e[0], old_e[1], old_e[2], old_e[3]];
         expr s0 = xor(rotate_right(a, 2), xor(rotate_right(a, 13), rotate_right(a, 22)));
@@ -284,8 +265,6 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
         expr stage1 = pack32(w) + k + pack32(h) + pack32(ch(e, f, g)) + pack32(s1);
         expr new_a = stage1 + pack32(maj(a, b, c)) + pack32(s0);
         expr new_e = stage1 + pack32(d);
-        assert(length(new_a) == 0); // TODO: Remove
-        assert(length(new_e) == 0); // TODO: Remove
         expr result[2] = [new_a, new_e];
         return result;
     }
@@ -350,33 +329,60 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
         return air.CLK_0 * (mvcol'(pos1) - mvcol'(pos2));
     }
 
-    function clock_map(const expr mvcol, int pos, int start = 0, int end = -1, int offset = 0, int delta = 0): const expr {
+    function clock_set(int start = 0, int end = -1, int offset = 0): const expr {
+        if (end == -1) {
+            end = start;
+        }
+        start += offset;
+        end += offset;
+        expr res = 0;
+        for (int index = start; index <= end; index++) {
+            res += air.CLK[index];
+        }
+        return res;
+    }
+
+    function clock_set_weighted(int start = 0, int end = -1, int offset = 0, int weights[]): const expr {
+        assert(length(weights) == end - start + 1);
+        if (end == -1) {
+            end = start;
+        }
+        start += offset;
+        end += offset;
+        expr res = 0;
+        for (int index = start; index <= end; index++) {
+            res += air.CLK[index] * weights[index - start];
+        }
+        return res;
+    }
+
+    function clock_set2(const expr cl, int start = 0, int end = -1, int offset = 0, int delta = 0): const expr {
         expr res = 0;
         if (end == -1) {
             end = start;
         }
-        for (int index = start; index <= end; ++index) {
-            int iclock = (pos - index ) % air.CLOCKS;
+        for (int index = start; index <= end; index++) {
             if (offset != 0) {
-                res += air.CLK[index] * (mvcol'(iclock) + offset);
+                res += air.CLK[index] * (cl + offset);
             } else {
-                res += air.CLK[index] * mvcol'(iclock);
+                res += air.CLK[index] * cl;
             }
             offset += delta;
         }
         return res;
     }
 
-    function clock_set(const expr cl, int start = 0, int end = -1, int offset = 0, int delta = 0): const expr {
+    function clock_map(const expr mvcol, int pos, int start = 0, int end = -1, int offset = 0, int delta = 0): const expr {
         expr res = 0;
         if (end == -1) {
             end = start;
         }
-        for (int index = start; index <= end; ++index) {
+        for (int index = start; index <= end; index++) {
+            int iclock = (pos - index) % air.CLOCKS;
             if (offset != 0) {
-                res += air.CLK[index] * (cl + offset);
+                res += air.CLK[index] * (mvcol'(iclock) + offset);
             } else {
-                res += air.CLK[index] * cl;
+                res += air.CLK[index] * mvcol'(iclock);
             }
             offset += delta;
         }
