@@ -21,6 +21,7 @@ pub enum Cargo {
     Build(ZiskBuild),
     CheckSetup(ZiskCheckSetup),
     Clean(ZiskClean),
+    Execute(ZiskExecute),
     ProveClient(ZiskProveClient),
     Prove(ZiskProve),
     RomSetup(ZiskRomSetup),
@@ -28,7 +29,6 @@ pub enum Cargo {
     Sdk(ZiskSdk),
     Server(ZiskServer),
     Stats(ZiskStats),
-    Execute(ZiskExecute),
     Verify(ZiskVerify),
     VerifyConstraints(ZiskVerifyConstraints),
 }
