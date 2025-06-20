@@ -174,6 +174,7 @@ impl ZiskExecute {
                     sha256f_script,
                     proofman.get_rank(),
                     None,
+                    None,
                 )
                 .expect("Failed to initialize witness library");
 
