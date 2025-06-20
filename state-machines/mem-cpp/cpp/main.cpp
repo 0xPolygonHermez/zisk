@@ -73,6 +73,5 @@ int main(int argc, const char *argv[]) {
     MemTest mem_test;
     mem_test.load(argc > 1 ? argv[1] : "../bus_data.org/mem_count_data");
     mem_test.execute();
-    printf("END\n");
 }
 

@@ -69,7 +69,6 @@ public:
 
         // no memset because informations is overrided.
         addr_slots = (uint32_t *)std::aligned_alloc(64, ADDR_SLOTS_SIZE * sizeof(uint32_t));
-        printf("CONSTRUCTOR Thread_%d addr_count:%d addr_count_table:%p addr_slots:%p\n", id, addr_count, addr_count_table, addr_slots);
 
         memset(first_offset, 0xFF, sizeof(first_offset));
         memset(last_offset, 0, sizeof(first_offset));
@@ -88,7 +87,6 @@ public:
     }
     ~MemCounter() {
         #ifdef USE_ADDR_COUNT_TABLE
-        printf("DESTRUCTOR Thread_%d addr_count:%d addr_count_table:%p addr_slots:%p\n", id, addr_count, addr_count_table, addr_slots);
         free(addr_count_table);
         #else
         free(addr_table);

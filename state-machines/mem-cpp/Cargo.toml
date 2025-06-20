@@ -13,3 +13,7 @@ build = "build.rs"
 zisk-common = { path = "../../common" }
 mem-common = { path = "../mem-common" }
 zisk-pil = { path = "../../pil" }
+
+[features]
+default = []
+save_mem_bus_data = []

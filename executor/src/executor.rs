@@ -756,7 +756,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         let (mut main_planning, public_values) =
             MainPlanner::plan::<F>(&min_traces, main_count, Self::MIN_TRACE_SIZE);
 
-        println!("CPP Planning: {:?}", mem_cpp);
         let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
         for plan in &secn_planning {
             // println!("---Plan: {:?}", plan);

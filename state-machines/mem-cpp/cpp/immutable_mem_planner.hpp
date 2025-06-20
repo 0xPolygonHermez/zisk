@@ -212,11 +212,13 @@ public:
         if (row_count == 0 && rows_available > 0) {
             return;
         }
+        #ifdef DEBUG_MEM_CAP
         if (row_count > rows_available) {
             std::ostringstream msg;
             msg << "MemPlanner::consume " << row_count << " too much rows, available " << rows_available << std::endl;
             throw std::runtime_error(msg.str());
         }
+        #endif
         if (rows_available == 0) {
             open_segment();
         }
@@ -230,11 +232,13 @@ public:
         if (row_count == 0 && rows_available > 0) {
             return;
         }
+        #ifdef DEBUG_MEM_CAP
         if (row_count > rows_available) {
             std::ostringstream msg;
             msg << "MemPlanner::consume " << row_count << " too much rows, available " << rows_available << std::endl;
             throw std::runtime_error(msg.str());
         }
+        #endif
         if (rows_available == 0) {
             open_segment();
         }

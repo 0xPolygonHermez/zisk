@@ -92,11 +92,11 @@ public:
         current_segment = nullptr;
         from_page = MemCounter::addr_to_page(from_addr);
         to_page = MemCounter::addr_to_page(from_addr + (mb_size * 1024 * 1024) - 1);
-        if (MemCounter::page_to_addr(from_page) != from_addr) {
-            std::ostringstream msg;
-            msg << "MemPlanner::constructor: from_addr " << std::hex << from_addr << " not aligned to page " << std::dec << from_page;
-            throw std::runtime_error(msg.str());
-        }
+//        if (MemCounter::page_to_addr(from_page) != from_addr) {
+//            std::ostringstream msg;
+//            msg << "MemPlanner::constructor: from_addr " << std::hex << from_addr << " not aligned to page " << std::dec << from_page;
+//            throw std::runtime_error(msg.str());
+//        }
         #ifndef MEM_CHECK_POINT_MAP
         chunk_table = (uint32_t *)malloc(MAX_CHUNKS * sizeof(uint32_t));
         memset(chunk_table, 0, MAX_CHUNKS * sizeof(uint32_t));
@@ -136,12 +136,7 @@ public:
             if ((locator = get_next_locator(locators, segment_id)) == nullptr) {
                 break;
             }
-            // printf("EXECUTE_FROM_LOCATOR segment %d thread_index %d offset %d (0x%08X) cpos %d chunk %d skip %d\n", 
-            //     segment_id, locator->thread_index, locator->offset, 
-            //     MemCounter::offset_to_addr(locator->offset, locator->thread_index), 
-            //     locator->cpos, workers[locator->thread_index]->get_pos_value(locator->cpos), locator->skip);
             execute_from_locator(workers, segment_id, locator);
-            // current_segment->close();
             segments.set(segment_id, current_segment);
             current_segment = nullptr;
         }
@@ -167,7 +162,6 @@ public:
         uint32_t last_segment_addr = first_segment_addr;
         #endif
         for (;page < to_page; ++page, thread_index = 0, get_offset_limits(workers, page, offset, max_offset)) {
-            // printf("offset:0x%08X page:%d addr:0x%08X thread_index:%d max_offset:0x%08X\n", offset, page, addr, thread_index, max_offset);
             for (;offset <= max_offset; ++offset, thread_index = 0) {
                 addr = MemCounter::offset_to_addr(offset, thread_index);
                 #ifdef MEM_PLANNER_STATS
@@ -186,16 +180,10 @@ public:
                     if (segment_id == 0 || first_pos == false) {          
                         skip = 0;      
                         cpos = workers[thread_index]->get_initial_pos(pos); 
-                    } else {
-                        // printf("FIRST_POS segment %d thread_index %d offset %d (0x%08X/0x%08X) cpos %d chunk %d skip %d\n", 
-                        //     segment_id, thread_index, offset, MemCounter::offset_to_addr(offset, thread_index), 
-                        //     addr, cpos, workers[thread_index]->get_pos_value(cpos), skip);
                     }
                     while (cpos != 0) {
                         uint32_t chunk_id = workers[thread_index]->get_pos_value(cpos);
                         uint32_t count = workers[thread_index]->get_pos_value(cpos+1);
-                        printf("ADD_CHUNK #%d T:%d O:%d (0x%08X) cpos %d chunk_id %d count %d skip %d\n", 
-                            segment_id, thread_index, offset, MemCounter::offset_to_addr(offset, thread_index), cpos, chunk_id, count, skip);
                         if (add_chunk(chunk_id, addr, count - skip, skip) == false) {
                             #ifdef MEM_PLANNER_STATS
                             update_segment_stats(addr_count, offset_count, first_segment_addr, last_segment_addr);

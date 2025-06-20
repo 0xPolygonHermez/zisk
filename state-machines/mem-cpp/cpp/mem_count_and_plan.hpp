@@ -62,8 +62,6 @@ public:
         context = new MemContext();
     }
     ~MemCountAndPlan() {
-        printf("MemCountAndPlan::~MemCountAndPlan DESTROY\n");
-        sleep(1);
     }
     void clear() {
         // for (auto& chunk : chunks) {
@@ -73,27 +71,18 @@ public:
     }
     void prepare() {
         uint init = get_usec();
-        printf("Preparing MemCountAndPlan (clear count_workers)...\n");
         count_workers.clear();
-        printf("Preparing MemCountAndPlan (count_workers)...\n");
         for (size_t i = 0; i < MAX_THREADS; ++i) {
-            printf("Preparing MemCountAndPlan (count_worker %ld)...\n", i);
             count_workers.push_back(new MemCounter(i, context));
         }
-        printf("Preparing MemCountAndPlan (mem_align_counter)...\n");
         mem_align_counter = new MemAlignCounter(MEM_ALIGN_ROWS, context);
         plan_workers.clear();
-        printf("Preparing MemCountAndPlan (rom_data_planner)...\n");
         rom_data_planner = new ImmutableMemPlanner(ROM_ROWS, 0x80000000, 128);
-        printf("Preparing MemCountAndPlan (input_data_planner)...\n");
         input_data_planner = new ImmutableMemPlanner(INPUT_ROWS, 0x90000000, 128);
-        printf("Preparing MemCountAndPlan (quick_mem_planner)...\n");
         quick_mem_planner = new MemPlanner(0, RAM_ROWS, 0xA0000000, 512);
-        printf("Preparing MemCountAndPlan (planners)...\n");
         for (int i = 0; i < MAX_MEM_PLANNERS; ++i) {
             plan_workers.emplace_back(i+1, RAM_ROWS, 0xA0000000, 512);
         }
-        printf("Prepared MemCountAndPlan\n");
         t_prepare_us = get_usec() - init;
     }
     void add_chunk(MemCountersBusData *chunk_data, uint32_t chunk_size) {
@@ -147,22 +136,22 @@ public:
         }
         t_plan_us = (uint32_t) (get_usec() - init);
 
-        printf("RAM segments: %ld\n", segments[RAM_ID].size());
-        segments[RAM_ID].debug();
+        // printf("RAM segments: %ld\n", segments[RAM_ID].size());
+        // segments[RAM_ID].debug();
 
         segments[ROM_ID].clear();
         rom_data_planner->collect_segments(segments[ROM_ID]);
-        printf("ROM segments: %ld\n", segments[ROM_ID].size());
-        segments[ROM_ID].debug();
-        printf("ROM segments END\n");
+        // printf("ROM segments: %ld\n", segments[ROM_ID].size());
+        // segments[ROM_ID].debug();
+        // printf("ROM segments END\n");
 
         segments[INPUT_ID].clear();
         input_data_planner->collect_segments(segments[INPUT_ID]);
-        printf("INPUT segments: %ld\n", segments[INPUT_ID].size());
-        segments[INPUT_ID].debug();
+        // printf("INPUT segments: %ld\n", segments[INPUT_ID].size());
+        // segments[INPUT_ID].debug();
         
-        printf("MEM_ALIGN segments\n");
-        mem_align_counter->debug();
+        // printf("MEM_ALIGN segments\n");
+        // mem_align_counter->debug();
     }
 
     void stats() {
@@ -192,30 +181,14 @@ public:
         context->set_completed();
     }
     void wait(); 
-    // {
-    //     printf("WAIT EXECUTE\n");
-    //     parallel_execute->join();
-    //     printf("WAIT EXECUTE 1\n");
-    //     delete parallel_execute;
-    //     printf("WAIT EXECUTE 2\n");
-    //     parallel_execute = nullptr;
-    //     printf("WAIT END 0\n");
-    //     printf("WAIT END 1\n");
-    //     printf("WAIT END 2\n");
-    //     printf("WAIT END 3\n");
-    //     printf("WAIT END 4\n");
-    //     printf("WAIT END 5\n");
-    //     printf("WAIT END 6\n");
-    //     sleep(1);
-    // }
-
+    
 };
 
 MemCountAndPlan *create_mem_count_and_plan(void) {
     MemCountAndPlan *mcp = new MemCountAndPlan();
-    printf("MemCountAndPlan created. Preparing ....\n");
+    // printf("MemCountAndPlan created. Preparing ....\n");
     mcp->prepare();
-    printf("MemCountAndPlan prepared\n");
+    // printf("MemCountAndPlan prepared\n");
     return mcp;
 }
 
@@ -235,11 +208,11 @@ void execute_mem_count_and_plan(MemCountAndPlan *mcp)
 
 void add_chunk_mem_count_and_plan(uint32_t id, MemCountAndPlan *mcp, MemCountersBusData *chunk_data, uint32_t chunk_size)
 {
-   // char filename[200];
-   // snprintf(filename, sizeof(filename), "mem_%d.txt", id);
-   // int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-   // write(fd, chunk_data, sizeof(MemCountersBusData) * chunk_size);
-   // close(fd);
+  //    char filename[200];
+  //    snprintf(filename, sizeof(filename), "tmp/bus_data_asm/mem_count_data_%d.bin", id);
+  //    int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+  //    write(fd, chunk_data, sizeof(MemCountersBusData) * chunk_size);
+  //    close(fd);
    
    mcp->add_chunk(chunk_data, chunk_size);
 }

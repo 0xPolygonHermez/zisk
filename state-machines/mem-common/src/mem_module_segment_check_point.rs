@@ -20,7 +20,7 @@ impl MemModuleSegmentCheckPoint {
         for (chunk_id, checkpoint) in &self.chunks {
             result = result
                 + &format!(
-                    "MEM #{}@{}  [0x{:08X} s:{}], [0x{:08X} C:{}] C:{}\n",
+                    "MEM #{}@{} [0x{:08X} s:{}] [0x{:08X} C:{}] C:{}{}{}\n",
                     segment_id,
                     chunk_id,
                     checkpoint.from_addr * 8,
@@ -28,6 +28,8 @@ impl MemModuleSegmentCheckPoint {
                     checkpoint.to_addr * 8,
                     checkpoint.to_count,
                     checkpoint.count,
+                    if Some(*chunk_id) == self.first_chunk_id { " [first_chunk]" } else { "" },
+                    if self.is_last_segment { " [last_segment]" } else { "" }
                 );
         }
         result

@@ -1,7 +1,10 @@
 use std::{collections::HashMap, os::raw::c_void};
 
 use crate::*;
+#[cfg(feature = "save_mem_bus_data")]
+use mem_common::save_plans;
 use mem_common::{MemAlignCheckPoint, MemModuleCheckPoint, MemModuleSegmentCheckPoint};
+
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 use zisk_pil::{
     INPUT_DATA_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_ALIGN_ROM_AIR_IDS, ROM_DATA_AIR_IDS,
@@ -82,6 +85,10 @@ impl MemPlanner {
                 for checkpoint in checkpoints {
                     let chunk_id = ChunkId(checkpoint.chunk_id as usize);
                     chunks.push(chunk_id);
+                    if segment.chunks.is_empty() {
+                        segment.first_chunk_id = Some(chunk_id);
+                    }
+
                     segment.chunks.insert(
                         chunk_id,
                         MemModuleCheckPoint {
@@ -130,7 +137,6 @@ impl MemPlanner {
             }
 
             chunks.push(ChunkId(checkpoint.chunk_id as usize));
-
             segment.insert(
                 ChunkId(checkpoint.chunk_id as usize),
                 MemAlignCheckPoint {
@@ -161,6 +167,9 @@ impl MemPlanner {
                 None,
             ));
         }
+
+        #[cfg(feature = "save_mem_bus_data")]
+        save_plans(&plans, "asm_plans.txt");
 
         plans
     }

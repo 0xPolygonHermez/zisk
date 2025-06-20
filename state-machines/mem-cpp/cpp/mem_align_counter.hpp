@@ -104,7 +104,7 @@ public:
                 last_segment_id = cp.segment_id;
             }
             printf("MEM_ALIGN %d:%d #%d S:%d C:%d R:%d O:%d\n", cp.segment_id, cp.chunk_id, index++, cp.skip, cp.count, cp.rows, cp.offset);
-}
+        }
     }
 };
 
