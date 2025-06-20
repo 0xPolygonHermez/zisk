@@ -204,18 +204,21 @@ impl ZiskVerifyConstraints {
 
                 proofman.register_witness(&mut *witness_lib, library);
 
-                // Start ASM microservices
-                tracing::info!(
-                    ">>> [{}] Starting ASM microservices. {}",
-                    world_rank,
-                    "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
-                );
-                AsmServices::start_asm_services(
-                    self.asm.as_ref().unwrap(),
-                    AsmRunnerOptions::default(),
-                    world_rank,
-                    local_rank,
-                )?;
+                if self.asm.is_some() {
+                    // Start ASM microservices
+                    tracing::info!(
+                        ">>> [{}] Starting ASM microservices. {}",
+                        world_rank,
+                        "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
+                    );
+
+                    AsmServices::start_asm_services(
+                        self.asm.as_ref().unwrap(),
+                        AsmRunnerOptions::default(),
+                        world_rank,
+                        local_rank,
+                    )?;
+                }
 
                 proofman
                     .verify_proof_constraints_from_lib(self.input.clone(), &debug_info)
@@ -243,9 +246,11 @@ impl ZiskVerifyConstraints {
             result.executed_steps
         );
 
-        // Shut down ASM microservices
-        tracing::info!("<<< [{}] Shutting down ASM microservices.", world_rank);
-        AsmServices::stop_asm_services(local_rank)?;
+        if self.asm.is_some() {
+            // Shut down ASM microservices
+            tracing::info!("<<< [{}] Shutting down ASM microservices.", world_rank);
+            AsmServices::stop_asm_services(local_rank)?;
+        }
 
         Ok(())
     }
