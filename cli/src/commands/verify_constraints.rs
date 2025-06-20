@@ -67,6 +67,15 @@ pub struct ZiskVerifyConstraints {
     #[clap(long, default_value_t = Field::Goldilocks)]
     pub field: Field,
 
+    /// Base port for Assembly microservices (default: 23115).
+    /// A single execution will use 3 consecutive ports, from this port to port + 2.
+    /// If you are running multiple instances of ZisK using mpi on the same machine,
+    /// it will use from this base port to base port + 2 * number_of_instances.
+    /// For example, if you run 2 mpi instances of ZisK, it will use ports from 23115 to 23117
+    /// for the first instance, and from 23118 to 23120 for the second instance.
+    #[clap(short = 'p', long)]
+    pub port: Option<u16>,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
@@ -186,6 +195,9 @@ impl ZiskVerifyConstraints {
 
         let mut witness_lib;
         let start = std::time::Instant::now();
+
+        let asm_services = AsmServices::new(world_rank, local_rank, self.port);
+
         match self.field {
             Field::Goldilocks => {
                 let library = unsafe { Library::new(self.get_witness_computation_lib())? };
@@ -199,6 +211,7 @@ impl ZiskVerifyConstraints {
                     sha256f_script,
                     Some(world_rank),
                     Some(local_rank),
+                    self.port,
                 )
                 .expect("Failed to initialize witness library");
 
@@ -210,12 +223,9 @@ impl ZiskVerifyConstraints {
                     world_rank,
                     "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
                 );
-                AsmServices::start_asm_services(
-                    self.asm.as_ref().unwrap(),
-                    AsmRunnerOptions::default(),
-                    world_rank,
-                    local_rank,
-                )?;
+
+                asm_services
+                    .start_asm_services(self.asm.as_ref().unwrap(), AsmRunnerOptions::default())?;
 
                 proofman
                     .verify_proof_constraints_from_lib(self.input.clone(), &debug_info)
@@ -245,7 +255,7 @@ impl ZiskVerifyConstraints {
 
         // Shut down ASM microservices
         tracing::info!("<<< [{}] Shutting down ASM microservices.", world_rank);
-        AsmServices::stop_asm_services(local_rank)?;
+        asm_services.stop_asm_services()?;
 
         Ok(())
     }

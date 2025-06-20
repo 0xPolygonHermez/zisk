@@ -67,6 +67,15 @@ pub struct ZiskStats {
     #[clap(long, default_value_t = Field::Goldilocks)]
     pub field: Field,
 
+    /// Base port for Assembly microservices (default: 23115).
+    /// A single execution will use 3 consecutive ports, from this port to port + 2.
+    /// If you are running multiple instances of ZisK using mpi on the same machine,
+    /// it will use from this base port to base port + 2 * number_of_instances.
+    /// For example, if you run 2 mpi instances of ZisK, it will use ports from 23115 to 23117
+    /// for the first instance, and from 23118 to 23120 for the second instance.
+    #[clap(short = 'p', long)]
+    pub port: Option<u16>,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
@@ -210,6 +219,7 @@ impl ZiskStats {
                     sha256f_script,
                     Some(world_rank),
                     Some(local_rank),
+                    self.port,
                 )
                 .expect("Failed to initialize witness library");
 

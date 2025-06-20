@@ -106,6 +106,7 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
 
     world_rank: i32,
     local_rank: i32,
+    port: Option<u16>,
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
@@ -131,6 +132,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         rom_sm: Option<Arc<RomSM>>,
         world_rank: i32,
         local_rank: i32,
+        port: Option<u16>,
     ) -> Self {
         Self {
             rom_path,
@@ -150,6 +152,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             stats: Mutex::new(Vec::new()),
             world_rank,
             local_rank,
+            port,
         }
     }
 
@@ -204,6 +207,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let input_data_cloned = input_data_path.clone();
         let world_rank = self.world_rank;
         let local_rank = self.local_rank;
+        let port = self.port;
         let handle_mo = std::thread::spawn(move || {
             AsmRunnerMO::run(
                 input_data_cloned.as_ref().unwrap(),
@@ -211,6 +215,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 Self::MIN_TRACE_SIZE,
                 world_rank,
                 local_rank,
+                port,
             )
             .expect("Error during Assembly Memory Operations execution")
         });
@@ -291,6 +296,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             task_factory,
             self.world_rank,
             self.local_rank,
+            self.port,
         )
         .expect("Error during ASM execution");
 
