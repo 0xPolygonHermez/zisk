@@ -38,7 +38,10 @@ impl MainPlanner {
     ) -> (Vec<Plan>, Vec<(u64, u32)>) {
         let min_traces = match min_traces {
             MinimalTraces::AsmEmuTrace(asm_min_traces) => &asm_min_traces.vec_chunks,
-            _ => unreachable!(),
+            MinimalTraces::EmuTrace(vec_chunks) => vec_chunks,
+            MinimalTraces::None => {
+                panic!("Minimal traces are required for planning the main state machine.");
+            }
         };
 
         let num_rows = MainTrace::<F>::NUM_ROWS as u64;
