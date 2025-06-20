@@ -13,11 +13,9 @@ use std::{env, fs};
 use std::{path::PathBuf, process};
 use zisk_common::init_tracing;
 
-use crate::commands::Field;
+use crate::commands::{get_proving_key, get_witness_computation_lib, Field};
 use crate::ux::print_banner;
 use crate::ZISK_VERSION_MESSAGE;
-
-use super::{get_default_proving_key, get_default_witness_computation_lib};
 
 const DEFAULT_PORT: u16 = 7878;
 const LOG_PATH: &str = "zisk_prover_server.log";
@@ -84,12 +82,13 @@ impl ZiskServer {
             process::exit(1);
         }
 
+        let proving_key = get_proving_key(self.proving_key.as_ref());
+
         let debug_info = match &self.debug {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
             Some(Some(debug_value)) => {
-                let proving_key: PathBuf = PathBuf::from(&self.get_proving_key());
-                json_to_debug_instances_map(proving_key, debug_value.clone())
+                json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
             }
         };
 
@@ -145,7 +144,7 @@ impl ZiskServer {
             }
         }
 
-        let blowup_factor = get_rom_blowup_factor(&self.get_proving_key());
+        let blowup_factor = get_rom_blowup_factor(&proving_key);
 
         let rom_bin_path =
             get_elf_bin_file_path(&self.elf.to_path_buf(), &default_cache_path, blowup_factor)?;
@@ -162,12 +161,12 @@ impl ZiskServer {
         let config = ServerConfig::new(
             self.port,
             self.elf.clone(),
-            self.get_witness_computation_lib(),
+            get_witness_computation_lib(self.witness_lib.as_ref()),
             self.asm.clone(),
             asm_rom,
             custom_commits_map,
             emulator,
-            self.get_proving_key(),
+            proving_key,
             self.verbose,
             debug_info,
             sha256f_script,
@@ -192,7 +191,7 @@ impl ZiskServer {
         println!(
             "{: >12} {}",
             "Witness Lib".bright_green().bold(),
-            self.get_witness_computation_lib().display()
+            get_witness_computation_lib(self.witness_lib.as_ref()).display()
         );
 
         println!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display());
@@ -211,7 +210,7 @@ impl ZiskServer {
         println!(
             "{: >12} {}",
             "Proving key".bright_green().bold(),
-            self.get_proving_key().display()
+            get_proving_key(self.proving_key.as_ref()).display()
         );
 
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
@@ -220,25 +219,5 @@ impl ZiskServer {
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 
         println!();
-    }
-
-    /// Gets the witness computation library file location.
-    /// Uses the default one if not specified by user.
-    pub fn get_witness_computation_lib(&self) -> PathBuf {
-        if self.witness_lib.is_none() {
-            get_default_witness_computation_lib()
-        } else {
-            self.witness_lib.clone().unwrap()
-        }
-    }
-
-    /// Gets the proving key file location.
-    /// Uses the default one if not specified by user.
-    pub fn get_proving_key(&self) -> PathBuf {
-        if self.proving_key.is_none() {
-            get_default_proving_key()
-        } else {
-            self.proving_key.clone().unwrap()
-        }
     }
 }

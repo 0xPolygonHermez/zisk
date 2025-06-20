@@ -1,4 +1,5 @@
 use anyhow::Result;
+use asm_runner::{AsmRunnerOptions, AsmServices};
 use clap::Parser;
 use colored::Colorize;
 use executor::{Stats, ZiskExecutionResult};
@@ -20,12 +21,14 @@ use zisk_common::ZiskLibInitFn;
 use zisk_pil::*;
 
 use crate::{
-    commands::{cli_fail_if_macos, Field},
+    commands::{
+        cli_fail_if_macos, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
+    },
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
 
-use super::{get_default_proving_key, get_default_witness_computation_lib};
+use mpi::traits::*;
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -93,13 +96,13 @@ pub struct ZiskStats {
 
 impl ZiskStats {
     pub fn run(&mut self) -> Result<()> {
-        let (universe, _threading) = mpi::initialize_with_threading(mpi::Threading::Multiple)
-            .ok_or_else(|| anyhow::anyhow!("Failed to initialize MPI with threading"))?;
+        cli_fail_if_macos()?;
 
-        use mpi::traits::*;
+        print_banner();
+
+        let (universe, world_rank, local_rank) = initialize_mpi()?;
+
         let world = universe.world();
-        let world_rank = world.rank();
-        let local_rank = world_rank; // TODO!!!! Change this!
 
         let m2 = self.mpi_node as i32 * 2;
         if world_rank < m2 || world_rank >= m2 + 2 {
@@ -113,13 +116,13 @@ impl ZiskStats {
             return Ok(());
         }
 
-        cli_fail_if_macos()?;
+        let proving_key = get_proving_key(self.proving_key.as_ref());
 
         let debug_info = match &self.debug {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
             Some(Some(debug_value)) => {
-                json_to_debug_instances_map(self.get_proving_key(), debug_value.clone())
+                json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
             }
         };
 
@@ -133,8 +136,6 @@ impl ZiskStats {
             }
             script_path
         };
-
-        print_banner();
 
         let default_cache_path =
             std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
@@ -175,7 +176,13 @@ impl ZiskStats {
             }
         }
 
-        let blowup_factor = get_rom_blowup_factor(&self.get_proving_key());
+        if let Some(input) = &self.input {
+            if !input.exists() {
+                return Err(anyhow::anyhow!("Input file not found at {:?}", input.display()));
+            }
+        }
+
+        let blowup_factor = get_rom_blowup_factor(&proving_key);
 
         let rom_bin_path =
             get_elf_bin_file_path(&self.elf.to_path_buf(), &default_cache_path, blowup_factor)?;
@@ -194,7 +201,7 @@ impl ZiskStats {
         gpu_params.with_max_number_streams(1);
 
         let proofman = ProofMan::<Goldilocks>::new(
-            self.get_proving_key(),
+            proving_key,
             custom_commits_map,
             true,
             false,
@@ -206,9 +213,14 @@ impl ZiskStats {
         .expect("Failed to initialize proofman");
 
         let mut witness_lib;
+
+        let asm_services = AsmServices::new(world_rank, local_rank, self.port);
+
         match self.field {
             Field::Goldilocks => {
-                let library = unsafe { Library::new(self.get_witness_computation_lib())? };
+                let library = unsafe {
+                    Library::new(get_witness_computation_lib(self.witness_lib.as_ref()))?
+                };
                 let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
                     unsafe { library.get(b"init_library")? };
                 witness_lib = witness_lib_constructor(
@@ -224,6 +236,20 @@ impl ZiskStats {
                 .expect("Failed to initialize witness library");
 
                 proofman.register_witness(&mut *witness_lib, library);
+
+                if self.asm.is_some() {
+                    // Start ASM microservices
+                    tracing::info!(
+                        ">>> [{}] Starting ASM microservices. {}",
+                        world_rank,
+                        "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
+                    );
+
+                    asm_services.start_asm_services(
+                        self.asm.as_ref().unwrap(),
+                        AsmRunnerOptions::default(),
+                    )?;
+                }
 
                 proofman
                     .compute_witness_from_lib(self.input.clone(), &debug_info)
@@ -249,7 +275,11 @@ impl ZiskStats {
 
         Self::print_stats(&stats);
 
-        tracing::info!("");
+        if self.asm.is_some() {
+            // Shut down ASM microservices
+            tracing::info!("<<< [{}] Shutting down ASM microservices.", world_rank);
+            asm_services.stop_asm_services()?;
+        }
 
         Ok(())
     }
@@ -260,7 +290,7 @@ impl ZiskStats {
         println!(
             "{: >12} {}",
             "Witness Lib".bright_green().bold(),
-            self.get_witness_computation_lib().display()
+            get_witness_computation_lib(self.witness_lib.as_ref()).display()
         );
 
         println!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display());
@@ -284,7 +314,7 @@ impl ZiskStats {
         println!(
             "{: >12} {}",
             "Proving key".bright_green().bold(),
-            self.get_proving_key().display()
+            get_proving_key(self.proving_key.as_ref()).display()
         );
 
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
@@ -295,31 +325,11 @@ impl ZiskStats {
         println!();
     }
 
-    /// Gets the witness computation library file location.
-    /// Uses the default one if not specified by user.
-    pub fn get_witness_computation_lib(&self) -> PathBuf {
-        if self.witness_lib.is_none() {
-            get_default_witness_computation_lib()
-        } else {
-            self.witness_lib.clone().unwrap()
-        }
-    }
-
-    /// Gets the proving key file location.
-    /// Uses the default one if not specified by user.
-    pub fn get_proving_key(&self) -> PathBuf {
-        if self.proving_key.is_none() {
-            get_default_proving_key()
-        } else {
-            self.proving_key.clone().unwrap()
-        }
-    }
-
     /// Prints stats individually and grouped, with aligned columns.
     ///
     /// # Arguments
     /// * `stats_mutex` - A reference to the Mutex holding the stats vector.
-    pub fn print_stats(stats: &Vec<(usize, usize, Stats)>) {
+    pub fn print_stats(stats: &[(usize, usize, Stats)]) {
         println!("    Number of airs: {}", stats.len());
         println!();
         println!("    Stats by Air:");
@@ -330,7 +340,7 @@ impl ZiskStats {
         println!("    {}", "-".repeat(70));
 
         // Sort individual stats by (airgroup_id, air_id)
-        let mut sorted_stats = stats.clone();
+        let mut sorted_stats = stats.to_vec();
         sorted_stats.sort_by_key(|(airgroup_id, air_id, _)| (*airgroup_id, *air_id));
 
         let mut total_collect_time = 0;

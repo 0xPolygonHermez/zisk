@@ -774,7 +774,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
 
         // If we have memory segments, add them to the planning
-        if let Some((mem_segments, mem_align_segments)) = mem_cpp {
+        if let Some((_mem_segments, _mem_align_segments)) = mem_cpp {
             // TODO!!!!!
         }
 
