@@ -20,7 +20,7 @@ use std::{any::Any, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
 use zisk_core::Riscv2zisk;
 
-pub const CHUNK_SIZE: u64 = 1 << 18;
+const DEFAULT_CHUNK_SIZE_BITS: u64 = 18;
 
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
@@ -39,10 +39,12 @@ fn init_library(
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
     rank: Option<i32>,
-    chunk_size: Option<u64>,
+    chunk_size_bits: Option<u64>,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode, rank);
-    let chunk_size = chunk_size.map(|s| 1 << s).unwrap_or(CHUNK_SIZE);
+
+    let chunk_size = 1 << chunk_size_bits.unwrap_or(DEFAULT_CHUNK_SIZE_BITS);
+
     let result = Box::new(WitnessLib {
         elf_path,
         asm_path,

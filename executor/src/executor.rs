@@ -130,6 +130,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         rom_sm: Option<Arc<RomSM>>,
         chunk_size: u64,
     ) -> Self {
+        assert!(chunk_size.is_power_of_two());
+
         Self {
             rom_path,
             asm_runner_path: asm_path,

@@ -69,6 +69,7 @@ pub struct ZiskStats {
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
+    /// Size of each chunk to process (in bits)
     #[clap(short = 'c', long)]
     pub chunk_size: Option<u64>,
 

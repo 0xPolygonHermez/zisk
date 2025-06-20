@@ -103,6 +103,7 @@ pub struct ZiskProve {
     #[clap(short = 'b', long, default_value_t = false)]
     pub save_proofs: bool,
 
+    /// Size of each chunk to process (in bits)
     #[clap(short = 'c', long)]
     pub chunk_size: Option<u64>,
 

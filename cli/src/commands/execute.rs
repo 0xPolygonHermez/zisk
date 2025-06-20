@@ -70,6 +70,10 @@ pub struct ZiskExecute {
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
+    /// Size of each chunk to process (in bits)
+    #[clap(short = 'c', long)]
+    pub chunk_size: Option<u64>,
+
     // PRECOMPILES OPTIONS
     /// Sha256f script path
     pub sha256f_script: Option<PathBuf>,
@@ -172,7 +176,7 @@ impl ZiskExecute {
                     asm_rom,
                     sha256f_script,
                     proofman.get_rank(),
-                    None,
+                    self.chunk_size,
                 )
                 .expect("Failed to initialize witness library");
 
