@@ -170,20 +170,20 @@ impl ZiskAsmContext {
     }
 
     pub fn op_is_precompiled(&self, zisk_op: &ZiskOp) -> bool {
-        match zisk_op {
+        matches!(
+            zisk_op,
             ZiskOp::Keccak
-            | ZiskOp::Sha256
-            | ZiskOp::Arith256
-            | ZiskOp::Arith256Mod
-            | ZiskOp::Secp256k1Add
-            | ZiskOp::Secp256k1Dbl
-            | ZiskOp::Bn254CurveAdd
-            | ZiskOp::Bn254CurveDbl
-            | ZiskOp::Bn254ComplexAdd
-            | ZiskOp::Bn254ComplexSub
-            | ZiskOp::Bn254ComplexMul => true,
-            _ => false,
-        }
+                | ZiskOp::Sha256
+                | ZiskOp::Arith256
+                | ZiskOp::Arith256Mod
+                | ZiskOp::Secp256k1Add
+                | ZiskOp::Secp256k1Dbl
+                | ZiskOp::Bn254CurveAdd
+                | ZiskOp::Bn254CurveDbl
+                | ZiskOp::Bn254ComplexAdd
+                | ZiskOp::Bn254ComplexSub
+                | ZiskOp::Bn254ComplexMul
+        )
     }
 }
 
@@ -8000,7 +8000,7 @@ impl ZiskRom2Asm {
                 "\tmov {}, [{}] {}\n",
                 REG_AUX,
                 REG_CHUNK_PLAYER_ADDRESS,
-                ctx.comment(format!("aux = mt[address]"))
+                ctx.comment("aux = mt[address]".to_string())
             );
 
             // Increment chunk player address
@@ -8127,7 +8127,7 @@ impl ZiskRom2Asm {
                 REG_VALUE,
                 REG_CHUNK_PLAYER_ADDRESS,
                 i,
-                ctx.comment(format!("value = mt[address]"))
+                ctx.comment("value = mt[address]".to_string())
             );
 
             // Trace value

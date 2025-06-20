@@ -41,6 +41,7 @@ impl AsmRunnerMO {
         Self { mapped_ptr, total_size }
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn run(
         inputs_path: &Path,
         max_steps: u64,

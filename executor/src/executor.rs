@@ -122,6 +122,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     ///
     /// # Arguments
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         rom_path: PathBuf,
         asm_path: Option<PathBuf>,
@@ -195,6 +196,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     ///
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
+    #[allow(clippy::type_complexity)]
     fn execute_with_assembly(
         &self,
         input_data_path: Option<PathBuf>,

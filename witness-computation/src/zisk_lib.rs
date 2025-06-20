@@ -32,6 +32,7 @@ pub struct WitnessLib<F: PrimeField64> {
 }
 
 #[no_mangle]
+#[allow(clippy::too_many_arguments)]
 fn init_library(
     verbose_mode: proofman_common::VerboseMode,
     elf_path: PathBuf,
