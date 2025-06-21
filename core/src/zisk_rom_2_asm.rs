@@ -4799,7 +4799,9 @@ impl ZiskRom2Asm {
                             ctx.comment_str("mem_reads_size += 25")
                         );
 
-                        *code += &format!("pc_{:x}_keccak_active_chunk_done:\n", ctx.pc);
+                        if ctx.zip() {
+                            *code += &format!("pc_{:x}_keccak_active_chunk_done:\n", ctx.pc);
+                        }
                     }
 
                     // Trace 25 memory read operations
@@ -4859,7 +4861,7 @@ impl ZiskRom2Asm {
                         ctx.comment_str("rdi = b = address")
                     );
 
-                    // Copy read data into mem_reads_address and advance it
+                    // Save data into mem_reads
                     if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
                         // If zip, check if chunk is active
                         if ctx.zip() {
@@ -4868,48 +4870,27 @@ impl ZiskRom2Asm {
                                 REG_ACTIVE_CHUNK,
                                 ctx.comment_str("active_chunk == 1 ?")
                             );
-                            *code += &format!("\tjnz pc_{:x}_sha256_active_chunk\n", ctx.pc);
-                            *code += &format!("\tjmp pc_{:x}_sha256_active_chunk_done\n", ctx.pc);
-                            *code += &format!("pc_{:x}_sha256_active_chunk:\n", ctx.pc);
+                            *code += &format!("\tjnz pc_{:x}_secp256k1add_active_chunk\n", ctx.pc);
+                            *code +=
+                                &format!("\tjmp pc_{:x}_secp256k1add_active_chunk_done\n", ctx.pc);
+                            *code += &format!("pc_{:x}_secp256k1add_active_chunk:\n", ctx.pc);
                         }
-                        *code += &format!("\tmov {}, rdi\n", REG_ADDRESS);
-                        for k in 0..14 {
-                            *code += &format!(
-                                "\tmov {}, [rdi + {}] {}\n",
-                                REG_VALUE,
-                                k * 8,
-                                ctx.comment(format!("value = mem[sha256_address[{}]]", k))
-                            );
-                            *code += &format!(
-                                "\tmov [{} + {}*8 + {}], {} {}\n",
-                                REG_MEM_READS_ADDRESS,
-                                REG_MEM_READS_SIZE,
-                                k * 8,
-                                REG_VALUE,
-                                ctx.comment(format!("mem_reads[{}] = value", k))
-                            );
+                        Self::precompiled_save_mem_reads(ctx, code, 2, 2, [4, 8].to_vec());
+                        if ctx.zip() {
+                            *code += &format!("pc_{:x}_secp256k1add_active_chunk_done:\n", ctx.pc);
                         }
-
-                        // Increment chunk.steps.mem_reads_size in 14 units
-                        *code += &format!(
-                            "\tadd {}, 14 {}\n",
-                            REG_MEM_READS_SIZE,
-                            ctx.comment_str("mem_reads_size += 14")
-                        );
-
-                        *code += &format!("pc_{:x}_sha256_active_chunk_done:\n", ctx.pc);
                     }
 
-                    // Trace 12 memory read operations
+                    // Save memory operations into mem_reads
                     if ctx.mem_op() {
-                        *code += &format!("\tmov {}, rdi\n", REG_ADDRESS);
-                        Self::mem_op_array(ctx, code, REG_ADDRESS, false, 8, 12);
-                        Self::mem_op_array(ctx, code, REG_ADDRESS, true, 8, 12);
+                        // Arguments will be read from indirection[0, 1]
+                        Self::mem_op_precompiled_read(ctx, code, 2, 2, [8, 8].to_vec());
+
+                        // Result will be written to indirection[0]
+                        Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 4);
                     }
 
                     // Call the SHA256 function
-                    *code +=
-                        &format!("\tadd rdi, 2*8 {}\n", ctx.comment_str("rdi += 2 (indirections)"));
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                     *code += "\tcall _opcode_sha256\n";
@@ -4979,7 +4960,7 @@ impl ZiskRom2Asm {
                         *code += &format!("\tjmp pc_{:x}_arith256_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_arith256_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 5, 3, 4);
+                    Self::precompiled_save_mem_reads(ctx, code, 5, 3, [4, 4, 4].to_vec());
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_arith256_active_chunk_done:\n", ctx.pc);
                     }
@@ -5011,7 +4992,7 @@ impl ZiskRom2Asm {
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
                     // Arguments will be read from indirection[0, 1, 2]
-                    Self::mem_op_precompiled_read(ctx, code, 5, 3, 4);
+                    Self::mem_op_precompiled_read(ctx, code, 5, 3, [4, 4, 4].to_vec());
 
                     // Result will be written to indirection[3, 4]
                     Self::mem_op_precompiled_write(ctx, code, 5, 3, 4, 4);
@@ -5058,7 +5039,7 @@ impl ZiskRom2Asm {
                         *code += &format!("\tjmp pc_{:x}_arith256mod_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_arith256mod_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 5, 4, 4);
+                    Self::precompiled_save_mem_reads(ctx, code, 5, 4, [4, 4, 4, 4].to_vec());
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_arith256mod_active_chunk_done:\n", ctx.pc);
                     }
@@ -5067,7 +5048,7 @@ impl ZiskRom2Asm {
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
                     // Arguments will be read from indirection[0, 1, 2, 3]
-                    Self::mem_op_precompiled_read(ctx, code, 5, 4, 4);
+                    Self::mem_op_precompiled_read(ctx, code, 5, 4, [4, 4, 4, 4].to_vec());
 
                     // Result will be written to indirection[4]
                     Self::mem_op_precompiled_write(ctx, code, 5, 4, 4, 4);
@@ -5137,7 +5118,7 @@ impl ZiskRom2Asm {
                         *code += &format!("\tjmp pc_{:x}_secp256k1add_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_secp256k1add_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, 8);
+                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [8, 8].to_vec());
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_secp256k1add_active_chunk_done:\n", ctx.pc);
                     }
@@ -5146,7 +5127,7 @@ impl ZiskRom2Asm {
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
                     // Arguments will be read from indirection[0, 1]
-                    Self::mem_op_precompiled_read(ctx, code, 2, 2, 8);
+                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [8, 8].to_vec());
 
                     // Result will be written to indirection[0]
                     Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 8);
@@ -5540,7 +5521,7 @@ impl ZiskRom2Asm {
                             &format!("\tjmp pc_{:x}_bn254curveadd_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_bn254curveadd_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, 8);
+                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [8, 8].to_vec());
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_bn254curveadd_active_chunk_done:\n", ctx.pc);
                     }
@@ -5549,7 +5530,7 @@ impl ZiskRom2Asm {
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
                     // Arguments will be read from indirection[0, 1]
-                    Self::mem_op_precompiled_read(ctx, code, 2, 2, 8);
+                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [8, 8].to_vec());
 
                     // Result will be written to indirection[0]
                     Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 8);
@@ -5721,7 +5702,7 @@ impl ZiskRom2Asm {
                             &format!("\tjmp pc_{:x}_bn254complexadd_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_bn254complexadd_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, 8);
+                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [8, 8].to_vec());
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_bn254complexadd_active_chunk_done:\n", ctx.pc);
                     }
@@ -5730,7 +5711,7 @@ impl ZiskRom2Asm {
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
                     // Arguments will be read from indirection[0, 1]
-                    Self::mem_op_precompiled_read(ctx, code, 2, 2, 8);
+                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [8, 8].to_vec());
 
                     // Result will be written to indirection[0]
                     Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 8);
@@ -5801,7 +5782,7 @@ impl ZiskRom2Asm {
                             &format!("\tjmp pc_{:x}_bn254complexsub_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_bn254complexsub_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, 8);
+                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [8, 8].to_vec());
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_bn254complexsub_active_chunk_done:\n", ctx.pc);
                     }
@@ -5810,7 +5791,7 @@ impl ZiskRom2Asm {
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
                     // Arguments will be read from indirection[0, 1]
-                    Self::mem_op_precompiled_read(ctx, code, 2, 2, 8);
+                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [8, 8].to_vec());
 
                     // Result will be written to indirection[0]
                     Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 8);
@@ -5881,7 +5862,7 @@ impl ZiskRom2Asm {
                             &format!("\tjmp pc_{:x}_bn254complexmul_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_bn254complexmul_active_chunk:\n", ctx.pc);
                     }
-                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, 8);
+                    Self::precompiled_save_mem_reads(ctx, code, 2, 2, [8, 8].to_vec());
                     if ctx.zip() {
                         *code += &format!("pc_{:x}_bn254complexmul_active_chunk_done:\n", ctx.pc);
                     }
@@ -5890,7 +5871,7 @@ impl ZiskRom2Asm {
                 // Save memory operations into mem_reads
                 if ctx.mem_op() {
                     // Arguments will be read from indirection[0, 1]
-                    Self::mem_op_precompiled_read(ctx, code, 2, 2, 8);
+                    Self::mem_op_precompiled_read(ctx, code, 2, 2, [8, 8].to_vec());
 
                     // Result will be written to indirection[0]
                     Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 8);
@@ -6305,10 +6286,14 @@ impl ZiskRom2Asm {
         code: &mut String,
         indirections_count: u64,
         load_count: u64,
-        load_size: u64,
+        load_size: Vec<u64>,
     ) {
         // This index will be incremented as we insert data into mem_reads
         let mut mem_reads_index: u64 = 0;
+
+        // This index will be incremented as we consume load sizes
+        assert!(load_count as usize == load_size.len());
+        let mut load_size_index: usize = 0;
 
         // We get a copy of the precompiled data address
         *code += &format!("\tmov {}, rdi {}\n", REG_ADDRESS, ctx.comment_str("address = rdi"));
@@ -6349,7 +6334,7 @@ impl ZiskRom2Asm {
                     }
 
                     // For each chunk of the indirection, store it in mem_reads
-                    for l in 0..load_size {
+                    for l in 0..load_size[load_size_index] {
                         *code += &format!(
                             "\tmov {}, [{} + {}*8] {}\n",
                             REG_AUX,
@@ -6367,6 +6352,7 @@ impl ZiskRom2Asm {
                         );
                         mem_reads_index += 1;
                     }
+                    load_size_index += 1;
                 }
             }
         }
@@ -6599,13 +6585,17 @@ impl ZiskRom2Asm {
         code: &mut String,
         indirections_count: u64,
         load_count: u64,
-        load_size: u64,
+        load_size: Vec<u64>,
     ) {
         // Calculate the mask
         let mem_op_mask: u64 = 8u64 << 32;
 
         // This index will be incremented as we insert data into mem_reads
         let mut mem_reads_index: u64 = 0;
+
+        // This index will be incremented as we consume load sizes
+        assert!(load_count as usize == load_size.len());
+        let mut load_size_index: usize = 0;
 
         // We get a copy of the precompiled data address
         *code += &format!("\tmov {}, rdi {}\n", REG_ADDRESS, ctx.comment_str("address = rdi"));
@@ -6663,7 +6653,7 @@ impl ZiskRom2Asm {
                     }
 
                     // For each chunk of the indirection, store it in mem_reads
-                    for l in 0..load_size {
+                    for l in 0..load_size[load_size_index] {
                         // Load the mask + offset
                         *code += &format!(
                             "\tmov {}, {} {}\n",
@@ -6691,6 +6681,7 @@ impl ZiskRom2Asm {
                         );
                         mem_reads_index += 1;
                     }
+                    load_size_index += 1;
                 }
             }
         }
