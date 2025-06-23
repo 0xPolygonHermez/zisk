@@ -11,8 +11,6 @@
 
 use ziskos::fcall_proxy;
 
-use generic_array::{typenum::U64, GenericArray};
-use sha2::compress256;
 use std::{
     collections::HashMap,
     fmt::{Debug, Display},
@@ -22,8 +20,8 @@ use std::{
 use tiny_keccak::keccakf;
 
 use crate::{
-    convert_u32_to_u64, convert_u64_to_generic_array_bytes, convert_u64_to_u32, EmulationMode,
-    InstContext, Mem, ZiskOperationType, ZiskRequiredOperation, M64, REG_A0, SYS_ADDR,
+    sha256f, EmulationMode, InstContext, Mem, ZiskOperationType, ZiskRequiredOperation, M64,
+    REG_A0, SYS_ADDR,
 };
 
 use lib_c::{inverse_fn_ec_c, inverse_fp_ec_c, sqrt_fp_ec_parity_c, Fcall, FcallContext};
@@ -1204,23 +1202,16 @@ pub fn opc_sha256(ctx: &mut InstContext) {
     precompiled_load_data(ctx, 2, 2, 4, 4, &mut data, "sha256");
 
     // Get the state and input slices
-    let (_, rest) = data.split_at(2);
-    let (state_slice, input_slice) = rest.split_at(4);
-    let state: &[u64; 4] = state_slice.try_into().unwrap();
+    let (ind, rest) = data.split_at_mut(2);
+    let (state_slice, input_slice) = rest.split_at_mut(4);
+    let state: &mut [u64; 4] = state_slice.try_into().unwrap();
     let input: &[u64; 8] = input_slice[..8].try_into().unwrap();
 
     // Compute the sha output with the fastest implementation available
-    // For that we use the `sha2` crate, and we should adapt to their API
+    sha256f(state, input);
 
-    // Convert both the state and the input to appropriate types
-    let mut state_u32: [u32; 8] = convert_u64_to_u32(state).try_into().unwrap();
-    let block: GenericArray<u8, U64> = convert_u64_to_generic_array_bytes(input);
-    compress256(&mut state_u32, &[block]);
-
-    // Convert the state back to u64 and write it to the memory address
-    let state_output = convert_u32_to_u64(&state_u32);
-    for (i, d) in state_output.iter().enumerate() {
-        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+    for (i, d) in state.iter().enumerate() {
+        ctx.mem.write(ind[0] + (8 * i as u64), *d, 8);
     }
 
     ctx.c = 0;

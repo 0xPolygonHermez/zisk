@@ -4578,6 +4578,8 @@ dependencies = [
 name = "ziskclib"
 version = "0.9.0"
 dependencies = [
+ "generic-array",
+ "sha2",
  "tiny-keccak 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
