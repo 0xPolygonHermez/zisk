@@ -15,6 +15,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
 };
+use zisk_common::ZiskLibInitFn;
 
 use crate::{
     commands::{
@@ -24,7 +25,6 @@ use crate::{
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
-use zisk_common::ZiskLibInitFn;
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]

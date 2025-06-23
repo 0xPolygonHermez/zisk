@@ -21,7 +21,6 @@
 
 use asm_runner::{AsmRunnerMO, AsmRunnerMT, MinimalTraces, Task, TaskFactory};
 use fields::PrimeField64;
-use mem_planner_cpp::{MemAlignCheckPoint, MemCheckPoint};
 use pil_std_lib::Std;
 use proofman_common::{create_pool, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};

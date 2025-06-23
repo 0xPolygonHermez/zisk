@@ -96,13 +96,13 @@ pub struct ZiskStats {
 
 impl ZiskStats {
     pub fn run(&mut self) -> Result<()> {
-        let (universe, _threading) = mpi::initialize_with_threading(mpi::Threading::Multiple)
-            .ok_or_else(|| anyhow::anyhow!("Failed to initialize MPI with threading"))?;
+        cli_fail_if_macos()?;
 
-        use mpi::traits::*;
+        print_banner();
+
+        let (universe, world_rank, local_rank) = initialize_mpi()?;
+
         let world = universe.world();
-        let world_rank = world.rank();
-        let local_rank = world_rank; // TODO!!!! Change this!
 
         let m2 = self.mpi_node as i32 * 2;
         if world_rank < m2 || world_rank >= m2 + 2 {
@@ -116,7 +116,7 @@ impl ZiskStats {
             return Ok(());
         }
 
-        cli_fail_if_macos()?;
+        let proving_key = get_proving_key(self.proving_key.as_ref());
 
         print_banner();
 

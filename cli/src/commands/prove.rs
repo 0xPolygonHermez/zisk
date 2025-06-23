@@ -1,4 +1,3 @@
-use super::{get_default_proving_key, get_default_witness_computation_lib};
 use crate::{
     commands::{
         cli_fail_if_macos, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
