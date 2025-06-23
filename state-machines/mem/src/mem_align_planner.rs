@@ -1,41 +1,19 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{MemCounters, MemPlanCalculator};
 use proofman_common::PreCalculate;
+use mem_common::MemAlignCheckPoint;
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 use zisk_pil::{MemAlignTrace, MEM_ALIGN_AIR_IDS, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
-
 #[allow(dead_code)]
 pub struct MemAlignPlanner<'a> {
     instances: Vec<Plan>,
     num_rows: u32,
-    #[cfg(feature = "trace_offset")]
-    trace_offset: u32, // NOTE: This is currently not used but is kept for future use
     chunk_id: Option<ChunkId>,
     chunks: Vec<ChunkId>,
-    check_points: Vec<MemAlignCheckPoint>,
+    check_points: HashMap<ChunkId, MemAlignCheckPoint>,
     rows_available: u32,
     counters: Arc<Vec<(ChunkId, &'a MemCounters)>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct MemAlignCheckPoint {
-    pub skip: u32,
-    #[cfg(feature = "trace_offset")]
-    #[allow(dead_code)]
-    pub trace_offset: u32,
-    pub count: u32,
-    pub rows: u32,
-}
-
-impl MemAlignCheckPoint {
-    #[allow(dead_code)]
-    pub fn to_string(&self, segment_id: usize, chunk_id: usize) -> String {
-        format!(
-            "MEM_ALIGN #{}@{}  S:{} C:{} R:{}\n",
-            segment_id, chunk_id, self.skip, self.count, self.rows,
-        )
-    }
 }
 
 impl<'a> MemAlignPlanner<'a> {
@@ -44,12 +22,10 @@ impl<'a> MemAlignPlanner<'a> {
         Self {
             instances: Vec::new(),
             num_rows,
-            #[cfg(feature = "trace_offset")]
-            trace_offset: 0,
             chunk_id: None,
             chunks: Vec::new(),
             rows_available: num_rows,
-            check_points: Vec::new(),
+            check_points: HashMap::new(),
             counters,
         }
     }
@@ -95,14 +71,15 @@ impl<'a> MemAlignPlanner<'a> {
                 self.calculate_how_many_operations_fit(operations_done, operations_rows)
             };
 
-            // calculate trace_offset = rows_used = num_rows - rows_available
-            self.check_points.push(MemAlignCheckPoint {
-                #[cfg(feature = "trace_offset")]
-                trace_offset: self.num_rows - self.rows_available,
-                skip: operations_done,
-                count,
-                rows: rows_fit,
-            });
+            self.check_points.insert(
+                self.chunk_id.unwrap(),
+                MemAlignCheckPoint {
+                    skip: operations_done,
+                    count,
+                    rows: rows_fit,
+                    offset: self.num_rows - self.rows_available,
+                },
+            );
 
             self.rows_available -= rows_fit;
             pending_rows -= rows_fit;
@@ -167,15 +144,17 @@ impl MemPlanCalculator for MemAlignPlanner<'_> {
         self.align_plan();
     }
     fn collect_plans(&mut self) -> Vec<Plan> {
-        self.instances.push(Plan::new(
-            ZISK_AIRGROUP_ID,
-            MEM_ALIGN_ROM_AIR_IDS[0],
-            None,
-            InstanceType::Table,
-            CheckPoint::None,
-            PreCalculate::None,
-            None,
-        ));
+        if !self.instances.is_empty() {
+            self.instances.push(Plan::new(
+                ZISK_AIRGROUP_ID,
+                MEM_ALIGN_ROM_AIR_IDS[0],
+                None,
+                InstanceType::Table,
+                CheckPoint::None,
+                PreCalculate::None,
+                None,
+            ));
+        }
         std::mem::take(&mut self.instances)
     }
 }

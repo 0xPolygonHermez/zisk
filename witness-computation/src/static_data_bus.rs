@@ -72,7 +72,7 @@ impl StaticDataBus<PayloadType> {
     fn route_data(&mut self, bus_id: BusId, payload: &[PayloadType]) {
         match bus_id {
             MEM_BUS_ID => {
-                self.mem_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
+                // self.mem_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
             }
             OPERATION_BUS_ID => match payload[1] as u32 {
                 PUB_OUT_OP_TYPE_ID => {

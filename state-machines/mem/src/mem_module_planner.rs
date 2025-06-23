@@ -1,38 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{MemCounters, MemCountersCursor, MemModuleCheckPoint, MemPlanCalculator};
+use crate::{MemCounters, MemCountersCursor, MemPlanCalculator};
+use mem_common::{MemModuleCheckPoint, MemModuleSegmentCheckPoint};
 use proofman_common::PreCalculate;
 use std::cmp::min;
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
-
-#[derive(Debug, Default, Clone)]
-pub struct MemModuleSegmentCheckPoint {
-    pub chunks: HashMap<ChunkId, MemModuleCheckPoint>,
-    pub first_chunk_id: Option<ChunkId>,
-    pub is_last_segment: bool,
-}
-
-impl MemModuleSegmentCheckPoint {
-    #[allow(dead_code)]
-    pub fn to_string(&self, segment_id: usize) -> String {
-        let mut result = String::new();
-        for (chunk_id, checkpoint) in &self.chunks {
-            result = result
-                + &format!(
-                    "MEM #{}@{}  [0x{:08X} s:{}], [0x{:08X} C:{}] C:{}\n",
-                    segment_id,
-                    chunk_id,
-                    checkpoint.from_addr * 8,
-                    checkpoint.from_skip,
-                    checkpoint.to_addr * 8,
-                    checkpoint.to_count,
-                    checkpoint.count,
-                );
-        }
-        result
-    }
-}
-
 pub struct MemModulePlanner {
     config: MemModulePlannerConfig,
     rows_available: u32,

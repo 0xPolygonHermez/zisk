@@ -117,8 +117,9 @@ impl MemCounters {
         }
         let values: [u32; 2] = [
             MemBusData::get_addr(data),
-            ((MemBusData::get_bytes(data) as u32) << 28)
-                + ((MemHelpers::is_write(MemBusData::get_op(data)) as u32) << 27),
+            // ((MemBusData::get_bytes(data) as u32) << 28)
+            MemBusData::get_bytes(data) as u32
+                + ((MemHelpers::is_write(MemBusData::get_op(data)) as u32) << 16),
         ];
         let bytes =
             unsafe { slice::from_raw_parts(values.as_ptr() as *const u8, 2 * size_of::<u32>()) };

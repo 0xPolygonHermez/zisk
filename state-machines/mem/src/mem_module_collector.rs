@@ -1,8 +1,7 @@
 use std::collections::VecDeque;
 
-use crate::{
-    mem_bus_data_to_input::MemBusDataToInput, MemInput, MemModuleCheckPoint, MemPreviousSegment,
-};
+use crate::{mem_bus_data_to_input::MemBusDataToInput, MemInput, MemPreviousSegment};
+use mem_common::MemModuleCheckPoint;
 use zisk_common::{BusDevice, BusId, SegmentId, MEM_BUS_ID};
 
 #[derive(Debug)]
