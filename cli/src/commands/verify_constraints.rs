@@ -26,8 +26,6 @@ use std::{
 };
 use zisk_common::ZiskLibInitFn;
 
-use mpi::traits::*;
-
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 #[command(propagate_version = true)]

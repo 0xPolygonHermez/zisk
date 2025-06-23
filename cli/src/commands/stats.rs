@@ -118,26 +118,6 @@ impl ZiskStats {
 
         let proving_key = get_proving_key(self.proving_key.as_ref());
 
-        print_banner();
-
-        let (universe, world_rank, local_rank) = initialize_mpi()?;
-
-        let world = universe.world();
-
-        let m2 = self.mpi_node as i32 * 2;
-        if world_rank < m2 || world_rank >= m2 + 2 {
-            world.split_shared(world_rank);
-            world.barrier();
-            println!(
-                "{}: {}",
-                format!("Rank {}", world_rank).bright_yellow().bold(),
-                "Exiting stats command.".bright_yellow()
-            );
-            return Ok(());
-        }
-
-        let proving_key = get_proving_key(self.proving_key.as_ref());
-
         let debug_info = match &self.debug {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
