@@ -63,7 +63,7 @@ pub fn riscv_interpreter(code: &[u32]) -> Vec<RiscvInstruction> {
 
         // Get the RVD info data for this opcode
         if !rvd.opcodes.contains_key(&opcode) {
-            panic!("Invalid opcode={} s={}", opcode, s);
+            panic!("Invalid opcode={}=0x{:x} s={}", opcode, opcode, s);
         }
         let inf = &rvd.opcodes[&opcode];
 
