@@ -3,14 +3,17 @@
 //!
 //! It manages collected inputs and interacts with the `KeccakfSM` to compute witnesses for
 //! execution plans.
-use crate::KeccakfSM;
+use crate::{KeccakfInput, KeccakfSM};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use std::collections::VecDeque;
-use std::{any::Any, collections::HashMap, sync::Arc};
+use std::{
+    any::Any,
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+};
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, OperationKeccakData, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::KeccakfTrace;
@@ -101,7 +104,7 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance {
 
 pub struct KeccakfCollector {
     /// Collected inputs for witness computation.
-    inputs: Vec<OperationKeccakData<u64>>,
+    inputs: Vec<KeccakfInput>,
 
     /// The number of operations to collect.
     num_operations: u64,
@@ -160,7 +163,7 @@ impl BusDevice<PayloadType> for KeccakfCollector {
         let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         if let ExtOperationData::OperationKeccakData(data) = data {
-            self.inputs.push(data);
+            self.inputs.push(KeccakfInput::from(&data));
         } else {
             panic!("Expected ExtOperationData::OperationData");
         }

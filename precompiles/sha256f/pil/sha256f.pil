@@ -58,8 +58,11 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     col witness free_in_a[chunks], free_in_b[chunks], free_in_c[chunks], free_in_d[chunks];
 
     // --> Circuit gates constraints
+    col witness carry[chunks];
     for (int i = 0; i < chunks; i++) {
-        lookup_assumes(SHA256F_TABLE_ID, [GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i], free_in_d[i], free_in_c[i]' * CARRY_ENABLED]);
+        carry[i] === free_in_c[i]' * CARRY_ENABLED;
+
+        lookup_assumes(SHA256F_TABLE_ID, [GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i], free_in_d[i], carry[i]]);
     }
 
     // --> Circuit connections constraints
@@ -173,7 +176,7 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     //  - When there are circuits.
     //  - Every NUM_SHA256F_PER_CIRCUIT clocks.
     //  - When there are still bits to process.
-    col fixed latch_num_sha256f  = [0,[0,[0:(NUM_SHA256F_PER_CIRCUIT-1),1]:(INPUT_OUTPUT_BITS / bits_in_parallel),
+    col fixed LATCH_NUM_SHA256F  = [0,[0,[0:(NUM_SHA256F_PER_CIRCUIT-1),1]:(INPUT_OUTPUT_BITS / bits_in_parallel),
                                        0:(CIRCUIT_SIZE - (INPUT_OUTPUT_SIZE+1))]:NUM_CIRCUITS,
                                     0...];
 
@@ -181,27 +184,27 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     //  - When there are circuits.
     //  - Every clock, for the clock in the circuit, we add the factor 1 << clk.
     //  - When there are still bits to process (i.e., we repeat the previous instruction INPUT_DATA_BITS times).
-    col fixed factor_num_sha256f;
+    col fixed FACTOR_NUM_SHA256F;
     if (NUM_SHA256F_PER_CIRCUIT != 1) {
-        factor_num_sha256f = [0,[[1,2..*..2**(NUM_SHA256F_PER_CIRCUIT-1)]:(INPUT_OUTPUT_BITS / bits_in_parallel), 
+        FACTOR_NUM_SHA256F = [0,[[1,2..*..2**(NUM_SHA256F_PER_CIRCUIT-1)]:(INPUT_OUTPUT_BITS / bits_in_parallel), 
                                   0:(CIRCUIT_SIZE - INPUT_OUTPUT_SIZE)]:NUM_CIRCUITS,
                               0...];
     } else {
-        factor_num_sha256f = [0, [1:(INPUT_OUTPUT_BITS / bits_in_parallel), 
+        FACTOR_NUM_SHA256F = [0, [1:(INPUT_OUTPUT_BITS / bits_in_parallel), 
                                   0:(CIRCUIT_SIZE - INPUT_OUTPUT_SIZE)]:NUM_CIRCUITS, 
                               0...];
     }
 
     // val[i] accumulates the bits
     for (int i = 0; i < bits_in_parallel; i++) {
-        val[i]' === val[i] * (1 - latch_num_sha256f) + bit[i] * factor_num_sha256f; // (2)
+        val[i]' === val[i] * (1 - LATCH_NUM_SHA256F) + bit[i] * FACTOR_NUM_SHA256F; // (2)
     }
     // In each j-th latch, val[i] has accumulated the j-th bit of all the sha256f's 
 
     // In each j-th latch, val[i] has to coincide with the a-th gate entry,
     // whose positions where reserved for the inputs and outputs of the Sha256f circuit
     for (int i = 0; i < bits_in_parallel; i++) {
-        latch_num_sha256f * (val[i] - a'(i)) === 0; // (3)
+        LATCH_NUM_SHA256F * (val[i] - a'(i)) === 0; // (3)
     }
 
     // (1),(2) and (3) prove that the bit decomposition is correct
@@ -215,17 +218,19 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     for (int i = 0; i < RC; i++) {
         sha_val[i] = 0;
     }
-    // Update the sha_val, the Sha256 state is represented in big endian
+    // Update the sha_val: the Sha256 works over words of 32 bits
+    // but the memory works over words of 64 bits. So we must
+    // read the RB MSB first
     const int RB_OFFSET = RB / bits_in_parallel;
     for (int i = 0; i < RB; i++) {
         const int sha_val_bit = i % bits_in_parallel;
         const int sha_val_idx = (i - sha_val_bit) / bits_in_parallel;
         for (int j = 0; j < RC; j++) {
-            sha_val[RC - 1 - j] += bit[sha_val_bit]'(NUM_SHA256F_PER_CIRCUIT*(RB_OFFSET * j + sha_val_idx)) * 2**(RB - 1 - i);
+            sha_val[RC - 1 - j] += bit[sha_val_bit]'(NUM_SHA256F_PER_CIRCUIT*(RB_OFFSET * j + sha_val_idx)) * 2**i;
         }
     }
-    // sha_val[0] = bit[0]'(896)·2³¹ + bit[1]'(896)·2³⁰ + bit[0]'(952)·2²⁹ + bit[1]'(952)·2²⁸ + ... + bit[0]'(1736)·2 + bit[1]'(1736)
-    // sha_val[1] = bit[0]·2³¹       + bit[1]·2³⁰       + bit[0]'(56)·2²⁹  + bit[1]'(56)·2²⁸  + ... + bit[0]'(840)·2  + bit[1]'(840)
+    // sha_val[0] = bit[0]'(896) + bit[1]'(896)·2 + bit[0]'(952)·2²  + bit[1]'(952)·2³  + ... + bit[0]'(1736)·2³⁰ + bit[1]'(1736)·2³¹
+    // sha_val[1] = bit[0]       + bit[1]·2       + bit[0]'(56)·2²   + bit[1]'(56)·2³   + ... + bit[0]'(840)·2³⁰  + bit[1]'(840)·2³¹
 
     // Finally, we must address the rest mem values
 
@@ -266,7 +271,6 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     clock_eq(step_addr, ADDR_STATE, ADDR_IND_0) === 0;
     clock_eq(step_addr, ADDR_INPUT, ADDR_IND_1) === 0;
 
-    // Boundaries for clarity
     const expr mem_addr = clock_map(step_addr, ADDR_STATE, start: 0,              end: STATE_BLOCKS,      delta: 8, factor: MEM_SIZE) +
                           clock_map(step_addr, ADDR_INPUT, start: STATE_BLOCKS,   end: IN_DATA_BLOCKS,    delta: 8, factor: MEM_SIZE) +
                           clock_map(step_addr, ADDR_STATE, start: IN_DATA_BLOCKS, end: IN_OUT_BLOCKS,     delta: 8, factor: MEM_SIZE) +

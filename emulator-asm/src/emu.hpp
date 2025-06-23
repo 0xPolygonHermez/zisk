@@ -2,6 +2,7 @@
 #define EMU_ASM_HPP
 
 #ifdef DEBUG
+extern bool emu_verbose;
 extern bool keccak_metrics;
 extern uint64_t keccak_counter;
 extern uint64_t keccak_duration;

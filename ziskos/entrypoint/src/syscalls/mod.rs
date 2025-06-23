@@ -1,5 +1,11 @@
 pub mod arith256;
 pub mod arith256_mod;
+pub mod bn254_complex_add;
+pub mod bn254_complex_mul;
+pub mod bn254_complex_sub;
+pub mod bn254_curve_add;
+pub mod bn254_curve_dbl;
+pub mod complex256;
 pub mod keccakf;
 pub mod point256;
 pub mod secp256k1_add;

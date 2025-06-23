@@ -9,11 +9,8 @@
 
 #![allow(unused)]
 
-use precompiles_helpers::sha256f;
 use ziskos::fcall_proxy;
 
-use generic_array::{typenum::U64, GenericArray};
-use sha2::compress256;
 use std::{
     collections::HashMap,
     fmt::{Debug, Display},
@@ -23,9 +20,8 @@ use std::{
 use tiny_keccak::keccakf;
 
 use crate::{
-    convert_u32s_back_to_u64_be, convert_u64_to_u32_be_words, u64s_to_generic_array_be,
-    EmulationMode, InstContext, Mem, ZiskOperationType, ZiskRequiredOperation, M64, REG_A0,
-    SYS_ADDR,
+    sha256f, EmulationMode, InstContext, Mem, ZiskOperationType, ZiskRequiredOperation, M64,
+    REG_A0, SYS_ADDR,
 };
 
 use lib_c::{inverse_fn_ec_c, inverse_fp_ec_c, sqrt_fp_ec_parity_c, Fcall, FcallContext};
@@ -341,6 +337,11 @@ define_ops! {
     (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, opc_fcall, op_fcall),
     (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, opc_fcall_get, op_fcall_get),
     (Sha256, "sha256", Sha256, SHA256_COST, 0xf9, 112, opc_sha256, op_sha256),
+    (Bn254CurveAdd, "bn254_curve_add", ArithEq, ARITH_EQ_COST, 0xfa, 144, opc_bn254_curve_add, op_bn254_curve_add),
+    (Bn254CurveDbl, "bn254_curve_dbl", ArithEq, ARITH_EQ_COST, 0xfb, 64, opc_bn254_curve_dbl, op_bn254_curve_dbl),
+    (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_EQ_COST, 0xfc, 144, opc_bn254_complex_add, op_bn254_complex_add),
+    (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_EQ_COST, 0xfd, 144, opc_bn254_complex_sub, op_bn254_complex_sub),
+    (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_EQ_COST, 0xfe, 144, opc_bn254_complex_mul, op_bn254_complex_mul),
 }
 
 /* INTERNAL operations */
@@ -1201,24 +1202,16 @@ pub fn opc_sha256(ctx: &mut InstContext) {
     precompiled_load_data(ctx, 2, 2, 4, 4, &mut data, "sha256");
 
     // Get the state and input slices
-    let (_, rest) = data.split_at(2);
-    let (state_slice, input_slice) = rest.split_at(4);
-    let state: &[u64; 4] = state_slice.try_into().unwrap();
+    let (ind, rest) = data.split_at_mut(2);
+    let (state_slice, input_slice) = rest.split_at_mut(4);
+    let state: &mut [u64; 4] = state_slice.try_into().unwrap();
     let input: &[u64; 8] = input_slice[..8].try_into().unwrap();
 
     // Compute the sha output with the fastest implementation available
-    // For that we use the `sha2` crate, and we should adapt to their API
+    sha256f(state, input);
 
-    // Convert both the state and the input to appropriate types
-    let mut state_u32 = convert_u64_to_u32_be_words(state);
-    let block: GenericArray<u8, U64> = u64s_to_generic_array_be(input);
-    let blocks = &[block];
-    compress256(&mut state_u32, blocks);
-
-    // Convert the state back to u64 and write it to the memory address
-    let state_output = convert_u32s_back_to_u64_be(&state_u32);
-    for (i, d) in state_output.iter().enumerate() {
-        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+    for (i, d) in state.iter().enumerate() {
+        ctx.mem.write(ind[0] + (8 * i as u64), *d, 8);
     }
 
     ctx.c = 0;
@@ -1456,6 +1449,165 @@ pub fn op_secp256k1_dbl(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_secp256k1_dbl() is not implemented");
 }
 
+#[inline(always)]
+pub fn opc_bn254_curve_add(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 8;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_curve_add");
+
+    // ignore 2 indirections
+    let (_, rest) = data.split_at(2);
+    let (p1, p2) = rest.split_at(8);
+
+    let p1: &[u64; 8] = p1.try_into().expect("opc_bn254_curve_add: p1.len != 8");
+    let p2: &[u64; 8] = p2.try_into().expect("opc_bn254_curve_add: p2.len != 8");
+    let mut p3 = [0u64; 8];
+
+    precompiles_helpers::bn254_curve_add(p1, p2, &mut p3);
+
+    // [0:p1,p2]
+    for (i, d) in p3.iter().enumerate() {
+        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Bn254CurveAdd can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bn254_curve_add(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bn254_curve_add() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_bn254_curve_dbl(ctx: &mut InstContext) {
+    const WORDS: usize = 8; // one input of 8 64-bit words
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 0, 1, 8, 0, &mut data, "bn254_curve_dbl");
+
+    let p1: &[u64; 8] = &data;
+    let mut p3 = [0u64; 8];
+
+    precompiles_helpers::bn254_curve_dbl(p1, &mut p3);
+
+    for (i, d) in p3.iter().enumerate() {
+        ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Bn254CurveDbl can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bn254_curve_dbl(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bn254_curve_dbl() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_bn254_complex_add(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 8;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_add");
+
+    // ignore 2 indirections
+    let (_, rest) = data.split_at(2);
+    let (f1, f2) = rest.split_at(8);
+
+    let f1: &[u64; 8] = f1.try_into().expect("opc_bn254_complex_add: f1.len != 8");
+    let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_add: f2.len != 8");
+    let mut f3 = [0u64; 8];
+
+    precompiles_helpers::bn254_complex_add(f1, f2, &mut f3);
+
+    // [0:f1,f2]
+    for (i, d) in f3.iter().enumerate() {
+        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Bn254ComplexAdd can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bn254_complex_add(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bn254_complex_add() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_bn254_complex_sub(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 8;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_sub");
+
+    // ignore 2 indirections
+    let (_, rest) = data.split_at(2);
+    let (f1, f2) = rest.split_at(8);
+
+    let f1: &[u64; 8] = f1.try_into().expect("opc_bn254_complex_sub: f1.len != 8");
+    let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_sub: f2.len != 8");
+    let mut f3 = [0u64; 8];
+
+    precompiles_helpers::bn254_complex_sub(f1, f2, &mut f3);
+
+    // [0:f1,f2]
+    for (i, d) in f3.iter().enumerate() {
+        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Bn254ComplexSub can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bn254_complex_sub(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bn254_complex_sub() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 8;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_mul");
+
+    // ignore 2 indirections
+    let (_, rest) = data.split_at(2);
+    let (f1, f2) = rest.split_at(8);
+
+    let f1: &[u64; 8] = f1.try_into().expect("opc_bn254_complex_mul: f1.len != 8");
+    let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_mul: f2.len != 8");
+    let mut f3 = [0u64; 8];
+
+    precompiles_helpers::bn254_complex_mul(f1, f2, &mut f3);
+
+    // [0:f1,f2]
+    for (i, d) in f3.iter().enumerate() {
+        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Bn254ComplexMul can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_bn254_complex_mul(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_bn254_complex_mul() is not implemented");
+}
+
 impl From<ZiskRequiredOperation> for ZiskOp {
     fn from(value: ZiskRequiredOperation) -> Self {
         ZiskOp::try_from_code(value.opcode).unwrap()
@@ -1502,9 +1654,9 @@ pub fn opc_fcall_param(ctx: &mut InstContext) {
     let param = ctx.b;
 
     // Check for consistency
-    if (ctx.fcall.parameters_size + words) as usize >= FCALL_PARAMS_MAX_SIZE {
+    if (ctx.fcall.parameters_size + words) as usize > FCALL_PARAMS_MAX_SIZE {
         panic!(
-            "opc_fcall_param({0}) called with ctx.fcall.parameters_size({1}) + param({0})>={2}",
+            "opc_fcall_param({0}) called with ctx.fcall.parameters_size({1}) + param({0})>{2}",
             words, ctx.fcall.parameters_size, FCALL_PARAMS_MAX_SIZE
         );
     }

@@ -5,9 +5,10 @@ use std::path::PathBuf;
 use colored::Colorize;
 use proofman_common::initialize_logger;
 
-use crate::{commands::cli_fail_if_macos, ux::print_banner};
-
-use super::{get_default_proving_key, get_default_zisk_path};
+use crate::{
+    commands::{cli_fail_if_macos, get_proving_key, get_zisk_path},
+    ux::print_banner,
+};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -47,8 +48,8 @@ impl ZiskRomSetup {
 
         print_banner();
 
-        let proving_key = self.get_proving_key();
-        let zisk_path = self.get_zisk_path();
+        let proving_key = get_proving_key(self.proving_key.as_ref());
+        let zisk_path = get_zisk_path(self.zisk_path.as_ref());
 
         rom_setup::rom_full_setup(
             &self.elf,
@@ -57,25 +58,5 @@ impl ZiskRomSetup {
             &self.output_dir,
             self.verbose,
         )
-    }
-
-    /// Gets the proving key file location.
-    /// Uses the default one if not specified by user.
-    fn get_proving_key(&self) -> PathBuf {
-        if self.proving_key.is_none() {
-            get_default_proving_key()
-        } else {
-            self.proving_key.clone().unwrap()
-        }
-    }
-
-    /// Gets the proving key file location.
-    /// Uses the default one if not specified by user.
-    fn get_zisk_path(&self) -> PathBuf {
-        if self.zisk_path.is_none() {
-            get_default_zisk_path()
-        } else {
-            self.zisk_path.clone().unwrap()
-        }
     }
 }

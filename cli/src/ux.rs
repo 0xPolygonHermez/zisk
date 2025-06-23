@@ -26,26 +26,26 @@ pub fn print_banner() {
     println!("{} {}", format!("{: >12}", "Hostname").bright_green().bold(), system_hostname);
 
     // CPU
-    let system = System::new_all();
+    // let system = System::new_all();
 
-    let system_cores = system.cpus().len();
-    let system_cores_freq = system.cpus()[0].frequency();
-    let system_cores_vendor_id = system.cpus()[0].vendor_id();
-    let system_cores_brand = system.cpus()[0].brand();
+    // let system_cores = system.cpus().len();
+    // let system_cores_freq = system.cpus()[0].frequency();
+    // let system_cores_vendor_id = system.cpus()[0].vendor_id();
+    // let system_cores_brand = system.cpus()[0].brand();
 
-    let system_cores_desc = format!(
-        "{} cores @ {}MHz ({}) {}",
-        system_cores, system_cores_freq, system_cores_vendor_id, system_cores_brand
-    );
-    println!("{} {}", format!("{: >12}", "CPU").bright_green().bold(), system_cores_desc);
+    // let system_cores_desc = format!(
+    //     "{} cores @ {}MHz ({}) {}",
+    //     system_cores, system_cores_freq, system_cores_vendor_id, system_cores_brand
+    // );
+    // println!("{} {}", format!("{: >12}", "CPU").bright_green().bold(), system_cores_desc);
 
-    // Memory
-    let total_mem = system.total_memory() >> 30;
-    let available_mem = system.available_memory() >> 30;
-    println!(
-        "{} {}GB total ({}GB available)",
-        format!("{: >12}", "Mem").bright_green().bold(),
-        total_mem,
-        available_mem
-    );
+    // // Memory
+    // let total_mem = system.total_memory() >> 30;
+    // let available_mem = system.available_memory() >> 30;
+    // println!(
+    //     "{} {}GB total ({}GB available)",
+    //     format!("{: >12}", "Mem").bright_green().bold(),
+    //     total_mem,
+    //     available_mem
+    // );
 }

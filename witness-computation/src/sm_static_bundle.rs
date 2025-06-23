@@ -128,7 +128,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
 
     fn build_data_bus_collectors(
         &self,
-        secn_instance: &Box<dyn Instance<F>>,
+        secn_instance: &dyn Instance<F>,
         chunks_to_execute: Vec<bool>,
     ) -> Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>> {
         chunks_to_execute

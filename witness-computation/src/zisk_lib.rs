@@ -26,24 +26,33 @@ pub struct WitnessLib<F: PrimeField64> {
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
     executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
+    world_rank: i32,
+    local_rank: i32,
+    port: Option<u16>,
 }
 
 #[no_mangle]
+#[allow(clippy::too_many_arguments)]
 fn init_library(
     verbose_mode: proofman_common::VerboseMode,
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
-    rank: Option<i32>,
+    world_rank: Option<i32>,
+    local_rank: Option<i32>,
+    port: Option<u16>,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
-    proofman_common::initialize_logger(verbose_mode, rank);
+    proofman_common::initialize_logger(verbose_mode, world_rank);
     let result = Box::new(WitnessLib {
         elf_path,
         asm_path,
         asm_rom_path,
         sha256f_script_path,
         executor: None,
+        world_rank: world_rank.unwrap_or(0),
+        local_rank: local_rank.unwrap_or(0),
+        port,
     });
 
     Ok(result)
@@ -75,7 +84,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let std = Std::new(wcm.get_pctx(), wcm.get_sctx());
         register_std(&wcm, &std);
 
-        let rom_sm = RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone());
+        let rom_sm = RomSM::new(zisk_rom.clone(), None /*self.asm_rom_path.clone()*/);
         let binary_sm = BinarySM::new(std.clone());
         let arith_sm = ArithSM::new();
         let mem_sm = Mem::new(std.clone());
@@ -115,6 +124,9 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             std,
             sm_bundle,
             Some(rom_sm.clone()),
+            self.world_rank,
+            self.local_rank,
+            self.port,
         );
 
         let executor = Arc::new(executor);
