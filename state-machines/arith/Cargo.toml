@@ -14,6 +14,7 @@ zisk-pil = { path = "../../pil" }
 sm-binary = { path = "../binary" }
 
 fields = { workspace=true }
+proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
@@ -26,7 +27,7 @@ num-bigint = { workspace = true }
 
 [features]
 default = []
-diagnostic = ["proofman-macros/diagnostic"]
+diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
 generate_code_arith_range_table = []
 no_lib_link = ["proofman-common/no_lib_link"]
 disable-distributed = ["proofman-common/disable-distributed"]

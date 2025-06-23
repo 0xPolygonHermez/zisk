@@ -472,7 +472,7 @@ impl Sha256fSM {
         let fixed = Sha256fFixed::from_vec(fixed_cols);
 
         timer_start_trace!(SHA256F_TRACE);
-        let mut sha256f_trace = Sha256fTrace::new();
+        let mut sha256f_trace = Sha256fTrace::new_zeroes();
         let num_rows = sha256f_trace.num_rows();
 
         // Check that we can fit all the sha256fs in the trace

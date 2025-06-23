@@ -71,23 +71,30 @@ impl AsmRunnerMT {
         max_steps: u64,
         chunk_size: u64,
         task_factory: TaskFactory<T>,
+        world_rank: i32,
         local_rank: i32,
+        port: Option<u16>,
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
-        let shmem_input_name = format!("ZISK_{}_MT_input", local_rank);
-        let shmem_output_name = format!("ZISK_{}_MT_output", local_rank);
-        let sem_chunk_done_name = format!("/ZISK_{}_MT_chunk_done", local_rank);
+        let asm_service = AsmServices::new(world_rank, local_rank, port);
+
+        let prefix = asm_service.shmem_prefix();
+
+        let shmem_input_name = format!("{}_MT_input", prefix);
+        let shmem_output_name = format!("{}_MT_output", prefix);
+        let sem_chunk_done_name = format!("/{}_MT_chunk_done", prefix);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
-            .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name, e))?;
+            .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
         Self::write_input(inputs_path, &shmem_input_name);
 
         let start = Instant::now();
 
         let handle = std::thread::spawn(move || {
-            AsmServices::send_minimal_trace_request(max_steps, chunk_size, local_rank)
+            let asm_services = AsmServices::new(world_rank, local_rank, port);
+            asm_services.send_minimal_trace_request(max_steps, chunk_size)
         });
 
         let pool = ThreadPoolBuilder::new().num_threads(18).build().map_err(AsmRunError::from)?;
@@ -135,7 +142,7 @@ impl AsmRunnerMT {
                     chunk_id.0 += 1;
                 }
                 Err(e) => {
-                    error!("Semaphore sem_chunk_done error: {:?}", e);
+                    error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
                     if chunk_id.0 == 0 {
                         break 1;

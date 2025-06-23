@@ -1,20 +1,11 @@
-use crate::{
-    commands::{
-        cli_fail_if_gpu_mode, cli_fail_if_macos, get_proving_key, get_witness_computation_lib,
-        initialize_mpi, Field,
-    },
-    ux::print_banner,
-    ZISK_VERSION_MESSAGE,
-};
 use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use clap::Parser;
 use colored::Colorize;
-use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
-use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
+use proofman_common::ParamsGPU;
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -26,6 +17,15 @@ use std::{
 };
 use zisk_common::ZiskLibInitFn;
 
+use crate::{
+    commands::{
+        cli_fail_if_gpu_mode, cli_fail_if_macos, get_proving_key, get_witness_computation_lib,
+        initialize_mpi, Field,
+    },
+    ux::print_banner,
+    ZISK_VERSION_MESSAGE,
+};
+
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 #[command(propagate_version = true)]
@@ -35,7 +35,7 @@ use zisk_common::ZiskLibInitFn;
         .multiple(false)
         .required(false)
 ))]
-pub struct ZiskVerifyConstraints {
+pub struct ZiskExecute {
     /// Witness computation dynamic library path
     #[clap(short = 'w', long)]
     pub witness_lib: Option<PathBuf>,
@@ -59,6 +59,9 @@ pub struct ZiskVerifyConstraints {
     #[clap(short = 'i', long)]
     pub input: Option<PathBuf>,
 
+    #[clap(short = 'o', long)]
+    pub output_path: PathBuf,
+
     /// Setup folder path
     #[clap(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
@@ -79,15 +82,12 @@ pub struct ZiskVerifyConstraints {
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
-    #[clap(short = 'd', long)]
-    pub debug: Option<Option<String>>,
-
     // PRECOMPILES OPTIONS
     /// Sha256f script path
     pub sha256f_script: Option<PathBuf>,
 }
 
-impl ZiskVerifyConstraints {
+impl ZiskExecute {
     pub fn run(&mut self) -> Result<()> {
         cli_fail_if_macos()?;
         cli_fail_if_gpu_mode()?;
@@ -95,16 +95,6 @@ impl ZiskVerifyConstraints {
         print_banner();
 
         let (universe, world_rank, local_rank) = initialize_mpi()?;
-
-        let proving_key = get_proving_key(self.proving_key.as_ref());
-
-        let debug_info = match &self.debug {
-            None => DebugInfo::default(),
-            Some(None) => DebugInfo::new_debug(),
-            Some(Some(debug_value)) => {
-                json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
-            }
-        };
 
         let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
             sha256f_path.clone()
@@ -139,7 +129,7 @@ impl ZiskVerifyConstraints {
             let hash = get_elf_data_hash(&self.elf)
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
             let new_filename = format!("{stem}-{hash}-mt.bin");
-            let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
+            let asm_rom_filename = format!("{stem}-{hash}-rom.bin");
             asm_rom = Some(default_cache_path.join(asm_rom_filename));
             self.asm = Some(default_cache_path.join(new_filename));
         }
@@ -161,6 +151,8 @@ impl ZiskVerifyConstraints {
                 return Err(anyhow::anyhow!("Input file not found at {:?}", input.display()));
             }
         }
+
+        let proving_key = get_proving_key(self.proving_key.as_ref());
 
         let blowup_factor = get_rom_blowup_factor(&proving_key);
 
@@ -192,8 +184,6 @@ impl ZiskVerifyConstraints {
         let mut witness_lib;
 
         let asm_services = AsmServices::new(world_rank, local_rank, self.port);
-
-        let start = std::time::Instant::now();
 
         match self.field {
             Field::Goldilocks => {
@@ -231,30 +221,10 @@ impl ZiskVerifyConstraints {
                 }
 
                 proofman
-                    .verify_proof_constraints_from_lib(self.input.clone(), &debug_info)
-                    .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
+                    .execute_from_lib(self.input.clone(), self.output_path.clone())
+                    .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
             }
         };
-
-        let elapsed = start.elapsed();
-
-        let (result, _): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
-            .get_execution_result()
-            .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-            .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
-            .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
-
-        tracing::info!("");
-        tracing::info!(
-            "{}",
-            "--- VERIFY CONSTRAINTS SUMMARY ------------------------".bright_green().bold()
-        );
-        tracing::info!("    ► Statistics");
-        tracing::info!(
-            "      time: {} seconds, steps: {}",
-            elapsed.as_secs_f32(),
-            result.executed_steps
-        );
 
         if self.asm.is_some() {
             // Shut down ASM microservices
@@ -267,7 +237,7 @@ impl ZiskVerifyConstraints {
 
     fn print_command_info(&self, sha256f_script: &Path) {
         // Print Verify Contraints command info
-        println!("{} VerifyConstraints", format!("{: >12}", "Command").bright_green().bold());
+        println!("{} Execute", format!("{: >12}", "Command").bright_green().bold());
         println!(
             "{: >12} {}",
             "Witness Lib".bright_green().bold(),
@@ -298,8 +268,6 @@ impl ZiskVerifyConstraints {
             get_proving_key(self.proving_key.as_ref()).display()
         );
 
-        let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
-        println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
         println!("{: >12} {}", "Sha256f".bright_green().bold(), sha256f_script.display());
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 

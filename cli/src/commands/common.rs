@@ -1,4 +1,6 @@
+use anyhow::Result;
 use clap::{Parser, ValueEnum};
+use mpi::environment::Universe;
 use std::env;
 use std::fmt::Display;
 use std::path::PathBuf;
@@ -98,4 +100,37 @@ pub fn cli_fail_if_gpu_mode() -> anyhow::Result<()> {
     } else {
         Ok(())
     }
+}
+
+pub fn initialize_mpi() -> Result<(Universe, i32, i32)> {
+    use mpi::traits::*;
+
+    let (universe, _threading) = mpi::initialize_with_threading(mpi::Threading::Multiple)
+        .ok_or_else(|| anyhow::anyhow!("Failed to initialize MPI with threading"))?;
+
+    let world = universe.world();
+    let world_rank = world.rank();
+
+    let local_comm = world.split_shared(world_rank);
+    let local_rank = local_comm.rank();
+
+    Ok((universe, world_rank, local_rank))
+}
+
+/// Gets the witness computation library file location.
+/// Uses the default one if not specified by user.
+pub fn get_witness_computation_lib(witness_lib: Option<&PathBuf>) -> PathBuf {
+    witness_lib.cloned().unwrap_or_else(get_default_witness_computation_lib)
+}
+
+/// Gets the proving key file location.
+/// Uses the default one if not specified by user.
+pub fn get_proving_key(proving_key: Option<&PathBuf>) -> PathBuf {
+    proving_key.cloned().unwrap_or_else(get_default_proving_key)
+}
+
+/// Gets the zisk folder.
+/// Uses the default one if not specified by user.
+pub fn get_zisk_path(zisk_path: Option<&PathBuf>) -> PathBuf {
+    zisk_path.cloned().unwrap_or_else(get_default_zisk_path)
 }
