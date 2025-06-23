@@ -3,11 +3,14 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
-    let out_dir = env::var("OUT_DIR").unwrap(); // Cargo sets this for each build
+    watch_dir_recursive("cpp");
+
+    let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
     let build_dir = Path::new(&out_dir).join("memcpp");
 
-    // Ensure build path exists
-    std::fs::create_dir_all(&build_dir).unwrap();
+    // Create build directory
+    std::fs::create_dir_all(&build_dir)
+        .expect(&format!("Failed to create {}", build_dir.display()));
 
     // Call make with an output path override
     let status = Command::new("make")
@@ -19,12 +22,15 @@ fn main() {
 
     assert!(status.success(), "Makefile build failed");
 
-    // Tell Cargo where to find the library
+    // Verify library was created
+    let lib_path = build_dir.join("libmemcpp.a");
+    if !lib_path.exists() {
+        panic!("Expected library not found at {}", lib_path.display());
+    }
+
     println!("cargo:rustc-link-search=native={}", build_dir.display());
     println!("cargo:rustc-link-lib=static=memcpp");
     println!("cargo:rustc-link-lib=dylib=stdc++");
-
-    watch_dir_recursive("cpp");
 }
 
 fn watch_dir_recursive<P: AsRef<Path>>(dir: P) {
