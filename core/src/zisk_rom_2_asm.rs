@@ -3279,10 +3279,10 @@ impl ZiskRom2Asm {
                         *code += "\t.quad 0\n";
                     }
                 }
-            } else {
-                if (key & 0x3) != 0 {
-                    continue;
-                }
+            } else if (key & 0x3) != 0 {
+                // Skip internal, unaligned instructions, since we never jump directly to them,
+                // except when in chunk player mode, since we need to resume a chunk at any pc
+                continue;
             }
 
             // Map fixed-length pc labels to real variable-length instruction labels
