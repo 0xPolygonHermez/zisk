@@ -12,6 +12,8 @@
 #include "../../lib-c/c/src/bn254/bn254.hpp"
 #include "bcon/bcon_sha256.hpp"
 
+extern void zisk_sha256(uint64_t state[4], uint64_t input[8]);
+
 extern void keccakf1600_generic(uint64_t state[25]);
 
 #ifdef DEBUG
@@ -169,7 +171,7 @@ extern int _opcode_sha256(uint64_t * address)
     if (emu_verbose) printf("opcode_sha256() calling sha256_transform_2() counter=%lu address=%p\n", sha256_counter, address);
 #endif
 
-    sha256_transform_2( (uint32_t *) address, (uint8_t *)(address + 4));
+    zisk_sha256((uint64_t *)address[0], (uint64_t *)address[1]);   
 
 #ifdef DEBUG
     if (emu_verbose) printf("opcode_sha256() called sha256_transform_2()\n");
