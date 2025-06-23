@@ -3274,6 +3274,17 @@ impl ZiskRom2Asm {
         let mut previous_key: u64 = ROM_ENTRY;
         for key in &rom.sorted_pc_list {
             if ctx.chunk_player_mem_reads_collect_main() || ctx.chunk_player_mt_collect_mem() {
+                // When in chunk player mode, we need to resume the chunk at any address,
+                // including internal addresses not aligned to 4B.  We need to fill all the gaps
+                // between alligned addresses to make the distance between addresses constant and
+                // allow jumping to the proper branch using pc - ROM_ADDR as an increment
+                //
+                // 4N
+                //   4N + 1
+                //   4N + 2   <--  We want to be able to dynamically start a chunk at this pc
+                //   4N + 3
+                // 4(N+1)
+                //   ...
                 if (*key > ROM_ADDR) && (*key != (previous_key + 1)) {
                     for _ in previous_key + 1..*key {
                         *code += "\t.quad 0\n";
@@ -3282,6 +3293,11 @@ impl ZiskRom2Asm {
             } else if (key & 0x3) != 0 {
                 // Skip internal, unaligned instructions, since we never jump directly to them,
                 // except when in chunk player mode, since we need to resume a chunk at any pc
+                //
+                // 4N
+                // 4(N+1)  <--  We only need to dynamically jump to an alligned pc
+                // 4(N+2)
+                //   ...
                 continue;
             }
 
