@@ -21,7 +21,6 @@
 
 use asm_runner::{AsmRunnerMO, AsmRunnerMT, MinimalTraces, Task, TaskFactory};
 use fields::PrimeField64;
-use mem_planner_cpp::{MemAlignCheckPoint, MemCheckPoint};
 use pil_std_lib::Std;
 use proofman_common::{create_pool, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
@@ -200,12 +199,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     fn execute_with_assembly(
         &self,
         input_data_path: Option<PathBuf>,
-    ) -> (
-        MinimalTraces,
-        DeviceMetricsList,
-        NestedDeviceMetricsList,
-        Option<(Vec<Vec<MemCheckPoint>>, Vec<Vec<MemAlignCheckPoint>>)>,
-    ) {
+    ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<Vec<Plan>>) {
         let input_data_cloned = input_data_path.clone();
         let world_rank = self.world_rank;
         let local_rank = self.local_rank;
@@ -234,10 +228,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         self.execution_result.lock().unwrap().executed_steps = steps;
 
         // Wait for the memory operations thread to finish
-        let (mem_segments, mem_align_segments) =
+        let plans =
             handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
 
-        (min_traces, main_count, secn_count, Some((mem_segments, mem_align_segments)))
+        (min_traces, main_count, secn_count, Some(plans))
     }
 
     fn run_mt_assembly(
@@ -752,7 +746,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
         assert_eq!(self.asm_runner_path.is_some(), self.asm_rom_path.is_some());
 
-        let (min_traces, main_count, secn_count, mem_cpp) = if self.asm_runner_path.is_some() {
+        let (min_traces, main_count, secn_count, mem_plans) = if self.asm_runner_path.is_some() {
             // If we are executing in assembly mode
             self.execute_with_assembly(input_data_path)
         } else {
@@ -774,9 +768,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
         let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
 
-        // If we have memory segments, add them to the planning
-        if let Some((_mem_segments, _mem_align_segments)) = mem_cpp {
-            // TODO!!!!!
+        if let Some(mem_plans) = mem_plans {
+            secn_planning[0].extend(mem_plans);
         }
 
         timer_stop_and_log_info!(PLAN);

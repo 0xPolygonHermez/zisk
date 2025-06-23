@@ -1,0 +1,142 @@
+#include "mem_counter.hpp"
+#include <assert.h>
+MemCounter::MemCounter(uint32_t id, std::shared_ptr<MemContext> context)
+:id(id), context(context), addr_mask(id * 8) {
+    count = 0;
+    queue_full = 0;
+    tot_wait_us = 0;
+    #ifdef USE_ADDR_COUNT_TABLE
+    addr_count_table = (AddrCount *)malloc(ADDR_TABLE_SIZE * sizeof(AddrCount));
+    memset(addr_count_table, 0, ADDR_TABLE_SIZE * sizeof(AddrCount));
+    #else
+    addr_table = (uint32_t *)malloc(ADDR_TABLE_SIZE * sizeof(uint32_t));
+    memset(addr_table, 0, ADDR_TABLE_SIZE * sizeof(uint32_t));
+    #endif
+
+
+    // no memset because informations is overrided.
+    addr_slots = (uint32_t *)std::aligned_alloc(64, ADDR_SLOTS_SIZE * sizeof(uint32_t));
+
+    memset(first_offset, 0xFF, sizeof(first_offset));
+    memset(last_offset, 0, sizeof(last_offset));
+
+    free_slot = 0;
+    addr_count = 0;
+}
+
+MemCounter::~MemCounter() {
+    #ifdef USE_ADDR_COUNT_TABLE
+    free(addr_count_table);
+    #else
+    free(addr_table);
+    #endif
+    free(addr_slots);
+}
+
+void MemCounter::execute() {
+    uint64_t init = get_usec();
+    const MemChunk *chunk;
+    uint32_t chunk_id = 0;
+    uint64_t elapsed_us = 0;
+    while ((chunk = context->get_chunk(chunk_id, elapsed_us)) != nullptr) {
+        execute_chunk(chunk_id, chunk->data, chunk->count);
+        tot_wait_us += elapsed_us;
+        ++chunk_id;
+    }
+    elapsed_ms = ((get_usec() - init) / 1000);
+}
+
+void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chunk_data, uint32_t chunk_size) {
+    current_chunk = chunk_id;
+
+    for (const MemCountersBusData *chunk_eod = chunk_data + chunk_size; chunk_eod != chunk_data; chunk_data++) {
+        const uint8_t bytes = chunk_data->flags & 0xFF;
+        const uint32_t addr = chunk_data->addr;
+        switch (bytes) {
+            case 1: // byte
+            case 2: // half word
+            case 4: // word
+            case 8: // double word
+                break;
+            default:
+                std::ostringstream msg;
+                msg << "ERROR: MemCounter execute_chunk: invalid bytes size " << bytes << " at chunk_id " << chunk_id << " addr 0x" << std::hex << addr;
+                throw std::runtime_error(msg.str());
+        }
+        if (bytes == 8 && (addr & 0x07) == 0) {
+            // aligned access
+            if ((addr & ADDR_MASK) != addr_mask) {
+                continue;
+            }
+            count_aligned(addr, chunk_id, 1);
+        } else {
+            const uint32_t aligned_addr = addr & 0xFFFFFFF8;
+
+            if ((aligned_addr & ADDR_MASK) == addr_mask) {
+                const int ops = 1 + (chunk_data->flags >> 16);
+                count_aligned(aligned_addr, chunk_id, ops);
+            }
+            else if ((bytes + (addr & 0x07)) > 8 && ((aligned_addr + 8) & ADDR_MASK) == addr_mask) {
+                const int ops = 1 + (chunk_data->flags >> 16);
+                count_aligned(aligned_addr + 8 , chunk_id, ops);
+            }
+        }
+    }
+}
+
+void MemCounter::count_aligned(uint32_t addr, uint32_t chunk_id, uint32_t count) {
+    uint32_t offset = addr_to_offset(addr, current_chunk);
+    #ifdef USE_ADDR_COUNT_TABLE
+    uint32_t pos = addr_count_table[offset].pos;
+    #else
+    uint32_t pos = addr_table[offset];
+    #endif
+    if (pos == 0) {
+        uint32_t pos = get_next_slot_pos();
+        addr_slots[pos] = 0;
+        addr_slots[pos + 1] = pos;
+        addr_slots[pos + 2] = chunk_id;
+        addr_slots[pos + 3] = count;
+        #ifdef USE_ADDR_COUNT_TABLE
+        assert(offset < ADDR_TABLE_SIZE);
+        addr_count_table[offset].pos = pos + 2;
+        addr_count_table[offset].count = count;
+        #else
+        addr_table[offset] = pos + 2;
+        #endif
+        uint32_t page = offset >> ADDR_PAGE_BITS;
+        first_offset[page] = std::min(first_offset[page], offset);
+        last_offset[page] = std::max(last_offset[page], offset);
+        ++addr_count;
+    } else {
+        #ifdef USE_ADDR_COUNT_TABLE
+        addr_count_table[offset].count += count;
+        #endif
+        if (addr_slots[pos] == chunk_id) {
+            addr_slots[pos + 1] += count;
+            return;
+        }
+        if ((pos % ADDR_SLOT_SIZE) == (ADDR_SLOT_SIZE - 2)) {
+            uint32_t npos = get_next_slot_pos();
+            uint32_t tpos = pos - ADDR_SLOT_SIZE + 2;
+            addr_slots[npos] = tpos;
+            addr_slots[npos + 1] = addr_slots[tpos + 1];
+            addr_slots[npos + 2] = chunk_id;
+            addr_slots[npos + 3] = count;
+            addr_slots[tpos + 1] = npos;
+            #ifdef USE_ADDR_COUNT_TABLE
+            addr_count_table[offset].pos = npos + 2;
+            #else
+            addr_table[offset] = npos + 2;
+            #endif
+            return;
+        }
+        addr_slots[pos + 2] = chunk_id;
+        addr_slots[pos + 3] = count;
+        #ifdef USE_ADDR_COUNT_TABLE
+        addr_count_table[offset].pos = pos + 2;
+        #else
+        addr_table[offset] = pos + 2;
+        #endif
+    }
+}

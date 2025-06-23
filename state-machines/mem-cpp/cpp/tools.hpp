@@ -18,9 +18,9 @@ inline uint64_t get_usec() {
     return (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
-inline int32_t load_from_compact_file(size_t chunk_id, MemCountersBusData** chunk) {
+inline int32_t load_from_compact_file(const char *path, size_t chunk_id, MemCountersBusData** chunk) {
     char filename[256];
-    snprintf(filename, sizeof(filename), "../bus_data/mem_count_data/mem_count_data_%ld.bin", chunk_id);
+    snprintf(filename, sizeof(filename), "%s/mem_count_data_%ld.bin", path, chunk_id);
     int fd = open(filename, O_RDONLY);
     if (fd < 0) {
         return -1;

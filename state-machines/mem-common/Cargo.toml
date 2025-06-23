@@ -1,5 +1,5 @@
 [package]
-name = "sm-mem"
+name = "mem-common"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -7,24 +7,16 @@ keywords = { workspace = true }
 repository = { workspace = true }
 categories = { workspace = true }
 
-[[bin]]
-name = "mem_sim"
-path = "src/mem_sim.rs"
-
 [dependencies]
 zisk-core = { path = "../../core" }
 zisk-common = { path = "../../common" }
 zisk-pil = { path = "../../pil" }
-mem-planner-cpp = { path = "../mem-cpp" }
-mem-common = { path = "../mem-common" }
 
-proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
 witness = { workspace = true }
 pil-std-lib = { workspace = true }
-
 fields = { workspace=true }
 tracing = { workspace = true }
 rayon = { workspace = true }
@@ -35,7 +27,7 @@ num-traits = "0.2"
 [features]
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
-diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
+diagnostic = ["proofman-macros/diagnostic"]
 disable-distributed = ["proofman-common/disable-distributed"]
 debug_mem = []
 debug_mem_align = []

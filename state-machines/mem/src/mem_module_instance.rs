@@ -1,8 +1,6 @@
-use crate::{
-    mem_module_collector::MemModuleCollector, MemInput, MemModule, MemModuleSegmentCheckPoint,
-    MemPreviousSegment,
-};
+use crate::{mem_module_collector::MemModuleCollector, MemInput, MemModule, MemPreviousSegment};
 use fields::PrimeField64;
+use mem_common::MemModuleSegmentCheckPoint;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
 use std::sync::Arc;
