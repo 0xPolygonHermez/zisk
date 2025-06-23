@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{MemCounters, MemPlanCalculator};
-use proofman_common::PreCalculate;
 use mem_common::MemAlignCheckPoint;
+use proofman_common::PreCalculate;
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 use zisk_pil::{MemAlignTrace, MEM_ALIGN_AIR_IDS, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 #[allow(dead_code)]
