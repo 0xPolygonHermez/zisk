@@ -4891,8 +4891,6 @@ impl ZiskRom2Asm {
                     }
 
                     // Call the SHA256 function
-                    *code +=
-                        &format!("\tadd rdi, 2*8 {}\n", ctx.comment_str("rdi += 2 (indirections)"));
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                     *code += "\tcall _opcode_sha256\n";
