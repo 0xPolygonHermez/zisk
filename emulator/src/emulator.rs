@@ -115,7 +115,7 @@ impl ZiskEmulator {
         }
 
         // Create a emulator instance with the Zisk rom
-        let mut emu = Emu::new(rom, options.trace_steps.unwrap());
+        let mut emu = Emu::new(rom, options.chunk_size.unwrap());
 
         // Get the current time, to be used to calculate the metrics
         let start = Instant::now();
@@ -187,10 +187,10 @@ impl ZiskEmulator {
 
         minimal_traces.par_iter_mut().enumerate().for_each(|(thread_id, emu_trace)| {
             let par_emu_options =
-                ParEmuOptions::new(num_threads, thread_id, options.trace_steps.unwrap() as usize);
+                ParEmuOptions::new(num_threads, thread_id, options.chunk_size.unwrap() as usize);
 
             // Run the emulation
-            let mut emu = Emu::new(rom, options.trace_steps.unwrap());
+            let mut emu = Emu::new(rom, options.chunk_size.unwrap());
             let result = emu.par_run(inputs.to_owned(), options, &par_emu_options);
 
             if !emu.terminated() {

@@ -2,12 +2,15 @@
 //!
 //! It is responsible for computing witnesses for ROM-related execution plans,
 
+use std::{
+    collections::VecDeque,
+    sync::{atomic::AtomicU32, Arc},
+};
+
 use crate::{rom_asm_worker::RomAsmWorker, rom_counter::RomCounter, RomSM};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use std::collections::VecDeque;
 use std::sync::Mutex;
-use std::sync::{atomic::AtomicU32, Arc};
 use zisk_common::{
     create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
     InstanceType, Metrics, PayloadType, ROM_BUS_ID,
@@ -35,6 +38,7 @@ pub struct RomInstance {
     /// Execution statistics counter for ROM instructions.
     counter_stats: Mutex<Option<CounterStats>>,
 
+    /// Optional worker for ROM assembly execution.
     rom_asm_worker: Mutex<Option<RomAsmWorker>>,
 }
 

@@ -1237,20 +1237,20 @@ impl<'a> Emu<'a> {
         // Context, where the state of the execution is stored and modified at every execution step
         self.ctx = self.create_emu_context(inputs.clone());
 
-        // Check that callback is provided if trace_steps is specified
-        if options.trace_steps.is_some() {
+        // Check that callback is provided if chunk size is specified
+        if options.chunk_size.is_some() {
             // Check callback consistency
             if callback.is_none() {
-                panic!("Emu::run() called with trace_steps but no callback");
+                panic!("Emu::run() called with chunk size but no callback");
             }
 
             // Record callback into context
             self.ctx.do_callback = true;
-            self.ctx.callback_steps = options.trace_steps.unwrap();
+            self.ctx.callback_steps = options.chunk_size.unwrap();
 
             // Check steps value
             if self.ctx.callback_steps == 0 {
-                panic!("Emu::run() called with trace_steps=0");
+                panic!("Emu::run() called with chunk_size=0");
             }
 
             // Reserve enough entries for all the requested steps between callbacks

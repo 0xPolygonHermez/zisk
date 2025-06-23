@@ -2,7 +2,6 @@
 //! system. Subscribers, referred to as `BusDevice`, can listen to specific bus IDs or act as
 //! omnipresent devices that process all data sent to the bus. This module provides mechanisms to
 //! send data, route it to the appropriate subscribers, and manage device connections.
-
 use std::collections::VecDeque;
 
 use data_bus::DataBusTrait;
@@ -119,7 +118,7 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
         self.route_data(bus_id, payload);
 
         while let Some((bus_id, payload)) = self.pending_transfers.pop_front() {
-            self.route_data(bus_id, &payload)
+            self.route_data(bus_id, &payload);
         }
     }
 

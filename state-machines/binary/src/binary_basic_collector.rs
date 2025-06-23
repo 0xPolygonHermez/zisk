@@ -2,8 +2,9 @@
 //!
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
-use crate::BinaryInput;
 use std::collections::VecDeque;
+
+use crate::BinaryInput;
 use zisk_common::{
     BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID,
 };

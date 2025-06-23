@@ -1,16 +1,15 @@
 use tiny_keccak::{Hasher, Keccak};
 
-use crate::{
-    point256::SyscallPoint256,
-    zisklib::lib::{
-        secp256k1::constants::{E_B, N_MINUS_ONE},
-        secp256k1::curve::secp256k1_double_scalar_mul_with_g,
-        secp256k1::field::{
-            secp256k1_fp_add, secp256k1_fp_mul, secp256k1_fp_sqrt, secp256k1_fp_square,
-        },
-        secp256k1::scalar::{secp256k1_fn_inv, secp256k1_fn_mul, secp256k1_fn_neg},
-        utils::gt,
+use crate::point256::SyscallPoint256;
+
+use super::{
+    secp256k1::{
+        constants::{E_B, N_MINUS_ONE},
+        curve::secp256k1_double_scalar_mul_with_g,
+        field::{secp256k1_fp_add, secp256k1_fp_mul, secp256k1_fp_sqrt, secp256k1_fp_square},
+        scalar::{secp256k1_fn_inv, secp256k1_fn_mul, secp256k1_fn_neg},
     },
+    utils::gt,
 };
 
 /// Given a hash `hash`, a recovery parity `v` and a signature (`r`, `s`),
@@ -116,8 +115,6 @@ pub fn ecrecover(sig: &[u8; 65], msg: &[u8; 32]) -> ([u8; 20], u8) {
     }
 
     // Compute the hash of the public key
-    // Q: Is it better to use a hash API that accepts u64 instead of u8?
-    // Q: Substitute the function by low-level stuff!
     let mut buf = [0u8; 64];
     for i in 0..4 {
         buf[i * 8..(i + 1) * 8].copy_from_slice(&pk.x[3 - i].to_be_bytes());

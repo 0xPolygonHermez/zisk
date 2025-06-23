@@ -146,6 +146,7 @@ jobs:
           cp ./target/${TARGET}/release/libzisk_witness.so         zisk-dist/bin/
           cp ./precompiles/sha256f/src/sha256f_script.json         zisk-dist/bin/
           cp ./ziskup/ziskup                                       zisk-dist/bin/
+          cp ./target/${TARGET}/release/libziskclib.a              zisk-dist/bin/
           cp -r ./emulator-asm/src                                 zisk-dist/zisk/emulator-asm/
           cp -r ./lib-c/                                           zisk-dist/zisk
           cp ./emulator-asm/Makefile                               zisk-dist/zisk/emulator-asm/

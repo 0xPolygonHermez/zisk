@@ -2,8 +2,7 @@
 //! of `BusDevice` and `Metrics`, providing a unified interface for monitoring and managing
 //! bus operations with associated metrics.
 
-use std::any::Any;
-use std::collections::VecDeque;
+use std::{any::Any, collections::VecDeque};
 
 use super::{BusDevice, BusId};
 

@@ -20,7 +20,7 @@ use std::{any::Any, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
 use zisk_core::Riscv2zisk;
 
-pub const CHUNK_SIZE: u64 = 1 << 18;
+const DEFAULT_CHUNK_SIZE_BITS: u64 = 18;
 
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
@@ -29,20 +29,27 @@ pub struct WitnessLib<F: PrimeField64> {
     sha256f_script_path: PathBuf,
     executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
     chunk_size: u64,
+    world_rank: i32,
+    local_rank: i32,
+    port: Option<u16>,
 }
 
 #[no_mangle]
+#[allow(clippy::too_many_arguments)]
 fn init_library(
     verbose_mode: proofman_common::VerboseMode,
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
-    rank: Option<i32>,
-    chunk_size: Option<u64>,
+    chunk_size_bits: Option<u64>,
+    world_rank: Option<i32>,
+    local_rank: Option<i32>,
+    port: Option<u16>,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
-    proofman_common::initialize_logger(verbose_mode, rank);
-    let chunk_size = chunk_size.map(|s| 1 << s).unwrap_or(CHUNK_SIZE);
+    proofman_common::initialize_logger(verbose_mode, world_rank);
+    let chunk_size = 1 << chunk_size_bits.unwrap_or(DEFAULT_CHUNK_SIZE_BITS);
+
     let result = Box::new(WitnessLib {
         elf_path,
         asm_path,
@@ -50,6 +57,9 @@ fn init_library(
         sha256f_script_path,
         executor: None,
         chunk_size,
+        world_rank: world_rank.unwrap_or(0),
+        local_rank: local_rank.unwrap_or(0),
+        port,
     });
 
     Ok(result)
@@ -81,7 +91,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let std = Std::new(wcm.get_pctx(), wcm.get_sctx());
         register_std(&wcm, &std);
 
-        let rom_sm = RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone());
+        let rom_sm = RomSM::new(zisk_rom.clone(), None /*self.asm_rom_path.clone()*/);
         let binary_sm = BinarySM::new(std.clone());
         let arith_sm = ArithSM::new();
         let mem_sm = Mem::new(std.clone());
@@ -122,6 +132,9 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             sm_bundle,
             Some(rom_sm.clone()),
             self.chunk_size,
+            self.world_rank,
+            self.local_rank,
+            self.port,
         );
 
         let executor = Arc::new(executor);

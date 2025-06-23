@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .version(env!("CARGO_PKG_VERSION"))
         .arg(
             Arg::new("gates")
-                .short('c')
+                .short('g')
                 .long("gates")
                 .value_name("gates_path")
                 .help("Path to the gates JSON file")

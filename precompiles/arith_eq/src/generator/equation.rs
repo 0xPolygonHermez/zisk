@@ -331,8 +331,10 @@ impl Equation {
                     addt.clear();
                     return false;
                 }
+                // TODO: This condition only applies if the terms
+                //       distinct from one are not present
                 // add the term only if different from 1
-                if value != BigInt::one() {
+                if value != BigInt::one() || addt.terms.is_empty() {
                     addt.terms.push(ProductTerm::BigInt { id: *id, index, value });
                 }
             }

@@ -29,12 +29,16 @@ pub fn generate_assembly(
     let bin_mt_file = format!("{}-mt.bin", file_stem);
     let bin_mt_file = base_path.with_file_name(bin_mt_file);
 
-    let bin_rom_file = format!("{}-rom.bin", file_stem);
-    let bin_rom_file = base_path.with_file_name(bin_rom_file);
+    let bin_rh_file = format!("{}-rh.bin", file_stem);
+    let bin_rh_file = base_path.with_file_name(bin_rh_file);
+
+    let bin_mo_file = format!("{}-mo.bin", file_stem);
+    let bin_mo_file = base_path.with_file_name(bin_mo_file);
 
     [
         (bin_mt_file, AsmGenerationMethod::AsmMinimalTraces),
-        (bin_rom_file, AsmGenerationMethod::AsmRomHistogram),
+        (bin_rh_file, AsmGenerationMethod::AsmRomHistogram),
+        (bin_mo_file, AsmGenerationMethod::AsmMemOp),
     ]
     .iter()
     .for_each(|(file, gen_method)| {
@@ -42,7 +46,7 @@ pub fn generate_assembly(
         // Convert the ELF file to Zisk format and generates an assembly file
         let rv2zk = Riscv2zisk::new(elf_file_path.to_str().unwrap().to_string());
         rv2zk
-            .runfile(asm_file.to_str().unwrap().to_string(), *gen_method, false)
+            .runfile(asm_file.to_str().unwrap().to_string(), *gen_method, false, false)
             .expect("Error converting elf to assembly");
 
         let emulator_asm_path = zisk_path.join("emulator-asm");

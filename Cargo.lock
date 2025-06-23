@@ -115,8 +115,16 @@ name = "anyhow"
 version = "1.0.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
+
+[[package]]
+name = "ark-bn254"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d69eab57e8d2663efa5c63135b2af4f396d66424f88954c21104125ab6b3e6bc"
 dependencies = [
- "backtrace",
+ "ark-ec",
+ "ark-ff",
+ "ark-std",
 ]
 
 [[package]]
@@ -259,11 +267,15 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 name = "asm-runner"
 version = "0.9.0"
 dependencies = [
+ "anyhow",
  "clap",
  "libc",
+ "mem-planner-cpp",
  "named-sem",
  "rayon",
+ "thiserror 2.0.12",
  "tracing",
+ "ureq",
  "zisk-common",
  "zisk-core",
 ]
@@ -397,6 +409,7 @@ name = "cargo-zisk"
 version = "0.9.0"
 dependencies = [
  "anyhow",
+ "asm-runner",
  "clap",
  "colored",
  "dirs",
@@ -413,13 +426,14 @@ dependencies = [
  "rom-setup",
  "serde",
  "serde_json",
+ "server",
  "sysinfo",
  "target-lexicon",
  "tokio",
  "tracing",
  "vergen",
- "witness",
  "yansi",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -612,6 +626,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crc32fast"
+version = "1.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a97769d94ddab943e4510d138150169a2758b5ef3eb191a9ee688de3e23ef7b3"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "criterion"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -733,7 +756,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#ad7843ff7b22777b602e38fcdc797407dda0347c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#b858ad8da09fbd1a9b50a6b92f0a37c82a3ba861"
 dependencies = [
  "fields",
  "num-bigint",
@@ -977,6 +1000,7 @@ dependencies = [
  "data-bus",
  "fields",
  "itertools 0.14.0",
+ "mem-planner-cpp",
  "pil-std-lib",
  "proofman",
  "proofman-common",
@@ -1012,7 +1036,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#ad7843ff7b22777b602e38fcdc797407dda0347c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#b858ad8da09fbd1a9b50a6b92f0a37c82a3ba861"
 dependencies = [
  "num-bigint",
  "paste",
@@ -1031,6 +1055,16 @@ dependencies = [
  "lazy_static",
  "libc",
  "winapi",
+]
+
+[[package]]
+name = "flate2"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a3d7db9596fecd151c5f638c0ee5d5bd487b6e0ea232e5dc96d5250f6f94b1d"
+dependencies = [
+ "crc32fast",
+ "miniz_oxide",
 ]
 
 [[package]]
@@ -1333,7 +1367,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots",
+ "webpki-roots 1.0.1",
 ]
 
 [[package]]
@@ -1774,6 +1808,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
+name = "matchers"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8263075bb86c5a1b1427b5ae862e8889656f126e9f77c484496e8b47cf5c5558"
+dependencies = [
+ "regex-automata 0.1.10",
+]
+
+[[package]]
+name = "mem-planner-cpp"
+version = "0.9.0"
+
+[[package]]
 name = "memchr"
 version = "2.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2052,7 +2099,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#ad7843ff7b22777b602e38fcdc797407dda0347c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#b858ad8da09fbd1a9b50a6b92f0a37c82a3ba861"
 dependencies = [
  "colored",
  "fields",
@@ -2188,6 +2235,7 @@ dependencies = [
 name = "precomp-arith-eq"
 version = "0.9.0"
 dependencies = [
+ "ark-bn254",
  "ark-ff",
  "ark-secp256k1",
  "ark-std",
@@ -2282,6 +2330,7 @@ dependencies = [
 name = "precompiles-helpers"
 version = "0.9.0"
 dependencies = [
+ "ark-bn254",
  "ark-ff",
  "ark-secp256k1",
  "ark-std",
@@ -2293,9 +2342,9 @@ dependencies = [
 
 [[package]]
 name = "prettyplease"
-version = "0.2.34"
+version = "0.2.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6837b9e10d61f45f987d50808f83d1ee3d206c66acf650c3e4ae2e1f6ddedf55"
+checksum = "061c1221631e079b26479d25bbf2275bfe5917ae8419cd7e34f13bfc2aa7539a"
 dependencies = [
  "proc-macro2",
  "syn",
@@ -2313,7 +2362,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#ad7843ff7b22777b602e38fcdc797407dda0347c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#b858ad8da09fbd1a9b50a6b92f0a37c82a3ba861"
 dependencies = [
  "blake3",
  "colored",
@@ -2343,7 +2392,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#ad7843ff7b22777b602e38fcdc797407dda0347c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#b858ad8da09fbd1a9b50a6b92f0a37c82a3ba861"
 dependencies = [
  "crossbeam-channel",
  "fields",
@@ -2364,7 +2413,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#ad7843ff7b22777b602e38fcdc797407dda0347c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#b858ad8da09fbd1a9b50a6b92f0a37c82a3ba861"
 dependencies = [
  "fields",
  "proofman-common",
@@ -2376,7 +2425,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#ad7843ff7b22777b602e38fcdc797407dda0347c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#b858ad8da09fbd1a9b50a6b92f0a37c82a3ba861"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2387,7 +2436,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#ad7843ff7b22777b602e38fcdc797407dda0347c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#b858ad8da09fbd1a9b50a6b92f0a37c82a3ba861"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -2396,7 +2445,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#ad7843ff7b22777b602e38fcdc797407dda0347c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#b858ad8da09fbd1a9b50a6b92f0a37c82a3ba861"
 dependencies = [
  "colored",
  "fields",
@@ -2590,8 +2639,17 @@ checksum = "b544ef1b4eac5dc2db33ea63606ae9ffcfac26c1416a2806ae0bf5f56b201191"
 dependencies = [
  "aho-corasick",
  "memchr",
- "regex-automata",
- "regex-syntax",
+ "regex-automata 0.4.9",
+ "regex-syntax 0.8.5",
+]
+
+[[package]]
+name = "regex-automata"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c230d73fb8d8c1b9c0b3135c5142a8acee3a0558fb8db5cf1cb65f8d7862132"
+dependencies = [
+ "regex-syntax 0.6.29",
 ]
 
 [[package]]
@@ -2602,8 +2660,14 @@ checksum = "809e8dc61f6de73b46c85f4c96486310fe304c434cfa43669d7b40f711150908"
 dependencies = [
  "aho-corasick",
  "memchr",
- "regex-syntax",
+ "regex-syntax 0.8.5",
 ]
+
+[[package]]
+name = "regex-syntax"
+version = "0.6.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f162c6dd7b008981e4d40210aca20b4bd0f9b60ca9271061b07f78537722f2e1"
 
 [[package]]
 name = "regex-syntax"
@@ -2649,7 +2713,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams",
  "web-sys",
- "webpki-roots",
+ "webpki-roots 1.0.1",
 ]
 
 [[package]]
@@ -2770,12 +2834,22 @@ version = "0.23.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7160e3e10bf4535308537f3c4e1641468cd0e485175d6163087c0393c7d46643"
 dependencies = [
+ "log",
  "once_cell",
  "ring",
  "rustls-pki-types",
  "rustls-webpki",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "rustls-pemfile"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dce314e5fee3f39953d46bb63bb8a46d40c2f8fb7cc5a3b6cab2bde9721d6e50"
+dependencies = [
+ "rustls-pki-types",
 ]
 
 [[package]]
@@ -2910,6 +2984,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "server"
+version = "0.9.0"
+dependencies = [
+ "anyhow",
+ "asm-runner",
+ "clap",
+ "colored",
+ "executor",
+ "fields",
+ "libloading",
+ "named-sem",
+ "proofman",
+ "proofman-common",
+ "serde",
+ "serde_json",
+ "tracing",
+ "uuid",
+ "witness",
+ "zisk-common",
+ "zisk-witness",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3029,6 +3126,7 @@ name = "sm-mem"
 version = "0.9.0"
 dependencies = [
  "fields",
+ "mem-planner-cpp",
  "num-bigint",
  "num-traits",
  "pil-std-lib",
@@ -3143,9 +3241,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.103"
+version = "2.0.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4307e30089d6fd6aff212f2da3a1f9e32f3223b1f010fb09b7c95f90f3ca1e8"
+checksum = "17b6f705963418cdb9927482fa304bc562ece2fdd4f616084c50b7023b435a40"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3540,10 +3638,14 @@ version = "0.3.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8189decb5ac0fa7bc8b96b7cb9b2701d60d48805aca84a238004d665fcc4008"
 dependencies = [
+ "matchers",
  "nu-ansi-term",
+ "once_cell",
+ "regex",
  "sharded-slab",
  "smallvec",
  "thread_local",
+ "tracing",
  "tracing-core",
  "tracing-log",
 ]
@@ -3551,7 +3653,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#ad7843ff7b22777b602e38fcdc797407dda0347c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#b858ad8da09fbd1a9b50a6b92f0a37c82a3ba861"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -3587,6 +3689,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
+name = "ureq"
+version = "3.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f0fde9bc91026e381155f8c67cb354bcd35260b2f4a29bcc84639f762760c39"
+dependencies = [
+ "base64",
+ "flate2",
+ "log",
+ "percent-encoding",
+ "rustls",
+ "rustls-pemfile",
+ "rustls-pki-types",
+ "ureq-proto",
+ "utf-8",
+ "webpki-roots 0.26.11",
+]
+
+[[package]]
+name = "ureq-proto"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59db78ad1923f2b1be62b6da81fe80b173605ca0d57f85da2e005382adf693f7"
+dependencies = [
+ "base64",
+ "http",
+ "httparse",
+ "log",
+]
+
+[[package]]
 name = "url"
 version = "2.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3596,6 +3728,12 @@ dependencies = [
  "idna",
  "percent-encoding",
 ]
+
+[[package]]
+name = "utf-8"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
 
 [[package]]
 name = "utf8_iter"
@@ -3615,6 +3753,7 @@ version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3cf4199d1e5d15ddd86a694e4d0dffa9c323ce759fea589f00fef9d81cc1931d"
 dependencies = [
+ "getrandom 0.3.3",
  "js-sys",
  "wasm-bindgen",
 ]
@@ -3786,6 +3925,15 @@ checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "0.26.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
+dependencies = [
+ "webpki-roots 1.0.1",
 ]
 
 [[package]]
@@ -4191,7 +4339,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#ad7843ff7b22777b602e38fcdc797407dda0347c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory#b858ad8da09fbd1a9b50a6b92f0a37c82a3ba861"
 dependencies = [
  "colored",
  "fields",
@@ -4339,6 +4487,9 @@ dependencies = [
  "fields",
  "libc",
  "proofman-common",
+ "tracing",
+ "tracing-subscriber",
+ "witness",
  "zisk-core",
 ]
 
@@ -4418,6 +4569,8 @@ dependencies = [
 name = "ziskclib"
 version = "0.9.0"
 dependencies = [
+ "generic-array",
+ "sha2",
  "tiny-keccak 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -4448,6 +4601,8 @@ dependencies = [
  "getrandom 0.2.16",
  "lazy_static",
  "lib-c",
+ "num-bigint",
+ "num-traits",
  "rand 0.8.5",
  "static_assertions",
  "tiny-keccak 2.0.2 (git+https://github.com/0xPolygonHermez/zisk-patch-tiny-keccak.git?branch=zisk)",

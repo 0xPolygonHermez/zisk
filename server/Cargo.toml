@@ -1,0 +1,30 @@
+[package]
+name = "server"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[dependencies]
+zisk-common = { path = "../common" }
+executor = { path = "../executor" }
+zisk-witness = { path = "../witness-computation" }
+asm-runner = { path = "../emulator-asm/asm-runner" }
+
+proofman = { workspace = true }
+proofman-common = { workspace = true }
+witness = { workspace = true }
+anyhow = { workspace = true}
+libloading = { workspace = true }
+colored = { workspace = true }
+fields = { workspace = true }
+tracing = { workspace = true}
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+named-sem = { workspace = true }
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.6", features = ["v4"] }
+clap = { version = "4.5.7", features = ["derive", "env"] }

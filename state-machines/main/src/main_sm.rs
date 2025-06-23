@@ -53,7 +53,7 @@ impl MainSM {
     /// * `zisk_rom` - Reference to the Zisk ROM used for execution.
     /// * `min_traces` - A vector of the minimal traces, each segment has num_within minimal traces
     ///   inside.
-    /// * `min_trace_size` - The size of the minimal traces.
+    /// * `chunk_size` - The size of the minimal traces.
     /// * `main_instance` - Reference to the `MainInstance` representing the current segment.
     ///
     /// The computed trace is added to the proof context's air instance repository.

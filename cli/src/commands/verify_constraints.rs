@@ -1,4 +1,13 @@
+use crate::{
+    commands::{
+        cli_fail_if_gpu_mode, cli_fail_if_macos, get_proving_key, get_witness_computation_lib,
+        initialize_mpi, Field,
+    },
+    ux::print_banner,
+    ZISK_VERSION_MESSAGE,
+};
 use anyhow::Result;
+use asm_runner::{AsmRunnerOptions, AsmServices};
 use clap::Parser;
 use colored::Colorize;
 use executor::{Stats, ZiskExecutionResult};
@@ -15,14 +24,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
 };
-
-use crate::{
-    commands::{cli_fail_if_gpu_mode, cli_fail_if_macos, Field, ZiskLibInitFn},
-    ux::print_banner,
-    ZISK_VERSION_MESSAGE,
-};
-
-use super::{get_default_proving_key, get_default_witness_computation_lib};
+use zisk_common::ZiskLibInitFn;
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -64,6 +66,15 @@ pub struct ZiskVerifyConstraints {
     #[clap(long, default_value_t = Field::Goldilocks)]
     pub field: Field,
 
+    /// Base port for Assembly microservices (default: 23115).
+    /// A single execution will use 3 consecutive ports, from this port to port + 2.
+    /// If you are running multiple instances of ZisK using mpi on the same machine,
+    /// it will use from this base port to base port + 2 * number_of_instances.
+    /// For example, if you run 2 mpi instances of ZisK, it will use ports from 23115 to 23117
+    /// for the first instance, and from 23118 to 23120 for the second instance.
+    #[clap(short = 'p', long)]
+    pub port: Option<u16>,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
@@ -81,11 +92,17 @@ impl ZiskVerifyConstraints {
         cli_fail_if_macos()?;
         cli_fail_if_gpu_mode()?;
 
+        print_banner();
+
+        let (universe, world_rank, local_rank) = initialize_mpi()?;
+
+        let proving_key = get_proving_key(self.proving_key.as_ref());
+
         let debug_info = match &self.debug {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
             Some(Some(debug_value)) => {
-                json_to_debug_instances_map(self.get_proving_key(), debug_value.clone())
+                json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
             }
         };
 
@@ -99,10 +116,6 @@ impl ZiskVerifyConstraints {
             }
             script_path
         };
-
-        print_banner();
-
-        let start = std::time::Instant::now();
 
         let default_cache_path =
             std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
@@ -126,7 +139,7 @@ impl ZiskVerifyConstraints {
             let hash = get_elf_data_hash(&self.elf)
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
             let new_filename = format!("{stem}-{hash}-mt.bin");
-            let asm_rom_filename = format!("{stem}-{hash}-rom.bin");
+            let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
             asm_rom = Some(default_cache_path.join(asm_rom_filename));
             self.asm = Some(default_cache_path.join(new_filename));
         }
@@ -143,7 +156,13 @@ impl ZiskVerifyConstraints {
             }
         }
 
-        let blowup_factor = get_rom_blowup_factor(&self.get_proving_key());
+        if let Some(input) = &self.input {
+            if !input.exists() {
+                return Err(anyhow::anyhow!("Input file not found at {:?}", input.display()));
+            }
+        }
+
+        let blowup_factor = get_rom_blowup_factor(&proving_key);
 
         let rom_bin_path =
             get_elf_bin_file_path(&self.elf.to_path_buf(), &default_cache_path, blowup_factor)?;
@@ -159,21 +178,28 @@ impl ZiskVerifyConstraints {
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
         let proofman = ProofMan::<Goldilocks>::new(
-            self.get_proving_key(),
+            proving_key,
             custom_commits_map,
             true,
             false,
             false,
             ParamsGPU::default(),
             self.verbose.into(),
-            None,
+            Some(universe),
         )
         .expect("Failed to initialize proofman");
 
         let mut witness_lib;
+
+        let asm_services = AsmServices::new(world_rank, local_rank, self.port);
+
+        let start = std::time::Instant::now();
+
         match self.field {
             Field::Goldilocks => {
-                let library = unsafe { Library::new(self.get_witness_computation_lib())? };
+                let library = unsafe {
+                    Library::new(get_witness_computation_lib(self.witness_lib.as_ref()))?
+                };
                 let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
                     unsafe { library.get(b"init_library")? };
                 witness_lib = witness_lib_constructor(
@@ -182,12 +208,28 @@ impl ZiskVerifyConstraints {
                     self.asm.clone(),
                     asm_rom,
                     sha256f_script,
-                    proofman.get_rank(),
                     None,
+                    Some(world_rank),
+                    Some(local_rank),
+                    self.port,
                 )
                 .expect("Failed to initialize witness library");
 
                 proofman.register_witness(&mut *witness_lib, library);
+
+                if self.asm.is_some() {
+                    // Start ASM microservices
+                    tracing::info!(
+                        ">>> [{}] Starting ASM microservices. {}",
+                        world_rank,
+                        "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
+                    );
+
+                    asm_services.start_asm_services(
+                        self.asm.as_ref().unwrap(),
+                        AsmRunnerOptions::default(),
+                    )?;
+                }
 
                 proofman
                     .verify_proof_constraints_from_lib(self.input.clone(), &debug_info)
@@ -215,6 +257,12 @@ impl ZiskVerifyConstraints {
             result.executed_steps
         );
 
+        if self.asm.is_some() {
+            // Shut down ASM microservices
+            tracing::info!("<<< [{}] Shutting down ASM microservices.", world_rank);
+            asm_services.stop_asm_services()?;
+        }
+
         Ok(())
     }
 
@@ -224,7 +272,7 @@ impl ZiskVerifyConstraints {
         println!(
             "{: >12} {}",
             "Witness Lib".bright_green().bold(),
-            self.get_witness_computation_lib().display()
+            get_witness_computation_lib(self.witness_lib.as_ref()).display()
         );
 
         println!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display());
@@ -248,7 +296,7 @@ impl ZiskVerifyConstraints {
         println!(
             "{: >12} {}",
             "Proving key".bright_green().bold(),
-            self.get_proving_key().display()
+            get_proving_key(self.proving_key.as_ref()).display()
         );
 
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
@@ -257,25 +305,5 @@ impl ZiskVerifyConstraints {
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 
         println!();
-    }
-
-    /// Gets the witness computation library file location.
-    /// Uses the default one if not specified by user.
-    pub fn get_witness_computation_lib(&self) -> PathBuf {
-        if self.witness_lib.is_none() {
-            get_default_witness_computation_lib()
-        } else {
-            self.witness_lib.clone().unwrap()
-        }
-    }
-
-    /// Gets the proving key file location.
-    /// Uses the default one if not specified by user.
-    pub fn get_proving_key(&self) -> PathBuf {
-        if self.proving_key.is_none() {
-            get_default_proving_key()
-        } else {
-            self.proving_key.clone().unwrap()
-        }
     }
 }

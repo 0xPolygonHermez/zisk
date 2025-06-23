@@ -148,6 +148,7 @@ impl MemHelpers {
     pub fn register_to_addr_w(register: u8) -> u32 {
         RAM_W_ADDR_INIT + register as u32
     }
+    #[inline(always)]
     pub fn mem_load(
         &self,
         addr: u32,
@@ -166,6 +167,7 @@ impl MemHelpers {
             0,
         ]
     }
+    #[inline(always)]
     pub fn mem_write(
         &self,
         addr: u32,

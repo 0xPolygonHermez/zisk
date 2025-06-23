@@ -5,7 +5,9 @@
 //! execution plans.
 
 use crate::{
-    Arith256Input, Arith256ModInput, ArithEqInput, ArithEqSM, Secp256k1AddInput, Secp256k1DblInput,
+    Arith256Input, Arith256ModInput, ArithEqInput, ArithEqSM, Bn254ComplexAddInput,
+    Bn254ComplexMulInput, Bn254ComplexSubInput, Bn254CurveAddInput, Bn254CurveDblInput,
+    Secp256k1AddInput, Secp256k1DblInput,
 };
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
@@ -178,6 +180,21 @@ impl BusDevice<PayloadType> for ArithEqCollector {
             }
             ExtOperationData::OperationSecp256k1DblData(bus_data) => {
                 ArithEqInput::Secp256k1Dbl(Secp256k1DblInput::from(&bus_data))
+            }
+            ExtOperationData::OperationBn254CurveAddData(bus_data) => {
+                ArithEqInput::Bn254CurveAdd(Bn254CurveAddInput::from(&bus_data))
+            }
+            ExtOperationData::OperationBn254CurveDblData(bus_data) => {
+                ArithEqInput::Bn254CurveDbl(Bn254CurveDblInput::from(&bus_data))
+            }
+            ExtOperationData::OperationBn254ComplexAddData(bus_data) => {
+                ArithEqInput::Bn254ComplexAdd(Bn254ComplexAddInput::from(&bus_data))
+            }
+            ExtOperationData::OperationBn254ComplexSubData(bus_data) => {
+                ArithEqInput::Bn254ComplexSub(Bn254ComplexSubInput::from(&bus_data))
+            }
+            ExtOperationData::OperationBn254ComplexMulData(bus_data) => {
+                ArithEqInput::Bn254ComplexMul(Bn254ComplexMulInput::from(&bus_data))
             }
             // Add here new operations
             _ => panic!("Expected ExtOperationData::OperationData"),

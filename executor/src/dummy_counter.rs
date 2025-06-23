@@ -3,8 +3,8 @@
 //! This counter is used as a default implementation when no actual counting or metrics
 //! collection is required.
 
-use std::any::Any;
-use std::collections::VecDeque;
+use std::{any::Any, collections::VecDeque};
+
 use zisk_common::{BusDevice, BusId, Metrics};
 
 /// The `DummyCounter` struct serves as a placeholder counter that performs no actions
