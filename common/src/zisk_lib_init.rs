@@ -11,4 +11,5 @@ pub type ZiskLibInitFn<F> = fn(
     PathBuf,         // Sha256f script path
     Option<i32>,     // mpi World Rank
     Option<i32>,     // mpi Local Rank
+    Option<u16>,     // Port for the server
 ) -> Result<Box<dyn WitnessLibrary<F>>, Box<dyn std::error::Error>>;

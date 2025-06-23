@@ -1,7 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use cargo_zisk::{
     commands::{
-        ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskExecute, ZiskProve, ZiskProveClient, ZiskRomSetup, ZiskRun, ZiskSdk, ZiskServer, ZiskStats, ZiskVerify, ZiskVerifyConstraints
+        ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskExecute, ZiskProve, ZiskProveClient,
+        ZiskRomSetup, ZiskRun, ZiskSdk, ZiskServer, ZiskStats, ZiskVerify, ZiskVerifyConstraints,
     },
     ZISK_VERSION_MESSAGE,
 };
@@ -20,6 +21,7 @@ pub enum Cargo {
     Build(ZiskBuild),
     CheckSetup(ZiskCheckSetup),
     Clean(ZiskClean),
+    Execute(ZiskExecute),
     ProveClient(ZiskProveClient),
     Prove(ZiskProve),
     RomSetup(ZiskRomSetup),
@@ -27,7 +29,6 @@ pub enum Cargo {
     Sdk(ZiskSdk),
     Server(ZiskServer),
     Stats(ZiskStats),
-    Execute(ZiskExecute),
     Verify(ZiskVerify),
     VerifyConstraints(ZiskVerifyConstraints),
 }

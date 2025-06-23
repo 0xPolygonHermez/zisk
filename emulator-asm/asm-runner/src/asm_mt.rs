@@ -20,8 +20,8 @@ impl AsmMTHeader {
             output_header = std::ptr::read(mapped_ptr as *const AsmMTHeader);
         }
 
-        // assert!(output_header.mt_allocated_size > 0);
-        // assert!(output_header.mt_used_size > 0);
+        assert!(output_header.mt_allocated_size > 0);
+        assert!(output_header.mt_used_size > 0);
 
         output_header
     }

@@ -9,6 +9,7 @@ ZISK_DIR=${ZISK_DIR:-"${BASE_DIR}/.zisk"}
 ZISK_BIN_DIR="${ZISK_DIR}/bin"
 CARGO_ZISK="${ZISK_BIN_DIR}/cargo-zisk"
 BINS=(cargo-zisk ziskemu)
+BUCKET_URL="https://storage.googleapis.com/zisk-setup"
 
 mkdir -p "${ZISK_BIN_DIR}"
 
@@ -330,8 +331,8 @@ install_setup() {
     local KEY_FILE="zisk-${KEY_TYPE}key-${SETUP_VERSION}.tar.gz"
 
     step "Downloading ${KEY_TYPE} key version ${SETUP_VERSION}..."
-    ensure download "https://storage.googleapis.com/zisk/${KEY_FILE}" "${KEY_FILE}"
-    ensure download "https://storage.googleapis.com/zisk/${KEY_FILE}.md5" "${KEY_FILE}.md5"
+    ensure download "${BUCKET_URL}/${KEY_FILE}" "${KEY_FILE}"
+    ensure download "${BUCKET_URL}/${KEY_FILE}.md5" "${KEY_FILE}.md5"
 
     # Verify the md5 checksum
     ensure md5sum -c "${KEY_FILE}.md5"

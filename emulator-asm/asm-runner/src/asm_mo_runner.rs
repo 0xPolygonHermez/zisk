@@ -41,26 +41,34 @@ impl AsmRunnerMO {
         Self { mapped_ptr, total_size }
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn run(
         inputs_path: &Path,
         max_steps: u64,
         chunk_size: u64,
         world_rank: i32,
         local_rank: i32,
+        port: Option<u16>,
     ) -> Result<(Vec<Vec<MemCheckPoint>>, Vec<Vec<MemAlignCheckPoint>>)> {
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
-        let shmem_input_name = format!("ZISK_{}_MO_input", world_rank);
-        let shmem_output_name = format!("ZISK_{}_MO_output", world_rank);
-        let sem_chunk_done_name = format!("/ZISK_{}_MO_chunk_done", world_rank);
+        let asm_service = AsmServices::new(world_rank, local_rank, port);
+
+        let prefix = asm_service.shmem_prefix();
+
+        let shmem_input_name = format!("{}_MO_input", prefix);
+        let shmem_output_name = format!("{}_MO_output", prefix);
+        let sem_chunk_done_name = format!("/{}_MO_chunk_done", prefix);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
-            .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name, e))?;
+            .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
         Self::write_input(inputs_path, &shmem_input_name);
 
-        let handle =
-            std::thread::spawn(move || AsmServices::send_memory_ops_request(max_steps, chunk_size, local_rank));
+        let handle = std::thread::spawn(move || {
+            let asm_services = AsmServices::new(world_rank, local_rank, port);
+            asm_services.send_memory_ops_request(max_steps, chunk_size)
+        });
 
         // Read the header data
         let header_ptr = Self::get_output_ptr(&shmem_output_name) as *const AsmMOHeader;
@@ -98,7 +106,7 @@ impl AsmRunnerMO {
                     };
                 }
                 Err(e) => {
-                    error!("Semaphore sem_chunk_done error: {:?}", e);
+                    error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
                     let header = unsafe { std::ptr::read(header_ptr) };
                     break header.exit_code;
@@ -162,7 +170,7 @@ impl AsmRunnerMO {
         unsafe {
             shmem_utils::unmap(temp, header_size);
         }
-        shmem_utils::map(fd, header.mt_allocated_size as usize, PROT_READ, "output full map")
+        shmem_utils::map(fd, header.mt_allocated_size as usize, PROT_READ, shmem_output_name)
     }
 }
 

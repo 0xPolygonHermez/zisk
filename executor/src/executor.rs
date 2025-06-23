@@ -106,6 +106,7 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
 
     world_rank: i32,
     local_rank: i32,
+    port: Option<u16>,
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
@@ -121,6 +122,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     ///
     /// # Arguments
     /// * `zisk_rom` - An `Arc`-wrapped ZisK ROM instance.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         rom_path: PathBuf,
         asm_path: Option<PathBuf>,
@@ -131,6 +133,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         rom_sm: Option<Arc<RomSM>>,
         world_rank: i32,
         local_rank: i32,
+        port: Option<u16>,
     ) -> Self {
         Self {
             rom_path,
@@ -150,6 +153,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             stats: Mutex::new(Vec::new()),
             world_rank,
             local_rank,
+            port,
         }
     }
 
@@ -192,6 +196,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     ///
     /// # Returns
     /// A vector of `EmuTrace` instances representing minimal traces.
+    #[allow(clippy::type_complexity)]
     fn execute_with_assembly(
         &self,
         input_data_path: Option<PathBuf>,
@@ -204,6 +209,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let input_data_cloned = input_data_path.clone();
         let world_rank = self.world_rank;
         let local_rank = self.local_rank;
+        let port = self.port;
         let handle_mo = std::thread::spawn(move || {
             AsmRunnerMO::run(
                 input_data_cloned.as_ref().unwrap(),
@@ -211,6 +217,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 Self::MIN_TRACE_SIZE,
                 world_rank,
                 local_rank,
+                port,
             )
             .expect("Error during Assembly Memory Operations execution")
         });
@@ -287,10 +294,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             input_data_path.as_ref().unwrap(),
             Self::MAX_NUM_STEPS,
             Self::MIN_TRACE_SIZE,
-            // asm_runner::AsmRunnerOptions::default(),
             task_factory,
             self.world_rank,
             self.local_rank,
+            self.port,
         )
         .expect("Error during ASM execution");
 
@@ -768,7 +775,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
 
         // If we have memory segments, add them to the planning
-        if let Some((mem_segments, mem_align_segments)) = mem_cpp {
+        if let Some((_mem_segments, _mem_align_segments)) = mem_cpp {
             // TODO!!!!!
         }
 

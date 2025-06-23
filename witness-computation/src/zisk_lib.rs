@@ -28,9 +28,11 @@ pub struct WitnessLib<F: PrimeField64> {
     executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
     world_rank: i32,
     local_rank: i32,
+    port: Option<u16>,
 }
 
 #[no_mangle]
+#[allow(clippy::too_many_arguments)]
 fn init_library(
     verbose_mode: proofman_common::VerboseMode,
     elf_path: PathBuf,
@@ -39,6 +41,7 @@ fn init_library(
     sha256f_script_path: PathBuf,
     world_rank: Option<i32>,
     local_rank: Option<i32>,
+    port: Option<u16>,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode, world_rank);
     let result = Box::new(WitnessLib {
@@ -49,6 +52,7 @@ fn init_library(
         executor: None,
         world_rank: world_rank.unwrap_or(0),
         local_rank: local_rank.unwrap_or(0),
+        port,
     });
 
     Ok(result)
@@ -122,6 +126,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             Some(rom_sm.clone()),
             self.world_rank,
             self.local_rank,
+            self.port,
         );
 
         let executor = Arc::new(executor);
