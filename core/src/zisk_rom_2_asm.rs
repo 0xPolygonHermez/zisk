@@ -4884,7 +4884,7 @@ impl ZiskRom2Asm {
                     // Save memory operations into mem_reads
                     if ctx.mem_op() {
                         // Arguments will be read from indirection[0, 1]
-                        Self::mem_op_precompiled_read(ctx, code, 2, 2, [8, 8].to_vec());
+                        Self::mem_op_precompiled_read(ctx, code, 2, 2, [4, 8].to_vec());
 
                         // Result will be written to indirection[0]
                         Self::mem_op_precompiled_write(ctx, code, 2, 0, 0, 4);
