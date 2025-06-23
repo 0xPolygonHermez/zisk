@@ -1,4 +1,4 @@
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct GateConfig {
     pub gate_number: u64,
     pub max_refs: u64,
@@ -17,11 +17,6 @@ pub struct GateConfig {
 }
 
 impl GateConfig {
-    /// Creates a new GateConfig with all fields initialized to zero
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Creates a new GateConfig with specified values
     #[allow(clippy::too_many_arguments)]
     pub const fn with_values(

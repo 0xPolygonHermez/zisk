@@ -9,8 +9,7 @@
     "rust-analyzer.linkedProjects": ["Cargo.toml"],
     "files.associations": {
         "*.ejs": "html",
-        "new": "cpp",
-        "ostream": "cpp"
+        "new": "cpp"
     }
     //"rust-analyzer.showUnlinkedFileNotification": false,
     // "rust-analyzer.showUnlinkedFileNotification": false,

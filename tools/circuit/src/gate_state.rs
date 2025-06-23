@@ -1,4 +1,6 @@
-use super::{bits_to_byte, print_bits, Gate, GateConfig, GateOperation, PinId, PinSource};
+use super::{
+    bits_to_byte, bits_to_byte_msb, print_bits, Gate, GateConfig, GateOperation, PinId, PinSource,
+};
 
 #[derive(Debug)]
 pub struct GateState {
@@ -95,11 +97,12 @@ impl GateState {
             self.gates[z as usize].pins[PinId::B].bit = 1;
             self.gates[z as usize].pins[PinId::C].bit = 0;
             self.gates[z as usize].pins[PinId::D].bit = 1;
+            self.gates[z as usize].pins[PinId::E].bit = 0;
         }
     }
 
     // Get 32-bytes output from the state input
-    pub fn get_output(&self, output: &mut [u8]) {
+    pub fn get_output(&self, output: &mut [u8], to_big_endian: bool) {
         assert!(self.gate_config.sout_ref_number >= 256);
 
         for i in 0..32 {
@@ -112,7 +115,10 @@ impl GateState {
                     + group_pos;
                 bytes[j as usize] = self.gates[ref_idx as usize].pins[PinId::A].bit;
             }
-            bits_to_byte(&bytes, &mut output[i as usize]);
+            match to_big_endian {
+                true => bits_to_byte_msb(&bytes, &mut output[i as usize]),
+                false => bits_to_byte(&bytes, &mut output[i as usize]),
+            }
         }
     }
 
@@ -201,7 +207,7 @@ impl GateState {
         ref_in3: Option<u64>,
         pin_in3: Option<PinId>,
         ref_out: u64,
-    ) -> Option<u8> {
+    ) {
         // Get the input bits
         let in1 = self.gates[ref_in1 as usize].pins[pin_in1].bit;
         let in2 = self.gates[ref_in2 as usize].pins[pin_in2].bit;
@@ -249,7 +255,6 @@ impl GateState {
         self.gates[ref_out as usize].pins[PinId::D].wired_ref = ref_out;
 
         // Calculate output based on operation
-        let mut carry: Option<u8> = None;
         match op {
             GateOperation::Xor => {
                 // If there are 2 inputs, in3 = 0 doesn't change the result
@@ -269,9 +274,14 @@ impl GateState {
                 self.andps += 1;
             }
             GateOperation::Add => {
+                // Update output E
+                self.gates[ref_out as usize].pins[PinId::E].source = PinSource::Gated;
+                self.gates[ref_out as usize].pins[PinId::E].wired_ref = ref_out;
+
                 self.gates[ref_out as usize].pins[PinId::D].bit = in1 ^ in2 ^ in3;
+                self.gates[ref_out as usize].pins[PinId::E].bit =
+                    (in1 & in2) | (in1 & in3) | (in2 & in3);
                 self.adds += 1;
-                carry = Some((in1 & in2) | (in1 & in3) | (in2 & in3));
             }
 
             GateOperation::Ch | GateOperation::Maj => {
@@ -317,8 +327,6 @@ impl GateState {
 
         // Add to program
         self.program.push(ref_out);
-
-        carry
     }
 
     #[rustfmt::skip]
@@ -372,8 +380,8 @@ impl GateState {
 
     #[rustfmt::skip]
     #[allow(clippy::too_many_arguments)]
-    pub fn add(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_in3: u64, pin_in3: PinId, ref_out: u64) -> u8 {
-        self.op(GateOperation::Add, ref_in1, pin_in1, ref_in2, pin_in2, Some(ref_in3), Some(pin_in3), ref_out).unwrap()
+    pub fn add(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_in3: u64, pin_in3: PinId, ref_out: u64) {
+        self.op(GateOperation::Add, ref_in1, pin_in1, ref_in2, pin_in2, Some(ref_in3), Some(pin_in3), ref_out);
     }
 
     /// Prints operation statistics (development purposes)

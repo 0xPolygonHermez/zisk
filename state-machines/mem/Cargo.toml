@@ -18,6 +18,7 @@ zisk-pil = { path = "../../pil" }
 mem-planner-cpp = { path = "../mem-cpp" }
 mem-common = { path = "../mem-common" }
 
+proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
@@ -34,7 +35,7 @@ num-traits = "0.2"
 [features]
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
-diagnostic = ["proofman-macros/diagnostic"]
+diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
 disable-distributed = ["proofman-common/disable-distributed"]
 debug_mem = []
 debug_mem_align = []

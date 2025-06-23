@@ -44,24 +44,37 @@ impl fmt::Display for AsmService {
     }
 }
 
-const MT_ASM_SERVICE_DEFAULT_PORT: u16 = 23115;
-const RH_ASM_SERVICE_DEFAULT_PORT: u16 = 23116;
-const MO_ASM_SERVICE_DEFAULT_PORT: u16 = 23117;
+const ASM_SERVICE_BASE_PORT: u16 = 23115;
 
-pub struct AsmServices;
+pub struct AsmServices {
+    world_rank: i32,
+    local_rank: i32,
+    base_port: u16,
+}
 
 impl AsmServices {
+    const MO_SERVICE_OFFSET: u64 = 0; // Relative offset to base port. Should correspond to the order in SERVICES
+    const MT_SERVICE_OFFSET: u64 = 1; // Relative offset to base port. Should correspond to the order in SERVICES
+    const RH_SERVICE_OFFSET: u64 = 2; // Relative offset to base port. Should correspond to the order in SERVICES
+
     const SERVICES: [AsmService; 2] = [
         AsmService::MO,
         AsmService::MT,
         // AsmService::RH,
     ];
 
+    pub fn new(world_rank: i32, local_rank: i32, port: Option<u16>) -> Self {
+        Self { world_rank, local_rank, base_port: port.unwrap_or(ASM_SERVICE_BASE_PORT) }
+    }
+
+    pub fn shmem_prefix(&self) -> String {
+        format!("ZISK_{}_{}", self.base_port, self.local_rank)
+    }
+
     pub fn start_asm_services(
+        &self,
         ziskemuasm_path: &Path,
         options: AsmRunnerOptions,
-        world_rank: i32,
-        local_rank: i32,
     ) -> Result<()> {
         // ! TODO Remove this when we have a proper way to find the path
         let path_str = ziskemuasm_path.to_string_lossy();
@@ -69,7 +82,7 @@ impl AsmServices {
 
         // Check if a service is already running
         for service in &Self::SERVICES {
-            let port = Self::port_for(service, local_rank);
+            let port = self.port_for(service);
             let addr = format!("127.0.0.1:{}", port);
 
             if TcpStream::connect(&addr).is_ok() {
@@ -79,62 +92,59 @@ impl AsmServices {
                     addr
                 );
                 let sem_chunk_done_name =
-                    format!("/ZISK_{}_{}_shutdown_done", local_rank, service.as_str());
+                    format!("/{}_{}_shutdown_done", self.shmem_prefix(), service.as_str());
                 let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
                     .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
-                Self::send_shutdown_request(service, local_rank).with_context(|| {
+                self.send_shutdown_request(service).with_context(|| {
                     format!("Service {} failed to respond to shutdown", service)
                 })?;
 
                 match sem_chunk_done.timed_wait(Duration::from_secs(30)) {
                     Ok(()) => {}
                     Err(e) => {
-                        tracing::error!("[{}] Failed to wait for shutdown: {}", world_rank, e);
+                        tracing::error!("[{}] Failed to wait for shutdown: {}", self.world_rank, e);
                         return Err(AsmRunError::SemaphoreError(sem_chunk_done_name, e).into());
                     }
                 }
             }
         }
 
-        std::thread::sleep(Duration::from_secs(2));
-        
         let start = std::time::Instant::now();
 
         for service in &Self::SERVICES {
-            Self::start_asm_service(service, trimmed_path, &options, local_rank);
+            self.start_asm_service(service, trimmed_path, &options);
         }
 
         for service in &Self::SERVICES {
-            let port = Self::port_for(service, local_rank);
-            Self::wait_for_service_ready(service, port);
+            Self::wait_for_service_ready(service, self.port_for(service));
         }
 
         // Ping status for all services
         for service in &Self::SERVICES {
-            Self::send_status_request(service, local_rank)
+            self.send_status_request(service)
                 .with_context(|| format!("Service {} failed to respond to ping", service))?;
         }
 
         tracing::info!(
             ">>> [{}] All ASM services are ready. Time taken: {} seconds",
-            world_rank,
+            self.world_rank,
             start.elapsed().as_secs_f32()
         );
 
         Ok(())
     }
 
-    pub fn stop_asm_services(local_rank: i32) -> Result<()> {
+    pub fn stop_asm_services(&self) -> Result<()> {
         // Check if a service is already running
         for service in &Self::SERVICES {
-            let port = Self::port_for(service, local_rank);
+            let port = self.port_for(service);
             let addr = format!("127.0.0.1:{}", port);
 
             if TcpStream::connect(&addr).is_ok() {
                 tracing::info!("Shutting down service {} running on {}.", service, addr);
 
-                Self::send_shutdown_request(service, local_rank).with_context(|| {
+                self.send_shutdown_request(service).with_context(|| {
                     format!("Service {} failed to respond to shutdown", service)
                 })?;
             }
@@ -162,20 +172,19 @@ impl AsmServices {
     }
 
     fn start_asm_service(
+        &self,
         asm_service: &AsmService,
         trimmed_path: &str,
         options: &AsmRunnerOptions,
-        local_rank: i32,
     ) {
         // Prepare command
         let command_path = trimmed_path.to_string() + &format!("-{}.bin", asm_service);
 
         let mut command = Command::new(command_path);
 
-        command.arg("-p").arg(Self::port_for(asm_service, local_rank).to_string());
+        command.arg("-p").arg(self.port_for(asm_service).to_string());
 
-        let prefix = format!("ZISK_{}", local_rank);
-        command.arg("--shm_prefix").arg(prefix);
+        command.arg("--shm_prefix").arg(self.shmem_prefix());
 
         match asm_service {
             AsmService::MT => {
@@ -224,57 +233,48 @@ impl AsmServices {
         }
     }
 
-    const fn port_for(asm_service: &AsmService, local_rank: i32) -> u16 {
-        let offset = local_rank as u16 * Self::SERVICES.len() as u16;
+    const fn port_for(&self, asm_service: &AsmService) -> u16 {
+        let rank_offset = self.local_rank as u16 * Self::SERVICES.len() as u16;
 
-        match asm_service {
-            AsmService::MT => MT_ASM_SERVICE_DEFAULT_PORT + offset,
-            AsmService::RH => RH_ASM_SERVICE_DEFAULT_PORT + offset,
-            AsmService::MO => MO_ASM_SERVICE_DEFAULT_PORT + offset,
-        }
+        let service_offset = match asm_service {
+            AsmService::MT => Self::MT_SERVICE_OFFSET,
+            AsmService::RH => Self::RH_SERVICE_OFFSET,
+            AsmService::MO => Self::MO_SERVICE_OFFSET,
+        };
+
+        self.base_port + service_offset as u16 + rank_offset
     }
 
-    pub fn send_status_request(service: &AsmService, local_rank: i32) -> Result<PingResponse> {
-        Self::send_request(service, &PingRequest {}, local_rank)
+    pub fn send_status_request(&self, service: &AsmService) -> Result<PingResponse> {
+        self.send_request(service, &PingRequest {})
     }
 
-    pub fn send_shutdown_request(
-        service: &AsmService,
-        local_rank: i32,
-    ) -> Result<ShutdownResponse> {
-        Self::send_request(service, &ShutdownRequest {}, local_rank)
+    pub fn send_shutdown_request(&self, service: &AsmService) -> Result<ShutdownResponse> {
+        self.send_request(service, &ShutdownRequest {})
     }
 
     pub fn send_minimal_trace_request(
+        &self,
         max_steps: u64,
         chunk_len: u64,
-        local_rank: i32,
     ) -> Result<MinimalTraceResponse> {
-        Self::send_request(
-            &AsmService::MT,
-            &MinimalTraceRequest { max_steps, chunk_len },
-            local_rank,
-        )
+        self.send_request(&AsmService::MT, &MinimalTraceRequest { max_steps, chunk_len })
     }
 
     pub fn send_memory_ops_request(
+        &self,
         max_steps: u64,
         chunk_len: u64,
-        local_rank: i32,
     ) -> Result<MemoryOperationsResponse> {
-        Self::send_request(
-            &AsmService::MO,
-            &MemoryOperationsRequest { max_steps, chunk_len },
-            local_rank,
-        )
+        self.send_request(&AsmService::MO, &MemoryOperationsRequest { max_steps, chunk_len })
     }
 
-    fn send_request<Req, Res>(service: &AsmService, req: &Req, local_rank: i32) -> Result<Res>
+    fn send_request<Req, Res>(&self, service: &AsmService, req: &Req) -> Result<Res>
     where
         Req: ToRequestPayload,
         Res: FromResponsePayload,
     {
-        let port = Self::port_for(service, local_rank);
+        let port = self.port_for(service);
         let addr = format!("127.0.0.1:{}", port);
 
         let request = req.to_request_payload();

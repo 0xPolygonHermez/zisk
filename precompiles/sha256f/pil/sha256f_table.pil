@@ -64,7 +64,7 @@ airtemplate Sha256fTable(const int N = 2**23, const int chunks = 1, const int bi
                     d = a ^ b ^ c;
                     carry = (a & b) | (a & c) | (b & c);
                 default:
-                    error(`Invalid gate operation opcode: ${gate_op} at row ${i}`);
+                    error(`Invalid gate operation opcode: ${gate_op} at row ${i} and chunk ${j}`);
             }
             D[j][i] = d;
             CARRY[j][i] = carry;
