@@ -1,3 +1,4 @@
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use std::{collections::HashMap, os::raw::c_void};
 
 use crate::*;
@@ -39,10 +40,9 @@ impl MemPlanner {
     }
 
     /// Adds a chunk of memory data
-    pub fn add_chunk(&self, len: u64, data: *const c_void, chunk_id: u32) {
+    pub fn add_chunk(&self, len: u64, data: *const c_void) {
         unsafe {
             bindings::add_chunk_mem_count_and_plan(
-                chunk_id,
                 self.inner,
                 data as *mut bindings::MemCountersBusData,
                 len as u32,
@@ -69,9 +69,10 @@ impl MemPlanner {
     /// # Safety
     /// This function assumes the underlying C++ memory is valid and the pointer returned
     /// is safe to read for `count` elements.
-    pub fn mem_segments(&self) -> Vec<Plan> {
+    pub fn collect_plans(&self) -> Vec<Plan> {
         let mut plans: Vec<Plan> = Vec::new();
 
+        timer_start_info!(COLLECT_MEM_PLANS);
         for (mem_id, air_id) in
             [ROM_DATA_AIR_IDS[0], INPUT_DATA_AIR_IDS[0], MEM_AIR_IDS[0]].iter().enumerate()
         {
@@ -113,8 +114,6 @@ impl MemPlanner {
 
         let mem_align_check_points = CppMemAlignCheckPoint::from_cpp(self);
         let enable_mem_align_rom = !mem_align_check_points.is_empty();
-
-        println!("mem_align_check_points len: {:?}", mem_align_check_points.len());
 
         let mut last_segment_id = None;
         let mut segment: HashMap<ChunkId, MemAlignCheckPoint> = HashMap::new();
@@ -171,6 +170,7 @@ impl MemPlanner {
         #[cfg(feature = "save_mem_bus_data")]
         save_plans(&plans, "asm_plans.txt");
 
+        timer_stop_and_log_info!(COLLECT_MEM_PLANS);
         plans
     }
 }

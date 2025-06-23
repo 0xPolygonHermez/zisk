@@ -28,7 +28,6 @@
 #include "mem_count_and_plan.hpp"
 #include "mem_test.hpp"
 
-// TODO: additional thread to sort memories address vs pages
 // TODO: shared memory slots to balance in a worst scenario
 // TODO: incremental memory slots on worst scenario (consolidate full memory slots? to avoid increase).
 

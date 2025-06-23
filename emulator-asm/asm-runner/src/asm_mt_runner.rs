@@ -90,7 +90,7 @@ impl AsmRunnerMT {
             AsmServices::send_minimal_trace_request(max_steps, chunk_size, local_rank)
         });
 
-        let pool = ThreadPoolBuilder::new().num_threads(24).build().map_err(AsmRunError::from)?;
+        let pool = ThreadPoolBuilder::new().num_threads(18).build().map_err(AsmRunError::from)?;
         let (sender, receiver) = mpsc::channel();
 
         let mut chunk_id = ChunkId(0);

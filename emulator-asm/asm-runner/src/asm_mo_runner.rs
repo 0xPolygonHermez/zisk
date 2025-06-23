@@ -75,7 +75,6 @@ impl AsmRunnerMO {
         let mem_planner = MemPlanner::new();
         mem_planner.execute();
 
-        let mut chunk_id = 0;
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
@@ -91,8 +90,7 @@ impl AsmRunnerMO {
 
                     data_ptr = unsafe { data_ptr.add(1) };
 
-                    mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void, chunk_id);
-                    chunk_id += 1;
+                    mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
 
                     if chunk.end == 1 {
                         break 0;
@@ -128,8 +126,7 @@ impl AsmRunnerMO {
 
         mem_planner.set_completed();
         mem_planner.wait();
-        println!("MEM_PLANNER: wait EXIT");
-        let plans = mem_planner.mem_segments();
+        let plans = mem_planner.collect_plans();
 
         // let (mem_segments, mem_align_segments) = mem_planner.mem_segments();
 

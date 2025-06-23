@@ -20,6 +20,7 @@
 #include <mutex>
 #include <atomic>
 
+#include "api.hpp"
 #include "mem_types.hpp"
 #include "mem_config.hpp"
 #include "mem_context.hpp"
@@ -28,12 +29,9 @@
 
 class MemTestChunk {
 public:
-    MemCountersBusData *chunk_data;
+    std::shared_ptr<MemCountersBusData> chunk_data;
     uint32_t chunk_size;
     MemTestChunk(MemCountersBusData *data, uint32_t size) : chunk_data(data), chunk_size(size) {}
-    ~MemTestChunk() {
-//        free(chunk_data);
-    }
 };
 
 class MemTest {
@@ -41,12 +39,7 @@ private:
     std::vector<MemTestChunk> chunks;
 public:
     MemTest() {
-        chunks.reserve(4096);
-    }
-    ~MemTest() {
-        for (auto& chunk : chunks) {
-            free(chunk.chunk_data);
-        }
+        chunks.reserve(MAX_CHUNKS);
     }
     void load(const char *path) {
         printf("Loading compact data...\n");
@@ -69,7 +62,7 @@ public:
                     chunk_data[index].flags = ((chunk_data[index].flags & 0x08000000) >> 11) | ((chunk_data[index].flags & 0xF0000000) >> 28);
                 }
             }
-            // #ifdef DEBUG_INFO
+            #ifdef DEBUG_INFO
             // if (chunk_id == 999999) {
                 for (int32_t i = 0; i < chunk_size; ++i) {
                     const uint32_t addr = chunk_data[i].addr;
@@ -104,10 +97,10 @@ public:
                     // }
                 }
             // }
-            // #endif
+            #endif
             if (chunk_id % 100 == 0) printf("Loaded chunk %d with size %d\n", chunk_id, chunk_size);
         }
-        printf("chunks: %ld  tot_chunks: %d tot_ops: %d tot_time:%ld (ms)\n", chunks.size(), tot_chunks, tot_ops, (chunks.size() * TIME_US_BY_CHUNK)/1000);
+        printf("chunks: %ld  tot_chunks: %d tot_ops: %d tot_time:%ld (ms) Speed(Mhz): %04.2f\n", chunks.size(), tot_chunks, tot_ops, (chunks.size() * TIME_US_BY_CHUNK)/1000, (double)(1 << 18) / TIME_US_BY_CHUNK);
     }
     void execute(void) {
         printf("Starting...\n");
@@ -122,7 +115,7 @@ public:
             if (current < chunk_ready) {
                 usleep(chunk_ready - current);
             }
-            MemCountersBusData *data = chunk.chunk_data;
+            MemCountersBusData *data = chunk.chunk_data.get();
             uint32_t chunk_size = chunk.chunk_size;
 //            uint32_t j = chunk_size - 1;
 //            printf("CHUNK[%4d] 0:[%08X %d %c] ... %d:[%08X %d %c]\n", chunk_id,
@@ -133,7 +126,8 @@ public:
         }
         set_completed_mem_count_and_plan(cp);
         wait_mem_count_and_plan(cp);
-        stats_mem_count_and_plan(cp);
+        // stats_mem_count_and_plan(cp);
+        destroy_mem_count_and_plan(cp);
     }
 };
 #endif

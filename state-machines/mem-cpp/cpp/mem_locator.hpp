@@ -20,8 +20,6 @@
 #include "mem_types.hpp"
 #include "mem_config.hpp"
 #include "tools.hpp"
-#include "mem_counter.hpp"
-
 struct MemLocator {
     uint32_t offset;
     uint32_t cpos;

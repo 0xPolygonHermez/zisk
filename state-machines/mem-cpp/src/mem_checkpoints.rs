@@ -13,27 +13,12 @@ pub struct CppMemCheckPoint {
 }
 
 impl CppMemCheckPoint {
-    // pub fn new(
-    //     chunk_id: u32,
-    //     from_addr: u32,
-    //     from_skip: u32,
-    //     to_addr: u32,
-    //     to_count: u32,
-    //     count: u32,
-    // ) -> Self {
-    //     Self { chunk_id, from_addr, from_skip, to_addr, to_count, count }
-    // }
-
-    /// Retrieves a Vec of MemCheckpoint from C++ given a valid segment ID.
+    /// Retrieves a array pointer of MemCheckpoint from C++ given a valid segment ID.
     ///
     /// # Safety
     /// This function assumes the underlying C++ memory is valid and the pointer returned
-    /// is safe to read for `count` elements.
-    pub fn from_cpp(
-        mem_planner: &MemPlanner,
-        mem_id: u32,
-        segment_id: u32,
-    ) -> Vec<CppMemCheckPoint> {
+    /// is safe to read for `count` elements. The ownership of array remains with C++.
+    pub fn from_cpp(mem_planner: &MemPlanner, mem_id: u32, segment_id: u32) -> &[CppMemCheckPoint] {
         let mut count: u32 = 0;
 
         let ptr = unsafe {
@@ -46,11 +31,11 @@ impl CppMemCheckPoint {
         } as *mut CppMemCheckPoint;
 
         if ptr.is_null() || count == 0 {
-            return Vec::new();
+            return &[];
         }
 
         // SAFETY: assumes pointer is valid for `count` elements
-        unsafe { Vec::from_raw_parts(ptr, count as usize, count as usize) }
+        unsafe { std::slice::from_raw_parts(ptr, count as usize) }
     }
 }
 
@@ -71,12 +56,12 @@ impl CppMemAlignCheckPoint {
     //     Self { chunk_id, skip, count, rows }
     // }
 
-    /// Retrieves a Vec of all CppMemAlignCheckPoint from C++.
+    /// Retrieves a array pointer to all CppMemAlignCheckPoint from C++.
     ///
     /// # Safety
     /// This function assumes the underlying C++ memory is valid and the pointer returned
-    /// is safe to read for `count` elements.
-    pub fn from_cpp(mem_planner: &MemPlanner) -> Vec<CppMemAlignCheckPoint> {
+    /// is safe to read for `count` elements. The ownership of array remains with C++.
+    pub fn from_cpp(mem_planner: &MemPlanner) -> &[CppMemAlignCheckPoint] {
         let mut count: u32 = 0;
 
         let ptr = unsafe {
@@ -84,10 +69,10 @@ impl CppMemAlignCheckPoint {
         } as *mut CppMemAlignCheckPoint;
 
         if ptr.is_null() || count == 0 {
-            return Vec::new();
+            return &[];
         }
 
         // SAFETY: assumes pointer is valid for `count` elements
-        unsafe { Vec::from_raw_parts(ptr, count as usize, count as usize) }
+        unsafe { std::slice::from_raw_parts(ptr, count as usize) }
     }
 }

@@ -274,8 +274,10 @@ unsafe extern "C" {
     pub fn execute_mem_count_and_plan(mcp: *mut MemCountAndPlan);
 }
 unsafe extern "C" {
+    pub fn save_chunk(chunk_id: u32, chunk_data: *mut MemCountersBusData, chunk_size: u32);
+}
+unsafe extern "C" {
     pub fn add_chunk_mem_count_and_plan(
-        id: u32,
         mcp: *mut MemCountAndPlan,
         chunk_data: *mut MemCountersBusData,
         chunk_size: u32,

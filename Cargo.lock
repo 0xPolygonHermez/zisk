@@ -1817,6 +1817,8 @@ name = "mem-planner-cpp"
 version = "0.9.0"
 dependencies = [
  "mem-common",
+ "proofman-util",
+ "tracing",
  "zisk-common",
  "zisk-pil",
 ]
