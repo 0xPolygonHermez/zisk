@@ -736,7 +736,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
         assert_eq!(self.asm_runner_path.is_some(), self.asm_rom_path.is_some());
 
-        let (min_traces, main_count, secn_count, mem_cpp) = if self.asm_runner_path.is_some() {
+        let (min_traces, main_count, secn_count, mem_plans) = if self.asm_runner_path.is_some() {
             // If we are executing in assembly mode
             self.execute_with_assembly(input_data_path)
         } else {
@@ -757,14 +757,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
             MainPlanner::plan::<F>(&min_traces, main_count, Self::MIN_TRACE_SIZE);
 
         let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
-        for plan in &secn_planning {
-            // println!("---Plan: {:?}", plan);
-        }
-        if let Some(plans) = mem_cpp {
-            secn_planning[0].extend(plans);
-        }
-        for plan in &secn_planning {
-            // println!("---Plan: {:?}", plan);
+
+        if let Some(mem_plans) = mem_plans {
+            secn_planning[0].extend(mem_plans);
         }
 
         timer_stop_and_log_info!(PLAN);
@@ -772,18 +767,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         // Configure the instances
         self.sm_bundle.configure_instances(&pctx, &secn_planning);
 
-        // If we have memory segments, add them to the planning
-        // if let Some(plans) = &mem_cpp {
-        //     self.sm_bundle.configure_mem_instance(&pctx, &plans);
-        // }
-
         // Assign the instances
         self.assign_main_instances(&pctx, &mut main_planning);
         self.assign_secn_instances(&pctx, &mut secn_planning);
-
-        // if let Some(plans) = mem_cpp {
-        //     self.assign_secn_instances(&pctx, &mut [plans]);
-        // }
 
         // Get the global IDs of the instances to compute witness for
         let main_global_ids =
