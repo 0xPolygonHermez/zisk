@@ -365,9 +365,9 @@ impl ZiskStats {
             grouped.entry((*airgroup_id, *air_id)).or_default().push(stats.clone());
         }
 
-        tracing::info!("");
-        tracing::info!("    Grouped Stats:");
-        tracing::info!(
+        println!("");
+        println!("    Grouped Stats:");
+        println!(
             "    {:<8} {:<25}   {:<6}   {:<20}   {:<20}   {:<20}",
             "Air id",
             "Name",
