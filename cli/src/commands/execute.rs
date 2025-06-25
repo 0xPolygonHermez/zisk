@@ -129,7 +129,7 @@ impl ZiskExecute {
             let hash = get_elf_data_hash(&self.elf)
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
             let new_filename = format!("{stem}-{hash}-mt.bin");
-            let asm_rom_filename = format!("{stem}-{hash}-rom.bin");
+            let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
             asm_rom = Some(default_cache_path.join(asm_rom_filename));
             self.asm = Some(default_cache_path.join(new_filename));
         }
