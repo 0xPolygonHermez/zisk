@@ -60,11 +60,11 @@ void MemCountAndPlan::count_phase() {
             max_used_slots = count_workers[index]->get_used_slots();
         }
     }
-    printf("MemCountAndPlan wait_avg(ms): %ld max_wait(ms): %ld ms threads: %d max_used_slots: %04.2f%%\n", 
-            (tot_wait_us >> THREAD_BITS)/1000, 
-            max_tot_wait_us/1000, 
-            1 << THREAD_BITS,
-            max_used_slots * 100.0 / ADDR_SLOTS);
+    // printf("MemCountAndPlan wait_avg(ms): %ld max_wait(ms): %ld ms threads: %d max_used_slots: %04.2f%%\n", 
+    //         (tot_wait_us >> THREAD_BITS)/1000, 
+    //         max_tot_wait_us/1000, 
+    //         1 << THREAD_BITS,
+    //         max_used_slots * 100.0 / ADDR_SLOTS);
     t_count_us = (uint32_t) (get_usec() - init);    
 }
 
@@ -211,6 +211,6 @@ void MemCountAndPlan::wait() {
 void MemCountAndPlan::detach_execute() {
     count_phase();
     plan_phase();
-    printf("MemCountAndPlan count(ms):%ld plan(ms):%ld tot(ms):%ld\n", 
-           t_count_us / 1000, t_plan_us / 1000, (t_count_us + t_plan_us) / 1000);
+    // printf("MemCountAndPlan count(ms):%ld plan(ms):%ld tot(ms):%ld\n", 
+    //        t_count_us / 1000, t_plan_us / 1000, (t_count_us + t_plan_us) / 1000);
 }

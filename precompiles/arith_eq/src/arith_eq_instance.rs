@@ -30,6 +30,9 @@ pub struct ArithEqInstance<F: PrimeField64> {
     /// ArithEq state machine.
     arith_eq_sm: Arc<ArithEqSM<F>>,
 
+    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
+    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
+
     /// Instance context.
     ictx: InstanceCtx,
 }
@@ -45,8 +48,21 @@ impl<F: PrimeField64> ArithEqInstance<F> {
     /// # Returns
     /// A new `Arith256Instance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(arith_eq_sm: Arc<ArithEqSM<F>>, ictx: InstanceCtx) -> Self {
-        Self { arith_eq_sm, ictx }
+    pub fn new(arith_eq_sm: Arc<ArithEqSM<F>>, mut ictx: InstanceCtx) -> Self {
+        assert_eq!(
+            ictx.plan.air_id,
+            ArithEqTrace::<F>::AIR_ID,
+            "ArithEqInstance: Unsupported air_id: {:?}",
+            ictx.plan.air_id
+        );
+
+        let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
+
+        let collect_info = *meta
+            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+            .expect("Failed to downcast ictx.plan.meta to expected type");
+
+        Self { arith_eq_sm, collect_info, ictx }
     }
 }
 
@@ -93,16 +109,7 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
     }
 
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        assert_eq!(
-            self.ictx.plan.air_id,
-            ArithEqTrace::<F>::AIR_ID,
-            "ArithEqInstance: Unsupported air_id: {:?}",
-            self.ictx.plan.air_id
-        );
-
-        let meta = self.ictx.plan.meta.as_ref().unwrap();
-        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
-        let (num_ops, collect_skipper) = collect_info[&chunk_id];
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(ArithEqCollector::new(num_ops, collect_skipper)))
     }
 }

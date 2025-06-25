@@ -27,6 +27,9 @@ pub struct ArithFullInstance {
     /// Reference to the Arithmetic Full State Machine.
     arith_full_sm: Arc<ArithFullSM>,
 
+    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
+    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
+
     /// The instance context.
     ictx: InstanceCtx,
 }
@@ -40,8 +43,21 @@ impl ArithFullInstance {
     ///
     /// # Returns
     /// A new `ArithFullInstance` instance initialized with the provided state machine and context.
-    pub fn new(arith_full_sm: Arc<ArithFullSM>, ictx: InstanceCtx) -> Self {
-        Self { arith_full_sm, ictx }
+    pub fn new(arith_full_sm: Arc<ArithFullSM>, mut ictx: InstanceCtx) -> Self {
+        assert_eq!(
+            ictx.plan.air_id,
+            ArithTrace::<usize>::AIR_ID,
+            "ArithFullInstance: Unsupported air_id: {:?}",
+            ictx.plan.air_id
+        );
+
+        let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
+
+        let collect_info = *meta
+            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+            .expect("Failed to downcast ictx.plan.meta to expected type");
+
+        Self { arith_full_sm, collect_info, ictx }
     }
 }
 
@@ -99,16 +115,7 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        assert_eq!(
-            self.ictx.plan.air_id,
-            ArithTrace::<F>::AIR_ID,
-            "BinaryInstance: Unsupported air_id: {:?}",
-            self.ictx.plan.air_id
-        );
-
-        let meta = self.ictx.plan.meta.as_ref().unwrap();
-        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
-        let (num_ops, collect_skipper) = collect_info[&chunk_id];
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(ArithInstanceCollector::new(num_ops, collect_skipper)))
     }
 }
