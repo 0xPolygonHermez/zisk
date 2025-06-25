@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "900af8d8212c1032e470b0337df6bea42537d4f51768372c1ef3656136614ee6";
+pub const PILOUT_HASH: &str = "14184dc2091ff97a3680afec2e5afb19acf0086cf68ec7637532cc7471ee5495";
 
 //AIRGROUP CONSTANTS
 
@@ -232,11 +232,11 @@ trace!(BinaryExtensionTableTrace<F> {
 
 trace!(ArithEqFixed<F> {
  CLK_0: F, CHUNK_ID: F, __L1__: F,
-},  0, 15, 524288 );
+},  0, 15, 2097152 );
 
 trace!(ArithEqTrace<F> {
  x1: F, y1: F, x2: F, y2: F, x3: F, y3: F, q0: F, q1: F, q2: F, s: F, sel_op: [F; 9], sel_op_clk0: [F; 9], x_delta_chunk_inv: F, x_are_different: F, x3_lt: F, y3_lt: F, carry: [[F; 2]; 3], step_addr: F,
-},  0, 15, 524288 );
+},  0, 15, 2097152 );
 
 trace!(ArithEqLtTableFixed<F> {
  LT_T: F, DELTA: F, __L1__: F,
