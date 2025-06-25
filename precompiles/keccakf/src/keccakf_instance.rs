@@ -44,7 +44,7 @@ impl<F: PrimeField64> KeccakfInstance<F> {
     /// # Returns
     /// A new `KeccakfInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(keccakf_sm: Arc<KeccakfSM<F>>, ictx: InstanceCtx) -> Self {
+    pub fn new(keccakf_sm: Arc<KeccakfSM<F>>, mut ictx: InstanceCtx) -> Self {
         assert_eq!(
             ictx.plan.air_id,
             KeccakfTrace::<usize>::AIR_ID,

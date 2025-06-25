@@ -43,7 +43,7 @@ impl<F: PrimeField64> Sha256fInstance<F> {
     /// # Returns
     /// A new `Sha256fInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(sha256f_sm: Arc<Sha256fSM<F>>, ictx: InstanceCtx) -> Self {
+    pub fn new(sha256f_sm: Arc<Sha256fSM<F>>, mut ictx: InstanceCtx) -> Self {
         assert_eq!(
             ictx.plan.air_id,
             Sha256fTrace::<usize>::AIR_ID,

@@ -7,7 +7,8 @@ use std::{fs::File, path::PathBuf};
 
 use fields::{Goldilocks, PrimeField64};
 
-use proofman::verify_proof_from_file;
+use proofman::{verify_proof, verify_proof_from_file};
+use bytemuck::cast_slice;
 
 use crate::commands::cli_fail_if_macos;
 use crate::ZISK_VERSION_MESSAGE;
@@ -32,6 +33,9 @@ pub struct ZiskVerify {
 
     #[clap(short = 'u', long)]
     pub public_inputs: Option<PathBuf>,
+
+    #[clap(short = 'j', long, default_value_t = false)]
+    pub json: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
@@ -67,15 +71,34 @@ impl ZiskVerify {
             None
         };
 
-        let valid = verify_proof_from_file::<Goldilocks>(
-            self.proof.clone(),
-            self.get_stark_info(),
-            self.get_verifier_bin(),
-            self.get_verkey(),
-            publics,
-            None,
-            None,
-        );
+        let valid = if self.json {
+            verify_proof_from_file::<Goldilocks>(
+                self.proof.clone(),
+                self.get_stark_info(),
+                self.get_verifier_bin(),
+                self.get_verkey(),
+                publics,
+                None,
+                None,
+            )
+        } else {
+            let mut file = File::open(self.proof.clone())?;
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer)?;
+
+            let proof_slice: &[u64] = cast_slice(&buffer);
+            let proof_ptr = proof_slice.as_ptr() as *mut u64;
+
+            verify_proof::<Goldilocks>(
+                proof_ptr,
+                self.get_stark_info(),
+                self.get_verifier_bin(),
+                self.get_verkey(),
+                publics,
+                None,
+                None,
+            )
+        };
 
         if !valid {
             tracing::info!(
