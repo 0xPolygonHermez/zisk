@@ -121,12 +121,12 @@ pub fn initialize_mpi() -> Result<MpiContext> {
     let local_comm = world.split_shared(world_rank);
     let local_rank = local_comm.rank();
 
-    return Ok(MpiContext { universe, world_rank, local_rank });
+    Ok(MpiContext { universe, world_rank, local_rank })
 }
 
 #[cfg(not(distributed))]
 pub fn initialize_mpi() -> Result<MpiContext> {
-    return Ok(MpiContext { world_rank: 0, local_rank: 0 });
+    Ok(MpiContext { world_rank: 0, local_rank: 0 })
 }
 
 /// Gets the witness computation library file location.
