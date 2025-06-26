@@ -1,4 +1,4 @@
-use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR};
+use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
 
 use named_sem::NamedSemaphore;
 use rayon::ThreadPoolBuilder;
@@ -196,8 +196,7 @@ impl AsmRunnerMT {
             full_input.push(0);
         }
 
-        let fd =
-            shmem_utils::open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR | S_IXUSR);
+        let fd = shmem_utils::open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR);
         let ptr = shmem_utils::map(fd, shmem_input_size, PROT_READ | PROT_WRITE, "input mmap");
         unsafe {
             ptr::copy_nonoverlapping(full_input.as_ptr(), ptr as *mut u8, shmem_input_size);
@@ -207,8 +206,7 @@ impl AsmRunnerMT {
     }
 
     pub fn get_output_ptr(shmem_output_name: &str) -> *mut std::ffi::c_void {
-        let fd =
-            shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR | S_IXUSR);
+        let fd = shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR);
         let header_size = size_of::<AsmMTHeader>();
         let temp = shmem_utils::map(fd, header_size, PROT_READ, "header temp map");
         let header = unsafe { (temp as *const AsmMTHeader).read() };

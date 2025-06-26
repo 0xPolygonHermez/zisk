@@ -1,4 +1,4 @@
-use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR};
+use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use named_sem::NamedSemaphore;
@@ -165,8 +165,7 @@ impl AsmRunnerMO {
     }
 
     pub fn get_output_ptr(shmem_output_name: &str) -> *mut std::ffi::c_void {
-        let fd =
-            shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR | S_IXUSR);
+        let fd = shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR);
         let header_size = size_of::<AsmMOHeader>();
         let temp = shmem_utils::map(fd, header_size, PROT_READ, "header temp map");
         let header = unsafe { (temp as *const AsmMOHeader).read() };
