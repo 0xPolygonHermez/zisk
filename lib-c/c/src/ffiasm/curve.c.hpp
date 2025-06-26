@@ -425,7 +425,7 @@ void Curve<BaseField>::dbl(Point &p3, PointAffine &p1) {
     // V = U^2   ; Already store in ZZ3
     F.square(p3.zz, U);
 
-    // W = U*V   ; Alreadu store in ZZZ3
+    // W = U*V   ; Already store in ZZZ3
     F.mul(p3.zzz, U, p3.zz);
 
     // S = X1*V
