@@ -5,10 +5,8 @@ use proofman_common::initialize_logger;
 use std::io::Read;
 use std::{fs::File, path::PathBuf};
 
-use fields::{Goldilocks, PrimeField64};
-
-use proofman::{verify_proof, verify_proof_from_file};
 use bytemuck::cast_slice;
+use proofman::verify_final_proof;
 
 use crate::commands::cli_fail_if_macos;
 use crate::ZISK_VERSION_MESSAGE;
@@ -54,51 +52,18 @@ impl ZiskVerify {
         );
         tracing::info!("");
 
-        let publics = if let Some(publics) = &self.public_inputs {
-            let mut contents = String::new();
-            let mut file = File::open(publics).unwrap();
+        let mut file = File::open(self.proof.clone())?;
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer)?;
 
-            let _ = file
-                .read_to_string(&mut contents)
-                .map_err(|err| format!("Failed to read public inputs file: {}", err));
-            let verkey_json_string: Vec<String> = serde_json::from_str(&contents).unwrap();
-            let verkey_json: Vec<u64> = verkey_json_string
-                .iter()
-                .map(|s| s.parse::<u64>().expect("Failed to parse string as u64"))
-                .collect();
-            Some(verkey_json.into_iter().map(Goldilocks::from_u64).collect::<Vec<Goldilocks>>())
-        } else {
-            None
-        };
+        let proof_slice: &[u64] = cast_slice(&buffer);
 
-        let valid = if self.json {
-            verify_proof_from_file::<Goldilocks>(
-                self.proof.clone(),
-                self.get_stark_info(),
-                self.get_verifier_bin(),
-                self.get_verkey(),
-                publics,
-                None,
-                None,
-            )
-        } else {
-            let mut file = File::open(self.proof.clone())?;
-            let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer)?;
-
-            let proof_slice: &[u64] = cast_slice(&buffer);
-            let proof_ptr = proof_slice.as_ptr() as *mut u64;
-
-            verify_proof::<Goldilocks>(
-                proof_ptr,
-                self.get_stark_info(),
-                self.get_verifier_bin(),
-                self.get_verkey(),
-                publics,
-                None,
-                None,
-            )
-        };
+        let valid = verify_final_proof(
+            proof_slice,
+            self.get_stark_info(),
+            self.get_verifier_bin(),
+            self.get_verkey(),
+        );
 
         if !valid {
             tracing::info!(

@@ -124,7 +124,7 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     stats: Mutex<Vec<(usize, usize, Stats)>>,
 
     chunk_size: u64,
-    
+
     /// World rank for distributed execution. Default to 0 for single-node execution.
     world_rank: i32,
 
