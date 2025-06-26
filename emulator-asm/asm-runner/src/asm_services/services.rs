@@ -200,23 +200,21 @@ impl AsmServices {
 
         command.arg("-s");
 
-        if options.verbose {
-            command.stdout(std::process::Stdio::inherit()).stderr(std::process::Stdio::inherit());
-        }
-
         if !options.log_output {
             command.arg("-o");
-            if !options.verbose {
-                command.stdout(std::process::Stdio::null());
-                command.stderr(std::process::Stdio::null());
-            }
         }
+
         if options.metrics {
             command.arg("-m");
         }
+
         if options.verbose {
             command.arg("-v");
+            command.stdout(std::process::Stdio::inherit()).stderr(std::process::Stdio::inherit());
+        } else {
+            command.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
         }
+
         match options.trace_level {
             AsmRunnerTraceLevel::None => {}
             AsmRunnerTraceLevel::Trace => {
