@@ -83,7 +83,7 @@ do
         continue;
     fi
 
-    # Varify the contraints for this file
+    # Varify the constraints for this file
     echo ""
     echo "Emulating file ${COUNTER} of ${MAX_COUNTER}: ${ELF_FILE}"
 

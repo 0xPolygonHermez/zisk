@@ -236,7 +236,7 @@ impl ZiskExecute {
     }
 
     fn print_command_info(&self, sha256f_script: &Path) {
-        // Print Verify Contraints command info
+        // Print Execute command info
         println!("{} Execute", format!("{: >12}", "Command").bright_green().bold());
         println!(
             "{: >12} {}",

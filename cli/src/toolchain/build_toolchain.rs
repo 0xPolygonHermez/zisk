@@ -10,7 +10,7 @@ pub struct BuildToolchainCmd {}
 impl BuildToolchainCmd {
     pub fn run(&self) -> Result<()> {
         println!("Building toolchain...");
-        // Get enviroment variables.
+        // Get environment variables.
         let build_dir = std::env::var("ZISK_BUILD_DIR");
         let rust_dir = match build_dir {
             Ok(build_dir) => {

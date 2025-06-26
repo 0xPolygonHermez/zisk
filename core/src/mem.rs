@@ -52,12 +52,12 @@
 //!   program address, and return once the task has completed. The precompiled are implemented via
 //!   ecall.
 //! * After the program is completed, the program counter will jump to the configured return
-//!   address, where the finalization tasks will happen, inluding reading the output data from
+//!   address, where the finalization tasks will happen, including reading the output data from
 //!   memory.
 //! * The address before the last one will jump to `ROM_EXIT`, the last insctruction of the
 //!   execution.
 //! * In general, setup and finalization instructions are located in low addresses, while the actual
-//!   program insctuctions are located in high addresses.
+//!   program instructions are located in high addresses.
 //!
 //! ## INPUT_ADDR
 //! * During the program initialization the input data for the program execution is copied in this
@@ -65,7 +65,7 @@
 //! * After the data has been written by the setup process, this data can only be read by the
 //!   program execution, i.e. it becomes a read-only (RO) memory region.
 //!
-//! ## SYS_ADDR / OUPUT_ADDR / AVAILABLE_MEM_ADDR
+//! ## SYS_ADDR / OUTPUT_ADDR / AVAILABLE_MEM_ADDR
 //! * This memory section can be written and read by the program execution many times, i.e. it is a
 //!   read-write (RW) memory region.
 //! * The first RW memory region going from `SYS_ADDR` to `OUTPUT_ADDR` is reserved for the system
@@ -77,7 +77,7 @@
 //! * The second RW memory region going from `OUTPUT_ADDR` to `AVAILABLE_MEM_ADDR` is reserved to
 //!   copy the output data during the program execution.
 //! * The third RW memory region going from `AVAILABLE_MEM_ADDR` onwards can be used during the
-//!   program execution a general purpose memory.
+//!   program execution as general purpose memory.
 
 use crate::{M16, M3, M32, M8, REG_FIRST, REG_LAST};
 use core::fmt;
@@ -88,7 +88,7 @@ pub const INPUT_ADDR: u64 = 0x90000000;
 pub const MAX_INPUT_SIZE: u64 = 0x08000000; // 128M,
 /// Free input data memory address = first input address
 pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
-/// First globa RW memory address
+/// First global RW memory address
 pub const RAM_ADDR: u64 = 0xa0000000;
 /// Size of the global RW memory
 pub const RAM_SIZE: u64 = 0x20000000; // 512M
@@ -168,7 +168,7 @@ pub struct Mem {
 }
 
 impl Mem {
-    /// Memory structue constructor
+    /// Memory structure constructor
     pub fn new() -> Mem {
         //println!("Mem::new()");
         Mem { read_sections: Vec::new(), write_section: MemSection::new(), free_input: 0 }
