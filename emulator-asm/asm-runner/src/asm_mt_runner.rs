@@ -73,13 +73,11 @@ impl AsmRunnerMT {
         task_factory: TaskFactory<T>,
         world_rank: i32,
         local_rank: i32,
-        port: Option<u16>,
+        base_port: Option<u16>,
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
-        let asm_service = AsmServices::new(world_rank, local_rank, port);
-
-        let prefix = asm_service.shmem_prefix();
+        let prefix = AsmServices::shmem_prefix(&crate::AsmService::MT, base_port, local_rank);
 
         let shmem_input_name = format!("{}_MT_input", prefix);
         let shmem_output_name = format!("{}_MT_output", prefix);
@@ -93,7 +91,7 @@ impl AsmRunnerMT {
         let start = Instant::now();
 
         let handle = std::thread::spawn(move || {
-            let asm_services = AsmServices::new(world_rank, local_rank, port);
+            let asm_services = AsmServices::new(world_rank, local_rank, base_port);
             asm_services.send_minimal_trace_request(max_steps, chunk_size)
         });
 
