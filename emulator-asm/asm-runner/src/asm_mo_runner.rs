@@ -1,4 +1,4 @@
-use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR};
+use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use named_sem::NamedSemaphore;
@@ -13,6 +13,7 @@ use std::{fs, ptr};
 use tracing::error;
 
 use crate::{shmem_utils, AsmInputC2, AsmMOChunk, AsmMOHeader, AsmRunError, AsmServices};
+use mem_planner_cpp::MemPlanner;
 
 use anyhow::{Context, Result};
 
@@ -41,21 +42,17 @@ impl AsmRunnerMO {
         Self { mapped_ptr, total_size }
     }
 
-    #[allow(clippy::type_complexity)]
     pub fn run(
         inputs_path: &Path,
         max_steps: u64,
         chunk_size: u64,
         world_rank: i32,
         local_rank: i32,
-        port: Option<u16>,
+        base_port: Option<u16>,
     ) -> Result<Vec<Plan>> {
-        use mem_planner_cpp::MemPlanner;
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
-        let asm_service = AsmServices::new(world_rank, local_rank, port);
-
-        let prefix = asm_service.shmem_prefix();
+        let prefix = AsmServices::shmem_prefix(&crate::AsmService::MO, base_port, local_rank);
 
         let shmem_input_name = format!("{}_MO_input", prefix);
         let shmem_output_name = format!("{}_MO_output", prefix);
@@ -67,7 +64,7 @@ impl AsmRunnerMO {
         Self::write_input(inputs_path, &shmem_input_name);
 
         let handle = std::thread::spawn(move || {
-            let asm_services = AsmServices::new(world_rank, local_rank, port);
+            let asm_services = AsmServices::new(world_rank, local_rank, base_port);
             asm_services.send_memory_ops_request(max_steps, chunk_size)
         });
 
@@ -157,8 +154,8 @@ impl AsmRunnerMO {
             full_input.push(0);
         }
 
-        let fd =
-            shmem_utils::open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR | S_IXUSR);
+        let fd = shmem_utils::open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR);
+
         let ptr = shmem_utils::map(fd, shmem_input_size, PROT_READ | PROT_WRITE, "input mmap");
         unsafe {
             ptr::copy_nonoverlapping(full_input.as_ptr(), ptr as *mut u8, shmem_input_size);
@@ -168,8 +165,7 @@ impl AsmRunnerMO {
     }
 
     pub fn get_output_ptr(shmem_output_name: &str) -> *mut std::ffi::c_void {
-        let fd =
-            shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR | S_IXUSR);
+        let fd = shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR);
         let header_size = size_of::<AsmMOHeader>();
         let temp = shmem_utils::map(fd, header_size, PROT_READ, "header temp map");
         let header = unsafe { (temp as *const AsmMOHeader).read() };

@@ -1,6 +1,6 @@
 use libc::{
     close, ftruncate, mmap, munmap, shm_open, shm_unlink, MAP_SHARED, O_CREAT, PROT_READ,
-    PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR,
+    PROT_WRITE, S_IRUSR, S_IWUSR,
 };
 
 use crate::AsmInputC;
@@ -181,11 +181,7 @@ impl AsmRunnerRomH {
         unsafe { shm_unlink(shmem_input_name_ptr) };
 
         let shm_fd = unsafe {
-            shm_open(
-                shmem_input_name_ptr,
-                libc::O_RDWR | O_CREAT,
-                (S_IRUSR | S_IWUSR | S_IXUSR) as c_uint,
-            )
+            shm_open(shmem_input_name_ptr, libc::O_RDWR | O_CREAT, (S_IRUSR | S_IWUSR) as c_uint)
         };
         Self::check_shm_open(shm_fd, shmem_input_name_ptr);
 
@@ -222,7 +218,7 @@ impl AsmRunnerRomH {
         let shmem_output_name_ptr = shmem_output_name.as_ptr();
 
         let shm_fd = unsafe {
-            shm_open(shmem_output_name_ptr, libc::O_RDONLY, (S_IRUSR | S_IWUSR | S_IXUSR) as c_uint)
+            shm_open(shmem_output_name_ptr, libc::O_RDONLY, (S_IRUSR | S_IWUSR) as c_uint)
         };
 
         Self::check_shm_open(shm_fd, shmem_output_name_ptr);
