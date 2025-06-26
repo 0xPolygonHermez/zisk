@@ -194,6 +194,9 @@ impl AsmRunnerMT {
         let mut full_input = Vec::with_capacity(shmem_input_size);
         full_input.extend_from_slice(&asm_input.to_bytes());
         full_input.extend_from_slice(&inputs);
+        while full_input.len() < shmem_input_size {
+            full_input.push(0);
+        }
 
         let fd =
             shmem_utils::open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR | S_IXUSR);
