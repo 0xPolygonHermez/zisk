@@ -173,6 +173,9 @@ impl AsmRunnerRomH {
         let mut shmem_input_data = Vec::with_capacity(shmem_input_size);
         shmem_input_data.extend_from_slice(&asm_input.to_bytes());
         shmem_input_data.extend_from_slice(&inputs);
+        while shmem_input_data.len() < shmem_input_size {
+            shmem_input_data.push(0);
+        }
 
         // Remove old shared memory if it exists
         unsafe { shm_unlink(shmem_input_name_ptr) };
