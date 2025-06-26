@@ -757,7 +757,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#e172d95f22fdb99b883f55442f9d53bfbd80bb93"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#a5667ea8a967f5e9f01e0450d163f92a289420ad"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1037,7 +1037,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#e172d95f22fdb99b883f55442f9d53bfbd80bb93"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#a5667ea8a967f5e9f01e0450d163f92a289420ad"
 dependencies = [
  "num-bigint",
  "paste",
@@ -1825,6 +1825,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "pil-std-lib",
+ "proofman",
  "proofman-common",
  "proofman-macros",
  "proofman-util",
@@ -2127,7 +2128,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#e172d95f22fdb99b883f55442f9d53bfbd80bb93"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#a5667ea8a967f5e9f01e0450d163f92a289420ad"
 dependencies = [
  "colored",
  "fields",
@@ -2390,7 +2391,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#e172d95f22fdb99b883f55442f9d53bfbd80bb93"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#a5667ea8a967f5e9f01e0450d163f92a289420ad"
 dependencies = [
  "blake3",
  "bytemuck",
@@ -2421,7 +2422,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#e172d95f22fdb99b883f55442f9d53bfbd80bb93"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#a5667ea8a967f5e9f01e0450d163f92a289420ad"
 dependencies = [
  "crossbeam-channel",
  "fields",
@@ -2442,7 +2443,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#e172d95f22fdb99b883f55442f9d53bfbd80bb93"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#a5667ea8a967f5e9f01e0450d163f92a289420ad"
 dependencies = [
  "fields",
  "proofman-common",
@@ -2454,7 +2455,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#e172d95f22fdb99b883f55442f9d53bfbd80bb93"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#a5667ea8a967f5e9f01e0450d163f92a289420ad"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2465,7 +2466,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#e172d95f22fdb99b883f55442f9d53bfbd80bb93"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#a5667ea8a967f5e9f01e0450d163f92a289420ad"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -2474,7 +2475,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#e172d95f22fdb99b883f55442f9d53bfbd80bb93"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#a5667ea8a967f5e9f01e0450d163f92a289420ad"
 dependencies = [
  "colored",
  "fields",
@@ -3023,6 +3024,7 @@ dependencies = [
  "executor",
  "fields",
  "libloading",
+ "mpi",
  "named-sem",
  "proofman",
  "proofman-common",
@@ -3674,7 +3676,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#e172d95f22fdb99b883f55442f9d53bfbd80bb93"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#a5667ea8a967f5e9f01e0450d163f92a289420ad"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -4360,7 +4362,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#e172d95f22fdb99b883f55442f9d53bfbd80bb93"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbatch-collect-memory-0.9.0#a5667ea8a967f5e9f01e0450d163f92a289420ad"
 dependencies = [
  "colored",
  "fields",
@@ -4507,6 +4509,7 @@ version = "0.9.0"
 dependencies = [
  "fields",
  "libc",
+ "proofman",
  "proofman-common",
  "tracing",
  "tracing-subscriber",

@@ -125,7 +125,7 @@ impl ZiskProve {
 
         print_banner();
 
-        let (universe, world_rank, local_rank) = initialize_mpi()?;
+        let mpi_context = initialize_mpi()?;
 
         let proving_key = get_proving_key(self.proving_key.as_ref());
 
@@ -238,25 +238,42 @@ impl ZiskProve {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
-        let proofman = ProofMan::<Goldilocks>::new(
-            proving_key,
-            custom_commits_map,
-            verify_constraints,
-            self.aggregation,
-            self.final_snark,
-            gpu_params,
-            self.verbose.into(),
-            Some(universe),
-        )
-        .expect("Failed to initialize proofman");
-
-        let asm_services = AsmServices::new(world_rank, local_rank, self.port);
+        let proofman;
+        #[cfg(distributed)]
+        {
+            proofman = ProofMan::<Goldilocks>::new(
+                proving_key,
+                custom_commits_map,
+                verify_constraints,
+                self.aggregation,
+                self.final_snark,
+                gpu_params,
+                self.verbose.into(),
+                Some(mpi_context.universe),
+            )
+            .expect("Failed to initialize proofman");
+        }
+        #[cfg(not(distributed))]
+        {
+            proofman = ProofMan::<Goldilocks>::new(
+                proving_key,
+                custom_commits_map,
+                verify_constraints,
+                self.aggregation,
+                self.final_snark,
+                gpu_params,
+                self.verbose.into(),
+            )
+            .expect("Failed to initialize proofman");
+        }
+        let asm_services =
+            AsmServices::new(mpi_context.world_rank, mpi_context.local_rank, self.port);
 
         if self.asm.is_some() {
             // Start ASM microservices
             tracing::info!(
                 ">>> [{}] Starting ASM microservices. {}",
-                world_rank,
+                mpi_context.world_rank,
                 "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
             );
 
@@ -275,8 +292,8 @@ impl ZiskProve {
             asm_rom,
             sha256f_script,
             self.chunk_size_bits,
-            Some(world_rank),
-            Some(local_rank),
+            Some(mpi_context.world_rank),
+            Some(mpi_context.local_rank),
             self.port,
         )
         .expect("Failed to initialize witness library");
@@ -345,7 +362,7 @@ impl ZiskProve {
 
         if self.asm.is_some() {
             // Shut down ASM microservices
-            tracing::info!("<<< [{}] Shutting down ASM microservices.", world_rank);
+            tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_context.world_rank);
             asm_services.stop_asm_services()?;
         }
 

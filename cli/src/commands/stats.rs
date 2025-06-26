@@ -28,6 +28,7 @@ use crate::{
     ZISK_VERSION_MESSAGE,
 };
 
+#[cfg(distributed)]
 use mpi::traits::*;
 
 #[derive(Parser)]
@@ -108,22 +109,6 @@ impl ZiskStats {
         cli_fail_if_macos()?;
 
         print_banner();
-
-        let (universe, world_rank, local_rank) = initialize_mpi()?;
-
-        let world = universe.world();
-
-        let m2 = self.mpi_node as i32 * 2;
-        if world_rank < m2 || world_rank >= m2 + 2 {
-            world.split_shared(world_rank);
-            world.barrier();
-            println!(
-                "{}: {}",
-                format!("Rank {}", world_rank).bright_yellow().bold(),
-                "Exiting stats command.".bright_yellow()
-            );
-            return Ok(());
-        }
 
         let proving_key = get_proving_key(self.proving_key.as_ref());
 
@@ -215,17 +200,56 @@ impl ZiskStats {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
-        let proofman = ProofMan::<Goldilocks>::new(
-            proving_key,
-            custom_commits_map,
-            true,
-            false,
-            false,
-            gpu_params,
-            self.verbose.into(),
-            Some(universe),
-        )
-        .expect("Failed to initialize proofman");
+        let proofman;
+        let mpi_context = initialize_mpi()?;
+        let world_ranks;
+
+        let world_rank = mpi_context.world_rank;
+        let local_rank = mpi_context.local_rank;
+        #[cfg(distributed)]
+        {
+            let world = mpi_context.universe.world();
+            world_ranks = world.size() as usize;
+
+            let m2 = self.mpi_node as i32 * 2;
+            if mpi_context.world_rank < m2 || mpi_context.world_rank >= m2 + 2 {
+                world.split_shared(mpi_context.world_rank);
+                world.barrier();
+                println!(
+                    "{}: {}",
+                    format!("Rank {}", mpi_context.world_rank).bright_yellow().bold(),
+                    "Exiting stats command.".bright_yellow()
+                );
+                return Ok(());
+            }
+
+            proofman = ProofMan::<Goldilocks>::new(
+                proving_key,
+                custom_commits_map,
+                true,
+                false,
+                false,
+                gpu_params,
+                self.verbose.into(),
+                Some(mpi_context.universe),
+            )
+            .expect("Failed to initialize proofman");
+        }
+
+        #[cfg(not(distributed))]
+        {
+            proofman = ProofMan::<Goldilocks>::new(
+                proving_key,
+                custom_commits_map,
+                true,
+                false,
+                false,
+                gpu_params,
+                self.verbose.into(),
+            )
+            .expect("Failed to initialize proofman");
+            world_ranks = 1;
+        }
 
         let mut witness_lib;
 
@@ -285,7 +309,7 @@ impl ZiskStats {
         tracing::info!("");
         tracing::info!(
             "{} {}",
-            format!("--- STATS SUMMARY RANK {}/{}", world_rank as usize, world.size() as usize),
+            format!("--- STATS SUMMARY RANK {}/{}", world_rank, world_ranks),
             "-".repeat(55)
         );
 

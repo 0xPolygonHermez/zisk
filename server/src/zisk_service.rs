@@ -161,17 +161,35 @@ impl ZiskService {
         )
         .expect("Failed to initialize witness library");
 
-        let proofman = ProofMan::<Goldilocks>::new(
-            config.proving_key.clone(),
-            config.custom_commits_map.clone(),
-            true,
-            false,
-            false,
-            ParamsGPU::default(),
-            config.verbose.into(),
-            None,
-        )
-        .expect("Failed to initialize proofman");
+        let proofman;
+        #[cfg(distributed)]
+        {
+            proofman = ProofMan::<Goldilocks>::new(
+                config.proving_key.clone(),
+                config.custom_commits_map.clone(),
+                true,
+                false,
+                false,
+                ParamsGPU::default(),
+                config.verbose.into(),
+                None,
+            )
+            .expect("Failed to initialize proofman");
+        }
+
+        #[cfg(not(distributed))]
+        {
+            proofman = ProofMan::<Goldilocks>::new(
+                config.proving_key.clone(),
+                config.custom_commits_map.clone(),
+                true,
+                false,
+                false,
+                ParamsGPU::default(),
+                config.verbose.into(),
+            )
+            .expect("Failed to initialize proofman");
+        }
 
         proofman.register_witness(witness_lib.as_mut(), library);
 

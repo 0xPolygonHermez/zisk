@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use fields::Goldilocks;
 
 use proofman::ProofMan;
-use proofman_common::{ParamsGPU, VerboseMode};
+use proofman_common::VerboseMode;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -37,17 +37,32 @@ impl ZiskCheckSetup {
 
         let verbose_mode = VerboseMode::Debug;
 
-        match self.field {
-            Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
-                get_proving_key(self.proving_key.as_ref()),
-                self.aggregation,
-                self.final_snark,
-                ParamsGPU::default(),
-                verbose_mode,
-                None,
-            )
-            .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
-        };
+        #[cfg(distributed)]
+        {
+            match self.field {
+                Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
+                    get_proving_key(self.proving_key.as_ref()),
+                    self.aggregation,
+                    self.final_snark,
+                    verbose_mode,
+                    None,
+                )
+                .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
+            };
+        }
+
+        #[cfg(not(distributed))]
+        {
+            match self.field {
+                Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
+                    get_proving_key(self.proving_key.as_ref()),
+                    self.aggregation,
+                    self.final_snark,
+                    verbose_mode,
+                )
+                .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
+            };
+        }
 
         Ok(())
     }
