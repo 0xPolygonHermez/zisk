@@ -14,6 +14,7 @@ zisk-pil = { path = "../../pil" }
 
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
+proofman = { workspace = true }
 proofman-util = { workspace = true }
 witness = { workspace = true }
 pil-std-lib = { workspace = true }
@@ -28,7 +29,7 @@ num-traits = "0.2"
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
 diagnostic = ["proofman-macros/diagnostic"]
-disable-distributed = ["proofman-common/disable-distributed"]
+disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
 debug_mem = []
 debug_mem_align = []
 save_mem_bus_data = []

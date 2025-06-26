@@ -94,7 +94,7 @@ impl ZiskExecute {
 
         print_banner();
 
-        let (universe, world_rank, local_rank) = initialize_mpi()?;
+        let mpi_context = initialize_mpi()?;
 
         let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
             sha256f_path.clone()
@@ -169,21 +169,39 @@ impl ZiskExecute {
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
-        let proofman = ProofMan::<Goldilocks>::new(
-            proving_key,
-            custom_commits_map,
-            true,
-            false,
-            false,
-            ParamsGPU::default(),
-            self.verbose.into(),
-            Some(universe),
-        )
-        .expect("Failed to initialize proofman");
+        let proofman;
+        #[cfg(distributed)]
+        {
+            proofman = ProofMan::<Goldilocks>::new(
+                proving_key,
+                custom_commits_map,
+                true,
+                false,
+                false,
+                ParamsGPU::default(),
+                self.verbose.into(),
+                Some(mpi_context.universe),
+            )
+            .expect("Failed to initialize proofman");
+        }
+        #[cfg(not(distributed))]
+        {
+            proofman = ProofMan::<Goldilocks>::new(
+                proving_key,
+                custom_commits_map,
+                true,
+                false,
+                false,
+                ParamsGPU::default(),
+                self.verbose.into(),
+            )
+            .expect("Failed to initialize proofman");
+        }
 
         let mut witness_lib;
 
-        let asm_services = AsmServices::new(world_rank, local_rank, self.port);
+        let asm_services =
+            AsmServices::new(mpi_context.world_rank, mpi_context.local_rank, self.port);
 
         match self.field {
             Field::Goldilocks => {
@@ -198,8 +216,8 @@ impl ZiskExecute {
                     self.asm.clone(),
                     asm_rom,
                     sha256f_script,
-                    Some(world_rank),
-                    Some(local_rank),
+                    Some(mpi_context.world_rank),
+                    Some(mpi_context.local_rank),
                     self.port,
                 )
                 .expect("Failed to initialize witness library");
@@ -210,7 +228,7 @@ impl ZiskExecute {
                     // Start ASM microservices
                     tracing::info!(
                         ">>> [{}] Starting ASM microservices. {}",
-                        world_rank,
+                        mpi_context.world_rank,
                         "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
                     );
 
@@ -228,7 +246,7 @@ impl ZiskExecute {
 
         if self.asm.is_some() {
             // Shut down ASM microservices
-            tracing::info!("<<< [{}] Shutting down ASM microservices.", world_rank);
+            tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_context.world_rank);
             asm_services.stop_asm_services()?;
         }
 

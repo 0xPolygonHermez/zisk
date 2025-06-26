@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
-use mpi::environment::Universe;
+#[cfg(distributed)]
+use mpi::traits::*;
 use std::env;
 use std::fmt::Display;
 use std::path::PathBuf;
@@ -10,6 +11,13 @@ use std::str::FromStr;
 pub enum Field {
     Goldilocks,
     // Add other variants here as needed
+}
+
+pub struct MpiContext {
+    #[cfg(distributed)]
+    pub universe: mpi::environment::Universe,
+    pub world_rank: i32,
+    pub local_rank: i32,
 }
 
 impl FromStr for Field {
@@ -102,9 +110,8 @@ pub fn cli_fail_if_gpu_mode() -> anyhow::Result<()> {
     }
 }
 
-pub fn initialize_mpi() -> Result<(Universe, i32, i32)> {
-    use mpi::traits::*;
-
+#[cfg(distributed)]
+pub fn initialize_mpi() -> Result<MpiContext> {
     let (universe, _threading) = mpi::initialize_with_threading(mpi::Threading::Multiple)
         .ok_or_else(|| anyhow::anyhow!("Failed to initialize MPI with threading"))?;
 
@@ -114,7 +121,12 @@ pub fn initialize_mpi() -> Result<(Universe, i32, i32)> {
     let local_comm = world.split_shared(world_rank);
     let local_rank = local_comm.rank();
 
-    Ok((universe, world_rank, local_rank))
+    return Ok(MpiContext { universe, world_rank, local_rank });
+}
+
+#[cfg(not(distributed))]
+pub fn initialize_mpi() -> Result<MpiContext> {
+    return Ok(MpiContext { world_rank: 0, local_rank: 0 });
 }
 
 /// Gets the witness computation library file location.
