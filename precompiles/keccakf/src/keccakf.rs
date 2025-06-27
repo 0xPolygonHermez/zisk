@@ -283,7 +283,6 @@ impl KeccakfSM {
                 // Set the value of free_in_a
                 let a = &gate.pins[0];
                 let ref_a = a.wired_ref as usize;
-                let row_a = ref_a - 1;
                 let wired_a = a.wired_pin_id;
                 let value_a;
                 // If the reference is in the range of the inputs
@@ -299,14 +298,10 @@ impl KeccakfSM {
                     && matches!(wired_a, PinId::A)
                 {
                     let s = ref_a - STATE_IN_FIRST_REF;
-                    let mut bit_a = 0;
-                    for r in 0..STATE_IN_GROUP_BY {
-                        if (s - r) % STATE_IN_REF_DISTANCE == 0 {
-                            let q = (s - r) / STATE_IN_REF_DISTANCE;
-                            bit_a = q * STATE_IN_GROUP_BY + r;
-                        }
-                    }
-
+                    let bit_a = (0..STATE_IN_GROUP_BY)
+                        .find(|&r| (s - r) % STATE_IN_REF_DISTANCE == 0)
+                        .map(|r| ((s - r) / STATE_IN_REF_DISTANCE) * STATE_IN_GROUP_BY + r)
+                        .expect("Invalid bit index");
                     value_a = inputs_bits[i][bit_a];
                 } else
                 // Otherwise, we get one of the already computed values
@@ -314,14 +309,14 @@ impl KeccakfSM {
                     match wired_a {
                         PinId::A => {
                             value_a = if ref_a > 0 {
-                                get_col(par_trace, |row| &row.free_in_a, row_a)
+                                get_col(par_trace, |row| &row.free_in_a, ref_a - 1)
                             } else {
                                 get_col_row(&row0, |row| &row.free_in_a)
                             };
                         }
                         PinId::B => {
                             value_a = if ref_a > 0 {
-                                get_col(par_trace, |row| &row.free_in_b, row_a)
+                                get_col(par_trace, |row| &row.free_in_b, ref_a - 1)
                             } else {
                                 get_col_row(&row0, |row| &row.free_in_b)
                             };
@@ -329,7 +324,7 @@ impl KeccakfSM {
                         PinId::C => panic!("Input pin C is not used by the Keccakf circuit"),
                         PinId::D => {
                             value_a = if ref_a > 0 {
-                                get_col(par_trace, |row| &row.free_in_c, row_a)
+                                get_col(par_trace, |row| &row.free_in_c, ref_a - 1)
                             } else {
                                 get_col_row(&row0, |row| &row.free_in_c)
                             };
@@ -342,7 +337,6 @@ impl KeccakfSM {
                 // Set the value of free_in_b
                 let b = &gate.pins[1];
                 let ref_b = b.wired_ref as usize;
-                let row_b = ref_b - 1;
                 let wired_b = b.wired_pin_id;
                 let value_b;
                 // If the reference is in the range of the inputs
@@ -358,13 +352,10 @@ impl KeccakfSM {
                     && matches!(wired_b, PinId::A)
                 {
                     let s = ref_b - STATE_IN_FIRST_REF;
-                    let mut bit_b = 0;
-                    for r in 0..STATE_IN_GROUP_BY {
-                        if (s - r) % STATE_IN_REF_DISTANCE == 0 {
-                            let q = (s - r) / STATE_IN_REF_DISTANCE;
-                            bit_b = q * STATE_IN_GROUP_BY + r;
-                        }
-                    }
+                    let bit_b = (0..STATE_IN_GROUP_BY)
+                        .find(|&r| (s - r) % STATE_IN_REF_DISTANCE == 0)
+                        .map(|r| ((s - r) / STATE_IN_REF_DISTANCE) * STATE_IN_GROUP_BY + r)
+                        .expect("Invalid bit index");
                     value_b = inputs_bits[i][bit_b];
                 } else
                 // Otherwise, we get one of the already computed values
@@ -372,14 +363,14 @@ impl KeccakfSM {
                     match wired_b {
                         PinId::A => {
                             value_b = if ref_b > 0 {
-                                get_col(par_trace, |row| &row.free_in_a, row_b)
+                                get_col(par_trace, |row| &row.free_in_a, ref_b - 1)
                             } else {
                                 get_col_row(&row0, |row| &row.free_in_a)
                             };
                         }
                         PinId::B => {
                             value_b = if ref_b > 0 {
-                                get_col(par_trace, |row| &row.free_in_b, row_b)
+                                get_col(par_trace, |row| &row.free_in_b, ref_b - 1)
                             } else {
                                 get_col_row(&row0, |row| &row.free_in_b)
                             };
@@ -387,7 +378,7 @@ impl KeccakfSM {
                         PinId::C => panic!("Input pin C is not used by the Keccakf circuit"),
                         PinId::D => {
                             value_b = if ref_b > 0 {
-                                get_col(par_trace, |row| &row.free_in_c, row_b)
+                                get_col(par_trace, |row| &row.free_in_c, ref_b - 1)
                             } else {
                                 get_col_row(&row0, |row| &row.free_in_c)
                             };
