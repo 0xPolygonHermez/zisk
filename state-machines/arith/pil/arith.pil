@@ -207,7 +207,7 @@ airtemplate Arith(int N = 2**18, const int operation_bus_id, const int dual_resu
     }
     eq[CHUNKS_OP-1] + carry[CHUNKS_OP-2] === 0;
 
-    // binary contraint
+    // binary constraint
     div * (1 - div) === 0;
     m32 * (1 - m32) === 0;
     na * (1 - na) === 0;

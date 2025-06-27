@@ -27,4 +27,4 @@ num-bigint = { workspace = true }
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
 diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
-disable-distributed = ["proofman-common/disable-distributed"]
+disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]

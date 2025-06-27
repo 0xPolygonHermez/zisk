@@ -165,6 +165,8 @@ uint64_t trace_address_threshold = TRACE_ADDR + INITIAL_TRACE_SIZE - MAX_CHUNK_T
 
 uint64_t print_pc_counter = 0;
 
+int map_locked_flag = MAP_LOCKED;
+
 void set_chunk_size (uint64_t new_chunk_size)
 {
     if (!is_power_of_two(new_chunk_size))
@@ -737,11 +739,33 @@ int main(int argc, char *argv[])
 
 void print_usage (void)
 {
-    char * usage = "Usage: ziskemuasm\n\t-s(server)\n\t-c(client)\n\t-i <input_file>\n\t-p <port_number>\n\t--gen=0|--generate_fast\n\t--gen=1|--generate_minimal_trace\n\t--gen=2|--generate_rom_histogram\n\t--gen=3|--generate_main_trace\n\t--gen=4|--generate_chunks\n\t--gen=6|--generate_zip\n\t--gen=9|--generate_mem_reads\n\t--gen=10|--generate_chunk_player_mem_reads\n\t--chunk <chunk_number>\n\t--shutdown\n\t--mt <number_of_mt_requests>\n\t-o output off\n\t-m metrics on\n\t-t trace on\n\t-tt trace_trace on\n\t-f(save to file)\n\t-a chunk_address\n\t-v verbose on\n\t-h/--help print this";
+    printf("Usage: ziskemuasm\n");
+    printf("\t-s(server)\n");
+    printf("\t-c(client)\n");
+    printf("\t-i <input_file>\n");
+    printf("\t-p <port_number>\n");
+    printf("\t--gen=0|--generate_fast\n");
+    printf("\t--gen=1|--generate_minimal_trace\n");
+    printf("\t--gen=2|--generate_rom_histogram\n");
+    printf("\t--gen=3|--generate_main_trace\n");
+    printf("\t--gen=4|--generate_chunks\n");
+    printf("\t--gen=6|--generate_zip\n");
+    printf("\t--gen=9|--generate_mem_reads\n");
+    printf("\t--gen=10|--generate_chunk_player_mem_reads\n");
+    printf("\t--chunk <chunk_number>\n");
+    printf("\t--shutdown\n");
+    printf("\t--mt <number_of_mt_requests>\n");
+    printf("\t-o output off\n");
+    printf("\t-m metrics on\n");
+    printf("\t-t trace on\n");
+    printf("\t-tt trace_trace on\n");
+    printf("\t-f(save to file)\n");
+    printf("\t-a chunk_address\n");
+    printf("\t-v verbose on\n");
+    printf("\t-u unlock physical memory in mmap\n");
+    printf("\t-h/--help print this\n");
 #ifdef DEBUG
-    printf("%s\n\t-k keccak trace on\n", usage);
-#else
-    printf("%s\n", usage);
+    printf("\t-k keccak trace on\n");
 #endif
 }
 
@@ -848,6 +872,11 @@ void parse_arguments(int argc, char *argv[])
             {
                 verbose = true;
                 //emu_verbose = true;
+                continue;
+            }
+            if (strcmp(argv[i], "-u") == 0)
+            {
+                map_locked_flag = 0;
                 continue;
             }
             if (strcmp(argv[i], "-k") == 0)
@@ -1273,16 +1302,17 @@ void configure (void)
 
     if (verbose)
     {
-        printf("ziskemuasm configuration:\n\tgen_method=%u\n\tport=%u\n\tchunk_done=%u\n\tchunk_size=%lu\n\tshmem_input=%s\n\tshmem_output=%s\n\tshmem_mt=%s\n\tsem_chunk_done=%s\n\tsem_shutdown_done=%s\n",
-            gen_method,
-            port,
-            chunk_done,
-            chunk_size,
-            shmem_input_name,
-            shmem_output_name,
-            shmem_mt_name,
-            sem_chunk_done_name,
-            sem_shutdown_done_name);
+        printf("ziskemuasm configuration:\n");
+        printf("\tgen_method=%u\n", gen_method);
+        printf("\tport=%u\n", port);
+        printf("\tchunk_done=%u\n", chunk_done);
+        printf("\tchunk_size=%lu\n", chunk_size);
+        printf("\tshmem_input=%s\n", shmem_input_name);
+        printf("\tshmem_output=%s\n", shmem_output_name);
+        printf("\tshmem_mt=%s\n", shmem_mt_name);
+        printf("\tsem_chunk_done=%s\n", sem_chunk_done_name);
+        printf("\tsem_shutdown_done=%s\n", sem_shutdown_done_name);
+        printf("\tmap_locked_flag=%d\n", map_locked_flag);
     }
 }
 
@@ -1314,7 +1344,7 @@ void client_setup (void)
 #ifdef DEBUG
         gettimeofday(&start_time, NULL);
 #endif
-        void * pTrace = mmap((void *)TRACE_ADDR, chunk_player_mt_size, PROT_READ, MAP_SHARED | MAP_FIXED | MAP_LOCKED, shmem_mt_fd, 0);
+        void * pTrace = mmap((void *)TRACE_ADDR, chunk_player_mt_size, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_mt_fd, 0);
 #ifdef DEBUG
         gettimeofday(&stop_time, NULL);
         duration = TimeDiff(start_time, stop_time);
@@ -2236,7 +2266,7 @@ void server_setup (void)
     {
 
         if (verbose) gettimeofday(&start_time, NULL);
-        void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_LOCKED, -1, 0);
+        void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | map_locked_flag, -1, 0);
         if (verbose)
         {
             gettimeofday(&stop_time, NULL);
@@ -2290,7 +2320,7 @@ void server_setup (void)
 
         // Map input address space
         if (verbose) gettimeofday(&start_time, NULL);
-        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | MAP_LOCKED, shmem_input_fd, 0);
+        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
         if (verbose)
         {
             gettimeofday(&stop_time, NULL);
@@ -2321,7 +2351,7 @@ void server_setup (void)
     {
 
         if (verbose) gettimeofday(&start_time, NULL);
-        void * pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_LOCKED, -1, 0);
+        void * pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | map_locked_flag, -1, 0);
         if (verbose)
         {
             gettimeofday(&stop_time, NULL);
@@ -2411,7 +2441,7 @@ void server_setup (void)
         {
             requested_address = (void *)TRACE_ADDR;
         }
-        int flags = MAP_SHARED | MAP_LOCKED;
+        int flags = MAP_SHARED | map_locked_flag;
         if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
         {
             flags |= MAP_FIXED;
@@ -2463,7 +2493,7 @@ void server_setup (void)
 #ifdef DEBUG
         gettimeofday(&start_time, NULL);
 #endif
-        void * pTrace = mmap((void *)TRACE_ADDR, chunk_player_mt_size, PROT_READ, MAP_SHARED | MAP_FIXED | MAP_LOCKED, shmem_mt_fd, 0);
+        void * pTrace = mmap((void *)TRACE_ADDR, chunk_player_mt_size, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_mt_fd, 0);
 #ifdef DEBUG
         gettimeofday(&stop_time, NULL);
         duration = TimeDiff(start_time, stop_time);

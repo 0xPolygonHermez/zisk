@@ -16,12 +16,21 @@ pub struct MemAlignInstance<F: PrimeField64> {
     /// Instance context
     ictx: InstanceCtx,
 
+    /// Checkpoint data for this memory align instance.
+    checkpoint: HashMap<ChunkId, MemAlignCheckPoint>,
+
     mem_align_sm: Arc<MemAlignSM<F>>,
 }
 
 impl<F: PrimeField64> MemAlignInstance<F> {
-    pub fn new(mem_align_sm: Arc<MemAlignSM<F>>, ictx: InstanceCtx) -> Self {
-        Self { ictx, mem_align_sm }
+    pub fn new(mem_align_sm: Arc<MemAlignSM<F>>, mut ictx: InstanceCtx) -> Self {
+        let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
+
+        let checkpoint = *meta
+            .downcast::<HashMap<ChunkId, MemAlignCheckPoint>>()
+            .expect("Failed to downcast ictx.plan.meta to expected type");
+
+        Self { ictx, checkpoint, mem_align_sm }
     }
 }
 
@@ -62,10 +71,7 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let meta = self.ictx.plan.meta.as_ref().unwrap();
-        let checkpoint = meta.downcast_ref::<HashMap<ChunkId, MemAlignCheckPoint>>().unwrap();
-
-        Some(Box::new(MemAlignCollector::new(&checkpoint[&chunk_id])))
+        Some(Box::new(MemAlignCollector::new(&self.checkpoint[&chunk_id])))
     }
 }
 

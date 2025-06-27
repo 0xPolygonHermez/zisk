@@ -23,6 +23,9 @@ pub struct BinaryExtensionInstance<F: PrimeField64> {
     /// Binary Extension state machine.
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
 
+    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
+    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
+
     /// Instance context.
     ictx: InstanceCtx,
 }
@@ -38,8 +41,21 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
     /// # Returns
     /// A new `BinaryExtensionInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(binary_extension_sm: Arc<BinaryExtensionSM<F>>, ictx: InstanceCtx) -> Self {
-        Self { binary_extension_sm, ictx }
+    pub fn new(binary_extension_sm: Arc<BinaryExtensionSM<F>>, mut ictx: InstanceCtx) -> Self {
+        assert_eq!(
+            ictx.plan.air_id,
+            BinaryExtensionTrace::<F>::AIR_ID,
+            "BinaryExtensionInstance: Unsupported air_id: {:?}",
+            ictx.plan.air_id
+        );
+
+        let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
+
+        let collect_info = *meta
+            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+            .expect("Failed to downcast ictx.plan.meta to expected type");
+
+        Self { binary_extension_sm, collect_info, ictx }
     }
 }
 
@@ -96,16 +112,7 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        assert_eq!(
-            self.ictx.plan.air_id,
-            BinaryExtensionTrace::<F>::AIR_ID,
-            "BinaryExtensionInstance: Unsupported air_id: {:?}",
-            self.ictx.plan.air_id
-        );
-
-        let meta = self.ictx.plan.meta.as_ref().unwrap();
-        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
-        let (num_ops, collect_skipper) = collect_info[&chunk_id];
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(BinaryExtensionCollector::new(num_ops as usize, collect_skipper)))
     }
 }

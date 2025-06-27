@@ -89,8 +89,15 @@ pub struct ZiskProve {
     /// it will use from this base port to base port + 2 * number_of_instances.
     /// For example, if you run 2 mpi instances of ZisK, it will use ports from 23115 to 23117
     /// for the first instance, and from 23118 to 23120 for the second instance.
-    #[clap(short = 'p', long)]
+    #[clap(short = 'p', long, conflicts_with = "emulator")]
     pub port: Option<u16>,
+
+    /// Map locked flag
+    /// This is used to lock the memory map for the ROM file.
+    /// If you are running ZisK on a machine with limited memory, you may want to disable this option.
+    /// This option is mutually exclusive with `--emulator`.
+    #[clap(short = 'u', long, conflicts_with = "emulator")]
+    pub map_locked: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short ='v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
@@ -125,7 +132,7 @@ impl ZiskProve {
 
         print_banner();
 
-        let (universe, world_rank, local_rank) = initialize_mpi()?;
+        let mpi_context = initialize_mpi()?;
 
         let proving_key = get_proving_key(self.proving_key.as_ref());
 
@@ -241,30 +248,52 @@ impl ZiskProve {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
 
-        let proofman = ProofMan::<Goldilocks>::new(
-            proving_key,
-            custom_commits_map,
-            verify_constraints,
-            self.aggregation,
-            self.final_snark,
-            gpu_params,
-            self.verbose.into(),
-            Some(universe),
-        )
-        .expect("Failed to initialize proofman");
-
-        let asm_services = AsmServices::new(world_rank, local_rank, self.port);
+        let proofman;
+        #[cfg(distributed)]
+        {
+            proofman = ProofMan::<Goldilocks>::new(
+                proving_key,
+                custom_commits_map,
+                verify_constraints,
+                self.aggregation,
+                self.final_snark,
+                gpu_params,
+                self.verbose.into(),
+                Some(mpi_context.universe),
+            )
+            .expect("Failed to initialize proofman");
+        }
+        #[cfg(not(distributed))]
+        {
+            proofman = ProofMan::<Goldilocks>::new(
+                proving_key,
+                custom_commits_map,
+                verify_constraints,
+                self.aggregation,
+                self.final_snark,
+                gpu_params,
+                self.verbose.into(),
+            )
+            .expect("Failed to initialize proofman");
+        }
+        let asm_services =
+            AsmServices::new(mpi_context.world_rank, mpi_context.local_rank, self.port);
+        let asm_runner_options = AsmRunnerOptions::new()
+            .with_verbose(self.verbose > 0)
+            .with_base_port(self.port)
+            .with_world_rank(mpi_context.world_rank)
+            .with_local_rank(mpi_context.local_rank)
+            .with_map_locked(self.map_locked);
 
         if self.asm.is_some() {
             // Start ASM microservices
             tracing::info!(
                 ">>> [{}] Starting ASM microservices. {}",
-                world_rank,
+                mpi_context.world_rank,
                 "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
             );
 
-            asm_services
-                .start_asm_services(self.asm.as_ref().unwrap(), AsmRunnerOptions::default())?;
+            asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
         }
 
         let library =
@@ -277,8 +306,8 @@ impl ZiskProve {
             self.asm.clone(),
             asm_rom,
             sha256f_script,
-            Some(world_rank),
-            Some(local_rank),
+            Some(mpi_context.world_rank),
+            Some(mpi_context.local_rank),
             self.port,
         )
         .expect("Failed to initialize witness library");
@@ -347,7 +376,7 @@ impl ZiskProve {
 
         if self.asm.is_some() {
             // Shut down ASM microservices
-            tracing::info!("<<< [{}] Shutting down ASM microservices.", world_rank);
+            tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_context.world_rank);
             asm_services.stop_asm_services()?;
         }
 

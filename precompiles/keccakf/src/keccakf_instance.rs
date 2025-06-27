@@ -26,6 +26,9 @@ pub struct KeccakfInstance {
     /// Keccakf state machine.
     keccakf_sm: Arc<KeccakfSM>,
 
+    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
+    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
+
     /// Instance context.
     ictx: InstanceCtx,
 }
@@ -41,8 +44,21 @@ impl KeccakfInstance {
     /// # Returns
     /// A new `KeccakfInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(keccakf_sm: Arc<KeccakfSM>, ictx: InstanceCtx) -> Self {
-        Self { keccakf_sm, ictx }
+    pub fn new(keccakf_sm: Arc<KeccakfSM>, mut ictx: InstanceCtx) -> Self {
+        assert_eq!(
+            ictx.plan.air_id,
+            KeccakfTrace::<usize>::AIR_ID,
+            "KeccakfInstance: Unsupported air_id: {:?}",
+            ictx.plan.air_id
+        );
+
+        let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
+
+        let collect_info = *meta
+            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+            .expect("Failed to downcast ictx.plan.meta to expected type");
+
+        Self { keccakf_sm, collect_info, ictx }
     }
 }
 
@@ -95,9 +111,7 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance {
             self.ictx.plan.air_id
         );
 
-        let meta = self.ictx.plan.meta.as_ref().unwrap();
-        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
-        let (num_ops, collect_skipper) = collect_info[&chunk_id];
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(KeccakfCollector::new(num_ops, collect_skipper)))
     }
 }

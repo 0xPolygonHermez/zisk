@@ -80,31 +80,56 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     /// ZisK ROM, a binary file containing the ZisK program to be executed.
     pub zisk_rom: Arc<ZiskRom>,
 
+    /// Path to the ZisK ROM file.
     pub rom_path: PathBuf,
 
+    /// Path to the assembly minimal trace binary file, if applicable.
     pub asm_runner_path: Option<PathBuf>,
+
+    /// Path to the assembly ROM binary file, if applicable.
     pub asm_rom_path: Option<PathBuf>,
 
     /// Planning information for main state machines.
     pub min_traces: RwLock<MinimalTraces>,
+
+    /// Planning information for main state machines.
     pub main_planning: RwLock<Vec<Plan>>,
+
+    /// Planning information for secondary state machines.
     pub secn_planning: RwLock<Vec<Vec<Plan>>>,
 
+    /// Main state machine instances, indexed by their global ID.
     pub main_instances: RwLock<HashMap<usize, MainInstance>>,
+
+    /// Secondary state machine instances, indexed by their global ID.
     pub secn_instances: RwLock<HashMap<usize, Box<dyn Instance<F>>>>,
+
+    /// Standard library instance, providing common functionalities.
     std: Arc<Std<F>>,
 
+    /// Execution result, including the number of executed steps.
     execution_result: Mutex<ZiskExecutionResult>,
 
+    /// State machine bundle, containing the state machines and their configurations.
     sm_bundle: BD,
+
+    /// Optional ROM state machine, used for assembly ROM execution.
     rom_sm: Option<Arc<RomSM>>,
 
+    /// Collectors by instance, storing statistics and collectors for each instance.
     #[allow(clippy::type_complexity)]
     collectors_by_instance: RwLock<HashMap<usize, (Stats, Vec<(usize, Box<dyn BusDevice<u64>>)>)>>,
+
+    /// Statistics collected during the execution, including time taken for collection and witness computation.
     stats: Mutex<Vec<(usize, usize, Stats)>>,
 
+    /// World rank for distributed execution. Default to 0 for single-node execution.
     world_rank: i32,
+
+    /// Local rank for distributed execution. Default to 0 for single-node execution.
     local_rank: i32,
+
+    /// Optional baseline port to communicate with assembly microservices.
     port: Option<u16>,
 }
 
@@ -115,6 +140,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// The size in rows of the minimal traces
     const MIN_TRACE_SIZE: u64 = 1 << 18;
 
+    /// The maximum number of steps to execute in the emulator or assembly runner.
     const MAX_NUM_STEPS: u64 = 1 << 32;
 
     /// Creates a new instance of the `ZiskExecutor`.
