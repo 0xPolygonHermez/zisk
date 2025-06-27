@@ -2,7 +2,7 @@ use anyhow::Result;
 use asm_runner::AsmRunnerOptions;
 use clap::Parser;
 use colored::Colorize;
-use proofman_common::{json_to_debug_instances_map, DebugInfo};
+use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -88,6 +88,28 @@ pub struct ZiskServer {
     // PRECOMPILES OPTIONS
     /// Sha256f script path
     pub sha256f_script: Option<PathBuf>,
+
+    #[clap(short = 'h', long, default_value_t = false)]
+    pub verify_constraints: bool,
+
+    #[clap(short = 'a', long, default_value_t = false)]
+    pub aggregation: bool,
+
+    #[clap(short = 'f', long, default_value_t = false)]
+    pub final_snark: bool,
+
+    /// GPU PARAMS
+    #[clap(short = 'r', long, default_value_t = false)]
+    pub preallocate: bool,
+
+    #[clap(short = 't', long)]
+    pub max_streams: Option<usize>,
+
+    #[clap(short = 'n', long)]
+    pub number_threads_witness: Option<usize>,
+
+    #[clap(short = 'x', long)]
+    pub max_witness_stored: Option<usize>,
 }
 
 impl ZiskServer {
@@ -184,6 +206,18 @@ impl ZiskServer {
             .with_local_rank(mpi_context.local_rank)
             .with_map_locked(self.map_locked);
 
+        let mut gpu_params = ParamsGPU::new(self.preallocate);
+
+        if self.max_streams.is_some() {
+            gpu_params.with_max_number_streams(self.max_streams.unwrap());
+        }
+        if self.number_threads_witness.is_some() {
+            gpu_params.with_number_threads_pools_witness(self.number_threads_witness.unwrap());
+        }
+        if self.max_witness_stored.is_some() {
+            gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
+        }
+
         let config = ServerConfig::new(
             self.port,
             self.elf.clone(),
@@ -197,6 +231,10 @@ impl ZiskServer {
             debug_info,
             sha256f_script,
             asm_runner_options,
+            self.verify_constraints,
+            self.aggregation,
+            self.final_snark,
+            gpu_params,
         );
 
         if let Err(e) = ZiskService::new(config, mpi_context)?.run() {

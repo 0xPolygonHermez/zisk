@@ -42,6 +42,13 @@ pub enum ClientCommand {
         /// Verify proofs
         #[clap(short = 'y', long, default_value_t = false)]
         verify_proofs: bool,
+
+        /// Output folder for the proof
+        #[clap(short = 'o', long, default_value = "tmp")]
+        output_dir: PathBuf,
+
+        #[clap(short = 'p')]
+        prefix: String,
     },
     /// Verify constraints from input file
     VerifyConstraints {
@@ -56,16 +63,23 @@ impl ZiskProveClient {
         let request = match &self.command {
             ClientCommand::Status => ZiskRequest::Status,
             ClientCommand::Shutdown => ZiskRequest::Shutdown,
-            ClientCommand::Prove { input, aggregation, final_snark, verify_proofs } => {
-                ZiskRequest::Prove {
-                    payload: ZiskProveRequest {
-                        input: input.clone(),
-                        aggregation: *aggregation,
-                        final_snark: *final_snark,
-                        verify_proofs: *verify_proofs,
-                    },
-                }
-            }
+            ClientCommand::Prove {
+                input,
+                aggregation,
+                final_snark,
+                verify_proofs,
+                output_dir,
+                prefix,
+            } => ZiskRequest::Prove {
+                payload: ZiskProveRequest {
+                    input: input.clone(),
+                    aggregation: *aggregation,
+                    final_snark: *final_snark,
+                    verify_proofs: *verify_proofs,
+                    folder: output_dir.clone(),
+                    prefix: prefix.clone(),
+                },
+            },
             ClientCommand::VerifyConstraints { input } => ZiskRequest::VerifyConstraints {
                 payload: ZiskVerifyConstraintsRequest { input: input.clone() },
             },

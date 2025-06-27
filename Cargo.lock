@@ -4518,6 +4518,8 @@ dependencies = [
  "mpi",
  "proofman",
  "proofman-common",
+ "serde",
+ "serde_json",
  "tracing",
  "tracing-subscriber",
  "witness",
