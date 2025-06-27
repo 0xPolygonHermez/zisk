@@ -76,9 +76,7 @@ fn cols_gen(
     // Check that the subgroup order is sufficiently large
     let slot_size = keccakf_program.len();
     if slot_size >= subgroup_order {
-        panic!(
-            "The provided number of bits {subgroup_order} is too small for the Keccakf circuit"
-        );
+        panic!("The provided number of bits {subgroup_order} is too small for the Keccakf circuit");
     }
 
     // Get the number of slots we can generate

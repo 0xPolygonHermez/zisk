@@ -1700,9 +1700,7 @@ pub fn opc_fcall(ctx: &mut InstContext) {
     let iresult = fcall_proxy(function_id, &ctx.fcall.parameters, &mut ctx.fcall.result);
 
     if iresult < 0 {
-        panic!(
-            "opc_fcall() failed calling Fcall() function_id={function_id} iresult={iresult}"
-        );
+        panic!("opc_fcall() failed calling Fcall() function_id={function_id} iresult={iresult}");
     }
 
     // Copy result

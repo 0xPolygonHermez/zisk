@@ -21,9 +21,9 @@ pub fn str_test_data<const N_IN: usize, const N_OUT: usize>(
         .collect::<Vec<_>>()
         .chunks_exact(N_OUT)
         .map(|chunk| {
-            chunk.try_into().unwrap_or_else(|_| {
-                panic!("Failed to split #{index} {title} in {N_OUT} elements")
-            })
+            chunk
+                .try_into()
+                .unwrap_or_else(|_| panic!("Failed to split #{index} {title} in {N_OUT} elements"))
         })
         .collect::<Vec<[u64; N_OUT]>>()
 }

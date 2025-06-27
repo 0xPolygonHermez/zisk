@@ -178,9 +178,7 @@ impl Mem {
     pub fn add_read_section(&mut self, start: u64, buffer: &[u8]) {
         // Check that the start address is alligned to 8 bytes
         if (start & 0x07) != 0 {
-            panic!(
-                "Mem::add_read_section() got a start address={start:x} not alligned to 8 bytes"
-            );
+            panic!("Mem::add_read_section() got a start address={start:x} not alligned to 8 bytes");
         }
 
         // Calculate the end address

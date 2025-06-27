@@ -41,18 +41,16 @@ fn main() {
         );
         let p2_x: [u64; 4] = p2[0..4].try_into().unwrap();
         let p2_y: [u64; 4] = p2[4..8].try_into().unwrap();
-        code += &format!(
-            "\tlet p2 = SyscallPoint256 {{\n\t\tx: {p2_x:?},\n\t\ty: {p2_y:?}\n\t}};\n"
-        );
+        code +=
+            &format!("\tlet p2 = SyscallPoint256 {{\n\t\tx: {p2_x:?},\n\t\ty: {p2_y:?}\n\t}};\n");
         code += "\tparams.p1 = &mut p1;\n";
         code += "\tparams.p2 = &p2;\n";
         code += "\tsyscall_secp256k1_add(&mut params);\n";
 
         let p3_x: [u64; 4] = p3[0..4].try_into().unwrap();
         let p3_y: [u64; 4] = p3[4..8].try_into().unwrap();
-        code += &format!(
-            "\tlet p3 = SyscallPoint256 {{\n\t\tx: {p3_x:?},\n\t\ty: {p3_y:?}\n\t}};\n"
-        );
+        code +=
+            &format!("\tlet p3 = SyscallPoint256 {{\n\t\tx: {p3_x:?},\n\t\ty: {p3_y:?}\n\t}};\n");
         code += "\tassert_eq!(params.p1.x, p3.x);\n";
         code += "\tassert_eq!(params.p1.y, p3.y);\n\n";
         index += 1;
@@ -73,9 +71,8 @@ fn main() {
         code += "\tsyscall_secp256k1_dbl(&mut p1);\n";
         let p3_x: [u64; 4] = p3[0..4].try_into().unwrap();
         let p3_y: [u64; 4] = p3[4..8].try_into().unwrap();
-        code += &format!(
-            "\tlet p3 = SyscallPoint256 {{\n\t\tx: {p3_x:?},\n\t\ty: {p3_y:?}\n\t}};\n"
-        );
+        code +=
+            &format!("\tlet p3 = SyscallPoint256 {{\n\t\tx: {p3_x:?},\n\t\ty: {p3_y:?}\n\t}};\n");
         code += "\tassert_eq!(&p1.x, &p3.x);\n";
         code += "\tassert_eq!(&p1.y, &p3.y);\n\n";
         index += 1;
@@ -157,18 +154,16 @@ fn main() {
         );
         let p2_x: [u64; 4] = p2[0..4].try_into().unwrap();
         let p2_y: [u64; 4] = p2[4..8].try_into().unwrap();
-        code += &format!(
-            "\tlet p2 = SyscallPoint256 {{\n\t\tx: {p2_x:?},\n\t\ty: {p2_y:?}\n\t}};\n"
-        );
+        code +=
+            &format!("\tlet p2 = SyscallPoint256 {{\n\t\tx: {p2_x:?},\n\t\ty: {p2_y:?}\n\t}};\n");
         code += "\tparams.p1 = &mut p1;\n";
         code += "\tparams.p2 = &p2;\n";
         code += "\tsyscall_bn254_curve_add(&mut params);\n";
 
         let p3_x: [u64; 4] = p3[0..4].try_into().unwrap();
         let p3_y: [u64; 4] = p3[4..8].try_into().unwrap();
-        code += &format!(
-            "\tlet p3 = SyscallPoint256 {{\n\t\tx: {p3_x:?},\n\t\ty: {p3_y:?}\n\t}};\n"
-        );
+        code +=
+            &format!("\tlet p3 = SyscallPoint256 {{\n\t\tx: {p3_x:?},\n\t\ty: {p3_y:?}\n\t}};\n");
         code += "\tassert_eq!(params.p1.x, p3.x);\n";
         code += "\tassert_eq!(params.p1.y, p3.y);\n\n";
         index += 1;
@@ -189,9 +184,8 @@ fn main() {
         code += "\tsyscall_bn254_curve_dbl(&mut p1);\n";
         let p3_x: [u64; 4] = p3[0..4].try_into().unwrap();
         let p3_y: [u64; 4] = p3[4..8].try_into().unwrap();
-        code += &format!(
-            "\tlet p3 = SyscallPoint256 {{\n\t\tx: {p3_x:?},\n\t\ty: {p3_y:?}\n\t}};\n"
-        );
+        code +=
+            &format!("\tlet p3 = SyscallPoint256 {{\n\t\tx: {p3_x:?},\n\t\ty: {p3_y:?}\n\t}};\n");
         code += "\tassert_eq!(&p1.x, &p3.x);\n";
         code += "\tassert_eq!(&p1.y, &p3.y);\n\n";
         index += 1;
@@ -214,18 +208,16 @@ fn main() {
         );
         let f2_x: [u64; 4] = f2[0..4].try_into().unwrap();
         let f2_y: [u64; 4] = f2[4..8].try_into().unwrap();
-        code += &format!(
-            "\tlet f2 = SyscallComplex256 {{\n\t\tx: {f2_x:?},\n\t\ty: {f2_y:?}\n\t}};\n"
-        );
+        code +=
+            &format!("\tlet f2 = SyscallComplex256 {{\n\t\tx: {f2_x:?},\n\t\ty: {f2_y:?}\n\t}};\n");
         code += "\tparams.f1 = &mut f1;\n";
         code += "\tparams.f2 = &f2;\n";
         code += "\tsyscall_bn254_complex_add(&mut params);\n";
 
         let f3_x: [u64; 4] = f3[0..4].try_into().unwrap();
         let f3_y: [u64; 4] = f3[4..8].try_into().unwrap();
-        code += &format!(
-            "\tlet f3 = SyscallComplex256 {{\n\t\tx: {f3_x:?},\n\t\ty: {f3_y:?}\n\t}};\n"
-        );
+        code +=
+            &format!("\tlet f3 = SyscallComplex256 {{\n\t\tx: {f3_x:?},\n\t\ty: {f3_y:?}\n\t}};\n");
         code += "\tassert_eq!(params.f1.x, f3.x);\n";
         code += "\tassert_eq!(params.f1.y, f3.y);\n\n";
         index += 1;
@@ -246,18 +238,16 @@ fn main() {
         );
         let f2_x: [u64; 4] = f2[0..4].try_into().unwrap();
         let f2_y: [u64; 4] = f2[4..8].try_into().unwrap();
-        code += &format!(
-            "\tlet f2 = SyscallComplex256 {{\n\t\tx: {f2_x:?},\n\t\ty: {f2_y:?}\n\t}};\n"
-        );
+        code +=
+            &format!("\tlet f2 = SyscallComplex256 {{\n\t\tx: {f2_x:?},\n\t\ty: {f2_y:?}\n\t}};\n");
         code += "\tparams.f1 = &mut f1;\n";
         code += "\tparams.f2 = &f2;\n";
         code += "\tsyscall_bn254_complex_sub(&mut params);\n";
 
         let f3_x: [u64; 4] = f3[0..4].try_into().unwrap();
         let f3_y: [u64; 4] = f3[4..8].try_into().unwrap();
-        code += &format!(
-            "\tlet f3 = SyscallComplex256 {{\n\t\tx: {f3_x:?},\n\t\ty: {f3_y:?}\n\t}};\n"
-        );
+        code +=
+            &format!("\tlet f3 = SyscallComplex256 {{\n\t\tx: {f3_x:?},\n\t\ty: {f3_y:?}\n\t}};\n");
         code += "\tassert_eq!(params.f1.x, f3.x);\n";
         code += "\tassert_eq!(params.f1.y, f3.y);\n\n";
         index += 1;
@@ -278,18 +268,16 @@ fn main() {
         );
         let f2_x: [u64; 4] = f2[0..4].try_into().unwrap();
         let f2_y: [u64; 4] = f2[4..8].try_into().unwrap();
-        code += &format!(
-            "\tlet f2 = SyscallComplex256 {{\n\t\tx: {f2_x:?},\n\t\ty: {f2_y:?}\n\t}};\n"
-        );
+        code +=
+            &format!("\tlet f2 = SyscallComplex256 {{\n\t\tx: {f2_x:?},\n\t\ty: {f2_y:?}\n\t}};\n");
         code += "\tparams.f1 = &mut f1;\n";
         code += "\tparams.f2 = &f2;\n";
         code += "\tsyscall_bn254_complex_mul(&mut params);\n";
 
         let f3_x: [u64; 4] = f3[0..4].try_into().unwrap();
         let f3_y: [u64; 4] = f3[4..8].try_into().unwrap();
-        code += &format!(
-            "\tlet f3 = SyscallComplex256 {{\n\t\tx: {f3_x:?},\n\t\ty: {f3_y:?}\n\t}};\n"
-        );
+        code +=
+            &format!("\tlet f3 = SyscallComplex256 {{\n\t\tx: {f3_x:?},\n\t\ty: {f3_y:?}\n\t}};\n");
         code += "\tassert_eq!(params.f1.x, f3.x);\n";
         code += "\tassert_eq!(params.f1.y, f3.y);\n\n";
         index += 1;
