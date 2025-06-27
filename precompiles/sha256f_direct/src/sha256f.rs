@@ -5,7 +5,7 @@ use fields::PrimeField64;
 use rayon::prelude::*;
 
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{Sha256fDirectTrace, Sha256fDirectTraceRow};
 
@@ -65,21 +65,34 @@ impl<F: PrimeField64> Sha256fSM<F> {
         trace: &mut Sha256fDirectTrace<F>,
         row_offset: usize,
     ) {
-        let step_received = input.step_main;
-        let addr_received = input.addr_main;
-        let state_addr_received = input.state_addr;
-        let input_addr_received = input.input_addr;
-        let state_received = &input.state;
-        let input_received = &input.input;
+        let step_main = input.step_main;
+        let addr_main = input.addr_main;
+        let state_addr = input.state_addr;
+        let input_addr = input.input_addr;
+        let state = &input.state;
+        let input = &input.input;
+
+        // Fill the step_addr
+        trace[row_offset].step_addr = F::from_u64(step_main); // STEP_MAIN
+        trace[row_offset + 1].step_addr = F::from_u32(addr_main); // ADDR_OP
+        trace[row_offset + 2].step_addr = F::from_u32(state_addr); // ADDR_STATE
+        trace[row_offset + 3].step_addr = F::from_u32(input_addr); // ADDR_INPUT
+        trace[row_offset + 4].step_addr = F::from_u32(state_addr); // ADDR_IND_0
+        trace[row_offset + 5].step_addr = F::from_u32(input_addr); // ADDR_IND_1
 
         // Activate the clk_0 selector
         trace[row_offset].in_use_clk_0 = F::ONE;
+
+        // Activate the in_use selector
+        for i in 0..CLOCKS {
+            trace[row_offset + i].in_use = F::ONE;
+        }
 
         // Compute the load state stage
         let mut offset = row_offset;
         let mut prev_state = [0u32; 8];
         for i in 0..CLOCKS_LOAD_STATE {
-            let word = state_received[i];
+            let word = state[i];
             let word_high = (word >> 32) as u32;
             let word_low = (word & 0xFFFF_FFFF) as u32;
 
@@ -114,7 +127,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
         // Compute the load input stage
         let mut w = [0u32; 16];
         for i in 0..CLOCKS_LOAD_INPUT {
-            let word = input_received[i / 2];
+            let word = input[i / 2];
 
             // Store the input as u32 for further processing
             w[i] = if i % 2 == 0 { (word >> 32) as u32 } else { (word & 0xFFFF_FFFF) as u32 };
@@ -124,18 +137,16 @@ impl<F: PrimeField64> Sha256fSM<F> {
             let (a, e) =
                 compute_ae(old_a, old_b, old_c, old_d, old_e, old_f, old_g, old_h, w[i], RC[i]);
 
-            let (a_carry, a) = ((a >> 32) as u32, (a & 0xFFFF_FFFF) as u32);
-            let (e_carry, e) = ((e >> 32) as u32, (e & 0xFFFF_FFFF) as u32);
+            let (a_carry, a) = ((a >> 32) as u8, (a & 0xFFFF_FFFF) as u32);
+            let (e_carry, e) = ((e >> 32) as u8, (e & 0xFFFF_FFFF) as u32);
 
             let row = offset + i;
 
-            // TODO: Restrict carry bits as u8
-
             // Locate the carry
-            trace[row].new_a_carry_bits = F::from_u32(a_carry);
-            trace[row].new_e_carry_bits = F::from_u32(e_carry);
-            // self.std.range_check(a_carry as i64, 1, self.a_range_id);
-            // self.std.range_check(e_carry as i64, 1, self.e_range_id);
+            trace[row].new_a_carry_bits = F::from_u8(a_carry);
+            trace[row].new_e_carry_bits = F::from_u8(e_carry);
+            self.std.range_check(a_carry as i64, 1, self.a_range_id);
+            self.std.range_check(e_carry as i64, 1, self.e_range_id);
 
             // Locate the input bits in the trace
             for j in 0..32 {
@@ -168,24 +179,24 @@ impl<F: PrimeField64> Sha256fSM<F> {
                 w[CLOCKS_LOAD_INPUT - 16],
             ];
             let new_w = compute_w(old_w2, old_w7, old_w15, old_w16);
-            let (new_w_carry, new_w) = ((new_w >> 32) as u32, (new_w & 0xFFFF_FFFF) as u32);
+            let (new_w_carry, new_w) = ((new_w >> 32) as u8, (new_w & 0xFFFF_FFFF) as u32);
 
             let [old_a, old_b, old_c, old_d, old_e, old_f, old_g, old_h] = prev_state;
             #[rustfmt::skip]
             let (a, e) = compute_ae(old_a, old_b, old_c, old_d, old_e, old_f, old_g, old_h, new_w, RC[CLOCKS_LOAD_INPUT + i]);
 
-            let (a_carry, a) = ((a >> 32) as u32, (a & 0xFFFF_FFFF) as u32);
-            let (e_carry, e) = ((e >> 32) as u32, (e & 0xFFFF_FFFF) as u32);
+            let (a_carry, a) = ((a >> 32) as u8, (a & 0xFFFF_FFFF) as u32);
+            let (e_carry, e) = ((e >> 32) as u8, (e & 0xFFFF_FFFF) as u32);
 
             let row = offset + i;
 
             // Locate the carry
-            trace[row].new_a_carry_bits = F::from_u32(a_carry);
-            trace[row].new_e_carry_bits = F::from_u32(e_carry);
-            trace[row].new_w_carry_bits = F::from_u32(new_w_carry);
-            // self.std.range_check(a_carry as i64, 1, self.a_range_id);
-            // self.std.range_check(e_carry as i64, 1, self.e_range_id);
-            // self.std.range_check(new_w_carry as i64, 1, self.w_range_id);
+            trace[row].new_a_carry_bits = F::from_u8(a_carry);
+            trace[row].new_e_carry_bits = F::from_u8(e_carry);
+            trace[row].new_w_carry_bits = F::from_u8(new_w_carry);
+            self.std.range_check(a_carry as i64, 1, self.a_range_id);
+            self.std.range_check(e_carry as i64, 1, self.e_range_id);
+            self.std.range_check(new_w_carry as i64, 1, self.w_range_id);
 
             for j in 0..32 {
                 let bit_a = ((a >> j) & 1) as u8;
@@ -215,7 +226,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
         offset += CLOCKS_MIXING;
 
         for i in 0..CLOCKS_WRITE_STATE {
-            let prev = state_received[i];
+            let prev = state[i];
             let prev_high = prev >> 32;
             let prev_low = prev & 0xFFFF_FFFF;
 
@@ -225,19 +236,19 @@ impl<F: PrimeField64> Sha256fSM<F> {
             let new_high = curr_high + prev_high;
             let new_low = curr_low + prev_low;
             let (new_high_carry, new_high) =
-                ((new_high >> 32) as u32, (new_high & 0xFFFF_FFFF) as u32);
-            let (new_low_carry, new_low) = ((new_low >> 32) as u32, (new_low & 0xFFFF_FFFF) as u32);
+                ((new_high >> 32) as u8, (new_high & 0xFFFF_FFFF) as u32);
+            let (new_low_carry, new_low) = ((new_low >> 32) as u8, (new_low & 0xFFFF_FFFF) as u32);
 
             let mut row = if i == 1 || i == 3 { offset + 1 } else { offset + 3 };
 
             // Locate the state bits in the trace
             let is_a = i < 2;
             if is_a {
-                trace[row].new_a_carry_bits = F::from_u32(new_high_carry);
-                // self.std.range_check(new_carry as i64, 1, self.a_range_id);
+                trace[row].new_a_carry_bits = F::from_u8(new_high_carry);
+                self.std.range_check(new_high_carry as i64, 1, self.a_range_id);
             } else {
-                trace[row].new_e_carry_bits = F::from_u32(new_high_carry);
-                // self.std.range_check(new_carry as i64, 1, self.e_range_id);
+                trace[row].new_e_carry_bits = F::from_u8(new_high_carry);
+                self.std.range_check(new_high_carry as i64, 1, self.e_range_id);
             }
 
             for j in 0..32 {
@@ -251,11 +262,11 @@ impl<F: PrimeField64> Sha256fSM<F> {
             row -= 1;
 
             if is_a {
-                trace[row].new_a_carry_bits = F::from_u32(new_low_carry);
-                // self.std.range_check(new_carry as i64, 1, self.a_range_id);
+                trace[row].new_a_carry_bits = F::from_u8(new_low_carry);
+                self.std.range_check(new_low_carry as i64, 1, self.a_range_id);
             } else {
-                trace[row].new_e_carry_bits = F::from_u32(new_low_carry);
-                // self.std.range_check(new_carry as i64, 1, self.e_range_id);
+                trace[row].new_e_carry_bits = F::from_u8(new_low_carry);
+                self.std.range_check(new_low_carry as i64, 1, self.e_range_id);
             }
 
             for j in 0..32 {
@@ -267,6 +278,11 @@ impl<F: PrimeField64> Sha256fSM<F> {
                 }
             }
         }
+
+        // Perform the zero range checks
+        self.std.range_check(0,  CLOCKS_LOAD_STATE as u64, self.a_range_id);
+        self.std.range_check(0,  CLOCKS_LOAD_STATE as u64, self.e_range_id);
+        self.std.range_check(0,  (CLOCKS_LOAD_STATE + CLOCKS_LOAD_INPUT + CLOCKS_WRITE_STATE)  as u64, self.w_range_id);
 
         #[rustfmt::skip]
         fn compute_ae(old_a: u32, old_b: u32, old_c: u32, old_d: u32, old_e: u32, old_f: u32, old_g: u32, old_h: u32, w: u32, k: u32) -> (u64, u64) {
@@ -360,16 +376,19 @@ impl<F: PrimeField64> Sha256fSM<F> {
         for i in 0..64 {
             let a = PC_A[i];
             let e = PC_E[i];
-            let (a_carry, a) = ((a >> 32) as u32, (a & 0xFFFF_FFFF) as u32);
-            let (e_carry, e) = ((e >> 32) as u32, (e & 0xFFFF_FFFF) as u32);
-            mid_rows[i].new_a_carry_bits = F::from_u32(a_carry);
-            mid_rows[i].new_e_carry_bits = F::from_u32(e_carry);
+            let (a_carry, a) = ((a >> 32) as u8, (a & 0xFFFF_FFFF) as u32);
+            let (e_carry, e) = ((e >> 32) as u8, (e & 0xFFFF_FFFF) as u32);
+            mid_rows[i].new_a_carry_bits = F::from_u8(a_carry);
+            mid_rows[i].new_e_carry_bits = F::from_u8(e_carry);
             for j in 0..32 {
                 let bit_a = ((a >> j) & 1) as u8;
                 let bit_e = ((e >> j) & 1) as u8;
                 mid_rows[i].a[j] = F::from_u8(bit_a);
                 mid_rows[i].e[j] = F::from_u8(bit_e);
             }
+
+            self.std.range_check(a_carry as i64,  (num_available_sha256fs - num_inputs) as u64, self.a_range_id);
+            self.std.range_check(e_carry as i64, (num_available_sha256fs - num_inputs) as u64, self.e_range_id);
         }
 
         // At the end, we should have that a === 4'and e === 4'e
@@ -398,6 +417,14 @@ impl<F: PrimeField64> Sha256fSM<F> {
                 final_rows[row_r - CLOCKS_OP]
             };
         }
+
+        // Perform the zero range checks
+        let count_zeros_a = (num_available_sha256fs - num_inputs) * (CLOCKS_LOAD_STATE +  CLOCKS_WRITE_STATE) + CLOCKS + self.num_non_usable_rows;
+        let count_zeros_e = count_zeros_a;
+        let count_zeros_w = (num_available_sha256fs - num_inputs) * CLOCKS + CLOCKS + self.num_non_usable_rows;
+        self.std.range_check(0,  count_zeros_a as u64, self.a_range_id);
+        self.std.range_check(0,  count_zeros_e as u64, self.e_range_id);
+        self.std.range_check(0,  count_zeros_w as u64, self.w_range_id);
         timer_stop_and_log_trace!(SHA256F_PADDING);
 
         AirInstance::new_from_trace(FromTrace::new(&mut sha256f_trace))
