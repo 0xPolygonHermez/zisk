@@ -32,6 +32,7 @@ const SHA256_SM_ID: usize = 6;
 const ARITH_EQ_SM_ID: usize = 7;
 
 pub struct StaticSMBundle<F: PrimeField64> {
+    process_only_operation_bus: bool,
     mem_sm: Arc<Mem<F>>,
     rom_sm: Arc<RomSM>,
     binary_sm: Arc<BinarySM<F>>,
@@ -43,6 +44,7 @@ pub struct StaticSMBundle<F: PrimeField64> {
 
 impl<F: PrimeField64> StaticSMBundle<F> {
     pub fn new(
+        process_only_operation_bus: bool,
         mem_sm: Arc<Mem<F>>,
         rom_sm: Arc<RomSM>,
         binary_sm: Arc<BinarySM<F>>,
@@ -52,6 +54,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         arith_eq_sm: Arc<ArithEqManager<F>>,
     ) -> Self {
         Self {
+            process_only_operation_bus,
             // main_sm,
             mem_sm,
             rom_sm,
@@ -113,6 +116,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
         &self,
     ) -> impl DataBusTrait<u64, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static {
         StaticDataBus::new(
+            self.process_only_operation_bus,
             self.mem_sm.build_mem_counter(),
             self.binary_sm.build_binary_counter(),
             self.arith_sm.build_arith_counter(),
