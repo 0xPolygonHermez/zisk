@@ -120,6 +120,8 @@ impl ZiskServer {
 
         let mpi_context = initialize_mpi()?;
 
+        self.port += mpi_context.local_rank as u16;
+
         if !self.elf.exists() {
             eprintln!("Error: ELF file '{}' not found.", self.elf.display());
             process::exit(1);

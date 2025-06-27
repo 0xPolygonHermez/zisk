@@ -7,11 +7,13 @@ use std::{
     path::PathBuf,
 };
 
+use crate::commands::initialize_mpi;
+
 #[derive(Parser)]
 #[command(name = "Zisk Prover Client", version, about = "Send commands to the prover server")]
 pub struct ZiskProveClient {
-    /// Address of the server (e.g., 127.0.0.1:7878)
-    pub address: String,
+    /// Port of the server (e.g., 7878)
+    pub port: u16,
 
     #[command(subcommand)]
     pub command: ClientCommand,
@@ -85,8 +87,14 @@ impl ZiskProveClient {
             },
         };
 
+        // Construct server address
+        let mpi_context = initialize_mpi()?;
+        let port = self.port + mpi_context.local_rank as u16;
+
+        let address = format!("localhost:{}", port);
+
         // Open connection
-        let mut stream = TcpStream::connect(&self.address)
+        let mut stream = TcpStream::connect(&address)
             .map_err(|e| anyhow::anyhow!("Failed to connect to server: {}", e))?;
 
         // Serialize and send request
