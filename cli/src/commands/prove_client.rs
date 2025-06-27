@@ -7,14 +7,11 @@ use std::{
     path::PathBuf,
 };
 
-use crate::commands::initialize_mpi;
+use crate::commands::{initialize_mpi, DEFAULT_PORT};
 
 #[derive(Parser)]
 #[command(name = "Zisk Prover Client", version, about = "Send commands to the prover server")]
 pub struct ZiskProveClient {
-    /// Port of the server (e.g., 7878)
-    pub port: u16,
-
     #[command(subcommand)]
     pub command: ClientCommand,
 }
@@ -23,10 +20,18 @@ pub struct ZiskProveClient {
 #[command(rename_all = "lowercase")]
 pub enum ClientCommand {
     /// Get server status
-    Status,
+    Status {
+        /// Port of the server (by default DEFAULT_PORT)
+        #[clap(long)]
+        port: Option<u16>,
+    },
 
     /// Shut down the server
-    Shutdown,
+    Shutdown {
+        /// Port of the server (by default DEFAULT_PORT)
+        #[clap(long)]
+        port: Option<u16>,
+    },
 
     Prove {
         /// Path to the input file
@@ -51,20 +56,28 @@ pub enum ClientCommand {
 
         #[clap(short = 'p')]
         prefix: String,
+
+        /// Port of the server (by default DEFAULT_PORT)
+        #[clap(long)]
+        port: Option<u16>,
     },
     /// Verify constraints from input file
     VerifyConstraints {
         /// Path to the input file
         #[arg(short, long)]
         input: PathBuf,
+
+        /// Port of the server (by default DEFAULT_PORT)
+        #[clap(long)]
+        port: Option<u16>,
     },
 }
 
 impl ZiskProveClient {
     pub fn run(&self) -> Result<()> {
         let request = match &self.command {
-            ClientCommand::Status => ZiskRequest::Status,
-            ClientCommand::Shutdown => ZiskRequest::Shutdown,
+            ClientCommand::Status { port: _ } => ZiskRequest::Status,
+            ClientCommand::Shutdown { port: _ } => ZiskRequest::Shutdown,
             ClientCommand::Prove {
                 input,
                 aggregation,
@@ -72,6 +85,7 @@ impl ZiskProveClient {
                 verify_proofs,
                 output_dir,
                 prefix,
+                port: _,
             } => ZiskRequest::Prove {
                 payload: ZiskProveRequest {
                     input: input.clone(),
@@ -82,14 +96,26 @@ impl ZiskProveClient {
                     prefix: prefix.clone(),
                 },
             },
-            ClientCommand::VerifyConstraints { input } => ZiskRequest::VerifyConstraints {
+            ClientCommand::VerifyConstraints { input, port: _ } => ZiskRequest::VerifyConstraints {
                 payload: ZiskVerifyConstraintsRequest { input: input.clone() },
             },
         };
 
         // Construct server address
         let mpi_context = initialize_mpi()?;
-        let port = self.port + mpi_context.local_rank as u16;
+
+        // Determine the port to use for this client instance.
+        // - If no port is specified, default to DEFAULT_PORT.
+        // - If a port is specified, use it as the base port.
+        // In both cases, the local MPI rank is added to the port to avoid conflicts
+        // when running multiple processes on the same machine.
+        let mut port = match self.command {
+            ClientCommand::Prove { port, .. }
+            | ClientCommand::VerifyConstraints { port, .. }
+            | ClientCommand::Status { port }
+            | ClientCommand::Shutdown { port } => port.unwrap_or(DEFAULT_PORT),
+        };
+        port += mpi_context.local_rank as u16;
 
         let address = format!("localhost:{}", port);
 
@@ -107,8 +133,16 @@ impl ZiskProveClient {
         let mut response_line = String::new();
         reader.read_line(&mut response_line)?;
 
-        let response: ZiskResponse = serde_json::from_str(&response_line)
-            .unwrap_or(ZiskResponse::Error { message: "Failed to parse response".to_string() });
+        let response: ZiskResponse = match serde_json::from_str(&response_line) {
+            Ok(r) => r,
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "Failed to parse server response: {}\nRaw: {}",
+                    e,
+                    response_line
+                ));
+            }
+        };
 
         // Handle response
         match response {

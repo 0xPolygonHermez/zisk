@@ -18,7 +18,7 @@ use crate::commands::{get_proving_key, get_witness_computation_lib, initialize_m
 use crate::ux::print_banner;
 use crate::ZISK_VERSION_MESSAGE;
 
-const DEFAULT_PORT: u16 = 7878;
+pub const DEFAULT_PORT: u16 = 7878;
 const LOG_PATH: &str = "zisk_prover_server.log";
 
 // Structure representing the 'prove' subcommand of cargo.
