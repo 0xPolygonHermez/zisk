@@ -7,6 +7,8 @@ keywords = { workspace = true }
 repository = { workspace = true }
 categories = { workspace = true }
 
+build = "build.rs"
+
 [dependencies]
 zisk-core = { path = "../core" }
 
@@ -16,9 +18,15 @@ proofman = { workspace = true }
 fields = { workspace = true }
 tracing = { workspace = true}
 tracing-subscriber = { workspace = true }
+# Distributed mode (mpi) is only supported on Linux x86_64
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+mpi = { workspace = true }
 
 libc = "0.2"
 
 [features]
 default = []
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(distributed)'] }
