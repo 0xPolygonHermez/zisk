@@ -18,17 +18,17 @@ use std::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsmService {
+    MO,
     MT,
     RH,
-    MO,
 }
 
 impl AsmService {
     pub fn as_str(&self) -> &'static str {
         match self {
+            AsmService::MO => "MO",
             AsmService::MT => "MT",
             AsmService::RH => "RH",
-            AsmService::MO => "MO",
         }
     }
 }
@@ -36,9 +36,9 @@ impl AsmService {
 impl fmt::Display for AsmService {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
+            AsmService::MO => "mo",
             AsmService::MT => "mt",
             AsmService::RH => "rh",
-            AsmService::MO => "mo",
         };
         write!(f, "{}", s)
     }
@@ -76,7 +76,7 @@ impl AsmServices {
             "ZISK_{}_{}",
             Self::port_for(
                 asm_service,
-                base_port.unwrap_or(AsmServices::default_port(asm_service, local_rank)),
+                base_port.unwrap_or(AsmServices::default_port(&AsmService::MO, local_rank)),
                 local_rank
             ),
             local_rank

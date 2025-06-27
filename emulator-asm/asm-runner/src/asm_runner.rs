@@ -21,12 +21,14 @@ pub enum AsmRunError {
     ArcUnwrap,
 }
 
+#[derive(Debug, Clone)]
 pub enum AsmRunnerTraceLevel {
     None,
     Trace,
     ExtendedTrace,
 }
 
+#[derive(Debug, Clone)]
 pub struct AsmRunnerOptions {
     pub log_output: bool,
     pub metrics: bool,
