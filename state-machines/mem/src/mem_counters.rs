@@ -129,7 +129,7 @@ impl MemCounters {
     pub fn load_from_file(
         chunk_id: ChunkId,
     ) -> Result<Vec<[u64; MEM_BUS_DATA_SIZE]>, std::io::Error> {
-        let mut file = File::open(format!("tmp/bus_data/mem_{}.bin", chunk_id))?;
+        let mut file = File::open(format!("tmp/bus_data/mem_{chunk_id}.bin"))?;
         const BUS_DATA_BYTES: usize = MEM_BUS_DATA_SIZE * size_of::<u64>();
         let count = file.metadata().unwrap().len() as usize / BUS_DATA_BYTES;
         let mut buffer = [0u8; BUS_DATA_BYTES];

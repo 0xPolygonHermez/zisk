@@ -117,7 +117,7 @@ impl ZiskProveClient {
         };
         port += mpi_context.local_rank as u16;
 
-        let address = format!("localhost:{}", port);
+        let address = format!("localhost:{port}");
 
         // Open connection
         let mut stream = TcpStream::connect(&address)
@@ -146,8 +146,8 @@ impl ZiskProveClient {
 
         // Handle response
         match response {
-            ZiskResponse::Ok { message } => println!("Success: {}", message),
-            ZiskResponse::Error { message } => eprintln!("Error: {}", message),
+            ZiskResponse::Ok { message } => println!("Success: {message}"),
+            ZiskResponse::Error { message } => eprintln!("Error: {message}"),
         }
 
         Ok(())

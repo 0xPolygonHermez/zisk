@@ -28,7 +28,7 @@ pub fn rom_full_setup(
     };
 
     let output_path = fs::canonicalize(&output_path)
-        .unwrap_or_else(|_| panic!("Failed to get absolute path for {:?}", output_path));
+        .unwrap_or_else(|_| panic!("Failed to get absolute path for {output_path:?}"));
 
     println!();
 
@@ -60,7 +60,7 @@ pub fn rom_full_setup(
 fn ensure_dir_exists(path: &PathBuf) {
     if let Err(e) = std::fs::create_dir_all(path) {
         if e.kind() != std::io::ErrorKind::AlreadyExists {
-            panic!("Failed to create cache directory {:?}: {}", path, e);
+            panic!("Failed to create cache directory {path:?}: {e}");
         }
     }
 }

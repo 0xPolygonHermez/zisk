@@ -50,9 +50,9 @@ impl AsmRunnerMO {
 
         let prefix = AsmServices::shmem_prefix(&crate::AsmService::MO, base_port, local_rank);
 
-        let shmem_input_name = format!("{}_MO_input", prefix);
-        let shmem_output_name = format!("{}_MO_output", prefix);
-        let sem_chunk_done_name = format!("/{}_MO_chunk_done", prefix);
+        let shmem_input_name = format!("{prefix}_MO_input");
+        let shmem_output_name = format!("{prefix}_MO_output");
+        let sem_chunk_done_name = format!("/{prefix}_MO_chunk_done");
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;

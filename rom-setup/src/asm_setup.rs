@@ -22,17 +22,17 @@ pub fn generate_assembly(
     }
 
     let stem = elf.file_stem().unwrap().to_str().unwrap();
-    let new_filename = format!("{}-{}.tmp", stem, elf_hash);
+    let new_filename = format!("{stem}-{elf_hash}.tmp");
     let base_path = output_path.join(new_filename);
     let file_stem = base_path.file_stem().unwrap().to_str().unwrap();
 
-    let bin_mt_file = format!("{}-mt.bin", file_stem);
+    let bin_mt_file = format!("{file_stem}-mt.bin");
     let bin_mt_file = base_path.with_file_name(bin_mt_file);
 
-    let bin_rh_file = format!("{}-rh.bin", file_stem);
+    let bin_rh_file = format!("{file_stem}-rh.bin");
     let bin_rh_file = base_path.with_file_name(bin_rh_file);
 
-    let bin_mo_file = format!("{}-mo.bin", file_stem);
+    let bin_mo_file = format!("{file_stem}-mo.bin");
     let bin_mo_file = base_path.with_file_name(bin_mo_file);
 
     [

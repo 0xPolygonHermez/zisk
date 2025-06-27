@@ -1,6 +1,6 @@
 #[allow(dead_code)]
 fn format_u64_hex(value: u64) -> String {
-    let hex_str = format!("{:016x}", value);
+    let hex_str = format!("{value:016x}");
     hex_str
         .as_bytes()
         .chunks(4)

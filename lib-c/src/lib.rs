@@ -29,7 +29,7 @@ mod tests {
                 y3[3], y3[2], y3[1], y3[0]
             );
             } else {
-                println!("lib c simple test failed calling add_point_ec_c() result={}", result);
+                println!("lib c simple test failed calling add_point_ec_c() result={result}");
             }
         }
 
@@ -49,7 +49,7 @@ mod tests {
                 p3[7], p3[6], p3[5], p3[4]
             );
             } else {
-                println!("lib c simple test failed calling add_point_ec_p_c() result={}", result);
+                println!("lib c simple test failed calling add_point_ec_p_c() result={result}");
             }
         }
     }

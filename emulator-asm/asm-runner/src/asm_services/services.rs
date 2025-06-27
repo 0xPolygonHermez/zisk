@@ -41,7 +41,7 @@ impl fmt::Display for AsmService {
             AsmService::MT => "mt",
             AsmService::RH => "rh",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -92,7 +92,7 @@ impl AsmServices {
         // Check if a service is already running
         for service in &Self::SERVICES {
             let port = Self::port_for(service, self.base_port, self.local_rank);
-            let addr = format!("127.0.0.1:{}", port);
+            let addr = format!("127.0.0.1:{port}");
 
             if TcpStream::connect(&addr).is_ok() {
                 tracing::info!(
@@ -121,7 +121,7 @@ impl AsmServices {
         // Ping status for all services
         for service in &Self::SERVICES {
             self.send_status_request(service)
-                .with_context(|| format!("Service {} failed to respond to ping", service))?;
+                .with_context(|| format!("Service {service} failed to respond to ping"))?;
         }
 
         tracing::info!(
@@ -137,7 +137,7 @@ impl AsmServices {
         // Check if a service is already running
         for service in &Self::SERVICES {
             let port = Self::port_for(service, self.base_port, self.local_rank);
-            let addr = format!("127.0.0.1:{}", port);
+            let addr = format!("127.0.0.1:{port}");
 
             if TcpStream::connect(&addr).is_ok() {
                 tracing::info!("Shutting down service {} running on {}.", service, addr);
@@ -150,7 +150,7 @@ impl AsmServices {
     }
 
     fn wait_for_service_ready(service: &AsmService, port: u16) {
-        let addr = format!("127.0.0.1:{}", port);
+        let addr = format!("127.0.0.1:{port}");
         let timeout = Duration::from_secs(60);
         let retry_delay = Duration::from_millis(100);
         let start = Instant::now();
@@ -164,7 +164,7 @@ impl AsmServices {
             }
         }
 
-        panic!("Timeout: service `{}` not ready on {}", service, addr);
+        panic!("Timeout: service `{service}` not ready on {addr}");
     }
 
     fn start_asm_service(
@@ -174,7 +174,7 @@ impl AsmServices {
         options: &AsmRunnerOptions,
     ) {
         // Prepare command
-        let command_path = trimmed_path.to_string() + &format!("-{}.bin", asm_service);
+        let command_path = trimmed_path.to_string() + &format!("-{asm_service}.bin");
 
         let mut command = Command::new(command_path);
 
@@ -244,7 +244,7 @@ impl AsmServices {
         Res: FromResponsePayload,
     {
         let port = Self::port_for(service, self.base_port, self.local_rank);
-        let addr = format!("127.0.0.1:{}", port);
+        let addr = format!("127.0.0.1:{port}");
 
         let request = req.to_request_payload();
 
@@ -255,7 +255,7 @@ impl AsmServices {
         }
 
         let mut stream =
-            TcpStream::connect(&addr).with_context(|| format!("Failed to connect to {}", addr))?;
+            TcpStream::connect(&addr).with_context(|| format!("Failed to connect to {addr}"))?;
 
         // Set a read timeout to avoid indefinite blocking
         stream
@@ -290,7 +290,7 @@ impl AsmServices {
         let _ = sem_shutdown_done.try_wait();
 
         self.send_shutdown_request(service)
-            .with_context(|| format!("Service {} failed to respond to shutdown", service))?;
+            .with_context(|| format!("Service {service} failed to respond to shutdown"))?;
 
         tracing::info!("Waiting for semaphore {sem_shutdown_done_name}");
 

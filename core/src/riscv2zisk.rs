@@ -82,7 +82,7 @@ impl Riscv2zisk {
         comments: bool,
     ) -> Result<(), Box<dyn Error>> {
         elf2romfile(&self.elf_file, &asm_file.into(), generation_method, log_output, comments)
-            .map_err(|e| format!("Error converting elf to assembly: {}", e).into())
+            .map_err(|e| format!("Error converting elf to assembly: {e}").into())
     }
 
     /// Executes the file conversion process by calling elf2rom()

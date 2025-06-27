@@ -425,7 +425,7 @@ impl<'a> Emu<'a> {
 
                     // debug_assert!(!additional_data.is_empty());
                     if additional_data.is_empty() {
-                        println!("ADDITIONAL DATA IS EMPTY 0x{:X}", address);
+                        println!("ADDITIONAL DATA IS EMPTY 0x{address:X}");
                     }
                     mem_reads.append(&mut additional_data);
                 }
@@ -774,7 +774,7 @@ impl<'a> Emu<'a> {
             STORE_NONE => {}
             STORE_REG => {
                 if instruction.store_offset >= 32 {
-                    println!("instruction ALERT 0 {:?}", instruction);
+                    println!("instruction ALERT 0 {instruction:?}");
                 }
 
                 self.set_reg(
@@ -843,7 +843,7 @@ impl<'a> Emu<'a> {
             STORE_NONE => {}
             STORE_REG => {
                 if instruction.store_offset >= 32 {
-                    println!("instruction ALERT 1 {:?}", instruction);
+                    println!("instruction ALERT 1 {instruction:?}");
                 }
 
                 self.set_reg(
@@ -999,7 +999,7 @@ impl<'a> Emu<'a> {
             STORE_NONE => {}
             STORE_REG => {
                 if instruction.store_offset >= 32 {
-                    println!("instruction ALERT 2 {:?}", instruction);
+                    println!("instruction ALERT 2 {instruction:?}");
                 }
 
                 self.set_reg(
@@ -1270,7 +1270,7 @@ impl<'a> Emu<'a> {
             let minimal_trace = self.run_gen_trace(options, &par_emu_options);
 
             for (c, chunk) in minimal_trace.iter().enumerate() {
-                println!("Chunk {}:", c);
+                println!("Chunk {c}:");
                 println!("\tStart state:");
                 println!("\t\tpc=0x{:x}", chunk.start_state.pc);
                 println!("\t\tsp=0x{:x}", chunk.start_state.sp);
@@ -1365,7 +1365,7 @@ impl<'a> Emu<'a> {
         // Print stats report
         if options.stats {
             let report = self.ctx.stats.report();
-            println!("{}", report);
+            println!("{report}");
         }
     }
 
@@ -2091,7 +2091,7 @@ impl<'a> Emu<'a> {
         let regs_array: [u64; 32] = self.get_regs_array();
         print!("Emu::print_regs(): ");
         for (i, r) in regs_array.iter().enumerate() {
-            print!("x{}={}={:x} ", i, r, r);
+            print!("x{i}={r}={r:x} ");
         }
         println!();
     }

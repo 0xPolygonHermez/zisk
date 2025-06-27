@@ -270,7 +270,7 @@ impl ZiskService {
         let request: ZiskRequest = match serde_json::from_str(&line) {
             Ok(req) => req,
             Err(e) => {
-                let response = ZiskResponse::Error { message: format!("Invalid JSON: {}", e) };
+                let response = ZiskResponse::Error { message: format!("Invalid JSON: {e}") };
                 Self::send_json(&mut stream, &response)?;
                 return Ok(false);
             }

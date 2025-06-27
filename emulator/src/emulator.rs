@@ -48,7 +48,7 @@ impl ZiskEmulator {
         options: &EmuOptions,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
-            println!("process_directory() directory={}", directory);
+            println!("process_directory() directory={directory}");
         }
 
         // List all files in the directory
@@ -73,7 +73,7 @@ impl ZiskEmulator {
         callback: Option<impl Fn(EmuTrace)>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
-            println!("process_elf_file() elf_file={}", elf_filename);
+            println!("process_elf_file() elf_file={elf_filename}");
         }
 
         // Create an instance of the RISC-V -> ZisK program transpiler (Riscv2zisk) with the ELF
@@ -95,7 +95,7 @@ impl ZiskEmulator {
         callback: Option<impl Fn(EmuTrace)>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
-            println!("process_rom_file() rom_file={}", rom_filename);
+            println!("process_rom_file() rom_file={rom_filename}");
         }
 
         // TODO: load from file
@@ -144,8 +144,7 @@ impl ZiskEmulator {
 
             let clocks_per_step = cpu_frequency / tp;
             println!(
-                "process_rom() steps={} duration={:.4} tp={:.4} Msteps/s freq={:.4} {:.4} clocks/step",
-                steps, secs, tp, cpu_frequency, clocks_per_step
+                "process_rom() steps={steps} duration={secs:.4} tp={tp:.4} Msteps/s freq={cpu_frequency:.4} {clocks_per_step:.4} clocks/step"
             );
         }
 
@@ -166,7 +165,7 @@ impl ZiskEmulator {
 
             // Log the output to console
             for o in &output {
-                println!("{:08x}", o);
+                println!("{o:08x}");
             }
         }
 
@@ -291,7 +290,7 @@ impl Emulator for ZiskEmulator {
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         // Log this call
         if options.verbose {
-            println!("emulate()\n{}", options);
+            println!("emulate()\n{options}");
         }
 
         // Check options

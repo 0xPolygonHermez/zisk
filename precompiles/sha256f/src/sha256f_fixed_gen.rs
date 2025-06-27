@@ -69,8 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         &mut [conn_a, conn_b, conn_c, conn_d, gate_op, carry_enabled],
     );
     println!(
-        "CONN_A, CONN_B, CONN_C, CONN_D, GATE_OP and CARRY_ENABLED columns written to {}",
-        output_file
+        "CONN_A, CONN_B, CONN_C, CONN_D, GATE_OP and CARRY_ENABLED columns written to {output_file}"
     );
 
     Ok(())

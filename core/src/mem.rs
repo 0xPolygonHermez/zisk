@@ -179,8 +179,7 @@ impl Mem {
         // Check that the start address is alligned to 8 bytes
         if (start & 0x07) != 0 {
             panic!(
-                "Mem::add_read_section() got a start address={:x} not alligned to 8 bytes",
-                start
+                "Mem::add_read_section() got a start address={start:x} not alligned to 8 bytes"
             );
         }
 
@@ -245,14 +244,13 @@ impl Mem {
         // Check that the start address is alligned to 8 bytes
         if (start & 0x07) != 0 {
             panic!(
-                "Mem::add_write_section() got a start address={:x} not alligned to 8 bytes",
-                start
+                "Mem::add_write_section() got a start address={start:x} not alligned to 8 bytes"
             );
         }
 
         // Check the start address is not zero
         if start == 0 {
-            panic!("Mem::add_write_section() got invalid start={}", start);
+            panic!("Mem::add_write_section() got invalid start={start}");
         }
 
         // Check the write section address has not been set before this call, since one only write
@@ -296,7 +294,7 @@ impl Mem {
                 8 => u64::from_le_bytes(
                     self.write_section.buffer[read_position..read_position + 8].try_into().unwrap(),
                 ),
-                _ => panic!("Mem::read() invalid width={}", width),
+                _ => panic!("Mem::read() invalid width={width}"),
             };
 
             //println!("Mem::read() addr={:x} width={} value={:x}={}", addr, width, value, value);
@@ -316,7 +314,7 @@ impl Mem {
         }) {
             &self.read_sections[section]
         } else {
-            panic!("Mem::read() section not found for addr: {} with width: {}", addr, width);
+            panic!("Mem::read() section not found for addr: {addr} with width: {width}");
         };
 
         // Calculate the buffer relative read position
@@ -338,7 +336,7 @@ impl Mem {
             8 => u64::from_le_bytes(
                 section.buffer[read_position..read_position + 8].try_into().unwrap(),
             ),
-            _ => panic!("Mem::read() invalid width={}", width),
+            _ => panic!("Mem::read() invalid width={width}"),
         }
     }
 
@@ -386,7 +384,7 @@ impl Mem {
                 8 => u64::from_le_bytes(
                     self.write_section.buffer[read_position..read_position + 8].try_into().unwrap(),
                 ),
-                _ => panic!("Mem::read() invalid width={}", width),
+                _ => panic!("Mem::read() invalid width={width}"),
             };
 
             // If is a single not aligned operation, return the aligned address value
@@ -448,7 +446,7 @@ impl Mem {
             &self.read_sections[section]
         } else {
             println!("sections: {:?}", self.read_sections);
-            panic!("Mem::read() section not found for addr: {} with width: {}", addr, width);
+            panic!("Mem::read() section not found for addr: {addr} with width: {width}");
         };
 
         // Calculate the read position
@@ -467,8 +465,7 @@ impl Mem {
                 section.buffer[read_position..read_position + 8].try_into().unwrap(),
             ),
             _ => panic!(
-                "Mem::read() invalid addr:0x{:X} read_position:{} width:{}",
-                addr, read_position, width
+                "Mem::read() invalid addr:0x{addr:X} read_position:{read_position} width:{width}"
             ),
         };
 
@@ -574,7 +571,7 @@ impl Mem {
                 .copy_from_slice(&(val as u32).to_le_bytes()),
             8 => section.buffer[write_position..write_position + 8]
                 .copy_from_slice(&val.to_le_bytes()),
-            _ => panic!("Mem::write_silent() invalid width={}", width),
+            _ => panic!("Mem::write_silent() invalid width={width}"),
         };
     }
 
@@ -676,7 +673,7 @@ impl Mem {
                 .copy_from_slice(&(val as u32).to_le_bytes()),
             8 => section.buffer[write_position..write_position + 8]
                 .copy_from_slice(&val.to_le_bytes()),
-            _ => panic!("Mem::write_silent() invalid width={}", width),
+            _ => panic!("Mem::write_silent() invalid width={width}"),
         }
 
         additional_data
@@ -737,7 +734,7 @@ impl Mem {
             1 => raw_data & M8,
             2 => raw_data & M16,
             4 => raw_data & M32,
-            _ => panic!("Mem::get_single_not_aligned_data() invalid width={}", width),
+            _ => panic!("Mem::get_single_not_aligned_data() invalid width={width}"),
         }
     }
 
@@ -759,7 +756,7 @@ impl Mem {
             2 => raw_data & M16,
             4 => raw_data & M32,
             8 => raw_data,
-            _ => panic!("Mem::get_double_not_aligned_data() invalid width={}", width),
+            _ => panic!("Mem::get_double_not_aligned_data() invalid width={width}"),
         }
     }
 
