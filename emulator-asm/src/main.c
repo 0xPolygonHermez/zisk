@@ -2530,7 +2530,7 @@ void server_setup (void)
             fflush(stderr);
             exit(-1);
         }
-        if (verbose) printf("sem_open(chunk_done) succeeded\n");
+        if (verbose) printf("sem_open(%s) succeeded\n", sem_chunk_done_name);
     }
 
     /*********************/
@@ -2539,14 +2539,14 @@ void server_setup (void)
     
     assert(strlen(sem_shutdown_done_name) > 0);
     sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT, 0666, 0);
-    if (sem_chunk_done == SEM_FAILED)
+    if (sem_shutdown_done == SEM_FAILED)
     {
         printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
     }
-    if (verbose) printf("sem_open(shutdown_done) succeeded\n");
+    if (verbose) printf("sem_open(%s) succeeded\n", sem_shutdown_done_name);
 }
 
 void server_reset (void)
