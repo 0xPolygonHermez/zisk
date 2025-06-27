@@ -130,19 +130,6 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
     range_check(expression: new_e_carry_bits, min: 0, max: P2_3 - 1);
     range_check(expression: new_w_carry_bits, min: 0, max: P2_3 - 1);
 
-    // TODO: Investigate whether the following is more performant than rc
-    // expr rc_a = 1;
-    // expr rc_e = 1;
-    // expr rc_w = 1;
-    // for (int i = 0; i < P2_3; i++) {
-    //     rc_a *= (new_a_carry_bits - i);
-    //     rc_e *= (new_e_carry_bits - i);
-    //     rc_w *= (new_w_carry_bits - i);
-    // }
-    // rc_a === 0;
-    // rc_e === 0;
-    // rc_w === 0;
-
     const expr a_packed = pack(a);
     const expr e_packed = pack(e);
     const expr w_packed = pack(w);
@@ -234,23 +221,20 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
     // println(mem_addr);
 
     const expr main_step = clock_map(step_addr, STEP_MAIN, start: 0, end: 17);
-    // println(main_step);
 
     col witness in_use_clk_0;
-    in_use_clk_0 * (1 - in_use_clk_0) === 0; // it is a selector
+    in_use_clk_0 * (1 - in_use_clk_0) === 0;
     (1 - CLK_0) * in_use_clk_0 === 0; // it can only be active when CLK_0 is active
 
     col witness in_use;
-    in_use * (1 - in_use) === 0; // it is a selector
-    (1 - CLK_0) * (in_use - 'in_use) === 0; // if activated, it must keep the
-                                            // keep the same value during the circuit
-    // Note: We needed to cancel the constraint in the last block because the last block of the circuit is not used
+    in_use * (1 - in_use) === 0;
+    (1 - CLK_0) * (in_use - 'in_use) === 0; // if activated, it must be activated
+                                            // during the rest of the clocks
 
-    // in_use is active iff in_use_clk_0 is active
-    CLK_0 * (in_use - in_use_clk_0) === 0;
+    // if in_use_clk_0 is active then so is in_use
+    CLK_0 * (in_use_clk_0 - in_use) === 0;
 
     const expr mem_sel = clock_set2(in_use, start: 0, end: 17);
-    // println(mem_sel);
 
     precompiled_mem_op(
             is_write: is_writing_state,
