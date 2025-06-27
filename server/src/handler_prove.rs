@@ -1,14 +1,14 @@
+use bytemuck::cast_slice;
 use colored::Colorize;
 use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::{fs::File, path::PathBuf};
 use witness::WitnessLibrary;
 use zisk_common::ProofLog;
-use std::io::Write;
-use bytemuck::cast_slice;
 
 use crate::{ServerConfig, ZiskResponse};
 
@@ -101,10 +101,12 @@ impl ZiskServiceProveHandler {
                     .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))
                     .expect("Failed to generate proof");
                 // Save the vadcop final proof
-                let proof_path = request.folder.join(format!("{}-vadcop_final_proof.bin", request.prefix));
+                let proof_path =
+                    request.folder.join(format!("{}-vadcop_final_proof.bin", request.prefix));
                 // write a Vec<u64> to a bin file stored in output_file_path
                 let mut file = File::create(proof_path).expect("Error while creating file");
-                file.write_all(cast_slice(&vadcop_final_proof.unwrap())).expect("Error while writing to file");
+                file.write_all(cast_slice(&vadcop_final_proof.unwrap()))
+                    .expect("Error while writing to file");
             }
         }
 
