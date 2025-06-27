@@ -4515,6 +4515,7 @@ version = "0.9.0"
 dependencies = [
  "fields",
  "libc",
+ "mpi",
  "proofman",
  "proofman-common",
  "tracing",
