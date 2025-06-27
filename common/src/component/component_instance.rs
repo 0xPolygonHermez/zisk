@@ -148,6 +148,9 @@ macro_rules! table_instance {
 
                     Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
                 } else {
+                    multiplicity.par_iter().for_each(|m| {
+                        m.swap(0, std::sync::atomic::Ordering::Relaxed);
+                    });
                     None
                 }
             }
@@ -264,6 +267,11 @@ macro_rules! table_instance_array {
                         false,
                     )))
                 } else {
+                    multiplicities.par_iter().for_each(|vec| {
+                        for i in 0..vec.len() {
+                            vec[i].swap(0, std::sync::atomic::Ordering::Relaxed);
+                        }
+                    });
                     None
                 }
             }

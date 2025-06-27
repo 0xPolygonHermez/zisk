@@ -18,7 +18,7 @@ use crate::commands::{get_proving_key, get_witness_computation_lib, initialize_m
 use crate::ux::print_banner;
 use crate::ZISK_VERSION_MESSAGE;
 
-const DEFAULT_PORT: u16 = 7878;
+pub const DEFAULT_PORT: u16 = 7878;
 const LOG_PATH: &str = "zisk_prover_server.log";
 
 // Structure representing the 'prove' subcommand of cargo.
@@ -53,18 +53,6 @@ pub struct ZiskServer {
 
     #[clap(short = 'c', long)]
     pub chunk_size_bits: Option<u64>,
-
-    #[clap(short = 'r', long, default_value_t = false)]
-    pub preallocate: bool,
-
-    #[clap(short = 't', long)]
-    pub max_streams: Option<usize>,
-
-    #[clap(short = 'n', long)]
-    pub number_threads_witness: Option<usize>,
-
-    #[clap(short = 'x', long)]
-    pub max_witness_stored: Option<usize>,
 
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
     #[clap(short = 'l', long, action = clap::ArgAction::SetTrue)]
@@ -103,6 +91,28 @@ pub struct ZiskServer {
     // PRECOMPILES OPTIONS
     /// Sha256f script path
     pub sha256f_script: Option<PathBuf>,
+
+    #[clap(short = 'h', long, default_value_t = false)]
+    pub verify_constraints: bool,
+
+    #[clap(short = 'a', long, default_value_t = false)]
+    pub aggregation: bool,
+
+    #[clap(short = 'f', long, default_value_t = false)]
+    pub final_snark: bool,
+
+    /// GPU PARAMS
+    #[clap(short = 'r', long, default_value_t = false)]
+    pub preallocate: bool,
+
+    #[clap(short = 't', long)]
+    pub max_streams: Option<usize>,
+
+    #[clap(short = 'n', long)]
+    pub number_threads_witness: Option<usize>,
+
+    #[clap(short = 'x', long)]
+    pub max_witness_stored: Option<usize>,
 }
 
 impl ZiskServer {
@@ -112,6 +122,8 @@ impl ZiskServer {
         print_banner();
 
         let mpi_context = initialize_mpi()?;
+
+        self.port += mpi_context.local_rank as u16;
 
         if !self.elf.exists() {
             eprintln!("Error: ELF file '{}' not found.", self.elf.display());
@@ -225,6 +237,9 @@ impl ZiskServer {
             sha256f_script,
             self.chunk_size_bits,
             asm_runner_options,
+            self.verify_constraints,
+            self.aggregation,
+            self.final_snark,
             gpu_params,
         );
 

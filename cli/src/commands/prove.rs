@@ -2,7 +2,6 @@ use crate::{
     commands::{
         cli_fail_if_macos, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
     },
-    proof_log,
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -27,7 +26,7 @@ use std::{
     fs::{self, File},
     path::{Path, PathBuf},
 };
-use zisk_common::ZiskLibInitFn;
+use zisk_common::{ProofLog, ZiskLibInitFn};
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -369,9 +368,9 @@ impl ZiskProve {
             tracing::info!("      time: {} seconds, steps: {}", elapsed, result.executed_steps);
 
             if let Some(proof_id) = proof_id {
-                let logs = proof_log::ProofLog::new(result.executed_steps, proof_id, elapsed);
+                let logs = ProofLog::new(result.executed_steps, proof_id, elapsed);
                 let log_path = self.output_dir.join("result.json");
-                proof_log::ProofLog::write_json_log(&log_path, &logs)
+                ProofLog::write_json_log(&log_path, &logs)
                     .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
                 // Save the vadcop final proof
                 let output_file_path = self.output_dir.join("proofs/vadcop_final_proof.bin");

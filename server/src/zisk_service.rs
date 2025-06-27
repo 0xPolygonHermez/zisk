@@ -1,10 +1,9 @@
 use std::{
     collections::HashMap,
     io::{BufRead, BufReader, Write},
-    net::TcpListener,
-    net::TcpStream,
+    net::{TcpListener, TcpStream},
     path::PathBuf,
-    sync::Arc,
+    sync::{atomic::AtomicBool, Arc},
     time::Instant,
 };
 
@@ -76,6 +75,10 @@ pub struct ServerConfig {
     /// Additional options for the ASM runner
     pub asm_runner_options: AsmRunnerOptions,
 
+    pub verify_constraints: bool,
+    pub aggregation: bool,
+    pub final_snark: bool,
+
     pub gpu_params: ParamsGPU,
 }
 
@@ -95,6 +98,9 @@ impl ServerConfig {
         sha256f_script: PathBuf,
         chunk_size_bits: Option<u64>,
         asm_runner_options: AsmRunnerOptions,
+        verify_constraints: bool,
+        aggregation: bool,
+        final_snark: bool,
         gpu_params: ParamsGPU,
     ) -> Self {
         Self {
@@ -113,6 +119,9 @@ impl ServerConfig {
             server_id: Uuid::new_v4(),
             chunk_size_bits,
             asm_runner_options,
+            verify_constraints,
+            aggregation,
+            final_snark,
             gpu_params,
         }
     }
@@ -145,6 +154,7 @@ pub struct ZiskService {
     proofman: ProofMan<Goldilocks>,
     witness_lib: Box<dyn WitnessLibrary<Goldilocks>>,
     asm_services: AsmServices,
+    is_busy: AtomicBool,
 }
 
 impl ZiskService {
@@ -183,9 +193,9 @@ impl ZiskService {
             proofman = ProofMan::<Goldilocks>::new(
                 config.proving_key.clone(),
                 config.custom_commits_map.clone(),
-                true,
-                false,
-                false,
+                config.verify_constraints,
+                config.aggregation,
+                config.final_snark,
                 config.gpu_params.clone(),
                 config.verbose.into(),
                 Some(mpi_context.universe),
@@ -198,10 +208,10 @@ impl ZiskService {
             proofman = ProofMan::<Goldilocks>::new(
                 config.proving_key.clone(),
                 config.custom_commits_map.clone(),
-                true,
-                false,
-                false,
-                ParamsGPU::default(),
+                config.verify_constraints,
+                config.aggregation,
+                config.final_snark,
+                config.gpu_params.clone(),
                 config.verbose.into(),
                 None,
             )
@@ -210,7 +220,13 @@ impl ZiskService {
 
         proofman.register_witness(witness_lib.as_mut(), library);
 
-        Ok(Self { config: Arc::new(config), proofman, witness_lib, asm_services })
+        Ok(Self {
+            config: Arc::new(config),
+            proofman,
+            witness_lib,
+            asm_services,
+            is_busy: AtomicBool::new(false),
+        })
     }
 
     pub fn run(&mut self) -> std::io::Result<()> {
@@ -263,6 +279,7 @@ impl ZiskService {
         info_file!("Received request: {:?}", request);
 
         let mut must_shutdown = false;
+        self.is_busy.store(true, std::sync::atomic::Ordering::SeqCst);
         let response = match request {
             ZiskRequest::Status => ZiskServiceStatusHandler::handle(&config),
             ZiskRequest::Shutdown => {
@@ -279,8 +296,14 @@ impl ZiskService {
                 )
             }
 
-            ZiskRequest::Prove { payload } => ZiskServiceProveHandler::handle(&config, payload),
+            ZiskRequest::Prove { payload } => ZiskServiceProveHandler::handle(
+                &config,
+                payload,
+                &self.proofman,
+                self.witness_lib.as_mut(),
+            ),
         };
+        self.is_busy.store(false, std::sync::atomic::Ordering::SeqCst);
 
         Self::send_json(&mut stream, &response)?;
         Ok(must_shutdown)
