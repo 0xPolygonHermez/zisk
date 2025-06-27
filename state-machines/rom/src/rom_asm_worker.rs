@@ -3,10 +3,10 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use asm_runner::AsmRunnerRomH;
+use asm_runner::AsmRunnerRH;
 
 pub struct RomAsmWorker {
-    handle: Option<JoinHandle<AsmRunnerRomH>>,
+    handle: Option<JoinHandle<AsmRunnerRH>>,
 }
 
 impl RomAsmWorker {
@@ -18,7 +18,7 @@ impl RomAsmWorker {
 
     pub fn launch_task(&mut self, asm_path: PathBuf, input_data_path: Option<PathBuf>) {
         let handle = thread::spawn(move || {
-            AsmRunnerRomH::run(
+            AsmRunnerRH::run(
                 &asm_path,
                 input_data_path.as_deref(),
                 Self::SHM_DEFAULT_SIZE,
@@ -28,7 +28,7 @@ impl RomAsmWorker {
         self.handle = Some(handle);
     }
 
-    pub fn wait_for_task(&mut self) -> AsmRunnerRomH {
+    pub fn wait_for_task(&mut self) -> AsmRunnerRH {
         if let Some(handle) = self.handle.take() {
             handle.join().unwrap()
         } else {
