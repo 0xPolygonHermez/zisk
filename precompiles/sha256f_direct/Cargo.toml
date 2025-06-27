@@ -1,5 +1,5 @@
 [package]
-name = "precomp-sha256f-direct"
+name = "precomp-sha256f"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -37,4 +37,4 @@ generic-array = "0.14"
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
 diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
-disable-distributed = ["proofman-common/disable-distributed"]
+disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]

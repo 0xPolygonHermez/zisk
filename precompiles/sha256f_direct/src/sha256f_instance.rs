@@ -15,7 +15,7 @@ use zisk_common::{
     InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::Sha256fDirectTrace;
+use zisk_pil::Sha256fTrace;
 
 /// The `Sha256fInstance` struct represents an instance for the Sha256f State Machine.
 ///
@@ -89,7 +89,7 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
-            Sha256fDirectTrace::<F>::AIR_ID,
+            Sha256fTrace::<F>::AIR_ID,
             "Sha256fInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );

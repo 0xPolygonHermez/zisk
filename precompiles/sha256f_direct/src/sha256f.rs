@@ -7,7 +7,7 @@ use rayon::prelude::*;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_pil::{Sha256fDirectTrace, Sha256fDirectTraceRow};
+use zisk_pil::{Sha256fTrace, Sha256fTraceRow};
 
 use super::{sha256f_constants::*, Sha256fInput};
 
@@ -24,7 +24,6 @@ pub struct Sha256fSM<F: PrimeField64> {
     /// Range checks ID's
     a_range_id: usize,
     e_range_id: usize,
-    w_range_id: usize,
 }
 
 impl<F: PrimeField64> Sha256fSM<F> {
@@ -34,21 +33,13 @@ impl<F: PrimeField64> Sha256fSM<F> {
     /// A new `Sha256fSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_sha256fs = Sha256fDirectTrace::<usize>::NUM_ROWS / CLOCKS - 1;
-        let num_non_usable_rows = Sha256fDirectTrace::<usize>::NUM_ROWS % CLOCKS;
+        let num_available_sha256fs = Sha256fTrace::<usize>::NUM_ROWS / CLOCKS - 1;
+        let num_non_usable_rows = Sha256fTrace::<usize>::NUM_ROWS % CLOCKS;
 
         let a_range_id = std.get_range(0, (1 << 3) - 1, None);
         let e_range_id = std.get_range(0, (1 << 3) - 1, None);
-        let w_range_id = std.get_range(0, (1 << 3) - 1, None);
 
-        Arc::new(Self {
-            std,
-            num_available_sha256fs,
-            num_non_usable_rows,
-            a_range_id,
-            e_range_id,
-            w_range_id,
-        })
+        Arc::new(Self { std, num_available_sha256fs, num_non_usable_rows, a_range_id, e_range_id })
     }
 
     /// Processes a slice of operation data, updating the trace and multiplicities.
@@ -62,7 +53,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
     pub fn process_input(
         &self,
         input: &Sha256fInput,
-        trace: &mut Sha256fDirectTrace<F>,
+        trace: &mut Sha256fTrace<F>,
         row_offset: usize,
     ) {
         let step_main = input.step_main;
@@ -84,7 +75,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
         trace[row_offset].in_use_clk_0 = F::ONE;
 
         // Activate the in_use selector
-        for i in 0..CLOCKS {
+        for i in 0..18 {
             trace[row_offset + i].in_use = F::ONE;
         }
 
@@ -196,7 +187,6 @@ impl<F: PrimeField64> Sha256fSM<F> {
             trace[row].new_w_carry_bits = F::from_u8(new_w_carry);
             self.std.range_check(a_carry as i64, 1, self.a_range_id);
             self.std.range_check(e_carry as i64, 1, self.e_range_id);
-            self.std.range_check(new_w_carry as i64, 1, self.w_range_id);
 
             for j in 0..32 {
                 let bit_a = ((a >> j) & 1) as u8;
@@ -280,9 +270,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
         }
 
         // Perform the zero range checks
-        self.std.range_check(0,  CLOCKS_LOAD_STATE as u64, self.a_range_id);
-        self.std.range_check(0,  CLOCKS_LOAD_STATE as u64, self.e_range_id);
-        self.std.range_check(0,  (CLOCKS_LOAD_STATE + CLOCKS_LOAD_INPUT + CLOCKS_WRITE_STATE)  as u64, self.w_range_id);
+        self.std.range_check(0, CLOCKS_LOAD_STATE as u64, self.a_range_id);
+        self.std.range_check(0, CLOCKS_LOAD_STATE as u64, self.e_range_id);
 
         #[rustfmt::skip]
         fn compute_ae(old_a: u32, old_b: u32, old_c: u32, old_d: u32, old_e: u32, old_f: u32, old_g: u32, old_h: u32, w: u32, k: u32) -> (u64, u64) {
@@ -328,7 +317,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness(&self, inputs: &[Vec<Sha256fInput>]) -> AirInstance<F> {
-        let num_rows = Sha256fDirectTrace::<F>::NUM_ROWS;
+        let num_rows = Sha256fTrace::<F>::NUM_ROWS;
         let num_available_sha256fs = self.num_available_sha256fs;
 
         // Check that we can fit all the sha256fs in the trace
@@ -353,7 +342,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
         );
 
         timer_start_trace!(SHA256F_TRACE);
-        let mut sha256f_trace = Sha256fDirectTrace::new_zeroes();
+        let mut sha256f_trace = Sha256fTrace::new_zeroes();
 
         // Fill the trace
         let mut index = 0;
@@ -368,11 +357,11 @@ impl<F: PrimeField64> Sha256fSM<F> {
 
         timer_start_trace!(SHA256F_PADDING);
         // Set a = e = w = 0 for the state and input rows
-        let zero_row = Sha256fDirectTraceRow::<F>::default();
+        let zero_row = Sha256fTraceRow::<F>::default();
 
         // precompute compute_ae() with initial a = e = 0 (PC_A and PC_E)
         // compute_w() with w = 0 is equal to 0, nothing to do
-        let mut mid_rows = vec![Sha256fDirectTraceRow::<F>::default(); 64];
+        let mut mid_rows = vec![Sha256fTraceRow::<F>::default(); 64];
         for i in 0..64 {
             let a = PC_A[i];
             let e = PC_E[i];
@@ -387,12 +376,20 @@ impl<F: PrimeField64> Sha256fSM<F> {
                 mid_rows[i].e[j] = F::from_u8(bit_e);
             }
 
-            self.std.range_check(a_carry as i64,  (num_available_sha256fs - num_inputs) as u64, self.a_range_id);
-            self.std.range_check(e_carry as i64, (num_available_sha256fs - num_inputs) as u64, self.e_range_id);
+            self.std.range_check(
+                a_carry as i64,
+                (num_available_sha256fs - num_inputs) as u64,
+                self.a_range_id,
+            );
+            self.std.range_check(
+                e_carry as i64,
+                (num_available_sha256fs - num_inputs) as u64,
+                self.e_range_id,
+            );
         }
 
         // At the end, we should have that a === 4'and e === 4'e
-        let mut final_rows = vec![Sha256fDirectTraceRow::<F>::default(); 4];
+        let mut final_rows = vec![Sha256fTraceRow::<F>::default(); 4];
         for i in 0..4 {
             let a = (PC_A[60 + i] & 0xFFFF_FFFF) as u32;
             let e = (PC_E[60 + i] & 0xFFFF_FFFF) as u32;
@@ -419,12 +416,12 @@ impl<F: PrimeField64> Sha256fSM<F> {
         }
 
         // Perform the zero range checks
-        let count_zeros_a = (num_available_sha256fs - num_inputs) * (CLOCKS_LOAD_STATE +  CLOCKS_WRITE_STATE) + CLOCKS + self.num_non_usable_rows;
-        let count_zeros_e = count_zeros_a;
-        let count_zeros_w = (num_available_sha256fs - num_inputs) * CLOCKS + CLOCKS + self.num_non_usable_rows;
-        self.std.range_check(0,  count_zeros_a as u64, self.a_range_id);
-        self.std.range_check(0,  count_zeros_e as u64, self.e_range_id);
-        self.std.range_check(0,  count_zeros_w as u64, self.w_range_id);
+        let count_zeros = (num_available_sha256fs - num_inputs)
+            * (CLOCKS_LOAD_STATE + CLOCKS_WRITE_STATE)
+            + CLOCKS
+            + self.num_non_usable_rows;
+        self.std.range_check(0, count_zeros as u64, self.a_range_id);
+        self.std.range_check(0, count_zeros as u64, self.e_range_id);
         timer_stop_and_log_trace!(SHA256F_PADDING);
 
         AirInstance::new_from_trace(FromTrace::new(&mut sha256f_trace))

@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "14184dc2091ff97a3680afec2e5afb19acf0086cf68ec7637532cc7471ee5495";
+pub const PILOUT_HASH: &str = "262b0ed017e3d4fc9dd035ee330d073dfeb32fb43e6819a856da1040b9c90306";
 
 //AIRGROUP CONSTANTS
 
@@ -62,7 +62,7 @@ pub const KECCAKF_AIR_IDS: &[usize] = &[17];
 
 pub const KECCAKF_TABLE_AIR_IDS: &[usize] = &[18];
 
-pub const SHA_256_F_DIRECT_AIR_IDS: &[usize] = &[19];
+pub const SHA_256_F_AIR_IDS: &[usize] = &[19];
 
 pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[20];
 
@@ -260,11 +260,11 @@ trace!(KeccakfTableTrace<F> {
  multiplicity: [F; 1],
 },  0, 18, 524288 );
 
-trace!(Sha256fDirectFixed<F> {
+trace!(Sha256fFixed<F> {
  CLK_0: F, __L1__: F,
 },  0, 19, 256 );
 
-trace!(Sha256fDirectTrace<F> {
+trace!(Sha256fTrace<F> {
  a: [F; 32], e: [F; 32], w: [F; 32], new_a_carry_bits: F, new_e_carry_bits: F, new_w_carry_bits: F, step_addr: F, in_use_clk_0: F, in_use: F,
 },  0, 19, 256 );
 
@@ -372,7 +372,7 @@ values!(KeccakfTableAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(Sha256fDirectAirGroupValues<F> {
+values!(Sha256fAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 

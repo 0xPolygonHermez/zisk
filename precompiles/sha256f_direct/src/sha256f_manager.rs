@@ -7,7 +7,7 @@ use zisk_common::{
     InstanceInfo, PayloadType, Planner,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::Sha256fDirectTrace;
+use zisk_pil::Sha256fTrace;
 
 use crate::{Sha256fCounterInputGen, Sha256fInstance, Sha256fPlanner, Sha256fSM};
 
@@ -53,8 +53,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for Sha256fManager<F> {
         let num_available_sha256fs = self.sha256f_sm.num_available_sha256fs;
 
         Box::new(Sha256fPlanner::new().add_instance(InstanceInfo::new(
-            Sha256fDirectTrace::<usize>::AIRGROUP_ID,
-            Sha256fDirectTrace::<usize>::AIR_ID,
+            Sha256fTrace::<usize>::AIRGROUP_ID,
+            Sha256fTrace::<usize>::AIR_ID,
             num_available_sha256fs,
             ZiskOperationType::Sha256,
         )))
@@ -73,7 +73,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for Sha256fManager<F> {
     /// Panics if the provided `air_id` is not supported.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            id if id == Sha256fDirectTrace::<usize>::AIR_ID => {
+            id if id == Sha256fTrace::<usize>::AIR_ID => {
                 Box::new(Sha256fInstance::new(self.sha256f_sm.clone(), ictx))
             }
             _ => {

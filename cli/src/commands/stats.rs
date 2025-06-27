@@ -11,12 +11,7 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
-use std::{
-    collections::HashMap,
-    env, fs,
-    path::{Path, PathBuf},
-    thread,
-};
+use std::{collections::HashMap, fs, path::PathBuf, thread};
 use zisk_common::ZiskLibInitFn;
 use zisk_pil::*;
 
@@ -95,9 +90,6 @@ pub struct ZiskStats {
     pub debug: Option<Option<String>>,
 
     // PRECOMPILES OPTIONS
-    /// Sha256f script path
-    pub sha256f_script: Option<PathBuf>,
-
     #[clap(long)]
     pub mpi_node: usize,
 }
@@ -116,17 +108,6 @@ impl ZiskStats {
             Some(Some(debug_value)) => {
                 json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
             }
-        };
-
-        let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
-            sha256f_path.clone()
-        } else {
-            let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{}/.zisk/bin/sha256f_script.json", home_dir));
-            if !script_path.exists() {
-                panic!("Sha256f script file not found at {:?}", script_path);
-            }
-            script_path
         };
 
         let default_cache_path =
@@ -184,7 +165,7 @@ impl ZiskStats {
                 .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
         }
 
-        self.print_command_info(&sha256f_script);
+        self.print_command_info();
 
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
@@ -265,7 +246,6 @@ impl ZiskStats {
                     self.elf.clone(),
                     self.asm.clone(),
                     asm_rom,
-                    sha256f_script,
                     Some(world_rank),
                     Some(local_rank),
                     self.port,
@@ -319,7 +299,7 @@ impl ZiskStats {
         Ok(())
     }
 
-    fn print_command_info(&self, sha256f_script: &Path) {
+    fn print_command_info(&self) {
         // Print Stats command info
         println!("{} Stats", format!("{: >12}", "Command").bright_green().bold());
         println!(
@@ -354,7 +334,6 @@ impl ZiskStats {
 
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
-        println!("{: >12} {}", "Sha256f".bright_green().bold(), sha256f_script.display());
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 
         println!();
@@ -483,9 +462,7 @@ impl ZiskStats {
             val if val == BINARY_EXTENSION_TABLE_AIR_IDS[0] => "BINARY_EXTENSION_TABLE".to_string(),
             val if val == KECCAKF_AIR_IDS[0] => "KECCAKF".to_string(),
             val if val == KECCAKF_TABLE_AIR_IDS[0] => "KECCAKF_TABLE".to_string(),
-            // val if val == SHA_256_F_AIR_IDS[0] => "SHA_256_F".to_string(),
-            // val if val == SHA_256_F_TABLE_AIR_IDS[0] => "SHA_256_F_TABLE".to_string(),
-            val if val == SHA_256_F_DIRECT_AIR_IDS[0] => "SHA_256_F_DIRECT".to_string(),
+            val if val == SHA_256_F_AIR_IDS[0] => "SHA_256_F".to_string(),
             val if val == SPECIFIED_RANGES_AIR_IDS[0] => "SPECIFIED_RANGES".to_string(),
             _ => format!("Unknown air_id: {}", air_id),
         }

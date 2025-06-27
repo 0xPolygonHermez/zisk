@@ -8,8 +8,7 @@ use rom_setup::{
 };
 use server::{ServerConfig, ZiskService};
 use std::collections::HashMap;
-use std::path::Path;
-use std::{env, fs};
+use std::fs;
 use std::{path::PathBuf, process};
 use zisk_common::init_tracing;
 
@@ -67,10 +66,7 @@ pub struct ZiskServer {
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
-
     // PRECOMPILES OPTIONS
-    /// Sha256f script path
-    pub sha256f_script: Option<PathBuf>,
 }
 
 impl ZiskServer {
@@ -90,17 +86,6 @@ impl ZiskServer {
             Some(Some(debug_value)) => {
                 json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
             }
-        };
-
-        let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
-            sha256f_path.clone()
-        } else {
-            let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{}/.zisk/bin/sha256f_script.json", home_dir));
-            if !script_path.exists() {
-                panic!("Sha256f script file not found at {:?}", script_path);
-            }
-            script_path
         };
 
         print_banner();
@@ -154,7 +139,7 @@ impl ZiskServer {
                 .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
         }
 
-        self.print_command_info(&sha256f_script);
+        self.print_command_info();
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
@@ -169,7 +154,6 @@ impl ZiskServer {
             proving_key,
             self.verbose,
             debug_info,
-            sha256f_script,
         );
 
         if let Err(e) = ZiskService::new(config)?.run() {
@@ -180,7 +164,7 @@ impl ZiskServer {
         Ok(())
     }
 
-    fn print_command_info(&self, sha256f_script: &Path) {
+    fn print_command_info(&self) {
         println!("{} Prove Server", format!("{: >12}", "Command").bright_green().bold());
         println!(
             "{} TCP server listening on 127.0.0.1:{}",
@@ -215,7 +199,6 @@ impl ZiskServer {
 
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
-        println!("{: >12} {}", "Sha256f".bright_green().bold(), sha256f_script.display());
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 
         println!();

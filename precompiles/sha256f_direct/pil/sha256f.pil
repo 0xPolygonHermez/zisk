@@ -12,7 +12,7 @@ require "std_connection.pil"
 // SHA256-f opcode
 const int SHA256F_OP = 0xF9;
 
-airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 32) {
+airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, const int operation_bus_id) {
     if (RC != 2) {
         error(`Sha256-f is only implemented for RC=2, but received RC=${RC}`);
     } else if (RB != 32) {
@@ -118,17 +118,22 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
     const expr new_e_packed = new_ae[1];
     const expr new_w_packed = compute_w(old_w);
 
-    // The new a/e/w values are packed values of at most 35 bits, we should prove that the unpacking is correct:
-    //  We add up to 6 32-bit numbers and this can generate
-    //  a number of at most 35 bits, since 2^34 < 6*(2^32-1) < 2^35
-    //  therefore the addition modulo 2^32 is equivalent to
-    //  extract the bits 33,34,35 from the given number
+    // We should prove that the unpacking of the new a/e/w values is correct.
+    // For the new a/e values, we add 6 and 5 32-bit numbers, respectively, and this
+    // generates numbers of at most 35 bits, since 2^34 < 5*(2^32-1),6*(2^32-1) < 2^35
+    // Similarly, for the new w value, we add 3 32-bit numbers, and this generates
+    // a number of at most 34 bits, since 2^33 < 3*(2^32-1) < 2^34
+    // We use the following columns to store the carry bits
     col witness new_a_carry_bits;
     col witness new_e_carry_bits;
     col witness new_w_carry_bits;
-    range_check(expression: new_a_carry_bits, min: 0, max: P2_3 - 1); // TODO: Should I be more precise with the range checks?
+    range_check(expression: new_a_carry_bits, min: 0, max: P2_3 - 1);
     range_check(expression: new_e_carry_bits, min: 0, max: P2_3 - 1);
-    range_check(expression: new_w_carry_bits, min: 0, max: P2_3 - 1);
+    expr rc_new_w_carry_bits = 1;
+    for (int i = 0; i < P2_2; i++) {
+        rc_new_w_carry_bits *= (new_w_carry_bits - i);
+    }
+    rc_new_w_carry_bits === 0;
 
     const expr a_packed = pack(a);
     const expr e_packed = pack(e);
@@ -205,20 +210,17 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
                    CLK[8] * w_packed'5 + CLK[9] * w_packed'6 + CLK[10] * w_packed'7 + CLK[11] * w_packed'8 +
                    CLK[12] * a_packed'58 + CLK[13] * a_packed'55 + CLK[14] * e_packed'56 + CLK[15] * e_packed'53 +
                    clock_map(step_addr, ADDR_IND_0, 16) + clock_map(step_addr, ADDR_IND_1, 17);
-    // println(mem_value[0]);
 
     mem_value[1] = CLK[0] * a_packed'3 + CLK[1] * a_packed + CLK[2] * e_packed' + CLK[3] * 2'e_packed +
                    CLK[4] * w_packed + CLK[5] * w_packed' + CLK[6] * w_packed'2 + CLK[7] * w_packed'3 +
                    CLK[8] * w_packed'4 + CLK[9] * w_packed'5 + CLK[10] * w_packed'6 + CLK[11] * w_packed'7 +
                    CLK[12] * a_packed'59 + CLK[13] * a_packed'56 + CLK[14] * e_packed'57 + CLK[15] * e_packed'54;
                    // high bits of ADDR_IND_0 and ADDR_IND_ are 0
-    // println(mem_value[1]);
 
     const expr mem_addr = clock_map(step_addr, ADDR_STATE, start: 0,  end: 3,  delta: 8) +
                           clock_map(step_addr, ADDR_INPUT, start: 4,  end: 11, delta: 8) +
                           clock_map(step_addr, ADDR_STATE, start: 12, end: 15, delta: 8) +
                           clock_map(step_addr, ADDR_OP,    start: 16, end: 17, delta: 8);
-    // println(mem_addr);
 
     const expr main_step = clock_map(step_addr, STEP_MAIN, start: 0, end: 17);
 
@@ -228,24 +230,26 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
 
     col witness in_use;
     in_use * (1 - in_use) === 0;
-    (1 - CLK_0) * (in_use - 'in_use) === 0; // if activated, it must be activated
-                                            // during the rest of the clocks
+    const expr in_use_active = clock_set(start: 1, end: 17);
+    in_use_active * (in_use - 'in_use) === 0; // if activated, it must be activated while in use
 
     // if in_use_clk_0 is active then so is in_use
     CLK_0 * (in_use_clk_0 - in_use) === 0;
 
-    const expr mem_sel = clock_set2(in_use, start: 0, end: 17);
+    const expr mem_is_write = clock_set(start: 12, end: 15);
+
+    const expr mem_sel = clock_set(in_use, start: 0, end: 17);
 
     precompiled_mem_op(
-            is_write: is_writing_state,
+            is_write: mem_is_write,
             sel: mem_sel,
             main_step: main_step,
             addr: mem_addr,
-            value: mem_value
+            value: mem_value, name: PIOP_NAME_ISOLATED
     );
 
     // --> Constraints to make sure that this coprocessor is called from the main processor
-    lookup_proves(OPERATION_BUS_ID, [SHA256F_OP, step_addr'(STEP_MAIN), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], mul: in_use_clk_0);
+    lookup_proves(operation_bus_id, [SHA256F_OP, step_addr'(STEP_MAIN), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], mul: in_use_clk_0, name: PIOP_NAME_ISOLATED);
 
     function pack(const expr a[]): expr {
         const int len = length(a);
@@ -339,7 +343,7 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
         return air.CLK_0 * (mvcol'(pos1) - mvcol'(pos2));
     }
 
-    function clock_set(int start = 0, int end = -1, int offset = 0): const expr {
+    function clock_set(const expr mvcol = 1, int start = 0, int end = -1, int offset = 0): const expr {
         if (end == -1) {
             end = start;
         }
@@ -349,7 +353,7 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
         for (int index = start; index <= end; index++) {
             res += air.CLK[index];
         }
-        return res;
+        return res * mvcol;
     }
 
     function clock_set_weighted(int start = 0, int end = -1, int offset = 0, int weights[]): const expr {
@@ -366,13 +370,10 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
         return res;
     }
 
-    function clock_map(const expr mvcol, int pos, int start = 0, int end = -1, int offset = 0, int delta = 0, int repeat = 1, int inc = 1): const expr {
+    function clock_map(const expr mvcol, int pos, int start = 0, int end = -1, int offset = 0, int delta = 0): const expr {
         expr res = 0;
         if (end == -1) {
             end = start;
-        }
-        if (inc == 0) {
-            delta = -delta;
         }
         for (int index = start; index <= end; index++) {
             int iclock = (pos - index) % air.CLOCKS;
@@ -380,24 +381,6 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
                 res += air.CLK[index] * (mvcol'(iclock) + offset);
             } else {
                 res += air.CLK[index] * mvcol'(iclock);
-            }
-            if ((index - start) % repeat == repeat - 1) {
-                offset += delta;
-            }
-        }
-        return res;
-    }
-
-    function clock_set2(const expr cl, int start = 0, int end = -1, int offset = 0, int delta = 0): const expr {
-        expr res = 0;
-        if (end == -1) {
-            end = start;
-        }
-        for (int index = start; index <= end; ++index) {
-            if (offset != 0) {
-                res += air.CLK[index] * (cl + offset);
-            } else {
-                res += air.CLK[index] * cl;
             }
             offset += delta;
         }

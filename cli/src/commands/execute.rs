@@ -10,11 +10,7 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
-use std::{
-    collections::HashMap,
-    env, fs,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, fs, path::PathBuf};
 
 use crate::{
     commands::{
@@ -89,9 +85,7 @@ pub struct ZiskExecute {
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
-    // PRECOMPILES OPTIONS
-    /// Sha256f script path
-    pub sha256f_script: Option<PathBuf>,
+                     // PRECOMPILES OPTIONS
 }
 
 impl ZiskExecute {
@@ -102,17 +96,6 @@ impl ZiskExecute {
         print_banner();
 
         let mpi_context = initialize_mpi()?;
-
-        let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
-            sha256f_path.clone()
-        } else {
-            let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{}/.zisk/bin/sha256f_script.json", home_dir));
-            if !script_path.exists() {
-                panic!("Sha256f script file not found at {:?}", script_path);
-            }
-            script_path
-        };
 
         let default_cache_path =
             std::env::var("HOME").ok().map(PathBuf::from).unwrap().join(DEFAULT_CACHE_PATH);
@@ -171,7 +154,7 @@ impl ZiskExecute {
                 .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
         }
 
-        self.print_command_info(&sha256f_script);
+        self.print_command_info();
 
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
@@ -228,7 +211,6 @@ impl ZiskExecute {
                     self.elf.clone(),
                     self.asm.clone(),
                     asm_rom,
-                    sha256f_script,
                     Some(mpi_context.world_rank),
                     Some(mpi_context.local_rank),
                     self.port,
@@ -264,7 +246,7 @@ impl ZiskExecute {
         Ok(())
     }
 
-    fn print_command_info(&self, sha256f_script: &Path) {
+    fn print_command_info(&self) {
         // Print Execute command info
         println!("{} Execute", format!("{: >12}", "Command").bright_green().bold());
         println!(
@@ -297,7 +279,6 @@ impl ZiskExecute {
             get_proving_key(self.proving_key.as_ref()).display()
         );
 
-        println!("{: >12} {}", "Sha256f".bright_green().bold(), sha256f_script.display());
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 
         println!();
