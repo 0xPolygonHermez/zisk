@@ -44,6 +44,7 @@ pub struct StaticSMBundle<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> StaticSMBundle<F> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         process_only_operation_bus: bool,
         mem_sm: Arc<Mem<F>>,
