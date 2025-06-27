@@ -5,6 +5,7 @@ use super::{
 };
 use crate::{AsmRunError, AsmRunnerOptions};
 use anyhow::{Context, Result};
+use libc::sem_unlink;
 use named_sem::NamedSemaphore;
 use std::{
     fmt,
@@ -103,29 +104,8 @@ impl AsmServices {
                     service,
                     addr
                 );
-                let sem_shutdown_done_name = format!(
-                    "/{}_{}_shutdown_done",
-                    Self::shmem_prefix(service, Some(self.base_port), self.local_rank),
-                    service.as_str()
-                );
-                let mut sem_shutdown_done =
-                    NamedSemaphore::create(sem_shutdown_done_name.clone(), 0).map_err(|e| {
-                        AsmRunError::SemaphoreError(sem_shutdown_done_name.clone(), e)
-                    })?;
 
-                let _ = sem_shutdown_done.try_wait();
-
-                self.send_shutdown_request(service).with_context(|| {
-                    format!("Service {} failed to respond to shutdown", service)
-                })?;
-
-                match sem_shutdown_done.timed_wait(Duration::from_secs(30)) {
-                    Ok(()) => {}
-                    Err(e) => {
-                        tracing::error!("[{}] Failed to wait for shutdown: {}", self.world_rank, e);
-                        return Err(AsmRunError::SemaphoreError(sem_shutdown_done_name, e).into());
-                    }
-                }
+                let _ = self.send_shutdown_and_wait(service);
             }
         }
 
@@ -166,9 +146,7 @@ impl AsmServices {
             if TcpStream::connect(&addr).is_ok() {
                 tracing::info!("Shutting down service {} running on {}.", service, addr);
 
-                self.send_shutdown_request(service).with_context(|| {
-                    format!("Service {} failed to respond to shutdown", service)
-                })?;
+                let _ = self.send_shutdown_and_wait(service);
             }
         }
 
@@ -298,5 +276,38 @@ impl AsmServices {
         }
 
         Ok(Res::from_response_payload(response))
+    }
+
+    pub fn send_shutdown_and_wait(&self, service: &AsmService) -> Result<()> {
+        let sem_shutdown_done_name = format!(
+            "/{}_{}_shutdown_done",
+            Self::shmem_prefix(service, Some(self.base_port), self.local_rank),
+            service.as_str()
+        );
+        let mut sem_shutdown_done = NamedSemaphore::create(sem_shutdown_done_name.clone(), 0)
+            .map_err(|e| AsmRunError::SemaphoreError(sem_shutdown_done_name.clone(), e))?;
+
+        let _ = sem_shutdown_done.try_wait();
+
+        self.send_shutdown_request(service)
+            .with_context(|| format!("Service {} failed to respond to shutdown", service))?;
+
+        tracing::info!("Waiting for semaphore {sem_shutdown_done_name}");
+
+        match sem_shutdown_done.timed_wait(Duration::from_secs(30)) {
+            Ok(()) => {}
+            Err(e) => {
+                tracing::error!("[{}] Failed to wait for shutdown: {}", self.world_rank, e);
+                return Err(AsmRunError::SemaphoreError(sem_shutdown_done_name, e).into());
+            }
+        }
+
+        tracing::info!("Done waiting for semaphore {sem_shutdown_done_name}");
+
+        unsafe {
+            sem_unlink(sem_shutdown_done_name.as_ptr() as *const i8);
+        }
+
+        Ok(())
     }
 }
