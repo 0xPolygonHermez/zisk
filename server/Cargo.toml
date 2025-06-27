@@ -31,7 +31,7 @@ clap = { version = "4.5.7", features = ["derive", "env"] }
 
 # Distributed mode (mpi) is only supported on Linux x86_64
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
-mpi = { version = "0.8.0" }
+mpi = { workspace = true }
 named-sem = { workspace = true }
 
 [features]
