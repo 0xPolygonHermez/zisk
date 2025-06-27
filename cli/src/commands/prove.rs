@@ -373,7 +373,7 @@ impl ZiskProve {
                 ProofLog::write_json_log(&log_path, &logs)
                     .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
                 // Save the vadcop final proof
-                let output_file_path = self.output_dir.join("proofs/vadcop_final_proof.bin");
+                let output_file_path = self.output_dir.join("vadcop_final_proof.bin");
                 // write a Vec<u64> to a bin file stored in output_file_path
                 let mut file = File::create(output_file_path)?;
                 file.write_all(cast_slice(&vadcop_final_proof.unwrap()))?;
