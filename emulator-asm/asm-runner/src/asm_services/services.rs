@@ -3,7 +3,7 @@ use super::{
     MinimalTraceResponse, PingRequest, PingResponse, ResponseData, ShutdownRequest,
     ShutdownResponse, ToRequestPayload,
 };
-use crate::{AsmRunError, AsmRunnerOptions};
+use crate::{AsmRunError, AsmRunnerOptions, RomHistogramRequest, RomHistogramResponse};
 use anyhow::{Context, Result};
 use libc::sem_unlink;
 use named_sem::NamedSemaphore;
@@ -58,11 +58,7 @@ impl AsmServices {
     const MT_SERVICE_OFFSET: u64 = 1; // Relative offset to base port. Should correspond to the order in SERVICES
     const RH_SERVICE_OFFSET: u64 = 2; // Relative offset to base port. Should correspond to the order in SERVICES
 
-    const SERVICES: [AsmService; 2] = [
-        AsmService::MO,
-        AsmService::MT,
-        // AsmService::RH,
-    ];
+    const SERVICES: [AsmService; 3] = [AsmService::MO, AsmService::MT, AsmService::RH];
 
     pub fn new(world_rank: i32, local_rank: i32, base_port: Option<u16>) -> Self {
         Self { world_rank, local_rank, base_port: base_port.unwrap_or(ASM_SERVICE_BASE_PORT) }
@@ -228,6 +224,13 @@ impl AsmServices {
         chunk_len: u64,
     ) -> Result<MinimalTraceResponse> {
         self.send_request(&AsmService::MT, &MinimalTraceRequest { max_steps, chunk_len })
+    }
+
+    pub fn send_rom_histogram_request(
+        &self,
+        max_steps: u64,
+    ) -> Result<RomHistogramResponse> {
+        self.send_request(&AsmService::RH, &RomHistogramRequest { max_steps })
     }
 
     pub fn send_memory_ops_request(

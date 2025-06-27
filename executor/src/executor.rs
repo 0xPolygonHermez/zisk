@@ -19,7 +19,7 @@
 //! By structuring these phases, the `ZiskExecutor` ensures high-performance execution while
 //! maintaining clarity and modularity in the computation process.
 
-use asm_runner::{AsmRunnerMO, AsmRunnerMT, MinimalTraces, Task, TaskFactory};
+use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, MinimalTraces, Task, TaskFactory};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{create_pool, ProofCtx, SetupCtx};
@@ -242,6 +242,21 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             .expect("Error during Assembly Memory Operations execution")
         });
 
+        let input_data_path_cloned = input_data_path.clone();
+        let world_rank = self.world_rank;
+        let local_rank = self.local_rank;
+        let base_port = self.base_port;
+        let handle_rh = std::thread::spawn(move || {
+            AsmRunnerRH::run(
+                input_data_path_cloned.as_ref().unwrap(),
+                Self::MAX_NUM_STEPS,
+                world_rank,
+                local_rank,
+                base_port,
+            )
+            .expect("Error during Assembly Memory Operations execution")
+        });
+
         let (min_traces, main_count, secn_count) = self.run_mt_assembly(input_data_path);
 
         // Store execute steps
@@ -256,6 +271,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         // Wait for the memory operations thread to finish
         let plans =
             handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
+
+        self.rom_sm.as_ref().unwrap().set_asm_runner_handler(handle_rh);
 
         (min_traces, main_count, secn_count, Some(plans))
     }
@@ -763,10 +780,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
     /// # Returns
     /// A vector of global IDs for the instances to compute witness for.
     fn execute(&self, pctx: Arc<ProofCtx<F>>, input_data_path: Option<PathBuf>) -> Vec<usize> {
-        // Set ASM ROM worker
-        if self.rom_sm.is_some() {
-            self.rom_sm.as_ref().unwrap().set_asm_rom_worker(input_data_path.clone());
-        }
+        // // Set ASM ROM worker
+        // if self.rom_sm.is_some() {
+        //     self.rom_sm.as_ref().unwrap().set_asm_rom_worker(input_data_path.clone());
+        // }
         // Process the ROM to collect the Minimal Traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
 
