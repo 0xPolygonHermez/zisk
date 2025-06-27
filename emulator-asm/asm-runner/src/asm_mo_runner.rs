@@ -38,10 +38,6 @@ impl Drop for AsmRunnerMO {
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerMO {
-    pub fn new(mapped_ptr: *mut std::ffi::c_void, total_size: u64) -> Self {
-        Self { mapped_ptr, total_size }
-    }
-
     pub fn run(
         inputs_path: &Path,
         max_steps: u64,
@@ -142,7 +138,7 @@ impl AsmRunnerMO {
         Ok(plans)
     }
 
-    pub fn write_input(inputs_path: &Path, shmem_input_name: &str) {
+    fn write_input(inputs_path: &Path, shmem_input_name: &str) {
         let inputs = fs::read(inputs_path).expect("Failed to read input file");
         let asm_input = AsmInputC2 { zero: 0, input_data_size: inputs.len() as u64 };
         let shmem_input_size = (inputs.len() + size_of::<AsmInputC2>() + 7) & !7;
@@ -164,7 +160,7 @@ impl AsmRunnerMO {
         }
     }
 
-    pub fn get_output_ptr(shmem_output_name: &str) -> *mut std::ffi::c_void {
+    fn get_output_ptr(shmem_output_name: &str) -> *mut std::ffi::c_void {
         let fd = shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR);
         let header_size = size_of::<AsmMOHeader>();
         let temp = shmem_utils::map(fd, header_size, PROT_READ, "header temp map");
