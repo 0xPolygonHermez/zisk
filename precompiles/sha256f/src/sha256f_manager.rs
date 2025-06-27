@@ -1,6 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use fields::PrimeField64;
+use proofman_common::SetupCtx;
 use zisk_common::{
     table_instance_array, BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance,
     InstanceCtx, InstanceInfo, PayloadType, Planner, TableInfo, OPERATION_BUS_ID,
@@ -13,22 +14,22 @@ use crate::{Sha256fCounterInputGen, Sha256fInstance, Sha256fPlanner, Sha256fSM, 
 /// The `Sha256fManager` struct represents the Sha256f manager,
 /// which is responsible for managing the Sha256f state machine and its table state machine.
 #[allow(dead_code)]
-pub struct Sha256fManager {
+pub struct Sha256fManager<F: PrimeField64> {
     /// Sha256f state machine
-    sha256f_sm: Arc<Sha256fSM>,
+    sha256f_sm: Arc<Sha256fSM<F>>,
 
     /// Sha256f table state machine
     sha256f_table_sm: Arc<Sha256fTableSM>,
 }
 
-impl Sha256fManager {
+impl<F: PrimeField64> Sha256fManager<F> {
     /// Creates a new instance of `Sha256fManager`.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `Sha256fManager`.
-    pub fn new<F: PrimeField64>(script_path: PathBuf) -> Arc<Self> {
+    pub fn new(sctx: Arc<SetupCtx<F>>, script_path: PathBuf) -> Arc<Self> {
         let sha256f_table_sm = Sha256fTableSM::new::<F>();
-        let sha256f_sm = Sha256fSM::new(sha256f_table_sm.clone(), script_path);
+        let sha256f_sm = Sha256fSM::new(sctx, sha256f_table_sm.clone(), script_path);
 
         Arc::new(Self { sha256f_sm, sha256f_table_sm })
     }
@@ -38,7 +39,7 @@ impl Sha256fManager {
     }
 }
 
-impl<F: PrimeField64> ComponentBuilder<F> for Sha256fManager {
+impl<F: PrimeField64> ComponentBuilder<F> for Sha256fManager<F> {
     /// Builds and returns a new counter for monitoring sha256f operations.
     ///
     /// # Returns

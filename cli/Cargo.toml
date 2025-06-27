@@ -37,6 +37,7 @@ zisk-core = { path = "../core" }
 zisk-pil = { path = "../pil" }
 asm-runner = { path = "../emulator-asm/asm-runner" }
 server = { path = "../server" }
+bytemuck = "1.23.1"
 
 clap = { version = "4.5.7", features = ["derive", "env"] }
 dirs = "6"

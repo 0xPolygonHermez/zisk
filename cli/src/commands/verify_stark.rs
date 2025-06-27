@@ -5,9 +5,8 @@ use proofman_common::initialize_logger;
 use std::io::Read;
 use std::{fs::File, path::PathBuf};
 
-use fields::{Goldilocks, PrimeField64};
-
-use proofman::verify_proof_from_file;
+use bytemuck::cast_slice;
+use proofman::verify_final_proof;
 
 use crate::commands::cli_fail_if_macos;
 use crate::ZISK_VERSION_MESSAGE;
@@ -33,6 +32,9 @@ pub struct ZiskVerify {
     #[clap(short = 'u', long)]
     pub public_inputs: Option<PathBuf>,
 
+    #[clap(short = 'j', long, default_value_t = false)]
+    pub json: bool,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
@@ -50,31 +52,17 @@ impl ZiskVerify {
         );
         tracing::info!("");
 
-        let publics = if let Some(publics) = &self.public_inputs {
-            let mut contents = String::new();
-            let mut file = File::open(publics).unwrap();
+        let mut file = File::open(self.proof.clone())?;
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer)?;
 
-            let _ = file
-                .read_to_string(&mut contents)
-                .map_err(|err| format!("Failed to read public inputs file: {}", err));
-            let verkey_json_string: Vec<String> = serde_json::from_str(&contents).unwrap();
-            let verkey_json: Vec<u64> = verkey_json_string
-                .iter()
-                .map(|s| s.parse::<u64>().expect("Failed to parse string as u64"))
-                .collect();
-            Some(verkey_json.into_iter().map(Goldilocks::from_u64).collect::<Vec<Goldilocks>>())
-        } else {
-            None
-        };
+        let proof_slice: &[u64] = cast_slice(&buffer);
 
-        let valid = verify_proof_from_file::<Goldilocks>(
-            self.proof.clone(),
+        let valid = verify_final_proof(
+            proof_slice,
             self.get_stark_info(),
             self.get_verifier_bin(),
             self.get_verkey(),
-            publics,
-            None,
-            None,
         );
 
         if !valid {

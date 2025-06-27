@@ -58,6 +58,17 @@ impl KeccakfTableSM {
         self.multiplicities[0][index].fetch_add(value, Ordering::Relaxed);
     }
 
+    pub fn update_multiplicities(&self, multiplicities: &[u64]) {
+        if self.calculated.load(Ordering::Relaxed) {
+            return;
+        }
+        for (index, &value) in multiplicities.iter().enumerate() {
+            if value != 0 {
+                self.multiplicities[0][index].fetch_add(value, Ordering::Relaxed);
+            }
+        }
+    }
+
     /// Detaches and returns the current multiplicity table.
     ///
     /// # Returns

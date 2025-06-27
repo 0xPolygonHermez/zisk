@@ -226,10 +226,7 @@ impl AsmServices {
         self.send_request(&AsmService::MT, &MinimalTraceRequest { max_steps, chunk_len })
     }
 
-    pub fn send_rom_histogram_request(
-        &self,
-        max_steps: u64,
-    ) -> Result<RomHistogramResponse> {
+    pub fn send_rom_histogram_request(&self, max_steps: u64) -> Result<RomHistogramResponse> {
         self.send_request(&AsmService::RH, &RomHistogramRequest { max_steps })
     }
 

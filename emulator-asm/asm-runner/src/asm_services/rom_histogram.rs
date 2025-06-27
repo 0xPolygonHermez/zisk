@@ -8,7 +8,7 @@ pub struct RomHistogramRequest {
 
 impl ToRequestPayload for RomHistogramRequest {
     fn to_request_payload(&self) -> RequestData {
-        [CMD_RH_REQUEST_ID, self.max_steps as u64, 0, 0, 0]
+        [CMD_RH_REQUEST_ID, self.max_steps, 0, 0, 0]
     }
 }
 

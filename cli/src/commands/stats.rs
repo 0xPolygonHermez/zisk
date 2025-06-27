@@ -91,6 +91,15 @@ pub struct ZiskStats {
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
+    #[clap(short = 'n', long)]
+    pub number_threads_witness: Option<usize>,
+
+    #[clap(short = 'x', long)]
+    pub max_witness_stored: Option<usize>,
+
+    #[clap(short = 'c', long)]
+    pub chunk_size_bits: Option<u64>,
+
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
 
@@ -99,7 +108,7 @@ pub struct ZiskStats {
     pub sha256f_script: Option<PathBuf>,
 
     #[clap(long)]
-    pub mpi_node: usize,
+    pub mpi_node: Option<usize>,
 }
 
 impl ZiskStats {
@@ -191,6 +200,12 @@ impl ZiskStats {
 
         let mut gpu_params = ParamsGPU::new(false);
         gpu_params.with_max_number_streams(1);
+        if self.number_threads_witness.is_some() {
+            gpu_params.with_number_threads_pools_witness(self.number_threads_witness.unwrap());
+        }
+        if self.max_witness_stored.is_some() {
+            gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
+        }
 
         let proofman;
         let mpi_context = initialize_mpi()?;
@@ -203,16 +218,18 @@ impl ZiskStats {
             let world = mpi_context.universe.world();
             world_ranks = world.size() as usize;
 
-            let m2 = self.mpi_node as i32 * 2;
-            if mpi_context.world_rank < m2 || mpi_context.world_rank >= m2 + 2 {
-                world.split_shared(mpi_context.world_rank);
-                world.barrier();
-                println!(
-                    "{}: {}",
-                    format!("Rank {}", mpi_context.world_rank).bright_yellow().bold(),
-                    "Exiting stats command.".bright_yellow()
-                );
-                return Ok(());
+            if let Some(mpi_node) = self.mpi_node {
+                let m2 = mpi_node as i32 * 2;
+                if mpi_context.world_rank < m2 || mpi_context.world_rank >= m2 + 2 {
+                    world.split_shared(mpi_context.world_rank);
+                    world.barrier();
+                    println!(
+                        "{}: {}",
+                        format!("Rank {}", mpi_context.world_rank).bright_yellow().bold(),
+                        "Exiting stats command.".bright_yellow()
+                    );
+                    return Ok(());
+                }
             }
 
             proofman = ProofMan::<Goldilocks>::new(
@@ -266,6 +283,7 @@ impl ZiskStats {
                     self.asm.clone(),
                     asm_rom,
                     sha256f_script,
+                    self.chunk_size_bits,
                     Some(world_rank),
                     Some(local_rank),
                     self.port,

@@ -70,8 +70,13 @@ pub struct ServerConfig {
     /// Unique identifier for the server instance
     pub server_id: Uuid,
 
+    /// Size of the chunks in bits
+    pub chunk_size_bits: Option<u64>,
+
     /// Additional options for the ASM runner
     pub asm_runner_options: AsmRunnerOptions,
+
+    pub gpu_params: ParamsGPU,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -88,7 +93,9 @@ impl ServerConfig {
         verbose: u8,
         debug: DebugInfo,
         sha256f_script: PathBuf,
+        chunk_size_bits: Option<u64>,
         asm_runner_options: AsmRunnerOptions,
+        gpu_params: ParamsGPU,
     ) -> Self {
         Self {
             port,
@@ -104,7 +111,9 @@ impl ServerConfig {
             sha256f_script,
             launch_time: Instant::now(),
             server_id: Uuid::new_v4(),
+            chunk_size_bits,
             asm_runner_options,
+            gpu_params,
         }
     }
 }
@@ -161,6 +170,7 @@ impl ZiskService {
             config.asm.clone(),
             config.asm_rom.clone(),
             config.sha256f_script.clone(),
+            config.chunk_size_bits,
             Some(world_rank),
             Some(local_rank),
             base_port,
@@ -176,7 +186,7 @@ impl ZiskService {
                 true,
                 false,
                 false,
-                ParamsGPU::default(),
+                config.gpu_params.clone(),
                 config.verbose.into(),
                 Some(mpi_context.universe),
             )

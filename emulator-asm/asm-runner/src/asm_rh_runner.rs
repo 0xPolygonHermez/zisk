@@ -137,7 +137,7 @@ impl AsmRunnerRH {
         // Skips the header size to get the data pointer.
         let mut data_ptr = unsafe { header_ptr.add(1) } as *mut c_void;
 
-        (data_ptr as *mut c_void, AsmRHData::from_ptr(&mut data_ptr, header))
+        (data_ptr, AsmRHData::from_ptr(&mut data_ptr, header))
     }
 }
 
