@@ -9,7 +9,6 @@ use crate::{
 use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use bytemuck::cast_slice;
-use std::io::Write;
 use colored::Colorize;
 use executor::Stats;
 use executor::ZiskExecutionResult;
@@ -21,9 +20,11 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
+use std::io::Write;
 use std::{
     collections::HashMap,
-    env, fs::{self, File},
+    env,
+    fs::{self, File},
     path::{Path, PathBuf},
 };
 use zisk_common::ZiskLibInitFn;
