@@ -14,17 +14,17 @@ use std::{fs, ptr};
 use crate::{AsmRHData, AsmRHHeader, AsmRunnerOptions, AsmRunnerTraceLevel};
 
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
-pub struct AsmRunnerRomH {
+pub struct AsmRunnerRH {
     shmem_output_name: String,
     mapped_ptr: *mut c_void,
     pub asm_rowh_output: AsmRHData,
 }
 
-unsafe impl Send for AsmRunnerRomH {}
-unsafe impl Sync for AsmRunnerRomH {}
+unsafe impl Send for AsmRunnerRH {}
+unsafe impl Sync for AsmRunnerRH {}
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-impl Drop for AsmRunnerRomH {
+impl Drop for AsmRunnerRH {
     fn drop(&mut self) {
         unsafe {
             // Forget all mem_reads Vec<u64> before unmapping
@@ -43,13 +43,13 @@ impl Drop for AsmRunnerRomH {
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-impl AsmRunnerRomH {
+impl AsmRunnerRH {
     pub fn new(
         shmem_output_name: String,
         mapped_ptr: *mut c_void,
         asm_rowh_output: AsmRHData,
     ) -> Self {
-        AsmRunnerRomH { shmem_output_name, mapped_ptr, asm_rowh_output }
+        AsmRunnerRH { shmem_output_name, mapped_ptr, asm_rowh_output }
     }
 
     fn total_size(&self) -> usize {
@@ -63,7 +63,7 @@ impl AsmRunnerRomH {
         inputs_path: Option<&Path>,
         shm_size: u64,
         options: AsmRunnerOptions,
-    ) -> AsmRunnerRomH {
+    ) -> AsmRunnerRH {
         let pid = unsafe { libc::getpid() };
 
         let shmem_prefix = format!("ZISKRH{}", pid);
@@ -142,7 +142,7 @@ impl AsmRunnerRomH {
             );
         }
 
-        AsmRunnerRomH::new(shmem_output_name, mapped_ptr, asm_rowh_output)
+        AsmRunnerRH::new(shmem_output_name, mapped_ptr, asm_rowh_output)
     }
 
     fn write_input(
@@ -263,7 +263,7 @@ impl AsmRunnerRomH {
 }
 
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-impl AsmRunnerRomH {
+impl AsmRunnerRH {
     pub fn new(
         _shmem_output_name: String,
         _mapped_ptr: *mut c_void,
@@ -277,7 +277,7 @@ impl AsmRunnerRomH {
         _inputs_path: Option<&Path>,
         _shm_size: u64,
         _options: AsmRunnerOptions,
-    ) -> AsmRunnerRomH {
+    ) -> AsmRunnerRH {
         panic!("AsmRunnerRomH::run() is not supported on this platform. Only Linux x86_64 is supported.");
     }
 }
