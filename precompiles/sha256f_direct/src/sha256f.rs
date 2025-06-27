@@ -50,12 +50,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
     /// * `input` - The operation data to process.
     /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
     #[inline(always)]
-    pub fn process_input(
-        &self,
-        input: &Sha256fInput,
-        trace: &mut Sha256fTrace<F>,
-        row_offset: usize,
-    ) {
+    pub fn process_input(&self, input: &Sha256fInput, trace: &mut [Sha256fTraceRow<F>]) {
         let step_main = input.step_main;
         let addr_main = input.addr_main;
         let state_addr = input.state_addr;
@@ -64,23 +59,23 @@ impl<F: PrimeField64> Sha256fSM<F> {
         let input = &input.input;
 
         // Fill the step_addr
-        trace[row_offset].step_addr = F::from_u64(step_main); // STEP_MAIN
-        trace[row_offset + 1].step_addr = F::from_u32(addr_main); // ADDR_OP
-        trace[row_offset + 2].step_addr = F::from_u32(state_addr); // ADDR_STATE
-        trace[row_offset + 3].step_addr = F::from_u32(input_addr); // ADDR_INPUT
-        trace[row_offset + 4].step_addr = F::from_u32(state_addr); // ADDR_IND_0
-        trace[row_offset + 5].step_addr = F::from_u32(input_addr); // ADDR_IND_1
+        trace[0].step_addr = F::from_u64(step_main); // STEP_MAIN
+        trace[1].step_addr = F::from_u32(addr_main); // ADDR_OP
+        trace[2].step_addr = F::from_u32(state_addr); // ADDR_STATE
+        trace[3].step_addr = F::from_u32(input_addr); // ADDR_INPUT
+        trace[4].step_addr = F::from_u32(state_addr); // ADDR_IND_0
+        trace[5].step_addr = F::from_u32(input_addr); // ADDR_IND_1
 
         // Activate the clk_0 selector
-        trace[row_offset].in_use_clk_0 = F::ONE;
+        trace[0].in_use_clk_0 = F::ONE;
 
         // Activate the in_use selector
-        for i in 0..18 {
-            trace[row_offset + i].in_use = F::ONE;
+        for r in trace.iter_mut().take(18) {
+            r.in_use = F::ONE;
         }
 
         // Compute the load state stage
-        let mut offset = row_offset;
+        let mut offset = 0;
         let mut prev_state = [0u32; 8];
         for i in 0..CLOCKS_LOAD_STATE {
             let word = state[i];
@@ -274,6 +269,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
         self.std.range_check(0, CLOCKS_LOAD_STATE as u64, self.e_range_id);
 
         #[rustfmt::skip]
+        #[allow(clippy::too_many_arguments)]
         fn compute_ae(old_a: u32, old_b: u32, old_c: u32, old_d: u32, old_e: u32, old_f: u32, old_g: u32, old_h: u32, w: u32, k: u32) -> (u64, u64) {
             let s0 = rotate_right(old_a, 2) ^ rotate_right(old_a, 13) ^ rotate_right(old_a, 22);
             let s1 = rotate_right(old_e, 6) ^ rotate_right(old_e, 11) ^ rotate_right(old_e, 25);
@@ -344,15 +340,24 @@ impl<F: PrimeField64> Sha256fSM<F> {
         timer_start_trace!(SHA256F_TRACE);
         let mut sha256f_trace = Sha256fTrace::new_zeroes();
 
-        // Fill the trace
-        let mut index = 0;
-        for inputs in inputs.iter() {
-            for input in inputs.iter() {
-                let row_offset = index * CLOCKS;
-                self.process_input(input, &mut sha256f_trace, row_offset);
-                index += 1;
+        let mut trace_rows = sha256f_trace.buffer.as_mut_slice();
+        let mut par_traces = Vec::new();
+        let mut inputs_indexes = Vec::new();
+        for (i, inputs) in inputs.iter().enumerate() {
+            for (j, _) in inputs.iter().enumerate() {
+                let (head, tail) = trace_rows.split_at_mut(CLOCKS);
+                par_traces.push(head);
+                inputs_indexes.push((i, j));
+                trace_rows = tail;
             }
         }
+
+        // Fill the trace
+        par_traces.into_par_iter().enumerate().for_each(|(index, trace)| {
+            let input_index = inputs_indexes[index];
+            let input = &inputs[input_index.0][input_index.1];
+            self.process_input(input, trace);
+        });
         timer_stop_and_log_trace!(SHA256F_TRACE);
 
         timer_start_trace!(SHA256F_PADDING);
@@ -361,7 +366,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
 
         // precompute compute_ae() with initial a = e = 0 (PC_A and PC_E)
         // compute_w() with w = 0 is equal to 0, nothing to do
-        let mut mid_rows = vec![Sha256fTraceRow::<F>::default(); 64];
+        let mut mid_rows = [Sha256fTraceRow::<F>::default(); 64];
         for i in 0..64 {
             let a = PC_A[i];
             let e = PC_E[i];
@@ -389,7 +394,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
         }
 
         // At the end, we should have that a === 4'and e === 4'e
-        let mut final_rows = vec![Sha256fTraceRow::<F>::default(); 4];
+        let mut final_rows = [Sha256fTraceRow::<F>::default(); 4];
         for i in 0..4 {
             let a = (PC_A[60 + i] & 0xFFFF_FFFF) as u32;
             let e = (PC_E[60 + i] & 0xFFFF_FFFF) as u32;
@@ -407,7 +412,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
         for row in num_rows_filled..(num_rows - self.num_non_usable_rows - CLOCKS) {
             let row_r = row % CLOCKS;
             sha256f_trace[row] = if row_r < CLOCKS_LOAD_STATE {
-                zero_row.clone()
+                zero_row
             } else if row_r < CLOCKS_OP {
                 mid_rows[row_r - CLOCKS_LOAD_STATE]
             } else {
