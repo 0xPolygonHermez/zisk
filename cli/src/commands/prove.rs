@@ -8,6 +8,8 @@ use crate::{
 };
 use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
+use bytemuck::cast_slice;
+use std::io::Write;
 use colored::Colorize;
 use executor::Stats;
 use executor::ZiskExecutionResult;
@@ -21,7 +23,7 @@ use rom_setup::{
 };
 use std::{
     collections::HashMap,
-    env, fs,
+    env, fs::{self, File},
     path::{Path, PathBuf},
 };
 use zisk_common::ZiskLibInitFn;
@@ -315,6 +317,7 @@ impl ZiskProve {
         let start = std::time::Instant::now();
 
         let proof_id;
+        let vadcop_final_proof: Option<Vec<u64>>;
         if debug_info.std_mode.name == ModeName::Debug {
             match self.field {
                 Field::Goldilocks => {
@@ -326,7 +329,7 @@ impl ZiskProve {
         } else {
             match self.field {
                 Field::Goldilocks => {
-                    proof_id = proofman
+                    (proof_id, vadcop_final_proof) = proofman
                         .generate_proof_from_lib(
                             self.input.clone(),
                             ProofOptions::new(
@@ -369,6 +372,11 @@ impl ZiskProve {
                 let log_path = self.output_dir.join("result.json");
                 proof_log::ProofLog::write_json_log(&log_path, &logs)
                     .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
+                // Save the vadcop final proof
+                let output_file_path = self.output_dir.join("proofs/vadcop_final_proof.bin");
+                // write a Vec<u64> to a bin file stored in output_file_path
+                let mut file = File::create(output_file_path)?;
+                file.write_all(cast_slice(&vadcop_final_proof.unwrap()))?;
             }
         }
 
