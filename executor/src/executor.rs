@@ -227,9 +227,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         input_data_path: Option<PathBuf>,
     ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<Vec<Plan>>) {
         let input_data_path_cloned = input_data_path.clone();
-        let world_rank = self.world_rank;
-        let local_rank = self.local_rank;
-        let base_port = self.base_port;
+        let (world_rank, local_rank, base_port) =
+            (self.world_rank, self.local_rank, self.base_port);
         let handle_mo = std::thread::spawn(move || {
             AsmRunnerMO::run(
                 input_data_path_cloned.as_ref().unwrap(),
@@ -243,9 +242,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         });
 
         let input_data_path_cloned = input_data_path.clone();
-        let world_rank = self.world_rank;
-        let local_rank = self.local_rank;
-        let base_port = self.base_port;
+        let (world_rank, local_rank, base_port) =
+            (self.world_rank, self.local_rank, self.base_port);
         let handle_rh = std::thread::spawn(move || {
             AsmRunnerRH::run(
                 input_data_path_cloned.as_ref().unwrap(),
@@ -780,10 +778,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
     /// # Returns
     /// A vector of global IDs for the instances to compute witness for.
     fn execute(&self, pctx: Arc<ProofCtx<F>>, input_data_path: Option<PathBuf>) -> Vec<usize> {
-        // // Set ASM ROM worker
-        // if self.rom_sm.is_some() {
-        //     self.rom_sm.as_ref().unwrap().set_asm_rom_worker(input_data_path.clone());
-        // }
         // Process the ROM to collect the Minimal Traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
 
