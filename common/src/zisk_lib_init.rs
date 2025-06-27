@@ -9,6 +9,7 @@ pub type ZiskLibInitFn<F> = fn(
     Option<PathBuf>, // Asm path
     Option<PathBuf>, // Asm ROM path
     PathBuf,         // Sha256f script path
+    Option<u64>,     // Chunk size
     Option<i32>,     // mpi World Rank
     Option<i32>,     // mpi Local Rank
     Option<u16>,     // Port for the server

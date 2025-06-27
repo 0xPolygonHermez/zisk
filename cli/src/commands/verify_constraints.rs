@@ -238,6 +238,7 @@ impl ZiskVerifyConstraints {
                     self.asm.clone(),
                     asm_rom,
                     sha256f_script,
+                    None,
                     Some(mpi_context.world_rank),
                     Some(mpi_context.local_rank),
                     self.port,

@@ -69,6 +69,9 @@ pub struct ServerConfig {
     /// Unique identifier for the server instance
     pub server_id: Uuid,
 
+    /// Size of the chunks in bits
+    pub chunk_size_bits: Option<u64>,
+
     /// Additional options for the ASM runner
     pub asm_runner_options: AsmRunnerOptions,
 
@@ -93,6 +96,7 @@ impl ServerConfig {
         verbose: u8,
         debug: DebugInfo,
         sha256f_script: PathBuf,
+        chunk_size_bits: Option<u64>,
         asm_runner_options: AsmRunnerOptions,
         verify_constraints: bool,
         aggregation: bool,
@@ -113,6 +117,7 @@ impl ServerConfig {
             sha256f_script,
             launch_time: Instant::now(),
             server_id: Uuid::new_v4(),
+            chunk_size_bits,
             asm_runner_options,
             verify_constraints,
             aggregation,
@@ -175,6 +180,7 @@ impl ZiskService {
             config.asm.clone(),
             config.asm_rom.clone(),
             config.sha256f_script.clone(),
+            config.chunk_size_bits,
             Some(world_rank),
             Some(local_rank),
             base_port,

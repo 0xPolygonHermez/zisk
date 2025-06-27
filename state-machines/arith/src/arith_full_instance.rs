@@ -79,6 +79,7 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -87,7 +88,7 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance {
             })
             .collect();
 
-        Some(self.arith_full_sm.compute_witness(&inputs))
+        Some(self.arith_full_sm.compute_witness(&inputs, trace_buffer))
     }
 
     /// Retrieves the checkpoint associated with this instance.

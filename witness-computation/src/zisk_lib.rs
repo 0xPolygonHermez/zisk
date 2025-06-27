@@ -20,12 +20,15 @@ use std::{any::Any, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
 use zisk_core::Riscv2zisk;
 
+const DEFAULT_CHUNK_SIZE_BITS: u64 = 18;
+
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
     executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
+    chunk_size: u64,
     world_rank: i32,
     local_rank: i32,
     port: Option<u16>,
@@ -39,17 +42,21 @@ fn init_library(
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
+    chunk_size_bits: Option<u64>,
     world_rank: Option<i32>,
     local_rank: Option<i32>,
     port: Option<u16>,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode, world_rank);
+    let chunk_size = 1 << chunk_size_bits.unwrap_or(DEFAULT_CHUNK_SIZE_BITS);
+
     let result = Box::new(WitnessLib {
         elf_path,
         asm_path,
         asm_rom_path,
         sha256f_script_path,
         executor: None,
+        chunk_size,
         world_rank: world_rank.unwrap_or(0),
         local_rank: local_rank.unwrap_or(0),
         port,
@@ -90,8 +97,8 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let mem_sm = Mem::new(std.clone());
 
         // Step 4: Initialize the precompiles state machines
-        let keccakf_sm = KeccakfManager::new::<F>();
-        let sha256f_sm = Sha256fManager::new::<F>(self.sha256f_script_path.clone());
+        let keccakf_sm = KeccakfManager::new(wcm.get_sctx());
+        let sha256f_sm = Sha256fManager::new(wcm.get_sctx(), self.sha256f_script_path.clone());
         let arith_eq_sm = ArithEqManager::new(std.clone());
 
         // let sm_bundle = DynSMBundle::new(vec![
@@ -125,6 +132,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             std,
             sm_bundle,
             Some(rom_sm.clone()),
+            self.chunk_size,
             self.world_rank,
             self.local_rank,
             self.port,

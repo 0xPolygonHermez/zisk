@@ -51,6 +51,9 @@ pub struct ZiskServer {
     #[clap(short = 's', long)]
     pub asm: Option<PathBuf>,
 
+    #[clap(short = 'c', long)]
+    pub chunk_size_bits: Option<u64>,
+
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
     #[clap(short = 'l', long, action = clap::ArgAction::SetTrue)]
     pub emulator: bool,
@@ -232,6 +235,7 @@ impl ZiskServer {
             self.verbose,
             debug_info,
             sha256f_script,
+            self.chunk_size_bits,
             asm_runner_options,
             self.verify_constraints,
             self.aggregation,

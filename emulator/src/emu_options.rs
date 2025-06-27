@@ -51,7 +51,7 @@ pub struct EmuOptions {
     #[clap(short = 'c', long, value_name = "LOG_OUTPUT", default_value = "true")]
     pub log_output: bool,
     /// Trace every this number of steps.
-    pub trace_steps: Option<u64>,
+    pub chunk_size: Option<u64>,
     /// Log performance metrics.  Enabled with `-m`.
     #[clap(short = 'm', long, value_name = "LOG_METRICS", default_value = "false")]
     pub log_metrics: bool,
@@ -80,7 +80,7 @@ impl Default for EmuOptions {
             verbose: false,
             log_step: false,
             log_output: false,
-            trace_steps: None,
+            chunk_size: None,
             log_metrics: false,
             tracerv: false,
             stats: false,
@@ -101,7 +101,7 @@ impl fmt::Display for EmuOptions {
         writeln!(f, "OUTPUT: {:?}", self.output)?;
         writeln!(f, "LOG_OUTPUT: {:?}", self.log_output)?;
         writeln!(f, "VERBOSE: {}", self.verbose)?;
-        writeln!(f, "TRACE_STEPS: {:?}", self.trace_steps)?;
+        writeln!(f, "CHUNK_SIZE: {:?}", self.chunk_size)?;
         writeln!(f, "METRICS: {:?}", self.log_metrics)?;
         writeln!(f, "STATS: {:?}", self.stats)?;
         writeln!(f, "TRACERV: {:?}", self.tracerv)?;
@@ -113,7 +113,7 @@ impl fmt::Display for EmuOptions {
 impl EmuOptions {
     /// Returns true if the configuration allows to emulate in fast mode, maximizing the performance
     pub fn is_fast(&self) -> bool {
-        self.trace_steps.is_none()
+        self.chunk_size.is_none()
             && (self.print_step.is_none() || (self.print_step.unwrap() == 0))
             && self.trace.is_none()
             && !self.log_step

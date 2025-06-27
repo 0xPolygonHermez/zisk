@@ -7,6 +7,7 @@ use crate::{
 };
 use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
+use bytemuck::cast_slice;
 use colored::Colorize;
 use executor::Stats;
 use executor::ZiskExecutionResult;
@@ -18,9 +19,11 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
+use std::io::Write;
 use std::{
     collections::HashMap,
-    env, fs,
+    env,
+    fs::{self, File},
     path::{Path, PathBuf},
 };
 use zisk_common::{ProofLog, ZiskLibInitFn};
@@ -111,14 +114,14 @@ pub struct ZiskProve {
     #[clap(short = 'n', long)]
     pub number_threads_witness: Option<usize>,
 
-    #[clap(short = 'm', long)]
-    pub max_number_witness_pools: Option<usize>,
-
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
     #[clap(short = 'b', long, default_value_t = false)]
     pub save_proofs: bool,
+
+    #[clap(short = 'c', long)]
+    pub chunk_size_bits: Option<u64>,
 
     // PRECOMPILES OPTIONS
     /// Sha256f script path
@@ -240,9 +243,6 @@ impl ZiskProve {
         if self.number_threads_witness.is_some() {
             gpu_params.with_number_threads_pools_witness(self.number_threads_witness.unwrap());
         }
-        if self.max_number_witness_pools.is_some() {
-            gpu_params.with_max_number_witness_pools(self.max_number_witness_pools.unwrap());
-        }
         if self.max_witness_stored.is_some() {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
@@ -305,6 +305,7 @@ impl ZiskProve {
             self.asm.clone(),
             asm_rom,
             sha256f_script,
+            self.chunk_size_bits,
             Some(mpi_context.world_rank),
             Some(mpi_context.local_rank),
             self.port,
@@ -316,6 +317,7 @@ impl ZiskProve {
         let start = std::time::Instant::now();
 
         let proof_id;
+        let vadcop_final_proof: Option<Vec<u64>>;
         if debug_info.std_mode.name == ModeName::Debug {
             match self.field {
                 Field::Goldilocks => {
@@ -327,7 +329,7 @@ impl ZiskProve {
         } else {
             match self.field {
                 Field::Goldilocks => {
-                    proof_id = proofman
+                    (proof_id, vadcop_final_proof) = proofman
                         .generate_proof_from_lib(
                             self.input.clone(),
                             ProofOptions::new(
@@ -370,6 +372,11 @@ impl ZiskProve {
                 let log_path = self.output_dir.join("result.json");
                 ProofLog::write_json_log(&log_path, &logs)
                     .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
+                // Save the vadcop final proof
+                let output_file_path = self.output_dir.join("proofs/vadcop_final_proof.bin");
+                // write a Vec<u64> to a bin file stored in output_file_path
+                let mut file = File::create(output_file_path)?;
+                file.write_all(cast_slice(&vadcop_final_proof.unwrap()))?;
             }
         }
 
