@@ -1,10 +1,8 @@
-use libc::{
-    close, mmap, shm_open, shm_unlink, MAP_SHARED, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR,
-};
+use libc::{close, shm_unlink, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
 use tracing::error;
 
 use std::{
-    ffi::{c_uint, c_void, CString},
+    ffi::{c_void, CString},
     fs,
     path::Path,
     ptr,
@@ -131,57 +129,15 @@ impl AsmRunnerRH {
     }
 
     fn map_output(shmem_output_name: String) -> (*mut c_void, AsmRHData) {
-        // // Read the header data
-        // let header_ptr = Self::get_output_ptr(&shmem_output_name) as *const AsmRHHeader;
+        // Read the header data
+        let header_ptr = Self::get_output_ptr(&shmem_output_name) as *const AsmRHHeader;
 
-        // // Skips the header size to get the data pointer.
-        // // let data_ptr = unsafe { header_ptr.add(1) } as *const u64;
+        let header = AsmRHHeader::from_ptr(header_ptr as *mut c_void);
 
-        let shmem_output_name = CString::new(shmem_output_name).expect("CString::new failed");
-        let shmem_output_name_ptr = shmem_output_name.as_ptr();
+        // Skips the header size to get the data pointer.
+        let mut data_ptr = unsafe { header_ptr.add(1) } as *mut c_void;
 
-        let shm_fd = unsafe {
-            shm_open(shmem_output_name_ptr, libc::O_RDONLY, (S_IRUSR | S_IWUSR) as c_uint)
-        };
-
-        Self::check_shm_open(shm_fd, shmem_output_name_ptr);
-
-        // Read Output Header
-        let output_header_size = size_of::<AsmRHHeader>();
-        let mapped_ptr =
-            unsafe { mmap(ptr::null_mut(), output_header_size, PROT_READ, MAP_SHARED, shm_fd, 0) };
-        Self::check_mmap(mapped_ptr, output_header_size, file!(), line!());
-
-        let output_header = AsmRHHeader::from_ptr(mapped_ptr);
-
-        // Read Output
-        let output_size = output_header_size + output_header.mt_allocated_size as usize;
-
-        let mut mapped_ptr =
-            unsafe { mmap(ptr::null_mut(), output_size, PROT_READ, MAP_SHARED, shm_fd, 0) };
-        Self::check_mmap(mapped_ptr, output_size, file!(), line!());
-
-        // println!("Output Header: {:?}", output_header);
-
-        unsafe {
-            mapped_ptr = mapped_ptr.add(output_header_size);
-
-            (mapped_ptr, AsmRHData::from_ptr(&mut mapped_ptr, output_header))
-        }
-    }
-
-    fn check_shm_open(shm_fd: i32, name: *const i8) {
-        if shm_fd == -1 {
-            let err = std::io::Error::last_os_error();
-            panic!("shm_open({:?}) failed: {:?}", name, err);
-        }
-    }
-
-    fn check_mmap(ptr: *mut libc::c_void, size: usize, file: &str, line: u32) {
-        if ptr == libc::MAP_FAILED {
-            let err = std::io::Error::last_os_error();
-            panic!("mmap failed: {:?} (size: {} bytes) at {}:{}", err, size, file, line);
-        }
+        (data_ptr as *mut c_void, AsmRHData::from_ptr(&mut data_ptr, header))
     }
 }
 
