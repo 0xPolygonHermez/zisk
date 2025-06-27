@@ -16,3 +16,6 @@ getrandom = { version = "0.2", features = ["custom"] }
 cfg-if = "1.0"
 num-bigint = { workspace = true }
 num-traits = { workspace = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_vendor, values("zisk"))'] }
