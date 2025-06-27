@@ -218,12 +218,14 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
                    CLK[8] * w_packed'5 + CLK[9] * w_packed'6 + CLK[10] * w_packed'7 + CLK[11] * w_packed'8 +
                    CLK[12] * a_packed'58 + CLK[13] * a_packed'55 + CLK[14] * e_packed'56 + CLK[15] * e_packed'53 +
                    clock_map(step_addr, ADDR_IND_0, 16) + clock_map(step_addr, ADDR_IND_1, 17);
+    // println(mem_value[0]);
 
     mem_value[1] = CLK[0] * a_packed'3 + CLK[1] * a_packed + CLK[2] * e_packed' + CLK[3] * 2'e_packed +
                    CLK[4] * w_packed + CLK[5] * w_packed' + CLK[6] * w_packed'2 + CLK[7] * w_packed'3 +
                    CLK[8] * w_packed'4 + CLK[9] * w_packed'5 + CLK[10] * w_packed'6 + CLK[11] * w_packed'7 +
                    CLK[12] * a_packed'59 + CLK[13] * a_packed'56 + CLK[14] * e_packed'57 + CLK[15] * e_packed'54;
                    // high bits of ADDR_IND_0 and ADDR_IND_ are 0
+    // println(mem_value[1]);
 
     const expr mem_addr = clock_map(step_addr, ADDR_STATE, start: 0,  end: 3,  delta: 8) +
                           clock_map(step_addr, ADDR_INPUT, start: 4,  end: 11, delta: 8) +
@@ -248,7 +250,7 @@ airtemplate Sha256fDirect(const int N = 2**22, const int RC = 2, const int RB = 
     CLK_0 * (in_use - in_use_clk_0) === 0;
 
     const expr mem_sel = clock_set2(in_use, start: 0, end: 17);
-    println(mem_sel);
+    // println(mem_sel);
 
     precompiled_mem_op(
             is_write: is_writing_state,

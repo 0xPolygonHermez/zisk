@@ -72,6 +72,9 @@ impl<F: PrimeField64> Sha256fSM<F> {
         let state_received = &input.state;
         let input_received = &input.input;
 
+        // Activate the clk_0 selector
+        trace[row_offset].in_use_clk_0 = F::ONE;
+
         // Compute the load state stage
         let mut offset = row_offset;
         let mut prev_state = [0u32; 8];

@@ -5,7 +5,8 @@ use executor::SMBundle;
 use fields::PrimeField64;
 use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
-use precomp_sha256f::Sha256fManager;
+// use precomp_sha256f::Sha256fManager;
+use precomp_sha256f_direct::Sha256fManager;
 use proofman_common::ProofCtx;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
@@ -37,7 +38,7 @@ pub struct StaticSMBundle<F: PrimeField64> {
     binary_sm: Arc<BinarySM<F>>,
     arith_sm: Arc<ArithSM>,
     keccakf_sm: Arc<KeccakfManager>,
-    sha256f_sm: Arc<Sha256fManager>,
+    sha256f_sm: Arc<Sha256fManager<F>>,
     arith_eq_sm: Arc<ArithEqManager<F>>,
 }
 
@@ -48,7 +49,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,
         keccakf_sm: Arc<KeccakfManager>,
-        sha256f_sm: Arc<Sha256fManager>,
+        sha256f_sm: Arc<Sha256fManager<F>>,
         arith_eq_sm: Arc<ArithEqManager<F>>,
     ) -> Self {
         Self {
@@ -78,7 +79,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                 .plan(it.next().unwrap()),
             <KeccakfManager as ComponentBuilder<F>>::build_planner(&*self.keccakf_sm)
                 .plan(it.next().unwrap()),
-            <Sha256fManager as ComponentBuilder<F>>::build_planner(&*self.sha256f_sm)
+            <Sha256fManager<F> as ComponentBuilder<F>>::build_planner(&*self.sha256f_sm)
                 .plan(it.next().unwrap()),
             self.arith_eq_sm.build_planner().plan(it.next().unwrap()),
         ]
@@ -161,7 +162,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                     add_generator!(binary_sm, BinarySM<F>);
                     add_generator!(arith_sm, ArithSM);
                     add_generator!(keccakf_sm, KeccakfManager);
-                    add_generator!(sha256f_sm, Sha256fManager);
+                    add_generator!(sha256f_sm, Sha256fManager<F>);
                     add_generator!(arith_eq_sm, ArithEqManager<F>);
 
                     Some(data_bus)
