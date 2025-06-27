@@ -3,7 +3,7 @@ use crate::asm_services::CMD_RH_RESPONSE_ID;
 use super::{FromResponsePayload, RequestData, ResponseData, ToRequestPayload, CMD_RH_REQUEST_ID};
 
 pub struct RomHistogramRequest {
-    max_steps: u32,
+    pub max_steps: u64,
 }
 
 impl ToRequestPayload for RomHistogramRequest {
