@@ -99,7 +99,7 @@ uint16_t arguments_port = 0;
 // Type of execution
 bool server = false;
 bool client = false;
-bool chunk_done = false;
+bool call_chunk_done = false;
 bool do_shutdown = false; // If true, the client will perform a shutdown request to the server when done
 uint64_t number_of_mt_requests = 1; // Loop to send this number of minimal trace requests
 
@@ -201,6 +201,8 @@ void server_cleanup (void);
 void client_setup (void);
 void client_run (void);
 void client_cleanup (void);
+
+void _chunk_done(void);
 
 void log_minimal_trace(void);
 void log_histogram(void);
@@ -1159,7 +1161,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_MT_shutdown_done");
             strcpy(shmem_mt_name, "");
-            chunk_done = true;
+            call_chunk_done = true;
             port = 23115;
             break;
         }
@@ -1169,10 +1171,12 @@ void configure (void)
             strcat(shmem_input_name, "_RH_input");
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_RH_output");
-            strcpy(sem_chunk_done_name, "");
+            strcpy(sem_chunk_done_name, shm_prefix);
+            strcat(sem_chunk_done_name, "_RH_chunk_done");
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_RH_shutdown_done");
             strcpy(shmem_mt_name, "");
+            call_chunk_done = true;
             port = 23116;
             break;
         }
@@ -1187,7 +1191,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_MA_shutdown_done");
             strcpy(shmem_mt_name, "");
-            chunk_done = true;
+            call_chunk_done = true;
             port = 23118;
             break;
         }
@@ -1202,7 +1206,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_CH_shutdown_done");
             strcpy(shmem_mt_name, "");
-            chunk_done = true;
+            call_chunk_done = true;
             port = 23115;
             break;
         }
@@ -1226,7 +1230,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_ZP_shutdown_done");
             strcpy(shmem_mt_name, "");
-            chunk_done = true;
+            call_chunk_done = true;
             port = 23115;
             break;
         }
@@ -1241,7 +1245,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_MO_shutdown_done");
             strcpy(shmem_mt_name, "");
-            chunk_done = true;
+            call_chunk_done = true;
             port = 23117;
             break;
         }
@@ -1254,7 +1258,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, "");
             strcpy(shmem_mt_name, shm_prefix);
             strcat(shmem_mt_name, "_MT_output");
-            chunk_done = false;
+            call_chunk_done = false;
             port = 23119;
             break;
         }
@@ -1269,7 +1273,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_MT_shutdown_done");
             strcpy(shmem_mt_name, "");
-            chunk_done = true;
+            call_chunk_done = true;
             port = 23115;
             break;
         }
@@ -1282,7 +1286,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, "");
             strcpy(shmem_mt_name, shm_prefix);
             strcat(shmem_mt_name, "_MT_output");
-            chunk_done = false;
+            call_chunk_done = false;
             port = 23120;
             break;
         }
@@ -1304,8 +1308,9 @@ void configure (void)
     {
         printf("ziskemuasm configuration:\n");
         printf("\tgen_method=%u\n", gen_method);
+        printf("\tshm_prefix=%s\n", shm_prefix);
         printf("\tport=%u\n", port);
-        printf("\tchunk_done=%u\n", chunk_done);
+        printf("\tcall_chunk_done=%u\n", call_chunk_done);
         printf("\tchunk_size=%lu\n", chunk_size);
         printf("\tshmem_input=%s\n", shmem_input_name);
         printf("\tshmem_output=%s\n", shmem_output_name);
@@ -2519,7 +2524,7 @@ void server_setup (void)
     /* SEM CHUNK DONE */
     /******************/
 
-    if (chunk_done)
+    if (call_chunk_done)
     {
         assert(strlen(sem_chunk_done_name) > 0);
         sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0666, 0);
@@ -2530,7 +2535,7 @@ void server_setup (void)
             fflush(stderr);
             exit(-1);
         }
-        if (verbose) printf("sem_open(chunk_done) succeeded\n");
+        if (verbose) printf("sem_open(%s) succeeded\n", sem_chunk_done_name);
     }
 
     /*********************/
@@ -2539,14 +2544,14 @@ void server_setup (void)
     
     assert(strlen(sem_shutdown_done_name) > 0);
     sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT, 0666, 0);
-    if (sem_chunk_done == SEM_FAILED)
+    if (sem_shutdown_done == SEM_FAILED)
     {
         printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
     }
-    if (verbose) printf("sem_open(shutdown_done) succeeded\n");
+    if (verbose) printf("sem_open(%s) succeeded\n", sem_shutdown_done_name);
 }
 
 void server_reset (void)
@@ -2689,6 +2694,13 @@ void server_run (void)
         }
     }
 
+    // Notify client
+    if (gen_method == RomHistogram)
+    {
+        _chunk_done();   
+    }
+
+
     // Notify the caller that the trace is ready to be consumed
     // if (!is_file)
     // {
@@ -2778,7 +2790,7 @@ void server_cleanup (void)
     }
 
     // Cleanup chunk done semaphore
-    if (chunk_done)
+    if (call_chunk_done)
     {
         result = sem_close(sem_chunk_done);
         if (result == -1)
@@ -2898,7 +2910,7 @@ extern void _chunk_done()
     // printf("chunk_done() sync_duration=%lu\n", sync_duration);
 
     // Notify the caller that a new chunk is done and its trace is ready to be consumed
-    assert(chunk_done);
+    assert(call_chunk_done);
     int result = sem_post(sem_chunk_done);
     if (result == -1)
     {

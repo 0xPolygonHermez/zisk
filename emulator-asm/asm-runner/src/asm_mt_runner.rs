@@ -61,7 +61,7 @@ impl AsmRunnerMT {
         Self { mapped_ptr, vec_chunks }
     }
 
-    pub fn total_size(&self) -> usize {
+    fn total_size(&self) -> usize {
         self.vec_chunks.iter().map(|chunk| chunk.mem_reads.len() * size_of::<u64>()).sum::<usize>()
             + size_of::<AsmMTHeader>()
     }
@@ -184,7 +184,7 @@ impl AsmRunnerMT {
         Ok((AsmRunnerMT::new(header_ptr as *mut c_void, emu_traces), tasks))
     }
 
-    pub fn write_input(inputs_path: &Path, shmem_input_name: &str) {
+    fn write_input(inputs_path: &Path, shmem_input_name: &str) {
         let inputs = fs::read(inputs_path).expect("Failed to read input file");
         let asm_input = AsmInputC2 { zero: 0, input_data_size: inputs.len() as u64 };
         let shmem_input_size = (inputs.len() + size_of::<AsmInputC2>() + 7) & !7;
@@ -205,7 +205,7 @@ impl AsmRunnerMT {
         }
     }
 
-    pub fn get_output_ptr(shmem_output_name: &str) -> *mut std::ffi::c_void {
+    fn get_output_ptr(shmem_output_name: &str) -> *mut std::ffi::c_void {
         let fd = shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR);
         let header_size = size_of::<AsmMTHeader>();
         let temp = shmem_utils::map(fd, header_size, PROT_READ, "header temp map");

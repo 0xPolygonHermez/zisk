@@ -5,9 +5,11 @@
 use std::{
     collections::VecDeque,
     sync::{atomic::AtomicU32, Arc},
+    thread::JoinHandle,
 };
 
-use crate::{rom_asm_worker::RomAsmWorker, rom_counter::RomCounter, RomSM};
+use crate::{rom_counter::RomCounter, RomSM};
+use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::sync::Mutex;
@@ -38,8 +40,8 @@ pub struct RomInstance {
     /// Execution statistics counter for ROM instructions.
     counter_stats: Mutex<Option<CounterStats>>,
 
-    /// Optional worker for ROM assembly execution.
-    rom_asm_worker: Mutex<Option<RomAsmWorker>>,
+    /// Optional handle for the ROM assembly runner thread.
+    handle_rh: Mutex<Option<JoinHandle<AsmRunnerRH>>>,
 }
 
 impl RomInstance {
@@ -56,7 +58,7 @@ impl RomInstance {
         ictx: InstanceCtx,
         bios_inst_count: Arc<Vec<AtomicU32>>,
         prog_inst_count: Arc<Vec<AtomicU32>>,
-        rom_asm_worker: Option<RomAsmWorker>,
+        handle_rh: Option<JoinHandle<AsmRunnerRH>>,
     ) -> Self {
         Self {
             zisk_rom,
@@ -64,12 +66,12 @@ impl RomInstance {
             bios_inst_count: Mutex::new(bios_inst_count),
             prog_inst_count: Mutex::new(prog_inst_count),
             counter_stats: Mutex::new(None),
-            rom_asm_worker: Mutex::new(rom_asm_worker),
+            handle_rh: Mutex::new(handle_rh),
         }
     }
 
     pub fn is_asm_execution(&self) -> bool {
-        self.rom_asm_worker.lock().unwrap().is_some()
+        self.handle_rh.lock().unwrap().is_some()
     }
 }
 
@@ -93,19 +95,19 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
     ) -> Option<AirInstance<F>> {
+        // Case 1: Use ROM assembly output
         if self.is_asm_execution() {
-            // Case 1: Use ROM assembly output
-            let mut worker = self.rom_asm_worker.lock().unwrap().take().unwrap();
-            let asm_runner_romh = worker.wait_for_task();
+            let handle_rh = self.handle_rh.lock().unwrap().take().unwrap();
+            let result_rh = handle_rh.join().expect("Error during Rom Histogram thread execution");
 
             *self.bios_inst_count.lock().unwrap() =
-                Arc::new(create_atomic_vec(asm_runner_romh.asm_rowh_output.bios_inst_count.len()));
+                Arc::new(create_atomic_vec(result_rh.asm_rowh_output.bios_inst_count.len()));
             *self.prog_inst_count.lock().unwrap() =
-                Arc::new(create_atomic_vec(asm_runner_romh.asm_rowh_output.prog_inst_count.len()));
+                Arc::new(create_atomic_vec(result_rh.asm_rowh_output.prog_inst_count.len()));
 
             return Some(RomSM::compute_witness_from_asm(
                 &self.zisk_rom,
-                &asm_runner_romh.asm_rowh_output,
+                &result_rh.asm_rowh_output,
             ));
         }
 
