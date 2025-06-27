@@ -11,11 +11,13 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     env, fs,
     path::{Path, PathBuf},
     thread,
+    time::Instant,
 };
 use zisk_common::ZiskLibInitFn;
 use zisk_pil::*;
@@ -386,12 +388,12 @@ impl ZiskStats {
                 air_id,
                 Self::air_name(*airgroup_id, *air_id),
                 stats.num_chunks,
-                stats.collect_time,
-                stats.witness_time,
+                stats.collect_duration,
+                stats.witness_duration,
             );
             // Accumulate total times
-            total_collect_time += stats.collect_time;
-            total_witness_time += stats.witness_time;
+            total_collect_time += stats.collect_duration;
+            total_witness_time += stats.witness_duration;
         }
 
         // Group stats
@@ -423,13 +425,13 @@ impl ZiskStats {
             let (mut n_min, mut n_max, mut n_sum) = (usize::MAX, 0, 0usize);
 
             for e in &entries {
-                c_min = c_min.min(e.collect_time);
-                c_max = c_max.max(e.collect_time);
-                c_sum += e.collect_time;
+                c_min = c_min.min(e.collect_duration);
+                c_max = c_max.max(e.collect_duration);
+                c_sum += e.collect_duration;
 
-                w_min = w_min.min(e.witness_time);
-                w_max = w_max.max(e.witness_time);
-                w_sum += e.witness_time;
+                w_min = w_min.min(e.witness_duration);
+                w_max = w_max.max(e.witness_duration);
+                w_sum += e.witness_duration;
 
                 n_min = n_min.min(e.num_chunks);
                 n_max = n_max.max(e.num_chunks);
@@ -488,5 +490,57 @@ impl ZiskStats {
             val if val == SPECIFIED_RANGES_AIR_IDS[0] => "SPECIFIED_RANGES".to_string(),
             _ => format!("Unknown air_id: {}", air_id),
         }
+    }
+
+    /// Stores stats in JSON file format
+    ///
+    /// # Arguments
+    /// * `stats` - A reference to the stats vector.
+    pub fn store_stats(start_time: Instant, stats: &[(usize, usize, Stats)]) {
+        #[derive(Serialize, Deserialize, Debug)]
+        struct Task {
+            name: String,
+            start: u64,
+            duration: u64,
+        }
+        let mut tasks: Vec<Task> = Vec::new();
+
+        println!("stats.len={}", stats.len());
+        for (_i, stat) in stats.iter().enumerate() {
+            let airgroup_id = stat.0;
+            let air_id = stat.1;
+            let stat = &stat.2;
+            let collect_start_time: u64 =
+                stat.collect_start_time.duration_since(start_time).as_micros() as u64;
+            let witness_start_time: u64 =
+                stat.witness_start_time.duration_since(start_time).as_micros() as u64;
+            let name = ZiskStats::air_name(airgroup_id, air_id);
+            if stat.collect_duration > 0 {
+                let name = name.clone() + "_collect";
+                println!(
+                    "{} num_chunks={} start_time={}, duration={}",
+                    name, stat.num_chunks, collect_start_time, stat.collect_duration
+                );
+                let task =
+                    Task { name, start: collect_start_time, duration: stat.collect_duration };
+                tasks.push(task);
+            }
+            if stat.witness_duration > 0 {
+                let name = name.clone() + "_witness";
+                println!(
+                    "{} num_chunks={}, start_time={}, duration={}",
+                    name, stat.num_chunks, witness_start_time, stat.witness_duration
+                );
+                let task =
+                    Task { name, start: witness_start_time, duration: stat.witness_duration };
+                tasks.push(task);
+            }
+        }
+
+        // Convert to pretty-printed JSON
+        let json = serde_json::to_string_pretty(&tasks).unwrap();
+
+        // Write to file
+        let _ = fs::write("stats.json", json);
     }
 }

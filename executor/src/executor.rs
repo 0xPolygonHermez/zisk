@@ -39,6 +39,7 @@ use zisk_common::{
 use zisk_common::{ChunkId, PayloadType};
 use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
 
+use std::time::Instant;
 use std::{
     collections::HashMap,
     fmt::Debug,
@@ -69,8 +70,15 @@ enum MinimalTraceExecutionMode {
 
 #[derive(Debug, Clone)]
 pub struct Stats {
-    pub collect_time: u64,
-    pub witness_time: u64,
+    /// Collect start time
+    pub collect_start_time: Instant,
+    /// Collect duration in microseconds
+    pub collect_duration: u64,
+    /// Witness start time
+    pub witness_start_time: Instant,
+    /// Witness duration in microseconds
+    pub witness_duration: u64,
+    /// Number of chunks
     pub num_chunks: usize,
 }
 
@@ -548,7 +556,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// * `pctx` - Proof context.
     /// * `main_instance` - Main instance to compute witness for
     fn witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &MainInstance) {
-        let witness_start = std::time::Instant::now();
+        #[cfg(feature = "stats")]
+        let witness_start_time = std::time::Instant::now();
 
         let min_traces_guard = self.min_traces.read().unwrap();
         let min_traces = &*min_traces_guard;
@@ -569,14 +578,24 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
 
-        let witness_time = witness_start.elapsed().as_millis() as u64;
-        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(main_instance.ictx.global_id);
+        #[cfg(feature = "stats")]
+        {
+            let witness_duration = witness_start_time.elapsed().as_micros() as u64;
 
-        self.stats.lock().unwrap().push((
-            airgroup_id,
-            air_id,
-            Stats { collect_time: 0, witness_time, num_chunks: 1 },
-        ));
+            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(main_instance.ictx.global_id);
+
+            self.stats.lock().unwrap().push((
+                airgroup_id,
+                air_id,
+                Stats {
+                    collect_start_time: std::time::Instant::now(),
+                    collect_duration: 0,
+                    witness_start_time,
+                    witness_duration,
+                    num_chunks: 1,
+                },
+            ));
+        }
     }
 
     /// computes witness for a secondary state machines instance.
@@ -593,24 +612,30 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         global_id: usize,
         secn_instance: &dyn Instance<F>,
     ) {
-        let (mut stats, collectors_by_instance) = self
+        let (mut _stats, collectors_by_instance) = self
             .collectors_by_instance
             .write()
             .unwrap()
             .remove(&global_id)
             .expect("Missing collectors for given global_id");
+        #[cfg(feature = "stats")]
+        let witness_start_time = std::time::Instant::now();
 
-        let witness_start = std::time::Instant::now();
         if let Some(air_instance) =
             secn_instance.compute_witness(pctx, sctx, collectors_by_instance)
         {
             pctx.add_air_instance(air_instance, global_id);
         }
-        let witness_time = witness_start.elapsed().as_millis() as u64;
-        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
 
-        stats.witness_time = witness_time;
-        self.stats.lock().unwrap().push((airgroup_id, air_id, stats));
+        #[cfg(feature = "stats")]
+        {
+            let witness_duration = witness_start_time.elapsed().as_millis() as u64;
+            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+
+            _stats.witness_start_time = witness_start_time;
+            _stats.witness_duration = witness_duration;
+            self.stats.lock().unwrap().push((airgroup_id, air_id, _stats));
+        }
     }
 
     /// Expands for a secondary state machines instance.
@@ -620,8 +645,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// * `sctx` - Setup context.
     /// * `global_id` - Global ID of the secondary state machine instance.
     /// * `secn_instance` - Secondary state machine instance to compute witness for
-    fn witness_collect_instance(&self, global_id: usize, secn_instance: &dyn Instance<F>) {
-        let collect_start = std::time::Instant::now();
+    fn witness_collect_instance(&self, _global_id: usize, secn_instance: &dyn Instance<F>) {
+        #[cfg(feature = "stats")]
+        let collect_start_time = std::time::Instant::now();
         assert_eq!(secn_instance.instance_type(), InstanceType::Instance, "Instance is a table");
 
         let min_traces = self.min_traces.read().unwrap();
@@ -634,7 +660,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         // Group the instances by the chunk they need to process
         let chunks_to_execute = self.chunks_to_execute(min_traces, secn_instance);
-        let num_chunks = chunks_to_execute.iter().filter(|&&x| x).count();
+        let _num_chunks = chunks_to_execute.iter().filter(|&&x| x).count();
 
         // Create data buses for each chunk
         let mut data_buses =
@@ -653,15 +679,24 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         });
 
         // Close the data buses and get for each instance its collectors
-        let collectors_by_instance = self.close_data_bus_collectors(data_buses);
+        let _collectors_by_instance = self.close_data_bus_collectors(data_buses);
 
-        let collect_time = collect_start.elapsed().as_millis() as u64;
-        let stats = Stats { collect_time, witness_time: 0, num_chunks };
+        #[cfg(feature = "stats")]
+        {
+            let collect_duration = collect_start_time.elapsed().as_millis() as u64;
+            let stats = Stats {
+                collect_start_time,
+                collect_duration,
+                witness_start_time: Instant::now(),
+                witness_duration: 0,
+                num_chunks: _num_chunks,
+            };
 
-        self.collectors_by_instance
-            .write()
-            .unwrap()
-            .insert(global_id, (stats, collectors_by_instance));
+            self.collectors_by_instance
+                .write()
+                .unwrap()
+                .insert(_global_id, (stats, _collectors_by_instance));
+        }
     }
 
     /// Computes and generates witness for secondary state machine instance of type `Table`.
@@ -678,7 +713,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         global_id: usize,
         table_instance: &dyn Instance<F>,
     ) {
-        let witness_start = std::time::Instant::now();
+        #[cfg(feature = "stats")]
+        let witness_start_time = std::time::Instant::now();
         assert_eq!(table_instance.instance_type(), InstanceType::Table, "Instance is not a table");
 
         if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![]) {
@@ -687,14 +723,23 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             }
         }
 
-        let witness_time = witness_start.elapsed().as_millis() as u64;
-        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+        #[cfg(feature = "stats")]
+        {
+            let witness_duration = witness_start_time.elapsed().as_micros() as u64;
+            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
 
-        self.stats.lock().unwrap().push((
-            airgroup_id,
-            air_id,
-            Stats { collect_time: 0, witness_time, num_chunks: 0 },
-        ));
+            self.stats.lock().unwrap().push((
+                airgroup_id,
+                air_id,
+                Stats {
+                    collect_start_time: Instant::now(),
+                    collect_duration: 0,
+                    witness_start_time,
+                    witness_duration,
+                    num_chunks: 0,
+                },
+            ));
+        }
     }
 
     /// Computes all the chunks to be executed to generate the witness given an instance.

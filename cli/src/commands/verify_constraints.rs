@@ -1,3 +1,5 @@
+#[cfg(feature = "stats")]
+use crate::commands::ZiskStats;
 use crate::{
     commands::{
         cli_fail_if_gpu_mode, cli_fail_if_macos, get_proving_key, get_witness_computation_lib,
@@ -19,6 +21,8 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
+#[cfg(feature = "stats")]
+use std::time::Instant;
 use std::{
     collections::HashMap,
     env, fs,
@@ -100,6 +104,9 @@ impl ZiskVerifyConstraints {
         cli_fail_if_gpu_mode()?;
 
         print_banner();
+
+        #[cfg(feature = "stats")]
+        let start_time = Instant::now();
 
         let mpi_context = initialize_mpi()?;
 
@@ -266,7 +273,7 @@ impl ZiskVerifyConstraints {
 
         let elapsed = start.elapsed();
 
-        let (result, _): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
+        let (result, _stats): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
             .get_execution_result()
             .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
             .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
@@ -288,6 +295,12 @@ impl ZiskVerifyConstraints {
             // Shut down ASM microservices
             tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_context.world_rank);
             asm_services.stop_asm_services()?;
+        }
+
+        // Store the stats in stats.json
+        #[cfg(feature = "stats")]
+        {
+            ZiskStats::store_stats(start_time, &_stats);
         }
 
         Ok(())
