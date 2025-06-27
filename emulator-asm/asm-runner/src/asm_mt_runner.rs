@@ -1,4 +1,4 @@
-use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR, S_IXUSR};
+use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
 
 use named_sem::NamedSemaphore;
 use rayon::ThreadPoolBuilder;
@@ -73,13 +73,11 @@ impl AsmRunnerMT {
         task_factory: TaskFactory<T>,
         world_rank: i32,
         local_rank: i32,
-        port: Option<u16>,
+        base_port: Option<u16>,
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
-        let asm_service = AsmServices::new(world_rank, local_rank, port);
-
-        let prefix = asm_service.shmem_prefix();
+        let prefix = AsmServices::shmem_prefix(&crate::AsmService::MT, base_port, local_rank);
 
         let shmem_input_name = format!("{}_MT_input", prefix);
         let shmem_output_name = format!("{}_MT_output", prefix);
@@ -93,7 +91,7 @@ impl AsmRunnerMT {
         let start = Instant::now();
 
         let handle = std::thread::spawn(move || {
-            let asm_services = AsmServices::new(world_rank, local_rank, port);
+            let asm_services = AsmServices::new(world_rank, local_rank, base_port);
             asm_services.send_minimal_trace_request(max_steps, chunk_size)
         });
 
@@ -194,9 +192,11 @@ impl AsmRunnerMT {
         let mut full_input = Vec::with_capacity(shmem_input_size);
         full_input.extend_from_slice(&asm_input.to_bytes());
         full_input.extend_from_slice(&inputs);
+        while full_input.len() < shmem_input_size {
+            full_input.push(0);
+        }
 
-        let fd =
-            shmem_utils::open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR | S_IXUSR);
+        let fd = shmem_utils::open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR);
         let ptr = shmem_utils::map(fd, shmem_input_size, PROT_READ | PROT_WRITE, "input mmap");
         unsafe {
             ptr::copy_nonoverlapping(full_input.as_ptr(), ptr as *mut u8, shmem_input_size);
@@ -206,8 +206,7 @@ impl AsmRunnerMT {
     }
 
     pub fn get_output_ptr(shmem_output_name: &str) -> *mut std::ffi::c_void {
-        let fd =
-            shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR | S_IXUSR);
+        let fd = shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR);
         let header_size = size_of::<AsmMTHeader>();
         let temp = shmem_utils::map(fd, header_size, PROT_READ, "header temp map");
         let header = unsafe { (temp as *const AsmMTHeader).read() };

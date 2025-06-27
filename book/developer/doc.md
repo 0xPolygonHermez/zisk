@@ -10,7 +10,7 @@ In order to generate the Zisk documentation, execute the cargo doc command.  We 
 $ cargo doc --no-deps
 ```
 
-This will generate a set of HTML files under the `target/doc` diretory.
+This will generate a set of HTML files under the `target/doc` directory.
 
 ## Viewing Zisk documentation
 
@@ -37,4 +37,4 @@ Some basic hints:
 `//! ...`
 * Documentation for a public element must be placed right before it, starting with `/// ...`
 * Wrap code with triple spike: `//! \`\`\``
-* To avoid cargo doc to compile the code, use `text` after the priple spike: `//! \`\`\`text`
+* To avoid cargo doc to compile the code, use `text` after the triple spike: `//! \`\`\`text`

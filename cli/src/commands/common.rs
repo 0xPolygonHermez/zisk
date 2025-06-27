@@ -1,10 +1,13 @@
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
-use mpi::environment::Universe;
+#[cfg(distributed)]
+use mpi::traits::*;
 use std::env;
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::str::FromStr;
+#[cfg(distributed)]
+use zisk_common::MpiContext;
 
 #[derive(Parser, Debug, Clone, ValueEnum)]
 pub enum Field {
@@ -102,9 +105,8 @@ pub fn cli_fail_if_gpu_mode() -> anyhow::Result<()> {
     }
 }
 
-pub fn initialize_mpi() -> Result<(Universe, i32, i32)> {
-    use mpi::traits::*;
-
+#[cfg(distributed)]
+pub fn initialize_mpi() -> Result<MpiContext> {
     let (universe, _threading) = mpi::initialize_with_threading(mpi::Threading::Multiple)
         .ok_or_else(|| anyhow::anyhow!("Failed to initialize MPI with threading"))?;
 
@@ -114,7 +116,12 @@ pub fn initialize_mpi() -> Result<(Universe, i32, i32)> {
     let local_comm = world.split_shared(world_rank);
     let local_rank = local_comm.rank();
 
-    Ok((universe, world_rank, local_rank))
+    Ok(MpiContext { universe, world_rank, local_rank })
+}
+
+#[cfg(not(distributed))]
+pub fn initialize_mpi() -> Result<MpiContext> {
+    Ok(MpiContext { world_rank: 0, local_rank: 0 })
 }
 
 /// Gets the witness computation library file location.

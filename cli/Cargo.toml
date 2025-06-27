@@ -51,9 +51,15 @@ tokio = { version = "1", features = ["full"] }
 indicatif = "0.17.8"
 futures = "0.3.30"
 yansi = "1.0.1"
-mpi = "0.8.0"
+
+# Distributed mode (mpi) is only supported on Linux x86_64
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+mpi = { workspace = true }
 
 [features]
 default = []
-disable-distributed = ["proofman-common/disable-distributed"]
+disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
 gpu = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(distributed)'] }

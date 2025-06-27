@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 use uuid::Uuid;
 use witness::WitnessLibrary;
-use zisk_common::{info_file, ZiskLibInitFn};
+use zisk_common::{info_file, MpiContext, ZiskLibInitFn};
 
 use anyhow::Result;
 
@@ -69,6 +69,9 @@ pub struct ServerConfig {
 
     /// Unique identifier for the server instance
     pub server_id: Uuid,
+
+    /// Additional options for the ASM runner
+    pub asm_runner_options: AsmRunnerOptions,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -85,6 +88,7 @@ impl ServerConfig {
         verbose: u8,
         debug: DebugInfo,
         sha256f_script: PathBuf,
+        asm_runner_options: AsmRunnerOptions,
     ) -> Self {
         Self {
             port,
@@ -100,6 +104,7 @@ impl ServerConfig {
             sha256f_script,
             launch_time: Instant::now(),
             server_id: Uuid::new_v4(),
+            asm_runner_options,
         }
     }
 }
@@ -130,46 +135,72 @@ pub struct ZiskService {
     config: Arc<ServerConfig>,
     proofman: ProofMan<Goldilocks>,
     witness_lib: Box<dyn WitnessLibrary<Goldilocks>>,
+    asm_services: AsmServices,
 }
 
 impl ZiskService {
-    pub fn new(config: ServerConfig) -> Result<Self> {
+    pub fn new(config: ServerConfig, mpi_context: MpiContext) -> Result<Self> {
         info_file!("Starting asm microservices...");
-        let options = AsmRunnerOptions::default();
-        let asm_services = AsmServices::new(0, 0, None);
-        asm_services.start_asm_services(config.asm.as_ref().unwrap(), options)?;
+
+        let world_rank = config.asm_runner_options.world_rank;
+        let local_rank = config.asm_runner_options.local_rank;
+        let base_port = config.asm_runner_options.base_port;
+
+        let asm_services = AsmServices::new(world_rank, local_rank, base_port);
+        asm_services
+            .start_asm_services(config.asm.as_ref().unwrap(), config.asm_runner_options.clone())?;
 
         let library =
             unsafe { Library::new(config.witness_lib.clone()).expect("Failed to load library") };
         let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
             unsafe { library.get(b"init_library").expect("Failed to get symbol") };
+
         let mut witness_lib = witness_lib_constructor(
             config.verbose.into(),
             config.elf.clone(),
             config.asm.clone(),
             config.asm_rom.clone(),
             config.sha256f_script.clone(),
-            None, // mpi Rank is not used in this context
-            None, // mpi Local Rank is not used in this context
-            None, // Not used at this moment
+            Some(world_rank),
+            Some(local_rank),
+            base_port,
         )
         .expect("Failed to initialize witness library");
 
-        let proofman = ProofMan::<Goldilocks>::new(
-            config.proving_key.clone(),
-            config.custom_commits_map.clone(),
-            true,
-            false,
-            false,
-            ParamsGPU::default(),
-            config.verbose.into(),
-            None,
-        )
-        .expect("Failed to initialize proofman");
+        let proofman;
+        #[cfg(distributed)]
+        {
+            proofman = ProofMan::<Goldilocks>::new(
+                config.proving_key.clone(),
+                config.custom_commits_map.clone(),
+                true,
+                false,
+                false,
+                ParamsGPU::default(),
+                config.verbose.into(),
+                Some(mpi_context.universe),
+            )
+            .expect("Failed to initialize proofman");
+        }
+
+        #[cfg(not(distributed))]
+        {
+            proofman = ProofMan::<Goldilocks>::new(
+                config.proving_key.clone(),
+                config.custom_commits_map.clone(),
+                true,
+                false,
+                false,
+                ParamsGPU::default(),
+                config.verbose.into(),
+                None,
+            )
+            .expect("Failed to initialize proofman");
+        }
 
         proofman.register_witness(witness_lib.as_mut(), library);
 
-        Ok(Self { config: Arc::new(config), proofman, witness_lib })
+        Ok(Self { config: Arc::new(config), proofman, witness_lib, asm_services })
     }
 
     pub fn run(&mut self) -> std::io::Result<()> {
@@ -226,7 +257,7 @@ impl ZiskService {
             ZiskRequest::Status => ZiskServiceStatusHandler::handle(&config),
             ZiskRequest::Shutdown => {
                 must_shutdown = true;
-                ZiskServiceShutdownHandler::handle()
+                ZiskServiceShutdownHandler::handle(&self.asm_services, &self.config)
             }
             ZiskRequest::VerifyConstraints { payload } => {
                 ZiskServiceVerifyConstraintsHandler::handle(

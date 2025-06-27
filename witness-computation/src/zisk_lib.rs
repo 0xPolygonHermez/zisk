@@ -105,6 +105,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         // ]);
 
         let sm_bundle = StaticSMBundle::new(
+            self.asm_path.is_some(),
             mem_sm.clone(),
             rom_sm.clone(),
             binary_sm.clone(),

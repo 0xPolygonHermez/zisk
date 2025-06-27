@@ -28,6 +28,7 @@ use crate::{
     ZISK_VERSION_MESSAGE,
 };
 
+#[cfg(distributed)]
 use mpi::traits::*;
 
 #[derive(Parser)]
@@ -76,8 +77,15 @@ pub struct ZiskStats {
     /// it will use from this base port to base port + 2 * number_of_instances.
     /// For example, if you run 2 mpi instances of ZisK, it will use ports from 23115 to 23117
     /// for the first instance, and from 23118 to 23120 for the second instance.
-    #[clap(short = 'p', long)]
+    #[clap(short = 'p', long, conflicts_with = "emulator")]
     pub port: Option<u16>,
+
+    /// Map locked flag
+    /// This is used to lock the memory map for the ROM file.
+    /// If you are running ZisK on a machine with limited memory, you may want to disable this option.
+    /// This option is mutually exclusive with `--emulator`.
+    #[clap(short = 'u', long, conflicts_with = "emulator")]
+    pub map_locked: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
@@ -99,22 +107,6 @@ impl ZiskStats {
         cli_fail_if_macos()?;
 
         print_banner();
-
-        let (universe, world_rank, local_rank) = initialize_mpi()?;
-
-        let world = universe.world();
-
-        let m2 = self.mpi_node as i32 * 2;
-        if world_rank < m2 || world_rank >= m2 + 2 {
-            world.split_shared(world_rank);
-            world.barrier();
-            println!(
-                "{}: {}",
-                format!("Rank {}", world_rank).bright_yellow().bold(),
-                "Exiting stats command.".bright_yellow()
-            );
-            return Ok(());
-        }
 
         let proving_key = get_proving_key(self.proving_key.as_ref());
 
@@ -200,21 +192,66 @@ impl ZiskStats {
         let mut gpu_params = ParamsGPU::new(false);
         gpu_params.with_max_number_streams(1);
 
-        let proofman = ProofMan::<Goldilocks>::new(
-            proving_key,
-            custom_commits_map,
-            true,
-            false,
-            false,
-            gpu_params,
-            self.verbose.into(),
-            Some(universe),
-        )
-        .expect("Failed to initialize proofman");
+        let proofman;
+        let mpi_context = initialize_mpi()?;
+        let world_ranks;
+
+        let world_rank = mpi_context.world_rank;
+        let local_rank = mpi_context.local_rank;
+        #[cfg(distributed)]
+        {
+            let world = mpi_context.universe.world();
+            world_ranks = world.size() as usize;
+
+            let m2 = self.mpi_node as i32 * 2;
+            if mpi_context.world_rank < m2 || mpi_context.world_rank >= m2 + 2 {
+                world.split_shared(mpi_context.world_rank);
+                world.barrier();
+                println!(
+                    "{}: {}",
+                    format!("Rank {}", mpi_context.world_rank).bright_yellow().bold(),
+                    "Exiting stats command.".bright_yellow()
+                );
+                return Ok(());
+            }
+
+            proofman = ProofMan::<Goldilocks>::new(
+                proving_key,
+                custom_commits_map,
+                true,
+                false,
+                false,
+                gpu_params,
+                self.verbose.into(),
+                Some(mpi_context.universe),
+            )
+            .expect("Failed to initialize proofman");
+        }
+
+        #[cfg(not(distributed))]
+        {
+            proofman = ProofMan::<Goldilocks>::new(
+                proving_key,
+                custom_commits_map,
+                true,
+                false,
+                false,
+                gpu_params,
+                self.verbose.into(),
+            )
+            .expect("Failed to initialize proofman");
+            world_ranks = 1;
+        }
 
         let mut witness_lib;
 
         let asm_services = AsmServices::new(world_rank, local_rank, self.port);
+        let asm_runner_options = AsmRunnerOptions::new()
+            .with_verbose(self.verbose > 0)
+            .with_base_port(self.port)
+            .with_world_rank(world_rank)
+            .with_local_rank(local_rank)
+            .with_map_locked(self.map_locked);
 
         match self.field {
             Field::Goldilocks => {
@@ -245,10 +282,8 @@ impl ZiskStats {
                         "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
                     );
 
-                    asm_services.start_asm_services(
-                        self.asm.as_ref().unwrap(),
-                        AsmRunnerOptions::default(),
-                    )?;
+                    asm_services
+                        .start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
                 }
 
                 proofman
@@ -269,7 +304,7 @@ impl ZiskStats {
         tracing::info!("");
         tracing::info!(
             "{} {}",
-            format!("--- STATS SUMMARY RANK {}/{}", world_rank as usize, world.size() as usize),
+            format!("--- STATS SUMMARY RANK {}/{}", world_rank, world_ranks),
             "-".repeat(55)
         );
 
