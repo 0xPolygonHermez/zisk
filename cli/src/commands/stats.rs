@@ -108,7 +108,7 @@ pub struct ZiskStats {
     pub sha256f_script: Option<PathBuf>,
 
     #[clap(long)]
-    pub mpi_node: usize,
+    pub mpi_node: Option<usize>,
 }
 
 impl ZiskStats {
@@ -218,16 +218,18 @@ impl ZiskStats {
             let world = mpi_context.universe.world();
             world_ranks = world.size() as usize;
 
-            let m2 = self.mpi_node as i32 * 2;
-            if mpi_context.world_rank < m2 || mpi_context.world_rank >= m2 + 2 {
-                world.split_shared(mpi_context.world_rank);
-                world.barrier();
-                println!(
-                    "{}: {}",
-                    format!("Rank {}", mpi_context.world_rank).bright_yellow().bold(),
-                    "Exiting stats command.".bright_yellow()
-                );
-                return Ok(());
+            if let Some(mpi_node) = self.mpi_node {
+                let m2 = mpi_node as i32 * 2;
+                if mpi_context.world_rank < m2 || mpi_context.world_rank >= m2 + 2 {
+                    world.split_shared(mpi_context.world_rank);
+                    world.barrier();
+                    println!(
+                        "{}: {}",
+                        format!("Rank {}", mpi_context.world_rank).bright_yellow().bold(),
+                        "Exiting stats command.".bright_yellow()
+                    );
+                    return Ok(());
+                }
             }
 
             proofman = ProofMan::<Goldilocks>::new(

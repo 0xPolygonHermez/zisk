@@ -72,9 +72,11 @@ pub struct ServerConfig {
 
     /// Size of the chunks in bits
     pub chunk_size_bits: Option<u64>,
-    
+
     /// Additional options for the ASM runner
     pub asm_runner_options: AsmRunnerOptions,
+
+    pub gpu_params: ParamsGPU,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -93,6 +95,7 @@ impl ServerConfig {
         sha256f_script: PathBuf,
         chunk_size_bits: Option<u64>,
         asm_runner_options: AsmRunnerOptions,
+        gpu_params: ParamsGPU,
     ) -> Self {
         Self {
             port,
@@ -110,6 +113,7 @@ impl ServerConfig {
             server_id: Uuid::new_v4(),
             chunk_size_bits,
             asm_runner_options,
+            gpu_params,
         }
     }
 }
@@ -182,7 +186,7 @@ impl ZiskService {
                 true,
                 false,
                 false,
-                ParamsGPU::default(),
+                config.gpu_params.clone(),
                 config.verbose.into(),
                 Some(mpi_context.universe),
             )
