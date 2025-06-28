@@ -287,6 +287,7 @@ impl ZiskStats {
                     Some(world_rank),
                     Some(local_rank),
                     self.port,
+                    self.map_locked,
                 )
                 .expect("Failed to initialize witness library");
 

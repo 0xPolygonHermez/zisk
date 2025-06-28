@@ -31,7 +31,8 @@ pub struct WitnessLib<F: PrimeField64> {
     chunk_size: u64,
     world_rank: i32,
     local_rank: i32,
-    port: Option<u16>,
+    base_port: Option<u16>,
+    map_locked: bool,
 }
 
 #[no_mangle]
@@ -45,7 +46,8 @@ fn init_library(
     chunk_size_bits: Option<u64>,
     world_rank: Option<i32>,
     local_rank: Option<i32>,
-    port: Option<u16>,
+    base_port: Option<u16>,
+    map_locked: bool,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode, world_rank);
     let chunk_size = 1 << chunk_size_bits.unwrap_or(DEFAULT_CHUNK_SIZE_BITS);
@@ -59,7 +61,8 @@ fn init_library(
         chunk_size,
         world_rank: world_rank.unwrap_or(0),
         local_rank: local_rank.unwrap_or(0),
-        port,
+        base_port,
+        map_locked,
     });
 
     Ok(result)
@@ -135,7 +138,8 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             self.chunk_size,
             self.world_rank,
             self.local_rank,
-            self.port,
+            self.base_port,
+            self.map_locked,
         );
 
         let executor = Arc::new(executor);

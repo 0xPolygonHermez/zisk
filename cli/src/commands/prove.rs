@@ -309,6 +309,7 @@ impl ZiskProve {
             Some(mpi_context.world_rank),
             Some(mpi_context.local_rank),
             self.port,
+            self.map_locked,
         )
         .expect("Failed to initialize witness library");
 
