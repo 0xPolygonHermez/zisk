@@ -108,6 +108,12 @@ impl AsmServices {
         let start = std::time::Instant::now();
 
         for service in &Self::SERVICES {
+            tracing::debug!(
+                ">>> [{}] Starting ASM service: {} on port {}",
+                self.world_rank,
+                service,
+                Self::port_for(service, self.base_port, self.local_rank)
+            );
             self.start_asm_service(service, trimmed_path, &options);
         }
 
@@ -115,6 +121,12 @@ impl AsmServices {
             Self::wait_for_service_ready(
                 service,
                 Self::port_for(service, self.base_port, self.local_rank),
+            );
+            tracing::debug!(
+                ">>> [{}] ASM service {} is ready on port {}",
+                self.world_rank,
+                service,
+                Self::port_for(service, self.base_port, self.local_rank)
             );
         }
 
@@ -125,7 +137,7 @@ impl AsmServices {
         }
 
         tracing::info!(
-            ">>> [{}] All ASM services are ready. Time taken: {} seconds",
+            ">>> [{}] ASM microservices are ready ({:.2} seconds)",
             self.world_rank,
             start.elapsed().as_secs_f32()
         );
@@ -182,8 +194,6 @@ impl AsmServices {
 
         if let Err(e) = command.spawn() {
             tracing::error!("Child process failed: {:?}", e);
-        } else if options.verbose || options.log_output {
-            tracing::info!("Child process launched successfully");
         }
     }
 

@@ -250,11 +250,7 @@ impl ZiskVerifyConstraints {
 
                 if self.asm.is_some() {
                     // Start ASM microservices
-                    tracing::info!(
-                        ">>> [{}] Starting ASM microservices. {}",
-                        mpi_context.world_rank,
-                        "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
-                    );
+                    tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
 
                     asm_services
                         .start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
