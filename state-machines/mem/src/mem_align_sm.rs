@@ -82,9 +82,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         // Compute the width
         debug_assert!(
             ALLOWED_WIDTHS.contains(&width),
-            "Width={} is not allowed. Allowed widths are {:?}",
-            width,
-            ALLOWED_WIDTHS
+            "Width={width} is not allowed. Allowed widths are {ALLOWED_WIDTHS:?}"
         );
         let width = width as usize;
 
@@ -92,9 +90,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         let offset = (addr & OFFSET_MASK) as u8;
         debug_assert!(
             ALLOWED_OFFSETS.contains(&offset),
-            "Offset={} is not allowed. Allowed offsets are {:?}",
-            offset,
-            ALLOWED_OFFSETS
+            "Offset={offset} is not allowed. Allowed offsets are {ALLOWED_OFFSETS:?}"
         );
         let offset = offset as usize;
 

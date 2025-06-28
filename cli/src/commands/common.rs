@@ -22,7 +22,7 @@ impl FromStr for Field {
         match s.to_lowercase().as_str() {
             "goldilocks" => Ok(Field::Goldilocks),
             // Add parsing for other variants here
-            _ => Err(format!("'{}' is not a valid value for Field", s)),
+            _ => Err(format!("'{s}' is not a valid value for Field")),
         }
     }
 }

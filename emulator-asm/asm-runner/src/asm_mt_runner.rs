@@ -79,9 +79,9 @@ impl AsmRunnerMT {
 
         let prefix = AsmServices::shmem_prefix(&crate::AsmService::MT, base_port, local_rank);
 
-        let shmem_input_name = format!("{}_MT_input", prefix);
-        let shmem_output_name = format!("{}_MT_output", prefix);
-        let sem_chunk_done_name = format!("/{}_MT_chunk_done", prefix);
+        let shmem_input_name = format!("{prefix}_MT_input");
+        let shmem_output_name = format!("{prefix}_MT_output");
+        let sem_chunk_done_name = format!("/{prefix}_MT_chunk_done");
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;

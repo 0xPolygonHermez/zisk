@@ -280,7 +280,7 @@ impl MainSM {
                             main_trace.row_slice_mut()[row].store_reg_prev_mem_step =
                                 F::from_u64(reg_prev_mem_step)
                         }
-                        _ => panic!("Invalid slot {}", slot),
+                        _ => panic!("Invalid slot {slot}"),
                     }
                     // TODO: range_check mem_step - reg_prev_mem_step
                 }

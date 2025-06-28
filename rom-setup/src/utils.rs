@@ -31,7 +31,7 @@ pub fn gen_elf_hash(
 
 pub fn get_elf_data_hash(elf_path: &Path) -> Result<String> {
     let elf_data =
-        fs::read(elf_path).with_context(|| format!("Error reading ELF file: {:?}", elf_path))?;
+        fs::read(elf_path).with_context(|| format!("Error reading ELF file: {elf_path:?}"))?;
 
     let hash = blake3::hash(&elf_data).to_hex().to_string();
 
@@ -44,7 +44,7 @@ pub fn get_elf_bin_file_path(
     blowup_factor: u64,
 ) -> Result<PathBuf> {
     let elf_data =
-        fs::read(elf_path).with_context(|| format!("Error reading ELF file: {:?}", elf_path))?;
+        fs::read(elf_path).with_context(|| format!("Error reading ELF file: {elf_path:?}"))?;
 
     let hash = blake3::hash(&elf_data).to_hex().to_string();
 

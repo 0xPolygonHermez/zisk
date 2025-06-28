@@ -426,22 +426,22 @@ impl ZiskRom2Asm {
         // Allocate space for the registers
         for r in 0u64..35u64 {
             if !XMM_MAPPED_REGS.contains(&r) {
-                *code += &format!(".comm reg_{}, 8, 8\n", r);
+                *code += &format!(".comm reg_{r}, 8, 8\n");
             }
         }
 
         if ctx.main_trace() {
             for i in 0..3 {
-                *code += &format!(".comm reg_steps_{}, 8, 8\n", i);
+                *code += &format!(".comm reg_steps_{i}, 8, 8\n");
             }
             for i in 0..3 {
-                *code += &format!(".comm reg_prev_steps_{}, 8, 8\n", i);
+                *code += &format!(".comm reg_prev_steps_{i}, 8, 8\n");
             }
             for i in 0..3 {
-                *code += &format!(".comm reg_step_ranges_{}, 8, 8\n", i);
+                *code += &format!(".comm reg_step_ranges_{i}, 8, 8\n");
             }
             for i in 0..35 {
-                *code += &format!(".comm first_step_uses_{}, 8, 8\n", i);
+                *code += &format!(".comm first_step_uses_{i}, 8, 8\n");
             }
         }
 
@@ -593,7 +593,7 @@ impl ZiskRom2Asm {
                 }
             }
             for r in 0..16 {
-                *code += &format!("\tpxor xmm{}, xmm{}\n", r, r);
+                *code += &format!("\tpxor xmm{r}, xmm{r}\n");
             }
         }
 
@@ -769,7 +769,7 @@ impl ZiskRom2Asm {
             if ctx.rom_histogram() {
                 let address = Self::get_rom_histogram_trace_address(rom, ctx.pc);
                 *code += &ctx.full_line_comment("rom histogram".to_string());
-                *code += &format!("\tmov {}, 0x{:08x}\n", REG_ADDRESS, address);
+                *code += &format!("\tmov {REG_ADDRESS}, 0x{address:08x}\n");
                 *code += &format!("\tinc qword {}[{}]\n", ctx.ptr, REG_ADDRESS);
             }
 
@@ -1127,7 +1127,7 @@ impl ZiskRom2Asm {
                         "\tmov {}, {} {}\n",
                         store_a_reg,
                         ctx.mem_step,
-                        ctx.comment(format!("{} = step", store_a_reg_name))
+                        ctx.comment(format!("{store_a_reg_name} = step"))
                     );
                     if ctx.minimal_trace()
                         || ctx.zip()
@@ -1138,13 +1138,13 @@ impl ZiskRom2Asm {
                         *code += &format!(
                             "\tadd {}, chunk_size {}\n",
                             store_a_reg,
-                            ctx.comment(format!("{} += chunk_size", store_a_reg_name))
+                            ctx.comment(format!("{store_a_reg_name} += chunk_size"))
                         );
                         *code += &format!(
                             "\tsub {}, {} {}\n",
                             store_a_reg,
                             REG_STEP,
-                            ctx.comment(format!("{} -= step_count_down", store_a_reg_name))
+                            ctx.comment(format!("{store_a_reg_name} -= step_count_down"))
                         );
                     }
                     ctx.a.is_saved = !ctx.store_a_in_c;
@@ -1163,19 +1163,16 @@ impl ZiskRom2Asm {
                 *code += &ctx.full_line_comment("Main[1]=a".to_string());
                 if ctx.store_a_in_c {
                     *code += &format!(
-                        "\tmov [{} + {}*8 + 1*8], {}\n",
-                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_C
+                        "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + 1*8], {REG_C}\n"
                     );
                 } else if ctx.a.is_constant && !ctx.store_a_in_a {
                     *code += &format!("\tmov {}, 0x{:x}\n", REG_A, ctx.a.constant_value);
                     *code += &format!(
-                        "\tmov [{} + {}*8 + 1*8], {}\n",
-                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_A
+                        "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + 1*8], {REG_A}\n"
                     );
                 } else {
                     *code += &format!(
-                        "\tmov [{} + {}*8 + 1*8], {}\n",
-                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_A
+                        "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + 1*8], {REG_A}\n"
                     );
                 }
             }
@@ -1183,19 +1180,16 @@ impl ZiskRom2Asm {
                 *code += &ctx.full_line_comment("Main[1] = a".to_string());
                 if ctx.store_a_in_c {
                     *code += &format!(
-                        "\tmov [{} + {}*8 + 1*8], {}\n",
-                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_C
+                        "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + 1*8], {REG_C}\n"
                     );
                 } else if ctx.a.is_constant && !ctx.store_a_in_a {
                     *code += &format!("\tmov {}, 0x{:x}\n", REG_A, ctx.a.constant_value);
                     *code += &format!(
-                        "\tmov [{} + {}*8 + 1*8], {}\n",
-                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_A
+                        "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + 1*8], {REG_A}\n"
                     );
                 } else {
                     *code += &format!(
-                        "\tmov [{} + {}*8 + 1*8], {}\n",
-                        REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_A
+                        "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + 1*8], {REG_A}\n"
                     );
                 }
             }
@@ -1220,7 +1214,7 @@ impl ZiskRom2Asm {
                         }) as u64;
                     assert!(addr1 <= 0xffffffff);
                     let value = (rom_index << 32) + addr1;
-                    *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
+                    *code += &format!("\tmov {REG_VALUE}, 0x{value:x}\n");
                 } else {
                     // In this case the value to store is not constant
                     assert!(instruction.b_src == SRC_IND);
@@ -1271,8 +1265,7 @@ impl ZiskRom2Asm {
                     }
                 }
                 *code += &format!(
-                    "\tmov [{} + {}*8 + 0*8], {}\n",
-                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_VALUE
+                    "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + 0*8], {REG_VALUE}\n"
                 );
             }
 
@@ -1742,7 +1735,7 @@ impl ZiskRom2Asm {
                                     "\tadd {}, {} {}\n",
                                     reg_address,
                                     address_increment,
-                                    ctx.comment(format!("address += {}", address_increment))
+                                    ctx.comment(format!("address += {address_increment}"))
                                 );
                                 *code += &format!(
                                     "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
@@ -1930,7 +1923,7 @@ impl ZiskRom2Asm {
                                     "\tadd {}, {} {}\n",
                                     reg_address,
                                     address_increment,
-                                    ctx.comment(format!("address += {}", address_increment))
+                                    ctx.comment(format!("address += {address_increment}"))
                                 );
                                 *code += &format!(
                                     "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
@@ -2302,8 +2295,7 @@ impl ZiskRom2Asm {
             if ctx.main_trace() {
                 *code += &ctx.full_line_comment("Main[3]=c".to_string());
                 *code += &format!(
-                    "\tmov [{} + {}*8 + 3*8], {}\n",
-                    REG_MEM_READS_ADDRESS, REG_MEM_READS_SIZE, REG_C
+                    "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + 3*8], {REG_C}\n"
                 );
             }
 
@@ -2618,7 +2610,7 @@ impl ZiskRom2Asm {
                                     "\tadd {}, {} {}\n",
                                     REG_AUX,
                                     address_increment,
-                                    ctx.comment(format!("address += {}", address_increment))
+                                    ctx.comment(format!("address += {address_increment}"))
                                 );
                                 *code += &format!(
                                     "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
@@ -2817,7 +2809,7 @@ impl ZiskRom2Asm {
                                     "\tadd {}, {} {}\n",
                                     REG_AUX,
                                     address_increment,
-                                    ctx.comment(format!("address += {}", address_increment))
+                                    ctx.comment(format!("address += {address_increment}"))
                                 );
                                 *code += &format!(
                                     "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
@@ -3056,9 +3048,9 @@ impl ZiskRom2Asm {
                     "Main[5] = prev_reg_mem[0] + (prev_reg_mem[1] & 0xfffff ) << 40".to_string(),
                 );
                 *code += &format!("\tmov {}, qword {}[reg_prev_steps_1]\n", REG_VALUE, ctx.ptr);
-                *code += &format!("\tshl {}, 40\n", REG_VALUE); // 64-40=24 bits
+                *code += &format!("\tshl {REG_VALUE}, 40\n"); // 64-40=24 bits
                 *code += &format!("\tmov {}, qword {}[reg_prev_steps_0]\n", REG_AUX, ctx.ptr);
-                *code += &format!("\tadd {}, {}\n", REG_VALUE, REG_AUX);
+                *code += &format!("\tadd {REG_VALUE}, {REG_AUX}\n");
                 *code += &format!(
                     "\tmov [{} + {}*8 + 5*8], {} {}\n",
                     REG_MEM_READS_ADDRESS,
@@ -3069,20 +3061,20 @@ impl ZiskRom2Asm {
 
                 *code += &ctx.full_line_comment("Main[6] = prev_reg_mem[2] + (prev_reg_mem[1] & 0xfffff00000 ) << 21 + flag<<24".to_string());
                 *code += &format!("\tmov {}, qword {}[reg_prev_steps_1]\n", REG_VALUE, ctx.ptr);
-                *code += &format!("\tmov {}, 0xfffff00000\n", REG_AUX);
-                *code += &format!("\tand {}, {}\n", REG_VALUE, REG_AUX);
-                *code += &format!("\tshl {}, 21\n", REG_VALUE);
+                *code += &format!("\tmov {REG_AUX}, 0xfffff00000\n");
+                *code += &format!("\tand {REG_VALUE}, {REG_AUX}\n");
+                *code += &format!("\tshl {REG_VALUE}, 21\n");
                 *code += &format!("\tmov {}, qword {}[reg_prev_steps_2]\n", REG_AUX, ctx.ptr);
-                *code += &format!("\tadd {}, {}\n", REG_VALUE, REG_AUX);
+                *code += &format!("\tadd {REG_VALUE}, {REG_AUX}\n");
                 if ctx.flag_is_always_one {
-                    *code += &format!("\tmov {}, 0x10000000000\n", REG_AUX);
-                    *code += &format!("\tadd {}, {}\n", REG_VALUE, REG_AUX);
+                    *code += &format!("\tmov {REG_AUX}, 0x10000000000\n");
+                    *code += &format!("\tadd {REG_VALUE}, {REG_AUX}\n");
                 } else if ctx.flag_is_always_zero {
                     // Nothing to add
                 } else {
-                    *code += &format!("\tmov {}, {}\n", REG_AUX, REG_FLAG);
-                    *code += &format!("\tshl {}, 24\n", REG_AUX);
-                    *code += &format!("\tadd {}, {}\n", REG_VALUE, REG_AUX);
+                    *code += &format!("\tmov {REG_AUX}, {REG_FLAG}\n");
+                    *code += &format!("\tshl {REG_AUX}, 24\n");
+                    *code += &format!("\tadd {REG_VALUE}, {REG_AUX}\n");
                 }
                 *code += &format!(
                     "\tmov [{} + {}*8 + 6*8], {} {}\n",
@@ -3314,7 +3306,7 @@ impl ZiskRom2Asm {
             // }
 
             // Use labels always
-            *code += &format!("map_pc_{:x}: \t.quad pc_{:x}\n", key, key);
+            *code += &format!("map_pc_{key:x}: \t.quad pc_{key:x}\n");
 
             // Update previous key
             previous_key = *key;
@@ -4795,14 +4787,14 @@ impl ZiskRom2Asm {
                             *code += &format!("\tjmp pc_{:x}_keccak_active_chunk_done\n", ctx.pc);
                             *code += &format!("pc_{:x}_keccak_active_chunk:\n", ctx.pc);
                         }
-                        *code += &format!("\tmov {}, rdi\n", REG_ADDRESS);
+                        *code += &format!("\tmov {REG_ADDRESS}, rdi\n");
                         for k in 0..25 {
                             *code += &format!(
                                 "\tmov {}, [{} + {}] {}\n",
                                 REG_VALUE,
                                 REG_ADDRESS,
                                 k * 8,
-                                ctx.comment(format!("value = mem[keccak_address[{}]]", k))
+                                ctx.comment(format!("value = mem[keccak_address[{k}]]"))
                             );
                             *code += &format!(
                                 "\tmov [{} + {}*8 + {}], {} {}\n",
@@ -4810,7 +4802,7 @@ impl ZiskRom2Asm {
                                 REG_MEM_READS_SIZE,
                                 k * 8,
                                 REG_VALUE,
-                                ctx.comment(format!("mem_reads[{}] = value", k))
+                                ctx.comment(format!("mem_reads[{k}] = value"))
                             );
                         }
 
@@ -4828,7 +4820,7 @@ impl ZiskRom2Asm {
 
                     // Trace 25 memory read operations
                     if ctx.mem_op() {
-                        *code += &format!("\tmov {}, rdi\n", REG_ADDRESS);
+                        *code += &format!("\tmov {REG_ADDRESS}, rdi\n");
                         Self::mem_op_array(ctx, code, REG_ADDRESS, false, 8, 25);
                         Self::mem_op_array(ctx, code, REG_ADDRESS, true, 8, 25);
                     }
@@ -5219,14 +5211,14 @@ impl ZiskRom2Asm {
                         *code += &format!("\tjmp pc_{:x}_secp256k1dbl_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_secp256k1dbl_active_chunk:\n", ctx.pc);
                     }
-                    *code += &format!("\tmov {}, rdi\n", REG_ADDRESS);
+                    *code += &format!("\tmov {REG_ADDRESS}, rdi\n");
                     for k in 0..8 {
                         *code += &format!(
                             "\tmov {}, [{} + {}] {}\n",
                             REG_VALUE,
                             REG_ADDRESS,
                             k * 8,
-                            ctx.comment(format!("value = mem[address[{}]]", k))
+                            ctx.comment(format!("value = mem[address[{k}]]"))
                         );
                         *code += &format!(
                             "\tmov [{} + {}*8 + {}], {} {}\n",
@@ -5234,7 +5226,7 @@ impl ZiskRom2Asm {
                             REG_MEM_READS_SIZE,
                             k * 8,
                             REG_VALUE,
-                            ctx.comment(format!("mem_reads[{}] = value", k))
+                            ctx.comment(format!("mem_reads[{k}] = value"))
                         );
                     }
 
@@ -5420,7 +5412,7 @@ impl ZiskRom2Asm {
                         FCALL_RESULT_SIZE,
                         ctx.comment_str("aux = ctx.result_size")
                     );
-                    *code += &format!("\tcmp {}, 0\n", REG_AUX);
+                    *code += &format!("\tcmp {REG_AUX}, 0\n");
                     *code += &format!("\tjz pc_{:x}_fcall_result_zero\n", ctx.pc);
                     *code += &format!(
                         "\tmov {}, qword {}[{} + {}*8] {}\n",
@@ -5623,14 +5615,14 @@ impl ZiskRom2Asm {
                             &format!("\tjmp pc_{:x}_bn254curvedbl_active_chunk_done\n", ctx.pc);
                         *code += &format!("pc_{:x}_bn254curvedbl_active_chunk:\n", ctx.pc);
                     }
-                    *code += &format!("\tmov {}, rdi\n", REG_ADDRESS);
+                    *code += &format!("\tmov {REG_ADDRESS}, rdi\n");
                     for k in 0..8 {
                         *code += &format!(
                             "\tmov {}, [{} + {}] {}\n",
                             REG_VALUE,
                             REG_ADDRESS,
                             k * 8,
-                            ctx.comment(format!("value = mem[address[{}]]", k))
+                            ctx.comment(format!("value = mem[address[{k}]]"))
                         );
                         *code += &format!(
                             "\tmov [{} + {}*8 + {}], {} {}\n",
@@ -5638,7 +5630,7 @@ impl ZiskRom2Asm {
                             REG_MEM_READS_SIZE,
                             k * 8,
                             REG_VALUE,
-                            ctx.comment(format!("mem_reads[{}] = value", k))
+                            ctx.comment(format!("mem_reads[{k}] = value"))
                         );
                     }
 
@@ -6045,7 +6037,7 @@ impl ZiskRom2Asm {
             REG_ADDRESS,
             ctx.comment_str("is pc a low address?")
         );
-        *code += &format!("\tcmp {}, {}\n", REG_PC, REG_ADDRESS);
+        *code += &format!("\tcmp {REG_PC}, {REG_ADDRESS}\n");
         *code += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
         *code +=
             &format!("\tsub {}, {} {}\n", REG_PC, REG_ADDRESS, ctx.comment_str("pc -= 0x80000000"));
@@ -6336,7 +6328,7 @@ impl ZiskRom2Asm {
                     REG_VALUE,
                     REG_ADDRESS,
                     i,
-                    ctx.comment(format!("value = mem[address+{}]", i))
+                    ctx.comment(format!("value = mem[address+{i}]"))
                 );
 
                 // During the first iteration, store the indirection read value in mem_reads
@@ -6367,7 +6359,7 @@ impl ZiskRom2Asm {
                             REG_AUX,
                             REG_VALUE,
                             l,
-                            ctx.comment(format!("aux = mem[ind+{}]", l))
+                            ctx.comment(format!("aux = mem[ind+{l}]"))
                         );
                         *code += &format!(
                             "\tmov [{} + {}*8 + {}*8], {} {}\n",
@@ -6389,7 +6381,7 @@ impl ZiskRom2Asm {
             "\tadd {}, {} {}\n",
             REG_MEM_READS_SIZE,
             mem_reads_index,
-            ctx.comment(format!("mem_reads_size+={}", mem_reads_index))
+            ctx.comment(format!("mem_reads_size+={mem_reads_index}"))
         );
     }
 
@@ -6638,7 +6630,7 @@ impl ZiskRom2Asm {
                     REG_VALUE,
                     REG_ADDRESS,
                     i,
-                    ctx.comment(format!("value = mem[address+{}]", i))
+                    ctx.comment(format!("value = mem[address+{i}]"))
                 );
 
                 // During the first iteration, store the indirection read value in mem_reads
@@ -6718,7 +6710,7 @@ impl ZiskRom2Asm {
             "\tadd {}, {} {}\n",
             REG_MEM_READS_SIZE,
             mem_reads_index,
-            ctx.comment(format!("mem_reads_size+={}", mem_reads_index))
+            ctx.comment(format!("mem_reads_size+={mem_reads_index}"))
         );
     }
 
@@ -6747,7 +6739,7 @@ impl ZiskRom2Asm {
                 REG_VALUE,
                 REG_ADDRESS,
                 i,
-                ctx.comment(format!("value = mem[address+{}]", i))
+                ctx.comment(format!("value = mem[address+{i}]"))
             );
 
             // Only store the first load_count indirections
@@ -6791,7 +6783,7 @@ impl ZiskRom2Asm {
             "\tadd {}, {} {}\n",
             REG_MEM_READS_SIZE,
             mem_reads_index,
-            ctx.comment(format!("mem_reads_size+={}", mem_reads_index))
+            ctx.comment(format!("mem_reads_size+={mem_reads_index}"))
         );
     }
 
@@ -6818,15 +6810,15 @@ impl ZiskRom2Asm {
                 ctx.mem_chunk_mask,
                 ctx.comment_str("aux ?= chunk_mask")
             );
-            *code += &format!("\tjz chunk_start_{}_activate\n", id);
+            *code += &format!("\tjz chunk_start_{id}_activate\n");
             *code += &format!(
                 "\txor {}, {} {}\n",
                 REG_ACTIVE_CHUNK,
                 REG_ACTIVE_CHUNK,
                 ctx.comment_str("deactivate chunk")
             );
-            *code += &format!("\tjmp chunk_start_{}_done\n", id);
-            *code += &format!("chunk_start_{}_activate:\n", id);
+            *code += &format!("\tjmp chunk_start_{id}_done\n");
+            *code += &format!("chunk_start_{id}_activate:\n");
             *code +=
                 &format!("\tmov {}, 1 {}\n", REG_ACTIVE_CHUNK, ctx.comment_str("activate chunk"));
         }
@@ -6923,7 +6915,7 @@ impl ZiskRom2Asm {
                     REG_ADDRESS,
                     i * 8,
                     REG_VALUE,
-                    ctx.comment(format!("chunk.start.reg[{}] = value", i))
+                    ctx.comment(format!("chunk.start.reg[{i}] = value"))
                 );
             }
             *code +=
@@ -6974,7 +6966,7 @@ impl ZiskRom2Asm {
             );
         }
         if ctx.zip() {
-            *code += &format!("chunk_start_{}_done:\n", id);
+            *code += &format!("chunk_start_{id}_done:\n");
         }
 
         *code += &ctx.full_line_comment("Reset step count down to chunk_size".to_string());
@@ -7010,9 +7002,9 @@ impl ZiskRom2Asm {
                 REG_ACTIVE_CHUNK,
                 ctx.comment_str("active_chunk ?= 0")
             );
-            *code += &format!("\tjnz chunk_end_{}_active_chunk\n", id);
-            *code += &format!("\tjmp chunk_end_{}_done\n", id);
-            *code += &format!("chunk_end_{}_active_chunk:\n", id);
+            *code += &format!("\tjnz chunk_end_{id}_active_chunk\n");
+            *code += &format!("\tjmp chunk_end_{id}_done\n");
+            *code += &format!("chunk_end_{id}_active_chunk:\n");
         }
 
         if ctx.minimal_trace() || ctx.zip() || ctx.mem_reads() {
@@ -7194,7 +7186,7 @@ impl ZiskRom2Asm {
                 REG_VALUE,
                 ctx.comment_str("chunk_address ? trace_address_threshold")
             );
-            *code += &format!("\tjb chunk_{}_address_below_threshold\n", id);
+            *code += &format!("\tjb chunk_{id}_address_below_threshold\n");
             Self::push_internal_registers(ctx, code, true);
             //Self::assert_rsp_is_aligned(ctx, code);
             *code += "\tcall _realloc_trace\n";
@@ -7204,8 +7196,8 @@ impl ZiskRom2Asm {
             }
             //Self::assert_rsp_is_aligned(ctx, code);
             Self::pop_internal_registers(ctx, code, true);
-            *code += &format!("\tjmp chunk_{}_address_done\n", id);
-            *code += &format!("chunk_{}_address_below_threshold:\n", id);
+            *code += &format!("\tjmp chunk_{id}_address_done\n");
+            *code += &format!("chunk_{id}_address_below_threshold:\n");
             if ctx.call_chunk_done {
                 Self::push_internal_registers(ctx, code, true);
                 //Self::assert_rsp_is_aligned(ctx, code);
@@ -7213,7 +7205,7 @@ impl ZiskRom2Asm {
                 //Self::assert_rsp_is_aligned(ctx, code);
                 Self::pop_internal_registers(ctx, code, true);
             }
-            *code += &format!("chunk_{}_address_done:\n", id);
+            *code += &format!("chunk_{id}_address_done:\n");
         } else if ctx.call_chunk_done {
             // Call the chunk_done function
             Self::push_internal_registers(ctx, code, true);
@@ -7223,7 +7215,7 @@ impl ZiskRom2Asm {
             Self::pop_internal_registers(ctx, code, true);
         }
         if ctx.zip() {
-            *code += &format!("chunk_end_{}_done:\n", id);
+            *code += &format!("chunk_end_{id}_done:\n");
         }
     }
 
@@ -7449,7 +7441,7 @@ impl ZiskRom2Asm {
             17 => 14,
             18 => 15,
             _ => {
-                panic!("ZiskRom2Asm::reg_to_xmm_index() found invalid source slot={}", reg);
+                panic!("ZiskRom2Asm::reg_to_xmm_index() found invalid source slot={reg}");
             }
         }
     }
@@ -7494,7 +7486,7 @@ impl ZiskRom2Asm {
                 "\tmovq {}, xmm{} {}\n",
                 dest_reg,
                 xmm_index,
-                ctx.comment(format!("{} = reg[{}]", dest_desc, src_slot))
+                ctx.comment(format!("{dest_desc} = reg[{src_slot}]"))
             );
         } else {
             *code += &format!(
@@ -7502,7 +7494,7 @@ impl ZiskRom2Asm {
                 dest_reg,
                 ctx.ptr,
                 src_slot,
-                ctx.comment(format!("{} = reg[{}]", dest_desc, src_slot))
+                ctx.comment(format!("{dest_desc} = reg[{src_slot}]"))
             );
         }
     }
@@ -7514,7 +7506,7 @@ impl ZiskRom2Asm {
         src_reg: &str,
         src_desc: &str,
     ) {
-        let comment = format!("reg[{}]={}", dest_slot, src_desc);
+        let comment = format!("reg[{dest_slot}]={src_desc}");
         if XMM_MAPPED_REGS.contains(&dest_slot) {
             let xmm_index = Self::reg_to_xmm_index(dest_slot);
             *code += &format!("\tmovq xmm{}, {} {}\n", xmm_index, src_reg, ctx.comment(comment));
@@ -7536,14 +7528,14 @@ impl ZiskRom2Asm {
         value: u64,
         value_desc: &str,
     ) {
-        let comment = format!("reg[{}]={}", dest_slot, value_desc);
+        let comment = format!("reg[{dest_slot}]={value_desc}");
         if XMM_MAPPED_REGS.contains(&dest_slot) {
             let xmm_index = Self::reg_to_xmm_index(dest_slot);
-            *code += &format!("\tmov {}, 0x{:x}\n", REG_AUX, value);
+            *code += &format!("\tmov {REG_AUX}, 0x{value:x}\n");
 
             *code += &format!("\tmovq xmm{}, {} {}\n", xmm_index, REG_AUX, ctx.comment(comment));
         } else {
-            *code += &format!("\tmov {}, 0x{:x}\n", REG_AUX, value);
+            *code += &format!("\tmov {REG_AUX}, 0x{value:x}\n");
             *code += &format!(
                 "\tmov qword {}[reg_{}], {} {}\n",
                 ctx.ptr,
@@ -7769,7 +7761,7 @@ impl ZiskRom2Asm {
             "\tmov {}, [{}] {}\n",
             reg_to_store_value,
             REG_CHUNK_PLAYER_ADDRESS,
-            ctx.comment(format!("{} = mt[address]", reg_to_store_value_desc))
+            ctx.comment(format!("{reg_to_store_value_desc} = mt[address]"))
         );
 
         // Increment chunk player address
@@ -7833,7 +7825,7 @@ impl ZiskRom2Asm {
             REG_MEM_READS_ADDRESS,
             REG_MEM_READS_SIZE,
             reg_to_store_value,
-            ctx.comment(format!("mem_reads[@+size*8+8] = {} = a", reg_to_store_value_desc))
+            ctx.comment(format!("mem_reads[@+size*8+8] = {reg_to_store_value_desc} = a"))
         );
 
         // Increment chunk.steps.mem_reads_size

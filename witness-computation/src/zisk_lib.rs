@@ -84,7 +84,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let rv2zk = Riscv2zisk::new(self.elf_path.display().to_string());
 
         // Step 2: Convert program to ROM
-        let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {}", e));
+        let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
         let zisk_rom = Arc::new(zisk_rom);
 
         // Step 3: Initialize the secondary state machines

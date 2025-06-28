@@ -69,9 +69,9 @@ impl AsmRunnerRH {
     ) -> Result<AsmRunnerRH> {
         let prefix = AsmServices::shmem_prefix(&crate::AsmService::RH, base_port, local_rank);
 
-        let shmem_input_name = format!("{}_RH_input", prefix);
-        let shmem_output_name = format!("{}_RH_output", prefix);
-        let sem_chunk_done_name = format!("/{}_RH_chunk_done", prefix);
+        let shmem_input_name = format!("{prefix}_RH_input");
+        let shmem_output_name = format!("{prefix}_RH_output");
+        let sem_chunk_done_name = format!("/{prefix}_RH_chunk_done");
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;

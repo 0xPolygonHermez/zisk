@@ -100,7 +100,7 @@ impl BinaryBasicSM {
                 LT_ABS_NP_OP => Self::lt_abs_np_execute(a, b),
                 LT_ABS_PN_OP => Self::lt_abs_pn_execute(a, b),
                 GT_OP => Self::gt_execute(a, b),
-                _ => panic!("BinaryBasicSM::execute() got invalid opcode={:?}", opcode),
+                _ => panic!("BinaryBasicSM::execute() got invalid opcode={opcode:?}"),
             }
         }
     }
@@ -120,7 +120,7 @@ impl BinaryBasicSM {
             match opcode {
                 LT_ABS_NP_OP | LT_ABS_PN_OP => 2,
                 GT_OP => 0,
-                _ => panic!("BinaryBasicSM::execute() got invalid opcode={:?}", opcode),
+                _ => panic!("BinaryBasicSM::execute() got invalid opcode={opcode:?}"),
             }
         }
     }
@@ -829,7 +829,7 @@ impl BinaryBasicSM {
                     binary_table_sm.update_multiplicity(row, 1);
                 }
             }
-            _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={}", opcode),
+            _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={opcode}"),
         }
 
         // Set cout

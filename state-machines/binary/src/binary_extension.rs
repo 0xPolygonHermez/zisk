@@ -75,7 +75,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
 
             ZiskOp::SignExtendB | ZiskOp::SignExtendH | ZiskOp::SignExtendW => false,
 
-            _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={:?}", opcode),
+            _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={opcode:?}"),
         }
     }
 
@@ -91,7 +91,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             | ZiskOp::SignExtendH
             | ZiskOp::SignExtendW => false,
 
-            _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={:?}", opcode),
+            _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={opcode:?}"),
         }
     }
 
