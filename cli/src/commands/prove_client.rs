@@ -22,7 +22,7 @@ pub struct ZiskProveClient {
 }
 
 #[derive(Subcommand, Debug)]
-#[command(rename_all = "lowercase")]
+#[command(rename_all = "snake_case")]
 pub enum ClientCommand {
     /// Get server status
     Status {

@@ -14,4 +14,4 @@ pub type ZiskLibInitFn<F> = fn(
     Option<i32>,     // mpi Local Rank
     Option<u16>,     // Base port for the ASM microservices
     bool,            // Unlock_mapped_memory
-) -> Result<Box<dyn WitnessLibrary<F>>, Box<dyn std::error::Error>>;
+) -> Result<Box<dyn WitnessLibrary<F> + Send + Sync>, Box<dyn std::error::Error>>;

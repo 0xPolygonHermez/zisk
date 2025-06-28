@@ -33,8 +33,8 @@ impl ZiskServiceShutdownHandler {
             return ZiskResponse::ZiskShutdownResponse(ZiskShutdownResponse {
                 base: ZiskBaseResponse {
                     cmd: "shutdown".to_string(),
-                    status: crate::ZiskCmdStatus::Error,
-                    code: crate::ZiskStatusCode::Error,
+                    result: crate::ZiskCmdResult::Error,
+                    code: crate::ZiskResultCode::Error,
                     msg: Some(format!("Failed to stop ASM services: {}", e)),
                 },
             });
@@ -43,8 +43,8 @@ impl ZiskServiceShutdownHandler {
         ZiskResponse::ZiskShutdownResponse(ZiskShutdownResponse {
             base: ZiskBaseResponse {
                 cmd: "shutdown".to_string(),
-                status: crate::ZiskCmdStatus::Ok,
-                code: crate::ZiskStatusCode::Ok,
+                result: crate::ZiskCmdResult::Ok,
+                code: crate::ZiskResultCode::Ok,
                 msg: None,
             },
         })

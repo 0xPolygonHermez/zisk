@@ -60,7 +60,7 @@ pub struct ServerConfig {
     pub verbose: u8,
 
     /// Debug information
-    pub debug_info: DebugInfo,
+    pub debug_info: Arc<DebugInfo>,
 
     /// Path to the SHA256f script
     pub sha256f_script: PathBuf,
@@ -115,7 +115,7 @@ impl ServerConfig {
             emulator,
             proving_key,
             verbose,
-            debug_info: debug,
+            debug_info: Arc::new(debug),
             sha256f_script,
             launch_time: Instant::now(),
             server_id: Uuid::new_v4(),
@@ -130,7 +130,7 @@ impl ServerConfig {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "command", rename_all = "lowercase")]
+#[serde(tag = "command", rename_all = "snake_case")]
 pub enum ZiskRequest {
     Status {
         #[serde(flatten)]
@@ -151,24 +151,25 @@ pub enum ZiskRequest {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum ZiskCmdStatus {
+#[serde(rename_all = "snake_case")]
+pub enum ZiskCmdResult {
     Ok,
     Error,
-    // InProgress,
-    // Pending,
+    InProgress,
+    Busy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
-pub enum ZiskStatusCode {
+pub enum ZiskResultCode {
     Ok = 0,
     Error = 1001,
     InvalidRequest = 1002,
+    Busy = 1003,
 }
 
 // Serialize as a number
-impl Serialize for ZiskStatusCode {
+impl Serialize for ZiskResultCode {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -178,17 +179,18 @@ impl Serialize for ZiskStatusCode {
 }
 
 // Deserialize from a number
-impl<'de> Deserialize<'de> for ZiskStatusCode {
-    fn deserialize<D>(deserializer: D) -> Result<ZiskStatusCode, D::Error>
+impl<'de> Deserialize<'de> for ZiskResultCode {
+    fn deserialize<D>(deserializer: D) -> Result<ZiskResultCode, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         let value = u32::deserialize(deserializer)?;
         match value {
-            0 => Ok(ZiskStatusCode::Ok),
-            1001 => Ok(ZiskStatusCode::Error),
-            1002 => Ok(ZiskStatusCode::InvalidRequest),
-            _ => Err(serde::de::Error::custom(format!("Unknown ZiskStatusCode: {}", value))),
+            0 => Ok(ZiskResultCode::Ok),
+            1001 => Ok(ZiskResultCode::Error),
+            1002 => Ok(ZiskResultCode::InvalidRequest),
+            1003 => Ok(ZiskResultCode::Busy),
+            _ => Err(serde::de::Error::custom(format!("Unknown ZiskResultCode: {}", value))),
         }
     }
 }
@@ -196,8 +198,8 @@ impl<'de> Deserialize<'de> for ZiskStatusCode {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ZiskBaseResponse {
     pub cmd: String,
-    pub status: ZiskCmdStatus,
-    pub code: ZiskStatusCode,
+    pub result: ZiskCmdResult,
+    pub code: ZiskResultCode,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub msg: Option<String>,
@@ -210,7 +212,7 @@ pub struct ZiskInvalidRequestResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "zisk_response", rename_all = "lowercase")]
+#[serde(tag = "zisk_response", rename_all = "snake_case")]
 pub enum ZiskResponse {
     ZiskStatusResponse(ZiskStatusResponse),
     ZiskShutdownResponse(ZiskShutdownResponse),
@@ -222,10 +224,10 @@ pub enum ZiskResponse {
 
 pub struct ZiskService {
     config: Arc<ServerConfig>,
-    proofman: ProofMan<Goldilocks>,
-    witness_lib: Box<dyn WitnessLibrary<Goldilocks>>,
+    proofman: Arc<ProofMan<Goldilocks>>,
+    witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
     asm_services: AsmServices,
-    is_busy: AtomicBool,
+    is_busy: Arc<AtomicBool>,
 }
 
 impl ZiskService {
@@ -293,12 +295,14 @@ impl ZiskService {
 
         proofman.register_witness(witness_lib.as_mut(), library);
 
+        let witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync> = Arc::from(witness_lib);
+
         Ok(Self {
             config: Arc::new(config),
-            proofman,
+            proofman: Arc::new(proofman),
             witness_lib,
             asm_services,
-            is_busy: AtomicBool::new(false),
+            is_busy: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -346,8 +350,8 @@ impl ZiskService {
                 let response = ZiskResponse::ZiskInvalidRequestResponse {
                     base: ZiskBaseResponse {
                         cmd: "invalid_request".to_string(),
-                        status: ZiskCmdStatus::Error,
-                        code: ZiskStatusCode::InvalidRequest,
+                        result: ZiskCmdResult::Error,
+                        code: ZiskResultCode::InvalidRequest,
                         msg: Some(format!("Invalid request format or data. {}", e)),
                     },
                 };
@@ -359,9 +363,24 @@ impl ZiskService {
         info_file!("Received request: {:?}", request);
 
         let mut must_shutdown = false;
-        self.is_busy.store(true, std::sync::atomic::Ordering::SeqCst);
+
+        if self.is_busy.load(std::sync::atomic::Ordering::SeqCst)
+            && !matches!(request, ZiskRequest::Status { .. })
+        {
+            let response = ZiskResponse::ZiskErrorResponse(ZiskBaseResponse {
+                cmd: "busy".to_string(),
+                result: ZiskCmdResult::InProgress,
+                code: ZiskResultCode::Busy,
+                msg: Some("Server is busy, please try again later.".to_string()),
+            });
+            Self::send_json(&mut stream, &response)?;
+            return Ok(false);
+        }
+
         let response = match request {
-            ZiskRequest::Status { payload } => ZiskServiceStatusHandler::handle(&config, payload),
+            ZiskRequest::Status { payload } => {
+                ZiskServiceStatusHandler::handle(&config, payload, self.is_busy.clone())
+            }
             ZiskRequest::Shutdown { payload } => {
                 must_shutdown = true;
                 ZiskServiceShutdownHandler::handle(&config, payload, &self.asm_services)
@@ -370,20 +389,21 @@ impl ZiskService {
                 ZiskServiceVerifyConstraintsHandler::handle(
                     &config,
                     payload,
-                    &self.proofman,
-                    self.witness_lib.as_mut(),
-                    &self.config.debug_info,
+                    self.proofman.clone(),
+                    self.witness_lib.clone(),
+                    self.is_busy.clone(),
+                    self.config.debug_info.clone(),
                 )
             }
 
             ZiskRequest::Prove { payload } => ZiskServiceProveHandler::handle(
                 &config,
                 payload,
-                &self.proofman,
-                self.witness_lib.as_mut(),
+                self.proofman.clone(),
+                self.witness_lib.clone(),
+                self.is_busy.clone(),
             ),
         };
-        self.is_busy.store(false, std::sync::atomic::Ordering::SeqCst);
 
         Self::send_json(&mut stream, &response)?;
         Ok(must_shutdown)
