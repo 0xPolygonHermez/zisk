@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::{ServerConfig, ZiskResponse};
+use crate::{ServerConfig, ZiskBaseResponse, ZiskResponse};
 use colored::Colorize;
 use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
@@ -16,8 +16,13 @@ pub struct ZiskVerifyConstraintsRequest {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ZiskVerifyConstraintsResponse {
-    pub success: bool,
-    pub details: String,
+    #[serde(flatten)]
+    pub base: ZiskBaseResponse,
+
+    server_id: String,
+    elf_file: String,
+    input: String,
+    duration_ms: u64,
 }
 
 pub struct ZiskServiceVerifyConstraintsHandler;
@@ -30,20 +35,9 @@ impl ZiskServiceVerifyConstraintsHandler {
         witness_lib: &mut dyn WitnessLibrary<Goldilocks>,
         debug_info: &DebugInfo,
     ) -> ZiskResponse {
-        let uptime = config.launch_time.elapsed();
-
-        let status = serde_json::json!({
-            "server_id": config.server_id.to_string(),
-            "elf_file": config.elf.display().to_string(),
-            "uptime": format!("{:.2?}", uptime),
-            "command:": "VerifyConstraints",
-            "payload:": {
-                "input": request.input.display().to_string(),
-            },
-        });
-
         let start = std::time::Instant::now();
 
+        let request_input = request.input.clone();
         proofman
             .verify_proof_constraints_from_lib(Some(request.input), debug_info)
             .map_err(|e| anyhow::anyhow!("Error verifying proof: {}", e))
@@ -71,6 +65,17 @@ impl ZiskServiceVerifyConstraintsHandler {
             result.0.executed_steps
         );
 
-        ZiskResponse::Ok { message: status.to_string() }
+        ZiskResponse::ZiskVerifyConstraintsResponse(ZiskVerifyConstraintsResponse {
+            base: ZiskBaseResponse {
+                cmd: "verify_constraints".to_string(),
+                status: crate::ZiskCmdStatus::Ok,
+                code: crate::ZiskStatusCode::Ok,
+                msg: None,
+            },
+            server_id: config.server_id.to_string(),
+            elf_file: config.elf.display().to_string(),
+            input: request_input.display().to_string(),
+            duration_ms: elapsed.as_millis() as u64,
+        })
     }
 }

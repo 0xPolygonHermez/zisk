@@ -23,10 +23,12 @@ use anyhow::Result;
 use crate::{
     handler_prove::{ZiskProveRequest, ZiskServiceProveHandler},
     handler_shutdown::ZiskServiceShutdownHandler,
+    handler_status::{ZiskStatusRequest, ZiskStatusResponse},
     handler_verify_constraints::{
         ZiskServiceVerifyConstraintsHandler, ZiskVerifyConstraintsRequest,
     },
-    ZiskServiceStatusHandler,
+    ZiskProveResponse, ZiskServiceStatusHandler, ZiskShutdownRequest, ZiskShutdownResponse,
+    ZiskVerifyConstraintsResponse,
 };
 
 pub struct ServerConfig {
@@ -130,8 +132,14 @@ impl ServerConfig {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "command", rename_all = "lowercase")]
 pub enum ZiskRequest {
-    Status,
-    Shutdown,
+    Status {
+        #[serde(flatten)]
+        payload: ZiskStatusRequest,
+    },
+    Shutdown {
+        #[serde(flatten)]
+        payload: ZiskShutdownRequest,
+    },
     Prove {
         #[serde(flatten)]
         payload: ZiskProveRequest,
@@ -142,11 +150,74 @@ pub enum ZiskRequest {
     },
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ZiskCmdStatus {
+    Ok,
+    Error,
+    // InProgress,
+    // Pending,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum ZiskStatusCode {
+    Ok = 0,
+    Error = 1001,
+    InvalidRequest = 1002,
+}
+
+// Serialize as a number
+impl Serialize for ZiskStatusCode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_u32(*self as u32)
+    }
+}
+
+// Deserialize from a number
+impl<'de> Deserialize<'de> for ZiskStatusCode {
+    fn deserialize<D>(deserializer: D) -> Result<ZiskStatusCode, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = u32::deserialize(deserializer)?;
+        match value {
+            0 => Ok(ZiskStatusCode::Ok),
+            1001 => Ok(ZiskStatusCode::Error),
+            1002 => Ok(ZiskStatusCode::InvalidRequest),
+            _ => Err(serde::de::Error::custom(format!("Unknown ZiskStatusCode: {}", value))),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "status", rename_all = "lowercase")]
+pub struct ZiskBaseResponse {
+    pub cmd: String,
+    pub status: ZiskCmdStatus,
+    pub code: ZiskStatusCode,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub msg: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ZiskInvalidRequestResponse {
+    #[serde(flatten)]
+    pub base: ZiskBaseResponse,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "zisk_response", rename_all = "lowercase")]
 pub enum ZiskResponse {
-    Ok { message: String },
-    Error { message: String },
+    ZiskStatusResponse(ZiskStatusResponse),
+    ZiskShutdownResponse(ZiskShutdownResponse),
+    ZiskProveResponse(ZiskProveResponse),
+    ZiskVerifyConstraintsResponse(ZiskVerifyConstraintsResponse),
+    ZiskErrorResponse(ZiskBaseResponse),
+    ZiskInvalidRequestResponse { base: ZiskBaseResponse },
 }
 
 pub struct ZiskService {
@@ -272,7 +343,14 @@ impl ZiskService {
         let request: ZiskRequest = match serde_json::from_str(&line) {
             Ok(req) => req,
             Err(e) => {
-                let response = ZiskResponse::Error { message: format!("Invalid JSON: {e}") };
+                let response = ZiskResponse::ZiskInvalidRequestResponse {
+                    base: ZiskBaseResponse {
+                        cmd: "invalid_request".to_string(),
+                        status: ZiskCmdStatus::Error,
+                        code: ZiskStatusCode::InvalidRequest,
+                        msg: Some(format!("Invalid request format or data. {}", e)),
+                    },
+                };
                 Self::send_json(&mut stream, &response)?;
                 return Ok(false);
             }
@@ -283,10 +361,10 @@ impl ZiskService {
         let mut must_shutdown = false;
         self.is_busy.store(true, std::sync::atomic::Ordering::SeqCst);
         let response = match request {
-            ZiskRequest::Status => ZiskServiceStatusHandler::handle(&config),
-            ZiskRequest::Shutdown => {
+            ZiskRequest::Status { payload } => ZiskServiceStatusHandler::handle(&config, payload),
+            ZiskRequest::Shutdown { payload } => {
                 must_shutdown = true;
-                ZiskServiceShutdownHandler::handle(&self.asm_services, &self.config)
+                ZiskServiceShutdownHandler::handle(&config, payload, &self.asm_services)
             }
             ZiskRequest::VerifyConstraints { payload } => {
                 ZiskServiceVerifyConstraintsHandler::handle(

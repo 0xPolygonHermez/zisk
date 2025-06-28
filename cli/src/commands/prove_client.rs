@@ -1,6 +1,9 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use server::{ZiskProveRequest, ZiskRequest, ZiskResponse, ZiskVerifyConstraintsRequest};
+use server::{
+    ZiskProveRequest, ZiskRequest, ZiskResponse, ZiskShutdownRequest, ZiskStatusRequest,
+    ZiskVerifyConstraintsRequest,
+};
 use std::{
     io::{BufRead, BufReader, Write},
     net::TcpStream,
@@ -8,6 +11,8 @@ use std::{
 };
 
 use crate::commands::{initialize_mpi, DEFAULT_PORT};
+
+use colored::Colorize;
 
 #[derive(Parser)]
 #[command(name = "Zisk Prover Client", version, about = "Send commands to the prover server")]
@@ -76,8 +81,12 @@ pub enum ClientCommand {
 impl ZiskProveClient {
     pub fn run(&self) -> Result<()> {
         let request = match &self.command {
-            ClientCommand::Status { port: _ } => ZiskRequest::Status,
-            ClientCommand::Shutdown { port: _ } => ZiskRequest::Shutdown,
+            ClientCommand::Status { port: _ } => {
+                ZiskRequest::Status { payload: ZiskStatusRequest {} }
+            }
+            ClientCommand::Shutdown { port: _ } => {
+                ZiskRequest::Shutdown { payload: ZiskShutdownRequest {} }
+            }
             ClientCommand::Prove {
                 input,
                 aggregation,
@@ -103,6 +112,11 @@ impl ZiskProveClient {
 
         // Construct server address
         let mpi_context = initialize_mpi()?;
+
+        proofman_common::initialize_logger(
+            proofman_common::VerboseMode::Info,
+            Some(mpi_context.world_rank),
+        );
 
         // Determine the port to use for this client instance.
         // - If no port is specified, default to DEFAULT_PORT.
@@ -133,22 +147,16 @@ impl ZiskProveClient {
         let mut response_line = String::new();
         reader.read_line(&mut response_line)?;
 
-        let response: ZiskResponse = match serde_json::from_str(&response_line) {
-            Ok(r) => r,
-            Err(e) => {
-                return Err(anyhow::anyhow!(
-                    "Failed to parse server response: {}\nRaw: {}",
-                    e,
-                    response_line
-                ));
-            }
-        };
-
-        // Handle response
-        match response {
-            ZiskResponse::Ok { message } => println!("Success: {message}"),
-            ZiskResponse::Error { message } => eprintln!("Error: {message}"),
+        if let Err(e) = serde_json::from_str::<ZiskResponse>(&response_line) {
+            return Err(anyhow::anyhow!(
+                "Failed to parse server response: {}\nRaw: {}",
+                e,
+                response_line
+            ));
         }
+
+        println!();
+        println!("{} {}", format!("{: >12}", "Response").bright_green().bold(), response_line);
 
         Ok(())
     }

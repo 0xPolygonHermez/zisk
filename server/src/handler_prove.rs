@@ -10,7 +10,7 @@ use std::{fs::File, path::PathBuf};
 use witness::WitnessLibrary;
 use zisk_common::ProofLog;
 
-use crate::{ServerConfig, ZiskResponse};
+use crate::{ServerConfig, ZiskBaseResponse, ZiskResponse};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ZiskProveRequest {
@@ -24,8 +24,13 @@ pub struct ZiskProveRequest {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ZiskProveResponse {
-    pub success: bool,
-    pub details: String,
+    #[serde(flatten)]
+    pub base: ZiskBaseResponse,
+
+    server_id: String,
+    elf_file: String,
+    input: String,
+    duration_ms: u64,
 }
 
 pub struct ZiskServiceProveHandler;
@@ -37,24 +42,9 @@ impl ZiskServiceProveHandler {
         proofman: &ProofMan<Goldilocks>,
         witness_lib: &mut dyn WitnessLibrary<Goldilocks>,
     ) -> ZiskResponse {
-        let uptime = config.launch_time.elapsed();
-        let status = serde_json::json!({
-            "server_id": config.server_id.to_string(),
-            "elf_file": config.elf.display().to_string(),
-            "uptime": format!("{:.2?}", uptime),
-            "command:": "prove",
-            "payload:": {
-                "input": request.input.display().to_string(),
-                "aggregation": request.aggregation,
-                "final_snark": request.final_snark,
-                "verify_proofs": request.verify_proofs,
-                "folder": request.folder,
-                "prefix": request.prefix,
-            },
-        });
-
         let start = std::time::Instant::now();
 
+        let request_input = request.input.clone();
         let (proof_id, vadcop_final_proof) = proofman
             .generate_proof_from_lib(
                 Some(request.input),
@@ -70,9 +60,9 @@ impl ZiskServiceProveHandler {
             .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))
             .expect("Failed to generate proof");
 
-        if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
-            let elapsed = start.elapsed();
+        let elapsed = start.elapsed();
 
+        if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
             let (result, _): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
                 .get_execution_result()
                 .ok_or_else(|| anyhow::anyhow!("No execution result found"))
@@ -110,6 +100,17 @@ impl ZiskServiceProveHandler {
             }
         }
 
-        ZiskResponse::Ok { message: status.to_string() }
+        ZiskResponse::ZiskProveResponse(ZiskProveResponse {
+            base: ZiskBaseResponse {
+                cmd: "prove".to_string(),
+                status: crate::ZiskCmdStatus::Ok,
+                code: crate::ZiskStatusCode::Ok,
+                msg: None,
+            },
+            server_id: config.server_id.to_string(),
+            elf_file: config.elf.display().to_string(),
+            input: request_input.display().to_string(),
+            duration_ms: elapsed.as_millis() as u64,
+        })
     }
 }
