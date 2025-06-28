@@ -97,7 +97,7 @@ impl ArithOperationTest {
                     if m32 && b > 0xFFFF_FFFF {
                         continue;
                     }
-                    println!("===> TEST CASE op:0x{:x} with a:0x{:X} b:0x{:X} <===", op, a, b);
+                    println!("===> TEST CASE op:0x{op:x} with a:0x{a:X} b:0x{b:X} <===");
                     let (emu_c, emu_flag) = Self::calculate_emulator_res(op, a, b);
                     self.test_operation(op, a, b, emu_c, emu_flag);
                     self.count += 1;
@@ -132,7 +132,7 @@ impl ArithOperationTest {
             | ZiskOp::Div
             | ZiskOp::Rem => false,
             ZiskOp::MulW | ZiskOp::DivuW | ZiskOp::RemuW | ZiskOp::DivW | ZiskOp::RemW => true,
-            _ => panic!("ArithOperationTest::is_m32_op() Invalid opcode={}", op),
+            _ => panic!("ArithOperationTest::is_m32_op() Invalid opcode={op}"),
         }
     }
 
@@ -155,7 +155,7 @@ impl ArithOperationTest {
             ZiskOp::DivW => op_div_w(a, b),
             ZiskOp::RemW => op_rem_w(a, b),
             _ => {
-                panic!("ArithOperationTest::calculate_emulator_res() Invalid opcode={}", op);
+                panic!("ArithOperationTest::calculate_emulator_res() Invalid opcode={op}");
             }
         }
     }
@@ -164,26 +164,21 @@ impl ArithOperationTest {
     fn test_operation(&mut self, op: u8, a: u64, b: u64, c: u64, flag: bool) {
         let mut aop = ArithOperation::new();
         aop.calculate(op, a, b);
-        println!("testing op:0x{:x} a:0x{:X} b:0x{:X} c:0x{:X} flag:{}", op, a, b, c, flag);
+        println!("testing op:0x{op:x} a:0x{a:X} b:0x{b:X} c:0x{c:X} flag:{flag}");
         let chunks = aop.calculate_chunks();
         for (i, chunk) in chunks.iter().enumerate() {
             let carry_in = if i > 0 { aop.carry[i - 1] } else { 0 };
             let carry_out = if i < 7 { aop.carry[i] } else { 0 };
             let res = chunk + carry_in - 0x10000 * carry_out;
             if res != 0 {
-                println!("{:#?}", aop);
+                println!("{aop:#?}");
 
                 self.fail += 1;
                 self.fail_by_op[(op - 0xb0) as usize] += 1;
-                println!("\x1B[31mFAIL: 0x{4:X}({4})!= 0 chunks[{0}]=0x{1:X}({1}) carry_in: 0x{2:x},{2} carry_out: 0x{3:x},{3} failed\x1B[0m",
-                i,
-                chunk,
-                carry_in,
-                carry_out,
-                res);
+                println!("\x1B[31mFAIL: 0x{res:X}({res})!= 0 chunks[{i}]=0x{chunk:X}({chunk}) carry_in: 0x{carry_in:x},{carry_in} carry_out: 0x{carry_out:x},{carry_out} failed\x1B[0m");
             }
         }
-        println!("{:#?}", aop);
+        println!("{aop:#?}");
 
         const CHUNK_SIZE: u64 = 0x10000;
         let bus_a_low: u64 = aop.div as u64 * (aop.c[0] + aop.c[1] * CHUNK_SIZE)
@@ -216,33 +211,27 @@ impl ArithOperationTest {
 
         assert_eq!(
             bus_a_low, expected_a_low,
-            "bus_a_low: 0x{0:X}({0}) vs 0x{1:X}({1}) (expected)",
-            bus_a_low, expected_a_low
+            "bus_a_low: 0x{bus_a_low:X}({bus_a_low}) vs 0x{expected_a_low:X}({expected_a_low}) (expected)"
         );
         assert_eq!(
             bus_a_high, expected_a_high,
-            "bus_a_high: 0x{0:X}({0}) vs 0x{1:X}({1}) (expected)",
-            bus_a_high, expected_a_high
+            "bus_a_high: 0x{bus_a_high:X}({bus_a_high}) vs 0x{expected_a_high:X}({expected_a_high}) (expected)"
         );
         assert_eq!(
             bus_b_low, expected_b_low,
-            "bus_b_low: 0x{0:X}({0}) vs 0x{1:X}({1}) (expected)",
-            bus_b_low, expected_b_low
+            "bus_b_low: 0x{bus_b_low:X}({bus_b_low}) vs 0x{expected_b_low:X}({expected_b_low}) (expected)"
         );
         assert_eq!(
             bus_b_high, expected_b_high,
-            "bus_b_high: 0x{0:X}({0}) vs 0x{1:X}({1}) (expected)",
-            bus_b_high, expected_b_high
+            "bus_b_high: 0x{bus_b_high:X}({bus_b_high}) vs 0x{expected_b_high:X}({expected_b_high}) (expected)"
         );
         assert_eq!(
             bus_res_low, expected_res_low,
-            "bus_c_low: 0x{0:X}({0}) vs 0x{1:X}({1}) (expected)",
-            bus_res_low, expected_res_low
+            "bus_c_low: 0x{bus_res_low:X}({bus_res_low}) vs 0x{expected_res_low:X}({expected_res_low}) (expected)"
         );
         assert_eq!(
             bus_res_high, expected_res_high,
-            "bus_c_high: 0x{0:X}({0}) vs 0x{1:X}({1}) (expected)",
-            bus_res_high, expected_res_high
+            "bus_c_high: 0x{bus_res_high:X}({bus_res_high}) vs 0x{expected_res_high:X}({expected_res_high}) (expected)"
         );
         for i in 0..7 {
             ArithRangeTableHelpers::get_row_carry_range_check(aop.carry[i]);

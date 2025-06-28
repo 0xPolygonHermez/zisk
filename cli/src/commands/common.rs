@@ -6,18 +6,13 @@ use std::env;
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::str::FromStr;
+#[cfg(distributed)]
+use zisk_common::MpiContext;
 
 #[derive(Parser, Debug, Clone, ValueEnum)]
 pub enum Field {
     Goldilocks,
     // Add other variants here as needed
-}
-
-pub struct MpiContext {
-    #[cfg(distributed)]
-    pub universe: mpi::environment::Universe,
-    pub world_rank: i32,
-    pub local_rank: i32,
 }
 
 impl FromStr for Field {
@@ -27,7 +22,7 @@ impl FromStr for Field {
         match s.to_lowercase().as_str() {
             "goldilocks" => Ok(Field::Goldilocks),
             // Add parsing for other variants here
-            _ => Err(format!("'{}' is not a valid value for Field", s)),
+            _ => Err(format!("'{s}' is not a valid value for Field")),
         }
     }
 }

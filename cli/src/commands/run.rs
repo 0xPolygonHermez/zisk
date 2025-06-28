@@ -79,7 +79,7 @@ impl ZiskRun {
                 }
                 input_command = format!("-i {}", self.input.as_ref().unwrap());
             }
-            runner_command = format!("ziskemu {} {} -e", input_command, extra_command);
+            runner_command = format!("ziskemu {input_command} {extra_command} -e");
         } else {
             let mut gdb_command = "";
             if self.gdb {

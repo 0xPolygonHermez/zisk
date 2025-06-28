@@ -107,9 +107,9 @@ impl ZiskExecute {
             sha256f_path.clone()
         } else {
             let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{}/.zisk/bin/sha256f_script.json", home_dir));
+            let script_path = PathBuf::from(format!("{home_dir}/.zisk/bin/sha256f_script.json"));
             if !script_path.exists() {
-                panic!("Sha256f script file not found at {:?}", script_path);
+                panic!("Sha256f script file not found at {script_path:?}");
             }
             script_path
         };
@@ -121,7 +121,7 @@ impl ZiskExecute {
             if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
                 if e.kind() != std::io::ErrorKind::AlreadyExists {
                     // prevent collision in distributed mode
-                    panic!("Failed to create the cache directory: {:?}", e);
+                    panic!("Failed to create the cache directory: {e:?}");
                 }
             }
         }
@@ -229,9 +229,11 @@ impl ZiskExecute {
                     self.asm.clone(),
                     asm_rom,
                     sha256f_script,
+                    None,
                     Some(mpi_context.world_rank),
                     Some(mpi_context.local_rank),
                     self.port,
+                    self.map_locked,
                 )
                 .expect("Failed to initialize witness library");
 
@@ -239,11 +241,7 @@ impl ZiskExecute {
 
                 if self.asm.is_some() {
                     // Start ASM microservices
-                    tracing::info!(
-                        ">>> [{}] Starting ASM microservices. {}",
-                        mpi_context.world_rank,
-                        "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
-                    );
+                    tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
 
                     asm_services
                         .start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;

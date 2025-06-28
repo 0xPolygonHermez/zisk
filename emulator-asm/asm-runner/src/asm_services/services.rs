@@ -3,7 +3,7 @@ use super::{
     MinimalTraceResponse, PingRequest, PingResponse, ResponseData, ShutdownRequest,
     ShutdownResponse, ToRequestPayload,
 };
-use crate::{AsmRunError, AsmRunnerOptions};
+use crate::{AsmRunError, AsmRunnerOptions, RomHistogramRequest, RomHistogramResponse};
 use anyhow::{Context, Result};
 use libc::sem_unlink;
 use named_sem::NamedSemaphore;
@@ -41,7 +41,7 @@ impl fmt::Display for AsmService {
             AsmService::MT => "mt",
             AsmService::RH => "rh",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -58,11 +58,7 @@ impl AsmServices {
     const MT_SERVICE_OFFSET: u64 = 1; // Relative offset to base port. Should correspond to the order in SERVICES
     const RH_SERVICE_OFFSET: u64 = 2; // Relative offset to base port. Should correspond to the order in SERVICES
 
-    const SERVICES: [AsmService; 2] = [
-        AsmService::MO,
-        AsmService::MT,
-        // AsmService::RH,
-    ];
+    const SERVICES: [AsmService; 3] = [AsmService::MO, AsmService::MT, AsmService::RH];
 
     pub fn new(world_rank: i32, local_rank: i32, base_port: Option<u16>) -> Self {
         Self { world_rank, local_rank, base_port: base_port.unwrap_or(ASM_SERVICE_BASE_PORT) }
@@ -96,7 +92,7 @@ impl AsmServices {
         // Check if a service is already running
         for service in &Self::SERVICES {
             let port = Self::port_for(service, self.base_port, self.local_rank);
-            let addr = format!("127.0.0.1:{}", port);
+            let addr = format!("127.0.0.1:{port}");
 
             if TcpStream::connect(&addr).is_ok() {
                 tracing::info!(
@@ -112,6 +108,12 @@ impl AsmServices {
         let start = std::time::Instant::now();
 
         for service in &Self::SERVICES {
+            tracing::debug!(
+                ">>> [{}] Starting ASM service: {} on port {}",
+                self.world_rank,
+                service,
+                Self::port_for(service, self.base_port, self.local_rank)
+            );
             self.start_asm_service(service, trimmed_path, &options);
         }
 
@@ -120,16 +122,22 @@ impl AsmServices {
                 service,
                 Self::port_for(service, self.base_port, self.local_rank),
             );
+            tracing::debug!(
+                ">>> [{}] ASM service {} is ready on port {}",
+                self.world_rank,
+                service,
+                Self::port_for(service, self.base_port, self.local_rank)
+            );
         }
 
         // Ping status for all services
         for service in &Self::SERVICES {
             self.send_status_request(service)
-                .with_context(|| format!("Service {} failed to respond to ping", service))?;
+                .with_context(|| format!("Service {service} failed to respond to ping"))?;
         }
 
         tracing::info!(
-            ">>> [{}] All ASM services are ready. Time taken: {} seconds",
+            ">>> [{}] ASM microservices are ready ({:.2} seconds)",
             self.world_rank,
             start.elapsed().as_secs_f32()
         );
@@ -141,7 +149,7 @@ impl AsmServices {
         // Check if a service is already running
         for service in &Self::SERVICES {
             let port = Self::port_for(service, self.base_port, self.local_rank);
-            let addr = format!("127.0.0.1:{}", port);
+            let addr = format!("127.0.0.1:{port}");
 
             if TcpStream::connect(&addr).is_ok() {
                 tracing::info!("Shutting down service {} running on {}.", service, addr);
@@ -154,7 +162,7 @@ impl AsmServices {
     }
 
     fn wait_for_service_ready(service: &AsmService, port: u16) {
-        let addr = format!("127.0.0.1:{}", port);
+        let addr = format!("127.0.0.1:{port}");
         let timeout = Duration::from_secs(60);
         let retry_delay = Duration::from_millis(100);
         let start = Instant::now();
@@ -168,7 +176,7 @@ impl AsmServices {
             }
         }
 
-        panic!("Timeout: service `{}` not ready on {}", service, addr);
+        panic!("Timeout: service `{service}` not ready on {addr}");
     }
 
     fn start_asm_service(
@@ -178,7 +186,7 @@ impl AsmServices {
         options: &AsmRunnerOptions,
     ) {
         // Prepare command
-        let command_path = trimmed_path.to_string() + &format!("-{}.bin", asm_service);
+        let command_path = trimmed_path.to_string() + &format!("-{asm_service}.bin");
 
         let mut command = Command::new(command_path);
 
@@ -186,8 +194,6 @@ impl AsmServices {
 
         if let Err(e) = command.spawn() {
             tracing::error!("Child process failed: {:?}", e);
-        } else if options.verbose || options.log_output {
-            tracing::info!("Child process launched successfully");
         }
     }
 
@@ -230,6 +236,10 @@ impl AsmServices {
         self.send_request(&AsmService::MT, &MinimalTraceRequest { max_steps, chunk_len })
     }
 
+    pub fn send_rom_histogram_request(&self, max_steps: u64) -> Result<RomHistogramResponse> {
+        self.send_request(&AsmService::RH, &RomHistogramRequest { max_steps })
+    }
+
     pub fn send_memory_ops_request(
         &self,
         max_steps: u64,
@@ -244,7 +254,7 @@ impl AsmServices {
         Res: FromResponsePayload,
     {
         let port = Self::port_for(service, self.base_port, self.local_rank);
-        let addr = format!("127.0.0.1:{}", port);
+        let addr = format!("127.0.0.1:{port}");
 
         let request = req.to_request_payload();
 
@@ -255,7 +265,7 @@ impl AsmServices {
         }
 
         let mut stream =
-            TcpStream::connect(&addr).with_context(|| format!("Failed to connect to {}", addr))?;
+            TcpStream::connect(&addr).with_context(|| format!("Failed to connect to {addr}"))?;
 
         // Set a read timeout to avoid indefinite blocking
         stream
@@ -290,7 +300,7 @@ impl AsmServices {
         let _ = sem_shutdown_done.try_wait();
 
         self.send_shutdown_request(service)
-            .with_context(|| format!("Service {} failed to respond to shutdown", service))?;
+            .with_context(|| format!("Service {service} failed to respond to shutdown"))?;
 
         tracing::info!("Waiting for semaphore {sem_shutdown_done_name}");
 

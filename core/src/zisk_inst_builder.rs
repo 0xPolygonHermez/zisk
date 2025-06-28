@@ -37,7 +37,7 @@ impl ZiskInstBuilder {
             // #[cfg(feature = "sp")]
             // "sp" => SRC_SP,
             "step" => SRC_STEP,
-            _ => panic!("ZiskInstBuilder::a_src() called with invalid src={}", src),
+            _ => panic!("ZiskInstBuilder::a_src() called with invalid src={src}"),
         }
     }
 
@@ -49,7 +49,7 @@ impl ZiskInstBuilder {
             "imm" => SRC_IMM,
             "lastc" => SRC_C,
             "ind" => SRC_IND,
-            _ => panic!("ZiskInstBuilder::b_src() called with invalid src={}", src),
+            _ => panic!("ZiskInstBuilder::b_src() called with invalid src={src}"),
         }
     }
 
@@ -60,7 +60,7 @@ impl ZiskInstBuilder {
             "mem" => STORE_MEM,
             "reg" => STORE_REG,
             "ind" => STORE_IND,
-            _ => panic!("ZiskInstBuilder::c_store() called with invalid store={}", store),
+            _ => panic!("ZiskInstBuilder::c_store() called with invalid store={store}"),
         }
     }
 
@@ -68,12 +68,12 @@ impl ZiskInstBuilder {
     pub fn nto32s(n: i128) -> (u32, u32) {
         let mut a = n;
         if a >= (1_i128 << 64) {
-            panic!("ZiskInstBuilder::nto32s() n={} is too big", a);
+            panic!("ZiskInstBuilder::nto32s() n={a} is too big");
         }
         if a < 0 {
             a += 1_i128 << 64;
             if a < (1_i128 << 63) {
-                panic!("ZiskInstBuilder::nto32s() n={} is too small", a);
+                panic!("ZiskInstBuilder::nto32s() n={a} is too small");
             }
         }
         ((a & 0xFFFFFFFF) as u32, (a >> 32) as u32)
@@ -214,7 +214,7 @@ impl ZiskInstBuilder {
         self.i.ind_width = match w {
             1 | 2 | 4 | 8 => w,
             _ => {
-                panic!("ZiskInstBuilder::indWidth() invalid widtch={}", w);
+                panic!("ZiskInstBuilder::indWidth() invalid widtch={w}");
             }
         };
     }

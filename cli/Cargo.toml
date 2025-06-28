@@ -37,6 +37,7 @@ zisk-core = { path = "../core" }
 zisk-pil = { path = "../pil" }
 asm-runner = { path = "../emulator-asm/asm-runner" }
 server = { path = "../server" }
+bytemuck = "1.23.1"
 
 clap = { version = "4.5.7", features = ["derive", "env"] }
 dirs = "6"
@@ -54,7 +55,7 @@ yansi = "1.0.1"
 
 # Distributed mode (mpi) is only supported on Linux x86_64
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
-mpi = { version = "0.8.0" }
+mpi = { workspace = true }
 
 [features]
 default = []

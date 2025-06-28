@@ -93,6 +93,15 @@ pub struct ZiskStats {
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
+    #[clap(short = 'n', long)]
+    pub number_threads_witness: Option<usize>,
+
+    #[clap(short = 'x', long)]
+    pub max_witness_stored: Option<usize>,
+
+    #[clap(short = 'c', long)]
+    pub chunk_size_bits: Option<u64>,
+
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
 
@@ -101,7 +110,7 @@ pub struct ZiskStats {
     pub sha256f_script: Option<PathBuf>,
 
     #[clap(long)]
-    pub mpi_node: usize,
+    pub mpi_node: Option<usize>,
 }
 
 impl ZiskStats {
@@ -124,9 +133,9 @@ impl ZiskStats {
             sha256f_path.clone()
         } else {
             let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{}/.zisk/bin/sha256f_script.json", home_dir));
+            let script_path = PathBuf::from(format!("{home_dir}/.zisk/bin/sha256f_script.json"));
             if !script_path.exists() {
-                panic!("Sha256f script file not found at {:?}", script_path);
+                panic!("Sha256f script file not found at {script_path:?}");
             }
             script_path
         };
@@ -138,7 +147,7 @@ impl ZiskStats {
             if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
                 if e.kind() != std::io::ErrorKind::AlreadyExists {
                     // prevent collision in distributed mode
-                    panic!("Failed to create the cache directory: {:?}", e);
+                    panic!("Failed to create the cache directory: {e:?}");
                 }
             }
         }
@@ -193,6 +202,12 @@ impl ZiskStats {
 
         let mut gpu_params = ParamsGPU::new(false);
         gpu_params.with_max_number_streams(1);
+        if self.number_threads_witness.is_some() {
+            gpu_params.with_number_threads_pools_witness(self.number_threads_witness.unwrap());
+        }
+        if self.max_witness_stored.is_some() {
+            gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
+        }
 
         let proofman;
         let mpi_context = initialize_mpi()?;
@@ -205,16 +220,18 @@ impl ZiskStats {
             let world = mpi_context.universe.world();
             world_ranks = world.size() as usize;
 
-            let m2 = self.mpi_node as i32 * 2;
-            if mpi_context.world_rank < m2 || mpi_context.world_rank >= m2 + 2 {
-                world.split_shared(mpi_context.world_rank);
-                world.barrier();
-                println!(
-                    "{}: {}",
-                    format!("Rank {}", mpi_context.world_rank).bright_yellow().bold(),
-                    "Exiting stats command.".bright_yellow()
-                );
-                return Ok(());
+            if let Some(mpi_node) = self.mpi_node {
+                let m2 = mpi_node as i32 * 2;
+                if mpi_context.world_rank < m2 || mpi_context.world_rank >= m2 + 2 {
+                    world.split_shared(mpi_context.world_rank);
+                    world.barrier();
+                    println!(
+                        "{}: {}",
+                        format!("Rank {}", mpi_context.world_rank).bright_yellow().bold(),
+                        "Exiting stats command.".bright_yellow()
+                    );
+                    return Ok(());
+                }
             }
 
             proofman = ProofMan::<Goldilocks>::new(
@@ -268,9 +285,11 @@ impl ZiskStats {
                     self.asm.clone(),
                     asm_rom,
                     sha256f_script,
+                    self.chunk_size_bits,
                     Some(world_rank),
                     Some(local_rank),
                     self.port,
+                    self.map_locked,
                 )
                 .expect("Failed to initialize witness library");
 
@@ -278,11 +297,7 @@ impl ZiskStats {
 
                 if self.asm.is_some() {
                     // Start ASM microservices
-                    tracing::info!(
-                        ">>> [{}] Starting ASM microservices. {}",
-                        world_rank,
-                        "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
-                    );
+                    tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
 
                     asm_services
                         .start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
@@ -488,7 +503,7 @@ impl ZiskStats {
             val if val == SHA_256_F_AIR_IDS[0] => "SHA_256_F".to_string(),
             val if val == SHA_256_F_TABLE_AIR_IDS[0] => "SHA_256_F_TABLE".to_string(),
             val if val == SPECIFIED_RANGES_AIR_IDS[0] => "SPECIFIED_RANGES".to_string(),
-            _ => format!("Unknown air_id: {}", air_id),
+            _ => format!("Unknown air_id: {air_id}"),
         }
     }
 

@@ -100,7 +100,7 @@ impl BinaryBasicSM {
                 LT_ABS_NP_OP => Self::lt_abs_np_execute(a, b),
                 LT_ABS_PN_OP => Self::lt_abs_pn_execute(a, b),
                 GT_OP => Self::gt_execute(a, b),
-                _ => panic!("BinaryBasicSM::execute() got invalid opcode={:?}", opcode),
+                _ => panic!("BinaryBasicSM::execute() got invalid opcode={opcode:?}"),
             }
         }
     }
@@ -120,7 +120,7 @@ impl BinaryBasicSM {
             match opcode {
                 LT_ABS_NP_OP | LT_ABS_PN_OP => 2,
                 GT_OP => 0,
-                _ => panic!("BinaryBasicSM::execute() got invalid opcode={:?}", opcode),
+                _ => panic!("BinaryBasicSM::execute() got invalid opcode={opcode:?}"),
             }
         }
     }
@@ -829,7 +829,7 @@ impl BinaryBasicSM {
                     binary_table_sm.update_multiplicity(row, 1);
                 }
             }
-            _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={}", opcode),
+            _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={opcode}"),
         }
 
         // Set cout
@@ -879,8 +879,12 @@ impl BinaryBasicSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<F: PrimeField64>(&self, inputs: &[Vec<BinaryInput>]) -> AirInstance<F> {
-        let mut binary_trace = BinaryTrace::new();
+    pub fn compute_witness<F: PrimeField64>(
+        &self,
+        inputs: &[Vec<BinaryInput>],
+        trace_buffer: Vec<F>,
+    ) -> AirInstance<F> {
+        let mut binary_trace = BinaryTrace::new_from_vec(trace_buffer);
 
         let num_rows = binary_trace.num_rows();
 
@@ -897,7 +901,7 @@ impl BinaryBasicSM {
         // Split the binary_e_trace.buffer into slices matching each inner vector’s length.
         let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
         let mut slices = Vec::with_capacity(inputs.len());
-        let mut rest = binary_trace.buffer.as_mut_slice();
+        let mut rest = binary_trace.row_slice_mut();
         for size in sizes {
             let (head, tail) = rest.split_at_mut(size);
             slices.push(head);
@@ -919,7 +923,9 @@ impl BinaryBasicSM {
             ..Default::default()
         };
 
-        binary_trace.buffer[total_inputs..num_rows].fill(padding_row);
+        binary_trace.row_slice_mut()[total_inputs..num_rows]
+            .par_iter_mut()
+            .for_each(|slot| *slot = padding_row);
 
         let padding_size = num_rows - total_inputs;
         for last in 0..2 {

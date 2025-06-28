@@ -28,6 +28,9 @@ use zisk_core::{
 /// * `BD` - The type of devices (subscribers) connected to the bus, implementing the `BusDevice`
 ///   trait.
 pub struct StaticDataBus<D> {
+    /// Flag indicating whether the bus should only process operation bus related data.
+    process_only_operation_bus: bool,
+
     /// List of devices connected to the bus.
     pub main_counter: MainCounter,
     pub mem_counter: MemCounters,
@@ -44,6 +47,7 @@ pub struct StaticDataBus<D> {
 impl StaticDataBus<PayloadType> {
     /// Creates a new `DataBus` instance.
     pub fn new(
+        process_only_operation_bus: bool,
         mem_counter: MemCounters,
         binary_counter: BinaryCounter,
         arith_counter: ArithCounterInputGen,
@@ -52,6 +56,7 @@ impl StaticDataBus<PayloadType> {
         arith_eq_counter: ArithEqCounterInputGen,
     ) -> Self {
         Self {
+            process_only_operation_bus,
             main_counter: MainCounter::new(),
             mem_counter,
             binary_counter,
@@ -72,7 +77,10 @@ impl StaticDataBus<PayloadType> {
     fn route_data(&mut self, bus_id: BusId, payload: &[PayloadType]) {
         match bus_id {
             MEM_BUS_ID => {
-                // self.mem_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
+                if !self.process_only_operation_bus {
+                    // If we are not processing only operation bus, we process memory bus data.
+                    self.mem_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
+                }
             }
             OPERATION_BUS_ID => match payload[1] as u32 {
                 PUB_OUT_OP_TYPE_ID => {
@@ -132,12 +140,16 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
         self.arith_eq_counter.on_close();
     }
 
-    fn into_devices(mut self, execute_on_close: bool) -> Vec<Option<Box<dyn BusDeviceMetrics>>> {
+    fn into_devices(
+        mut self,
+        execute_on_close: bool,
+    ) -> Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> {
         if execute_on_close {
             self.on_close();
         }
 
         let StaticDataBus {
+            process_only_operation_bus: _,
             main_counter,
             mem_counter,
             binary_counter,
@@ -148,15 +160,16 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
             pending_transfers: _,
         } = self;
 
-        let counters: Vec<Option<Box<dyn BusDeviceMetrics>>> = vec![
-            Some(Box::new(main_counter)),
-            Some(Box::new(mem_counter)),
-            None,
-            Some(Box::new(binary_counter)),
-            Some(Box::new(arith_counter)),
-            Some(Box::new(keccakf_counter)),
-            Some(Box::new(sha256f_counter)),
-            Some(Box::new(arith_eq_counter)),
+        #[allow(clippy::type_complexity)]
+        let counters: Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> = vec![
+            (None, Some(Box::new(main_counter))),
+            (None, Some(Box::new(mem_counter))),
+            (None, None),
+            (None, Some(Box::new(binary_counter))),
+            (None, Some(Box::new(arith_counter))),
+            (None, Some(Box::new(keccakf_counter))),
+            (None, Some(Box::new(sha256f_counter))),
+            (None, Some(Box::new(arith_eq_counter))),
         ];
 
         counters

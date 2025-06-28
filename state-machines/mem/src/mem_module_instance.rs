@@ -3,10 +3,12 @@ use fields::PrimeField64;
 use mem_common::MemModuleSegmentCheckPoint;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
+use rayon::prelude::*;
 use std::sync::Arc;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
+use zisk_pil::MemTrace;
 
 pub struct MemModuleInstance<F: PrimeField64> {
     /// Instance context
@@ -29,10 +31,14 @@ impl<F: PrimeField64> MemModuleInstance<F> {
         Self { ictx, module: module.clone(), check_point: mem_check_point, min_addr, max_addr }
     }
 
-    fn prepare_inputs(&self, inputs: &mut [MemInput]) {
+    fn prepare_inputs(&self, inputs: &mut [MemInput], parallelize: bool) {
         // sort all instance inputs
         timer_start_debug!(MEM_SORT);
-        inputs.sort_by_key(|input| (input.addr, input.step));
+        if parallelize {
+            inputs.par_sort_by_key(|input| (input.addr, input.step));
+        } else {
+            inputs.sort_by_key(|input| (input.addr, input.step));
+        }
         timer_stop_and_log_debug!(MEM_SORT);
     }
 }
@@ -43,6 +49,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         // Collect inputs from all collectors. At most, one of them has `prev_last_value` non zero,
         // we take this `prev_last_value`, which represents the last value of the previous segment.
@@ -69,7 +76,9 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         }
 
         // This method sorts all inputs
-        self.prepare_inputs(&mut inputs);
+        let parallelize = self.ictx.plan.air_id == MemTrace::<usize>::AIR_ID
+            && self.ictx.plan.airgroup_id == MemTrace::<usize>::AIRGROUP_ID;
+        self.prepare_inputs(&mut inputs, parallelize);
 
         // This method calculates intermediate accesses without adding inputs and trims
         // the inputs while considering skipped rows for this instance.
@@ -81,7 +90,13 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         let segment_id = self.ictx.plan.segment_id.unwrap();
 
         let is_last_segment = self.check_point.is_last_segment;
-        Some(self.module.compute_witness(&inputs, segment_id, is_last_segment, &prev_segment))
+        Some(self.module.compute_witness(
+            &inputs,
+            segment_id,
+            is_last_segment,
+            &prev_segment,
+            trace_buffer,
+        ))
     }
 
     /// Builds an input collector for the instance.

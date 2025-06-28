@@ -30,7 +30,7 @@ pub fn bits_to_byte_msb(bits: &[u8; 8], byte: &mut u8) {
 
 /// Prints bits in a formatted way
 pub fn print_bits(bits: &[u8], name: &str) {
-    let mut output = format!("{} = ", name);
+    let mut output = format!("{name} = ");
 
     for k in 0..(bits.len() / 8) {
         let bits: &[u8; 8] = &bits[k * 8..(k + 1) * 8].try_into().unwrap();
@@ -42,7 +42,7 @@ pub fn print_bits(bits: &[u8], name: &str) {
     if output.ends_with(':') {
         output.pop();
     }
-    println!("{}", output);
+    println!("{output}");
 }
 
 fn byte_to_string(b: u8) -> String {
@@ -56,7 +56,7 @@ fn byte_to_char(b: u8) -> char {
     match b {
         0..=9 => (b'0' + b) as char,
         10..=15 => (b'a' + b - 10) as char,
-        _ => panic!("Invalid nibble value: {}", b),
+        _ => panic!("Invalid nibble value: {b}"),
     }
 }
 

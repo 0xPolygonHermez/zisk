@@ -11,10 +11,11 @@
 use std::{
     path::PathBuf,
     sync::{atomic::AtomicU32, Arc, Mutex},
+    thread::JoinHandle,
 };
 
-use crate::{rom_asm_worker::RomAsmWorker, RomInstance, RomPlanner};
-use asm_runner::AsmRHData;
+use crate::{RomInstance, RomPlanner};
+use asm_runner::{AsmRHData, AsmRunnerRH};
 use fields::PrimeField64;
 use itertools::Itertools;
 use proofman_common::{AirInstance, FromTrace};
@@ -38,10 +39,7 @@ pub struct RomSM {
     /// Shared program instruction counter for monitoring ROM operations.
     prog_inst_count: Arc<Vec<AtomicU32>>,
 
-    /// The ROM assembly worker
-    rom_asm_worker: Mutex<Option<RomAsmWorker>>,
-
-    asm_rom_path: Option<PathBuf>,
+    asm_runner_handler: Mutex<Option<JoinHandle<AsmRunnerRH>>>,
 }
 
 impl RomSM {
@@ -66,18 +64,12 @@ impl RomSM {
             zisk_rom,
             bios_inst_count: Arc::new(bios_inst_count),
             prog_inst_count: Arc::new(prog_inst_count),
-            asm_rom_path,
-            rom_asm_worker: Mutex::new(None),
+            asm_runner_handler: Mutex::new(None),
         })
     }
 
-    pub fn set_asm_rom_worker(&self, input_data_path: Option<PathBuf>) {
-        let rom_asm_worker = self.asm_rom_path.as_ref().map(|asm_rom_path| {
-            let mut worker = RomAsmWorker::new();
-            worker.launch_task(asm_rom_path.clone(), input_data_path);
-            worker
-        });
-        *self.rom_asm_worker.lock().unwrap() = rom_asm_worker;
+    pub fn set_asm_runner_handler(&self, handler: JoinHandle<AsmRunnerRH>) {
+        *self.asm_runner_handler.lock().unwrap() = Some(handler);
     }
 
     /// Computes the witness for the provided plan using the given ROM.
@@ -91,8 +83,9 @@ impl RomSM {
     pub fn compute_witness<F: PrimeField64>(
         rom: &ZiskRom,
         counter_stats: &CounterStats,
+        trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut rom_trace = RomTrace::new_zeroes();
+        let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer);
 
         let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
@@ -142,8 +135,9 @@ impl RomSM {
     pub fn compute_witness_from_asm<F: PrimeField64>(
         rom: &ZiskRom,
         asm_romh: &AsmRHData,
+        trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut rom_trace = RomTrace::new_zeroes();
+        let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer);
 
         tracing::info!("··· Creating Rom instance [{} rows]", rom_trace.num_rows());
 
@@ -337,15 +331,15 @@ impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
     /// # Returns
     /// A boxed implementation of `RomInstance`.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
-        let mut worker_guard = self.rom_asm_worker.lock().unwrap();
-        let worker = worker_guard.take();
+        let mut handle_rh_guard = self.asm_runner_handler.lock().unwrap();
+        let handle_rh = handle_rh_guard.take();
 
         Box::new(RomInstance::new(
             self.zisk_rom.clone(),
             ictx,
             self.bios_inst_count.clone(),
             self.prog_inst_count.clone(),
-            worker,
+            handle_rh,
         ))
     }
 }

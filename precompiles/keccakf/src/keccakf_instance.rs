@@ -22,9 +22,9 @@ use zisk_pil::KeccakfTrace;
 ///
 /// It encapsulates the `KeccakfSM` and its associated context, and it processes input data
 /// to compute witnesses for the Keccakf State Machine.
-pub struct KeccakfInstance {
+pub struct KeccakfInstance<F: PrimeField64> {
     /// Keccakf state machine.
-    keccakf_sm: Arc<KeccakfSM>,
+    keccakf_sm: Arc<KeccakfSM<F>>,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
     collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
@@ -33,7 +33,7 @@ pub struct KeccakfInstance {
     ictx: InstanceCtx,
 }
 
-impl KeccakfInstance {
+impl<F: PrimeField64> KeccakfInstance<F> {
     /// Creates a new `KeccakfInstance`.
     ///
     /// # Arguments
@@ -44,7 +44,7 @@ impl KeccakfInstance {
     /// # Returns
     /// A new `KeccakfInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(keccakf_sm: Arc<KeccakfSM>, mut ictx: InstanceCtx) -> Self {
+    pub fn new(keccakf_sm: Arc<KeccakfSM<F>>, mut ictx: InstanceCtx) -> Self {
         assert_eq!(
             ictx.plan.air_id,
             KeccakfTrace::<usize>::AIR_ID,
@@ -62,7 +62,7 @@ impl KeccakfInstance {
     }
 }
 
-impl<F: PrimeField64> Instance<F> for KeccakfInstance {
+impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
     /// Computes the witness for the keccakf execution plan.
     ///
     /// This method leverages the `KeccakfSM` to generate an `AirInstance` using the collected
@@ -76,15 +76,16 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance {
     fn compute_witness(
         &self,
         _pctx: &ProofCtx<F>,
-        sctx: &SetupCtx<F>,
+        _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<KeccakfCollector>().unwrap().inputs)
             .collect();
 
-        Some(self.keccakf_sm.compute_witness(sctx, &inputs))
+        Some(self.keccakf_sm.compute_witness(&inputs, trace_buffer))
     }
 
     /// Retrieves the checkpoint associated with this instance.

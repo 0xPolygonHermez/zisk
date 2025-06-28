@@ -23,7 +23,7 @@ fn main() {
     }
     let library_folder = c_path.join("lib");
     let library_name = "ziskc";
-    let lib_file = library_folder.join(format!("lib{}.a", library_name));
+    let lib_file = library_folder.join(format!("lib{library_name}.a"));
 
     // Check if the C++ library exists before recompiling
     if !lib_file.exists() {
@@ -46,11 +46,11 @@ fn main() {
 
     // Link the static library
     println!("cargo:rustc-link-search=native={}", abs_lib_path.display());
-    println!("cargo:rustc-link-lib=static={}", library_name);
+    println!("cargo:rustc-link-lib=static={library_name}");
 
     // Link required libraries
     for lib in &["pthread", "gmp", "stdc++", "gmpxx", "c"] {
-        println!("cargo:rustc-link-lib={}", lib);
+        println!("cargo:rustc-link-lib={lib}");
     }
 }
 
@@ -60,7 +60,7 @@ fn run_command(cmd: &str, args: &[&str], dir: &Path) {
         .args(args)
         .current_dir(dir)
         .status()
-        .unwrap_or_else(|e| panic!("Failed to execute `{}`: {}", cmd, e));
+        .unwrap_or_else(|e| panic!("Failed to execute `{cmd}`: {e}"));
 
     if !status.success() {
         panic!("Command `{}` failed with exit code {:?}", cmd, status.code());

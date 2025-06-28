@@ -6,16 +6,20 @@ pub fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {
     let fd = unsafe { shm_open(c_name.as_ptr(), flags, mode) };
     if fd == -1 {
         let err = io::Error::last_os_error();
-        panic!("shm_open('{}') failed: {}", name, err);
+        panic!("shm_open('{name}') failed: {err}");
     }
     fd
 }
 
-pub fn map(fd: i32, size: usize, prot: i32, desc: &str) -> *mut c_void {
-    let mapped = unsafe { mmap(ptr::null_mut(), size, prot, MAP_SHARED, fd, 0) };
+pub fn map(fd: i32, size: usize, prot: i32, map_locked: bool, desc: &str) -> *mut c_void {
+    let mut flags = MAP_SHARED;
+    if map_locked {
+        flags |= libc::MAP_LOCKED;
+    }
+    let mapped = unsafe { mmap(ptr::null_mut(), size, prot, flags, fd, 0) };
     if mapped == MAP_FAILED {
         let err = io::Error::last_os_error();
-        panic!("mmap failed for '{}': {:?} ({} bytes)", desc, err, size);
+        panic!("mmap failed for '{desc}': {err:?} ({size} bytes)");
     }
     mapped
 }

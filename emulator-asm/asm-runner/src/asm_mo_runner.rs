@@ -38,10 +38,6 @@ impl Drop for AsmRunnerMO {
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerMO {
-    pub fn new(mapped_ptr: *mut std::ffi::c_void, total_size: u64) -> Self {
-        Self { mapped_ptr, total_size }
-    }
-
     pub fn run(
         inputs_path: &Path,
         max_steps: u64,
@@ -49,19 +45,20 @@ impl AsmRunnerMO {
         world_rank: i32,
         local_rank: i32,
         base_port: Option<u16>,
+        map_locked: bool,
     ) -> Result<Vec<Plan>> {
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
         let prefix = AsmServices::shmem_prefix(&crate::AsmService::MO, base_port, local_rank);
 
-        let shmem_input_name = format!("{}_MO_input", prefix);
-        let shmem_output_name = format!("{}_MO_output", prefix);
-        let sem_chunk_done_name = format!("/{}_MO_chunk_done", prefix);
+        let shmem_input_name = format!("{prefix}_MO_input");
+        let shmem_output_name = format!("{prefix}_MO_output");
+        let sem_chunk_done_name = format!("/{prefix}_MO_chunk_done");
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
-        Self::write_input(inputs_path, &shmem_input_name);
+        Self::write_input(inputs_path, &shmem_input_name, map_locked);
 
         let handle = std::thread::spawn(move || {
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
@@ -69,7 +66,7 @@ impl AsmRunnerMO {
         });
 
         // Read the header data
-        let header_ptr = Self::get_output_ptr(&shmem_output_name) as *const AsmMOHeader;
+        let header_ptr = Self::get_output_ptr(&shmem_output_name, map_locked) as *const AsmMOHeader;
         let header = unsafe { std::ptr::read(header_ptr) };
 
         // Skips the header size to get the data pointer.
@@ -142,7 +139,7 @@ impl AsmRunnerMO {
         Ok(plans)
     }
 
-    pub fn write_input(inputs_path: &Path, shmem_input_name: &str) {
+    fn write_input(inputs_path: &Path, shmem_input_name: &str, map_locked: bool) {
         let inputs = fs::read(inputs_path).expect("Failed to read input file");
         let asm_input = AsmInputC2 { zero: 0, input_data_size: inputs.len() as u64 };
         let shmem_input_size = (inputs.len() + size_of::<AsmInputC2>() + 7) & !7;
@@ -156,7 +153,13 @@ impl AsmRunnerMO {
 
         let fd = shmem_utils::open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR);
 
-        let ptr = shmem_utils::map(fd, shmem_input_size, PROT_READ | PROT_WRITE, "input mmap");
+        let ptr = shmem_utils::map(
+            fd,
+            shmem_input_size,
+            PROT_READ | PROT_WRITE,
+            map_locked,
+            "input mmap",
+        );
         unsafe {
             ptr::copy_nonoverlapping(full_input.as_ptr(), ptr as *mut u8, shmem_input_size);
             shmem_utils::unmap(ptr, shmem_input_size);
@@ -164,15 +167,21 @@ impl AsmRunnerMO {
         }
     }
 
-    pub fn get_output_ptr(shmem_output_name: &str) -> *mut std::ffi::c_void {
+    fn get_output_ptr(shmem_output_name: &str, map_locked: bool) -> *mut std::ffi::c_void {
         let fd = shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR);
         let header_size = size_of::<AsmMOHeader>();
-        let temp = shmem_utils::map(fd, header_size, PROT_READ, "header temp map");
+        let temp = shmem_utils::map(fd, header_size, PROT_READ, map_locked, "header temp map");
         let header = unsafe { (temp as *const AsmMOHeader).read() };
         unsafe {
             shmem_utils::unmap(temp, header_size);
         }
-        shmem_utils::map(fd, header.mt_allocated_size as usize, PROT_READ, shmem_output_name)
+        shmem_utils::map(
+            fd,
+            header.mt_allocated_size as usize,
+            PROT_READ,
+            map_locked,
+            shmem_output_name,
+        )
     }
 }
 

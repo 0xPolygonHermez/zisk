@@ -48,7 +48,7 @@ impl ZiskEmulator {
         options: &EmuOptions,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
-            println!("process_directory() directory={}", directory);
+            println!("process_directory() directory={directory}");
         }
 
         // List all files in the directory
@@ -73,7 +73,7 @@ impl ZiskEmulator {
         callback: Option<impl Fn(EmuTrace)>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
-            println!("process_elf_file() elf_file={}", elf_filename);
+            println!("process_elf_file() elf_file={elf_filename}");
         }
 
         // Create an instance of the RISC-V -> ZisK program transpiler (Riscv2zisk) with the ELF
@@ -95,7 +95,7 @@ impl ZiskEmulator {
         callback: Option<impl Fn(EmuTrace)>,
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         if options.verbose {
-            println!("process_rom_file() rom_file={}", rom_filename);
+            println!("process_rom_file() rom_file={rom_filename}");
         }
 
         // TODO: load from file
@@ -115,7 +115,7 @@ impl ZiskEmulator {
         }
 
         // Create a emulator instance with the Zisk rom
-        let mut emu = Emu::new(rom);
+        let mut emu = Emu::new(rom, options.chunk_size.unwrap());
 
         // Get the current time, to be used to calculate the metrics
         let start = Instant::now();
@@ -144,8 +144,7 @@ impl ZiskEmulator {
 
             let clocks_per_step = cpu_frequency / tp;
             println!(
-                "process_rom() steps={} duration={:.4} tp={:.4} Msteps/s freq={:.4} {:.4} clocks/step",
-                steps, secs, tp, cpu_frequency, clocks_per_step
+                "process_rom() steps={steps} duration={secs:.4} tp={tp:.4} Msteps/s freq={cpu_frequency:.4} {clocks_per_step:.4} clocks/step"
             );
         }
 
@@ -166,7 +165,7 @@ impl ZiskEmulator {
 
             // Log the output to console
             for o in &output {
-                println!("{:08x}", o);
+                println!("{o:08x}");
             }
         }
 
@@ -187,10 +186,10 @@ impl ZiskEmulator {
 
         minimal_traces.par_iter_mut().enumerate().for_each(|(thread_id, emu_trace)| {
             let par_emu_options =
-                ParEmuOptions::new(num_threads, thread_id, options.trace_steps.unwrap() as usize);
+                ParEmuOptions::new(num_threads, thread_id, options.chunk_size.unwrap() as usize);
 
             // Run the emulation
-            let mut emu = Emu::new(rom);
+            let mut emu = Emu::new(rom, options.chunk_size.unwrap());
             let result = emu.par_run(inputs.to_owned(), options, &par_emu_options);
 
             if !emu.terminated() {
@@ -222,9 +221,10 @@ impl ZiskEmulator {
         rom: &ZiskRom,
         emu_trace: &EmuTrace,
         data_bus: &mut DB,
+        chunk_size: u64,
     ) {
         // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom);
+        let mut emu = Emu::new(rom, chunk_size);
 
         // Run the emulation
         emu.process_emu_trace(emu_trace, data_bus);
@@ -238,9 +238,10 @@ impl ZiskEmulator {
         min_traces: &[EmuTrace],
         chunk_id: usize,
         data_bus: &mut DB,
+        chunk_size: u64,
     ) {
         // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom);
+        let mut emu = Emu::new(rom, chunk_size);
 
         // Run the emulation
         emu.process_emu_traces(min_traces, chunk_id, data_bus);
@@ -289,7 +290,7 @@ impl Emulator for ZiskEmulator {
     ) -> Result<Vec<u8>, ZiskEmulatorErr> {
         // Log this call
         if options.verbose {
-            println!("emulate()\n{}", options);
+            println!("emulate()\n{options}");
         }
 
         // Check options

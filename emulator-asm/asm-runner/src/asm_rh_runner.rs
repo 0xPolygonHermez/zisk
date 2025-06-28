@@ -1,30 +1,32 @@
-use libc::{
-    close, ftruncate, mmap, munmap, shm_open, shm_unlink, MAP_SHARED, O_CREAT, PROT_READ,
-    PROT_WRITE, S_IRUSR, S_IWUSR,
+use libc::{close, shm_unlink, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
+use tracing::error;
+
+use std::{
+    ffi::{c_void, CString},
+    fs,
+    path::Path,
+    ptr,
+    time::Duration,
 };
 
-use crate::AsmInputC;
+use crate::{
+    shmem_utils, AsmInputC2, AsmMTHeader, AsmRHData, AsmRHHeader, AsmRunError, AsmServices,
+};
+use anyhow::{Context, Result};
 use named_sem::NamedSemaphore;
 
-use std::ffi::{c_uint, c_void, CString};
-use std::path::Path;
-use std::process::{self, Command};
-use std::{fs, ptr};
-
-use crate::{AsmRHData, AsmRHHeader, AsmRunnerOptions, AsmRunnerTraceLevel};
-
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
-pub struct AsmRunnerRomH {
+pub struct AsmRunnerRH {
     shmem_output_name: String,
     mapped_ptr: *mut c_void,
     pub asm_rowh_output: AsmRHData,
 }
 
-unsafe impl Send for AsmRunnerRomH {}
-unsafe impl Sync for AsmRunnerRomH {}
+unsafe impl Send for AsmRunnerRH {}
+unsafe impl Sync for AsmRunnerRH {}
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-impl Drop for AsmRunnerRomH {
+impl Drop for AsmRunnerRH {
     fn drop(&mut self) {
         unsafe {
             // Forget all mem_reads Vec<u64> before unmapping
@@ -43,13 +45,13 @@ impl Drop for AsmRunnerRomH {
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-impl AsmRunnerRomH {
+impl AsmRunnerRH {
     pub fn new(
         shmem_output_name: String,
         mapped_ptr: *mut c_void,
         asm_rowh_output: AsmRHData,
     ) -> Self {
-        AsmRunnerRomH { shmem_output_name, mapped_ptr, asm_rowh_output }
+        AsmRunnerRH { shmem_output_name, mapped_ptr, asm_rowh_output }
     }
 
     fn total_size(&self) -> usize {
@@ -59,211 +61,101 @@ impl AsmRunnerRomH {
     }
 
     pub fn run(
-        rom_asm_path: &Path,
-        inputs_path: Option<&Path>,
-        shm_size: u64,
-        options: AsmRunnerOptions,
-    ) -> AsmRunnerRomH {
-        let pid = unsafe { libc::getpid() };
-
-        let shmem_prefix = format!("ZISKRH{}", pid);
-        let shmem_input_name = format!("/{}_input", shmem_prefix);
-        let shmem_output_name = format!("/{}_output", shmem_prefix);
-
-        // Build semaphores names, and create them (if they don not already exist)
-        let sem_output_name = format!("/{}_semout", shmem_prefix);
-        let sem_input_name = format!("/{}_semin", shmem_prefix);
-        let mut semin = NamedSemaphore::create(sem_input_name.clone(), 0).unwrap_or_else(|e| {
-            panic!(
-                "AsmRunnerRomH::run() failed calling NamedSemaphore::create({}), error: {}",
-                sem_input_name, e
-            )
-        });
-        let mut semout = NamedSemaphore::create(sem_output_name.clone(), 0).unwrap_or_else(|e| {
-            panic!(
-                "AsmRunnerRomH::run() failed calling NamedSemaphore::create({}), error: {}",
-                sem_output_name, e
-            )
-        });
-
-        Self::write_input(inputs_path, &shmem_input_name, shm_size, 0);
-
-        // Prepare command
-        let mut command = Command::new(rom_asm_path);
-
-        command.arg("--generate_rom_histogram");
-
-        if !options.log_output {
-            command.arg("-o");
-            command.stdout(process::Stdio::null());
-            command.stderr(process::Stdio::null());
-        }
-        if options.metrics {
-            command.arg("-m");
-        }
-        if options.verbose {
-            command.arg("-v");
-        }
-        match options.trace_level {
-            AsmRunnerTraceLevel::None => {}
-            AsmRunnerTraceLevel::Trace => {
-                command.arg("-t");
-            }
-            AsmRunnerTraceLevel::ExtendedTrace => {
-                command.arg("-tt");
-            }
-        }
-        if options.keccak_trace {
-            command.arg("-k");
-        }
-
-        // Spawn child process
-        if let Err(e) = command.arg(&shmem_prefix).spawn() {
-            tracing::error!("Child process failed: {:?}", e);
-        } else if options.verbose || options.log_output {
-            tracing::info!("Child process launched successfully");
-        }
-
-        // Wait for the assembly emulator to complete writing the trace
-        if let Err(e) = semin.wait() {
-            panic!(
-                "AsmRunnerRomH::run() failed calling semin.wait({}), error: {}",
-                sem_input_name, e
-            );
-        }
-
-        let (mapped_ptr, asm_rowh_output) = Self::map_output(shmem_output_name.clone());
-
-        // Tell the assembly that we are done reading the trace
-        if let Err(e) = semout.post() {
-            panic!(
-                "AsmRunnerRomH::run() failed calling semout.post({}), error: {}",
-                sem_output_name, e
-            );
-        }
-
-        AsmRunnerRomH::new(shmem_output_name, mapped_ptr, asm_rowh_output)
-    }
-
-    fn write_input(
-        inputs_path: Option<&Path>,
-        shmem_input_name: &str,
+        inputs_path: &Path,
         max_steps: u64,
-        chunk_size: u64,
-    ) {
-        let shmem_input_name = CString::new(shmem_input_name).expect("CString::new failed");
-        let shmem_input_name_ptr = shmem_input_name.as_ptr();
+        world_rank: i32,
+        local_rank: i32,
+        base_port: Option<u16>,
+        map_locked: bool,
+    ) -> Result<AsmRunnerRH> {
+        let prefix = AsmServices::shmem_prefix(&crate::AsmService::RH, base_port, local_rank);
 
-        let inputs = if let Some(inputs_path) = inputs_path {
-            fs::read(inputs_path).expect("Could not read inputs file")
-        } else {
-            vec![]
-        };
+        let shmem_input_name = format!("{prefix}_RH_input");
+        let shmem_output_name = format!("{prefix}_RH_output");
+        let sem_chunk_done_name = format!("/{prefix}_RH_chunk_done");
 
-        let asm_input = AsmInputC {
-            chunk_size,
-            max_steps,
-            initial_trace_size: 1u64 << 32, // 4GB
-            input_data_size: inputs.len() as u64,
-        };
+        let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
+            .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
-        // Shared memory size (aligned to 8 bytes)
-        let shmem_input_size = (inputs.len() + std::mem::size_of::<AsmInputC>() + 7) & !7;
+        Self::write_input(inputs_path, &shmem_input_name, map_locked);
 
-        let mut shmem_input_data = Vec::with_capacity(shmem_input_size);
-        shmem_input_data.extend_from_slice(&asm_input.to_bytes());
-        shmem_input_data.extend_from_slice(&inputs);
-        while shmem_input_data.len() < shmem_input_size {
-            shmem_input_data.push(0);
+        let asm_services = AsmServices::new(world_rank, local_rank, base_port);
+        asm_services.send_rom_histogram_request(max_steps)?;
+
+        match sem_chunk_done.timed_wait(Duration::from_secs(30)) {
+            Err(e) => {
+                error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
+
+                return Err(AsmRunError::SemaphoreError(sem_chunk_done_name, e))
+                    .context("Child process returned error");
+            }
+            _ => { /* continue */ }
         }
 
-        // Remove old shared memory if it exists
-        unsafe { shm_unlink(shmem_input_name_ptr) };
+        let (mapped_ptr, asm_rowh_output) = Self::map_output(shmem_output_name.clone(), map_locked);
 
-        let shm_fd = unsafe {
-            shm_open(shmem_input_name_ptr, libc::O_RDWR | O_CREAT, (S_IRUSR | S_IWUSR) as c_uint)
-        };
-        Self::check_shm_open(shm_fd, shmem_input_name_ptr);
+        Ok(AsmRunnerRH::new(shmem_output_name, mapped_ptr, asm_rowh_output))
+    }
 
-        if unsafe { ftruncate(shm_fd, shmem_input_size as i64) } < 0 {
-            panic!("ftruncate failed");
+    fn write_input(inputs_path: &Path, shmem_input_name: &str, map_locked: bool) {
+        let inputs = fs::read(inputs_path).expect("Failed to read input file");
+        let asm_input = AsmInputC2 { zero: 0, input_data_size: inputs.len() as u64 };
+        let shmem_input_size = (inputs.len() + size_of::<AsmInputC2>() + 7) & !7;
+
+        let mut full_input = Vec::with_capacity(shmem_input_size);
+        full_input.extend_from_slice(&asm_input.to_bytes());
+        full_input.extend_from_slice(&inputs);
+        while full_input.len() < shmem_input_size {
+            full_input.push(0);
         }
 
-        let mapped_ptr = unsafe {
-            mmap(
-                std::ptr::null_mut(),
-                shmem_input_size,
-                PROT_READ | PROT_WRITE,
-                MAP_SHARED,
-                shm_fd,
-                0,
-            )
-        };
-        Self::check_mmap(mapped_ptr, shmem_input_size, file!(), line!());
-
+        let fd = shmem_utils::open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR);
+        let ptr = shmem_utils::map(
+            fd,
+            shmem_input_size,
+            PROT_READ | PROT_WRITE,
+            map_locked,
+            "input mmap",
+        );
         unsafe {
-            std::ptr::copy_nonoverlapping(
-                shmem_input_data.as_ptr(),
-                mapped_ptr as *mut u8,
-                shmem_input_size,
-            );
-
-            munmap(mapped_ptr, shmem_input_size);
-            close(shm_fd);
+            ptr::copy_nonoverlapping(full_input.as_ptr(), ptr as *mut u8, shmem_input_size);
+            shmem_utils::unmap(ptr, shmem_input_size);
+            close(fd);
         }
     }
 
-    fn map_output(shmem_output_name: String) -> (*mut c_void, AsmRHData) {
-        let shmem_output_name = CString::new(shmem_output_name).expect("CString::new failed");
-        let shmem_output_name_ptr = shmem_output_name.as_ptr();
-
-        let shm_fd = unsafe {
-            shm_open(shmem_output_name_ptr, libc::O_RDONLY, (S_IRUSR | S_IWUSR) as c_uint)
-        };
-
-        Self::check_shm_open(shm_fd, shmem_output_name_ptr);
-
-        // Read Output Header
-        let output_header_size = size_of::<AsmRHHeader>();
-        let mapped_ptr =
-            unsafe { mmap(ptr::null_mut(), output_header_size, PROT_READ, MAP_SHARED, shm_fd, 0) };
-        Self::check_mmap(mapped_ptr, output_header_size, file!(), line!());
-
-        let output_header = AsmRHHeader::from_ptr(mapped_ptr);
-
-        // Read Output
-        let output_size = output_header_size + output_header.mt_allocated_size as usize;
-
-        let mut mapped_ptr =
-            unsafe { mmap(ptr::null_mut(), output_size, PROT_READ, MAP_SHARED, shm_fd, 0) };
-        Self::check_mmap(mapped_ptr, output_size, file!(), line!());
-
-        // println!("Output Header: {:?}", output_header);
-
+    fn get_output_ptr(shmem_output_name: &str, map_locked: bool) -> *mut std::ffi::c_void {
+        let fd = shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR);
+        let header_size = size_of::<AsmMTHeader>();
+        let temp = shmem_utils::map(fd, header_size, PROT_READ, map_locked, "header temp map");
+        let header = unsafe { (temp as *const AsmMTHeader).read() };
         unsafe {
-            mapped_ptr = mapped_ptr.add(output_header_size);
-
-            (mapped_ptr, AsmRHData::from_ptr(&mut mapped_ptr, output_header))
+            shmem_utils::unmap(temp, header_size);
         }
+        shmem_utils::map(
+            fd,
+            header.mt_allocated_size as usize,
+            PROT_READ,
+            map_locked,
+            shmem_output_name,
+        )
     }
 
-    fn check_shm_open(shm_fd: i32, name: *const i8) {
-        if shm_fd == -1 {
-            let err = std::io::Error::last_os_error();
-            panic!("shm_open({:?}) failed: {:?}", name, err);
-        }
-    }
+    fn map_output(shmem_output_name: String, map_locked: bool) -> (*mut c_void, AsmRHData) {
+        // Read the header data
+        let header_ptr = Self::get_output_ptr(&shmem_output_name, map_locked) as *const AsmRHHeader;
 
-    fn check_mmap(ptr: *mut libc::c_void, size: usize, file: &str, line: u32) {
-        if ptr == libc::MAP_FAILED {
-            let err = std::io::Error::last_os_error();
-            panic!("mmap failed: {:?} (size: {} bytes) at {}:{}", err, size, file, line);
-        }
+        let header = AsmRHHeader::from_ptr(header_ptr as *mut c_void);
+
+        // Skips the header size to get the data pointer.
+        let mut data_ptr = unsafe { header_ptr.add(1) } as *mut c_void;
+
+        (data_ptr, AsmRHData::from_ptr(&mut data_ptr, header))
     }
 }
 
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-impl AsmRunnerRomH {
+impl AsmRunnerRH {
     pub fn new(
         _shmem_output_name: String,
         _mapped_ptr: *mut c_void,
@@ -277,7 +169,7 @@ impl AsmRunnerRomH {
         _inputs_path: Option<&Path>,
         _shm_size: u64,
         _options: AsmRunnerOptions,
-    ) -> AsmRunnerRomH {
+    ) -> AsmRunnerRH {
         panic!("AsmRunnerRomH::run() is not supported on this platform. Only Linux x86_64 is supported.");
     }
 }

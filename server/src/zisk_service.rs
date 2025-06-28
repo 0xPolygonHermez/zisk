@@ -1,10 +1,9 @@
 use std::{
     collections::HashMap,
     io::{BufRead, BufReader, Write},
-    net::TcpListener,
-    net::TcpStream,
+    net::{TcpListener, TcpStream},
     path::PathBuf,
-    sync::Arc,
+    sync::{atomic::AtomicBool, Arc},
     time::Instant,
 };
 
@@ -17,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 use uuid::Uuid;
 use witness::WitnessLibrary;
-use zisk_common::{info_file, ZiskLibInitFn};
+use zisk_common::{info_file, MpiContext, ZiskLibInitFn};
 
 use anyhow::Result;
 
@@ -69,6 +68,18 @@ pub struct ServerConfig {
 
     /// Unique identifier for the server instance
     pub server_id: Uuid,
+
+    /// Size of the chunks in bits
+    pub chunk_size_bits: Option<u64>,
+
+    /// Additional options for the ASM runner
+    pub asm_runner_options: AsmRunnerOptions,
+
+    pub verify_constraints: bool,
+    pub aggregation: bool,
+    pub final_snark: bool,
+
+    pub gpu_params: ParamsGPU,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -85,6 +96,12 @@ impl ServerConfig {
         verbose: u8,
         debug: DebugInfo,
         sha256f_script: PathBuf,
+        chunk_size_bits: Option<u64>,
+        asm_runner_options: AsmRunnerOptions,
+        verify_constraints: bool,
+        aggregation: bool,
+        final_snark: bool,
+        gpu_params: ParamsGPU,
     ) -> Self {
         Self {
             port,
@@ -100,6 +117,12 @@ impl ServerConfig {
             sha256f_script,
             launch_time: Instant::now(),
             server_id: Uuid::new_v4(),
+            chunk_size_bits,
+            asm_runner_options,
+            verify_constraints,
+            aggregation,
+            final_snark,
+            gpu_params,
         }
     }
 }
@@ -130,28 +153,39 @@ pub struct ZiskService {
     config: Arc<ServerConfig>,
     proofman: ProofMan<Goldilocks>,
     witness_lib: Box<dyn WitnessLibrary<Goldilocks>>,
+    asm_services: AsmServices,
+    is_busy: AtomicBool,
 }
 
 impl ZiskService {
-    pub fn new(config: ServerConfig) -> Result<Self> {
+    pub fn new(config: ServerConfig, mpi_context: MpiContext) -> Result<Self> {
         info_file!("Starting asm microservices...");
-        let options = AsmRunnerOptions::default();
-        let asm_services = AsmServices::new(0, 0, None);
-        asm_services.start_asm_services(config.asm.as_ref().unwrap(), options)?;
+
+        let world_rank = config.asm_runner_options.world_rank;
+        let local_rank = config.asm_runner_options.local_rank;
+        let base_port = config.asm_runner_options.base_port;
+        let map_locked = config.asm_runner_options.map_locked;
+
+        let asm_services = AsmServices::new(world_rank, local_rank, base_port);
+        asm_services
+            .start_asm_services(config.asm.as_ref().unwrap(), config.asm_runner_options.clone())?;
 
         let library =
             unsafe { Library::new(config.witness_lib.clone()).expect("Failed to load library") };
         let witness_lib_constructor: Symbol<ZiskLibInitFn<Goldilocks>> =
             unsafe { library.get(b"init_library").expect("Failed to get symbol") };
+
         let mut witness_lib = witness_lib_constructor(
             config.verbose.into(),
             config.elf.clone(),
             config.asm.clone(),
             config.asm_rom.clone(),
             config.sha256f_script.clone(),
-            None, // mpi Rank is not used in this context
-            None, // mpi Local Rank is not used in this context
-            None, // Not used at this moment
+            config.chunk_size_bits,
+            Some(world_rank),
+            Some(local_rank),
+            base_port,
+            map_locked,
         )
         .expect("Failed to initialize witness library");
 
@@ -161,12 +195,12 @@ impl ZiskService {
             proofman = ProofMan::<Goldilocks>::new(
                 config.proving_key.clone(),
                 config.custom_commits_map.clone(),
-                true,
-                false,
-                false,
-                ParamsGPU::default(),
+                config.verify_constraints,
+                config.aggregation,
+                config.final_snark,
+                config.gpu_params.clone(),
                 config.verbose.into(),
-                None,
+                Some(mpi_context.universe),
             )
             .expect("Failed to initialize proofman");
         }
@@ -176,18 +210,25 @@ impl ZiskService {
             proofman = ProofMan::<Goldilocks>::new(
                 config.proving_key.clone(),
                 config.custom_commits_map.clone(),
-                true,
-                false,
-                false,
-                ParamsGPU::default(),
+                config.verify_constraints,
+                config.aggregation,
+                config.final_snark,
+                config.gpu_params.clone(),
                 config.verbose.into(),
+                None,
             )
             .expect("Failed to initialize proofman");
         }
 
         proofman.register_witness(witness_lib.as_mut(), library);
 
-        Ok(Self { config: Arc::new(config), proofman, witness_lib })
+        Ok(Self {
+            config: Arc::new(config),
+            proofman,
+            witness_lib,
+            asm_services,
+            is_busy: AtomicBool::new(false),
+        })
     }
 
     pub fn run(&mut self) -> std::io::Result<()> {
@@ -231,7 +272,7 @@ impl ZiskService {
         let request: ZiskRequest = match serde_json::from_str(&line) {
             Ok(req) => req,
             Err(e) => {
-                let response = ZiskResponse::Error { message: format!("Invalid JSON: {}", e) };
+                let response = ZiskResponse::Error { message: format!("Invalid JSON: {e}") };
                 Self::send_json(&mut stream, &response)?;
                 return Ok(false);
             }
@@ -240,11 +281,12 @@ impl ZiskService {
         info_file!("Received request: {:?}", request);
 
         let mut must_shutdown = false;
+        self.is_busy.store(true, std::sync::atomic::Ordering::SeqCst);
         let response = match request {
             ZiskRequest::Status => ZiskServiceStatusHandler::handle(&config),
             ZiskRequest::Shutdown => {
                 must_shutdown = true;
-                ZiskServiceShutdownHandler::handle()
+                ZiskServiceShutdownHandler::handle(&self.asm_services, &self.config)
             }
             ZiskRequest::VerifyConstraints { payload } => {
                 ZiskServiceVerifyConstraintsHandler::handle(
@@ -256,8 +298,14 @@ impl ZiskService {
                 )
             }
 
-            ZiskRequest::Prove { payload } => ZiskServiceProveHandler::handle(&config, payload),
+            ZiskRequest::Prove { payload } => ZiskServiceProveHandler::handle(
+                &config,
+                payload,
+                &self.proofman,
+                self.witness_lib.as_mut(),
+            ),
         };
+        self.is_busy.store(false, std::sync::atomic::Ordering::SeqCst);
 
         Self::send_json(&mut stream, &response)?;
         Ok(must_shutdown)
