@@ -377,6 +377,8 @@ impl ZiskProve {
             }
         }
 
+        proofman.set_barrier();
+
         if self.asm.is_some() {
             // Shut down ASM microservices
             tracing::info!("<<< [{}] Shutting down ASM microservices.", mpi_context.world_rank);
