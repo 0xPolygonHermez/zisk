@@ -37,7 +37,7 @@ use zisk_common::{
     BusDevice, BusDeviceMetrics, CheckPoint, Instance, InstanceCtx, InstanceType, Plan,
 };
 use zisk_common::{ChunkId, PayloadType};
-use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
+use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use std::time::Instant;
 use std::{
@@ -242,6 +242,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         &self,
         input_data_path: Option<PathBuf>,
     ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<Vec<Plan>>) {
+        // Run the assembly Memory Operations runner with the provided input data path
         let input_data_path_cloned = input_data_path.clone();
         let (world_rank, local_rank, base_port) =
             (self.world_rank, self.local_rank, self.base_port);
@@ -260,20 +261,26 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             .expect("Error during Assembly Memory Operations execution")
         });
 
-        let input_data_path_cloned = input_data_path.clone();
-        let (world_rank, local_rank, base_port) =
-            (self.world_rank, self.local_rank, self.base_port);
-        let handle_rh = std::thread::spawn(move || {
-            AsmRunnerRH::run(
-                input_data_path_cloned.as_ref().unwrap(),
-                Self::MAX_NUM_STEPS,
-                world_rank,
-                local_rank,
-                base_port,
-                unlock_mapped_memory,
-            )
-            .expect("Error during Assembly Memory Operations execution")
-        });
+        // Run the assembly ROM Histogram runner with the provided input data path only if the world rank is 0
+        let handle_rh = if self.world_rank == 0 {
+            let input_data_path_cloned = input_data_path.clone();
+            let (world_rank, local_rank, base_port) =
+                (self.world_rank, self.local_rank, self.base_port);
+
+            Some(std::thread::spawn(move || {
+                AsmRunnerRH::run(
+                    input_data_path_cloned.as_ref().unwrap(),
+                    Self::MAX_NUM_STEPS,
+                    world_rank,
+                    local_rank,
+                    base_port,
+                    map_locked,
+                )
+                .expect("Error during Assembly Memory Operations execution")
+            }))
+        } else {
+            None
+        };
 
         let (min_traces, main_count, secn_count) = self.run_mt_assembly(input_data_path);
 
@@ -290,7 +297,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let plans =
             handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
 
-        self.rom_sm.as_ref().unwrap().set_asm_runner_handler(handle_rh);
+        // If the world rank is 0, wait for the ROM Histogram thread to finish and set the handler
+        if self.world_rank == 0 {
+            self.rom_sm.as_ref().unwrap().set_asm_runner_handler(
+                handle_rh.expect("Error during Assembly ROM Histogram thread execution"),
+            );
+        }
 
         (min_traces, main_count, secn_count, Some(plans))
     }
@@ -545,12 +557,31 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     fn assign_secn_instances(&self, pctx: &ProofCtx<F>, secn_planning: &mut [Vec<Plan>]) {
         for plans_by_sm in secn_planning.iter_mut() {
             for plan in plans_by_sm.iter_mut() {
-                let global_id = match plan.instance_type {
-                    InstanceType::Instance => {
-                        pctx.add_instance(plan.airgroup_id, plan.air_id, plan.pre_calculate, 1)
+                // If the node has rank 0 and the plan targets the ROM instance,
+                // we need to add it to the proof context using a special method.
+                // This method allows us to mark it as an instance to be computed by node 0.
+                let global_id = if self.world_rank == 0
+                    && plan.airgroup_id == ZISK_AIRGROUP_ID
+                    && plan.air_id == ROM_AIR_IDS[0]
+                {
+                    // If this is the ROM instance, we need to add it to the proof context
+                    // with the rank 0.
+                    pctx.add_instance_rank(
+                        ZISK_AIRGROUP_ID,
+                        ROM_AIR_IDS[0],
+                        0,
+                        PreCalculate::None,
+                        1,
+                    )
+                } else {
+                    match plan.instance_type {
+                        InstanceType::Instance => {
+                            pctx.add_instance(plan.airgroup_id, plan.air_id, plan.pre_calculate, 1)
+                        }
+                        InstanceType::Table => pctx.add_instance_all(plan.airgroup_id, plan.air_id),
                     }
-                    InstanceType::Table => pctx.add_instance_all(plan.airgroup_id, plan.air_id),
                 };
+
                 plan.set_global_id(global_id);
             }
         }
