@@ -276,7 +276,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     base_port,
                     map_locked,
                 )
-                .expect("Error during Assembly Memory Operations execution")
+                .expect("Error during ROM Histogram execution")
             }))
         } else {
             None
