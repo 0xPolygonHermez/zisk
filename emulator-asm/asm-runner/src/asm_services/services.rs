@@ -302,8 +302,6 @@ impl AsmServices {
         self.send_shutdown_request(service)
             .with_context(|| format!("Service {service} failed to respond to shutdown"))?;
 
-        tracing::info!("Waiting for semaphore {sem_shutdown_done_name}");
-
         match sem_shutdown_done.timed_wait(Duration::from_secs(30)) {
             Ok(()) => {}
             Err(e) => {
@@ -311,8 +309,6 @@ impl AsmServices {
                 return Err(AsmRunError::SemaphoreError(sem_shutdown_done_name, e).into());
             }
         }
-
-        tracing::info!("Done waiting for semaphore {sem_shutdown_done_name}");
 
         unsafe {
             sem_unlink(sem_shutdown_done_name.as_ptr() as *const i8);
