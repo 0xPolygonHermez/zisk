@@ -190,7 +190,7 @@ impl<'de> Deserialize<'de> for ZiskResultCode {
             1001 => Ok(ZiskResultCode::Error),
             1002 => Ok(ZiskResultCode::InvalidRequest),
             1003 => Ok(ZiskResultCode::Busy),
-            _ => Err(serde::de::Error::custom(format!("Unknown ZiskResultCode: {}", value))),
+            _ => Err(serde::de::Error::custom(format!("Unknown ZiskResultCode: {value}"))),
         }
     }
 }
@@ -200,6 +200,7 @@ pub struct ZiskBaseResponse {
     pub cmd: String,
     pub result: ZiskCmdResult,
     pub code: ZiskResultCode,
+    pub node: i32,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub msg: Option<String>,
@@ -352,7 +353,8 @@ impl ZiskService {
                         cmd: "invalid_request".to_string(),
                         result: ZiskCmdResult::Error,
                         code: ZiskResultCode::InvalidRequest,
-                        msg: Some(format!("Invalid request format or data. {}", e)),
+                        msg: Some(format!("Invalid request format or data. {e}")),
+                        node: config.asm_runner_options.world_rank,
                     },
                 };
                 Self::send_json(&mut stream, &response)?;
@@ -372,6 +374,7 @@ impl ZiskService {
                 result: ZiskCmdResult::InProgress,
                 code: ZiskResultCode::Busy,
                 msg: Some("Server is busy, please try again later.".to_string()),
+                node: config.asm_runner_options.world_rank,
             });
             Self::send_json(&mut stream, &response)?;
             return Ok(false);

@@ -28,7 +28,11 @@ pub struct ZiskStatusResponse {
 pub struct ZiskServiceStatusHandler;
 
 impl ZiskServiceStatusHandler {
-    pub fn handle(config: &ServerConfig, _payload: ZiskStatusRequest, is_busy: Arc<AtomicBool>) -> ZiskResponse {
+    pub fn handle(
+        config: &ServerConfig,
+        _payload: ZiskStatusRequest,
+        is_busy: Arc<AtomicBool>,
+    ) -> ZiskResponse {
         let uptime = config.launch_time.elapsed();
 
         ZiskResponse::ZiskStatusResponse(ZiskStatusResponse {
@@ -37,10 +41,11 @@ impl ZiskServiceStatusHandler {
                 result: crate::ZiskCmdResult::Ok,
                 code: crate::ZiskResultCode::Ok,
                 msg: None,
+                node: config.asm_runner_options.world_rank,
             },
             server_id: config.server_id.to_string(),
             elf_file: config.elf.display().to_string(),
-            uptime: format!("{:.2?}", uptime),
+            uptime: format!("{uptime:.2?}"),
             status: if is_busy.load(std::sync::atomic::Ordering::SeqCst) {
                 ZiskStatus::Working
             } else {

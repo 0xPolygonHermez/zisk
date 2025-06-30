@@ -42,6 +42,7 @@ impl ZiskServiceVerifyConstraintsHandler {
                 result: ZiskCmdResult::InProgress,
                 code: ZiskResultCode::Busy,
                 msg: Some("Server is busy, please try again later.".to_string()),
+                node: config.asm_runner_options.world_rank,
             });
         }
 
@@ -53,7 +54,7 @@ impl ZiskServiceVerifyConstraintsHandler {
                 let start = std::time::Instant::now();
 
                 proofman
-                    .verify_proof_constraints_from_lib(Some(request_input), &*debug_info)
+                    .verify_proof_constraints_from_lib(Some(request_input), &debug_info)
                     .map_err(|e| anyhow::anyhow!("Error verifying proof: {}", e))
                     .expect("Failed to generate proof");
 
@@ -89,6 +90,7 @@ impl ZiskServiceVerifyConstraintsHandler {
                 result: ZiskCmdResult::InProgress,
                 code: ZiskResultCode::Ok,
                 msg: None,
+                node: config.asm_runner_options.world_rank,
             },
             server_id: config.server_id.to_string(),
             elf_file: config.elf.display().to_string(),

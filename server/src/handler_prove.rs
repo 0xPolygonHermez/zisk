@@ -50,6 +50,7 @@ impl ZiskServiceProveHandler {
                 result: ZiskCmdResult::InProgress,
                 code: ZiskResultCode::Busy,
                 msg: Some("Server is busy, please try again later.".to_string()),
+                node: config.asm_runner_options.world_rank,
             });
         }
 
@@ -132,6 +133,7 @@ impl ZiskServiceProveHandler {
                 result: ZiskCmdResult::InProgress,
                 code: ZiskResultCode::Ok,
                 msg: None,
+                node: config.asm_runner_options.world_rank,
             },
             server_id: config.server_id.to_string(),
             elf_file: config.elf.display().to_string(),

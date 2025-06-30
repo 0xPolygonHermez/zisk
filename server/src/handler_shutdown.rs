@@ -35,7 +35,8 @@ impl ZiskServiceShutdownHandler {
                     cmd: "shutdown".to_string(),
                     result: crate::ZiskCmdResult::Error,
                     code: crate::ZiskResultCode::Error,
-                    msg: Some(format!("Failed to stop ASM services: {}", e)),
+                    msg: Some(format!("Failed to stop ASM services: {e}")),
+                    node: config.asm_runner_options.world_rank,
                 },
             });
         }
@@ -46,6 +47,7 @@ impl ZiskServiceShutdownHandler {
                 result: crate::ZiskCmdResult::Ok,
                 code: crate::ZiskResultCode::Ok,
                 msg: None,
+                node: config.asm_runner_options.world_rank,
             },
         })
     }
