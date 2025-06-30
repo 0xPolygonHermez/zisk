@@ -38,7 +38,7 @@ pub struct AsmRunnerOptions {
     pub world_rank: i32,
     pub local_rank: i32,
     pub base_port: Option<u16>,
-    pub map_locked: bool,
+    pub unlock_mapped_memory: bool,
 }
 
 impl Default for AsmRunnerOptions {
@@ -59,7 +59,7 @@ impl AsmRunnerOptions {
             world_rank: 0,
             local_rank: 0,
             base_port: None,
-            map_locked: false,
+            unlock_mapped_memory: false,
         }
     }
 
@@ -108,8 +108,8 @@ impl AsmRunnerOptions {
         self
     }
 
-    pub fn with_map_locked(mut self, value: bool) -> Self {
-        self.map_locked = value;
+    pub fn with_unlock_mapped_memory(mut self, value: bool) -> Self {
+        self.unlock_mapped_memory = value;
         self
     }
 
@@ -127,7 +127,7 @@ impl AsmRunnerOptions {
         // Execute in server mode
         command.arg("-s");
 
-        if self.map_locked {
+        if self.unlock_mapped_memory {
             command.arg("-u");
         }
 

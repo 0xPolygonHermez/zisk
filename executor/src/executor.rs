@@ -142,9 +142,9 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     /// Optional baseline port to communicate with assembly microservices.
     base_port: Option<u16>,
 
-    /// Map locked flag
-    /// This is used to lock the memory map for the ROM file.
-    map_locked: bool,
+    /// Map unlocked flag
+    /// This is used to unlock the memory map for the ROM file.
+    unlock_mapped_memory: bool,
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
@@ -171,7 +171,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         world_rank: i32,
         local_rank: i32,
         base_port: Option<u16>,
-        map_locked: bool,
+        unlock_mapped_memory: bool,
     ) -> Self {
         Self {
             rom_path,
@@ -193,7 +193,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             world_rank,
             local_rank,
             base_port,
-            map_locked,
+            unlock_mapped_memory,
         }
     }
 
@@ -245,7 +245,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let (world_rank, local_rank, base_port) =
             (self.world_rank, self.local_rank, self.base_port);
         let chunk_size = self.chunk_size;
-        let map_locked = self.map_locked;
+        let unlock_mapped_memory = self.unlock_mapped_memory;
         let handle_mo = std::thread::spawn(move || {
             AsmRunnerMO::run(
                 input_data_path_cloned.as_ref().unwrap(),
@@ -254,7 +254,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 world_rank,
                 local_rank,
                 base_port,
-                map_locked,
+                unlock_mapped_memory,
             )
             .expect("Error during Assembly Memory Operations execution")
         });
@@ -269,7 +269,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 world_rank,
                 local_rank,
                 base_port,
-                map_locked,
+                unlock_mapped_memory,
             )
             .expect("Error during Assembly Memory Operations execution")
         });
@@ -355,7 +355,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             self.world_rank,
             self.local_rank,
             self.base_port,
-            self.map_locked,
+            self.unlock_mapped_memory,
         )
         .expect("Error during ASM execution");
 
@@ -728,7 +728,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         {
             let collect_duration = collect_start_time.elapsed().as_millis() as u64;
             for global_idx in secn_instances.keys() {
-                let collector = collectors_by_instance.remove(global_idx).unwrap_or_default();
+                let collector = _collectors_by_instance.remove(global_idx).unwrap_or_default();
                 let stats = Stats {
                     collect_start_time,
                     collect_duration,

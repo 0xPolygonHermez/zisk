@@ -79,12 +79,12 @@ pub struct ZiskVerifyConstraints {
     #[clap(short = 'p', long, conflicts_with = "emulator")]
     pub port: Option<u16>,
 
-    /// Map locked flag
-    /// This is used to lock the memory map for the ROM file.
-    /// If you are running ZisK on a machine with limited memory, you may want to disable this option.
+    /// Map unlocked flag
+    /// This is used to unlock the memory map for the ROM file.
+    /// If you are running ZisK on a machine with limited memory, you may want to enable this option.
     /// This option is mutually exclusive with `--emulator`.
     #[clap(short = 'u', long, conflicts_with = "emulator")]
-    pub map_locked: bool,
+    pub unlock_mapped_memory: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
@@ -228,7 +228,7 @@ impl ZiskVerifyConstraints {
             .with_base_port(self.port)
             .with_world_rank(mpi_context.world_rank)
             .with_local_rank(mpi_context.local_rank)
-            .with_map_locked(self.map_locked);
+            .with_unlock_mapped_memory(self.unlock_mapped_memory);
 
         let start = std::time::Instant::now();
 
@@ -249,7 +249,7 @@ impl ZiskVerifyConstraints {
                     Some(mpi_context.world_rank),
                     Some(mpi_context.local_rank),
                     self.port,
-                    self.map_locked,
+                    self.unlock_mapped_memory,
                 )
                 .expect("Failed to initialize witness library");
 
