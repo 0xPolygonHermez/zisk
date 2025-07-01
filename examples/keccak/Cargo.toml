@@ -1,0 +1,10 @@
+[package]
+name = "keccak"
+version = "0.1.0"
+edition = "2021"
+default-run = "keccak"
+
+[dependencies]
+byteorder = "1.5.0"
+tiny-keccak = { version = "2.0.0", features = ["keccak"] }
+ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
