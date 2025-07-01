@@ -568,7 +568,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     pctx.add_instance_rank(
                         ZISK_AIRGROUP_ID,
                         ROM_AIR_IDS[0],
-                        0,
+                        self.world_rank as usize,
                         PreCalculate::None,
                         1,
                     )
