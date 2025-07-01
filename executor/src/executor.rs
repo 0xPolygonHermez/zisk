@@ -560,8 +560,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 // If the node has rank 0 and the plan targets the ROM instance,
                 // we need to add it to the proof context using a special method.
                 // This method allows us to mark it as an instance to be computed by node 0.
-                let global_id = if self.world_rank == 0
-                    && plan.airgroup_id == ZISK_AIRGROUP_ID
+                let global_id = if plan.airgroup_id == ZISK_AIRGROUP_ID
                     && plan.air_id == ROM_AIR_IDS[0]
                 {
                     // If this is the ROM instance, we need to add it to the proof context
