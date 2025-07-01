@@ -1,0 +1,83 @@
+@import "tailwindcss" important;
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+[data-layout="landing"] .vocs_Button_button {
+    border-radius: 4px !important;
+    height: 36px !important;
+    padding: 0 16px !important;
+}
+
+[data-layout="landing"] .vocs_Content {
+    position: inherit;
+}
+
+#home-install .vocs_CodeGroup {
+    display: flex;
+    height: 100%;
+    flex-direction: column;
+}
+
+#home-install .vocs_Tabs_content {
+    flex: 1;
+}
+
+#home-install .vocs_Code {
+    font-size: 18px;
+}
+
+
+/* Animations */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeInScale {
+    from {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes gradientShift {
+    0%,
+    100% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+}
+
+.zisk-floating {
+    animation: floating 3s ease-in-out infinite;
+}
+
+@keyframes floating {
+    0%,
+    100% {
+        transform: translateY(0px);
+    }
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .zisk-logo {
+        width: 4rem;
+        height: 4rem;
+    }
+}

@@ -13,3 +13,5 @@
 /lib-c/c/lib
 precompiles/keccakf/src/keccakf_fixed.bin
 precompiles/sha256f/src/sha256f_fixed.bin
+node_modules
+.DS_Store

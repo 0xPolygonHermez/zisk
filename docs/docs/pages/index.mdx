@@ -1,0 +1,71 @@
+---
+title: ZisK · A Zero knowledge Virtual Machine
+description: ZisK is a high-performance, low-latency zkVM designed to generate zero-knowledge proofs of arbitrary program execution.
+content:
+  width: 100%
+layout: landing
+showLogo: false
+---
+
+import { HomePage } from "vocs/components";
+
+
+<div className="flex justify-center items-center min-h-[20vh] max-w-[1120px] mx-auto px-[12px] md:px-0">
+  <div className="pt-[48px] max-sm:pt-0">
+    <div className="max-sm:px-0 flex justify-between z-0 max-md:justify-center max-md:flex-col max-md:items-center max-md:space-y-6">
+      <div className="space-y-8 max-w-[400px] flex flex-col items-start max-md:items-center">
+        <div className="space-x-4 flex flex-row">
+          <HomePage.Logo />
+          <div className="font-semibold text-[72px] text-[#000000] max-sm:text-[54px] max-md:text-center dark:text-white">ziskvm</div>
+        </div>
+        <div className="font-regular text-[21px] max-sm:text-[18px] text-[#919193] max-md:text-center">Zero knowledge Virtual Machine with <span className="text-black dark:text-white">high-performance</span>, and <span className="text-black dark:text-white">low-latency</span>.</div>
+        <div className="flex justify-center space-x-2">
+          <HomePage.Button href="/developers/installation" variant="accent">Get started</HomePage.Button>
+          <HomePage.Button href="https://github.com/0xPolygonHermez/zisk">GitHub</HomePage.Button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div className="flex flex-col items-center justify-center text-white mt-20">
+  <div className="max-w-4xl mx-auto px-6 text-center inline-block p-4 border border-white/20 rounded-md">
+
+    <div className="mb-12 max-w-3xl mx-auto">
+      <p className="text-lg text-gray-300 leading-relaxed mb-6">
+        ZisK is a high-performance zkVM (Zero-Knowledge Virtual Machine) designed to generate zero-knowledge proofs of arbitrary program execution. It enables developers to prove the correctness of a computation without revealing its internal state, making ZisK a powerful tool for privacy-preserving and verifiable computation.
+      </p>
+      ---
+      <p className="text-lg text-gray-300 leading-relaxed">
+        Proving systems traditionally involve complex cryptographic operations that require deep expertise and significant computational resources. ZisK abstracts these complexities by providing an optimized toolstack that minimizes computational overhead, making ZK technology accessible to a broader range of developers.
+      </p>
+    </div>
+
+  </div>
+</div>
+
+{/* Why ZisK Section */}
+<div className="flex flex-col items-center justify-center text-white mt-20">
+  <h2 className="text-3xl font-bold mb-8">Why ZisK?</h2>
+  <ul className="space-y-4 w-full max-w-3xl">
+    {[
+      "High-performance architecture optimized for low-latency proof generation.",
+      "Rust-based zkVM, with future support for additional languages.",
+      "No recompilation required across different programs.",
+      "Standardized prover interface (JSON-RPC, GRPC, CLI).",
+      "Flexible integration: usable as a standalone service or as a library.",
+      "Decentralized architecture for trustless proof generation.",
+      "Optimized proof generation costs for real-world applications.",
+      "Fully open-source and backed by Polygon zkEVM and Plonky3 technology.",
+    ].map((item, idx) => (
+      <li
+        key={idx}
+        className="p-4 border border-white/20 text-white backdrop-blur-sm hover:bg-white/2 transition-all duration-300"
+      >
+        {item}
+      </li>
+    ))}
+  </ul>
+</div>
+
+
