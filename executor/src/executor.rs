@@ -703,7 +703,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         // Group the instances by the chunk they need to process
         let chunks_to_execute = self.chunks_to_execute(min_traces, &secn_instances);
-        //let _num_chunks = chunks_to_execute.iter().filter(|&&x| x).count();
 
         // Create data buses for each chunk
         let mut data_buses =
