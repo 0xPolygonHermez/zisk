@@ -14,6 +14,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use named_sem::NamedSemaphore;
+use std::sync::atomic::{fence, Ordering};
 
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
 pub struct AsmRunnerRH {
@@ -89,7 +90,10 @@ impl AsmRunnerRH {
                 return Err(AsmRunError::SemaphoreError(sem_chunk_done_name, e))
                     .context("Child process returned error");
             }
-            _ => { /* continue */ }
+            Ok(()) => {
+                // Synchronize with memory changes from the C++ side
+                fence(Ordering::Acquire);
+            }
         }
 
         let (mapped_ptr, asm_rowh_output) =
