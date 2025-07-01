@@ -2552,9 +2552,9 @@ void server_reset (void)
 #ifdef DEBUG
         gettimeofday(&stop_time, NULL);
         duration = TimeDiff(start_time, stop_time);
-        if (verbose) printf("memset(ram) in %lu us\n", duration);
+        if (verbose) printf("server_reset() memset(ram) in %lu us\n", duration);
 #endif
-        if (gen_method != Fast)
+        if ((gen_method != Fast) && (gen_method != RomHistogram))
         {
             // Reset trace: init output header data
             pOutputTrace[0] = 0x000100; // Version, e.g. v1.0.0 [8]
@@ -2573,6 +2573,19 @@ void server_run (void)
 #ifdef ASM_CALL_METRICS
     reset_asm_call_metrics();
 #endif
+
+    // Init trace header
+    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain) && (gen_method != Fast))
+    {
+        // Reset trace: init output header data
+        pOutputTrace[0] = 0x000100; // Version, e.g. v1.0.0 [8]
+        pOutputTrace[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+        pOutputTrace[2] = trace_size; // MT allocated size [8] -> to be updated after reallocation
+        pOutputTrace[3] = 0; // MT used size [8] -> to be updated after completion
+        
+        // Reset trace used size
+        trace_used_size = 0;
+    }
 
     /*******/
     /* ASM */

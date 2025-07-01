@@ -126,7 +126,8 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
 
     /// Collectors by instance, storing statistics and collectors for each instance.
     #[allow(clippy::type_complexity)]
-    collectors_by_instance: RwLock<HashMap<usize, (Stats, Vec<(usize, Box<dyn BusDevice<u64>>)>)>>,
+    collectors_by_instance:
+        RwLock<HashMap<usize, (Option<Stats>, Vec<(usize, Box<dyn BusDevice<u64>>)>)>>,
 
     /// Statistics collected during the execution, including time taken for collection and witness computation.
     stats: Mutex<Vec<(usize, usize, Stats)>>,
@@ -673,10 +674,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         {
             let witness_duration = witness_start_time.elapsed().as_millis() as u64;
             let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
-
-            _stats.witness_start_time = witness_start_time;
-            _stats.witness_duration = witness_duration;
-            self.stats.lock().unwrap().push((airgroup_id, air_id, _stats));
+            let mut stats = _stats.unwrap();
+            stats.witness_start_time = witness_start_time;
+            stats.witness_duration = witness_duration;
+            self.stats.lock().unwrap().push((airgroup_id, air_id, stats));
         }
     }
 
@@ -722,25 +723,27 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         });
 
         // Close the data buses and get for each instance its collectors
-        let mut _collectors_by_instance = self.close_data_bus_collectors(data_buses);
+        let mut collectors_by_instance = self.close_data_bus_collectors(data_buses);
 
         #[cfg(feature = "stats")]
-        {
-            let collect_duration = collect_start_time.elapsed().as_millis() as u64;
-            for global_idx in secn_instances.keys() {
-                let collector = _collectors_by_instance.remove(global_idx).unwrap_or_default();
-                let stats = Stats {
-                    collect_start_time,
-                    collect_duration,
-                    witness_start_time: Instant::now(),
-                    witness_duration: 0,
-                    num_chunks: collector.len(),
-                };
-                self.collectors_by_instance
-                    .write()
-                    .unwrap()
-                    .insert(*global_idx, (stats, collector));
-            }
+        let collect_duration = collect_start_time.elapsed().as_millis() as u64;
+
+        for global_idx in secn_instances.keys() {
+            let collector = collectors_by_instance.remove(global_idx).unwrap_or_default();
+
+            #[cfg(feature = "stats")]
+            let stats = Some(Stats {
+                collect_start_time,
+                collect_duration,
+                witness_start_time: Instant::now(),
+                witness_duration: 0,
+                num_chunks: collector.len(),
+            });
+
+            #[cfg(not(feature = "stats"))]
+            let stats = None;
+
+            self.collectors_by_instance.write().unwrap().insert(*global_idx, (stats, collector));
         }
     }
 
