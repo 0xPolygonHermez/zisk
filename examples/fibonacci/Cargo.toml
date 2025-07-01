@@ -1,0 +1,9 @@
+[package]
+name = "fibonacci"
+version = "0.1.0"
+edition = "2021"
+default-run = "fibonacci"
+
+[dependencies]
+byteorder = "1.5.0"
+ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
