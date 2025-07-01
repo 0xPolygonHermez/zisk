@@ -565,13 +565,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 {
                     // If this is the ROM instance, we need to add it to the proof context
                     // with the rank 0.
-                    pctx.add_instance_rank(
-                        plan.airgroup_id,
-                        plan.air_id,
-                        0,
-                        PreCalculate::None,
-                        1,
-                    )
+                    pctx.add_instance_rank(plan.airgroup_id, plan.air_id, 0, PreCalculate::None, 1)
                 } else {
                     match plan.instance_type {
                         InstanceType::Instance => {
