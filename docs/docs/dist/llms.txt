@@ -1,0 +1,18 @@
+# ZisK
+
+> High-performance, low-latency zkVM for Zero-Knowledge Proof Generation
+
+## Docs
+
+- [Installation Guide](/developers/installation): ZisK can be installed from prebuilt binaries (recommended) or by building the ZisK tools, toolchain and setup files from source.
+- [Precompiles](/developers/precompile): Precompiles are built-in system functions within ZisK’s operating system that accelerate computationally expensive and frequently used operations such as the Keccak-f permutation and Secp256k1 addition and doubling.
+- [Quickstart](/developers/quickstart): In this guide, you will learn how to install ZisK, create a simple program and run it using ZisK.
+- [Writing Programs](/developers/writing-programs): This document explains how to write or modify a Rust program for execution in ZisK.
+- [Ethereum Block Execution Example](/examples/ethereum-block-exec): This example demonstrates how to perform stateless Ethereum block validation using ZisK. The program validates an Ethereum block by executing all transactions within it and verifying the state transitions without requiring the full Ethereum state.
+- [Fibonacci Example](/examples/fibonacci): This example demonstrates how to compute the nth Fibonacci number using ZisK. The program takes a number `n` as input and returns the nth Fibonacci number using an iterative approach with overflow handling.
+- [Keccak Example](/examples/keccak): This example demonstrates how to compute Keccak-256 hashes using ZisK. The program takes a number `n` as input and performs Keccak-256 hashing `n` times sequentially, where each iteration hashes the result of the previous iteration.
+- [ZisK Overview](/protocols/overview): ZisK is a high-performance zero-knowledge virtual machine (zkVM) designed to generate zero-knowledge proofs of arbitrary program execution. It enables developers to prove the correctness of computations without revealing their internal state. ZisK abstracts the complexities of cryptographic operations by providing an optimized toolstack that minimizes computational overhead, making zero-knowledge technology accessible to developers.
+- [Procotol Overview](/protocols/execution/overview)
+- [Procotol Overview](/protocols/airs-building/overview)
+- [Procotol Overview](/protocols/witness-generation/overview)
+- [Procotol Overview](/protocols/final-aggregation/overview)

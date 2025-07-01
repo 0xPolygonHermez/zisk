@@ -133,7 +133,7 @@ This command generates the proof in the `./proof` directory. If everything goes 
 [INFO ] ProofMan: Proofs generated successfully
 ```
 
-**Note**: You can use concurrent proof generation and GPU support to reduce proving time. For more details, refer to the [Writing Programs](./writing_programs.md) guide.
+**Note**: You can use concurrent proof generation and GPU support to reduce proving time. For more details, refer to the [Writing Programs](./writing-programs.md) guide.
 
 ## Verify Proof
 

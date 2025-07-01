@@ -1,0 +1,1824 @@
+# ZisK
+
+> High-performance, low-latency zkVM for Zero-Knowledge Proof Generation
+
+## Installation Guide
+
+ZisK can be installed from prebuilt binaries (recommended) or by building the ZisK tools, toolchain and setup files from source.
+
+### System Requirements
+
+ZisK currently supports **Linux x86\_64** and **macOS** platforms (see note below).
+
+> **Note:** Proof generation and verification on **macOS** are not yet supported. We’re actively working to add this functionality.
+
+#### Required Tools
+
+Ensure the following tools are installed:
+
+* [Rust](https://www.rust-lang.org/tools/install)
+* [Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
+
+### Installing Dependencies
+
+#### Ubuntu
+
+Ubuntu 22.04 or higher is required.
+
+Install all required dependencies with:
+
+```bash
+sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common libclang-dev clang
+```
+
+#### macOS
+
+macOS 14 or higher is required.
+
+You must have [Homebrew](https://brew.sh/) installed.
+
+Install all required dependencies with:
+
+```bash
+brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
+```
+
+### Installing ZisK
+
+#### Option 1: Prebuilt Binaries (Recommended)
+
+1. To install ZisK using ziskup, run the following command in your terminal:
+   ```bash
+   curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh  | bash
+   ```
+
+2. During the installation, you will be prompted to select a setup option. You can choose from the following:
+
+   1. **Install proving key (default)** – Required for generating and verifying proofs.
+   2. **Install verify key** – Needed only if you want to verify proofs.
+   3. **None** – Choose this if you only want to compile programs and execute them using the ZisK emulator.
+
+3. Verify the Rust toolchain: (which includes support for the `riscv64ima-zisk-zkvm` compilation target):
+
+   ```bash
+   rustup toolchain list
+   ```
+
+   The output should include an entry for `zisk`, similar to this:
+
+   ```
+   stable-x86_64-unknown-linux-gnu (default)
+   nightly-x86_64-unknown-linux-gnu
+   zisk
+   ```
+
+4. Verify the `cargo-zisk` CLI tool:
+   ```bash
+   cargo-zisk --version
+   ```
+
+##### Updating ZisK
+
+To update ZisK to the latest version, simply run:
+
+```bash
+ziskup
+```
+
+You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the installation setup and skip the selection prompt.
+
+#### Option 2: Building from Source
+
+##### Build ZisK
+
+1. Clone the ZisK repository:
+   ```bash
+   git clone https://github.com/0xPolygonHermez/zisk.git
+   cd zisk
+   ```
+
+2. Build ZisK tools:
+
+   ```bash
+   cargo build --release
+   ```
+
+   **Note**: If you encounter the following error during compilation:
+
+   ```
+   --- stderr
+   /usr/lib/x86_64-linux-gnu/openmpi/include/mpi.h:237:10: fatal error: 'stddef.h' file not found
+   ```
+
+   Follow these steps to resolve it:
+
+   1. Locate the `stddef.h` file:
+      ```bash
+      find /usr -name "stddef.h"
+      ```
+   2. Set the environment variables to include the directory where `stddef.h` is located (e.g.):
+      ```bash
+      export C_INCLUDE_PATH=/usr/lib/gcc/x86_64-linux-gnu/13/include
+      export CPLUS_INCLUDE_PATH=$C_INCLUDE_PATH
+      ```
+   3. Try building again
+
+3. Copy the tools to `~/.zisk/bin` directory:
+   ```bash
+   mkdir -p $HOME/.zisk/bin
+   cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so precompiles/sha256f/src/sha256f_script.json $HOME/.zisk/bin
+   ```
+
+4. Copy required files to support `cargo-zisk rom-setup` command:
+   ```bash
+   mkdir -p $HOME/.zisk/zisk/emulator-asm
+   cp -r ./emulator-asm/src $HOME/.zisk/zisk/emulator-asm
+   cp ./emulator-asm/Makefile $HOME/.zisk/zisk/emulator-asm
+   cp -r ./lib-c $HOME/.zisk/zisk
+   ```
+
+5. Add `~/.zisk/bin` to your system PATH:
+   For example, if you are using `bash`:
+   ```bash
+   echo >>$HOME/.bashrc && echo "export PATH=\"\$PATH:$HOME/.zisk/bin\"" >> $HOME/.bashrc
+   source $HOME/.bashrc
+   ```
+
+6. Install the ZisK Rust toolchain:
+
+   ```bash
+   cargo-zisk sdk install-toolchain
+   ```
+
+   **Note**: This command installs the ZisK Rust toolchain from prebuilt binaries. If you prefer to build the toolchain from source, follow these steps:
+
+   1. Ensure all [dependencies](https://github.com/rust-lang/rust/blob/master/INSTALL.md#dependencies) required to build the Rust toolchain from source are installed.
+
+   2. Build and install the Rust ZisK toolchain:
+
+   ```bash
+   cargo-zisk sdk build-toolchain
+   ```
+
+7. Verify the installation:
+   ```bash
+   rustup toolchain list
+   ```
+   Confirm taht `zisk` appears in the list of installed toolchains.
+
+##### Build Setup
+
+The setup building process is highly intensive in terms of CPU and memory usage. You will need a machine with at least the following hardware requirements:
+
+* 32 CPUs
+* 512 GB of RAM
+* 100 GB of free disk space
+
+Please note that the process can be long, taking approximately 2–3 hours depending on the machine used.
+
+[NodeJS](https://nodejs.org/en/download) version 20.x or higher is required to build the setup files.
+
+1. Clone the following repositories in the parent folder of the `zisk` folder created in the previous section:
+   ```bash
+   git clone https://github.com/0xPolygonHermez/pil2-compiler.git
+   git clone https://github.com/0xPolygonHermez/pil2-proofman.git
+   git clone https://github.com/0xPolygonHermez/pil2-proofman-js
+   ```
+
+2. Install packages:
+   ```bash
+   (cd pil2-compiler && npm i)
+   (cd pil2-proofman-js && npm i)
+
+   ```
+
+3. All subsequent commands must be executed from the `zisk` folder created in the previous section:
+   ```bash
+   cd ~/zisk
+   ```
+
+4. Adjust memory mapped areas and JavaScript heap size:
+   ```bash
+   echo "vm.max_map_count=655300" | sudo tee -a /etc/sysctl.conf
+   sudo sysctl -w vm.max_map_count=655300
+   export NODE_OPTIONS="--max-old-space-size=230000"
+   ```
+
+5. Compile ZisK PIL: (Note that this command may take 20-30 minutes to complete)
+
+   ```bash
+   node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout
+   ```
+
+   This command will create the `pil/zisk.pilout` file
+
+6. Generate fixed data:
+
+   ```bash
+   cargo run --release --bin keccakf_fixed_gen
+   cargo run --release --bin sha256f_fixed_gen
+   mkdir -p build
+   mv precompiles/keccakf/src/keccakf_fixed.bin build 
+   mv precompiles/sha256f/src/sha256f_fixed.bin build
+   ```
+
+   These commands generate the `keccakf_fixed.bin` and `sha256f_fixed.bin` files in the `build` directory.
+
+7. Generate setup data: (Note that this command may take 2–3 hours to complete):
+
+   ```bash
+   node --max-old-space-size=131072 ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -i ./build/keccakf_fixed.bin ./build/sha256f_fixed.bin -r
+   ```
+
+   This command generates the `provingKey` directory.
+
+8. Copy (or move) the `provingKey` directory to `$HOME/.zisk` directory:
+
+   ```bash
+   cp -R build/provingKey $HOME/.zisk
+   ```
+
+9. Generate constant tree files:
+   ```bash
+   cargo-zisk check-setup -a
+   ```
+
+### Uninstall Zisk
+
+1. Uninstall ZisK toolchain:
+   ```bash
+   rustup uninstall zisk
+   ```
+
+2. Delete ZisK folder
+   ```bash
+   rm -rf $HOME/.zisk
+   ```
+
+
+## Precompiles
+
+Precompiles are built-in system functions within ZisK’s operating system that accelerate computationally expensive and frequently used operations such as the Keccak-f permutation and Secp256k1 addition and doubling.
+
+These precompiles improve proving efficiency by offloading intensive computations from ZisK programs to dedicated, pre-integrated sub-processors. ZisK manages precompiles as system calls using the RISC-V `ecall` instruction.
+
+### How Precompiles Work
+
+Precompiles are primarily used to patch third-party crates, replacing costly operations with system calls. This ensures that commonly used cryptographic primitives like Keccak hashing and elliptic curve operations can be efficiently executed within ZisK programs.
+
+Typically, precompiles are used to patch third-party crates that implement these operations and are then used as dependencies in the Zisk programs we write.
+
+You can see [here](https://github.com/0xPolygonHermez/zisk-patch-tiny-keccak/tree/zisk) an example of the patched `tiny-keccak` crate.
+
+#### Available Precompiles in ZisK
+
+Below is a summary of the precompiles currently available in ZisK:
+
+* [syscall\_arith256\_mod](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/arith256_mod.rs): Modular multiplication followed by addition over 256-bit non-negative integers.
+* [syscall\_arith256](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/arith256.rs): Multiplication followed by addition over 256-bit non-negative integers.
+* [syscall\_keccak\_f](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/keccakf.rs): Keccak-f\[1600] permutation function from the [Keccak](https://keccak.team/files/Keccak-reference-3.0.pdf) cryptographic sponge construction.
+* [syscall\_sha256\_f](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/sha256f.rs): Extend and compress function of the [SHA-256](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf) cryptographic hash algorithm.
+* [secp256k1\_add](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/secp256k1_add.rs): Elliptic curve point addition over the [Secp256k1](https://en.bitcoin.it/wiki/Secp256k1) curve.
+* [secp256k1\_dbl](https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/secp256k1_dbl.rs): Elliptic curve point doubling over the [Secp256k1](https://en.bitcoin.it/wiki/Secp256k1) curve.
+
+
+## Quickstart
+
+In this guide, you will learn how to install ZisK, create a simple program and run it using ZisK.
+
+### Installation
+
+ZisK currently supports **Linux x86\_64** and **macOS** platforms (see note below).
+
+> **Note:** Proof generation and verification on **macOS** are not yet supported. We’re actively working to add this functionality.
+
+**Ubuntu 22.04 or higher** is required.
+
+**macOS 14 or higher** is required.
+
+1. Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
+
+2. Install all required dependencies with:
+   * **Ubuntu**:
+     ```bash
+     sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
+     ```
+   * **macOS**:
+     ```bash
+     brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
+     ```
+
+3. To install ZisK using ziskup, run the following command in your terminal:
+   ```bash
+   curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh | bash
+   ```
+
+### Create a Project
+
+The first step is to generate a new example project using the `cargo-zisk sdk new <name>` command. This command creates a new directory named `<name>` in your current directory. For example:
+
+```bash
+cargo-zisk sdk new sha_hasher
+cd sha_hasher
+```
+
+This will create a project with the following structure:
+
+```
+.
+├── build.rs
+├── Cargo.toml
+├── .gitignore
+└── src
+    └── main.rs
+```
+
+The example program takes a number `n` as input and computes the SHA-256 hash `n` times.
+
+The `build.rs` file generates an `input.bin` file containing the value of `n` (e.g., 20). This file is used in `main.rs` as input to calculate the hash.
+
+You can run the program on your native architecture with the following command:
+
+```bash
+cargo run
+```
+
+The output will be:
+
+```
+public 0: 0x98211882
+public 1: 0xbd13089b
+public 2: 0x6ccf1fca
+public 3: 0x81f7f0e4
+public 4: 0xabf6352a
+public 5: 0x0c39c9b1
+public 6: 0x1f142cac
+public 7: 0x233f1280
+```
+
+### Build
+
+The next step is to build the program using the `cargo-zisk` command to generate an ELF file (RISC-V), which will be used later to generate the proof. Execute:
+
+```bash
+cargo-zisk build --release
+```
+
+This command builds the program using the `zkvm` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/riscv64ima-zisk-zkvm-elf/release` directory.
+
+### Execute
+
+Before generating a proof, you can test the program using the ZisK emulator to ensure its correctness. Specify the ELF file (using the `-e` or `--elf flag`) and the input file `input.bin` (using the `-i` or `--inputs` flag):
+
+```bash
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin
+```
+
+The output will be:
+
+```
+98211882
+bd13089b
+6ccf1fca
+81f7f0e4
+abf6352a
+0c39c9b1
+1f142cac
+233f1280
+```
+
+Alternatively, you can build and run the program with:
+
+```bash
+cargo-zisk run --release -i build/input.bin
+```
+
+### Prove
+
+Before generating a proof, you need to generate the program setup files. Execute:
+
+```bash
+cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher
+```
+
+Once the program setup is complete, you can generate and verify a proof using the `cargo-zisk prove` command by providing the ELF file (with the `-e` or `--elf` flag) and the input file (with the `-i` or `--input` flag).
+
+To generate and verify a proof for the previously built ELF and input files, execute:
+
+```bash
+cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -o proof -a -y
+```
+
+This command generates the proof in the `./proof` directory. If everything goes well, you will see a message similar to:
+
+```
+...
+[INFO ] ProofMan:     ✓ Vadcop Final proof was verified
+[INFO ]      stop <<< GENERATING_VADCOP_PROOF 91706ms
+[INFO ] ProofMan: Proofs generated successfully
+```
+
+**Note**: You can use concurrent proof generation and GPU support to reduce proving time. For more details, refer to the [Writing Programs](./writing-programs.md) guide.
+
+### Verify Proof
+
+To verify a generated proof, use the following command:
+
+```bash
+cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json -u ./proof/publics.json
+```
+
+
+## Writing Programs
+
+This document explains how to write or modify a Rust program for execution in ZisK.
+
+### Setup
+
+#### Code changes
+
+Writing a Rust program for ZisK is similar to writing a standard Rust program, with a few minor modifications. Follow these steps:
+
+1. Modify `main.rs` file:
+
+   Add the following code to mark the main function as the entry point for ZisK:
+
+   ```rust
+   #![no_main]
+   ziskos::entrypoint!(main);
+   ```
+
+2. Modify `Cargo.toml` file:
+
+   Add the `ziskos` crate as a dependency:
+
+   ```toml
+   [dependencies]
+   ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
+   ```
+
+Let's show these changes using the example program from the [Quickstart](./quickstart.md) section.
+
+#### Example program
+
+`main.rs`:
+
+```rust
+// This example program takes a number `n` as input and computes the SHA-256 hash `n` times sequentially.
+
+// Mark the main function as the entry point for ZisK
+#![no_main]
+ziskos::entrypoint!(main);
+
+use sha2::{Digest, Sha256};
+use std::convert::TryInto;
+use ziskos::{read_input, set_output};
+use byteorder::ByteOrder;
+
+fn main() {
+    // Read the input data as a byte array from ziskos
+    let input: Vec<u8> = read_input();
+
+    // Get the 'n' value converting the input byte array into a u64 value
+    let n: u64 = u64::from_le_bytes(input.try_into().unwrap());
+
+    let mut hash = [0u8; 32];
+
+    // Compute SHA-256 hashing 'n' times
+    for _ in 0..n {
+        let mut hasher = Sha256::new();
+        hasher.update(hash);
+        let digest = &hasher.finalize();
+        hash = Into::<[u8; 32]>::into(*digest);
+    }
+
+    // Split 'hash' value into chunks of 32 bits and write them to ziskos output
+    for i in 0..8 {
+        let val = byteorder::BigEndian::read_u32(&mut hash[i * 4..i * 4 + 4]);
+        set_output(i, val);
+    }
+}
+```
+
+`Cargo.toml`:
+
+```toml
+[package]
+name = "sha_hasher"
+version = "0.1.0"
+edition = "2021"
+default-run = "sha_hasher"
+
+[dependencies]
+byteorder = "1.5.0"
+sha2 = "0.10.8"
+ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
+```
+
+#### Input/Output Data
+
+To provide input data for ZisK, you need to write that data in a binary file (e.g., `input.bin`).
+
+If your program requires complex input data, consider using a serialization mechanism (like [`bincode`](https://crates.io/crates/bincode) crate) to store it in `input.bin` file.
+
+In your program, use the `ziskos::read_input()` function to retrieve the input data from the `input.bin` file:
+
+```rust
+// Read the input data as a byte array from ziskos
+let input: Vec<u8> = read_input();
+```
+
+To write public output data, use the `ziskos::set_output()` function. Since the function accepts `u32` values, split the output data into 32-bit chunks if necessary and increase the `id` parameter of the function in each call:
+
+```rust
+// Split 'hash' value into chunks of 32 bits and write them to ziskos output
+for i in 0..8 {
+    let val = byteorder::BigEndian::read_u32(&mut hash[i * 4..i * 4 + 4]);
+    set_output(i, val);
+}
+```
+
+### Build
+
+Before compiling your program for ZisK, you can test it on the native architecture just like any regular Rust program using the `cargo` command.
+
+Once your program is ready to run on ZisK, compile it into an ELF file (RISC-V architecture), using the `cargo-zisk` CLI tool:
+
+```bash
+cargo-zisk build
+```
+
+This command compiles the program using the `zisk` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/riscv64ima-zisk-zkvm-elf/debug` directory.
+
+For production, compile the ELF file with the `--release` flag, similar to how you compile Rust projects:
+
+```bash
+cargo-zisk build --release
+```
+
+In this case, the `sha_hasher` ELF file will be generated in the `./target/riscv64ima-zisk-zkvm-elf/release` directory.
+
+### Execute
+
+You can test your compiled program using the ZisK emulator (`ziskemu`) before generating a proof. Use the `-e` (`--elf`) flag to specify the location of the ELF file and the `-i` (`--inputs`) flag to specify the location of the input file:
+
+```bash
+cargo-zisk build --release
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin
+```
+
+Alternatively, you can build and execute the program in the ZisK emulator with a single command:
+
+```bash
+cargo-zisk run --release -i build/input.bin
+```
+
+If the program requires a large number of ZisK steps, you might encounter the following error:
+
+```
+Error during emulation: EmulationNoCompleted
+Error: Error executing Run command
+```
+
+To resolve this, you can increase the number of execution steps using the `-n` (`--max-steps`) flag. For example:
+
+```bash
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -n 10000000000
+```
+
+### Metrics and Statistics
+
+#### Performance Metrics
+
+You can get performance metrics related to the program execution in ZisK using the `-m` (`--log-metrics`) flag in the `cargo-zisk run` command or in `ziskemu` tool:
+
+```bash
+cargo-zisk run --release -i build/input.bin -m
+```
+
+Or
+
+```bash
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -m
+```
+
+The output will include details such as execution time, throughput, and clock cycles per step:
+
+```
+process_rom() steps=85309 duration=0.0009 tp=89.8565 Msteps/s freq=3051.0000 33.9542 clocks/step
+98211882
+bd13089b
+6ccf1fca
+...
+```
+
+#### Execution Statistics
+
+You can get statistics related to the program execution in Zisk using the `-x` (`--stats`) flag in the `cargo-zisk run` command or in `ziskemu` tool:
+
+```bash
+cargo-zisk run --release -i build/input.bin -x
+```
+
+Or
+
+```bash
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -x
+```
+
+The output will include details such as cost definitions, total cost, register reads/writes, opcode statistics, etc:
+
+```
+Cost definitions:
+    AREA_PER_SEC: 1000000 steps
+    COST_MEMA_R1: 0.00002 sec
+    COST_MEMA_R2: 0.00004 sec
+    COST_MEMA_W1: 0.00004 sec
+    COST_MEMA_W2: 0.00008 sec
+    COST_USUAL: 0.000008 sec
+    COST_STEP: 0.00005 sec
+
+Total Cost: 12.81 sec
+    Main Cost: 4.27 sec 85308 steps
+    Mem Cost: 2.22 sec 222052 steps
+    Mem Align: 0.05 sec 2701 steps
+    Opcodes: 6.24 sec 1270 steps (81182 ops)
+    Usual: 0.03 sec 4127 steps
+    Memory: 135563 a reads + 1625 na1 reads + 10 na2 reads + 84328 a writes + 524 na1 writes + 2 na2 writes = 137198 reads + 84854 writes = 222052 r/w
+
+Opcodes:
+    flag: 0.00 sec (0 steps/op) (89 ops)
+    copyb: 0.00 sec (0 steps/op) (10568 ops)
+    add: 1.12 sec (77 steps/op) (14569 ops)
+    ltu: 0.01 sec (77 steps/op) (101 ops)
+    ...
+    xor: 1.06 sec (77 steps/op) (13774 ops)
+    signextend_b: 0.03 sec (109 steps/op) (320 ops)
+    signextend_w: 0.03 sec (109 steps/op) (320 ops)
+
+98211882
+bd13089b
+6ccf1fca
+...
+```
+
+### Prove
+
+#### Program Setup
+
+Before generating a proof (or verifying the constraints), you need to generate the program setup files. This must be done the first time after building the program ELF file, or any time it changes:
+
+```bash
+cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -k $HOME/.zisk/provingKey
+```
+
+In this command:
+
+* `-e` (`--elf`) specifies the ELF file location.
+* `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
+
+The program setup files will be generated in the `cache` directory located at `$HOME/.zisk`.
+
+To clean the `cache` directory content, use the following command:
+
+```bash
+cargo-zisk clean
+```
+
+#### Verify Constraints
+
+Before generating a proof (which can take some time), you can verify that all constraints are satisfied:
+
+```bash
+cargo-zisk verify-constraints -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey
+```
+
+In this command:
+
+* `-e` (`--elf`) specifies the ELF file location.
+* `-i` (`--input`) specifies the input file location.
+* `-w` (`--witness`) specifies the location of the witness library. This is optional and defaults to `$HOME/.zisk/bin/libzisk_witness.so`.
+* `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
+
+If everything is correct, you will see an output similar to:
+
+```
+[INFO ] GlCstVfy: --> Checking global constraints
+[INFO ] CstrVrfy: ··· ✓ All global constraints were successfully verified
+[INFO ] CstrVrfy: ··· ✓ All constraints were verified
+```
+
+#### Generate Proof
+
+To generate a proof, run the following command:
+
+```bash
+cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
+```
+
+In this command:
+
+* `-e` (`--elf`) specifies the ELF file location.
+* `-i` (`--input`) specifies the input file location.
+* `-w` (`--witness`) specifies the location of the witness library. This is optional and defaults to `$HOME/.zisk/bin/libzisk_witness.so`.
+* `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
+* `-o` (`--output`) determines the output directory (in this example `proof`).
+* `-a` (`--aggregation`) indicates that a final aggregated proof (containing all generated sub-proofs) should be produced.
+* `-y` (`--verify-proofs`) instructs the tool to verify the proof immediately after it is generated (verification can also be performed later using the `cargo-zisk verify` command).
+
+If the process is successful, you should see a message similar to:
+
+```
+...
+[INFO ] ProofMan:     ✓ Vadcop Final proof was verified
+[INFO ]      stop <<< GENERATING_VADCOP_PROOF 91706ms
+[INFO ] ProofMan: Proofs generated successfully
+```
+
+#### Concurrent Proof Generation
+
+Zisk proofs can be generated using multiple processes concurrently to improve performance and scalability. The standard MPI (Message Passing Interface) approach is used to launch these processes, which can run either on the same server or across multiple servers.
+
+To execute a Zisk proof using multiple processes, use the following command:
+
+```bash
+mpirun --bind-to none -np <num_processes> -x OMP_NUM_THREADS=<num_threads_per_process> target/release/cargo-zisk <zisk arguments>
+```
+
+In this command:
+
+* `-np <num_processes>` specifies the number of processes to launch.
+* `-x OMP_NUM_THREADS=<num_threads_per_process>` sets the number of threads used by each process via the `OMP_NUM_THREADS` environment variable.
+* `--bind-to none` prevents binding processes to specific cores, allowing the operating system to schedule them dynamically for better load balancing.
+
+Running a Zisk proof with multiple processes enables efficient workload distribution across multiple servers. **On a single server with many cores, splitting execution into smaller subsets of cores generally improves performance by increasing concurrency**. As a general rule, `<number_of_processes>` \* `<number_of_threads_per_process>` should match the number of available CPU cores or double that if hyperthreading is enabled.
+
+The total memory requirement increases proportionally with the number of processes. If each process requires approximately 25GB of memory, running P processes will require roughly (25 \* P)GB of memory. Ensure that the system has sufficient available memory to accommodate all running processes.
+
+#### GPU Proof Generation
+
+Zisk proofs can also be generated using GPUs to significantly improve performance and scalability.
+Follow these steps to enable GPU support:
+
+1. GPU support is only available for NVIDIA GPUs.
+
+2. Make sure the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) is installed.
+
+3. Build Zisk with GPU support enabled.
+   GPU support must be enabled at compile time. Follow the instructions in the **Build ZisK** section under **Option 2: Building from source** in the [Installation](./installation.md) guide, but replace the build command with:
+   ```bash
+   cargo build --release --features gpu
+   ```
+
+4. Build Zisk on the target GPU server.
+   It is recommended to compile Zisk directly on the server where it will be executed. The binary will be optimized for the local GPU architecture, which can lead to better runtime performance.
+
+You can combine GPU-based execution with concurrent proof generation using multiple processes, as described in the **Concurrent Proof Generation** section. For better performance in this setup, it is recommended to enable [NVIDIA’s Multi-Process Service (MPS)](https://docs.nvidia.com/deploy/mps/index.html). You can activate it by running:
+
+```bash
+nvidia-cuda-mps-control -d
+```
+
+> **Note:** GPU memory is typically more limited than CPU memory. When combining GPU execution with concurrent proof generation, ensure that each process has sufficient memory available on the GPU to avoid out-of-memory errors.
+
+#### Verify Proof
+
+To verify a generated proof, use the following command:
+
+```bash
+cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json -u ./proof/publics.json -s $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.starkinfo.json -e $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verifier.bin -k $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.json
+```
+
+In this command:
+
+* `-p` (`--proof`) specifies the final proof file generated with cargo-zisk prove.
+* `-u` (`--public-inputs`) provides the path to the public inputs associated with the proof.
+* The remaining flags specify the files required for verification; they are optional, set by default to the files found in the `$HOME/.zisk` directory.
+
+
+## Ethereum Block Execution Example
+
+This example demonstrates how to perform stateless Ethereum block validation using ZisK. The program validates an Ethereum block by executing all transactions within it and verifying the state transitions without requiring the full Ethereum state.
+
+### Overview
+
+Stateless block validation is a crucial component of Ethereum's scalability roadmap. Instead of maintaining the full state, validators can verify blocks using witness data that contains only the necessary state information for validation.
+
+This example showcases:
+
+* Stateless Ethereum block validation
+* Integration with the Reth Ethereum client library
+* Complex input data handling with serialization
+* Real-world blockchain computation in zero-knowledge proofs
+* Advanced ZisK program structure for Ethereum applications
+
+### Program Code
+
+#### `main.rs`
+
+```rust
+#![no_main]
+ziskos::entrypoint!(main);
+
+extern crate alloc;
+
+use alloc::sync::Arc;
+use reth_chainspec::ChainSpec;
+use reth_evm_ethereum::EthEvmConfig;
+use reth_stateless::{fork_spec::ForkSpec, validation::stateless_validation, StatelessInput};
+
+fn main() {
+    let (input, fork_spec): (StatelessInput, ForkSpec) =
+        bincode::deserialize(&ziskos::read_input()).unwrap();
+    let chain_spec: Arc<ChainSpec> = Arc::new(fork_spec.into());
+    let evm_config = EthEvmConfig::new(chain_spec.clone());
+
+    stateless_validation(input.block, input.witness, chain_spec, evm_config).unwrap();
+    
+    println!("Validation successful!");
+}
+```
+
+#### `Cargo.toml`
+
+```toml
+[package]
+name = "exec_eth_block"
+version = "0.1.0"
+edition = "2021"
+default-run = "exec_eth_block"
+
+[dependencies]
+byteorder = "1.5.0"
+ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
+
+bincode = "1.3"
+reth-stateless = { git = "https://github.com/paradigmxyz/reth", rev = "03364a836774c72f4e354de924330fee6a41be68" }
+reth-ethereum-primitives = { git = "https://github.com/paradigmxyz/reth", rev = "03364a836774c72f4e354de924330fee6a41be68", features = [
+    "serde",
+    "serde-bincode-compat",
+] }
+reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", rev = "03364a836774c72f4e354de924330fee6a41be68", features = [
+    "serde",
+    "serde-bincode-compat",
+] }
+alloy-primitives = { version = "1.2.0", default-features = false, features = [
+    "map-foldhash",
+    "serde",
+    "tiny-keccak",
+] }
+reth-evm-ethereum = { git = "https://github.com/paradigmxyz/reth", rev = "03364a836774c72f4e354de924330fee6a41be68" }
+reth-chainspec = { git = "https://github.com/paradigmxyz/reth", rev = "03364a836774c72f4e354de924330fee6a41be68" }
+```
+
+### Key Features
+
+#### Stateless Validation
+
+* **No Full State Required**: Validates blocks without maintaining the complete Ethereum state
+* **Witness-Based**: Uses cryptographic witness data to prove state transitions
+* **Efficient**: Reduces storage requirements while maintaining security guarantees
+
+#### Reth Integration
+
+* **Production-Ready**: Uses the Reth Ethereum client library for robust validation
+* **Fork Compatibility**: Supports different Ethereum hard forks through `ForkSpec`
+* **EVM Execution**: Full Ethereum Virtual Machine execution for transaction processing
+
+#### Input Structure
+
+The program expects serialized input containing:
+
+* **StatelessInput**: Contains the block data and witness information
+* **ForkSpec**: Specifies which Ethereum hard fork rules to apply
+
+### Architecture
+
+#### Data Flow
+
+1. **Input Deserialization**: Deserializes the block and witness data using `bincode`
+2. **Chain Specification**: Converts fork specification to chain configuration
+3. **EVM Configuration**: Sets up the Ethereum Virtual Machine with proper parameters
+4. **Validation**: Executes stateless validation of the block
+
+#### Validation Process
+
+1. **Block Header Validation**: Verifies block header consistency
+2. **Transaction Execution**: Executes all transactions in the block
+3. **State Root Verification**: Confirms the final state root matches the block header
+4. **Witness Verification**: Validates that the witness data is consistent
+
+### Input Data Format
+
+#### Creating Input Data
+
+The input data must be a serialized combination of:
+
+* `StatelessInput`: Block and witness data
+* `ForkSpec`: Ethereum fork specification
+
+```rust
+use bincode;
+use reth_stateless::{StatelessInput, fork_spec::ForkSpec};
+
+// Example of creating input data (would typically be done outside ZisK)
+let stateless_input = StatelessInput {
+    block: block_data,
+    witness: witness_data,
+};
+
+let fork_spec = ForkSpec::Shanghai; // or other fork
+let serialized = bincode::serialize(&(stateless_input, fork_spec)).unwrap();
+
+// Write to input.bin
+std::fs::write("input.bin", serialized).unwrap();
+```
+
+#### Witness Data
+
+The witness contains:
+
+* **Account Data**: Account balances, nonces, and code
+* **Storage Proofs**: Merkle proofs for accessed storage slots
+* **Code**: Smart contract bytecode accessed during execution
+* **State Proofs**: Merkle proofs for state transitions
+
+### Running the Example
+
+#### Prerequisites
+
+1. **Input Data**: You need a properly formatted `input.bin` file containing:
+   * Ethereum block data
+   * Corresponding witness data
+   * Fork specification
+
+2. **Block Data Source**: Obtain block data from:
+   * Ethereum node RPC calls
+   * Block explorers
+   * Pre-generated test data
+
+#### Build and Execute
+
+1. **Build the program:**
+   ```bash
+   cargo-zisk build --release
+   ```
+
+2. **Run with input data:**
+   ```bash
+   cargo-zisk run --release -i block_build/input.bin
+   ```
+
+3. **For large blocks, increase max steps:**
+   ```bash
+   cargo-zisk run --release -i block_build/input.bin --max-steps 100000000
+   ```
+
+#### Performance Tuning
+
+Block validation can be computationally intensive. Consider these optimizations:
+
+```bash
+# Run with performance metrics
+cargo-zisk run --release -i block_build/input.bin -m
+
+# Run with execution statistics
+cargo-zisk run --release -i block_build/input.bin -x
+
+# Increase memory and steps for large blocks
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/exec_eth_block \
+        -i block_build/input.bin \
+        -n 1000000000
+```
+
+### Use Cases
+
+#### Layer 2 Scaling
+
+* **Rollup Validation**: Prove correct execution of Layer 2 blocks
+* **Fraud Proofs**: Generate proofs for disputed transactions
+* **State Compression**: Reduce on-chain storage requirements
+
+#### Cross-Chain Bridges
+
+* **Block Verification**: Prove Ethereum block validity on other chains
+* **State Relay**: Transfer Ethereum state information securely
+* **Interoperability**: Enable cross-chain applications
+
+#### Compliance and Auditing
+
+* **Transaction Verification**: Prove specific transactions occurred
+* **Regulatory Compliance**: Demonstrate adherence to rules
+* **Audit Trails**: Create verifiable execution records
+
+### Advanced Configuration
+
+#### Fork Specifications
+
+Different Ethereum hard forks have different validation rules:
+
+```rust
+// Examples of different fork specifications
+ForkSpec::London        // EIP-1559 fee market
+ForkSpec::Shanghai      // Beacon chain withdrawals
+ForkSpec::Cancun        // Blob transactions (EIP-4844)
+```
+
+#### Chain Specifications
+
+Customize for different Ethereum networks:
+
+```rust
+// Mainnet configuration
+ChainSpec::mainnet()
+
+// Testnet configurations
+ChainSpec::goerli()
+ChainSpec::sepolia()
+
+// Custom configurations for private networks
+```
+
+### Generate Proof
+
+Follow the standard ZisK proof generation process:
+
+1. **Program setup:**
+   ```bash
+   cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/exec_eth_block -k $HOME/.zisk/provingKey
+   ```
+
+2. **Verify constraints:**
+   ```bash
+   cargo-zisk verify-constraints -e target/riscv64ima-zisk-zkvm-elf/release/exec_eth_block -i block_build/input.bin
+   ```
+
+3. **Generate proof:**
+   ```bash
+   cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/exec_eth_block -i block_build/input.bin -o proof -a -y
+   ```
+
+#### Parallel Proof Generation
+
+For complex blocks, use parallel processing:
+
+```bash
+mpirun --bind-to none -np 4 -x OMP_NUM_THREADS=8 \
+       target/release/cargo-zisk prove \
+       -e target/riscv64ima-zisk-zkvm-elf/release/exec_eth_block \
+       -i block_build/input.bin -o proof -a -y
+```
+
+### Troubleshooting
+
+#### Common Issues
+
+1. **Serialization Errors**:
+   * Ensure input data uses compatible `bincode` version
+   * Verify data structure matches expected format
+
+2. **Memory Issues**:
+   * Large blocks may require more memory
+   * Consider using concurrent proof generation with appropriate memory allocation
+
+3. **Fork Compatibility**:
+   * Ensure fork specification matches the block's network rules
+   * Update Reth dependencies for latest fork support
+
+4. **Execution Timeouts**:
+   * Complex blocks may require increased step limits
+   * Monitor execution with metrics flags
+
+#### Debug Mode
+
+Run in debug mode for detailed execution information:
+
+```bash
+RUST_LOG=debug cargo-zisk run --release -i block_build/input.bin
+```
+
+### Integration Ideas
+
+#### Web3 Application Integration
+
+```javascript
+// Example: Generating input data from web3
+const web3 = new Web3('https://mainnet.infura.io/v3/YOUR-PROJECT-ID');
+
+async function prepareBlockInput(blockNumber) {
+    const block = await web3.eth.getBlock(blockNumber, true);
+    const witness = await generateWitness(block); // Custom witness generation
+    const forkSpec = determineForkSpec(blockNumber);
+    
+    return {
+        block: block,
+        witness: witness,
+        forkSpec: forkSpec
+    };
+}
+```
+
+#### Smart Contract Verification
+
+```solidity
+// Example: Verifying ZisK proofs on-chain
+contract BlockValidator {
+    function verifyBlock(
+        bytes calldata proof,
+        bytes32 blockHash,
+        uint256 blockNumber
+    ) external returns (bool) {
+        // Verify ZisK proof of block execution
+        return ZiskVerifier.verify(proof, blockHash, blockNumber);
+    }
+}
+```
+
+This example demonstrates the power of ZisK for real-world Ethereum applications, enabling scalable and verifiable blockchain computation through zero-knowledge proofs.
+
+
+## Fibonacci Example
+
+This example demonstrates how to compute the nth Fibonacci number using ZisK. The program takes a number `n` as input and returns the nth Fibonacci number using an iterative approach with overflow handling.
+
+### Overview
+
+The Fibonacci sequence is a series of numbers where each number is the sum of the two preceding ones: 0, 1, 1, 2, 3, 5, 8, 13, 21, 34, ...
+
+This example showcases:
+
+* Reading input data from ZisK
+* Iterative computation with wrapping arithmetic
+* Outputting 64-bit results as two 32-bit values
+* Basic ZisK program structure
+
+### Program Code
+
+#### `main.rs`
+
+```rust
+// This example program takes a number `n` as input and computes the nth Fibonacci number.
+
+// Mark the main function as the entry point for ZisK
+#![no_main]
+ziskos::entrypoint!(main);
+
+use std::convert::TryInto;
+use ziskos::{read_input, set_output};
+
+fn main() {
+    // Read the input data as a byte array from ziskos
+    let input: Vec<u8> = read_input();
+
+    // Convert the input data to a u64 integer
+    let n: u64 = match input.try_into() {
+        Ok(input_bytes) => u64::from_le_bytes(input_bytes),
+        Err(input) => panic!(
+            "Invalid input length. Expected 8 bytes, got {}",
+            input.len()
+        ),
+    };
+
+    // Compute the nth Fibonacci number
+    let fib_result = fibonacci(n);
+
+    // Output the Fibonacci result as two 32-bit values (low and high parts)
+    let low = (fib_result & 0xFFFFFFFF) as u32;
+    let high = ((fib_result >> 32) & 0xFFFFFFFF) as u32;
+
+    set_output(0, low);
+    set_output(1, high);
+
+    // Set remaining outputs to 0
+    for i in 2..8 {
+        set_output(i, 0);
+    }
+}
+
+fn fibonacci(n: u64) -> u64 {
+    if n <= 1 {
+        return n;
+    }
+
+    let mut a = 0u64;
+    let mut b = 1u64;
+
+    for _ in 2..=n {
+        let temp = a.wrapping_add(b);
+        a = b;
+        b = temp;
+    }
+
+    b
+}
+```
+
+#### `Cargo.toml`
+
+```toml
+[package]
+name = "fibonacci"
+version = "0.1.0"
+edition = "2021"
+default-run = "fibonacci"
+
+[dependencies]
+byteorder = "1.5.0"
+ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
+```
+
+#### `build.rs`
+
+The `build.rs` script automatically generates the input file with a default value:
+
+```rust
+use std::fs::{self, File};
+use std::io::{self, Write};
+use std::path::Path;
+
+// Define constants for the directory and input file name
+const OUTPUT_DIR: &str = "build/";
+const FILE_NAME: &str = "input.bin";
+
+fn main() -> io::Result<()> {
+    let n: u64 = 20;
+
+    // Ensure the output directory exists
+    let output_dir = Path::new(OUTPUT_DIR);
+    if !output_dir.exists() {
+        // Create the directory and any necessary parent directories
+        fs::create_dir_all(output_dir)?; 
+    }
+
+    // Create the file and write the 'n' value in little-endian format
+    let file_path = output_dir.join(FILE_NAME);
+    let mut file = File::create(&file_path)?;
+    file.write_all(&n.to_le_bytes())?; 
+
+    Ok(())
+}
+```
+
+### Key Features
+
+#### Input Handling
+
+* Reads an 8-byte input representing a `u64` value for `n`
+* Uses little-endian byte order for input parsing
+* Includes error handling for invalid input lengths
+
+#### Fibonacci Computation
+
+* Uses an iterative approach for efficiency
+* Handles edge cases (n ≤ 1)
+* Uses `wrapping_add()` to handle potential overflow gracefully
+* Time complexity: O(n), Space complexity: O(1)
+
+#### Output Format
+
+* Splits the 64-bit Fibonacci result into two 32-bit parts
+* Sets the low 32 bits to output\[0] and high 32 bits to output\[1]
+* Initializes remaining output slots (2-7) to zero
+
+### Running the Example
+
+#### Build and Execute
+
+1. **Build the program:**
+   ```bash
+   cargo-zisk build --release
+   ```
+
+2. **Run with the default input (n=20):**
+   ```bash
+   cargo-zisk run --release -i build/input.bin
+   ```
+
+3. **Create custom input:**
+   ```bash
+   # Create input for n=30
+   python3 -c "import struct; open('custom_input.bin', 'wb').write(struct.pack('<Q', 30))"
+
+   # Run with custom input
+   cargo-zisk run --release -i custom_input.bin
+   ```
+
+#### Expected Results
+
+For n=20, the 20th Fibonacci number is 6765:
+
+* Output\[0]: 6765 (low 32 bits)
+* Output\[1]: 0 (high 32 bits)
+* Output\[2-7]: 0
+
+For n=50, the 50th Fibonacci number is 12586269025:
+
+* Output\[0]: 3832890881 (low 32 bits)
+* Output\[1]: 2 (high 32 bits)
+* Output\[2-7]: 0
+
+### Performance Considerations
+
+* The iterative approach is more efficient than recursive implementation
+* Large values of `n` will require more computation steps
+* For very large `n` values, consider using the `--max-steps` flag when running
+
+### Generate Proof
+
+Follow the standard ZisK proof generation process:
+
+1. **Program setup:**
+   ```bash
+   cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/fibonacci -k $HOME/.zisk/provingKey
+   ```
+
+2. **Verify constraints:**
+   ```bash
+   cargo-zisk verify-constraints -e target/riscv64ima-zisk-zkvm-elf/release/fibonacci -i build/input.bin
+   ```
+
+3. **Generate proof:**
+   ```bash
+   cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/fibonacci -i build/input.bin -o proof -a -y
+   ```
+
+This example provides a solid foundation for understanding ZisK program structure and demonstrates efficient iterative computation with proper input/output handling.
+
+
+## Keccak Example
+
+This example demonstrates how to compute Keccak-256 hashes using ZisK. The program takes a number `n` as input and performs Keccak-256 hashing `n` times sequentially, where each iteration hashes the result of the previous iteration.
+
+### Overview
+
+Keccak-256 is a cryptographic hash function that is part of the SHA-3 family. It's widely used in blockchain applications, particularly in Ethereum for generating addresses and transaction hashes.
+
+This example showcases:
+
+* Reading input data from ZisK
+* Sequential cryptographic hashing operations
+* Using the `tiny-keccak` crate for Keccak-256 computation
+* Outputting hash results as multiple 32-bit values
+* Iterative computation patterns in ZisK
+
+### Program Code
+
+#### `main.rs`
+
+```rust
+// This example program takes a number `n` as input and computes the Keccak-256 hash `n` times sequentially.
+
+// Mark the main function as the entry point for ZisK
+#![no_main]
+ziskos::entrypoint!(main);
+
+use byteorder::ByteOrder;
+use std::convert::TryInto;
+use tiny_keccak::{Hasher, Keccak};
+use ziskos::{read_input, set_output};
+
+fn main() {
+    // Read the input data as a byte array from ziskos
+    let input: Vec<u8> = read_input();
+
+    // Convert the input data to a u64 integer
+    let n: u64 = match input.try_into() {
+        Ok(input_bytes) => u64::from_le_bytes(input_bytes),
+        Err(input) => panic!(
+            "Invalid input length. Expected 8 bytes, got {}",
+            input.len()
+        ),
+    };
+
+    let mut hash = [0u8; 32];
+
+    // Compute Keccak-256 hashing 'n' times
+    for _ in 0..n {
+        let mut hasher = Keccak::v256();
+        hasher.update(&hash);
+        hasher.finalize(&mut hash);
+    }
+
+    // Split 'hash' value into chunks of 32 bits and write them to ziskos output
+    for i in 0..8 {
+        let val = byteorder::BigEndian::read_u32(&mut hash[i * 4..i * 4 + 4]);
+        set_output(i, val);
+    }
+}
+```
+
+#### `Cargo.toml`
+
+```toml
+[package]
+name = "keccak"
+version = "0.1.0"
+edition = "2021"
+default-run = "keccak"
+
+[dependencies]
+byteorder = "1.5.0"
+tiny-keccak = { version = "2.0.0", features = ["keccak"] }
+ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
+```
+
+#### `build.rs`
+
+The `build.rs` script automatically generates the input file with a default value:
+
+```rust
+use std::fs::{self, File};
+use std::io::{self, Write};
+use std::path::Path;
+
+// Define constants for the directory and input file name
+const OUTPUT_DIR: &str = "build/";
+const FILE_NAME: &str = "input.bin";
+
+fn main() -> io::Result<()> {
+    let n: u64 = 20;
+
+    // Ensure the output directory exists
+    let output_dir = Path::new(OUTPUT_DIR);
+    if !output_dir.exists() {
+        // Create the directory and any necessary parent directories
+        fs::create_dir_all(output_dir)?; 
+    }
+
+    // Create the file and write the 'n' value in little-endian format
+    let file_path = output_dir.join(FILE_NAME);
+    let mut file = File::create(&file_path)?;
+    file.write_all(&n.to_le_bytes())?; 
+
+    Ok(())
+}
+```
+
+### Key Features
+
+#### Input Handling
+
+* Reads an 8-byte input representing a `u64` value for the number of iterations `n`
+* Uses little-endian byte order for input parsing
+* Includes error handling for invalid input lengths
+
+#### Keccak-256 Computation
+
+* Uses the `tiny-keccak` crate for efficient Keccak-256 hashing
+* Performs sequential hashing where each iteration uses the previous hash as input
+* Starts with an initial hash of all zeros (32 bytes)
+* Each iteration creates a new hasher instance for clean computation
+
+#### Hash Chain Process
+
+1. Initialize with a 32-byte array of zeros
+2. For each iteration:
+   * Create a new Keccak-256 hasher
+   * Update the hasher with the current hash value
+   * Finalize to get the new hash
+3. After `n` iterations, output the final hash
+
+#### Output Format
+
+* Splits the 256-bit (32-byte) hash into eight 32-bit chunks
+* Uses big-endian byte order for output (standard for hash representations)
+* Sets each chunk to outputs\[0] through outputs\[7]
+
+### Running the Example
+
+#### Build and Execute
+
+1. **Build the program:**
+   ```bash
+   cargo-zisk build --release
+   ```
+
+2. **Run with the default input (n=20):**
+   ```bash
+   cargo-zisk run --release -i build/input.bin
+   ```
+
+3. **Create custom input:**
+   ```bash
+   # Create input for n=5
+   python3 -c "import struct; open('custom_input.bin', 'wb').write(struct.pack('<Q', 5))"
+
+   # Run with custom input
+   cargo-zisk run --release -i custom_input.bin
+   ```
+
+#### Expected Results
+
+The output will be eight 32-bit values representing the final Keccak-256 hash after `n` iterations. For example:
+
+* **n=1**: Keccak-256 of 32 zero bytes
+* **n=2**: Keccak-256 of the result from n=1
+* **n=20**: Keccak-256 applied 20 times sequentially
+
+Each run will produce different hash values due to the iterative nature of the computation.
+
+### Use Cases
+
+This example is particularly useful for:
+
+#### Blockchain Applications
+
+* Transaction hash computation
+* Block hash calculations
+* Merkle tree construction
+* Address generation
+
+#### Proof of Work Simulations
+
+* Demonstrating iterative hashing patterns
+* Mining algorithm prototypes
+* Hash-based puzzles
+
+#### Cryptographic Research
+
+* Hash chain analysis
+* Performance benchmarking of cryptographic operations
+* Side-channel analysis in controlled environments
+
+### Performance Considerations
+
+#### Computational Complexity
+
+* Time complexity: O(n) where n is the number of iterations
+* Each Keccak-256 operation has fixed computational cost
+* Memory usage remains constant regardless of iteration count
+
+#### ZisK-Specific Optimizations
+
+* The `tiny-keccak` crate is optimized for performance
+* Sequential hashing allows for predictable execution patterns
+* Large values of `n` may require increasing the `--max-steps` parameter
+
+#### Scaling Considerations
+
+```bash
+# For large iteration counts, increase max steps
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/keccak -i build/input.bin -n 50000000
+```
+
+### Generate Proof
+
+Follow the standard ZisK proof generation process:
+
+1. **Program setup:**
+   ```bash
+   cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/keccak -k $HOME/.zisk/provingKey
+   ```
+
+2. **Verify constraints:**
+   ```bash
+   cargo-zisk verify-constraints -e target/riscv64ima-zisk-zkvm-elf/release/keccak -i build/input.bin
+   ```
+
+3. **Generate proof:**
+   ```bash
+   cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/keccak -i build/input.bin -o proof -a -y
+   ```
+
+### Advanced Usage
+
+#### Custom Input Generation
+
+Create more sophisticated input files for testing:
+
+```python
+import struct
+
+def create_keccak_input(n, filename):
+    """Create binary input file for keccak example"""
+    with open(filename, 'wb') as f:
+        f.write(struct.pack('<Q', n))
+
+# Create inputs for different iteration counts
+create_keccak_input(1, 'input_1.bin')      # Single hash
+create_keccak_input(100, 'input_100.bin')  # 100 iterations
+create_keccak_input(1000, 'input_1k.bin')  # 1000 iterations
+```
+
+#### Verification of Results
+
+You can verify the results by running equivalent computations in other environments:
+
+```python
+from Crypto.Hash import keccak
+
+def verify_keccak_chain(n):
+    """Verify the Keccak chain computation"""
+    hash_val = b'\x00' * 32  # Start with 32 zero bytes
+    
+    for _ in range(n):
+        hasher = keccak.new(digest_bits=256)
+        hasher.update(hash_val)
+        hash_val = hasher.digest()
+    
+    # Convert to 32-bit chunks (big-endian)
+    chunks = []
+    for i in range(0, 32, 4):
+        chunk = int.from_bytes(hash_val[i:i+4], 'big')
+        chunks.append(chunk)
+    
+    return chunks
+
+# Verify results
+result = verify_keccak_chain(20)
+print("Expected output chunks:", result)
+```
+
+This example demonstrates the power of ZisK for cryptographic computations and provides a foundation for more complex blockchain-related zero-knowledge applications.
+
+
+## ZisK Overview
+
+ZisK is a high-performance zero-knowledge virtual machine (zkVM) designed to generate zero-knowledge proofs of arbitrary program execution. It enables developers to prove the correctness of computations without revealing their internal state. ZisK abstracts the complexities of cryptographic operations by providing an optimized toolstack that minimizes computational overhead, making zero-knowledge technology accessible to developers.
+
+Key features of ZisK include:
+
+* **High-performance architecture** optimized for low-latency proof generation
+* **Rust-based zkVM** with future support for additional languages
+* **No recompilation required** across different programs
+* **Standardized prover interface** (JSON-RPC, GRPC, CLI)
+* **Flexible integration** as standalone service or library
+* **Fully open-source**, backed by Polygon zkEVM and Plonky3 technology
+
+ZisK converts RISC-V programs into provable form through a sophisticated pipeline involving emulation, witness generation, and constraint satisfaction.
+
+### System Architecture Overview
+
+ZisK consists of several interconnected components that work together to convert programs into provable form, execute them, generate witnesses, and create zero-knowledge proofs.
+
+![ZisK System Architecture](/zisk-system.png)
+
+#### High-Level System Architecture
+
+The ZisK system is organized into several key areas:
+
+* **Infrastructure**: Core VM system and development toolchain
+* **Input Processing**: RISC-V ELF files and transpilation
+* **Specialized State Machines**: Parallel processing of different operation types
+* **Witness Generation**: Coordination and AIR instance creation
+* **Core VM System**: Fundamental execution and constraint handling
+
+#### Core Components
+
+| Component    | Package      | Purpose                                                                                                     |
+| ------------ | ------------ | ----------------------------------------------------------------------------------------------------------- |
+| zisk-core    | zisk-core    | Fundamental definitions, types, and operations. Contains ZiskRom, ZiskInst, and instruction set definitions |
+| ziskemu      | ziskemu      | RISC-V/ZisK emulator that executes programs and generates execution traces                                  |
+| zisk-witness | zisk-witness | Witness generation library that coordinates between emulator and state machines                             |
+| zisk-pil     | zisk-pil     | Polynomial Identity Language definitions for mathematical constraints                                       |
+| executor     | executor     | Execution orchestrator that manages the overall proof generation process                                    |
+| data-bus     | data-bus     | Inter-component communication system for state machine coordination                                         |
+| zisk-common  | zisk-common  | Shared utilities and common functionality across components                                                 |
+
+#### State Machine Packages
+
+| State Machine | Package   | Operations Handled                                    |
+| ------------- | --------- | ----------------------------------------------------- |
+| Main SM       | sm-main   | Execution coordination, register traces, memory steps |
+| Binary SM     | sm-binary | Binary operations (AND, OR, XOR, shifts)              |
+| Arithmetic SM | sm-arith  | Arithmetic operations (add, sub, mul, div)            |
+| Memory SM     | sm-mem    | Memory access operations and constraints              |
+| ROM SM        | sm-rom    | Read-only memory access patterns                      |
+
+#### Key Dependencies
+
+The witness computation system integrates multiple specialized components:
+
+* **Precompiles**: precomp-keccakf, precomp-sha256f, precomp-arith-eq for cryptographic operations
+* **External Systems**: proofman-common, proofman-util, proofman-macros for proof management
+* **Field Arithmetic**: p3-field, p3-goldilocks for finite field operations
+
+### Execution Pipeline
+
+ZisK transforms RISC-V programs into verifiable zero-knowledge proofs through a multi-stage pipeline:
+
+#### Execution Stages
+
+1. **Program Conversion**: RISC-V ELF files are converted to ZiskRom format using the riscv2zisk transpiler
+2. **Emulation**: The ziskemu emulator executes the program, generating detailed EmuTrace objects
+3. **Witness Coordination**: The zisk-witness library processes traces through the sm-main coordinator
+4. **Parallel Processing**: Specialized state machines handle different operation types simultaneously
+5. **AIR Generation**: State machines produce Algebraic Intermediate Representation instances
+6. **Proof Creation**: The proofman system converts AIR instances into zero-knowledge proofs
+
+The data-bus component enables efficient communication between state machines during witness generation.
+
+### State Machine Architecture
+
+ZisK uses a system of interconnected state machines to process different aspects of program execution. These state machines collectively ensure that all operations are properly constrained and verifiable.
+
+#### Main State Machine (sm-main)
+
+The sm-main package implements the central coordinator for witness generation. It processes execution traces from ziskemu and orchestrates interactions with specialized state machines.
+
+Key dependencies:
+
+* **ziskemu**: Receives execution traces
+* **zisk-core**: Uses core types and definitions
+* **zisk-pil**: Applies constraint definitions
+* **sm-mem**: Coordinates memory operations
+* **asm-runner**: Handles assembly execution
+
+The main state machine divides execution traces into segments for efficient parallel processing and manages the overall witness generation workflow.
+
+#### Specialized State Machines
+
+##### Binary Operations (sm-binary)
+
+Handles bitwise and logical operations through multiple sub-components:
+
+* Binary basic operations (AND, OR, XOR)
+* Binary extension operations (shifts, rotations)
+* Lookup tables for operation verification
+
+##### Arithmetic Operations (sm-arith)
+
+Processes mathematical computations including:
+
+* Addition and subtraction with overflow handling
+* Multiplication and division operations
+* Range checks and arithmetic constraints
+
+##### Memory Management (sm-mem)
+
+Ensures memory operation correctness through:
+
+* Load and store operation tracking
+* Memory consistency verification
+* Address range validation
+
+##### ROM Access (sm-rom)
+
+Manages program memory access including:
+
+* Instruction fetch operations
+* Program counter management
+* Read-only memory constraints
+
+#### Communication and Coordination
+
+All state machines communicate through the data-bus component, which provides:
+
+* **Operation Bus**: Central message passing system with OPERATION\_BUS\_ID
+* **Parallel Processing**: Enables concurrent state machine execution
+* **Constraint Synchronization**: Coordinates PIL constraint evaluation
+
+The zisk-witness library serves as the top-level orchestrator, managing the flow from emulation traces to final AIR instances.
+
+### Developer Workflow
+
+Developers interact with ZisK through a structured workflow that abstracts the complexity of zero-knowledge proof generation:
+
+#### Core Development Tools
+
+| Tool       | Purpose                                  | Package              |
+| ---------- | ---------------------------------------- | -------------------- |
+| ziskup     | Toolchain installer and manager          | Standalone installer |
+| cargo-zisk | Command-line interface for ZisK projects | cli package          |
+| ziskemu    | Emulator for testing and development     | emulator package     |
+
+#### Testing and Verification
+
+ZisK includes comprehensive testing through the Riscof framework for RISC-V compliance:
+
+1. **Test Generation**: Docker-based riscof test generation
+2. **ELF Conversion**: Convert test ELF files to ZisK ROMs
+3. **Execution**: Run tests through ziskemu
+4. **Verification**: Compare output against reference RISC-V implementation
+
+The testing process uses the ziskemu binary and specialized riscof configuration for automated compliance verification.
+
+### Development Status
+
+ZisK is currently under active development and is not yet ready for production use. The system is being refined and expanded to support more features and optimize performance.
+
+Key points about the current status:
+
+* The software is not fully tested
+* It is not recommended for production environments
+* Additional functionalities and optimizations are planned for future releases
+* Future updates may introduce breaking changes
+
+For the most up-to-date information on ZisK's development status, refer to the official repository and documentation.
+
+
+
+
+## Procotol Overview
+
+
+
+
+## Procotol Overview
+
+
+## Procotol Overview
+
+
+## Procotol Overview
+
