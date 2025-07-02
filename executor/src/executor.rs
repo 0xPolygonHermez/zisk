@@ -241,7 +241,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     fn execute_with_assembly(
         &self,
         input_data_path: Option<PathBuf>,
-    ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<Vec<Plan>>) {
+    ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<AsmRunnerMO>) {
         let input_data_path_cloned = input_data_path.clone();
         let (world_rank, local_rank, base_port) =
             (self.world_rank, self.local_rank, self.base_port);
@@ -287,12 +287,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         self.execution_result.lock().unwrap().executed_steps = steps;
 
         // Wait for the memory operations thread to finish
-        let plans =
+        let asm_runner_mo =
             handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
 
         self.rom_sm.as_ref().unwrap().set_asm_runner_handler(handle_rh);
 
-        (min_traces, main_count, secn_count, Some(plans))
+        (min_traces, main_count, secn_count, Some(asm_runner_mo))
     }
 
     fn run_mt_assembly(
@@ -871,7 +871,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
         assert_eq!(self.asm_runner_path.is_some(), self.asm_rom_path.is_some());
 
-        let (min_traces, main_count, secn_count, mem_plans) = if self.asm_runner_path.is_some() {
+        let (min_traces, main_count, secn_count, asm_runner_mo) = if self.asm_runner_path.is_some()
+        {
             // If we are executing in assembly mode
             self.execute_with_assembly(input_data_path)
         } else {
@@ -893,8 +894,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
         let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
 
-        if let Some(mem_plans) = mem_plans {
-            secn_planning[0].extend(mem_plans);
+        if let Some(asm_runner_mo) = asm_runner_mo {
+            secn_planning[0].extend(asm_runner_mo.plans);
         }
 
         timer_stop_and_log_info!(PLAN);

@@ -5,39 +5,32 @@ use named_sem::NamedSemaphore;
 use zisk_common::Plan;
 
 use std::ffi::c_void;
-use std::fmt::Debug;
 use std::path::Path;
 use std::sync::atomic::{fence, Ordering};
 use std::time::Duration;
 use std::{fs, ptr};
 use tracing::error;
 
-use crate::{shmem_utils, AsmInputC2, AsmMOChunk, AsmMOHeader, AsmRunError, AsmServices};
+use crate::{
+    shmem_utils, AsmInputC2, AsmMOChunk, AsmMOHeader, AsmRunError, AsmServices, AsmSharedMemory,
+    AsmSharedMemoryMode,
+};
 use mem_planner_cpp::MemPlanner;
 
 use anyhow::{Context, Result};
 
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
-#[derive(Debug)]
 pub struct AsmRunnerMO {
-    mapped_ptr: *mut c_void,
-    total_size: u64,
-}
-
-unsafe impl Send for AsmRunnerMO {}
-unsafe impl Sync for AsmRunnerMO {}
-
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-impl Drop for AsmRunnerMO {
-    fn drop(&mut self) {
-        unsafe {
-            shmem_utils::unmap(self.mapped_ptr, self.total_size as usize);
-        }
-    }
+    asm_shared_memory: AsmSharedMemory<AsmMOHeader>,
+    pub plans: Vec<Plan>,
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerMO {
+    pub fn new(asm_shared_memory: AsmSharedMemory<AsmMOHeader>, plans: Vec<Plan>) -> Self {
+        Self { asm_shared_memory, plans }
+    }
+
     pub fn run(
         inputs_path: &Path,
         max_steps: u64,
@@ -46,7 +39,7 @@ impl AsmRunnerMO {
         local_rank: i32,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
-    ) -> Result<Vec<Plan>> {
+    ) -> Result<Self> {
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
         let prefix = AsmServices::shmem_prefix(&crate::AsmService::MO, base_port, local_rank);
@@ -65,13 +58,16 @@ impl AsmRunnerMO {
             asm_services.send_memory_ops_request(max_steps, chunk_size)
         });
 
-        // Read the header data
-        let header_ptr =
-            Self::get_output_ptr(&shmem_output_name, unlock_mapped_memory) as *const AsmMOHeader;
-        let header = unsafe { std::ptr::read(header_ptr) };
+        // Open and map the shared memory where the assembly emulator writes its output.
+        // The shared memory is created by the C++ assembly emulator.
+        let asm_shared_memory = AsmSharedMemory::<AsmMOHeader>::open_and_map(
+            &shmem_output_name,
+            AsmSharedMemoryMode::ReadOnly,
+            unlock_mapped_memory,
+        )?;
 
-        // Skips the header size to get the data pointer.
-        let mut data_ptr = unsafe { header_ptr.add(1) } as *const AsmMOChunk;
+        // Get the pointer to the data in the shared memory.
+        let mut data_ptr = asm_shared_memory.data_ptr() as *const AsmMOChunk;
 
         // Initialize C++ memory operations trace
         let mem_planner = MemPlanner::new();
@@ -105,8 +101,7 @@ impl AsmRunnerMO {
                 Err(e) => {
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
-                    let header = unsafe { std::ptr::read(header_ptr) };
-                    break header.exit_code;
+                    break asm_shared_memory.header().exit_code;
                 }
             }
         };
@@ -130,14 +125,7 @@ impl AsmRunnerMO {
         mem_planner.wait();
         let plans = mem_planner.collect_plans();
 
-        // let (mem_segments, mem_align_segments) = mem_planner.mem_segments();
-
-        unsafe {
-            shmem_utils::unmap(header_ptr as *mut c_void, header.mt_allocated_size as usize);
-        }
-
-        // Ok((mem_segments, mem_align_segments))
-        Ok(plans)
+        Ok(AsmRunnerMO::new(asm_shared_memory, plans))
     }
 
     fn write_input(inputs_path: &Path, shmem_input_name: &str, unlock_mapped_memory: bool) {
@@ -166,32 +154,6 @@ impl AsmRunnerMO {
             shmem_utils::unmap(ptr, shmem_input_size);
             close(fd);
         }
-    }
-
-    fn get_output_ptr(
-        shmem_output_name: &str,
-        unlock_mapped_memory: bool,
-    ) -> *mut std::ffi::c_void {
-        let fd = shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR);
-        let header_size = size_of::<AsmMOHeader>();
-        let temp = shmem_utils::map(
-            fd,
-            header_size,
-            PROT_READ,
-            unlock_mapped_memory,
-            "MO header temp map",
-        );
-        let header = unsafe { (temp as *const AsmMOHeader).read() };
-        unsafe {
-            shmem_utils::unmap(temp, header_size);
-        }
-        shmem_utils::map(
-            fd,
-            header.mt_allocated_size as usize,
-            PROT_READ,
-            unlock_mapped_memory,
-            shmem_output_name,
-        )
     }
 }
 

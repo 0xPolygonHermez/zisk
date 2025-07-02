@@ -1,16 +1,11 @@
-use libc::{close, shm_unlink, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
+use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
 use tracing::error;
 
-use std::{
-    ffi::{c_void, CString},
-    fs,
-    path::Path,
-    ptr,
-    time::Duration,
-};
+use std::{fs, path::Path, ptr, time::Duration};
 
 use crate::{
-    shmem_utils, AsmInputC2, AsmMTHeader, AsmRHData, AsmRHHeader, AsmRunError, AsmServices,
+    shmem_utils, AsmInputC2, AsmRHData, AsmRHHeader, AsmRunError, AsmServices, AsmSharedMemory,
+    AsmSharedMemoryMode,
 };
 use anyhow::{Context, Result};
 use named_sem::NamedSemaphore;
@@ -18,47 +13,25 @@ use std::sync::atomic::{fence, Ordering};
 
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
 pub struct AsmRunnerRH {
-    shmem_output_name: String,
-    mapped_ptr: *mut c_void,
+    asm_shared_memory: AsmSharedMemory<AsmRHHeader>,
     pub asm_rowh_output: AsmRHData,
 }
-
-unsafe impl Send for AsmRunnerRH {}
-unsafe impl Sync for AsmRunnerRH {}
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl Drop for AsmRunnerRH {
     fn drop(&mut self) {
-        unsafe {
-            // Forget all mem_reads Vec<u64> before unmapping
-            std::mem::forget(std::mem::take(&mut self.asm_rowh_output));
-
-            // Unmap shared memory
-            libc::munmap(self.mapped_ptr, self.total_size());
-
-            let shmem_output_name =
-                CString::new(self.shmem_output_name.clone()).expect("CString::new failed");
-            let shmem_output_name_ptr = shmem_output_name.as_ptr();
-
-            shm_unlink(shmem_output_name_ptr);
-        }
+        // Forget all mem_reads Vec<u64> before unmapping
+        std::mem::forget(std::mem::take(&mut self.asm_rowh_output));
     }
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerRH {
     pub fn new(
-        shmem_output_name: String,
-        mapped_ptr: *mut c_void,
+        asm_shared_memory: AsmSharedMemory<AsmRHHeader>,
         asm_rowh_output: AsmRHData,
     ) -> Self {
-        AsmRunnerRH { shmem_output_name, mapped_ptr, asm_rowh_output }
-    }
-
-    fn total_size(&self) -> usize {
-        std::mem::size_of_val(&self.asm_rowh_output.bios_inst_count)
-            + std::mem::size_of_val(&self.asm_rowh_output.prog_inst_count)
-            + std::mem::size_of::<AsmRHHeader>()
+        AsmRunnerRH { asm_shared_memory, asm_rowh_output }
     }
 
     pub fn run(
@@ -96,10 +69,15 @@ impl AsmRunnerRH {
             }
         }
 
-        let (mapped_ptr, asm_rowh_output) =
-            Self::map_output(shmem_output_name.clone(), unlock_mapped_memory);
+        let asm_shared_memory = AsmSharedMemory::<AsmRHHeader>::open_and_map(
+            &shmem_output_name,
+            AsmSharedMemoryMode::ReadOnly,
+            unlock_mapped_memory,
+        )?;
 
-        Ok(AsmRunnerRH::new(shmem_output_name, mapped_ptr, asm_rowh_output))
+        let asm_rowh_output = AsmRHData::from_shared_memory(&asm_shared_memory);
+
+        Ok(AsmRunnerRH::new(asm_shared_memory, asm_rowh_output))
     }
 
     fn write_input(inputs_path: &Path, shmem_input_name: &str, unlock_mapped_memory: bool) {
@@ -127,48 +105,6 @@ impl AsmRunnerRH {
             shmem_utils::unmap(ptr, shmem_input_size);
             close(fd);
         }
-    }
-
-    fn get_output_ptr(
-        shmem_output_name: &str,
-        unlock_mapped_memory: bool,
-    ) -> *mut std::ffi::c_void {
-        let fd = shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR);
-        let header_size = size_of::<AsmMTHeader>();
-        let temp = shmem_utils::map(
-            fd,
-            header_size,
-            PROT_READ,
-            unlock_mapped_memory,
-            "RH header temp map",
-        );
-        let header = unsafe { (temp as *const AsmMTHeader).read() };
-        unsafe {
-            shmem_utils::unmap(temp, header_size);
-        }
-        shmem_utils::map(
-            fd,
-            header.mt_allocated_size as usize,
-            PROT_READ,
-            unlock_mapped_memory,
-            shmem_output_name,
-        )
-    }
-
-    fn map_output(
-        shmem_output_name: String,
-        unlock_mapped_memory: bool,
-    ) -> (*mut c_void, AsmRHData) {
-        // Read the header data
-        let header_ptr =
-            Self::get_output_ptr(&shmem_output_name, unlock_mapped_memory) as *const AsmRHHeader;
-
-        let header = AsmRHHeader::from_ptr(header_ptr as *mut c_void);
-
-        // Skips the header size to get the data pointer.
-        let mut data_ptr = unsafe { header_ptr.add(1) } as *mut c_void;
-
-        (data_ptr, AsmRHData::from_ptr(&mut data_ptr, header))
     }
 }
 

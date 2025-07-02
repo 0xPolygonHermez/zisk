@@ -4,8 +4,6 @@ use named_sem::NamedSemaphore;
 use rayon::ThreadPoolBuilder;
 use zisk_common::{ChunkId, EmuTrace};
 
-use std::ffi::c_void;
-use std::fmt::Debug;
 use std::path::Path;
 use std::sync::atomic::{fence, Ordering};
 use std::sync::{mpsc, Arc};
@@ -14,7 +12,10 @@ use std::{fs, ptr};
 
 use tracing::{error, info};
 
-use crate::{shmem_utils, AsmInputC2, AsmMTChunk, AsmMTHeader, AsmRunError, AsmServices};
+use crate::{
+    shmem_utils, AsmInputC2, AsmMTChunk, AsmMTHeader, AsmRunError, AsmServices, AsmSharedMemory,
+    AsmSharedMemoryMode,
+};
 
 use anyhow::{Context, Result};
 
@@ -25,7 +26,6 @@ pub trait Task: Send + Sync + 'static {
 
 pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, Arc<EmuTrace>) -> T + Send + Sync + 'a>;
 
-#[derive(Debug)]
 pub enum MinimalTraces {
     None,
     EmuTrace(Vec<EmuTrace>),
@@ -33,37 +33,27 @@ pub enum MinimalTraces {
 }
 
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
-#[derive(Debug)]
 pub struct AsmRunnerMT {
-    mapped_ptr: *mut c_void,
+    asm_shared_memory: AsmSharedMemory<AsmMTHeader>,
     pub vec_chunks: Vec<EmuTrace>,
 }
-
-unsafe impl Send for AsmRunnerMT {}
-unsafe impl Sync for AsmRunnerMT {}
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl Drop for AsmRunnerMT {
     fn drop(&mut self) {
         for chunk in &mut self.vec_chunks {
+            // Ensure that the memory reads are not dropped when the chunk is dropped
+            // This is necessary because the memory reads are stored in a Vec<u64> which is
+            // allocated in the shared memory and we need to avoid double freeing it.
             std::mem::forget(std::mem::take(&mut chunk.mem_reads));
-        }
-        let total_size = self.total_size();
-        unsafe {
-            shmem_utils::unmap(self.mapped_ptr, total_size);
         }
     }
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerMT {
-    pub fn new(mapped_ptr: *mut std::ffi::c_void, vec_chunks: Vec<EmuTrace>) -> Self {
-        Self { mapped_ptr, vec_chunks }
-    }
-
-    fn total_size(&self) -> usize {
-        self.vec_chunks.iter().map(|chunk| chunk.mem_reads.len() * size_of::<u64>()).sum::<usize>()
-            + size_of::<AsmMTHeader>()
+    pub fn new(asm_shared_memory: AsmSharedMemory<AsmMTHeader>, vec_chunks: Vec<EmuTrace>) -> Self {
+        Self { asm_shared_memory, vec_chunks }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -102,14 +92,16 @@ impl AsmRunnerMT {
 
         let mut chunk_id = ChunkId(0);
 
-        // Read the header data
-        let header_ptr =
-            Self::get_output_ptr(&shmem_output_name, unlock_mapped_memory) as *const AsmMTHeader;
+        // Open and map the shared memory where the assembly emulator writes its output.
+        // The shared memory is created by the C++ assembly emulator.
+        let asm_shared_memory = AsmSharedMemory::<AsmMTHeader>::open_and_map(
+            &shmem_output_name,
+            AsmSharedMemoryMode::ReadOnly,
+            unlock_mapped_memory,
+        )?;
 
-        // Skips the header size to get the data pointer.
-        let data_ptr = unsafe { header_ptr.add(1) } as *const u64;
-        // Skips the first u64 which is used for mem_reads_size.
-        let mut data_ptr = unsafe { data_ptr.add(1) as *const AsmMTChunk };
+        // Get the pointer to the data in the shared memory.
+        let mut data_ptr = asm_shared_memory.data_ptr() as *const AsmMTChunk;
 
         let mut emu_traces = Vec::new();
         let exit_code = loop {
@@ -149,8 +141,7 @@ impl AsmRunnerMT {
                         break 1;
                     }
 
-                    let header = unsafe { std::ptr::read(header_ptr) };
-                    break header.exit_code;
+                    break asm_shared_memory.header().exit_code;
                 }
             }
         };
@@ -184,7 +175,7 @@ impl AsmRunnerMT {
             .map(|arc| Arc::try_unwrap(arc).map_err(|_| AsmRunError::ArcUnwrap))
             .collect::<std::result::Result<_, _>>()?;
 
-        Ok((AsmRunnerMT::new(header_ptr as *mut c_void, emu_traces), tasks))
+        Ok((AsmRunnerMT::new(asm_shared_memory, emu_traces), tasks))
     }
 
     fn write_input(inputs_path: &Path, shmem_input_name: &str, unlock_mapped_memory: bool) {
@@ -212,32 +203,6 @@ impl AsmRunnerMT {
             shmem_utils::unmap(ptr, shmem_input_size);
             close(fd);
         }
-    }
-
-    fn get_output_ptr(
-        shmem_output_name: &str,
-        unlock_mapped_memory: bool,
-    ) -> *mut std::ffi::c_void {
-        let fd = shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR);
-        let header_size = size_of::<AsmMTHeader>();
-        let temp = shmem_utils::map(
-            fd,
-            header_size,
-            PROT_READ,
-            unlock_mapped_memory,
-            "MT header temp map",
-        );
-        let header = unsafe { (temp as *const AsmMTHeader).read() };
-        unsafe {
-            shmem_utils::unmap(temp, header_size);
-        }
-        shmem_utils::map(
-            fd,
-            header.mt_allocated_size as usize,
-            PROT_READ,
-            unlock_mapped_memory,
-            shmem_output_name,
-        )
     }
 }
 
