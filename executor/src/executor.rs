@@ -274,7 +274,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     world_rank,
                     local_rank,
                     base_port,
-                    map_locked,
+                    unlock_mapped_memory,
                 )
                 .expect("Error during ROM Histogram execution")
             }))
