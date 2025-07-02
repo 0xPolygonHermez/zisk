@@ -164,7 +164,7 @@ impl ZiskService {
         let world_rank = config.asm_runner_options.world_rank;
         let local_rank = config.asm_runner_options.local_rank;
         let base_port = config.asm_runner_options.base_port;
-        let map_locked = config.asm_runner_options.map_locked;
+        let unlock_mapped_memory = config.asm_runner_options.unlock_mapped_memory;
 
         let asm_services = AsmServices::new(world_rank, local_rank, base_port);
         asm_services
@@ -185,7 +185,7 @@ impl ZiskService {
             Some(world_rank),
             Some(local_rank),
             base_port,
-            map_locked,
+            unlock_mapped_memory,
         )
         .expect("Failed to initialize witness library");
 

@@ -39,6 +39,7 @@ use zisk_common::{
 use zisk_common::{ChunkId, PayloadType};
 use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
 
+use std::time::Instant;
 use std::{
     collections::HashMap,
     fmt::Debug,
@@ -69,8 +70,15 @@ enum MinimalTraceExecutionMode {
 
 #[derive(Debug, Clone)]
 pub struct Stats {
-    pub collect_time: u64,
-    pub witness_time: u64,
+    /// Collect start time
+    pub collect_start_time: Instant,
+    /// Collect duration in microseconds
+    pub collect_duration: u64,
+    /// Witness start time
+    pub witness_start_time: Instant,
+    /// Witness duration in microseconds
+    pub witness_duration: u64,
+    /// Number of chunks
     pub num_chunks: usize,
 }
 
@@ -118,7 +126,8 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
 
     /// Collectors by instance, storing statistics and collectors for each instance.
     #[allow(clippy::type_complexity)]
-    collectors_by_instance: RwLock<HashMap<usize, (Stats, Vec<(usize, Box<dyn BusDevice<u64>>)>)>>,
+    collectors_by_instance:
+        RwLock<HashMap<usize, (Option<Stats>, Vec<(usize, Box<dyn BusDevice<u64>>)>)>>,
 
     /// Statistics collected during the execution, including time taken for collection and witness computation.
     stats: Mutex<Vec<(usize, usize, Stats)>>,
@@ -134,9 +143,9 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     /// Optional baseline port to communicate with assembly microservices.
     base_port: Option<u16>,
 
-    /// Map locked flag
-    /// This is used to lock the memory map for the ROM file.
-    map_locked: bool,
+    /// Map unlocked flag
+    /// This is used to unlock the memory map for the ROM file.
+    unlock_mapped_memory: bool,
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
@@ -163,7 +172,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         world_rank: i32,
         local_rank: i32,
         base_port: Option<u16>,
-        map_locked: bool,
+        unlock_mapped_memory: bool,
     ) -> Self {
         Self {
             rom_path,
@@ -185,7 +194,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             world_rank,
             local_rank,
             base_port,
-            map_locked,
+            unlock_mapped_memory,
         }
     }
 
@@ -237,7 +246,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let (world_rank, local_rank, base_port) =
             (self.world_rank, self.local_rank, self.base_port);
         let chunk_size = self.chunk_size;
-        let map_locked = self.map_locked;
+        let unlock_mapped_memory = self.unlock_mapped_memory;
         let handle_mo = std::thread::spawn(move || {
             AsmRunnerMO::run(
                 input_data_path_cloned.as_ref().unwrap(),
@@ -246,7 +255,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 world_rank,
                 local_rank,
                 base_port,
-                map_locked,
+                unlock_mapped_memory,
             )
             .expect("Error during Assembly Memory Operations execution")
         });
@@ -261,7 +270,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 world_rank,
                 local_rank,
                 base_port,
-                map_locked,
+                unlock_mapped_memory,
             )
             .expect("Error during Assembly Memory Operations execution")
         });
@@ -347,7 +356,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             self.world_rank,
             self.local_rank,
             self.base_port,
-            self.map_locked,
+            self.unlock_mapped_memory,
         )
         .expect("Error during ASM execution");
 
@@ -587,7 +596,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         main_instance: &MainInstance,
         trace_buffer: Vec<F>,
     ) {
-        let witness_start = std::time::Instant::now();
+        #[cfg(feature = "stats")]
+        let witness_start_time = std::time::Instant::now();
 
         let min_traces_guard = self.min_traces.read().unwrap();
         let min_traces = &*min_traces_guard;
@@ -609,14 +619,24 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
 
-        let witness_time = witness_start.elapsed().as_millis() as u64;
-        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(main_instance.ictx.global_id);
+        #[cfg(feature = "stats")]
+        {
+            let witness_duration = witness_start_time.elapsed().as_micros() as u64;
 
-        self.stats.lock().unwrap().push((
-            airgroup_id,
-            air_id,
-            Stats { collect_time: 0, witness_time, num_chunks: 1 },
-        ));
+            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(main_instance.ictx.global_id);
+
+            self.stats.lock().unwrap().push((
+                airgroup_id,
+                air_id,
+                Stats {
+                    collect_start_time: std::time::Instant::now(),
+                    collect_duration: 0,
+                    witness_start_time,
+                    witness_duration,
+                    num_chunks: 1,
+                },
+            ));
+        }
     }
 
     /// computes witness for a secondary state machines instance.
@@ -635,24 +655,30 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         secn_instance: &Box<dyn Instance<F>>,
         trace_buffer: Vec<F>,
     ) {
-        let (mut stats, collectors_by_instance) = self
+        let (mut _stats, collectors_by_instance) = self
             .collectors_by_instance
             .write()
             .unwrap()
             .remove(&global_id)
             .expect("Missing collectors for given global_id");
+        #[cfg(feature = "stats")]
+        let witness_start_time = std::time::Instant::now();
 
-        let witness_start = std::time::Instant::now();
         if let Some(air_instance) =
             secn_instance.compute_witness(pctx, sctx, collectors_by_instance, trace_buffer)
         {
             pctx.add_air_instance(air_instance, global_id);
         }
-        let witness_time = witness_start.elapsed().as_millis() as u64;
-        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
 
-        stats.witness_time = witness_time;
-        self.stats.lock().unwrap().push((airgroup_id, air_id, stats));
+        #[cfg(feature = "stats")]
+        {
+            let witness_duration = witness_start_time.elapsed().as_millis() as u64;
+            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+            let mut stats = _stats.unwrap();
+            stats.witness_start_time = witness_start_time;
+            stats.witness_duration = witness_duration;
+            self.stats.lock().unwrap().push((airgroup_id, air_id, stats));
+        }
     }
 
     /// Expands for a secondary state machines instance.
@@ -664,7 +690,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// * `secn_instance` - Secondary state machine instance to compute witness for
     #[allow(clippy::borrowed_box)]
     fn witness_collect_instances(&self, secn_instances: HashMap<usize, &Box<dyn Instance<F>>>) {
-        let collect_start = std::time::Instant::now();
+        #[cfg(feature = "stats")]
+        let collect_start_time = std::time::Instant::now();
 
         let min_traces = self.min_traces.read().unwrap();
 
@@ -697,10 +724,24 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         // Close the data buses and get for each instance its collectors
         let mut collectors_by_instance = self.close_data_bus_collectors(data_buses);
 
-        let collect_time = collect_start.elapsed().as_millis() as u64;
+        #[cfg(feature = "stats")]
+        let collect_duration = collect_start_time.elapsed().as_millis() as u64;
+
         for global_idx in secn_instances.keys() {
             let collector = collectors_by_instance.remove(global_idx).unwrap_or_default();
-            let stats = Stats { collect_time, witness_time: 0, num_chunks: collector.len() };
+
+            #[cfg(feature = "stats")]
+            let stats = Some(Stats {
+                collect_start_time,
+                collect_duration,
+                witness_start_time: Instant::now(),
+                witness_duration: 0,
+                num_chunks: collector.len(),
+            });
+
+            #[cfg(not(feature = "stats"))]
+            let stats = None;
+
             self.collectors_by_instance.write().unwrap().insert(*global_idx, (stats, collector));
         }
     }
@@ -721,7 +762,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         table_instance: &Box<dyn Instance<F>>,
         trace_buffer: Vec<F>,
     ) {
-        let witness_start = std::time::Instant::now();
+        #[cfg(feature = "stats")]
+        let witness_start_time = std::time::Instant::now();
         assert_eq!(table_instance.instance_type(), InstanceType::Table, "Instance is not a table");
 
         if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![], trace_buffer)
@@ -731,14 +773,23 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             }
         }
 
-        let witness_time = witness_start.elapsed().as_millis() as u64;
-        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+        #[cfg(feature = "stats")]
+        {
+            let witness_duration = witness_start_time.elapsed().as_micros() as u64;
+            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
 
-        self.stats.lock().unwrap().push((
-            airgroup_id,
-            air_id,
-            Stats { collect_time: 0, witness_time, num_chunks: 0 },
-        ));
+            self.stats.lock().unwrap().push((
+                airgroup_id,
+                air_id,
+                Stats {
+                    collect_start_time: Instant::now(),
+                    collect_duration: 0,
+                    witness_start_time,
+                    witness_duration,
+                    num_chunks: 0,
+                },
+            ));
+        }
     }
 
     /// Computes all the chunks to be executed to generate the witness given an instance.

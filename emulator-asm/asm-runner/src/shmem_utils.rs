@@ -11,9 +11,9 @@ pub fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {
     fd
 }
 
-pub fn map(fd: i32, size: usize, prot: i32, map_locked: bool, desc: &str) -> *mut c_void {
+pub fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &str) -> *mut c_void {
     let mut flags = MAP_SHARED;
-    if map_locked {
+    if !unlock_mapped_memory {
         flags |= libc::MAP_LOCKED;
     }
     let mapped = unsafe { mmap(ptr::null_mut(), size, prot, flags, fd, 0) };
