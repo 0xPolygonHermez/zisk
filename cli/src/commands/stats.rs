@@ -521,7 +521,7 @@ impl ZiskStats {
         let mut tasks: Vec<Task> = Vec::new();
 
         println!("stats.len={}", stats.len());
-        for (_i, stat) in stats.iter().enumerate() {
+        for stat in stats.iter() {
             let airgroup_id = stat.0;
             let air_id = stat.1;
             let stat = &stat.2;
