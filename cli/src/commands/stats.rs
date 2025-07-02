@@ -552,11 +552,25 @@ impl ZiskStats {
             }
         }
 
+        // Save to stats.json
+
         // Convert to pretty-printed JSON
         let json = serde_json::to_string_pretty(&tasks).unwrap();
 
         // Write to file
         let _ = fs::write("stats.json", json);
-        tracing::info!("Statistics have been saved to stats.json");
+
+        // Save to stats.csv
+
+        // Create a CSV-formatted string with the tasks data
+        let mut csv = String::new();
+        for task in tasks {
+            csv += &format!("{},{},{},\n", task.name, task.start, task.duration);
+        }
+
+        // Write to file
+        let _ = fs::write("stats.csv", csv);
+
+        tracing::info!("Statistics have been saved to stats.json and stats.csv");
     }
 }
