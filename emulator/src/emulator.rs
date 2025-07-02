@@ -115,7 +115,7 @@ impl ZiskEmulator {
         }
 
         // Create a emulator instance with the Zisk rom
-        let mut emu = Emu::new(rom, options.chunk_size.unwrap());
+        let mut emu = Emu::new(rom, options.chunk_size.unwrap_or(1u64 << 18));
 
         // Get the current time, to be used to calculate the metrics
         let start = Instant::now();

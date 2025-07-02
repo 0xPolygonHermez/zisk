@@ -532,20 +532,20 @@ impl ZiskStats {
             let name = ZiskStats::air_name(airgroup_id, air_id);
             if stat.collect_duration > 0 {
                 let name = name.clone() + "_collect";
-                println!(
-                    "{} num_chunks={} start_time={}, duration={}",
-                    name, stat.num_chunks, collect_start_time, stat.collect_duration
-                );
+                // println!(
+                //     "{} num_chunks={} start_time={}, duration={}",
+                //     name, stat.num_chunks, collect_start_time, stat.collect_duration
+                // );
                 let task =
                     Task { name, start: collect_start_time, duration: stat.collect_duration };
                 tasks.push(task);
             }
             if stat.witness_duration > 0 {
                 let name = name.clone() + "_witness";
-                println!(
-                    "{} num_chunks={}, start_time={}, duration={}",
-                    name, stat.num_chunks, witness_start_time, stat.witness_duration
-                );
+                // println!(
+                //     "{} num_chunks={}, start_time={}, duration={}",
+                //     name, stat.num_chunks, witness_start_time, stat.witness_duration
+                // );
                 let task =
                     Task { name, start: witness_start_time, duration: stat.witness_duration };
                 tasks.push(task);
@@ -557,5 +557,6 @@ impl ZiskStats {
 
         // Write to file
         let _ = fs::write("stats.json", json);
+        tracing::info!("Statistics have been saved to stats.json");
     }
 }
