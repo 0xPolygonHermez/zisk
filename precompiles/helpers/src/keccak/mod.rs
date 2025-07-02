@@ -57,10 +57,10 @@ pub fn keccak(
 
         keccak_f(&mut state);
 
-        #[cfg(debug_assertions)]
-        state.print_circuit_topology();
-
         if get_circuit_topology {
+            #[cfg(debug_assertions)]
+            state.print_circuit_topology();
+
             // The keccakf circuit topology is completely known after a single execution
             return Some(state);
         }
@@ -83,7 +83,12 @@ pub fn keccakf_topology() -> GateState {
 
 #[cfg(test)]
 mod tests {
-    use super::keccak;
+    use super::*;
+
+    #[test]
+    fn test_topology() {
+        let _ = keccakf_topology();
+    }
 
     #[test]
     fn test_empty_input() {
