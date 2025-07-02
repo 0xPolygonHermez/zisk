@@ -521,7 +521,7 @@ impl ZiskStats {
         let mut tasks: Vec<Task> = Vec::new();
 
         println!("stats.len={}", stats.len());
-        for (_i, stat) in stats.iter().enumerate() {
+        for stat in stats.iter() {
             let airgroup_id = stat.0;
             let air_id = stat.1;
             let stat = &stat.2;
@@ -532,30 +532,45 @@ impl ZiskStats {
             let name = ZiskStats::air_name(airgroup_id, air_id);
             if stat.collect_duration > 0 {
                 let name = name.clone() + "_collect";
-                println!(
-                    "{} num_chunks={} start_time={}, duration={}",
-                    name, stat.num_chunks, collect_start_time, stat.collect_duration
-                );
+                // println!(
+                //     "{} num_chunks={} start_time={}, duration={}",
+                //     name, stat.num_chunks, collect_start_time, stat.collect_duration
+                // );
                 let task =
                     Task { name, start: collect_start_time, duration: stat.collect_duration };
                 tasks.push(task);
             }
             if stat.witness_duration > 0 {
                 let name = name.clone() + "_witness";
-                println!(
-                    "{} num_chunks={}, start_time={}, duration={}",
-                    name, stat.num_chunks, witness_start_time, stat.witness_duration
-                );
+                // println!(
+                //     "{} num_chunks={}, start_time={}, duration={}",
+                //     name, stat.num_chunks, witness_start_time, stat.witness_duration
+                // );
                 let task =
                     Task { name, start: witness_start_time, duration: stat.witness_duration };
                 tasks.push(task);
             }
         }
 
+        // Save to stats.json
+
         // Convert to pretty-printed JSON
         let json = serde_json::to_string_pretty(&tasks).unwrap();
 
         // Write to file
         let _ = fs::write("stats.json", json);
+
+        // Save to stats.csv
+
+        // Create a CSV-formatted string with the tasks data
+        let mut csv = String::new();
+        for task in tasks {
+            csv += &format!("{},{},{},\n", task.name, task.start, task.duration);
+        }
+
+        // Write to file
+        let _ = fs::write("stats.csv", csv);
+
+        tracing::info!("Statistics have been saved to stats.json and stats.csv");
     }
 }
