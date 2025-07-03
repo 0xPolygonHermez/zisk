@@ -646,13 +646,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// * `sctx` - Setup context.
     /// * `global_id` - Global ID of the secondary state machine instance.
     /// * `secn_instance` - Secondary state machine instance to compute witness for
-    #[allow(clippy::borrowed_box)]
     fn witness_secn_instance(
         &self,
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
         global_id: usize,
-        secn_instance: &Box<dyn Instance<F>>,
+        secn_instance: &dyn Instance<F>,
         trace_buffer: Vec<F>,
     ) {
         let (mut _stats, collectors_by_instance) = self
@@ -753,13 +752,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// * `sctx` - Setup context.
     /// * `global_id` - Global ID of the secondary state machine instance.
     /// * `table_instance` - Secondary state machine table instance to compute witness for
-    #[allow(clippy::borrowed_box)]
     fn witness_table(
         &self,
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
         global_id: usize,
-        table_instance: &Box<dyn Instance<F>>,
+        table_instance: &dyn Instance<F>,
         trace_buffer: Vec<F>,
     ) {
         #[cfg(feature = "stats")]
@@ -1001,13 +999,17 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                                 &pctx,
                                 &sctx,
                                 global_id,
-                                secn_instance,
+                                &**secn_instance,
                                 buffer_pool.take_buffer(),
                             );
                         }
-                        InstanceType::Table => {
-                            self.witness_table(&pctx, &sctx, global_id, secn_instance, Vec::new())
-                        }
+                        InstanceType::Table => self.witness_table(
+                            &pctx,
+                            &sctx,
+                            global_id,
+                            &**secn_instance,
+                            Vec::new(),
+                        ),
                     }
                 }
             }
