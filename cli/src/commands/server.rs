@@ -123,6 +123,11 @@ impl ZiskServer {
 
         let mpi_context = initialize_mpi()?;
 
+        proofman_common::initialize_logger(
+            proofman_common::VerboseMode::Info,
+            Some(mpi_context.world_rank),
+        );
+
         self.port += mpi_context.local_rank as u16;
 
         if !self.elf.exists() {
