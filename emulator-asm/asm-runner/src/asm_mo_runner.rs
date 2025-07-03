@@ -7,6 +7,8 @@ use zisk_common::Plan;
 use std::ffi::c_void;
 use std::path::Path;
 use std::sync::atomic::{fence, Ordering};
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{fs, ptr};
 use tracing::error;
@@ -21,17 +23,18 @@ use anyhow::{Context, Result};
 
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
 pub struct AsmRunnerMO {
-    asm_shared_memory: AsmSharedMemory<AsmMOHeader>,
     pub plans: Vec<Plan>,
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerMO {
-    pub fn new(asm_shared_memory: AsmSharedMemory<AsmMOHeader>, plans: Vec<Plan>) -> Self {
-        Self { asm_shared_memory, plans }
+    pub fn new(plans: Vec<Plan>) -> Self {
+        Self { plans }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn run(
+        asm_shared_memory: Arc<Mutex<Option<AsmSharedMemory<AsmMOHeader>>>>,
         inputs_path: &Path,
         max_steps: u64,
         chunk_size: u64,
@@ -60,14 +63,23 @@ impl AsmRunnerMO {
 
         // Open and map the shared memory where the assembly emulator writes its output.
         // The shared memory is created by the C++ assembly emulator.
-        let asm_shared_memory = AsmSharedMemory::<AsmMOHeader>::open_and_map(
-            &shmem_output_name,
-            AsmSharedMemoryMode::ReadOnly,
-            unlock_mapped_memory,
-        )?;
+
+        // Initialize the assembly shared memory if necessary
+        let mut asm_shared_memory = asm_shared_memory.lock().unwrap();
+
+        if asm_shared_memory.is_none() {
+            *asm_shared_memory = Some(
+                AsmSharedMemory::<AsmMOHeader>::open_and_map(
+                    &shmem_output_name,
+                    AsmSharedMemoryMode::ReadOnly,
+                    unlock_mapped_memory,
+                )
+                .expect("Error creating assembly shared memory"),
+            );
+        }
 
         // Get the pointer to the data in the shared memory.
-        let mut data_ptr = asm_shared_memory.data_ptr() as *const AsmMOChunk;
+        let mut data_ptr = asm_shared_memory.as_ref().unwrap().data_ptr() as *const AsmMOChunk;
 
         // Initialize C++ memory operations trace
         let mem_planner = MemPlanner::new();
@@ -101,7 +113,7 @@ impl AsmRunnerMO {
                 Err(e) => {
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
-                    break asm_shared_memory.header().exit_code;
+                    break asm_shared_memory.as_ref().unwrap().header().exit_code;
                 }
             }
         };
@@ -125,7 +137,7 @@ impl AsmRunnerMO {
         mem_planner.wait();
         let plans = mem_planner.collect_plans();
 
-        Ok(AsmRunnerMO::new(asm_shared_memory, plans))
+        Ok(AsmRunnerMO::new(plans))
     }
 
     fn write_input(inputs_path: &Path, shmem_input_name: &str, unlock_mapped_memory: bool) {

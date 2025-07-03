@@ -1,11 +1,13 @@
 use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
 use tracing::error;
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use std::sync::{Arc, Mutex};
 use std::{fs, path::Path, ptr, time::Duration};
 
 use crate::{
-    shmem_utils, AsmInputC2, AsmRHData, AsmRHHeader, AsmRunError, AsmServices, AsmSharedMemory,
-    AsmSharedMemoryMode,
+    shmem_utils, AsmInputC2, AsmRHData, AsmRHHeader, AsmRunError, AsmService, AsmServices,
+    AsmSharedMemory,
 };
 use anyhow::{Context, Result};
 use named_sem::NamedSemaphore;
@@ -13,7 +15,6 @@ use std::sync::atomic::{fence, Ordering};
 
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
 pub struct AsmRunnerRH {
-    asm_shared_memory: AsmSharedMemory<AsmRHHeader>,
     pub asm_rowh_output: AsmRHData,
 }
 
@@ -27,14 +28,20 @@ impl Drop for AsmRunnerRH {
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerRH {
-    pub fn new(
-        asm_shared_memory: AsmSharedMemory<AsmRHHeader>,
-        asm_rowh_output: AsmRHData,
-    ) -> Self {
-        AsmRunnerRH { asm_shared_memory, asm_rowh_output }
+    pub fn new(asm_rowh_output: AsmRHData) -> Self {
+        AsmRunnerRH { asm_rowh_output }
+    }
+
+    pub fn create_shmem(
+        local_rank: i32,
+        base_port: Option<u16>,
+        unlock_mapped_memory: bool,
+    ) -> Result<AsmSharedMemory<AsmRHHeader>> {
+        AsmSharedMemory::create_shmem(AsmService::RH, local_rank, base_port, unlock_mapped_memory)
     }
 
     pub fn run(
+        asm_shared_memory: Arc<Mutex<Option<AsmSharedMemory<AsmRHHeader>>>>,
         inputs_path: &Path,
         max_steps: u64,
         world_rank: i32,
@@ -42,11 +49,8 @@ impl AsmRunnerRH {
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
     ) -> Result<AsmRunnerRH> {
-        let prefix = AsmServices::shmem_prefix(&crate::AsmService::RH, base_port, local_rank);
-
-        let shmem_input_name = format!("{prefix}_RH_input");
-        let shmem_output_name = format!("{prefix}_RH_output");
-        let sem_chunk_done_name = format!("/{prefix}_RH_chunk_done");
+        let (shmem_input_name, _, sem_chunk_done_name) =
+            AsmSharedMemory::<AsmRHHeader>::shmem_names(AsmService::RH, base_port, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -69,15 +73,17 @@ impl AsmRunnerRH {
             }
         }
 
-        let asm_shared_memory = AsmSharedMemory::<AsmRHHeader>::open_and_map(
-            &shmem_output_name,
-            AsmSharedMemoryMode::ReadOnly,
-            unlock_mapped_memory,
-        )?;
+        let mut asm_shared_memory = asm_shared_memory.lock().unwrap();
+        if asm_shared_memory.is_none() {
+            *asm_shared_memory = Some(
+                AsmRunnerRH::create_shmem(local_rank, base_port, unlock_mapped_memory)
+                    .expect("Error creating assembly shared memory"),
+            );
+        }
 
-        let asm_rowh_output = AsmRHData::from_shared_memory(&asm_shared_memory);
+        let asm_rowh_output = AsmRHData::from_shared_memory(asm_shared_memory.as_ref().unwrap());
 
-        Ok(AsmRunnerRH::new(asm_shared_memory, asm_rowh_output))
+        Ok(AsmRunnerRH::new(asm_rowh_output))
     }
 
     fn write_input(inputs_path: &Path, shmem_input_name: &str, unlock_mapped_memory: bool) {

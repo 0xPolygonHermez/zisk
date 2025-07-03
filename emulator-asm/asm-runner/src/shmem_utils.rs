@@ -2,9 +2,11 @@ use libc::{
     close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE,
     S_IRUSR, S_IWUSR,
 };
-use std::{ffi::CString, io, mem::ManuallyDrop, os::raw::c_void, ptr};
+use std::{ffi::CString, fmt::Debug, io, mem::ManuallyDrop, os::raw::c_void, ptr};
 
 use anyhow::Result;
+
+use crate::{AsmService, AsmServices};
 
 pub enum AsmSharedMemoryMode {
     ReadOnly,
@@ -22,7 +24,7 @@ pub struct AsmSharedMemory<H: AsmShmemHeader> {
 unsafe impl<H: AsmShmemHeader> Send for AsmSharedMemory<H> {}
 unsafe impl<H: AsmShmemHeader> Sync for AsmSharedMemory<H> {}
 
-pub trait AsmShmemHeader {
+pub trait AsmShmemHeader: Debug {
     fn allocated_size(&self) -> u64;
 }
 
@@ -218,6 +220,34 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
 
     pub fn header(&self) -> &H {
         &self.header
+    }
+
+    pub fn shmem_names(
+        asm_service: AsmService,
+        base_port: Option<u16>,
+        local_rank: i32,
+    ) -> (String, String, String) {
+        let prefix = AsmServices::shmem_prefix(&asm_service, base_port, local_rank);
+        (
+            format!("{prefix}_{}_input", asm_service.as_str()),
+            format!("{prefix}_{}_output", asm_service.as_str()),
+            format!("/{prefix}_{}_chunk_done", asm_service.as_str()),
+        )
+    }
+
+    pub fn create_shmem(
+        service: AsmService,
+        local_rank: i32,
+        base_port: Option<u16>,
+        unlock_mapped_memory: bool,
+    ) -> Result<AsmSharedMemory<H>> {
+        let (_, shmem_output_name, _) = Self::shmem_names(service, base_port, local_rank);
+
+        AsmSharedMemory::<H>::open_and_map(
+            &shmem_output_name,
+            AsmSharedMemoryMode::ReadOnly,
+            unlock_mapped_memory,
+        )
     }
 }
 

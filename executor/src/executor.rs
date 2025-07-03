@@ -19,7 +19,10 @@
 //! By structuring these phases, the `ZiskExecutor` ensures high-performance execution while
 //! maintaining clarity and modularity in the computation process.
 
-use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, MinimalTraces, Task, TaskFactory};
+use asm_runner::{
+    AsmMOHeader, AsmMTHeader, AsmRHHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmSharedMemory,
+    MinimalTraces, Task, TaskFactory,
+};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{create_pool, BufferPool, PreCalculate, ProofCtx, SetupCtx};
@@ -146,6 +149,10 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     /// Map unlocked flag
     /// This is used to unlock the memory map for the ROM file.
     unlock_mapped_memory: bool,
+
+    asm_shmem_mt: Arc<Mutex<Option<AsmSharedMemory<AsmMTHeader>>>>,
+    asm_shmem_mo: Arc<Mutex<Option<AsmSharedMemory<AsmMOHeader>>>>,
+    asm_shmem_rh: Arc<Mutex<Option<AsmSharedMemory<AsmRHHeader>>>>,
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
@@ -195,6 +202,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             local_rank,
             base_port,
             unlock_mapped_memory,
+            asm_shmem_mt: Arc::new(Mutex::new(None)),
+            asm_shmem_mo: Arc::new(Mutex::new(None)),
+            asm_shmem_rh: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -247,8 +257,13 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             (self.world_rank, self.local_rank, self.base_port);
         let chunk_size = self.chunk_size;
         let unlock_mapped_memory = self.unlock_mapped_memory;
+
+        // Clone the Arc to pass into the thread
+        let asm_shmem_mo = self.asm_shmem_mo.clone();
+
         let handle_mo = std::thread::spawn(move || {
             AsmRunnerMO::run(
+                asm_shmem_mo,
                 input_data_path_cloned.as_ref().unwrap(),
                 Self::MAX_NUM_STEPS,
                 chunk_size,
@@ -266,8 +281,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             let (world_rank, local_rank, base_port) =
                 (self.world_rank, self.local_rank, self.base_port);
 
+            // Clone the Arc to pass into the thread
+            let asm_shmem_rh = self.asm_shmem_rh.clone();
+
             Some(std::thread::spawn(move || {
                 AsmRunnerRH::run(
+                    asm_shmem_rh,
                     input_data_path_cloned.as_ref().unwrap(),
                     Self::MAX_NUM_STEPS,
                     world_rank,
@@ -360,6 +379,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             });
 
         let (asm_runner_mt, mut data_buses) = AsmRunnerMT::run_and_count(
+            self.asm_shmem_mt.clone(),
             input_data_path.as_ref().unwrap(),
             Self::MAX_NUM_STEPS,
             self.chunk_size,

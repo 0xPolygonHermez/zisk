@@ -4,8 +4,11 @@ use named_sem::NamedSemaphore;
 use rayon::ThreadPoolBuilder;
 use zisk_common::{ChunkId, EmuTrace};
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::path::Path;
 use std::sync::atomic::{fence, Ordering};
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use std::sync::Mutex;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 use std::{fs, ptr};
@@ -13,8 +16,8 @@ use std::{fs, ptr};
 use tracing::{error, info};
 
 use crate::{
-    shmem_utils, AsmInputC2, AsmMTChunk, AsmMTHeader, AsmRunError, AsmServices, AsmSharedMemory,
-    AsmSharedMemoryMode,
+    shmem_utils, AsmInputC2, AsmMTChunk, AsmMTHeader, AsmRunError, AsmService, AsmServices,
+    AsmSharedMemory,
 };
 
 use anyhow::{Context, Result};
@@ -34,7 +37,6 @@ pub enum MinimalTraces {
 
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
 pub struct AsmRunnerMT {
-    asm_shared_memory: AsmSharedMemory<AsmMTHeader>,
     pub vec_chunks: Vec<EmuTrace>,
 }
 
@@ -52,12 +54,21 @@ impl Drop for AsmRunnerMT {
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerMT {
-    pub fn new(asm_shared_memory: AsmSharedMemory<AsmMTHeader>, vec_chunks: Vec<EmuTrace>) -> Self {
-        Self { asm_shared_memory, vec_chunks }
+    pub fn new(vec_chunks: Vec<EmuTrace>) -> Self {
+        Self { vec_chunks }
+    }
+
+    pub fn create_shmem(
+        local_rank: i32,
+        base_port: Option<u16>,
+        unlock_mapped_memory: bool,
+    ) -> Result<AsmSharedMemory<AsmMTHeader>> {
+        AsmSharedMemory::create_shmem(AsmService::MT, local_rank, base_port, unlock_mapped_memory)
     }
 
     #[allow(clippy::too_many_arguments)]
     pub fn run_and_count<T: Task>(
+        asm_shared_memory: Arc<Mutex<Option<AsmSharedMemory<AsmMTHeader>>>>,
         inputs_path: &Path,
         max_steps: u64,
         chunk_size: u64,
@@ -69,11 +80,8 @@ impl AsmRunnerMT {
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
-        let prefix = AsmServices::shmem_prefix(&crate::AsmService::MT, base_port, local_rank);
-
-        let shmem_input_name = format!("{prefix}_MT_input");
-        let shmem_output_name = format!("{prefix}_MT_output");
-        let sem_chunk_done_name = format!("/{prefix}_MT_chunk_done");
+        let (shmem_input_name, _, sem_chunk_done_name) =
+            AsmSharedMemory::<AsmMTHeader>::shmem_names(AsmService::MT, base_port, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -87,21 +95,23 @@ impl AsmRunnerMT {
             asm_services.send_minimal_trace_request(max_steps, chunk_size)
         });
 
+        // Initialize the assembly shared memory if necessary
+        let mut asm_shared_memory = asm_shared_memory.lock().unwrap();
+
+        if asm_shared_memory.is_none() {
+            *asm_shared_memory = Some(
+                AsmRunnerMT::create_shmem(local_rank, base_port, unlock_mapped_memory)
+                    .expect("Error creating assembly shared memory"),
+            );
+        }
+
         let pool = ThreadPoolBuilder::new().num_threads(24).build().map_err(AsmRunError::from)?;
         let (sender, receiver) = mpsc::channel();
 
         let mut chunk_id = ChunkId(0);
 
-        // Open and map the shared memory where the assembly emulator writes its output.
-        // The shared memory is created by the C++ assembly emulator.
-        let asm_shared_memory = AsmSharedMemory::<AsmMTHeader>::open_and_map(
-            &shmem_output_name,
-            AsmSharedMemoryMode::ReadOnly,
-            unlock_mapped_memory,
-        )?;
-
         // Get the pointer to the data in the shared memory.
-        let mut data_ptr = asm_shared_memory.data_ptr() as *const AsmMTChunk;
+        let mut data_ptr = asm_shared_memory.as_ref().unwrap().data_ptr() as *const AsmMTChunk;
 
         let mut emu_traces = Vec::new();
         let exit_code = loop {
@@ -141,7 +151,7 @@ impl AsmRunnerMT {
                         break 1;
                     }
 
-                    break asm_shared_memory.header().exit_code;
+                    break asm_shared_memory.as_ref().unwrap().header().exit_code;
                 }
             }
         };
@@ -175,7 +185,7 @@ impl AsmRunnerMT {
             .map(|arc| Arc::try_unwrap(arc).map_err(|_| AsmRunError::ArcUnwrap))
             .collect::<std::result::Result<_, _>>()?;
 
-        Ok((AsmRunnerMT::new(asm_shared_memory, emu_traces), tasks))
+        Ok((AsmRunnerMT::new(emu_traces), tasks))
     }
 
     fn write_input(inputs_path: &Path, shmem_input_name: &str, unlock_mapped_memory: bool) {
