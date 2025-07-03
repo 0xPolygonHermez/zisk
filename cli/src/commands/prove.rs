@@ -1,3 +1,5 @@
+#[cfg(feature = "stats")]
+use crate::commands::ZiskStats;
 use crate::{
     commands::{
         cli_fail_if_macos, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
@@ -20,6 +22,8 @@ use rom_setup::{
     DEFAULT_CACHE_PATH,
 };
 use std::io::Write;
+#[cfg(feature = "stats")]
+use std::time::Instant;
 use std::{
     collections::HashMap,
     env,
@@ -133,6 +137,9 @@ impl ZiskProve {
         cli_fail_if_macos()?;
 
         print_banner();
+
+        #[cfg(feature = "stats")]
+        let start_time = Instant::now();
 
         let mpi_context = initialize_mpi()?;
 
@@ -346,7 +353,7 @@ impl ZiskProve {
         if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
             let elapsed = start.elapsed();
 
-            let (result, _): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
+            let (result, _stats): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
                 .get_execution_result()
                 .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
                 .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
@@ -374,6 +381,12 @@ impl ZiskProve {
                 // write a Vec<u64> to a bin file stored in output_file_path
                 let mut file = File::create(output_file_path)?;
                 file.write_all(cast_slice(&vadcop_final_proof.unwrap()))?;
+            }
+
+            // Store the stats in stats.json
+            #[cfg(feature = "stats")]
+            {
+                ZiskStats::store_stats(start_time, &_stats);
             }
         }
 
