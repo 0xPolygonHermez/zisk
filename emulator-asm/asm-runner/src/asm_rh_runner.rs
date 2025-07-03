@@ -76,8 +76,13 @@ impl AsmRunnerRH {
         let mut asm_shared_memory = asm_shared_memory.lock().unwrap();
         if asm_shared_memory.is_none() {
             *asm_shared_memory = Some(
-                AsmRunnerRH::create_shmem(local_rank, base_port, unlock_mapped_memory)
-                    .expect("Error creating assembly shared memory"),
+                AsmSharedMemory::create_shmem(
+                    AsmService::RH,
+                    local_rank,
+                    base_port,
+                    unlock_mapped_memory,
+                )
+                .expect("Error creating MO assembly shared memory"),
             );
         }
 

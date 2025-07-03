@@ -14,8 +14,8 @@ use std::{fs, ptr};
 use tracing::error;
 
 use crate::{
-    shmem_utils, AsmInputC2, AsmMOChunk, AsmMOHeader, AsmRunError, AsmServices, AsmSharedMemory,
-    AsmSharedMemoryMode,
+    shmem_utils, AsmInputC2, AsmMOChunk, AsmMOHeader, AsmRunError, AsmService, AsmServices,
+    AsmSharedMemory,
 };
 use mem_planner_cpp::MemPlanner;
 
@@ -45,11 +45,8 @@ impl AsmRunnerMO {
     ) -> Result<Self> {
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
-        let prefix = AsmServices::shmem_prefix(&crate::AsmService::MO, base_port, local_rank);
-
-        let shmem_input_name = format!("{prefix}_MO_input");
-        let shmem_output_name = format!("{prefix}_MO_output");
-        let sem_chunk_done_name = format!("/{prefix}_MO_chunk_done");
+        let (shmem_input_name, _, sem_chunk_done_name) =
+            AsmSharedMemory::<AsmMOHeader>::shmem_names(AsmService::MO, base_port, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -69,12 +66,13 @@ impl AsmRunnerMO {
 
         if asm_shared_memory.is_none() {
             *asm_shared_memory = Some(
-                AsmSharedMemory::<AsmMOHeader>::open_and_map(
-                    &shmem_output_name,
-                    AsmSharedMemoryMode::ReadOnly,
+                AsmSharedMemory::create_shmem(
+                    AsmService::MO,
+                    local_rank,
+                    base_port,
                     unlock_mapped_memory,
                 )
-                .expect("Error creating assembly shared memory"),
+                .expect("Error creating MO assembly shared memory"),
             );
         }
 

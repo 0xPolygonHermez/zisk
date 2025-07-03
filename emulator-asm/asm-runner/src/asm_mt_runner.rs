@@ -58,14 +58,6 @@ impl AsmRunnerMT {
         Self { vec_chunks }
     }
 
-    pub fn create_shmem(
-        local_rank: i32,
-        base_port: Option<u16>,
-        unlock_mapped_memory: bool,
-    ) -> Result<AsmSharedMemory<AsmMTHeader>> {
-        AsmSharedMemory::create_shmem(AsmService::MT, local_rank, base_port, unlock_mapped_memory)
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub fn run_and_count<T: Task>(
         asm_shared_memory: Arc<Mutex<Option<AsmSharedMemory<AsmMTHeader>>>>,
@@ -100,8 +92,13 @@ impl AsmRunnerMT {
 
         if asm_shared_memory.is_none() {
             *asm_shared_memory = Some(
-                AsmRunnerMT::create_shmem(local_rank, base_port, unlock_mapped_memory)
-                    .expect("Error creating assembly shared memory"),
+                AsmSharedMemory::create_shmem(
+                    AsmService::MT,
+                    local_rank,
+                    base_port,
+                    unlock_mapped_memory,
+                )
+                .expect("Error creating MT assembly shared memory"),
             );
         }
 
