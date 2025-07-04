@@ -114,7 +114,7 @@ impl ZiskVerifyConstraints {
             proofman_common::VerboseMode::Info,
             Some(mpi_context.world_rank),
         );
-        
+
         let proving_key = get_proving_key(self.proving_key.as_ref());
 
         let debug_info = match &self.debug {

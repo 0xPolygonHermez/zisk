@@ -107,7 +107,7 @@ impl ZiskExecute {
             proofman_common::VerboseMode::Info,
             Some(mpi_context.world_rank),
         );
-        
+
         let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
             sha256f_path.clone()
         } else {
