@@ -41,7 +41,7 @@ impl Planner for RomPlanner {
             None,
             InstanceType::Instance,
             CheckPoint::Multiple(vec_chunk_ids),
-            PreCalculate::None,
+            PreCalculate::Slow,
             None,
         )]
     }

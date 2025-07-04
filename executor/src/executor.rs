@@ -621,7 +621,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         #[cfg(feature = "stats")]
         {
-            let witness_duration = witness_start_time.elapsed().as_micros() as u64;
+            let witness_duration = witness_start_time.elapsed().as_millis() as u64;
 
             let (airgroup_id, air_id) = pctx.dctx_get_instance_info(main_instance.ictx.global_id);
 
@@ -654,12 +654,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         secn_instance: &dyn Instance<F>,
         trace_buffer: Vec<F>,
     ) {
-        let (mut _stats, collectors_by_instance) = self
-            .collectors_by_instance
-            .write()
-            .unwrap()
-            .remove(&global_id)
-            .expect("Missing collectors for given global_id");
+        let (mut _stats, collectors_by_instance) = {
+            let mut guard = self.collectors_by_instance.write().unwrap();
+
+            guard.remove(&global_id).expect("Missing collectors for given global_id")
+        };
+
         #[cfg(feature = "stats")]
         let witness_start_time = std::time::Instant::now();
 
@@ -773,7 +773,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         #[cfg(feature = "stats")]
         {
-            let witness_duration = witness_start_time.elapsed().as_micros() as u64;
+            let witness_duration = witness_start_time.elapsed().as_millis() as u64;
             let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
 
             self.stats.lock().unwrap().push((

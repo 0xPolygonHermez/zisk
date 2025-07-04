@@ -211,6 +211,12 @@ impl ZiskStats {
 
         let proofman;
         let mpi_context = initialize_mpi()?;
+
+        proofman_common::initialize_logger(
+            proofman_common::VerboseMode::Info,
+            Some(mpi_context.world_rank),
+        );
+
         let world_ranks;
 
         let world_rank = mpi_context.world_rank;
