@@ -103,6 +103,11 @@ impl ZiskExecute {
 
         let mpi_context = initialize_mpi()?;
 
+        proofman_common::initialize_logger(
+            proofman_common::VerboseMode::Info,
+            Some(mpi_context.world_rank),
+        );
+        
         let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
             sha256f_path.clone()
         } else {
