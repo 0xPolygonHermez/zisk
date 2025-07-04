@@ -2,7 +2,7 @@ require "std_lookup.pil"
 
 const int KECCAKF_TABLE_ID = 126;
 
-airtemplate KeccakfTable(const int N = 2**23, const int chunks = 1, const int bits = 10) {
+airtemplate KeccakfTable(const int N, const int chunks, const int bits, const int bits_reduced = 0) {
     // Operations
     const int XOR = 0;
     const int ANDP = 1;
@@ -24,6 +24,9 @@ airtemplate KeccakfTable(const int N = 2**23, const int chunks = 1, const int bi
     const int MASK_BITS_A = P2_BITS_A - 1;
     const int MASK_BITS_B = P2_BITS_B - 1;
 
+    const int P2_BITS_REDUCED = 2**bits_reduced;
+    const int MASK_BITS_REDUCED = P2_BITS_REDUCED - 1;
+
     col fixed A[chunks]; // Input A (BITS_A bits)
     int offset = 0;
     for (int j = 0; j < chunks; j++) {
@@ -32,10 +35,14 @@ airtemplate KeccakfTable(const int N = 2**23, const int chunks = 1, const int bi
     }
 
     col fixed B = [0:P2_BITS_A..MASK_BITS_B:P2_BITS_A]...; // Input B (BITS_B bits)
-    col fixed GATE_OP = [0:P2_BITS_AB, 1:P2_BITS_AB]...;   // Gate operation (BITS_OP bit)
+    col fixed GATE_OP = [XOR:P2_BITS_AB, ANDP:P2_BITS_AB]...;   // Gate operation (BITS_OP bit)
 
     // Precompute a table with the two basic operations appearing in the Keccak-f permutation
     col fixed C[chunks]; // Output C (BITS_A bits)
+    if (bits_reduced > 0) {
+        col fixed air.C_REDUCED[chunks]; // Output D reduced (BITS_REDUCED bits)
+        col fixed air.IND[chunks];       // Valid reduced input indicator
+    }
     #pragma transpile
     for (int i = 0; i < N; i++) {
         const int [b, gate_op] = [B[i], GATE_OP[i]];
@@ -53,12 +60,24 @@ airtemplate KeccakfTable(const int N = 2**23, const int chunks = 1, const int bi
                     error(`Invalid gate operation opcode: ${gate_op} at row ${i} and chunk ${j}`);
             }
             C[j][i] = c;
+            if (bits_reduced > 0) {
+                C_REDUCED[j][i] = c & MASK_BITS_REDUCED;
+                IND[j][i] = (a < P2_BITS_REDUCED && b < P2_BITS_REDUCED) ? 1 : -1;
+            }
         }
     }
 
     // --> Prove that the circuit gates are satisfied
     col witness multiplicity[chunks];
-    for (int j = 0; j < chunks; j++) {
-        lookup_proves(KECCAKF_TABLE_ID, [GATE_OP, A[j], B, C[j]], multiplicity[j]);
+    if (bits_reduced > 0) {
+        col witness multiplicity_reduced[chunks];
+        for (int j = 0; j < chunks; j++) {
+            lookup_proves(KECCAKF_TABLE_ID, [0, GATE_OP, A[j], B, C[j]], multiplicity[j]);
+            lookup_proves(KECCAKF_TABLE_ID, [IND[j], GATE_OP, A[j], B, C_REDUCED[j]], multiplicity_reduced[j]);
+        }
+    } else {
+        for (int j = 0; j < chunks; j++) {
+            lookup_proves(KECCAKF_TABLE_ID, [GATE_OP, A[j], B, C[j]], multiplicity[j]);
+        } 
     }
 }

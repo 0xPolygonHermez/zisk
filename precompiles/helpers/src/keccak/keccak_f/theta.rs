@@ -55,25 +55,9 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
                         + group_pos_2
                 );
 
-                s.xor3(
-                    s.sin_refs[positions[0]],
-                    PinId::A,
-                    s.sin_refs[positions[1]],
-                    PinId::A,
-                    s.sin_refs[positions[2]],
-                    PinId::A,
-                    aux,
-                );
+                s.xor3(s.sin_refs[positions[0]], PinId::A, s.sin_refs[positions[1]], PinId::A, s.sin_refs[positions[2]], PinId::A, aux);
             } else {
-                s.xor3(
-                    s.sin_refs[positions[0]],
-                    PinId::D,
-                    s.sin_refs[positions[1]],
-                    PinId::D,
-                    s.sin_refs[positions[2]],
-                    PinId::D,
-                    aux,
-                );
+                s.xor3(s.sin_refs[positions[0]], PinId::D, s.sin_refs[positions[1]], PinId::D, s.sin_refs[positions[2]], PinId::D, aux);
             }
 
             // C[x, z] = aux ^ A[x, 3, z] ^ A[x, 4, z]
@@ -88,38 +72,29 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
                         + s.gate_config.sin_ref_distance * group_3
                         + group_pos_3
                 );
-                s.xor3(
-                    aux,
-                    PinId::D,
-                    s.sin_refs[positions[3]],
-                    PinId::A,
-                    s.sin_refs[positions[4]],
-                    PinId::A,
-                    cxy,
-                );
+                s.xor3(aux, PinId::D, s.sin_refs[positions[3]], PinId::A, s.sin_refs[positions[4]], PinId::A, cxy);
             } else {
-                s.xor3(
-                    aux,
-                    PinId::D,
-                    s.sin_refs[positions[3]],
-                    PinId::D,
-                    s.sin_refs[positions[4]],
-                    PinId::D,
-                    cxy,
-                );
+                s.xor3(aux, PinId::D, s.sin_refs[positions[3]], PinId::D, s.sin_refs[positions[4]], PinId::D, cxy);
             }
         }
     }
 
     // Step 2: Compute D[x, z] = C[(x-1) mod 5, z] ^ C[(x+1) mod 5, (z–1) mod 64]
+    let mut d = [[0u64; 64]; 5];
+    for x in 0..5 {
+        for z in 0..64 {
+            let free_ref = s.get_free_ref();
+            d[x][z] = free_ref;
+            s.xor3(c[(x + 4) % 5][z], PinId::D, c[(x + 1) % 5][(z + 63) % 64], PinId::D, s.gate_config.zero_ref.unwrap(), PinId::A, free_ref);
+        }
+    }
+
     // Step 3: Compute A'[x,y,z] = A[x, y, z] ^ D[x, z]
-    // We compute both steps in one and redo computations to keep using the
-    // 3-input xor
     for x in 0..5 {
         for y in 0..5 {
             for z in 0..64 {
                 let pos = bit_position(x, y, z);
-                s.sout_refs[pos] = if ir == 0 {
+                let aux = if ir == 0 {
                     // In the first round we use the first 1600 Sin bit slots to store these gates
                     let group = pos as u64 / s.gate_config.sin_ref_group_by;
                     let group_pos = pos as u64 % s.gate_config.sin_ref_group_by;
@@ -127,30 +102,15 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
                         + s.gate_config.sin_ref_distance * group
                         + group_pos;
                     assert_eq!(s.sin_refs[pos], ref_idx);
-
-                    s.xor3(
-                        ref_idx,
-                        PinId::A,
-                        c[(x + 4) % 5][z],
-                        PinId::D,
-                        c[(x + 1) % 5][(z + 63) % 64],
-                        PinId::D,
-                        ref_idx,
-                    );
+                    s.xor3(ref_idx, PinId::A, d[x][z], PinId::D, s.gate_config.zero_ref.unwrap(), PinId::A, ref_idx);
                     ref_idx
                 } else {
                     let ref_idx = s.get_free_ref();
-                    s.xor3(
-                        s.sin_refs[pos],
-                        PinId::D,
-                        c[(x + 4) % 5][z],
-                        PinId::D,
-                        c[(x + 1) % 5][(z + 63) % 64],
-                        PinId::D,
-                        ref_idx,
-                    );
+                    s.xor3(s.sin_refs[pos], PinId::D, d[x][z], PinId::D, s.gate_config.zero_ref.unwrap(), PinId::A, ref_idx);
                     ref_idx
                 };
+
+                s.sout_refs[pos] = aux;
             }
         }
     }

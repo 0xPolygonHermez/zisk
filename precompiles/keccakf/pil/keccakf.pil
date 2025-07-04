@@ -2,12 +2,12 @@ require "std_constants.pil"
 require "std_lookup.pil"
 require "std_connection.pil"
 
-// Precompile in charge of performing the Keccak-f[1600] permutation. For reference: https://keccak.team/files/Keccak-reference-3.0.pdf
+// Precompile in charge of performing the Keccak-f[1600] permutation.
+// For reference: https://keccak.team/files/Keccak-reference-3.0.pdf
 
 const int KECCAKF_OP = 0xF1;
-const int KECCAKF_CIRCUIT_ID = 0x190;
 
-airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, const int bits_in_parallel = 2, const int chunks = 6, const int bits = 10, const int operation_bus_id) {
+airtemplate Keccakf(const int N, const int chunks, const int bits, const int bits_last_chunk, const int RC, const int RB, const int mem_bits_in_parallel, const int operation_bus_id) {
     // Keccak-f circuit size
     const int CIRCUIT_SIZE = 155286;
     println(`The size of the Keccak-f circuit is ${CIRCUIT_SIZE}`);
@@ -18,13 +18,13 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
     }
 
     // Ensure that the keccak-f input fit in the prime field
-    const int BITS_INPUT = chunks * bits;
-    if (BITS_INPUT > log2(PRIME)) {
-        error(`The number of bits ${BITS_INPUT} is too large for the prime ${PRIME}`);
+    const int CHUNKS_BITS = (chunks - 1) * bits + bits_last_chunk;
+    if (CHUNKS_BITS > log2(PRIME)) {
+        error(`The number of bits ${CHUNKS_BITS} is too large for the prime ${PRIME}`);
     }
 
     // Compute some stats
-    const int NUM_KECCAKF_PER_CIRCUIT = BITS_INPUT;
+    const int NUM_KECCAKF_PER_CIRCUIT = CHUNKS_BITS;
     const int NUM_CIRCUITS = (N - 1) / CIRCUIT_SIZE;
     const int NUM_KECCAKF = NUM_CIRCUITS * NUM_KECCAKF_PER_CIRCUIT;
     const int NON_USABLE_ROWS = (N - 1) % CIRCUIT_SIZE;
@@ -33,8 +33,8 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
     println(`The number of non-usable (padding) rows is ${NON_USABLE_ROWS}`);
 
     const int P2_BITS = 2**bits;
-    const int P2_CHUNK_BITS = 2**(bits * chunks);
-    const int MASK_CHUNK_BITS = P2_CHUNK_BITS - 1;
+    const int P2_CHUNKS_BITS = 2**CHUNKS_BITS;
+    const int MASK_CHUNKS_BITS = P2_CHUNKS_BITS - 1;
 
     col fixed L1 = [1,0...];
 
@@ -53,8 +53,15 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
     col witness free_in_a[chunks], free_in_b[chunks], free_in_c[chunks];
 
     // --> Circuit gates constraints
-    for (int i = 0; i < chunks; i++) {
-        lookup_assumes(KECCAKF_TABLE_ID, [GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i]]);
+    if (bits != bits_last_chunk) {
+        for (int i = 0; i < chunks; i++) {
+            const int is_last_chunk = (i == chunks - 1) ? 1 : 0;
+            lookup_assumes(KECCAKF_TABLE_ID, [is_last_chunk, GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i]]);
+        }
+    } else {
+        for (int i = 0; i < chunks; i++) {
+            lookup_assumes(KECCAKF_TABLE_ID, [GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i]]);
+        }
     }
 
     // --> Circuit connections constraints
@@ -72,9 +79,10 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
     // Enforce constants 0b00..000 and 0b11..111 at the first row for direct access
     // This reduces the circuit connections
     L1 * a === 0;
-    L1 * (b - MASK_CHUNK_BITS) === 0;
+    L1 * (b - MASK_CHUNKS_BITS) === 0;
 
-    connection(opid: KECCAKF_CIRCUIT_ID, cols: [a, b, c], CONN: [CONN_A, CONN_B, CONN_C]);
+    const int CIRCUIT_ID = 0x190;
+    connection(opid: CIRCUIT_ID, cols: [a, b, c], CONN: [CONN_A, CONN_B, CONN_C]);
 
     // --> Constraints to read inputs from memory and write outputs to memory
 
@@ -119,11 +127,11 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
         -------------------------------------------------------------------------------------------           
     */
 
-    col witness bit[bits_in_parallel];
-    col witness val[bits_in_parallel];
+    col witness bit[mem_bits_in_parallel];
+    col witness val[mem_bits_in_parallel];
 
     // Ensure that bit[i] is a bit
-    for (int i = 0; i < bits_in_parallel; i++) {
+    for (int i = 0; i < mem_bits_in_parallel; i++) {
         bit[i] * (1 - bit[i]) === 0; // (1)
     }
 
@@ -139,10 +147,10 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
     const int IN_OUT_BLOCKS = IN_BLOCKS + OUT_BLOCKS;
 
     // Parameters size in the circuit
-    const int MEM_SIZE = MEM_BITS * NUM_KECCAKF_PER_CIRCUIT / bits_in_parallel; // Minimal memory size
-    const int INPUT_SIZE = INPUT_BITS * NUM_KECCAKF_PER_CIRCUIT / bits_in_parallel;
-    const int OUTPUT_SIZE = OUTPUT_BITS * NUM_KECCAKF_PER_CIRCUIT / bits_in_parallel;
-    const int INPUT_OUTPUT_SIZE = INPUT_OUTPUT_BITS * NUM_KECCAKF_PER_CIRCUIT / bits_in_parallel;
+    const int MEM_SIZE = MEM_BITS * NUM_KECCAKF_PER_CIRCUIT / mem_bits_in_parallel; // Minimal memory size
+    const int INPUT_SIZE = INPUT_BITS * NUM_KECCAKF_PER_CIRCUIT / mem_bits_in_parallel;
+    const int OUTPUT_SIZE = OUTPUT_BITS * NUM_KECCAKF_PER_CIRCUIT / mem_bits_in_parallel;
+    const int INPUT_OUTPUT_SIZE = INPUT_OUTPUT_BITS * NUM_KECCAKF_PER_CIRCUIT / mem_bits_in_parallel;
     if (INPUT_OUTPUT_SIZE > CIRCUIT_SIZE) {
         error(`The Keccak-f circuit size ${CIRCUIT_SIZE} is too small for the template configuration.`);  
     }
@@ -151,7 +159,7 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
     //  - When there are circuits.
     //  - Every NUM_KECCAKF_PER_CIRCUIT clocks.
     //  - When there are still bits to process.
-    col fixed LATCH_NUM_KECCAKF  = [0,[0,[0:(NUM_KECCAKF_PER_CIRCUIT-1),1]:(INPUT_OUTPUT_BITS / bits_in_parallel),
+    col fixed LATCH_NUM_KECCAKF  = [0,[0,[0:(NUM_KECCAKF_PER_CIRCUIT-1),1]:(INPUT_OUTPUT_BITS / mem_bits_in_parallel),
                                        0:(CIRCUIT_SIZE - (INPUT_OUTPUT_SIZE+1))]:NUM_CIRCUITS,
                                     0...];
 
@@ -161,24 +169,24 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
     //  - When there are still bits to process (i.e., we repeat the previous instruction KECCAKF_SIZE_BITS times).
     col fixed FACTOR_NUM_KECCAKF;
     if (NUM_KECCAKF_PER_CIRCUIT != 1) {
-        FACTOR_NUM_KECCAKF = [0,[[1,2..*..2**(NUM_KECCAKF_PER_CIRCUIT-1)]:(INPUT_OUTPUT_BITS / bits_in_parallel), 
+        FACTOR_NUM_KECCAKF = [0,[[1,2..*..2**(NUM_KECCAKF_PER_CIRCUIT-1)]:(INPUT_OUTPUT_BITS / mem_bits_in_parallel), 
                                   0:(CIRCUIT_SIZE - INPUT_OUTPUT_SIZE)]:NUM_CIRCUITS,
                               0...];
     } else {
-        FACTOR_NUM_KECCAKF = [0, [1:(INPUT_OUTPUT_BITS / bits_in_parallel), 
+        FACTOR_NUM_KECCAKF = [0, [1:(INPUT_OUTPUT_BITS / mem_bits_in_parallel), 
                                   0:(CIRCUIT_SIZE - INPUT_OUTPUT_SIZE)]:NUM_CIRCUITS, 
                               0...];
     }
 
     // val[i] accumulates the bits
-    for (int i = 0; i < bits_in_parallel; i++) {
+    for (int i = 0; i < mem_bits_in_parallel; i++) {
         val[i]' === val[i] * (1 - LATCH_NUM_KECCAKF) + bit[i] * FACTOR_NUM_KECCAKF; // (2)
     }
     // In each j-th latch, val[i] has accumulated the j-th bit of all the keccakf's 
 
     // In each j-th latch, val[i] has to coincide with the a-th gate entry,
     // whose positions where reserved for the inputs and outputs of the Keccakf circuit
-    for (int i = 0; i < bits_in_parallel; i++) {
+    for (int i = 0; i < mem_bits_in_parallel; i++) {
         LATCH_NUM_KECCAKF * (val[i] - a'(i)) === 0; // (3)
     }
 
@@ -195,10 +203,10 @@ airtemplate Keccakf(const int N = 2**23, const int RC = 2, const int RB = 32, co
     }
     // Update the keccakf_val: the Keccakf works over words of 64 bits
     // so it aligns perfectly with our memory of 64 bits
-    const int RB_OFFSET = RB / bits_in_parallel;
+    const int RB_OFFSET = RB / mem_bits_in_parallel;
     for (int i = 0; i < RB; i++) {
-        const int keccakf_val_bit = i % bits_in_parallel;
-        const int keccakf_val_idx = (i - keccakf_val_bit) / bits_in_parallel;
+        const int keccakf_val_bit = i % mem_bits_in_parallel;
+        const int keccakf_val_idx = (i - keccakf_val_bit) / mem_bits_in_parallel;
         for (int j = 0; j < RC; j++) {
             keccakf_val[j] += bit[keccakf_val_bit]'(NUM_KECCAKF_PER_CIRCUIT*(RB_OFFSET * j + keccakf_val_idx)) * 2**i;
         }

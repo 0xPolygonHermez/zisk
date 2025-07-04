@@ -13,6 +13,8 @@ require "arith/pil/arith.pil"
 require "arith_eq/pil/arith_eq.pil"
 require "keccakf/pil/keccakf.pil"
 require "keccakf/pil/keccakf_table.pil"
+require "keccakf/pil/keccakf_v2.pil"
+require "keccakf/pil/keccakf_table_v2.pil"
 require "sha256f/pil/sha256f.pil"
 require "sha256f/pil/sha256f_table.pil"
 
@@ -30,45 +32,58 @@ const int PUBLIC_OP = 0x30;
 set_max_std_tables_bits(21);
 
 airgroup Zisk {
-    // Main Program
-    Main(N: 2**22, RC: 2, operation_bus_id: OPERATION_BUS_ID);
-    Rom(N: 2**21);
+    // // Main Program
+    // Main(N: 2**22, RC: 2, operation_bus_id: OPERATION_BUS_ID);
+    // Rom(N: 2**21);
 
-    // Standard Operations
-    Mem(N: 2**22, RC: 2, base_address: 0xA000_0000, size_mb: 512, large_mem: 1);
-    Mem(N: 2**21, RC: 2, base_address: 0x8000_0000, immutable: 1) alias RomData;
-    Mem(N: 2**21, RC: 2, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
+    // // Standard Operations
+    // Mem(N: 2**22, RC: 2, base_address: 0xA000_0000, size_mb: 512, large_mem: 1);
+    // Mem(N: 2**21, RC: 2, base_address: 0x8000_0000, immutable: 1) alias RomData;
+    // Mem(N: 2**21, RC: 2, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
 
-    MemAlign(N: 2**22, use_predefined_ranges: 0);
-    MemAlignRom();
+    // MemAlign(N: 2**22, use_predefined_ranges: 0);
+    // MemAlignRom();
 
-    Arith(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
-    ArithTable();
-    ArithRangeTable();
+    // Arith(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    // ArithTable();
+    // ArithRangeTable();
 
-    Binary(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
-    BinaryAdd(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
-    BinaryTable();
-    BinaryExtension(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
-    BinaryExtensionTable();
+    // Binary(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
+    // BinaryAdd(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
+    // BinaryTable();
+    // BinaryExtension(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
+    // BinaryExtensionTable();
 
-    // Precompiles
-    ArithEq(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
-    ArithEqLtTable();
-    
-    const int KECCAKF_CHUNKS = 7;
-    const int KECCAKF_BITS = 9;
-    Keccakf(N: 2**22, RC: 2, RB: 32, bits_in_parallel: 2, chunks: KECCAKF_CHUNKS, bits: KECCAKF_BITS, operation_bus_id: OPERATION_BUS_ID);
+    // // Precompiles
+    // ArithEq(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    // ArithEqLtTable();
+
+    // // V1 (2 inputs)
+    // const int KECCAKF_CHUNKS = 6;
+    // const int KECCAKF_BITS = 11;
+    // const int KECCAKF_BITS_LAST_CHUNK = 8;
+    // Keccakf(N: 2**22, chunks: KECCAKF_CHUNKS, bits: KECCAKF_BITS, bits_last_chunk: KECCAKF_BITS_LAST_CHUNK, RC: 2, RB: 32, mem_bits_in_parallel: 2, operation_bus_id: OPERATION_BUS_ID);
+
+    // const int KECCAKF_TABLE_CHUNKS = 1;
+    // const int KECCAKF_TABLE_BITS = (KECCAKF_BITS - KECCAKF_TABLE_CHUNKS + 1) + KECCAKF_BITS + 1;
+    // const int INCLUDE_REDUCED = (KECCAKF_BITS != KECCAKF_BITS_LAST_CHUNK) ? KECCAKF_BITS_LAST_CHUNK : 0;
+    // KeccakfTable(N: 2**KECCAKF_TABLE_BITS, chunks: KECCAKF_TABLE_CHUNKS, bits: KECCAKF_BITS, bits_reduced: INCLUDE_REDUCED);
+
+    // V2 (3 inputs)
+    const int KECCAKF_CHUNKS = 9;
+    const int KECCAKF_BITS = 7;
+    Keccakf(N: 2**22, chunks: KECCAKF_CHUNKS, bits: KECCAKF_BITS, RC: 2, RB: 32, mem_bits_in_parallel: 2, operation_bus_id: OPERATION_BUS_ID);
+
     const int KECCAKF_TABLE_CHUNKS = 1;
-    const int KECCAKF_TABLE_BITS = (KECCAKF_BITS - KECCAKF_TABLE_CHUNKS + 1) + KECCAKF_BITS + 1;
+    const int KECCAKF_TABLE_BITS = (KECCAKF_BITS - KECCAKF_TABLE_CHUNKS + 1) + KECCAKF_BITS + KECCAKF_BITS + 1;
     KeccakfTable(N: 2**KECCAKF_TABLE_BITS, chunks: KECCAKF_TABLE_CHUNKS, bits: KECCAKF_BITS);
 
-    const int SHA256F_CHUNKS = 8;
-    const int SHA256F_BITS = 7;
-    Sha256f(N: 2**21, RC: 2, RB: 32, bits_in_parallel: 2, chunks: SHA256F_CHUNKS, bits: SHA256F_BITS, operation_bus_id: OPERATION_BUS_ID);
-    const int SHA256F_TABLE_CHUNKS = 1;
-    const int SHA256F_TABLE_BITS = (SHA256F_BITS - SHA256F_TABLE_CHUNKS + 1) + SHA256F_BITS + SHA256F_BITS + 2;
-    Sha256fTable(N: 2**SHA256F_TABLE_BITS, chunks: SHA256F_TABLE_CHUNKS, bits: SHA256F_BITS);
+    // const int SHA256F_CHUNKS = 8;
+    // const int SHA256F_BITS = 7;
+    // Sha256f(N: 2**21, RC: 2, RB: 32, bits_in_parallel: 2, chunks: SHA256F_CHUNKS, bits: SHA256F_BITS, operation_bus_id: OPERATION_BUS_ID);
+    // const int SHA256F_TABLE_CHUNKS = 1;
+    // const int SHA256F_TABLE_BITS = (SHA256F_BITS - SHA256F_TABLE_CHUNKS + 1) + SHA256F_BITS + SHA256F_BITS + 2;
+    // Sha256fTable(N: 2**SHA256F_TABLE_BITS, chunks: SHA256F_TABLE_CHUNKS, bits: SHA256F_BITS);
 
     // Public Inputs
     for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {
