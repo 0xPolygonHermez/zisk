@@ -327,7 +327,7 @@ impl GateState {
         if let (Some(ref_in3), Some(pin_in3)) = (ref_in3, pin_in3) {
             if ref_in3 != ref_out {
                 self.gates[ref_in3 as usize].pins[pin_in3].fan_out += 1;
-                self.gates[ref_in3 as usize].pins[pin_in3].connections_to_input_b.push(ref_out);
+                self.gates[ref_in3 as usize].pins[pin_in3].connections_to_input_c.push(ref_out);
             }
         }
 
@@ -352,6 +352,7 @@ impl GateState {
     }
 
     #[rustfmt::skip]
+    #[allow(clippy::too_many_arguments)]
     pub fn xor_andp(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_in3: u64, pin_in3: PinId, ref_out: u64) {
         self.op(GateOperation::XorAndp, ref_in1, pin_in1, ref_in2, pin_in2, Some(ref_in3), Some(pin_in3), ref_out);
     }

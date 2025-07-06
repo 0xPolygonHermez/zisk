@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "14184dc2091ff97a3680afec2e5afb19acf0086cf68ec7637532cc7471ee5495";
+pub const PILOUT_HASH: &str = "1dbc59ce4adae31f543b874c331302e3b41f4111a32d375fb8abfdac21351608";
 
 //AIRGROUP CONSTANTS
 
@@ -247,20 +247,20 @@ trace!(ArithEqLtTableTrace<F> {
 },  0, 16, 262144 );
 
 trace!(KeccakfFixed<F> {
- L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, ID: F, LATCH_NUM_KECCAKF: F, FACTOR_NUM_KECCAKF: F, CLK_0: F, __L1__: F,
+ L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, LATCH_NUM_KECCAKF: F, FACTOR_NUM_KECCAKF: F, CLK_0: F, __L1__: F,
 },  0, 17, 4194304 );
 
 trace!(KeccakfTrace<F> {
- free_in_a: [F; 7], free_in_b: [F; 7], free_in_c: [F; 7], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
+ free_in_a: [F; 9], free_in_b: [F; 9], free_in_c: [F; 9], free_in_d: [F; 9], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
 },  0, 17, 4194304 );
 
 trace!(KeccakfTableFixed<F> {
- A: [F; 1], B: F, GATE_OP: F, C: [F; 1], __L1__: F,
-},  0, 18, 524288 );
+ A: [F; 1], B: F, C: F, GATE_OP: F, D: [F; 1], __L1__: F,
+},  0, 18, 4194304 );
 
 trace!(KeccakfTableTrace<F> {
  multiplicity: [F; 1],
-},  0, 18, 524288 );
+},  0, 18, 4194304 );
 
 trace!(Sha256fFixed<F> {
  L1: F, GATE_OP: F, CARRY_ENABLED: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, LATCH_NUM_SHA256F: F, FACTOR_NUM_SHA256F: F, CLK_0: F, __L1__: F,

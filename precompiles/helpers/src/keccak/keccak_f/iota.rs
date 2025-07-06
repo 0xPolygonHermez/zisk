@@ -27,7 +27,15 @@ pub fn keccak_f_iota(s: &mut GateState, ir: u64) {
             let aux = s.get_free_ref();
 
             // XOR with one
-            s.xor3(s.gate_config.zero_ref.unwrap(), PinId::B, s.sout_refs[pos], PinId::D, s.gate_config.zero_ref.unwrap(), PinId::A, aux);
+            s.xor3(
+                s.gate_config.zero_ref.unwrap(),
+                PinId::B,
+                s.sout_refs[pos],
+                PinId::D,
+                s.gate_config.zero_ref.unwrap(),
+                PinId::A,
+                aux,
+            );
 
             s.sout_refs[pos] = aux;
         }

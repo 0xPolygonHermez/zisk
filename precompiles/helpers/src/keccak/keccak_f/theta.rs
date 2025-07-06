@@ -55,9 +55,25 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
                         + group_pos_2
                 );
 
-                s.xor3(s.sin_refs[positions[0]], PinId::A, s.sin_refs[positions[1]], PinId::A, s.sin_refs[positions[2]], PinId::A, aux);
+                s.xor3(
+                    s.sin_refs[positions[0]],
+                    PinId::A,
+                    s.sin_refs[positions[1]],
+                    PinId::A,
+                    s.sin_refs[positions[2]],
+                    PinId::A,
+                    aux,
+                );
             } else {
-                s.xor3(s.sin_refs[positions[0]], PinId::D, s.sin_refs[positions[1]], PinId::D, s.sin_refs[positions[2]], PinId::D, aux);
+                s.xor3(
+                    s.sin_refs[positions[0]],
+                    PinId::D,
+                    s.sin_refs[positions[1]],
+                    PinId::D,
+                    s.sin_refs[positions[2]],
+                    PinId::D,
+                    aux,
+                );
             }
 
             // C[x, z] = aux ^ A[x, 3, z] ^ A[x, 4, z]
@@ -72,9 +88,25 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
                         + s.gate_config.sin_ref_distance * group_3
                         + group_pos_3
                 );
-                s.xor3(aux, PinId::D, s.sin_refs[positions[3]], PinId::A, s.sin_refs[positions[4]], PinId::A, cxy);
+                s.xor3(
+                    aux,
+                    PinId::D,
+                    s.sin_refs[positions[3]],
+                    PinId::A,
+                    s.sin_refs[positions[4]],
+                    PinId::A,
+                    cxy,
+                );
             } else {
-                s.xor3(aux, PinId::D, s.sin_refs[positions[3]], PinId::D, s.sin_refs[positions[4]], PinId::D, cxy);
+                s.xor3(
+                    aux,
+                    PinId::D,
+                    s.sin_refs[positions[3]],
+                    PinId::D,
+                    s.sin_refs[positions[4]],
+                    PinId::D,
+                    cxy,
+                );
             }
         }
     }
@@ -85,7 +117,15 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
         for z in 0..64 {
             let free_ref = s.get_free_ref();
             d[x][z] = free_ref;
-            s.xor3(c[(x + 4) % 5][z], PinId::D, c[(x + 1) % 5][(z + 63) % 64], PinId::D, s.gate_config.zero_ref.unwrap(), PinId::A, free_ref);
+            s.xor3(
+                c[(x + 4) % 5][z],
+                PinId::D,
+                c[(x + 1) % 5][(z + 63) % 64],
+                PinId::D,
+                s.gate_config.zero_ref.unwrap(),
+                PinId::A,
+                free_ref,
+            );
         }
     }
 
@@ -102,11 +142,27 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
                         + s.gate_config.sin_ref_distance * group
                         + group_pos;
                     assert_eq!(s.sin_refs[pos], ref_idx);
-                    s.xor3(ref_idx, PinId::A, d[x][z], PinId::D, s.gate_config.zero_ref.unwrap(), PinId::A, ref_idx);
+                    s.xor3(
+                        ref_idx,
+                        PinId::A,
+                        d[x][z],
+                        PinId::D,
+                        s.gate_config.zero_ref.unwrap(),
+                        PinId::A,
+                        ref_idx,
+                    );
                     ref_idx
                 } else {
                     let ref_idx = s.get_free_ref();
-                    s.xor3(s.sin_refs[pos], PinId::D, d[x][z], PinId::D, s.gate_config.zero_ref.unwrap(), PinId::A, ref_idx);
+                    s.xor3(
+                        s.sin_refs[pos],
+                        PinId::D,
+                        d[x][z],
+                        PinId::D,
+                        s.gate_config.zero_ref.unwrap(),
+                        PinId::A,
+                        ref_idx,
+                    );
                     ref_idx
                 };
 
