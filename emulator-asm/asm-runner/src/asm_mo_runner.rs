@@ -3,16 +3,13 @@ use named_sem::NamedSemaphore;
 use zisk_common::Plan;
 
 use std::ffi::c_void;
-use std::path::Path;
 use std::sync::atomic::{fence, Ordering};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing::error;
 
-use crate::{
-    write_input, AsmMOChunk, AsmMOHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory,
-};
+use crate::{AsmMOChunk, AsmMOHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory};
 use mem_planner_cpp::MemPlanner;
 
 use anyhow::{Context, Result};
@@ -30,7 +27,6 @@ impl AsmRunnerMO {
     #[allow(clippy::too_many_arguments)]
     pub fn run(
         asm_shared_memory: Arc<Mutex<Option<AsmSharedMemory<AsmMOHeader>>>>,
-        inputs_path: &Path,
         max_steps: u64,
         chunk_size: u64,
         world_rank: i32,
@@ -40,13 +36,11 @@ impl AsmRunnerMO {
     ) -> Result<Self> {
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
-        let (shmem_input_name, _, sem_chunk_done_name) =
-            AsmSharedMemory::<AsmMOHeader>::shmem_names(AsmService::MO, base_port, local_rank);
+        let sem_chunk_done_name =
+            AsmSharedMemory::<AsmMOHeader>::shmem_chunk_done_name(AsmService::MO, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
-
-        write_input(inputs_path, &shmem_input_name, unlock_mapped_memory);
 
         let handle = std::thread::spawn(move || {
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
@@ -61,13 +55,8 @@ impl AsmRunnerMO {
 
         if asm_shared_memory.is_none() {
             *asm_shared_memory = Some(
-                AsmSharedMemory::create_shmem(
-                    AsmService::MO,
-                    local_rank,
-                    base_port,
-                    unlock_mapped_memory,
-                )
-                .expect("Error creating MO assembly shared memory"),
+                AsmSharedMemory::create_shmem(AsmService::MO, local_rank, unlock_mapped_memory)
+                    .expect("Error creating MO assembly shared memory"),
             );
         }
 

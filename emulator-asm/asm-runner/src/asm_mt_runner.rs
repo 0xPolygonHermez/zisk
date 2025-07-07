@@ -3,7 +3,6 @@ use rayon::ThreadPoolBuilder;
 use zisk_common::{ChunkId, EmuTrace};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use std::path::Path;
 use std::sync::atomic::{fence, Ordering};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::Mutex;
@@ -12,9 +11,7 @@ use std::time::{Duration, Instant};
 
 use tracing::{error, info};
 
-use crate::{
-    write_input, AsmMTChunk, AsmMTHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory,
-};
+use crate::{AsmMTChunk, AsmMTHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory};
 
 use anyhow::{Context, Result};
 
@@ -55,7 +52,6 @@ impl AsmRunnerMT {
     #[allow(clippy::too_many_arguments)]
     pub fn run_and_count<T: Task>(
         asm_shared_memory: Arc<Mutex<Option<AsmSharedMemory<AsmMTHeader>>>>,
-        inputs_path: &Path,
         max_steps: u64,
         chunk_size: u64,
         task_factory: TaskFactory<T>,
@@ -66,13 +62,11 @@ impl AsmRunnerMT {
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
-        let (shmem_input_name, _, sem_chunk_done_name) =
-            AsmSharedMemory::<AsmMTHeader>::shmem_names(AsmService::MT, base_port, local_rank);
+        let sem_chunk_done_name =
+            AsmSharedMemory::<AsmMTHeader>::shmem_chunk_done_name(AsmService::MT, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
-
-        write_input(inputs_path, &shmem_input_name, unlock_mapped_memory);
 
         let start = Instant::now();
 
@@ -86,13 +80,8 @@ impl AsmRunnerMT {
 
         if asm_shared_memory.is_none() {
             *asm_shared_memory = Some(
-                AsmSharedMemory::create_shmem(
-                    AsmService::MT,
-                    local_rank,
-                    base_port,
-                    unlock_mapped_memory,
-                )
-                .expect("Error creating MT assembly shared memory"),
+                AsmSharedMemory::create_shmem(AsmService::MT, local_rank, unlock_mapped_memory)
+                    .expect("Error creating MT assembly shared memory"),
             );
         }
 
