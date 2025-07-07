@@ -542,9 +542,9 @@ impl ZiskStats {
             let air_id = stat.1;
             let stat = &stat.2;
             let collect_start_time: u64 =
-                stat.collect_start_time.duration_since(start_time).as_micros() as u64;
+                stat.collect_start_time.duration_since(start_time).as_millis() as u64;
             let witness_start_time: u64 =
-                stat.witness_start_time.duration_since(start_time).as_micros() as u64;
+                stat.witness_start_time.duration_since(start_time).as_millis() as u64;
             let name = ZiskStats::air_name(airgroup_id, air_id);
             if stat.collect_duration > 0 {
                 let name = name.clone() + "_collect";

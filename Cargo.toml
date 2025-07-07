@@ -37,12 +37,16 @@ members = [
     "common",
     "tools/circuit",
     "server",
+    "verifier",
 ]
 
 resolver = "2"
 
 [profile.release]
 opt-level = 3
+
+[profile.release.package."verifier"]
+opt-level = 0
 
 [profile.bench]
 opt-level = 3
@@ -56,6 +60,7 @@ data-bus = { path = "data-bus" }
 ziskemu = { path = "emulator" }
 asm-runner = { path = "emulator-asm/asm-runner" }
 executor = { path = "executor" }
+verifier = { path = "verifier" }
 lib-c = { path = "lib-c" }
 zisk-pil = { path = "pil" }
 precomp-arith-eq = { path = "precompiles/arith_eq" }
