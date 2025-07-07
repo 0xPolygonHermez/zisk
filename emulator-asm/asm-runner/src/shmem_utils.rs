@@ -2,11 +2,11 @@ use libc::{
     c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
     PROT_WRITE, S_IRUSR, S_IWUSR,
 };
-use std::{ffi::CString, fmt::Debug, io, mem::ManuallyDrop, os::raw::c_void, ptr};
+use std::{ffi::CString, fmt::Debug, fs, io, mem::ManuallyDrop, os::raw::c_void, path::Path, ptr};
 
 use anyhow::Result;
 
-use crate::{AsmService, AsmServices};
+use crate::{AsmInputC2, AsmService, AsmServices};
 
 pub enum AsmSharedMemoryMode {
     ReadOnly,
@@ -294,5 +294,27 @@ pub fn map(_: i32, _: usize, _: i32, _: bool, _: &str) -> *mut c_void {
 pub unsafe fn unmap(ptr: *mut c_void, size: usize) {
     if munmap(ptr, size) != 0 {
         tracing::error!("munmap failed: {:?}", io::Error::last_os_error());
+    }
+}
+
+pub fn write_input(inputs_path: &Path, shmem_input_name: &str, unlock_mapped_memory: bool) {
+    let inputs = fs::read(inputs_path).expect("Failed to read input file");
+    let asm_input = AsmInputC2 { zero: 0, input_data_size: inputs.len() as u64 };
+    let shmem_input_size = (inputs.len() + size_of::<AsmInputC2>() + 7) & !7;
+
+    let mut full_input = Vec::with_capacity(shmem_input_size);
+    full_input.extend_from_slice(&asm_input.to_bytes());
+    full_input.extend_from_slice(&inputs);
+    while full_input.len() < shmem_input_size {
+        full_input.push(0);
+    }
+
+    let fd = open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR);
+    let ptr =
+        map(fd, shmem_input_size, PROT_READ | PROT_WRITE, unlock_mapped_memory, "RH input mmap");
+    unsafe {
+        ptr::copy_nonoverlapping(full_input.as_ptr(), ptr as *mut u8, shmem_input_size);
+        unmap(ptr, shmem_input_size);
+        close(fd);
     }
 }

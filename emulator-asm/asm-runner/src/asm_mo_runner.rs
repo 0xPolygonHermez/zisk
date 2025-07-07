@@ -1,5 +1,4 @@
-use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
-
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use named_sem::NamedSemaphore;
 use zisk_common::Plan;
 
@@ -9,12 +8,10 @@ use std::sync::atomic::{fence, Ordering};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::{fs, ptr};
 use tracing::error;
 
 use crate::{
-    shmem_utils, AsmInputC2, AsmMOChunk, AsmMOHeader, AsmRunError, AsmService, AsmServices,
-    AsmSharedMemory,
+    write_input, AsmMOChunk, AsmMOHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory,
 };
 use mem_planner_cpp::MemPlanner;
 
@@ -49,7 +46,7 @@ impl AsmRunnerMO {
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
-        Self::write_input(inputs_path, &shmem_input_name, unlock_mapped_memory);
+        write_input(inputs_path, &shmem_input_name, unlock_mapped_memory);
 
         let handle = std::thread::spawn(move || {
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
@@ -134,33 +131,5 @@ impl AsmRunnerMO {
         let plans = mem_planner.collect_plans();
 
         Ok(AsmRunnerMO::new(plans))
-    }
-
-    fn write_input(inputs_path: &Path, shmem_input_name: &str, unlock_mapped_memory: bool) {
-        let inputs = fs::read(inputs_path).expect("Failed to read input file");
-        let asm_input = AsmInputC2 { zero: 0, input_data_size: inputs.len() as u64 };
-        let shmem_input_size = (inputs.len() + size_of::<AsmInputC2>() + 7) & !7;
-
-        let mut full_input = Vec::with_capacity(shmem_input_size);
-        full_input.extend_from_slice(&asm_input.to_bytes());
-        full_input.extend_from_slice(&inputs);
-        while full_input.len() < shmem_input_size {
-            full_input.push(0);
-        }
-
-        let fd = shmem_utils::open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR);
-
-        let ptr = shmem_utils::map(
-            fd,
-            shmem_input_size,
-            PROT_READ | PROT_WRITE,
-            unlock_mapped_memory,
-            "MO input mmap",
-        );
-        unsafe {
-            ptr::copy_nonoverlapping(full_input.as_ptr(), ptr as *mut u8, shmem_input_size);
-            shmem_utils::unmap(ptr, shmem_input_size);
-            close(fd);
-        }
     }
 }
