@@ -2,15 +2,15 @@ use anyhow::{anyhow, Ok, Result};
 use clap::Parser;
 use colored::Colorize;
 use proofman_common::initialize_logger;
+use proofman_verifier::verify;
+use std::fs;
+use std::fs::File;
 use std::io::Read;
-use std::{fs::File, path::PathBuf};
+use zstd::stream::read::Decoder;
 
 use bytemuck::cast_slice;
-use proofman::verify_final_proof;
 
 use crate::ZISK_VERSION_MESSAGE;
-
-use super::{get_default_stark_info, get_default_verifier_bin, get_default_verkey};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -19,24 +19,15 @@ pub struct ZiskVerify {
     #[clap(short = 'p', long)]
     pub proof: String,
 
-    #[clap(short = 's', long)]
-    pub stark_info: Option<String>,
-
-    #[clap(short = 'e', long)]
-    pub verifier_bin: Option<String>,
-
-    #[clap(short = 'k', long)]
-    pub verkey: Option<String>,
-
-    #[clap(short = 'u', long)]
-    pub public_inputs: Option<PathBuf>,
-
-    #[clap(short = 'j', long, default_value_t = false)]
-    pub json: bool,
-
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
+
+    #[clap(short = 'k', long)]
+    pub vk: String,
+
+    #[clap(short = 'z', long, default_value_t = false)]
+    pub zip: bool,
 }
 
 impl ZiskVerify {
@@ -49,61 +40,49 @@ impl ZiskVerify {
         );
         tracing::info!("");
 
-        let mut file = File::open(self.proof.clone())?;
-        let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer)?;
+        let start = std::time::Instant::now();
 
-        let proof_slice: &[u64] = cast_slice(&buffer);
+        let proof_buffer = if self.zip {
+            // Read compressed proof and decompress it
+            tracing::info!("Reading compressed proof file: {}", self.proof);
+            let proof_file = File::open(self.proof.clone())?;
+            let mut decoder = Decoder::new(proof_file)?;
+            let mut proof_buffer = Vec::new();
+            decoder.read_to_end(&mut proof_buffer)?;
+            tracing::info!("Decompressed proof size: {} bytes", proof_buffer.len());
+            proof_buffer
+        } else {
+            // Read uncompressed proof
+            tracing::info!("Reading uncompressed proof file: {}", self.proof);
+            let mut proof_file = File::open(self.proof.clone())?;
+            let mut proof_buffer = Vec::new();
+            proof_file.read_to_end(&mut proof_buffer)?;
+            tracing::info!("Proof size: {} bytes", proof_buffer.len());
+            proof_buffer
+        };
+        let proof_slice: &[u64] = cast_slice(&proof_buffer);
 
-        let valid = verify_final_proof(
-            proof_slice,
-            self.get_stark_info(),
-            self.get_verifier_bin(),
-            self.get_verkey(),
-        );
+        let vk_buffer = fs::read(&self.vk)?;
+        let verkey: &[u64] = cast_slice(&vk_buffer);
+
+        let valid = verify(proof_slice, verkey);
+
+        let elapsed = start.elapsed();
 
         if !valid {
-            tracing::info!(
-                "VStark  : ··· {}",
-                "\u{2717} Stark proof was not verified".bright_red().bold()
-            );
+            tracing::info!("{}", "\u{2717} Stark proof was not verified".bright_red().bold());
+        } else {
+            tracing::info!("{}", "\u{2713} Stark proof was verified".bright_green().bold());
+        }
+
+        tracing::info!("{}", "--- VERIFICATION SUMMARY ---".bright_green().bold());
+        tracing::info!("      time: {} milliseconds", elapsed.as_millis());
+        tracing::info!("{}", "----------------------------".bright_green().bold());
+
+        if !valid {
             Err(anyhow!("Stark proof was not verified"))
         } else {
-            tracing::info!(
-                "VStark  :     {}",
-                "\u{2713} Stark proof was verified".bright_green().bold()
-            );
             Ok(())
-        }
-    }
-
-    /// Gets the stark info JSON file location.
-    /// Uses the default one if not specified by user.
-    pub fn get_stark_info(&self) -> String {
-        if self.stark_info.is_none() {
-            get_default_stark_info()
-        } else {
-            self.stark_info.clone().unwrap()
-        }
-    }
-
-    /// Gets the verifier binary file location.
-    /// Uses the default one if not specified by user.
-    pub fn get_verifier_bin(&self) -> String {
-        if self.verifier_bin.is_none() {
-            get_default_verifier_bin()
-        } else {
-            self.verifier_bin.clone().unwrap()
-        }
-    }
-
-    /// Gets the verification key JSON file location.
-    /// Uses the default one if not specified by user.
-    pub fn get_verkey(&self) -> String {
-        if self.verkey.is_none() {
-            get_default_verkey()
-        } else {
-            self.verkey.clone().unwrap()
         }
     }
 }
