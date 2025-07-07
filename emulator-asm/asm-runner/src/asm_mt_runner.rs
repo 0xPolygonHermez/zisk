@@ -40,7 +40,6 @@ pub struct AsmRunnerMT {
     pub vec_chunks: Vec<EmuTrace>,
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl Drop for AsmRunnerMT {
     fn drop(&mut self) {
         for chunk in &mut self.vec_chunks {
@@ -52,7 +51,6 @@ impl Drop for AsmRunnerMT {
     }
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerMT {
     pub fn new(vec_chunks: Vec<EmuTrace>) -> Self {
         Self { vec_chunks }
@@ -210,25 +208,5 @@ impl AsmRunnerMT {
             shmem_utils::unmap(ptr, shmem_input_size);
             close(fd);
         }
-    }
-}
-
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-impl AsmRunnerMT {
-    pub fn new(_: String, _: *mut c_void, _: Vec<EmuTrace>) -> Self {
-        panic!(
-            "AsmRunnerMT::new() is not supported on this platform. Only Linux x86_64 is supported."
-        )
-    }
-
-    pub fn run_and_count<T: Task>(
-        _: &Path,
-        _: &Path,
-        _: u64,
-        _: u64,
-        _: AsmRunnerOptions,
-        _: TaskFactory<T>,
-    ) -> (AsmRunnerMT, Vec<T::Output>) {
-        panic!("AsmRunnerMT::run_and_count() is not supported on this platform. Only Linux x86_64 is supported.")
     }
 }

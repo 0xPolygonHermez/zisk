@@ -1,7 +1,9 @@
-use libc::{
-    close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE,
-    S_IRUSR, S_IWUSR,
-};
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use libc::{mmap, munmap, shm_open, MAP_FAILED, MAP_SHARED};
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+use libc::{munmap, shm_open};
+
+use libc::{close, shm_unlink, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
 use std::{ffi::CString, fmt::Debug, io, mem::ManuallyDrop, os::raw::c_void, ptr};
 
 use anyhow::Result;
@@ -261,6 +263,7 @@ pub fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {
     fd
 }
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &str) -> *mut c_void {
     let mut flags = MAP_SHARED;
     if !unlock_mapped_memory {
@@ -272,6 +275,11 @@ pub fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &s
         panic!("mmap failed for '{desc}': {err:?} ({size} bytes)");
     }
     mapped
+}
+
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+pub fn map(_: i32, _: usize, _: i32, _: bool, _: &str) -> *mut c_void {
+    ptr::null_mut()
 }
 
 /// Unmaps memory at the given raw pointer.

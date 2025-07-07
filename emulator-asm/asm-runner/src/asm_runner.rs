@@ -3,10 +3,28 @@ use thiserror::Error;
 
 use crate::{AsmService, AsmServices};
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[derive(Debug, Error)]
 pub enum AsmRunError {
     #[error("Failed to create semaphore '{0}': {1}")]
     SemaphoreError(String, #[source] named_sem::Error),
+    #[error("Thread pool creation failed")]
+    ThreadPoolError(#[from] rayon::ThreadPoolBuildError),
+    #[error("Semaphore wait failed: {0}")]
+    SemaphoreWaitError(#[from] std::io::Error),
+    #[error("Child process exited with code: {0}")]
+    ExitCode(u32),
+    #[error("Thread join failed")]
+    JoinPanic,
+    #[error("Child service returned error: {0}")]
+    ServiceError(#[source] anyhow::Error),
+    #[error("Arc unwrap failed")]
+    ArcUnwrap,
+}
+
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+#[derive(Debug, Error)]
+pub enum AsmRunError {
     #[error("Thread pool creation failed")]
     ThreadPoolError(#[from] rayon::ThreadPoolBuildError),
     #[error("Semaphore wait failed: {0}")]

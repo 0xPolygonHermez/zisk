@@ -3,9 +3,8 @@ use super::{
     MinimalTraceResponse, PingRequest, PingResponse, ResponseData, ShutdownRequest,
     ShutdownResponse, ToRequestPayload,
 };
-use crate::{AsmRunError, AsmRunnerOptions, RomHistogramRequest, RomHistogramResponse};
+use crate::{AsmRunnerOptions, RomHistogramRequest, RomHistogramResponse};
 use anyhow::{Context, Result};
-use named_sem::NamedSemaphore;
 use std::{
     fmt,
     io::{Read, Write},
@@ -283,6 +282,7 @@ impl AsmServices {
         Ok(Res::from_response_payload(response))
     }
 
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub fn send_shutdown_and_wait(&self, service: &AsmService) -> Result<()> {
         let sem_name = format!(
             "/{}_{}_shutdown_done",
@@ -290,8 +290,8 @@ impl AsmServices {
             service.as_str()
         );
 
-        let mut sem = NamedSemaphore::create(&sem_name, 0)
-            .map_err(|e| AsmRunError::SemaphoreError(sem_name.clone(), e))?;
+        let mut sem = named_sem::NamedSemaphore::create(&sem_name, 0)
+            .map_err(|e| crate::AsmRunError::SemaphoreError(sem_name.clone(), e))?;
 
         // Try to clean up stale state
         let _ = sem.try_wait();
@@ -309,7 +309,7 @@ impl AsmServices {
                 sem_name,
                 e
             );
-            AsmRunError::SemaphoreError(sem_name.clone(), e)
+            crate::AsmRunError::SemaphoreError(sem_name.clone(), e)
         })?;
 
         // Manually drop and unlink the semaphore to clean up
@@ -326,6 +326,11 @@ impl AsmServices {
             }
         }
 
+        Ok(())
+    }
+
+    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+    pub fn send_shutdown_and_wait(&self, _: &AsmService) -> Result<()> {
         Ok(())
     }
 }
