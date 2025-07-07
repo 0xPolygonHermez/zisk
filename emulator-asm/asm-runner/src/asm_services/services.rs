@@ -71,11 +71,7 @@ impl AsmServices {
     ) -> String {
         format!(
             "ZISK_{}_{}",
-            Self::port_for(
-                asm_service,
-                base_port.unwrap_or(AsmServices::default_port(&AsmService::MO, local_rank)),
-                local_rank
-            ),
+            Self::port_for(asm_service, base_port.unwrap_or(ASM_SERVICE_BASE_PORT), local_rank),
             local_rank
         )
     }
