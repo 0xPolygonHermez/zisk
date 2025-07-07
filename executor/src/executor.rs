@@ -20,8 +20,8 @@
 //! maintaining clarity and modularity in the computation process.
 
 use asm_runner::{
-    AsmMOHeader, AsmMTHeader, AsmRHHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmSharedMemory,
-    MinimalTraces, Task, TaskFactory,
+    write_input, AsmMOHeader, AsmMTHeader, AsmRHHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH,
+    AsmServices, AsmSharedMemory, MinimalTraces, Task, TaskFactory,
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -252,7 +252,16 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         &self,
         input_data_path: Option<PathBuf>,
     ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<AsmRunnerMO>) {
-        let input_data_path_cloned = input_data_path.clone();
+        for service in AsmServices::SERVICES {
+            let shmem_input_name =
+                AsmSharedMemory::<AsmMTHeader>::shmem_input_name(service, self.local_rank);
+            write_input(
+                input_data_path.as_ref().unwrap(),
+                &shmem_input_name,
+                self.unlock_mapped_memory,
+            );
+        }
+
         let (world_rank, local_rank, base_port) =
             (self.world_rank, self.local_rank, self.base_port);
         let chunk_size = self.chunk_size;
@@ -264,7 +273,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let handle_mo = std::thread::spawn(move || {
             AsmRunnerMO::run(
                 asm_shmem_mo,
-                input_data_path_cloned.as_ref().unwrap(),
                 Self::MAX_NUM_STEPS,
                 chunk_size,
                 world_rank,
@@ -277,7 +285,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         // Run the assembly ROM Histogram runner with the provided input data path only if the world rank is 0
         let handle_rh = if self.world_rank == 0 {
-            let input_data_path_cloned = input_data_path.clone();
             let (world_rank, local_rank, base_port) =
                 (self.world_rank, self.local_rank, self.base_port);
 
@@ -287,7 +294,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             Some(std::thread::spawn(move || {
                 AsmRunnerRH::run(
                     asm_shmem_rh,
-                    input_data_path_cloned.as_ref().unwrap(),
                     Self::MAX_NUM_STEPS,
                     world_rank,
                     local_rank,
@@ -300,7 +306,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             None
         };
 
-        let (min_traces, main_count, secn_count) = self.run_mt_assembly(input_data_path);
+        let (min_traces, main_count, secn_count) = self.run_mt_assembly();
 
         // Store execute steps
         let steps = if let MinimalTraces::AsmEmuTrace(asm_min_traces) = &min_traces {
@@ -325,10 +331,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         (min_traces, main_count, secn_count, Some(asm_runner_mo))
     }
 
-    fn run_mt_assembly(
-        &self,
-        input_data_path: Option<PathBuf>,
-    ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList) {
+    fn run_mt_assembly(&self) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList) {
         struct CounterTask<F, DB>
         where
             DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>,
@@ -380,7 +383,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         let (asm_runner_mt, mut data_buses) = AsmRunnerMT::run_and_count(
             self.asm_shmem_mt.clone(),
-            input_data_path.as_ref().unwrap(),
             Self::MAX_NUM_STEPS,
             self.chunk_size,
             task_factory,
