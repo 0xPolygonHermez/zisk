@@ -112,7 +112,7 @@ impl KeccakfSM {
 
             // Activate the in_use selector
             for j in 0..IN_OUT_BLOCKS {
-                trace[initial_pos + j*NUM_KECCAKF_PER_CIRCUIT].in_use = F::ONE;
+                trace[initial_pos + j * NUM_KECCAKF_PER_CIRCUIT].in_use = F::ONE;
             }
 
             // Process the keccakf input
@@ -214,7 +214,8 @@ impl KeccakfSM {
                     for k in 0..STATE_BITS {
                         let bit = (value >> k) & 1;
                         let bit_pos = k % MEM_BITS_IN_PARALLEL;
-                        let bit_offset = (k - bit_pos) * NUM_KECCAKF_PER_CIRCUIT / MEM_BITS_IN_PARALLEL;
+                        let bit_offset =
+                            (k - bit_pos) * NUM_KECCAKF_PER_CIRCUIT / MEM_BITS_IN_PARALLEL;
                         let pos = state_pos + bit_offset;
                         for w in rem_inputs..NUM_KECCAKF_PER_CIRCUIT {
                             update_bit_val(trace, pos + w, bit, w, bit_pos, w == 0);
@@ -232,7 +233,8 @@ impl KeccakfSM {
                     for k in 0..STATE_BITS {
                         let bit = (value >> k) & 1;
                         let bit_pos = k % MEM_BITS_IN_PARALLEL;
-                        let bit_offset = (k - bit_pos) * NUM_KECCAKF_PER_CIRCUIT / MEM_BITS_IN_PARALLEL;
+                        let bit_offset =
+                            (k - bit_pos) * NUM_KECCAKF_PER_CIRCUIT / MEM_BITS_IN_PARALLEL;
                         let pos = initial_offset
                             + circuit_offset
                             + input_offset
