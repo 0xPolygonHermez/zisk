@@ -19,8 +19,8 @@ use std::{
     thread,
     time::Instant,
 };
-use zisk_common::ZiskLibInitFn;
 use zisk_pil::*;
+use zisk_witness::ZiskLibInitFn;
 
 use crate::{
     commands::{
@@ -293,6 +293,8 @@ impl ZiskStats {
                     Some(local_rank),
                     self.port,
                     self.unlock_mapped_memory,
+                    #[cfg(feature = "dev")]
+                    zisk_witness::register_state_machines_dev::<Goldilocks>,
                 )
                 .expect("Failed to initialize witness library");
 

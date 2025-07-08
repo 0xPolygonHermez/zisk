@@ -12,13 +12,14 @@ use zisk_common::{
 use crate::{NestedDeviceMetricsList, SMBundle};
 use std::collections::HashMap;
 
+#[derive(Default)]
 pub struct DynSMBundle<F: PrimeField64> {
     secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>,
 }
 
 impl<F: PrimeField64> DynSMBundle<F> {
-    pub fn new(secondary_sm: Vec<Arc<dyn ComponentBuilder<F>>>) -> Self {
-        Self { secondary_sm }
+    pub fn add_secn_sm(&mut self, secn_sm: Arc<dyn ComponentBuilder<F>>) {
+        self.secondary_sm.push(secn_sm);
     }
 }
 
@@ -47,7 +48,7 @@ impl<F: PrimeField64> SMBundle<F> for DynSMBundle<F> {
     ) -> impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static {
         let mut data_bus = DataBus::new();
 
-        let counter = MainSM::build_counter();
+        let counter = MainSM::<F>::build_counter();
 
         data_bus.connect_device(None, Some(counter));
 

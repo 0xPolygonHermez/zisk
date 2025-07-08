@@ -20,6 +20,7 @@ tracing = { workspace = true}
 tracing-subscriber = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+pil-std-lib = { workspace = true }
 
 # Distributed mode (mpi) is only supported on Linux x86_64
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
@@ -29,6 +30,7 @@ libc = "0.2"
 
 [features]
 default = []
+dev = []
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
 
 [lints.rust]
