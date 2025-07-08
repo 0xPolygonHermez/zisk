@@ -44,7 +44,9 @@ pub struct Emu<'a> {
 ///
 /// There are 2 main SM emulation modes that generate memory reads:
 ///
-/// When called from the Witness Computation library as part of a proof generation process, or similar:
+/// 1.- When called from the Witness Computation library as part of a proof generation process, or similar:
+///
+/// 1.a.- First, to generate the minimal trace (memory reads):
 ///
 /// ZiskExecutor::execute(&self, pctx: Arc<ProofCtx<F>>, input_data_path: Option<PathBuf>) -> Vec<usize>
 ///     ZiskExecutor::execute_with_emulator(&self, input_data_path: Option<PathBuf>) -> MinimalTraces
@@ -54,7 +56,16 @@ pub struct Emu<'a> {
 ///                     Emu:: par_step_my_block(&mut self, emu_full_trace_vec: &mut EmuTrace)
 ///                         Emu::source_a_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);
 ///
-/// When called from ZiskEmu to simply emulate a RISC-V ELF file with an input file:
+/// 1.b.- Then, to consume the minimal trace (memory reads):
+///
+/// ZiskExecutor::calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>, global_ids: &[usize], n_cores: usize, buffer_pool: &dyn BufferPool<F>,)
+///     ZiskExecutor::witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &MainInstance, trace_buffer: Vec<F>,)
+///         MainSM::compute_witness<F: PrimeField64>(zisk_rom: &ZiskRom, min_traces: &[EmuTrace], chunk_size: u64, main_instance: &MainInstance, std: Arc<Std<F>>, trace_buffer: Vec<F>,) -> AirInstance<F>
+///             MainSM::fill_partial_trace<F: PrimeField64>(zisk_rom: &ZiskRom, main_trace: &mut [MainTraceRow<F>], min_trace: &EmuTrace, chunk_size: u64, reg_trace: &mut EmuRegTrace, step_range_check: &mut [u32], last_reg_values: bool,) -> (u64, Vec<u64>)
+///                 Emu::step_slice_full_trace<F: PrimeField64>(&mut self, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace, step_range_check: Option<&mut [u32]>,) -> EmuFullTraceStep<F>
+///                     Emu::source_a_mem_reads_consume(&mut self, instruction: &ZiskInst, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace,)
+///
+/// 2.- When called from ZiskEmu to simply emulate a RISC-V ELF file with an input file:
 ///
 /// ZiskEmu::main()
 ///     ZiskEmulator::emulate(&self, options: &EmuOptions, callback: Option<impl Fn(EmuTrace)>,) -> Result<Vec<u8>, ZiskEmulatorErr>
@@ -64,12 +75,6 @@ pub struct Emu<'a> {
 ///                     Emu::run_gen_trace(&mut self, options: &EmuOptions, par_options: &ParEmuOptions,) -> Vec<EmuTrace>
 ///                         Emu::par_step_my_block(&mut self, emu_full_trace_vec: &mut EmuTrace)
 ///                             Emu::source_a_mem_reads_generate(instruction, &mut emu_full_trace_vec.mem_reads);
-ZiskExecutor::calculate_witness(&self, stage: u32, pctx: Arc<ProofCtx<F>>, sctx: Arc<SetupCtx<F>>, global_ids: &[usize], n_cores: usize, buffer_pool: &dyn BufferPool<F>,)
-    ZiskExecutor::witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &MainInstance, trace_buffer: Vec<F>,)
-        MainSM::compute_witness<F: PrimeField64>(zisk_rom: &ZiskRom, min_traces: &[EmuTrace], chunk_size: u64, main_instance: &MainInstance, std: Arc<Std<F>>, trace_buffer: Vec<F>,) -> AirInstance<F>
-            MainSM::fill_partial_trace<F: PrimeField64>(zisk_rom: &ZiskRom, main_trace: &mut [MainTraceRow<F>], min_trace: &EmuTrace, chunk_size: u64, reg_trace: &mut EmuRegTrace, step_range_check: &mut [u32], last_reg_values: bool,) -> (u64, Vec<u64>)
-                Emu::step_slice_full_trace<F: PrimeField64>(&mut self, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace, step_range_check: Option<&mut [u32]>,) -> EmuFullTraceStep<F>
-                    Emu::source_a_mem_reads_consume(&mut self, instruction: &ZiskInst, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace,
 
 impl<'a> Emu<'a> {
     pub fn new(rom: &ZiskRom, chunk_size: u64) -> Emu {
