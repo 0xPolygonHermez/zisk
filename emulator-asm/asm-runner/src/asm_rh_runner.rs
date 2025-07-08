@@ -18,7 +18,6 @@ pub struct AsmRunnerRH {
     pub asm_rowh_output: AsmRHData,
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl Drop for AsmRunnerRH {
     fn drop(&mut self) {
         // Forget all mem_reads Vec<u64> before unmapping
@@ -26,7 +25,6 @@ impl Drop for AsmRunnerRH {
     }
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerRH {
     pub fn new(asm_rowh_output: AsmRHData) -> Self {
         AsmRunnerRH { asm_rowh_output }
@@ -116,25 +114,5 @@ impl AsmRunnerRH {
             shmem_utils::unmap(ptr, shmem_input_size);
             close(fd);
         }
-    }
-}
-
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-impl AsmRunnerRH {
-    pub fn new(
-        _shmem_output_name: String,
-        _mapped_ptr: *mut c_void,
-        _asm_rowh_output: AsmRHData,
-    ) -> Self {
-        panic!("AsmRunnerRomH::new() is not supported on this platform. Only Linux x86_64 is supported.");
-    }
-
-    pub fn run(
-        _rom_asm_path: &Path,
-        _inputs_path: Option<&Path>,
-        _shm_size: u64,
-        _options: AsmRunnerOptions,
-    ) -> AsmRunnerRH {
-        panic!("AsmRunnerRomH::run() is not supported on this platform. Only Linux x86_64 is supported.");
     }
 }

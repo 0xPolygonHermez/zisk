@@ -1,6 +1,5 @@
 use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use named_sem::NamedSemaphore;
 use zisk_common::Plan;
 
@@ -26,7 +25,6 @@ pub struct AsmRunnerMO {
     pub plans: Vec<Plan>,
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerMO {
     pub fn new(plans: Vec<Plan>) -> Self {
         Self { plans }
@@ -164,25 +162,5 @@ impl AsmRunnerMO {
             shmem_utils::unmap(ptr, shmem_input_size);
             close(fd);
         }
-    }
-}
-
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-impl AsmRunnerMO {
-    pub fn new(_: String, _: *mut c_void, _: Vec<EmuTrace>) -> Self {
-        panic!(
-            "AsmRunnerMO::new() is not supported on this platform. Only Linux x86_64 is supported."
-        )
-    }
-
-    pub fn run_and_count<T: Task>(
-        _: &Path,
-        _: &Path,
-        _: u64,
-        _: u64,
-        _: AsmRunnerOptions,
-        _: TaskFactory<T>,
-    ) -> (AsmRunnerMO, Vec<T::Output>) {
-        panic!("AsmRunnerMO::run_and_count() is not supported on this platform. Only Linux x86_64 is supported.")
     }
 }

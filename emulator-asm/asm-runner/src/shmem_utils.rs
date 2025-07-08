@@ -1,6 +1,6 @@
 use libc::{
-    close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE,
-    S_IRUSR, S_IWUSR,
+    c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
+    PROT_WRITE, S_IRUSR, S_IWUSR,
 };
 use std::{ffi::CString, fmt::Debug, io, mem::ManuallyDrop, os::raw::c_void, ptr};
 
@@ -14,7 +14,7 @@ pub enum AsmSharedMemoryMode {
 }
 
 pub struct AsmSharedMemory<H: AsmShmemHeader> {
-    fd: i32,
+    _fd: i32,
     mapped_ptr: *mut c_void,
     mapped_size: usize,
     shmem_name: String,
@@ -34,7 +34,7 @@ impl<H: AsmShmemHeader> Drop for AsmSharedMemory<H> {
         self.unmap().unwrap_or_else(|err| {
             tracing::error!("Failed to unmap shared memory '{}': {}", self.shmem_name, err)
         });
-        unsafe { close(self.fd) };
+        unsafe { close(self._fd) };
     }
 }
 
@@ -85,7 +85,7 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
     pub fn open_and_map(
         name: &str,
         mode: AsmSharedMemoryMode,
-        unlock_mapped_memory: bool,
+        _unlock_mapped_memory: bool,
     ) -> Result<Self> {
         unsafe {
             if name.is_empty() {
@@ -100,7 +100,7 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
                 AsmSharedMemoryMode::ReadWrite => libc::O_RDWR,
             };
 
-            let fd = shm_open(c_name.as_ptr(), oflag, S_IRUSR | S_IWUSR);
+            let fd = shm_open(c_name.as_ptr(), oflag, S_IRUSR as c_uint | S_IWUSR as c_uint);
             if fd == -1 {
                 let err = io::Error::last_os_error();
                 return Err(anyhow::anyhow!("shm_open('{name}') failed: {err}"));
@@ -122,8 +122,12 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
                 AsmSharedMemoryMode::ReadWrite => PROT_READ | PROT_WRITE,
             };
 
+            #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+            let flags = MAP_SHARED;
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             let mut flags = MAP_SHARED;
-            if !unlock_mapped_memory {
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            if !_unlock_mapped_memory {
                 flags |= libc::MAP_LOCKED;
             }
 
@@ -170,7 +174,7 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
             }
 
             Ok(Self {
-                fd,
+                _fd: fd,
                 mapped_ptr,
                 mapped_size: allocated_size,
                 shmem_name: name.to_string(),
@@ -261,6 +265,7 @@ pub fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {
     fd
 }
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &str) -> *mut c_void {
     let mut flags = MAP_SHARED;
     if !unlock_mapped_memory {
@@ -272,6 +277,11 @@ pub fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &s
         panic!("mmap failed for '{desc}': {err:?} ({size} bytes)");
     }
     mapped
+}
+
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+pub fn map(_: i32, _: usize, _: i32, _: bool, _: &str) -> *mut c_void {
+    ptr::null_mut()
 }
 
 /// Unmaps memory at the given raw pointer.

@@ -5,6 +5,7 @@ use crate::{AsmService, AsmServices};
 
 #[derive(Debug, Error)]
 pub enum AsmRunError {
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     #[error("Failed to create semaphore '{0}': {1}")]
     SemaphoreError(String, #[source] named_sem::Error),
     #[error("Thread pool creation failed")]
