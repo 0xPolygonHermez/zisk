@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use proofman_common::VerboseMode;
 use server::{
     ZiskProveRequest, ZiskRequest, ZiskResponse, ZiskShutdownRequest, ZiskStatusRequest,
     ZiskVerifyConstraintsRequest,
@@ -65,6 +66,10 @@ pub enum ClientCommand {
         /// Port of the server (by default DEFAULT_PORT)
         #[clap(long)]
         port: Option<u16>,
+
+        /// Verbosity (-v, -vv)
+        #[arg(short ='v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
+        verbose: u8, // Using u8 to hold the number of `-v`
     },
     /// Verify constraints from input file
     VerifyConstraints {
@@ -75,6 +80,10 @@ pub enum ClientCommand {
         /// Port of the server (by default DEFAULT_PORT)
         #[clap(long)]
         port: Option<u16>,
+
+        /// Verbosity (-v, -vv)
+        #[arg(short ='v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
+        verbose: u8, // Using u8 to hold the number of `-v`
     },
 }
 
@@ -94,6 +103,7 @@ impl ZiskProveClient {
                 verify_proofs,
                 output_dir,
                 prefix,
+                verbose: _,
                 port: _,
             } => ZiskRequest::Prove {
                 payload: ZiskProveRequest {
@@ -105,18 +115,24 @@ impl ZiskProveClient {
                     prefix: prefix.clone(),
                 },
             },
-            ClientCommand::VerifyConstraints { input, port: _ } => ZiskRequest::VerifyConstraints {
-                payload: ZiskVerifyConstraintsRequest { input: input.clone() },
-            },
+            ClientCommand::VerifyConstraints { input, verbose: _, port: _ } => {
+                ZiskRequest::VerifyConstraints {
+                    payload: ZiskVerifyConstraintsRequest { input: input.clone() },
+                }
+            }
         };
 
         // Construct server address
         let mpi_context = initialize_mpi()?;
 
-        proofman_common::initialize_logger(
-            proofman_common::VerboseMode::Info,
-            Some(mpi_context.world_rank),
-        );
+        let verbose = match self.command {
+            ClientCommand::Prove { verbose: v, .. }
+            | ClientCommand::VerifyConstraints { verbose: v, .. } => v.into(),
+
+            ClientCommand::Status { .. } | ClientCommand::Shutdown { .. } => VerboseMode::Info,
+        };
+
+        proofman_common::initialize_logger(verbose, Some(mpi_context.world_rank));
 
         // Determine the port to use for this client instance.
         // - If no port is specified, default to DEFAULT_PORT.
