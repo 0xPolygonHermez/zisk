@@ -1,6 +1,8 @@
 use std::{path::PathBuf, sync::Arc};
 
-use crate::{ServerConfig, ZiskBaseResponse, ZiskCmdResult, ZiskResponse, ZiskResultCode};
+use crate::{
+    ServerConfig, ZiskBaseResponse, ZiskCmdResult, ZiskResponse, ZiskResultCode, ZiskService,
+};
 use colored::Colorize;
 use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
@@ -28,7 +30,7 @@ pub struct ZiskServiceVerifyConstraintsHandler;
 
 impl ZiskServiceVerifyConstraintsHandler {
     pub fn handle(
-        config: &ServerConfig,
+        config: Arc<ServerConfig>,
         request: ZiskVerifyConstraintsRequest,
         proofman: Arc<ProofMan<Goldilocks>>,
         witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
@@ -50,6 +52,7 @@ impl ZiskServiceVerifyConstraintsHandler {
 
         std::thread::spawn({
             let request_input = request.input.clone();
+            let config = config.clone();
             move || {
                 let start = std::time::Instant::now();
 
@@ -81,6 +84,7 @@ impl ZiskServiceVerifyConstraintsHandler {
                 );
 
                 is_busy.store(false, std::sync::atomic::Ordering::SeqCst);
+                ZiskService::print_waiting_message(&config);
             }
         });
 

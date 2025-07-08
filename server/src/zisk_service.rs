@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt,
     io::{BufRead, BufReader, Write},
     net::{TcpListener, TcpStream},
     path::PathBuf,
@@ -148,6 +149,18 @@ pub enum ZiskRequest {
         #[serde(flatten)]
         payload: ZiskVerifyConstraintsRequest,
     },
+}
+
+impl fmt::Display for ZiskRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let variant = match self {
+            ZiskRequest::Status { .. } => "Status",
+            ZiskRequest::Shutdown { .. } => "Shutdown",
+            ZiskRequest::Prove { .. } => "Prove",
+            ZiskRequest::VerifyConstraints { .. } => "VerifyConstraints",
+        };
+        write!(f, "{variant}")
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -307,15 +320,18 @@ impl ZiskService {
         })
     }
 
+    pub fn print_waiting_message(config: &ServerConfig) {
+        info_file!(
+            "ZisK Server waiting for requests on port {} for ELF '{}'",
+            config.port,
+            config.elf.display()
+        );
+    }
+
     pub fn run(&mut self) -> std::io::Result<()> {
         let listener = TcpListener::bind(("127.0.0.1", self.config.port))?;
 
-        info_file!(
-            "Server started on 127.0.0.1:{} with ELF '{}' and ID {}.",
-            self.config.port,
-            self.config.elf.display(),
-            self.config.server_id
-        );
+        Self::print_waiting_message(&self.config);
 
         for stream in listener.incoming() {
             match stream {
@@ -362,7 +378,7 @@ impl ZiskService {
             }
         };
 
-        info_file!("Received request: {:?}", request);
+        info_file!("Received '{}' request", request);
 
         let mut must_shutdown = false;
 
@@ -382,7 +398,10 @@ impl ZiskService {
 
         let response = match request {
             ZiskRequest::Status { payload } => {
-                ZiskServiceStatusHandler::handle(&config, payload, self.is_busy.clone())
+                let result =
+                    ZiskServiceStatusHandler::handle(&config, payload, self.is_busy.clone());
+                Self::print_waiting_message(&config);
+                result
             }
             ZiskRequest::Shutdown { payload } => {
                 must_shutdown = true;
@@ -390,7 +409,7 @@ impl ZiskService {
             }
             ZiskRequest::VerifyConstraints { payload } => {
                 ZiskServiceVerifyConstraintsHandler::handle(
-                    &config,
+                    config.clone(),
                     payload,
                     self.proofman.clone(),
                     self.witness_lib.clone(),
@@ -400,7 +419,7 @@ impl ZiskService {
             }
 
             ZiskRequest::Prove { payload } => ZiskServiceProveHandler::handle(
-                &config,
+                config.clone(),
                 payload,
                 self.proofman.clone(),
                 self.witness_lib.clone(),
