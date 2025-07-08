@@ -11,7 +11,9 @@ use std::{fs::File, path::PathBuf};
 use witness::WitnessLibrary;
 use zisk_common::ProofLog;
 
-use crate::{ServerConfig, ZiskBaseResponse, ZiskCmdResult, ZiskResponse, ZiskResultCode};
+use crate::{
+    ServerConfig, ZiskBaseResponse, ZiskCmdResult, ZiskResponse, ZiskResultCode, ZiskService,
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ZiskProveRequest {
@@ -37,7 +39,7 @@ pub struct ZiskServiceProveHandler;
 
 impl ZiskServiceProveHandler {
     pub fn handle(
-        config: &ServerConfig,
+        config: Arc<ServerConfig>,
         request: ZiskProveRequest,
         proofman: Arc<ProofMan<Goldilocks>>,
         witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
@@ -58,6 +60,7 @@ impl ZiskServiceProveHandler {
 
         std::thread::spawn({
             let request_input = request.input.clone();
+            let config = config.clone();
             move || {
                 let start = std::time::Instant::now();
 
@@ -124,6 +127,7 @@ impl ZiskServiceProveHandler {
 
                     is_busy.store(false, std::sync::atomic::Ordering::SeqCst);
                 }
+                ZiskService::print_waiting_message(&config);
             }
         });
 

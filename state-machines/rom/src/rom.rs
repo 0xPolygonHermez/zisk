@@ -194,7 +194,7 @@ impl RomSM {
                     }
 
                     if inst.paddr == ROM_EXIT {
-                        multiplicity += MAIN_TRACE_LEN - asm_romh.header.steps % MAIN_TRACE_LEN;
+                        multiplicity += MAIN_TRACE_LEN - asm_romh.steps % MAIN_TRACE_LEN;
                     }
                 }
             } else {

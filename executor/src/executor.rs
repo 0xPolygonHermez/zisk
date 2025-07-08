@@ -19,7 +19,10 @@
 //! By structuring these phases, the `ZiskExecutor` ensures high-performance execution while
 //! maintaining clarity and modularity in the computation process.
 
-use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, MinimalTraces, Task, TaskFactory};
+use asm_runner::{
+    AsmMOHeader, AsmMTHeader, AsmRHHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmSharedMemory,
+    MinimalTraces, Task, TaskFactory,
+};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{create_pool, BufferPool, PreCalculate, ProofCtx, SetupCtx};
@@ -37,7 +40,7 @@ use zisk_common::{
     BusDevice, BusDeviceMetrics, CheckPoint, Instance, InstanceCtx, InstanceType, Plan,
 };
 use zisk_common::{ChunkId, PayloadType};
-use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS};
+use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use std::time::Instant;
 use std::{
@@ -146,6 +149,10 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     /// Map unlocked flag
     /// This is used to unlock the memory map for the ROM file.
     unlock_mapped_memory: bool,
+
+    asm_shmem_mt: Arc<Mutex<Option<AsmSharedMemory<AsmMTHeader>>>>,
+    asm_shmem_mo: Arc<Mutex<Option<AsmSharedMemory<AsmMOHeader>>>>,
+    asm_shmem_rh: Arc<Mutex<Option<AsmSharedMemory<AsmRHHeader>>>>,
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
@@ -195,6 +202,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             local_rank,
             base_port,
             unlock_mapped_memory,
+            asm_shmem_mt: Arc::new(Mutex::new(None)),
+            asm_shmem_mo: Arc::new(Mutex::new(None)),
+            asm_shmem_rh: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -241,14 +251,19 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     fn execute_with_assembly(
         &self,
         input_data_path: Option<PathBuf>,
-    ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<Vec<Plan>>) {
+    ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<AsmRunnerMO>) {
         let input_data_path_cloned = input_data_path.clone();
         let (world_rank, local_rank, base_port) =
             (self.world_rank, self.local_rank, self.base_port);
         let chunk_size = self.chunk_size;
         let unlock_mapped_memory = self.unlock_mapped_memory;
+
+        // Clone the Arc to pass into the thread
+        let asm_shmem_mo = self.asm_shmem_mo.clone();
+
         let handle_mo = std::thread::spawn(move || {
             AsmRunnerMO::run(
+                asm_shmem_mo,
                 input_data_path_cloned.as_ref().unwrap(),
                 Self::MAX_NUM_STEPS,
                 chunk_size,
@@ -260,20 +275,30 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             .expect("Error during Assembly Memory Operations execution")
         });
 
-        let input_data_path_cloned = input_data_path.clone();
-        let (world_rank, local_rank, base_port) =
-            (self.world_rank, self.local_rank, self.base_port);
-        let handle_rh = std::thread::spawn(move || {
-            AsmRunnerRH::run(
-                input_data_path_cloned.as_ref().unwrap(),
-                Self::MAX_NUM_STEPS,
-                world_rank,
-                local_rank,
-                base_port,
-                unlock_mapped_memory,
-            )
-            .expect("Error during Assembly Memory Operations execution")
-        });
+        // Run the assembly ROM Histogram runner with the provided input data path only if the world rank is 0
+        let handle_rh = if self.world_rank == 0 {
+            let input_data_path_cloned = input_data_path.clone();
+            let (world_rank, local_rank, base_port) =
+                (self.world_rank, self.local_rank, self.base_port);
+
+            // Clone the Arc to pass into the thread
+            let asm_shmem_rh = self.asm_shmem_rh.clone();
+
+            Some(std::thread::spawn(move || {
+                AsmRunnerRH::run(
+                    asm_shmem_rh,
+                    input_data_path_cloned.as_ref().unwrap(),
+                    Self::MAX_NUM_STEPS,
+                    world_rank,
+                    local_rank,
+                    base_port,
+                    unlock_mapped_memory,
+                )
+                .expect("Error during ROM Histogram execution")
+            }))
+        } else {
+            None
+        };
 
         let (min_traces, main_count, secn_count) = self.run_mt_assembly(input_data_path);
 
@@ -287,12 +312,17 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         self.execution_result.lock().unwrap().executed_steps = steps;
 
         // Wait for the memory operations thread to finish
-        let plans =
+        let asm_runner_mo =
             handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
 
-        self.rom_sm.as_ref().unwrap().set_asm_runner_handler(handle_rh);
+        // If the world rank is 0, wait for the ROM Histogram thread to finish and set the handler
+        if self.world_rank == 0 {
+            self.rom_sm.as_ref().unwrap().set_asm_runner_handler(
+                handle_rh.expect("Error during Assembly ROM Histogram thread execution"),
+            );
+        }
 
-        (min_traces, main_count, secn_count, Some(plans))
+        (min_traces, main_count, secn_count, Some(asm_runner_mo))
     }
 
     fn run_mt_assembly(
@@ -349,6 +379,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             });
 
         let (asm_runner_mt, mut data_buses) = AsmRunnerMT::run_and_count(
+            self.asm_shmem_mt.clone(),
             input_data_path.as_ref().unwrap(),
             Self::MAX_NUM_STEPS,
             self.chunk_size,
@@ -545,12 +576,24 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     fn assign_secn_instances(&self, pctx: &ProofCtx<F>, secn_planning: &mut [Vec<Plan>]) {
         for plans_by_sm in secn_planning.iter_mut() {
             for plan in plans_by_sm.iter_mut() {
-                let global_id = match plan.instance_type {
-                    InstanceType::Instance => {
-                        pctx.add_instance(plan.airgroup_id, plan.air_id, plan.pre_calculate, 1)
+                // If the node has rank 0 and the plan targets the ROM instance,
+                // we need to add it to the proof context using a special method.
+                // This method allows us to mark it as an instance to be computed by node 0.
+                let global_id = if plan.airgroup_id == ZISK_AIRGROUP_ID
+                    && plan.air_id == ROM_AIR_IDS[0]
+                {
+                    // If this is the ROM instance, we need to add it to the proof context
+                    // with the rank 0.
+                    pctx.add_instance_rank(plan.airgroup_id, plan.air_id, 0, PreCalculate::None, 1)
+                } else {
+                    match plan.instance_type {
+                        InstanceType::Instance => {
+                            pctx.add_instance(plan.airgroup_id, plan.air_id, plan.pre_calculate, 1)
+                        }
+                        InstanceType::Table => pctx.add_instance_all(plan.airgroup_id, plan.air_id),
                     }
-                    InstanceType::Table => pctx.add_instance_all(plan.airgroup_id, plan.air_id),
                 };
+
                 plan.set_global_id(global_id);
             }
         }
@@ -869,7 +912,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
         assert_eq!(self.asm_runner_path.is_some(), self.asm_rom_path.is_some());
 
-        let (min_traces, main_count, secn_count, mem_plans) = if self.asm_runner_path.is_some() {
+        let (min_traces, main_count, secn_count, asm_runner_mo) = if self.asm_runner_path.is_some()
+        {
             // If we are executing in assembly mode
             self.execute_with_assembly(input_data_path)
         } else {
@@ -891,8 +935,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
         let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
 
-        if let Some(mem_plans) = mem_plans {
-            secn_planning[0].extend(mem_plans);
+        if let Some(asm_runner_mo) = asm_runner_mo {
+            secn_planning[0].extend(asm_runner_mo.plans);
         }
 
         timer_stop_and_log_info!(PLAN);

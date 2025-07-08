@@ -4,13 +4,16 @@ use zisk_common::EmuTrace;
 use zisk_common::EmuTraceStart;
 use zisk_core::{REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO, REGS_IN_MAIN_TOTAL_NUMBER};
 
+use crate::AsmShmemHeader;
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct AsmMTHeader {
     pub version: u64,
     pub exit_code: u64,
-    pub mt_allocated_size: u64,
-    pub mt_used_size: u64,
+    pub shmem_allocated_size: u64,
+    pub shmem_used_size: u64,
+    pub num_chunks: u64,
 }
 
 impl AsmMTHeader {
@@ -20,10 +23,16 @@ impl AsmMTHeader {
             output_header = std::ptr::read(mapped_ptr as *const AsmMTHeader);
         }
 
-        assert!(output_header.mt_allocated_size > 0);
-        assert!(output_header.mt_used_size > 0);
+        assert!(output_header.shmem_allocated_size > 0);
+        assert!(output_header.shmem_used_size > 0);
 
         output_header
+    }
+}
+
+impl AsmShmemHeader for AsmMTHeader {
+    fn allocated_size(&self) -> u64 {
+        self.shmem_allocated_size
     }
 }
 

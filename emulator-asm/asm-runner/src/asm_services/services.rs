@@ -5,7 +5,6 @@ use super::{
 };
 use crate::{AsmRunError, AsmRunnerOptions, RomHistogramRequest, RomHistogramResponse};
 use anyhow::{Context, Result};
-use libc::sem_unlink;
 use named_sem::NamedSemaphore;
 use std::{
     fmt,
@@ -285,29 +284,46 @@ impl AsmServices {
     }
 
     pub fn send_shutdown_and_wait(&self, service: &AsmService) -> Result<()> {
-        let sem_shutdown_done_name = format!(
+        let sem_name = format!(
             "/{}_{}_shutdown_done",
             Self::shmem_prefix(service, Some(self.base_port), self.local_rank),
             service.as_str()
         );
-        let mut sem_shutdown_done = NamedSemaphore::create(sem_shutdown_done_name.clone(), 0)
-            .map_err(|e| AsmRunError::SemaphoreError(sem_shutdown_done_name.clone(), e))?;
 
-        let _ = sem_shutdown_done.try_wait();
+        let mut sem = NamedSemaphore::create(&sem_name, 0)
+            .map_err(|e| AsmRunError::SemaphoreError(sem_name.clone(), e))?;
 
-        self.send_shutdown_request(service)
-            .with_context(|| format!("Service {service} failed to respond to shutdown"))?;
+        // Try to clean up stale state
+        let _ = sem.try_wait();
 
-        match sem_shutdown_done.timed_wait(Duration::from_secs(30)) {
-            Ok(()) => {}
-            Err(e) => {
-                tracing::error!("[{}] Failed to wait for shutdown: {}", self.world_rank, e);
-                return Err(AsmRunError::SemaphoreError(sem_shutdown_done_name, e).into());
-            }
-        }
+        // Send shutdown request
+        self.send_shutdown_request(service).with_context(|| {
+            format!("Service '{service}' failed to respond to shutdown request.")
+        })?;
+
+        // Wait for the shutdown signal (up to 30s)
+        sem.timed_wait(Duration::from_secs(30)).map_err(|e| {
+            tracing::error!(
+                "[{}] Timeout or error waiting on semaphore {}: {}",
+                self.world_rank,
+                sem_name,
+                e
+            );
+            AsmRunError::SemaphoreError(sem_name.clone(), e)
+        })?;
+
+        // Manually drop and unlink the semaphore to clean up
+        // This is necessary to ensure the semaphore is properly cleaned up
+        drop(sem);
+
+        // Manually unlink the semaphore
+        let cstr = std::ffi::CString::new(sem_name.clone())?;
 
         unsafe {
-            sem_unlink(sem_shutdown_done_name.as_ptr() as *const i8);
+            if libc::sem_unlink(cstr.as_ptr()) != 0 {
+                let errno = std::io::Error::last_os_error();
+                return Err(anyhow::anyhow!("Failed to unlink semaphore {}: {}", sem_name, errno));
+            }
         }
 
         Ok(())
