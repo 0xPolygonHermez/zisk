@@ -34,7 +34,7 @@ impl<H: AsmShmemHeader> Drop for AsmSharedMemory<H> {
         self.unmap().unwrap_or_else(|err| {
             tracing::error!("Failed to unmap shared memory '{}': {}", self.shmem_name, err)
         });
-        unsafe { close(self.fd) };
+        unsafe { close(self._fd) };
     }
 }
 
