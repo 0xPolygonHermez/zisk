@@ -327,6 +327,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     &self.emu_trace,
                     &mut data_bus,
                     self.chunk_size,
+                    false,
                 );
 
                 data_bus.on_close();
@@ -496,6 +497,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     minimal_trace,
                     &mut data_bus,
                     self.chunk_size,
+                    true,
                 );
 
                 let (mut main_count, mut secn_count) = (Vec::new(), Vec::new());
