@@ -24,7 +24,6 @@ use asm_runner::{
     AsmServices, AsmSharedMemory, MinimalTraces, Task, TaskFactory,
 };
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use proofman_common::{create_pool, BufferPool, PreCalculate, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::gen_elf_hash;
@@ -35,13 +34,14 @@ use rayon::prelude::*;
 
 use crate::{DataBusCollectorCollection, DummyCounter};
 use data_bus::DataBusTrait;
-use sm_main::{MainInstance, MainPlanner, MainSM};
+use sm_main::{MainCounter, MainInstance, MainPlanner, MainSM};
 use zisk_common::{
-    BusDevice, BusDeviceMetrics, CheckPoint, Instance, InstanceCtx, InstanceType, Plan,
+    BusDevice, BusDeviceMetrics, CheckPoint, Instance, InstanceCtx, InstanceType, Metrics, Plan,
 };
 use zisk_common::{ChunkId, PayloadType};
 use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
+use std::thread::JoinHandle;
 use std::time::Instant;
 use std::{
     collections::HashMap,
@@ -115,17 +115,14 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     /// Secondary state machine instances, indexed by their global ID.
     pub secn_instances: RwLock<HashMap<usize, Box<dyn Instance<F>>>>,
 
-    /// Standard library instance, providing common functionalities.
-    std: Arc<Std<F>>,
-
     /// Execution result, including the number of executed steps.
     execution_result: Mutex<ZiskExecutionResult>,
 
     /// State machine bundle, containing the state machines and their configurations.
     sm_bundle: BD,
 
-    /// Optional ROM state machine, used for assembly ROM execution.
-    rom_sm: Option<Arc<RomSM>>,
+    // Optional Main state machine
+    main_sm: Option<Arc<MainSM<F>>>,
 
     /// Collectors by instance, storing statistics and collectors for each instance.
     #[allow(clippy::type_complexity)]
@@ -150,6 +147,10 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     /// This is used to unlock the memory map for the ROM file.
     unlock_mapped_memory: bool,
 
+    /// Optional handle for the ROM assembly runner thread.
+    asm_handle_rh: Arc<Mutex<Option<JoinHandle<AsmRunnerRH>>>>,
+    asm_runner: Arc<RwLock<Option<AsmRunnerRH>>>,
+
     asm_shmem_mt: Arc<Mutex<Option<AsmSharedMemory<AsmMTHeader>>>>,
     asm_shmem_mo: Arc<Mutex<Option<AsmSharedMemory<AsmMOHeader>>>>,
     asm_shmem_rh: Arc<Mutex<Option<AsmSharedMemory<AsmRHHeader>>>>,
@@ -172,9 +173,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         asm_path: Option<PathBuf>,
         asm_rom_path: Option<PathBuf>,
         zisk_rom: Arc<ZiskRom>,
-        std: Arc<Std<F>>,
         sm_bundle: BD,
-        rom_sm: Option<Arc<RomSM>>,
+        main_sm: Option<Arc<MainSM<F>>>,
         chunk_size: u64,
         world_rank: i32,
         local_rank: i32,
@@ -192,10 +192,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             main_instances: RwLock::new(HashMap::new()),
             secn_instances: RwLock::new(HashMap::new()),
             collectors_by_instance: RwLock::new(HashMap::new()),
-            std,
             execution_result: Mutex::new(ZiskExecutionResult::default()),
             sm_bundle,
-            rom_sm,
+            main_sm,
             stats: Mutex::new(Vec::new()),
             chunk_size,
             world_rank,
@@ -205,6 +204,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             asm_shmem_mt: Arc::new(Mutex::new(None)),
             asm_shmem_mo: Arc::new(Mutex::new(None)),
             asm_shmem_rh: Arc::new(Mutex::new(None)),
+            asm_handle_rh: Arc::new(Mutex::new(None)),
+            asm_runner: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -330,9 +331,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         // If the world rank is 0, wait for the ROM Histogram thread to finish and set the handler
         if self.world_rank == 0 {
-            self.rom_sm.as_ref().unwrap().set_asm_runner_handler(
-                handle_rh.expect("Error during Assembly ROM Histogram thread execution"),
-            );
+            self.asm_handle_rh.lock().unwrap().replace(handle_rh.unwrap());
         }
 
         (min_traces, main_count, secn_count, Some(asm_runner_mo))
@@ -657,12 +656,11 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             _ => unreachable!(),
         };
 
-        let air_instance = MainSM::compute_witness(
+        let air_instance = self.main_sm.as_ref().unwrap().compute_witness(
             &self.zisk_rom,
             min_traces,
             self.chunk_size,
             main_instance,
-            self.std.clone(),
             trace_buffer,
         );
 
@@ -712,9 +710,23 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         #[cfg(feature = "stats")]
         let witness_start_time = std::time::Instant::now();
 
-        if let Some(air_instance) =
-            secn_instance.compute_witness(pctx, sctx, collectors_by_instance, trace_buffer)
+        let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+
+        if let Some(air_instance) = if self.asm_runner_path.is_some()
+            && airgroup_id == RomRomTrace::<usize>::AIRGROUP_ID
+            && air_id == RomRomTrace::<usize>::AIR_ID
         {
+            if let Some(handle) = self.asm_handle_rh.lock().unwrap().take() {
+                let result_rh = handle.join().expect("Error during Rom Histogram thread execution");
+                *self.asm_runner.write().unwrap() = Some(result_rh);
+            }
+
+            let guard = self.asm_runner.read().unwrap();
+            let rh = &guard.as_ref().expect("Rom runner result missing").asm_rowh_output;
+            Some(RomSM::compute_witness_from_asm(&self.zisk_rom, rh, trace_buffer))
+        } else {
+            secn_instance.compute_witness(pctx, sctx, collectors_by_instance, trace_buffer)
+        } {
             pctx.add_air_instance(air_instance, global_id);
         }
 
@@ -914,6 +926,20 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         self.collectors_by_instance.write().unwrap().clear();
         self.stats.lock().unwrap().clear();
     }
+
+    fn get_publics(
+        &self,
+        main_counters: &Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>,
+    ) -> Vec<(u64, u32)> {
+        let mut publics = Vec::new();
+
+        main_counters.iter().for_each(|(_, counter)| {
+            let reg_counter = Metrics::as_any(&**counter).downcast_ref::<MainCounter>().unwrap();
+            publics.extend_from_slice(&reg_counter.publics);
+        });
+
+        publics
+    }
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, BD> {
@@ -948,10 +974,14 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         };
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
+        let public_values = self.get_publics(&main_count);
+
         // Plan the main and secondary instances using the counted metrics
         timer_start_info!(PLAN);
-        let (mut main_planning, public_values) =
-            MainPlanner::plan::<F>(&min_traces, main_count, self.chunk_size);
+        let mut main_planning = match self.main_sm.is_some() {
+            true => MainPlanner::plan::<F>(&min_traces, self.chunk_size),
+            false => vec![],
+        };
 
         let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
 
@@ -1144,7 +1174,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         sctx: Arc<SetupCtx<F>>,
         check: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let file_name = pctx.get_custom_commits_fixed_buffer("rom", false)?;
+        let file_name = pctx.get_custom_commits_fixed_buffer("rom", true)?;
 
         let setup = sctx.get_setup(RomRomTrace::<usize>::AIRGROUP_ID, RomRomTrace::<usize>::AIR_ID);
         let blowup_factor =

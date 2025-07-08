@@ -8,7 +8,7 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [lib]
-crate-type = ["dylib"]
+crate-type = ["rlib", "staticlib", "dylib"]
 
 [dependencies]
 executor = { path = "../executor" }
@@ -40,6 +40,7 @@ rayon = { workspace = true }
 
 [features]
 default = []
+dev = []
 no_lib_link = ["proofman-common/no_lib_link"]
 diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]

@@ -5,17 +5,15 @@
 use std::{
     collections::VecDeque,
     sync::{atomic::AtomicU32, Arc},
-    thread::JoinHandle,
 };
 
 use crate::{rom_counter::RomCounter, RomSM};
-use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::sync::Mutex;
 use zisk_common::{
-    create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
-    InstanceType, Metrics, PayloadType, ROM_BUS_ID,
+    BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx, InstanceType,
+    Metrics, PayloadType, ROM_BUS_ID,
 };
 use zisk_core::ZiskRom;
 
@@ -41,7 +39,7 @@ pub struct RomInstance {
     counter_stats: Mutex<Option<CounterStats>>,
 
     /// Optional handle for the ROM assembly runner thread.
-    handle_rh: Mutex<Option<JoinHandle<AsmRunnerRH>>>,
+    assembly_mode: bool,
 }
 
 impl RomInstance {
@@ -58,7 +56,7 @@ impl RomInstance {
         ictx: InstanceCtx,
         bios_inst_count: Arc<Vec<AtomicU32>>,
         prog_inst_count: Arc<Vec<AtomicU32>>,
-        handle_rh: Option<JoinHandle<AsmRunnerRH>>,
+        assembly_mode: bool,
     ) -> Self {
         Self {
             zisk_rom,
@@ -66,12 +64,8 @@ impl RomInstance {
             bios_inst_count: Mutex::new(bios_inst_count),
             prog_inst_count: Mutex::new(prog_inst_count),
             counter_stats: Mutex::new(None),
-            handle_rh: Mutex::new(handle_rh),
+            assembly_mode,
         }
-    }
-
-    pub fn is_asm_execution(&self) -> bool {
-        self.handle_rh.lock().unwrap().is_some()
     }
 }
 
@@ -96,23 +90,6 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
-        // Case 1: Use ROM assembly output
-        if self.is_asm_execution() {
-            let handle_rh = self.handle_rh.lock().unwrap().take().unwrap();
-            let result_rh = handle_rh.join().expect("Error during Rom Histogram thread execution");
-
-            *self.bios_inst_count.lock().unwrap() =
-                Arc::new(create_atomic_vec(result_rh.asm_rowh_output.bios_inst_count.len()));
-            *self.prog_inst_count.lock().unwrap() =
-                Arc::new(create_atomic_vec(result_rh.asm_rowh_output.prog_inst_count.len()));
-
-            return Some(RomSM::compute_witness_from_asm(
-                &self.zisk_rom,
-                &result_rh.asm_rowh_output,
-                trace_buffer,
-            ));
-        }
-
         // Case 2: Fallback to counter stats when not using assembly
         // Detach collectors and downcast to RomCollector
         if self.counter_stats.lock().unwrap().is_none() {
@@ -168,7 +145,7 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, _: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        if self.is_asm_execution() || self.counter_stats.lock().unwrap().is_some() {
+        if self.assembly_mode || self.counter_stats.lock().unwrap().is_some() {
             return None;
         }
 

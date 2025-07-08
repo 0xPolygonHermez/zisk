@@ -4,39 +4,67 @@
 //! This module leverages `WitnessLibrary` to orchestrate the setup of state machines,
 //! program conversion, and execution pipelines to generate required witnesses.
 
+#[cfg(not(feature = "dev"))]
 use crate::StaticSMBundle;
-use executor::{/*DynSMBundle,*/ ZiskExecutor};
+#[cfg(feature = "dev")]
+use executor::DynSMBundle;
+use executor::ZiskExecutor;
 use fields::{Goldilocks, PrimeField64};
 use pil_std_lib::Std;
+#[cfg(not(feature = "dev"))]
 use precomp_arith_eq::ArithEqManager;
+#[cfg(not(feature = "dev"))]
 use precomp_keccakf::KeccakfManager;
+#[cfg(not(feature = "dev"))]
 use precomp_sha256f::Sha256fManager;
+#[cfg(not(feature = "dev"))]
 use proofman::register_std;
+#[cfg(not(feature = "dev"))]
 use sm_arith::ArithSM;
+#[cfg(not(feature = "dev"))]
 use sm_binary::BinarySM;
+use sm_main::MainSM;
+#[cfg(not(feature = "dev"))]
 use sm_mem::Mem;
+#[cfg(not(feature = "dev"))]
 use sm_rom::RomSM;
 use std::{any::Any, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
-use zisk_core::Riscv2zisk;
+use zisk_core::{Riscv2zisk, ZiskRom};
 
 const DEFAULT_CHUNK_SIZE_BITS: u64 = 18;
+
+#[cfg(not(feature = "dev"))]
+type Bundle<F> = StaticSMBundle<F>;
+
+#[cfg(feature = "dev")]
+type Bundle<F> = DynSMBundle<F>;
 
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
-    executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
+    executor: Option<Arc<ZiskExecutor<F, Bundle<F>>>>,
     chunk_size: u64,
     world_rank: i32,
     local_rank: i32,
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
+    #[cfg(feature = "dev")]
+    #[allow(clippy::type_complexity)]
+    register_state_machines_fn: fn(
+        Arc<WitnessManager<F>>,
+        Arc<Std<F>>,
+        Arc<ZiskRom>,
+        Option<PathBuf>,
+        PathBuf,
+    ) -> (Bundle<F>, bool),
 }
 
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 fn init_library(
     verbose_mode: proofman_common::VerboseMode,
     elf_path: PathBuf,
@@ -48,6 +76,13 @@ fn init_library(
     local_rank: Option<i32>,
     base_port: Option<u16>,
     unlock_mapped_memory: bool,
+    #[cfg(feature = "dev")] register_state_machines_fn: fn(
+        Arc<WitnessManager<Goldilocks>>,
+        Arc<Std<Goldilocks>>,
+        Arc<ZiskRom>,
+        Option<PathBuf>,
+        PathBuf,
+    ) -> (Bundle<Goldilocks>, bool),
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode, world_rank);
     let chunk_size = 1 << chunk_size_bits.unwrap_or(DEFAULT_CHUNK_SIZE_BITS);
@@ -63,6 +98,8 @@ fn init_library(
         local_rank: local_rank.unwrap_or(0),
         base_port,
         unlock_mapped_memory,
+        #[cfg(feature = "dev")]
+        register_state_machines_fn,
     });
 
     Ok(result)
@@ -90,51 +127,39 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
         let zisk_rom = Arc::new(zisk_rom);
 
-        // Step 3: Initialize the secondary state machines
         let std = Std::new(wcm.get_pctx(), wcm.get_sctx());
-        register_std(&wcm, &std);
 
-        let rom_sm = RomSM::new(zisk_rom.clone(), None /*self.asm_rom_path.clone()*/);
-        let binary_sm = BinarySM::new(std.clone());
-        let arith_sm = ArithSM::new();
-        let mem_sm = Mem::new(std.clone());
-
-        // Step 4: Initialize the precompiles state machines
-        let keccakf_sm = KeccakfManager::new(wcm.get_sctx());
-        let sha256f_sm = Sha256fManager::new(wcm.get_sctx(), self.sha256f_script_path.clone());
-        let arith_eq_sm = ArithEqManager::new(std.clone());
-
-        // let sm_bundle = DynSMBundle::new(vec![
-        //     mem_sm.clone(),
-        //     rom_sm.clone(),
-        //     binary_sm.clone(),
-        //     arith_sm.clone(),
-        //     keccakf_sm.clone(),
-        //     sha256f_sm.clone(),
-        //     arith_eq_sm.clone(),
-        // ]);
-
-        let sm_bundle = StaticSMBundle::new(
-            self.asm_path.is_some(),
-            mem_sm.clone(),
-            rom_sm.clone(),
-            binary_sm.clone(),
-            arith_sm.clone(),
-            // The precompiles state machines
-            keccakf_sm.clone(),
-            sha256f_sm.clone(),
-            arith_eq_sm.clone(),
+        #[cfg(not(feature = "dev"))]
+        let (bundle, add_main_sm) = register_state_machines(
+            wcm.clone(),
+            std.clone(),
+            zisk_rom.clone(),
+            self.asm_path.clone(),
+            self.sha256f_script_path.clone(),
         );
 
-        // Step 5: Create the executor and register the secondary state machines
-        let executor: ZiskExecutor<F, StaticSMBundle<F>> = ZiskExecutor::new(
+        #[cfg(feature = "dev")]
+        let (bundle, add_main_sm) = (self.register_state_machines_fn)(
+            wcm.clone(),
+            std.clone(),
+            zisk_rom.clone(),
+            self.asm_path.clone(),
+            self.sha256f_script_path.clone(),
+        );
+
+        let main_sm = match add_main_sm {
+            true => Some(MainSM::new(std.clone())),
+            false => None,
+        };
+
+        // Create the executor and register the secondary state machines
+        let executor: ZiskExecutor<F, Bundle<F>> = ZiskExecutor::new(
             self.elf_path.clone(),
             self.asm_path.clone(),
             self.asm_rom_path.clone(),
             zisk_rom,
-            std,
-            sm_bundle,
-            Some(rom_sm.clone()),
+            bundle,
+            main_sm,
             self.chunk_size,
             self.world_rank,
             self.local_rank,
@@ -160,4 +185,40 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             Some(executor) => Some(Box::new(executor.get_execution_result()) as Box<dyn Any>),
         }
     }
+}
+
+#[cfg(not(feature = "dev"))]
+pub fn register_state_machines<F: PrimeField64>(
+    wcm: Arc<WitnessManager<F>>,
+    std: Arc<Std<F>>,
+    zisk_rom: Arc<ZiskRom>,
+    asm_path: Option<PathBuf>,
+    sha256f_script_path: PathBuf,
+) -> (Bundle<F>, bool) {
+    register_std(&wcm, &std);
+
+    // Step 3: Initialize the secondary state machines
+    let rom_sm = RomSM::new(zisk_rom.clone(), None);
+    let binary_sm = BinarySM::new(std.clone());
+    let arith_sm = ArithSM::new();
+    let mem_sm = Mem::new(std.clone());
+
+    // Step 4: Initialize the precompiles state machines
+    let keccakf_sm = KeccakfManager::new(wcm.get_sctx());
+    let sha256f_sm = Sha256fManager::new(wcm.get_sctx(), sha256f_script_path.clone());
+    let arith_eq_sm = ArithEqManager::new(std.clone());
+
+    let sm_bundle = StaticSMBundle::new(
+        asm_path.is_some(),
+        mem_sm.clone(),
+        rom_sm.clone(),
+        binary_sm.clone(),
+        arith_sm.clone(),
+        // The precompiles state machines
+        keccakf_sm.clone(),
+        sha256f_sm.clone(),
+        arith_eq_sm.clone(),
+    );
+
+    (sm_bundle, true)
 }

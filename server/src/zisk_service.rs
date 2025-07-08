@@ -17,9 +17,10 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 use uuid::Uuid;
 use witness::WitnessLibrary;
-use zisk_common::{info_file, MpiContext, ZiskLibInitFn};
+use zisk_common::{info_file, MpiContext};
 
 use anyhow::Result;
+use zisk_witness::ZiskLibInitFn;
 
 use crate::{
     handler_prove::{ZiskProveRequest, ZiskServiceProveHandler},
@@ -281,6 +282,8 @@ impl ZiskService {
             Some(local_rank),
             base_port,
             unlock_mapped_memory,
+            #[cfg(feature = "dev")]
+            zisk_witness::register_state_machines_dev::<Goldilocks>,
         )
         .expect("Failed to initialize witness library");
 

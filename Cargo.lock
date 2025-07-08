@@ -437,6 +437,7 @@ dependencies = [
  "zisk-common",
  "zisk-core",
  "zisk-pil",
+ "zisk-witness",
 ]
 
 [[package]]
@@ -4482,6 +4483,7 @@ dependencies = [
  "fields",
  "libc",
  "mpi",
+ "pil-std-lib",
  "proofman",
  "proofman-common",
  "serde",

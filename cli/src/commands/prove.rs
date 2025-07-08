@@ -30,7 +30,8 @@ use std::{
     fs::{self, File},
     path::{Path, PathBuf},
 };
-use zisk_common::{ProofLog, ZiskLibInitFn};
+use zisk_common::ProofLog;
+use zisk_witness::ZiskLibInitFn;
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -315,6 +316,8 @@ impl ZiskProve {
             Some(mpi_context.local_rank),
             self.port,
             self.unlock_mapped_memory,
+            #[cfg(feature = "dev")]
+            zisk_witness::register_state_machines_dev::<Goldilocks>,
         )
         .expect("Failed to initialize witness library");
 

@@ -28,7 +28,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
 };
-use zisk_common::ZiskLibInitFn;
+use zisk_witness::ZiskLibInitFn;
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -252,6 +252,8 @@ impl ZiskVerifyConstraints {
                     Some(mpi_context.local_rank),
                     self.port,
                     self.unlock_mapped_memory,
+                    #[cfg(feature = "dev")]
+                    zisk_witness::register_state_machines_dev::<Goldilocks>,
                 )
                 .expect("Failed to initialize witness library");
 

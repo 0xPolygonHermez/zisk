@@ -10,12 +10,11 @@
 
 use std::{
     path::PathBuf,
-    sync::{atomic::AtomicU32, Arc, Mutex},
-    thread::JoinHandle,
+    sync::{atomic::AtomicU32, Arc},
 };
 
 use crate::{RomInstance, RomPlanner};
-use asm_runner::{AsmRHData, AsmRunnerRH};
+use asm_runner::AsmRHData;
 use fields::PrimeField64;
 use itertools::Itertools;
 use proofman_common::{AirInstance, FromTrace};
@@ -39,7 +38,7 @@ pub struct RomSM {
     /// Shared program instruction counter for monitoring ROM operations.
     prog_inst_count: Arc<Vec<AtomicU32>>,
 
-    asm_runner_handler: Mutex<Option<JoinHandle<AsmRunnerRH>>>,
+    assembly_mode: bool,
 }
 
 impl RomSM {
@@ -64,12 +63,8 @@ impl RomSM {
             zisk_rom,
             bios_inst_count: Arc::new(bios_inst_count),
             prog_inst_count: Arc::new(prog_inst_count),
-            asm_runner_handler: Mutex::new(None),
+            assembly_mode: asm_rom_path.is_some(),
         })
-    }
-
-    pub fn set_asm_runner_handler(&self, handler: JoinHandle<AsmRunnerRH>) {
-        *self.asm_runner_handler.lock().unwrap() = Some(handler);
     }
 
     /// Computes the witness for the provided plan using the given ROM.
@@ -331,15 +326,12 @@ impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
     /// # Returns
     /// A boxed implementation of `RomInstance`.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
-        let mut handle_rh_guard = self.asm_runner_handler.lock().unwrap();
-        let handle_rh = handle_rh_guard.take();
-
         Box::new(RomInstance::new(
             self.zisk_rom.clone(),
             ictx,
             self.bios_inst_count.clone(),
             self.prog_inst_count.clone(),
-            handle_rh,
+            self.assembly_mode,
         ))
     }
 }
