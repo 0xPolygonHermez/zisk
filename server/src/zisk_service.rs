@@ -295,6 +295,7 @@ impl ZiskService {
 
         #[cfg(not(distributed))]
         {
+            let _ = mpi_context; // avoid unused variable warning
             proofman = ProofMan::<Goldilocks>::new(
                 config.proving_key.clone(),
                 config.custom_commits_map.clone(),
@@ -303,7 +304,6 @@ impl ZiskService {
                 config.final_snark,
                 config.gpu_params.clone(),
                 config.verbose.into(),
-                None,
             )
             .expect("Failed to initialize proofman");
         }

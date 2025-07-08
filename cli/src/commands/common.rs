@@ -6,7 +6,6 @@ use std::env;
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::str::FromStr;
-#[cfg(distributed)]
 use zisk_common::MpiContext;
 
 #[derive(Parser, Debug, Clone, ValueEnum)]
