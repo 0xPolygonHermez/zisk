@@ -1,3 +1,5 @@
+use std::thread::JoinHandle;
+
 use asm_runner::AsmServices;
 
 use serde::{Deserialize, Serialize};
@@ -20,7 +22,7 @@ impl ZiskServiceShutdownHandler {
         config: &ServerConfig,
         _payload: ZiskShutdownRequest,
         asm_services: &AsmServices,
-    ) -> ZiskResponse {
+    ) -> (ZiskResponse, Option<JoinHandle<()>>) {
         tracing::info!(
             "<<< [{}] Shutting down ASM microservices.",
             config.asm_runner_options.world_rank
@@ -30,25 +32,31 @@ impl ZiskServiceShutdownHandler {
 
         if let Err(e) = shutdown_result {
             tracing::error!("Failed to stop ASM services: {}", e);
-            return ZiskResponse::ZiskShutdownResponse(ZiskShutdownResponse {
-                base: ZiskBaseResponse {
-                    cmd: "shutdown".to_string(),
-                    result: crate::ZiskCmdResult::Error,
-                    code: crate::ZiskResultCode::Error,
-                    msg: Some(format!("Failed to stop ASM services: {e}")),
-                    node: config.asm_runner_options.world_rank,
-                },
-            });
+            return (
+                ZiskResponse::ZiskShutdownResponse(ZiskShutdownResponse {
+                    base: ZiskBaseResponse {
+                        cmd: "shutdown".to_string(),
+                        result: crate::ZiskCmdResult::Error,
+                        code: crate::ZiskResultCode::Error,
+                        msg: Some(format!("Failed to stop ASM services: {e}")),
+                        node: config.asm_runner_options.world_rank,
+                    },
+                }),
+                None,
+            );
         }
 
-        ZiskResponse::ZiskShutdownResponse(ZiskShutdownResponse {
-            base: ZiskBaseResponse {
-                cmd: "shutdown".to_string(),
-                result: crate::ZiskCmdResult::Ok,
-                code: crate::ZiskResultCode::Ok,
-                msg: None,
-                node: config.asm_runner_options.world_rank,
-            },
-        })
+        (
+            ZiskResponse::ZiskShutdownResponse(ZiskShutdownResponse {
+                base: ZiskBaseResponse {
+                    cmd: "shutdown".to_string(),
+                    result: crate::ZiskCmdResult::Ok,
+                    code: crate::ZiskResultCode::Ok,
+                    msg: None,
+                    node: config.asm_runner_options.world_rank,
+                },
+            }),
+            None,
+        )
     }
 }

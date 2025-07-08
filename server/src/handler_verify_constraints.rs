@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, thread::JoinHandle};
 
 use crate::{
     ServerConfig, ZiskBaseResponse, ZiskCmdResult, ZiskResponse, ZiskResultCode, ZiskService,
@@ -36,21 +36,10 @@ impl ZiskServiceVerifyConstraintsHandler {
         witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
         is_busy: Arc<std::sync::atomic::AtomicBool>,
         debug_info: Arc<DebugInfo>,
-    ) -> ZiskResponse {
-        // Check if the server is busy
-        if is_busy.load(std::sync::atomic::Ordering::SeqCst) {
-            return ZiskResponse::ZiskErrorResponse(ZiskBaseResponse {
-                cmd: "busy".to_string(),
-                result: ZiskCmdResult::InProgress,
-                code: ZiskResultCode::Busy,
-                msg: Some("Server is busy, please try again later.".to_string()),
-                node: config.asm_runner_options.world_rank,
-            });
-        }
-
+    ) -> (ZiskResponse, Option<JoinHandle<()>>) {
         is_busy.store(true, std::sync::atomic::Ordering::SeqCst);
 
-        std::thread::spawn({
+        let handle = std::thread::spawn({
             let request_input = request.input.clone();
             let config = config.clone();
             move || {
@@ -88,17 +77,20 @@ impl ZiskServiceVerifyConstraintsHandler {
             }
         });
 
-        ZiskResponse::ZiskVerifyConstraintsResponse(ZiskVerifyConstraintsResponse {
-            base: ZiskBaseResponse {
-                cmd: "verify_constraints".to_string(),
-                result: ZiskCmdResult::InProgress,
-                code: ZiskResultCode::Ok,
-                msg: None,
-                node: config.asm_runner_options.world_rank,
-            },
-            server_id: config.server_id.to_string(),
-            elf_file: config.elf.display().to_string(),
-            input: request.input.display().to_string(),
-        })
+        (
+            ZiskResponse::ZiskVerifyConstraintsResponse(ZiskVerifyConstraintsResponse {
+                base: ZiskBaseResponse {
+                    cmd: "verify_constraints".to_string(),
+                    result: ZiskCmdResult::InProgress,
+                    code: ZiskResultCode::Ok,
+                    msg: None,
+                    node: config.asm_runner_options.world_rank,
+                },
+                server_id: config.server_id.to_string(),
+                elf_file: config.elf.display().to_string(),
+                input: request.input.display().to_string(),
+            }),
+            Some(handle),
+        )
     }
 }

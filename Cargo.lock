@@ -4646,4 +4646,5 @@ dependencies = [
  "num-traits",
  "rand 0.8.5",
  "static_assertions",
+ "tiny-keccak",
 ]
