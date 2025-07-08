@@ -2,12 +2,14 @@ use std::ffi::c_void;
 
 use std::fmt::Debug;
 
+use crate::{AsmSharedMemory, AsmShmemHeader};
+
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct AsmRHHeader {
     pub version: u64,
     pub exit_code: u64,
-    pub mt_allocated_size: u64,
+    pub shmem_allocated_size: u64,
     pub steps: u64,
 }
 
@@ -18,24 +20,30 @@ impl AsmRHHeader {
             output_header = std::ptr::read(mapped_ptr as *const AsmRHHeader);
         }
 
-        assert!(output_header.mt_allocated_size > 0);
+        assert!(output_header.shmem_allocated_size > 0);
         assert!(output_header.steps > 0);
 
         output_header
     }
 }
 
+impl AsmShmemHeader for AsmRHHeader {
+    fn allocated_size(&self) -> u64 {
+        self.shmem_allocated_size
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct AsmRHData {
-    pub header: AsmRHHeader,
+    pub steps: u64,
     pub bios_inst_count: Vec<u64>,
     pub prog_inst_count: Vec<u64>,
 }
 
 impl AsmRHData {
-    pub fn new(header: AsmRHHeader, bios_inst_count: Vec<u64>, prog_inst_count: Vec<u64>) -> Self {
-        AsmRHData { header, bios_inst_count, prog_inst_count }
+    pub fn new(steps: u64, bios_inst_count: Vec<u64>, prog_inst_count: Vec<u64>) -> Self {
+        AsmRHData { steps, bios_inst_count, prog_inst_count }
     }
 }
 
@@ -44,10 +52,11 @@ impl AsmRHData {
     ///
     /// # Safety
     /// This function is unsafe because it reads from a raw pointer in shared memory.
-    pub fn from_ptr(mapped_ptr: &mut *mut c_void, header: AsmRHHeader) -> AsmRHData {
+    pub fn from_shared_memory(asm_shared_memory: &AsmSharedMemory<AsmRHHeader>) -> AsmRHData {
         unsafe {
+            let data_ptr = asm_shared_memory.data_ptr() as *mut u64;
             // BIOS chunk data
-            let bios_data_ptr = *mapped_ptr as *mut u64;
+            let bios_data_ptr = data_ptr;
             let bios_len = std::ptr::read(bios_data_ptr) as usize;
             let bios_data_ptr = bios_data_ptr.add(1);
             let bios_inst_count = Vec::from_raw_parts(bios_data_ptr, bios_len, bios_len);
@@ -60,7 +69,7 @@ impl AsmRHData {
             let prog_data_ptr = prog_data_ptr.add(1);
             let prog_inst_count = Vec::from_raw_parts(prog_data_ptr, prog_len, prog_len);
 
-            AsmRHData { header, bios_inst_count, prog_inst_count }
+            AsmRHData { steps: asm_shared_memory.header().steps, bios_inst_count, prog_inst_count }
         }
     }
 }

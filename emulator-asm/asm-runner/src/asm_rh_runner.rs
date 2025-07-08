@@ -1,16 +1,13 @@
-use libc::{close, shm_unlink, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
+use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
 use tracing::error;
 
-use std::{
-    ffi::{c_void, CString},
-    fs,
-    path::Path,
-    ptr,
-    time::Duration,
-};
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use std::sync::{Arc, Mutex};
+use std::{fs, path::Path, ptr, time::Duration};
 
 use crate::{
-    shmem_utils, AsmInputC2, AsmMTHeader, AsmRHData, AsmRHHeader, AsmRunError, AsmServices,
+    shmem_utils, AsmInputC2, AsmRHData, AsmRHHeader, AsmRunError, AsmService, AsmServices,
+    AsmSharedMemory,
 };
 use anyhow::{Context, Result};
 use named_sem::NamedSemaphore;
@@ -18,50 +15,33 @@ use std::sync::atomic::{fence, Ordering};
 
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
 pub struct AsmRunnerRH {
-    shmem_output_name: String,
-    mapped_ptr: *mut c_void,
     pub asm_rowh_output: AsmRHData,
 }
-
-unsafe impl Send for AsmRunnerRH {}
-unsafe impl Sync for AsmRunnerRH {}
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl Drop for AsmRunnerRH {
     fn drop(&mut self) {
-        unsafe {
-            // Forget all mem_reads Vec<u64> before unmapping
-            std::mem::forget(std::mem::take(&mut self.asm_rowh_output));
-
-            // Unmap shared memory
-            libc::munmap(self.mapped_ptr, self.total_size());
-
-            let shmem_output_name =
-                CString::new(self.shmem_output_name.clone()).expect("CString::new failed");
-            let shmem_output_name_ptr = shmem_output_name.as_ptr();
-
-            shm_unlink(shmem_output_name_ptr);
-        }
+        // Forget all mem_reads Vec<u64> before unmapping
+        std::mem::forget(std::mem::take(&mut self.asm_rowh_output));
     }
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerRH {
-    pub fn new(
-        shmem_output_name: String,
-        mapped_ptr: *mut c_void,
-        asm_rowh_output: AsmRHData,
-    ) -> Self {
-        AsmRunnerRH { shmem_output_name, mapped_ptr, asm_rowh_output }
+    pub fn new(asm_rowh_output: AsmRHData) -> Self {
+        AsmRunnerRH { asm_rowh_output }
     }
 
-    fn total_size(&self) -> usize {
-        std::mem::size_of_val(&self.asm_rowh_output.bios_inst_count)
-            + std::mem::size_of_val(&self.asm_rowh_output.prog_inst_count)
-            + std::mem::size_of::<AsmRHHeader>()
+    pub fn create_shmem(
+        local_rank: i32,
+        base_port: Option<u16>,
+        unlock_mapped_memory: bool,
+    ) -> Result<AsmSharedMemory<AsmRHHeader>> {
+        AsmSharedMemory::create_shmem(AsmService::RH, local_rank, base_port, unlock_mapped_memory)
     }
 
     pub fn run(
+        asm_shared_memory: Arc<Mutex<Option<AsmSharedMemory<AsmRHHeader>>>>,
         inputs_path: &Path,
         max_steps: u64,
         world_rank: i32,
@@ -69,11 +49,8 @@ impl AsmRunnerRH {
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
     ) -> Result<AsmRunnerRH> {
-        let prefix = AsmServices::shmem_prefix(&crate::AsmService::RH, base_port, local_rank);
-
-        let shmem_input_name = format!("{prefix}_RH_input");
-        let shmem_output_name = format!("{prefix}_RH_output");
-        let sem_chunk_done_name = format!("/{prefix}_RH_chunk_done");
+        let (shmem_input_name, _, sem_chunk_done_name) =
+            AsmSharedMemory::<AsmRHHeader>::shmem_names(AsmService::RH, base_port, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -96,10 +73,22 @@ impl AsmRunnerRH {
             }
         }
 
-        let (mapped_ptr, asm_rowh_output) =
-            Self::map_output(shmem_output_name.clone(), unlock_mapped_memory);
+        let mut asm_shared_memory = asm_shared_memory.lock().unwrap();
+        if asm_shared_memory.is_none() {
+            *asm_shared_memory = Some(
+                AsmSharedMemory::create_shmem(
+                    AsmService::RH,
+                    local_rank,
+                    base_port,
+                    unlock_mapped_memory,
+                )
+                .expect("Error creating MO assembly shared memory"),
+            );
+        }
 
-        Ok(AsmRunnerRH::new(shmem_output_name, mapped_ptr, asm_rowh_output))
+        let asm_rowh_output = AsmRHData::from_shared_memory(asm_shared_memory.as_ref().unwrap());
+
+        Ok(AsmRunnerRH::new(asm_rowh_output))
     }
 
     fn write_input(inputs_path: &Path, shmem_input_name: &str, unlock_mapped_memory: bool) {
@@ -127,48 +116,6 @@ impl AsmRunnerRH {
             shmem_utils::unmap(ptr, shmem_input_size);
             close(fd);
         }
-    }
-
-    fn get_output_ptr(
-        shmem_output_name: &str,
-        unlock_mapped_memory: bool,
-    ) -> *mut std::ffi::c_void {
-        let fd = shmem_utils::open_shmem(shmem_output_name, libc::O_RDONLY, S_IRUSR | S_IWUSR);
-        let header_size = size_of::<AsmMTHeader>();
-        let temp = shmem_utils::map(
-            fd,
-            header_size,
-            PROT_READ,
-            unlock_mapped_memory,
-            "RH header temp map",
-        );
-        let header = unsafe { (temp as *const AsmMTHeader).read() };
-        unsafe {
-            shmem_utils::unmap(temp, header_size);
-        }
-        shmem_utils::map(
-            fd,
-            header.mt_allocated_size as usize,
-            PROT_READ,
-            unlock_mapped_memory,
-            shmem_output_name,
-        )
-    }
-
-    fn map_output(
-        shmem_output_name: String,
-        unlock_mapped_memory: bool,
-    ) -> (*mut c_void, AsmRHData) {
-        // Read the header data
-        let header_ptr =
-            Self::get_output_ptr(&shmem_output_name, unlock_mapped_memory) as *const AsmRHHeader;
-
-        let header = AsmRHHeader::from_ptr(header_ptr as *mut c_void);
-
-        // Skips the header size to get the data pointer.
-        let mut data_ptr = unsafe { header_ptr.add(1) } as *mut c_void;
-
-        (data_ptr, AsmRHData::from_ptr(&mut data_ptr, header))
     }
 }
 

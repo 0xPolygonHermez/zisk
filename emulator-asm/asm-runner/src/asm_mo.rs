@@ -1,13 +1,15 @@
 use std::ffi::c_void;
 use std::fmt::Debug;
 
+use crate::AsmShmemHeader;
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct AsmMOHeader {
     pub version: u64,
     pub exit_code: u64,
-    pub mt_allocated_size: u64,
-    pub mt_used_size: u64,
+    pub shmem_allocated_size: u64,
+    pub shmem_used_size: u64,
     pub num_chunks: u64,
 }
 
@@ -18,10 +20,16 @@ impl AsmMOHeader {
             output_header = std::ptr::read(mapped_ptr as *const AsmMOHeader);
         }
 
-        assert!(output_header.mt_allocated_size > 0);
-        assert!(output_header.mt_used_size > 0);
+        assert!(output_header.shmem_allocated_size > 0);
+        assert!(output_header.shmem_used_size > 0);
 
         output_header
+    }
+}
+
+impl AsmShmemHeader for AsmMOHeader {
+    fn allocated_size(&self) -> u64 {
+        self.shmem_allocated_size
     }
 }
 
