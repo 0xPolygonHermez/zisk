@@ -3,9 +3,11 @@ use zisk_common::{ChunkId, EmuTrace};
 use std::ffi::c_void;
 use std::fmt::Debug;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
+
+use crate::{AsmMTHeader, AsmSharedMemory};
 
 pub trait Task: Send + Sync + 'static {
     type Output: Send + 'static;
@@ -24,7 +26,6 @@ pub enum MinimalTraces {
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
 #[derive(Debug)]
 pub struct AsmRunnerMT {
-    _mapped_ptr: *mut c_void,
     pub vec_chunks: Vec<EmuTrace>,
 }
 
@@ -39,6 +40,7 @@ impl AsmRunnerMT {
     }
 
     pub fn run_and_count<T: Task>(
+        _: Arc<Mutex<Option<AsmSharedMemory<AsmMTHeader>>>>,
         _: &Path,
         _: u64,
         _: u64,

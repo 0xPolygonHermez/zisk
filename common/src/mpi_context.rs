@@ -9,5 +9,5 @@ pub struct MpiContext {
 #[cfg(not(distributed))]
 pub struct MpiContext {
     pub world_rank: i32,
-    pub local_rank: i32,    
+    pub local_rank: i32,
 }
