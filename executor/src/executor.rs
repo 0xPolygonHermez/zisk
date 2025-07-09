@@ -252,7 +252,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         &self,
         input_data_path: Option<PathBuf>,
     ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<AsmRunnerMO>) {
-        let start = Instant::now();
         for service in AsmServices::SERVICES {
             let shmem_input_name =
                 AsmSharedMemory::<AsmMTHeader>::shmem_input_name(service, self.local_rank);
@@ -262,8 +261,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 self.unlock_mapped_memory,
             );
         }
-        println!("Input data written in {:?}", start.elapsed());
-        let start = Instant::now();
 
         let (world_rank, local_rank, base_port) =
             (self.world_rank, self.local_rank, self.base_port);
@@ -308,13 +305,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         } else {
             None
         };
-        println!("Launched threads in {:?}", start.elapsed());
-        let start = Instant::now();
 
         let (min_traces, main_count, secn_count) = self.run_mt_assembly();
-
-        println!("Run MT assembly took {:?}", start.elapsed());
-        let start = Instant::now();
 
         // Store execute steps
         let steps = if let MinimalTraces::AsmEmuTrace(asm_min_traces) = &min_traces {
@@ -335,7 +327,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 handle_rh.expect("Error during Assembly ROM Histogram thread execution"),
             );
         }
-        println!("Rest of the assembly execution took {:?}", start.elapsed());
 
         (min_traces, main_count, secn_count, Some(asm_runner_mo))
     }

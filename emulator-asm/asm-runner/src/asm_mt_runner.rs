@@ -89,7 +89,7 @@ impl AsmRunnerMT {
 
         let mut emu_traces = Vec::new();
         let mut handles = Vec::new();
-        let xxx = Instant::now();
+
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
@@ -120,8 +120,7 @@ impl AsmRunnerMT {
                 }
             }
         };
-        println!("Chunk processing took {:?}", xxx.elapsed());
-        println!("Chink count: {}", chunk_id.0);
+
         if exit_code != 0 {
             return Err(AsmRunError::ExitCode(exit_code as u32))
                 .context("Child process returned error");
