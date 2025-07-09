@@ -310,7 +310,7 @@ pub fn write_input(inputs_path: &Path, shmem_input_name: &str, unlock_mapped_mem
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     let fd = open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR);
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-    let fd = open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR as u16 | S_IWUSR as u16);
+    let fd = open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR as u32 | S_IWUSR as u32);
 
     let ptr =
         map(fd, shmem_input_size, PROT_READ | PROT_WRITE, unlock_mapped_memory, "RH input mmap");
