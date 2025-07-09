@@ -252,6 +252,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         &self,
         input_data_path: Option<PathBuf>,
     ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<AsmRunnerMO>) {
+        let start = Instant::now();
         for service in AsmServices::SERVICES {
             let shmem_input_name =
                 AsmSharedMemory::<AsmMTHeader>::shmem_input_name(service, self.local_rank);
@@ -261,6 +262,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 self.unlock_mapped_memory,
             );
         }
+        println!("Input data written in {:?}", start.elapsed());
+        let start = Instant::now();
 
         let (world_rank, local_rank, base_port) =
             (self.world_rank, self.local_rank, self.base_port);
@@ -305,8 +308,13 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         } else {
             None
         };
+        println!("Launched threads in {:?}", start.elapsed());
+        let start = Instant::now();
 
         let (min_traces, main_count, secn_count) = self.run_mt_assembly();
+
+        println!("Run MT assembly took {:?}", start.elapsed());
+        let start = Instant::now();
 
         // Store execute steps
         let steps = if let MinimalTraces::AsmEmuTrace(asm_min_traces) = &min_traces {
@@ -327,6 +335,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 handle_rh.expect("Error during Assembly ROM Histogram thread execution"),
             );
         }
+        println!("Rest of the assembly execution took {:?}", start.elapsed());
 
         (min_traces, main_count, secn_count, Some(asm_runner_mo))
     }
@@ -338,7 +347,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         {
             chunk_id: ChunkId,
             emu_trace: Arc<EmuTrace>,
-            data_bus: Mutex<Option<DB>>,
+            data_bus: DB,
             zisk_rom: Arc<ZiskRom>,
             chunk_size: u64,
             _phantom: std::marker::PhantomData<F>,
@@ -351,20 +360,17 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         {
             type Output = (ChunkId, DB);
 
-            fn execute(&self) -> Self::Output {
-                let mut data_bus = self.data_bus.lock().unwrap();
-                let mut data_bus = std::mem::take(&mut *data_bus).unwrap();
-
+            fn execute(mut self) -> Self::Output {
                 ZiskEmulator::process_emu_trace::<F, _, _>(
                     &self.zisk_rom,
                     &self.emu_trace,
-                    &mut data_bus,
+                    &mut self.data_bus,
                     self.chunk_size,
                 );
 
-                data_bus.on_close();
+                self.data_bus.on_close();
 
-                (self.chunk_id, data_bus)
+                (self.chunk_id, self.data_bus)
             }
         }
 
@@ -375,7 +381,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     chunk_id,
                     emu_trace,
                     chunk_size: self.chunk_size,
-                    data_bus: Mutex::new(Some(data_bus)),
+                    data_bus,
                     zisk_rom: self.zisk_rom.clone(),
                     _phantom: std::marker::PhantomData::<F>,
                 }

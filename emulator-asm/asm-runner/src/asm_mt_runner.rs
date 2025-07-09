@@ -1,12 +1,11 @@
 use named_sem::NamedSemaphore;
-use rayon::ThreadPoolBuilder;
 use zisk_common::{ChunkId, EmuTrace};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::atomic::{fence, Ordering};
+use std::sync::Arc;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::Mutex;
-use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use tracing::{error, info};
@@ -17,7 +16,7 @@ use anyhow::{Context, Result};
 
 pub trait Task: Send + Sync + 'static {
     type Output: Send + 'static;
-    fn execute(&self) -> Self::Output;
+    fn execute(self) -> Self::Output;
 }
 
 pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, Arc<EmuTrace>) -> T + Send + Sync + 'a>;
@@ -60,8 +59,6 @@ impl AsmRunnerMT {
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
-        const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
-
         let sem_chunk_done_name =
             AsmSharedMemory::<AsmMTHeader>::shmem_chunk_done_name(AsmService::MT, local_rank);
 
@@ -85,39 +82,27 @@ impl AsmRunnerMT {
             );
         }
 
-        let pool = ThreadPoolBuilder::new().num_threads(24).build().map_err(AsmRunError::from)?;
-        let (sender, receiver) = mpsc::channel();
-
         let mut chunk_id = ChunkId(0);
 
         // Get the pointer to the data in the shared memory.
         let mut data_ptr = asm_shared_memory.as_ref().unwrap().data_ptr() as *const AsmMTChunk;
 
         let mut emu_traces = Vec::new();
+        let mut handles = Vec::new();
+        let xxx = Instant::now();
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
 
-                    let chunk = unsafe { std::ptr::read(data_ptr) };
-
-                    // TODO! Remove this check in the near future
-                    if chunk.mem_reads_size == MEM_READS_SIZE_DUMMY {
-                        panic!("Unexpected state: invalid data received from C++");
-                    }
-
-                    let emu_trace = AsmMTChunk::to_emu_trace(&mut data_ptr);
-
+                    let emu_trace = Arc::new(AsmMTChunk::to_emu_trace(&mut data_ptr));
                     let should_exit = emu_trace.end;
-                    let emu_trace = Arc::new(emu_trace);
+
                     let task = task_factory(chunk_id, emu_trace.clone());
                     emu_traces.push(emu_trace);
 
-                    let sender = sender.clone();
-                    pool.spawn(move || {
-                        sender.send(task.execute()).unwrap();
-                    });
+                    handles.push(std::thread::spawn(move || task.execute()));
 
                     if should_exit {
                         break 0;
@@ -135,15 +120,18 @@ impl AsmRunnerMT {
                 }
             }
         };
-
+        println!("Chunk processing took {:?}", xxx.elapsed());
+        println!("Chink count: {}", chunk_id.0);
         if exit_code != 0 {
             return Err(AsmRunError::ExitCode(exit_code as u32))
                 .context("Child process returned error");
         }
 
         // Collect results
-        drop(sender);
-        let tasks: Vec<T::Output> = receiver.iter().collect();
+        let mut tasks = Vec::new();
+        for handle in handles {
+            tasks.push(handle.join().expect("Task panicked"));
+        }
 
         let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
         let mhz = (total_steps as f64 / start.elapsed().as_secs_f64()) / 1_000_000.0;

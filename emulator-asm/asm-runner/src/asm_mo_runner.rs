@@ -34,8 +34,6 @@ impl AsmRunnerMO {
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
     ) -> Result<Self> {
-        const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
-
         let sem_chunk_done_name =
             AsmSharedMemory::<AsmMOHeader>::shmem_chunk_done_name(AsmService::MO, local_rank);
 
@@ -74,11 +72,6 @@ impl AsmRunnerMO {
                     fence(Ordering::Acquire);
 
                     let chunk = unsafe { std::ptr::read(data_ptr) };
-
-                    // TODO! Remove this check in the near future
-                    if chunk.mem_ops_size == MEM_READS_SIZE_DUMMY {
-                        panic!("Unexpected state: invalid data received from C++");
-                    }
 
                     data_ptr = unsafe { data_ptr.add(1) };
 
