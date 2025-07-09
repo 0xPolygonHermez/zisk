@@ -71,15 +71,17 @@ impl<'a> MemAlignPlanner<'a> {
                 self.calculate_how_many_operations_fit(operations_done, operations_rows)
             };
 
-            self.check_points.insert(
-                self.chunk_id.unwrap(),
-                MemAlignCheckPoint {
-                    skip: operations_done,
-                    count,
-                    rows: rows_fit,
-                    offset: self.num_rows - self.rows_available,
-                },
-            );
+            if count != 0 {
+                self.check_points.insert(
+                    self.chunk_id.unwrap(),
+                    MemAlignCheckPoint {
+                        skip: operations_done,
+                        count,
+                        rows: rows_fit,
+                        offset: self.num_rows - self.rows_available,
+                    },
+                );
+            }
 
             self.rows_available -= rows_fit;
             pending_rows -= rows_fit;
