@@ -38,6 +38,7 @@ impl AsmRunnerMT {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn run_and_count<T: Task>(
         _: Arc<Mutex<Option<AsmSharedMemory<AsmMTHeader>>>>,
         _: u64,
