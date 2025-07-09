@@ -252,14 +252,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         &self,
         input_data_path: Option<PathBuf>,
     ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<AsmRunnerMO>) {
-        for service in AsmServices::SERVICES {
-            let shmem_input_name =
-                AsmSharedMemory::<AsmMTHeader>::shmem_input_name(service, self.local_rank);
-            write_input(
-                input_data_path.as_ref().unwrap(),
-                &shmem_input_name,
-                self.unlock_mapped_memory,
-            );
+        if let Some(input_path) = input_data_path.as_ref() {
+            for service in AsmServices::SERVICES {
+                let shmem_input_name =
+                    AsmSharedMemory::<AsmMTHeader>::shmem_input_name(service, self.local_rank);
+                write_input(input_path, &shmem_input_name, self.unlock_mapped_memory);
+            }
         }
 
         let (world_rank, local_rank, base_port) =
