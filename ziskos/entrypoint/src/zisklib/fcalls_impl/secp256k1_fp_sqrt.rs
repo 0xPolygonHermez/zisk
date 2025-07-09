@@ -18,9 +18,9 @@ cfg_if::cfg_if! {
         use lazy_static::lazy_static;
         use num_bigint::BigUint;
         use num_traits::{One, Zero};
-        
+
         use super::utils::{from_limbs_le, to_limbs_le};
-        
+
         lazy_static! {
             pub static ref P: BigUint = BigUint::parse_bytes(
                 b"fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
@@ -40,18 +40,18 @@ cfg_if::cfg_if! {
             )
             .unwrap();
         }
-        
+
         pub fn fcall_secp256k1_fp_sqrt(params: &[u64], results: &mut [u64]) -> i64 {
             // Get the input
             let a: &[u64; 4] = &params[0..4].try_into().unwrap();
             let parity = params[4];
-        
+
             // Perform the square root
             secp256k1_fp_sqrt(a, parity, results);
-        
+
             5
         }
-        
+
         fn secp256k1_fp_sqrt(a: &[u64; 4], parity: u64, results: &mut [u64]) {
             let a_big = from_limbs_le(a);
             if a_big.is_zero() {
@@ -75,8 +75,8 @@ cfg_if::cfg_if! {
 
             // Adjust the result based on the parity
             let mut limbs = to_limbs_le(&sqrt);
-            if parity == 1 {
-                // If parity is 1, we need to take the negative square root
+            // If parities does not coincide, we need to take the negative square root
+            if (&sqrt & BigUint::one()) != BigUint::from(parity) {
                 let neg_sqrt = P.clone() - &sqrt;
                 limbs = to_limbs_le(&neg_sqrt);
             }
@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn test_sqrt_one() {
         let x = [1, 0, 0, 0];
-        let parity = 0u64;
+        let parity = 1u64;
         let params = [x[0], x[1], x[2], x[3], parity];
         let expected_sqrt = [1, 0, 0, 0];
 
@@ -103,9 +103,10 @@ mod tests {
         assert!(has_sol == 1);
         assert_eq!(results[1..5], expected_sqrt);
 
-        let parity = 1u64;
+        let parity = 0u64;
         let params = [x[0], x[1], x[2], x[3], parity];
-        let expected_sqrt = [0xfffffffefffffc2e, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff];
+        let expected_sqrt =
+            [0xfffffffefffffc2e, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff];
 
         let mut results = [0; 5];
         fcall_secp256k1_fp_sqrt(&params, &mut results);

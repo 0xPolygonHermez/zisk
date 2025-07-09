@@ -25,7 +25,6 @@ cfg_if::cfg_if! {
             .unwrap();
         }
 
-        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
         pub fn fcall_secp256k1_fn_inv(params: &[u64], results: &mut [u64]) -> i64 {
             // Get the input
             let a: &[u64; 4] = &params[0..4].try_into().unwrap();

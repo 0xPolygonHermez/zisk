@@ -14,9 +14,9 @@ cfg_if::cfg_if! {
     } else {
         use lazy_static::lazy_static;
         use num_bigint::BigUint;
-        
+
         use super::utils::{from_limbs_le, to_limbs_le};
-        
+
         lazy_static! {
             pub static ref P: BigUint = BigUint::parse_bytes(
                 b"fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
@@ -24,20 +24,20 @@ cfg_if::cfg_if! {
             )
             .unwrap();
         }
-        
+
         pub fn fcall_secp256k1_fp_inv(params: &[u64], results: &mut [u64]) -> i64 {
             // Get the input
             let a: &[u64; 4] = &params[0..4].try_into().unwrap();
-        
+
             // Perform the inversion using fp inversion
             let inv = secp256k1_fp_inv(a);
-        
+
             // Store the result
             results[0..4].copy_from_slice(&inv);
-        
+
             4
         }
-        
+
         fn secp256k1_fp_inv(a: &[u64; 4]) -> [u64; 4] {
             let a_big = from_limbs_le(a);
             let inv = a_big.modinv(&P);

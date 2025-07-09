@@ -14,11 +14,9 @@ ark-secp256k1 = { workspace = true }
 ark-bn254 = { workspace = true }
 num-bigint = { workspace = true }
 num-traits = { workspace = true }
+cfg-if = "1.0"
 lib-c = { path = "../../lib-c" }
 circuit = { path = "../../tools/circuit" }
 
 [features]
 default = []
-secp256k1_rust = []
-bn254_curve_rust = []
-bn254_complex_rust = []
