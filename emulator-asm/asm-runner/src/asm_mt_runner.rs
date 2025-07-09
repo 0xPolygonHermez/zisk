@@ -75,6 +75,12 @@ impl AsmRunnerMT {
             asm_services.send_minimal_trace_request(max_steps, chunk_size)
         });
 
+        let stats_suration = StatsDuration {
+            start_time: start,
+            duration: Duration::ZERO, 
+        };
+        execute_stats.add_stats(ExecutorStats::GenerateMT(stats_suration));
+
         // Initialize the assembly shared memory if necessary
         let mut asm_shared_memory = asm_shared_memory.lock().unwrap();
 

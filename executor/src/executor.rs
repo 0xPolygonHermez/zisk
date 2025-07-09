@@ -153,6 +153,8 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     asm_shmem_mt: Arc<Mutex<Option<AsmSharedMemory<AsmMTHeader>>>>,
     asm_shmem_mo: Arc<Mutex<Option<AsmSharedMemory<AsmMOHeader>>>>,
     asm_shmem_rh: Arc<Mutex<Option<AsmSharedMemory<AsmRHHeader>>>>,
+
+    xxx_stats: Arc<ExecuteStats>,
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
@@ -205,6 +207,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             asm_shmem_mt: Arc::new(Mutex::new(None)),
             asm_shmem_mo: Arc::new(Mutex::new(None)),
             asm_shmem_rh: Arc::new(Mutex::new(None)),
+            xxx_stats: Arc::new(ExecuteStats::new()),
         }
     }
 
@@ -390,6 +393,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             self.local_rank,
             self.base_port,
             self.unlock_mapped_memory,
+            self.xxx_stats.clone(),
         )
         .expect("Error during ASM execution");
 
