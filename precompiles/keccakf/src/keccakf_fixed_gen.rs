@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         n as u64,
         &mut [conn_a, conn_b, conn_c, conn_d, gate_op],
     );
-    println!("CONN_A, CONN_B, CONN_C, CONN_D and GATE_OP columns written to {}", output_file);
+    println!("CONN_A, CONN_B, CONN_C and GATE_OP columns written to {output_file}");
 
     Ok(())
 }
@@ -73,12 +73,9 @@ fn cols_gen(subgroup_order: usize, subgroup_gen: u64, cosets_gen: u64) -> FixedC
     let keccakf_gates = keccakf_top.gates;
 
     // Check that the subgroup order is sufficiently large
-    let circuit_size = keccakf_program.len();
-    if circuit_size >= subgroup_order {
-        panic!(
-            "The provided number of bits {} is too small for the Keccakf circuit",
-            subgroup_order
-        );
+    let slot_size = keccakf_program.len();
+    if slot_size >= subgroup_order {
+        panic!("The provided number of bits {subgroup_order} is too small for the Keccakf circuit");
     }
 
     // Get the number of circuits we can generate
@@ -191,8 +188,8 @@ fn cols_gen(subgroup_order: usize, subgroup_gen: u64, cosets_gen: u64) -> FixedC
 
             match op {
                 GateOperation::Xor => gate_op[line] = F::ZERO,
-                GateOperation::XorAndp => gate_op[line] = F::ONE,
-                _ => panic!("Invalid op: {:?}", op),
+                GateOperation::Andp => gate_op[line] = F::ONE,
+                _ => panic!("Invalid op: {op:?}"),
             }
         }
     }

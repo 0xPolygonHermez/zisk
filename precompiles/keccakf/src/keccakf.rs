@@ -8,7 +8,7 @@ use circuit::{Gate, GateOperation, PinId};
 use precompiles_helpers::keccakf_topology;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_pil::{KeccakfFixed, KeccakfTrace, KeccakfTraceRow};
+use zisk_pil::{KeccakfFixed, KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
 
 use crate::KeccakfInput;
 
@@ -17,7 +17,7 @@ use super::{keccakf_constants::*, KeccakfTableGateOp, KeccakfTableSM};
 use rayon::prelude::*;
 
 /// The `KeccakfSM` struct encapsulates the logic of the Keccakf State Machine.
-pub struct KeccakfSM {
+pub struct KeccakfSM<F: PrimeField64> {
     /// Reference to the Keccakf Table State Machine.
     keccakf_table_sm: Arc<KeccakfTableSM>,
 
@@ -33,9 +33,11 @@ pub struct KeccakfSM {
 
     /// Number of available keccakfs in the trace.
     pub num_available_keccakfs: usize,
+
+    keccakf_fixed: KeccakfFixed<F>,
 }
 
-impl KeccakfSM {
+impl<F: PrimeField64> KeccakfSM<F> {
     /// Creates a new Keccakf State Machine instance.
     ///
     /// # Arguments
@@ -43,8 +45,8 @@ impl KeccakfSM {
     ///
     /// # Returns
     /// A new `KeccakfSM` instance.
-    pub fn new(keccakf_table_sm: Arc<KeccakfTableSM>) -> Arc<Self> {
-        // Get the circuit size
+    pub fn new(sctx: Arc<SetupCtx<F>>, keccakf_table_sm: Arc<KeccakfTableSM>) -> Arc<Self> {
+        // Get the slot size
         let keccakf_top = keccakf_topology();
         let keccakf_program = keccakf_top.program;
         let keccakf_gates = keccakf_top.gates;
@@ -54,6 +56,11 @@ impl KeccakfSM {
         let num_available_circuits = (KeccakfTrace::<usize>::NUM_ROWS - 1) / circuit_size;
         let num_available_keccakfs = NUM_KECCAKF_PER_CIRCUIT * num_available_circuits;
 
+        let airgroup_id = KeccakfTrace::<usize>::AIRGROUP_ID;
+        let air_id = KeccakfTrace::<usize>::AIR_ID;
+        let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
+        let keccakf_fixed = KeccakfFixed::from_vec(fixed_pols);
+
         Arc::new(Self {
             keccakf_table_sm,
             program: keccakf_program,
@@ -61,6 +68,7 @@ impl KeccakfSM {
             circuit_size,
             num_available_circuits,
             num_available_keccakfs,
+            keccakf_fixed,
         })
     }
 
@@ -72,9 +80,8 @@ impl KeccakfSM {
     /// * `input` - The operation data to process.
     /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
     #[inline(always)]
-    pub fn process_trace<'a, I, F: PrimeField64>(
+    pub fn process_trace<'a, I>(
         &self,
-        fixed: &KeccakfFixed<F>,
         trace: &mut KeccakfTrace<F>,
         num_rows_constants: usize,
         inputs: I,
@@ -252,9 +259,11 @@ impl KeccakfSM {
         let program = &self.program;
         let gates = &self.gates;
 
-        let row0 = trace.buffer[0];
+        let trace_rows = trace.row_slice_mut();
 
-        let mut trace_slice = &mut trace.buffer[1..];
+        let row0 = trace_rows[0];
+
+        let mut trace_slice = &mut trace_rows[1..];
         let mut par_traces = Vec::new();
 
         for _ in 0..inputs_bits.len() {
@@ -292,7 +301,6 @@ impl KeccakfSM {
                         .find(|&r| (s - r) % STATE_IN_REF_DISTANCE == 0)
                         .map(|r| ((s - r) / STATE_IN_REF_DISTANCE) * STATE_IN_GROUP_BY + r)
                         .expect("Invalid bit index");
-
                     value_a = inputs_bits[i][bit_a];
                 } else
                 // Otherwise, we get one of the already computed values
@@ -464,25 +472,25 @@ impl KeccakfSM {
             }
 
             // Update the multiplicity table for the circuit
-            for k in 0..self.circuit_size {
-                let a = par_trace[k].free_in_a;
-                let b = par_trace[k].free_in_b;
-                let c = par_trace[k].free_in_c;
-                let gate_op = fixed[k + 1 + i * self.circuit_size].GATE_OP;
+            let mut multiplicity = vec![0; KeccakfTableTrace::<usize>::NUM_ROWS];
+            for (k, trace) in par_trace.iter().enumerate().take(self.circuit_size) {
+                let a = &trace.free_in_a;
+                let b = &trace.free_in_b;
+                let gate_op = self.keccakf_fixed[k + 1 + i * self.circuit_size].GATE_OP;
                 let gate_op_val = match F::as_canonical_u64(&gate_op) {
-                    0u64 => KeccakfTableGateOp::Xor,
-                    1u64 => KeccakfTableGateOp::XorAndp,
+                    0 => KeccakfTableGateOp::Xor,
+                    1 => KeccakfTableGateOp::Andp,
                     _ => panic!("Invalid gate operation"),
                 };
+
                 for j in 0..CHUNKS_KECCAKF {
                     let a_val = F::as_canonical_u64(&a[j]);
                     let b_val = F::as_canonical_u64(&b[j]);
-                    let c_val = F::as_canonical_u64(&c[j]);
-                    let table_row =
-                        KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val, c_val);
-                    self.keccakf_table_sm.update_input(table_row, 1);
+                    let table_row = KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val);
+                    multiplicity[table_row] += 1;
                 }
             }
+            self.keccakf_table_sm.update_multiplicities(&multiplicity);
         });
 
         fn update_bit_val<F: PrimeField64>(
@@ -553,19 +561,13 @@ impl KeccakfSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<F: PrimeField64>(
+    pub fn compute_witness(
         &self,
-        sctx: &SetupCtx<F>,
         inputs: &[Vec<KeccakfInput>],
+        trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        // Get the fixed cols
-        let airgroup_id = KeccakfTrace::<usize>::AIRGROUP_ID;
-        let air_id = KeccakfTrace::<usize>::AIR_ID;
-        let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
-        let fixed = KeccakfFixed::from_vec(fixed_pols);
-
         timer_start_trace!(KECCAKF_TRACE);
-        let mut keccakf_trace = KeccakfTrace::new_zeroes();
+        let mut keccakf_trace = KeccakfTrace::new_from_vec_zeroes(trace_buffer);
         let num_rows = keccakf_trace.num_rows();
 
         // Check that we can fit all the keccakfs in the trace
@@ -598,7 +600,7 @@ impl KeccakfSM {
         let mut row: KeccakfTraceRow<F> = Default::default();
         let zeros = 0u64;
         let ones = MASK_BITS_KECCAKF;
-        let gate_op = fixed[0].GATE_OP.as_canonical_u64();
+        let gate_op = self.keccakf_fixed[0].GATE_OP.as_canonical_u64();
         // Sanity check
         debug_assert_eq!(
             gate_op,
@@ -622,14 +624,14 @@ impl KeccakfSM {
         // Fill the rest of the trace
         // Flatten all the inputs, since I need to process them at least in chunks of NUM_SHA256F_PER_CIRCUIT
         let inputs = inputs.iter().flatten();
-        self.process_trace(&fixed, &mut keccakf_trace, num_rows_constants, inputs, num_inputs);
+        self.process_trace(&mut keccakf_trace, num_rows_constants, inputs, num_inputs);
         timer_stop_and_log_trace!(KECCAKF_TRACE);
 
         timer_start_trace!(KECCAKF_PADDING);
         // A row with all zeros satisfies the constraints (since XOR(0,0,0) = 0)
         let padding_row: KeccakfTraceRow<F> = Default::default();
         for i in (num_rows_constants + self.circuit_size * self.num_available_circuits)..num_rows {
-            let gate_op = fixed[i].GATE_OP.as_canonical_u64();
+            let gate_op = self.keccakf_fixed[i].GATE_OP.as_canonical_u64();
             // Sanity check
             debug_assert_eq!(
                 gate_op,

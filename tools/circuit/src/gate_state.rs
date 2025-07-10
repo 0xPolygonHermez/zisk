@@ -434,7 +434,7 @@ impl GateState {
             );
         }
         println!("--------------------------");
-        println!("   Total     = {}", total_operations);
+        println!("   Total     = {total_operations}");
         println!("==========================");
     }
 

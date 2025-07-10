@@ -2,7 +2,7 @@ use anyhow::Result;
 use asm_runner::AsmRunnerOptions;
 use clap::Parser;
 use colored::Colorize;
-use proofman_common::{json_to_debug_instances_map, DebugInfo};
+use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -18,7 +18,7 @@ use crate::commands::{get_proving_key, get_witness_computation_lib, initialize_m
 use crate::ux::print_banner;
 use crate::ZISK_VERSION_MESSAGE;
 
-const DEFAULT_PORT: u16 = 7878;
+pub const DEFAULT_PORT: u16 = 7878;
 const LOG_PATH: &str = "zisk_prover_server.log";
 
 // Structure representing the 'prove' subcommand of cargo.
@@ -51,6 +51,9 @@ pub struct ZiskServer {
     #[clap(short = 's', long)]
     pub asm: Option<PathBuf>,
 
+    #[clap(short = 'c', long)]
+    pub chunk_size_bits: Option<u64>,
+
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
     #[clap(short = 'l', long, action = clap::ArgAction::SetTrue)]
     pub emulator: bool,
@@ -71,12 +74,12 @@ pub struct ZiskServer {
     #[clap(long, conflicts_with = "emulator")]
     pub asm_port: Option<u16>,
 
-    /// Map locked flag
-    /// This is used to lock the memory map for the ROM file.
-    /// If you are running ZisK on a machine with limited memory, you may want to disable this option.
+    /// Map unlocked flag
+    /// This is used to unlock the memory map for the ROM file.
+    /// If you are running ZisK on a machine with limited memory, you may want to enable this option.
     /// This option is mutually exclusive with `--emulator`.
     #[clap(short = 'u', long, conflicts_with = "emulator")]
-    pub map_locked: bool,
+    pub unlock_mapped_memory: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short ='v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
@@ -88,6 +91,28 @@ pub struct ZiskServer {
     // PRECOMPILES OPTIONS
     /// Sha256f script path
     pub sha256f_script: Option<PathBuf>,
+
+    #[clap(short = 'h', long, default_value_t = false)]
+    pub verify_constraints: bool,
+
+    #[clap(short = 'a', long, default_value_t = false)]
+    pub aggregation: bool,
+
+    #[clap(short = 'f', long, default_value_t = false)]
+    pub final_snark: bool,
+
+    /// GPU PARAMS
+    #[clap(short = 'r', long, default_value_t = false)]
+    pub preallocate: bool,
+
+    #[clap(short = 't', long)]
+    pub max_streams: Option<usize>,
+
+    #[clap(short = 'n', long)]
+    pub number_threads_witness: Option<usize>,
+
+    #[clap(short = 'x', long)]
+    pub max_witness_stored: Option<usize>,
 }
 
 impl ZiskServer {
@@ -97,6 +122,13 @@ impl ZiskServer {
         print_banner();
 
         let mpi_context = initialize_mpi()?;
+
+        proofman_common::initialize_logger(
+            proofman_common::VerboseMode::Info,
+            Some(mpi_context.world_rank),
+        );
+
+        self.port += mpi_context.local_rank as u16;
 
         if !self.elf.exists() {
             eprintln!("Error: ELF file '{}' not found.", self.elf.display());
@@ -117,9 +149,9 @@ impl ZiskServer {
             sha256f_path.clone()
         } else {
             let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{}/.zisk/bin/sha256f_script.json", home_dir));
+            let script_path = PathBuf::from(format!("{home_dir}/.zisk/bin/sha256f_script.json"));
             if !script_path.exists() {
-                panic!("Sha256f script file not found at {:?}", script_path);
+                panic!("Sha256f script file not found at {script_path:?}");
             }
             script_path
         };
@@ -131,7 +163,7 @@ impl ZiskServer {
             if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
                 if e.kind() != std::io::ErrorKind::AlreadyExists {
                     // prevent collision in distributed mode
-                    panic!("Failed to create the cache directory: {:?}", e);
+                    panic!("Failed to create the cache directory: {e:?}");
                 }
             }
         }
@@ -182,7 +214,19 @@ impl ZiskServer {
             .with_base_port(self.asm_port)
             .with_world_rank(mpi_context.world_rank)
             .with_local_rank(mpi_context.local_rank)
-            .with_map_locked(self.map_locked);
+            .with_unlock_mapped_memory(self.unlock_mapped_memory);
+
+        let mut gpu_params = ParamsGPU::new(self.preallocate);
+
+        if self.max_streams.is_some() {
+            gpu_params.with_max_number_streams(self.max_streams.unwrap());
+        }
+        if self.number_threads_witness.is_some() {
+            gpu_params.with_number_threads_pools_witness(self.number_threads_witness.unwrap());
+        }
+        if self.max_witness_stored.is_some() {
+            gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
+        }
 
         let config = ServerConfig::new(
             self.port,
@@ -196,11 +240,16 @@ impl ZiskServer {
             self.verbose,
             debug_info,
             sha256f_script,
+            self.chunk_size_bits,
             asm_runner_options,
+            self.verify_constraints,
+            self.aggregation,
+            self.final_snark,
+            gpu_params,
         );
 
         if let Err(e) = ZiskService::new(config, mpi_context)?.run() {
-            eprintln!("Error starting server: {}", e);
+            eprintln!("Error starting server: {e}");
             process::exit(1);
         }
 

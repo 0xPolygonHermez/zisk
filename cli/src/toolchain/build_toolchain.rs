@@ -50,7 +50,7 @@ impl BuildToolchainCmd {
         let config_toml = include_str!("config.toml");
         let config_file = rust_dir.join("config.toml");
         std::fs::write(&config_file, config_toml)
-            .with_context(|| format!("while writing configuration to {:?}", config_file))?;
+            .with_context(|| format!("while writing configuration to {config_file:?}"))?;
 
         // Work around target sanity check added in
         // rust-lang/rust@09c076810cb7649e5817f316215010d49e78e8d7.
@@ -100,7 +100,7 @@ impl BuildToolchainCmd {
 
         // Compressing toolchain directory to tar.gz.
         let target = get_target();
-        let tar_gz_path = format!("rust-toolchain-{}.tar.gz", target);
+        let tar_gz_path = format!("rust-toolchain-{target}.tar.gz");
         Command::new("tar")
             .args([
                 "--exclude",
@@ -114,7 +114,7 @@ impl BuildToolchainCmd {
                 ".",
             ])
             .run()?;
-        println!("Successfully compressed the toolchain to {}.", tar_gz_path);
+        println!("Successfully compressed the toolchain to {tar_gz_path}.");
 
         Ok(())
     }

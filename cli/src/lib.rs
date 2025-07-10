@@ -1,5 +1,4 @@
 pub mod commands;
-mod proof_log;
 pub mod toolchain;
 pub mod ux;
 
@@ -76,7 +75,7 @@ pub async fn get_toolchain_download_url(client: &Client, target: String) -> Stri
     let url = "https://api.github.com/repos/0xPolygonHermez/rust/releases/latest";
     let json = client.get(url).send().await.unwrap().json::<serde_json::Value>().await.unwrap();
 
-    let name: String = format!("rust-toolchain-{}.tar.gz", target);
+    let name: String = format!("rust-toolchain-{target}.tar.gz");
     if let Some(assets) = json["assets"].as_array() {
         // Iterate over the array and extract the desired URL
         for asset in assets {
@@ -113,7 +112,7 @@ pub async fn download_file(
     pb.set_style(ProgressStyle::default_bar()
         .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})").unwrap()
         .progress_chars("#>-"));
-    println!("Downloading {}", url);
+    println!("Downloading {url}");
 
     let mut downloaded: u64 = 0;
     let mut stream = res.bytes_stream();
@@ -126,7 +125,7 @@ pub async fn download_file(
         pb.set_position(new);
     }
 
-    let msg = format!("Downloaded {} to {:?}", url, file);
+    let msg = format!("Downloaded {url} to {file:?}");
     pb.finish_with_message(msg);
     Ok(())
 }

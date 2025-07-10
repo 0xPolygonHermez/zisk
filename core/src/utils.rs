@@ -41,7 +41,7 @@ pub fn source_to_str(source: u64) -> &'static str {
         // #[cfg(feature = "sp")]
         // SRC_SP => "SRC_SP",
         SRC_IND => "SRC_IND",
-        _ => panic!("source_to_str() unknown source({})", source),
+        _ => panic!("source_to_str() unknown source({source})"),
     }
 }
 
@@ -52,7 +52,7 @@ pub fn store_to_str(store: u64) -> &'static str {
         STORE_MEM => "STORE_MEM",
         STORE_REG => "STORE_REG",
         STORE_IND => "STORE_IND",
-        _ => panic!("store_to_str() unknown store({})", store),
+        _ => panic!("store_to_str() unknown store({store})"),
     }
 }
 

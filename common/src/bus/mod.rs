@@ -65,7 +65,7 @@ impl Display for DebugBusTime {
             let avg = if count > 0 { time / count } else { 0 };
             let percent =
                 if total_time > 0 { 100.0 * time as f64 / total_time as f64 } else { 0.0 };
-            writeln!(f, "SM#{:<3} {:>15} {:>10} {:>15} {:>9.2}%", i, time, count, avg, percent)?;
+            writeln!(f, "SM#{i:<3} {time:>15} {count:>10} {avg:>15} {percent:>9.2}%")?;
         }
 
         Ok(())

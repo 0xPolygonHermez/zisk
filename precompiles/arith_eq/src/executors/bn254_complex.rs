@@ -182,11 +182,7 @@ impl Bn254Complex {
                 }
                 debug_assert!(
                     0 == if icol == COLS - 1 { value } else { value % 0x10000 },
-                    "Bn254Complex residue eq{} ({}) #:{} cin:{}",
-                    ieq,
-                    index,
-                    value,
-                    cin
+                    "Bn254Complex residue eq{ieq} ({index}) #:{value} cin:{cin}"
                 );
             }
         }
