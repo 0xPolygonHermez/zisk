@@ -12,6 +12,7 @@ use rom_setup::{
     DEFAULT_CACHE_PATH,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
 use std::{
     collections::HashMap,
     env, fs,
@@ -19,7 +20,7 @@ use std::{
     thread,
     time::Instant,
 };
-use zisk_common::ZiskLibInitFn;
+use zisk_common::{ExecutorStats, ZiskLibInitFn};
 use zisk_pil::*;
 
 use crate::{
@@ -312,10 +313,10 @@ impl ZiskStats {
             }
         };
 
-        let (_, stats): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
+        let (_, stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) = *witness_lib
             .get_execution_result()
             .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-            .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
+            .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>)>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
         if world_rank % 2 == 1 {
@@ -328,7 +329,7 @@ impl ZiskStats {
             "-".repeat(55)
         );
 
-        Self::print_stats(&stats);
+        stats.lock().unwrap().print_stats();
 
         if self.asm.is_some() {
             // Shut down ASM microservices

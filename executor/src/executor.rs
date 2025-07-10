@@ -37,11 +37,14 @@ use crate::{DataBusCollectorCollection, DummyCounter};
 use data_bus::DataBusTrait;
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::{
-    BusDevice, BusDeviceMetrics, CheckPoint, Instance, InstanceCtx, InstanceType, Plan,
+    BusDevice, BusDeviceMetrics, CheckPoint, ExecutorStats, Instance, InstanceCtx, InstanceType,
+    Plan,
 };
 use zisk_common::{ChunkId, PayloadType};
 use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
+#[cfg(feature = "stats")]
+use std::time::Duration;
 use std::time::Instant;
 use std::{
     collections::HashMap,
@@ -50,6 +53,9 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex, RwLock},
 };
+#[cfg(feature = "stats")]
+use zisk_common::{ExecutorStatsAir, ExecutorStatsDuration, ExecutorStatsEnum};
+
 use zisk_common::EmuTrace;
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
@@ -133,7 +139,7 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
         RwLock<HashMap<usize, (Option<Stats>, Vec<(usize, Box<dyn BusDevice<u64>>)>)>>,
 
     /// Statistics collected during the execution, including time taken for collection and witness computation.
-    stats: Mutex<Vec<(usize, usize, Stats)>>,
+    stats: Arc<Mutex<ExecutorStats>>,
 
     chunk_size: u64,
 
@@ -196,7 +202,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             execution_result: Mutex::new(ZiskExecutionResult::default()),
             sm_bundle,
             rom_sm,
-            stats: Mutex::new(Vec::new()),
+            stats: Arc::new(Mutex::new(ExecutorStats::new())),
             chunk_size,
             world_rank,
             local_rank,
@@ -208,12 +214,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         }
     }
 
-    pub fn get_execution_result(&self) -> (ZiskExecutionResult, Vec<(usize, usize, Stats)>) {
-        (self.execution_result.lock().unwrap().clone(), self.get_stats())
+    pub fn get_execution_result(&self) -> (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) {
+        (self.execution_result.lock().unwrap().clone(), self.stats.clone())
     }
 
-    pub fn get_stats(&self) -> Vec<(usize, usize, Stats)> {
-        self.stats.lock().unwrap().clone()
+    pub fn store_stats(&self) {
+        self.stats.lock().unwrap().store_stats();
     }
 
     /// Computes minimal traces by processing the ZisK ROM with given public inputs.
@@ -329,6 +335,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         &self,
         input_data_path: Option<PathBuf>,
     ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList) {
+        #[cfg(feature = "stats")]
+        let start_time = Instant::now();
+
         struct CounterTask<F, DB>
         where
             DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>,
@@ -339,6 +348,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             zisk_rom: Arc<ZiskRom>,
             chunk_size: u64,
             _phantom: std::marker::PhantomData<F>,
+            _stats: Arc<Mutex<ExecutorStats>>,
         }
 
         impl<F, DB> Task for CounterTask<F, DB>
@@ -349,6 +359,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             type Output = (ChunkId, DB);
 
             fn execute(&self) -> Self::Output {
+                #[cfg(feature = "stats")]
+                let start_time = Instant::now();
+
                 let mut data_bus = self.data_bus.lock().unwrap();
                 let mut data_bus = std::mem::take(&mut *data_bus).unwrap();
 
@@ -360,6 +373,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 );
 
                 data_bus.on_close();
+
+                // Add to executor stats
+                #[cfg(feature = "stats")]
+                self._stats.lock().unwrap().add_stat(ExecutorStatsEnum::ChunkPlayerMT(
+                    ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
+                ));
 
                 (self.chunk_id, data_bus)
             }
@@ -375,6 +394,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     data_bus: Mutex::new(Some(data_bus)),
                     zisk_rom: self.zisk_rom.clone(),
                     _phantom: std::marker::PhantomData::<F>,
+                    _stats: self.stats.clone(),
                 }
             });
 
@@ -388,6 +408,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             self.local_rank,
             self.base_port,
             self.unlock_mapped_memory,
+            self.stats.clone(),
         )
         .expect("Error during ASM execution");
 
@@ -424,6 +445,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 secn_vec_counters[i].push((chunk_id, counter.unwrap_or(Box::new(DummyCounter {}))));
             });
         });
+
+        #[cfg(feature = "stats")]
+        self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::GenerateMT(ExecutorStatsDuration {
+            start_time,
+            duration: start_time.elapsed(),
+        }));
 
         (MinimalTraces::AsmEmuTrace(asm_runner_mt), main_count, secn_vec_counters)
     }
@@ -664,21 +691,21 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         #[cfg(feature = "stats")]
         {
-            let witness_duration = witness_start_time.elapsed().as_millis() as u64;
-
             let (airgroup_id, air_id) = pctx.dctx_get_instance_info(main_instance.ictx.global_id);
 
-            self.stats.lock().unwrap().push((
+            self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::Air(ExecutorStatsAir {
                 airgroup_id,
                 air_id,
-                Stats {
-                    collect_start_time: std::time::Instant::now(),
-                    collect_duration: 0,
-                    witness_start_time,
-                    witness_duration,
-                    num_chunks: 1,
+                collect: ExecutorStatsDuration {
+                    start_time: Instant::now(),
+                    duration: Duration::new(0, 0),
                 },
-            ));
+                witness: ExecutorStatsDuration {
+                    start_time: witness_start_time,
+                    duration: witness_start_time.elapsed(),
+                },
+                num_chunks: 1,
+            }));
         }
     }
 
@@ -714,12 +741,24 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         #[cfg(feature = "stats")]
         {
-            let witness_duration = witness_start_time.elapsed().as_millis() as u64;
             let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
-            let mut stats = _stats.unwrap();
-            stats.witness_start_time = witness_start_time;
-            stats.witness_duration = witness_duration;
-            self.stats.lock().unwrap().push((airgroup_id, air_id, stats));
+            let stats = _stats.unwrap();
+            self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::Air(ExecutorStatsAir {
+                airgroup_id,
+                air_id,
+                collect: ExecutorStatsDuration {
+                    start_time: stats.collect_start_time,
+                    duration: Duration::new(
+                        stats.collect_duration / 1000000,
+                        (stats.collect_duration % 1000000) as u32,
+                    ),
+                },
+                witness: ExecutorStatsDuration {
+                    start_time: witness_start_time,
+                    duration: witness_start_time.elapsed(),
+                },
+                num_chunks: stats.num_chunks,
+            }));
         }
     }
 
@@ -816,20 +855,24 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         #[cfg(feature = "stats")]
         {
-            let witness_duration = witness_start_time.elapsed().as_millis() as u64;
+            use zisk_common::ExecutorStatsDuration;
+
+            let witness_duration = witness_start_time.elapsed();
             let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
 
-            self.stats.lock().unwrap().push((
+            self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::Air(ExecutorStatsAir {
                 airgroup_id,
                 air_id,
-                Stats {
-                    collect_start_time: Instant::now(),
-                    collect_duration: 0,
-                    witness_start_time,
-                    witness_duration,
-                    num_chunks: 0,
+                collect: ExecutorStatsDuration {
+                    start_time: Instant::now(),
+                    duration: Duration::new(0, 0),
                 },
-            ));
+                witness: ExecutorStatsDuration {
+                    start_time: witness_start_time,
+                    duration: witness_duration,
+                },
+                num_chunks: 0,
+            }));
         }
     }
 
@@ -907,6 +950,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
     /// # Returns
     /// A vector of global IDs for the instances to compute witness for.
     fn execute(&self, pctx: Arc<ProofCtx<F>>, input_data_path: Option<PathBuf>) -> Vec<usize> {
+        // Set the start time of the current execution
+        self.stats.lock().unwrap().set_start_time(Instant::now());
+
         // Process the ROM to collect the Minimal Traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
 

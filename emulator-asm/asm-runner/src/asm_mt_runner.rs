@@ -2,6 +2,8 @@ use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
 
 use named_sem::NamedSemaphore;
 use rayon::ThreadPoolBuilder;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use zisk_common::ExecutorStats;
 use zisk_common::{ChunkId, EmuTrace};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -69,6 +71,7 @@ impl AsmRunnerMT {
         local_rank: i32,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
+        _stats: Arc<Mutex<ExecutorStats>>,
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
         const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
 
@@ -114,6 +117,18 @@ impl AsmRunnerMT {
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
+                    #[cfg(feature = "stats")]
+                    {
+                        use zisk_common::ExecutorStatsDuration;
+
+                        _stats.lock().unwrap().add_stat(
+                            zisk_common::ExecutorStatsEnum::MTChunkDone(ExecutorStatsDuration {
+                                start_time: Instant::now(),
+                                duration: Duration::new(0, 1),
+                            }),
+                        );
+                    }
+
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
 

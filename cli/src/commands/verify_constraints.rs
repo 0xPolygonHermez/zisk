@@ -1,5 +1,3 @@
-#[cfg(feature = "stats")]
-use crate::commands::ZiskStats;
 use crate::{
     commands::{
         cli_fail_if_gpu_mode, cli_fail_if_macos, get_proving_key, get_witness_computation_lib,
@@ -12,7 +10,7 @@ use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use clap::Parser;
 use colored::Colorize;
-use executor::{Stats, ZiskExecutionResult};
+use executor::ZiskExecutionResult;
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
@@ -21,14 +19,17 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
+use std::sync::{Arc, Mutex};
 #[cfg(feature = "stats")]
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::{
     collections::HashMap,
     env, fs,
     path::{Path, PathBuf},
 };
-use zisk_common::ZiskLibInitFn;
+use zisk_common::{ExecutorStats, ZiskLibInitFn};
+#[cfg(feature = "stats")]
+use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -104,9 +105,6 @@ impl ZiskVerifyConstraints {
         cli_fail_if_gpu_mode()?;
 
         print_banner();
-
-        #[cfg(feature = "stats")]
-        let start_time = Instant::now();
 
         let mpi_context = initialize_mpi()?;
 
@@ -273,10 +271,10 @@ impl ZiskVerifyConstraints {
 
         let elapsed = start.elapsed();
 
-        let (result, _stats): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
+        let (result, _stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) = *witness_lib
             .get_execution_result()
             .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-            .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
+            .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>)>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
         tracing::info!("");
@@ -300,7 +298,11 @@ impl ZiskVerifyConstraints {
         // Store the stats in stats.json
         #[cfg(feature = "stats")]
         {
-            ZiskStats::store_stats(start_time, &_stats);
+            _stats.lock().unwrap().add_stat(ExecutorStatsEnum::End(ExecutorStatsDuration {
+                start_time: Instant::now(),
+                duration: Duration::new(0, 1),
+            }));
+            _stats.lock().unwrap().store_stats();
         }
 
         Ok(())
