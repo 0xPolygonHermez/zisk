@@ -298,7 +298,7 @@ Zisk proofs can be generated using multiple processes concurrently to improve pe
 To execute a Zisk proof using multiple processes, use the following command:
 
 ```bash
-mpirun --bind-to none -np <num_processes> -x OMP_NUM_THREADS=<num_threads_pero_process> -x RAYON_NUM_THREADS=<num_threads_per_process> target/release/cargo-zisk <zisk arguments>
+mpirun --bind-to none -np <num_processes> -x OMP_NUM_THREADS=<num_threads_per_process> -x RAYON_NUM_THREADS=<num_threads_per_process> target/release/cargo-zisk <zisk arguments>
 ```
 In this command:
 
