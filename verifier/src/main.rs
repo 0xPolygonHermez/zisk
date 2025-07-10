@@ -1,16 +1,12 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
-use std::fs;
-
 use bytemuck::cast_slice;
-use ziskos::set_output;
+use ziskos::{set_output, read_input};
 
 fn main() {
-    // TODO: DETERMINE HOW TO PASS THE PROOF
-
-    let buffer = fs::read("proofs/vadcop_final_proof.bin").unwrap();
-    let proof_slice: &[u64] = cast_slice(&buffer);
+    let input: Vec<u8> = read_input();
+    let proof_slice: &[u64] = cast_slice(&input);
 
     // Verify the proof
     let valid = verifier::verify(proof_slice);
