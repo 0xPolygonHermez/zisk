@@ -1,5 +1,3 @@
-use std::ffi::c_void;
-
 use std::fmt::Debug;
 
 use crate::{AsmSharedMemory, AsmShmemHeader};
@@ -11,20 +9,6 @@ pub struct AsmRHHeader {
     pub exit_code: u64,
     pub shmem_allocated_size: u64,
     pub steps: u64,
-}
-
-impl AsmRHHeader {
-    pub fn from_ptr(mapped_ptr: *mut c_void) -> AsmRHHeader {
-        let output_header;
-        unsafe {
-            output_header = std::ptr::read(mapped_ptr as *const AsmRHHeader);
-        }
-
-        assert!(output_header.shmem_allocated_size > 0);
-        assert!(output_header.steps > 0);
-
-        output_header
-    }
 }
 
 impl AsmShmemHeader for AsmRHHeader {

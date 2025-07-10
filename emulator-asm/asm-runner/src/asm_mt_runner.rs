@@ -1,30 +1,22 @@
-use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
-
 use named_sem::NamedSemaphore;
-use rayon::ThreadPoolBuilder;
 use zisk_common::{ChunkId, EmuTrace};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use std::path::Path;
 use std::sync::atomic::{fence, Ordering};
+use std::sync::Arc;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::Mutex;
-use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
-use std::{fs, ptr};
 
 use tracing::{error, info};
 
-use crate::{
-    shmem_utils, AsmInputC2, AsmMTChunk, AsmMTHeader, AsmRunError, AsmService, AsmServices,
-    AsmSharedMemory,
-};
+use crate::{AsmMTChunk, AsmMTHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory};
 
 use anyhow::{Context, Result};
 
 pub trait Task: Send + Sync + 'static {
     type Output: Send + 'static;
-    fn execute(&self) -> Self::Output;
+    fn execute(self) -> Self::Output;
 }
 
 pub type TaskFactory<'a, T> = Box<dyn Fn(ChunkId, Arc<EmuTrace>) -> T + Send + Sync + 'a>;
@@ -59,7 +51,6 @@ impl AsmRunnerMT {
     #[allow(clippy::too_many_arguments)]
     pub fn run_and_count<T: Task>(
         asm_shared_memory: Arc<Mutex<Option<AsmSharedMemory<AsmMTHeader>>>>,
-        inputs_path: &Path,
         max_steps: u64,
         chunk_size: u64,
         task_factory: TaskFactory<T>,
@@ -68,15 +59,11 @@ impl AsmRunnerMT {
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
-        const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
-
-        let (shmem_input_name, _, sem_chunk_done_name) =
-            AsmSharedMemory::<AsmMTHeader>::shmem_names(AsmService::MT, base_port, local_rank);
+        let sem_chunk_done_name =
+            AsmSharedMemory::<AsmMTHeader>::shmem_chunk_done_name(AsmService::MT, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
-
-        Self::write_input(inputs_path, &shmem_input_name, unlock_mapped_memory);
 
         let start = Instant::now();
 
@@ -90,18 +77,10 @@ impl AsmRunnerMT {
 
         if asm_shared_memory.is_none() {
             *asm_shared_memory = Some(
-                AsmSharedMemory::create_shmem(
-                    AsmService::MT,
-                    local_rank,
-                    base_port,
-                    unlock_mapped_memory,
-                )
-                .expect("Error creating MT assembly shared memory"),
+                AsmSharedMemory::create_shmem(AsmService::MT, local_rank, unlock_mapped_memory)
+                    .expect("Error creating MT assembly shared memory"),
             );
         }
-
-        let pool = ThreadPoolBuilder::new().num_threads(24).build().map_err(AsmRunError::from)?;
-        let (sender, receiver) = mpsc::channel();
 
         let mut chunk_id = ChunkId(0);
 
@@ -109,30 +88,21 @@ impl AsmRunnerMT {
         let mut data_ptr = asm_shared_memory.as_ref().unwrap().data_ptr() as *const AsmMTChunk;
 
         let mut emu_traces = Vec::new();
+        let mut handles = Vec::new();
+
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
 
-                    let chunk = unsafe { std::ptr::read(data_ptr) };
-
-                    // TODO! Remove this check in the near future
-                    if chunk.mem_reads_size == MEM_READS_SIZE_DUMMY {
-                        panic!("Unexpected state: invalid data received from C++");
-                    }
-
-                    let emu_trace = AsmMTChunk::to_emu_trace(&mut data_ptr);
-
+                    let emu_trace = Arc::new(AsmMTChunk::to_emu_trace(&mut data_ptr));
                     let should_exit = emu_trace.end;
-                    let emu_trace = Arc::new(emu_trace);
+
                     let task = task_factory(chunk_id, emu_trace.clone());
                     emu_traces.push(emu_trace);
 
-                    let sender = sender.clone();
-                    pool.spawn(move || {
-                        sender.send(task.execute()).unwrap();
-                    });
+                    handles.push(std::thread::spawn(move || task.execute()));
 
                     if should_exit {
                         break 0;
@@ -157,8 +127,10 @@ impl AsmRunnerMT {
         }
 
         // Collect results
-        drop(sender);
-        let tasks: Vec<T::Output> = receiver.iter().collect();
+        let mut tasks = Vec::new();
+        for handle in handles {
+            tasks.push(handle.join().expect("Task panicked"));
+        }
 
         let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
         let mhz = (total_steps as f64 / start.elapsed().as_secs_f64()) / 1_000_000.0;
@@ -181,32 +153,5 @@ impl AsmRunnerMT {
             .collect::<std::result::Result<_, _>>()?;
 
         Ok((AsmRunnerMT::new(emu_traces), tasks))
-    }
-
-    fn write_input(inputs_path: &Path, shmem_input_name: &str, unlock_mapped_memory: bool) {
-        let inputs = fs::read(inputs_path).expect("Failed to read input file");
-        let asm_input = AsmInputC2 { zero: 0, input_data_size: inputs.len() as u64 };
-        let shmem_input_size = (inputs.len() + size_of::<AsmInputC2>() + 7) & !7;
-
-        let mut full_input = Vec::with_capacity(shmem_input_size);
-        full_input.extend_from_slice(&asm_input.to_bytes());
-        full_input.extend_from_slice(&inputs);
-        while full_input.len() < shmem_input_size {
-            full_input.push(0);
-        }
-
-        let fd = shmem_utils::open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR);
-        let ptr = shmem_utils::map(
-            fd,
-            shmem_input_size,
-            PROT_READ | PROT_WRITE,
-            unlock_mapped_memory,
-            "MT input mmap",
-        );
-        unsafe {
-            ptr::copy_nonoverlapping(full_input.as_ptr(), ptr as *mut u8, shmem_input_size);
-            shmem_utils::unmap(ptr, shmem_input_size);
-            close(fd);
-        }
     }
 }
