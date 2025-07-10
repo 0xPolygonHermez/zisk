@@ -298,12 +298,12 @@ Zisk proofs can be generated using multiple processes concurrently to improve pe
 To execute a Zisk proof using multiple processes, use the following command:
 
 ```bash
-mpirun --bind-to none -np <num_processes> -x OMP_NUM_THREADS=<num_threads_per_process> target/release/cargo-zisk <zisk arguments>
+mpirun --bind-to none -np <num_processes> -x OMP_NUM_THREADS=<num_threads_pero_process> -x RAYON_NUM_THREADS=<num_threads_per_process> target/release/cargo-zisk <zisk arguments>
 ```
 In this command:
 
-* `-np <num_processes>` specifies the number of processes to launch.
-* `-x OMP_NUM_THREADS=<num_threads_per_process>` sets the number of threads used by each process via the `OMP_NUM_THREADS` environment variable.
+* `<num_processes>` specifies the number of processes to launch.
+* `<num_threads_per_process>` sets the number of threads used by each process via the `OMP_NUM_THREADS` and `RAYON_NUM_THREADS` environment variables.
 * `--bind-to none` prevents binding processes to specific cores, allowing the operating system to schedule them dynamically for better load balancing.
 
 Running a Zisk proof with multiple processes enables efficient workload distribution across multiple servers. **On a single server with many cores, splitting execution into smaller subsets of cores generally improves performance by increasing concurrency**. As a general rule, `<number_of_processes>` * `<number_of_threads_per_process>` should match the number of available CPU cores or double that if hyperthreading is enabled.
@@ -328,10 +328,7 @@ Follow these steps to enable GPU support:
 4. Build Zisk on the target GPU server. 
     It is recommended to compile Zisk directly on the server where it will be executed. The binary will be optimized for the local GPU architecture, which can lead to better runtime performance.
 
-You can combine GPU-based execution with concurrent proof generation using multiple processes, as described in the **Concurrent Proof Generation** section. For better performance in this setup, it is recommended to enable [NVIDIA’s Multi-Process Service (MPS)](https://docs.nvidia.com/deploy/mps/index.html). You can activate it by running:
-```bash
-nvidia-cuda-mps-control -d
-```
+You can combine GPU-based execution with concurrent proof generation using multiple processes, as described in the **Concurrent Proof Generation** section. 
 
 > **Note:** GPU memory is typically more limited than CPU memory. When combining GPU execution with concurrent proof generation, ensure that each process has sufficient memory available on the GPU to avoid out-of-memory errors.
 
