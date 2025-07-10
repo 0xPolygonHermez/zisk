@@ -306,7 +306,7 @@ In this command:
 * `<num_threads_per_process>` sets the number of threads used by each process via the `OMP_NUM_THREADS` and `RAYON_NUM_THREADS` environment variables.
 * `--bind-to none` prevents binding processes to specific cores, allowing the operating system to schedule them dynamically for better load balancing.
 
-Running a Zisk proof with multiple processes enables efficient workload distribution across multiple servers. **On a single server with many cores, splitting execution into smaller subsets of cores generally improves performance by increasing concurrency**. As a general rule, `<number_of_processes>` * `<number_of_threads_per_process>` should match the number of available CPU cores or double that if hyperthreading is enabled.
+Running a Zisk proof with multiple processes enables efficient workload distribution across multiple servers. **On a single server with many cores, splitting execution into smaller subsets of cores generally improves performance by increasing concurrency**. As a general rule, `<num_processes>` * `<num_threads_per_process>` should match the number of available CPU cores or double that if hyperthreading is enabled.
 
 The total memory requirement increases proportionally with the number of processes. If each process requires approximately 25GB of memory, running P processes will require roughly (25 * P)GB of memory. Ensure that the system has sufficient available memory to accommodate all running processes.
 
