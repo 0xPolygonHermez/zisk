@@ -1,6 +1,5 @@
 use std::{
     fs,
-    sync::Mutex,
     time::{Duration, Instant},
 };
 
@@ -33,23 +32,21 @@ pub struct ExecutorStatsAir {
 
 #[derive(Debug)]
 pub struct ExecutorStats {
-    pub start_time: Mutex<Instant>,
-    pub stats: Mutex<Vec<ExecutorStatsEnum>>,
+    pub start_time: Instant,
+    pub stats: Vec<ExecutorStatsEnum>,
 }
 
 impl ExecutorStats {
     pub fn new() -> Self {
-        Self { start_time: Mutex::new(Instant::now()), stats: Mutex::new(Vec::new()) }
+        Self { start_time: Instant::now(), stats: Vec::new() }
     }
 
-    pub fn add_stat(&self, stats: ExecutorStatsEnum) {
-        let mut internal_stats = self.stats.lock().unwrap();
-        internal_stats.push(stats);
+    pub fn add_stat(&mut self, stats: ExecutorStatsEnum) {
+        self.stats.push(stats);
     }
 
-    pub fn set_start_time(&self, start_time: Instant) {
-        let mut internal_start_time = self.start_time.lock().unwrap();
-        *internal_start_time = start_time;
+    pub fn set_start_time(&mut self, start_time: Instant) {
+        self.start_time = start_time;
     }
 
     fn air_name(_airgroup_id: usize, air_id: usize) -> String {
@@ -90,10 +87,10 @@ impl ExecutorStats {
         }
         let mut tasks: Vec<Task> = Vec::new();
 
-        let start_time = self.start_time.lock().unwrap().clone();
-        let stats = self.stats.lock().unwrap();
+        let start_time = self.start_time;
+        let stats = &self.stats;
 
-        println!("Collected a total of {} statistics", stats.len());
+        tracing::info!("Collected a total of {} statistics", stats.len());
         for stat in stats.iter() {
             match stat {
                 ExecutorStatsEnum::GenerateMT(stat_duration) => {
@@ -172,8 +169,8 @@ impl ExecutorStats {
 
     /// Stores stats in JSON and CSV file formats
     pub fn print_stats(&self) {
-        let start_time = self.start_time.lock().unwrap().clone();
-        let stats = self.stats.lock().unwrap();
+        let start_time = self.start_time;
+        let stats = &self.stats;
 
         println!("Collected a total of {} statistics", stats.len());
         for stat in stats.iter() {
