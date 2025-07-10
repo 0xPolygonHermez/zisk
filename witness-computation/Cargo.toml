@@ -41,6 +41,7 @@ rayon = { workspace = true }
 [features]
 default = []
 dev = []
+unit = []
 no_lib_link = ["proofman-common/no_lib_link"]
 diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]

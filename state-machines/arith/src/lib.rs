@@ -12,7 +12,7 @@ mod arith_table_helpers;
 
 pub use arith::*;
 pub use arith_bus_device::*;
-use arith_full::*;
+pub use arith_full::*;
 use arith_full_instance::*;
 use arith_operation::*;
 use arith_planner::*;

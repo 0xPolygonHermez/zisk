@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use crate::{
-    InputDataSM, MemAlignInstance, MemAlignRomSM, MemAlignSM, MemCounters, MemModuleInstance,
-    MemPlanner, MemSM, RomDataSM,
+    mem_align_sm::{CHUNK_NUM, OFFSET_MASK},
+    InputDataSM, MemAlignInput, MemAlignInstance, MemAlignRomSM, MemAlignSM, MemCounters,
+    MemModuleInstance, MemPlanner, MemSM, RomDataSM,
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::ProofCtx;
+use proofman_common::{AirInstance, ProofCtx};
 use zisk_common::{
     table_instance, BusDeviceMetrics, ComponentBuilder, Instance, InstanceCtx, Plan, Planner,
     MEM_BUS_ID,
@@ -18,7 +19,7 @@ use zisk_pil::{
 pub struct Mem<F: PrimeField64> {
     // Secondary State machines
     mem_sm: Arc<MemSM<F>>,
-    mem_align_sm: Arc<MemAlignSM<F>>,
+    pub mem_align_sm: Arc<MemAlignSM<F>>,
     mem_align_rom_sm: Arc<MemAlignRomSM>,
     input_data_sm: Arc<InputDataSM<F>>,
     rom_data_sm: Arc<RomDataSM<F>>,
@@ -37,6 +38,26 @@ impl<F: PrimeField64> Mem<F> {
 
     pub fn build_mem_counter(&self) -> MemCounters {
         MemCounters::new()
+    }
+
+    pub fn get_rows_input_mem_align(&self, input: &MemAlignInput) -> usize {
+        let addr = input.addr;
+        let width = input.width as usize;
+        let offset = (addr & OFFSET_MASK) as usize;
+        match (input.is_write, offset + width > CHUNK_NUM) {
+            (false, false) => 2,
+            (true, false) => 3,
+            (false, true) => 3,
+            (true, true) => 5,
+        }
+    }
+
+    pub fn compute_witness_mem_align(
+        &self,
+        inputs: &[Vec<MemAlignInput>],
+        trace_buffer: Option<Vec<F>>,
+    ) -> AirInstance<F> {
+        self.mem_align_sm.compute_witness(inputs, trace_buffer)
     }
 }
 

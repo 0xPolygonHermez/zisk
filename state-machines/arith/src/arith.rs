@@ -9,8 +9,9 @@
 use std::sync::Arc;
 
 use fields::PrimeField64;
+use proofman_common::AirInstance;
 use zisk_common::{
-    table_instance, BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance,
+    table_instance, BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Input, Instance,
     InstanceCtx, InstanceInfo, PayloadType, Planner, TableInfo, OPERATION_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
@@ -50,6 +51,14 @@ impl ArithSM {
 
     pub fn build_arith_counter(&self) -> ArithCounterInputGen {
         ArithCounterInputGen::new(BusDeviceMode::Counter)
+    }
+
+    pub fn compute_witness_arith<F: PrimeField64>(
+        &self,
+        inputs: &[Vec<Input>],
+        trace_buffer: Option<Vec<F>>,
+    ) -> AirInstance<F> {
+        self.arith_full_sm.compute_witness(inputs, trace_buffer)
     }
 }
 
@@ -114,7 +123,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithSM {
                     OPERATION_BUS_ID,
                 ))
             }
-            _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
+            _ => panic!("ArithSM::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
         }
     }
 

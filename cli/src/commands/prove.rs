@@ -17,10 +17,9 @@ use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
 use proofman_common::{json_to_debug_instances_map, DebugInfo, ModeName, ParamsGPU, ProofOptions};
-use rom_setup::{
-    gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
-    DEFAULT_CACHE_PATH,
-};
+use rom_setup::DEFAULT_CACHE_PATH;
+#[cfg(not(feature = "unit"))]
+use rom_setup::{gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor};
 use std::io::Write;
 #[cfg(feature = "stats")]
 use std::time::Instant;
@@ -52,6 +51,7 @@ pub struct ZiskProve {
     /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
     #[clap(short = 'e', long)]
+    #[cfg(not(feature = "unit"))]
     pub elf: PathBuf,
 
     /// ASM file path
@@ -195,19 +195,21 @@ impl ZiskProve {
             }
         }
 
-        let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
+        let mut _asm_rom: Option<PathBuf> = None;
+        self.asm = None;
 
-        let mut asm_rom = None;
-        if emulator {
-            self.asm = None;
-        } else if self.asm.is_none() {
-            let stem = self.elf.file_stem().unwrap().to_str().unwrap();
-            let hash = get_elf_data_hash(&self.elf)
-                .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
-            let new_filename = format!("{stem}-{hash}-mt.bin");
-            let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
-            asm_rom = Some(default_cache_path.join(asm_rom_filename));
-            self.asm = Some(default_cache_path.join(new_filename));
+        #[cfg(not(feature = "unit"))]
+        {
+            let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
+            if self.asm.is_none() && !emulator {
+                let stem = self.elf.file_stem().unwrap().to_str().unwrap();
+                let hash = get_elf_data_hash(&self.elf)
+                    .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
+                let new_filename = format!("{stem}-{hash}-mt.bin");
+                let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
+                _asm_rom = Some(default_cache_path.join(asm_rom_filename));
+                self.asm = Some(default_cache_path.join(new_filename));
+            }
         }
 
         if let Some(asm_path) = &self.asm {
@@ -216,7 +218,7 @@ impl ZiskProve {
             }
         }
 
-        if let Some(asm_rom) = &asm_rom {
+        if let Some(asm_rom) = &_asm_rom {
             if !asm_rom.exists() {
                 return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_rom.display()));
             }
@@ -228,20 +230,24 @@ impl ZiskProve {
             }
         }
 
-        let blowup_factor = get_rom_blowup_factor(&proving_key);
+        let mut _custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
 
-        let rom_bin_path =
-            get_elf_bin_file_path(&self.elf.to_path_buf(), &default_cache_path, blowup_factor)?;
+        #[cfg(not(feature = "unit"))]
+        {
+            let blowup_factor = get_rom_blowup_factor(&proving_key);
+            let rom_bin_path =
+                get_elf_bin_file_path(&self.elf.to_path_buf(), &default_cache_path, blowup_factor)?;
 
-        if !rom_bin_path.exists() {
-            let _ = gen_elf_hash(&self.elf.clone(), rom_bin_path.as_path(), blowup_factor, false)
-                .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
+            if !rom_bin_path.exists() {
+                let _ =
+                    gen_elf_hash(&self.elf.clone(), rom_bin_path.as_path(), blowup_factor, false)
+                        .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
+            }
+
+            _custom_commits_map.insert("rom".to_string(), rom_bin_path);
         }
 
         self.print_command_info(&sha256f_script);
-
-        let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
-        custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
         let verify_constraints = debug_info.std_mode.name == ModeName::Debug;
 
@@ -262,7 +268,7 @@ impl ZiskProve {
         {
             proofman = ProofMan::<Goldilocks>::new(
                 proving_key,
-                custom_commits_map,
+                _custom_commits_map,
                 verify_constraints,
                 self.aggregation,
                 self.final_snark,
@@ -276,7 +282,7 @@ impl ZiskProve {
         {
             proofman = ProofMan::<Goldilocks>::new(
                 proving_key,
-                custom_commits_map,
+                _custom_commits_map,
                 verify_constraints,
                 self.aggregation,
                 self.final_snark,
@@ -307,9 +313,10 @@ impl ZiskProve {
             unsafe { library.get(b"init_library")? };
         let mut witness_lib = witness_lib_constructor(
             self.verbose.into(),
+            #[cfg(not(feature = "unit"))]
             self.elf.clone(),
             self.asm.clone(),
-            asm_rom,
+            _asm_rom,
             sha256f_script,
             self.chunk_size_bits,
             Some(mpi_context.world_rank),
@@ -327,29 +334,43 @@ impl ZiskProve {
 
         let proof_id;
         let vadcop_final_proof: Option<Vec<u64>>;
+        let test_mode = cfg!(feature = "unit");
         if debug_info.std_mode.name == ModeName::Debug {
             match self.field {
                 Field::Goldilocks => {
                     return proofman
-                        .verify_proof_constraints_from_lib(self.input.clone(), &debug_info, false)
+                        .verify_proof_constraints_from_lib(
+                            self.input.clone(),
+                            &debug_info,
+                            test_mode,
+                        )
                         .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e));
                 }
             };
         } else {
+            let proof_options = if test_mode {
+                ProofOptions::new_test(
+                    false,
+                    self.aggregation,
+                    self.final_snark,
+                    self.verify_proofs,
+                    self.save_proofs,
+                    self.output_dir.clone(),
+                )
+            } else {
+                ProofOptions::new(
+                    false,
+                    self.aggregation,
+                    self.final_snark,
+                    self.verify_proofs,
+                    self.save_proofs,
+                    self.output_dir.clone(),
+                )
+            };
             match self.field {
                 Field::Goldilocks => {
                     (proof_id, vadcop_final_proof) = proofman
-                        .generate_proof_from_lib(
-                            self.input.clone(),
-                            ProofOptions::new(
-                                false,
-                                self.aggregation,
-                                self.final_snark,
-                                self.verify_proofs,
-                                self.save_proofs,
-                                self.output_dir.clone(),
-                            ),
-                        )
+                        .generate_proof_from_lib(self.input.clone(), proof_options)
                         .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
                 }
             };
@@ -358,11 +379,16 @@ impl ZiskProve {
         if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
             let elapsed = start.elapsed();
 
-            let (result, _stats): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
-                .get_execution_result()
-                .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-                .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
-                .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+            let mut executed_steps = None;
+            if !test_mode {
+                let (result, _stats): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) =
+                    *witness_lib
+                        .get_execution_result()
+                        .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
+                        .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
+                        .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+                executed_steps = Some(result.executed_steps);
+            }
 
             let elapsed = elapsed.as_secs_f64();
             tracing::info!("");
@@ -374,10 +400,14 @@ impl ZiskProve {
                 tracing::info!("      Proof ID: {}", proof_id);
             }
             tracing::info!("    ► Statistics");
-            tracing::info!("      time: {} seconds, steps: {}", elapsed, result.executed_steps);
+            if let Some(executed_steps) = executed_steps {
+                tracing::info!("      time: {} seconds, steps: {}", elapsed, executed_steps);
+            } else {
+                tracing::info!("      time: {} seconds", elapsed);
+            }
 
-            if let Some(proof_id) = proof_id {
-                let logs = ProofLog::new(result.executed_steps, proof_id, elapsed);
+            if let (Some(proof_id), Some(executed_steps)) = (proof_id, executed_steps) {
+                let logs = ProofLog::new(executed_steps, proof_id, elapsed);
                 let log_path = self.output_dir.join("result.json");
                 ProofLog::write_json_log(&log_path, &logs)
                     .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
@@ -414,6 +444,7 @@ impl ZiskProve {
             get_witness_computation_lib(self.witness_lib.as_ref()).display()
         );
 
+        #[cfg(not(feature = "unit"))]
         println!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display());
 
         if self.asm.is_some() {

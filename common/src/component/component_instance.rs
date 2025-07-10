@@ -35,7 +35,8 @@ pub trait Instance<F: PrimeField64>: Send + Sync {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        _trace_buffer: Vec<F>,
+        _global_id: usize,
+        _trace_buffer: Option<Vec<F>>,
     ) -> Option<AirInstance<F>> {
         None
     }
@@ -130,7 +131,8 @@ macro_rules! table_instance {
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-                _trace_buffer: Vec<F>,
+                _global_id: usize,
+                _trace_buffer: Option<Vec<F>>,
             ) -> Option<AirInstance<F>> {
                 let multiplicity = self.table_sm.detach_multiplicity();
                 self.table_sm.set_calculated();
@@ -242,7 +244,8 @@ macro_rules! table_instance_array {
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-                _trace_buffer: Vec<F>,
+                _global_id: usize,
+                _trace_buffer: Option<Vec<F>>,
             ) -> Option<AirInstance<F>> {
                 let multiplicities = self.table_sm.detach_multiplicities();
                 self.table_sm.set_calculated();

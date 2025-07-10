@@ -31,7 +31,7 @@ pub use mem_constants::*;
 pub use mem_counters::*;
 use mem_counters_cursor::*;
 pub use mem_helpers::*;
-use mem_inputs::*;
+pub use mem_inputs::*;
 use mem_module::*;
 use mem_module_instance::*;
 use mem_module_planner::*;

@@ -8,6 +8,7 @@ use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
+use zisk_common::BinaryAddInput;
 use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow};
 
 const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;
@@ -44,13 +45,13 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// # Returns
     /// A `BinaryAddTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice(&self, input: &[u64; 2]) -> (BinaryAddTraceRow<F>, [u64; 4]) {
+    pub fn process_slice(&self, input: &BinaryAddInput) -> (BinaryAddTraceRow<F>, [u64; 4]) {
         // Create an empty trace
         let mut row: BinaryAddTraceRow<F> = Default::default();
 
         // Execute the opcode
-        let mut a = input[0];
-        let mut b = input[1];
+        let mut a = input.a;
+        let mut b = input.b;
         let mut cin = 0;
 
         let mut range_checks = [0u64; 4];
@@ -92,10 +93,16 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness(
         &self,
-        inputs: &[Vec<[u64; 2]>],
-        trace_buffer: Vec<F>,
+        inputs: &[Vec<BinaryAddInput>],
+        trace_buffer: Option<Vec<F>>,
     ) -> AirInstance<F> {
-        let mut add_trace = BinaryAddTrace::new_from_vec(trace_buffer);
+        let mut add_trace = if let Some(buffer) = trace_buffer {
+            tracing::trace!("··· Using provided trace buffer");
+            BinaryAddTrace::new_from_vec(buffer)
+        } else {
+            tracing::trace!("··· Creating new trace buffer");
+            BinaryAddTrace::new()
+        };
 
         let num_rows = add_trace.num_rows();
 

@@ -13,7 +13,7 @@ use fields::PrimeField64;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
-use zisk_common::{ExtOperationData, OperationBusData, OperationData, PayloadType};
+use zisk_common::{ExtOperationData, Input, OperationBusData, OperationData, PayloadType};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 use zisk_pil::*;
 
@@ -57,10 +57,16 @@ impl ArithFullSM {
     /// An `AirInstance` containing the computed arithmetic trace.
     pub fn compute_witness<F: PrimeField64>(
         &self,
-        inputs: &[Vec<OperationData<u64>>],
-        trace_buffer: Vec<F>,
+        inputs: &[Vec<Input>],
+        trace_buffer: Option<Vec<F>>,
     ) -> AirInstance<F> {
-        let mut arith_trace = ArithTrace::new_from_vec(trace_buffer);
+        let mut arith_trace = if let Some(buffer) = trace_buffer {
+            tracing::trace!("··· Using provided trace buffer");
+            ArithTrace::new_from_vec(buffer)
+        } else {
+            tracing::trace!("··· Creating new trace buffer");
+            ArithTrace::new()
+        };
 
         let num_rows = arith_trace.num_rows();
 
@@ -188,13 +194,11 @@ impl ArithFullSM {
         range_table_inputs: &mut ArithRangeTableInputs,
         table_inputs: &mut ArithTableInputs,
         aop: &mut ArithOperation,
-        input: &[u64; 4],
+        input: &Input,
     ) -> ArithTraceRow<F> {
-        let input_data = ExtOperationData::OperationData(*input);
-
-        let opcode = OperationBusData::get_op(&input_data);
-        let a = OperationBusData::get_a(&input_data);
-        let b = OperationBusData::get_b(&input_data);
+        let opcode = input.op;
+        let a = input.a;
+        let b = input.b;
 
         aop.calculate(opcode, a, b);
         let mut t: ArithTraceRow<F> = Default::default();

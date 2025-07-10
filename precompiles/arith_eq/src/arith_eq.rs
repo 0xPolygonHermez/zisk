@@ -2,7 +2,7 @@ use fields::PrimeField64;
 use std::sync::Arc;
 
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, SetupCtx};
+use proofman_common::{AirInstance, FromTrace};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{ArithEqTrace, ArithEqTraceRow};
 
@@ -419,15 +419,20 @@ impl<F: PrimeField64> ArithEqSM<F> {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness(
         &self,
-        _sctx: &SetupCtx<F>,
         inputs: &[Vec<ArithEqInput>],
-        trace_buffer: Vec<F>,
+        trace_buffer: Option<Vec<F>>,
     ) -> AirInstance<F> {
         // Get the fixed cols
         let _airgroup_id = ArithEqTrace::<usize>::AIRGROUP_ID;
         let _air_id = ArithEqTrace::<usize>::AIR_ID;
 
-        let mut trace = ArithEqTrace::<F>::new_from_vec(trace_buffer);
+        let mut trace = if let Some(buffer) = trace_buffer {
+            tracing::trace!("··· Using provided trace buffer");
+            ArithEqTrace::<F>::new_from_vec(buffer)
+        } else {
+            tracing::trace!("··· Creating new trace buffer");
+            ArithEqTrace::<F>::new()
+        };
         let num_rows = trace.num_rows();
         let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
         let num_rows_needed = total_inputs * ARITH_EQ_ROWS_BY_OP;

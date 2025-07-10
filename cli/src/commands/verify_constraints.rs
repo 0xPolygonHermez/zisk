@@ -17,10 +17,9 @@ use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
 use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
-use rom_setup::{
-    gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
-    DEFAULT_CACHE_PATH,
-};
+use rom_setup::DEFAULT_CACHE_PATH;
+#[cfg(not(feature = "unit"))]
+use rom_setup::{gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor};
 #[cfg(feature = "stats")]
 use std::time::Instant;
 use std::{
@@ -48,6 +47,7 @@ pub struct ZiskVerifyConstraints {
     /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
     #[clap(short = 'e', long)]
+    #[cfg(not(feature = "unit"))]
     pub elf: PathBuf,
 
     /// ASM file path
@@ -145,19 +145,21 @@ impl ZiskVerifyConstraints {
             }
         }
 
-        let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
+        let mut _asm_rom: Option<PathBuf> = None;
+        self.asm = None;
 
-        let mut asm_rom = None;
-        if emulator {
-            self.asm = None;
-        } else if self.asm.is_none() {
-            let stem = self.elf.file_stem().unwrap().to_str().unwrap();
-            let hash = get_elf_data_hash(&self.elf)
-                .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
-            let new_filename = format!("{stem}-{hash}-mt.bin");
-            let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
-            asm_rom = Some(default_cache_path.join(asm_rom_filename));
-            self.asm = Some(default_cache_path.join(new_filename));
+        #[cfg(not(feature = "unit"))]
+        {
+            let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
+            if self.asm.is_none() && !emulator {
+                let stem = self.elf.file_stem().unwrap().to_str().unwrap();
+                let hash = get_elf_data_hash(&self.elf)
+                    .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
+                let new_filename = format!("{stem}-{hash}-mt.bin");
+                let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
+                _asm_rom = Some(default_cache_path.join(asm_rom_filename));
+                self.asm = Some(default_cache_path.join(new_filename));
+            }
         }
 
         if let Some(asm_path) = &self.asm {
@@ -166,7 +168,7 @@ impl ZiskVerifyConstraints {
             }
         }
 
-        if let Some(asm_rom) = &asm_rom {
+        if let Some(asm_rom) = &_asm_rom {
             if !asm_rom.exists() {
                 return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_rom.display()));
             }
@@ -178,27 +180,31 @@ impl ZiskVerifyConstraints {
             }
         }
 
-        let blowup_factor = get_rom_blowup_factor(&proving_key);
+        let mut _custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
 
-        let rom_bin_path =
-            get_elf_bin_file_path(&self.elf.to_path_buf(), &default_cache_path, blowup_factor)?;
+        #[cfg(not(feature = "unit"))]
+        {
+            let blowup_factor = get_rom_blowup_factor(&proving_key);
+            let rom_bin_path =
+                get_elf_bin_file_path(&self.elf.to_path_buf(), &default_cache_path, blowup_factor)?;
 
-        if !rom_bin_path.exists() {
-            let _ = gen_elf_hash(&self.elf.clone(), rom_bin_path.as_path(), blowup_factor, false)
-                .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
+            if !rom_bin_path.exists() {
+                let _ =
+                    gen_elf_hash(&self.elf.clone(), rom_bin_path.as_path(), blowup_factor, false)
+                        .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
+            }
+
+            _custom_commits_map.insert("rom".to_string(), rom_bin_path);
         }
 
         self.print_command_info(&sha256f_script);
-
-        let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
-        custom_commits_map.insert("rom".to_string(), rom_bin_path);
 
         let proofman;
         #[cfg(distributed)]
         {
             proofman = ProofMan::<Goldilocks>::new(
                 proving_key,
-                custom_commits_map,
+                _custom_commits_map,
                 true,
                 false,
                 false,
@@ -212,7 +218,7 @@ impl ZiskVerifyConstraints {
         {
             proofman = ProofMan::<Goldilocks>::new(
                 proving_key,
-                custom_commits_map,
+                _custom_commits_map,
                 true,
                 false,
                 false,
@@ -234,6 +240,8 @@ impl ZiskVerifyConstraints {
 
         let start = std::time::Instant::now();
 
+        let test_mode = cfg!(feature = "unit");
+
         match self.field {
             Field::Goldilocks => {
                 let library = unsafe {
@@ -243,9 +251,10 @@ impl ZiskVerifyConstraints {
                     unsafe { library.get(b"init_library")? };
                 witness_lib = witness_lib_constructor(
                     self.verbose.into(),
+                    #[cfg(not(feature = "unit"))]
                     self.elf.clone(),
                     self.asm.clone(),
-                    asm_rom,
+                    _asm_rom,
                     sha256f_script,
                     None,
                     Some(mpi_context.world_rank),
@@ -268,18 +277,22 @@ impl ZiskVerifyConstraints {
                 }
 
                 proofman
-                    .verify_proof_constraints_from_lib(self.input.clone(), &debug_info, false)
+                    .verify_proof_constraints_from_lib(self.input.clone(), &debug_info, test_mode)
                     .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
             }
         };
 
         let elapsed = start.elapsed();
 
-        let (result, _stats): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
-            .get_execution_result()
-            .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-            .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
-            .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+        let mut executed_steps = None;
+        if !test_mode {
+            let (result, _stats): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
+                .get_execution_result()
+                .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
+                .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
+                .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
+            executed_steps = Some(result.executed_steps);
+        }
 
         tracing::info!("");
         tracing::info!(
@@ -287,11 +300,15 @@ impl ZiskVerifyConstraints {
             "--- VERIFY CONSTRAINTS SUMMARY ------------------------".bright_green().bold()
         );
         tracing::info!("    ► Statistics");
-        tracing::info!(
-            "      time: {} seconds, steps: {}",
-            elapsed.as_secs_f32(),
-            result.executed_steps
-        );
+        if let Some(executed_steps) = executed_steps {
+            tracing::info!(
+                "      time: {} seconds, steps: {}",
+                elapsed.as_secs_f32(),
+                executed_steps
+            );
+        } else {
+            tracing::info!("      time: {} seconds", elapsed.as_secs_f32());
+        }
 
         if self.asm.is_some() {
             // Shut down ASM microservices
@@ -317,6 +334,7 @@ impl ZiskVerifyConstraints {
             get_witness_computation_lib(self.witness_lib.as_ref()).display()
         );
 
+        #[cfg(not(feature = "unit"))]
         println!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display());
 
         if self.asm.is_some() {

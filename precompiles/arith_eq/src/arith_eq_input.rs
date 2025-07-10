@@ -1,10 +1,11 @@
+use serde::{Deserialize, Serialize};
 use zisk_common::{
     OperationArith256Data, OperationArith256ModData, OperationBn254ComplexAddData,
     OperationBn254ComplexMulData, OperationBn254ComplexSubData, OperationBn254CurveAddData,
     OperationBn254CurveDblData, OperationSecp256k1AddData, OperationSecp256k1DblData,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ArithEqInput {
     Arith256(Arith256Input),
     Arith256Mod(Arith256ModInput),
@@ -17,7 +18,7 @@ pub enum ArithEqInput {
     Bn254ComplexMul(Bn254ComplexMulInput),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Arith256Input {
     pub addr: u32,
     pub a_addr: u32,
@@ -48,7 +49,7 @@ impl Arith256Input {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Arith256ModInput {
     pub addr: u32,
     pub a_addr: u32,
@@ -81,7 +82,7 @@ impl Arith256ModInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Secp256k1AddInput {
     pub addr: u32,
     pub p1_addr: u32,
@@ -104,7 +105,7 @@ impl Secp256k1AddInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Secp256k1DblInput {
     pub addr: u32,
     pub step: u64,
@@ -117,7 +118,7 @@ impl Secp256k1DblInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Bn254CurveAddInput {
     pub addr: u32,
     pub p1_addr: u32,
@@ -140,7 +141,7 @@ impl Bn254CurveAddInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Bn254CurveDblInput {
     pub addr: u32,
     pub step: u64,
@@ -153,7 +154,7 @@ impl Bn254CurveDblInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Bn254ComplexAddInput {
     pub addr: u32,
     pub f1_addr: u32,
@@ -176,7 +177,7 @@ impl Bn254ComplexAddInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Bn254ComplexSubInput {
     pub addr: u32,
     pub f1_addr: u32,
@@ -199,7 +200,7 @@ impl Bn254ComplexSubInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Bn254ComplexMulInput {
     pub addr: u32,
     pub f1_addr: u32,

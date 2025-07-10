@@ -9,8 +9,8 @@ use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
-    PayloadType,
+    BinaryAddInput, BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx,
+    InstanceType, PayloadType,
 };
 use zisk_pil::BinaryAddTrace;
 
@@ -75,14 +75,28 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        _global_id: usize,
+        trace_buffer: Option<Vec<F>>,
     ) -> Option<AirInstance<F>> {
-        let inputs: Vec<_> = collectors
+        let inputs: Vec<Vec<BinaryAddInput>> = collectors
             .into_iter()
             .map(|(_, collector)| {
                 collector.as_any().downcast::<BinaryAddCollector>().unwrap().inputs
             })
             .collect();
+
+        #[cfg(feature = "save_inputs")]
+        {
+            let flat_inputs: Vec<&BinaryAddInput> = inputs.iter().flatten().collect();
+            let input_json = serde_json::json!({
+                "BinaryAdd": flat_inputs
+            });
+
+            let _ = std::fs::write(
+                format!("/tmp/binary_add_{}.json", _global_id),
+                serde_json::to_string(&input_json).unwrap(),
+            );
+        }
 
         Some(self.binary_add_sm.compute_witness(&inputs, trace_buffer))
     }

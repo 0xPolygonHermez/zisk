@@ -32,6 +32,8 @@ pub struct ZiskProveResponse {
     pub base: ZiskBaseResponse,
 
     server_id: String,
+
+    #[cfg(not(feature = "unit"))]
     elf_file: String,
     input: String,
 }
@@ -131,6 +133,7 @@ impl ZiskServiceProveHandler {
                     node: config.asm_runner_options.world_rank,
                 },
                 server_id: config.server_id.to_string(),
+                #[cfg(not(feature = "unit"))]
                 elf_file: config.elf.display().to_string(),
                 input: request.input.display().to_string(),
             }),

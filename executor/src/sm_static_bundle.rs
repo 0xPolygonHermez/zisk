@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use data_bus::{DataBus, DataBusTrait};
-use executor::SMBundle;
 use fields::PrimeField64;
 use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
@@ -10,21 +9,26 @@ use proofman_common::ProofCtx;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
+#[cfg(not(feature = "unit"))]
 use sm_rom::RomSM;
 use std::collections::HashMap;
 use zisk_common::{
     BusDevice, BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan,
 };
 
-use executor::NestedDeviceMetricsList;
+use crate::{NestedDeviceMetricsList, SMBundle, StaticDataBus};
 
-use crate::StaticDataBus;
-
+#[cfg(not(feature = "unit"))]
 const NUM_SM: usize = 8;
+
+#[cfg(feature = "unit")]
+const NUM_SM: usize = 7; // In unit tests, we don't use the Rom SM
+
 const NUM_SM_WITHOUT_MAIN: usize = NUM_SM - 1;
 
 const _MAIN_SM_ID: usize = 0;
 const MEM_SM_ID: usize = 1;
+#[cfg(not(feature = "unit"))]
 const ROM_SM_ID: usize = 2;
 const BINARY_SM_ID: usize = 3;
 const ARITH_SM_ID: usize = 4;
@@ -34,13 +38,14 @@ const ARITH_EQ_SM_ID: usize = 7;
 
 pub struct StaticSMBundle<F: PrimeField64> {
     process_only_operation_bus: bool,
-    mem_sm: Arc<Mem<F>>,
-    rom_sm: Arc<RomSM>,
-    binary_sm: Arc<BinarySM<F>>,
-    arith_sm: Arc<ArithSM>,
-    keccakf_sm: Arc<KeccakfManager<F>>,
-    sha256f_sm: Arc<Sha256fManager<F>>,
-    arith_eq_sm: Arc<ArithEqManager<F>>,
+    pub mem_sm: Arc<Mem<F>>,
+    #[cfg(not(feature = "unit"))]
+    pub rom_sm: Arc<RomSM>,
+    pub binary_sm: Arc<BinarySM<F>>,
+    pub arith_sm: Arc<ArithSM>,
+    pub keccakf_sm: Arc<KeccakfManager<F>>,
+    pub sha256f_sm: Arc<Sha256fManager<F>>,
+    pub arith_eq_sm: Arc<ArithEqManager<F>>,
 }
 
 impl<F: PrimeField64> StaticSMBundle<F> {
@@ -48,7 +53,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
     pub fn new(
         process_only_operation_bus: bool,
         mem_sm: Arc<Mem<F>>,
-        rom_sm: Arc<RomSM>,
+        #[cfg(not(feature = "unit"))] rom_sm: Arc<RomSM>,
         binary_sm: Arc<BinarySM<F>>,
         arith_sm: Arc<ArithSM>,
         keccakf_sm: Arc<KeccakfManager<F>>,
@@ -57,8 +62,8 @@ impl<F: PrimeField64> StaticSMBundle<F> {
     ) -> Self {
         Self {
             process_only_operation_bus,
-            // main_sm,
             mem_sm,
+            #[cfg(not(feature = "unit"))]
             rom_sm,
             binary_sm,
             arith_sm,
@@ -77,6 +82,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
 
         vec![
             self.mem_sm.build_planner().plan(it.next().unwrap()),
+            #[cfg(not(feature = "unit"))]
             <RomSM as ComponentBuilder<F>>::build_planner(&*self.rom_sm).plan(it.next().unwrap()),
             self.binary_sm.build_planner().plan(it.next().unwrap()),
             <ArithSM as ComponentBuilder<F>>::build_planner(&*self.arith_sm)
@@ -89,6 +95,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
 
     fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Vec<Plan>]) {
         self.mem_sm.configure_instances(pctx, &plannings[MEM_SM_ID - 1]);
+        #[cfg(not(feature = "unit"))]
         self.rom_sm.configure_instances(pctx, &plannings[ROM_SM_ID - 1]);
         self.binary_sm.configure_instances(pctx, &plannings[BINARY_SM_ID - 1]);
         self.arith_sm.configure_instances(pctx, &plannings[ARITH_SM_ID - 1]);
@@ -102,6 +109,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
 
         match idx + 1 {
             MEM_SM_ID => self.mem_sm.build_instance(ictx),
+            #[cfg(not(feature = "unit"))]
             ROM_SM_ID => self.rom_sm.build_instance(ictx),
             BINARY_SM_ID => self.binary_sm.build_instance(ictx),
             ARITH_SM_ID => self.arith_sm.build_instance(ictx),
@@ -171,6 +179,7 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                     }
 
                     add_generator!(mem_sm, Mem<F>);
+                    #[cfg(not(feature = "unit"))]
                     add_generator!(rom_sm, RomSM);
                     add_generator!(binary_sm, BinarySM<F>);
                     add_generator!(arith_sm, ArithSM);

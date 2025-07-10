@@ -12,8 +12,8 @@ use std::{
     sync::Arc,
 };
 use zisk_common::{
-    BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, OperationData, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Input, Instance,
+    InstanceCtx, InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
@@ -79,14 +79,28 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        _global_id: usize,
+        trace_buffer: Option<Vec<F>>,
     ) -> Option<AirInstance<F>> {
-        let inputs: Vec<_> = collectors
+        let inputs: Vec<Vec<Input>> = collectors
             .into_iter()
             .map(|(_, collector)| {
                 collector.as_any().downcast::<ArithInstanceCollector>().unwrap().inputs
             })
             .collect();
+
+        #[cfg(feature = "save_inputs")]
+        {
+            let flat_inputs: Vec<&Input> = inputs.iter().flatten().collect();
+            let input_json = serde_json::json!({
+                "Arith": flat_inputs
+            });
+
+            let _ = std::fs::write(
+                format!("/tmp/arith_{}.json", _global_id),
+                serde_json::to_string(&input_json).unwrap(),
+            );
+        }
 
         Some(self.arith_full_sm.compute_witness(&inputs, trace_buffer))
     }
@@ -123,7 +137,7 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance {
 /// The `ArithInstanceCollector` struct represents an input collector for arithmetic state machines.
 pub struct ArithInstanceCollector {
     /// Collected inputs for witness computation.
-    inputs: Vec<OperationData<u64>>,
+    inputs: Vec<Input>,
 
     /// The number of operations to collect.
     num_operations: u64,
@@ -180,9 +194,7 @@ impl BusDevice<u64> for ArithInstanceCollector {
 
         let data: ExtOperationData<u64> = data.try_into().expect("Failed to convert data");
 
-        if let ExtOperationData::OperationData(data) = data {
-            self.inputs.push(data);
-        }
+        self.inputs.push(Input::from(&data));
     }
 
     /// Returns the bus IDs associated with this instance.

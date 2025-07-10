@@ -1,6 +1,7 @@
+use serde::{Deserialize, Serialize};
 use zisk_common::OperationKeccakData;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct KeccakfInput {
     pub step_main: u64,
     pub addr_main: u32,

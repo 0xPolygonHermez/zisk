@@ -25,7 +25,7 @@ pub struct Sha256fSM<F: PrimeField64> {
     script: Arc<Script>,
 
     /// Size of a circuit in the trace. It corresponds to the number of gates in the circuit.
-    circuit_size: usize,
+    pub circuit_size: usize,
 
     /// Number of available circuits in the trace.
     num_available_circuits: usize,
@@ -493,10 +493,16 @@ impl<F: PrimeField64> Sha256fSM<F> {
     pub fn compute_witness(
         &self,
         inputs: &[Vec<Sha256fInput>],
-        trace_buffer: Vec<F>,
+        trace_buffer: Option<Vec<F>>,
     ) -> AirInstance<F> {
         timer_start_trace!(SHA256F_TRACE);
-        let mut sha256f_trace = Sha256fTrace::new_from_vec_zeroes(trace_buffer);
+        let mut sha256f_trace = if let Some(buffer) = trace_buffer {
+            tracing::trace!("··· Using provided trace buffer");
+            Sha256fTrace::new_from_vec_zeroes(buffer)
+        } else {
+            tracing::trace!("··· Creating new trace buffer");
+            Sha256fTrace::new_zeroes()
+        };
         let num_rows = sha256f_trace.num_rows();
 
         // Check that we can fit all the sha256fs in the trace
