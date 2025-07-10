@@ -1,6 +1,5 @@
-use fields::{Goldilocks, CubicExtensionField, Field};
-use proofman_common::Boundary;
-use proofman::{VerifierInfo, stark_verify};
+use fields::{CubicExtensionField, Field, Goldilocks};
+use proofman_verifier::{stark_verify, Boundary, VerifierInfo};
 
 #[rustfmt::skip]
 #[inline(never)]
@@ -3124,7 +3123,6 @@ pub fn q_verify(challenges: &[CubicExtensionField<Goldilocks>], evals: &[CubicEx
     tmp_3[0] = tmp_3[0] * zi[0];
     return tmp_3[0];
 }
-
 
 #[rustfmt::skip]
 #[inline(never)]

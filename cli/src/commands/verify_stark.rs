@@ -2,8 +2,8 @@ use anyhow::{anyhow, Ok, Result};
 use clap::Parser;
 use colored::Colorize;
 use proofman_common::initialize_logger;
-use verifier::verify;
 use std::fs;
+use verifier::verify;
 
 use bytemuck::cast_slice;
 
@@ -31,22 +31,34 @@ impl ZiskVerify {
         );
         tracing::info!("");
 
+        let start = std::time::Instant::now();
+
         let buffer = fs::read(&self.proof)?;
         let proof_slice: &[u64] = cast_slice(&buffer);
 
         let valid = verify(proof_slice);
 
+        let elapsed = start.elapsed();
+
         if !valid {
-            tracing::info!(
-                "VStark  : ··· {}",
-                "\u{2717} Stark proof was not verified".bright_red().bold()
-            );
+            tracing::info!("{}", "\u{2717} Stark proof was not verified".bright_red().bold());
+        } else {
+            tracing::info!("{}", "\u{2713} Stark proof was verified".bright_green().bold());
+        }
+
+        tracing::info!(
+            "{}",
+            "--- VERIFICATION SUMMARY ---".bright_green().bold()
+        );
+        tracing::info!("      time: {} milliseconds", elapsed.as_millis());
+        tracing::info!(
+            "{}",
+            "----------------------------".bright_green().bold()
+        );
+
+        if !valid {
             Err(anyhow!("Stark proof was not verified"))
         } else {
-            tracing::info!(
-                "VStark  :     {}",
-                "\u{2713} Stark proof was verified".bright_green().bold()
-            );
             Ok(())
         }
     }

@@ -8,10 +8,10 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-tracing = { workspace = true }
-fields = { workspace = true }
-proofman-common = { workspace = true }
-proofman = { workspace = true }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.10.0" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.10.0" }
+ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
+bytemuck = "1.23.1"
 
 [features]
 default = []
