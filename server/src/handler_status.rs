@@ -23,6 +23,7 @@ pub struct ZiskStatusResponse {
     pub base: ZiskBaseResponse,
 
     server_id: String,
+    #[cfg(not(feature = "unit"))]
     elf_file: String,
     uptime: String,
     status: ZiskStatus,
@@ -48,6 +49,7 @@ impl ZiskServiceStatusHandler {
                     node: config.asm_runner_options.world_rank,
                 },
                 server_id: config.server_id.to_string(),
+                #[cfg(not(feature = "unit"))]
                 elf_file: config.elf.display().to_string(),
                 uptime: format!("{uptime:.2?}"),
                 status: if is_busy.load(std::sync::atomic::Ordering::SeqCst) {

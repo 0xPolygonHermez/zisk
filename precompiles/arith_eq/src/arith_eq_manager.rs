@@ -2,16 +2,19 @@ use std::sync::Arc;
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use zisk_common::{BusDevice, PayloadType, OPERATION_BUS_ID};
 
+use proofman_common::AirInstance;
 use zisk_common::{
-    table_instance_array, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
-    InstanceInfo, Planner, TableInfo,
+    table_instance_array, BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance,
+    InstanceCtx, InstanceInfo, PayloadType, Planner, TableInfo, OPERATION_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::{ArithEqLtTableTrace, ArithEqTrace};
 
-use crate::{ArithEqCounterInputGen, ArithEqInstance, ArithEqLtTableSM, ArithEqPlanner, ArithEqSM};
+use crate::{
+    ArithEqCounterInputGen, ArithEqInput, ArithEqInstance, ArithEqLtTableSM, ArithEqPlanner,
+    ArithEqSM,
+};
 
 /// The `Arith256Manager` struct represents the ArithEq manager,
 /// which is responsible for managing the ArithEq state machine.
@@ -36,6 +39,14 @@ impl<F: PrimeField64> ArithEqManager<F> {
 
     pub fn build_arith_eq_counter(&self) -> ArithEqCounterInputGen {
         ArithEqCounterInputGen::new(BusDeviceMode::Counter)
+    }
+
+    pub fn compute_witness_arith_eq(
+        &self,
+        inputs: &[Vec<ArithEqInput>],
+        trace_buffer: Option<Vec<F>>,
+    ) -> AirInstance<F> {
+        self.arith_eq_sm.compute_witness(inputs, trace_buffer)
     }
 }
 

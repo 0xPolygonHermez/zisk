@@ -6,18 +6,18 @@ use std::sync::Mutex;
 use fields::PrimeField64;
 use pil_std_lib::Std;
 
-use crate::{MemAlignInput, MemAlignRomSM, MemOp};
+use crate::{MemAlignInput, MemAlignRomSM};
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use zisk_pil::{MemAlignTrace, MemAlignTraceRow};
 
 const RC: usize = 2;
-const CHUNK_NUM: usize = 8;
+pub const CHUNK_NUM: usize = 8;
 const CHUNKS_BY_RC: usize = CHUNK_NUM / RC;
 const CHUNK_BITS: usize = 8;
 const RC_BITS: u64 = (CHUNKS_BY_RC * CHUNK_BITS) as u64;
 const RC_MASK: u64 = (1 << RC_BITS) - 1;
-const OFFSET_MASK: u32 = 0x07;
+pub const OFFSET_MASK: u32 = 0x07;
 const OFFSET_BITS: u32 = 3;
 const CHUNK_BITS_MASK: u64 = (1 << CHUNK_BITS) - 1;
 
@@ -35,6 +35,18 @@ const ALLOWED_OFFSETS: [u8; CHUNK_NUM] = generate_allowed_offsets();
 const ALLOWED_WIDTHS: [u8; 4] = [1, 2, 4, 8];
 const DEFAULT_OFFSET: u64 = 0;
 const DEFAULT_WIDTH: u64 = 8;
+
+#[derive(Debug, Clone, Copy)]
+pub enum MemOp {
+    OneRead,
+    OneWrite,
+    TwoReads,
+    TwoWrites,
+}
+
+const OP_SIZES: [u64; 4] = [2, 3, 3, 5];
+const ONE_WORD_COMBINATIONS: u64 = 20; // (0..4,[1,2,4]), (5,6,[1,2]), (7,[1]) -> 5*3 + 2*2 + 1*1 = 20
+const TWO_WORD_COMBINATIONS: u64 = 11; // (1..4,[8]), (5,6,[4,8]), (7,[2,4,8]) -> 4*1 + 2*2 + 1*3 = 11
 
 pub struct MemAlignResponse {
     pub more_addr: bool,
@@ -69,6 +81,91 @@ impl<F: PrimeField64> MemAlignSM<F> {
             num_computed_rows: Mutex::new(0),
             mem_align_rom_sm,
         })
+    }
+
+    pub fn calculate_next_pc(&self, opcode: MemOp, offset: usize, width: usize) -> u64 {
+        // Get the table offset
+        let (table_offset, one_word) = match opcode {
+            MemOp::OneRead => (1, true),
+
+            MemOp::OneWrite => (1 + ONE_WORD_COMBINATIONS * OP_SIZES[0], true),
+
+            MemOp::TwoReads => (
+                1 + ONE_WORD_COMBINATIONS * OP_SIZES[0] + ONE_WORD_COMBINATIONS * OP_SIZES[1],
+                false,
+            ),
+
+            MemOp::TwoWrites => (
+                1 + ONE_WORD_COMBINATIONS * OP_SIZES[0]
+                    + ONE_WORD_COMBINATIONS * OP_SIZES[1]
+                    + TWO_WORD_COMBINATIONS * OP_SIZES[2],
+                false,
+            ),
+        };
+
+        // Get the first row index
+        let first_row_idx = Self::get_first_row_idx(opcode, offset, width, table_offset, one_word);
+
+        // Based on the program size, return the row indices
+
+        let opcode_idx = opcode as usize;
+        let op_size = OP_SIZES[opcode_idx];
+        for i in 0..op_size {
+            let row_idx = first_row_idx + i;
+            // Update the multiplicity
+            self.mem_align_rom_sm.update_multiplicity_by_row_idx(row_idx, 1);
+        }
+
+        first_row_idx
+    }
+
+    fn get_first_row_idx(
+        opcode: MemOp,
+        offset: usize,
+        width: usize,
+        table_offset: u64,
+        one_word: bool,
+    ) -> u64 {
+        let opcode_idx = opcode as usize;
+        let op_size = OP_SIZES[opcode_idx];
+
+        // Go to the actual operation
+        let mut first_row_idx = table_offset;
+
+        // Go to the actual offset
+        let first_valid_offset = if one_word { 0 } else { 1 };
+        for i in first_valid_offset..offset {
+            let possible_widths = Self::calculate_possible_widths(one_word, i);
+            first_row_idx += op_size * possible_widths.len() as u64;
+        }
+
+        // Go to the right width
+        let width_idx = Self::calculate_possible_widths(one_word, offset)
+            .iter()
+            .position(|&w| w == width)
+            .unwrap_or_else(|| panic!("Invalid width offset:{offset} width:{width}"));
+        first_row_idx += op_size * width_idx as u64;
+
+        first_row_idx
+    }
+
+    fn calculate_possible_widths(one_word: bool, offset: usize) -> Vec<usize> {
+        // Calculate the ROM rows based on the requested opcode, offset, and width
+        match one_word {
+            true => match offset {
+                x if x <= 4 => vec![1, 2, 4],
+                x if x <= 6 => vec![1, 2],
+                7 => vec![1],
+                _ => panic!("Invalid offset={offset}"),
+            },
+            false => match offset {
+                0 => panic!("Invalid offset={offset}"),
+                x if x <= 4 => vec![8],
+                x if x <= 6 => vec![4, 8],
+                7 => vec![2, 4, 8],
+                _ => panic!("Invalid offset={offset}"),
+            },
+        }
     }
 
     pub fn prove_mem_align_op(
@@ -118,8 +215,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value_read = input.mem_values[0];
 
                 // Get the next pc
-                let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::OneRead, offset, width);
+                let next_pc = self.calculate_next_pc(MemOp::OneRead, offset, width);
 
                 let mut read_row = MemAlignTraceRow::<F> {
                     step: F::from_u64(step),
@@ -227,8 +323,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value_read = input.mem_values[0];
 
                 // Get the next pc
-                let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::OneWrite, offset, width);
+                let next_pc = self.calculate_next_pc(MemOp::OneWrite, offset, width);
 
                 // Compute the write value
                 let value_write = {
@@ -392,8 +487,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let value_second_read = input.mem_values[1];
 
                 // Get the next pc
-                let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::TwoReads, offset, width);
+                let next_pc = self.calculate_next_pc(MemOp::TwoReads, offset, width);
 
                 let mut first_read_row = MemAlignTraceRow::<F> {
                     step: F::from_u64(step),
@@ -578,8 +672,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 };
 
                 // Get the next pc
-                let next_pc =
-                    self.mem_align_rom_sm.calculate_next_pc(MemOp::TwoWrites, offset, width);
+                let next_pc = self.calculate_next_pc(MemOp::TwoWrites, offset, width);
 
                 // RWVWR
                 let mut first_read_row = MemAlignTraceRow::<F> {
@@ -770,27 +863,26 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
     pub fn compute_witness(
         &self,
-        mem_ops: &[Vec<MemAlignInput>],
-        used_rows: usize,
-        trace_buffer: Vec<F>,
+        inputs: &[Vec<MemAlignInput>],
+        trace_buffer: Option<Vec<F>>,
     ) -> AirInstance<F> {
-        let mut trace = MemAlignTrace::<F>::new_from_vec(trace_buffer);
+        let mut trace = if let Some(buffer) = trace_buffer {
+            tracing::trace!("··· Using provided trace buffer");
+            MemAlignTrace::new_from_vec(buffer)
+        } else {
+            tracing::trace!("··· Creating new trace buffer");
+            MemAlignTrace::new()
+        };
+
         let mut reg_range_check = vec![0u32; 1 << CHUNK_BITS];
 
         let num_rows = trace.num_rows();
-
-        tracing::info!(
-            "··· Creating Mem Align instance [{} / {} rows filled {:.2}%]",
-            used_rows,
-            num_rows,
-            used_rows as f64 / num_rows as f64 * 100.0
-        );
 
         let mut trace_rows = trace.row_slice_mut();
         let mut par_traces = Vec::new();
         let mut inputs_indexes = Vec::new();
         let mut total_index = 0;
-        for (i, inner_memp_ops) in mem_ops.iter().enumerate() {
+        for (i, inner_memp_ops) in inputs.iter().enumerate() {
             for (j, input) in inner_memp_ops.iter().enumerate() {
                 let addr = input.addr;
                 let width = input.width as usize;
@@ -812,7 +904,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         // Prove the memory operations in parallel
         par_traces.into_par_iter().enumerate().for_each(|(index, trace)| {
             let input_index = inputs_indexes[index];
-            let input = &mem_ops[input_index.0][input_index.1];
+            let input = &inputs[input_index.0][input_index.1];
             self.prove_mem_align_op(input, trace);
         });
 

@@ -1,17 +1,19 @@
 use std::sync::Arc;
 
 use fields::PrimeField64;
-use proofman_common::SetupCtx;
-use zisk_common::{BusDevice, PayloadType, OPERATION_BUS_ID};
+use proofman_common::{AirInstance, SetupCtx};
 
 use zisk_common::{
-    table_instance_array, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
-    InstanceInfo, Planner, TableInfo,
+    table_instance_array, BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance,
+    InstanceCtx, InstanceInfo, PayloadType, Planner, TableInfo, OPERATION_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::{KeccakfTableTrace, KeccakfTrace};
 
-use crate::{KeccakfCounterInputGen, KeccakfInstance, KeccakfPlanner, KeccakfSM, KeccakfTableSM};
+use crate::{
+    KeccakfCounterInputGen, KeccakfInput, KeccakfInstance, KeccakfPlanner, KeccakfSM,
+    KeccakfTableSM,
+};
 
 /// The `KeccakfManager` struct represents the Keccakf manager,
 /// which is responsible for managing the Keccakf state machine and its table state machine.
@@ -38,6 +40,18 @@ impl<F: PrimeField64> KeccakfManager<F> {
 
     pub fn build_keccakf_counter(&self) -> KeccakfCounterInputGen {
         KeccakfCounterInputGen::new(BusDeviceMode::Counter)
+    }
+
+    pub fn compute_witness_keccakf(
+        &self,
+        inputs: &[Vec<KeccakfInput>],
+        trace_buffer: Option<Vec<F>>,
+    ) -> AirInstance<F> {
+        self.keccakf_sm.compute_witness(inputs, trace_buffer)
+    }
+
+    pub fn get_circuit_size(&self) -> usize {
+        self.keccakf_sm.circuit_size
     }
 }
 

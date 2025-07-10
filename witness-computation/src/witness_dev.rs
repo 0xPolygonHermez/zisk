@@ -26,7 +26,7 @@ pub fn register_state_machines_dev<F: PrimeField64>(
     let mem_sm = Mem::new(std.clone());
 
     let mut bundle = DynSMBundle::default();
-    // bundle.add_secn_sm(keccakf_sm);
+    bundle.add_secn_sm(keccakf_sm);
     bundle.add_secn_sm(mem_sm);
-    (bundle, true)
+    (bundle, false)
 }

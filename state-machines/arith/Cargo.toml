@@ -23,7 +23,8 @@ pil-std-lib = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 num-bigint = { workspace = true }
-
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [features]
 default = []
@@ -31,3 +32,4 @@ diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
 generate_code_arith_range_table = []
 no_lib_link = ["proofman-common/no_lib_link"]
 disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
+save_inputs = []

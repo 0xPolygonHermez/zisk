@@ -1,7 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use fields::PrimeField64;
-use proofman_common::SetupCtx;
+use proofman_common::{AirInstance, SetupCtx};
 use zisk_common::{
     table_instance_array, BusDevice, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance,
     InstanceCtx, InstanceInfo, PayloadType, Planner, TableInfo, OPERATION_BUS_ID,
@@ -9,7 +9,10 @@ use zisk_common::{
 use zisk_core::ZiskOperationType;
 use zisk_pil::{Sha256fTableTrace, Sha256fTrace};
 
-use crate::{Sha256fCounterInputGen, Sha256fInstance, Sha256fPlanner, Sha256fSM, Sha256fTableSM};
+use crate::{
+    Sha256fCounterInputGen, Sha256fInput, Sha256fInstance, Sha256fPlanner, Sha256fSM,
+    Sha256fTableSM,
+};
 
 /// The `Sha256fManager` struct represents the Sha256f manager,
 /// which is responsible for managing the Sha256f state machine and its table state machine.
@@ -36,6 +39,18 @@ impl<F: PrimeField64> Sha256fManager<F> {
 
     pub fn build_sha256f_counter(&self) -> Sha256fCounterInputGen {
         Sha256fCounterInputGen::new(BusDeviceMode::Counter)
+    }
+
+    pub fn compute_witness_sha256f(
+        &self,
+        inputs: &[Vec<Sha256fInput>],
+        trace_buffer: Option<Vec<F>>,
+    ) -> AirInstance<F> {
+        self.sha256f_sm.compute_witness(inputs, trace_buffer)
+    }
+
+    pub fn get_circuit_size(&self) -> usize {
+        self.sha256f_sm.circuit_size
     }
 }
 

@@ -661,7 +661,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             min_traces,
             self.chunk_size,
             main_instance,
-            trace_buffer,
+            Some(trace_buffer),
         );
 
         pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
@@ -723,9 +723,15 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
             let guard = self.asm_runner.read().unwrap();
             let rh = &guard.as_ref().expect("Rom runner result missing").asm_rowh_output;
-            Some(RomSM::compute_witness_from_asm(&self.zisk_rom, rh, trace_buffer))
+            Some(RomSM::compute_witness_from_asm(&self.zisk_rom, rh, Some(trace_buffer)))
         } else {
-            secn_instance.compute_witness(pctx, sctx, collectors_by_instance, trace_buffer)
+            secn_instance.compute_witness(
+                pctx,
+                sctx,
+                collectors_by_instance,
+                global_id,
+                Some(trace_buffer),
+            )
         } {
             pctx.add_air_instance(air_instance, global_id);
         }
@@ -825,7 +831,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let witness_start_time = std::time::Instant::now();
         assert_eq!(table_instance.instance_type(), InstanceType::Table, "Instance is not a table");
 
-        if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![], trace_buffer)
+        if let Some(air_instance) =
+            table_instance.compute_witness(pctx, sctx, vec![], global_id, Some(trace_buffer))
         {
             if pctx.dctx_is_my_instance(global_id) {
                 pctx.add_air_instance(air_instance, global_id);

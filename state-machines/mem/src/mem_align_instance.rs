@@ -11,6 +11,7 @@ use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, MemBusData,
     PayloadType, MEM_BUS_ID,
 };
+use zisk_pil::MemAlignTrace;
 
 pub struct MemAlignInstance<F: PrimeField64> {
     /// Instance context
@@ -40,10 +41,11 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        _global_id: usize,
+        trace_buffer: Option<Vec<F>>,
     ) -> Option<AirInstance<F>> {
         let mut total_rows = 0;
-        let inputs: Vec<_> = collectors
+        let inputs: Vec<Vec<MemAlignInput>> = collectors
             .into_iter()
             .map(|(_, collector)| {
                 let collector = collector.as_any().downcast::<MemAlignCollector>().unwrap();
@@ -53,7 +55,30 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
                 collector.inputs
             })
             .collect();
-        Some(self.mem_align_sm.compute_witness(&inputs, total_rows as usize, trace_buffer))
+
+        let num_rows = MemAlignTrace::<usize>::NUM_ROWS;
+
+        tracing::info!(
+            "··· Creating Mem Align instance [{} / {} rows filled {:.2}%]",
+            total_rows,
+            num_rows,
+            total_rows as f64 / num_rows as f64 * 100.0
+        );
+
+        #[cfg(feature = "save_inputs")]
+        {
+            let flat_inputs: Vec<&MemAlignInput> = inputs.iter().flatten().collect();
+            let input_json = serde_json::json!({
+                "MemAlign": flat_inputs
+            });
+
+            let _ = std::fs::write(
+                format!("/tmp/mem_align_{}.json", _global_id),
+                serde_json::to_string(&input_json).unwrap(),
+            );
+        }
+
+        Some(self.mem_align_sm.compute_witness(&inputs, trace_buffer))
     }
 
     fn check_point(&self) -> CheckPoint {

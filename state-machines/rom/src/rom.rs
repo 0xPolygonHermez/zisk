@@ -78,9 +78,15 @@ impl RomSM {
     pub fn compute_witness<F: PrimeField64>(
         rom: &ZiskRom,
         counter_stats: &CounterStats,
-        trace_buffer: Vec<F>,
+        trace_buffer: Option<Vec<F>>,
     ) -> AirInstance<F> {
-        let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer);
+        let mut rom_trace = if let Some(buffer) = trace_buffer {
+            tracing::trace!("··· Using provided trace buffer");
+            RomTrace::new_from_vec_zeroes(buffer)
+        } else {
+            tracing::trace!("··· Creating new trace buffer");
+            RomTrace::new_zeroes()
+        };
 
         let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
@@ -130,9 +136,15 @@ impl RomSM {
     pub fn compute_witness_from_asm<F: PrimeField64>(
         rom: &ZiskRom,
         asm_romh: &AsmRHData,
-        trace_buffer: Vec<F>,
+        trace_buffer: Option<Vec<F>>,
     ) -> AirInstance<F> {
-        let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer);
+        let mut rom_trace = if let Some(buffer) = trace_buffer {
+            tracing::trace!("··· Using provided trace buffer");
+            RomTrace::new_from_vec_zeroes(buffer)
+        } else {
+            tracing::trace!("··· Creating new trace buffer");
+            RomTrace::new_zeroes()
+        };
 
         tracing::info!("··· Creating Rom instance [{} rows]", rom_trace.num_rows());
 

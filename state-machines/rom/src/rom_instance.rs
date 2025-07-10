@@ -88,7 +88,8 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        _global_id: usize,
+        trace_buffer: Option<Vec<F>>,
     ) -> Option<AirInstance<F>> {
         // Case 2: Fallback to counter stats when not using assembly
         // Detach collectors and downcast to RomCollector

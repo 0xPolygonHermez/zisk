@@ -4,16 +4,15 @@
 
 use std::collections::VecDeque;
 
-use crate::BinaryInput;
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, Input, OperationBusData, OPERATION_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
 
 /// The `BinaryExtensionCollector` struct represents an input collector for binary extension
 pub struct BinaryExtensionCollector {
     /// Collected inputs for witness computation.
-    pub inputs: Vec<BinaryInput>,
+    pub inputs: Vec<Input>,
     pub num_operations: usize,
     pub collect_skipper: CollectSkipper,
 }
@@ -60,7 +59,7 @@ impl BusDevice<u64> for BinaryExtensionCollector {
             return;
         }
 
-        self.inputs.push(BinaryInput::from(&data));
+        self.inputs.push(Input::from(&data));
     }
 
     /// Returns the bus IDs associated with this instance.

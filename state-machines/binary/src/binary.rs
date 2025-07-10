@@ -16,9 +16,10 @@ use crate::{
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
+use proofman_common::AirInstance;
 use zisk_common::{
-    table_instance, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Instance, InstanceCtx,
-    Planner, OPERATION_BUS_ID,
+    table_instance, BinaryAddInput, BusDeviceMetrics, BusDeviceMode, ComponentBuilder, Input,
+    Instance, InstanceCtx, Planner, OPERATION_BUS_ID,
 };
 use zisk_pil::{
     BinaryAddTrace, BinaryExtensionTableTrace, BinaryExtensionTrace, BinaryTableTrace, BinaryTrace,
@@ -73,6 +74,30 @@ impl<F: PrimeField64> BinarySM<F> {
 
     pub fn build_binary_counter(&self) -> BinaryCounter {
         BinaryCounter::new(BusDeviceMode::Counter)
+    }
+
+    pub fn compute_witness_binary(
+        &self,
+        inputs: &[Vec<Input>],
+        trace_buffer: Option<Vec<F>>,
+    ) -> AirInstance<F> {
+        self.binary_basic_sm.compute_witness(inputs, trace_buffer)
+    }
+
+    pub fn compute_witness_binary_add(
+        &self,
+        inputs: &[Vec<BinaryAddInput>],
+        trace_buffer: Option<Vec<F>>,
+    ) -> AirInstance<F> {
+        self.binary_add_sm.compute_witness(inputs, trace_buffer)
+    }
+
+    pub fn compute_witness_binary_extension(
+        &self,
+        inputs: &[Vec<Input>],
+        trace_buffer: Option<Vec<F>>,
+    ) -> AirInstance<F> {
+        self.binary_extension_sm.compute_witness(inputs, trace_buffer)
     }
 }
 

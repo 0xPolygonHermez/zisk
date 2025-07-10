@@ -88,9 +88,15 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
-        trace_buffer: Vec<F>,
+        trace_buffer: Option<Vec<F>>,
     ) -> AirInstance<F> {
-        let mut trace = MemTrace::<F>::new_from_vec(trace_buffer);
+        let mut trace = if let Some(buffer) = trace_buffer {
+            tracing::trace!("··· Using provided trace buffer");
+            MemTrace::<F>::new_from_vec(buffer)
+        } else {
+            tracing::trace!("··· Creating new trace buffer");
+            MemTrace::<F>::new()
+        };
 
         // println!(
         //     "[MemSM] segment_id:{} mem_ops:{} rows:{}  [0]{:?} previous_segment:{:?}",

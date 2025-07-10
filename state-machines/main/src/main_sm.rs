@@ -68,10 +68,16 @@ impl<F: PrimeField64> MainSM<F> {
         min_traces: &[EmuTrace],
         chunk_size: u64,
         main_instance: &MainInstance,
-        trace_buffer: Vec<F>,
+        trace_buffer: Option<Vec<F>>,
     ) -> AirInstance<F> {
         // Create the main trace buffer
-        let mut main_trace = MainTrace::new_from_vec(trace_buffer);
+        let mut main_trace = if let Some(buffer) = trace_buffer {
+            tracing::trace!("··· Using provided trace buffer");
+            MainTrace::new_from_vec(buffer)
+        } else {
+            tracing::trace!("··· Creating new trace buffer");
+            MainTrace::new()
+        };
 
         let segment_id = main_instance.ictx.plan.segment_id.unwrap();
 

@@ -53,9 +53,16 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
-        trace_buffer: Vec<F>,
+        trace_buffer: Option<Vec<F>>,
     ) -> AirInstance<F> {
-        let mut trace = RomDataTrace::<F>::new_from_vec(trace_buffer);
+        let mut trace = if let Some(buffer) = trace_buffer {
+            tracing::trace!("··· Using provided trace buffer");
+            RomDataTrace::<F>::new_from_vec(buffer)
+        } else {
+            tracing::trace!("··· Creating new trace buffer");
+            RomDataTrace::<F>::new()
+        };
+
         let num_rows = RomDataTrace::<F>::NUM_ROWS;
         assert!(
             !mem_ops.is_empty() && mem_ops.len() <= num_rows,

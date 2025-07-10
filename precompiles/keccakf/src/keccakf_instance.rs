@@ -78,12 +78,26 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        _global_id: usize,
+        trace_buffer: Option<Vec<F>>,
     ) -> Option<AirInstance<F>> {
-        let inputs: Vec<_> = collectors
+        let inputs: Vec<Vec<KeccakfInput>> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<KeccakfCollector>().unwrap().inputs)
             .collect();
+
+        #[cfg(feature = "save_inputs")]
+        {
+            let flat_inputs: Vec<&KeccakfInput> = inputs.iter().flatten().collect();
+            let input_json = serde_json::json!({
+                "Keccakf": flat_inputs
+            });
+
+            let _ = std::fs::write(
+                format!("/tmp/keccakf_{}.json", _global_id),
+                serde_json::to_string(&input_json).unwrap(),
+            );
+        }
 
         Some(self.keccakf_sm.compute_witness(&inputs, trace_buffer))
     }

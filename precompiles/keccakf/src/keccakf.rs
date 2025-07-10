@@ -26,7 +26,7 @@ pub struct KeccakfSM<F: PrimeField64> {
     gates: Vec<Gate>,
 
     /// Size of a circuit in the trace. It corresponds to the number of gates in the circuit.
-    circuit_size: usize,
+    pub circuit_size: usize,
 
     /// Number of available circuits in the trace.
     num_available_circuits: usize,
@@ -500,10 +500,16 @@ impl<F: PrimeField64> KeccakfSM<F> {
     pub fn compute_witness(
         &self,
         inputs: &[Vec<KeccakfInput>],
-        trace_buffer: Vec<F>,
+        trace_buffer: Option<Vec<F>>,
     ) -> AirInstance<F> {
         timer_start_trace!(KECCAKF_TRACE);
-        let mut keccakf_trace = KeccakfTrace::new_from_vec_zeroes(trace_buffer);
+        let mut keccakf_trace = if let Some(buffer) = trace_buffer {
+            tracing::trace!("··· Using provided trace buffer");
+            KeccakfTrace::new_from_vec_zeroes(buffer)
+        } else {
+            tracing::trace!("··· Creating new trace buffer");
+            KeccakfTrace::new_zeroes()
+        };
         let num_rows = keccakf_trace.num_rows();
 
         // Check that we can fit all the keccakfs in the trace

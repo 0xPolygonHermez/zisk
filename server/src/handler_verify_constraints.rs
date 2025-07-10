@@ -22,6 +22,7 @@ pub struct ZiskVerifyConstraintsResponse {
     pub base: ZiskBaseResponse,
 
     server_id: String,
+    #[cfg(not(feature = "unit"))]
     elf_file: String,
     input: String,
 }
@@ -45,8 +46,10 @@ impl ZiskServiceVerifyConstraintsHandler {
             move || {
                 let start = std::time::Instant::now();
 
+                let test_mode = cfg!(feature = "unit");
+
                 proofman
-                    .verify_proof_constraints_from_lib(Some(request_input), &debug_info, false)
+                    .verify_proof_constraints_from_lib(Some(request_input), &debug_info, test_mode)
                     .map_err(|e| anyhow::anyhow!("Error verifying proof: {}", e))
                     .expect("Failed to generate proof");
 
@@ -87,6 +90,7 @@ impl ZiskServiceVerifyConstraintsHandler {
                     node: config.asm_runner_options.world_rank,
                 },
                 server_id: config.server_id.to_string(),
+                #[cfg(not(feature = "unit"))]
                 elf_file: config.elf.display().to_string(),
                 input: request.input.display().to_string(),
             }),

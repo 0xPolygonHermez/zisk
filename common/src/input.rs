@@ -1,5 +1,7 @@
 use crate::{ExtOperationData, OperationBusData};
+use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Input {
     pub op: u8,
     pub a: u64,
@@ -17,5 +19,18 @@ impl Input {
             a: OperationBusData::get_a(data),
             b: OperationBusData::get_b(data),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BinaryAddInput {
+    pub a: u64,
+    pub b: u64,
+}
+
+impl BinaryAddInput {
+    #[allow(dead_code)]
+    pub fn new(a: u64, b: u64) -> Self {
+        Self { a, b }
     }
 }

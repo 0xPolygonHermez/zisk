@@ -1,6 +1,7 @@
 mod bus;
 mod component;
 mod emu_minimal_trace;
+mod input;
 mod instance_context;
 mod mpi_context;
 mod planner_helpers;
@@ -13,6 +14,7 @@ mod utils;
 pub use bus::*;
 pub use component::*;
 pub use emu_minimal_trace::*;
+pub use input::*;
 pub use instance_context::*;
 pub use mpi_context::*;
 pub use planner_helpers::*;

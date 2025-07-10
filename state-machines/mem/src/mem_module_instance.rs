@@ -49,7 +49,8 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        _global_id: usize,
+        trace_buffer: Option<Vec<F>>,
     ) -> Option<AirInstance<F>> {
         // Collect inputs from all collectors. At most, one of them has `prev_last_value` non zero,
         // we take this `prev_last_value`, which represents the last value of the previous segment.

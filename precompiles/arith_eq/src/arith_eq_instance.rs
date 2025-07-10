@@ -80,16 +80,30 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
     fn compute_witness(
         &self,
         _pctx: &ProofCtx<F>,
-        sctx: &SetupCtx<F>,
+        _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        _global_id: usize,
+        trace_buffer: Option<Vec<F>>,
     ) -> Option<AirInstance<F>> {
-        let inputs: Vec<_> = collectors
+        let inputs: Vec<Vec<ArithEqInput>> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<ArithEqCollector>().unwrap().inputs)
             .collect();
 
-        Some(self.arith_eq_sm.compute_witness(sctx, &inputs, trace_buffer))
+        #[cfg(feature = "save_inputs")]
+        {
+            let flat_inputs: Vec<&ArithEqInput> = inputs.iter().flatten().collect();
+            let input_json = serde_json::json!({
+                "ArithEq": flat_inputs
+            });
+
+            let _ = std::fs::write(
+                format!("/tmp/arith_eq_{}.json", _global_id),
+                serde_json::to_string(&input_json).unwrap(),
+            );
+        }
+
+        Some(self.arith_eq_sm.compute_witness(&inputs, trace_buffer))
     }
 
     /// Retrieves the checkpoint associated with this instance.

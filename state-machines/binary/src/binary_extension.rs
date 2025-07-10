@@ -5,12 +5,13 @@
 
 use std::sync::Arc;
 
-use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
+use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM};
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
+use zisk_common::Input;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow};
 
@@ -104,11 +105,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// A `BinaryExtensionTraceRow` representing the processed trace.
-    pub fn process_slice(
-        &self,
-        input: &BinaryInput,
-        binary_extension_table_sm: &BinaryExtensionTableSM,
-    ) -> BinaryExtensionTraceRow<F> {
+    pub fn process_slice(&self, input: &Input) -> BinaryExtensionTraceRow<F> {
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
 
@@ -300,7 +297,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 *a_byte as u64,
                 in2_low,
             );
-            binary_extension_table_sm.update_multiplicity(row, 1);
+            self.binary_extension_table_sm.update_multiplicity(row, 1);
         }
 
         // Return successfully
@@ -316,10 +313,16 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     /// An `AirInstance` representing the computed witness.
     pub fn compute_witness(
         &self,
-        inputs: &[Vec<BinaryInput>],
-        trace_buffer: Vec<F>,
+        inputs: &[Vec<Input>],
+        trace_buffer: Option<Vec<F>>,
     ) -> AirInstance<F> {
-        let mut binary_e_trace = BinaryExtensionTrace::new_from_vec(trace_buffer);
+        let mut binary_e_trace = if let Some(buffer) = trace_buffer {
+            tracing::trace!("··· Using provided trace buffer");
+            BinaryExtensionTrace::new_from_vec(buffer)
+        } else {
+            tracing::trace!("··· Creating new trace buffer");
+            BinaryExtensionTrace::new()
+        };
 
         let num_rows = binary_e_trace.num_rows();
 
@@ -352,7 +355,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
         slices.into_par_iter().enumerate().for_each(|(i, slice)| {
             slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
-                *trace_row = self.process_slice(&inputs[i][j], &self.binary_extension_table_sm);
+                *trace_row = self.process_slice(&inputs[i][j]);
             });
         });
 
