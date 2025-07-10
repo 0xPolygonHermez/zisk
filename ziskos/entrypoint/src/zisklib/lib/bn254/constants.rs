@@ -1,0 +1,173 @@
+//! Constants for the BN254 elliptic curve
+
+/// Family parameter
+pub const X: [u64; 4] = [0x44E992B44A6909F1, 0, 0, 0];
+
+/// B parameter of the curve E: y² = x³ + 3
+pub const E_B: [u64; 4] = [0x3, 0, 0, 0];
+
+/// B parameter of the twist E': y² = x³ + 3 / (9 + u)
+pub const ETWISTED_B: [u64; 8] = [
+    0x3267E6DC24A138E5,
+    0xB5B4C5E559DBEFA3,
+    0x81BE18991BE06AC3,
+    0x2B149D40CEB8AAAE,
+    0xE4A2BD0685C315D2,
+    0xA74FA084E52D1852,
+    0xCD2CAFADEED8FDF4,
+    0x9713B03AF0FED4,
+];
+
+/// Base field size
+pub const P: [u64; 4] =
+    [0x3C208C16D87CFD47, 0x97816A916871CA8D, 0xB85045B68181585D, 0x30644E72E131A029];
+
+/// Base field size minus one
+pub const P_MINUS_ONE: [u64; 4] = [P[0] - 1, P[1], P[2], P[3]];
+
+/// Scalar field size
+const R: [u64; 4] =
+    [0x43e1f593f0000001, 0x2833e84879b97091, 0xb85045b68181585d, 0x30644e72e131a029];
+
+/// Scalar field size minus one
+pub const R_MINUS_ONE: [u64; 4] = [R[0] - 1, R[1], R[2], R[3]];
+
+/// Frobenius operator constant 𝛾₁₁ := (9 + u)^((p-1)/6)
+pub const FROBENIUS_GAMMA11: [u64; 8] = [
+    0xD60B35DADCC9E470,
+    0x5C521E08292F2176,
+    0xE8B99FDD76E68B60,
+    0x1284B71C2865A7DF,
+    0xCA5CF05F80F362AC,
+    0x747992778EEEC7E5,
+    0xA6327CFE12150B8E,
+    0x246996F3B4FAE7E6,
+];
+
+/// Frobenius operator constant 𝛾₁₂ := (9 + u)^(2·(p-1)/6)
+pub const FROBENIUS_GAMMA12: [u64; 8] = [
+    0x99E39557176F553D,
+    0xB78CC310C2C3330C,
+    0x4C0BEC3CF559B143,
+    0x2FB347984F7911F7,
+    0x1665D51C640FCBA2,
+    0x32AE2A1D0B7C9DCE,
+    0x4BA4CC8BD75A0794,
+    0x16C9E55061EBAE20,
+];
+
+/// Frobenius operator constant 𝛾₁₃ := (9 + u)^(3·(p-1)/6)
+pub const FROBENIUS_GAMMA13: [u64; 8] = [
+    0xDC54014671A0135A,
+    0xDBAAE0EDA9C95998,
+    0xDC5EC698B6E2F9B9,
+    0x063CF305489AF5DC,
+    0x82D37F632623B0E3,
+    0x21807DC98FA25BD2,
+    0x0704B5A7EC796F2B,
+    0x07C03CBCAC41049A,
+];
+
+/// Frobenius operator constant 𝛾₁₄ := (9 + u)^(4·(p-1)/6)
+pub const FROBENIUS_GAMMA14: [u64; 8] = [
+    0x848A1F55921EA762,
+    0xD33365F7BE94EC72,
+    0x80F3C0B75A181E84,
+    0x05B54F5E64EEA801,
+    0xC13B4711CD2B8126,
+    0x3685D2EA1BDEC763,
+    0x9F3A80B03B0B1C92,
+    0x2C145EDBE7FD8AEE,
+];
+
+/// Frobenius operator constant 𝛾₁₅ := (9 + u)^(5·(p-1)/6)
+pub const FROBENIUS_GAMMA15: [u64; 8] = [
+    0x2EA2C810EAB7692F,
+    0x425C459B55AA1BD3,
+    0xE93A3661A4353FF4,
+    0x0183C1E74F798649,
+    0x24C6B8EE6E0C2C4B,
+    0xB080CB99678E2AC0,
+    0xA27FB246C7729F7D,
+    0x12ACF2CA76FD0675,
+];
+
+/// Frobenius operator constant 𝛾₂₁ := (9 + u)^((p²-1)/6)
+pub const FROBENIUS_GAMMA21: [u64; 4] =
+    [0xE4BD44E5607CFD49, 0xC28F069FBB966E3D, 0x5E6DD9E7E0ACCCB0, 0x30644E72E131A029];
+
+/// Frobenius operator constant 𝛾₂₂ := (9 + u)^(2·(p²-1)/6)
+pub const FROBENIUS_GAMMA22: [u64; 4] =
+    [0xE4BD44E5607CFD48, 0xC28F069FBB966E3D, 0x5E6DD9E7E0ACCCB0, 0x30644E72E131A029];
+
+/// Frobenius operator constant 𝛾₂₃ := (9 + u)^(3·(p²-1)/6)
+pub const FROBENIUS_GAMMA23: [u64; 4] =
+    [0x3C208C16D87CFD46, 0x97816A916871CA8D, 0xB85045B68181585D, 0x30644E72E131A029];
+
+/// Frobenius operator constant 𝛾₂₄ := (9 + u)^(4·(p²-1)/6)
+pub const FROBENIUS_GAMMA24: [u64; 4] =
+    [0x5763473177FFFFFE, 0xD4F263F1ACDB5C4F, 0x59E26BCEA0D48BAC, 0x0000000000000000];
+
+/// Frobenius operator constant 𝛾₂₅ := (9 + u)^(5·(p²-1)/6)
+pub const FROBENIUS_GAMMA25: [u64; 4] =
+    [0x5763473177FFFFFF, 0xD4F263F1ACDB5C4F, 0x59E26BCEA0D48BAC, 0x0000000000000000];
+
+/// Frobenius operator constant 𝛾₃₁ := (9 + u)^((p³-1)/6)
+pub const FROBENIUS_GAMMA31: [u64; 8] = [
+    0xE86F7D391ED4A67F,
+    0x894CB38DBE55D24A,
+    0xEFE9608CD0ACAA90,
+    0x19DC81CFCC82E4BB,
+    0x7694AA2BF4C0C101,
+    0x7F03A5E397D439EC,
+    0x06CBEEE33576139D,
+    0x00ABF8B60BE77D73,
+];
+
+/// Frobenius operator constant 𝛾₃₂ := (9 + u)^(2·(p³-1)/6)
+pub const FROBENIUS_GAMMA32: [u64; 8] = [
+    0x7B746EE87BDCFB6D,
+    0x805FFD3D5D6942D3,
+    0xBAFF1C77959F25AC,
+    0x0856E078B755EF0A,
+    0x380CAB2BAAA586DE,
+    0x0FDF31BF98FF2631,
+    0xA9F30E6DEC26094F,
+    0x04F1DE41B3D1766F,
+];
+
+/// Frobenius operator constant 𝛾₃₃ := (9 + u)^(3·(p³-1)/6)
+pub const FROBENIUS_GAMMA33: [u64; 8] = [
+    0x5FCC8AD066DCE9ED,
+    0xBBD689A3BEA870F4,
+    0xDBF17F1DCA9E5EA3,
+    0x2A275B6D9896AA4C,
+    0xB94D0CB3B2594C64,
+    0x7600ECC7D8CF6EBA,
+    0xB14B900E9507E932,
+    0x28A411B634F09B8F,
+];
+
+/// Frobenius operator constant 𝛾₃₄ := (9 + u)^(4·(p³-1)/6)
+pub const FROBENIUS_GAMMA34: [u64; 8] = [
+    0x0E1A92BC3CCBF066,
+    0xE633094575B06BCB,
+    0x19BEE0F7B5B2444E,
+    0x0BC58C6611C08DAB,
+    0x5FE3ED9D730C239F,
+    0xA44A9E08737F96E5,
+    0xFEB0F6EF0CD21D04,
+    0x23D5E999E1910A12,
+];
+
+/// Frobenius operator constant 𝛾₃₅ := (9 + u)^(5·(p³-1)/6)
+pub const FROBENIUS_GAMMA35: [u64; 8] = [
+    0xEBDE847076261B43,
+    0x2ED68098967C84A5,
+    0x711699FA3B4D3F69,
+    0x13C49044952C0905,
+    0x1F25041384282499,
+    0x3E2DDAEA20028021,
+    0x9FB1B2282A48633D,
+    0x16DB366A59B1DD0B,
+];

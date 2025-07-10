@@ -15,11 +15,12 @@ zisk-pil = { path = "../../pil" }
 sm-mem = { path = "../mem" }
 asm-runner = { path = "../../emulator-asm/asm-runner" }
 
+proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 proofman-macros = { workspace = true }
-p3-field = { workspace = true }
-log = { workspace = true }
+fields = { workspace = true }
+tracing = { workspace = true }
 rayon = { workspace = true }
 num-bigint = { workspace = true }
 pil-std-lib = { workspace = true }
@@ -27,5 +28,5 @@ pil-std-lib = { workspace = true }
 [features]
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
-diagnostic = ["proofman-macros/diagnostic"]
-disable-distributed = ["proofman-common/disable-distributed"]
+diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
+disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]

@@ -3,7 +3,7 @@
 //! and integrating them with state machines and proofs.
 
 use crate::{BusDevice, CheckPoint, ChunkId, PayloadType};
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 
 /// Represents the type of an instance, either a standalone instance or a table.
@@ -19,7 +19,7 @@ pub enum InstanceType {
 /// The `Instance` trait defines the interface for any computation instance used in proof systems.
 ///
 /// It provides methods to compute witnesses, retrieve checkpoints, and specify instance types.
-pub trait Instance<F: PrimeField>: Send + Sync {
+pub trait Instance<F: PrimeField64>: Send + Sync {
     /// Computes the witness for the instance based on the proof context.
     ///
     /// # Arguments
@@ -31,10 +31,11 @@ pub trait Instance<F: PrimeField>: Send + Sync {
     /// # Returns
     /// An optional `AirInstance` object representing the computed witness.
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        _trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         None
     }
@@ -71,6 +72,8 @@ pub trait Instance<F: PrimeField>: Send + Sync {
     /// * `_pctx` - The proof context, unused in this implementation.
     /// * `_sctx` - The setup context, unused in this implementation.
     fn debug(&self, _pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {}
+
+    fn reset(&self) {}
 }
 
 /// Macro to define a table-backed instance.
@@ -85,9 +88,10 @@ pub trait Instance<F: PrimeField>: Send + Sync {
 #[macro_export]
 macro_rules! table_instance {
     ($InstanceName:ident, $TableSM:ident, $Trace:ident) => {
+        use std::collections::VecDeque;
         use std::sync::Arc;
 
-        use p3_field::PrimeField;
+        use fields::PrimeField64;
 
         use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
         use zisk_common::{
@@ -120,26 +124,35 @@ macro_rules! table_instance {
             }
         }
 
-        impl<F: PrimeField> Instance<F> for $InstanceName {
+        impl<F: PrimeField64> Instance<F> for $InstanceName {
             fn compute_witness(
-                &mut self,
+                &self,
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+                _trace_buffer: Vec<F>,
             ) -> Option<AirInstance<F>> {
-                let mut trace = $Trace::new();
-
                 let multiplicity = self.table_sm.detach_multiplicity();
                 self.table_sm.set_calculated();
 
                 pctx.dctx_distribute_multiplicity(multiplicity, self.ictx.global_id);
 
-                trace.buffer.par_iter_mut().enumerate().for_each(|(i, input)| {
-                    input.multiplicity =
-                        F::from_u64(multiplicity[i].swap(0, std::sync::atomic::Ordering::Relaxed))
-                });
+                if pctx.dctx_is_my_instance(self.ictx.global_id) {
+                    let mut trace = $Trace::new();
 
-                Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
+                    trace.row_slice_mut().par_iter_mut().enumerate().for_each(|(i, input)| {
+                        input.multiplicity = F::from_u64(
+                            multiplicity[i].swap(0, std::sync::atomic::Ordering::Relaxed),
+                        )
+                    });
+
+                    Some(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
+                } else {
+                    multiplicity.par_iter().for_each(|m| {
+                        m.swap(0, std::sync::atomic::Ordering::Relaxed);
+                    });
+                    None
+                }
             }
 
             fn check_point(&self) -> CheckPoint {
@@ -149,6 +162,10 @@ macro_rules! table_instance {
             fn instance_type(&self) -> InstanceType {
                 InstanceType::Table
             }
+
+            fn reset(&self) {
+                self.table_sm.reset_calculated();
+            }
         }
 
         impl BusDevice<u64> for $InstanceName {
@@ -156,10 +173,9 @@ macro_rules! table_instance {
                 &mut self,
                 bus_id: &BusId,
                 data: &[u64],
-            ) -> Option<Vec<(BusId, Vec<u64>)>> {
-                None
+                _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+            ) {
             }
-
             fn bus_id(&self) -> Vec<BusId> {
                 vec![self.bus_id]
             }
@@ -184,9 +200,10 @@ macro_rules! table_instance {
 #[macro_export]
 macro_rules! table_instance_array {
     ($InstanceName:ident, $TableSM:ident, $Trace:ident) => {
+        use std::collections::VecDeque;
         use std::sync::Arc;
 
-        use p3_field::PrimeField;
+        use fields::PrimeField64;
 
         use proofman_common::{AirInstance, ProofCtx, SetupCtx, TraceInfo};
         use zisk_common::{
@@ -219,29 +236,44 @@ macro_rules! table_instance_array {
             }
         }
 
-        impl<F: PrimeField> Instance<F> for $InstanceName {
+        impl<F: PrimeField64> Instance<F> for $InstanceName {
             fn compute_witness(
-                &mut self,
+                &self,
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+                _trace_buffer: Vec<F>,
             ) -> Option<AirInstance<F>> {
-                let mut trace = $Trace::new();
-
                 let multiplicities = self.table_sm.detach_multiplicities();
                 self.table_sm.set_calculated();
                 pctx.dctx_distribute_multiplicities(multiplicities, self.ictx.global_id);
 
-                let mut buffer = trace.get_buffer();
+                if pctx.dctx_is_my_instance(self.ictx.global_id) {
+                    let mut trace = $Trace::new();
 
-                buffer.par_chunks_mut(trace.row_size).enumerate().for_each(|(row, chunk)| {
-                    for (col, vec) in multiplicities.iter().enumerate() {
-                        chunk[col] =
-                            F::from_u64(vec[row].swap(0, std::sync::atomic::Ordering::Relaxed));
-                    }
-                });
+                    let mut buffer = trace.get_buffer();
 
-                Some(AirInstance::new(TraceInfo::new(trace.airgroup_id, trace.air_id, buffer)))
+                    buffer.par_chunks_mut(trace.row_size).enumerate().for_each(|(row, chunk)| {
+                        for (col, vec) in multiplicities.iter().enumerate() {
+                            chunk[col] =
+                                F::from_u64(vec[row].swap(0, std::sync::atomic::Ordering::Relaxed));
+                        }
+                    });
+
+                    Some(AirInstance::new(TraceInfo::new(
+                        trace.airgroup_id,
+                        trace.air_id,
+                        buffer,
+                        false,
+                    )))
+                } else {
+                    multiplicities.par_iter().for_each(|vec| {
+                        for i in 0..vec.len() {
+                            vec[i].swap(0, std::sync::atomic::Ordering::Relaxed);
+                        }
+                    });
+                    None
+                }
             }
 
             fn check_point(&self) -> CheckPoint {
@@ -251,6 +283,10 @@ macro_rules! table_instance_array {
             fn instance_type(&self) -> InstanceType {
                 InstanceType::Table
             }
+
+            fn reset(&self) {
+                self.table_sm.reset_calculated();
+            }
         }
 
         impl BusDevice<u64> for $InstanceName {
@@ -258,8 +294,8 @@ macro_rules! table_instance_array {
                 &mut self,
                 bus_id: &BusId,
                 data: &[u64],
-            ) -> Option<Vec<(BusId, Vec<u64>)>> {
-                None
+                _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+            ) {
             }
 
             fn bus_id(&self) -> Vec<BusId> {
@@ -303,7 +339,7 @@ macro_rules! instance {
             inputs: Vec<zisk_core::ZiskRequiredOperation>,
         }
 
-        impl<F: PrimeField> $name<F> {
+        impl<F: PrimeField64> $name<F> {
             /// Creates a new instance of the standalone computation instance.
             ///
             /// # Arguments
@@ -314,9 +350,9 @@ macro_rules! instance {
             }
         }
 
-        impl<F: PrimeField> Instance<F> for $name {
+        impl<F: PrimeField64> Instance<F> for $name {
             fn compute_witness(
-                &mut self,
+                &self,
                 _pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
             ) -> Option<AirInstance<F>> {
@@ -332,6 +368,6 @@ macro_rules! instance {
             }
         }
 
-        impl<F: PrimeField> data_bus::BusDevice<u64> for $name {}
+        impl<F: PrimeField64> data_bus::BusDevice<u64> for $name {}
     };
 }

@@ -4,7 +4,6 @@ use std::{
 };
 
 use colored::Colorize;
-use log::info;
 
 use crate::{get_elf_data_hash, DEFAULT_CACHE_PATH};
 
@@ -29,27 +28,27 @@ pub fn rom_full_setup(
     };
 
     let output_path = fs::canonicalize(&output_path)
-        .unwrap_or_else(|_| panic!("Failed to get absolute path for {:?}", output_path));
+        .unwrap_or_else(|_| panic!("Failed to get absolute path for {output_path:?}"));
 
     println!();
 
-    info!("Computing setup for ROM {}", elf.display());
+    tracing::info!("Computing setup for ROM {}", elf.display());
 
-    info!("Computing ELF hash");
+    tracing::info!("Computing ELF hash");
     let elf_hash = get_elf_data_hash(elf)?;
 
-    info!("Computing assembly setup");
+    tracing::info!("Computing assembly setup");
     crate::generate_assembly(elf, &elf_hash, zisk_path, output_path.as_path(), verbose)?;
 
-    info!("Computing merkle root");
+    tracing::info!("Computing merkle root");
     crate::rom_merkle_setup(elf, &elf_hash, output_path.as_path(), proving_key, false)?;
 
-    info!("Computing Verification key");
+    tracing::info!("Computing Verification key");
 
     crate::rom_vkey()?;
 
     println!();
-    info!(
+    tracing::info!(
         "{} {}",
         "ROM setup successfully completed at".bright_green().bold(),
         output_path.display()
@@ -61,7 +60,7 @@ pub fn rom_full_setup(
 fn ensure_dir_exists(path: &PathBuf) {
     if let Err(e) = std::fs::create_dir_all(path) {
         if e.kind() != std::io::ErrorKind::AlreadyExists {
-            panic!("Failed to create cache directory {:?}: {}", path, e);
+            panic!("Failed to create cache directory {path:?}: {e}");
         }
     }
 }

@@ -5,9 +5,12 @@
 //! execution plans.
 
 use crate::ArithFullSM;
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+};
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
     InstanceType, OperationData, PayloadType, OPERATION_BUS_ID, OP_TYPE,
@@ -24,6 +27,9 @@ pub struct ArithFullInstance {
     /// Reference to the Arithmetic Full State Machine.
     arith_full_sm: Arc<ArithFullSM>,
 
+    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
+    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
+
     /// The instance context.
     ictx: InstanceCtx,
 }
@@ -37,12 +43,25 @@ impl ArithFullInstance {
     ///
     /// # Returns
     /// A new `ArithFullInstance` instance initialized with the provided state machine and context.
-    pub fn new(arith_full_sm: Arc<ArithFullSM>, ictx: InstanceCtx) -> Self {
-        Self { arith_full_sm, ictx }
+    pub fn new(arith_full_sm: Arc<ArithFullSM>, mut ictx: InstanceCtx) -> Self {
+        assert_eq!(
+            ictx.plan.air_id,
+            ArithTrace::<usize>::AIR_ID,
+            "ArithFullInstance: Unsupported air_id: {:?}",
+            ictx.plan.air_id
+        );
+
+        let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
+
+        let collect_info = *meta
+            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+            .expect("Failed to downcast ictx.plan.meta to expected type");
+
+        Self { arith_full_sm, collect_info, ictx }
     }
 }
 
-impl<F: PrimeField> Instance<F> for ArithFullInstance {
+impl<F: PrimeField64> Instance<F> for ArithFullInstance {
     /// Computes the witness for the arithmetic execution plan.
     ///
     /// This method leverages the `ArithFullSM` to generate an `AirInstance` using the collected
@@ -56,10 +75,11 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -68,7 +88,7 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
             })
             .collect();
 
-        Some(self.arith_full_sm.compute_witness(&inputs))
+        Some(self.arith_full_sm.compute_witness(&inputs, trace_buffer))
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -95,16 +115,7 @@ impl<F: PrimeField> Instance<F> for ArithFullInstance {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        assert_eq!(
-            self.ictx.plan.air_id,
-            ArithTrace::<F>::AIR_ID,
-            "BinaryInstance: Unsupported air_id: {:?}",
-            self.ictx.plan.air_id
-        );
-
-        let meta = self.ictx.plan.meta.as_ref().unwrap();
-        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
-        let (num_ops, collect_skipper) = collect_info[&chunk_id];
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(ArithInstanceCollector::new(num_ops, collect_skipper)))
     }
 }
@@ -147,27 +158,31 @@ impl BusDevice<u64> for ArithInstanceCollector {
     /// An optional vector of tuples where:
     /// - The first element is the bus ID.
     /// - The second element is always empty indicating there are no derived inputs.
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() == self.num_operations as usize {
-            return None;
+            return;
         }
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Arith as u32 {
-            return None;
+            return;
         }
 
         if self.collect_skipper.should_skip() {
-            return None;
+            return;
         }
 
-        let data: ExtOperationData<u64> = data.try_into().ok()?;
+        let data: ExtOperationData<u64> = data.try_into().expect("Failed to convert data");
+
         if let ExtOperationData::OperationData(data) = data {
             self.inputs.push(data);
         }
-
-        None
     }
 
     /// Returns the bus IDs associated with this instance.

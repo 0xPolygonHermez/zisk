@@ -6,7 +6,7 @@ const int BOOT_ADDR = 0x1000;
 const int END_PC_ADDR = 0x1004;
 const int INITIAL_SP = 0;
 const int END_SP = 0;
-const int MAX_RANGE = 1 << 24;
+const int MAX_RANGE = (1 << 24) - 1;
 const int REG_BASE_ADDR = 0xA000_0000;
 
 airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int operation_bus_id,
@@ -317,9 +317,9 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // Range check for register operations, to check that previous register access is greater than
     // the current register access.
 
-    range_check(expression: a_mem_step - a_reg_prev_mem_step, min: 1, max: MAX_RANGE, sel: a_src_reg);
-    range_check(expression: b_mem_step - b_reg_prev_mem_step, min: 1, max: MAX_RANGE, sel: b_src_reg);
-    range_check(expression: store_mem_step - store_reg_prev_mem_step, min: 1, max: MAX_RANGE, sel: store_reg);
+    range_check(expression: a_mem_step - a_reg_prev_mem_step - 1, min: 0, max: MAX_RANGE, sel: a_src_reg);
+    range_check(expression: b_mem_step - b_reg_prev_mem_step - 1, min: 0, max: MAX_RANGE, sel: b_src_reg);
+    range_check(expression: store_mem_step - store_reg_prev_mem_step -1 , min: 0, max: MAX_RANGE, sel: store_reg);
 
     // Sent to bus the external operation
 
@@ -405,7 +405,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
         SEGMENT_LAST * (segment_last_c[index] - c[index]) === 0;
     }
 
-    // Contraints for registers on main
+    // Constraints for registers on main
 
     airval last_reg_value[REGS_IN_MAIN][RC];    // last value in the segment for each register.
     airval last_reg_mem_step[REGS_IN_MAIN];     // last mem_step in the segment for each register.
@@ -422,8 +422,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     // In the case of the last segment, the current access isn't send to closed the cycle.
 
     for (int ireg = 0; ireg < REGS_IN_MAIN; ++ireg) {
-        // Range check to verify that thre previous access was before the last access.
-        range_check(expression: last_segment_reg_mem_step - last_reg_mem_step[ireg], min: 1, max: MEMORY_MAX_DIFF);
+        // Range check to verify that the previous access was before the last access.
+        range_check(expression: last_segment_reg_mem_step - last_reg_mem_step[ireg] - 1, min: 0, max: MAX_RANGE);
 
         // Proves the last access.
         reg_pre_load(prev_mem_step: last_reg_mem_step[ireg], addr: ireg + REGS_IN_MAIN_FROM, value: last_reg_value[ireg]);
@@ -469,7 +469,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0, const int ope
     lookup_assumes(ROM_BUS_ID, [pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
                                 op, store_offset, jmp_offset1, jmp_offset2, rom_flags]);
 
-    // Continuations beetwen segments, we assume initial state and proves the final state.
+    // Continuations between segments, we assume initial state and proves the final state.
 
     // The next segment increments the current segment by one, except for the last segment, which
     // closes the cycle at the known main_segment_id.

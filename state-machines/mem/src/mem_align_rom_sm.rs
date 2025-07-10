@@ -24,8 +24,6 @@ pub struct MemAlignRomSM {
 }
 
 impl MemAlignRomSM {
-    // const MY_NAME: &'static str = "MemAlignRom";
-
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             multiplicity: create_atomic_vec(MemAlignRomTrace::<usize>::NUM_ROWS),
@@ -94,7 +92,7 @@ impl MemAlignRomSM {
         let width_idx = Self::calculate_possible_widths(one_word, offset)
             .iter()
             .position(|&w| w == width)
-            .unwrap_or_else(|| panic!("Invalid width offset:{} width:{}", offset, width));
+            .unwrap_or_else(|| panic!("Invalid width offset:{offset} width:{width}"));
         first_row_idx += op_size * width_idx as u64;
 
         first_row_idx
@@ -107,14 +105,14 @@ impl MemAlignRomSM {
                 x if x <= 4 => vec![1, 2, 4],
                 x if x <= 6 => vec![1, 2],
                 7 => vec![1],
-                _ => panic!("Invalid offset={}", offset),
+                _ => panic!("Invalid offset={offset}"),
             },
             false => match offset {
-                0 => panic!("Invalid offset={}", offset),
+                0 => panic!("Invalid offset={offset}"),
                 x if x <= 4 => vec![8],
                 x if x <= 6 => vec![4, 8],
                 7 => vec![2, 4, 8],
-                _ => panic!("Invalid offset={}", offset),
+                _ => panic!("Invalid offset={offset}"),
             },
         }
     }
@@ -125,6 +123,10 @@ impl MemAlignRomSM {
 
     pub fn set_calculated(&self) {
         self.calculated.store(true, Ordering::Relaxed);
+    }
+
+    pub fn reset_calculated(&self) {
+        self.calculated.store(false, Ordering::Relaxed);
     }
 
     pub fn update_padding_row(&self, padding_len: u64) {

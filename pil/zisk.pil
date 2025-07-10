@@ -30,10 +30,11 @@ const int PUBLIC_OP = 0x30;
 set_max_std_tables_bits(21);
 
 airgroup Zisk {
-
+    // Main Program
     Main(N: 2**22, RC: 2, operation_bus_id: OPERATION_BUS_ID);
     Rom(N: 2**21);
 
+    // Standard Operations
     Mem(N: 2**22, RC: 2, base_address: 0xA000_0000, size_mb: 512, large_mem: 1);
     Mem(N: 2**21, RC: 2, base_address: 0x8000_0000, immutable: 1) alias RomData;
     Mem(N: 2**21, RC: 2, base_address: 0x9000_0000, free_input_mem: 1, enable_flag: enable_input_data, use_predefined_ranges: 0) alias InputData;
@@ -45,27 +46,31 @@ airgroup Zisk {
     ArithTable();
     ArithRangeTable();
 
-    ArithEq(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
-    ArithEqLtTable();
-
     Binary(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
     BinaryAdd(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
     BinaryTable();
     BinaryExtension(N: 2**22, operation_bus_id: OPERATION_BUS_ID);
     BinaryExtensionTable();
 
-
     // Precompiles
-    const int KECCAKF_BITS = 10;
-    Keccakf(N: 2**22, RC: 2, RB: 32, bits_in_parallel: 2, chunks: 6, bits: KECCAKF_BITS, bits_reduced: KECCAKF_BITS, operation_bus_id: OPERATION_BUS_ID);
-    KeccakfTable(N: 2**21, chunks: 1, bits: KECCAKF_BITS, bits_reduced: KECCAKF_BITS);
+    ArithEq(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    ArithEqLtTable();
+    
+    const int KECCAKF_CHUNKS = 7;
+    const int KECCAKF_BITS = 9;
+    Keccakf(N: 2**22, RC: 2, RB: 32, bits_in_parallel: 2, chunks: KECCAKF_CHUNKS, bits: KECCAKF_BITS, operation_bus_id: OPERATION_BUS_ID);
+    const int KECCAKF_TABLE_CHUNKS = 1;
+    const int KECCAKF_TABLE_BITS = (KECCAKF_BITS - KECCAKF_TABLE_CHUNKS + 1) + KECCAKF_BITS + 1;
+    KeccakfTable(N: 2**KECCAKF_TABLE_BITS, chunks: KECCAKF_TABLE_CHUNKS, bits: KECCAKF_BITS);
 
+    const int SHA256F_CHUNKS = 8;
     const int SHA256F_BITS = 7;
-    // TODO: Explore how to fit the sha256f circuit with chunks = 9
-    Sha256f(N: 2**22, RC: 2, RB: 32, bits_in_parallel: 2, chunks: 8, bits: SHA256F_BITS, operation_bus_id: OPERATION_BUS_ID);
-    Sha256fTable(N: 2**23, chunks: 1, bits: SHA256F_BITS);
+    Sha256f(N: 2**21, RC: 2, RB: 32, bits_in_parallel: 2, chunks: SHA256F_CHUNKS, bits: SHA256F_BITS, operation_bus_id: OPERATION_BUS_ID);
+    const int SHA256F_TABLE_CHUNKS = 1;
+    const int SHA256F_TABLE_BITS = (SHA256F_BITS - SHA256F_TABLE_CHUNKS + 1) + SHA256F_BITS + SHA256F_BITS + 2;
+    Sha256fTable(N: 2**SHA256F_TABLE_BITS, chunks: SHA256F_TABLE_CHUNKS, bits: SHA256F_BITS);
 
-    // public inputs
+    // Public Inputs
     for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {
         direct_global_update_proves(OPERATION_BUS_ID, [PUBLIC_OP, i, 0, inputs[i*2], inputs[i*2 + 1], inputs[i*2], inputs[i*2 + 1], 0]);
     }

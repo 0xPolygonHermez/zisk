@@ -26,12 +26,12 @@ impl ErrWrongArguments {
 impl fmt::Display for ZiskEmulatorErr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ZiskEmulatorErr::WrongArguments(e) => write!(f, "{}", e),
+            ZiskEmulatorErr::WrongArguments(e) => write!(f, "{e}"),
             ZiskEmulatorErr::AddressOutOfRange(addr) => {
-                write!(f, "Address out of range: {:#x}", addr)
+                write!(f, "Address out of range: {addr:#x}")
             }
             ZiskEmulatorErr::EmulationNoCompleted => write!(f, "Emulation not completed"),
-            ZiskEmulatorErr::Unknown(code) => write!(f, "Error code {}", code),
+            ZiskEmulatorErr::Unknown(code) => write!(f, "Error code {code}"),
         }
     }
 }

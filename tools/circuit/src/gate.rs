@@ -10,7 +10,7 @@ use crate::{Pin, PinId, PinSource};
 #[derive(Clone, Debug)]
 pub struct Gate {
     pub op: GateOperation,
-    pub pins: [Pin; 4],
+    pub pins: [Pin; 5],
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -36,7 +36,13 @@ impl Gate {
         // Default gate is XOR
         Self {
             op: GateOperation::Xor,
-            pins: [Pin::new(PinId::A), Pin::new(PinId::B), Pin::new(PinId::C), Pin::new(PinId::D)],
+            pins: [
+                Pin::new(PinId::A),
+                Pin::new(PinId::B),
+                Pin::new(PinId::C),
+                Pin::new(PinId::D),
+                Pin::new(PinId::E),
+            ],
         }
     }
 
@@ -60,5 +66,8 @@ impl Gate {
 
         self.pins[PinId::D].source = PinSource::Gated;
         self.pins[PinId::D].bit = 0; // XOR(0,0,0) = 0
+
+        self.pins[PinId::E].source = PinSource::Gated;
+        self.pins[PinId::E].bit = 0;
     }
 }

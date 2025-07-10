@@ -13,8 +13,19 @@ use std::collections::HashMap;
 // The CSR precompiled addresses are defined in the `ZiskOS` `ziskos/entrypoint/src` files
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 
-const CSR_PRECOMPILED: [&str; 6] =
-    ["keccak", "arith256", "arith256_mod", "secp256k1_add", "secp256k1_dbl", "sha256"];
+const CSR_PRECOMPILED: [&str; 11] = [
+    "keccak",
+    "arith256",
+    "arith256_mod",
+    "secp256k1_add",
+    "secp256k1_dbl",
+    "sha256",
+    "bn254_curve_add",
+    "bn254_curve_dbl",
+    "bn254_complex_add",
+    "bn254_complex_sub",
+    "bn254_complex_mul",
+];
 const CSR_PRECOMPILED_ADDR_START: u32 = 0x800;
 const CSR_PRECOMPILED_ADDR_END: u32 = CSR_PRECOMPILED_ADDR_START + CSR_PRECOMPILED.len() as u32;
 const CSR_FCALL_ADDR_START: u32 = 0x8C0;
@@ -1407,7 +1418,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
         zib.ind_width(8);
         zib.store("ind", 0, false, false);
         zib.j(4, 4);
-        zib.verbose(&format!("Init Data {:08x}: {:08x}", o, v));
+        zib.verbose(&format!("Init Data {o:08x}: {v:08x}"));
         zib.build();
         rom.insts.insert(rom.next_init_inst_addr, zib);
         rom.next_init_inst_addr += 4;
@@ -1430,7 +1441,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
         zib.ind_width(8);
         zib.store("ind", 0, false, false);
         zib.j(4, 4);
-        zib.verbose(&format!("Init Data {:08x}: {:04x}", o, v));
+        zib.verbose(&format!("Init Data {o:08x}: {v:04x}"));
         zib.build();
         rom.insts.insert(rom.next_init_inst_addr, zib);
         rom.next_init_inst_addr += 4;
@@ -1447,7 +1458,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
         zib.ind_width(4);
         zib.store("ind", 0, false, false);
         zib.j(4, 4);
-        zib.verbose(&format!("Init Data {:08x}: {:04x}", o, v));
+        zib.verbose(&format!("Init Data {o:08x}: {v:04x}"));
         zib.build();
         rom.insts.insert(rom.next_init_inst_addr, zib);
         rom.next_init_inst_addr += 4;
@@ -1464,7 +1475,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
         zib.ind_width(2);
         zib.store("ind", 0, false, false);
         zib.j(4, 4);
-        zib.verbose(&format!("Init Data {:08x}: {:02x}", o, v));
+        zib.verbose(&format!("Init Data {o:08x}: {v:02x}"));
         zib.build();
         rom.insts.insert(rom.next_init_inst_addr, zib);
         rom.next_init_inst_addr += 4;
@@ -1481,7 +1492,7 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
         zib.ind_width(2);
         zib.store("ind", 0, false, false);
         zib.j(4, 4);
-        zib.verbose(&format!("Init Data {:08x}: {:x}", o, v));
+        zib.verbose(&format!("Init Data {o:08x}: {v:x}"));
         zib.build();
         rom.insts.insert(rom.next_init_inst_addr, zib);
         rom.next_init_inst_addr += 4;
@@ -1524,7 +1535,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.op("copyb").unwrap();
     zib.store("mem", CSR_ADDR as i64 + 0xF12, false, false);
     zib.j(4, 4);
-    zib.verbose(&format!("Set marchid: {:x}", ARCH_ID_ZISK));
+    zib.verbose(&format!("Set marchid: {ARCH_ID_ZISK:x}"));
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1537,7 +1548,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.op("copyb").unwrap();
     zib.store("mem", MTVEC as i64, false, false);
     zib.j(4, 4);
-    zib.verbose(&format!("Set mtvec: {}", trap_handler));
+    zib.verbose(&format!("Set mtvec: {trap_handler}"));
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1550,7 +1561,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.op("copyb").unwrap();
     zib.store("reg", 10, false, false);
     zib.j(0, 4);
-    zib.verbose(&format!("Set 1st Param (pInput): 0x{:08x}", INPUT_ADDR));
+    zib.verbose(&format!("Set 1st Param (pInput): 0x{INPUT_ADDR:08x}"));
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1563,7 +1574,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.op("copyb").unwrap();
     zib.store("reg", 11, false, false);
     zib.j(0, 4);
-    zib.verbose(&format!("Set 2nd Param (pOutput): 0x{:08x}", OUTPUT_ADDR));
+    zib.verbose(&format!("Set 2nd Param (pOutput): 0x{OUTPUT_ADDR:08x}"));
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1577,7 +1588,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.set_pc();
     zib.store_ra("reg", 1, false);
     zib.j(0, 4);
-    zib.verbose(&format!("CALL to entry: 0x{:08x}", addr));
+    zib.verbose(&format!("CALL to entry: 0x{addr:08x}"));
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
@@ -1693,7 +1704,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
 
     // :0030 -> add: reg12 = reg12 + 1, jump -16
     // Increase the register #12, i.e. the data chunk index, in 1 unit.
-    // Jump to the beginnig of the output data read loop
+    // Jump to the beginning of the output data read loop
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("reg", 12, false);
     zib.src_b("imm", 1, false);
@@ -1729,7 +1740,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.src_b("imm", CAUSE_EXIT, false);
     zib.op("eq").unwrap();
     zib.j(-36, 4);
-    zib.verbose(&format!("beq r17, {} # Check if is exit, jump to output, then end", CAUSE_EXIT));
+    zib.verbose(&format!("beq r17, {CAUSE_EXIT} # Check if is exit, jump to output, then end"));
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;

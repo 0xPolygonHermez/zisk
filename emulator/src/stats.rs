@@ -155,13 +155,13 @@ impl Stats {
 
         // First, log the cost constants
         output += "Cost definitions:\n";
-        output += &format!("    AREA_PER_SEC: {} steps\n", AREA_PER_SEC);
-        output += &format!("    COST_MEMA_R1: {:02} sec\n", COST_MEMA_R1);
-        output += &format!("    COST_MEMA_R2: {:02} sec\n", COST_MEMA_R2);
-        output += &format!("    COST_MEMA_W1: {:02} sec\n", COST_MEMA_W1);
-        output += &format!("    COST_MEMA_W2: {:02} sec\n", COST_MEMA_W2);
-        output += &format!("    COST_USUAL: {:02} sec\n", COST_USUAL);
-        output += &format!("    COST_STEP: {:02} sec\n", COST_STEP);
+        output += &format!("    AREA_PER_SEC: {AREA_PER_SEC} steps\n");
+        output += &format!("    COST_MEMA_R1: {COST_MEMA_R1:02} sec\n");
+        output += &format!("    COST_MEMA_R2: {COST_MEMA_R2:02} sec\n");
+        output += &format!("    COST_MEMA_W1: {COST_MEMA_W1:02} sec\n");
+        output += &format!("    COST_MEMA_W2: {COST_MEMA_W2:02} sec\n");
+        output += &format!("    COST_USUAL: {COST_USUAL:02} sec\n");
+        output += &format!("    COST_STEP: {COST_STEP:02} sec\n");
 
         // Calculate some aggregated counters to be used in the logs
         let total_mem_ops = self.mops.mread_na1
@@ -218,14 +218,13 @@ impl Stats {
         let total_cost = cost_main + cost_mem + cost_mem_align + total_opcode_cost + cost_usual;
 
         // Build the memory usage counters and cost values
-        output += &format!("\nTotal Cost: {:.2} sec\n", total_cost);
+        output += &format!("\nTotal Cost: {total_cost:.2} sec\n");
         output += &format!("    Main Cost: {:.2} sec {} steps\n", cost_main, self.steps);
-        output += &format!("    Mem Cost: {:.2} sec {} steps\n", cost_mem, total_mem_ops);
+        output += &format!("    Mem Cost: {cost_mem:.2} sec {total_mem_ops} steps\n");
         output +=
-            &format!("    Mem Align: {:.2} sec {} steps\n", cost_mem_align, total_mem_align_steps);
+            &format!("    Mem Align: {cost_mem_align:.2} sec {total_mem_align_steps} steps\n");
         output += &format!(
-            "    Opcodes: {:.2} sec {} steps ({} ops)\n",
-            total_opcode_cost, total_opcode_steps, total_opcodes
+            "    Opcodes: {total_opcode_cost:.2} sec {total_opcode_steps} steps ({total_opcodes} ops)\n"
         );
         output += &format!("    Usual: {:.2} sec {} steps\n", cost_usual, self.usual);
         let memory_reads = self.mops.mread_a + self.mops.mread_na1 + self.mops.mread_na2;
@@ -274,14 +273,14 @@ impl Stats {
         if total_regs == 0 {
             total_regs = 1;
         }
-        output += &format!("total regs = {}\n", total_regs);
+        output += &format!("total regs = {total_regs}\n");
         output += &format!("total steps = {}\n", self.steps);
         let regs_per_step = total_regs * 1000 / if self.steps == 0 { 1 } else { self.steps };
-        output += &format!("total regs / steps = {} %o\n", regs_per_step);
+        output += &format!("total regs / steps = {regs_per_step} %o\n");
 
         for (i, reg) in self.regs.iter().enumerate() {
             let per_thousand = reg * 1000 / total_regs;
-            output += &format!("reg[{}] = {} ({}%o)\n", i, reg, per_thousand);
+            output += &format!("reg[{i}] = {reg} ({per_thousand}%o)\n");
         }
 
         output

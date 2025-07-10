@@ -3,15 +3,11 @@
 //! This state machine handles binary extension-related operations, computes traces, and manages
 //! range checks and multiplicities for table rows based on the operations provided.
 
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc,
-};
+use std::sync::Arc;
 
 use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
-use log::info;
 
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
@@ -49,8 +45,6 @@ pub struct BinaryExtensionSM<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> BinaryExtensionSM<F> {
-    const MY_NAME: &'static str = "BinaryE ";
-
     /// Creates a new instance of the `BinaryExtensionSM`.
     ///
     /// # Arguments
@@ -64,7 +58,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         std: Arc<Std<F>>,
         binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
     ) -> Arc<Self> {
-        let range_id = std.get_range(1, 0x1000000, None);
+        let range_id = std.get_range(0, 0xFFFFFF, None);
 
         Arc::new(Self { std, binary_extension_table_sm, range_id })
     }
@@ -81,7 +75,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
 
             ZiskOp::SignExtendB | ZiskOp::SignExtendH | ZiskOp::SignExtendW => false,
 
-            _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={:?}", opcode),
+            _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={opcode:?}"),
         }
     }
 
@@ -97,7 +91,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             | ZiskOp::SignExtendH
             | ZiskOp::SignExtendW => false,
 
-            _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={:?}", opcode),
+            _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={opcode:?}"),
         }
     }
 
@@ -113,7 +107,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     pub fn process_slice(
         &self,
         input: &BinaryInput,
-        multiplicity: &[AtomicU64],
+        binary_extension_table_sm: &BinaryExtensionTableSM,
     ) -> BinaryExtensionTraceRow<F> {
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
@@ -306,12 +300,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 *a_byte as u64,
                 in2_low,
             );
-            multiplicity[row as usize].fetch_add(1, Ordering::Relaxed);
-        }
-
-        // Store the range check
-        if op_is_shift {
-            self.std.range_check(in2_0 as i64 + 1, 1, self.range_id);
+            binary_extension_table_sm.update_multiplicity(row, 1);
         }
 
         // Return successfully
@@ -325,8 +314,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` representing the computed witness.
-    pub fn compute_witness(&self, inputs: &[Vec<BinaryInput>]) -> AirInstance<F> {
-        let mut binary_e_trace = BinaryExtensionTrace::new();
+    pub fn compute_witness(
+        &self,
+        inputs: &[Vec<BinaryInput>],
+        trace_buffer: Vec<F>,
+    ) -> AirInstance<F> {
+        let mut binary_e_trace = BinaryExtensionTrace::new_from_vec(trace_buffer);
 
         let num_rows = binary_e_trace.num_rows();
 
@@ -339,9 +332,8 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             BinaryExtensionTrace::<usize>::NUM_ROWS
         );
 
-        info!(
-            "{}: ··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
+        tracing::info!(
+            "··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,
             total_inputs as f64 / num_rows as f64 * 100.0
@@ -350,7 +342,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         // Split the binary_e_trace.buffer into slices matching each inner vector’s length.
         let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
         let mut slices = Vec::with_capacity(inputs.len());
-        let mut rest = binary_e_trace.buffer.as_mut_slice();
+        let mut rest = binary_e_trace.row_slice_mut();
         for size in sizes {
             let (head, tail) = rest.split_at_mut(size);
             slices.push(head);
@@ -359,20 +351,32 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
 
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
         slices.into_par_iter().enumerate().for_each(|(i, slice)| {
-            slice.iter_mut().enumerate().for_each(|(j, cell)| {
-                *cell = self.process_slice(
-                    &inputs[i][j],
-                    self.binary_extension_table_sm.detach_multiplicity(),
-                );
+            slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
+                *trace_row = self.process_slice(&inputs[i][j], &self.binary_extension_table_sm);
             });
         });
+
+        // Iterate over all inputs and check opcode
+        // to update multiplicity for the corresponding table row.
+        for row in inputs.iter() {
+            for input in row.iter() {
+                let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
+                let op_is_shift = Self::opcode_is_shift(opcode);
+                if op_is_shift {
+                    let row = (input.b >> 8) & 0xFFFFFF;
+                    self.std.range_check(row as i64, 1, self.range_id);
+                }
+            }
+        }
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
         let padding_row =
             BinaryExtensionTraceRow::<F> { op: F::from_u8(SE_W_OP), ..Default::default() };
 
-        binary_e_trace.buffer[total_inputs..num_rows].fill(padding_row);
+        binary_e_trace.row_slice_mut()[total_inputs..num_rows]
+            .par_iter_mut()
+            .for_each(|slot| *slot = padding_row);
 
         let padding_size = num_rows - total_inputs;
         for i in 0..8 {

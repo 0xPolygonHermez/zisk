@@ -4,8 +4,7 @@
 
 use std::sync::Arc;
 
-use log::info;
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
@@ -21,8 +20,6 @@ pub struct BinaryAddSM<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> BinaryAddSM<F> {
-    const MY_NAME: &'static str = "BinaryAdd";
-
     /// Creates a new BinaryAdd State Machine instance.
     ///
     /// # Arguments
@@ -47,7 +44,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// # Returns
     /// A `BinaryAddTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice(&self, input: &[u64; 2]) -> BinaryAddTraceRow<F> {
+    pub fn process_slice(&self, input: &[u64; 2]) -> (BinaryAddTraceRow<F>, [u64; 4]) {
         // Create an empty trace
         let mut row: BinaryAddTraceRow<F> = Default::default();
 
@@ -56,6 +53,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         let mut b = input[1];
         let mut cin = 0;
 
+        let mut range_checks = [0u64; 4];
         for i in 0..2 {
             let _a = a & 0xFFFF_FFFF;
             let _b = b & 0xFFFF_FFFF;
@@ -73,8 +71,8 @@ impl<F: PrimeField64> BinaryAddSM<F> {
                 row.cout[i] = F::ZERO;
                 cin = 0
             };
-            self.std.range_check(c_chunks[0] as i64, 1, self.range_id);
-            self.std.range_check(c_chunks[1] as i64, 1, self.range_id);
+            range_checks[i * 2] = c_chunks[0];
+            range_checks[i * 2 + 1] = c_chunks[1];
             a >>= 32;
             b >>= 32;
         }
@@ -82,7 +80,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         row.multiplicity = F::ONE;
 
         // Return
-        row
+        (row, range_checks)
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
@@ -92,45 +90,57 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(&self, inputs: &[Vec<[u64; 2]>]) -> AirInstance<F> {
-        let mut add_trace = BinaryAddTrace::new();
+    pub fn compute_witness(
+        &self,
+        inputs: &[Vec<[u64; 2]>],
+        trace_buffer: Vec<F>,
+    ) -> AirInstance<F> {
+        let mut add_trace = BinaryAddTrace::new_from_vec(trace_buffer);
 
         let num_rows = add_trace.num_rows();
 
         let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
         assert!(total_inputs <= num_rows);
 
-        info!(
-            "{}: ··· Creating BinaryAdd instance [{} / {} rows filled {:.2}%]",
-            Self::MY_NAME,
+        tracing::info!(
+            "··· Creating BinaryAdd instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,
             total_inputs as f64 / num_rows as f64 * 100.0
         );
 
         // Split the add_e_trace.buffer into slices matching each inner vector’s length.
-        let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
-        let mut slices = Vec::with_capacity(inputs.len());
-        let mut rest = add_trace.buffer.as_mut_slice();
-        for size in sizes {
-            let (head, tail) = rest.split_at_mut(size);
-            slices.push(head);
-            rest = tail;
-        }
+        let flat_inputs: Vec<_> = inputs.iter().flatten().collect();
+        let trace_rows = add_trace.row_slice_mut();
+        let mut range_checks: Vec<[u64; 4]> = vec![[0u64; 4]; flat_inputs.len()];
 
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
-        slices.into_par_iter().enumerate().for_each(|(i, slice)| {
-            //let std = self.std.clone();
-            slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
-                *trace_row = self.process_slice(&inputs[i][j]);
+        flat_inputs
+            .into_par_iter()
+            .zip(trace_rows.par_iter_mut())
+            .zip(range_checks.par_iter_mut())
+            .for_each(|((input, trace_row), range_check)| {
+                let (row, checks) = self.process_slice(input);
+                *trace_row = row;
+                *range_check = checks;
             });
-        });
+
+        let mut multiplicities = vec![0u32; 0xFFFF + 1];
+        for range_check in range_checks {
+            multiplicities[range_check[0] as usize] += 1;
+            multiplicities[range_check[1] as usize] += 1;
+            multiplicities[range_check[2] as usize] += 1;
+            multiplicities[range_check[3] as usize] += 1;
+        }
+        multiplicities[0] += 4 * (num_rows - total_inputs) as u32;
+
+        self.std.range_checks(multiplicities, self.range_id);
+
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
-        let padding_row = BinaryAddTraceRow::<F> { ..Default::default() };
-
-        add_trace.buffer[total_inputs..num_rows].fill(padding_row);
-        self.std.range_check(0, 4 * (num_rows - total_inputs) as u64, self.range_id);
+        add_trace.row_slice_mut()[total_inputs..num_rows]
+            .par_iter_mut()
+            .for_each(|slot| *slot = BinaryAddTraceRow::<F> { ..Default::default() });
 
         AirInstance::new_from_trace(FromTrace::new(&mut add_trace))
     }

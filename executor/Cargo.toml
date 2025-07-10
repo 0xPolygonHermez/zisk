@@ -17,18 +17,20 @@ zisk-core = { path = "../core" }
 zisk-common = { path = "../common" }
 data-bus = { path = "../data-bus" }
 asm-runner = { path = "../emulator-asm/asm-runner" }
+mem-planner-cpp = { path = "../state-machines/mem-cpp" }
 
 proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 witness = { workspace = true }
-p3-field = { workspace=true }
-log = { workspace = true }
+fields = { workspace=true }
+tracing = { workspace = true }
 itertools = { workspace = true }
 rayon = { workspace = true }
 pil-std-lib = { workspace = true }
 
 [features]
 default = []
-disable-distributed = ["proofman-common/disable-distributed"]
+disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
 gpu = ["proofman-common/gpu", "proofman/gpu" ]
+stats = []

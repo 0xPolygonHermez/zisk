@@ -5,7 +5,7 @@
 //! execution plans.
 
 use crate::{BinaryBasicCollector, BinaryBasicSM};
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::{
@@ -25,6 +25,12 @@ pub struct BinaryBasicInstance {
 
     /// Instance context.
     ictx: InstanceCtx,
+
+    /// Indicates whether the instance should include ADD operations.
+    with_adds: bool,
+
+    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
+    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
 }
 
 impl BinaryBasicInstance {
@@ -37,12 +43,25 @@ impl BinaryBasicInstance {
     /// # Returns
     /// A new `BinaryBasicInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, ictx: InstanceCtx) -> Self {
-        Self { binary_basic_sm, ictx }
+    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, mut ictx: InstanceCtx) -> Self {
+        assert_eq!(
+            ictx.plan.air_id,
+            BinaryTrace::<usize>::AIR_ID,
+            "BinaryBasicInstance: Unsupported air_id: {:?}",
+            ictx.plan.air_id
+        );
+
+        let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
+
+        let (with_adds, collect_info) = *meta
+            .downcast::<(bool, HashMap<ChunkId, (u64, CollectSkipper)>)>()
+            .expect("Failed to downcast ictx.plan.meta to expected type");
+
+        Self { binary_basic_sm, ictx, with_adds, collect_info }
     }
 }
 
-impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
+impl<F: PrimeField64> Instance<F> for BinaryBasicInstance {
     /// Computes the witness for the binary execution plan.
     ///
     /// This method leverages the `BinaryBasicSM` to generate an `AirInstance` using the collected
@@ -56,10 +75,11 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -68,7 +88,7 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
             })
             .collect();
 
-        Some(self.binary_basic_sm.compute_witness(&inputs))
+        Some(self.binary_basic_sm.compute_witness(&inputs, trace_buffer))
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -95,17 +115,7 @@ impl<F: PrimeField> Instance<F> for BinaryBasicInstance {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        assert_eq!(
-            self.ictx.plan.air_id,
-            BinaryTrace::<F>::AIR_ID,
-            "BinaryBasicInstance: Unsupported air_id: {:?}",
-            self.ictx.plan.air_id
-        );
-
-        let meta = self.ictx.plan.meta.as_ref().unwrap();
-        let (with_adds, collect_info) =
-            meta.downcast_ref::<(bool, HashMap<ChunkId, (u64, CollectSkipper)>)>().unwrap();
-        let (num_ops, collect_skipper) = collect_info[&chunk_id];
-        Some(Box::new(BinaryBasicCollector::new(num_ops as usize, collect_skipper, *with_adds)))
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
+        Some(Box::new(BinaryBasicCollector::new(num_ops as usize, collect_skipper, self.with_adds)))
     }
 }

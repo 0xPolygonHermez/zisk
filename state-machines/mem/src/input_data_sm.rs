@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use crate::{MemInput, MemModule, MemPreviousSegment, MEMORY_MAX_DIFF, MEM_BYTES_BITS};
+use crate::{MemInput, MemModule, MemPreviousSegment, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
 
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_common::SegmentId;
@@ -63,8 +63,9 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         segment_id: SegmentId,
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
+        trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = InputDataTrace::<F>::new();
+        let mut trace = InputDataTrace::<F>::new_from_vec(trace_buffer);
 
         debug_assert!(
             !mem_ops.is_empty() && mem_ops.len() <= trace.num_rows(),
@@ -73,15 +74,11 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             trace.num_rows()
         );
 
-        let mut range_check_data = Box::new([0u64; 1 << 16]);
+        let mut range_check_data: Vec<u32> = vec![0; 1 << 16];
 
         // range of instance
-        let range_id = self.std.get_range(1, MEMORY_MAX_DIFF as i64, None);
-        self.std.range_check(
-            (previous_segment.addr - INPUT_DATA_W_ADDR_INIT + 1) as i64,
-            1,
-            range_id,
-        );
+        let range_id = self.std.get_range(0, SEGMENT_ADDR_MAX_RANGE as i64, None);
+        self.std.range_check((previous_segment.addr - INPUT_DATA_W_ADDR_INIT) as i64, 1, range_id);
 
         let mut last_addr: u32 = previous_segment.addr;
         let mut last_step: u64 = previous_segment.step;
@@ -126,7 +123,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
 
                     i += 1;
                 }
-                range_check_data[0] += 4 * internal_reads as u64;
+                range_check_data[0] += 4 * internal_reads;
                 if incomplete {
                     break;
                 }
@@ -178,21 +175,15 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             trace[i].addr_changes = F::ZERO;
         }
 
-        self.std.range_check((INPUT_DATA_W_ADDR_END - last_addr + 1) as i64, 1, range_id);
+        self.std.range_check((INPUT_DATA_W_ADDR_END - last_addr) as i64, 1, range_id);
 
         // range of chunks
         let range_id = self.std.get_range(0, (1 << 16) - 1, None);
-        for (value, &multiplicity) in range_check_data.iter().enumerate() {
-            if multiplicity == 0 {
-                continue;
-            }
-
-            self.std.range_check(value as i64, multiplicity, range_id);
-        }
         for value_chunk in &value {
             let value = value_chunk.as_canonical_u64();
-            self.std.range_check(value as i64, padding_size as u64, range_id);
+            range_check_data[value as usize] += padding_size as u32;
         }
+        self.std.range_checks(range_check_data, range_id);
 
         let mut air_values = InputDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());

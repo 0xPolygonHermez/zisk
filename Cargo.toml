@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.8.1"
+version = "0.9.0"
 edition = "2021"
 license = "Apache-2.0 or MIT"
 keywords = ["zisk", "zkvm", "zero-knowledge"]
@@ -20,6 +20,7 @@ members = [
     "state-machines/binary",
     "state-machines/main",
     "state-machines/mem",
+    "state-machines/mem-cpp",
     "state-machines/rom",
     "witness-computation",
     "ziskos/entrypoint",
@@ -32,6 +33,7 @@ members = [
     "ziskclib",
     "common",
     "tools/circuit",
+    "server",
 ]
 
 resolver = "2"
@@ -43,12 +45,13 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.8.1"}
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.8.1" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.8.1" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.8.1" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.8.1" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.8.1" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.9.0"}
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.9.0"}
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.9.0"}
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.9.0"}
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.9.0"}
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.9.0"}
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.9.0"}
 # Local development
 # proofman = { path = "../pil2-proofman/proofman" }
 # proofman-common = { path = "../pil2-proofman/common" }
@@ -56,10 +59,8 @@ witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = 
 # proofman-util = { path = "../pil2-proofman/util" }
 # pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
 # witness = { path = "../pil2-proofman/witness" }
+# fields = { path = "../pil2-proofman/fields" }
 
-p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "f00191a5303f2ff6ec99b9889aa66bee9f1f66ac" }
-p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "f00191a5303f2ff6ec99b9889aa66bee9f1f66ac" }
-log = "0.4"
 rayon = "1.10"
 num-bigint = "0.4"
 num-traits = "0.2"
@@ -68,6 +69,13 @@ colored = "3"
 ark-ff = "0.5.0"
 ark-std = "0.5.0"
 ark-secp256k1 = "0.5"
+ark-bn254 = "0.5.0"
 sysinfo = "0.35.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
+anyhow = "1.0"
+libloading = "0.8"
+named-sem = "0.2.2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+mpi = { version = "0.8.0" }

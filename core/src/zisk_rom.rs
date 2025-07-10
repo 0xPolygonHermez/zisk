@@ -44,7 +44,7 @@
 //!     index `(pc-ROM_ENTRY)/4`
 use std::collections::HashMap;
 
-use p3_field::PrimeField;
+use fields::PrimeField64;
 use zisk_pil::MainTraceRow;
 
 use crate::{ZiskInst, ZiskInstBuilder, ROM_ADDR, ROM_ENTRY};
@@ -157,7 +157,7 @@ impl ZiskRom {
             // pc is in the ROM_ENTRY range (always alligned)
             &self.rom_entry_instructions[((pc - ROM_ENTRY) >> 2) as usize]
         } else {
-            panic!("ZiskRom::get_instruction() pc={} is out of range", pc);
+            panic!("ZiskRom::get_instruction() pc={pc} is out of range");
         }
     }
 
@@ -200,12 +200,12 @@ impl ZiskRom {
             // pc is in the ROM_ENTRY range (always alligned)
             &mut self.rom_entry_instructions[((pc - ROM_ENTRY) >> 2) as usize]
         } else {
-            panic!("ZiskRom::get_mut_instruction() pc={} is out of range", pc);
+            panic!("ZiskRom::get_mut_instruction() pc={pc} is out of range");
         }
     }
 
     /// Saves ZisK rom into an i86-64 assembly data string
-    pub fn build_constant_trace<F: PrimeField>(&self) -> Vec<MainTraceRow<F>> {
+    pub fn build_constant_trace<F: PrimeField64>(&self) -> Vec<MainTraceRow<F>> {
         let mut result: Vec<MainTraceRow<F>> = Vec::with_capacity(self.sorted_pc_list.len());
         #[allow(clippy::uninit_vec)]
         unsafe {

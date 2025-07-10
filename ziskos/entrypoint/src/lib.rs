@@ -6,7 +6,7 @@ mod fcall;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub use fcall::*;
 
-mod zisklib;
+pub mod zisklib;
 pub use zisklib::*;
 
 mod syscalls;
@@ -100,7 +100,7 @@ pub fn set_output(id: usize, value: u32) {
 
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 pub fn set_output(id: usize, value: u32) {
-    println!("public {}: {:#010x}", id, value);
+    println!("public {id}: {value:#010x}");
 }
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]

@@ -1,17 +1,14 @@
 // extern crate env_logger;
-use crate::commands::{cli_fail_if_macos, Field};
+use crate::commands::{cli_fail_if_macos, get_proving_key, Field};
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
-use proofman_common::{initialize_logger, DebugInfo};
 use std::path::PathBuf;
 
-use p3_goldilocks::Goldilocks;
+use fields::Goldilocks;
 
 use proofman::ProofMan;
-use proofman_common::{ProofOptions, VerboseMode};
-
-use super::get_default_proving_key;
+use proofman_common::VerboseMode;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -40,31 +37,33 @@ impl ZiskCheckSetup {
 
         let verbose_mode = VerboseMode::Debug;
 
-        initialize_logger(verbose_mode);
-
-        match self.field {
-            Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
-                self.get_proving_key(),
-                ProofOptions::new(
-                    false,
-                    verbose_mode,
+        #[cfg(distributed)]
+        {
+            match self.field {
+                Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
+                    get_proving_key(self.proving_key.as_ref()),
                     self.aggregation,
                     self.final_snark,
-                    false,
-                    DebugInfo::default(),
-                ),
-            )
-            .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
-        };
+                    verbose_mode,
+                    None,
+                )
+                .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
+            };
+        }
+
+        #[cfg(not(distributed))]
+        {
+            match self.field {
+                Field::Goldilocks => ProofMan::<Goldilocks>::check_setup(
+                    get_proving_key(self.proving_key.as_ref()),
+                    self.aggregation,
+                    self.final_snark,
+                    verbose_mode,
+                )
+                .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?,
+            };
+        }
 
         Ok(())
-    }
-
-    pub fn get_proving_key(&self) -> PathBuf {
-        if self.proving_key.is_none() {
-            get_default_proving_key()
-        } else {
-            self.proving_key.clone().unwrap()
-        }
     }
 }

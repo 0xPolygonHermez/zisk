@@ -26,21 +26,20 @@ ziskemu = { path = "../emulator" }
 zisk-core = { path = "../core" }
 zisk-common = { path = "../common" }
 
-
+proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 proofman-macros = { workspace = true }
 witness = { workspace = true }
-p3-field = { workspace=true }
+fields = { workspace=true }
 pil-std-lib = { workspace = true }
-log = { workspace = true }
+tracing = { workspace = true }
 
 env_logger = "0.11"
-p3-goldilocks = { workspace = true}
 rayon = { workspace = true }
 
 [features]
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
-diagnostic = ["proofman-macros/diagnostic"]
-disable-distributed = ["proofman-common/disable-distributed"]
+diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
+disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]

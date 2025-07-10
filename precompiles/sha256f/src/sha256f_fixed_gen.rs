@@ -1,8 +1,7 @@
 use std::{collections::HashMap, error::Error, fs};
 
 use clap::{Arg, Command};
-use p3_field::PrimeCharacteristicRing;
-use p3_goldilocks::Goldilocks;
+use fields::{Field, Goldilocks, PrimeField64};
 use serde::de::DeserializeOwned;
 
 use zisk_pil::Sha256fTrace;
@@ -21,7 +20,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .version(env!("CARGO_PKG_VERSION"))
         .arg(
             Arg::new("gates")
-                .short('c')
+                .short('g')
                 .long("gates")
                 .value_name("gates_path")
                 .help("Path to the gates JSON file")
@@ -70,8 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         &mut [conn_a, conn_b, conn_c, conn_d, gate_op, carry_enabled],
     );
     println!(
-        "CONN_A, CONN_B, CONN_C, CONN_D, GATE_OP and CARRY_ENABLED columns written to {}",
-        output_file
+        "CONN_A, CONN_B, CONN_C, CONN_D, GATE_OP and CARRY_ENABLED columns written to {output_file}"
     );
 
     Ok(())

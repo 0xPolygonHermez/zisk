@@ -134,7 +134,7 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
         rom.sorted_pc_list.push(addr);
 
         if addr < ROM_ENTRY {
-            return Err(format!("Address out of range: {}", addr).into());
+            return Err(format!("Address out of range: {addr}").into());
         } else if addr < ROM_ADDR {
             if addr % 4 != 0 {
                 // When an address is not 4 bytes aligned, it is considered a
@@ -156,7 +156,7 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
                 max_rom_instructions = max_rom_instructions.max(addr);
             }
         } else {
-            return Err(format!("Address out of range: {}", addr).into());
+            return Err(format!("Address out of range: {addr}").into());
         }
     }
     rom.max_bios_pc = max_rom_entry;
@@ -216,9 +216,10 @@ pub fn elf2romfile(
     asm_file: &Path,
     generation_method: AsmGenerationMethod,
     log_output: bool,
+    comments: bool,
 ) -> Result<(), Box<dyn Error>> {
     let rom = elf2rom(elf_file)?;
-    ZiskRom2Asm::save_to_asm_file(&rom, asm_file, generation_method, log_output);
+    ZiskRom2Asm::save_to_asm_file(&rom, asm_file, generation_method, log_output, comments);
 
     Ok(())
 }

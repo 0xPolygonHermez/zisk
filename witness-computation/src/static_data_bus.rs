@@ -2,7 +2,6 @@
 //! system. Subscribers, referred to as `BusDevice`, can listen to specific bus IDs or act as
 //! omnipresent devices that process all data sent to the bus. This module provides mechanisms to
 //! send data, route it to the appropriate subscribers, and manage device connections.
-
 use std::collections::VecDeque;
 
 use data_bus::DataBusTrait;
@@ -14,6 +13,10 @@ use sm_binary::BinaryCounter;
 use sm_main::MainCounter;
 use sm_mem::MemCounters;
 use zisk_common::{BusDevice, BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
+use zisk_core::{
+    ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID,
+    KECCAK_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID, SHA256_OP_TYPE_ID,
+};
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
 ///
@@ -25,6 +28,9 @@ use zisk_common::{BusDevice, BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, O
 /// * `BD` - The type of devices (subscribers) connected to the bus, implementing the `BusDevice`
 ///   trait.
 pub struct StaticDataBus<D> {
+    /// Flag indicating whether the bus should only process operation bus related data.
+    process_only_operation_bus: bool,
+
     /// List of devices connected to the bus.
     pub main_counter: MainCounter,
     pub mem_counter: MemCounters,
@@ -41,6 +47,7 @@ pub struct StaticDataBus<D> {
 impl StaticDataBus<PayloadType> {
     /// Creates a new `DataBus` instance.
     pub fn new(
+        process_only_operation_bus: bool,
         mem_counter: MemCounters,
         binary_counter: BinaryCounter,
         arith_counter: ArithCounterInputGen,
@@ -49,6 +56,7 @@ impl StaticDataBus<PayloadType> {
         arith_eq_counter: ArithEqCounterInputGen,
     ) -> Self {
         Self {
+            process_only_operation_bus,
             main_counter: MainCounter::new(),
             mem_counter,
             binary_counter,
@@ -68,32 +76,45 @@ impl StaticDataBus<PayloadType> {
     #[inline(always)]
     fn route_data(&mut self, bus_id: BusId, payload: &[PayloadType]) {
         match bus_id {
-            // Handle specific bus IDs
             MEM_BUS_ID => {
-                if let Some(result) = self.mem_counter.process_data(&bus_id, payload) {
-                    self.pending_transfers.extend(result);
+                if !self.process_only_operation_bus {
+                    // If we are not processing only operation bus, we process memory bus data.
+                    self.mem_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
                 }
             }
-            OPERATION_BUS_ID => {
-                if let Some(result) = self.main_counter.process_data(&bus_id, payload) {
-                    self.pending_transfers.extend(result);
+            OPERATION_BUS_ID => match payload[1] as u32 {
+                PUB_OUT_OP_TYPE_ID => {
+                    self.main_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
                 }
-                if let Some(result) = self.binary_counter.process_data(&bus_id, payload) {
-                    self.pending_transfers.extend(result);
+                BINARY_OP_TYPE_ID | BINARY_E_OP_TYPE_ID => {
+                    self.binary_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
                 }
-                if let Some(result) = self.arith_counter.process_data(&bus_id, payload) {
-                    self.pending_transfers.extend(result);
+                ARITH_OP_TYPE_ID => {
+                    self.arith_counter.process_data(&bus_id, payload, &mut self.pending_transfers);
                 }
-                if let Some(result) = self.keccakf_counter.process_data(&bus_id, payload) {
-                    self.pending_transfers.extend(result);
+                KECCAK_OP_TYPE_ID => {
+                    self.keccakf_counter.process_data(
+                        &bus_id,
+                        payload,
+                        &mut self.pending_transfers,
+                    );
                 }
-                if let Some(result) = self.sha256f_counter.process_data(&bus_id, payload) {
-                    self.pending_transfers.extend(result);
+                SHA256_OP_TYPE_ID => {
+                    self.sha256f_counter.process_data(
+                        &bus_id,
+                        payload,
+                        &mut self.pending_transfers,
+                    );
                 }
-                if let Some(result) = self.arith_eq_counter.process_data(&bus_id, payload) {
-                    self.pending_transfers.extend(result);
+                ARITH_EQ_OP_TYPE_ID => {
+                    self.arith_eq_counter.process_data(
+                        &bus_id,
+                        payload,
+                        &mut self.pending_transfers,
+                    );
                 }
-            }
+                _ => {}
+            },
             _ => (),
         }
     }
@@ -105,7 +126,7 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
         self.route_data(bus_id, payload);
 
         while let Some((bus_id, payload)) = self.pending_transfers.pop_front() {
-            self.route_data(bus_id, &payload)
+            self.route_data(bus_id, &payload);
         }
     }
 
@@ -119,12 +140,16 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
         self.arith_eq_counter.on_close();
     }
 
-    fn into_devices(mut self, execute_on_close: bool) -> Vec<Option<Box<dyn BusDeviceMetrics>>> {
+    fn into_devices(
+        mut self,
+        execute_on_close: bool,
+    ) -> Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> {
         if execute_on_close {
             self.on_close();
         }
 
         let StaticDataBus {
+            process_only_operation_bus: _,
             main_counter,
             mem_counter,
             binary_counter,
@@ -135,15 +160,16 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
             pending_transfers: _,
         } = self;
 
-        let counters: Vec<Option<Box<dyn BusDeviceMetrics>>> = vec![
-            Some(Box::new(main_counter)),
-            Some(Box::new(mem_counter)),
-            None,
-            Some(Box::new(binary_counter)),
-            Some(Box::new(arith_counter)),
-            Some(Box::new(keccakf_counter)),
-            Some(Box::new(sha256f_counter)),
-            Some(Box::new(arith_eq_counter)),
+        #[allow(clippy::type_complexity)]
+        let counters: Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> = vec![
+            (None, Some(Box::new(main_counter))),
+            (None, Some(Box::new(mem_counter))),
+            (None, None),
+            (None, Some(Box::new(binary_counter))),
+            (None, Some(Box::new(arith_counter))),
+            (None, Some(Box::new(keccakf_counter))),
+            (None, Some(Box::new(sha256f_counter))),
+            (None, Some(Box::new(arith_eq_counter))),
         ];
 
         counters
