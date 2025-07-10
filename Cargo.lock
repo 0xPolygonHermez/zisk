@@ -2393,6 +2393,7 @@ dependencies = [
  "ark-ff",
  "ark-secp256k1",
  "ark-std",
+ "cfg-if",
  "circuit",
  "lib-c",
  "num-bigint",
