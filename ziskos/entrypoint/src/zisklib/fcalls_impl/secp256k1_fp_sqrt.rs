@@ -7,7 +7,7 @@ cfg_if::cfg_if! {
             let parity = params[4];
 
             // Perform the square root
-            let res_c_call = secp256k1_fp_parity_sqrt_c(&input, parity, results);
+            let res_c_call = secp256k1_fp_parity_sqrt_c(input, parity, results);
             if res_c_call == 0 {
                 5
             } else {
