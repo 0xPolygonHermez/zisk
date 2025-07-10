@@ -1,7 +1,6 @@
 use zisk_common::Plan;
 
 use std::fmt::Debug;
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -20,7 +19,6 @@ unsafe impl Sync for AsmRunnerMO {}
 impl AsmRunnerMO {
     pub fn run(
         _: Arc<Mutex<Option<AsmSharedMemory<AsmMOHeader>>>>,
-        _: &Path,
         _: u64,
         _: u64,
         _: i32,

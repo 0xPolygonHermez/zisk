@@ -1,6 +1,5 @@
 use std::{
     ffi::c_void,
-    path::Path,
     sync::{Arc, Mutex},
 };
 
@@ -28,7 +27,6 @@ impl AsmRunnerRH {
 
     pub fn run(
         _: Arc<Mutex<Option<AsmSharedMemory<AsmRHHeader>>>>,
-        _: &Path,
         _: u64,
         _: i32,
         _: i32,
