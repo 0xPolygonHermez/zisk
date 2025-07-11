@@ -9,7 +9,7 @@ const int KECCAKF_OP = 0xF1;
 
 airtemplate Keccakf(const int N, const int chunks, const int bits, const int RC, const int RB, const int mem_bits_in_parallel, const int operation_bus_id) {
     // Keccak-f circuit size
-    const int CIRCUIT_SIZE = 101526;
+    const int CIRCUIT_SIZE = 93846;
     println(`The size of the Keccak-f circuit is ${CIRCUIT_SIZE}`);
 
     // Ensure that the keccak-f circuit fits
@@ -137,6 +137,9 @@ airtemplate Keccakf(const int N, const int chunks, const int bits, const int RC,
     const int INPUT_BITS = 1600;
     const int OUTPUT_BITS = INPUT_BITS;
     const int INPUT_OUTPUT_BITS = INPUT_BITS + OUTPUT_BITS;
+    if ((INPUT_BITS % mem_bits_in_parallel != 0) || (OUTPUT_BITS % mem_bits_in_parallel != 0)) {
+        error(`mem_bits_in_parallel=${mem_bits_in_parallel} must be a multiple of INPUT_BITS=${INPUT_BITS} and OUTPUT_BITS=${OUTPUT_BITS}`);
+    }
 
     // Bitwise decomposition
     const int INPUT_SIZE = INPUT_BITS * NUM_KECCAKF_PER_CIRCUIT / mem_bits_in_parallel;
@@ -245,12 +248,12 @@ airtemplate Keccakf(const int N, const int chunks, const int bits, const int RC,
     const int RB_OFFSET = RB / mem_bits_in_parallel;
     for (int i = 0; i < RB; i++) {
         const int keccakf_val_bit = i % mem_bits_in_parallel;
-        const int keccakf_val_idx = (i - keccakf_val_bit) / mem_bits_in_parallel;
+        const int keccakf_val_idx = i / mem_bits_in_parallel;
         for (int j = 0; j < RC; j++) {
             keccakf_val[j] += bit[keccakf_val_bit]'(NUM_KECCAKF_PER_CIRCUIT*(RB_OFFSET * j + keccakf_val_idx)) * 2**i;
         }
     }
-    // Example with NUM_KECCAKF_PER_CIRCUIT = 63
+    // Example with NUM_KECCAKF_PER_CIRCUIT = 63 and mem_bits_in_parallel = 2:
     // keccakf_val[0] = bit[0]        + bit[1]·2        + bit[0]'(63)·2²   + bit[1]'(63)·2³   + ... + bit[0]'(945)·2³⁰  + bit[1]'(945)·2³¹
     // keccakf_val[1] = bit[0]'(1008) + bit[1]'(1008)·2 + bit[0]'(1071)·2² + bit[1]'(1071)·2³ + ... + bit[0]'(1890)·2³⁰ + bit[1]'(1890)·2³¹
 
@@ -260,6 +263,9 @@ airtemplate Keccakf(const int N, const int chunks, const int bits, const int RC,
     const int OUT_BLOCKS = OUTPUT_BITS / MEM_BITS;
     const int IN_OUT_BLOCKS = IN_BLOCKS + OUT_BLOCKS;
     const int MEM_SIZE = MEM_BITS * NUM_KECCAKF_PER_CIRCUIT / mem_bits_in_parallel;
+    if ((RB % mem_bits_in_parallel != 0) || (MEM_BITS % mem_bits_in_parallel != 0)) {
+        error(`mem_bits_in_parallel=${mem_bits_in_parallel} must be a multiple of RB=${RB} and MEM_BITS=${MEM_BITS}`);
+    }
 
     expr mem_value[2];
     mem_value[0] = clock_shift(keccakf_val[0], start: 0, end: IN_OUT_BLOCKS, shift: MEM_SIZE, factor: NUM_KECCAKF_PER_CIRCUIT);

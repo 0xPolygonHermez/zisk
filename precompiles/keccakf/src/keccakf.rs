@@ -34,6 +34,7 @@ pub struct KeccakfSM<F: PrimeField64> {
     /// Number of available keccakfs in the trace.
     pub num_available_keccakfs: usize,
 
+    /// Fixed columns for the Keccakf circuit.
     keccakf_fixed: KeccakfFixed<F>,
 }
 
@@ -56,6 +57,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let num_available_circuits = (KeccakfTrace::<usize>::NUM_ROWS - 1) / circuit_size;
         let num_available_keccakfs = NUM_KECCAKF_PER_CIRCUIT * num_available_circuits;
 
+        // Get the fixed columns
         let airgroup_id = KeccakfTrace::<usize>::AIRGROUP_ID;
         let air_id = KeccakfTrace::<usize>::AIR_ID;
         let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
@@ -473,20 +475,22 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
             // Update the multiplicity table for the circuit
             let mut multiplicity = vec![0; KeccakfTableTrace::<usize>::NUM_ROWS];
-            for (k, trace) in par_trace.iter().enumerate().take(self.circuit_size) {
-                let a = &trace.free_in_a;
-                let b = &trace.free_in_b;
+            for (k, row) in par_trace.iter().enumerate().take(self.circuit_size) {
+                let a = &row.free_in_a;
+                let b = &row.free_in_b;
+                let c = &row.free_in_c;
                 let gate_op = self.keccakf_fixed[k + 1 + i * self.circuit_size].GATE_OP;
                 let gate_op_val = match F::as_canonical_u64(&gate_op) {
                     0 => KeccakfTableGateOp::Xor,
-                    1 => KeccakfTableGateOp::Andp,
+                    1 => KeccakfTableGateOp::XorAndp,
                     _ => panic!("Invalid gate operation"),
                 };
 
                 for j in 0..CHUNKS_KECCAKF {
                     let a_val = F::as_canonical_u64(&a[j]);
                     let b_val = F::as_canonical_u64(&b[j]);
-                    let table_row = KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val);
+                    let c_val = F::as_canonical_u64(&c[j]);
+                    let table_row = KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val, c_val);
                     multiplicity[table_row] += 1;
                 }
             }

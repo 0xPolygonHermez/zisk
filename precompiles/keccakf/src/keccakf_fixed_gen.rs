@@ -73,8 +73,8 @@ fn cols_gen(subgroup_order: usize, subgroup_gen: u64, cosets_gen: u64) -> FixedC
     let keccakf_gates = keccakf_top.gates;
 
     // Check that the subgroup order is sufficiently large
-    let slot_size = keccakf_program.len();
-    if slot_size >= subgroup_order {
+    let circuit_size = keccakf_program.len();
+    if circuit_size >= subgroup_order {
         panic!("The provided number of bits {subgroup_order} is too small for the Keccakf circuit");
     }
 
@@ -188,7 +188,7 @@ fn cols_gen(subgroup_order: usize, subgroup_gen: u64, cosets_gen: u64) -> FixedC
 
             match op {
                 GateOperation::Xor => gate_op[line] = F::ZERO,
-                GateOperation::Andp => gate_op[line] = F::ONE,
+                GateOperation::XorAndp => gate_op[line] = F::ONE,
                 _ => panic!("Invalid op: {op:?}"),
             }
         }

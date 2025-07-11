@@ -57,9 +57,11 @@ pub fn keccak_f(s: &mut GateState) {
         let group_pos = i % s.gate_config.sout_ref_group_by;
         let ref_idx =
             s.gate_config.sout_first_ref + group * s.gate_config.sout_ref_distance + group_pos;
-        s.xor(
+        s.xor3(
             s.sout_refs[i as usize],
             PinId::D,
+            s.gate_config.zero_ref.unwrap(),
+            PinId::A,
             s.gate_config.zero_ref.unwrap(),
             PinId::A,
             ref_idx,

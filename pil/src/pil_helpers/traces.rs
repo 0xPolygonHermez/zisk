@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "1dbc59ce4adae31f543b874c331302e3b41f4111a32d375fb8abfdac21351608";
+pub const PILOUT_HASH: &str = "39d1d61b30f63c7c9e9e4c3a0ec44eff09b336807285cda86d1f34def9118627";
 
 //AIRGROUP CONSTANTS
 
@@ -251,7 +251,7 @@ trace!(KeccakfFixed<F> {
 },  0, 17, 4194304 );
 
 trace!(KeccakfTrace<F> {
- free_in_a: [F; 9], free_in_b: [F; 9], free_in_c: [F; 9], free_in_d: [F; 9], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
+ free_in_a: [F; 9], free_in_b: [F; 9], free_in_c: [F; 9], free_in_d: [F; 9], bit: [F; 4], val: [F; 4], step_addr: F, in_use_clk_0: F, in_use: F,
 },  0, 17, 4194304 );
 
 trace!(KeccakfTableFixed<F> {

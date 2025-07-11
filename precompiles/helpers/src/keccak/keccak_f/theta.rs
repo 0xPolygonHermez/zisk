@@ -112,27 +112,10 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
     }
 
     // Step 2: Compute D[x, z] = C[(x-1) mod 5, z] ^ C[(x+1) mod 5, (z–1) mod 64]
-    let mut d = [[0u64; 64]; 5];
-    for x in 0..5 {
-        for z in 0..64 {
-            let free_ref = s.get_free_ref();
-            d[x][z] = free_ref;
-            s.xor3(
-                c[(x + 4) % 5][z],
-                PinId::D,
-                c[(x + 1) % 5][(z + 63) % 64],
-                PinId::D,
-                s.gate_config.zero_ref.unwrap(),
-                PinId::A,
-                free_ref,
-            );
-        }
-    }
-
     // Step 3: Compute A'[x,y,z] = A[x, y, z] ^ D[x, z]
-    for x in 0..5 {
-        for y in 0..5 {
-            for z in 0..64 {
+    for z in 0..64 {
+        for x in 0..5 {
+            for y in 0..5 {
                 let pos = bit_position(x, y, z);
                 let aux = if ir == 0 {
                     // In the first round we use the first 1600 Sin bit slots to store these gates
@@ -145,10 +128,10 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
                     s.xor3(
                         ref_idx,
                         PinId::A,
-                        d[x][z],
+                        c[(x + 4) % 5][z],
                         PinId::D,
-                        s.gate_config.zero_ref.unwrap(),
-                        PinId::A,
+                        c[(x + 1) % 5][(z + 63) % 64],
+                        PinId::D,
                         ref_idx,
                     );
                     ref_idx
@@ -157,10 +140,10 @@ pub fn keccak_f_theta(s: &mut GateState, ir: u64) {
                     s.xor3(
                         s.sin_refs[pos],
                         PinId::D,
-                        d[x][z],
+                        c[(x + 4) % 5][z],
                         PinId::D,
-                        s.gate_config.zero_ref.unwrap(),
-                        PinId::A,
+                        c[(x + 1) % 5][(z + 63) % 64],
+                        PinId::D,
                         ref_idx,
                     );
                     ref_idx

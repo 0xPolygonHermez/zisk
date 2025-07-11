@@ -10,18 +10,20 @@ use keccak_input::KeccakInput;
 
 pub const KECCAKF_INPUT_SIZE_BITS: u64 = 1600;
 pub const KECCAKF_OUTPUT_SIZE_BITS: u64 = 1600;
-pub const KECCAKF_INPUT_BITS_IN_PARALLEL: u64 = 2;
-pub const KECCAKF_OUTPUT_BITS_IN_PARALLEL: u64 = 2;
+pub const KECCAKF_INPUT_BITS_IN_PARALLEL: u64 = 4;
+pub const KECCAKF_OUTPUT_BITS_IN_PARALLEL: u64 = 4;
 
 pub const KECCAKF_CHUNKS: u64 = 9;
 pub const KECCAKF_BITS: u64 = 7;
 const KECCAKF_NUM: u64 = KECCAKF_CHUNKS * KECCAKF_BITS;
 
+const KECCAKF_CIRCUIT_SIZE: u64 = 93846;
+
 // Keccak Configuration
 #[rustfmt::skip]
 pub static KECCAK_GATE_CONFIG: GateConfig = GateConfig::with_values(
-    101526,
-    102000,
+    KECCAKF_CIRCUIT_SIZE,
+    KECCAKF_CIRCUIT_SIZE + 1,
     Some(0),
     1 + KECCAKF_NUM,
     KECCAKF_INPUT_BITS_IN_PARALLEL,
