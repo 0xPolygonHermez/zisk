@@ -63,7 +63,7 @@ pub fn secp256k1_fp_sqrt(x: &[u64; 4], parity: u64) -> ([u64; 4], bool) {
             assert_eq!(*params.d, *x);
             (x_sqrt, true)
         }
-        // If there is no square root, check that x is a non-quadratic residue
+        // If there is no square root, confirm that x is a non-quadratic residue
         None => {
             secp256k1_fp_assert_nqr(x);
             ([0u64; 4], false)

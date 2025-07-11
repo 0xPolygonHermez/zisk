@@ -17,3 +17,6 @@ cfg-if = "1.0"
 tiny-keccak = { version = "2.0.0", features = ["keccak"] }
 num-bigint = { workspace = true }
 num-traits = { workspace = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_vendor, values("zisk"))'] }
