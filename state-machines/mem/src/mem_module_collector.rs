@@ -1,6 +1,7 @@
-use crate::{
-    mem_bus_data_to_input::MemBusDataToInput, MemInput, MemModuleCheckPoint, MemPreviousSegment,
-};
+use std::collections::VecDeque;
+
+use crate::{mem_bus_data_to_input::MemBusDataToInput, MemInput, MemPreviousSegment};
+use mem_common::MemModuleCheckPoint;
 use zisk_common::{BusDevice, BusId, SegmentId, MEM_BUS_ID};
 
 #[derive(Debug)]
@@ -16,6 +17,7 @@ pub struct MemModuleCollector {
     pub count: u32,
     pub to_count: u32,
     pub skip: u32,
+    pub is_first_chunk_of_segment: bool,
 }
 
 impl MemModuleCollector {
@@ -23,6 +25,7 @@ impl MemModuleCollector {
         mem_check_point: &MemModuleCheckPoint,
         min_addr: u32,
         segment_id: SegmentId,
+        is_first_chunk_of_segment: bool,
     ) -> Self {
         // let prev_addr = mem_check_point.reference_addr;
         // let prev_step = MemHelpers::first_chunk_mem_step(mem_check_point.reference_addr_chunk);
@@ -38,26 +41,8 @@ impl MemModuleCollector {
             count,
             to_count,
             skip,
+            is_first_chunk_of_segment,
         }
-    }
-
-    fn debug_discard(&self, _reason: u8, _addr_w: u32, _step: u64, _value: u64) {
-        // let label = if reason == 0 { "ACCEPT" } else { &format!("DISCARD{}", reason) };
-        // println!(
-        //     "[Mem] {} discard_addr_step [0x{:X},{}] {} [F:0x{:X},{}/{} T:0x{:X},{}/{} C:{}/{}]",
-        //     label,
-        //     addr_w * 8,
-        //     step,
-        //     value,
-        //     self.mem_check_point.from_addr * 8,
-        //     self.skip,
-        //     self.mem_check_point.from_skip,
-        //     self.mem_check_point.to_addr * 8,
-        //     self.to_count,
-        //     self.mem_check_point.to_count,
-        //     self.count,
-        //     self.mem_check_point.count,
-        // );
     }
 
     /// Discards the given memory access if it is not part of the current segment.
@@ -73,24 +58,20 @@ impl MemModuleCollector {
     /// # Returns
     /// `true` if the access should be discarded, `false` otherwise.
     fn discart_addr_step(&mut self, addr_w: u32, step: u64, value: u64) -> bool {
+        // Check if the address is out of the range of the current checkpoint, or
+        // out of memory area.
         if addr_w > self.mem_check_point.to_addr || addr_w < self.min_addr {
-            self.debug_discard(1, addr_w, step, value);
             return true;
         }
 
         if addr_w < self.mem_check_point.from_addr {
-            self.debug_discard(2, addr_w, step, value);
             return true;
         }
 
         if addr_w == self.mem_check_point.from_addr && self.skip > 0 {
-            if self.skip == 1 && self.mem_check_point.is_first_chunk() {
+            if self.skip == 1 && self.is_first_chunk_of_segment {
                 // The last discart before accept, we need to store the previous segment data
-                self.prev_segment =
-                    Some(MemPreviousSegment { addr: addr_w, step, value, extra_zero_step: false });
-                self.debug_discard(3, addr_w, step, value);
-            } else {
-                self.debug_discard(4, addr_w, step, value);
+                self.prev_segment = Some(MemPreviousSegment { addr: addr_w, step, value });
             }
 
             self.skip -= 1;
@@ -98,7 +79,6 @@ impl MemModuleCollector {
         }
 
         if self.count == 0 || (addr_w == self.mem_check_point.to_addr && self.to_count == 0) {
-            self.debug_discard(5, addr_w, step, value);
             return true;
         }
 
@@ -108,7 +88,6 @@ impl MemModuleCollector {
         }
 
         self.count -= 1;
-        self.debug_discard(0, addr_w, step, value);
         false
     }
 
@@ -133,13 +112,16 @@ impl MemModuleCollector {
 }
 
 impl BusDevice<u64> for MemModuleCollector {
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
         let inputs = MemBusDataToInput::bus_data_to_input(data);
         self.filtered_inputs_push(inputs);
-
-        None
     }
 
     fn bus_id(&self) -> Vec<BusId> {

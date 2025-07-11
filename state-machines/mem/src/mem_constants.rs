@@ -12,15 +12,15 @@ pub const MEMORY_STORE_OP: u8 = 2;
 
 pub const MEM_REGS_MASK: u32 = 0xFFFF_FF00;
 pub const MEM_REGS_ADDR: u32 = 0xA000_0000;
-
+pub const MEM_REGS_MAX_DIFF: u64 = (1 << 24) - 1;
 pub const MAX_MAIN_STEP: u64 = 0x1FFF_FFFF_FFFF_FFFF;
 
 pub const MAX_MEM_ADDR: u64 = 0xFFFF_FFFF;
 
-pub const MEMORY_MAX_DIFF: u64 = 1 << 24;
-pub const STEP_MEMORY_MAX_DIFF: u64 = MEMORY_MAX_DIFF - 1;
+pub const SEGMENT_ADDR_MAX_RANGE: usize = (1 << 24) - 1;
+pub const SEGMENT_LARGE_ADDR_C_MAX_RANGE: usize = (1 << 16) - 1;
 
-pub const CHUNK_SIZE: usize = 1 << 18;
-pub const CHUNK_SIZE_STEPS: usize = CHUNK_SIZE * MEM_STEPS_BY_MAIN_STEP as usize;
-pub const CHUNK_MAX_DISTANCE: usize = STEP_MEMORY_MAX_DIFF as usize / CHUNK_SIZE_STEPS;
-pub const STEP_MEMORY_LIMIT_TO_VERIFY: usize = (CHUNK_MAX_DISTANCE - 2) * CHUNK_SIZE_STEPS;
+pub const MEM_INC_C_BITS: usize = 18;
+pub const MEM_INC_C_SIZE: usize = 1 << MEM_INC_C_BITS;
+pub const MEM_INC_C_MAX_RANGE: usize = MEM_INC_C_SIZE - 1;
+pub const MEM_INC_C_MASK: usize = MEM_INC_C_SIZE - 1;

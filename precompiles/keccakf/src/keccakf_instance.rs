@@ -3,14 +3,17 @@
 //!
 //! It manages collected inputs and interacts with the `KeccakfSM` to compute witnesses for
 //! execution plans.
-
-use crate::KeccakfSM;
-use p3_field::PrimeField64;
+use crate::{KeccakfInput, KeccakfSM};
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use std::{any::Any, collections::HashMap, sync::Arc};
+use std::{
+    any::Any,
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+};
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, OperationKeccakData, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::KeccakfTrace;
@@ -19,15 +22,18 @@ use zisk_pil::KeccakfTrace;
 ///
 /// It encapsulates the `KeccakfSM` and its associated context, and it processes input data
 /// to compute witnesses for the Keccakf State Machine.
-pub struct KeccakfInstance {
+pub struct KeccakfInstance<F: PrimeField64> {
     /// Keccakf state machine.
-    keccakf_sm: Arc<KeccakfSM>,
+    keccakf_sm: Arc<KeccakfSM<F>>,
+
+    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
+    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
 
     /// Instance context.
     ictx: InstanceCtx,
 }
 
-impl KeccakfInstance {
+impl<F: PrimeField64> KeccakfInstance<F> {
     /// Creates a new `KeccakfInstance`.
     ///
     /// # Arguments
@@ -38,12 +44,25 @@ impl KeccakfInstance {
     /// # Returns
     /// A new `KeccakfInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(keccakf_sm: Arc<KeccakfSM>, ictx: InstanceCtx) -> Self {
-        Self { keccakf_sm, ictx }
+    pub fn new(keccakf_sm: Arc<KeccakfSM<F>>, mut ictx: InstanceCtx) -> Self {
+        assert_eq!(
+            ictx.plan.air_id,
+            KeccakfTrace::<usize>::AIR_ID,
+            "KeccakfInstance: Unsupported air_id: {:?}",
+            ictx.plan.air_id
+        );
+
+        let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
+
+        let collect_info = *meta
+            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+            .expect("Failed to downcast ictx.plan.meta to expected type");
+
+        Self { keccakf_sm, collect_info, ictx }
     }
 }
 
-impl<F: PrimeField64> Instance<F> for KeccakfInstance {
+impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
     /// Computes the witness for the keccakf execution plan.
     ///
     /// This method leverages the `KeccakfSM` to generate an `AirInstance` using the collected
@@ -55,17 +74,18 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
-        sctx: &SetupCtx<F>,
+        _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<KeccakfCollector>().unwrap().inputs)
             .collect();
 
-        Some(self.keccakf_sm.compute_witness(sctx, &inputs))
+        Some(self.keccakf_sm.compute_witness(&inputs, trace_buffer))
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -92,16 +112,14 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance {
             self.ictx.plan.air_id
         );
 
-        let meta = self.ictx.plan.meta.as_ref().unwrap();
-        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
-        let (num_ops, collect_skipper) = collect_info[&chunk_id];
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(KeccakfCollector::new(num_ops, collect_skipper)))
     }
 }
 
 pub struct KeccakfCollector {
     /// Collected inputs for witness computation.
-    inputs: Vec<OperationKeccakData<u64>>,
+    inputs: Vec<KeccakfInput>,
 
     /// The number of operations to collect.
     num_operations: u64,
@@ -141,26 +159,26 @@ impl BusDevice<PayloadType> for KeccakfCollector {
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
-    ) -> Option<Vec<(BusId, Vec<PayloadType>)>> {
+        _pending: &mut VecDeque<(BusId, Vec<PayloadType>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() == self.num_operations as usize {
-            return None;
+            return;
         }
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Keccak as u32 {
-            return None;
+            return;
         }
 
         if self.collect_skipper.should_skip() {
-            return None;
+            return;
         }
 
         let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         if let ExtOperationData::OperationKeccakData(data) = data {
-            self.inputs.push(data);
-            None
+            self.inputs.push(KeccakfInput::from(&data));
         } else {
             panic!("Expected ExtOperationData::OperationData");
         }

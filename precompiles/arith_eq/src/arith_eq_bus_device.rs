@@ -2,19 +2,30 @@
 //! sent over the data bus. It connects to the bus and gathers metrics for specific
 //! `ZiskOperationType::ArithEq` instructions.
 
-use std::ops::Add;
+use std::{collections::VecDeque, ops::Add};
 
 use zisk_common::{
-    BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OPERATION_BUS_ARITH_256_DATA_SIZE,
-    OPERATION_BUS_ARITH_256_MOD_DATA_SIZE, OPERATION_BUS_ID, OPERATION_BUS_SECP256K1_ADD_DATA_SIZE,
-    OPERATION_BUS_SECP256K1_DBL_DATA_SIZE, OP_TYPE,
+    BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
-use zisk_core::ZiskOperationType;
+use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
 use crate::mem_inputs::{
     generate_arith256_mem_inputs, generate_arith256_mod_mem_inputs,
-    generate_secp256k1_add_mem_inputs, generate_secp256k1_dbl_mem_inputs,
+    generate_bn254_complex_add_mem_inputs, generate_bn254_complex_mul_mem_inputs,
+    generate_bn254_complex_sub_mem_inputs, generate_bn254_curve_add_mem_inputs,
+    generate_bn254_curve_dbl_mem_inputs, generate_secp256k1_add_mem_inputs,
+    generate_secp256k1_dbl_mem_inputs,
 };
+
+const ARITH256_OP: u8 = ZiskOp::Arith256.code();
+const ARITH256_MOD_OP: u8 = ZiskOp::Arith256Mod.code();
+const SECP256K1_ADD_OP: u8 = ZiskOp::Secp256k1Add.code();
+const SECP256K1_DBL_OP: u8 = ZiskOp::Secp256k1Dbl.code();
+const BN254_CURVE_ADD_OP: u8 = ZiskOp::Bn254CurveAdd.code();
+const BN254_CURVE_DBL_OP: u8 = ZiskOp::Bn254CurveDbl.code();
+const BN254_COMPLEX_ADD_OP: u8 = ZiskOp::Bn254ComplexAdd.code();
+const BN254_COMPLEX_SUB_OP: u8 = ZiskOp::Bn254ComplexSub.code();
+const BN254_COMPLEX_MUL_OP: u8 = ZiskOp::Bn254ComplexMul.code();
 
 /// The `ArithEqCounter` struct represents a counter that monitors and measures
 /// arith_eq-related operations on the data bus.
@@ -103,15 +114,21 @@ impl BusDevice<u64> for ArithEqCounterInputGen {
     /// # Returns
     /// A vector of derived inputs to be sent back to the bus.
     #[inline(always)]
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         const ARITH_EQ: u64 = ZiskOperationType::ArithEq as u64;
 
         if data[OP_TYPE] != ARITH_EQ {
-            return None;
+            return;
         }
 
+        let op = data[OP] as u8;
         let step_main = data[A];
         let addr_main = data[B] as u32;
 
@@ -120,21 +137,83 @@ impl BusDevice<u64> for ArithEqCounterInputGen {
             self.measure(data);
         }
 
-        match data.len() {
-            OPERATION_BUS_ARITH_256_DATA_SIZE => {
-                generate_arith256_mem_inputs(addr_main, step_main, data, only_counters)
+        match op {
+            ARITH256_OP => {
+                pending.extend(generate_arith256_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
             }
-            OPERATION_BUS_ARITH_256_MOD_DATA_SIZE => {
-                generate_arith256_mod_mem_inputs(addr_main, step_main, data, only_counters)
+            ARITH256_MOD_OP => {
+                pending.extend(generate_arith256_mod_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
             }
-            OPERATION_BUS_SECP256K1_ADD_DATA_SIZE => {
-                generate_secp256k1_add_mem_inputs(addr_main, step_main, data, only_counters)
+            SECP256K1_ADD_OP => {
+                pending.extend(generate_secp256k1_add_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
             }
-            OPERATION_BUS_SECP256K1_DBL_DATA_SIZE => {
-                generate_secp256k1_dbl_mem_inputs(addr_main, step_main, data, only_counters)
+            SECP256K1_DBL_OP => {
+                pending.extend(generate_secp256k1_dbl_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
+            }
+            BN254_CURVE_ADD_OP => {
+                pending.extend(generate_bn254_curve_add_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
+            }
+            BN254_CURVE_DBL_OP => {
+                pending.extend(generate_bn254_curve_dbl_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
+            }
+            BN254_COMPLEX_ADD_OP => {
+                pending.extend(generate_bn254_complex_add_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
+            }
+            BN254_COMPLEX_SUB_OP => {
+                pending.extend(generate_bn254_complex_sub_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
+            }
+            BN254_COMPLEX_MUL_OP => {
+                pending.extend(generate_bn254_complex_mul_mem_inputs(
+                    addr_main,
+                    step_main,
+                    data,
+                    only_counters,
+                ));
             }
 
-            _ => None,
+            _ => {
+                panic!("ArithEqCounterInputGen: Unsupported data length {}", data.len(),);
+            }
         }
     }
 

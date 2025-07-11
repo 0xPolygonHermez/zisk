@@ -115,7 +115,7 @@ impl DataBusFileWriter {
         if let Some(file) = self.file.as_mut() {
             let payload_str: String =
                 payload.iter().map(|item| item.to_string()).collect::<Vec<_>>().join(" ");
-            writeln!(file, "{} {}", bus_id, payload_str)?;
+            writeln!(file, "{bus_id} {payload_str}")?;
             Ok(())
         } else {
             Err(io::Error::other("Attempted to write to a closed file."))

@@ -27,8 +27,8 @@ mod mem_module_planner;
 pub use mem_module_planner::*;
 mod mem_counters_cursor;
 pub use mem_counters_cursor::*;
-mod mem_module_check_point;
-pub use mem_module_check_point::*;
+// mod mem_module_check_point;
+// pub use mem_module_check_point::*;
 // mod mem_ops;
 // pub use mem_ops::*;
 use zisk_common::BusDeviceMetrics;
@@ -40,7 +40,7 @@ fn main() {
     let mut data: Vec<Vec<[u64; MEM_BUS_DATA_SIZE]>> = Vec::new();
     loop {
         let _chunk_id = data.len();
-        println!("Loading bus data chunk {} ...", _chunk_id);
+        println!("Loading bus data chunk {_chunk_id} ...");
         if let Ok(bus_data) = MemCounters::load_from_file(ChunkId(_chunk_id)) {
             data.push(bus_data);
         } else {
@@ -51,7 +51,7 @@ fn main() {
     let mut metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)> = Vec::new();
 
     for (i, data) in data.iter().enumerate() {
-        println!("Executing bus data chunk {} ...", i);
+        println!("Executing bus data chunk {i} ...");
         let mut counter = MemCounters::new();
         counter.execute_from_vector(data);
         counter.close();

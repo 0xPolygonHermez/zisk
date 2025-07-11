@@ -11,13 +11,13 @@
 use std::{
     path::PathBuf,
     sync::{atomic::AtomicU32, Arc, Mutex},
+    thread::JoinHandle,
 };
 
-use crate::{rom_asm_worker::RomAsmWorker, RomInstance, RomPlanner};
-use asm_runner::AsmRHData;
+use crate::{RomInstance, RomPlanner};
+use asm_runner::{AsmRHData, AsmRunnerRH};
+use fields::PrimeField64;
 use itertools::Itertools;
-use log::info;
-use p3_field::PrimeField;
 use proofman_common::{AirInstance, FromTrace};
 use zisk_common::{
     create_atomic_vec, BusDeviceMetrics, ComponentBuilder, CounterStats, Instance, InstanceCtx,
@@ -39,13 +39,10 @@ pub struct RomSM {
     /// Shared program instruction counter for monitoring ROM operations.
     prog_inst_count: Arc<Vec<AtomicU32>>,
 
-    /// The ROM assembly worker
-    rom_asm_worker: Mutex<Option<RomAsmWorker>>,
+    asm_runner_handler: Mutex<Option<JoinHandle<AsmRunnerRH>>>,
 }
 
 impl RomSM {
-    const MY_NAME: &'static str = "RomSM   ";
-
     /// Creates a new instance of the `RomSM` state machine.
     ///
     /// # Arguments
@@ -53,18 +50,8 @@ impl RomSM {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `RomSM`.
-    pub fn new(
-        zisk_rom: Arc<ZiskRom>,
-        asm_rom_path: Option<PathBuf>,
-        input_data_path: Option<PathBuf>,
-    ) -> Arc<Self> {
-        let rom_asm_worker = asm_rom_path.map(|asm_rom_path| {
-            let mut worker = RomAsmWorker::new();
-            worker.launch_task(asm_rom_path, input_data_path);
-            worker
-        });
-
-        let (bios_inst_count, prog_inst_count) = if rom_asm_worker.is_some() {
+    pub fn new(zisk_rom: Arc<ZiskRom>, asm_rom_path: Option<PathBuf>) -> Arc<Self> {
+        let (bios_inst_count, prog_inst_count) = if asm_rom_path.is_some() {
             (vec![], vec![])
         } else {
             (
@@ -73,14 +60,16 @@ impl RomSM {
             )
         };
 
-        let rom_asm_worker = Mutex::new(rom_asm_worker);
-
         Arc::new(Self {
             zisk_rom,
             bios_inst_count: Arc::new(bios_inst_count),
             prog_inst_count: Arc::new(prog_inst_count),
-            rom_asm_worker,
+            asm_runner_handler: Mutex::new(None),
         })
+    }
+
+    pub fn set_asm_runner_handler(&self, handler: JoinHandle<AsmRunnerRH>) {
+        *self.asm_runner_handler.lock().unwrap() = Some(handler);
     }
 
     /// Computes the witness for the provided plan using the given ROM.
@@ -91,15 +80,16 @@ impl RomSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness trace data.
-    pub fn compute_witness<F: PrimeField>(
+    pub fn compute_witness<F: PrimeField64>(
         rom: &ZiskRom,
         counter_stats: &CounterStats,
+        trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut rom_trace = RomTrace::new_zeroes();
+        let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer);
 
         let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
-        info!("{}: ··· Creating Rom instance [{} rows]", Self::MY_NAME, rom_trace.num_rows());
+        tracing::info!("··· Creating Rom instance [{} rows]", rom_trace.num_rows());
 
         // For every instruction in the rom, fill its corresponding ROM trace
         for (i, key) in rom.insts.keys().sorted().enumerate() {
@@ -142,13 +132,14 @@ impl RomSM {
         AirInstance::new_from_trace(FromTrace::new(&mut rom_trace))
     }
 
-    pub fn compute_witness_from_asm<F: PrimeField>(
+    pub fn compute_witness_from_asm<F: PrimeField64>(
         rom: &ZiskRom,
         asm_romh: &AsmRHData,
+        trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut rom_trace = RomTrace::new_zeroes();
+        let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer);
 
-        info!("{}: ··· Creating Rom instance [{} rows]", Self::MY_NAME, rom_trace.num_rows());
+        tracing::info!("··· Creating Rom instance [{} rows]", rom_trace.num_rows());
 
         const MAIN_TRACE_LEN: u64 = MainTrace::<usize>::NUM_ROWS as u64;
 
@@ -203,7 +194,7 @@ impl RomSM {
                     }
 
                     if inst.paddr == ROM_EXIT {
-                        multiplicity += MAIN_TRACE_LEN - asm_romh.header.steps % MAIN_TRACE_LEN;
+                        multiplicity += MAIN_TRACE_LEN - asm_romh.steps % MAIN_TRACE_LEN;
                     }
                 }
             } else {
@@ -226,7 +217,7 @@ impl RomSM {
     /// # Arguments
     /// * `rom` - Reference to the Zisk ROM.
     /// * `rom_custom_trace` - Reference to the custom ROM trace.
-    fn compute_trace_rom<F: PrimeField>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {
+    fn compute_trace_rom<F: PrimeField64>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {
         // For every instruction in the rom, fill its corresponding ROM trace
         for (i, key) in rom.insts.keys().sorted().enumerate() {
             // Get the Zisk instruction
@@ -295,13 +286,13 @@ impl RomSM {
     /// # Arguments
     /// * `rom_path` - The path to the ELF file.
     /// * `rom_custom_trace` - Reference to the custom ROM trace.
-    pub fn compute_custom_trace_rom<F: PrimeField>(
+    pub fn compute_custom_trace_rom<F: PrimeField64>(
         rom_path: PathBuf,
         rom_custom_trace: &mut RomRomTrace<F>,
     ) {
         // Get the ELF file path as a string
         let elf_filename: String = rom_path.to_str().unwrap().into();
-        info!("Computing custom trace ROM");
+        tracing::info!("Computing custom trace ROM");
 
         // Load and parse the ELF file, and transpile it into a ZisK ROM using Riscv2zisk
 
@@ -315,7 +306,7 @@ impl RomSM {
     }
 }
 
-impl<F: PrimeField> ComponentBuilder<F> for RomSM {
+impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
     /// Builds and returns a new counter for monitoring ROM operations.
     ///
     /// # Returns
@@ -340,15 +331,15 @@ impl<F: PrimeField> ComponentBuilder<F> for RomSM {
     /// # Returns
     /// A boxed implementation of `RomInstance`.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
-        let mut worker_guard = self.rom_asm_worker.lock().unwrap();
-        let worker = worker_guard.take();
+        let mut handle_rh_guard = self.asm_runner_handler.lock().unwrap();
+        let handle_rh = handle_rh_guard.take();
 
         Box::new(RomInstance::new(
             self.zisk_rom.clone(),
             ictx,
             self.bios_inst_count.clone(),
             self.prog_inst_count.clone(),
-            worker,
+            handle_rh,
         ))
     }
 }

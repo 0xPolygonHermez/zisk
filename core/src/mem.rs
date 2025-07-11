@@ -52,12 +52,12 @@
 //!   program address, and return once the task has completed. The precompiled are implemented via
 //!   ecall.
 //! * After the program is completed, the program counter will jump to the configured return
-//!   address, where the finalization tasks will happen, inluding reading the output data from
+//!   address, where the finalization tasks will happen, including reading the output data from
 //!   memory.
 //! * The address before the last one will jump to `ROM_EXIT`, the last insctruction of the
 //!   execution.
 //! * In general, setup and finalization instructions are located in low addresses, while the actual
-//!   program insctuctions are located in high addresses.
+//!   program instructions are located in high addresses.
 //!
 //! ## INPUT_ADDR
 //! * During the program initialization the input data for the program execution is copied in this
@@ -65,7 +65,7 @@
 //! * After the data has been written by the setup process, this data can only be read by the
 //!   program execution, i.e. it becomes a read-only (RO) memory region.
 //!
-//! ## SYS_ADDR / OUPUT_ADDR / AVAILABLE_MEM_ADDR
+//! ## SYS_ADDR / OUTPUT_ADDR / AVAILABLE_MEM_ADDR
 //! * This memory section can be written and read by the program execution many times, i.e. it is a
 //!   read-write (RW) memory region.
 //! * The first RW memory region going from `SYS_ADDR` to `OUTPUT_ADDR` is reserved for the system
@@ -77,7 +77,7 @@
 //! * The second RW memory region going from `OUTPUT_ADDR` to `AVAILABLE_MEM_ADDR` is reserved to
 //!   copy the output data during the program execution.
 //! * The third RW memory region going from `AVAILABLE_MEM_ADDR` onwards can be used during the
-//!   program execution a general purpose memory.
+//!   program execution as general purpose memory.
 
 use crate::{M16, M3, M32, M8, REG_FIRST, REG_LAST};
 use core::fmt;
@@ -88,7 +88,7 @@ pub const INPUT_ADDR: u64 = 0x90000000;
 pub const MAX_INPUT_SIZE: u64 = 0x08000000; // 128M,
 /// Free input data memory address = first input address
 pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
-/// First globa RW memory address
+/// First global RW memory address
 pub const RAM_ADDR: u64 = 0xa0000000;
 /// Size of the global RW memory
 pub const RAM_SIZE: u64 = 0x20000000; // 512M
@@ -168,7 +168,7 @@ pub struct Mem {
 }
 
 impl Mem {
-    /// Memory structue constructor
+    /// Memory structure constructor
     pub fn new() -> Mem {
         //println!("Mem::new()");
         Mem { read_sections: Vec::new(), write_section: MemSection::new(), free_input: 0 }
@@ -178,10 +178,7 @@ impl Mem {
     pub fn add_read_section(&mut self, start: u64, buffer: &[u8]) {
         // Check that the start address is alligned to 8 bytes
         if (start & 0x07) != 0 {
-            panic!(
-                "Mem::add_read_section() got a start address={:x} not alligned to 8 bytes",
-                start
-            );
+            panic!("Mem::add_read_section() got a start address={start:x} not alligned to 8 bytes");
         }
 
         // Calculate the end address
@@ -245,14 +242,13 @@ impl Mem {
         // Check that the start address is alligned to 8 bytes
         if (start & 0x07) != 0 {
             panic!(
-                "Mem::add_write_section() got a start address={:x} not alligned to 8 bytes",
-                start
+                "Mem::add_write_section() got a start address={start:x} not alligned to 8 bytes"
             );
         }
 
         // Check the start address is not zero
         if start == 0 {
-            panic!("Mem::add_write_section() got invalid start={}", start);
+            panic!("Mem::add_write_section() got invalid start={start}");
         }
 
         // Check the write section address has not been set before this call, since one only write
@@ -296,7 +292,7 @@ impl Mem {
                 8 => u64::from_le_bytes(
                     self.write_section.buffer[read_position..read_position + 8].try_into().unwrap(),
                 ),
-                _ => panic!("Mem::read() invalid width={}", width),
+                _ => panic!("Mem::read() invalid width={width}"),
             };
 
             //println!("Mem::read() addr={:x} width={} value={:x}={}", addr, width, value, value);
@@ -316,7 +312,7 @@ impl Mem {
         }) {
             &self.read_sections[section]
         } else {
-            panic!("Mem::read() section not found for addr: {} with width: {}", addr, width);
+            panic!("Mem::read() section not found for addr: {addr} with width: {width}");
         };
 
         // Calculate the buffer relative read position
@@ -338,7 +334,7 @@ impl Mem {
             8 => u64::from_le_bytes(
                 section.buffer[read_position..read_position + 8].try_into().unwrap(),
             ),
-            _ => panic!("Mem::read() invalid width={}", width),
+            _ => panic!("Mem::read() invalid width={width}"),
         }
     }
 
@@ -386,7 +382,7 @@ impl Mem {
                 8 => u64::from_le_bytes(
                     self.write_section.buffer[read_position..read_position + 8].try_into().unwrap(),
                 ),
-                _ => panic!("Mem::read() invalid width={}", width),
+                _ => panic!("Mem::read() invalid width={width}"),
             };
 
             // If is a single not aligned operation, return the aligned address value
@@ -448,7 +444,7 @@ impl Mem {
             &self.read_sections[section]
         } else {
             println!("sections: {:?}", self.read_sections);
-            panic!("Mem::read() section not found for addr: {} with width: {}", addr, width);
+            panic!("Mem::read() section not found for addr: {addr} with width: {width}");
         };
 
         // Calculate the read position
@@ -467,8 +463,7 @@ impl Mem {
                 section.buffer[read_position..read_position + 8].try_into().unwrap(),
             ),
             _ => panic!(
-                "Mem::read() invalid addr:0x{:X} read_position:{} width:{}",
-                addr, read_position, width
+                "Mem::read() invalid addr:0x{addr:X} read_position:{read_position} width:{width}"
             ),
         };
 
@@ -574,7 +569,7 @@ impl Mem {
                 .copy_from_slice(&(val as u32).to_le_bytes()),
             8 => section.buffer[write_position..write_position + 8]
                 .copy_from_slice(&val.to_le_bytes()),
-            _ => panic!("Mem::write_silent() invalid width={}", width),
+            _ => panic!("Mem::write_silent() invalid width={width}"),
         };
     }
 
@@ -676,7 +671,7 @@ impl Mem {
                 .copy_from_slice(&(val as u32).to_le_bytes()),
             8 => section.buffer[write_position..write_position + 8]
                 .copy_from_slice(&val.to_le_bytes()),
-            _ => panic!("Mem::write_silent() invalid width={}", width),
+            _ => panic!("Mem::write_silent() invalid width={width}"),
         }
 
         additional_data
@@ -737,7 +732,7 @@ impl Mem {
             1 => raw_data & M8,
             2 => raw_data & M16,
             4 => raw_data & M32,
-            _ => panic!("Mem::get_single_not_aligned_data() invalid width={}", width),
+            _ => panic!("Mem::get_single_not_aligned_data() invalid width={width}"),
         }
     }
 
@@ -759,7 +754,7 @@ impl Mem {
             2 => raw_data & M16,
             4 => raw_data & M32,
             8 => raw_data,
-            _ => panic!("Mem::get_double_not_aligned_data() invalid width={}", width),
+            _ => panic!("Mem::get_double_not_aligned_data() invalid width={width}"),
         }
     }
 

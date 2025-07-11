@@ -22,13 +22,13 @@ fn main() {
         Ok(result) => {
             // println!("Emulation completed successfully");
             result.iter().fold(String::new(), |mut acc, byte| {
-                write!(&mut acc, "{:02x}", byte).unwrap();
+                write!(&mut acc, "{byte:02x}").unwrap();
                 acc
             });
             // print!("Result: 0x{}", hex_string);
         }
         Err(e) => {
-            eprintln!("Error during emulation: {:?}", e);
+            eprintln!("Error during emulation: {e:?}");
             process::exit(1);
         }
     }

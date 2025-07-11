@@ -1,7 +1,7 @@
 use core::panic;
 use std::cell::RefCell;
 
-use crate::{bits_to_u32, u32_to_bits};
+use crate::{bits_to_u32_msb, u32_to_bits_msb};
 
 use super::{GateState, PinId};
 
@@ -32,7 +32,7 @@ impl<'a> GateU32<'a> {
     }
 
     pub fn from_u32(&mut self, value: u32) {
-        let bits = u32_to_bits(value);
+        let bits = u32_to_bits_msb(value);
 
         for (i, bit) in bits.iter().enumerate() {
             self.bits[i].pin_id = match bit {
@@ -52,13 +52,13 @@ impl<'a> GateU32<'a> {
             bits[i] = state.gates[ref_].pins[pin_id].bit;
         }
 
-        bits_to_u32(&bits)
+        bits_to_u32_msb(&bits)
     }
 
     pub fn rotate_right(&mut self, pos: usize) {
         let mut rotated = [GateBit::new(self.state.borrow().gate_config.zero_ref.unwrap()); 32];
         for (i, rotated_bit) in rotated.iter_mut().enumerate() {
-            *rotated_bit = self.bits[(i + pos) % 32];
+            *rotated_bit = self.bits[(32 - pos + i) % 32];
         }
         self.bits = rotated;
     }
@@ -66,50 +66,82 @@ impl<'a> GateU32<'a> {
     pub fn shift_right(&mut self, pos: usize) {
         let mut shifted = [GateBit::new(self.state.borrow().gate_config.zero_ref.unwrap()); 32];
 
-        // Shift the bits
-        shifted[..32 - pos].copy_from_slice(&self.bits[pos..]);
-
-        // Zero out the remaining bits
-        for s in shifted.iter_mut().skip(32 - pos) {
+        // Zero out the first `pos` bits
+        for s in shifted.iter_mut().take(pos) {
             *s = GateBit::new(self.state.borrow().gate_config.zero_ref.unwrap());
+        }
+
+        // Shift the remaining bits
+        for (i, shifted_bit) in shifted.iter_mut().enumerate().skip(pos) {
+            *shifted_bit = self.bits[i - pos];
         }
 
         self.bits = shifted;
     }
 }
 
-// TODO: Do an XOR of 3 numbers!
-
-/// XOR 2 numbers of 32 bits
-pub fn gate_u32_xor(gate_state: &mut GateState, a: &GateU32, b: &GateU32, r: &mut GateU32) {
+pub fn gate_u32_xor(
+    gate_state: &mut GateState,
+    a: &GateU32,
+    b: &GateU32,
+    c: &GateU32,
+    r: &mut GateU32,
+) {
     for i in 0..32 {
         let out_ref = gate_state.get_free_ref();
-        gate_state.xor(a.bits[i].ref_, a.bits[i].pin_id, b.bits[i].ref_, b.bits[i].pin_id, out_ref);
-        r.bits[i].ref_ = out_ref;
-        r.bits[i].pin_id = PinId::D;
-    }
-}
-
-/// And 2 numbers of 32 bits
-pub fn gate_u32_and(gate_state: &mut GateState, a: &GateU32, b: &GateU32, r: &mut GateU32) {
-    for i in 0..32 {
-        let out_ref = gate_state.get_free_ref();
-        gate_state.and(a.bits[i].ref_, a.bits[i].pin_id, b.bits[i].ref_, b.bits[i].pin_id, out_ref);
-        r.bits[i].ref_ = out_ref;
-        r.bits[i].pin_id = PinId::D;
-    }
-}
-
-/// Not 1 number of 32 bits
-pub fn gate_u32_not(gate_state: &mut GateState, a: &GateU32, r: &mut GateU32) {
-    // NOT(a) is the same operation as XOR(a,1)
-    for i in 0..32 {
-        let out_ref = gate_state.get_free_ref();
-        gate_state.xor(
+        gate_state.xor3(
             a.bits[i].ref_,
             a.bits[i].pin_id,
-            gate_state.gate_config.zero_ref.unwrap(),
-            PinId::B,
+            b.bits[i].ref_,
+            b.bits[i].pin_id,
+            c.bits[i].ref_,
+            c.bits[i].pin_id,
+            out_ref,
+        );
+        r.bits[i].ref_ = out_ref;
+        r.bits[i].pin_id = PinId::D;
+    }
+}
+
+pub fn gate_u32_ch(
+    gate_state: &mut GateState,
+    a: &GateU32,
+    b: &GateU32,
+    c: &GateU32,
+    r: &mut GateU32,
+) {
+    for i in 0..32 {
+        let out_ref = gate_state.get_free_ref();
+        gate_state.ch(
+            a.bits[i].ref_,
+            a.bits[i].pin_id,
+            b.bits[i].ref_,
+            b.bits[i].pin_id,
+            c.bits[i].ref_,
+            c.bits[i].pin_id,
+            out_ref,
+        );
+        r.bits[i].ref_ = out_ref;
+        r.bits[i].pin_id = PinId::D;
+    }
+}
+
+pub fn gate_u32_maj(
+    gate_state: &mut GateState,
+    a: &GateU32,
+    b: &GateU32,
+    c: &GateU32,
+    r: &mut GateU32,
+) {
+    for i in 0..32 {
+        let out_ref = gate_state.get_free_ref();
+        gate_state.maj(
+            a.bits[i].ref_,
+            a.bits[i].pin_id,
+            b.bits[i].ref_,
+            b.bits[i].pin_id,
+            c.bits[i].ref_,
+            c.bits[i].pin_id,
             out_ref,
         );
         r.bits[i].ref_ = out_ref;
@@ -130,114 +162,49 @@ pub fn gate_u32_not(gate_state: &mut GateState, a: &GateU32, r: &mut GateU32) {
     bit 31:  r = 1 (a) + 1 (b) + 1 (carry) = 1 = xor(xor(a,b),carry))  carry is not needed any more
 */
 pub fn gate_u32_add(gate_state: &mut GateState, a: &GateU32, b: &GateU32, r: &mut GateU32) {
-    let mut carry = GateBit { ref_: gate_state.gate_config.zero_ref.unwrap(), pin_id: PinId::A };
+    let mut prev_ref = gate_state.get_free_ref();
+    // First bit
+    r.bits[31].ref_ = prev_ref;
+    gate_state.add(
+        a.bits[31].ref_,
+        a.bits[31].pin_id,
+        b.bits[31].ref_,
+        b.bits[31].pin_id,
+        gate_state.gate_config.zero_ref.unwrap(),
+        PinId::A,
+        r.bits[31].ref_,
+    );
+    r.bits[31].pin_id = PinId::D;
 
-    for i in 0..32 {
+    for i in (0..31).rev() {
         // Calculate result bit
         if i == 0 {
             r.bits[i].ref_ = gate_state.get_free_ref();
-            gate_state.xor(
+            gate_state.xor3(
                 a.bits[i].ref_,
                 a.bits[i].pin_id,
                 b.bits[i].ref_,
                 b.bits[i].pin_id,
+                prev_ref,
+                PinId::E,
                 r.bits[i].ref_,
             );
             r.bits[i].pin_id = PinId::D;
         } else {
-            let xor_ref = gate_state.get_free_ref();
-            gate_state.xor(
-                a.bits[i].ref_,
-                a.bits[i].pin_id,
-                b.bits[i].ref_,
-                b.bits[i].pin_id,
-                xor_ref,
-            );
             r.bits[i].ref_ = gate_state.get_free_ref();
-            gate_state.xor(xor_ref, PinId::D, carry.ref_, carry.pin_id, r.bits[i].ref_);
+            gate_state.add(
+                a.bits[i].ref_,
+                a.bits[i].pin_id,
+                b.bits[i].ref_,
+                b.bits[i].pin_id,
+                prev_ref,
+                PinId::E,
+                r.bits[i].ref_,
+            );
             r.bits[i].pin_id = PinId::D;
-        }
 
-        // Calculate carry bit
-        if i == 0 {
-            carry.ref_ = gate_state.get_free_ref();
-            gate_state.and(
-                a.bits[i].ref_,
-                a.bits[i].pin_id,
-                b.bits[i].ref_,
-                b.bits[i].pin_id,
-                carry.ref_,
-            );
-            carry.pin_id = PinId::D;
-        } else if i < 31 {
-            let and_ref1 = gate_state.get_free_ref();
-            gate_state.and(
-                a.bits[i].ref_,
-                a.bits[i].pin_id,
-                b.bits[i].ref_,
-                b.bits[i].pin_id,
-                and_ref1,
-            );
-
-            let and_ref2 = gate_state.get_free_ref();
-            gate_state.and(carry.ref_, carry.pin_id, b.bits[i].ref_, b.bits[i].pin_id, and_ref2);
-
-            let and_ref3 = gate_state.get_free_ref();
-            gate_state.and(a.bits[i].ref_, a.bits[i].pin_id, carry.ref_, carry.pin_id, and_ref3);
-
-            let or_ref = gate_state.get_free_ref();
-            gate_state.or(and_ref1, PinId::D, and_ref2, PinId::D, or_ref);
-
-            carry.ref_ = gate_state.get_free_ref();
-            gate_state.or(or_ref, PinId::D, and_ref3, PinId::D, carry.ref_);
-            carry.pin_id = PinId::D;
+            // Update the ref
+            prev_ref = r.bits[i].ref_;
         }
     }
 }
-
-// TODO: For the future!
-// pub fn gate_u32_add(gate_state: &mut GateState, a: &GateU32, b: &GateU32, r: &mut GateU32) {
-//     let mut carry = GateBit::new(gate_state.gate_config.zero_ref.unwrap());
-//     for i in 0..32 {
-//         if i == 0 {
-//             let out_ref = gate_state.get_free_ref();
-//             let carry_val = gate_state.add(
-//                 a.bits[i].ref_,
-//                 a.bits[i].pin_id,
-//                 b.bits[i].ref_,
-//                 b.bits[i].pin_id,
-//                 gate_state.gate_config.zero_ref.unwrap(),
-//                 PinId::A,
-//                 out_ref,
-//             );
-//             r.bits[i].ref_ = out_ref;
-//             r.bits[i].pin_id = PinId::D;
-//         } else if i < 31 {
-//             let out_ref = gate_state.get_free_ref();
-//             let carry_val = gate_state.add(
-//                 a.bits[i].ref_,
-//                 a.bits[i].pin_id,
-//                 b.bits[i].ref_,
-//                 b.bits[i].pin_id,
-//                 carry.ref_,
-//                 carry.pin_id,
-//                 out_ref,
-//             );
-//             r.bits[i].ref_ = out_ref;
-//             r.bits[i].pin_id = PinId::D;
-//         } else {
-//             let out_ref = gate_state.get_free_ref();
-//             gate_state.xor3(
-//                 a.bits[i].ref_,
-//                 a.bits[i].pin_id,
-//                 b.bits[i].ref_,
-//                 b.bits[i].pin_id,
-//                 carry.ref_,
-//                 carry.pin_id,
-//                 out_ref,
-//             );
-//             r.bits[i].ref_ = out_ref;
-//             r.bits[i].pin_id = PinId::D;
-//         }
-//     }
-// }

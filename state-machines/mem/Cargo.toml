@@ -15,24 +15,28 @@ path = "src/mem_sim.rs"
 zisk-core = { path = "../../core" }
 zisk-common = { path = "../../common" }
 zisk-pil = { path = "../../pil" }
-num-traits = "0.2"
+mem-planner-cpp = { path = "../mem-cpp" }
+mem-common = { path = "../mem-common" }
 
+proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
 witness = { workspace = true }
 pil-std-lib = { workspace = true }
 
-p3-field = { workspace=true }
-log = { workspace = true }
+fields = { workspace=true }
+tracing = { workspace = true }
 rayon = { workspace = true }
 num-bigint = { workspace = true }
+
+num-traits = "0.2"
 
 [features]
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
-diagnostic = ["proofman-macros/diagnostic"]
-disable-distributed = ["proofman-common/disable-distributed"]
+diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
+disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]
 debug_mem = []
 debug_mem_align = []
-trace_offset = []
+save_mem_bus_data = []

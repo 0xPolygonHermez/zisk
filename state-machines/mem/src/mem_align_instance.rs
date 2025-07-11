@@ -1,8 +1,12 @@
-use crate::{MemAlignCheckPoint, MemAlignInput, MemAlignSM, MemHelpers};
-use core::panic;
-use p3_field::PrimeField64;
+use crate::{MemAlignInput, MemAlignSM, MemHelpers};
+use mem_common::MemAlignCheckPoint;
+
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use std::sync::Arc;
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+};
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, MemBusData,
     PayloadType, MEM_BUS_ID,
@@ -12,21 +16,31 @@ pub struct MemAlignInstance<F: PrimeField64> {
     /// Instance context
     ictx: InstanceCtx,
 
+    /// Checkpoint data for this memory align instance.
+    checkpoint: HashMap<ChunkId, MemAlignCheckPoint>,
+
     mem_align_sm: Arc<MemAlignSM<F>>,
 }
 
 impl<F: PrimeField64> MemAlignInstance<F> {
-    pub fn new(mem_align_sm: Arc<MemAlignSM<F>>, ictx: InstanceCtx) -> Self {
-        Self { ictx, mem_align_sm }
+    pub fn new(mem_align_sm: Arc<MemAlignSM<F>>, mut ictx: InstanceCtx) -> Self {
+        let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
+
+        let checkpoint = *meta
+            .downcast::<HashMap<ChunkId, MemAlignCheckPoint>>()
+            .expect("Failed to downcast ictx.plan.meta to expected type");
+
+        Self { ictx, checkpoint, mem_align_sm }
     }
 }
 
 impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         let mut total_rows = 0;
         let inputs: Vec<_> = collectors
@@ -39,7 +53,7 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
                 collector.inputs
             })
             .collect();
-        Some(self.mem_align_sm.compute_witness(&inputs, total_rows as usize))
+        Some(self.mem_align_sm.compute_witness(&inputs, total_rows as usize, trace_buffer))
     }
 
     fn check_point(&self) -> CheckPoint {
@@ -58,16 +72,7 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let meta = self.ictx.plan.meta.as_ref().unwrap();
-        let checkpoint = meta.downcast_ref::<Vec<MemAlignCheckPoint>>().unwrap();
-
-        if let CheckPoint::Multiple(plan_checkpoints) = &self.ictx.plan.check_point {
-            // Find in xxx the idx of the chunk_id
-            let idx = plan_checkpoints.iter().position(|&x| x == chunk_id).unwrap();
-            Some(Box::new(MemAlignCollector::new(&checkpoint[idx])))
-        } else {
-            panic!("Invalid checkpoint type");
-        }
+        Some(Box::new(MemAlignCollector::new(&self.checkpoint[&chunk_id])))
     }
 }
 
@@ -92,21 +97,26 @@ impl MemAlignCollector {
 }
 
 impl BusDevice<u64> for MemAlignCollector {
-    fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
         let addr = MemBusData::get_addr(data);
         let bytes = MemBusData::get_bytes(data);
         if MemHelpers::is_aligned(addr, bytes) {
-            return None;
+            return;
         }
         if self.skip_pending > 0 {
             self.skip_pending -= 1;
-            return None;
+            return;
         }
 
         if self.pending_count == 0 {
-            return None;
+            return;
         }
         self.pending_count -= 1;
         let is_write = MemHelpers::is_write(MemBusData::get_op(data));
@@ -126,8 +136,6 @@ impl BusDevice<u64> for MemAlignCollector {
             value,
             mem_values,
         });
-
-        None
     }
 
     fn bus_id(&self) -> Vec<BusId> {

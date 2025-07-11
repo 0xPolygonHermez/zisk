@@ -83,6 +83,10 @@ impl BinaryBasicTableSM {
         self.calculated.store(true, Ordering::Relaxed);
     }
 
+    pub fn reset_calculated(&self) {
+        self.calculated.store(false, Ordering::Relaxed);
+    }
+
     /// Calculates the table row offset based on the provided parameters.
     ///
     /// # Arguments
@@ -122,8 +126,7 @@ impl BinaryBasicTableSM {
                 6 => 3 * P2_9,
                 _ => {
                     panic!(
-                        "BinaryBasicTableSM::calculate_table_row() Unexpected flags for Ext32: {}",
-                        flags
+                        "BinaryBasicTableSM::calculate_table_row() Unexpected flags for Ext32: {flags}"
                     )
                 }
             };

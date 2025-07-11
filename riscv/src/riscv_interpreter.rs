@@ -63,7 +63,7 @@ pub fn riscv_interpreter(code: &[u32]) -> Vec<RiscvInstruction> {
 
         // Get the RVD info data for this opcode
         if !rvd.opcodes.contains_key(&opcode) {
-            panic!("Invalid opcode={} s={}", opcode, s);
+            panic!("Invalid opcode={opcode}=0x{opcode:x} s={s}");
         }
         let inf = &rvd.opcodes[&opcode];
 
@@ -184,18 +184,18 @@ pub fn riscv_interpreter(code: &[u32]) -> Vec<RiscvInstruction> {
             i.funct3 = (inst & 0x7000) >> 12;
             if i.funct3 == 0 {
                 if (inst & 0xF00F8F80) != 0 {
-                    panic!("Invalid opcode={} at line s={}", opcode, s);
+                    panic!("Invalid opcode={opcode} at line s={s}");
                 }
                 i.pred = (inst & 0x0F000000) >> 24;
                 i.succ = (inst & 0x00F00000) >> 20;
                 i.inst = "fence".to_string();
             } else if i.funct3 == 1 {
                 if (inst & 0xFFFF8F80) != 0 {
-                    panic!("Invalid opcode={} at line s={}", opcode, s);
+                    panic!("Invalid opcode={opcode} at line s={s}");
                 }
                 i.inst = "fence.i".to_string();
             } else {
-                panic!("Invalid opcode={} at line s={}", opcode, s);
+                panic!("Invalid opcode={opcode} at line s={s}");
             }
         } else {
             panic!("Invalid i.t={} at line s={}", i.t, s);

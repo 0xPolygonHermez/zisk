@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use p3_field::PrimeField64;
+use fields::PrimeField64;
+use proofman_common::SetupCtx;
 use zisk_common::{BusDevice, PayloadType, OPERATION_BUS_ID};
 
 use zisk_common::{
@@ -15,22 +16,22 @@ use crate::{KeccakfCounterInputGen, KeccakfInstance, KeccakfPlanner, KeccakfSM, 
 /// The `KeccakfManager` struct represents the Keccakf manager,
 /// which is responsible for managing the Keccakf state machine and its table state machine.
 #[allow(dead_code)]
-pub struct KeccakfManager {
+pub struct KeccakfManager<F: PrimeField64> {
     /// Keccakf state machine
-    keccakf_sm: Arc<KeccakfSM>,
+    keccakf_sm: Arc<KeccakfSM<F>>,
 
     /// Keccakf table state machine
     keccakf_table_sm: Arc<KeccakfTableSM>,
 }
 
-impl KeccakfManager {
+impl<F: PrimeField64> KeccakfManager<F> {
     /// Creates a new instance of `KeccakfManager`.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `KeccakfManager`.
-    pub fn new<F: PrimeField64>() -> Arc<Self> {
+    pub fn new(sctx: Arc<SetupCtx<F>>) -> Arc<Self> {
         let keccakf_table_sm = KeccakfTableSM::new::<F>();
-        let keccakf_sm = KeccakfSM::new(keccakf_table_sm.clone());
+        let keccakf_sm = KeccakfSM::new(sctx, keccakf_table_sm.clone());
 
         Arc::new(Self { keccakf_sm, keccakf_table_sm })
     }
@@ -40,7 +41,7 @@ impl KeccakfManager {
     }
 }
 
-impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager {
+impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager<F> {
     /// Builds and returns a new counter for monitoring keccakf operations.
     ///
     /// # Returns

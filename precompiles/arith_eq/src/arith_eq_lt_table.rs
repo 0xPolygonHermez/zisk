@@ -46,6 +46,10 @@ impl ArithEqLtTableSM {
         self.calculated.store(true, Ordering::Relaxed);
     }
 
+    pub fn reset_calculated(&self) {
+        self.calculated.store(false, Ordering::Relaxed);
+    }
+
     /// Calculates the table row offset based on the provided parameters.
     ///
     /// # Arguments
@@ -73,7 +77,7 @@ impl ArithEqLtTableSM {
             _ => panic!("Invalid range type"),
         };
         if index > 0x3FFFF {
-            panic!("Invalid index:{} prev_lt:{} lt:{} delta:{}", index, prev_lt, lt, delta);
+            panic!("Invalid index:{index} prev_lt:{prev_lt} lt:{lt} delta:{delta}");
         }
         self.multiplicities[0][index].fetch_add(1, Ordering::Relaxed);
     }

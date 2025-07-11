@@ -5,16 +5,20 @@
 //! execution plans.
 
 use crate::{
-    Arith256Input, Arith256ModInput, ArithEqInput, ArithEqSM, Secp256k1AddInput, Secp256k1DblInput,
+    Arith256Input, Arith256ModInput, ArithEqInput, ArithEqSM, Bn254ComplexAddInput,
+    Bn254ComplexMulInput, Bn254ComplexSubInput, Bn254CurveAddInput, Bn254CurveDblInput,
+    Secp256k1AddInput, Secp256k1DblInput,
 };
-use p3_field::PrimeField64;
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use std::collections::VecDeque;
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
     InstanceType, OperationBusData, PayloadType, OPERATION_BUS_ID,
 };
+
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithEqTrace;
 
@@ -25,6 +29,9 @@ use zisk_pil::ArithEqTrace;
 pub struct ArithEqInstance<F: PrimeField64> {
     /// ArithEq state machine.
     arith_eq_sm: Arc<ArithEqSM<F>>,
+
+    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
+    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -41,8 +48,21 @@ impl<F: PrimeField64> ArithEqInstance<F> {
     /// # Returns
     /// A new `Arith256Instance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(arith_eq_sm: Arc<ArithEqSM<F>>, ictx: InstanceCtx) -> Self {
-        Self { arith_eq_sm, ictx }
+    pub fn new(arith_eq_sm: Arc<ArithEqSM<F>>, mut ictx: InstanceCtx) -> Self {
+        assert_eq!(
+            ictx.plan.air_id,
+            ArithEqTrace::<F>::AIR_ID,
+            "ArithEqInstance: Unsupported air_id: {:?}",
+            ictx.plan.air_id
+        );
+
+        let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
+
+        let collect_info = *meta
+            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+            .expect("Failed to downcast ictx.plan.meta to expected type");
+
+        Self { arith_eq_sm, collect_info, ictx }
     }
 }
 
@@ -58,17 +78,18 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<ArithEqCollector>().unwrap().inputs)
             .collect();
 
-        Some(self.arith_eq_sm.compute_witness(sctx, &inputs))
+        Some(self.arith_eq_sm.compute_witness(sctx, &inputs, trace_buffer))
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -88,16 +109,7 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
     }
 
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        assert_eq!(
-            self.ictx.plan.air_id,
-            ArithEqTrace::<F>::AIR_ID,
-            "ArithEqInstance: Unsupported air_id: {:?}",
-            self.ictx.plan.air_id
-        );
-
-        let meta = self.ictx.plan.meta.as_ref().unwrap();
-        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
-        let (num_ops, collect_skipper) = collect_info[&chunk_id];
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(ArithEqCollector::new(num_ops, collect_skipper)))
     }
 }
@@ -144,22 +156,23 @@ impl BusDevice<PayloadType> for ArithEqCollector {
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
-    ) -> Option<Vec<(BusId, Vec<PayloadType>)>> {
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() == self.num_operations as usize {
-            return None;
+            return;
         }
 
         let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
         if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::ArithEq as u32 {
-            return None;
+            return;
         }
 
         if self.collect_skipper.should_skip() {
-            return None;
+            return;
         }
 
         self.inputs.push(match data {
@@ -175,10 +188,24 @@ impl BusDevice<PayloadType> for ArithEqCollector {
             ExtOperationData::OperationSecp256k1DblData(bus_data) => {
                 ArithEqInput::Secp256k1Dbl(Secp256k1DblInput::from(&bus_data))
             }
+            ExtOperationData::OperationBn254CurveAddData(bus_data) => {
+                ArithEqInput::Bn254CurveAdd(Bn254CurveAddInput::from(&bus_data))
+            }
+            ExtOperationData::OperationBn254CurveDblData(bus_data) => {
+                ArithEqInput::Bn254CurveDbl(Bn254CurveDblInput::from(&bus_data))
+            }
+            ExtOperationData::OperationBn254ComplexAddData(bus_data) => {
+                ArithEqInput::Bn254ComplexAdd(Bn254ComplexAddInput::from(&bus_data))
+            }
+            ExtOperationData::OperationBn254ComplexSubData(bus_data) => {
+                ArithEqInput::Bn254ComplexSub(Bn254ComplexSubInput::from(&bus_data))
+            }
+            ExtOperationData::OperationBn254ComplexMulData(bus_data) => {
+                ArithEqInput::Bn254ComplexMul(Bn254ComplexMulInput::from(&bus_data))
+            }
             // Add here new operations
             _ => panic!("Expected ExtOperationData::OperationData"),
         });
-        None
     }
 
     /// Returns the bus IDs associated with this instance.

@@ -23,9 +23,10 @@ pub enum PinId {
     B = 1, // Input b pin
     C = 2, // Input c pin
     D = 3, // Output d pin representing the result of the gate
+    E = 4, // Output e pin representing the result of the gate (used for e.g., carry)
 }
 
-impl Index<PinId> for [Pin; 4] {
+impl Index<PinId> for [Pin; 5] {
     type Output = Pin;
 
     fn index(&self, pin_id: PinId) -> &Self::Output {
@@ -33,7 +34,7 @@ impl Index<PinId> for [Pin; 4] {
     }
 }
 
-impl IndexMut<PinId> for [Pin; 4] {
+impl IndexMut<PinId> for [Pin; 5] {
     fn index_mut(&mut self, pin_id: PinId) -> &mut Self::Output {
         &mut self[pin_id as usize]
     }
@@ -56,7 +57,7 @@ impl Pin {
             // If the pin is connected to another pin, then source is gated
             source: match id {
                 PinId::A | PinId::B | PinId::C => PinSource::External,
-                PinId::D => PinSource::Gated,
+                PinId::D | PinId::E => PinSource::Gated,
             },
             wired_ref: 0,
             wired_pin_id: PinId::D,
@@ -70,7 +71,7 @@ impl Pin {
     pub fn reset(&mut self) {
         self.source = match self.id {
             PinId::A | PinId::B | PinId::C => PinSource::External,
-            PinId::D => PinSource::Gated,
+            PinId::D | PinId::E => PinSource::Gated,
         };
         self.wired_ref = 0;
         self.wired_pin_id = PinId::D;

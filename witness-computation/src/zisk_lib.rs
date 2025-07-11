@@ -6,12 +6,12 @@
 
 use crate::StaticSMBundle;
 use executor::{/*DynSMBundle,*/ ZiskExecutor};
-use p3_field::PrimeField64;
-use p3_goldilocks::Goldilocks;
+use fields::{Goldilocks, PrimeField64};
 use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
 use precomp_sha256f::Sha256fManager;
+use proofman::register_std;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
@@ -20,32 +20,49 @@ use std::{any::Any, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
 use zisk_core::Riscv2zisk;
 
+const DEFAULT_CHUNK_SIZE_BITS: u64 = 18;
+
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
-    input_data_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
     executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
+    chunk_size: u64,
+    world_rank: i32,
+    local_rank: i32,
+    base_port: Option<u16>,
+    unlock_mapped_memory: bool,
 }
 
 #[no_mangle]
+#[allow(clippy::too_many_arguments)]
 fn init_library(
     verbose_mode: proofman_common::VerboseMode,
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
-    input_data_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
+    chunk_size_bits: Option<u64>,
+    world_rank: Option<i32>,
+    local_rank: Option<i32>,
+    base_port: Option<u16>,
+    unlock_mapped_memory: bool,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
-    proofman_common::initialize_logger(verbose_mode);
+    proofman_common::initialize_logger(verbose_mode, world_rank);
+    let chunk_size = 1 << chunk_size_bits.unwrap_or(DEFAULT_CHUNK_SIZE_BITS);
+
     let result = Box::new(WitnessLib {
         elf_path,
         asm_path,
         asm_rom_path,
-        input_data_path,
         sha256f_script_path,
         executor: None,
+        chunk_size,
+        world_rank: world_rank.unwrap_or(0),
+        local_rank: local_rank.unwrap_or(0),
+        base_port,
+        unlock_mapped_memory,
     });
 
     Ok(result)
@@ -70,20 +87,21 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let rv2zk = Riscv2zisk::new(self.elf_path.display().to_string());
 
         // Step 2: Convert program to ROM
-        let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {}", e));
+        let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
         let zisk_rom = Arc::new(zisk_rom);
 
         // Step 3: Initialize the secondary state machines
-        let std = Std::new(wcm.clone());
-        let rom_sm =
-            RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone(), self.input_data_path.clone());
+        let std = Std::new(wcm.get_pctx(), wcm.get_sctx());
+        register_std(&wcm, &std);
+
+        let rom_sm = RomSM::new(zisk_rom.clone(), None /*self.asm_rom_path.clone()*/);
         let binary_sm = BinarySM::new(std.clone());
         let arith_sm = ArithSM::new();
         let mem_sm = Mem::new(std.clone());
 
         // Step 4: Initialize the precompiles state machines
-        let keccakf_sm = KeccakfManager::new::<F>();
-        let sha256f_sm = Sha256fManager::new::<F>(self.sha256f_script_path.clone());
+        let keccakf_sm = KeccakfManager::new(wcm.get_sctx());
+        let sha256f_sm = Sha256fManager::new(wcm.get_sctx(), self.sha256f_script_path.clone());
         let arith_eq_sm = ArithEqManager::new(std.clone());
 
         // let sm_bundle = DynSMBundle::new(vec![
@@ -97,6 +115,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         // ]);
 
         let sm_bundle = StaticSMBundle::new(
+            self.asm_path.is_some(),
             mem_sm.clone(),
             rom_sm.clone(),
             binary_sm.clone(),
@@ -112,10 +131,15 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             self.elf_path.clone(),
             self.asm_path.clone(),
             self.asm_rom_path.clone(),
-            self.input_data_path.clone(),
             zisk_rom,
             std,
             sm_bundle,
+            Some(rom_sm.clone()),
+            self.chunk_size,
+            self.world_rank,
+            self.local_rank,
+            self.base_port,
+            self.unlock_mapped_memory,
         );
 
         let executor = Arc::new(executor);

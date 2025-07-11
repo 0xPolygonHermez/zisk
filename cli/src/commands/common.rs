@@ -1,10 +1,12 @@
+use anyhow::Result;
 use clap::{Parser, ValueEnum};
-use proofman_common::VerboseMode;
+#[cfg(distributed)]
+use mpi::traits::*;
 use std::env;
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::str::FromStr;
-use witness::WitnessLibrary;
+use zisk_common::MpiContext;
 
 #[derive(Parser, Debug, Clone, ValueEnum)]
 pub enum Field {
@@ -19,7 +21,7 @@ impl FromStr for Field {
         match s.to_lowercase().as_str() {
             "goldilocks" => Ok(Field::Goldilocks),
             // Add parsing for other variants here
-            _ => Err(format!("'{}' is not a valid value for Field", s)),
+            _ => Err(format!("'{s}' is not a valid value for Field")),
         }
     }
 }
@@ -102,11 +104,39 @@ pub fn cli_fail_if_gpu_mode() -> anyhow::Result<()> {
     }
 }
 
-pub type ZiskLibInitFn<F> = fn(
-    VerboseMode,
-    PathBuf,         // Rom path
-    Option<PathBuf>, // Asm path
-    Option<PathBuf>, // Asm ROM path
-    Option<PathBuf>, // Inputs path
-    PathBuf,         // Sha256f script path
-) -> Result<Box<dyn WitnessLibrary<F>>, Box<dyn std::error::Error>>;
+#[cfg(distributed)]
+pub fn initialize_mpi() -> Result<MpiContext> {
+    let (universe, _threading) = mpi::initialize_with_threading(mpi::Threading::Multiple)
+        .ok_or_else(|| anyhow::anyhow!("Failed to initialize MPI with threading"))?;
+
+    let world = universe.world();
+    let world_rank = world.rank();
+
+    let local_comm = world.split_shared(world_rank);
+    let local_rank = local_comm.rank();
+
+    Ok(MpiContext { universe, world_rank, local_rank })
+}
+
+#[cfg(not(distributed))]
+pub fn initialize_mpi() -> Result<MpiContext> {
+    Ok(MpiContext { world_rank: 0, local_rank: 0 })
+}
+
+/// Gets the witness computation library file location.
+/// Uses the default one if not specified by user.
+pub fn get_witness_computation_lib(witness_lib: Option<&PathBuf>) -> PathBuf {
+    witness_lib.cloned().unwrap_or_else(get_default_witness_computation_lib)
+}
+
+/// Gets the proving key file location.
+/// Uses the default one if not specified by user.
+pub fn get_proving_key(proving_key: Option<&PathBuf>) -> PathBuf {
+    proving_key.cloned().unwrap_or_else(get_default_proving_key)
+}
+
+/// Gets the zisk folder.
+/// Uses the default one if not specified by user.
+pub fn get_zisk_path(zisk_path: Option<&PathBuf>) -> PathBuf {
+    zisk_path.cloned().unwrap_or_else(get_default_zisk_path)
+}

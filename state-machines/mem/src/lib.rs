@@ -13,7 +13,6 @@ mod mem_debug;
 mod mem_helpers;
 mod mem_inputs;
 mod mem_module;
-mod mem_module_check_point;
 mod mem_module_collector;
 mod mem_module_instance;
 mod mem_module_planner;
@@ -34,12 +33,8 @@ use mem_counters_cursor::*;
 pub use mem_helpers::*;
 use mem_inputs::*;
 use mem_module::*;
-use mem_module_check_point::*;
 use mem_module_instance::*;
 use mem_module_planner::*;
 use mem_planner::*;
 use mem_sm::*;
 use rom_data_sm::*;
-
-#[cfg(feature = "debug_mem")]
-use mem_debug::*;

@@ -4,14 +4,15 @@
 //! It manages collected inputs and interacts with the `Sha256fSM` to compute witnesses for
 //! execution plans.
 
-use crate::Sha256fSM;
-use p3_field::PrimeField64;
+use crate::{Sha256fInput, Sha256fSM};
+use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use std::collections::VecDeque;
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, OperationSha256Data, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::Sha256fTrace;
@@ -20,15 +21,18 @@ use zisk_pil::Sha256fTrace;
 ///
 /// It encapsulates the `Sha256fSM` and its associated context, and it processes input data
 /// to compute witnesses for the Sha256f State Machine.
-pub struct Sha256fInstance {
+pub struct Sha256fInstance<F: PrimeField64> {
     /// Sha256f state machine.
-    sha256f_sm: Arc<Sha256fSM>,
+    sha256f_sm: Arc<Sha256fSM<F>>,
+
+    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
+    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
 
     /// Instance context.
     ictx: InstanceCtx,
 }
 
-impl Sha256fInstance {
+impl<F: PrimeField64> Sha256fInstance<F> {
     /// Creates a new `Sha256fInstance`.
     ///
     /// # Arguments
@@ -39,12 +43,25 @@ impl Sha256fInstance {
     /// # Returns
     /// A new `Sha256fInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(sha256f_sm: Arc<Sha256fSM>, ictx: InstanceCtx) -> Self {
-        Self { sha256f_sm, ictx }
+    pub fn new(sha256f_sm: Arc<Sha256fSM<F>>, mut ictx: InstanceCtx) -> Self {
+        assert_eq!(
+            ictx.plan.air_id,
+            Sha256fTrace::<usize>::AIR_ID,
+            "Sha256fInstance: Unsupported air_id: {:?}",
+            ictx.plan.air_id
+        );
+
+        let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
+
+        let collect_info = *meta
+            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+            .expect("Failed to downcast ictx.plan.meta to expected type");
+
+        Self { sha256f_sm, collect_info, ictx }
     }
 }
 
-impl<F: PrimeField64> Instance<F> for Sha256fInstance {
+impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
     /// Computes the witness for the sha256f execution plan.
     ///
     /// This method leverages the `Sha256fSM` to generate an `AirInstance` using the collected
@@ -56,17 +73,18 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance {
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
     fn compute_witness(
-        &mut self,
+        &self,
         _pctx: &ProofCtx<F>,
-        sctx: &SetupCtx<F>,
+        _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<Sha256fCollector>().unwrap().inputs)
             .collect();
 
-        Some(self.sha256f_sm.compute_witness(sctx, &inputs))
+        Some(self.sha256f_sm.compute_witness(&inputs, trace_buffer))
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -86,23 +104,14 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance {
     }
 
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        assert_eq!(
-            self.ictx.plan.air_id,
-            Sha256fTrace::<F>::AIR_ID,
-            "Sha256fInstance: Unsupported air_id: {:?}",
-            self.ictx.plan.air_id
-        );
-
-        let meta = self.ictx.plan.meta.as_ref().unwrap();
-        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
-        let (num_ops, collect_skipper) = collect_info[&chunk_id];
+        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(Sha256fCollector::new(num_ops, collect_skipper)))
     }
 }
 
 pub struct Sha256fCollector {
     /// Collected inputs for witness computation.
-    inputs: Vec<OperationSha256Data<u64>>,
+    inputs: Vec<Sha256fInput>,
 
     /// The number of operations to collect.
     num_operations: u64,
@@ -142,26 +151,26 @@ impl BusDevice<PayloadType> for Sha256fCollector {
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
-    ) -> Option<Vec<(BusId, Vec<PayloadType>)>> {
+        _pending: &mut VecDeque<(BusId, Vec<PayloadType>)>,
+    ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() == self.num_operations as usize {
-            return None;
+            return;
         }
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Sha256 as u32 {
-            return None;
+            return;
         }
 
         if self.collect_skipper.should_skip() {
-            return None;
+            return;
         }
 
         let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
         if let ExtOperationData::OperationSha256Data(data) = data {
-            self.inputs.push(data);
-            None
+            self.inputs.push(Sha256fInput::from(&data));
         } else {
             panic!("Expected ExtOperationData::OperationData");
         }

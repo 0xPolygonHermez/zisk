@@ -3,7 +3,7 @@
 //! This counter is used as a default implementation when no actual counting or metrics
 //! collection is required.
 
-use std::any::Any;
+use std::{any::Any, collections::VecDeque};
 
 use zisk_common::{BusDevice, BusId, Metrics};
 
@@ -37,8 +37,12 @@ impl Metrics for DummyCounter {
 
 impl BusDevice<u64> for DummyCounter {
     #[inline(always)]
-    fn process_data(&mut self, _bus_id: &BusId, _data: &[u64]) -> Option<Vec<(BusId, Vec<u64>)>> {
-        None
+    fn process_data(
+        &mut self,
+        _bus_id: &BusId,
+        _data: &[u64],
+        _pending: &mut VecDeque<(BusId, Vec<u64>)>,
+    ) {
     }
 
     /// Returns an empty vector as this counter is not associated with any bus IDs.

@@ -53,6 +53,7 @@
 //! opcodes, instructions and transpilation
 pub mod elf2rom;
 pub mod fcall;
+pub mod helpers;
 pub mod inst_context;
 pub mod mem;
 pub mod riscv2zisk;
@@ -69,6 +70,7 @@ pub mod zisk_rom_2_asm;
 
 pub use elf2rom::*;
 pub use fcall::*;
+pub use helpers::*;
 pub use inst_context::*;
 pub use mem::*;
 pub use riscv2zisk::*;

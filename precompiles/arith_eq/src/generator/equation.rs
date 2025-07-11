@@ -331,8 +331,10 @@ impl Equation {
                     addt.clear();
                     return false;
                 }
+                // TODO: This condition only applies if the terms
+                //       distinct from one are not present
                 // add the term only if different from 1
-                if value != BigInt::one() {
+                if value != BigInt::one() || addt.terms.is_empty() {
                     addt.terms.push(ProductTerm::BigInt { id: *id, index, value });
                 }
             }
@@ -387,9 +389,9 @@ impl Equation {
                     match term {
                         ProductTerm::BigInt { value, id, index } => {
                             let s_value = if self.constants[*id].1.is_hex {
-                                format!("0x{:X}", value)
+                                format!("0x{value:X}")
                             } else {
-                                format!("{}", value)
+                                format!("{value}")
                             };
                             if terms_by_clock == 0 {
                                 line.append(&s_value);
@@ -461,12 +463,11 @@ impl Equation {
 
         let mut out = self.generate_code_header()
             + &format!(
-                "\npub struct {0} {{}}\n\nimpl {0} {{\n\t#[allow(clippy::too_many_arguments)]\n\tpub fn calculate(icol: u8",
-                struct_name
+                "\npub struct {struct_name} {{}}\n\nimpl {struct_name} {{\n\t#[allow(clippy::too_many_arguments)]\n\tpub fn calculate(icol: u8"
             );
         if args_order.is_empty() {
             for var in self.vars.iter() {
-                out += &format!(", {}: &[i64;16]", var);
+                out += &format!(", {var}: &[i64;16]");
             }
         } else {
             let mut used = vec![false; self.vars.len()];
@@ -478,32 +479,30 @@ impl Equation {
                     Some(pos) => {
                         if used[pos] {
                             panic!(
-                                "args_order:{} with duplicated argument {} for {}",
-                                args_order, var, struct_name
+                                "args_order:{args_order} with duplicated argument {var} for {struct_name}"
                             )
                         } else {
                             used[pos] = true;
                         }
                     }
                     None => panic!(
-                        "args_order:{} with unknown argument {} for {}",
-                        args_order, var, struct_name
+                        "args_order:{args_order} with unknown argument {var} for {struct_name}"
                     ),
                 }
-                out += &format!(", {}: &[i64;16]", var);
+                out += &format!(", {var}: &[i64;16]");
             }
             if count < self.vars.len() {
                 for (index, var) in self.vars.iter().enumerate() {
                     if used[index] {
                         continue;
                     }
-                    out += &format!(", {}: &[i64;16]", var);
+                    out += &format!(", {var}: &[i64;16]");
                 }
             }
         }
         out += ") -> i64 {\n\t\tmatch icol {\n";
         for (icol, col) in self.map_chunks(0, "\n", "").iter().enumerate() {
-            out = out + &format!("{} => ", icol) + col + ",\n";
+            out = out + &format!("{icol} => ") + col + ",\n";
         }
         out += "\t\t\t_ => 0,\n\t\t}\n\t}\n}\n";
         // out = out
@@ -525,7 +524,7 @@ impl Equation {
             if (icol % self.config.terms_by_clock) == 0 {
                 out = out + &format!("// clock #{}\n\n", icol / self.config.terms_by_clock);
             }
-            let label = format!("{}_chunks[{:#2}]", const_name, icol);
+            let label = format!("{const_name}_chunks[{icol:#2}]");
             out = out + &label + " = " + col + "\n\n";
         }
         out
@@ -538,17 +537,17 @@ impl Equation {
     ) {
         let code = self.generate_rust_code(struct_name, args_order);
         if let Err(e) = std::fs::write(filename, code) {
-            eprintln!("\x1B[31mFailed to save rust code to {}: {}\x1B[0m", filename, e);
+            eprintln!("\x1B[31mFailed to save rust code to {filename}: {e}\x1B[0m");
         } else {
-            println!("Successfully wrote to rust file \x1B[32m{}\x1B[0m", filename);
+            println!("Successfully wrote to rust file \x1B[32m{filename}\x1B[0m");
         }
     }
     pub fn generate_pil_code_to_file(&mut self, const_name: &str, filename: &str) {
         let code = self.generate_pil_code(const_name);
         if let Err(e) = std::fs::write(filename, code) {
-            eprintln!("\x1B[31mFailed to save pil code to {}: {}\x1B[0m", filename, e);
+            eprintln!("\x1B[31mFailed to save pil code to {filename}: {e}\x1B[0m");
         } else {
-            println!("Successfully wrote to pil file \x1B[32m{}\x1B[0m", filename);
+            println!("Successfully wrote to pil file \x1B[32m{filename}\x1B[0m");
         }
     }
 }

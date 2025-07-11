@@ -9,6 +9,7 @@ categories = { workspace = true }
 
 [dependencies]
 proofman-common = { workspace = true }
+proofman = { workspace = true }
 proofman-macros = { workspace = true }
 serde = { workspace = true }
 rayon = { workspace = true }
@@ -19,5 +20,5 @@ serde_arrays = "0.2"
 default = []
 dev = []
 no_lib_link = ["proofman-common/no_lib_link"]
-diagnostic = ["proofman-macros/diagnostic"]
-disable-distributed = ["proofman-common/disable-distributed"]
+diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
+disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]

@@ -1,8 +1,7 @@
 use std::error::Error;
 
 use clap::{Arg, Command};
-use p3_field::PrimeCharacteristicRing;
-use p3_goldilocks::Goldilocks;
+use fields::{Field, Goldilocks, PrimeField64};
 
 use zisk_pil::KeccakfTrace;
 
@@ -52,7 +51,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         n as u64,
         &mut [conn_a, conn_b, conn_c, gate_op],
     );
-    println!("CONN_A, CONN_B, CONN_C and GATE_OP columns written to {}", output_file);
+    println!("CONN_A, CONN_B, CONN_C and GATE_OP columns written to {output_file}");
 
     Ok(())
 }
@@ -77,10 +76,7 @@ fn cols_gen(
     // Check that the subgroup order is sufficiently large
     let slot_size = keccakf_program.len();
     if slot_size >= subgroup_order {
-        panic!(
-            "The provided number of bits {} is too small for the Keccakf circuit",
-            subgroup_order
-        );
+        panic!("The provided number of bits {subgroup_order} is too small for the Keccakf circuit");
     }
 
     // Get the number of slots we can generate
@@ -169,7 +165,7 @@ fn cols_gen(
             match op {
                 GateOperation::Xor => gate_op[line] = F::ZERO,
                 GateOperation::Andp => gate_op[line] = F::ONE,
-                _ => panic!("Invalid op: {:?}", op),
+                _ => panic!("Invalid op: {op:?}"),
             }
         }
     }

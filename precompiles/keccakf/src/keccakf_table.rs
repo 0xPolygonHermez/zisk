@@ -8,7 +8,7 @@ use std::sync::{
     Arc,
 };
 
-use p3_field::Field;
+use fields::Field;
 use zisk_common::create_atomic_vec;
 use zisk_pil::KeccakfTableTrace;
 
@@ -58,6 +58,17 @@ impl KeccakfTableSM {
         self.multiplicities[0][index].fetch_add(value, Ordering::Relaxed);
     }
 
+    pub fn update_multiplicities(&self, multiplicities: &[u64]) {
+        if self.calculated.load(Ordering::Relaxed) {
+            return;
+        }
+        for (index, &value) in multiplicities.iter().enumerate() {
+            if value != 0 {
+                self.multiplicities[0][index].fetch_add(value, Ordering::Relaxed);
+            }
+        }
+    }
+
     /// Detaches and returns the current multiplicity table.
     ///
     /// # Returns
@@ -68,6 +79,10 @@ impl KeccakfTableSM {
 
     pub fn set_calculated(&self) {
         self.calculated.store(true, Ordering::Relaxed);
+    }
+
+    pub fn reset_calculated(&self) {
+        self.calculated.store(false, Ordering::Relaxed);
     }
 
     /// Calculates the table row offset based on the provided parameters.

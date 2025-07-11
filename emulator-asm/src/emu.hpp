@@ -1,15 +1,70 @@
 #ifndef EMU_ASM_HPP
 #define EMU_ASM_HPP
 
+#include <stdint.h>
+
 #ifdef DEBUG
-extern bool keccak_metrics;
-extern uint64_t keccak_counter;
-extern uint64_t keccak_duration;
-
-extern bool arith256_metrics;
-extern bool arith256_mod_metrics;
-extern bool secp256k1_add_metrics;
-extern bool secp256k1_dbl_metrics;
+extern bool emu_verbose;
 #endif
 
-#endif
+//#define ASM_CALL_METRICS
+
+#ifdef ASM_CALL_METRICS
+
+typedef struct {
+
+    uint64_t keccak_counter;
+    uint64_t keccak_duration;
+
+    uint64_t sha256_counter;
+    uint64_t sha256_duration;
+
+    uint64_t arith256_counter;
+    uint64_t arith256_duration;
+
+    uint64_t arith256_mod_counter;
+    uint64_t arith256_mod_duration;
+
+    uint64_t secp256k1_add_counter;
+    uint64_t secp256k1_add_duration;
+
+    uint64_t secp256k1_dbl_counter;
+    uint64_t secp256k1_dbl_duration;
+
+    uint64_t fcall_counter;
+    uint64_t fcall_duration;
+
+    uint64_t inverse_fp_ec_counter;
+    uint64_t inverse_fp_ec_duration;
+
+    uint64_t inverse_fn_ec_counter;
+    uint64_t inverse_fn_ec_duration;
+
+    uint64_t sqrt_fp_ec_parity_counter;
+    uint64_t sqrt_fp_ec_parity_duration;
+
+    uint64_t bn254_curve_add_counter;
+    uint64_t bn254_curve_add_duration;
+
+    uint64_t bn254_curve_dbl_counter;
+    uint64_t bn254_curve_dbl_duration;
+
+    uint64_t bn254_complex_add_counter;
+    uint64_t bn254_complex_add_duration;
+
+    uint64_t bn254_complex_sub_counter;
+    uint64_t bn254_complex_sub_duration;
+
+    uint64_t bn254_complex_mul_counter;
+    uint64_t bn254_complex_mul_duration;
+
+} AsmCallMetrics;
+
+extern AsmCallMetrics asm_call_metrics;
+
+void reset_asm_call_metrics (void);
+void print_asm_call_metrics (uint64_t total_duration);
+
+#endif // ASM_CALL_METRICS
+
+#endif // EMU_ASM_HPP

@@ -8,7 +8,7 @@ require "std_connection.pil"
 const int SHA256F_OP = 0xF9;
 const int SHA256F_CIRCUIT_ID = 401;
 
-airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, const int bits_in_parallel = 2, const int chunks = 9, const int bits = 7, const int operation_bus_id) {
+airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, const int bits_in_parallel = 2, const int chunks = 8, const int bits = 7, const int operation_bus_id) {
     // Sha256-f circuit size
     const int CIRCUIT_SIZE = 31488;
     println(`The size of the Sha256-f circuit is ${CIRCUIT_SIZE}`);
@@ -25,7 +25,7 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     }
 
     // Compute some stats
-    const int NUM_SHA256F_PER_CIRCUIT = chunks * bits;
+    const int NUM_SHA256F_PER_CIRCUIT = BITS_INPUT;
     const int NUM_CIRCUITS = (N - 1) / CIRCUIT_SIZE;
     const int NUM_SHA256F = NUM_CIRCUITS * NUM_SHA256F_PER_CIRCUIT;
     const int NUM_PADDING_ROWS = (N - 1) % CIRCUIT_SIZE;
@@ -58,8 +58,11 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
     col witness free_in_a[chunks], free_in_b[chunks], free_in_c[chunks], free_in_d[chunks];
 
     // --> Circuit gates constraints
+    col witness carry[chunks];
     for (int i = 0; i < chunks; i++) {
-        lookup_assumes(SHA256F_TABLE_ID, [GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i], free_in_d[i], free_in_c[i]' * CARRY_ENABLED]);
+        carry[i] === free_in_c[i]' * CARRY_ENABLED;
+
+        lookup_assumes(SHA256F_TABLE_ID, [GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i], free_in_d[i], carry[i]]);
     }
 
     // --> Circuit connections constraints
@@ -83,144 +86,286 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
 
     connection(opid: SHA256F_CIRCUIT_ID, cols: [a, b, c, d], CONN: [CONN_A, CONN_B, CONN_C, CONN_D]);
 
-    // --> Constraints to make sure that this coprocessor is called from the main processor
-    col witness step;
-    col witness addr;
-    col witness multiplicity;
-    lookup_proves(OPERATION_BUS_ID, [SHA256F_OP, step, 0, addr, 0, 0, 0, 0], multiplicity);
-
     // --> Constraints to read inputs from memory and write outputs to memory
 
-    // To achieve maximum capacity, inputs to the circuit are represented as
-    // `BITS_INPUT` bits from independent sha256f executions, one batch of
-    // `BITS_INPUT` bits per row.
-    // However, the main SM treat dependent bits. Therefore, we should reconstruct
-    // the dependent bits together so that we can prove the correctness
-    // of the input and output to the main SM.
+    /*
+        We should take care of how we handle the memory access.
 
-    // We first process the bits of the input and then the bits of the output
-    // We process multiple bits in parallel
+        The Sha256f inputs are received via two indirections inside a structure.
+        The address received from the MainSM is the address of the structure
+        The first indirection is the adress of the Sha256f state
+        The second indirection is the address of the Sha256f input
+        We have to relate all these addresses, by proving that:
+            · ADDR_STATE === ADDR_IND_0
+            · ADDR_INPUT === ADDR_IND_1
+        while sending both addr_ind_0 and addr_ind_1 to the memory.
+
+        Circuit inputs are represented as a vector of bits, where each bit is
+        from a different Sha256f invocation. However, the Mem treats one
+        Sha256f invocation at a time, so we need to relate these two
+        representations. For that, we will use a bit decomposition and prove
+        that the bit decomposition is consistent with the Sha256f circuit.
+
+           ROW       BIT     BIT[0]    VAL[0]        BIT     BIT[1]    VAL[1]        BLOCK   TYPE  
+        |  1      |   1     |  X   |   0bX        |   2     |  X   |   0bX        |    1    | IN  | 
+        |  2      |   1     |  Y   |   0bYX       |   2     |  Y   |   0bYX       |    1    | IN  |       
+        |  ...    |   ...   | ...  |              |   ...   | ...  |              |    ...  |     | 
+        |  56     |   1     |  Z   |   0bZ...YX   |   2     |  Z   |   0bZ...YX   |    1    | IN  | 
+        -------------------------------------------------------------------------------------------
+        |  57     |   3     |  X   |   0bX        |   4     |  X   |   0bX        |    2    | IN  | 
+        |  58     |   3     |  Y   |   0bYX       |   4     |  Y   |   0bYX       |    2    | IN  |       
+        |  ...    |         | ...  |              |         | ...  |              |    ...  |     | 
+        |  112    |   3     |  Z   |   0bZ...YX   |   4     |  Z   |   0bZ...YX   |    2    | IN  | 
+        -------------------------------------------------------------------------------------------
+        |.........................................................................................|
+        -------------------------------------------------------------------------------------------
+        |  21.449 |   767   |  X   |   0bX        |   768   |  X   |   0bX        |   384   | IN  | 
+        |  21.450 |   767   |  Y   |   0bYX       |   768   |  Y   |   0bYX       |   384   | IN  |       
+        |  ...    |         | ...  |              |         | ...  |              |   ...   |     | 
+        |  21.504 |   767   |  Z   |   0bZ...YX   |   768   |  Z   |   0bZ...YX   |   384   | IN  |
+        -------------------------------------------------------------------------------------------
+        |  21.505 |   1     |  X   |   0bX        |   2     |  X   |   0bX        |    1    | OUT | 
+        |  21.506 |   1     |  Y   |   0bYX       |   2     |  Y   |   0bYX       |    1    | OUT |       
+        |  ...    |         | ...  |              |         | ...  |              |   ...   |     | 
+        |  21.560 |   1     |  Z   |   0bZ...YX   |   2     |  Z   |   0bZ...YX   |    1    | OUT | 
+        -------------------------------------------------------------------------------------------
+        |.........................................................................................|
+        -------------------------------------------------------------------------------------------
+        |  28.617 |   255   |  X   |   0bX        |   256   |  X   |   0bX        |   128   | OUT | 
+        |  28.618 |   255   |  Y   |   0bYX       |   256   |  Y   |   0bYX       |   128   | OUT |       
+        |  ...    |         | ...  |              |         | ...  |              |         |     | 
+        |  28.672 |   255   |  Z   |   0bZ...YX   |   256   |  Z   |   0bZ...YX   |   128   | OUT |      
+        -------------------------------------------------------------------------------------------           
+    */
 
     col witness bit[bits_in_parallel];
     col witness val[bits_in_parallel];
 
-    const int STATE_SIZE_BITS = 256;
-    const int INPUT_SIZE_BITS = 512;
-    const int INPUT_DATA_SIZE_BITS = STATE_SIZE_BITS + INPUT_SIZE_BITS;
-    const int OUTPUT_SIZE_BITS = STATE_SIZE_BITS;
+    // Ensure that bit[i] is a bit
+    for (int i = 0; i < bits_in_parallel; i++) {
+        bit[i] * (1 - bit[i]) === 0; // (1)
+    }
 
-    const int IN_SIZE = NUM_SHA256F_PER_CIRCUIT * INPUT_DATA_SIZE_BITS / bits_in_parallel;
-    const int OUT_SIZE = NUM_SHA256F_PER_CIRCUIT * OUTPUT_SIZE_BITS / bits_in_parallel;
-    const int IN_OUT_SIZE = IN_SIZE + OUT_SIZE;
+    // Parameters bits
+    const int MEM_BITS = RB * RC; // Minimal memory bits
+    const int STATE_BITS = 256;
+    const int INPUT_BITS = 512;
+    const int INPUT_DATA_BITS = STATE_BITS + INPUT_BITS;
+    const int OUTPUT_BITS = STATE_BITS;
+    const int INPUT_OUTPUT_BITS = INPUT_DATA_BITS + OUTPUT_BITS;
+
+    // Number of memory accesses needed to handle the bits
+    const int STATE_BLOCKS = STATE_BITS / (RB * RC);
+    const int IN_BLOCKS = INPUT_BITS / (RB * RC);
+    const int IN_DATA_BLOCKS = INPUT_DATA_BITS / (RB * RC);
+    const int OUT_BLOCKS = OUTPUT_BITS / (RB * RC);
+    const int IND_BLOCKS = 2; // Two indirect accesses
+    const int IN_OUT_BLOCKS = IN_DATA_BLOCKS + OUT_BLOCKS;
+    const int IN_OUT_IND_BLOCKS = IN_OUT_BLOCKS + IND_BLOCKS;
+
+    // Parameters size in the circuit
+    const int MEM_SIZE = MEM_BITS * NUM_SHA256F_PER_CIRCUIT / bits_in_parallel; // Minimal memory size
+    const int INPUT_SIZE = INPUT_DATA_BITS * NUM_SHA256F_PER_CIRCUIT / bits_in_parallel;
+    const int OUTPUT_SIZE = OUTPUT_BITS * NUM_SHA256F_PER_CIRCUIT / bits_in_parallel;
+    const int INPUT_OUTPUT_SIZE = INPUT_OUTPUT_BITS * NUM_SHA256F_PER_CIRCUIT / bits_in_parallel;
+    if (INPUT_OUTPUT_SIZE > CIRCUIT_SIZE) {
+        error(`The Sha256-f circuit size ${CIRCUIT_SIZE} is too small for the template configuration.`);  
+    }
+
     // Instructions to add a latch:
     //  - When there are circuits.
     //  - Every NUM_SHA256F_PER_CIRCUIT clocks.
     //  - When there are still bits to process.
-    col fixed latch_num_sha256f  = [0,[0,[0:(NUM_SHA256F_PER_CIRCUIT-1),1]:((INPUT_DATA_SIZE_BITS + OUTPUT_SIZE_BITS) / bits_in_parallel),
-                                       0:(CIRCUIT_SIZE - (IN_OUT_SIZE+1))]:NUM_CIRCUITS,
+    col fixed LATCH_NUM_SHA256F  = [0,[0,[0:(NUM_SHA256F_PER_CIRCUIT-1),1]:(INPUT_OUTPUT_BITS / bits_in_parallel),
+                                       0:(CIRCUIT_SIZE - (INPUT_OUTPUT_SIZE+1))]:NUM_CIRCUITS,
                                     0...];
 
     // Instructions to add the factor:
     //  - When there are circuits.
     //  - Every clock, for the clock in the circuit, we add the factor 1 << clk.
-    //  - When there are still bits to process (i.e., we repeat the previous instruction INPUT_DATA_SIZE_BITS times).
-    col fixed factor_num_sha256f;
+    //  - When there are still bits to process (i.e., we repeat the previous instruction INPUT_DATA_BITS times).
+    col fixed FACTOR_NUM_SHA256F;
     if (NUM_SHA256F_PER_CIRCUIT != 1) {
-        factor_num_sha256f = [0,[[1,2..*..2**(NUM_SHA256F_PER_CIRCUIT-1)]:((INPUT_DATA_SIZE_BITS + OUTPUT_SIZE_BITS) / bits_in_parallel), 
-                                  0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS,
+        FACTOR_NUM_SHA256F = [0,[[1,2..*..2**(NUM_SHA256F_PER_CIRCUIT-1)]:(INPUT_OUTPUT_BITS / bits_in_parallel), 
+                                  0:(CIRCUIT_SIZE - INPUT_OUTPUT_SIZE)]:NUM_CIRCUITS,
                               0...];
     } else {
-        factor_num_sha256f = [0, [1:((INPUT_DATA_SIZE_BITS + OUTPUT_SIZE_BITS) / bits_in_parallel), 
-                                  0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS, 
+        FACTOR_NUM_SHA256F = [0, [1:(INPUT_OUTPUT_BITS / bits_in_parallel), 
+                                  0:(CIRCUIT_SIZE - INPUT_OUTPUT_SIZE)]:NUM_CIRCUITS, 
                               0...];
     }
 
-    // `bit` is a bit
+    // val[i] accumulates the bits
     for (int i = 0; i < bits_in_parallel; i++) {
-        bit[i] * (1 - bit[i]) === 0;
+        val[i]' === val[i] * (1 - LATCH_NUM_SHA256F) + bit[i] * FACTOR_NUM_SHA256F; // (2)
+    }
+    // In each j-th latch, val[i] has accumulated the j-th bit of all the sha256f's 
+
+    // In each j-th latch, val[i] has to coincide with the a-th gate entry,
+    // whose positions where reserved for the inputs and outputs of the Sha256f circuit
+    for (int i = 0; i < bits_in_parallel; i++) {
+        LATCH_NUM_SHA256F * (val[i] - a'(i)) === 0; // (3)
     }
 
-    // `val` accumulates bits. In each i-th latch, `val` has accumulated the i-th bit of the sha256f's 
-    for (int i = 0; i < bits_in_parallel; i++) {
-        val[i]' === val[i] * (1 - latch_num_sha256f) + bit[i] * factor_num_sha256f;
-    }
+    // (1),(2) and (3) prove that the bit decomposition is correct
 
-    // In each i-th latch, `val` has to coincide with the 'a'-th gate entry
-    for (int i = 0; i < bits_in_parallel; i++) {
-        latch_num_sha256f * (val[i] - a'(i)) === 0;
-    }
+    // Now that we have access to the Sha256f inputs/outputs at the bit level
+    // we can reconstruct them one Sha256f invocation at a time
 
-    // `state` accumulates RB bits of the i-th sha256f state each clock
-    // After NUM_SHA256F_PER_CIRCUIT clocks, `state` has accumulated RB bits of the NUM_SHA256F_PER_CIRCUIT sha256f's
-    expr state[RC];
-    // Initialize the state
+    // sha_val[i] accumulates RB bits of the j-th sha256f invocation each clock
+    expr sha_val[RC];
+    // Initialize the sha_val
     for (int i = 0; i < RC; i++) {
-        state[i] = 0;
+        sha_val[i] = 0;
     }
-    // Update the state, the Sha256 state is represented in big endian
+    // Update the sha_val: the Sha256 works over words of 32 bits
+    // but the memory works over words of 64 bits. So we must
+    // read the RB MSB first
     const int RB_OFFSET = RB / bits_in_parallel;
     for (int i = 0; i < RB; i++) {
-        const int state_bit = i % bits_in_parallel;
-        const int state_idx = (i - state_bit) / bits_in_parallel;
+        const int sha_val_bit = i % bits_in_parallel;
+        const int sha_val_idx = (i - sha_val_bit) / bits_in_parallel;
         for (int j = 0; j < RC; j++) {
-            state[RC - 1 - j] += bit[state_bit]'(NUM_SHA256F_PER_CIRCUIT*(RB_OFFSET * j + state_idx)) * 2**(RB - 1 - i);
+            sha_val[RC - 1 - j] += bit[sha_val_bit]'(NUM_SHA256F_PER_CIRCUIT*(RB_OFFSET * j + sha_val_idx)) * 2**i;
         }
     }
+    // sha_val[0] = bit[0]'(896) + bit[1]'(896)·2 + bit[0]'(952)·2²  + bit[1]'(952)·2³  + ... + bit[0]'(1736)·2³⁰ + bit[1]'(1736)·2³¹
+    // sha_val[1] = bit[0]       + bit[1]·2       + bit[0]'(56)·2²   + bit[1]'(56)·2³   + ... + bit[0]'(840)·2³⁰  + bit[1]'(840)·2³¹
 
-    // `is_val` is an indicator that the value is valid
-    col witness is_val;
-    is_val * (1 - is_val) === 0;
+    // Finally, we must address the rest mem values
 
-    // if multiplicity is not zero, then is_val should be 1
-    multiplicity * (is_val - 1) === 0;
+    // A single col is sufficient for storing the step and the address
+    col witness step_addr; 
 
-    // Then, if is_val = 1, it should be 1 RB*INPUT_CHUNKS_TO_PROCESS times (input and ouput), separated by NUM_SHA256F_PER_CIRCUIT
-    // escept for the very last bit
-    const int INPUT_CHUNKS = INPUT_DATA_SIZE_BITS / (RB * RC);
-    const int OUTPUT_CHUNKS = OUTPUT_SIZE_BITS / (RB * RC);
-    const int IN_OUT_CHUNKS = INPUT_CHUNKS + OUTPUT_CHUNKS;
-    const int RB_SIZE = NUM_SHA256F_PER_CIRCUIT * RB * RC / bits_in_parallel;
-    const int RB_SIZE_MINUS_ONE = NUM_SHA256F_PER_CIRCUIT * (RB * RC / bits_in_parallel - 1);
-    col fixed latch_in_out = [0,[[1:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:(IN_OUT_CHUNKS-1),
-                                  0:RB_SIZE,
-                                  0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS,
-                              0...];
-    latch_in_out * (is_val'(RB_SIZE) - is_val) === 0;
+    // MEMORY ACCESS MAP
+    // ======================================================
+    //   0  STEP      | R |  ADDR_STATE       |  state[0]
+    //   1  STEP      | R |  ADDR_STATE + 8   |  state[1]    
+    //   2  STEP      | R |  ADDR_STATE + 16  |  state[2]        
+    //   3  STEP      | R |  ADDR_STATE + 24  |  state[3]  
+    //   4  STEP      | R |  ADDR_INPUT       |  input[0]         
+    //   5  STEP      | R |  ADDR_INPUT + 8   |  input[1]         
+    //   6  STEP      | R |  ADDR_INPUT + 16  |  input[2]        
+    //   7  STEP      | R |  ADDR_INPUT + 24  |  input[3]
+    //   8  STEP      | R |  ADDR_INPUT + 32  |  input[4]         
+    //   9  STEP      | R |  ADDR_INPUT + 40  |  input[5]         
+    //  10  STEP      | R |  ADDR_INPUT + 48  |  input[6]        
+    //  11  STEP      | R |  ADDR_INPUT + 56  |  input[7]     
+    //  12  STEP + 1  | W |  ADDR_STATE       |  state[0]          
+    //  13  STEP + 1  | W |  ADDR_STATE + 8   |  state[1]       
+    //  14  STEP + 1  | W |  ADDR_STATE + 16  |  state[2]      
+    //  15  STEP + 1  | W |  ADDR_STATE + 24  |  state[3]     
+    //  16  STEP      | R |  ADDR_OP + 0      |  ADDR_IND_0
+    //  17  STEP      | R |  ADDR_OP + 8      |  ADDR_IND_1
+    // ======================================================
 
-    // step should be the same every NUM_SHA256F_PER_CIRCUIT clock
-    is_val * (step'(RB_SIZE) - step) === 0;
+    const int STEP_MAIN = 0;
+    const int ADDR_OP = STEP_MAIN + MEM_SIZE;
+    const int ADDR_STATE = ADDR_OP + MEM_SIZE;
+    const int ADDR_INPUT = ADDR_STATE + MEM_SIZE;
+    const int ADDR_IND_0 = ADDR_INPUT + MEM_SIZE;
+    const int ADDR_IND_1 = ADDR_IND_0 + MEM_SIZE;
 
-    // addr should be the previous plus one every RB_SIZE clock
-    // except when there is a change from input to output
-    col fixed addr_inc = [0,[
-                             [8:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:(INPUT_CHUNKS-1),
-                             [(-8*(INPUT_CHUNKS-1)):NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE],
-                             [8:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:(OUTPUT_CHUNKS-1),
-                              0:RB_SIZE,
-                              0:(CIRCUIT_SIZE - IN_OUT_SIZE)
-                            ]:NUM_CIRCUITS,
-                          0...];
-    is_val * (addr'(RB_SIZE) - (addr + addr_inc)) === 0;
+    col fixed CLK_0 = [0, [1:NUM_SHA256F_PER_CIRCUIT, 0:(CIRCUIT_SIZE-NUM_SHA256F_PER_CIRCUIT)]:NUM_CIRCUITS, 0...];
 
-    col fixed latch_in  = [0,[[1:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:INPUT_CHUNKS,
-                               0:(CIRCUIT_SIZE - IN_SIZE)]:NUM_CIRCUITS,
-                           0...];
+    clock_eq(step_addr, ADDR_STATE, ADDR_IND_0) === 0;
+    clock_eq(step_addr, ADDR_INPUT, ADDR_IND_1) === 0;
 
-    col fixed latch_out = [0,[ 0:(RB_SIZE*INPUT_CHUNKS),
-                              [1:NUM_SHA256F_PER_CIRCUIT,0:RB_SIZE_MINUS_ONE]:OUTPUT_CHUNKS,
-                               0:(CIRCUIT_SIZE - IN_OUT_SIZE)]:NUM_CIRCUITS,
-                           0...];
-    precompiled_mem_load(
-             sel: is_val * latch_in,
-             main_step: step,
-             addr: addr,
-             value: state
-            );
+    const expr mem_addr = clock_map(step_addr, ADDR_STATE, start: 0,              end: STATE_BLOCKS,      delta: 8, factor: MEM_SIZE) +
+                          clock_map(step_addr, ADDR_INPUT, start: STATE_BLOCKS,   end: IN_DATA_BLOCKS,    delta: 8, factor: MEM_SIZE) +
+                          clock_map(step_addr, ADDR_STATE, start: IN_DATA_BLOCKS, end: IN_OUT_BLOCKS,     delta: 8, factor: MEM_SIZE) +
+                          clock_map(step_addr, ADDR_OP,    start: IN_OUT_BLOCKS,  end: IN_OUT_IND_BLOCKS, delta: 8, factor: MEM_SIZE);
 
-    precompiled_mem_store(
-              sel: is_val * latch_out,
-              main_step: step,
-              addr: addr,
-              value: state
-            );
+    const expr main_step = clock_map(step_addr, STEP_MAIN, start: 0, end: IN_OUT_IND_BLOCKS, factor: MEM_SIZE);
+
+    const expr mem_value[2];
+
+    mem_value[0] = clock_set(sha_val[0], start: 0, end: IN_OUT_BLOCKS, factor: MEM_SIZE) +
+                   clock_map(step_addr, ADDR_IND_0, start: IN_OUT_BLOCKS, factor: MEM_SIZE) +
+                   clock_map(step_addr, ADDR_IND_1, start: IN_OUT_BLOCKS+1, factor: MEM_SIZE);
+
+    mem_value[1] = clock_set(sha_val[1], start: 0, end: IN_OUT_BLOCKS, factor: MEM_SIZE);
+                   // high bits of indirect addresses are 0.
+
+    col witness in_use_clk_0;
+    in_use_clk_0 * (1 - in_use_clk_0) === 0; // binary
+    (1 - CLK_0) * in_use_clk_0 === 0; // it can only be active when CLK_0 is active
+
+    col witness in_use;
+    in_use * (1 - in_use) === 0; // binary
+    (1 - (CLK_0 + (IN_OUT_IND_BLOCKS*MEM_SIZE)'CLK_0)) * (in_use - (MEM_SIZE)'in_use) === 0; // if activated, it must keep the
+                                                                                        // keep the same value during the circuit
+    // Note: We needed to cancel the constraint in the last block because the last block of the circuit is not used
+
+    // in_use is active iff in_use_clk_0 is active
+    CLK_0 * (in_use - in_use_clk_0) === 0;
+
+    const expr mem_sel = clock_set(in_use, start: 0, end: IN_OUT_IND_BLOCKS, factor: MEM_SIZE);
+
+    const expr mem_is_write = clock_ref(CLK_0, start: 0, end: OUT_BLOCKS, offset: MEM_SIZE*IN_DATA_BLOCKS, factor: MEM_SIZE);
+
+    precompiled_mem_op(
+            is_write: mem_is_write,
+            sel: mem_sel,
+            main_step: main_step,
+            addr: mem_addr,
+            value: mem_value
+    );
+
+    // --> Constraints to make sure that this coprocessor is called from the main processor
+    lookup_proves(OPERATION_BUS_ID, [SHA256F_OP, step_addr'(STEP_MAIN), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], mul: in_use_clk_0);
+
+    function clock_eq(const expr mvcol, int pos1, int pos2, int pos2_offset = 0): const expr {
+        return air.CLK_0 * (mvcol'(pos1) - mvcol'(pos2) - pos2_offset);
+    }
+
+    function clock_map(const expr mvcol, int pos, int start = 0, int end = -1, int delta = 0, int factor = 1): const expr {
+        expr res = 0;
+        if (end == -1) {
+            end = start + 1;
+        }
+        int offset = 0;
+        for (int index = start; index < end; index++) {
+            int _index = index*factor;
+            int iclock = (pos - _index) % air.CIRCUIT_SIZE;
+            if (offset != 0) {
+                res += (_index)'air.CLK_0 * (mvcol'(iclock) + offset);
+            } else {
+                res += (_index)'air.CLK_0 * mvcol'(iclock);
+            }
+            offset += delta;
+        }
+        return res;
+    }
+
+    function clock_set(const expr cl, int start = 0, int end = -1, int offset = 0, int delta = 0, int factor = 1): const expr {
+        expr res = 0;
+        if (end == -1) {
+            end = start;
+        }
+        for (int index = start; index < end; ++index) {
+            if (offset != 0) {
+                res += (index*factor)'air.CLK_0 * (cl + offset);
+            } else {
+                res += (index*factor)'air.CLK_0 * cl;
+            }
+            offset += delta;
+        }
+        return res;
+    }
+
+    function clock_ref(const expr cl, int start = 0, int end = -1, int offset = 0, int factor = 1): const expr {
+        expr res = 0;
+        if (end == -1) {
+            end = start;
+        }
+        for (int index = start; index < end; ++index) {
+            if (offset != 0) {
+                res += (offset + index*factor)'cl;
+            } else {
+                res += (index*factor)'cl;
+            }
+        }
+        return res;
+    }
 }

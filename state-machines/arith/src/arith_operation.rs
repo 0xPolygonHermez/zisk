@@ -186,7 +186,7 @@ impl ArithOperation {
 
     /// Computes the signed representation of a 32-bit value.
     fn sign32(abs_value: u64, negative: bool) -> u64 {
-        assert!(0xFFFF_FFFF >= abs_value, "abs_value:0x{0:X}({0}) is too big", abs_value);
+        assert!(0xFFFF_FFFF >= abs_value, "abs_value:0x{abs_value:X}({abs_value}) is too big");
         if negative {
             (0xFFFF_FFFF - abs_value) + 1
         } else {
@@ -368,7 +368,7 @@ impl ArithOperation {
                 [Self::calculate_div_w(a, b), b, a, Self::calculate_rem_w(a, b)]
             }
             _ => {
-                panic!("ArithOperation::calculate_abcd_from_ab() Invalid opcode={}", op);
+                panic!("ArithOperation::calculate_abcd_from_ab() Invalid opcode={op}");
             }
         }
     }
@@ -484,7 +484,7 @@ impl ArithOperation {
                 self.sext = (d & 0x8000_0000) != 0;
             }
             _ => {
-                panic!("ArithOperation::update_flags_and_ranges() Invalid opcode={}", op);
+                panic!("ArithOperation::update_flags_and_ranges() Invalid opcode={op}");
             }
         }
         self.signed = sa || sb;
@@ -613,10 +613,10 @@ impl ArithOperation {
         //  15  F  -  F  + ab cd    2    2
         //  16  F  -  F  - ab cd    2    2
 
-        assert!(range_a1 == 0 || range_a3 == 0, "range_a1:{} range_a3:{}", range_a1, range_a3);
-        assert!(range_b1 == 0 || range_b3 == 0, "range_b1:{} range_b3:{}", range_b1, range_b3);
-        assert!(range_c1 == 0 || range_c3 == 0, "range_c1:{} range_c3:{}", range_c1, range_c3);
-        assert!(range_d1 == 0 || range_d3 == 0, "range_d1:{} range_d3:{}", range_d1, range_d3);
+        assert!(range_a1 == 0 || range_a3 == 0, "range_a1:{range_a1} range_a3:{range_a3}");
+        assert!(range_b1 == 0 || range_b3 == 0, "range_b1:{range_b1} range_b3:{range_b3}");
+        assert!(range_c1 == 0 || range_c3 == 0, "range_c1:{range_c1} range_c3:{range_c3}");
+        assert!(range_d1 == 0 || range_d3 == 0, "range_d1:{range_d1} range_d3:{range_d3}");
 
         self.range_ab = (range_a3 + range_a1) * 3
             + range_b3

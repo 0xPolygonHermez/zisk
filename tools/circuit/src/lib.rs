@@ -8,7 +8,7 @@ mod utils;
 pub use gate::{Gate, GateOperation};
 pub use gate_config::GateConfig;
 pub use gate_state::GateState;
-pub use gate_u32::{gate_u32_add, gate_u32_and, gate_u32_not, gate_u32_xor, GateU32};
+pub use gate_u32::{gate_u32_add, gate_u32_ch, gate_u32_maj, gate_u32_xor, GateU32};
 pub use pin::{Pin, PinId, PinSource};
 pub use utils::*;
 

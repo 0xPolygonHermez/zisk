@@ -20,15 +20,15 @@ precompiles-common = { path = "../common" }
 circuit = { path = "../../tools/circuit" }
 precompiles-helpers = { path = "../helpers" }
 
+proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
 witness = { workspace = true }
 pil-std-lib = { workspace = true }
 
-p3-field = { workspace=true }
-p3-goldilocks = { workspace = true }
-log = { workspace = true }
+fields = { workspace=true }
+tracing = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -40,4 +40,5 @@ generic-array = "0.14"
 [features]
 default = []
 no_lib_link = ["proofman-common/no_lib_link"]
-disable-distributed = ["proofman-common/disable-distributed"]
+diagnostic = ["proofman-macros/diagnostic", "proofman/diagnostic"]
+disable_distributed = ["proofman/disable_distributed", "proofman-common/disable_distributed"]

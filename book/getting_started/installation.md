@@ -25,6 +25,13 @@ Install all required dependencies with:
 sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common libclang-dev clang
 ```
 
+ZisK uses shared memory to exchange data between processes. The system must be configured to allow enough locked memory per process:
+```text
+$ ulimit -l
+unlimited
+```
+A way to achieve it is to edit the file `/etc/systemd/system.conf` and add the line `DefaultLimitMEMLOCK=infinity`. Reboot for changes to take effect.
+
 ### macOS
 
 macOS 14 or higher is required.
@@ -115,7 +122,7 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
 3. Copy the tools to `~/.zisk/bin` directory:
     ```bash
     mkdir -p $HOME/.zisk/bin
-    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so precompiles/sha256f/src/sha256f_script.json $HOME/.zisk/bin
+    cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so target/release/libziskclib.a precompiles/sha256f/src/sha256f_script.json $HOME/.zisk/bin
     ```
 
 4. Copy required files to support `cargo-zisk rom-setup` command:
@@ -151,7 +158,7 @@ You can use the flags `--provingkey`, `--verifykey` or `--nokey` to specify the 
     ```bash
     rustup toolchain list
     ```
-    Confirm taht `zisk` appears in the list of installed toolchains.
+    Confirm that `zisk` appears in the list of installed toolchains.
 
 #### Build Setup
 
