@@ -126,8 +126,7 @@ impl BinaryBasicTableSM {
                 6 => 3 * P2_9,
                 _ => {
                     panic!(
-                        "BinaryBasicTableSM::calculate_table_row() Unexpected flags for Ext32: {}",
-                        flags
+                        "BinaryBasicTableSM::calculate_table_row() Unexpected flags for Ext32: {flags}"
                     )
                 }
             };

@@ -17,7 +17,7 @@ use super::{sha256f_constants::*, InputType, Script, Sha256fTableGateOp, Sha256f
 use rayon::prelude::*;
 
 /// The `Sha256fSM` struct encapsulates the logic of the Sha256f State Machine.
-pub struct Sha256fSM {
+pub struct Sha256fSM<F: PrimeField64> {
     /// Reference to the Sha256f Table State Machine.
     sha256f_table_sm: Arc<Sha256fTableSM>,
 
@@ -32,9 +32,11 @@ pub struct Sha256fSM {
 
     /// Number of available sha256fs in the trace.
     pub num_available_sha256fs: usize,
+
+    sha256f_fixed: Sha256fFixed<F>,
 }
 
-impl Sha256fSM {
+impl<F: PrimeField64> Sha256fSM<F> {
     /// Creates a new Sha256f State Machine instance.
     ///
     /// # Arguments
@@ -42,7 +44,11 @@ impl Sha256fSM {
     ///
     /// # Returns
     /// A new `Sha256fSM` instance.
-    pub fn new(sha256f_table_sm: Arc<Sha256fTableSM>, script_path: PathBuf) -> Arc<Self> {
+    pub fn new(
+        sctx: Arc<SetupCtx<F>>,
+        sha256f_table_sm: Arc<Sha256fTableSM>,
+        script_path: PathBuf,
+    ) -> Arc<Self> {
         let script = fs::read_to_string(script_path).expect("Failed to read sha256f_script.json");
         let script: Script =
             serde_json::from_str(&script).expect("Failed to parse sha256f_script.json");
@@ -65,12 +71,18 @@ impl Sha256fSM {
         let num_available_circuits = (Sha256fTrace::<usize>::NUM_ROWS - 1) / circuit_size;
         let num_available_sha256fs = NUM_SHA256F_PER_CIRCUIT * num_available_circuits;
 
+        let airgroup_id = Sha256fTrace::<usize>::AIRGROUP_ID;
+        let air_id = Sha256fTrace::<usize>::AIR_ID;
+        let fixed_pols = sctx.get_fixed(airgroup_id, air_id);
+        let sha256f_fixed = Sha256fFixed::from_vec(fixed_pols);
+
         Arc::new(Self {
             sha256f_table_sm,
             script: Arc::new(script),
             circuit_size,
             num_available_circuits,
             num_available_sha256fs,
+            sha256f_fixed,
         })
     }
 
@@ -82,7 +94,7 @@ impl Sha256fSM {
     /// * `input` - The operation data to process.
     /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
     #[inline(always)]
-    pub fn process_trace<'a, I, F: PrimeField64>(
+    pub fn process_trace<'a, I>(
         &self,
         trace: &mut Sha256fTrace<F>,
         num_rows_constants: usize,
@@ -296,9 +308,12 @@ impl Sha256fSM {
         let hash_input_bits: Vec<[u64; INPUT_SIZE_BITS]> =
             inputs_bits.iter().map(|bits| bits[STATE_SIZE_BITS..].try_into().unwrap()).collect();
 
-        let row0 = trace.buffer[0];
+        let trace_rows = trace.row_slice_mut();
 
-        let mut trace_slice = &mut trace.buffer[1..];
+        let row0 = trace_rows[0];
+
+        let mut trace_slice = &mut trace_rows[1..];
+
         let mut par_traces = Vec::new();
 
         for _ in 0..self.num_available_circuits {
@@ -475,19 +490,13 @@ impl Sha256fSM {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<F: PrimeField64>(
+    pub fn compute_witness(
         &self,
-        sctx: &SetupCtx<F>,
         inputs: &[Vec<Sha256fInput>],
+        trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        // Get the fixed cols
-        let airgroup_id = Sha256fTrace::<usize>::AIRGROUP_ID;
-        let air_id = Sha256fTrace::<usize>::AIR_ID;
-        let fixed_cols = sctx.get_fixed(airgroup_id, air_id);
-        let fixed = Sha256fFixed::from_vec(fixed_cols);
-
         timer_start_trace!(SHA256F_TRACE);
-        let mut sha256f_trace = Sha256fTrace::new_zeroes();
+        let mut sha256f_trace = Sha256fTrace::new_from_vec_zeroes(trace_buffer);
         let num_rows = sha256f_trace.num_rows();
 
         // Check that we can fit all the sha256fs in the trace
@@ -520,7 +529,7 @@ impl Sha256fSM {
         let mut row: Sha256fTraceRow<F> = Default::default();
         let zeros = 0u64;
         let ones = MASK_BITS_SHA256F;
-        let gate_op = fixed[0].GATE_OP.as_canonical_u64();
+        let gate_op = self.sha256f_fixed[0].GATE_OP.as_canonical_u64();
         // Sanity check
         assert_eq!(gate_op, Sha256fTableGateOp::Xor as u64, "Invalid first row gate operation");
         for i in 0..CHUNKS_SHA256F {
@@ -548,7 +557,7 @@ impl Sha256fSM {
         // A row with all zeros satisfies the constraints (assuming the operation to be XOR(0,0,0)=0)
         let padding_row: Sha256fTraceRow<F> = Default::default();
         for i in (num_rows_constants + self.circuit_size * self.num_available_circuits)..num_rows {
-            let gate_op = fixed[i].GATE_OP.as_canonical_u64();
+            let gate_op = self.sha256f_fixed[i].GATE_OP.as_canonical_u64();
             // Sanity check
             assert_eq!(
                 gate_op,

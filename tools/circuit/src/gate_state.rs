@@ -421,7 +421,7 @@ impl GateState {
             println!("   adds      = {} = {:.2}%", self.adds, (self.adds as f64 * 100.0) / total_f);
         }
         println!("--------------------------");
-        println!("   Total     = {}", total_operations);
+        println!("   Total     = {total_operations}");
         println!("==========================");
     }
 

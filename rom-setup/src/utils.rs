@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use fields::Goldilocks;
+use fields::{Field, Goldilocks};
 use proofman_common::{write_custom_commit_trace, GlobalInfo, ProofType, StarkInfo};
 use sm_rom::RomSM;
 use std::fs;
@@ -14,7 +14,11 @@ pub fn gen_elf_hash(
     blowup_factor: u64,
     check: bool,
 ) -> Result<Vec<Goldilocks>, anyhow::Error> {
-    let mut custom_rom_trace: RomRomTrace<Goldilocks> = RomRomTrace::new();
+    let buffer = vec![
+        Goldilocks::ZERO;
+        RomRomTrace::<Goldilocks>::NUM_ROWS * RomRomTrace::<Goldilocks>::ROW_SIZE
+    ];
+    let mut custom_rom_trace: RomRomTrace<Goldilocks> = RomRomTrace::new_from_vec(buffer);
 
     RomSM::compute_custom_trace_rom(rom_path.to_path_buf(), &mut custom_rom_trace);
 
@@ -27,7 +31,7 @@ pub fn gen_elf_hash(
 
 pub fn get_elf_data_hash(elf_path: &Path) -> Result<String> {
     let elf_data =
-        fs::read(elf_path).with_context(|| format!("Error reading ELF file: {:?}", elf_path))?;
+        fs::read(elf_path).with_context(|| format!("Error reading ELF file: {elf_path:?}"))?;
 
     let hash = blake3::hash(&elf_data).to_hex().to_string();
 
@@ -40,7 +44,7 @@ pub fn get_elf_bin_file_path(
     blowup_factor: u64,
 ) -> Result<PathBuf> {
     let elf_data =
-        fs::read(elf_path).with_context(|| format!("Error reading ELF file: {:?}", elf_path))?;
+        fs::read(elf_path).with_context(|| format!("Error reading ELF file: {elf_path:?}"))?;
 
     let hash = blake3::hash(&elf_data).to_hex().to_string();
 

@@ -20,14 +20,18 @@ use std::{any::Any, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
 use zisk_core::Riscv2zisk;
 
+const DEFAULT_CHUNK_SIZE_BITS: u64 = 18;
+
 pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
+    chunk_size: u64,
     world_rank: i32,
     local_rank: i32,
-    port: Option<u16>,
+    base_port: Option<u16>,
+    unlock_mapped_memory: bool,
 }
 
 #[no_mangle]
@@ -37,19 +41,25 @@ fn init_library(
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
+    chunk_size_bits: Option<u64>,
     world_rank: Option<i32>,
     local_rank: Option<i32>,
-    port: Option<u16>,
+    base_port: Option<u16>,
+    unlock_mapped_memory: bool,
 ) -> Result<Box<dyn witness::WitnessLibrary<Goldilocks>>, Box<dyn std::error::Error>> {
     proofman_common::initialize_logger(verbose_mode, world_rank);
+    let chunk_size = 1 << chunk_size_bits.unwrap_or(DEFAULT_CHUNK_SIZE_BITS);
+
     let result = Box::new(WitnessLib {
         elf_path,
         asm_path,
         asm_rom_path,
         executor: None,
+        chunk_size,
         world_rank: world_rank.unwrap_or(0),
         local_rank: local_rank.unwrap_or(0),
-        port,
+        base_port,
+        unlock_mapped_memory,
     });
 
     Ok(result)
@@ -74,7 +84,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let rv2zk = Riscv2zisk::new(self.elf_path.display().to_string());
 
         // Step 2: Convert program to ROM
-        let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {}", e));
+        let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
         let zisk_rom = Arc::new(zisk_rom);
 
         // Step 3: Initialize the secondary state machines
@@ -87,8 +97,8 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let mem_sm = Mem::new(std.clone());
 
         // Step 4: Initialize the precompiles state machines
-        let keccakf_sm = KeccakfManager::new::<F>();
-        let sha256f_sm = Sha256fManager::new(std.clone());
+        let keccakf_sm = KeccakfManager::new(wcm.get_sctx());
+        let sha256f_sm = Sha256fManager::new(std.clone()));
         let arith_eq_sm = ArithEqManager::new(std.clone());
 
         // let sm_bundle = DynSMBundle::new(vec![
@@ -122,9 +132,11 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             std,
             sm_bundle,
             Some(rom_sm.clone()),
+            self.chunk_size,
             self.world_rank,
             self.local_rank,
-            self.port,
+            self.base_port,
+            self.unlock_mapped_memory,
         );
 
         let executor = Arc::new(executor);

@@ -6,6 +6,6 @@ mod zisk_service;
 
 pub use handler_prove::*;
 pub use handler_shutdown::*;
-use handler_status::*;
+pub use handler_status::*;
 pub use handler_verify_constraints::*;
 pub use zisk_service::*;

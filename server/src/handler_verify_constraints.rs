@@ -1,6 +1,8 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc, thread::JoinHandle};
 
-use crate::{ServerConfig, ZiskResponse};
+use crate::{
+    ServerConfig, ZiskBaseResponse, ZiskCmdResult, ZiskResponse, ZiskResultCode, ZiskService,
+};
 use colored::Colorize;
 use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
@@ -16,61 +18,79 @@ pub struct ZiskVerifyConstraintsRequest {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ZiskVerifyConstraintsResponse {
-    pub success: bool,
-    pub details: String,
+    #[serde(flatten)]
+    pub base: ZiskBaseResponse,
+
+    server_id: String,
+    elf_file: String,
+    input: String,
 }
 
 pub struct ZiskServiceVerifyConstraintsHandler;
 
 impl ZiskServiceVerifyConstraintsHandler {
     pub fn handle(
-        config: &ServerConfig,
+        config: Arc<ServerConfig>,
         request: ZiskVerifyConstraintsRequest,
-        proofman: &ProofMan<Goldilocks>,
-        witness_lib: &mut dyn WitnessLibrary<Goldilocks>,
-        debug_info: &DebugInfo,
-    ) -> ZiskResponse {
-        let uptime = config.launch_time.elapsed();
+        proofman: Arc<ProofMan<Goldilocks>>,
+        witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
+        is_busy: Arc<std::sync::atomic::AtomicBool>,
+        debug_info: Arc<DebugInfo>,
+    ) -> (ZiskResponse, Option<JoinHandle<()>>) {
+        is_busy.store(true, std::sync::atomic::Ordering::SeqCst);
 
-        let status = serde_json::json!({
-            "server_id": config.server_id.to_string(),
-            "elf_file": config.elf.display().to_string(),
-            "uptime": format!("{:.2?}", uptime),
-            "command:": "VerifyConstraints",
-            "payload:": {
-                "input": request.input.display().to_string(),
-            },
+        let handle = std::thread::spawn({
+            let request_input = request.input.clone();
+            let config = config.clone();
+            move || {
+                let start = std::time::Instant::now();
+
+                proofman
+                    .verify_proof_constraints_from_lib(Some(request_input), &debug_info)
+                    .map_err(|e| anyhow::anyhow!("Error verifying proof: {}", e))
+                    .expect("Failed to generate proof");
+
+                let elapsed = start.elapsed();
+
+                let result: (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
+                    .get_execution_result()
+                    .ok_or_else(|| anyhow::anyhow!("No execution result found"))
+                    .expect("Failed to get execution result")
+                    .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
+                    .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))
+                    .expect("Failed to downcast execution result");
+
+                println!();
+                tracing::info!(
+                    "{}",
+                    "--- VERIFY CONSTRAINTS SUMMARY ------------------------".bright_green().bold()
+                );
+                tracing::info!("    ► Statistics");
+                tracing::info!(
+                    "      time: {} seconds, steps: {}",
+                    elapsed.as_secs_f32(),
+                    result.0.executed_steps
+                );
+
+                is_busy.store(false, std::sync::atomic::Ordering::SeqCst);
+                ZiskService::print_waiting_message(&config);
+            }
         });
 
-        let start = std::time::Instant::now();
-
-        proofman
-            .verify_proof_constraints_from_lib(Some(request.input), debug_info)
-            .map_err(|e| anyhow::anyhow!("Error verifying proof: {}", e))
-            .expect("Failed to generate proof");
-
-        let elapsed = start.elapsed();
-
-        let result: (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
-            .get_execution_result()
-            .ok_or_else(|| anyhow::anyhow!("No execution result found"))
-            .expect("Failed to get execution result")
-            .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
-            .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))
-            .expect("Failed to downcast execution result");
-
-        println!();
-        tracing::info!(
-            "{}",
-            "--- VERIFY CONSTRAINTS SUMMARY ------------------------".bright_green().bold()
-        );
-        tracing::info!("    ► Statistics");
-        tracing::info!(
-            "      time: {} seconds, steps: {}",
-            elapsed.as_secs_f32(),
-            result.0.executed_steps
-        );
-
-        ZiskResponse::Ok { message: status.to_string() }
+        (
+            ZiskResponse::ZiskVerifyConstraintsResponse(ZiskVerifyConstraintsResponse {
+                base: ZiskBaseResponse {
+                    cmd: "verify_constraints".to_string(),
+                    result: ZiskCmdResult::InProgress,
+                    code: ZiskResultCode::Ok,
+                    msg: None,
+                    node: config.asm_runner_options.world_rank,
+                },
+                server_id: config.server_id.to_string(),
+                elf_file: config.elf.display().to_string(),
+                input: request.input.display().to_string(),
+            }),
+            Some(handle),
+        )
     }
 }

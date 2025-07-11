@@ -157,7 +157,7 @@ impl ZiskRom {
             // pc is in the ROM_ENTRY range (always alligned)
             &self.rom_entry_instructions[((pc - ROM_ENTRY) >> 2) as usize]
         } else {
-            panic!("ZiskRom::get_instruction() pc={} is out of range", pc);
+            panic!("ZiskRom::get_instruction() pc={pc} is out of range");
         }
     }
 
@@ -200,7 +200,7 @@ impl ZiskRom {
             // pc is in the ROM_ENTRY range (always alligned)
             &mut self.rom_entry_instructions[((pc - ROM_ENTRY) >> 2) as usize]
         } else {
-            panic!("ZiskRom::get_mut_instruction() pc={} is out of range", pc);
+            panic!("ZiskRom::get_mut_instruction() pc={pc} is out of range");
         }
     }
 

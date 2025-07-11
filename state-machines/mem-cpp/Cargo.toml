@@ -13,6 +13,7 @@ build = "build.rs"
 zisk-common = { path = "../../common" }
 mem-common = { path = "../mem-common" }
 zisk-pil = { path = "../../pil" }
+proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 tracing = { workspace = true }
 

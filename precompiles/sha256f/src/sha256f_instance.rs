@@ -21,9 +21,9 @@ use zisk_pil::Sha256fTrace;
 ///
 /// It encapsulates the `Sha256fSM` and its associated context, and it processes input data
 /// to compute witnesses for the Sha256f State Machine.
-pub struct Sha256fInstance {
+pub struct Sha256fInstance<F: PrimeField64> {
     /// Sha256f state machine.
-    sha256f_sm: Arc<Sha256fSM>,
+    sha256f_sm: Arc<Sha256fSM<F>>,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
     collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
@@ -32,7 +32,7 @@ pub struct Sha256fInstance {
     ictx: InstanceCtx,
 }
 
-impl Sha256fInstance {
+impl<F: PrimeField64> Sha256fInstance<F> {
     /// Creates a new `Sha256fInstance`.
     ///
     /// # Arguments
@@ -43,7 +43,7 @@ impl Sha256fInstance {
     /// # Returns
     /// A new `Sha256fInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(sha256f_sm: Arc<Sha256fSM>, mut ictx: InstanceCtx) -> Self {
+    pub fn new(sha256f_sm: Arc<Sha256fSM<F>>, mut ictx: InstanceCtx) -> Self {
         assert_eq!(
             ictx.plan.air_id,
             Sha256fTrace::<usize>::AIR_ID,
@@ -61,7 +61,7 @@ impl Sha256fInstance {
     }
 }
 
-impl<F: PrimeField64> Instance<F> for Sha256fInstance {
+impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
     /// Computes the witness for the sha256f execution plan.
     ///
     /// This method leverages the `Sha256fSM` to generate an `AirInstance` using the collected
@@ -75,15 +75,16 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance {
     fn compute_witness(
         &self,
         _pctx: &ProofCtx<F>,
-        sctx: &SetupCtx<F>,
+        _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        trace_buffer: Vec<F>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<Sha256fCollector>().unwrap().inputs)
             .collect();
 
-        Some(self.sha256f_sm.compute_witness(sctx, &inputs))
+        Some(self.sha256f_sm.compute_witness(&inputs, trace_buffer))
     }
 
     /// Retrieves the checkpoint associated with this instance.

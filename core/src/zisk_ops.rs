@@ -1267,7 +1267,7 @@ pub fn precompiled_load_data(
     for (i, data) in data.iter_mut().enumerate().take(indirections_count) {
         let indirection = ctx.mem.read(address + (8 * i as u64), 8);
         if address & 0x7 != 0 {
-            panic!("precompiled_check_address() found address[{}] not aligned to 8 bytes", i);
+            panic!("precompiled_check_address() found address[{i}] not aligned to 8 bytes");
         }
         *data = indirection;
     }
@@ -1700,10 +1700,7 @@ pub fn opc_fcall(ctx: &mut InstContext) {
     let iresult = fcall_proxy(function_id, &ctx.fcall.parameters, &mut ctx.fcall.result);
 
     if iresult < 0 {
-        panic!(
-            "opc_fcall() failed calling Fcall() function_id={} iresult={}",
-            function_id, iresult
-        );
+        panic!("opc_fcall() failed calling Fcall() function_id={function_id} iresult={iresult}");
     }
 
     // Copy result

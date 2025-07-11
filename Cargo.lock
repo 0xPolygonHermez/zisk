@@ -410,6 +410,7 @@ version = "0.9.0"
 dependencies = [
  "anyhow",
  "asm-runner",
+ "bytemuck",
  "clap",
  "colored",
  "dirs",
@@ -446,9 +447,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.2.27"
+version = "1.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d487aa071b5f64da6f19a3e848e3578944b726ee5a4854b82172f02aa876bfdc"
+checksum = "5c1599538de2394445747c8cf7935946e3cc27e9625f889d979bfb2aaf569362"
 dependencies = [
  "jobserver",
  "libc",
@@ -699,15 +700,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crossbeam-queue"
-version = "0.3.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f58bbc28f91df819d0aa2a2c00cd19754769c2fad90579b3592b1c9ba7a3115"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
 name = "crossbeam-utils"
 version = "0.8.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -765,7 +757,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#ceb1db4be35b2527b77fa1031163fd5391881bcd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.9.0#ff8c72a8837753d74a5d7b181d86f0ab05c73fc1"
 dependencies = [
  "fields",
  "num-bigint",
@@ -943,6 +935,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "env"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc95de49ad098572c02d3fbf368c9a020bfff5ae78483685b77f51d8a7e9486d"
+dependencies = [
+ "num_threads",
+]
+
+[[package]]
 name = "env_filter"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1045,7 +1046,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#ceb1db4be35b2527b77fa1031163fd5391881bcd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.9.0#ff8c72a8837753d74a5d7b181d86f0ab05c73fc1"
 dependencies = [
  "num-bigint",
  "paste",
@@ -1381,9 +1382,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-util"
-version = "0.1.14"
+version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc2fdfdbff08affe55bb779f33b053aa1fe5dd5b54c257343c17edfa55711bdb"
+checksum = "7f66d5bd4c6f02bf0542fad85d626775bab9258cf795a4256dcaf3161114d1df"
 dependencies = [
  "base64",
  "bytes",
@@ -1512,9 +1513,9 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.9.0"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cea70ddb795996207ad57735b50c5982d8844f38ba9ee5f1aedcfb708a2aa11e"
+checksum = "fe4cd85333e22411419a0bcae1297d25e58c9443848b11dc6a86fefe8c78a661"
 dependencies = [
  "equivalent",
  "hashbrown",
@@ -1550,6 +1551,17 @@ dependencies = [
  "quick-xml",
  "rgb",
  "str_stack",
+]
+
+[[package]]
+name = "io-uring"
+version = "0.7.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b86e202f00093dcba4275d4636b93ef9dd75d025ae560d2521b45ea28ab49013"
+dependencies = [
+ "bitflags 2.9.1",
+ "cfg-if",
+ "libc",
 ]
 
 [[package]]
@@ -1850,6 +1862,7 @@ name = "mem-planner-cpp"
 version = "0.9.0"
 dependencies = [
  "mem-common",
+ "proofman-common",
  "proofman-util",
  "tracing",
  "zisk-common",
@@ -2019,6 +2032,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "num_cpus"
+version = "1.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91df4bbde75afed763b708b7eee1e8e7651e02d97f6d5dd763e89367e957b23b"
+dependencies = [
+ "hermit-abi",
+ "libc",
+]
+
+[[package]]
 name = "num_threads"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2135,7 +2158,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#ceb1db4be35b2527b77fa1031163fd5391881bcd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.9.0#ff8c72a8837753d74a5d7b181d86f0ab05c73fc1"
 dependencies = [
  "colored",
  "fields",
@@ -2370,6 +2393,7 @@ dependencies = [
  "ark-ff",
  "ark-secp256k1",
  "ark-std",
+ "cfg-if",
  "circuit",
  "lib-c",
  "num-bigint",
@@ -2398,12 +2422,12 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#ceb1db4be35b2527b77fa1031163fd5391881bcd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.9.0#ff8c72a8837753d74a5d7b181d86f0ab05c73fc1"
 dependencies = [
  "blake3",
+ "bytemuck",
  "colored",
  "crossbeam-channel",
- "crossbeam-queue",
  "csv",
  "curves",
  "fields",
@@ -2429,11 +2453,14 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#ceb1db4be35b2527b77fa1031163fd5391881bcd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.9.0#ff8c72a8837753d74a5d7b181d86f0ab05c73fc1"
 dependencies = [
+ "crossbeam-channel",
+ "env",
  "fields",
  "libloading",
  "mpi",
+ "num_cpus",
  "proofman-macros",
  "proofman-starks-lib-c",
  "proofman-util",
@@ -2449,7 +2476,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#ceb1db4be35b2527b77fa1031163fd5391881bcd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.9.0#ff8c72a8837753d74a5d7b181d86f0ab05c73fc1"
 dependencies = [
  "fields",
  "proofman-common",
@@ -2461,7 +2488,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#ceb1db4be35b2527b77fa1031163fd5391881bcd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.9.0#ff8c72a8837753d74a5d7b181d86f0ab05c73fc1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2472,7 +2499,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#ceb1db4be35b2527b77fa1031163fd5391881bcd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.9.0#ff8c72a8837753d74a5d7b181d86f0ab05c73fc1"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -2481,7 +2508,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#ceb1db4be35b2527b77fa1031163fd5391881bcd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.9.0#ff8c72a8837753d74a5d7b181d86f0ab05c73fc1"
 dependencies = [
  "colored",
  "fields",
@@ -2713,9 +2740,9 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "reqwest"
-version = "0.12.20"
+version = "0.12.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eabf4c97d9130e2bf606614eb937e86edac8292eaa6f422f995d7e8de1eb1813"
+checksum = "cbc931937e6ca3a06e3b6c0aa7841849b160a90351d6ab467a8b9b9959767531"
 dependencies = [
  "base64",
  "bytes",
@@ -2764,9 +2791,9 @@ dependencies = [
 
 [[package]]
 name = "rgb"
-version = "0.8.50"
+version = "0.8.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57397d16646700483b67d2dd6511d79318f9d057fdbd21a4066aeac8b41d310a"
+checksum = "a457e416a0f90d246a4c3288bd7a25b2304ca727f253f95be383dd17af56be8f"
 dependencies = [
  "bytemuck",
 ]
@@ -3025,6 +3052,7 @@ version = "0.9.0"
 dependencies = [
  "anyhow",
  "asm-runner",
+ "bytemuck",
  "clap",
  "colored",
  "executor",
@@ -3469,17 +3497,19 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.45.1"
+version = "1.46.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75ef51a33ef1da925cea3e4eb122833cb377c61439ca401b770f54902b806779"
+checksum = "0cc3a2344dafbe23a245241fe8b09735b521110d30fcefbbd5feb1797ca35d17"
 dependencies = [
  "backtrace",
  "bytes",
+ "io-uring",
  "libc",
  "mio",
  "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
+ "slab",
  "socket2",
  "tokio-macros",
  "windows-sys 0.52.0",
@@ -3682,7 +3712,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#ceb1db4be35b2527b77fa1031163fd5391881bcd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.9.0#ff8c72a8837753d74a5d7b181d86f0ab05c73fc1"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -4368,7 +4398,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.9.0#ceb1db4be35b2527b77fa1031163fd5391881bcd"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.9.0#ff8c72a8837753d74a5d7b181d86f0ab05c73fc1"
 dependencies = [
  "colored",
  "fields",
@@ -4518,6 +4548,8 @@ dependencies = [
  "mpi",
  "proofman",
  "proofman-common",
+ "serde",
+ "serde_json",
  "tracing",
  "tracing-subscriber",
  "witness",
@@ -4636,4 +4668,5 @@ dependencies = [
  "num-traits",
  "rand 0.8.5",
  "static_assertions",
+ "tiny-keccak",
 ]

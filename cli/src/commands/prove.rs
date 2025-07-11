@@ -1,13 +1,15 @@
+#[cfg(feature = "stats")]
+use crate::commands::ZiskStats;
 use crate::{
     commands::{
         cli_fail_if_macos, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
     },
-    proof_log,
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
 use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
+use bytemuck::cast_slice;
 use colored::Colorize;
 use executor::Stats;
 use executor::ZiskExecutionResult;
@@ -19,8 +21,16 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
-use std::{collections::HashMap, fs, path::PathBuf};
-use zisk_common::ZiskLibInitFn;
+use std::io::Write;
+#[cfg(feature = "stats")]
+use std::time::Instant;
+use std::{
+    collections::HashMap,
+    env,
+    fs::{self, File},
+    path::{Path, PathBuf},
+};
+use zisk_common::{ProofLog, ZiskLibInitFn};
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -88,12 +98,12 @@ pub struct ZiskProve {
     #[clap(short = 'p', long, conflicts_with = "emulator")]
     pub port: Option<u16>,
 
-    /// Map locked flag
-    /// This is used to lock the memory map for the ROM file.
-    /// If you are running ZisK on a machine with limited memory, you may want to disable this option.
+    /// Map unlocked flag
+    /// This is used to unlock the memory map for the ROM file.
+    /// If you are running ZisK on a machine with limited memory, you may want to enable this option.
     /// This option is mutually exclusive with `--emulator`.
     #[clap(short = 'u', long, conflicts_with = "emulator")]
-    pub map_locked: bool,
+    pub unlock_mapped_memory: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short ='v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
@@ -108,15 +118,14 @@ pub struct ZiskProve {
     #[clap(short = 'n', long)]
     pub number_threads_witness: Option<usize>,
 
-    #[clap(short = 'm', long)]
-    pub max_number_witness_pools: Option<usize>,
-
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
     #[clap(short = 'b', long, default_value_t = false)]
     pub save_proofs: bool,
-    // PRECOMPILES OPTIONS
+
+    #[clap(short = 'c', long)]
+    pub chunk_size_bits: Option<u64>,
 }
 
 impl ZiskProve {
@@ -125,7 +134,12 @@ impl ZiskProve {
 
         print_banner();
 
+        #[cfg(feature = "stats")]
+        let start_time = Instant::now();
+
         let mpi_context = initialize_mpi()?;
+
+        proofman_common::initialize_logger(self.verbose.into(), Some(mpi_context.world_rank));
 
         let proving_key = get_proving_key(self.proving_key.as_ref());
 
@@ -141,7 +155,7 @@ impl ZiskProve {
             // In distributed mode two different processes may enter here at the same time and try to remove the same directory
             if let Err(e) = fs::remove_dir_all(self.output_dir.join("proofs")) {
                 if e.kind() != std::io::ErrorKind::NotFound {
-                    panic!("Failed to remove the proofs directory: {:?}", e);
+                    panic!("Failed to remove the proofs directory: {e:?}");
                 }
             }
         }
@@ -149,7 +163,7 @@ impl ZiskProve {
         if let Err(e) = fs::create_dir_all(self.output_dir.join("proofs")) {
             if e.kind() != std::io::ErrorKind::AlreadyExists {
                 // prevent collision in distributed mode
-                panic!("Failed to create the proofs directory: {:?}", e);
+                panic!("Failed to create the proofs directory: {e:?}");
             }
         }
 
@@ -160,7 +174,7 @@ impl ZiskProve {
             if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
                 if e.kind() != std::io::ErrorKind::AlreadyExists {
                     // prevent collision in distributed mode
-                    panic!("Failed to create the cache directory: {:?}", e);
+                    panic!("Failed to create the cache directory: {e:?}");
                 }
             }
         }
@@ -223,9 +237,6 @@ impl ZiskProve {
         if self.number_threads_witness.is_some() {
             gpu_params.with_number_threads_pools_witness(self.number_threads_witness.unwrap());
         }
-        if self.max_number_witness_pools.is_some() {
-            gpu_params.with_max_number_witness_pools(self.max_number_witness_pools.unwrap());
-        }
         if self.max_witness_stored.is_some() {
             gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
         }
@@ -265,15 +276,11 @@ impl ZiskProve {
             .with_base_port(self.port)
             .with_world_rank(mpi_context.world_rank)
             .with_local_rank(mpi_context.local_rank)
-            .with_map_locked(self.map_locked);
+            .with_unlock_mapped_memory(self.unlock_mapped_memory);
 
         if self.asm.is_some() {
             // Start ASM microservices
-            tracing::info!(
-                ">>> [{}] Starting ASM microservices. {}",
-                mpi_context.world_rank,
-                "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
-            );
+            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
 
             asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
         }
@@ -287,9 +294,11 @@ impl ZiskProve {
             self.elf.clone(),
             self.asm.clone(),
             asm_rom,
+            self.chunk_size_bits,
             Some(mpi_context.world_rank),
             Some(mpi_context.local_rank),
             self.port,
+            self.unlock_mapped_memory,
         )
         .expect("Failed to initialize witness library");
 
@@ -298,6 +307,7 @@ impl ZiskProve {
         let start = std::time::Instant::now();
 
         let proof_id;
+        let vadcop_final_proof: Option<Vec<u64>>;
         if debug_info.std_mode.name == ModeName::Debug {
             match self.field {
                 Field::Goldilocks => {
@@ -309,7 +319,7 @@ impl ZiskProve {
         } else {
             match self.field {
                 Field::Goldilocks => {
-                    proof_id = proofman
+                    (proof_id, vadcop_final_proof) = proofman
                         .generate_proof_from_lib(
                             self.input.clone(),
                             ProofOptions::new(
@@ -329,7 +339,7 @@ impl ZiskProve {
         if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
             let elapsed = start.elapsed();
 
-            let (result, _): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
+            let (result, _stats): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
                 .get_execution_result()
                 .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
                 .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
@@ -348,12 +358,25 @@ impl ZiskProve {
             tracing::info!("      time: {} seconds, steps: {}", elapsed, result.executed_steps);
 
             if let Some(proof_id) = proof_id {
-                let logs = proof_log::ProofLog::new(result.executed_steps, proof_id, elapsed);
+                let logs = ProofLog::new(result.executed_steps, proof_id, elapsed);
                 let log_path = self.output_dir.join("result.json");
-                proof_log::ProofLog::write_json_log(&log_path, &logs)
+                ProofLog::write_json_log(&log_path, &logs)
                     .map_err(|e| anyhow::anyhow!("Error generating log: {}", e))?;
+                // Save the vadcop final proof
+                let output_file_path = self.output_dir.join("vadcop_final_proof.bin");
+                // write a Vec<u64> to a bin file stored in output_file_path
+                let mut file = File::create(output_file_path)?;
+                file.write_all(cast_slice(&vadcop_final_proof.unwrap()))?;
+            }
+
+            // Store the stats in stats.json
+            #[cfg(feature = "stats")]
+            {
+                ZiskStats::store_stats(start_time, &_stats);
             }
         }
+
+        proofman.set_barrier();
 
         if self.asm.is_some() {
             // Shut down ASM microservices

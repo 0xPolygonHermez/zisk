@@ -138,11 +138,7 @@ impl Secp256k1 {
                 }
                 debug_assert!(
                     0 == if icol == COLS - 1 { value } else { value % 0x10000 },
-                    "EqSecp256k1 residue eq{} ({}) #:{} cin:{}",
-                    ieq,
-                    index,
-                    value,
-                    cin
+                    "EqSecp256k1 residue eq{ieq} ({index}) #:{value} cin:{cin}"
                 );
             }
         }

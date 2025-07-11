@@ -4,13 +4,12 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use fields::PrimeField64;
-use num_traits::cast::ToPrimitive;
 use pil_std_lib::Std;
 
-use proofman_common::{AirInstance, FromTrace};
-use zisk_pil::{MemAlignTrace, MemAlignTraceRow};
-
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
+use proofman_common::{AirInstance, FromTrace};
+use rayon::prelude::*;
+use zisk_pil::{MemAlignTrace, MemAlignTraceRow};
 
 const RC: usize = 2;
 const CHUNK_NUM: usize = 8;
@@ -44,7 +43,7 @@ pub struct MemAlignResponse {
 }
 pub struct MemAlignSM<F: PrimeField64> {
     /// PIL2 standard library
-    _std: Arc<Std<F>>,
+    std: Arc<Std<F>>,
 
     #[cfg(feature = "debug_mem_align")]
     num_computed_rows: Mutex<usize>,
@@ -65,7 +64,7 @@ macro_rules! debug_info {
 impl<F: PrimeField64> MemAlignSM<F> {
     pub fn new(std: Arc<Std<F>>, mem_align_rom_sm: Arc<MemAlignRomSM>) -> Arc<Self> {
         Arc::new(Self {
-            _std: std.clone(),
+            std: std.clone(),
             #[cfg(feature = "debug_mem_align")]
             num_computed_rows: Mutex::new(0),
             mem_align_rom_sm,
@@ -75,8 +74,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
     pub fn prove_mem_align_op(
         &self,
         input: &MemAlignInput,
-        trace: &mut MemAlignTrace<F>,
-        index: usize,
+        trace: &mut [MemAlignTraceRow<F>],
     ) -> usize {
         let addr = input.addr;
         let width = input.width;
@@ -84,9 +82,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         // Compute the width
         debug_assert!(
             ALLOWED_WIDTHS.contains(&width),
-            "Width={} is not allowed. Allowed widths are {:?}",
-            width,
-            ALLOWED_WIDTHS
+            "Width={width} is not allowed. Allowed widths are {ALLOWED_WIDTHS:?}"
         );
         let width = width as usize;
 
@@ -94,9 +90,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         let offset = (addr & OFFSET_MASK) as u8;
         debug_assert!(
             ALLOWED_OFFSETS.contains(&offset),
-            "Offset={} is not allowed. Allowed offsets are {:?}",
-            offset,
-            ALLOWED_OFFSETS
+            "Offset={offset} is not allowed. Allowed offsets are {ALLOWED_OFFSETS:?}"
         );
         let offset = offset as usize;
 
@@ -203,8 +197,8 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 drop(num_rows);
 
                 // Prove the generated rows
-                trace[index] = read_row;
-                trace[index + 1] = value_row;
+                trace[0] = read_row;
+                trace[1] = value_row;
                 2
             }
             (true, false) => {
@@ -362,9 +356,9 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 drop(num_rows);
 
                 // Prove the generated rows
-                trace[index] = read_row;
-                trace[index + 1] = write_row;
-                trace[index + 2] = value_row;
+                trace[0] = read_row;
+                trace[1] = write_row;
+                trace[2] = value_row;
                 3
             }
             (false, true) => {
@@ -507,9 +501,9 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 drop(num_rows);
 
                 // Prove the generated rows
-                trace[index] = first_read_row;
-                trace[index + 1] = value_row;
-                trace[index + 2] = second_read_row;
+                trace[0] = first_read_row;
+                trace[1] = value_row;
+                trace[2] = second_read_row;
                 3
             }
             (true, true) => {
@@ -759,11 +753,11 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 drop(num_rows);
 
                 // Prove the generated rows
-                trace[index] = first_read_row;
-                trace[index + 1] = first_write_row;
-                trace[index + 2] = value_row;
-                trace[index + 3] = second_write_row;
-                trace[index + 4] = second_read_row;
+                trace[0] = first_read_row;
+                trace[1] = first_write_row;
+                trace[2] = value_row;
+                trace[3] = second_write_row;
+                trace[4] = second_read_row;
                 5
             }
         }
@@ -778,9 +772,10 @@ impl<F: PrimeField64> MemAlignSM<F> {
         &self,
         mem_ops: &[Vec<MemAlignInput>],
         used_rows: usize,
+        trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        let mut trace = MemAlignTrace::<F>::new();
-        let mut reg_range_check = [0u64; 1 << CHUNK_BITS];
+        let mut trace = MemAlignTrace::<F>::new_from_vec(trace_buffer);
+        let mut reg_range_check = vec![0u32; 1 << CHUNK_BITS];
 
         let num_rows = trace.num_rows();
 
@@ -791,45 +786,65 @@ impl<F: PrimeField64> MemAlignSM<F> {
             used_rows as f64 / num_rows as f64 * 100.0
         );
 
-        let mut index = 0;
-        for inner_memp_ops in mem_ops {
-            for input in inner_memp_ops {
-                let count = self.prove_mem_align_op(input, &mut trace, index);
-                for i in 0..count {
-                    for j in 0..CHUNK_NUM {
-                        let element = trace[index + i].reg[j]
-                            .as_canonical_biguint()
-                            .to_usize()
-                            .expect("Cannot convert to usize");
-                        reg_range_check[element] += 1;
-                    }
-                }
-                index += count;
+        let mut trace_rows = trace.row_slice_mut();
+        let mut par_traces = Vec::new();
+        let mut inputs_indexes = Vec::new();
+        let mut total_index = 0;
+        for (i, inner_memp_ops) in mem_ops.iter().enumerate() {
+            for (j, input) in inner_memp_ops.iter().enumerate() {
+                let addr = input.addr;
+                let width = input.width as usize;
+                let offset = (addr & OFFSET_MASK) as usize;
+                let n_rows = match (input.is_write, offset + width > CHUNK_NUM) {
+                    (false, false) => 2,
+                    (true, false) => 3,
+                    (false, true) => 3,
+                    (true, true) => 5,
+                };
+                total_index += n_rows;
+                let (head, tail) = trace_rows.split_at_mut(n_rows);
+                par_traces.push(head);
+                inputs_indexes.push((i, j));
+                trace_rows = tail;
             }
         }
 
-        let padding_size = num_rows - index;
+        // Prove the memory operations in parallel
+        par_traces.into_par_iter().enumerate().for_each(|(index, trace)| {
+            let input_index = inputs_indexes[index];
+            let input = &mem_ops[input_index.0][input_index.1];
+            self.prove_mem_align_op(input, trace);
+        });
+
+        // Iterate over all traces to set range checks
+        trace.row_slice_mut()[0..total_index].iter_mut().for_each(|row| {
+            for j in 0..CHUNK_NUM {
+                let element = row.reg[j].as_canonical_u64() as usize;
+                reg_range_check[element] += 1;
+            }
+        });
+
+        let padding_size = num_rows - total_index;
         let padding_row = MemAlignTraceRow::<F> { reset: F::from_bool(true), ..Default::default() };
 
         // Store the padding rows
-        trace.buffer[index..num_rows].fill(padding_row);
+        trace.row_slice_mut()[total_index..num_rows]
+            .par_iter_mut()
+            .for_each(|slot| *slot = padding_row);
 
         // Compute the program multiplicity
         let mem_align_rom_sm = self.mem_align_rom_sm.clone();
         mem_align_rom_sm.update_padding_row(padding_size as u64);
 
-        reg_range_check[0] += CHUNK_NUM as u64 * padding_size as u64;
-        self.update_std_range_check(&reg_range_check);
+        reg_range_check[0] += CHUNK_NUM as u32 * padding_size as u32;
+        self.update_std_range_check(reg_range_check);
 
         AirInstance::new_from_trace(FromTrace::new(&mut trace))
     }
 
-    fn update_std_range_check(&self, reg_range_check: &[u64]) {
+    fn update_std_range_check(&self, reg_range_check: Vec<u32>) {
         // Perform the range checks
-        let std = self._std.clone();
-        let range_id = std.get_range(0, CHUNK_BITS_MASK as i64, None);
-        for (value, &multiplicity) in reg_range_check.iter().enumerate() {
-            std.range_check(value as i64, multiplicity, range_id);
-        }
+        let range_id = self.std.get_range(0, CHUNK_BITS_MASK as i64, None);
+        self.std.range_checks(reg_range_check, range_id);
     }
 }

@@ -3,6 +3,11 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
+    if cfg!(target_os = "macos") {
+        println!("cargo:rustc-cfg=feature=\"no_lib_link\"");
+        return;
+    }
+
     let out_dir = env::var("OUT_DIR").unwrap(); // Cargo sets this for each build
     let build_dir = Path::new(&out_dir).join("memcpp");
 

@@ -71,10 +71,7 @@ impl Arith256Mod {
             }
             debug_assert!(
                 0 == if icol == COLS - 1 { value } else { value % 0x10000 },
-                "Arith256Mod residue ({}) #:{} cin:{}",
-                index,
-                value,
-                cin
+                "Arith256Mod residue ({index}) #:{value} cin:{cin}"
             );
         }
         data
