@@ -556,7 +556,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         keccakf_trace[0] = row;
 
         // Fill the rest of the trace
-        // Flatten all the inputs, since I need to process them at least in chunks of NUM_SHA256F_PER_CIRCUIT
+        // Flatten all the inputs, since I need to process them at least in chunks of NUM_KECCAKF_PER_CIRCUIT
         let inputs = inputs.iter().flatten();
         self.process_trace(&mut keccakf_trace, num_rows_constants, inputs, num_inputs);
         timer_stop_and_log_trace!(KECCAKF_TRACE);
