@@ -18,80 +18,36 @@ use theta::keccak_f_theta;
 use circuit::{GateState, PinId};
 
 pub fn keccak_f(s: &mut GateState) {
+    // Instead of adding 1600 dummy gates to introduce the input bits,
+    // we exploit the Keccak-f θ step structure to introduce them
+    // In particular, since we have to perform:
+    //      A′[x, y, z] = A[x, y, z] ^ D[x, z]
+    // We use this XOR to introduce the input bits
+
     // Apply all 24 rounds of Keccak permutations
     for ir in 0..24 {
         // θ step
-        #[cfg(debug_assertions)]
-        if ir == 0 {
-            s.print_refs(&s.sin_refs, "Before θ")
-        };
-
         keccak_f_theta(s, ir);
         s.copy_sout_refs_to_sin_refs();
 
-        #[cfg(debug_assertions)]
-        if ir == 0 {
-            s.print_refs(&s.sin_refs, "After θ")
-        };
-
         // ρ step
-        #[cfg(debug_assertions)]
-        if ir == 0 {
-            s.print_refs(&s.sin_refs, "Before ρ")
-        };
-
         keccak_f_rho(s);
         s.copy_sout_refs_to_sin_refs();
 
-        #[cfg(debug_assertions)]
-        if ir == 0 {
-            s.print_refs(&s.sin_refs, "After ρ")
-        };
-
         // π step
-        #[cfg(debug_assertions)]
-        if ir == 0 {
-            s.print_refs(&s.sin_refs, "Before π")
-        };
-
         keccak_f_pi(s);
         s.copy_sout_refs_to_sin_refs();
 
-        #[cfg(debug_assertions)]
-        if ir == 0 {
-            s.print_refs(&s.sin_refs, "After π")
-        };
-
         // χ step
-        #[cfg(debug_assertions)]
-        if ir == 0 {
-            s.print_refs(&s.sin_refs, "Before χ")
-        };
-
         keccak_f_chi(s);
         s.copy_sout_refs_to_sin_refs();
 
-        #[cfg(debug_assertions)]
-        if ir == 0 {
-            s.print_refs(&s.sin_refs, "After χ")
-        };
-
         // ι step
-        #[cfg(debug_assertions)]
-        if ir == 0 {
-            s.print_refs(&s.sin_refs, "Before ι")
-        };
-
         keccak_f_iota(s, ir);
 
         // Don't copy after last round
         if ir != 23 {
             s.copy_sout_refs_to_sin_refs();
-
-            #[cfg(debug_assertions)]
-            if ir == 0 {
-                s.print_refs(&s.sin_refs, "After ι")
-            };
         }
     }
 
@@ -101,9 +57,11 @@ pub fn keccak_f(s: &mut GateState) {
         let group_pos = i % s.gate_config.sout_ref_group_by;
         let ref_idx =
             s.gate_config.sout_first_ref + group * s.gate_config.sout_ref_distance + group_pos;
-        s.xor(
+        s.xor3(
             s.sout_refs[i as usize],
             PinId::D,
+            s.gate_config.zero_ref.unwrap(),
+            PinId::A,
             s.gate_config.zero_ref.unwrap(),
             PinId::A,
             ref_idx,
