@@ -490,7 +490,8 @@ impl<F: PrimeField64> KeccakfSM<F> {
                     let a_val = F::as_canonical_u64(&a[j]);
                     let b_val = F::as_canonical_u64(&b[j]);
                     let c_val = F::as_canonical_u64(&c[j]);
-                    let table_row = KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val, c_val);
+                    let table_row =
+                        KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val, c_val);
                     multiplicity[table_row] += 1;
                 }
             }
