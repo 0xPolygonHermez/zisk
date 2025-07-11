@@ -11,11 +11,13 @@ use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     env, fs,
     path::{Path, PathBuf},
     thread,
+    time::Instant,
 };
 use zisk_common::ZiskLibInitFn;
 use zisk_pil::*;
@@ -80,16 +82,25 @@ pub struct ZiskStats {
     #[clap(short = 'p', long, conflicts_with = "emulator")]
     pub port: Option<u16>,
 
-    /// Map locked flag
-    /// This is used to lock the memory map for the ROM file.
-    /// If you are running ZisK on a machine with limited memory, you may want to disable this option.
+    /// Map unlocked flag
+    /// This is used to unlock the memory map for the ROM file.
+    /// If you are running ZisK on a machine with limited memory, you may want to enable this option.
     /// This option is mutually exclusive with `--emulator`.
     #[clap(short = 'u', long, conflicts_with = "emulator")]
-    pub map_locked: bool,
+    pub unlock_mapped_memory: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
+
+    #[clap(short = 'n', long)]
+    pub number_threads_witness: Option<usize>,
+
+    #[clap(short = 'x', long)]
+    pub max_witness_stored: Option<usize>,
+
+    #[clap(short = 'c', long)]
+    pub chunk_size_bits: Option<u64>,
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
@@ -99,7 +110,7 @@ pub struct ZiskStats {
     pub sha256f_script: Option<PathBuf>,
 
     #[clap(long)]
-    pub mpi_node: usize,
+    pub mpi_node: Option<usize>,
 }
 
 impl ZiskStats {
@@ -122,9 +133,9 @@ impl ZiskStats {
             sha256f_path.clone()
         } else {
             let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{}/.zisk/bin/sha256f_script.json", home_dir));
+            let script_path = PathBuf::from(format!("{home_dir}/.zisk/bin/sha256f_script.json"));
             if !script_path.exists() {
-                panic!("Sha256f script file not found at {:?}", script_path);
+                panic!("Sha256f script file not found at {script_path:?}");
             }
             script_path
         };
@@ -136,7 +147,7 @@ impl ZiskStats {
             if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
                 if e.kind() != std::io::ErrorKind::AlreadyExists {
                     // prevent collision in distributed mode
-                    panic!("Failed to create the cache directory: {:?}", e);
+                    panic!("Failed to create the cache directory: {e:?}");
                 }
             }
         }
@@ -191,9 +202,18 @@ impl ZiskStats {
 
         let mut gpu_params = ParamsGPU::new(false);
         gpu_params.with_max_number_streams(1);
+        if self.number_threads_witness.is_some() {
+            gpu_params.with_number_threads_pools_witness(self.number_threads_witness.unwrap());
+        }
+        if self.max_witness_stored.is_some() {
+            gpu_params.with_max_witness_stored(self.max_witness_stored.unwrap());
+        }
 
         let proofman;
         let mpi_context = initialize_mpi()?;
+
+        proofman_common::initialize_logger(self.verbose.into(), Some(mpi_context.world_rank));
+
         let world_ranks;
 
         let world_rank = mpi_context.world_rank;
@@ -203,16 +223,18 @@ impl ZiskStats {
             let world = mpi_context.universe.world();
             world_ranks = world.size() as usize;
 
-            let m2 = self.mpi_node as i32 * 2;
-            if mpi_context.world_rank < m2 || mpi_context.world_rank >= m2 + 2 {
-                world.split_shared(mpi_context.world_rank);
-                world.barrier();
-                println!(
-                    "{}: {}",
-                    format!("Rank {}", mpi_context.world_rank).bright_yellow().bold(),
-                    "Exiting stats command.".bright_yellow()
-                );
-                return Ok(());
+            if let Some(mpi_node) = self.mpi_node {
+                let m2 = mpi_node as i32 * 2;
+                if mpi_context.world_rank < m2 || mpi_context.world_rank >= m2 + 2 {
+                    world.split_shared(mpi_context.world_rank);
+                    world.barrier();
+                    println!(
+                        "{}: {}",
+                        format!("Rank {}", mpi_context.world_rank).bright_yellow().bold(),
+                        "Exiting stats command.".bright_yellow()
+                    );
+                    return Ok(());
+                }
             }
 
             proofman = ProofMan::<Goldilocks>::new(
@@ -251,7 +273,7 @@ impl ZiskStats {
             .with_base_port(self.port)
             .with_world_rank(world_rank)
             .with_local_rank(local_rank)
-            .with_map_locked(self.map_locked);
+            .with_unlock_mapped_memory(self.unlock_mapped_memory);
 
         match self.field {
             Field::Goldilocks => {
@@ -266,9 +288,11 @@ impl ZiskStats {
                     self.asm.clone(),
                     asm_rom,
                     sha256f_script,
+                    self.chunk_size_bits,
                     Some(world_rank),
                     Some(local_rank),
                     self.port,
+                    self.unlock_mapped_memory,
                 )
                 .expect("Failed to initialize witness library");
 
@@ -276,11 +300,7 @@ impl ZiskStats {
 
                 if self.asm.is_some() {
                     // Start ASM microservices
-                    tracing::info!(
-                        ">>> [{}] Starting ASM microservices. {}",
-                        world_rank,
-                        "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
-                    );
+                    tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
 
                     asm_services
                         .start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
@@ -386,12 +406,12 @@ impl ZiskStats {
                 air_id,
                 Self::air_name(*airgroup_id, *air_id),
                 stats.num_chunks,
-                stats.collect_time,
-                stats.witness_time,
+                stats.collect_duration,
+                stats.witness_duration,
             );
             // Accumulate total times
-            total_collect_time += stats.collect_time;
-            total_witness_time += stats.witness_time;
+            total_collect_time += stats.collect_duration;
+            total_witness_time += stats.witness_duration;
         }
 
         // Group stats
@@ -423,13 +443,13 @@ impl ZiskStats {
             let (mut n_min, mut n_max, mut n_sum) = (usize::MAX, 0, 0usize);
 
             for e in &entries {
-                c_min = c_min.min(e.collect_time);
-                c_max = c_max.max(e.collect_time);
-                c_sum += e.collect_time;
+                c_min = c_min.min(e.collect_duration);
+                c_max = c_max.max(e.collect_duration);
+                c_sum += e.collect_duration;
 
-                w_min = w_min.min(e.witness_time);
-                w_max = w_max.max(e.witness_time);
-                w_sum += e.witness_time;
+                w_min = w_min.min(e.witness_duration);
+                w_max = w_max.max(e.witness_duration);
+                w_sum += e.witness_duration;
 
                 n_min = n_min.min(e.num_chunks);
                 n_max = n_max.max(e.num_chunks);
@@ -486,7 +506,74 @@ impl ZiskStats {
             val if val == SHA_256_F_AIR_IDS[0] => "SHA_256_F".to_string(),
             val if val == SHA_256_F_TABLE_AIR_IDS[0] => "SHA_256_F_TABLE".to_string(),
             val if val == SPECIFIED_RANGES_AIR_IDS[0] => "SPECIFIED_RANGES".to_string(),
-            _ => format!("Unknown air_id: {}", air_id),
+            _ => format!("Unknown air_id: {air_id}"),
         }
+    }
+
+    /// Stores stats in JSON file format
+    ///
+    /// # Arguments
+    /// * `stats` - A reference to the stats vector.
+    pub fn store_stats(start_time: Instant, stats: &[(usize, usize, Stats)]) {
+        #[derive(Serialize, Deserialize, Debug)]
+        struct Task {
+            name: String,
+            start: u64,
+            duration: u64,
+        }
+        let mut tasks: Vec<Task> = Vec::new();
+
+        println!("stats.len={}", stats.len());
+        for stat in stats.iter() {
+            let airgroup_id = stat.0;
+            let air_id = stat.1;
+            let stat = &stat.2;
+            let collect_start_time: u64 =
+                stat.collect_start_time.duration_since(start_time).as_micros() as u64;
+            let witness_start_time: u64 =
+                stat.witness_start_time.duration_since(start_time).as_micros() as u64;
+            let name = ZiskStats::air_name(airgroup_id, air_id);
+            if stat.collect_duration > 0 {
+                let name = name.clone() + "_collect";
+                // println!(
+                //     "{} num_chunks={} start_time={}, duration={}",
+                //     name, stat.num_chunks, collect_start_time, stat.collect_duration
+                // );
+                let task =
+                    Task { name, start: collect_start_time, duration: stat.collect_duration };
+                tasks.push(task);
+            }
+            if stat.witness_duration > 0 {
+                let name = name.clone() + "_witness";
+                // println!(
+                //     "{} num_chunks={}, start_time={}, duration={}",
+                //     name, stat.num_chunks, witness_start_time, stat.witness_duration
+                // );
+                let task =
+                    Task { name, start: witness_start_time, duration: stat.witness_duration };
+                tasks.push(task);
+            }
+        }
+
+        // Save to stats.json
+
+        // Convert to pretty-printed JSON
+        let json = serde_json::to_string_pretty(&tasks).unwrap();
+
+        // Write to file
+        let _ = fs::write("stats.json", json);
+
+        // Save to stats.csv
+
+        // Create a CSV-formatted string with the tasks data
+        let mut csv = String::new();
+        for task in tasks {
+            csv += &format!("{},{},{},\n", task.name, task.start, task.duration);
+        }
+
+        // Write to file
+        let _ = fs::write("stats.csv", csv);
+
+        tracing::info!("Statistics have been saved to stats.json and stats.csv");
     }
 }

@@ -99,7 +99,7 @@ uint16_t arguments_port = 0;
 // Type of execution
 bool server = false;
 bool client = false;
-bool chunk_done = false;
+bool call_chunk_done = false;
 bool do_shutdown = false; // If true, the client will perform a shutdown request to the server when done
 uint64_t number_of_mt_requests = 1; // Loop to send this number of minimal trace requests
 
@@ -201,6 +201,8 @@ void server_cleanup (void);
 void client_setup (void);
 void client_run (void);
 void client_cleanup (void);
+
+void _chunk_done(void);
 
 void log_minimal_trace(void);
 void log_histogram(void);
@@ -764,9 +766,6 @@ void print_usage (void)
     printf("\t-v verbose on\n");
     printf("\t-u unlock physical memory in mmap\n");
     printf("\t-h/--help print this\n");
-#ifdef DEBUG
-    printf("\t-k keccak trace on\n");
-#endif
 }
 
 void parse_arguments(int argc, char *argv[])
@@ -877,17 +876,6 @@ void parse_arguments(int argc, char *argv[])
             if (strcmp(argv[i], "-u") == 0)
             {
                 map_locked_flag = 0;
-                continue;
-            }
-            if (strcmp(argv[i], "-k") == 0)
-            {
-#ifdef DEBUG
-                keccak_metrics = true;
-#else
-                printf("Keccak metrics option -k is only available in debug compilation\n");
-                print_usage();
-                exit(-1);
-#endif
                 continue;
             }
             if (strcmp(argv[i], "-h") == 0)
@@ -1159,7 +1147,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_MT_shutdown_done");
             strcpy(shmem_mt_name, "");
-            chunk_done = true;
+            call_chunk_done = true;
             port = 23115;
             break;
         }
@@ -1169,10 +1157,12 @@ void configure (void)
             strcat(shmem_input_name, "_RH_input");
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_RH_output");
-            strcpy(sem_chunk_done_name, "");
+            strcpy(sem_chunk_done_name, shm_prefix);
+            strcat(sem_chunk_done_name, "_RH_chunk_done");
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_RH_shutdown_done");
             strcpy(shmem_mt_name, "");
+            call_chunk_done = true;
             port = 23116;
             break;
         }
@@ -1187,7 +1177,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_MA_shutdown_done");
             strcpy(shmem_mt_name, "");
-            chunk_done = true;
+            call_chunk_done = true;
             port = 23118;
             break;
         }
@@ -1202,7 +1192,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_CH_shutdown_done");
             strcpy(shmem_mt_name, "");
-            chunk_done = true;
+            call_chunk_done = true;
             port = 23115;
             break;
         }
@@ -1226,7 +1216,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_ZP_shutdown_done");
             strcpy(shmem_mt_name, "");
-            chunk_done = true;
+            call_chunk_done = true;
             port = 23115;
             break;
         }
@@ -1241,7 +1231,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_MO_shutdown_done");
             strcpy(shmem_mt_name, "");
-            chunk_done = true;
+            call_chunk_done = true;
             port = 23117;
             break;
         }
@@ -1254,7 +1244,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, "");
             strcpy(shmem_mt_name, shm_prefix);
             strcat(shmem_mt_name, "_MT_output");
-            chunk_done = false;
+            call_chunk_done = false;
             port = 23119;
             break;
         }
@@ -1269,7 +1259,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, shm_prefix);
             strcat(sem_shutdown_done_name, "_MT_shutdown_done");
             strcpy(shmem_mt_name, "");
-            chunk_done = true;
+            call_chunk_done = true;
             port = 23115;
             break;
         }
@@ -1282,7 +1272,7 @@ void configure (void)
             strcpy(sem_shutdown_done_name, "");
             strcpy(shmem_mt_name, shm_prefix);
             strcat(shmem_mt_name, "_MT_output");
-            chunk_done = false;
+            call_chunk_done = false;
             port = 23120;
             break;
         }
@@ -1304,8 +1294,9 @@ void configure (void)
     {
         printf("ziskemuasm configuration:\n");
         printf("\tgen_method=%u\n", gen_method);
+        printf("\tshm_prefix=%s\n", shm_prefix);
         printf("\tport=%u\n", port);
-        printf("\tchunk_done=%u\n", chunk_done);
+        printf("\tcall_chunk_done=%u\n", call_chunk_done);
         printf("\tchunk_size=%lu\n", chunk_size);
         printf("\tshmem_input=%s\n", shmem_input_name);
         printf("\tshmem_output=%s\n", shmem_output_name);
@@ -2519,7 +2510,7 @@ void server_setup (void)
     /* SEM CHUNK DONE */
     /******************/
 
-    if (chunk_done)
+    if (call_chunk_done)
     {
         assert(strlen(sem_chunk_done_name) > 0);
         sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0666, 0);
@@ -2530,7 +2521,7 @@ void server_setup (void)
             fflush(stderr);
             exit(-1);
         }
-        if (verbose) printf("sem_open(chunk_done) succeeded\n");
+        if (verbose) printf("sem_open(%s) succeeded\n", sem_chunk_done_name);
     }
 
     /*********************/
@@ -2539,14 +2530,14 @@ void server_setup (void)
     
     assert(strlen(sem_shutdown_done_name) > 0);
     sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT, 0666, 0);
-    if (sem_chunk_done == SEM_FAILED)
+    if (sem_shutdown_done == SEM_FAILED)
     {
         printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
         fflush(stdout);
         fflush(stderr);
         exit(-1);
     }
-    if (verbose) printf("sem_open(shutdown_done) succeeded\n");
+    if (verbose) printf("sem_open(%s) succeeded\n", sem_shutdown_done_name);
 }
 
 void server_reset (void)
@@ -2561,9 +2552,9 @@ void server_reset (void)
 #ifdef DEBUG
         gettimeofday(&stop_time, NULL);
         duration = TimeDiff(start_time, stop_time);
-        if (verbose) printf("memset(ram) in %lu us\n", duration);
+        if (verbose) printf("server_reset() memset(ram) in %lu us\n", duration);
 #endif
-        if (gen_method != Fast)
+        if ((gen_method != Fast) && (gen_method != RomHistogram))
         {
             // Reset trace: init output header data
             pOutputTrace[0] = 0x000100; // Version, e.g. v1.0.0 [8]
@@ -2579,6 +2570,23 @@ void server_reset (void)
 
 void server_run (void)
 {
+#ifdef ASM_CALL_METRICS
+    reset_asm_call_metrics();
+#endif
+
+    // Init trace header
+    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain) && (gen_method != Fast))
+    {
+        // Reset trace: init output header data
+        pOutputTrace[0] = 0x000100; // Version, e.g. v1.0.0 [8]
+        pOutputTrace[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+        pOutputTrace[2] = trace_size; // MT allocated size [8] -> to be updated after reallocation
+        pOutputTrace[3] = 0; // MT used size [8] -> to be updated after completion
+        
+        // Reset trace used size
+        trace_used_size = 0;
+    }
+
     /*******/
     /* ASM */
     /*******/
@@ -2593,11 +2601,7 @@ void server_run (void)
     uint64_t final_trace_size = MEM_CHUNK_ADDRESS - MEM_TRACE_ADDRESS;
     trace_used_size = final_trace_size + 32;
 
-    if ( metrics
-#ifdef DEBUG
-        || keccak_metrics
-#endif
-        )
+    if ( metrics )
     {
         uint64_t duration = assembly_duration;
         uint64_t steps = MEM_STEP;
@@ -2605,28 +2609,6 @@ void server_run (void)
         uint64_t step_duration_ns = steps == 0 ? 0 : (duration * 1000) / steps;
         uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
         uint64_t final_trace_size_percentage = (final_trace_size * 100) / trace_size;
-#ifdef DEBUG
-        printf("Duration = %lu us, Keccak counter = %lu, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu, max steps=%lu, chunk size=%lu\n",
-            duration,
-            keccak_counter,
-            realloc_counter,
-            steps,
-            step_duration_ns,
-            step_tp_sec,
-            MEM_CHUNK_ADDRESS,
-            MEM_TRACE_ADDRESS,
-            final_trace_size,
-            final_trace_size_percentage,
-            end,
-            max_steps,
-            chunk_size);
-        if (keccak_metrics)
-        {
-            uint64_t keccak_percentage = duration == 0 ? 0 : (keccak_duration * 100) / duration;
-            uint64_t single_keccak_duration_ns = keccak_counter == 0 ? 0 : (keccak_duration * 1000) / keccak_counter;
-            printf("Keccak counter = %lu, duration = %lu us, single keccak duration = %lu ns, percentage = %lu \n", keccak_counter, keccak_duration, single_keccak_duration_ns, keccak_percentage);
-        }
-#else
         printf("Duration = %lu us, realloc counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%%), end=%lu, max steps=%lu, chunk size=%lu\n",
             duration,
             realloc_counter,
@@ -2640,7 +2622,6 @@ void server_run (void)
             end,
             max_steps,
             chunk_size);
-#endif
         if (gen_method == RomHistogram)
         {
             printf("Rom histogram size=%lu\n", histogram_size);
@@ -2689,6 +2670,13 @@ void server_run (void)
         }
     }
 
+    // Notify client
+    if (gen_method == RomHistogram)
+    {
+        _chunk_done();   
+    }
+
+
     // Notify the caller that the trace is ready to be consumed
     // if (!is_file)
     // {
@@ -2701,6 +2689,11 @@ void server_run (void)
     //         exit(-1);
     //     }
     // }
+
+
+#ifdef ASM_CALL_METRICS
+    print_asm_call_metrics(assembly_duration);
+#endif
 
     // Log trace
     if (((gen_method == MinimalTrace) || (gen_method == Zip)) && trace)
@@ -2778,7 +2771,7 @@ void server_cleanup (void)
     }
 
     // Cleanup chunk done semaphore
-    if (chunk_done)
+    if (call_chunk_done)
     {
         result = sem_close(sem_chunk_done);
         if (result == -1)
@@ -2898,7 +2891,7 @@ extern void _chunk_done()
     // printf("chunk_done() sync_duration=%lu\n", sync_duration);
 
     // Notify the caller that a new chunk is done and its trace is ready to be consumed
-    assert(chunk_done);
+    assert(call_chunk_done);
     int result = sem_post(sem_chunk_done);
     if (result == -1)
     {

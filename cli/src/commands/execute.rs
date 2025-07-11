@@ -78,12 +78,12 @@ pub struct ZiskExecute {
     #[clap(short = 'p', long, conflicts_with = "emulator")]
     pub port: Option<u16>,
 
-    /// Map locked flag
-    /// This is used to lock the memory map for the ROM file.
-    /// If you are running ZisK on a machine with limited memory, you may want to disable this option.
+    /// Map unlocked flag
+    /// This is used to unlock the memory map for the ROM file.
+    /// If you are running ZisK on a machine with limited memory, you may want to enable this option.
     /// This option is mutually exclusive with `--emulator`.
     #[clap(short = 'u', long, conflicts_with = "emulator")]
-    pub map_locked: bool,
+    pub unlock_mapped_memory: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
@@ -103,13 +103,15 @@ impl ZiskExecute {
 
         let mpi_context = initialize_mpi()?;
 
+        proofman_common::initialize_logger(self.verbose.into(), Some(mpi_context.world_rank));
+
         let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
             sha256f_path.clone()
         } else {
             let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{}/.zisk/bin/sha256f_script.json", home_dir));
+            let script_path = PathBuf::from(format!("{home_dir}/.zisk/bin/sha256f_script.json"));
             if !script_path.exists() {
-                panic!("Sha256f script file not found at {:?}", script_path);
+                panic!("Sha256f script file not found at {script_path:?}");
             }
             script_path
         };
@@ -121,7 +123,7 @@ impl ZiskExecute {
             if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
                 if e.kind() != std::io::ErrorKind::AlreadyExists {
                     // prevent collision in distributed mode
-                    panic!("Failed to create the cache directory: {:?}", e);
+                    panic!("Failed to create the cache directory: {e:?}");
                 }
             }
         }
@@ -214,7 +216,7 @@ impl ZiskExecute {
             .with_base_port(self.port)
             .with_world_rank(mpi_context.world_rank)
             .with_local_rank(mpi_context.local_rank)
-            .with_map_locked(self.map_locked);
+            .with_unlock_mapped_memory(self.unlock_mapped_memory);
 
         match self.field {
             Field::Goldilocks => {
@@ -229,9 +231,11 @@ impl ZiskExecute {
                     self.asm.clone(),
                     asm_rom,
                     sha256f_script,
+                    None,
                     Some(mpi_context.world_rank),
                     Some(mpi_context.local_rank),
                     self.port,
+                    self.unlock_mapped_memory,
                 )
                 .expect("Failed to initialize witness library");
 
@@ -239,11 +243,7 @@ impl ZiskExecute {
 
                 if self.asm.is_some() {
                     // Start ASM microservices
-                    tracing::info!(
-                        ">>> [{}] Starting ASM microservices. {}",
-                        mpi_context.world_rank,
-                        "Note: This wait can be avoided by running ZisK in server mode.".dimmed()
-                    );
+                    tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
 
                     asm_services
                         .start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;

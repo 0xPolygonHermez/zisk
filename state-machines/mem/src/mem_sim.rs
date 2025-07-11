@@ -40,7 +40,7 @@ fn main() {
     let mut data: Vec<Vec<[u64; MEM_BUS_DATA_SIZE]>> = Vec::new();
     loop {
         let _chunk_id = data.len();
-        println!("Loading bus data chunk {} ...", _chunk_id);
+        println!("Loading bus data chunk {_chunk_id} ...");
         if let Ok(bus_data) = MemCounters::load_from_file(ChunkId(_chunk_id)) {
             data.push(bus_data);
         } else {
@@ -51,7 +51,7 @@ fn main() {
     let mut metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)> = Vec::new();
 
     for (i, data) in data.iter().enumerate() {
-        println!("Executing bus data chunk {} ...", i);
+        println!("Executing bus data chunk {i} ...");
         let mut counter = MemCounters::new();
         counter.execute_from_vector(data);
         counter.close();

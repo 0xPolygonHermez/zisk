@@ -2,6 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{MemCounters, MemPlanCalculator};
 use mem_common::MemAlignCheckPoint;
+use proofman_common::PreCalculate;
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 use zisk_pil::{MemAlignTrace, MEM_ALIGN_AIR_IDS, MEM_ALIGN_ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 #[allow(dead_code)]
@@ -70,15 +71,17 @@ impl<'a> MemAlignPlanner<'a> {
                 self.calculate_how_many_operations_fit(operations_done, operations_rows)
             };
 
-            self.check_points.insert(
-                self.chunk_id.unwrap(),
-                MemAlignCheckPoint {
-                    skip: operations_done,
-                    count,
-                    rows: rows_fit,
-                    offset: self.num_rows - self.rows_available,
-                },
-            );
+            if count != 0 {
+                self.check_points.insert(
+                    self.chunk_id.unwrap(),
+                    MemAlignCheckPoint {
+                        skip: operations_done,
+                        count,
+                        rows: rows_fit,
+                        offset: self.num_rows - self.rows_available,
+                    },
+                );
+            }
 
             self.rows_available -= rows_fit;
             pending_rows -= rows_fit;
@@ -109,6 +112,7 @@ impl<'a> MemAlignPlanner<'a> {
             Some(SegmentId(self.instances.len())),
             InstanceType::Instance,
             CheckPoint::Multiple(chunks),
+            PreCalculate::Fast,
             Some(Box::new(check_points)),
         );
         self.instances.push(instance);
@@ -149,6 +153,7 @@ impl MemPlanCalculator for MemAlignPlanner<'_> {
                 None,
                 InstanceType::Table,
                 CheckPoint::None,
+                PreCalculate::None,
                 None,
             ));
         }
