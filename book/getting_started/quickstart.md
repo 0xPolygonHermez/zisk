@@ -136,5 +136,5 @@ This command generates the proof in the `./proof` directory. If everything goes 
 To verify a generated proof, use the following command:
 
 ```bash
-cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json -u ./proof/publics.json
+cargo-zisk verify -p ./proof/vadcop_final_proof.bin
 ```
