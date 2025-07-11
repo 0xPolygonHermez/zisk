@@ -145,6 +145,9 @@ impl ExecutorStats {
             }
         }
 
+        // Sort by start time
+        tasks.sort_by(|a, b| a.start.cmp(&b.start));
+
         // Save to stats.json
 
         // Convert to pretty-printed JSON
