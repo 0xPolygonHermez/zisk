@@ -893,6 +893,18 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         collectors_by_instance
     }
+
+    fn reset(&self) {
+        // Reset the internal state of the executor
+        *self.execution_result.lock().unwrap() = ZiskExecutionResult::default();
+        *self.min_traces.write().unwrap() = MinimalTraces::None;
+        *self.main_planning.write().unwrap() = Vec::new();
+        *self.secn_planning.write().unwrap() = Vec::new();
+        self.main_instances.write().unwrap().clear();
+        self.secn_instances.write().unwrap().clear();
+        self.collectors_by_instance.write().unwrap().clear();
+        self.stats.lock().unwrap().clear();
+    }
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, BD> {
@@ -904,6 +916,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
     /// # Returns
     /// A vector of global IDs for the instances to compute witness for.
     fn execute(&self, pctx: Arc<ProofCtx<F>>, input_data_path: Option<PathBuf>) -> Vec<usize> {
+        self.reset();
+
         // Process the ROM to collect the Minimal Traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
 
