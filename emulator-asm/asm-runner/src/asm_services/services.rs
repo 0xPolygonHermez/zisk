@@ -3,9 +3,8 @@ use super::{
     MinimalTraceResponse, PingRequest, PingResponse, ResponseData, ShutdownRequest,
     ShutdownResponse, ToRequestPayload,
 };
-use crate::{AsmRunError, AsmRunnerOptions, RomHistogramRequest, RomHistogramResponse};
+use crate::{AsmRunnerOptions, RomHistogramRequest, RomHistogramResponse};
 use anyhow::{Context, Result};
-use named_sem::NamedSemaphore;
 use std::{
     fmt,
     io::{Read, Write},
@@ -57,22 +56,14 @@ impl AsmServices {
     const MT_SERVICE_OFFSET: u64 = 1; // Relative offset to base port. Should correspond to the order in SERVICES
     const RH_SERVICE_OFFSET: u64 = 2; // Relative offset to base port. Should correspond to the order in SERVICES
 
-    const SERVICES: [AsmService; 3] = [AsmService::MO, AsmService::MT, AsmService::RH];
+    pub const SERVICES: [AsmService; 3] = [AsmService::MO, AsmService::MT, AsmService::RH];
 
     pub fn new(world_rank: i32, local_rank: i32, base_port: Option<u16>) -> Self {
         Self { world_rank, local_rank, base_port: base_port.unwrap_or(ASM_SERVICE_BASE_PORT) }
     }
 
-    pub fn shmem_prefix(
-        asm_service: &AsmService,
-        base_port: Option<u16>,
-        local_rank: i32,
-    ) -> String {
-        format!(
-            "ZISK_{}_{}",
-            Self::port_for(asm_service, base_port.unwrap_or(ASM_SERVICE_BASE_PORT), local_rank),
-            local_rank
-        )
+    pub fn shmem_prefix(local_rank: i32) -> String {
+        format!("ZISK_{local_rank}")
     }
 
     pub fn start_asm_services(
@@ -283,15 +274,13 @@ impl AsmServices {
         Ok(Res::from_response_payload(response))
     }
 
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub fn send_shutdown_and_wait(&self, service: &AsmService) -> Result<()> {
-        let sem_name = format!(
-            "/{}_{}_shutdown_done",
-            Self::shmem_prefix(service, Some(self.base_port), self.local_rank),
-            service.as_str()
-        );
+        let sem_name =
+            format!("/{}_{}_shutdown_done", Self::shmem_prefix(self.local_rank), service.as_str());
 
-        let mut sem = NamedSemaphore::create(&sem_name, 0)
-            .map_err(|e| AsmRunError::SemaphoreError(sem_name.clone(), e))?;
+        let mut sem = named_sem::NamedSemaphore::create(&sem_name, 0)
+            .map_err(|e| crate::AsmRunError::SemaphoreError(sem_name.clone(), e))?;
 
         // Try to clean up stale state
         let _ = sem.try_wait();
@@ -309,7 +298,7 @@ impl AsmServices {
                 sem_name,
                 e
             );
-            AsmRunError::SemaphoreError(sem_name.clone(), e)
+            crate::AsmRunError::SemaphoreError(sem_name.clone(), e)
         })?;
 
         // Manually drop and unlink the semaphore to clean up
@@ -326,6 +315,11 @@ impl AsmServices {
             }
         }
 
+        Ok(())
+    }
+
+    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+    pub fn send_shutdown_and_wait(&self, _: &AsmService) -> Result<()> {
         Ok(())
     }
 }

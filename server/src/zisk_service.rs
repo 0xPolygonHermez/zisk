@@ -242,6 +242,7 @@ pub struct ZiskService {
     witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
     asm_services: AsmServices,
     is_busy: Arc<AtomicBool>,
+    pending_handles: Vec<std::thread::JoinHandle<()>>,
 }
 
 impl ZiskService {
@@ -294,6 +295,7 @@ impl ZiskService {
 
         #[cfg(not(distributed))]
         {
+            let _ = mpi_context; // avoid unused variable warning
             proofman = ProofMan::<Goldilocks>::new(
                 config.proving_key.clone(),
                 config.custom_commits_map.clone(),
@@ -302,7 +304,6 @@ impl ZiskService {
                 config.final_snark,
                 config.gpu_params.clone(),
                 config.verbose.into(),
-                None,
             )
             .expect("Failed to initialize proofman");
         }
@@ -317,6 +318,7 @@ impl ZiskService {
             witness_lib,
             asm_services,
             is_busy: Arc::new(AtomicBool::new(false)),
+            pending_handles: Vec::new(),
         })
     }
 
@@ -396,7 +398,12 @@ impl ZiskService {
             return Ok(false);
         }
 
-        let response = match request {
+        // Wait for all pending handles to finish
+        for handle in self.pending_handles.drain(..) {
+            handle.join().expect("Failed to join thread");
+        }
+
+        let (response, handle) = match request {
             ZiskRequest::Status { payload } => {
                 let result =
                     ZiskServiceStatusHandler::handle(&config, payload, self.is_busy.clone());
@@ -426,6 +433,10 @@ impl ZiskService {
                 self.is_busy.clone(),
             ),
         };
+
+        if let Some(handle) = handle {
+            self.pending_handles.push(handle);
+        }
 
         Self::send_json(&mut stream, &response)?;
         Ok(must_shutdown)

@@ -1,4 +1,3 @@
-use std::ffi::c_void;
 use std::fmt::Debug;
 use zisk_common::EmuTrace;
 use zisk_common::EmuTraceStart;
@@ -14,20 +13,6 @@ pub struct AsmMTHeader {
     pub shmem_allocated_size: u64,
     pub shmem_used_size: u64,
     pub num_chunks: u64,
-}
-
-impl AsmMTHeader {
-    pub fn from_ptr(mapped_ptr: *mut c_void) -> AsmMTHeader {
-        let output_header;
-        unsafe {
-            output_header = std::ptr::read(mapped_ptr as *const AsmMTHeader);
-        }
-
-        assert!(output_header.shmem_allocated_size > 0);
-        assert!(output_header.shmem_used_size > 0);
-
-        output_header
-    }
 }
 
 impl AsmShmemHeader for AsmMTHeader {

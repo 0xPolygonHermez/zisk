@@ -5,6 +5,7 @@ use crate::{AsmService, AsmServices};
 
 #[derive(Debug, Error)]
 pub enum AsmRunError {
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     #[error("Failed to create semaphore '{0}': {1}")]
     SemaphoreError(String, #[source] named_sem::Error),
     #[error("Thread pool creation failed")]
@@ -131,11 +132,7 @@ impl AsmRunnerOptions {
             command.arg("-u");
         }
 
-        command.arg("--shm_prefix").arg(AsmServices::shmem_prefix(
-            asm_service,
-            self.base_port,
-            self.local_rank,
-        ));
+        command.arg("--shm_prefix").arg(AsmServices::shmem_prefix(self.local_rank));
 
         match asm_service {
             AsmService::MT => {

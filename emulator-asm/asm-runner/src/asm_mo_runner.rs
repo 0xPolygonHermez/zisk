@@ -1,22 +1,15 @@
-use libc::{close, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
-
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use named_sem::NamedSemaphore;
 use zisk_common::Plan;
 
 use std::ffi::c_void;
-use std::path::Path;
 use std::sync::atomic::{fence, Ordering};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::{fs, ptr};
 use tracing::error;
 
-use crate::{
-    shmem_utils, AsmInputC2, AsmMOChunk, AsmMOHeader, AsmRunError, AsmService, AsmServices,
-    AsmSharedMemory,
-};
+use crate::{AsmMOChunk, AsmMOHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory};
 use mem_planner_cpp::MemPlanner;
 
 use anyhow::{Context, Result};
@@ -26,7 +19,6 @@ pub struct AsmRunnerMO {
     pub plans: Vec<Plan>,
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmRunnerMO {
     pub fn new(plans: Vec<Plan>) -> Self {
         Self { plans }
@@ -35,7 +27,6 @@ impl AsmRunnerMO {
     #[allow(clippy::too_many_arguments)]
     pub fn run(
         asm_shared_memory: Arc<Mutex<Option<AsmSharedMemory<AsmMOHeader>>>>,
-        inputs_path: &Path,
         max_steps: u64,
         chunk_size: u64,
         world_rank: i32,
@@ -43,15 +34,11 @@ impl AsmRunnerMO {
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
     ) -> Result<Self> {
-        const MEM_READS_SIZE_DUMMY: u64 = 0xFFFFFFFFFFFFFFFF;
-
-        let (shmem_input_name, _, sem_chunk_done_name) =
-            AsmSharedMemory::<AsmMOHeader>::shmem_names(AsmService::MO, base_port, local_rank);
+        let sem_chunk_done_name =
+            AsmSharedMemory::<AsmMOHeader>::shmem_chunk_done_name(AsmService::MO, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
-
-        Self::write_input(inputs_path, &shmem_input_name, unlock_mapped_memory);
 
         let handle = std::thread::spawn(move || {
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
@@ -66,13 +53,8 @@ impl AsmRunnerMO {
 
         if asm_shared_memory.is_none() {
             *asm_shared_memory = Some(
-                AsmSharedMemory::create_shmem(
-                    AsmService::MO,
-                    local_rank,
-                    base_port,
-                    unlock_mapped_memory,
-                )
-                .expect("Error creating MO assembly shared memory"),
+                AsmSharedMemory::create_shmem(AsmService::MO, local_rank, unlock_mapped_memory)
+                    .expect("Error creating MO assembly shared memory"),
             );
         }
 
@@ -90,11 +72,6 @@ impl AsmRunnerMO {
                     fence(Ordering::Acquire);
 
                     let chunk = unsafe { std::ptr::read(data_ptr) };
-
-                    // TODO! Remove this check in the near future
-                    if chunk.mem_ops_size == MEM_READS_SIZE_DUMMY {
-                        panic!("Unexpected state: invalid data received from C++");
-                    }
 
                     data_ptr = unsafe { data_ptr.add(1) };
 
@@ -136,53 +113,5 @@ impl AsmRunnerMO {
         let plans = mem_planner.collect_plans();
 
         Ok(AsmRunnerMO::new(plans))
-    }
-
-    fn write_input(inputs_path: &Path, shmem_input_name: &str, unlock_mapped_memory: bool) {
-        let inputs = fs::read(inputs_path).expect("Failed to read input file");
-        let asm_input = AsmInputC2 { zero: 0, input_data_size: inputs.len() as u64 };
-        let shmem_input_size = (inputs.len() + size_of::<AsmInputC2>() + 7) & !7;
-
-        let mut full_input = Vec::with_capacity(shmem_input_size);
-        full_input.extend_from_slice(&asm_input.to_bytes());
-        full_input.extend_from_slice(&inputs);
-        while full_input.len() < shmem_input_size {
-            full_input.push(0);
-        }
-
-        let fd = shmem_utils::open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR);
-
-        let ptr = shmem_utils::map(
-            fd,
-            shmem_input_size,
-            PROT_READ | PROT_WRITE,
-            unlock_mapped_memory,
-            "MO input mmap",
-        );
-        unsafe {
-            ptr::copy_nonoverlapping(full_input.as_ptr(), ptr as *mut u8, shmem_input_size);
-            shmem_utils::unmap(ptr, shmem_input_size);
-            close(fd);
-        }
-    }
-}
-
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-impl AsmRunnerMO {
-    pub fn new(_: String, _: *mut c_void, _: Vec<EmuTrace>) -> Self {
-        panic!(
-            "AsmRunnerMO::new() is not supported on this platform. Only Linux x86_64 is supported."
-        )
-    }
-
-    pub fn run_and_count<T: Task>(
-        _: &Path,
-        _: &Path,
-        _: u64,
-        _: u64,
-        _: AsmRunnerOptions,
-        _: TaskFactory<T>,
-    ) -> (AsmRunnerMO, Vec<T::Output>) {
-        panic!("AsmRunnerMO::run_and_count() is not supported on this platform. Only Linux x86_64 is supported.")
     }
 }

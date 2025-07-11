@@ -1,12 +1,12 @@
 use libc::{
-    close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE,
-    S_IRUSR, S_IWUSR,
+    c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
+    PROT_WRITE, S_IRUSR, S_IWUSR,
 };
-use std::{ffi::CString, fmt::Debug, io, mem::ManuallyDrop, os::raw::c_void, ptr};
+use std::{ffi::CString, fmt::Debug, fs, io, mem::ManuallyDrop, os::raw::c_void, path::Path, ptr};
 
 use anyhow::Result;
 
-use crate::{AsmService, AsmServices};
+use crate::{AsmInputC2, AsmService, AsmServices};
 
 pub enum AsmSharedMemoryMode {
     ReadOnly,
@@ -14,7 +14,7 @@ pub enum AsmSharedMemoryMode {
 }
 
 pub struct AsmSharedMemory<H: AsmShmemHeader> {
-    fd: i32,
+    _fd: i32,
     mapped_ptr: *mut c_void,
     mapped_size: usize,
     shmem_name: String,
@@ -34,7 +34,7 @@ impl<H: AsmShmemHeader> Drop for AsmSharedMemory<H> {
         self.unmap().unwrap_or_else(|err| {
             tracing::error!("Failed to unmap shared memory '{}': {}", self.shmem_name, err)
         });
-        unsafe { close(self.fd) };
+        unsafe { close(self._fd) };
     }
 }
 
@@ -85,7 +85,7 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
     pub fn open_and_map(
         name: &str,
         mode: AsmSharedMemoryMode,
-        unlock_mapped_memory: bool,
+        _unlock_mapped_memory: bool,
     ) -> Result<Self> {
         unsafe {
             if name.is_empty() {
@@ -100,7 +100,7 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
                 AsmSharedMemoryMode::ReadWrite => libc::O_RDWR,
             };
 
-            let fd = shm_open(c_name.as_ptr(), oflag, S_IRUSR | S_IWUSR);
+            let fd = shm_open(c_name.as_ptr(), oflag, S_IRUSR as c_uint | S_IWUSR as c_uint);
             if fd == -1 {
                 let err = io::Error::last_os_error();
                 return Err(anyhow::anyhow!("shm_open('{name}') failed: {err}"));
@@ -122,8 +122,12 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
                 AsmSharedMemoryMode::ReadWrite => PROT_READ | PROT_WRITE,
             };
 
+            #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+            let flags = MAP_SHARED;
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             let mut flags = MAP_SHARED;
-            if !unlock_mapped_memory {
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            if !_unlock_mapped_memory {
                 flags |= libc::MAP_LOCKED;
             }
 
@@ -170,7 +174,7 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
             }
 
             Ok(Self {
-                fd,
+                _fd: fd,
                 mapped_ptr,
                 mapped_size: allocated_size,
                 shmem_name: name.to_string(),
@@ -222,26 +226,24 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         &self.header
     }
 
-    pub fn shmem_names(
-        asm_service: AsmService,
-        base_port: Option<u16>,
-        local_rank: i32,
-    ) -> (String, String, String) {
-        let prefix = AsmServices::shmem_prefix(&asm_service, base_port, local_rank);
-        (
-            format!("{prefix}_{}_input", asm_service.as_str()),
-            format!("{prefix}_{}_output", asm_service.as_str()),
-            format!("/{prefix}_{}_chunk_done", asm_service.as_str()),
-        )
+    pub fn shmem_input_name(asm_service: AsmService, local_rank: i32) -> String {
+        format!("{}_{}_input", AsmServices::shmem_prefix(local_rank), asm_service.as_str())
+    }
+
+    pub fn shmem_output_name(asm_service: AsmService, local_rank: i32) -> String {
+        format!("{}_{}_output", AsmServices::shmem_prefix(local_rank), asm_service.as_str())
+    }
+
+    pub fn shmem_chunk_done_name(asm_service: AsmService, local_rank: i32) -> String {
+        format!("/{}_{}_chunk_done", AsmServices::shmem_prefix(local_rank), asm_service.as_str())
     }
 
     pub fn create_shmem(
         service: AsmService,
         local_rank: i32,
-        base_port: Option<u16>,
         unlock_mapped_memory: bool,
     ) -> Result<AsmSharedMemory<H>> {
-        let (_, shmem_output_name, _) = Self::shmem_names(service, base_port, local_rank);
+        let shmem_output_name = Self::shmem_output_name(service, local_rank);
 
         AsmSharedMemory::<H>::open_and_map(
             &shmem_output_name,
@@ -261,6 +263,7 @@ pub fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {
     fd
 }
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &str) -> *mut c_void {
     let mut flags = MAP_SHARED;
     if !unlock_mapped_memory {
@@ -274,6 +277,11 @@ pub fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &s
     mapped
 }
 
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+pub fn map(_: i32, _: usize, _: i32, _: bool, _: &str) -> *mut c_void {
+    ptr::null_mut()
+}
+
 /// Unmaps memory at the given raw pointer.
 ///
 /// # Safety
@@ -284,5 +292,31 @@ pub fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &s
 pub unsafe fn unmap(ptr: *mut c_void, size: usize) {
     if munmap(ptr, size) != 0 {
         tracing::error!("munmap failed: {:?}", io::Error::last_os_error());
+    }
+}
+
+pub fn write_input(inputs_path: &Path, shmem_input_name: &str, unlock_mapped_memory: bool) {
+    let inputs = fs::read(inputs_path).expect("Failed to read input file");
+    let asm_input = AsmInputC2 { zero: 0, input_data_size: inputs.len() as u64 };
+    let shmem_input_size = (inputs.len() + size_of::<AsmInputC2>() + 7) & !7;
+
+    let mut full_input = Vec::with_capacity(shmem_input_size);
+    full_input.extend_from_slice(&asm_input.to_bytes());
+    full_input.extend_from_slice(&inputs);
+    while full_input.len() < shmem_input_size {
+        full_input.push(0);
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    let fd = open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR | S_IWUSR);
+    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+    let fd = open_shmem(shmem_input_name, libc::O_RDWR, S_IRUSR as u32 | S_IWUSR as u32);
+
+    let ptr =
+        map(fd, shmem_input_size, PROT_READ | PROT_WRITE, unlock_mapped_memory, "RH input mmap");
+    unsafe {
+        ptr::copy_nonoverlapping(full_input.as_ptr(), ptr as *mut u8, shmem_input_size);
+        unmap(ptr, shmem_input_size);
+        close(fd);
     }
 }
