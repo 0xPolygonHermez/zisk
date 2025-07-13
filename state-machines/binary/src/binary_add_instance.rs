@@ -6,7 +6,7 @@
 
 use crate::{BinaryAddCollector, BinaryAddSM};
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
@@ -75,8 +75,9 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
+        let trace_buffer = buffer_pool.take_buffer();
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| {

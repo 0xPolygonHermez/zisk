@@ -5,7 +5,7 @@
 //! execution plans.
 use crate::{KeccakfInput, KeccakfSM};
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
 use std::{
     any::Any,
     collections::{HashMap, VecDeque},
@@ -78,8 +78,9 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
+        let trace_buffer = buffer_pool.take_buffer();
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<KeccakfCollector>().unwrap().inputs)

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use data_bus::{DataBus, DataBusTrait};
 use fields::PrimeField64;
-use proofman_common::ProofCtx;
+use proofman_common::{BufferPool, ProofCtx};
 use sm_main::MainSM;
 use zisk_common::{
     BusDevice, BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, PayloadType,
@@ -68,6 +68,7 @@ impl<F: PrimeField64> SMBundle<F> for DynSMBundle<F> {
         &self,
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
         chunks_to_execute: Vec<Vec<usize>>,
+        _buffer_pool: &dyn BufferPool<F>,
     ) -> Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>> {
         chunks_to_execute
             .iter()
