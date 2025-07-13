@@ -67,7 +67,7 @@ impl AsmRunnerRH {
         if asm_shared_memory.is_none() {
             *asm_shared_memory = Some(
                 AsmSharedMemory::create_shmem(AsmService::RH, local_rank, unlock_mapped_memory)
-                    .expect("Error creating MO assembly shared memory"),
+                    .expect("Error creating RH assembly shared memory"),
             );
         }
 
