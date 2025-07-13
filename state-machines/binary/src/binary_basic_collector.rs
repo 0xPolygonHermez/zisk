@@ -2,27 +2,35 @@
 //!
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, mem::ManuallyDrop, sync::Arc};
 
-use crate::BinaryInput;
+use crate::{binary_basic::BinaryBasicSM, binary_basic_table::BinaryBasicTableSM, BinaryInput};
+use fields::PrimeField64;
 use zisk_common::{
     BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
+use zisk_pil::BinaryTraceRow;
 
 /// The `BinaryBasicCollector` struct represents an input collector for binary-related operations.
-pub struct BinaryBasicCollector {
-    /// Collected inputs for witness computation.
-    pub inputs: Vec<BinaryInput>,
+pub struct BinaryBasicCollector<F: PrimeField64> {
+    binary_basic_table_sm: Arc<BinaryBasicTableSM>,
 
     pub num_operations: usize,
+
     pub collect_skipper: CollectSkipper,
 
     /// Flag to indicate that this instance comute add operations
     with_adds: bool,
+
+    /// Current index in the rows vector.
+    idx: usize,
+
+    /// Rows for the binary basic trace.
+    rows: ManuallyDrop<Vec<BinaryTraceRow<F>>>,
 }
 
-impl BinaryBasicCollector {
+impl<F: PrimeField64> BinaryBasicCollector<F> {
     /// Creates a new `BinaryBasicCollector`.
     ///
     /// # Arguments
@@ -31,12 +39,18 @@ impl BinaryBasicCollector {
     ///
     /// # Returns
     /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
-    pub fn new(num_operations: usize, collect_skipper: CollectSkipper, with_adds: bool) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper, with_adds }
+    pub fn new(
+        binary_basic_table_sm: Arc<BinaryBasicTableSM>,
+        num_operations: usize,
+        collect_skipper: CollectSkipper,
+        with_adds: bool,
+        rows: ManuallyDrop<Vec<BinaryTraceRow<F>>>,
+    ) -> Self {
+        Self { num_operations, collect_skipper, with_adds, idx: 0, rows, binary_basic_table_sm }
     }
 }
 
-impl BusDevice<u64> for BinaryBasicCollector {
+impl<F: PrimeField64> BusDevice<u64> for BinaryBasicCollector<F> {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -55,7 +69,7 @@ impl BusDevice<u64> for BinaryBasicCollector {
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
-        if self.inputs.len() >= self.num_operations {
+        if self.idx >= self.num_operations {
             return false;
         }
 
@@ -76,9 +90,12 @@ impl BusDevice<u64> for BinaryBasicCollector {
             return true;
         }
 
-        self.inputs.push(BinaryInput::from(&data));
+        let binary_input = BinaryInput::from(&data);
+        self.rows[self.idx] =
+            BinaryBasicSM::process_slice(&binary_input, &self.binary_basic_table_sm);
+        self.idx += 1;
 
-        self.inputs.len() < self.num_operations
+        self.idx < self.num_operations
     }
 
     /// Returns the bus IDs associated with this instance.

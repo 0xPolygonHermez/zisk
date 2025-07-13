@@ -6,7 +6,7 @@ use fields::PrimeField64;
 use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
 use precomp_sha256f::Sha256fManager;
-use proofman_common::ProofCtx;
+use proofman_common::{BufferPool, ProofCtx};
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
@@ -134,7 +134,12 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
         &self,
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
         chunks_to_execute: Vec<Vec<usize>>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>> {
+        for secn_instance in secn_instances.values() {
+            secn_instance.pre_collect(buffer_pool);
+        }
+
         chunks_to_execute
             .iter()
             .enumerate()

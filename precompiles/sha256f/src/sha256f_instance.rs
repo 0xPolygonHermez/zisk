@@ -6,7 +6,7 @@
 
 use crate::{Sha256fInput, Sha256fSM};
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
 use std::collections::VecDeque;
 use std::{any::Any, collections::HashMap, sync::Arc};
 use zisk_common::ChunkId;
@@ -61,8 +61,9 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
+        let trace_buffer = buffer_pool.take_buffer();
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<Sha256fCollector>().unwrap().inputs)

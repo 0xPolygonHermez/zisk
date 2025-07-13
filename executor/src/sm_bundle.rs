@@ -1,7 +1,7 @@
 use crate::NestedDeviceMetricsList;
 use data_bus::{DataBus, DataBusTrait};
 use fields::PrimeField64;
-use proofman_common::ProofCtx;
+use proofman_common::{BufferPool, ProofCtx};
 use std::collections::HashMap;
 use zisk_common::{BusDevice, BusDeviceMetrics, Instance, InstanceCtx, PayloadType, Plan};
 
@@ -40,6 +40,7 @@ pub trait SMBundle<F: PrimeField64>: Send + Sync {
     /// # Arguments
     /// * `secn_instance` - Secondary state machine instance.
     /// * `chunks_to_execute` - A vector of booleans indicating which chunks to execute.
+    /// * `buffer_pool` - The buffer pool used for managing memory, if needed.
     ///
     /// # Returns
     /// A vector of data buses with attached collectors for each chunk to be executed
@@ -48,5 +49,6 @@ pub trait SMBundle<F: PrimeField64>: Send + Sync {
         &self,
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
         chunks_to_execute: Vec<Vec<usize>>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> DataBusCollectorCollection;
 }
