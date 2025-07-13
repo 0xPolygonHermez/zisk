@@ -103,9 +103,11 @@ impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
     /// A boxed implementation of `Instance` for binary operations.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            BinaryTrace::<usize>::AIR_ID => {
-                Box::new(BinaryBasicInstance::new(self.binary_basic_sm.clone(), ictx))
-            }
+            BinaryTrace::<usize>::AIR_ID => Box::new(BinaryBasicInstance::new(
+                self.binary_basic_sm.clone(),
+                self.binary_basic_table_sm.clone(),
+                ictx,
+            )),
             BinaryAddTrace::<usize>::AIR_ID => {
                 Box::new(BinaryAddInstance::new(self.binary_add_sm.clone(), ictx))
             }

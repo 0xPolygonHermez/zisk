@@ -2,7 +2,7 @@ use crate::{MemAlignInput, MemAlignSM, MemHelpers};
 use mem_common::MemAlignCheckPoint;
 
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
@@ -40,7 +40,7 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
         let mut total_rows = 0;
         let inputs: Vec<_> = collectors
@@ -53,7 +53,11 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
                 collector.inputs
             })
             .collect();
-        Some(self.mem_align_sm.compute_witness(&inputs, total_rows as usize, trace_buffer))
+        Some(self.mem_align_sm.compute_witness(
+            &inputs,
+            total_rows as usize,
+            buffer_pool.take_buffer(),
+        ))
     }
 
     fn check_point(&self) -> CheckPoint {

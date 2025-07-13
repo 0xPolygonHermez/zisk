@@ -6,7 +6,7 @@
 
 use crate::ArithFullSM;
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
@@ -79,7 +79,7 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -88,7 +88,7 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance {
             })
             .collect();
 
-        Some(self.arith_full_sm.compute_witness(&inputs, trace_buffer))
+        Some(self.arith_full_sm.compute_witness(&inputs, buffer_pool.take_buffer()))
     }
 
     /// Retrieves the checkpoint associated with this instance.

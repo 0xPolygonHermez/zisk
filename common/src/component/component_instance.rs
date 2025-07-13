@@ -4,7 +4,7 @@
 
 use crate::{BusDevice, CheckPoint, ChunkId, PayloadType};
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
 
 /// Represents the type of an instance, either a standalone instance or a table.
 #[derive(Debug, PartialEq)]
@@ -25,8 +25,8 @@ pub trait Instance<F: PrimeField64>: Send + Sync {
     /// # Arguments
     /// * `_pctx` - The proof context, unused in this implementation.
     /// * `_sctx` - The setup context, unused in this implementation.
-    /// * `_collectors` - A vector of input collectors to process and collect data for witness,
-    ///   unused in this implementation
+    /// * `_collectors` - A vector of input collectors to process and collect data for witness.
+    /// * `_buffer_pool` - The buffer pool used for managing memory, if needed.
     ///
     /// # Returns
     /// An optional `AirInstance` object representing the computed witness.
@@ -35,7 +35,7 @@ pub trait Instance<F: PrimeField64>: Send + Sync {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        _trace_buffer: Vec<F>,
+        _buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
         None
     }
@@ -51,6 +51,13 @@ pub trait Instance<F: PrimeField64>: Send + Sync {
     /// # Returns
     /// An `InstanceType` indicating whether the instance is standalone or table-based.
     fn instance_type(&self) -> InstanceType;
+
+    /// Configures the instance, if necessary, before the input collection phase.
+    ///
+    /// # Arguments
+    /// * `_buffer_pool` - The buffer pool used for managing memory, if needed.
+    ///   Is tipically used to create the trace buffer for the instance.
+    fn pre_collect(&self, _buffer_pool: &dyn BufferPool<F>) {}
 
     /// Builds an input collector for the instance.
     ///
@@ -93,7 +100,7 @@ macro_rules! table_instance {
 
         use fields::PrimeField64;
 
-        use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
+        use proofman_common::{AirInstance, BufferPool, FromTrace, ProofCtx, SetupCtx};
         use zisk_common::{
             BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
         };
@@ -130,7 +137,7 @@ macro_rules! table_instance {
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-                _trace_buffer: Vec<F>,
+                _buffer_pool: &dyn BufferPool<F>,
             ) -> Option<AirInstance<F>> {
                 let multiplicity = self.table_sm.detach_multiplicity();
                 self.table_sm.set_calculated();
@@ -205,7 +212,7 @@ macro_rules! table_instance_array {
 
         use fields::PrimeField64;
 
-        use proofman_common::{AirInstance, ProofCtx, SetupCtx, TraceInfo};
+        use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx, TraceInfo};
         use zisk_common::{
             BusDevice, BusId, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType,
         };
@@ -242,7 +249,7 @@ macro_rules! table_instance_array {
                 pctx: &ProofCtx<F>,
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-                _trace_buffer: Vec<F>,
+                _buffer_pool: &dyn BufferPool<F>,
             ) -> Option<AirInstance<F>> {
                 let multiplicities = self.table_sm.detach_multiplicities();
                 self.table_sm.set_calculated();
