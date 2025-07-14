@@ -250,7 +250,7 @@ airtemplate Keccakf(const int N, const int chunks, const int bits, const int RC,
 
     col fixed CLK_0 = [0, [1:NUM_KECCAKF_PER_CIRCUIT, 0:(CIRCUIT_SIZE-NUM_KECCAKF_PER_CIRCUIT)]:NUM_CIRCUITS, 0...];
     expr CLK[CIRCUIT_SIZE];
-    for (int i = 0; i < CIRCUIT_SIZE; ++i) {
+    for (int i = 0; i < CIRCUIT_SIZE; i++) {
         CLK[i] = (i)'CLK_0;
     }
 
@@ -279,7 +279,7 @@ airtemplate Keccakf(const int N, const int chunks, const int bits, const int RC,
 
     expr mem_value[RC];
     for (int i = 0; i < RC; i++) {
-        mem_value[i] = clock_shift(keccakf_val[i], start: 0, end: IN_OUT_BLOCKS, factor: MEM_SIZE);
+        mem_value[i] = clock_set(keccakf_val[i], start: 0, end: IN_OUT_BLOCKS, factor: MEM_SIZE);
     }
 
     const expr main_step = clock_map(step_addr, pos: STEP_MAIN, start: 0, end: IN_OUT_BLOCKS, factor: MEM_SIZE);
@@ -309,27 +309,11 @@ airtemplate Keccakf(const int N, const int chunks, const int bits, const int RC,
             sel: mem_sel,
             main_step: main_step,
             addr: mem_addr,
-            value: mem_value,
-            name: PIOP_NAME_ISOLATED
+            value: mem_value
     );
 
     // --> Constraints to make sure that this coprocessor is called from the main processor
-    lookup_proves(operation_bus_id, [KECCAKF_OP, step_addr'(STEP_MAIN), 0, step_addr'(ADDR_STATE), 0, 0, 0, 0], mul: in_use_clk_0, name: PIOP_NAME_ISOLATED);
-
-    function clock_shift(const expr cl, int start = 0, int end = -1, int offset = 0, int factor = 1): const expr {
-        expr res = 0;
-        if (end == -1) {
-            end = start;
-        }
-        for (int index = start; index < end; ++index) {
-            if (offset != 0) {
-                res += air.CLK[index*factor] * (cl + offset);
-            } else {
-                res += air.CLK[index*factor] * cl;
-            }
-        }
-        return res;
-    }
+    lookup_proves(operation_bus_id, [KECCAKF_OP, step_addr'(STEP_MAIN), 0, step_addr'(ADDR_STATE), 0, 0, 0, 0], mul: in_use_clk_0);
 
     function clock_map(const expr cl, int pos, int start = 0, int end = -1, int delta = 0, int factor = 1): const expr {
         expr res = 0;

@@ -261,13 +261,13 @@ macro_rules! define_ops {
     };
 }
 
-// Cost definitions
+// Cost definitions: Area x Op
 const INTERNAL_COST: u64 = 0;
 const BINARY_COST: u64 = 75;
 const BINARY_E_COST: u64 = 54;
 const ARITHA32_COST: u64 = 95;
 const ARITHAM32_COST: u64 = 95;
-const KECCAK_COST: u64 = 145000;
+const KECCAK_COST: u64 = 167000;
 const SHA256_COST: u64 = 0; // TODO: To be decide
 const ARITH_EQ_COST: u64 = 1200;
 const FCALL_COST: u64 = INTERNAL_COST;
