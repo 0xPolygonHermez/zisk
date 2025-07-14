@@ -105,7 +105,7 @@ impl RomSM {
                 } else {
                     multiplicity = counter_stats.bios_inst_count
                         [((inst.paddr - ROM_ENTRY) as usize) >> 2]
-                        .load(std::sync::atomic::Ordering::Relaxed)
+                        .swap(0, std::sync::atomic::Ordering::Relaxed)
                         as u64;
 
                     if multiplicity == 0 {
@@ -117,7 +117,7 @@ impl RomSM {
                 }
             } else {
                 multiplicity = counter_stats.prog_inst_count[(inst.paddr - ROM_ADDR) as usize]
-                    .load(std::sync::atomic::Ordering::Relaxed)
+                    .swap(0, std::sync::atomic::Ordering::Relaxed)
                     as u64;
                 if multiplicity == 0 {
                     continue;
