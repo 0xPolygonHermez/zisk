@@ -1,5 +1,5 @@
 use std::{
-    fs,
+    fs, process,
     time::{Duration, Instant},
 };
 
@@ -154,7 +154,8 @@ impl ExecutorStats {
         let json = serde_json::to_string_pretty(&tasks).unwrap();
 
         // Write to file
-        let _ = fs::write("stats.json", json);
+        let json_file_name = format!("stats_{}.json", process::id());
+        let _ = fs::write(&json_file_name, json);
 
         // Save to stats.csv
 
@@ -165,9 +166,10 @@ impl ExecutorStats {
         }
 
         // Write to file
-        let _ = fs::write("stats.csv", csv);
+        let csv_file_name = format!("stats_{}.csv", process::id());
+        let _ = fs::write(&csv_file_name, csv);
 
-        tracing::info!("Statistics have been saved to stats.json and stats.csv");
+        tracing::info!("Statistics have been saved to {} and {}", json_file_name, csv_file_name);
     }
 
     /// Stores stats in JSON and CSV file formats
