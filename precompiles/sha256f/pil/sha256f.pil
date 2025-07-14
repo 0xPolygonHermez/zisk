@@ -245,11 +245,11 @@ airtemplate Sha256f(const int N = 2**22, const int RC = 2, const int RB = 32, co
             sel: mem_sel,
             main_step: main_step,
             addr: mem_addr,
-            value: mem_value, name: PIOP_NAME_ISOLATED
+            value: mem_value
     );
 
     // --> Constraints to make sure that this coprocessor is called from the main processor
-    lookup_proves(operation_bus_id, [SHA256F_OP, step_addr'(STEP_MAIN), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], mul: in_use_clk_0, name: PIOP_NAME_ISOLATED);
+    lookup_proves(operation_bus_id, [SHA256F_OP, step_addr'(STEP_MAIN), 0, step_addr'(ADDR_OP), 0, 0, 0, 0], mul: in_use_clk_0);
 
     function pack(const expr a[]): expr {
         const int len = length(a);
