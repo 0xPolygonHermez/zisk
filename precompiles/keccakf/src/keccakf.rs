@@ -109,19 +109,18 @@ impl<F: PrimeField64> KeccakfSM<F> {
             let circuit_pos = i % NUM_KECCAKF_PER_CIRCUIT;
             let circuit_offset = circuit * self.circuit_size;
 
-            // Update the multiplicity for the input
             let initial_pos = initial_offset + circuit_offset + circuit_pos;
+
+            // Activate the in_use_clk_0 a single time
+            trace[initial_pos].in_use_clk_0 = F::ONE;
 
             // Fill the step_addr
             trace[initial_pos].step_addr = F::from_u64(step_main); // STEP_MAIN
-            trace[initial_pos + NUM_KECCAKF_PER_CIRCUIT].step_addr = F::from_u32(addr_main); // ADDR_MAIN
+            trace[initial_pos + STATE_SIZE].step_addr = F::from_u32(addr_main); // ADDR_MAIN
 
-            // Activate the clk_0 selector
-            trace[initial_pos].in_use_clk_0 = F::ONE;
-
-            // Activate the in_use selector
-            for j in 0..IN_OUT_BLOCKS {
-                trace[initial_pos + j * NUM_KECCAKF_PER_CIRCUIT].in_use = F::ONE;
+            // Activate the in_use for the input data
+            for j in 0..IN_BLOCKS {
+                trace[initial_pos + j * STATE_SIZE].in_use = F::ONE;
             }
 
             // Process the keccakf input
@@ -159,8 +158,13 @@ impl<F: PrimeField64> KeccakfSM<F> {
             let mut keccakf_output = *state;
             keccakf(&mut keccakf_output);
 
-            // Process the output
+            // Activate the in_use for the output data
             offset += input_offset;
+            for j in 0..OUT_BLOCKS {
+                trace[offset + j * STATE_SIZE].in_use = F::ONE;
+            }
+
+            // Process the output
             keccakf_output.iter().enumerate().for_each(|(j, &value)| {
                 let state_offset = j * STATE_SIZE;
                 let pos = offset + state_offset;
