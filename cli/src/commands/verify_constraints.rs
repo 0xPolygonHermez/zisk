@@ -25,8 +25,8 @@ use rom_setup::{
 use std::time::Instant;
 use std::{
     collections::HashMap,
-    env, fs,
-    path::{Path, PathBuf},
+    fs,
+    path::PathBuf,
 };
 use zisk_common::ZiskLibInitFn;
 

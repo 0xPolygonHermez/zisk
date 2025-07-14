@@ -14,8 +14,8 @@ use rom_setup::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    env, fs,
-    path::{Path, PathBuf},
+    fs,
+    path::PathBuf,
     thread,
     time::Instant,
 };

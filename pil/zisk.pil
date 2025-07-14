@@ -13,7 +13,7 @@ require "arith/pil/arith.pil"
 require "arith_eq/pil/arith_eq.pil"
 require "keccakf/pil/keccakf.pil"
 require "keccakf/pil/keccakf_table.pil"
-require "sha256f_direct/pil/sha256f.pil"
+require "sha256f/pil/sha256f.pil"
 
 const int OPERATION_BUS_ID = 5000;
 

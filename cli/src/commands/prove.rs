@@ -26,9 +26,8 @@ use std::io::Write;
 use std::time::Instant;
 use std::{
     collections::HashMap,
-    env,
     fs::{self, File},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 use zisk_common::{ProofLog, ZiskLibInitFn};
 

@@ -7,10 +7,6 @@ keywords = { workspace = true }
 repository = { workspace = true }
 categories = { workspace = true }
 
-[[bin]]
-name = "sha256f_fixed_gen"
-path = "src/sha256f_fixed_gen.rs"
-
 [dependencies]
 zisk-core = { path = "../../core" }
 zisk-common = { path = "../../common" }

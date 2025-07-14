@@ -98,7 +98,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         // Step 4: Initialize the precompiles state machines
         let keccakf_sm = KeccakfManager::new(wcm.get_sctx());
-        let sha256f_sm = Sha256fManager::new(std.clone()));
+        let sha256f_sm = Sha256fManager::new(std.clone());
         let arith_eq_sm = ArithEqManager::new(std.clone());
 
         // let sm_bundle = DynSMBundle::new(vec![
