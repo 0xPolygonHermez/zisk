@@ -12,13 +12,7 @@ use rom_setup::{
     DEFAULT_CACHE_PATH,
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    fs,
-    path::PathBuf,
-    thread,
-    time::Instant,
-};
+use std::{collections::HashMap, fs, path::PathBuf, thread, time::Instant};
 use zisk_common::ZiskLibInitFn;
 use zisk_pil::*;
 

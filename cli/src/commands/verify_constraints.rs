@@ -23,11 +23,7 @@ use rom_setup::{
 };
 #[cfg(feature = "stats")]
 use std::time::Instant;
-use std::{
-    collections::HashMap,
-    fs,
-    path::PathBuf,
-};
+use std::{collections::HashMap, fs, path::PathBuf};
 use zisk_common::ZiskLibInitFn;
 
 #[derive(Parser)]
