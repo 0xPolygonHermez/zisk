@@ -2354,24 +2354,17 @@ dependencies = [
 name = "precomp-sha256f"
 version = "0.9.0"
 dependencies = [
- "circuit",
- "clap",
- "data-bus",
  "fields",
  "generic-array",
  "pil-std-lib",
  "precompiles-common",
- "precompiles-helpers",
  "proofman",
  "proofman-common",
  "proofman-macros",
  "proofman-util",
  "rayon",
- "serde",
- "serde_json",
  "sha2",
  "tracing",
- "witness",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -4587,15 +4580,6 @@ dependencies = [
  "rayon",
  "serde",
  "serde_arrays",
-]
-
-[[package]]
-name = "zisk-precompiles"
-version = "0.9.0"
-dependencies = [
- "precomp-arith-eq",
- "precomp-keccakf",
- "precompiles-common",
 ]
 
 [[package]]

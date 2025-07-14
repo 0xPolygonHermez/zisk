@@ -24,7 +24,6 @@ members = [
     "state-machines/rom",
     "witness-computation",
     "ziskos/entrypoint",
-    "precompiles/zisk_precompiles",
     "precompiles/common",
     "precompiles/keccakf",
     "precompiles/sha256f",

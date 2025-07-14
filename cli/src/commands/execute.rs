@@ -84,8 +84,6 @@ pub struct ZiskExecute {
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
-
-                     // PRECOMPILES OPTIONS
 }
 
 impl ZiskExecute {
