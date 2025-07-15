@@ -337,7 +337,7 @@ You can combine GPU-based execution with concurrent proof generation using multi
 To verify a generated proof, use the following command:
 
 ```bash
-cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json -u ./proof/publics.json -s $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.starkinfo.json -e $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verifier.bin -k $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.json
+cargo-zisk verify -p ./proof/vadcop_final_proof.bin -s $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.starkinfo.json -e $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verifier.bin -k $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.json
 ```
 
 In this command:
@@ -345,5 +345,3 @@ In this command:
 * `-p` (`--proof`) specifies the final proof file generated with cargo-zisk prove.
 * `-u` (`--public-inputs`) provides the path to the public inputs associated with the proof.
 * The remaining flags specify the files required for verification; they are optional, set by default to the files found in the `$HOME/.zisk` directory.
-
-
