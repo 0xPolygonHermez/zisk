@@ -140,6 +140,10 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         ))
     }
 
+    fn reset(&self) {
+        *self.counter_stats.lock().unwrap() = None;
+    }
+
     /// Retrieves the checkpoint associated with this instance.
     ///
     /// # Returns
