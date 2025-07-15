@@ -1121,7 +1121,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         sctx: Arc<SetupCtx<F>>,
         check: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let file_name = pctx.get_custom_commits_fixed_buffer("rom")?;
+        let file_name = pctx.get_custom_commits_fixed_buffer("rom", false)?;
 
         let setup = sctx.get_setup(RomRomTrace::<usize>::AIRGROUP_ID, RomRomTrace::<usize>::AIR_ID);
         let blowup_factor =
