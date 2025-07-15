@@ -245,20 +245,20 @@ trace!(ArithEqLtTableTrace<F> {
 },  0, 16, 262144 );
 
 trace!(KeccakfFixed<F> {
- L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, ID: F, LATCH_NUM_KECCAKF: F, FACTOR_NUM_KECCAKF: F, CLK_0: F, __L1__: F,
+ L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, LATCH_NUM_KECCAKF: F, FACTOR_NUM_KECCAKF: F, CLK_0: F, __L1__: F,
 },  0, 17, 4194304 );
 
 trace!(KeccakfTrace<F> {
- free_in_a: [F; 7], free_in_b: [F; 7], free_in_c: [F; 7], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
+ free_in_a: [F; 9], free_in_b: [F; 9], free_in_c: [F; 9], free_in_d: [F; 9], bit: [F; 4], val: [F; 4], step_addr: F, in_use_clk_0: F, in_use: F,
 },  0, 17, 4194304 );
 
 trace!(KeccakfTableFixed<F> {
- A: [F; 1], B: F, GATE_OP: F, C: [F; 1], __L1__: F,
-},  0, 18, 524288 );
+ A: [F; 1], B: F, C: F, GATE_OP: F, D: [F; 1], __L1__: F,
+},  0, 18, 4194304 );
 
 trace!(KeccakfTableTrace<F> {
  multiplicity: [F; 1],
-},  0, 18, 524288 );
+},  0, 18, 4194304 );
 
 trace!(Sha256fFixed<F> {
  CLK_0: F, __L1__: F,

@@ -54,12 +54,12 @@ airgroup Zisk {
     // Precompiles
     ArithEq(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
     ArithEqLtTable();
-    
-    const int KECCAKF_CHUNKS = 7;
-    const int KECCAKF_BITS = 9;
-    Keccakf(N: 2**22, RC: 2, RB: 32, bits_in_parallel: 2, chunks: KECCAKF_CHUNKS, bits: KECCAKF_BITS, operation_bus_id: OPERATION_BUS_ID);
+
+    const int KECCAKF_CHUNKS = 9;
+    const int KECCAKF_BITS = 7;
+    Keccakf(N: 2**21, chunks: KECCAKF_CHUNKS, bits: KECCAKF_BITS, RC: 2, RB: 32, mem_bits_in_parallel: 4, operation_bus_id: OPERATION_BUS_ID);
     const int KECCAKF_TABLE_CHUNKS = 1;
-    const int KECCAKF_TABLE_BITS = (KECCAKF_BITS - KECCAKF_TABLE_CHUNKS + 1) + KECCAKF_BITS + 1;
+    const int KECCAKF_TABLE_BITS = (KECCAKF_BITS - KECCAKF_TABLE_CHUNKS + 1) + KECCAKF_BITS + KECCAKF_BITS + 1;
     KeccakfTable(N: 2**KECCAKF_TABLE_BITS, chunks: KECCAKF_TABLE_CHUNKS, bits: KECCAKF_BITS);
 
     Sha256f(N: 2**18, RC: 2, RB: 32, operation_bus_id: OPERATION_BUS_ID);
