@@ -88,7 +88,6 @@ pub struct ZiskVerifyConstraints {
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
-    // PRECOMPILES OPTIONS
 }
 
 impl ZiskVerifyConstraints {
