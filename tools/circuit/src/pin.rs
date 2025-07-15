@@ -1,10 +1,5 @@
 use std::ops::{Index, IndexMut};
 
-/*
-      ----->
-    p ----->
-      ----->
-*/
 #[derive(Clone, Debug)]
 pub struct Pin {
     id: PinId,

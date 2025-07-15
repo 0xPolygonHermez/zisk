@@ -62,8 +62,8 @@ impl AsmServices {
         Self { world_rank, local_rank, base_port: base_port.unwrap_or(ASM_SERVICE_BASE_PORT) }
     }
 
-    pub fn shmem_prefix(local_rank: i32) -> String {
-        format!("ZISK_{local_rank}")
+    pub fn shmem_prefix(port: u16, local_rank: i32) -> String {
+        format!("ZISK_{port}_{local_rank}")
     }
 
     pub fn start_asm_services(
@@ -276,8 +276,13 @@ impl AsmServices {
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub fn send_shutdown_and_wait(&self, service: &AsmService) -> Result<()> {
-        let sem_name =
-            format!("/{}_{}_shutdown_done", Self::shmem_prefix(self.local_rank), service.as_str());
+        let port = AsmServices::port_for(service, self.base_port, self.local_rank);
+
+        let sem_name = format!(
+            "/{}_{}_shutdown_done",
+            Self::shmem_prefix(port, self.local_rank),
+            service.as_str()
+        );
 
         let mut sem = named_sem::NamedSemaphore::create(&sem_name, 0)
             .map_err(|e| crate::AsmRunError::SemaphoreError(sem_name.clone(), e))?;

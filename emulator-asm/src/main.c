@@ -2570,6 +2570,10 @@ void server_reset (void)
 
 void server_run (void)
 {
+    if ((gen_method == RomHistogram)) {
+        memset((void *)trace_address, 0, trace_size);
+    }
+
 #ifdef ASM_CALL_METRICS
     reset_asm_call_metrics();
 #endif

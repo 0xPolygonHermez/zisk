@@ -53,7 +53,11 @@ impl AsmRHData {
             let prog_data_ptr = prog_data_ptr.add(1);
             let prog_inst_count = Vec::from_raw_parts(prog_data_ptr, prog_len, prog_len);
 
-            AsmRHData { steps: asm_shared_memory.header().steps, bios_inst_count, prog_inst_count }
+            AsmRHData {
+                steps: asm_shared_memory.map_header().steps,
+                bios_inst_count,
+                prog_inst_count,
+            }
         }
     }
 }

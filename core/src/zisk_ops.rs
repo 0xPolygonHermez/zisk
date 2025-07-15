@@ -268,7 +268,7 @@ const BINARY_E_COST: u64 = 54;
 const ARITHA32_COST: u64 = 95;
 const ARITHAM32_COST: u64 = 95;
 const KECCAK_COST: u64 = 167000;
-const SHA256_COST: u64 = 0; // TODO: To be decide
+const SHA256_COST: u64 = 9000;
 const ARITH_EQ_COST: u64 = 1200;
 const FCALL_COST: u64 = INTERNAL_COST;
 

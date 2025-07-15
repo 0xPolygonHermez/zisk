@@ -254,8 +254,17 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<AsmRunnerMO>) {
         if let Some(input_path) = input_data_path.as_ref() {
             for service in AsmServices::SERVICES {
-                let shmem_input_name =
-                    AsmSharedMemory::<AsmMTHeader>::shmem_input_name(service, self.local_rank);
+                let port = if let Some(base_port) = self.base_port {
+                    AsmServices::port_for(&service, base_port, self.local_rank)
+                } else {
+                    AsmServices::default_port(&service, self.local_rank)
+                };
+
+                let shmem_input_name = AsmSharedMemory::<AsmMTHeader>::shmem_input_name(
+                    port,
+                    service,
+                    self.local_rank,
+                );
                 write_input(input_path, &shmem_input_name, self.unlock_mapped_memory);
             }
         }
@@ -893,6 +902,18 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         collectors_by_instance
     }
+
+    fn reset(&self) {
+        // Reset the internal state of the executor
+        *self.execution_result.lock().unwrap() = ZiskExecutionResult::default();
+        *self.min_traces.write().unwrap() = MinimalTraces::None;
+        *self.main_planning.write().unwrap() = Vec::new();
+        *self.secn_planning.write().unwrap() = Vec::new();
+        self.main_instances.write().unwrap().clear();
+        self.secn_instances.write().unwrap().clear();
+        self.collectors_by_instance.write().unwrap().clear();
+        self.stats.lock().unwrap().clear();
+    }
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, BD> {
@@ -904,6 +925,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
     /// # Returns
     /// A vector of global IDs for the instances to compute witness for.
     fn execute(&self, pctx: Arc<ProofCtx<F>>, input_data_path: Option<PathBuf>) -> Vec<usize> {
+        self.reset();
+
         // Process the ROM to collect the Minimal Traces
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
 
@@ -1121,7 +1144,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         sctx: Arc<SetupCtx<F>>,
         check: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let file_name = pctx.get_custom_commits_fixed_buffer("rom")?;
+        let file_name = pctx.get_custom_commits_fixed_buffer("rom", false)?;
 
         let setup = sctx.get_setup(RomRomTrace::<usize>::AIRGROUP_ID, RomRomTrace::<usize>::AIR_ID);
         let blowup_factor =

@@ -63,9 +63,6 @@ pub struct ServerConfig {
     /// Debug information
     pub debug_info: Arc<DebugInfo>,
 
-    /// Path to the SHA256f script
-    pub sha256f_script: PathBuf,
-
     /// Time when the server was launched
     pub launch_time: Instant,
 
@@ -98,7 +95,6 @@ impl ServerConfig {
         proving_key: PathBuf,
         verbose: u8,
         debug: DebugInfo,
-        sha256f_script: PathBuf,
         chunk_size_bits: Option<u64>,
         asm_runner_options: AsmRunnerOptions,
         verify_constraints: bool,
@@ -117,7 +113,6 @@ impl ServerConfig {
             proving_key,
             verbose,
             debug_info: Arc::new(debug),
-            sha256f_script,
             launch_time: Instant::now(),
             server_id: Uuid::new_v4(),
             chunk_size_bits,
@@ -240,7 +235,7 @@ pub struct ZiskService {
     config: Arc<ServerConfig>,
     proofman: Arc<ProofMan<Goldilocks>>,
     witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
-    asm_services: AsmServices,
+    asm_services: Option<AsmServices>,
     is_busy: Arc<AtomicBool>,
     pending_handles: Vec<std::thread::JoinHandle<()>>,
 }
@@ -254,9 +249,16 @@ impl ZiskService {
         let base_port = config.asm_runner_options.base_port;
         let unlock_mapped_memory = config.asm_runner_options.unlock_mapped_memory;
 
-        let asm_services = AsmServices::new(world_rank, local_rank, base_port);
-        asm_services
-            .start_asm_services(config.asm.as_ref().unwrap(), config.asm_runner_options.clone())?;
+        let asm_services = if config.emulator {
+            None
+        } else {
+            let asm_services = AsmServices::new(world_rank, local_rank, base_port);
+            asm_services.start_asm_services(
+                config.asm.as_ref().unwrap(),
+                config.asm_runner_options.clone(),
+            )?;
+            Some(asm_services)
+        };
 
         let library =
             unsafe { Library::new(config.witness_lib.clone()).expect("Failed to load library") };
@@ -268,7 +270,6 @@ impl ZiskService {
             config.elf.clone(),
             config.asm.clone(),
             config.asm_rom.clone(),
-            config.sha256f_script.clone(),
             config.chunk_size_bits,
             Some(world_rank),
             Some(local_rank),
@@ -412,7 +413,7 @@ impl ZiskService {
             }
             ZiskRequest::Shutdown { payload } => {
                 must_shutdown = true;
-                ZiskServiceShutdownHandler::handle(&config, payload, &self.asm_services)
+                ZiskServiceShutdownHandler::handle(&config, payload, self.asm_services.as_ref())
             }
             ZiskRequest::VerifyConstraints { payload } => {
                 ZiskServiceVerifyConstraintsHandler::handle(
