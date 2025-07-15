@@ -946,7 +946,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         self.main_instances.write().unwrap().clear();
         self.secn_instances.write().unwrap().clear();
         self.collectors_by_instance.write().unwrap().clear();
-        self.stats.lock().unwrap().clear();
+        self.stats.lock().unwrap().stats.clear();
     }
 }
 
