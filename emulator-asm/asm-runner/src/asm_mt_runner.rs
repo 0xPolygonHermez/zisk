@@ -59,8 +59,14 @@ impl AsmRunnerMT {
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
     ) -> Result<(AsmRunnerMT, Vec<T::Output>)> {
+        let port = if let Some(base_port) = base_port {
+            AsmServices::port_for(&AsmService::MT, base_port, local_rank)
+        } else {
+            AsmServices::default_port(&AsmService::MT, local_rank)
+        };
+
         let sem_chunk_done_name =
-            AsmSharedMemory::<AsmMTHeader>::shmem_chunk_done_name(AsmService::MT, local_rank);
+            AsmSharedMemory::<AsmMTHeader>::shmem_chunk_done_name(port, AsmService::MT, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -77,8 +83,13 @@ impl AsmRunnerMT {
 
         if asm_shared_memory.is_none() {
             *asm_shared_memory = Some(
-                AsmSharedMemory::create_shmem(AsmService::MT, local_rank, unlock_mapped_memory)
-                    .expect("Error creating MT assembly shared memory"),
+                AsmSharedMemory::create_shmem(
+                    port,
+                    AsmService::MT,
+                    local_rank,
+                    unlock_mapped_memory,
+                )
+                .expect("Error creating MT assembly shared memory"),
             );
         }
 
