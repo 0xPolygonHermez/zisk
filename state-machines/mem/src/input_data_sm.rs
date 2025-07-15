@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
-use crate::{MemInput, MemModule, MemPreviousSegment, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
+use crate::{MemInput, MemInstanceInfo, MemModule, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
-use zisk_common::SegmentId;
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
 use zisk_pil::{InputDataAirValues, InputDataTrace};
 
@@ -60,9 +59,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
     fn compute_witness(
         &self,
         mem_ops: &[MemInput],
-        segment_id: SegmentId,
-        is_last_segment: bool,
-        previous_segment: &MemPreviousSegment,
+        mem_instance_info: &MemInstanceInfo,
         trace_buffer: Option<Vec<F>>,
     ) -> AirInstance<F> {
         let mut trace = if let Some(buffer) = trace_buffer {
@@ -72,6 +69,10 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
             tracing::trace!("··· Creating new trace buffer");
             InputDataTrace::new()
         };
+
+        let previous_segment = &mem_instance_info.previous_segment;
+        let segment_id = mem_instance_info.segment_id;
+        let is_last_segment = mem_instance_info.is_last_segment;
 
         debug_assert!(
             !mem_ops.is_empty() && mem_ops.len() <= trace.num_rows(),

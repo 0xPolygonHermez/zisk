@@ -8,7 +8,6 @@ use libloading::{Library, Symbol};
 use proofman::ProofMan;
 use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use rom_setup::DEFAULT_CACHE_PATH;
-#[cfg(not(feature = "unit"))]
 use rom_setup::{gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -50,8 +49,7 @@ pub struct ZiskStats {
     /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
     #[clap(short = 'e', long)]
-    #[cfg(not(feature = "unit"))]
-    pub elf: PathBuf,
+    pub elf: Option<PathBuf>,
 
     /// ASM file path
     /// Optional, mutually exclusive with `--emulator`
@@ -155,12 +153,11 @@ impl ZiskStats {
         let mut _asm_rom: Option<PathBuf> = None;
         self.asm = None;
 
-        #[cfg(not(feature = "unit"))]
-        {
+        if let Some(elf) = &self.elf {
             let emulator = if cfg!(target_os = "macos") { true } else { self.emulator };
             if self.asm.is_none() && !emulator {
-                let stem = self.elf.file_stem().unwrap().to_str().unwrap();
-                let hash = get_elf_data_hash(&self.elf)
+                let stem = elf.file_stem().unwrap().to_str().unwrap();
+                let hash = get_elf_data_hash(elf)
                     .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
                 let new_filename = format!("{stem}-{hash}-mt.bin");
                 let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
@@ -189,16 +186,13 @@ impl ZiskStats {
 
         let mut _custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
 
-        #[cfg(not(feature = "unit"))]
-        {
+        if let Some(elf) = &self.elf {
             let blowup_factor = get_rom_blowup_factor(&proving_key);
-            let rom_bin_path =
-                get_elf_bin_file_path(&self.elf.to_path_buf(), &default_cache_path, blowup_factor)?;
+            let rom_bin_path = get_elf_bin_file_path(elf, &default_cache_path, blowup_factor)?;
 
             if !rom_bin_path.exists() {
-                let _ =
-                    gen_elf_hash(&self.elf.clone(), rom_bin_path.as_path(), blowup_factor, false)
-                        .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
+                let _ = gen_elf_hash(elf, rom_bin_path.as_path(), blowup_factor, false)
+                    .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
             }
 
             _custom_commits_map.insert("rom".to_string(), rom_bin_path);
@@ -290,7 +284,6 @@ impl ZiskStats {
                     unsafe { library.get(b"init_library")? };
                 witness_lib = witness_lib_constructor(
                     self.verbose.into(),
-                    #[cfg(not(feature = "unit"))]
                     self.elf.clone(),
                     self.asm.clone(),
                     _asm_rom,
@@ -357,8 +350,9 @@ impl ZiskStats {
             get_witness_computation_lib(self.witness_lib.as_ref()).display()
         );
 
-        #[cfg(not(feature = "unit"))]
-        println!("{: >12} {}", "Elf".bright_green().bold(), self.elf.display());
+        if let Some(elf) = &self.elf {
+            println!("{: >12} {}", "Elf".bright_green().bold(), elf.display());
+        }
 
         if self.asm.is_some() {
             let asm_path = self.asm.as_ref().unwrap().display();

@@ -1,4 +1,7 @@
 use serde::{Deserialize, Serialize};
+use zisk_common::SegmentId;
+
+use crate::mem_sm::MemPreviousSegment;
 
 #[allow(dead_code)]
 fn format_u64_hex(value: u64) -> String {
@@ -27,4 +30,10 @@ pub struct MemInput {
     pub is_write: bool, // it's a write operation
     pub step: u64,      // mem_step = f(main_step, main_step_offset)
     pub value: u64,     // value to read or write
+}
+
+pub struct MemInstanceInfo {
+    pub segment_id: SegmentId,
+    pub is_last_segment: bool,
+    pub previous_segment: MemPreviousSegment,
 }

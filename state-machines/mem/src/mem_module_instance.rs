@@ -1,4 +1,7 @@
-use crate::{mem_module_collector::MemModuleCollector, MemInput, MemModule, MemPreviousSegment};
+use crate::{
+    mem_module_collector::MemModuleCollector, MemInput, MemInstanceInfo, MemModule,
+    MemPreviousSegment,
+};
 use fields::PrimeField64;
 use mem_common::MemModuleSegmentCheckPoint;
 use proofman_common::{AirInstance, ProofCtx, SetupCtx};
@@ -89,15 +92,12 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
 
         // Extract segment id from instance context
         let segment_id = self.ictx.plan.segment_id.unwrap();
-
         let is_last_segment = self.check_point.is_last_segment;
-        Some(self.module.compute_witness(
-            &inputs,
-            segment_id,
-            is_last_segment,
-            &prev_segment,
-            trace_buffer,
-        ))
+
+        let mem_instance_info =
+            MemInstanceInfo { segment_id, is_last_segment, previous_segment: prev_segment.clone() };
+
+        Some(self.module.compute_witness(&inputs, &mem_instance_info, trace_buffer))
     }
 
     /// Builds an input collector for the instance.

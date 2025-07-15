@@ -1,21 +1,19 @@
 use std::sync::Arc;
 
+use crate::{
+    MemInput, MemInstanceInfo, MemModule, MEM_BYTES_BITS, MEM_INC_C_BITS, MEM_INC_C_MASK,
+    MEM_INC_C_MAX_RANGE, MEM_INC_C_SIZE,
+};
+use fields::PrimeField64;
 #[cfg(feature = "debug_mem")]
 use num_bigint::ToBigInt;
+use pil_std_lib::Std;
+use proofman_common::{AirInstance, FromTrace};
 #[cfg(feature = "debug_mem")]
 use std::{
     fs::File,
     io::{BufWriter, Write},
 };
-use zisk_common::SegmentId;
-
-use crate::{
-    MemInput, MemModule, MEM_BYTES_BITS, MEM_INC_C_BITS, MEM_INC_C_MASK, MEM_INC_C_MAX_RANGE,
-    MEM_INC_C_SIZE,
-};
-use fields::PrimeField64;
-use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace};
 
 use zisk_core::{RAM_ADDR, RAM_SIZE};
 use zisk_pil::{MemAirValues, MemTrace};
@@ -34,7 +32,7 @@ pub struct MemSM<F: PrimeField64> {
     /// PIL2 standard library
     std: Arc<Std<F>>,
 }
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct MemPreviousSegment {
     pub addr: u32,
     pub step: u64,
@@ -85,9 +83,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
     fn compute_witness(
         &self,
         mem_ops: &[MemInput],
-        segment_id: SegmentId,
-        is_last_segment: bool,
-        previous_segment: &MemPreviousSegment,
+        mem_instance_info: &MemInstanceInfo,
         trace_buffer: Option<Vec<F>>,
     ) -> AirInstance<F> {
         let mut trace = if let Some(buffer) = trace_buffer {
@@ -97,6 +93,10 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
             tracing::trace!("··· Creating new trace buffer");
             MemTrace::<F>::new()
         };
+
+        let previous_segment = &mem_instance_info.previous_segment;
+        let segment_id = mem_instance_info.segment_id;
+        let is_last_segment = mem_instance_info.is_last_segment;
 
         // println!(
         //     "[MemSM] segment_id:{} mem_ops:{} rows:{}  [0]{:?} previous_segment:{:?}",

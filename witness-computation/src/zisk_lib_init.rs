@@ -14,7 +14,7 @@ use std::sync::Arc;
 pub type ZiskLibInitFn<F> =
     fn(
         VerboseMode,
-        PathBuf,         // Rom path
+        Option<PathBuf>, // Elf path
         Option<PathBuf>, // Asm path
         Option<PathBuf>, // Asm ROM path
         PathBuf,         // Sha256f script path
@@ -32,25 +32,11 @@ pub type ZiskLibInitFn<F> =
         ) -> (DynSMBundle<F>, bool),
     ) -> Result<Box<dyn WitnessLibrary<F> + Send + Sync>, Box<dyn std::error::Error>>;
 
-#[cfg(all(not(feature = "dev"), not(feature = "unit")))]
+#[cfg(not(feature = "dev"))]
 pub type ZiskLibInitFn<F> =
     fn(
         VerboseMode,
-        PathBuf,         // Elf path
-        Option<PathBuf>, // Asm path
-        Option<PathBuf>, // Asm ROM path
-        PathBuf,         // Sha256f script path
-        Option<u64>,     // Chunk size
-        Option<i32>,     // mpi World Rank
-        Option<i32>,     // mpi Local Rank
-        Option<u16>,     // Base port for the ASM microservices
-        bool,            // Unlock_mapped_memory
-    ) -> Result<Box<dyn WitnessLibrary<F> + Send + Sync>, Box<dyn std::error::Error>>;
-
-#[cfg(all(not(feature = "dev"), feature = "unit"))]
-pub type ZiskLibInitFn<F> =
-    fn(
-        VerboseMode,
+        Option<PathBuf>, // Elf path
         Option<PathBuf>, // Asm path
         Option<PathBuf>, // Asm ROM path
         PathBuf,         // Sha256f script path

@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use crate::{
     mem_align_sm::{CHUNK_NUM, OFFSET_MASK},
-    InputDataSM, MemAlignInput, MemAlignInstance, MemAlignRomSM, MemAlignSM, MemCounters,
-    MemModuleInstance, MemPlanner, MemSM, RomDataSM,
+    InputDataSM, MemAlignInput, MemAlignInstance, MemAlignRomSM, MemAlignSM, MemCounters, MemInput,
+    MemInstanceInfo, MemModule, MemModuleInstance, MemPlanner, MemSM, RomDataSM,
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -19,7 +19,7 @@ use zisk_pil::{
 pub struct Mem<F: PrimeField64> {
     // Secondary State machines
     mem_sm: Arc<MemSM<F>>,
-    pub mem_align_sm: Arc<MemAlignSM<F>>,
+    mem_align_sm: Arc<MemAlignSM<F>>,
     mem_align_rom_sm: Arc<MemAlignRomSM>,
     input_data_sm: Arc<InputDataSM<F>>,
     rom_data_sm: Arc<RomDataSM<F>>,
@@ -58,6 +58,33 @@ impl<F: PrimeField64> Mem<F> {
         trace_buffer: Option<Vec<F>>,
     ) -> AirInstance<F> {
         self.mem_align_sm.compute_witness(inputs, trace_buffer)
+    }
+
+    pub fn compute_witness_mem(
+        &self,
+        inputs: &[MemInput],
+        mem_instance_info: &MemInstanceInfo,
+        trace_buffer: Option<Vec<F>>,
+    ) -> AirInstance<F> {
+        self.mem_sm.compute_witness(inputs, mem_instance_info, trace_buffer)
+    }
+
+    pub fn compute_witness_input_data(
+        &self,
+        inputs: &[MemInput],
+        mem_instance_info: &MemInstanceInfo,
+        trace_buffer: Option<Vec<F>>,
+    ) -> AirInstance<F> {
+        self.input_data_sm.compute_witness(inputs, mem_instance_info, trace_buffer)
+    }
+
+    pub fn compute_witness_rom_data(
+        &self,
+        inputs: &[MemInput],
+        mem_instance_info: &MemInstanceInfo,
+        trace_buffer: Option<Vec<F>>,
+    ) -> AirInstance<F> {
+        self.rom_data_sm.compute_witness(inputs, mem_instance_info, trace_buffer)
     }
 }
 

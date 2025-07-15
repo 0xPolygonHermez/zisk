@@ -22,8 +22,7 @@ pub struct ZiskVerifyConstraintsResponse {
     pub base: ZiskBaseResponse,
 
     server_id: String,
-    #[cfg(not(feature = "unit"))]
-    elf_file: String,
+    elf_file: Option<String>,
     input: String,
 }
 
@@ -90,8 +89,7 @@ impl ZiskServiceVerifyConstraintsHandler {
                     node: config.asm_runner_options.world_rank,
                 },
                 server_id: config.server_id.to_string(),
-                #[cfg(not(feature = "unit"))]
-                elf_file: config.elf.display().to_string(),
+                elf_file: config.elf.clone().map(|p| p.to_string_lossy().into_owned()),
                 input: request.input.display().to_string(),
             }),
             Some(handle),

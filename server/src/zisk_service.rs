@@ -38,8 +38,7 @@ pub struct ServerConfig {
     pub port: u16,
 
     /// Path to the ELF file
-    #[cfg(not(feature = "unit"))]
-    pub elf: PathBuf,
+    pub elf: Option<PathBuf>,
 
     /// Path to the witness computation dynamic library
     pub witness_lib: PathBuf,
@@ -91,7 +90,7 @@ pub struct ServerConfig {
 impl ServerConfig {
     pub fn new(
         port: u16,
-        #[cfg(not(feature = "unit"))] elf: PathBuf,
+        elf: Option<PathBuf>,
         witness_lib: PathBuf,
         asm: Option<PathBuf>,
         asm_rom: Option<PathBuf>,
@@ -110,7 +109,6 @@ impl ServerConfig {
     ) -> Self {
         Self {
             port,
-            #[cfg(not(feature = "unit"))]
             elf,
             witness_lib,
             asm,
@@ -275,7 +273,6 @@ impl ZiskService {
 
         let mut witness_lib = witness_lib_constructor(
             config.verbose.into(),
-            #[cfg(not(feature = "unit"))]
             config.elf.clone(),
             config.asm.clone(),
             config.asm_rom.clone(),
@@ -336,15 +333,15 @@ impl ZiskService {
     }
 
     pub fn print_waiting_message(config: &ServerConfig) {
-        #[cfg(not(feature = "unit"))]
-        info_file!(
-            "ZisK Server waiting for requests on port {} for ELF '{}'",
-            config.port,
-            config.elf.display()
-        );
-
-        #[cfg(feature = "unit")]
-        info_file!("ZisK Server waiting for requests on port {}", config.port,);
+        if let Some(elf) = &config.elf {
+            info_file!(
+                "ZisK Server waiting for requests on port {} for ELF '{}'",
+                config.port,
+                elf.display()
+            );
+        } else {
+            info_file!("ZisK Server waiting for requests on port {}", config.port,);
+        }
     }
 
     pub fn run(&mut self) -> std::io::Result<()> {

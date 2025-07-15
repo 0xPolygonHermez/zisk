@@ -36,7 +36,6 @@ use sm_mem::Mem;
 use sm_rom::RomSM;
 use std::{any::Any, path::PathBuf, sync::Arc};
 use witness::{WitnessLibrary, WitnessManager};
-#[cfg(not(feature = "unit"))]
 use zisk_core::Riscv2zisk;
 #[cfg(not(feature = "unit"))]
 use zisk_core::ZiskRom;
@@ -51,8 +50,7 @@ type Bundle<F> = DynSMBundle<F>;
 
 #[allow(dead_code)]
 pub struct WitnessLib<F: PrimeField64> {
-    #[cfg(not(feature = "unit"))]
-    elf_path: PathBuf,
+    elf_path: Option<PathBuf>,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
@@ -81,7 +79,7 @@ pub struct WitnessLib<F: PrimeField64> {
 #[allow(clippy::type_complexity)]
 fn init_library(
     verbose_mode: proofman_common::VerboseMode,
-    #[cfg(not(feature = "unit"))] elf_path: PathBuf,
+    elf_path: Option<PathBuf>,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
     sha256f_script_path: PathBuf,
@@ -102,7 +100,6 @@ fn init_library(
     let chunk_size = 1 << chunk_size_bits.unwrap_or(DEFAULT_CHUNK_SIZE_BITS);
 
     let result = Box::new(WitnessLib {
-        #[cfg(not(feature = "unit"))]
         elf_path,
         asm_path,
         asm_rom_path,
@@ -138,7 +135,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         #[cfg(not(feature = "unit"))]
         {
             // Step 1: Create an instance of the RISCV -> ZisK program converter
-            let rv2zk = Riscv2zisk::new(self.elf_path.display().to_string());
+            let rv2zk = Riscv2zisk::new(self.elf_path.as_ref().unwrap().display().to_string());
 
             // Step 2: Convert program to ROM
             let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
@@ -159,7 +156,6 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
             let (bundle, add_main_sm) = (self.register_state_machines_fn)(
                 wcm.clone(),
                 std.clone(),
-                zisk_rom.clone(),
                 self.asm_path.clone(),
                 self.sha256f_script_path.clone(),
             );
@@ -171,7 +167,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
             // Create the executor and register the secondary state machines
             let executor: ZiskExecutor<F, Bundle<F>> = ZiskExecutor::new(
-                self.elf_path.clone(),
+                self.elf_path.as_ref().unwrap().to_path_buf(),
                 self.asm_path.clone(),
                 self.asm_rom_path.clone(),
                 zisk_rom,
@@ -194,6 +190,17 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         #[cfg(feature = "unit")]
         {
+            let zisk_rom = if let Some(elf_path) = &self.elf_path {
+                // Step 1: Create an instance of the RISCV -> ZisK program converter
+                let rv2zk = Riscv2zisk::new(elf_path.display().to_string());
+
+                // Step 2: Convert program to ROM
+                let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
+                Arc::new(Some(zisk_rom))
+            } else {
+                Arc::new(None)
+            };
+
             let std = Std::new(wcm.get_pctx(), wcm.get_sctx());
 
             let (bundle, _) = register_state_machines(
@@ -203,7 +210,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
                 self.sha256f_script_path.clone(),
             );
 
-            let executor = Arc::new(ZiskExecutorTest::new(bundle));
+            let executor = Arc::new(ZiskExecutorTest::new(bundle, zisk_rom));
             wcm.register_component(executor.clone());
             self.executor = Some(executor);
         }

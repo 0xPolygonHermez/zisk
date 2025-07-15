@@ -3,15 +3,15 @@ use precomp_arith_eq::{ArithEqInput, ARITH_EQ_ROWS_BY_OP};
 use precomp_keccakf::{KeccakfInput, NUM_KECCAKF_PER_CIRCUIT};
 use precomp_sha256f::{Sha256fInput, NUM_SHA256F_PER_CIRCUIT};
 use proofman_common::{create_pool, BufferPool, PreCalculate, ProofCtx, SetupCtx};
-use sm_mem::{MemAlignInput, MemInput};
+use sm_mem::{MemAlignInput, MemInput, MemInstanceInfo};
 use witness::WitnessComponent;
-
 use zisk_common::{BinaryAddInput, Input};
+use zisk_core::ZiskRom;
 use zisk_pil::{
     ArithEqTrace, ArithTrace, BinaryAddTrace, BinaryExtensionTrace, BinaryTrace, KeccakfTrace,
     MemAlignTrace, Sha256fTrace, ARITH_AIR_IDS, ARITH_EQ_AIR_IDS, BINARY_ADD_AIR_IDS,
-    BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, KECCAKF_AIR_IDS, MEM_ALIGN_AIR_IDS,
-    SHA_256_F_AIR_IDS, ZISK_AIRGROUP_ID,
+    BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS, INPUT_DATA_AIR_IDS, KECCAKF_AIR_IDS, MEM_AIR_IDS,
+    MEM_ALIGN_AIR_IDS, ROM_DATA_AIR_IDS, SHA_256_F_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
 use std::{
@@ -46,14 +46,22 @@ enum InstanceInput {
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
 pub struct ZiskExecutorTest<F: PrimeField64> {
+    /// ZisK ROM, a binary file containing the ZisK program to be executed.
+    _zisk_rom: Arc<Option<ZiskRom>>,
     inputs: RwLock<HashMap<usize, Vec<InstanceInput>>>,
+    mem_instance_info: RwLock<HashMap<usize, MemInstanceInfo>>,
     sm_bundle: StaticSMBundle<F>,
 }
 
 impl<F: PrimeField64> ZiskExecutorTest<F> {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(sm_bundle: StaticSMBundle<F>) -> Self {
-        Self { inputs: RwLock::new(HashMap::new()), sm_bundle }
+    pub fn new(sm_bundle: StaticSMBundle<F>, zisk_rom: Arc<Option<ZiskRom>>) -> Self {
+        Self {
+            inputs: RwLock::new(HashMap::new()),
+            mem_instance_info: RwLock::new(HashMap::new()),
+            sm_bundle,
+            _zisk_rom: zisk_rom,
+        }
     }
 
     fn process_inputs(
