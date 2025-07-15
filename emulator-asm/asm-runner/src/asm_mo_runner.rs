@@ -34,8 +34,14 @@ impl AsmRunnerMO {
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
     ) -> Result<Self> {
+        let port = if let Some(base_port) = base_port {
+            AsmServices::port_for(&AsmService::MO, base_port, local_rank)
+        } else {
+            AsmServices::default_port(&AsmService::MO, local_rank)
+        };
+
         let sem_chunk_done_name =
-            AsmSharedMemory::<AsmMOHeader>::shmem_chunk_done_name(AsmService::MO, local_rank);
+            AsmSharedMemory::<AsmMOHeader>::shmem_chunk_done_name(port, AsmService::MO, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -53,8 +59,13 @@ impl AsmRunnerMO {
 
         if asm_shared_memory.is_none() {
             *asm_shared_memory = Some(
-                AsmSharedMemory::create_shmem(AsmService::MO, local_rank, unlock_mapped_memory)
-                    .expect("Error creating MO assembly shared memory"),
+                AsmSharedMemory::create_shmem(
+                    port,
+                    AsmService::MO,
+                    local_rank,
+                    unlock_mapped_memory,
+                )
+                .expect("Error creating MO assembly shared memory"),
             );
         }
 
