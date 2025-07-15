@@ -58,7 +58,7 @@ airgroup Zisk {
 
     const int KECCAKF_CHUNKS = 9;
     const int KECCAKF_BITS = 7;
-    Keccakf(N: 2**22, chunks: KECCAKF_CHUNKS, bits: KECCAKF_BITS, RC: 2, RB: 32, mem_bits_in_parallel: 4, operation_bus_id: OPERATION_BUS_ID);
+    Keccakf(N: 2**21, chunks: KECCAKF_CHUNKS, bits: KECCAKF_BITS, RC: 2, RB: 32, mem_bits_in_parallel: 4, operation_bus_id: OPERATION_BUS_ID);
     const int KECCAKF_TABLE_CHUNKS = 1;
     const int KECCAKF_TABLE_BITS = (KECCAKF_BITS - KECCAKF_TABLE_CHUNKS + 1) + KECCAKF_BITS + KECCAKF_BITS + 1;
     KeccakfTable(N: 2**KECCAKF_TABLE_BITS, chunks: KECCAKF_TABLE_CHUNKS, bits: KECCAKF_BITS);

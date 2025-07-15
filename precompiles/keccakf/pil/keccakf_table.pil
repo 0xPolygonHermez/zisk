@@ -19,6 +19,7 @@ airtemplate KeccakfTable(const int N, const int chunks, const int bits) {
         error(`With chunks=${chunks} and bits=${bits}, N must be at least 2**${TABLE_BIT_SIZE} to fit the table, but received 2**${log2(N)}`);
     }
 
+    const int CHUNKS_A = 2**(chunks - 1);
     const int P2_BITS_A = 2**BITS_A;
     const int P2_BITS_B = 2**BITS_B;
     const int P2_BITS_C = 2**BITS_C;
@@ -28,9 +29,9 @@ airtemplate KeccakfTable(const int N, const int chunks, const int bits) {
     const int MASK_BITS_B = P2_BITS_B - 1;
     const int MASK_BITS_C = P2_BITS_C - 1;
 
-    col fixed A[chunks]; // Input A (BITS_A bits)
+    col fixed A[CHUNKS_A]; // Input A (BITS_A bits)
     int offset = 0;
-    for (int j = 0; j < chunks; j++) {
+    for (int j = 0; j < CHUNKS_A; j++) {
         A[j] = [offset..(MASK_BITS_A + offset)]...;
         offset += P2_BITS_A;
     }
@@ -40,12 +41,12 @@ airtemplate KeccakfTable(const int N, const int chunks, const int bits) {
     col fixed GATE_OP = [XOR:P2_BITS_ABC, XORANDP:P2_BITS_ABC]...;   // Gate operation (BITS_OP bit)
 
     // Precompute a table with the two basic operations appearing in the Keccak-f permutation
-    col fixed D[chunks]; // Output D (BITS_A bits)
+    col fixed D[CHUNKS_A]; // Output D (BITS_A bits)
     #pragma transpile
     for (int i = 0; i < N; i++) {
         const int [b, c, gate_op] = [B[i], C[i], GATE_OP[i]];
 
-        for (int j = 0; j < chunks; j++) {
+        for (int j = 0; j < CHUNKS_A; j++) {
             const int a = A[j][i];
 
             int d = 0;
@@ -62,8 +63,8 @@ airtemplate KeccakfTable(const int N, const int chunks, const int bits) {
     }
 
     // --> Prove that the circuit gates are satisfied
-    col witness multiplicity[chunks];
-    for (int j = 0; j < chunks; j++) {
+    col witness multiplicity[CHUNKS_A];
+    for (int j = 0; j < CHUNKS_A; j++) {
         lookup_proves(KECCAKF_TABLE_ID, [GATE_OP, A[j], B, C, D[j]], multiplicity[j]);
     }
 }
