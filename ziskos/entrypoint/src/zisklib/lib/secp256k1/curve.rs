@@ -1,13 +1,14 @@
 use crate::{
-    fcall_msb_pos_256,
+    fcall_msb_pos_256, fcall_secp256k1_fp_sqrt,
     point256::SyscallPoint256,
     secp256k1_add::{syscall_secp256k1_add, SyscallSecp256k1AddParams},
     secp256k1_dbl::syscall_secp256k1_dbl,
+    zisklib::lib::secp256k1::field::secp256k1_fp_assert_nqr,
 };
 
 use super::{
     constants::{E_B, G_X, G_Y},
-    field::{secp256k1_fp_add, secp256k1_fp_mul, secp256k1_fp_sqrt, secp256k1_fp_square},
+    field::{secp256k1_fp_add, secp256k1_fp_mul, secp256k1_fp_square},
 };
 
 /// Given a x-coordinate `x_bytes` and a parity `y_is_odd`,
@@ -19,14 +20,23 @@ pub fn secp256k1_decompress(x_bytes: &[u8; 32], y_is_odd: bool) -> (([u8; 32], [
         x[3 - i / 8] |= (x_bytes[i] as u64) << (8 * (7 - (i % 8)));
     }
 
-    // Calculate the y-coordinate of the point: y = sqrt(x³ + 7)
-    let x_sq = secp256k1_fp_square(&x);
-    let x_cb = secp256k1_fp_mul(&x_sq, &x);
-    let y_sq = secp256k1_fp_add(&x_cb, &E_B);
-    let (y, has_sqrt) = secp256k1_fp_sqrt(&y_sq, y_is_odd as u64);
-    if !has_sqrt {
-        return (([0u8; 32], [0u8; 32]), false);
-    }
+    // Hint the y-coordinate and check that: y² = x³ + 7
+    let mut rhs = secp256k1_fp_square(&x);
+    rhs = secp256k1_fp_mul(&rhs, &x);
+    rhs = secp256k1_fp_add(&rhs, &E_B);
+    let y = match fcall_secp256k1_fp_sqrt(&rhs, y_is_odd as u64) {
+        // If the y exists, then confirm that y² = x³ + 7
+        Some(y) => {
+            let lhs = secp256k1_fp_square(&y);
+            assert_eq!(lhs, rhs);
+            y
+        }
+        // If the y does not exists, check that rhs is a non-quadratic residue
+        None => {
+            secp256k1_fp_assert_nqr(&rhs);
+            return (([0u8; 32], [0u8; 32]), false);
+        }
+    };
 
     // Check the received parity of the y-coordinate is correct
     let parity = (y[0] & 1) != 0;
