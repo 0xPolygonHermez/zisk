@@ -63,9 +63,6 @@ pub struct ServerConfig {
     /// Debug information
     pub debug_info: Arc<DebugInfo>,
 
-    /// Path to the SHA256f script
-    pub sha256f_script: PathBuf,
-
     /// Time when the server was launched
     pub launch_time: Instant,
 
@@ -98,7 +95,6 @@ impl ServerConfig {
         proving_key: PathBuf,
         verbose: u8,
         debug: DebugInfo,
-        sha256f_script: PathBuf,
         chunk_size_bits: Option<u64>,
         asm_runner_options: AsmRunnerOptions,
         verify_constraints: bool,
@@ -117,7 +113,6 @@ impl ServerConfig {
             proving_key,
             verbose,
             debug_info: Arc::new(debug),
-            sha256f_script,
             launch_time: Instant::now(),
             server_id: Uuid::new_v4(),
             chunk_size_bits,
@@ -275,7 +270,6 @@ impl ZiskService {
             config.elf.clone(),
             config.asm.clone(),
             config.asm_rom.clone(),
-            config.sha256f_script.clone(),
             config.chunk_size_bits,
             Some(world_rank),
             Some(local_rank),
