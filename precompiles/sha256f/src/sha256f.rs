@@ -50,7 +50,14 @@ impl<F: PrimeField64> Sha256fSM<F> {
     /// * `input` - The operation data to process.
     /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
     #[inline(always)]
-    pub fn process_input(&self, input: &Sha256fInput, trace: &mut [Sha256fTraceRow<F>]) {
+    pub fn process_input(
+        &self,
+        input: &Sha256fInput,
+        trace: &mut [Sha256fTraceRow<F>],
+    ) -> ([u32; 8], [u32; 8]) {
+        let mut a_range_checks = [0u32; 8];
+        let mut e_range_checks = [0u32; 8];
+
         let step_main = input.step_main;
         let addr_main = input.addr_main;
         let state_addr = input.state_addr;
@@ -131,8 +138,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
             // Locate the carry
             trace[row].new_a_carry_bits = F::from_u8(a_carry);
             trace[row].new_e_carry_bits = F::from_u8(e_carry);
-            self.std.range_check(a_carry as i64, 1, self.a_range_id);
-            self.std.range_check(e_carry as i64, 1, self.e_range_id);
+            a_range_checks[a_carry as usize] += 1;
+            e_range_checks[e_carry as usize] += 1;
 
             // Locate the input bits in the trace
             for j in 0..32 {
@@ -180,8 +187,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
             trace[row].new_a_carry_bits = F::from_u8(a_carry);
             trace[row].new_e_carry_bits = F::from_u8(e_carry);
             trace[row].new_w_carry_bits = F::from_u8(new_w_carry);
-            self.std.range_check(a_carry as i64, 1, self.a_range_id);
-            self.std.range_check(e_carry as i64, 1, self.e_range_id);
+            a_range_checks[a_carry as usize] += 1;
+            e_range_checks[e_carry as usize] += 1;
 
             for j in 0..32 {
                 let bit_a = ((a >> j) & 1) as u8;
@@ -230,10 +237,10 @@ impl<F: PrimeField64> Sha256fSM<F> {
             let is_a = i < 2;
             if is_a {
                 trace[row].new_a_carry_bits = F::from_u8(new_high_carry);
-                self.std.range_check(new_high_carry as i64, 1, self.a_range_id);
+                a_range_checks[new_high_carry as usize] += 1;
             } else {
                 trace[row].new_e_carry_bits = F::from_u8(new_high_carry);
-                self.std.range_check(new_high_carry as i64, 1, self.e_range_id);
+                e_range_checks[new_high_carry as usize] += 1;
             }
 
             for j in 0..32 {
@@ -248,10 +255,10 @@ impl<F: PrimeField64> Sha256fSM<F> {
 
             if is_a {
                 trace[row].new_a_carry_bits = F::from_u8(new_low_carry);
-                self.std.range_check(new_low_carry as i64, 1, self.a_range_id);
+                a_range_checks[new_low_carry as usize] += 1;
             } else {
                 trace[row].new_e_carry_bits = F::from_u8(new_low_carry);
-                self.std.range_check(new_low_carry as i64, 1, self.e_range_id);
+                e_range_checks[new_low_carry as usize] += 1;
             }
 
             for j in 0..32 {
@@ -265,8 +272,10 @@ impl<F: PrimeField64> Sha256fSM<F> {
         }
 
         // Perform the zero range checks
-        self.std.range_check(0, CLOCKS_LOAD_STATE as u64, self.a_range_id);
-        self.std.range_check(0, CLOCKS_LOAD_STATE as u64, self.e_range_id);
+        a_range_checks[0] += CLOCKS_LOAD_STATE as u32;
+        e_range_checks[0] += CLOCKS_LOAD_STATE as u32;
+
+        return (a_range_checks, e_range_checks);
 
         #[rustfmt::skip]
         #[allow(clippy::too_many_arguments)]
@@ -321,6 +330,9 @@ impl<F: PrimeField64> Sha256fSM<F> {
         let num_rows = sha256f_trace.num_rows();
         let num_available_sha256fs = self.num_available_sha256fs;
 
+        let mut a_range_checks = vec![0; 1 << 3];
+        let mut e_range_checks = vec![0; 1 << 3];
+
         // Check that we can fit all the sha256fs in the trace
         let num_inputs = inputs.iter().map(|v| v.len()).sum::<usize>();
         let num_rows_filled = num_inputs * CLOCKS;
@@ -356,11 +368,23 @@ impl<F: PrimeField64> Sha256fSM<F> {
         }
 
         // Fill the trace
-        par_traces.into_par_iter().enumerate().for_each(|(index, trace)| {
-            let input_index = inputs_indexes[index];
-            let input = &inputs[input_index.0][input_index.1];
-            self.process_input(input, trace);
-        });
+        let input_range_checks: Vec<([u32; 8], [u32; 8])> = par_traces
+            .into_par_iter()
+            .enumerate()
+            .map(|(index, trace)| {
+                let input_index = inputs_indexes[index];
+                let input = &inputs[input_index.0][input_index.1];
+                self.process_input(input, trace)
+            })
+            .collect();
+
+        for (a_inp_range_checks, e_inp_range_checks) in input_range_checks {
+            for i in 0..8 {
+                a_range_checks[i] += a_inp_range_checks[i];
+                e_range_checks[i] += e_inp_range_checks[i];
+            }
+        }
+
         timer_stop_and_log_trace!(SHA256F_TRACE);
 
         timer_start_trace!(SHA256F_PADDING);
@@ -384,16 +408,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
                 mid_rows[i].e[j] = F::from_u8(bit_e);
             }
 
-            self.std.range_check(
-                a_carry as i64,
-                (num_available_sha256fs - num_inputs) as u64,
-                self.a_range_id,
-            );
-            self.std.range_check(
-                e_carry as i64,
-                (num_available_sha256fs - num_inputs) as u64,
-                self.e_range_id,
-            );
+            a_range_checks[a_carry as usize] += (num_available_sha256fs - num_inputs) as u32;
+            e_range_checks[e_carry as usize] += (num_available_sha256fs - num_inputs) as u32;
         }
 
         // At the end, we should have that a === 4'and e === 4'e
@@ -412,24 +428,32 @@ impl<F: PrimeField64> Sha256fSM<F> {
         const CLOCKS_OP: usize = CLOCKS_LOAD_STATE + CLOCKS_LOAD_INPUT + CLOCKS_MIXING;
         // The last (CLOCKS + NUM_NON_USABLE_ROWS) have CLK_0 desactivated, so
         // a trace full of zeroes passes the constraints
-        for row in num_rows_filled..(num_rows - self.num_non_usable_rows - CLOCKS) {
-            let row_r = row % CLOCKS;
-            sha256f_trace[row] = if row_r < CLOCKS_LOAD_STATE {
-                zero_row
-            } else if row_r < CLOCKS_OP {
-                mid_rows[row_r - CLOCKS_LOAD_STATE]
-            } else {
-                final_rows[row_r - CLOCKS_OP]
-            };
-        }
+        sha256f_trace.row_slice_mut()
+            [num_rows_filled..(num_rows - self.num_non_usable_rows - CLOCKS)]
+            .par_iter_mut()
+            .enumerate()
+            .for_each(|(elem, row)| {
+                let row_r = elem % CLOCKS;
+                if row_r < CLOCKS_LOAD_STATE {
+                    *row = zero_row;
+                } else if row_r < CLOCKS_OP {
+                    *row = mid_rows[row_r - CLOCKS_LOAD_STATE];
+                } else {
+                    *row = final_rows[row_r - CLOCKS_OP];
+                }
+            });
 
         // Perform the zero range checks
         let count_zeros = (num_available_sha256fs - num_inputs)
             * (CLOCKS_LOAD_STATE + CLOCKS_WRITE_STATE)
             + CLOCKS
             + self.num_non_usable_rows;
-        self.std.range_check(0, count_zeros as u64, self.a_range_id);
-        self.std.range_check(0, count_zeros as u64, self.e_range_id);
+        a_range_checks[0] += count_zeros as u32;
+        e_range_checks[0] += count_zeros as u32;
+
+        self.std.range_checks(a_range_checks, self.a_range_id);
+        self.std.range_checks(e_range_checks, self.e_range_id);
+
         timer_stop_and_log_trace!(SHA256F_PADDING);
 
         AirInstance::new_from_trace(FromTrace::new(&mut sha256f_trace))
