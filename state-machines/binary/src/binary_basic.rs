@@ -875,20 +875,19 @@ impl BinaryBasicSM {
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
     ///
     /// # Arguments
-    /// * `binary_trace_splitted` - A `BinaryTraceSplit` containing the binary trace data.
+    /// * `trace_split` - A `BinaryTraceSplit` containing the binary trace data.
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<F: PrimeField64>(
         &self,
-        binary_trace_splitted: BinaryTraceSplit<F>,
+        trace_split: BinaryTraceSplit<F>,
     ) -> AirInstance<F> {
-        let padding_size = binary_trace_splitted.leftover_size();
+        let padding_size = trace_split.leftover_size();
 
-        let mut binary_trace = BinaryTrace::<F>::from_split_struct(binary_trace_splitted);
-        let num_rows = binary_trace.num_rows();
+        let mut trace = BinaryTrace::<F>::from_split_struct(trace_split);
+        let num_rows = trace.num_rows();
 
-        // let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
         let total_inputs = num_rows - padding_size;
         assert!(total_inputs <= num_rows);
 
@@ -907,7 +906,7 @@ impl BinaryBasicSM {
             ..Default::default()
         };
 
-        binary_trace.row_slice_mut()[total_inputs..num_rows]
+        trace.row_slice_mut()[total_inputs..num_rows]
             .par_iter_mut()
             .for_each(|slot| *slot = padding_row);
 
@@ -925,6 +924,6 @@ impl BinaryBasicSM {
             self.binary_basic_table_sm.update_multiplicity(row, multiplicity);
         }
 
-        AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))
+        AirInstance::new_from_trace(FromTrace::new(&mut trace))
     }
 }

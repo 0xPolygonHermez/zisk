@@ -2,29 +2,79 @@
 //!
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, mem::ManuallyDrop, sync::Arc};
 
-use crate::BinaryInput;
+use crate::{
+    binary_extension::BinaryExtensionSM, binary_extension_table::BinaryExtensionTableSM,
+    BinaryInput,
+};
+use fields::PrimeField64;
+use pil_std_lib::Std;
 use zisk_common::{
     BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID,
 };
-use zisk_core::ZiskOperationType;
+use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
+use zisk_pil::BinaryExtensionTraceRow;
 
 /// The `BinaryExtensionCollector` struct represents an input collector for binary extension
-pub struct BinaryExtensionCollector {
-    /// Collected inputs for witness computation.
-    pub inputs: Vec<BinaryInput>,
+pub struct BinaryExtensionCollector<F: PrimeField64> {
+    /// Binary Extension Table State Machine.
+    binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
+
+    /// PIL2 Standard library.
+    std: Arc<Std<F>>,
+
+    /// Range ID for range checks.
+    range_id: usize,
+
+    /// The number of operations to collect.
     pub num_operations: usize,
+
+    /// Helper to skip instructions based on the plan's configuration.
     pub collect_skipper: CollectSkipper,
+
+    /// Current index in the rows vector.
+    idx: usize,
+
+    /// Binary trace slice rows.
+    rows: ManuallyDrop<Vec<BinaryExtensionTraceRow<F>>>,
 }
 
-impl BinaryExtensionCollector {
-    pub fn new(num_operations: usize, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
+impl<F: PrimeField64> BinaryExtensionCollector<F> {
+    /// Creates a new `BinaryExtensionCollector`.
+    ///
+    /// # Arguments
+    /// * `binary_extension_table_sm` - Binary Extension Table State Machine.
+    /// * `std` - The PIL2 standard library.
+    /// * `num_operations` - The number of operations to collect.
+    /// * `collect_skipper` - Helper to skip instructions based on the plan's configuration.
+    /// * `rows` - The binary trace slice rows.
+    ///
+    /// # Returns
+    /// A new `BinaryExtensionCollector` instance initialized with the provided parameters.
+    pub fn new(
+        binary_extension_table_sm: Arc<BinaryExtensionTableSM>,
+        std: Arc<Std<F>>,
+        num_operations: usize,
+        collect_skipper: CollectSkipper,
+        rows: ManuallyDrop<Vec<BinaryExtensionTraceRow<F>>>,
+    ) -> Self {
+        // Search the range check ID in the standard library.
+        let range_id = std.get_range(0, 0xFFFFFF, None);
+
+        Self {
+            binary_extension_table_sm,
+            std,
+            range_id,
+            num_operations,
+            collect_skipper,
+            idx: 0,
+            rows,
+        }
     }
 }
 
-impl BusDevice<u64> for BinaryExtensionCollector {
+impl<F: PrimeField64> BusDevice<u64> for BinaryExtensionCollector<F> {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -43,7 +93,7 @@ impl BusDevice<u64> for BinaryExtensionCollector {
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
-        if self.inputs.len() >= self.num_operations {
+        if self.idx >= self.num_operations {
             return false;
         }
 
@@ -60,9 +110,20 @@ impl BusDevice<u64> for BinaryExtensionCollector {
             return true;
         }
 
-        self.inputs.push(BinaryInput::from(&data));
+        let binary_input = BinaryInput::from(&data);
+        self.rows[self.idx] =
+            BinaryExtensionSM::process_slice(&binary_input, &self.binary_extension_table_sm);
 
-        self.inputs.len() < self.num_operations
+        let opcode = ZiskOp::try_from_code(binary_input.op).expect("Invalid ZiskOp opcode");
+        let op_is_shift = BinaryExtensionSM::<F>::opcode_is_shift(opcode);
+        if op_is_shift {
+            let row = (binary_input.b >> 8) & 0xFFFFFF;
+            self.std.range_check(row as i64, 1, self.range_id);
+        }
+
+        self.idx += 1;
+
+        self.idx < self.num_operations
     }
 
     /// Returns the bus IDs associated with this instance.

@@ -60,7 +60,7 @@ impl BinaryPlanner {
                     None,
                     InstanceType::Instance,
                     check_point,
-                    PreCalculate::Fast,
+                    PreCalculate::None,
                     Some(converted),
                 )
             })
@@ -107,7 +107,7 @@ impl BinaryPlanner {
                     None,
                     InstanceType::Instance,
                     check_point,
-                    PreCalculate::Fast,
+                    PreCalculate::None,
                     Some(converted),
                 )
             })
@@ -145,7 +145,7 @@ impl BinaryPlanner {
                     None,
                     InstanceType::Instance,
                     check_point,
-                    PreCalculate::Fast,
+                    PreCalculate::None,
                     Some(converted),
                 )
             })

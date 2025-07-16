@@ -14,10 +14,13 @@ use zisk_pil::BinaryTraceRow;
 
 /// The `BinaryBasicCollector` struct represents an input collector for binary-related operations.
 pub struct BinaryBasicCollector<F: PrimeField64> {
+    /// Binary Basic Table State Machine.
     binary_basic_table_sm: Arc<BinaryBasicTableSM>,
 
+    /// The number of operations to collect.
     pub num_operations: usize,
 
+    /// Helper to skip instructions based on the plan's configuration.
     pub collect_skipper: CollectSkipper,
 
     /// Flag to indicate that this instance comute add operations
@@ -26,7 +29,7 @@ pub struct BinaryBasicCollector<F: PrimeField64> {
     /// Current index in the rows vector.
     idx: usize,
 
-    /// Rows for the binary basic trace.
+    /// Binary trace slice rows.
     rows: ManuallyDrop<Vec<BinaryTraceRow<F>>>,
 }
 
@@ -34,8 +37,11 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
     /// Creates a new `BinaryBasicCollector`.
     ///
     /// # Arguments
+    /// * `binary_basic_table_sm` - Binary Basic Table State Machine.
     /// * `num_operations` - The number of operations to collect.
     /// * `collect_skipper` - Helper to skip instructions based on the plan's configuration.
+    /// * `with_adds` - Flag to indicate that this instance computes add operations.
+    /// * `rows` - The binary trace slice rows.
     ///
     /// # Returns
     /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
@@ -46,7 +52,7 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
         with_adds: bool,
         rows: ManuallyDrop<Vec<BinaryTraceRow<F>>>,
     ) -> Self {
-        Self { num_operations, collect_skipper, with_adds, idx: 0, rows, binary_basic_table_sm }
+        Self { binary_basic_table_sm, num_operations, collect_skipper, with_adds, idx: 0, rows }
     }
 }
 
