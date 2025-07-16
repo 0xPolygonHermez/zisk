@@ -16,6 +16,9 @@ use crate::{AsmMTChunk, AsmMTHeader, AsmRunError, AsmService, AsmServices, AsmSh
 
 use anyhow::{Context, Result};
 
+#[cfg(feature = "stats")]
+use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
+
 pub trait Task: Send + Sync + 'static {
     type Output: Send + 'static;
     fn execute(self) -> Self::Output;
@@ -68,11 +71,21 @@ impl AsmRunnerMT {
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
-        let start = Instant::now();
+        let start_time = Instant::now();
+
+        let stats = Arc::clone(&_stats);
 
         let handle = std::thread::spawn(move || {
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
-            asm_services.send_minimal_trace_request(max_steps, chunk_size)
+            let result = asm_services.send_minimal_trace_request(max_steps, chunk_size);
+
+            // Add to executor stats
+            #[cfg(feature = "stats")]
+            stats.lock().unwrap().add_stat(ExecutorStatsEnum::MTExecutionDone(
+                ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
+            ));
+
+            result
         });
 
         // Initialize the assembly shared memory if necessary
@@ -148,7 +161,7 @@ impl AsmRunnerMT {
         }
 
         let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
-        let mhz = (total_steps as f64 / start.elapsed().as_secs_f64()) / 1_000_000.0;
+        let mhz = (total_steps as f64 / start_time.elapsed().as_secs_f64()) / 1_000_000.0;
         info!("··· Assembly execution speed: {:.2} MHz", mhz);
 
         // Wait for the assembly emulator to complete writing the trace

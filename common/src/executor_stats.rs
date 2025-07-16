@@ -11,6 +11,16 @@ pub enum ExecutorStatsEnum {
     GenerateMT(ExecutorStatsDuration),
     ChunkPlayerMT(ExecutorStatsDuration),
     MTChunkDone(ExecutorStatsDuration),
+    MTExecutionDone(ExecutorStatsDuration),
+    RomHistogram(ExecutorStatsDuration),
+    MemOps(ExecutorStatsDuration),
+    PlanGenerationMain(ExecutorStatsDuration),
+    PlanGenerationSecondary(ExecutorStatsDuration),
+    PlanGenerationMemOpWait(ExecutorStatsDuration),
+    PlanGenerationMemOp(ExecutorStatsDuration),
+    ConfigureInstances(ExecutorStatsDuration),
+    PreCalculateWitness(ExecutorStatsDuration),
+    CalculateWitness(ExecutorStatsDuration),
     End(ExecutorStatsDuration),
     Air(ExecutorStatsAir),
 }
@@ -77,6 +87,40 @@ impl ExecutorStats {
         }
     }
 
+    fn stats_name(stats: &ExecutorStatsEnum) -> String {
+        match stats {
+            ExecutorStatsEnum::GenerateMT(_stat_duration) => "MT_GENERATION".to_string(),
+            ExecutorStatsEnum::ChunkPlayerMT(_stat_duration) => "MT_CHUNK_PLAYER".to_string(),
+            ExecutorStatsEnum::MTChunkDone(_stat_duration) => "MT_CHUNK_DONE".to_string(),
+            ExecutorStatsEnum::MTExecutionDone(_stat_duration) => "MT_EXECUTION_DONE".to_string(),
+            ExecutorStatsEnum::RomHistogram(_stat_duration) => "ROM_HISTOGRAM".to_string(),
+            ExecutorStatsEnum::MemOps(_stat_duration) => "MEM_OPS".to_string(),
+            ExecutorStatsEnum::PlanGenerationMain(_stat_duration) => {
+                "PLAN_GENERATION_MAIN".to_string()
+            }
+            ExecutorStatsEnum::PlanGenerationSecondary(_stat_duration) => {
+                "PLAN_GENERATION_SECONDARY".to_string()
+            }
+            ExecutorStatsEnum::PlanGenerationMemOpWait(_stat_duration) => {
+                "PLAN_GENERATION_MEM_OP_WAIT".to_string()
+            }
+            ExecutorStatsEnum::PlanGenerationMemOp(_stat_duration) => {
+                "PLAN_GENERATION_MEM_OP".to_string()
+            }
+            ExecutorStatsEnum::ConfigureInstances(_stat_duration) => {
+                "CONFIGURE_INSTANCES".to_string()
+            }
+            ExecutorStatsEnum::PreCalculateWitness(_stat_duration) => {
+                "PRE_CALCULATE_WITNESS".to_string()
+            }
+            ExecutorStatsEnum::CalculateWitness(_stat_duration) => "CALCULATE_WITNESS".to_string(),
+            ExecutorStatsEnum::End(_stat_duration) => "END".to_string(),
+            ExecutorStatsEnum::Air(_stat_duration) => {
+                panic!("ExecutorStats::stats_name() got an air stats");
+            }
+        }
+    }
+
     /// Stores stats in JSON and CSV file formats
     pub fn store_stats(&self) {
         #[derive(Serialize, Deserialize, Debug)]
@@ -93,34 +137,26 @@ impl ExecutorStats {
         tracing::info!("Collected a total of {} statistics", stats.len());
         for stat in stats.iter() {
             match stat {
-                ExecutorStatsEnum::GenerateMT(stat_duration) => {
-                    let name = "MT_GENERATION".to_string();
+                ExecutorStatsEnum::GenerateMT(stat_duration)
+                | ExecutorStatsEnum::ChunkPlayerMT(stat_duration)
+                | ExecutorStatsEnum::MTExecutionDone(stat_duration)
+                | ExecutorStatsEnum::RomHistogram(stat_duration)
+                | ExecutorStatsEnum::MemOps(stat_duration)
+                | ExecutorStatsEnum::PlanGenerationMain(stat_duration)
+                | ExecutorStatsEnum::PlanGenerationSecondary(stat_duration)
+                | ExecutorStatsEnum::PlanGenerationMemOpWait(stat_duration)
+                | ExecutorStatsEnum::PlanGenerationMemOp(stat_duration)
+                | ExecutorStatsEnum::ConfigureInstances(stat_duration)
+                | ExecutorStatsEnum::PreCalculateWitness(stat_duration)
+                | ExecutorStatsEnum::CalculateWitness(stat_duration)
+                | ExecutorStatsEnum::End(stat_duration) => {
+                    let name = ExecutorStats::stats_name(stat);
                     let start =
                         stat_duration.start_time.duration_since(start_time).as_nanos() as u64;
                     let duration = stat_duration.duration.as_nanos() as u64;
                     tasks.push(Task { name, start, duration });
                 }
-                ExecutorStatsEnum::ChunkPlayerMT(stat_duration) => {
-                    let name = "MT_CHUNK_PLAYER".to_string();
-                    let start =
-                        stat_duration.start_time.duration_since(start_time).as_nanos() as u64;
-                    let duration = stat_duration.duration.as_nanos() as u64;
-                    tasks.push(Task { name, start, duration });
-                }
-                ExecutorStatsEnum::MTChunkDone(_stat_duration) => {
-                    // let name = "MT_CHUNK_DONE".to_string();
-                    // let start =
-                    //     stat_duration.start_time.duration_since(start_time).as_nanos() as u64;
-                    // let duration = stat_duration.duration.as_nanos() as u64;
-                    // tasks.push(Task { name, start, duration });
-                }
-                ExecutorStatsEnum::End(stat_duration) => {
-                    let name = "END".to_string();
-                    let start =
-                        stat_duration.start_time.duration_since(start_time).as_nanos() as u64;
-                    let duration = stat_duration.duration.as_nanos() as u64;
-                    tasks.push(Task { name, start, duration });
-                }
+                ExecutorStatsEnum::MTChunkDone(_stat_duration) => {}
                 ExecutorStatsEnum::Air(stat_air) => {
                     let collect_start_time: u64 =
                         stat_air.collect.start_time.duration_since(start_time).as_nanos() as u64;
@@ -180,29 +216,21 @@ impl ExecutorStats {
         println!("Collected a total of {} statistics", stats.len());
         for stat in stats.iter() {
             match stat {
-                ExecutorStatsEnum::GenerateMT(stat_duration) => {
-                    let name = "MT_GENERATION".to_string();
-                    let start =
-                        stat_duration.start_time.duration_since(start_time).as_nanos() as u64;
-                    let duration = stat_duration.duration.as_nanos() as u64;
-                    println!("{} start = {} duration = {}", name, start, duration);
-                }
-                ExecutorStatsEnum::ChunkPlayerMT(stat_duration) => {
-                    let name = "MT_CHUNK_PLAYER".to_string();
-                    let start =
-                        stat_duration.start_time.duration_since(start_time).as_nanos() as u64;
-                    let duration = stat_duration.duration.as_nanos() as u64;
-                    println!("{} start = {} duration = {}", name, start, duration);
-                }
-                ExecutorStatsEnum::MTChunkDone(stat_duration) => {
-                    let name = "MT_CHUNK_DONE".to_string();
-                    let start =
-                        stat_duration.start_time.duration_since(start_time).as_nanos() as u64;
-                    let duration = stat_duration.duration.as_nanos() as u64;
-                    println!("{} start = {} duration = {}", name, start, duration);
-                }
-                ExecutorStatsEnum::End(stat_duration) => {
-                    let name = "END".to_string();
+                ExecutorStatsEnum::GenerateMT(stat_duration)
+                | ExecutorStatsEnum::ChunkPlayerMT(stat_duration)
+                | ExecutorStatsEnum::MTChunkDone(stat_duration)
+                | ExecutorStatsEnum::MTExecutionDone(stat_duration)
+                | ExecutorStatsEnum::RomHistogram(stat_duration)
+                | ExecutorStatsEnum::MemOps(stat_duration)
+                | ExecutorStatsEnum::PlanGenerationMain(stat_duration)
+                | ExecutorStatsEnum::PlanGenerationSecondary(stat_duration)
+                | ExecutorStatsEnum::PlanGenerationMemOpWait(stat_duration)
+                | ExecutorStatsEnum::PlanGenerationMemOp(stat_duration)
+                | ExecutorStatsEnum::ConfigureInstances(stat_duration)
+                | ExecutorStatsEnum::PreCalculateWitness(stat_duration)
+                | ExecutorStatsEnum::CalculateWitness(stat_duration)
+                | ExecutorStatsEnum::End(stat_duration) => {
+                    let name = ExecutorStats::stats_name(stat);
                     let start =
                         stat_duration.start_time.duration_since(start_time).as_nanos() as u64;
                     let duration = stat_duration.duration.as_nanos() as u64;

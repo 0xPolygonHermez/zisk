@@ -1,4 +1,5 @@
 use tracing::error;
+use zisk_common::ExecutorStats;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::{Arc, Mutex};
@@ -8,6 +9,11 @@ use crate::{AsmRHData, AsmRHHeader, AsmRunError, AsmService, AsmServices, AsmSha
 use anyhow::{Context, Result};
 use named_sem::NamedSemaphore;
 use std::sync::atomic::{fence, Ordering};
+
+#[cfg(feature = "stats")]
+use std::time::Instant;
+#[cfg(feature = "stats")]
+use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
 
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
 pub struct AsmRunnerRH {
@@ -40,7 +46,11 @@ impl AsmRunnerRH {
         local_rank: i32,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
+        _stats: Arc<Mutex<ExecutorStats>>,
     ) -> Result<AsmRunnerRH> {
+        #[cfg(feature = "stats")]
+        let start_time = Instant::now();
+
         let sem_chunk_done_name =
             AsmSharedMemory::<AsmRHHeader>::shmem_chunk_done_name(AsmService::RH, local_rank);
 
@@ -72,6 +82,13 @@ impl AsmRunnerRH {
         }
 
         let asm_rowh_output = AsmRHData::from_shared_memory(asm_shared_memory.as_ref().unwrap());
+
+        // Add to executor stats
+        #[cfg(feature = "stats")]
+        _stats.lock().unwrap().add_stat(ExecutorStatsEnum::RomHistogram(ExecutorStatsDuration {
+            start_time,
+            duration: start_time.elapsed(),
+        }));
 
         Ok(AsmRunnerRH::new(asm_rowh_output))
     }

@@ -1,5 +1,6 @@
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use named_sem::NamedSemaphore;
+use zisk_common::ExecutorStats;
 use zisk_common::Plan;
 
 use std::ffi::c_void;
@@ -13,6 +14,11 @@ use crate::{AsmMOChunk, AsmMOHeader, AsmRunError, AsmService, AsmServices, AsmSh
 use mem_planner_cpp::MemPlanner;
 
 use anyhow::{Context, Result};
+
+#[cfg(feature = "stats")]
+use std::time::Instant;
+#[cfg(feature = "stats")]
+use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
 
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
 pub struct AsmRunnerMO {
@@ -33,7 +39,11 @@ impl AsmRunnerMO {
         local_rank: i32,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
+        _stats: Arc<Mutex<ExecutorStats>>,
     ) -> Result<Self> {
+        #[cfg(feature = "stats")]
+        let start_time = Instant::now();
+
         let sem_chunk_done_name =
             AsmSharedMemory::<AsmMOHeader>::shmem_chunk_done_name(AsmService::MO, local_rank);
 
@@ -111,6 +121,13 @@ impl AsmRunnerMO {
         mem_planner.set_completed();
         mem_planner.wait();
         let plans = mem_planner.collect_plans();
+
+        // Add to executor stats
+        #[cfg(feature = "stats")]
+        _stats.lock().unwrap().add_stat(ExecutorStatsEnum::MemOps(ExecutorStatsDuration {
+            start_time,
+            duration: start_time.elapsed(),
+        }));
 
         Ok(AsmRunnerMO::new(plans))
     }

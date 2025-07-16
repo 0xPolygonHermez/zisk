@@ -43,6 +43,7 @@ use zisk_common::{
 use zisk_common::{ChunkId, PayloadType};
 use zisk_pil::{RomRomTrace, ZiskPublicValues, MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
+use std::thread::JoinHandle;
 #[cfg(feature = "stats")]
 use std::time::Duration;
 use std::time::Instant;
@@ -257,7 +258,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     fn execute_with_assembly(
         &self,
         input_data_path: Option<PathBuf>,
-    ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<AsmRunnerMO>) {
+    ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<JoinHandle<AsmRunnerMO>>)
+    {
         if let Some(input_path) = input_data_path.as_ref() {
             for service in AsmServices::SERVICES {
                 let shmem_input_name =
@@ -271,6 +273,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let chunk_size = self.chunk_size;
         let unlock_mapped_memory = self.unlock_mapped_memory;
 
+        let stats = Arc::clone(&self.stats);
+
         // Clone the Arc to pass into the thread
         let asm_shmem_mo = self.asm_shmem_mo.clone();
 
@@ -283,9 +287,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 local_rank,
                 base_port,
                 unlock_mapped_memory,
+                stats,
             )
             .expect("Error during Assembly Memory Operations execution")
         });
+
+        let stats = Arc::clone(&self.stats);
 
         // Run the assembly ROM Histogram runner with the provided input data path only if the world rank is 0
         let handle_rh = if self.world_rank == 0 {
@@ -303,6 +310,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     local_rank,
                     base_port,
                     unlock_mapped_memory,
+                    stats,
                 )
                 .expect("Error during ROM Histogram execution")
             }))
@@ -321,10 +329,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
 
         self.execution_result.lock().unwrap().executed_steps = steps;
 
-        // Wait for the memory operations thread to finish
-        let asm_runner_mo =
-            handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
-
         // If the world rank is 0, wait for the ROM Histogram thread to finish and set the handler
         if self.world_rank == 0 {
             self.rom_sm.as_ref().unwrap().set_asm_runner_handler(
@@ -332,7 +336,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             );
         }
 
-        (min_traces, main_count, secn_count, Some(asm_runner_mo))
+        (min_traces, main_count, secn_count, Some(handle_mo))
     }
 
     fn run_mt_assembly(&self) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList) {
@@ -969,8 +973,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
         assert_eq!(self.asm_runner_path.is_some(), self.asm_rom_path.is_some());
 
-        let (min_traces, main_count, secn_count, asm_runner_mo) = if self.asm_runner_path.is_some()
-        {
+        let (min_traces, main_count, secn_count, handle_mo) = if self.asm_runner_path.is_some() {
             // If we are executing in assembly mode
             self.execute_with_assembly(input_data_path)
         } else {
@@ -986,14 +989,51 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
         // Plan the main and secondary instances using the counted metrics
+        #[cfg(feature = "stats")]
+        let start_time = Instant::now();
+
         timer_start_info!(PLAN);
         let (mut main_planning, public_values) =
             MainPlanner::plan::<F>(&min_traces, main_count, self.chunk_size);
 
+        // Add to executor stats
+        #[cfg(feature = "stats")]
+        self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::PlanGenerationMain(
+            ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
+        ));
+        #[cfg(feature = "stats")]
+        let start_time = Instant::now();
+
         let mut secn_planning = self.sm_bundle.plan_sec(secn_count);
 
-        if let Some(asm_runner_mo) = asm_runner_mo {
+        // Add to executor stats
+        #[cfg(feature = "stats")]
+        self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::PlanGenerationSecondary(
+            ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
+        ));
+        #[cfg(feature = "stats")]
+        let start_time = Instant::now();
+
+        if let Some(handle_mo) = handle_mo {
+            // Wait for the memory operations thread to finish
+            let asm_runner_mo =
+                handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
+
+            // Add to executor stats
+            #[cfg(feature = "stats")]
+            self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::PlanGenerationMemOpWait(
+                ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
+            ));
+            #[cfg(feature = "stats")]
+            let start_time = Instant::now();
+
             secn_planning[0].extend(asm_runner_mo.plans);
+
+            // Add to executor stats
+            #[cfg(feature = "stats")]
+            self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::PlanGenerationMemOp(
+                ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
+            ));
         }
 
         timer_stop_and_log_info!(PLAN);
@@ -1053,6 +1093,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
             }
         }
 
+        // Add to executor stats
+        #[cfg(feature = "stats")]
+        self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::ConfigureInstances(
+            ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
+        ));
+
         [main_global_ids, secn_global_ids_vec].concat()
     }
 
@@ -1072,6 +1118,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         n_cores: usize,
         buffer_pool: &dyn BufferPool<F>,
     ) {
+        #[cfg(feature = "stats")]
+        let start_time = Instant::now();
+
         if stage != 1 {
             return;
         }
@@ -1115,6 +1164,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                 }
             }
         });
+
+        // Add to executor stats
+        #[cfg(feature = "stats")]
+        self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::CalculateWitness(
+            ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
+        ));
     }
 
     fn pre_calculate_witness(
@@ -1125,6 +1180,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         global_ids: &[usize],
         n_cores: usize,
     ) {
+        #[cfg(feature = "stats")]
+        let start_time = Instant::now();
+
         if stage != 1 {
             return;
         }
@@ -1152,6 +1210,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                 self.witness_collect_instances(secn_instances);
             }
         });
+
+        // Add to executor stats
+        #[cfg(feature = "stats")]
+        self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::PreCalculateWitness(
+            ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
+        ));
     }
 
     /// Debugs the main and secondary state machines.
