@@ -174,7 +174,8 @@ macro_rules! table_instance {
                 bus_id: &BusId,
                 data: &[u64],
                 _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-            ) {
+            ) -> bool {
+                true
             }
             fn bus_id(&self) -> Vec<BusId> {
                 vec![self.bus_id]
@@ -295,7 +296,8 @@ macro_rules! table_instance_array {
                 bus_id: &BusId,
                 data: &[u64],
                 _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-            ) {
+            ) -> bool {
+                true
             }
 
             fn bus_id(&self) -> Vec<BusId> {

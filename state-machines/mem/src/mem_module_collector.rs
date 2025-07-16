@@ -117,11 +117,13 @@ impl BusDevice<u64> for MemModuleCollector {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+    ) -> bool{
         debug_assert!(*bus_id == MEM_BUS_ID);
 
         let inputs = MemBusDataToInput::bus_data_to_input(data);
         self.filtered_inputs_push(inputs);
+
+        true
     }
 
     fn bus_id(&self) -> Vec<BusId> {

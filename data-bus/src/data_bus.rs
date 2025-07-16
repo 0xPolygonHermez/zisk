@@ -13,7 +13,12 @@ pub trait DataBusTrait<D, T> {
     /// # Arguments
     /// * `bus_id` - The ID of the bus receiving the data.
     /// * `payload` - The data payload to be sent.
-    fn write_to_bus(&mut self, bus_id: BusId, payload: &[D]);
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
+    /// 
+    /// # Returns
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
+    fn write_to_bus(&mut self, bus_id: BusId, payload: &[D]) -> bool;
 
     fn on_close(&mut self);
 
@@ -85,13 +90,25 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// # Arguments
     /// * `bus_id` - The ID of the bus to route the data to.
     /// * `payload` - A reference to the data payload being routed.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
+    /// 
+    /// # Returns
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
-    fn route_data(&mut self, bus_id: BusId, payload: &[D]) {
+    fn route_data(&mut self, bus_id: BusId, payload: &[D]) -> bool {
+        let mut _continue = true;
         // Notify specific subscribers
         let bus_id_devices = &self.devices_bus_id_map[*bus_id];
         for device_idx in bus_id_devices {
-            self.devices[*device_idx].1.process_data(&bus_id, payload, &mut self.pending_transfers);
+            _continue &= self.devices[*device_idx].1.process_data(
+                &bus_id,
+                payload,
+                &mut self.pending_transfers,
+            );
         }
+
+        _continue
     }
 
     /// Outputs the current state of the bus for debugging purposes.
@@ -104,12 +121,14 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
 
 impl<D, BD: BusDevice<D>> DataBusTrait<D, BD> for DataBus<D, BD> {
     #[inline(always)]
-    fn write_to_bus(&mut self, bus_id: BusId, payload: &[D]) {
-        self.route_data(bus_id, payload);
+    fn write_to_bus(&mut self, bus_id: BusId, payload: &[D]) -> bool {
+        let mut _continue = self.route_data(bus_id, payload);
 
         while let Some((bus_id, payload)) = self.pending_transfers.pop_front() {
-            self.route_data(bus_id, &payload)
+            _continue &= self.route_data(bus_id, &payload);
         }
+
+        _continue
     }
 
     fn on_close(&mut self) {

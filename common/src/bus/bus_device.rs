@@ -15,11 +15,12 @@ pub trait BusDevice<D>: Any + Send + Sync {
     /// # Arguments
     /// * `bus_id` - The ID of the bus that sent the data.
     /// * `data` - A reference to the data payload being processed.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
-    /// An optional vector of tuples containing the bus ID and data payload to be sent to other
-    /// devices. If no data is to be sent, `None` is returned.
-    fn process_data(&mut self, bus_id: &BusId, data: &[D], pending: &mut VecDeque<(BusId, Vec<D>)>);
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
+    fn process_data(&mut self, bus_id: &BusId, data: &[D], pending: &mut VecDeque<(BusId, Vec<D>)>) -> bool;
 
     /// Returns the bus IDs associated with this instance.
     ///
@@ -40,8 +41,8 @@ impl BusDevice<u64> for Box<dyn BusDevice<u64>> {
         bus_id: &BusId,
         data: &[u64],
         pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
-        (**self).process_data(bus_id, data, pending);
+    ) -> bool {
+        (**self).process_data(bus_id, data, pending)
     }
 
     fn bus_id(&self) -> Vec<BusId> {

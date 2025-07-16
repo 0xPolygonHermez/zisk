@@ -219,23 +219,25 @@ impl BusDevice<u64> for RomCollector {
     /// # Arguments
     /// * `bus_id` - The ID of the bus sending the data.
     /// * `data` - The data received from the bus.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
-    /// An optional vector of tuples where:
-    /// - The first element is the bus ID.
-    /// - The second element is always empty indicating there are no derived inputs.
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+    ) -> bool {
         debug_assert!(*bus_id == ROM_BUS_ID);
 
         if !self.already_computed {
             self.rom_counter.measure(data);
         }
+
+        true
     }
 
     /// Returns the bus IDs associated with this counter.
