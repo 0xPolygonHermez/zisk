@@ -11,7 +11,7 @@ use std::{
 use crate::{rom_counter::RomCounter, RomSM};
 use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
 use std::sync::Mutex;
 use zisk_common::{
     create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
@@ -94,8 +94,9 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
+        let trace_buffer = buffer_pool.take_buffer();
         // Case 1: Use ROM assembly output
         if self.is_asm_execution() {
             let handle_rh = self.handle_rh.lock().unwrap().take().unwrap();

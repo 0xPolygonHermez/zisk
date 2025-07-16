@@ -695,13 +695,14 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// * `sctx` - Setup context.
     /// * `global_id` - Global ID of the secondary state machine instance.
     /// * `secn_instance` - Secondary state machine instance to compute witness for
+    /// * `buffer_pool` - The buffer pool used for managing memory, if needed.
     fn witness_secn_instance(
         &self,
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
         global_id: usize,
         secn_instance: &dyn Instance<F>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) {
         let (mut _stats, collectors_by_instance) = {
             let mut guard = self.collectors_by_instance.write().unwrap();
@@ -713,7 +714,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let witness_start_time = std::time::Instant::now();
 
         if let Some(air_instance) =
-            secn_instance.compute_witness(pctx, sctx, collectors_by_instance, trace_buffer)
+            secn_instance.compute_witness(pctx, sctx, collectors_by_instance, buffer_pool)
         {
             pctx.add_air_instance(air_instance, global_id);
         }
@@ -737,7 +738,11 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// * `global_id` - Global ID of the secondary state machine instance.
     /// * `secn_instance` - Secondary state machine instance to compute witness for
     #[allow(clippy::borrowed_box)]
-    fn witness_collect_instances(&self, secn_instances: HashMap<usize, &Box<dyn Instance<F>>>) {
+    fn witness_collect_instances(
+        &self,
+        secn_instances: HashMap<usize, &Box<dyn Instance<F>>>,
+        buffer_pool: &dyn BufferPool<F>,
+    ) {
         #[cfg(feature = "stats")]
         let collect_start_time = std::time::Instant::now();
 
@@ -753,8 +758,11 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let chunks_to_execute = self.chunks_to_execute(min_traces, &secn_instances);
 
         // Create data buses for each chunk
-        let mut data_buses =
-            self.sm_bundle.build_data_bus_collectors(&secn_instances, chunks_to_execute);
+        let mut data_buses = self.sm_bundle.build_data_bus_collectors(
+            &secn_instances,
+            chunks_to_execute,
+            buffer_pool,
+        );
 
         // Execute collect process for each chunk
         data_buses.par_iter_mut().enumerate().for_each(|(chunk_id, data_bus)| {
@@ -801,19 +809,20 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// * `sctx` - Setup context.
     /// * `global_id` - Global ID of the secondary state machine instance.
     /// * `table_instance` - Secondary state machine table instance to compute witness for
+    /// * `buffer_pool` - The buffer pool used for managing memory, if needed.
     fn witness_table(
         &self,
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
         global_id: usize,
         table_instance: &dyn Instance<F>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) {
         #[cfg(feature = "stats")]
         let witness_start_time = std::time::Instant::now();
         assert_eq!(table_instance.instance_type(), InstanceType::Table, "Instance is not a table");
 
-        if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![], trace_buffer)
+        if let Some(air_instance) = table_instance.compute_witness(pctx, sctx, vec![], buffer_pool)
         {
             if pctx.dctx_is_my_instance(global_id) {
                 pctx.add_air_instance(air_instance, global_id);
@@ -1057,14 +1066,14 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                             {
                                 let mut secn_instances = HashMap::new();
                                 secn_instances.insert(global_id, secn_instance);
-                                self.witness_collect_instances(secn_instances);
+                                self.witness_collect_instances(secn_instances, buffer_pool);
                             }
                             self.witness_secn_instance(
                                 &pctx,
                                 &sctx,
                                 global_id,
                                 &**secn_instance,
-                                buffer_pool.take_buffer(),
+                                buffer_pool,
                             );
                         }
                         InstanceType::Table => self.witness_table(
@@ -1072,7 +1081,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                             &sctx,
                             global_id,
                             &**secn_instance,
-                            Vec::new(),
+                            buffer_pool,
                         ),
                     }
                 }
@@ -1087,6 +1096,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         _sctx: Arc<SetupCtx<F>>,
         global_ids: &[usize],
         n_cores: usize,
+        buffer_pool: &dyn BufferPool<F>,
     ) {
         if stage != 1 {
             return;
@@ -1112,7 +1122,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
             }
 
             if !secn_instances.is_empty() {
-                self.witness_collect_instances(secn_instances);
+                self.witness_collect_instances(secn_instances, buffer_pool);
             }
         });
     }
