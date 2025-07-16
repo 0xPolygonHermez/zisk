@@ -20,7 +20,12 @@ pub trait BusDevice<D>: Any + Send + Sync {
     /// # Returns
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
-    fn process_data(&mut self, bus_id: &BusId, data: &[D], pending: &mut VecDeque<(BusId, Vec<D>)>) -> bool;
+    fn process_data(
+        &mut self,
+        bus_id: &BusId,
+        data: &[D],
+        pending: &mut VecDeque<(BusId, Vec<D>)>,
+    ) -> bool;
 
     /// Returns the bus IDs associated with this instance.
     ///

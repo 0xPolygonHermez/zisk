@@ -95,7 +95,7 @@ impl BusDevice<u64> for BinaryCounter {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) -> bool{
+    ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         self.measure(data);

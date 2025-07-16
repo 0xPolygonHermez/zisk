@@ -105,7 +105,7 @@ impl BusDevice<u64> for KeccakfCounterInputGen {
         bus_id: &BusId,
         data: &[u64],
         pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) -> bool{
+    ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if data[OP_TYPE] as u32 != ZiskOperationType::Keccak as u32 {

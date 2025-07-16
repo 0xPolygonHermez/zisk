@@ -14,7 +14,7 @@ pub trait DataBusTrait<D, T> {
     /// * `bus_id` - The ID of the bus receiving the data.
     /// * `payload` - The data payload to be sent.
     /// * `pending` – A queue of pending bus operations used to send derived inputs.
-    /// 
+    ///
     /// # Returns
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
@@ -91,7 +91,7 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// * `bus_id` - The ID of the bus to route the data to.
     /// * `payload` - A reference to the data payload being routed.
     /// * `pending` – A queue of pending bus operations used to send derived inputs.
-    /// 
+    ///
     /// # Returns
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.

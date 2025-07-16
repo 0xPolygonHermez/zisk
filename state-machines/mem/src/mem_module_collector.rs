@@ -117,7 +117,7 @@ impl BusDevice<u64> for MemModuleCollector {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) -> bool{
+    ) -> bool {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
         let inputs = MemBusDataToInput::bus_data_to_input(data);

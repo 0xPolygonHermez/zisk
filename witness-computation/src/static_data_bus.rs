@@ -74,7 +74,7 @@ impl StaticDataBus<PayloadType> {
     /// * `bus_id` - The ID of the bus to route the data to.
     /// * `payload` - A reference to the data payload being routed.
     /// * `pending` – A queue of pending bus operations used to send derived inputs.
-    /// 
+    ///
     /// # Returns
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.

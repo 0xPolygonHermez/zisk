@@ -52,7 +52,7 @@ impl BusDevice<u64> for BinaryBasicCollector {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) -> bool{
+    ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() >= self.num_operations {

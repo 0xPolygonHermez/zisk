@@ -55,7 +55,7 @@ impl BusDevice<u64> for MainCounter {
     /// * `bus_id` - The ID of the bus sending the data.
     /// * `data` - The data received from the bus.
     /// * `pending` – A queue of pending bus operations used to send derived inputs.
-    /// 
+    ///
     /// # Returns
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
@@ -65,7 +65,7 @@ impl BusDevice<u64> for MainCounter {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) -> bool{
+    ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         const PUBOUT: u64 = ZiskOperationType::PubOut as u64;

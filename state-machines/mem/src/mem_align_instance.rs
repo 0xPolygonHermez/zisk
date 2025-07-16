@@ -102,7 +102,7 @@ impl BusDevice<u64> for MemAlignCollector {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) -> bool{
+    ) -> bool {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
         let addr = MemBusData::get_addr(data);
