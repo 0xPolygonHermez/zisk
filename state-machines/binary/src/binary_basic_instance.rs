@@ -16,7 +16,7 @@ use zisk_common::{
     PayloadType,
 };
 
-use zisk_pil::{BinaryTrace, BinaryTraceSplitted};
+use zisk_pil::{BinaryTrace, BinaryTraceSplit};
 
 /// The `BinaryBasicInstance` struct represents an instance for binary-related witness computations.
 ///
@@ -26,6 +26,7 @@ pub struct BinaryBasicInstance<F: PrimeField64> {
     /// Binary Basic state machine.
     binary_basic_sm: Arc<BinaryBasicSM>,
 
+    /// Binary Basic Table State Machine.
     binary_basic_table_sm: Arc<BinaryBasicTableSM>,
 
     /// Instance context.
@@ -37,14 +38,16 @@ pub struct BinaryBasicInstance<F: PrimeField64> {
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
     collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
 
-    binary_trace_splitted: Mutex<Option<BinaryTraceSplitted<F>>>,
+    /// Split binary trace to share split data between collectors.
+    trace_split: Mutex<Option<BinaryTraceSplit<F>>>,
 }
 
 impl<F: PrimeField64> BinaryBasicInstance<F> {
     /// Creates a new `BinaryBasicInstance`.
     ///
     /// # Arguments
-    /// * `binary_basic_sm` - An `Arc`-wrapped reference to the Binary Basic State Machine.
+    /// * `binary_basic_sm` - Binary Basic State Machine.
+    /// * `binary_basic_table_sm` - Binary Basic Table State Machine.
     /// * `ictx` - The `InstanceCtx` associated with this instance, containing the execution plan.
     ///
     /// # Returns
@@ -74,7 +77,7 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
             ictx,
             with_adds,
             collect_info,
-            binary_trace_splitted: Mutex::new(None),
+            trace_split: Mutex::new(None),
         }
     }
 }
@@ -100,9 +103,7 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
         _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         _buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
-        let mut guard = self.binary_trace_splitted.lock().unwrap();
-        let split_struct = std::mem::take(&mut *guard).unwrap();
-
+        let split_struct = self.trace_split.lock().unwrap().take().unwrap();
         Some(self.binary_basic_sm.compute_witness(split_struct))
     }
 
@@ -124,7 +125,7 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
 
     fn pre_collect(&self, buffer_pool: &dyn proofman_common::BufferPool<F>) {
         let buffer = buffer_pool.take_buffer();
-        let binary_trace = BinaryTrace::new_from_vec(buffer);
+        let trace = BinaryTrace::new_from_vec(buffer);
 
         let mut sizes = vec![0; self.collect_info.keys().len()];
 
@@ -137,7 +138,7 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
             sizes[idx] = value.0 as usize;
         }
 
-        *self.binary_trace_splitted.lock().unwrap() = Some(binary_trace.to_split_struct(&sizes));
+        *self.trace_split.lock().unwrap() = Some(trace.to_split_struct(&sizes));
     }
 
     /// Builds an input collector for the instance.
@@ -148,9 +149,7 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let mut guard = self.binary_trace_splitted.lock().unwrap();
-        let element = guard.as_mut().unwrap().chunks.remove(0);
-        drop(guard);
+        let rows = self.trace_split.lock().unwrap().as_mut().unwrap().chunks.remove(0);
 
         let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(BinaryBasicCollector::new(
@@ -158,7 +157,7 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
             num_ops as usize,
             collect_skipper,
             self.with_adds,
-            element,
+            rows,
         )))
     }
 }
