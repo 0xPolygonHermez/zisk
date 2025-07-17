@@ -1047,6 +1047,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
         timer_stop_and_log_info!(PLAN);
 
+        #[cfg(feature = "stats")]
+        let start_time = Instant::now();
+
         // Configure the instances
         self.sm_bundle.configure_instances(&pctx, &secn_planning);
 
