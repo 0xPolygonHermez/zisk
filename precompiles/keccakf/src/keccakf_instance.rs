@@ -184,7 +184,7 @@ impl BusDevice<PayloadType> for KeccakfCollector {
             panic!("Expected ExtOperationData::OperationData");
         }
 
-        true
+        self.inputs.len() < self.num_operations as usize
     }
 
     /// Returns the bus IDs associated with this instance.

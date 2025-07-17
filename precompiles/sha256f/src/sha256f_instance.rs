@@ -169,7 +169,7 @@ impl BusDevice<PayloadType> for Sha256fCollector {
             panic!("Expected ExtOperationData::OperationData");
         }
 
-        true
+        self.inputs.len() < self.num_operations as usize
     }
 
     /// Returns the bus IDs associated with this instance.

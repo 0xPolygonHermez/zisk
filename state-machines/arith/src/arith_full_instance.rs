@@ -184,7 +184,7 @@ impl BusDevice<u64> for ArithInstanceCollector {
             self.inputs.push(data);
         }
 
-        true
+        self.inputs.len() < self.num_operations as usize
     }
 
     /// Returns the bus IDs associated with this instance.

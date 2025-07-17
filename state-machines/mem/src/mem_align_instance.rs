@@ -137,7 +137,7 @@ impl BusDevice<u64> for MemAlignCollector {
             mem_values,
         });
 
-        true
+        self.pending_count > 0
     }
 
     fn bus_id(&self) -> Vec<BusId> {
