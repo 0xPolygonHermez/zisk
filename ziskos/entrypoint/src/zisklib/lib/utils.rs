@@ -71,7 +71,7 @@ pub fn exp_power_of_two(x: &[u64; 4], module: &[u64; 4], power_log: usize) -> [u
 
 /// Raises `x` to (2^power_log) modulo `module` using repeated squaring
 /// Performs all operations in RISC-V assembly for maximum performance
-pub fn exp_power_of_two_self(x: &mut [u64; 4], module: &[u64; 4], power_log: usize) {
+pub fn exp_power_of_two_self(x: &mut [u64; 4], power_log: usize, module: &[u64; 4]) {
     if power_log == 0 {
         return;
     }
