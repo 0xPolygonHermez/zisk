@@ -1087,6 +1087,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         _sctx: Arc<SetupCtx<F>>,
         global_ids: &[usize],
         n_cores: usize,
+        _buffer_pool: &dyn BufferPool<F>,
     ) {
         if stage != 1 {
             return;
