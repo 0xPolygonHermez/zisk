@@ -46,6 +46,12 @@ pub struct ExecutorStats {
     pub stats: Vec<ExecutorStatsEnum>,
 }
 
+impl Default for ExecutorStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ExecutorStats {
     pub fn new() -> Self {
         Self { start_time: Instant::now(), stats: Vec::new() }
@@ -234,7 +240,7 @@ impl ExecutorStats {
                     let start =
                         stat_duration.start_time.duration_since(start_time).as_nanos() as u64;
                     let duration = stat_duration.duration.as_nanos() as u64;
-                    println!("{} start = {} duration = {}", name, start, duration);
+                    println!("{name} start = {start} duration = {duration}");
                 }
                 ExecutorStatsEnum::Air(stat_air) => {
                     let collect_start_time: u64 =
@@ -247,15 +253,13 @@ impl ExecutorStats {
                     if collect_duration > 0 {
                         let name = name.clone() + "_collect";
                         println!(
-                            "{} start = {} duration = {}",
-                            name, collect_start_time, collect_duration
+                            "{name} start = {collect_start_time} duration = {collect_duration}"
                         );
                     }
                     if witness_duration > 0 {
                         let name = name.clone() + "_witness";
                         println!(
-                            "{} start = {} duration = {}",
-                            name, witness_start_time, witness_duration
+                            "{name} start = {witness_start_time} duration = {witness_duration}"
                         );
                     }
                 }
