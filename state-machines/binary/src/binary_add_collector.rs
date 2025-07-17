@@ -67,7 +67,7 @@ impl BusDevice<u64> for BinaryAddCollector {
 
         self.inputs.push([OperationBusData::get_a(&data), OperationBusData::get_b(&data)]);
 
-        self.inputs.len() < self.num_operations as usize
+        self.inputs.len() < self.num_operations
     }
 
     /// Returns the bus IDs associated with this instance.
