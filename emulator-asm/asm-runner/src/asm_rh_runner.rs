@@ -1,14 +1,38 @@
 use tracing::error;
 use zisk_common::ExecutorStats;
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-
 use crate::{AsmRHData, AsmRHHeader, AsmRunError, AsmService, AsmServices, AsmSharedMemory};
 use anyhow::{Context, Result};
 use named_sem::NamedSemaphore;
 use std::sync::atomic::{fence, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+pub struct PreloadedRH {
+    pub output_shmem: AsmSharedMemory<AsmRHHeader>,
+}
+
+impl PreloadedRH {
+    pub fn new(
+        local_rank: i32,
+        base_port: Option<u16>,
+        unlock_mapped_memory: bool,
+    ) -> Result<Self> {
+        let port = if let Some(base_port) = base_port {
+            AsmServices::port_for(&AsmService::RH, base_port, local_rank)
+        } else {
+            AsmServices::default_port(&AsmService::RH, local_rank)
+        };
+
+        let output_name =
+            AsmSharedMemory::<AsmRHHeader>::shmem_output_name(port, AsmService::RH, local_rank);
+
+        let output_shared_memory =
+            AsmSharedMemory::<AsmRHHeader>::open_and_map(&output_name, unlock_mapped_memory)?;
+
+        Ok(Self { output_shmem: output_shared_memory })
+    }
+}
 
 #[cfg(feature = "stats")]
 use std::time::Instant;
@@ -33,7 +57,7 @@ impl AsmRunnerRH {
     }
 
     pub fn run(
-        asm_shared_memory: Arc<Mutex<Option<AsmSharedMemory<AsmRHHeader>>>>,
+        asm_shared_memory: &mut Option<PreloadedRH>,
         max_steps: u64,
         world_rank: i32,
         local_rank: i32,
@@ -72,20 +96,13 @@ impl AsmRunnerRH {
             }
         }
 
-        let mut asm_shared_memory = asm_shared_memory.lock().unwrap();
         if asm_shared_memory.is_none() {
-            *asm_shared_memory = Some(
-                AsmSharedMemory::create_shmem(
-                    port,
-                    AsmService::RH,
-                    local_rank,
-                    unlock_mapped_memory,
-                )
-                .expect("Error creating RH assembly shared memory"),
-            );
+            *asm_shared_memory =
+                Some(PreloadedRH::new(local_rank, base_port, unlock_mapped_memory)?);
         }
 
-        let asm_rowh_output = AsmRHData::from_shared_memory(asm_shared_memory.as_ref().unwrap());
+        let asm_rowh_output =
+            AsmRHData::from_shared_memory(&asm_shared_memory.as_ref().unwrap().output_shmem);
 
         // Add to executor stats
         #[cfg(feature = "stats")]

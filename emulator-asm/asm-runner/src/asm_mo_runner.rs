@@ -5,8 +5,8 @@ use zisk_common::Plan;
 
 use std::ffi::c_void;
 use std::sync::atomic::{fence, Ordering};
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 use tracing::error;
 
@@ -19,6 +19,31 @@ use anyhow::{Context, Result};
 use std::time::Instant;
 #[cfg(feature = "stats")]
 use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
+pub struct PreloadedMO {
+    pub output_shmem: AsmSharedMemory<AsmMOHeader>,
+}
+
+impl PreloadedMO {
+    pub fn new(
+        local_rank: i32,
+        base_port: Option<u16>,
+        unlock_mapped_memory: bool,
+    ) -> Result<Self> {
+        let port = if let Some(base_port) = base_port {
+            AsmServices::port_for(&AsmService::MO, base_port, local_rank)
+        } else {
+            AsmServices::default_port(&AsmService::MO, local_rank)
+        };
+
+        let output_name =
+            AsmSharedMemory::<AsmMOHeader>::shmem_output_name(port, AsmService::MO, local_rank);
+
+        let output_shared_memory =
+            AsmSharedMemory::<AsmMOHeader>::open_and_map(&output_name, unlock_mapped_memory)?;
+
+        Ok(Self { output_shmem: output_shared_memory })
+    }
+}
 
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
 pub struct AsmRunnerMO {
@@ -32,13 +57,12 @@ impl AsmRunnerMO {
 
     #[allow(clippy::too_many_arguments)]
     pub fn run(
-        asm_shared_memory: Arc<Mutex<Option<AsmSharedMemory<AsmMOHeader>>>>,
+        preloaded: &mut PreloadedMO,
         max_steps: u64,
         chunk_size: u64,
         world_rank: i32,
         local_rank: i32,
         base_port: Option<u16>,
-        unlock_mapped_memory: bool,
         _stats: Arc<Mutex<ExecutorStats>>,
     ) -> Result<Self> {
         #[cfg(feature = "stats")]
@@ -61,26 +85,8 @@ impl AsmRunnerMO {
             asm_services.send_memory_ops_request(max_steps, chunk_size)
         });
 
-        // Open and map the shared memory where the assembly emulator writes its output.
-        // The shared memory is created by the C++ assembly emulator.
-
-        // Initialize the assembly shared memory if necessary
-        let mut asm_shared_memory = asm_shared_memory.lock().unwrap();
-
-        if asm_shared_memory.is_none() {
-            *asm_shared_memory = Some(
-                AsmSharedMemory::create_shmem(
-                    port,
-                    AsmService::MO,
-                    local_rank,
-                    unlock_mapped_memory,
-                )
-                .expect("Error creating MO assembly shared memory"),
-            );
-        }
-
         // Get the pointer to the data in the shared memory.
-        let mut data_ptr = asm_shared_memory.as_ref().unwrap().data_ptr() as *const AsmMOChunk;
+        let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMOChunk;
 
         // Initialize C++ memory operations trace
         let mem_planner = MemPlanner::new();
@@ -109,7 +115,7 @@ impl AsmRunnerMO {
                 Err(e) => {
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
-                    break asm_shared_memory.as_ref().unwrap().header().exit_code;
+                    break preloaded.output_shmem.map_header().exit_code;
                 }
             }
         };
