@@ -255,6 +255,13 @@ impl ZiskStats {
             .with_local_rank(local_rank)
             .with_unlock_mapped_memory(self.unlock_mapped_memory);
 
+        if self.asm.is_some() {
+            // Start ASM microservices
+            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
+
+            asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
+        }
+
         match self.field {
             Field::Goldilocks => {
                 let library = unsafe {
@@ -276,14 +283,6 @@ impl ZiskStats {
                 .expect("Failed to initialize witness library");
 
                 proofman.register_witness(&mut *witness_lib, library);
-
-                if self.asm.is_some() {
-                    // Start ASM microservices
-                    tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
-
-                    asm_services
-                        .start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
-                }
 
                 proofman
                     .compute_witness_from_lib(self.input.clone(), &debug_info)

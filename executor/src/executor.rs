@@ -20,8 +20,8 @@
 //! maintaining clarity and modularity in the computation process.
 
 use asm_runner::{
-    write_input, AsmMOHeader, AsmMTHeader, AsmRHHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH,
-    AsmServices, AsmSharedMemory, MinimalTraces, Task, TaskFactory,
+    write_input, AsmMTHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmServices, AsmSharedMemory,
+    MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, Task, TaskFactory,
 };
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -150,9 +150,9 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     /// This is used to unlock the memory map for the ROM file.
     unlock_mapped_memory: bool,
 
-    asm_shmem_mt: Arc<Mutex<Option<AsmSharedMemory<AsmMTHeader>>>>,
-    asm_shmem_mo: Arc<Mutex<Option<AsmSharedMemory<AsmMOHeader>>>>,
-    asm_shmem_rh: Arc<Mutex<Option<AsmSharedMemory<AsmRHHeader>>>>,
+    asm_shmem_mt: Arc<Mutex<PreloadedMT>>,
+    asm_shmem_mo: Arc<Mutex<PreloadedMO>>,
+    asm_shmem_rh: Arc<Mutex<Option<PreloadedRH>>>,
 }
 
 impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
@@ -181,6 +181,11 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
     ) -> Self {
+        let asm_shmem_mt = PreloadedMT::new(local_rank, base_port, unlock_mapped_memory)
+            .expect("Failed to create PreloadedMT");
+        let asm_shmem_mo = PreloadedMO::new(local_rank, base_port, unlock_mapped_memory)
+            .expect("Failed to create PreloadedMT");
+
         Self {
             rom_path,
             asm_runner_path: asm_path,
@@ -202,8 +207,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             local_rank,
             base_port,
             unlock_mapped_memory,
-            asm_shmem_mt: Arc::new(Mutex::new(None)),
-            asm_shmem_mo: Arc::new(Mutex::new(None)),
+            asm_shmem_mt: Arc::new(Mutex::new(asm_shmem_mt)),
+            asm_shmem_mo: Arc::new(Mutex::new(asm_shmem_mo)),
             asm_shmem_rh: Arc::new(Mutex::new(None)),
         }
     }
@@ -269,38 +274,33 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             }
         }
 
+        let chunk_size = self.chunk_size;
         let (world_rank, local_rank, base_port) =
             (self.world_rank, self.local_rank, self.base_port);
-        let chunk_size = self.chunk_size;
-        let unlock_mapped_memory = self.unlock_mapped_memory;
 
-        // Clone the Arc to pass into the thread
-        let asm_shmem_mo = self.asm_shmem_mo.clone();
-
-        let handle_mo = std::thread::spawn(move || {
-            AsmRunnerMO::run(
-                asm_shmem_mo,
-                Self::MAX_NUM_STEPS,
-                chunk_size,
-                world_rank,
-                local_rank,
-                base_port,
-                unlock_mapped_memory,
-            )
-            .expect("Error during Assembly Memory Operations execution")
+        // Run the assembly Memory Operations (MO) runner thread
+        let handle_mo = std::thread::spawn({
+            let asm_shmem_mo = self.asm_shmem_mo.clone();
+            move || {
+                AsmRunnerMO::run(
+                    &mut asm_shmem_mo.lock().unwrap(),
+                    Self::MAX_NUM_STEPS,
+                    chunk_size,
+                    world_rank,
+                    local_rank,
+                    base_port,
+                )
+                .expect("Error during Assembly Memory Operations execution")
+            }
         });
 
-        // Run the assembly ROM Histogram runner with the provided input data path only if the world rank is 0
-        let handle_rh = if self.world_rank == 0 {
-            let (world_rank, local_rank, base_port) =
-                (self.world_rank, self.local_rank, self.base_port);
-
-            // Clone the Arc to pass into the thread
+        // Run the assembly ROM Histogram (RH) runner thread only if the world rank is 0
+        let handle_rh = (self.world_rank == 0).then(|| {
             let asm_shmem_rh = self.asm_shmem_rh.clone();
-
-            Some(std::thread::spawn(move || {
+            let unlock_mapped_memory = self.unlock_mapped_memory;
+            std::thread::spawn(move || {
                 AsmRunnerRH::run(
-                    asm_shmem_rh,
+                    &mut asm_shmem_rh.lock().unwrap(),
                     Self::MAX_NUM_STEPS,
                     world_rank,
                     local_rank,
@@ -308,10 +308,8 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     unlock_mapped_memory,
                 )
                 .expect("Error during ROM Histogram execution")
-            }))
-        } else {
-            None
-        };
+            })
+        });
 
         let (min_traces, main_count, secn_count) = self.run_mt_assembly();
 
@@ -386,14 +384,13 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             });
 
         let (asm_runner_mt, mut data_buses) = AsmRunnerMT::run_and_count(
-            self.asm_shmem_mt.clone(),
+            &mut self.asm_shmem_mt.lock().unwrap(),
             Self::MAX_NUM_STEPS,
             self.chunk_size,
             task_factory,
             self.world_rank,
             self.local_rank,
             self.base_port,
-            self.unlock_mapped_memory,
         )
         .expect("Error during ASM execution");
 
