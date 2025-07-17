@@ -6,9 +6,7 @@
 //! the system bus for both monitoring and input generation.
 
 use std::collections::VecDeque;
-use zisk_common::{
-    BusDevice, BusDeviceMode, BusId, Counter, Metrics, OP, OPERATION_BUS_ID, OP_TYPE,
-};
+use zisk_common::{BusDevice, BusId, Counter, Metrics, OP, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
 /// The `BinaryCounter` struct represents a counter that monitors and measures
@@ -16,6 +14,7 @@ use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 ///
 /// It tracks specific operations and types and updates differents counters for each
 /// accepted operation whenever data is processed on the bus.
+#[derive(Default)]
 pub struct BinaryCounter {
     /// Counter for binary add operations (only add, no addw)
     pub counter_add: Counter,
@@ -25,9 +24,6 @@ pub struct BinaryCounter {
 
     /// Counter for binary extension operations
     pub counter_extension: Counter,
-
-    /// Bus device mode (counter or input generator).
-    pub mode: BusDeviceMode,
 }
 
 impl BinaryCounter {
@@ -38,13 +34,8 @@ impl BinaryCounter {
     ///
     /// # Returns
     /// A new `BinaryCounter` instance.
-    pub fn new(mode: BusDeviceMode) -> Self {
-        Self {
-            counter_add: Counter::default(),
-            counter_basic_wo_add: Counter::default(),
-            counter_extension: Counter::default(),
-            mode,
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -105,9 +96,7 @@ impl BusDevice<u64> for BinaryCounter {
     ) {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
-        if self.mode == BusDeviceMode::Counter {
-            self.measure(data);
-        }
+        self.measure(data);
     }
 
     /// Returns the bus IDs associated with this counter.
