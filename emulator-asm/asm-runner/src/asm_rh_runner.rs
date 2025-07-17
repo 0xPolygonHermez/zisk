@@ -106,7 +106,7 @@ impl AsmRunnerRH {
 
         // Add to executor stats
         #[cfg(feature = "stats")]
-        _stats.lock().unwrap().add_stat(ExecutorStatsEnum::RomHistogram(ExecutorStatsDuration {
+        _stats.lock().unwrap().add_stat(ExecutorStatsEnum::AsmRomHistogram(ExecutorStatsDuration {
             start_time,
             duration: start_time.elapsed(),
         }));

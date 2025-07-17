@@ -8,12 +8,13 @@ use zisk_pil::*;
 
 #[derive(Debug, Clone)]
 pub enum ExecutorStatsEnum {
-    GenerateMT(ExecutorStatsDuration),
     ChunkPlayerMT(ExecutorStatsDuration),
     MTChunkDone(ExecutorStatsDuration),
-    MTExecutionDone(ExecutorStatsDuration),
-    RomHistogram(ExecutorStatsDuration),
-    MemOps(ExecutorStatsDuration),
+    AsmMtGeneration(ExecutorStatsDuration),
+    AsmRomHistogram(ExecutorStatsDuration),
+    AsmMemOps(ExecutorStatsDuration),
+    MemOpsProcessChunks(ExecutorStatsDuration),
+    MemOpsCollectPlans(ExecutorStatsDuration),
     PlanGenerationMain(ExecutorStatsDuration),
     PlanGenerationSecondary(ExecutorStatsDuration),
     PlanGenerationMemOpWait(ExecutorStatsDuration),
@@ -94,12 +95,17 @@ impl ExecutorStats {
 
     fn stats_name(stats: &ExecutorStatsEnum) -> String {
         match stats {
-            ExecutorStatsEnum::GenerateMT(_stat_duration) => "MT_GENERATION".to_string(),
             ExecutorStatsEnum::ChunkPlayerMT(_stat_duration) => "MT_CHUNK_PLAYER".to_string(),
             ExecutorStatsEnum::MTChunkDone(_stat_duration) => "MT_CHUNK_DONE".to_string(),
-            ExecutorStatsEnum::MTExecutionDone(_stat_duration) => "MT_EXECUTION_DONE".to_string(),
-            ExecutorStatsEnum::RomHistogram(_stat_duration) => "ROM_HISTOGRAM".to_string(),
-            ExecutorStatsEnum::MemOps(_stat_duration) => "MEM_OPS".to_string(),
+            ExecutorStatsEnum::AsmMtGeneration(_stat_duration) => "ASM_MT_GENERATION".to_string(),
+            ExecutorStatsEnum::AsmRomHistogram(_stat_duration) => "ASM_ROM_HISTOGRAM".to_string(),
+            ExecutorStatsEnum::AsmMemOps(_stat_duration) => "ASM_MEM_OPS".to_string(),
+            ExecutorStatsEnum::MemOpsProcessChunks(_stat_duration) => {
+                "MEM_OPS_PROCESS_CHUNKS".to_string()
+            }
+            ExecutorStatsEnum::MemOpsCollectPlans(_stat_duration) => {
+                "MEM_OPS_COLLECT_PLANS".to_string()
+            }
             ExecutorStatsEnum::PlanGenerationMain(_stat_duration) => {
                 "PLAN_GENERATION_MAIN".to_string()
             }
@@ -142,11 +148,12 @@ impl ExecutorStats {
         tracing::info!("Collected a total of {} statistics", stats.len());
         for stat in stats.iter() {
             match stat {
-                ExecutorStatsEnum::GenerateMT(stat_duration)
-                | ExecutorStatsEnum::ChunkPlayerMT(stat_duration)
-                | ExecutorStatsEnum::MTExecutionDone(stat_duration)
-                | ExecutorStatsEnum::RomHistogram(stat_duration)
-                | ExecutorStatsEnum::MemOps(stat_duration)
+                ExecutorStatsEnum::ChunkPlayerMT(stat_duration)
+                | ExecutorStatsEnum::AsmMtGeneration(stat_duration)
+                | ExecutorStatsEnum::AsmRomHistogram(stat_duration)
+                | ExecutorStatsEnum::AsmMemOps(stat_duration)
+                | ExecutorStatsEnum::MemOpsProcessChunks(stat_duration)
+                | ExecutorStatsEnum::MemOpsCollectPlans(stat_duration)
                 | ExecutorStatsEnum::PlanGenerationMain(stat_duration)
                 | ExecutorStatsEnum::PlanGenerationSecondary(stat_duration)
                 | ExecutorStatsEnum::PlanGenerationMemOpWait(stat_duration)
@@ -221,12 +228,13 @@ impl ExecutorStats {
         println!("Collected a total of {} statistics", stats.len());
         for stat in stats.iter() {
             match stat {
-                ExecutorStatsEnum::GenerateMT(stat_duration)
-                | ExecutorStatsEnum::ChunkPlayerMT(stat_duration)
+                ExecutorStatsEnum::ChunkPlayerMT(stat_duration)
                 | ExecutorStatsEnum::MTChunkDone(stat_duration)
-                | ExecutorStatsEnum::MTExecutionDone(stat_duration)
-                | ExecutorStatsEnum::RomHistogram(stat_duration)
-                | ExecutorStatsEnum::MemOps(stat_duration)
+                | ExecutorStatsEnum::AsmMtGeneration(stat_duration)
+                | ExecutorStatsEnum::AsmRomHistogram(stat_duration)
+                | ExecutorStatsEnum::AsmMemOps(stat_duration)
+                | ExecutorStatsEnum::MemOpsProcessChunks(stat_duration)
+                | ExecutorStatsEnum::MemOpsCollectPlans(stat_duration)
                 | ExecutorStatsEnum::PlanGenerationMain(stat_duration)
                 | ExecutorStatsEnum::PlanGenerationSecondary(stat_duration)
                 | ExecutorStatsEnum::PlanGenerationMemOpWait(stat_duration)

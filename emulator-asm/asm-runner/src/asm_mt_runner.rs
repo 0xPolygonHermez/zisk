@@ -110,7 +110,7 @@ impl AsmRunnerMT {
 
             // Add to executor stats
             #[cfg(feature = "stats")]
-            __stats.lock().unwrap().add_stat(ExecutorStatsEnum::MTExecutionDone(
+            __stats.lock().unwrap().add_stat(ExecutorStatsEnum::AsmMtGeneration(
                 ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
             ));
 

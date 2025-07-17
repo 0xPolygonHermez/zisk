@@ -65,9 +65,6 @@ impl AsmRunnerMO {
         base_port: Option<u16>,
         _stats: Arc<Mutex<ExecutorStats>>,
     ) -> Result<Self> {
-        #[cfg(feature = "stats")]
-        let start_time = Instant::now();
-
         let port = if let Some(base_port) = base_port {
             AsmServices::port_for(&AsmService::MO, base_port, local_rank)
         } else {
@@ -80,9 +77,23 @@ impl AsmRunnerMO {
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
+        let __stats = Arc::clone(&_stats);
+
         let handle = std::thread::spawn(move || {
+            #[cfg(feature = "stats")]
+            let start_time = Instant::now();
+
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
-            asm_services.send_memory_ops_request(max_steps, chunk_size)
+            let result = asm_services.send_memory_ops_request(max_steps, chunk_size);
+
+            // Add to executor stats
+            #[cfg(feature = "stats")]
+            __stats.lock().unwrap().add_stat(ExecutorStatsEnum::AsmMemOps(ExecutorStatsDuration {
+                start_time,
+                duration: start_time.elapsed(),
+            }));
+
+            result
         });
 
         // Get the pointer to the data in the shared memory.
@@ -91,6 +102,9 @@ impl AsmRunnerMO {
         // Initialize C++ memory operations trace
         let mem_planner = MemPlanner::new();
         mem_planner.execute();
+
+        #[cfg(feature = "stats")]
+        let start_time = Instant::now();
 
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
@@ -137,14 +151,23 @@ impl AsmRunnerMO {
 
         mem_planner.set_completed();
         mem_planner.wait();
+
+        // Add to executor stats
+        #[cfg(feature = "stats")]
+        _stats.lock().unwrap().add_stat(ExecutorStatsEnum::MemOpsProcessChunks(
+            ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
+        ));
+
+        #[cfg(feature = "stats")]
+        let start_time = Instant::now();
+
         let plans = mem_planner.collect_plans();
 
         // Add to executor stats
         #[cfg(feature = "stats")]
-        _stats.lock().unwrap().add_stat(ExecutorStatsEnum::MemOps(ExecutorStatsDuration {
-            start_time,
-            duration: start_time.elapsed(),
-        }));
+        _stats.lock().unwrap().add_stat(ExecutorStatsEnum::MemOpsCollectPlans(
+            ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
+        ));
 
         Ok(AsmRunnerMO::new(plans))
     }

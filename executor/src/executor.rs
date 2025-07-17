@@ -347,9 +347,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     }
 
     fn run_mt_assembly(&self) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList) {
-        #[cfg(feature = "stats")]
-        let start_time = Instant::now();
-
         struct CounterTask<F, DB>
         where
             DB: DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>,
@@ -452,12 +449,6 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 secn_vec_counters[i].push((chunk_id, counter.unwrap_or(Box::new(DummyCounter {}))));
             });
         });
-
-        #[cfg(feature = "stats")]
-        self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::GenerateMT(ExecutorStatsDuration {
-            start_time,
-            duration: start_time.elapsed(),
-        }));
 
         (MinimalTraces::AsmEmuTrace(asm_runner_mt), main_count, secn_vec_counters)
     }
