@@ -73,7 +73,7 @@ impl AsmRunnerMT {
 
         let start_time = Instant::now();
 
-        let stats = Arc::clone(&_stats);
+        let __stats = Arc::clone(&_stats);
 
         let handle = std::thread::spawn(move || {
             let asm_services = AsmServices::new(world_rank, local_rank, base_port);
@@ -81,7 +81,7 @@ impl AsmRunnerMT {
 
             // Add to executor stats
             #[cfg(feature = "stats")]
-            stats.lock().unwrap().add_stat(ExecutorStatsEnum::MTExecutionDone(
+            __stats.lock().unwrap().add_stat(ExecutorStatsEnum::MTExecutionDone(
                 ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
             ));
 
@@ -106,6 +106,8 @@ impl AsmRunnerMT {
         let mut emu_traces = Vec::new();
         let mut handles = Vec::new();
 
+        let __stats = Arc::clone(&_stats);
+
         let exit_code = loop {
             match sem_chunk_done.timed_wait(Duration::from_secs(10)) {
                 Ok(()) => {
@@ -113,7 +115,7 @@ impl AsmRunnerMT {
                     {
                         use zisk_common::ExecutorStatsDuration;
 
-                        _stats.lock().unwrap().add_stat(
+                        __stats.lock().unwrap().add_stat(
                             zisk_common::ExecutorStatsEnum::MTChunkDone(ExecutorStatsDuration {
                                 start_time: Instant::now(),
                                 duration: Duration::new(0, 1),
