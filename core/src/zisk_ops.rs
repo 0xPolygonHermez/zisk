@@ -1124,6 +1124,14 @@ pub fn opc_keccak(ctx: &mut InstContext) {
             for (i, d) in data.iter_mut().enumerate() {
                 *d = ctx.mem.read(address + (8 * i as u64), 8);
             }
+
+            // Call keccakf
+            keccakf(&mut data);
+
+            // Write data to the memory address
+            for (i, d) in data.iter().enumerate() {
+                ctx.mem.write(address + (8 * i as u64), *d, 8);
+            }
         }
         EmulationMode::GenerateMemReads => {
             // Read data from the memory address
@@ -1136,8 +1144,20 @@ pub fn opc_keccak(ctx: &mut InstContext) {
             for (i, d) in data.iter_mut().enumerate() {
                 ctx.precompiled.input_data.push(*d);
             }
-            // Write the input data address to the precompiled context
-            // ctx.precompiled.input_data_address = address;
+
+            // Call keccakf
+            keccakf(&mut data);
+
+            // Write data to the memory address
+            for (i, d) in data.iter().enumerate() {
+                ctx.mem.write(address + (8 * i as u64), *d, 8);
+            }
+
+            // Write data to the precompiled context
+            ctx.precompiled.output_data.clear();
+            for (i, d) in data.iter_mut().enumerate() {
+                ctx.precompiled.output_data.push(*d);
+            }
         }
         EmulationMode::ConsumeMemReads => {
             // Check input data has the expected length
@@ -1148,36 +1168,7 @@ pub fn opc_keccak(ctx: &mut InstContext) {
                     WORDS
                 );
             }
-            // Read data from the precompiled context
-            for (i, d) in data.iter_mut().enumerate() {
-                *d = ctx.precompiled.input_data[i];
-            }
-            // Write the input data address to the precompiled context
-            // ctx.precompiled.input_data_address = address;
         }
-    }
-
-    // Call keccakf
-    keccakf(&mut data);
-
-    // Write data to the memory address
-    for (i, d) in data.iter().enumerate() {
-        ctx.mem.write(address + (8 * i as u64), *d, 8);
-    }
-
-    // Set input data to the precompiled context
-    match ctx.emulation_mode {
-        EmulationMode::Mem => {}
-        EmulationMode::GenerateMemReads => {
-            // Write data to the precompiled context
-            ctx.precompiled.output_data.clear();
-            for (i, d) in data.iter_mut().enumerate() {
-                ctx.precompiled.output_data.push(*d);
-            }
-            // Write the input data address to the precompiled context
-            // ctx.precompiled.output_data_address = address;
-        }
-        EmulationMode::ConsumeMemReads => {}
     }
 
     ctx.c = 0;
@@ -1201,17 +1192,19 @@ pub fn opc_sha256(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 2, 2, 4, 4, &mut data, "sha256");
 
-    // Get the state and input slices
-    let (ind, rest) = data.split_at_mut(2);
-    let (state_slice, input_slice) = rest.split_at_mut(4);
-    let state: &mut [u64; 4] = state_slice.try_into().unwrap();
-    let input: &[u64; 8] = input_slice[..8].try_into().unwrap();
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // Get the state and input slices
+        let (ind, rest) = data.split_at_mut(2);
+        let (state_slice, input_slice) = rest.split_at_mut(4);
+        let state: &mut [u64; 4] = state_slice.try_into().unwrap();
+        let input: &[u64; 8] = input_slice[..8].try_into().unwrap();
 
-    // Compute the sha output with the fastest implementation available
-    sha256f(state, input);
+        // Compute the sha output with the fastest implementation available
+        sha256f(state, input);
 
-    for (i, d) in state.iter().enumerate() {
-        ctx.mem.write(ind[0] + (8 * i as u64), *d, 8);
+        for (i, d) in state.iter().enumerate() {
+            ctx.mem.write(ind[0] + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1317,26 +1310,28 @@ pub fn opc_arith256(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 5, 3, 4, 0, &mut data, "arith256");
 
-    // ignore 5 indirections
-    let (_, rest) = data.split_at(5);
-    let (a, rest) = rest.split_at(4);
-    let (b, c) = rest.split_at(4);
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 5 indirections
+        let (_, rest) = data.split_at(5);
+        let (a, rest) = rest.split_at(4);
+        let (b, c) = rest.split_at(4);
 
-    let a: &[u64; 4] = a.try_into().expect("opc_arith256: a.len != 4");
-    let b: &[u64; 4] = b.try_into().expect("opc_arith256: b.len != 4");
-    let c: &[u64; 4] = c.try_into().expect("opc_arith256: c.len != 4");
+        let a: &[u64; 4] = a.try_into().expect("opc_arith256: a.len != 4");
+        let b: &[u64; 4] = b.try_into().expect("opc_arith256: b.len != 4");
+        let c: &[u64; 4] = c.try_into().expect("opc_arith256: c.len != 4");
 
-    let mut dl = [0u64; 4];
-    let mut dh = [0u64; 4];
+        let mut dl = [0u64; 4];
+        let mut dh = [0u64; 4];
 
-    precompiles_helpers::arith256(a, b, c, &mut dl, &mut dh);
+        precompiles_helpers::arith256(a, b, c, &mut dl, &mut dh);
 
-    // [a,b,c,3:dl,4:dh]
-    for (i, dl_item) in dl.iter().enumerate() {
-        ctx.mem.write(data[3] + (8 * i as u64), *dl_item, 8);
-    }
-    for (i, dh_item) in dh.iter().enumerate() {
-        ctx.mem.write(data[4] + (8 * i as u64), *dh_item, 8);
+        // [a,b,c,3:dl,4:dh]
+        for (i, dl_item) in dl.iter().enumerate() {
+            ctx.mem.write(data[3] + (8 * i as u64), *dl_item, 8);
+        }
+        for (i, dh_item) in dh.iter().enumerate() {
+            ctx.mem.write(data[4] + (8 * i as u64), *dh_item, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1357,25 +1352,27 @@ pub fn opc_arith256_mod(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 5, 4, 4, 0, &mut data, "arith256_mod");
 
-    // ignore 5 indirections
-    let (_, rest) = data.split_at(5);
-    let (a, rest) = rest.split_at(4);
-    let (b, rest) = rest.split_at(4);
-    let (c, module) = rest.split_at(4);
-    let mut d = [0u64; 4];
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 5 indirections
+        let (_, rest) = data.split_at(5);
+        let (a, rest) = rest.split_at(4);
+        let (b, rest) = rest.split_at(4);
+        let (c, module) = rest.split_at(4);
+        let mut d = [0u64; 4];
 
-    let a: &[u64; 4] = a.try_into().expect("opc_arith256_mod: a.len != 4");
-    let b: &[u64; 4] = b.try_into().expect("opc_arith256_mod: b.len != 4");
-    let c: &[u64; 4] = c.try_into().expect("opc_arith256_mod: c.len != 4");
-    let module: &[u64; 4] = module.try_into().expect("opc_arith256_mod: module.len != 4");
+        let a: &[u64; 4] = a.try_into().expect("opc_arith256_mod: a.len != 4");
+        let b: &[u64; 4] = b.try_into().expect("opc_arith256_mod: b.len != 4");
+        let c: &[u64; 4] = c.try_into().expect("opc_arith256_mod: c.len != 4");
+        let module: &[u64; 4] = module.try_into().expect("opc_arith256_mod: module.len != 4");
 
-    let mut d = [0u64; 4];
+        let mut d = [0u64; 4];
 
-    precompiles_helpers::arith256_mod(a, b, c, module, &mut d);
+        precompiles_helpers::arith256_mod(a, b, c, module, &mut d);
 
-    // [a,b,c,module,4:d]
-    for (i, d) in d.iter().enumerate() {
-        ctx.mem.write(data[4] + (8 * i as u64), *d, 8);
+        // [a,b,c,module,4:d]
+        for (i, d) in d.iter().enumerate() {
+            ctx.mem.write(data[4] + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1396,21 +1393,22 @@ pub fn opc_secp256k1_add(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "secp256k1_add");
 
-    // ignore 2 indirections
-    let (_, rest) = data.split_at(2);
-    let (p1, p2) = rest.split_at(8);
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (p1, p2) = rest.split_at(8);
 
-    let p1: &[u64; 8] = p1.try_into().expect("opc_secp256k1_add: p1.len != 8");
-    let p2: &[u64; 8] = p2.try_into().expect("opc_secp256k1_add: p2.len != 8");
-    let mut p3 = [0u64; 8];
+        let p1: &[u64; 8] = p1.try_into().expect("opc_secp256k1_add: p1.len != 8");
+        let p2: &[u64; 8] = p2.try_into().expect("opc_secp256k1_add: p2.len != 8");
+        let mut p3 = [0u64; 8];
 
-    precompiles_helpers::secp256k1_add(p1, p2, &mut p3);
+        precompiles_helpers::secp256k1_add(p1, p2, &mut p3);
 
-    // [0:p1,p2]
-    for (i, d) in p3.iter().enumerate() {
-        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        // [0:p1,p2]
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
     }
-
     ctx.c = 0;
     ctx.flag = false;
 }
@@ -1429,13 +1427,15 @@ pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 0, 1, 8, 0, &mut data, "secp256k1_dbl");
 
-    let p1: &[u64; 8] = &data;
-    let mut p3 = [0u64; 8];
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        let p1: &[u64; 8] = &data;
+        let mut p3 = [0u64; 8];
 
-    precompiles_helpers::secp256k1_dbl(p1, &mut p3);
+        precompiles_helpers::secp256k1_dbl(p1, &mut p3);
 
-    for (i, d) in p3.iter().enumerate() {
-        ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1456,19 +1456,21 @@ pub fn opc_bn254_curve_add(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_curve_add");
 
-    // ignore 2 indirections
-    let (_, rest) = data.split_at(2);
-    let (p1, p2) = rest.split_at(8);
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (p1, p2) = rest.split_at(8);
 
-    let p1: &[u64; 8] = p1.try_into().expect("opc_bn254_curve_add: p1.len != 8");
-    let p2: &[u64; 8] = p2.try_into().expect("opc_bn254_curve_add: p2.len != 8");
-    let mut p3 = [0u64; 8];
+        let p1: &[u64; 8] = p1.try_into().expect("opc_bn254_curve_add: p1.len != 8");
+        let p2: &[u64; 8] = p2.try_into().expect("opc_bn254_curve_add: p2.len != 8");
+        let mut p3 = [0u64; 8];
 
-    precompiles_helpers::bn254_curve_add(p1, p2, &mut p3);
+        precompiles_helpers::bn254_curve_add(p1, p2, &mut p3);
 
-    // [0:p1,p2]
-    for (i, d) in p3.iter().enumerate() {
-        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        // [0:p1,p2]
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1489,13 +1491,15 @@ pub fn opc_bn254_curve_dbl(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 0, 1, 8, 0, &mut data, "bn254_curve_dbl");
 
-    let p1: &[u64; 8] = &data;
-    let mut p3 = [0u64; 8];
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        let p1: &[u64; 8] = &data;
+        let mut p3 = [0u64; 8];
 
-    precompiles_helpers::bn254_curve_dbl(p1, &mut p3);
+        precompiles_helpers::bn254_curve_dbl(p1, &mut p3);
 
-    for (i, d) in p3.iter().enumerate() {
-        ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1516,19 +1520,21 @@ pub fn opc_bn254_complex_add(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_add");
 
-    // ignore 2 indirections
-    let (_, rest) = data.split_at(2);
-    let (f1, f2) = rest.split_at(8);
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (f1, f2) = rest.split_at(8);
 
-    let f1: &[u64; 8] = f1.try_into().expect("opc_bn254_complex_add: f1.len != 8");
-    let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_add: f2.len != 8");
-    let mut f3 = [0u64; 8];
+        let f1: &[u64; 8] = f1.try_into().expect("opc_bn254_complex_add: f1.len != 8");
+        let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_add: f2.len != 8");
+        let mut f3 = [0u64; 8];
 
-    precompiles_helpers::bn254_complex_add(f1, f2, &mut f3);
+        precompiles_helpers::bn254_complex_add(f1, f2, &mut f3);
 
-    // [0:f1,f2]
-    for (i, d) in f3.iter().enumerate() {
-        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        // [0:f1,f2]
+        for (i, d) in f3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1549,19 +1555,21 @@ pub fn opc_bn254_complex_sub(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_sub");
 
-    // ignore 2 indirections
-    let (_, rest) = data.split_at(2);
-    let (f1, f2) = rest.split_at(8);
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (f1, f2) = rest.split_at(8);
 
-    let f1: &[u64; 8] = f1.try_into().expect("opc_bn254_complex_sub: f1.len != 8");
-    let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_sub: f2.len != 8");
-    let mut f3 = [0u64; 8];
+        let f1: &[u64; 8] = f1.try_into().expect("opc_bn254_complex_sub: f1.len != 8");
+        let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_sub: f2.len != 8");
+        let mut f3 = [0u64; 8];
 
-    precompiles_helpers::bn254_complex_sub(f1, f2, &mut f3);
+        precompiles_helpers::bn254_complex_sub(f1, f2, &mut f3);
 
-    // [0:f1,f2]
-    for (i, d) in f3.iter().enumerate() {
-        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        // [0:f1,f2]
+        for (i, d) in f3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1582,19 +1590,21 @@ pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
 
     precompiled_load_data(ctx, 2, 2, 8, 0, &mut data, "bn254_complex_mul");
 
-    // ignore 2 indirections
-    let (_, rest) = data.split_at(2);
-    let (f1, f2) = rest.split_at(8);
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (f1, f2) = rest.split_at(8);
 
-    let f1: &[u64; 8] = f1.try_into().expect("opc_bn254_complex_mul: f1.len != 8");
-    let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_mul: f2.len != 8");
-    let mut f3 = [0u64; 8];
+        let f1: &[u64; 8] = f1.try_into().expect("opc_bn254_complex_mul: f1.len != 8");
+        let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_mul: f2.len != 8");
+        let mut f3 = [0u64; 8];
 
-    precompiles_helpers::bn254_complex_mul(f1, f2, &mut f3);
+        precompiles_helpers::bn254_complex_mul(f1, f2, &mut f3);
 
-    // [0:f1,f2]
-    for (i, d) in f3.iter().enumerate() {
-        ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        // [0:f1,f2]
+        for (i, d) in f3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
     }
 
     ctx.c = 0;
@@ -1643,7 +1653,7 @@ pub fn opc_fcall_param(ctx: &mut InstContext) {
 
     // Do nothing when emulating in consume memory reads mode;
     // data will be directly obtained from mem_reads
-    if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
+    if ctx.emulation_mode == EmulationMode::ConsumeMemReads {
         return;
     }
 
@@ -1690,7 +1700,7 @@ pub fn opc_fcall(ctx: &mut InstContext) {
 
     // Do nothing when emulating in consume memory reads mode;
     // data will be directly obtained from mem_reads
-    if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
+    if ctx.emulation_mode == EmulationMode::ConsumeMemReads {
         return;
     }
 
@@ -1728,7 +1738,7 @@ pub fn opc_fcall_get(ctx: &mut InstContext) {
 
     // Do nothing when emulating in consume memory reads mode;
     // data will be directly obtained from mem_reads
-    if let EmulationMode::ConsumeMemReads = ctx.emulation_mode {
+    if ctx.emulation_mode == EmulationMode::ConsumeMemReads {
         return;
     }
     // Check for consistency
