@@ -32,13 +32,6 @@ impl AsmRunnerRH {
         AsmRunnerRH { asm_rowh_output }
     }
 
-    pub fn create_shmem(
-        local_rank: i32,
-        unlock_mapped_memory: bool,
-    ) -> Result<AsmSharedMemory<AsmRHHeader>> {
-        AsmSharedMemory::create_shmem(AsmService::RH, local_rank, unlock_mapped_memory)
-    }
-
     pub fn run(
         asm_shared_memory: Arc<Mutex<Option<AsmSharedMemory<AsmRHHeader>>>>,
         max_steps: u64,
@@ -51,8 +44,14 @@ impl AsmRunnerRH {
         #[cfg(feature = "stats")]
         let start_time = Instant::now();
 
+        let port = if let Some(base_port) = base_port {
+            AsmServices::port_for(&AsmService::RH, base_port, local_rank)
+        } else {
+            AsmServices::default_port(&AsmService::RH, local_rank)
+        };
+
         let sem_chunk_done_name =
-            AsmSharedMemory::<AsmRHHeader>::shmem_chunk_done_name(AsmService::RH, local_rank);
+            AsmSharedMemory::<AsmRHHeader>::shmem_chunk_done_name(port, AsmService::RH, local_rank);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -76,8 +75,13 @@ impl AsmRunnerRH {
         let mut asm_shared_memory = asm_shared_memory.lock().unwrap();
         if asm_shared_memory.is_none() {
             *asm_shared_memory = Some(
-                AsmSharedMemory::create_shmem(AsmService::RH, local_rank, unlock_mapped_memory)
-                    .expect("Error creating MO assembly shared memory"),
+                AsmSharedMemory::create_shmem(
+                    port,
+                    AsmService::RH,
+                    local_rank,
+                    unlock_mapped_memory,
+                )
+                .expect("Error creating RH assembly shared memory"),
             );
         }
 

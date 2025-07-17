@@ -44,7 +44,7 @@ pub trait Instance<F: PrimeField64>: Send + Sync {
     ///
     /// # Returns
     /// A `CheckPoint` object representing the state of the computation plan.
-    fn check_point(&self) -> CheckPoint;
+    fn check_point(&self) -> &CheckPoint;
 
     /// Retrieves the type of the instance.
     ///
@@ -155,8 +155,8 @@ macro_rules! table_instance {
                 }
             }
 
-            fn check_point(&self) -> CheckPoint {
-                self.ictx.plan.check_point.clone()
+            fn check_point(&self) -> &CheckPoint {
+                &self.ictx.plan.check_point
             }
 
             fn instance_type(&self) -> InstanceType {
@@ -276,8 +276,8 @@ macro_rules! table_instance_array {
                 }
             }
 
-            fn check_point(&self) -> CheckPoint {
-                self.ictx.plan.check_point.clone()
+            fn check_point(&self) -> &CheckPoint {
+                &self.ictx.plan.check_point
             }
 
             fn instance_type(&self) -> InstanceType {

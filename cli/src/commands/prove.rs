@@ -24,9 +24,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{
     collections::HashMap,
-    env,
     fs::{self, File},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 use zisk_common::{ExecutorStats, ProofLog, ZiskLibInitFn};
 #[cfg(feature = "stats")]
@@ -126,10 +125,6 @@ pub struct ZiskProve {
 
     #[clap(short = 'c', long)]
     pub chunk_size_bits: Option<u64>,
-
-    // PRECOMPILES OPTIONS
-    /// Sha256f script path
-    pub sha256f_script: Option<PathBuf>,
 }
 
 impl ZiskProve {
@@ -150,17 +145,6 @@ impl ZiskProve {
             Some(Some(debug_value)) => {
                 json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
             }
-        };
-
-        let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
-            sha256f_path.clone()
-        } else {
-            let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{home_dir}/.zisk/bin/sha256f_script.json"));
-            if !script_path.exists() {
-                panic!("Sha256f script file not found at {script_path:?}");
-            }
-            script_path
         };
 
         if self.output_dir.join("proofs").exists() {
@@ -234,7 +218,7 @@ impl ZiskProve {
                 .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
         }
 
-        self.print_command_info(&sha256f_script);
+        self.print_command_info();
 
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
@@ -306,7 +290,6 @@ impl ZiskProve {
             self.elf.clone(),
             self.asm.clone(),
             asm_rom,
-            sha256f_script,
             self.chunk_size_bits,
             Some(mpi_context.world_rank),
             Some(mpi_context.local_rank),
@@ -325,7 +308,7 @@ impl ZiskProve {
             match self.field {
                 Field::Goldilocks => {
                     return proofman
-                        .verify_proof_constraints_from_lib(self.input.clone(), &debug_info)
+                        .verify_proof_constraints_from_lib(self.input.clone(), &debug_info, false)
                         .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e));
                 }
             };
@@ -404,7 +387,7 @@ impl ZiskProve {
         Ok(())
     }
 
-    fn print_command_info(&self, sha256f_script: &Path) {
+    fn print_command_info(&self) {
         println!("{} Prove", format!("{: >12}", "Command").bright_green().bold());
         println!(
             "{: >12} {}",
@@ -438,7 +421,6 @@ impl ZiskProve {
 
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
-        println!("{: >12} {}", "Sha256f".bright_green().bold(), sha256f_script.display());
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 
         println!();

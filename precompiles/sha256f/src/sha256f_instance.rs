@@ -25,9 +25,6 @@ pub struct Sha256fInstance<F: PrimeField64> {
     /// Sha256f state machine.
     sha256f_sm: Arc<Sha256fSM<F>>,
 
-    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
-
     /// Instance context.
     ictx: InstanceCtx,
 }
@@ -43,21 +40,8 @@ impl<F: PrimeField64> Sha256fInstance<F> {
     /// # Returns
     /// A new `Sha256fInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(sha256f_sm: Arc<Sha256fSM<F>>, mut ictx: InstanceCtx) -> Self {
-        assert_eq!(
-            ictx.plan.air_id,
-            Sha256fTrace::<usize>::AIR_ID,
-            "Sha256fInstance: Unsupported air_id: {:?}",
-            ictx.plan.air_id
-        );
-
-        let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
-
-        let collect_info = *meta
-            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
-            .expect("Failed to downcast ictx.plan.meta to expected type");
-
-        Self { sha256f_sm, collect_info, ictx }
+    pub fn new(sha256f_sm: Arc<Sha256fSM<F>>, ictx: InstanceCtx) -> Self {
+        Self { sha256f_sm, ictx }
     }
 }
 
@@ -91,8 +75,8 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
     ///
     /// # Returns
     /// A `CheckPoint` object representing the checkpoint of the execution plan.
-    fn check_point(&self) -> CheckPoint {
-        self.ictx.plan.check_point.clone()
+    fn check_point(&self) -> &CheckPoint {
+        &self.ictx.plan.check_point
     }
 
     /// Retrieves the type of this instance.
@@ -104,7 +88,16 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
     }
 
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
+        assert_eq!(
+            self.ictx.plan.air_id,
+            Sha256fTrace::<F>::AIR_ID,
+            "Sha256fInstance: Unsupported air_id: {:?}",
+            self.ictx.plan.air_id
+        );
+
+        let meta = self.ictx.plan.meta.as_ref().unwrap();
+        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
+        let (num_ops, collect_skipper) = collect_info[&chunk_id];
         Some(Box::new(Sha256fCollector::new(num_ops, collect_skipper)))
     }
 }

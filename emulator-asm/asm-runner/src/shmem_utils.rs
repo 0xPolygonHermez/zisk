@@ -226,24 +226,29 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         &self.header
     }
 
-    pub fn shmem_input_name(asm_service: AsmService, local_rank: i32) -> String {
-        format!("{}_{}_input", AsmServices::shmem_prefix(local_rank), asm_service.as_str())
+    pub fn shmem_input_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
+        format!("{}_{}_input", AsmServices::shmem_prefix(port, local_rank), asm_service.as_str())
     }
 
-    pub fn shmem_output_name(asm_service: AsmService, local_rank: i32) -> String {
-        format!("{}_{}_output", AsmServices::shmem_prefix(local_rank), asm_service.as_str())
+    pub fn shmem_output_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
+        format!("{}_{}_output", AsmServices::shmem_prefix(port, local_rank), asm_service.as_str())
     }
 
-    pub fn shmem_chunk_done_name(asm_service: AsmService, local_rank: i32) -> String {
-        format!("/{}_{}_chunk_done", AsmServices::shmem_prefix(local_rank), asm_service.as_str())
+    pub fn shmem_chunk_done_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
+        format!(
+            "/{}_{}_chunk_done",
+            AsmServices::shmem_prefix(port, local_rank),
+            asm_service.as_str()
+        )
     }
 
     pub fn create_shmem(
+        port: u16,
         service: AsmService,
         local_rank: i32,
         unlock_mapped_memory: bool,
     ) -> Result<AsmSharedMemory<H>> {
-        let shmem_output_name = Self::shmem_output_name(service, local_rank);
+        let shmem_output_name = Self::shmem_output_name(port, service, local_rank);
 
         AsmSharedMemory::<H>::open_and_map(
             &shmem_output_name,

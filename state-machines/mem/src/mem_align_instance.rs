@@ -56,8 +56,8 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         Some(self.mem_align_sm.compute_witness(&inputs, total_rows as usize, trace_buffer))
     }
 
-    fn check_point(&self) -> CheckPoint {
-        self.ictx.plan.check_point.clone()
+    fn check_point(&self) -> &CheckPoint {
+        &self.ictx.plan.check_point
     }
 
     fn instance_type(&self) -> InstanceType {

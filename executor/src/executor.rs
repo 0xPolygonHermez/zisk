@@ -262,8 +262,17 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     {
         if let Some(input_path) = input_data_path.as_ref() {
             for service in AsmServices::SERVICES {
-                let shmem_input_name =
-                    AsmSharedMemory::<AsmMTHeader>::shmem_input_name(service, self.local_rank);
+                let port = if let Some(base_port) = self.base_port {
+                    AsmServices::port_for(&service, base_port, self.local_rank)
+                } else {
+                    AsmServices::default_port(&service, self.local_rank)
+                };
+
+                let shmem_input_name = AsmSharedMemory::<AsmMTHeader>::shmem_input_name(
+                    port,
+                    service,
+                    self.local_rank,
+                );
                 write_input(input_path, &shmem_input_name, self.unlock_mapped_memory);
             }
         }
@@ -1086,7 +1095,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                     CheckPoint::None => vec![],
                     CheckPoint::Single(chunk_id) => vec![chunk_id.as_usize()],
                     CheckPoint::Multiple(chunk_ids) => {
-                        chunk_ids.into_iter().map(|id| id.as_usize()).collect()
+                        chunk_ids.iter().map(|id| id.as_usize()).collect()
                     }
                 };
                 pctx.dctx_set_chunks(*global_id, chunks);
@@ -1179,6 +1188,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         _sctx: Arc<SetupCtx<F>>,
         global_ids: &[usize],
         n_cores: usize,
+        _buffer_pool: &dyn BufferPool<F>,
     ) {
         #[cfg(feature = "stats")]
         let start_time = Instant::now();
@@ -1245,7 +1255,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         sctx: Arc<SetupCtx<F>>,
         check: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let file_name = pctx.get_custom_commits_fixed_buffer("rom")?;
+        let file_name = pctx.get_custom_commits_fixed_buffer("rom", false)?;
 
         let setup = sctx.get_setup(RomRomTrace::<usize>::AIRGROUP_ID, RomRomTrace::<usize>::AIR_ID);
         let blowup_factor =

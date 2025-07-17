@@ -26,7 +26,6 @@ pub struct WitnessLib<F: PrimeField64> {
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
-    sha256f_script_path: PathBuf,
     executor: Option<Arc<ZiskExecutor<F, StaticSMBundle<F>>>>,
     chunk_size: u64,
     world_rank: i32,
@@ -42,7 +41,6 @@ fn init_library(
     elf_path: PathBuf,
     asm_path: Option<PathBuf>,
     asm_rom_path: Option<PathBuf>,
-    sha256f_script_path: PathBuf,
     chunk_size_bits: Option<u64>,
     world_rank: Option<i32>,
     local_rank: Option<i32>,
@@ -56,7 +54,6 @@ fn init_library(
         elf_path,
         asm_path,
         asm_rom_path,
-        sha256f_script_path,
         executor: None,
         chunk_size,
         world_rank: world_rank.unwrap_or(0),
@@ -101,7 +98,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         // Step 4: Initialize the precompiles state machines
         let keccakf_sm = KeccakfManager::new(wcm.get_sctx());
-        let sha256f_sm = Sha256fManager::new(wcm.get_sctx(), self.sha256f_script_path.clone());
+        let sha256f_sm = Sha256fManager::new(std.clone());
         let arith_eq_sm = ArithEqManager::new(std.clone());
 
         // let sm_bundle = DynSMBundle::new(vec![
