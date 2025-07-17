@@ -1009,7 +1009,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                     CheckPoint::None => vec![],
                     CheckPoint::Single(chunk_id) => vec![chunk_id.as_usize()],
                     CheckPoint::Multiple(chunk_ids) => {
-                        chunk_ids.into_iter().map(|id| id.as_usize()).collect()
+                        chunk_ids.iter().map(|id| id.as_usize()).collect()
                     }
                 };
                 pctx.dctx_set_chunks(*global_id, chunks);
