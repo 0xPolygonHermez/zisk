@@ -756,8 +756,8 @@ dependencies = [
 
 [[package]]
 name = "curves"
-version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fload-fixed#6a4e0378c5dc2e99dc4abc6039fd3184723ceacd"
+version = "0.10.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.10.0#b2fa1d85c1a0ffd4ca3c32d959134f0dde1abef2"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1045,8 +1045,8 @@ dependencies = [
 
 [[package]]
 name = "fields"
-version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fload-fixed#6a4e0378c5dc2e99dc4abc6039fd3184723ceacd"
+version = "0.10.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.10.0#b2fa1d85c1a0ffd4ca3c32d959134f0dde1abef2"
 dependencies = [
  "num-bigint",
  "paste",
@@ -1377,7 +1377,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots 1.0.1",
+ "webpki-roots 1.0.2",
 ]
 
 [[package]]
@@ -2157,8 +2157,8 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
 name = "pil-std-lib"
-version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fload-fixed#6a4e0378c5dc2e99dc4abc6039fd3184723ceacd"
+version = "0.10.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.10.0#b2fa1d85c1a0ffd4ca3c32d959134f0dde1abef2"
 dependencies = [
  "colored",
  "fields",
@@ -2414,8 +2414,8 @@ dependencies = [
 
 [[package]]
 name = "proofman"
-version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fload-fixed#6a4e0378c5dc2e99dc4abc6039fd3184723ceacd"
+version = "0.10.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.10.0#b2fa1d85c1a0ffd4ca3c32d959134f0dde1abef2"
 dependencies = [
  "blake3",
  "bytemuck",
@@ -2445,8 +2445,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-common"
-version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fload-fixed#6a4e0378c5dc2e99dc4abc6039fd3184723ceacd"
+version = "0.10.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.10.0#b2fa1d85c1a0ffd4ca3c32d959134f0dde1abef2"
 dependencies = [
  "crossbeam-channel",
  "env",
@@ -2468,8 +2468,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-hints"
-version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fload-fixed#6a4e0378c5dc2e99dc4abc6039fd3184723ceacd"
+version = "0.10.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.10.0#b2fa1d85c1a0ffd4ca3c32d959134f0dde1abef2"
 dependencies = [
  "fields",
  "proofman-common",
@@ -2480,8 +2480,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-macros"
-version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fload-fixed#6a4e0378c5dc2e99dc4abc6039fd3184723ceacd"
+version = "0.10.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.10.0#b2fa1d85c1a0ffd4ca3c32d959134f0dde1abef2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2491,8 +2491,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-starks-lib-c"
-version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fload-fixed#6a4e0378c5dc2e99dc4abc6039fd3184723ceacd"
+version = "0.10.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.10.0#b2fa1d85c1a0ffd4ca3c32d959134f0dde1abef2"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -2500,8 +2500,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-util"
-version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fload-fixed#6a4e0378c5dc2e99dc4abc6039fd3184723ceacd"
+version = "0.10.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.10.0#b2fa1d85c1a0ffd4ca3c32d959134f0dde1abef2"
 dependencies = [
  "colored",
  "fields",
@@ -2769,7 +2769,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams",
  "web-sys",
- "webpki-roots 1.0.1",
+ "webpki-roots 1.0.2",
 ]
 
 [[package]]
@@ -3704,8 +3704,8 @@ dependencies = [
 
 [[package]]
 name = "transcript"
-version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fload-fixed#6a4e0378c5dc2e99dc4abc6039fd3184723ceacd"
+version = "0.10.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.10.0#b2fa1d85c1a0ffd4ca3c32d959134f0dde1abef2"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -3985,14 +3985,14 @@ version = "0.26.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
 dependencies = [
- "webpki-roots 1.0.1",
+ "webpki-roots 1.0.2",
 ]
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8782dd5a41a24eed3a4f40b606249b3e236ca61adf1f25ea4d45c73de122b502"
+checksum = "7e8983c3ab33d6fb807cfcdad2491c4ea8cbc8ed839181c7dfd9c67c83e261b2"
 dependencies = [
  "rustls-pki-types",
 ]
@@ -4326,8 +4326,8 @@ dependencies = [
 
 [[package]]
 name = "witness"
-version = "0.9.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fload-fixed#6a4e0378c5dc2e99dc4abc6039fd3184723ceacd"
+version = "0.10.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.10.0#b2fa1d85c1a0ffd4ca3c32d959134f0dde1abef2"
 dependencies = [
  "colored",
  "fields",
