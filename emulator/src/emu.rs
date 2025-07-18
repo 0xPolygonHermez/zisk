@@ -1779,7 +1779,13 @@ impl<'a> Emu<'a> {
         let mut current_step_idx = 0;
         let mut mem_reads_index: usize = 0;
         loop {
-            self.step_emu_traces(&vec_traces[chunk_id].mem_reads, &mut mem_reads_index, data_bus);
+            if !self.step_emu_traces(
+                &vec_traces[chunk_id].mem_reads,
+                &mut mem_reads_index,
+                data_bus,
+            ) {
+                break;
+            }
 
             if self.ctx.inst_ctx.end {
                 break;
@@ -1799,7 +1805,8 @@ impl<'a> Emu<'a> {
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
         data_bus: &mut DB,
-    ) {
+    ) -> bool {
+        let mut _continue = true;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
         self.source_a_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
         self.source_b_mem_reads_consume_databus(instruction, mem_reads, mem_reads_index, data_bus);
@@ -1826,7 +1833,7 @@ impl<'a> Emu<'a> {
                 &self.ctx.inst_ctx,
                 &mut self.static_array,
             );
-            data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload);
+            _continue = data_bus.write_to_bus(OPERATION_BUS_ID, operation_payload);
         }
 
         // Get rom bus data
@@ -1841,6 +1848,8 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.end = instruction.end;
 
         self.ctx.inst_ctx.step += 1;
+
+        _continue
     }
 
     /// Performs one single step of the emulation

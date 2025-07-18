@@ -147,32 +147,32 @@ impl BusDevice<PayloadType> for ArithEqCollector {
     /// # Arguments
     /// * `_bus_id` - The ID of the bus (unused in this implementation).
     /// * `data` - The data received from the bus.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
-    /// A tuple where:
-    /// - The first element indicates whether further processing should continue.
-    /// - The second element contains derived inputs to be sent back to the bus (always empty).
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[PayloadType],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+    ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() == self.num_operations as usize {
-            return;
+            return false;
         }
 
         let data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
         if OperationBusData::get_op_type(&data) as u32 != ZiskOperationType::ArithEq as u32 {
-            return;
+            return true;
         }
 
         if self.collect_skipper.should_skip() {
-            return;
+            return true;
         }
 
         self.inputs.push(match data {
@@ -206,6 +206,8 @@ impl BusDevice<PayloadType> for ArithEqCollector {
             // Add here new operations
             _ => panic!("Expected ExtOperationData::OperationData"),
         });
+
+        self.inputs.len() < self.num_operations as usize
     }
 
     /// Returns the bus IDs associated with this instance.
