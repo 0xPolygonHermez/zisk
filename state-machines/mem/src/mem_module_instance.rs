@@ -116,8 +116,8 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         )))
     }
 
-    fn check_point(&self) -> CheckPoint {
-        self.ictx.plan.check_point.clone()
+    fn check_point(&self) -> &CheckPoint {
+        &self.ictx.plan.check_point
     }
 
     fn instance_type(&self) -> InstanceType {

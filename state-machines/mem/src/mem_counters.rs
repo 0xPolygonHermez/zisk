@@ -174,7 +174,7 @@ impl BusDevice<u64> for MemCounters {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+    ) -> bool {
         debug_assert!(bus_id == &MEM_BUS_ID);
 
         #[cfg(feature = "save_mem_bus_data")]
@@ -184,6 +184,8 @@ impl BusDevice<u64> for MemCounters {
         }
 
         self.measure(data);
+
+        true
     }
 
     fn bus_id(&self) -> Vec<BusId> {

@@ -2,7 +2,7 @@
 
 # Check that at least one argument has been passed
 if [ "$#" -lt 1 ]; then
-    echo "Usage: $0 <dirname|elf_file> [-l|--list] [-b|--begin <first_file>] [-e|--end <last_file>] [-d|--debug] [-i|--inputs <input_dir|input_file>]"
+    echo "Usage: $0 <dirname|elf_file> [-l|--list] [-b|--begin <first_file>] [-e|--end <last_file>] [-d|--debug] [-i|--inputs <input_dir|input_file>] [-k|--proving-key <pk_dir>]"
     exit 1
 fi
 
@@ -12,6 +12,7 @@ begin=0
 end=0
 debug=0
 input_path=""
+proving_key=""
 elf_mode=0
 default_input="/tmp/empty_input.bin" # Default input file
 
@@ -35,6 +36,7 @@ while [[ "$#" -gt 0 ]]; do
         -e|--end) end=$2; shift ;;
         -d|--debug) debug=1 ;;
         -i|--inputs) input_path="$2"; shift ;;
+        -k|--proving-key) proving_key="$2"; shift ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
@@ -62,14 +64,16 @@ verify_elf_with_inputs() {
             # Run with debug flag
             (cargo build --release && target/release/cargo-zisk verify-constraints \
             --witness-lib target/release/libzisk_witness.so \
-            --elf "$elf_file" -i "$default_input" \
-            --proving-key build/provingKey -d)
+            --elf "$elf_file" \
+            --input "$default_input" \
+            --proving-key "$proving_key" --emulator --debug)
         else
             # Run without debug flag
             (cargo build --release && target/release/cargo-zisk verify-constraints \
             --witness-lib target/release/libzisk_witness.so \
-            --elf "$elf_file" -i "$default_input" \
-            --proving-key build/provingKey)
+            --elf "$elf_file" \
+            --input "$default_input" \
+            --proving-key "$proving_key" --emulator)
         fi
     elif [[ -f $input_path ]]; then
         # Single input file provided
@@ -79,14 +83,16 @@ verify_elf_with_inputs() {
             # Run with debug flag
             (cargo build --release && target/release/cargo-zisk verify-constraints \
             --witness-lib target/release/libzisk_witness.so \
-            --elf "$elf_file" -i "$input_path" \
-            --proving-key build/provingKey -d)
+            --elf "$elf_file" \
+            --input "$input_path" \
+            --proving-key "$proving_key" --emulator --debug)
         else
             # Run without debug flag
             (cargo build --release && target/release/cargo-zisk verify-constraints \
             --witness-lib target/release/libzisk_witness.so \
-            --elf "$elf_file" -i "$input_path" \
-            --proving-key build/provingKey)
+            --elf "$elf_file" \
+            --input "$input_path" \
+            --proving-key "$proving_key" --emulator)
         fi
     elif [[ -d $input_path ]]; then
         # Directory of input files provided
@@ -105,14 +111,16 @@ verify_elf_with_inputs() {
                 # Run with debug flag
                 (cargo build --release && target/release/cargo-zisk verify-constraints \
                 --witness-lib target/release/libzisk_witness.so \
-                --elf "$elf_file" -i "$input_file" \
-                --proving-key build/provingKey -d)
+                --elf "$elf_file" \
+                --input "$input_file" \
+                --proving-key "$proving_key" --emulator --debug)
             else
                 # Run without debug flag
                 (cargo build --release && target/release/cargo-zisk verify-constraints \
                 --witness-lib target/release/libzisk_witness.so \
-                --elf "$elf_file" -i "$input_file" \
-                --proving-key build/provingKey)
+                --elf "$elf_file" \
+                --input "$input_file" \
+                --proving-key "$proving_key" --emulator)
             fi
         done
     else
@@ -178,15 +186,17 @@ if [[ $elf_mode -eq 0 ]]; then
             # Run with debug flag
             (cargo build --release && target/release/cargo-zisk verify-constraints \
             --witness-lib target/release/libzisk_witness.so \
-            --elf "$elf_file" -i "$default_input" \
-            --proving-key build/provingKey -d)
+            --elf "$elf_file" \
+            --input "$default_input" \
+            --proving-key "$proving_key" --emulator --debug)
         else
             # Run without debug flag
             echo "Input($default_input)"
             (cargo build --release && target/release/cargo-zisk verify-constraints \
             --witness-lib target/release/libzisk_witness.so \
-            --elf "$elf_file" -i "$default_input" \
-            --proving-key build/provingKey)
+            --elf "$elf_file" \
+            --input "$default_input" \
+            --proving-key "$proving_key" --emulator)
         fi
     done
 else

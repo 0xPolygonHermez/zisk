@@ -21,29 +21,31 @@ impl ZiskServiceShutdownHandler {
     pub fn handle(
         config: &ServerConfig,
         _payload: ZiskShutdownRequest,
-        asm_services: &AsmServices,
+        asm_services: Option<&AsmServices>,
     ) -> (ZiskResponse, Option<JoinHandle<()>>) {
         tracing::info!(
             "<<< [{}] Shutting down ASM microservices.",
             config.asm_runner_options.world_rank
         );
 
-        let shutdown_result = asm_services.stop_asm_services();
+        if let Some(asm_services) = asm_services {
+            let shutdown_result = asm_services.stop_asm_services();
 
-        if let Err(e) = shutdown_result {
-            tracing::error!("Failed to stop ASM services: {}", e);
-            return (
-                ZiskResponse::ZiskShutdownResponse(ZiskShutdownResponse {
-                    base: ZiskBaseResponse {
-                        cmd: "shutdown".to_string(),
-                        result: crate::ZiskCmdResult::Error,
-                        code: crate::ZiskResultCode::Error,
-                        msg: Some(format!("Failed to stop ASM services: {e}")),
-                        node: config.asm_runner_options.world_rank,
-                    },
-                }),
-                None,
-            );
+            if let Err(e) = shutdown_result {
+                tracing::error!("Failed to stop ASM services: {}", e);
+                return (
+                    ZiskResponse::ZiskShutdownResponse(ZiskShutdownResponse {
+                        base: ZiskBaseResponse {
+                            cmd: "shutdown".to_string(),
+                            result: crate::ZiskCmdResult::Error,
+                            code: crate::ZiskResultCode::Error,
+                            msg: Some(format!("Failed to stop ASM services: {e}")),
+                            node: config.asm_runner_options.world_rank,
+                        },
+                    }),
+                    None,
+                );
+            }
         }
 
         (

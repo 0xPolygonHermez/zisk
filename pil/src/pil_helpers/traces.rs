@@ -16,7 +16,7 @@ use rayon::prelude::*;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "14184dc2091ff97a3680afec2e5afb19acf0086cf68ec7637532cc7471ee5495";
+pub const PILOUT_HASH: &str = "a26b229c9381de520c456c2be7174fac27990d917e66d92ea613d7d976cd22fc";
 
 //AIRGROUP CONSTANTS
 
@@ -64,9 +64,7 @@ pub const KECCAKF_TABLE_AIR_IDS: &[usize] = &[18];
 
 pub const SHA_256_F_AIR_IDS: &[usize] = &[19];
 
-pub const SHA_256_F_TABLE_AIR_IDS: &[usize] = &[20];
-
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[21];
+pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[20];
 
 
 //PUBLICS
@@ -247,44 +245,36 @@ trace!(ArithEqLtTableTrace<F> {
 },  0, 16, 262144 );
 
 trace!(KeccakfFixed<F> {
- L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, ID: F, LATCH_NUM_KECCAKF: F, FACTOR_NUM_KECCAKF: F, CLK_0: F, __L1__: F,
-},  0, 17, 4194304 );
+ L1: F, GATE_OP: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, LATCH_NUM_KECCAKF: F, FACTOR_NUM_KECCAKF: F, CLK_0: F, __L1__: F,
+},  0, 17, 2097152 );
 
 trace!(KeccakfTrace<F> {
- free_in_a: [F; 7], free_in_b: [F; 7], free_in_c: [F; 7], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
-},  0, 17, 4194304 );
+ free_in_a: [F; 9], free_in_b: [F; 9], free_in_c: [F; 9], free_in_d: [F; 9], bit: [F; 4], val: [F; 4], step_addr: F, in_use_clk_0: F, in_use: F,
+},  0, 17, 2097152 );
 
 trace!(KeccakfTableFixed<F> {
- A: [F; 1], B: F, GATE_OP: F, C: [F; 1], __L1__: F,
-},  0, 18, 524288 );
+ A: [F; 1], B: F, C: F, GATE_OP: F, D: [F; 1], __L1__: F,
+},  0, 18, 4194304 );
 
 trace!(KeccakfTableTrace<F> {
  multiplicity: [F; 1],
-},  0, 18, 524288 );
+},  0, 18, 4194304 );
 
 trace!(Sha256fFixed<F> {
- L1: F, GATE_OP: F, CARRY_ENABLED: F, CONN_A: F, CONN_B: F, CONN_C: F, CONN_D: F, ID: F, LATCH_NUM_SHA256F: F, FACTOR_NUM_SHA256F: F, CLK_0: F, __L1__: F,
-},  0, 19, 2097152 );
+ CLK_0: F, __L1__: F,
+},  0, 19, 262144 );
 
 trace!(Sha256fTrace<F> {
- free_in_a: [F; 8], free_in_b: [F; 8], free_in_c: [F; 8], free_in_d: [F; 8], carry: [F; 8], bit: [F; 2], val: [F; 2], step_addr: F, in_use_clk_0: F, in_use: F,
-},  0, 19, 2097152 );
-
-trace!(Sha256fTableFixed<F> {
- A: [F; 1], B: F, C: F, GATE_OP: F, D: [F; 1], CARRY: [F; 1], __L1__: F,
-},  0, 20, 8388608 );
-
-trace!(Sha256fTableTrace<F> {
- multiplicity: [F; 1],
-},  0, 20, 8388608 );
+ a: [F; 32], e: [F; 32], w: [F; 32], new_a_carry_bits: F, new_e_carry_bits: F, new_w_carry_bits: F, step_addr: F, in_use_clk_0: F, in_use: F,
+},  0, 19, 262144 );
 
 trace!(SpecifiedRangesFixed<F> {
- RANGE: [F; 17], __L1__: F,
-},  0, 21, 2097152 );
+ RANGE: [F; 18], __L1__: F,
+},  0, 20, 2097152 );
 
 trace!(SpecifiedRangesTrace<F> {
- mul: [F; 17],
-},  0, 21, 2097152 );
+ mul: [F; 18],
+},  0, 20, 2097152 );
 
 trace!(RomRomTrace<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
@@ -383,10 +373,6 @@ values!(KeccakfTableAirGroupValues<F> {
 });
 
 values!(Sha256fAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(Sha256fTableAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 

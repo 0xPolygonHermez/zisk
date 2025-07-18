@@ -132,7 +132,7 @@ impl AsmRunnerOptions {
             command.arg("-u");
         }
 
-        command.arg("--shm_prefix").arg(AsmServices::shmem_prefix(self.local_rank));
+        command.arg("--shm_prefix").arg(AsmServices::shmem_prefix(port, self.local_rank));
 
         match asm_service {
             AsmService::MT => {

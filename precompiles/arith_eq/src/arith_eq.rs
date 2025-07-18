@@ -483,7 +483,9 @@ impl<F: PrimeField64> ArithEqSM<F> {
 
         let padding_row = ArithEqTraceRow::<F> { ..Default::default() };
 
-        trace.row_slice_mut()[num_rows_needed..num_rows].fill(padding_row);
+        trace.row_slice_mut()[num_rows_needed..num_rows]
+            .par_iter_mut()
+            .for_each(|slot| *slot = padding_row);
 
         timer_stop_and_log_trace!(ARITH_EQ_TRACE);
 

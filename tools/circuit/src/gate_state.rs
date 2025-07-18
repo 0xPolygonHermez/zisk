@@ -25,6 +25,7 @@ pub struct GateState {
     pub chs: u64,
     pub majs: u64,
     pub adds: u64,
+    pub xorandps: u64,
 }
 
 impl GateState {
@@ -48,6 +49,7 @@ impl GateState {
             chs: 0,
             majs: 0,
             adds: 0,
+            xorandps: 0,
         };
 
         state.reset_bits_and_counters();
@@ -284,7 +286,7 @@ impl GateState {
                 self.adds += 1;
             }
 
-            GateOperation::Ch | GateOperation::Maj => {
+            GateOperation::Ch | GateOperation::Maj | GateOperation::XorAndp => {
                 // Ensure there is a third input
                 assert!(ref_in3.is_some() && pin_in3.is_some());
 
@@ -296,6 +298,10 @@ impl GateState {
                     GateOperation::Maj => {
                         self.majs += 1;
                         (in1 & in2) ^ (in1 & in3) ^ (in2 & in3)
+                    }
+                    GateOperation::XorAndp => {
+                        self.xorandps += 1;
+                        in1 ^ ((1 - in2) & in3)
                     }
                     _ => unreachable!(),
                 };
@@ -321,7 +327,7 @@ impl GateState {
         if let (Some(ref_in3), Some(pin_in3)) = (ref_in3, pin_in3) {
             if ref_in3 != ref_out {
                 self.gates[ref_in3 as usize].pins[pin_in3].fan_out += 1;
-                self.gates[ref_in3 as usize].pins[pin_in3].connections_to_input_b.push(ref_out);
+                self.gates[ref_in3 as usize].pins[pin_in3].connections_to_input_c.push(ref_out);
             }
         }
 
@@ -340,25 +346,19 @@ impl GateState {
         self.op(GateOperation::Xor, ref_in1, pin_in1, ref_in2, pin_in2, Some(ref_in3), Some(pin_in3), ref_out);
     }
 
-    pub fn xor_res(&mut self, ref_in1: u64, ref_in2: u64, ref_out: u64) {
-        self.xor(ref_in1, PinId::D, ref_in2, PinId::D, ref_out);
-    }
-
     #[rustfmt::skip]
     pub fn andp(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_out: u64) {
         self.op(GateOperation::Andp, ref_in1, pin_in1, ref_in2, pin_in2, None, None, ref_out);
     }
 
-    pub fn andp_res(&mut self, ref_in1: u64, ref_in2: u64, ref_out: u64) {
-        self.andp(ref_in1, PinId::D, ref_in2, PinId::D, ref_out);
+    #[rustfmt::skip]
+    #[allow(clippy::too_many_arguments)]
+    pub fn xor_andp(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_in3: u64, pin_in3: PinId, ref_out: u64) {
+        self.op(GateOperation::XorAndp, ref_in1, pin_in1, ref_in2, pin_in2, Some(ref_in3), Some(pin_in3), ref_out);
     }
 
     pub fn or(&mut self, ref_in1: u64, pin_in1: PinId, ref_in2: u64, pin_in2: PinId, ref_out: u64) {
         self.op(GateOperation::Or, ref_in1, pin_in1, ref_in2, pin_in2, None, None, ref_out);
-    }
-
-    pub fn or_res(&mut self, ref_in1: u64, ref_in2: u64, ref_out: u64) {
-        self.or(ref_in1, PinId::D, ref_in2, PinId::D, ref_out);
     }
 
     #[rustfmt::skip]
@@ -389,8 +389,14 @@ impl GateState {
         println!("Number of inputs: {}", self.gate_config.sin_ref_number);
         println!("Number of outputs: {}\n", self.gate_config.sout_ref_number);
 
-        let total_operations =
-            self.xors + self.ors + self.andps + self.ands + self.chs + self.majs + self.adds;
+        let total_operations = self.xors
+            + self.ors
+            + self.andps
+            + self.ands
+            + self.chs
+            + self.majs
+            + self.adds
+            + self.xorandps;
         let total_f = total_operations as f64;
 
         println!("Gates statistics:");
@@ -419,6 +425,13 @@ impl GateState {
         }
         if self.adds > 0 {
             println!("   adds      = {} = {:.2}%", self.adds, (self.adds as f64 * 100.0) / total_f);
+        }
+        if self.xorandps > 0 {
+            println!(
+                "   xorandps  = {} = {:.2}%",
+                self.xorandps,
+                (self.xorandps as f64 * 100.0) / total_f
+            );
         }
         println!("--------------------------");
         println!("   Total     = {total_operations}");

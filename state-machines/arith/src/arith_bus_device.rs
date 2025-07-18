@@ -77,22 +77,24 @@ impl BusDevice<u64> for ArithCounterInputGen {
     /// # Arguments
     /// * `bus_id` - The ID of the bus sending the data.
     /// * `data` - The data received from the bus.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
-    /// A vector of derived inputs to be sent back to the bus.
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
         pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+    ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         const ARITH: u64 = ZiskOperationType::Arith as u64;
 
         if data[OP_TYPE] != ARITH {
-            return;
+            return true;
         }
 
         debug_assert_eq!(data.len(), 4);
@@ -107,6 +109,8 @@ impl BusDevice<u64> for ArithCounterInputGen {
         let bin_inputs = ArithFullSM::generate_inputs(data);
 
         pending.extend(bin_inputs.into_iter().map(|x| (OPERATION_BUS_ID, x)));
+
+        true
     }
 
     /// Returns the bus IDs associated with this counter.

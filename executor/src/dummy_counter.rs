@@ -42,7 +42,8 @@ impl BusDevice<u64> for DummyCounter {
         _bus_id: &BusId,
         _data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+    ) -> bool {
+        true
     }
 
     /// Returns an empty vector as this counter is not associated with any bus IDs.

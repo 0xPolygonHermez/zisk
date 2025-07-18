@@ -1,6 +1,7 @@
 mod bus;
 mod component;
 mod emu_minimal_trace;
+mod executor_stats;
 mod instance_context;
 mod mpi_context;
 mod planner_helpers;
@@ -14,6 +15,7 @@ mod zisk_lib_init;
 pub use bus::*;
 pub use component::*;
 pub use emu_minimal_trace::*;
+pub use executor_stats::*;
 pub use instance_context::*;
 pub use mpi_context::*;
 pub use planner_helpers::*;

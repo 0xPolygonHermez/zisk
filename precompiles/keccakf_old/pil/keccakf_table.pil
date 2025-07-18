@@ -1,0 +1,83 @@
+require "std_lookup.pil"
+
+const int KECCAKF_TABLE_ID = 126;
+
+airtemplate KeccakfTable(const int N, const int chunks, const int bits, const int bits_reduced = 0) {
+    // Operations
+    const int XOR = 0;
+    const int ANDP = 1;
+
+    // Compute table size
+    const int BITS_A = bits - chunks + 1;
+    const int BITS_B = bits;
+    const int BITS_OP = 1;
+    const int TABLE_BIT_SIZE = BITS_A + BITS_B + BITS_OP;
+
+    // Ensure that the chosen size fits
+    if (N < 2**TABLE_BIT_SIZE) {
+        error(`With chunks=${chunks} and bits=${bits}, N must be at least 2**${TABLE_BIT_SIZE} to fit the table, but received 2**${log2(N)}`);
+    }
+
+    const int P2_BITS_A = 2**BITS_A;
+    const int P2_BITS_B = 2**BITS_B;
+    const int P2_BITS_AB = P2_BITS_A * P2_BITS_B;
+    const int MASK_BITS_A = P2_BITS_A - 1;
+    const int MASK_BITS_B = P2_BITS_B - 1;
+
+    const int P2_BITS_REDUCED = 2**bits_reduced;
+    const int MASK_BITS_REDUCED = P2_BITS_REDUCED - 1;
+
+    col fixed A[chunks]; // Input A (BITS_A bits)
+    int offset = 0;
+    for (int j = 0; j < chunks; j++) {
+        A[j] = [offset..(MASK_BITS_A + offset)]...;
+        offset += P2_BITS_A;
+    }
+
+    col fixed B = [0:P2_BITS_A..MASK_BITS_B:P2_BITS_A]...; // Input B (BITS_B bits)
+    col fixed GATE_OP = [XOR:P2_BITS_AB, ANDP:P2_BITS_AB]...;   // Gate operation (BITS_OP bit)
+
+    // Precompute a table with the two basic operations appearing in the Keccak-f permutation
+    col fixed C[chunks]; // Output C (BITS_A bits)
+    if (bits_reduced > 0) {
+        col fixed air.C_REDUCED[chunks]; // Output D reduced (BITS_REDUCED bits)
+        col fixed air.IND[chunks];       // Valid reduced input indicator
+    }
+    #pragma transpile
+    for (int i = 0; i < N; i++) {
+        const int [b, gate_op] = [B[i], GATE_OP[i]];
+
+        for (int j = 0; j < chunks; j++) {
+            const int a = A[j][i];
+
+            int c = 0;
+            switch (gate_op) {
+                case XOR:
+                    c = a ^ b;
+                case ANDP:
+                    c = (a ^ MASK_BITS_A) & b;
+                default:
+                    error(`Invalid gate operation opcode: ${gate_op} at row ${i} and chunk ${j}`);
+            }
+            C[j][i] = c;
+            if (bits_reduced > 0) {
+                C_REDUCED[j][i] = c & MASK_BITS_REDUCED;
+                IND[j][i] = (a < P2_BITS_REDUCED && b < P2_BITS_REDUCED) ? 1 : -1;
+            }
+        }
+    }
+
+    // --> Prove that the circuit gates are satisfied
+    col witness multiplicity[chunks];
+    if (bits_reduced > 0) {
+        col witness multiplicity_reduced[chunks];
+        for (int j = 0; j < chunks; j++) {
+            lookup_proves(KECCAKF_TABLE_ID, [0, GATE_OP, A[j], B, C[j]], multiplicity[j]);
+            lookup_proves(KECCAKF_TABLE_ID, [IND[j], GATE_OP, A[j], B, C_REDUCED[j]], multiplicity_reduced[j]);
+        }
+    } else {
+        for (int j = 0; j < chunks; j++) {
+            lookup_proves(KECCAKF_TABLE_ID, [GATE_OP, A[j], B, C[j]], multiplicity[j]);
+        } 
+    }
+}
