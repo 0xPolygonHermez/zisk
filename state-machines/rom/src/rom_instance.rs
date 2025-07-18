@@ -4,7 +4,10 @@
 
 use std::{
     collections::VecDeque,
-    sync::{atomic::AtomicU32, Arc},
+    sync::{
+        atomic::{AtomicBool, AtomicU32},
+        Arc,
+    },
     thread::JoinHandle,
 };
 
@@ -42,6 +45,8 @@ pub struct RomInstance {
 
     /// Optional handle for the ROM assembly runner thread.
     handle_rh: Mutex<Option<JoinHandle<AsmRunnerRH>>>,
+
+    calculated: AtomicBool,
 }
 
 impl RomInstance {
@@ -67,6 +72,7 @@ impl RomInstance {
             prog_inst_count: Mutex::new(prog_inst_count),
             counter_stats: Mutex::new(None),
             handle_rh: Mutex::new(handle_rh),
+            calculated: AtomicBool::new(false),
         }
     }
 
@@ -133,15 +139,19 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
             *self.counter_stats.lock().unwrap() = Some(counter_stats);
         }
 
-        Some(RomSM::compute_witness(
+        let air_instance = Some(RomSM::compute_witness(
             &self.zisk_rom,
             self.counter_stats.lock().unwrap().as_ref().unwrap(),
+            &self.calculated,
             trace_buffer,
-        ))
+        ));
+        self.calculated.store(true, std::sync::atomic::Ordering::Relaxed);
+        air_instance
     }
 
     fn reset(&self) {
         *self.counter_stats.lock().unwrap() = None;
+        self.calculated.store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Retrieves the checkpoint associated with this instance.

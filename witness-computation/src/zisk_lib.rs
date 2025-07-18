@@ -91,7 +91,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
         let std = Std::new(wcm.get_pctx(), wcm.get_sctx());
         register_std(&wcm, &std);
 
-        let rom_sm = RomSM::new(zisk_rom.clone(), None /*self.asm_rom_path.clone()*/);
+        let rom_sm = RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone());
         let binary_sm = BinarySM::new(std.clone());
         let arith_sm = ArithSM::new();
         let mem_sm = Mem::new(std.clone());
