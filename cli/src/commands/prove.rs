@@ -1,5 +1,3 @@
-#[cfg(feature = "stats")]
-use crate::commands::ZiskStats;
 use crate::{
     commands::{
         cli_fail_if_macos, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
@@ -11,7 +9,6 @@ use anyhow::Result;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use bytemuck::cast_slice;
 use colored::Colorize;
-use executor::Stats;
 use executor::ZiskExecutionResult;
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
@@ -22,14 +19,17 @@ use rom_setup::{
     DEFAULT_CACHE_PATH,
 };
 use std::io::Write;
+use std::sync::{Arc, Mutex};
 #[cfg(feature = "stats")]
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::{
     collections::HashMap,
     fs::{self, File},
     path::PathBuf,
 };
-use zisk_common::{ProofLog, ZiskLibInitFn};
+use zisk_common::{ExecutorStats, ProofLog, ZiskLibInitFn};
+#[cfg(feature = "stats")]
+use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -132,9 +132,6 @@ impl ZiskProve {
         cli_fail_if_macos()?;
 
         print_banner();
-
-        #[cfg(feature = "stats")]
-        let start_time = Instant::now();
 
         let mpi_context = initialize_mpi()?;
 
@@ -338,10 +335,10 @@ impl ZiskProve {
         if proofman.get_rank() == Some(0) || proofman.get_rank().is_none() {
             let elapsed = start.elapsed();
 
-            let (result, _stats): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
+            let (result, _stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) = *witness_lib
                 .get_execution_result()
                 .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-                .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
+                .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>)>()
                 .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
             let elapsed = elapsed.as_secs_f64();
@@ -371,7 +368,11 @@ impl ZiskProve {
             // Store the stats in stats.json
             #[cfg(feature = "stats")]
             {
-                ZiskStats::store_stats(start_time, &_stats);
+                _stats.lock().unwrap().add_stat(ExecutorStatsEnum::End(ExecutorStatsDuration {
+                    start_time: Instant::now(),
+                    duration: Duration::new(0, 1),
+                }));
+                _stats.lock().unwrap().store_stats();
             }
         }
 

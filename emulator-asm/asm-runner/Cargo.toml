@@ -27,3 +27,6 @@ thiserror = "2"
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 named-sem = { workspace = true }
+
+[features]
+stats = []
