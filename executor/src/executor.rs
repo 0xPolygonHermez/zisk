@@ -157,8 +157,8 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     /// This is used to unlock the memory map for the ROM file.
     unlock_mapped_memory: bool,
 
-    asm_shmem_mt: Arc<Mutex<PreloadedMT>>,
-    asm_shmem_mo: Arc<Mutex<PreloadedMO>>,
+    asm_shmem_mt: Arc<Mutex<Option<PreloadedMT>>>,
+    asm_shmem_mo: Arc<Mutex<Option<PreloadedMO>>>,
     asm_shmem_rh: Arc<Mutex<Option<PreloadedRH>>>,
 }
 
@@ -188,10 +188,15 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
     ) -> Self {
-        let asm_shmem_mt = PreloadedMT::new(local_rank, base_port, unlock_mapped_memory)
-            .expect("Failed to create PreloadedMT");
-        let asm_shmem_mo = PreloadedMO::new(local_rank, base_port, unlock_mapped_memory)
-            .expect("Failed to create PreloadedMT");
+        let (asm_shmem_mt, asm_shmem_mo) = if asm_path.is_some() {
+            let mt = PreloadedMT::new(local_rank, base_port, unlock_mapped_memory)
+                .expect("Failed to create PreloadedMT");
+            let mo = PreloadedMO::new(local_rank, base_port, unlock_mapped_memory)
+                .expect("Failed to create PreloadedMO");
+            (Some(mt), Some(mo))
+        } else {
+            (None, None)
+        };
 
         Self {
             rom_path,
@@ -293,7 +298,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             let asm_shmem_mo = self.asm_shmem_mo.clone();
             move || {
                 AsmRunnerMO::run(
-                    &mut asm_shmem_mo.lock().unwrap(),
+                    asm_shmem_mo.lock().unwrap().as_mut().unwrap(),
                     Self::MAX_NUM_STEPS,
                     chunk_size,
                     world_rank,
@@ -376,6 +381,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     &self.emu_trace,
                     &mut self.data_bus,
                     self.chunk_size,
+                    false,
                 );
 
                 self.data_bus.on_close();
@@ -405,7 +411,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             });
 
         let (asm_runner_mt, mut data_buses) = AsmRunnerMT::run_and_count(
-            &mut self.asm_shmem_mt.lock().unwrap(),
+            self.asm_shmem_mt.lock().unwrap().as_mut().unwrap(),
             Self::MAX_NUM_STEPS,
             self.chunk_size,
             task_factory,
@@ -552,6 +558,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     minimal_trace,
                     &mut data_bus,
                     self.chunk_size,
+                    true,
                 );
 
                 let (mut main_count, mut secn_count) = (Vec::new(), Vec::new());

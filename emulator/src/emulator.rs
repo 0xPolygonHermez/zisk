@@ -222,12 +222,13 @@ impl ZiskEmulator {
         emu_trace: &EmuTrace,
         data_bus: &mut DB,
         chunk_size: u64,
+        with_mem_ops: bool,
     ) {
         // Create a emulator instance with this rom
         let mut emu = Emu::new(rom, chunk_size);
 
         // Run the emulation
-        emu.process_emu_trace(emu_trace, data_bus);
+        emu.process_emu_trace(emu_trace, data_bus, with_mem_ops);
     }
 
     /// EXPAND phase
