@@ -174,7 +174,10 @@ impl AsmServices {
         // Prepare command
         let command_path = trimmed_path.to_string() + &format!("-{asm_service}.bin");
 
-        let mut command = Command::new(command_path);
+        let mut command = Command::new("nice");
+        command.arg("-n");
+        command.arg("-5");
+        command.arg(command_path);
 
         options.apply_to_command(&mut command, asm_service);
 
