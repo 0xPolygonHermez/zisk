@@ -25,19 +25,30 @@ class MemContext;
 #include "mem_types.hpp"
 #include "mem_config.hpp"
 #include "mem_locators.hpp"
+#include "tools.hpp"
 
 class MemContext {
 public:
     MemChunk chunks[MAX_CHUNKS];
     MemLocators locators;
+    uint64_t t_init_us;    
+    uint64_t t_first_us;
+    uint64_t t_completed_us;
     std::atomic<uint32_t> chunks_count;
     std::atomic<bool> chunks_completed;
     void clear ();
     const MemChunk *get_chunk(uint32_t chunk_id, uint64_t &elapsed_us);
     MemContext();
     void add_chunk(MemCountersBusData *data, uint32_t count);
+    void init() {
+        t_init_us = get_usec();
+    }
     void set_completed() {
+        t_completed_us = get_usec();
         chunks_completed.store(true, std::memory_order_release);
+    }
+    uint64_t get_completed_us() {
+        return t_completed_us - t_init_us;
     }
     uint32_t size() {
         return chunks_count.load(std::memory_order_acquire);

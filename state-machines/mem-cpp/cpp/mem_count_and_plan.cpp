@@ -11,7 +11,7 @@ void MemCountAndPlan::clear() {
     context->clear();
 }
 void MemCountAndPlan::prepare() {
-    uint init = get_usec();
+    uint64_t init = get_usec();
     count_workers.clear();
     for (size_t i = 0; i < MAX_THREADS; ++i) {
         count_workers.push_back(new MemCounter(i, context));
@@ -38,6 +38,7 @@ void MemCountAndPlan::execute(void) {
 
 void MemCountAndPlan::count_phase() {
     uint64_t init = t_init_us = get_usec();
+    context->init();
     std::vector<std::thread> threads;
 
     for (int i = 0; i < MAX_THREADS; ++i) {
@@ -60,11 +61,11 @@ void MemCountAndPlan::count_phase() {
             max_used_slots = count_workers[index]->get_used_slots();
         }
     }
-    // printf("MemCountAndPlan wait_avg(ms): %ld max_wait(ms): %ld ms threads: %d max_used_slots: %04.2f%%\n", 
-    //         (tot_wait_us >> THREAD_BITS)/1000, 
-    //         max_tot_wait_us/1000, 
-    //         1 << THREAD_BITS,
-    //         max_used_slots * 100.0 / ADDR_SLOTS);
+    printf("MemCountAndPlan wait_avg(ms): %ld max_wait(ms): %ld ms threads: %d max_used_slots: %04.2f%%\n", 
+            (tot_wait_us >> THREAD_BITS)/1000, 
+            max_tot_wait_us/1000, 
+            1 << THREAD_BITS,
+            max_used_slots * 100.0 / ADDR_SLOTS);
     t_count_us = (uint32_t) (get_usec() - init);    
 }
 
@@ -110,10 +111,11 @@ void MemCountAndPlan::stats() {
     for (size_t i = 0; i < MAX_THREADS; ++i) {
         uint32_t used_slots = count_workers[i]->get_used_slots();
         tot_used_slots += used_slots;
-        printf("Thread %ld: used slots %d/%d (%04.02f%%) T:%d ms S:%ld ms Q:%d\n",
+        printf("Thread %ld: used slots %d/%d (%04.02f%%) T(ms):%d S(ms):%ld C0(us):%ld Q:%d\n",
             i, used_slots, ADDR_SLOTS,
             ((double)used_slots*100.0)/(double)(ADDR_SLOTS), count_workers[i]->get_elapsed_ms(),
             count_workers[i]->tot_wait_us/1000,
+            count_workers[i]->get_first_chunk_us(),
             count_workers[i]->get_queue_full_times()/1000);
     }
     printf("\n> threads: %d\n", MAX_THREADS);
@@ -124,7 +126,9 @@ void MemCountAndPlan::stats() {
     for (uint32_t i = 0; i < plan_workers.size(); ++i) {
         plan_workers[i].stats();
     }
+    printf("prepare: %04.2f ms\n", t_prepare_us / 1000.0);
     printf("execution: %04.2f ms\n", (TIME_US_BY_CHUNK * context->size()) / 1000.0);
+    printf("completed: %04.2f ms\n", context->get_completed_us() / 1000.0);
     printf("count_phase: %04.2f ms\n", t_count_us / 1000.0);
     printf("plan_phase: %04.2f ms\n", t_plan_us / 1000.0);
 }
@@ -211,6 +215,7 @@ void MemCountAndPlan::wait() {
 void MemCountAndPlan::detach_execute() {
     count_phase();
     plan_phase();
+    stats();
     // printf("MemCountAndPlan count(ms):%ld plan(ms):%ld tot(ms):%ld\n", 
     //        t_count_us / 1000, t_plan_us / 1000, (t_count_us + t_plan_us) / 1000);
 }

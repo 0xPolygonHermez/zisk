@@ -2,7 +2,7 @@
 #define __MEM_CONFIG_HPP__
 
 #define MAX_LOCATORS 2048
-#define MAX_MEM_PLANNERS 4
+#define MAX_MEM_PLANNERS 8
 #define USE_ADDR_COUNT_TABLE
 #define MAX_SEGMENTS 512
 // #define MEM_PLANNER_STATS
@@ -36,10 +36,10 @@
 #define OFFSET_BITS (25 + 4 - THREAD_BITS) // 4 bits (3 bits for 6 pages, 1 bit security)
 #define OFFSET_PAGE_SHIFT_BITS (OFFSET_BITS - 3)
 
-#define ADDR_SLOT_BITS 4
+#define ADDR_SLOT_BITS 5
 #define ADDR_SLOT_SIZE (1 << ADDR_SLOT_BITS)
 #define ADDR_SLOT_MASK (0xFFFFFFFF << ADDR_SLOT_BITS)
-#define ADDR_SLOTS ((1024 * 1024 * 64) / MAX_THREADS)
+#define ADDR_SLOTS ((1024 * 1024 * 16) / MAX_THREADS)
 
 #define ADDR_SLOTS_SIZE (ADDR_SLOT_SIZE * ADDR_SLOTS)
 #define TIME_US_BY_CHUNK 173

@@ -1,13 +1,17 @@
 #include "mem_counter.hpp"
 #include <assert.h>
+#include <string.h>
+
 MemCounter::MemCounter(uint32_t id, std::shared_ptr<MemContext> context)
 :id(id), context(context), addr_mask(id * 8) {
     count = 0;
     queue_full = 0;
+    first_chunk_us = 0;
     tot_wait_us = 0;
     #ifdef USE_ADDR_COUNT_TABLE
     addr_count_table = (AddrCount *)malloc(ADDR_TABLE_SIZE * sizeof(AddrCount));
-    memset(addr_count_table, 0, ADDR_TABLE_SIZE * sizeof(AddrCount));
+    explicit_bzero(addr_count_table, ADDR_TABLE_SIZE * sizeof(AddrCount));
+    // memset(addr_count_table, 0, ADDR_TABLE_SIZE * sizeof(AddrCount));
     #else
     addr_table = (uint32_t *)malloc(ADDR_TABLE_SIZE * sizeof(uint32_t));
     memset(addr_table, 0, ADDR_TABLE_SIZE * sizeof(uint32_t));
@@ -35,13 +39,21 @@ MemCounter::~MemCounter() {
 
 void MemCounter::execute() {
     uint64_t init = get_usec();
-    const MemChunk *chunk;
-    uint32_t chunk_id = 0;
+    
     uint64_t elapsed_us = 0;
+
+    const MemChunk *chunk = context->get_chunk(0, elapsed_us);
+    if (chunk != nullptr) {
+        execute_chunk(0, chunk->data, chunk->count);
+        tot_wait_us += elapsed_us;
+        first_chunk_us = get_usec() - init;
+
+        uint32_t chunk_id = 1;
     while ((chunk = context->get_chunk(chunk_id, elapsed_us)) != nullptr) {
         execute_chunk(chunk_id, chunk->data, chunk->count);
         tot_wait_us += elapsed_us;
         ++chunk_id;
+    }
     }
     elapsed_ms = ((get_usec() - init) / 1000);
 }
