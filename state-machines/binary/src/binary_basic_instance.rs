@@ -39,7 +39,7 @@ pub struct BinaryBasicInstance<F: PrimeField64> {
     collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
 
     /// Split binary trace to share split data between collectors.
-    trace_split: Mutex<Option<BinaryTraceSplit<F>>>,
+    pub trace_split: Mutex<Option<BinaryTraceSplit<F>>>,
 }
 
 impl<F: PrimeField64> BinaryBasicInstance<F> {
