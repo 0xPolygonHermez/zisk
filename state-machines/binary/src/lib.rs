@@ -32,3 +32,6 @@ use binary_extension_instance::*;
 use binary_extension_table::*;
 use binary_input::*;
 use binary_planner::*;
+
+#[cfg(test)]
+mod binary_basic_test;

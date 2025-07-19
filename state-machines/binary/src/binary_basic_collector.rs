@@ -97,8 +97,12 @@ impl<F: PrimeField64> BusDevice<u64> for BinaryBasicCollector<F> {
         }
 
         let binary_input = BinaryInput::from(&data);
-        self.rows[self.idx] =
-            BinaryBasicSM::process_slice(&binary_input, &self.binary_basic_table_sm);
+
+        BinaryBasicSM::process_slice(
+            &binary_input,
+            &self.binary_basic_table_sm,
+            &mut self.rows[self.idx],
+        );
         self.idx += 1;
 
         self.idx < self.num_operations

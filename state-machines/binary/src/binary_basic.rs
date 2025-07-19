@@ -137,10 +137,8 @@ impl BinaryBasicSM {
     pub fn process_slice<F: PrimeField64>(
         input: &BinaryInput,
         binary_table_sm: &BinaryBasicTableSM,
-    ) -> BinaryTraceRow<F> {
-        // Create an empty trace
-        let mut row: BinaryTraceRow<F> = Default::default();
-
+        row: &mut BinaryTraceRow<F>,
+    ) {
         // Execute the opcode
         let opcode = input.op;
         let a = input.a;
@@ -867,9 +865,6 @@ impl BinaryBasicSM {
 
         // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
         row.multiplicity = F::ONE;
-
-        // Return
-        row
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
@@ -898,14 +893,13 @@ impl BinaryBasicSM {
             total_inputs as f64 / num_rows as f64 * 100.0
         );
 
-        // Note: We can choose any operation that trivially satisfies the constraints on padding
-        // rows
+        // Fill padding rows in parallel
         let padding_row = BinaryTraceRow::<F> {
             m_op: F::from_u8(AND_OP),
             m_op_or_ext: F::from_u8(AND_OP),
             ..Default::default()
         };
-
+        
         trace.row_slice_mut()[total_inputs..num_rows]
             .par_iter_mut()
             .for_each(|slot| *slot = padding_row);
