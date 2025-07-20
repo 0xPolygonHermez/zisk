@@ -45,6 +45,8 @@ pub struct DataBus<D, BD: BusDevice<D>> {
     pending_transfers: VecDeque<(BusId, Vec<D>)>,
 
     none_devices: Vec<usize>,
+
+    active_devices: usize,
 }
 
 impl<D, BD: BusDevice<D>> Default for DataBus<D, BD> {
@@ -62,6 +64,7 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
             devices_bus_id_map: vec![vec![], vec![], vec![]],
             pending_transfers: VecDeque::new(),
             none_devices: vec![],
+            active_devices: 0,
         }
     }
 
@@ -80,6 +83,8 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
             for bus_id in bus_ids {
                 self.devices_bus_id_map[*bus_id].push(device_idx);
             }
+
+            self.active_devices += 1;
         } else {
             self.none_devices.push(self.devices.len());
         }
@@ -96,19 +101,23 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
-    fn route_data(&mut self, bus_id: BusId, payload: &[D]) -> bool {
-        let mut _continue = true;
-        // Notify specific subscribers
-        let bus_id_devices = &self.devices_bus_id_map[*bus_id];
-        for device_idx in bus_id_devices {
-            _continue &= self.devices[*device_idx].1.process_data(
+    fn route_data(&mut self, bus_id: BusId, payload: &[D]) {
+        let devices_idx = &mut self.devices_bus_id_map[*bus_id];
+        let mut i = 0;
+
+        while i < devices_idx.len() {
+            let device_idx = devices_idx[i];
+            if !self.devices[device_idx].1.process_data(
                 &bus_id,
                 payload,
                 &mut self.pending_transfers,
-            );
+            ) {
+                devices_idx.swap_remove(i);
+                self.active_devices -= 1;
+            } else {
+                i += 1;
+            }
         }
-
-        _continue
     }
 
     /// Outputs the current state of the bus for debugging purposes.
@@ -122,13 +131,13 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
 impl<D, BD: BusDevice<D>> DataBusTrait<D, BD> for DataBus<D, BD> {
     #[inline(always)]
     fn write_to_bus(&mut self, bus_id: BusId, payload: &[D]) -> bool {
-        let mut _continue = self.route_data(bus_id, payload);
+        self.route_data(bus_id, payload);
 
         while let Some((bus_id, payload)) = self.pending_transfers.pop_front() {
-            _continue &= self.route_data(bus_id, &payload);
+            self.route_data(bus_id, &payload);
         }
 
-        _continue
+        self.active_devices > 0
     }
 
     fn on_close(&mut self) {
