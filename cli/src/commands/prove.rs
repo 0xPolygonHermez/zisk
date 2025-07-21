@@ -125,6 +125,9 @@ pub struct ZiskProve {
 
     #[clap(short = 'c', long)]
     pub chunk_size_bits: Option<u64>,
+
+    #[clap(long, default_value_t = false)]
+    pub minimal_memory: bool,
 }
 
 impl ZiskProve {
@@ -323,6 +326,7 @@ impl ZiskProve {
                                 self.aggregation,
                                 self.final_snark,
                                 self.verify_proofs,
+                                self.minimal_memory,
                                 self.save_proofs,
                                 self.output_dir.clone(),
                             ),
