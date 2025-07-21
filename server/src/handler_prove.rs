@@ -29,6 +29,7 @@ pub struct ZiskProveRequest {
     pub aggregation: bool,
     pub final_snark: bool,
     pub verify_proofs: bool,
+    pub minimal_memory: bool,
     pub folder: PathBuf,
     pub prefix: String,
 }
@@ -68,6 +69,7 @@ impl ZiskServiceProveHandler {
                             request.aggregation,
                             request.final_snark,
                             request.verify_proofs,
+                            request.minimal_memory,
                             false,
                             request.folder.clone(),
                         ),

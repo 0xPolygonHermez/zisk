@@ -4,7 +4,10 @@
 
 use std::{
     collections::VecDeque,
-    sync::{atomic::AtomicU32, Arc},
+    sync::{
+        atomic::{AtomicBool, AtomicU32},
+        Arc,
+    },
     thread::JoinHandle,
 };
 
@@ -42,6 +45,8 @@ pub struct RomInstance {
 
     /// Optional handle for the ROM assembly runner thread.
     handle_rh: Mutex<Option<JoinHandle<AsmRunnerRH>>>,
+
+    calculated: AtomicBool,
 }
 
 impl RomInstance {
@@ -67,6 +72,7 @@ impl RomInstance {
             prog_inst_count: Mutex::new(prog_inst_count),
             counter_stats: Mutex::new(None),
             handle_rh: Mutex::new(handle_rh),
+            calculated: AtomicBool::new(false),
         }
     }
 
@@ -133,15 +139,19 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
             *self.counter_stats.lock().unwrap() = Some(counter_stats);
         }
 
-        Some(RomSM::compute_witness(
+        let air_instance = Some(RomSM::compute_witness(
             &self.zisk_rom,
             self.counter_stats.lock().unwrap().as_ref().unwrap(),
+            &self.calculated,
             trace_buffer,
-        ))
+        ));
+        self.calculated.store(true, std::sync::atomic::Ordering::Relaxed);
+        air_instance
     }
 
     fn reset(&self) {
         *self.counter_stats.lock().unwrap() = None;
+        self.calculated.store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -209,23 +219,25 @@ impl BusDevice<u64> for RomCollector {
     /// # Arguments
     /// * `bus_id` - The ID of the bus sending the data.
     /// * `data` - The data received from the bus.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
-    /// An optional vector of tuples where:
-    /// - The first element is the bus ID.
-    /// - The second element is always empty indicating there are no derived inputs.
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
     #[inline(always)]
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+    ) -> bool {
         debug_assert!(*bus_id == ROM_BUS_ID);
 
         if !self.already_computed {
             self.rom_counter.measure(data);
         }
+
+        true
     }
 
     /// Returns the bus IDs associated with this counter.

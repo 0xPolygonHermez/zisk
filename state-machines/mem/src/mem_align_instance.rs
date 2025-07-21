@@ -102,21 +102,21 @@ impl BusDevice<u64> for MemAlignCollector {
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+    ) -> bool {
         debug_assert!(*bus_id == MEM_BUS_ID);
 
         let addr = MemBusData::get_addr(data);
         let bytes = MemBusData::get_bytes(data);
         if MemHelpers::is_aligned(addr, bytes) {
-            return;
+            return true;
         }
         if self.skip_pending > 0 {
             self.skip_pending -= 1;
-            return;
+            return true;
         }
 
         if self.pending_count == 0 {
-            return;
+            return true;
         }
         self.pending_count -= 1;
         let is_write = MemHelpers::is_write(MemBusData::get_op(data));
@@ -136,6 +136,8 @@ impl BusDevice<u64> for MemAlignCollector {
             value,
             mem_values,
         });
+
+        self.pending_count > 0
     }
 
     fn bus_id(&self) -> Vec<BusId> {

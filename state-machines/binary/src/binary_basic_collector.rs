@@ -42,21 +42,21 @@ impl BusDevice<u64> for BinaryBasicCollector {
     /// # Arguments
     /// * `_bus_id` - The ID of the bus (unused in this implementation).
     /// * `data` - The data received from the bus.
+    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
-    /// An optional vector of tuples where:
-    /// - The first element is the bus ID.
-    /// - The second element is always empty indicating there are no derived inputs.
+    /// A boolean indicating whether the program should continue execution or terminate.
+    /// Returns `true` to continue execution, `false` to stop.
     fn process_data(
         &mut self,
         bus_id: &BusId,
         data: &[u64],
         _pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
+    ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
         if self.inputs.len() >= self.num_operations {
-            return;
+            return false;
         }
 
         let data: ExtOperationData<u64> =
@@ -65,18 +65,20 @@ impl BusDevice<u64> for BinaryBasicCollector {
         let op_type = OperationBusData::get_op_type(&data);
 
         if op_type as u32 != ZiskOperationType::Binary as u32 {
-            return;
+            return true;
         }
 
         if !self.with_adds && OperationBusData::get_op(&data) == ZiskOp::Add.code() {
-            return;
+            return true;
         }
 
         if self.collect_skipper.should_skip() {
-            return;
+            return true;
         }
 
         self.inputs.push(BinaryInput::from(&data));
+
+        self.inputs.len() < self.num_operations
     }
 
     /// Returns the bus IDs associated with this instance.
