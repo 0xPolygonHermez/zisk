@@ -132,12 +132,12 @@ impl<D, BD: BusDevice<D>> DataBus<D, BD> {
 
 impl<D, BD: BusDevice<D>> DataBusTrait<D, BD> for DataBus<D, BD> {
     /// Writes data to the bus and processes it through the registered devices.
-    /// 
+    ///
     /// # Arguments
     /// * `bus_id` - The ID of the bus receiving the data.
     /// * `payload` - The data payload to be sent.
     /// * `pending` – A queue of pending bus operations used to send derived inputs.
-    /// 
+    ///
     /// # Returns
     /// A boolean indicating whether the program should continue execution or terminate.
     /// Returns `true` to continue execution, `false` to stop.
@@ -160,10 +160,10 @@ impl<D, BD: BusDevice<D>> DataBusTrait<D, BD> for DataBus<D, BD> {
     }
 
     /// Converts the bus into a vector of devices, optionally executing their close operations.
-    /// 
+    ///
     /// # Arguments
     /// * `execute_on_close` - If true, calls the `on_close` method on each device.
-    /// 
+    ///
     //// # Returns
     /// A vector of tuples containing the device instance index and the device itself.
     fn into_devices(self, execute_on_close: bool) -> Vec<(Option<usize>, Option<BD>)> {
