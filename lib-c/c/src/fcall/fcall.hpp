@@ -2,6 +2,7 @@
 #define ARITH_HPP
 
 #include <stdint.h>
+#include <fplll.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -16,6 +17,7 @@ extern "C" {
 #define FCALL_ID_BN254_FP2_INV 7
 #define FCALL_ID_BN254_TWIST_ADD_LINE_COEFFS 8
 #define FCALL_ID_BN254_TWIST_DBL_LINE_COEFFS 9
+#define FCALL_ID_SECP256K1_FN_DECOMPOSE 10
 
 // Fcall context
 struct FcallContext
@@ -59,6 +61,9 @@ int BN254TwistAddLineCoeffsCtx (
 int BN254TwistDblLineCoeffsCtx (
     struct FcallContext * ctx  // fcall context
 );
+int Secp256k1FnDecomposeCtx (
+    struct FcallContext * ctx  // fcall context
+);
 
 // Functions supported by fcall, in u64 array format
 int InverseFpEc (
@@ -93,6 +98,10 @@ int BN254TwistAddLineCoeffs (
 int BN254TwistDblLineCoeffs (
     const uint64_t * a, // 16 x 64 bits
           uint64_t * r  // 16 x 64 bits
+);
+int Secp256k1FnDecompose (
+    const uint64_t * a, // 8 x 64 bits
+          uint64_t * r  // 24 x 64 bits
 );
 
 #ifdef __cplusplus

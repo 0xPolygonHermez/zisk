@@ -2,6 +2,7 @@
 #include "../common/utils.hpp"
 #include "../bn254/bn254_fe.hpp"
 #include <stdint.h>
+#include <fplll.h>
 
 int Fcall (
     struct FcallContext * ctx  // fcall context
@@ -49,6 +50,11 @@ int Fcall (
         case FCALL_ID_BN254_TWIST_DBL_LINE_COEFFS:
         {
             iresult = BN254TwistDblLineCoeffsCtx(ctx);
+            break;
+        }
+        case FCALL_ID_SECP256K1_FN_DECOMPOSE:
+        {
+            iresult = Secp256k1FnDecomposeCtx(ctx);
             break;
         }
         default:
@@ -150,7 +156,7 @@ int InverseFnEcCtx (
 /* FEC SQRT */
 /************/
 
-mpz_class n("0x3fffffffffffffffffffffffffffffffffffffffffffffffffffffffbfffff0c");
+mpz_class p4("0x3fffffffffffffffffffffffffffffffffffffffffffffffffffffffbfffff0c");
 mpz_class p("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F");
 
 // We use that p = 3 mod 4 => r = a^((p+1)/4) is a square root of a
@@ -161,7 +167,7 @@ mpz_class p("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F"
 inline bool sqrtF3mod4(mpz_class &r, const mpz_class &a)
 {
     mpz_class auxa = a;
-    mpz_powm(r.get_mpz_t(), a.get_mpz_t(), n.get_mpz_t(), p.get_mpz_t());
+    mpz_powm(r.get_mpz_t(), a.get_mpz_t(), p4.get_mpz_t(), p.get_mpz_t());
     if ((r * r) % p != auxa)
     {
         r = ScalarMask256;
@@ -476,6 +482,123 @@ int BN254TwistDblLineCoeffsCtx (
     {
         iresult = 16;
         ctx->result_size = 16;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
+    return iresult;
+}
+
+/******************************/
+/* SECP256K1 FN DECOMPOSITION */
+/******************************/
+
+mpz_class n("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
+mpz_class lambda("0x5363AD4CC05C30E0A5261C028812645A122E22EA20816678DF02967C1B23BD72");
+
+int Secp256k1FnDecompose (
+    const uint64_t * a, // 8 x 64 bits
+          uint64_t * r  // 24 x 64 bits
+)
+{
+    /* 
+    Compute a reduced basis for the lattice:
+        | n  0   0  0  0  0|
+        | 0  n   0  0  0  0|
+        | 0  0   n  0  0  0|
+        | 0  0   0  n  0  0|
+        | 0  0   0  0  n  0|
+        | 0  0   0  0  0  n|
+        |-λ  1   0  0  0  0|
+        | 0  0  -λ  1  0  0|
+        |k1  0  k2  0  1  0|
+        | 0  0   0  0 -λ  1|
+    */
+    // 1. Initialize FPLLL basisrix (10x6)
+    ZZ_basis<mpz_t> basis(10, 6);
+
+    // 2. Set the lattice basis
+    // First 6 rows: diagonal N
+    for (int i = 0; i < 6; i++) {
+        for (int j = 0; j < 6; j++) {
+            if (i == j) {
+                mpz_import(basis[i][j].get_data(), 4, -1, sizeof(uint64_t), 0, 0, n);
+            } else {
+                mpz_set_ui(basis[i][j].get_data(), 0);
+            }
+        }
+    }
+
+    // Row 7: [-λ, 1, 0, 0, 0, 0]
+    mpz_import(basis[6][0].get_data(), 4, -1, sizeof(uint64_t), 0, 0, lambda);
+    mpz_neg(basis[6][0].get_data(), basis[6][0].get_data());
+    mpz_set_ui(basis[6][1].get_data(), 1);
+    for (int j = 2; j < 6; j++) mpz_set_ui(basis[6][j].get_data(), 0);
+
+    // Row 8: [0, 0, -λ, 1, 0, 0]
+    mpz_set_ui(basis[7][0].get_data(), 0);
+    mpz_set_ui(basis[7][1].get_data(), 0);
+    mpz_import(basis[7][2].get_data(), 4, -1, sizeof(uint64_t), 0, 0, lambda);
+    mpz_neg(basis[7][2].get_data(), basis[7][2].get_data());
+    mpz_set_ui(basis[7][3].get_data(), 1);
+    mpz_set_ui(basis[7][4].get_data(), 0);
+    mpz_set_ui(basis[7][5].get_data(), 0);
+
+    // Row 9: [k1, 0, k2, 0, 1, 0]
+    mpz_import(basis[8][0].get_data(), 4, -1, sizeof(uint64_t), 0, 0, a);       // k1
+    mpz_set_ui(basis[8][1].get_data(), 0);
+    mpz_import(basis[8][2].get_data(), 4, -1, sizeof(uint64_t), 0, 0, a + 4);   // k2
+    mpz_set_ui(basis[8][3].get_data(), 0);
+    mpz_set_ui(basis[8][4].get_data(), 1);
+    mpz_set_ui(basis[8][5].get_data(), 0);
+
+    // Row 10: [0, 0, 0, 0, -λ, 1]
+    for (int j = 0; j < 4; j++) mpz_set_ui(basis[9][j].get_data(), 0);
+    mpz_import(basis[9][4].get_data(), 4, -1, sizeof(uint64_t), 0, 0, lambda);
+    mpz_neg(basis[9][4].get_data(), basis[9][4].get_data());
+    mpz_set_ui(basis[9][5].get_data(), 1);
+
+    // 3. Perform LLL reduction
+    lll_reduction(basis);
+
+    // 4. Find solution vector
+    mpz_class temp_mpz;
+    uint64_t temp_limbs[4];
+    for (int i = 0; i < 10; i++) {
+        if (mpz_cmp_ui(basis[i][4].get_data(), 0) != 0 || 
+            mpz_cmp_ui(basis[i][5].get_data(), 0) != 0) {
+
+            // Convert each of the 6 elements to limbs
+            for (int j = 0; j < 6; j++) {
+                // Get element as mpz_class
+                temp_mpz = basis[i][j];
+                
+                // Convert to 4 limbs using your existing function
+                scalar2array(temp_mpz, temp_limbs);
+                
+                // Store in output (6 elements × 4 limbs each = 24 limbs per vector)
+                for (int k = 0; k < 4; k++) {
+                    r[j * 4 + k] = temp_limbs[k];
+                }
+            }
+
+            break;
+        }
+    }
+    
+    return 0;
+}
+
+int Secp256k1FnDecomposeCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int iresult = Secp256k1FnDecompose(ctx->params, &ctx->result);
+    if (iresult == 0)
+    {
+        iresult = 24;
+        ctx->result_size = 24;
     }
     else
     {
