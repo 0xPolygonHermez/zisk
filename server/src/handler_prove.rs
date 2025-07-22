@@ -136,9 +136,8 @@ impl ZiskServiceProveHandler {
                         file.write_all(cast_slice(&vadcop_final_proof.unwrap()))
                             .expect("Error while writing to file");
                     }
-
-                    is_busy.store(false, std::sync::atomic::Ordering::SeqCst);
                 }
+                is_busy.store(false, std::sync::atomic::Ordering::SeqCst);
                 ZiskService::print_waiting_message(&config);
             }
         });
