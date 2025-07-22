@@ -82,7 +82,7 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
     //     Ok(())
     // }
 
-    pub fn open_and_map(name: &str, unlock_mapped_memory: bool) -> Result<Self> {
+    pub fn open_and_map(name: &str, _unlock_mapped_memory: bool) -> Result<Self> {
         unsafe {
             if name.is_empty() {
                 return Err(anyhow::anyhow!("Shared memory name {name} cannot be empty"));
@@ -114,7 +114,7 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             let mut flags = MAP_SHARED;
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-            if !unlock_mapped_memory {
+            if !_unlock_mapped_memory {
                 flags |= libc::MAP_LOCKED;
             }
 
