@@ -21,6 +21,8 @@ use std::time::Instant;
 use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
 pub struct PreloadedMO {
     pub output_shmem: AsmSharedMemory<AsmMOHeader>,
+    mem_planner: Option<MemPlanner>,
+    handle_mo: Option<std::thread::JoinHandle<MemPlanner>>,
 }
 
 impl PreloadedMO {
@@ -41,7 +43,11 @@ impl PreloadedMO {
         let output_shared_memory =
             AsmSharedMemory::<AsmMOHeader>::open_and_map(&output_name, unlock_mapped_memory)?;
 
-        Ok(Self { output_shmem: output_shared_memory })
+        Ok(Self {
+            output_shmem: output_shared_memory,
+            mem_planner: Some(MemPlanner::new()),
+            handle_mo: None,
+        })
     }
 }
 
@@ -96,11 +102,15 @@ impl AsmRunnerMO {
             result
         });
 
+        let mem_planner = preloaded
+            .mem_planner
+            .take()
+            .unwrap_or_else(|| preloaded.handle_mo.take().unwrap().join().unwrap());
+
         // Get the pointer to the data in the shared memory.
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMOChunk;
 
         // Initialize C++ memory operations trace
-        let mem_planner = MemPlanner::new();
         mem_planner.execute();
 
         #[cfg(feature = "stats")]
@@ -168,6 +178,11 @@ impl AsmRunnerMO {
         _stats.lock().unwrap().add_stat(ExecutorStatsEnum::MemOpsCollectPlans(
             ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
         ));
+
+        preloaded.handle_mo = Some(std::thread::spawn(move || {
+            drop(mem_planner);
+            MemPlanner::new()
+        }));
 
         Ok(AsmRunnerMO::new(plans))
     }
