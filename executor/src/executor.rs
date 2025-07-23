@@ -188,6 +188,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
     ) -> Self {
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        let (asm_shmem_mt, asm_shmem_mo) = (None, None);
+
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         let (asm_shmem_mt, asm_shmem_mo) = if asm_path.is_some() {
             let mt = PreloadedMT::new(local_rank, base_port, unlock_mapped_memory)
                 .expect("Failed to create PreloadedMT");

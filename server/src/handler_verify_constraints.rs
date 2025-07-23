@@ -41,8 +41,10 @@ impl ZiskServiceVerifyConstraintsHandler {
     pub fn handle(
         config: Arc<ServerConfig>,
         request: ZiskVerifyConstraintsRequest,
-        proofman: Arc<ProofMan<Goldilocks>>,
+        // It is important to keep the witness_lib declaration before the proofman declaration
+        // to ensure that the witness library is dropped before the proofman.
         witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
+        proofman: Arc<ProofMan<Goldilocks>>,
         is_busy: Arc<std::sync::atomic::AtomicBool>,
         debug_info: Arc<DebugInfo>,
     ) -> (ZiskResponse, Option<JoinHandle<()>>) {

@@ -49,8 +49,10 @@ impl ZiskServiceProveHandler {
     pub fn handle(
         config: Arc<ServerConfig>,
         request: ZiskProveRequest,
-        proofman: Arc<ProofMan<Goldilocks>>,
+        // It is important to keep the witness_lib declaration before the proofman declaration
+        // to ensure that the witness library is dropped before the proofman.
         witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
+        proofman: Arc<ProofMan<Goldilocks>>,
         is_busy: Arc<std::sync::atomic::AtomicBool>,
     ) -> (ZiskResponse, Option<JoinHandle<()>>) {
         is_busy.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -134,9 +136,8 @@ impl ZiskServiceProveHandler {
                         file.write_all(cast_slice(&vadcop_final_proof.unwrap()))
                             .expect("Error while writing to file");
                     }
-
-                    is_busy.store(false, std::sync::atomic::Ordering::SeqCst);
                 }
+                is_busy.store(false, std::sync::atomic::Ordering::SeqCst);
                 ZiskService::print_waiting_message(&config);
             }
         });

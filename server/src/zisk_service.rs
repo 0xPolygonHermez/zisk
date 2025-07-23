@@ -233,8 +233,10 @@ pub enum ZiskResponse {
 
 pub struct ZiskService {
     config: Arc<ServerConfig>,
-    proofman: Arc<ProofMan<Goldilocks>>,
+    // It is important to keep the witness_lib declaration before the proofman declaration
+    // to ensure that the witness library is dropped before the proofman.
     witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
+    proofman: Arc<ProofMan<Goldilocks>>,
     asm_services: Option<AsmServices>,
     is_busy: Arc<AtomicBool>,
     pending_handles: Vec<std::thread::JoinHandle<()>>,
@@ -419,8 +421,8 @@ impl ZiskService {
                 ZiskServiceVerifyConstraintsHandler::handle(
                     config.clone(),
                     payload,
-                    self.proofman.clone(),
                     self.witness_lib.clone(),
+                    self.proofman.clone(),
                     self.is_busy.clone(),
                     self.config.debug_info.clone(),
                 )
@@ -429,8 +431,8 @@ impl ZiskService {
             ZiskRequest::Prove { payload } => ZiskServiceProveHandler::handle(
                 config.clone(),
                 payload,
-                self.proofman.clone(),
                 self.witness_lib.clone(),
+                self.proofman.clone(),
                 self.is_busy.clone(),
             ),
         };
