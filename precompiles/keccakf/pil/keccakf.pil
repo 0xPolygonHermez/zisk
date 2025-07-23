@@ -8,6 +8,9 @@ require "std_connection.pil"
 const int KECCAKF_OP = 0xF1;
 
 airtemplate Keccakf(const int N, const int chunks, const int bits, const int RC, const int RB, const int mem_bits_in_parallel, const int operation_bus_id) {
+    
+    #pragma extern_fixed_file "../src/keccakf_fixed.bin"
+    
     // Keccak-f circuit size
     const int CIRCUIT_SIZE = 93846;
     println(`The size of the Keccak-f circuit is ${CIRCUIT_SIZE}`);
@@ -38,18 +41,13 @@ airtemplate Keccakf(const int N, const int chunks, const int bits, const int RC,
 
     col fixed L1 = [1,0...];
 
-    // Column specifying the circuit gates
-    #pragma fixed_external
+    // Column specifying the circuit gates    
     col fixed GATE_OP;
 
     // Columns specifying the circuit connections
-    #pragma fixed_external
     col fixed CONN_A;
-    #pragma fixed_external
     col fixed CONN_B;
-    #pragma fixed_external
     col fixed CONN_C;
-    #pragma fixed_external
     col fixed CONN_D;
 
     col witness free_in_a[chunks], free_in_b[chunks], free_in_c[chunks], free_in_d[chunks];
