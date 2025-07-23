@@ -2574,6 +2574,9 @@ void server_setup (void)
     if (call_chunk_done)
     {
         assert(strlen(sem_chunk_done_name) > 0);
+
+        sem_unlink(sem_chunk_done_name);
+
         sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0666, 0);
         if (sem_chunk_done == SEM_FAILED)
         {
@@ -2590,6 +2593,9 @@ void server_setup (void)
     /*********************/
     
     assert(strlen(sem_shutdown_done_name) > 0);
+
+    sem_unlink(sem_shutdown_done_name);
+    
     sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT, 0666, 0);
     if (sem_shutdown_done == SEM_FAILED)
     {
