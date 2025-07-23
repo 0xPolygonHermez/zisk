@@ -12,3 +12,5 @@ runnable = false
 build-dir = "target/book"
 
 [preprocessor.mermaid]
+command = "mdbook-mermaid"
+renderer = ["html"]
