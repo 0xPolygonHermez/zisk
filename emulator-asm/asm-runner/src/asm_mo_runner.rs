@@ -51,6 +51,22 @@ impl PreloadedMO {
     }
 }
 
+impl Drop for PreloadedMO {
+    fn drop(&mut self) {
+        if let Some(handle_mo) = self.handle_mo.take() {
+            match handle_mo.join() {
+                Ok(mem_planner) => {
+                    // If the thread completed successfully, we can safely drop the MemPlanner.
+                    drop(mem_planner);
+                }
+                Err(e) => {
+                    eprintln!("Warning: background thread panicked in PreloadedMO: {:?}", e);
+                }
+            }
+        }
+    }
+}
+
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
 pub struct AsmRunnerMO {
     pub plans: Vec<Plan>,
