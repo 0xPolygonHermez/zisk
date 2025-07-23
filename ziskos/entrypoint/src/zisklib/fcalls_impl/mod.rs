@@ -1,3 +1,4 @@
+mod arith256;
 mod bn254_fp;
 mod bn254_fp2;
 mod bn254_twist;

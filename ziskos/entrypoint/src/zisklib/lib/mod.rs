@@ -1,3 +1,4 @@
+mod arith256;
 pub mod bn254;
 mod ecadd;
 mod ecmul;
