@@ -1,0 +1,618 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Execution Fundamentals - ZisK Documentation</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../../favicon.svg">
+        <link rel="shortcut icon" href="../../favicon.png">
+        <link rel="stylesheet" href="../../css/variables.css">
+        <link rel="stylesheet" href="../../css/general.css">
+        <link rel="stylesheet" href="../../css/chrome.css">
+        <link rel="stylesheet" href="../../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../../";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">ZisK Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="execution-pipeline"><a class="header" href="#execution-pipeline">Execution Pipeline</a></h1>
+<p>ZisK's execution pipeline transforms Rust code into cryptographically verifiable proofs that the computation happened correctly. The process enables anyone to verify program execution without seeing the actual data or computation steps.</p>
+<h2 id="pipeline-overview"><a class="header" href="#pipeline-overview">Pipeline Overview</a></h2>
+<p>The pipeline consists of several phases, each building on the previous one. Here's what happens at each step and why it matters.
+</pre></p>
+<pre class="mermaid">graph TD
+    subgraph &quot;Development Phase&quot;
+        Code[Rust Source Code&lt;br/&gt;src/main.rs]
+        Create[cargo-zisk sdk new&lt;br/&gt;Project Scaffolding]
+        Build[cargo-zisk build&lt;br/&gt;RISC-V Compilation]
+    end
+    
+    subgraph &quot;Testing Phase&quot;
+        ELF[RISC-V ELF Binary&lt;br/&gt;riscv64ima-zisk-zkvm-elf]
+        Emulate[ziskemu&lt;br/&gt;Execution Testing]
+        Output[Program Output&lt;br/&gt;Verification]
+    end
+    
+    subgraph &quot;Proof Setup Phase&quot;
+        ROM[cargo-zisk rom-setup&lt;br/&gt;Constraint Generation]
+        PIL[PIL Constraints&lt;br/&gt;Mathematical Model]
+        Setup[Program Setup Files&lt;br/&gt;Proving Keys]
+    end
+    
+    subgraph &quot;Proof Generation Phase&quot;
+        Prove[cargo-zisk prove&lt;br/&gt;STARK Proof Generation]
+        Trace[Execution Trace&lt;br/&gt;Witness Data]
+        Proof[Zero-Knowledge Proof&lt;br/&gt;vadcop_final_proof.json]
+    end
+    
+    subgraph &quot;Verification Phase&quot;
+        Verify[cargo-zisk verify&lt;br/&gt;Proof Validation]
+        Result[Verification Result&lt;br/&gt;Valid/Invalid]
+    end
+    
+    Code --&gt; Create
+    Create --&gt; Build
+    Build --&gt; ELF
+    ELF --&gt; Emulate
+    Emulate --&gt; Output
+    ELF --&gt; ROM
+    ROM --&gt; PIL
+    PIL --&gt; Setup
+    Setup --&gt; Prove
+    Prove --&gt; Trace
+    Trace --&gt; Proof
+    Proof --&gt; Verify
+    Verify --&gt; Result
+    
+    classDef dev fill:#e3f2fd
+    classDef test fill:#f3e5f5
+    classDef setup fill:#e8f5e8
+    classDef prove fill:#fff3e0
+    classDef verify fill:#fce4ec
+    
+    class Code,Create,Build dev
+    class ELF,Emulate,Output test
+    class ROM,PIL,Setup setup
+    class Prove,Trace,Proof prove
+    class Verify,Result verify
+
+</pre>
+<pre>
+
+## 1. Project Creation & Setup
+
+ZisK provides a project scaffolding system that creates the correct structure for zero-knowledge programs.
+
+**Tool:** `cargo-zisk sdk new <project_name>`
+
+**Process:** This command generates a complete project structure with configuration files, build scripts, and example code. Running `cargo-zisk sdk new sha_hasher` creates a working SHA-256 hasher project you can immediately build and prove.
+
+**Output:**
+
+-   `src/main.rs` - Your program logic
+-   `build.rs` - Build configuration and input file generation
+-   `Cargo.toml` - Dependencies and target configuration
+-   Input files in the `build/` directory
+
+**Purpose:** The scaffolding configures your project for the RISC-V target architecture that ZisK's zkVM requires. Standard Rust projects won't compile to the right instruction set without this setup.
+
+## 2. Compilation: Rust → RISC-V
+
+High-level Rust code gets transformed into machine code that ZisK's virtual machine can understand and prove.
+
+**Tool:** `cargo-zisk build --release`
+
+**Process:** ZisK uses a specialized Rust toolchain that targets the RISC-V 64-bit instruction set (`riscv64ima-zisk-zkvm-elf`). The resulting binary must be deterministic and suitable for zero-knowledge proving.
+
+**Output:** An ELF binary at: `target/riscv64ima-zisk-zkvm-elf/release/<program_name>`
+
+**Key difference:** Unlike regular compilation, this process ensures the binary can execute inside ZisK's zkVM. The compiler includes special runtime libraries and follows strict rules about memory layout and instruction usage.
+
+## 3. Emulation & Testing
+
+Before generating expensive proofs, you need to verify your program works correctly. ZisK's emulator lets you test execution without cryptographic overhead.
+
+**Tool:** `ziskemu` or `cargo-zisk run`
+
+**Process:** The emulator creates a virtual RISC-V environment and executes your ELF binary exactly as it would run during proof generation. This catches bugs early and verifies outputs before proving.
+
+**Command examples:**
+
+-   Direct emulation: `ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin`
+-   Integrated workflow: `cargo-zisk run --release -i build/input.bin`
+
+**Output:** The actual program outputs, exactly as they would appear during proving. For a SHA hasher, you'd see the hash values printed out.
+
+**Background:** The emulator generates detailed execution traces (registers, memory operations, I/O) that mirror what happens during proof generation, but without the cryptographic work.
+
+## 4. ROM Setup: Preparing for Proof Generation
+
+Before ZisK can generate proofs for your program, it analyzes the program structure and creates specialized constraint files.
+
+**Tool:** `cargo-zisk rom-setup`
+
+**Process:** This step analyzes your compiled ELF binary and generates program-specific setup files that define the mathematical constraints your program must satisfy during execution.
+
+**Command:** `cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher`
+
+**What happens:** ZisK examines every instruction in your program and creates a mathematical representation (using PIL - Polynomial Identity Language) that describes what "correct execution" means for your specific code.
+
+**Purpose:** Zero-knowledge proofs work by proving that a computation satisfies mathematical constraints. This step transforms your program logic into those constraint equations.
+
+## 5. Proof Generation
+
+ZisK generates a mathematical proof that your program executed correctly with specific inputs, without revealing anything about the execution process itself.
+
+**Tool:** `cargo-zisk prove`
+
+**Process:** ZisK executes your program in its zkVM, captures every step of execution, and transforms this execution trace into a STARK (Scalable Transparent Argument of Knowledge) proof.
+
+**Command:**
+
+```bash
+cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher \
+                 -i build/input.bin \
+                 -o proof \
+                 -a -y
+
+```
+
+**Proof generation steps:**
+
+1.  **Execution:** Your program runs inside the zkVM with the provided inputs
+2.  **Trace generation:** Every instruction, memory access, and state change gets recorded
+3.  **Witness computation:** The execution trace gets transformed into mathematical witness data
+4.  **STARK proof generation:** Using the witness and your program's constraints, ZisK generates the final proof
+
+**Output:** A complete proof package in the specified directory (`./proof/`) containing:
+
+-   `vadcop_final_proof.json` - The actual zero-knowledge proof
+-   `publics.json` - Public inputs and outputs
+-   Various intermediate files
+
+**Performance notes:** This is the most computationally intensive step. ZisK supports GPU acceleration and concurrent proving to reduce the time required.
+
+## 6. Verification: Cryptographic Validation
+
+The final step proves that a given proof is mathematically valid and corresponds to the claimed computation.
+
+**Tool:** `cargo-zisk verify`
+
+**Process:** The verifier checks the proof against the public inputs and program commitments using ZisK's verification algorithm. This process is much faster than proof generation.
+
+**Command:**
+
+```bash
+cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json \
+                  -u ./proof/publics.json
+
+```
+
+**Verification checks:**
+
+-   The proof is mathematically sound
+-   The computation used the claimed program (via cryptographic program commitment)
+-   The public outputs match what the proof claims
+-   All constraints were satisfied during execution
+
+**Result:** If verification passes, you get confirmation that the proof is valid. Anyone can run this verification independently.
+
+## Complete Workflow Example
+
+Here's what a typical ZisK development session looks like:
+
+```bash
+# Create and enter project
+cargo-zisk sdk new my_program
+cd my_program
+
+# Test natively first
+cargo run
+
+# Build for zkVM
+cargo-zisk build --release
+
+# Test in emulator
+cargo-zisk run --release -i build/input.bin
+
+# Prepare for proving
+cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/my_program
+
+# Generate proof
+cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/my_program \
+                 -i build/input.bin -o proof -a -y
+
+# Verify the proof
+cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json \
+                  -u ./proof/publics.json
+
+```
+
+## Architecture Integration
+
+This pipeline integrates with ZisK's modular architecture. During proof generation, the various state machines (Main, Arithmetic, Binary, Memory, ROM) coordinate to handle different aspects of RISC-V instruction execution, while the PIL constraint system ensures mathematical soundness throughout the process.
+
+## Performance Characteristics
+
+**Compilation:** Fast, similar to regular Rust compilation **Emulation:** Very fast, useful for rapid iteration  
+**ROM Setup:** One-time cost per program, moderate duration **Proof Generation:** Most expensive step, benefits significantly from GPU acceleration **Verification:** Fast, suitable for real-time validation
+
+The pipeline is designed to frontload the expensive operations (ROM setup, proving) while keeping the verification step lightweight enough for practical deployment scenarios.
+
+## Installation
+
+ZisK currently supports **Linux x86_64** and **macOS** platforms.
+
+> **Note:** Proof generation and verification on **macOS** are not yet supported. We're actively working to add this functionality.
+
+**Requirements:**
+
+-   **Ubuntu 22.04 or higher**
+-   **macOS 14 or higher**
+
+1.  Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
+    
+2.  Install required dependencies:
+    
+
+**Ubuntu:**
+
+```bash
+sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
+
+```
+
+**macOS:**
+
+```bash
+brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
+
+```
+
+3.  Install ZisK using ziskup:
+
+```bash
+curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh | bash
+
+```
+
+## Create a Project
+
+Generate a new example project using the `cargo-zisk sdk new <name>` command:
+
+```bash
+cargo-zisk sdk new sha_hasher
+cd sha_hasher
+
+```
+
+This creates a project with the following structure:
+
+```
+.
+├── build.rs
+├── Cargo.toml
+├── .gitignore
+└── src
+    └── main.rs
+
+```
+
+The example program takes a number `n` as input and computes the SHA-256 hash `n` times. The `build.rs` file generates an `input.bin` file containing the value of `n` (e.g., 20).
+
+You can run the program on your native architecture:
+
+```bash
+cargo run
+
+```
+
+Output:
+
+```
+public 0: 0x98211882
+public 1: 0xbd13089b
+public 2: 0x6ccf1fca
+public 3: 0x81f7f0e4
+public 4: 0xabf6352a
+public 5: 0x0c39c9b1
+public 6: 0x1f142cac
+public 7: 0x233f1280
+
+```
+
+## Build
+
+Build the program using `cargo-zisk` to generate a RISC-V ELF file:
+
+```bash
+cargo-zisk build --release
+
+```
+
+This builds the program using the `zkvm` target. The resulting `sha_hasher` ELF file is generated in the `./target/riscv64ima-zisk-zkvm-elf/release` directory.
+
+## Execute
+
+Test the program using the ZisK emulator before generating proofs:
+
+```bash
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin
+
+```
+
+Output:
+
+```
+98211882
+bd13089b
+6ccf1fca
+81f7f0e4
+abf6352a
+0c39c9b1
+1f142cac
+233f1280
+
+```
+
+Alternatively, build and run in one command:
+
+```bash
+cargo-zisk run --release -i build/input.bin
+
+```
+
+## Prove
+
+Generate the program setup files:
+
+```bash
+cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher
+
+```
+
+Generate and verify a proof:
+
+```bash
+cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -o proof -a -y
+
+```
+
+This generates the proof in the `./proof` directory. Success looks like:
+
+```
+...
+[INFO ] ProofMan: ✓ Vadcop Final proof was verified
+[INFO ] stop <<< GENERATING_VADCOP_PROOF 91706ms
+[INFO ] ProofMan: Proofs generated successfully
+
+```
+
+**Note:** You can use concurrent proof generation and GPU support to reduce proving time.
+
+## Verify Proof
+
+Verify a generated proof:
+
+```bash
+cargo-zisk verify -p ./proof/vadcop_final_proof.bin
+
+```
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../../getting_started/architecture/bus.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../../developer/understanding_IO.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../../getting_started/architecture/bus.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../../developer/understanding_IO.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../../elasticlunr.min.js"></script>
+        <script src="../../mark.min.js"></script>
+        <script src="../../searcher.js"></script>
+
+        <script src="../../clipboard.min.js"></script>
+        <script src="../../highlight.js"></script>
+        <script src="../../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

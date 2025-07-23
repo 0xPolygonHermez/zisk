@@ -1,0 +1,495 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Writing Programs - ZisK Documentation</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">ZisK Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="writing-programs"><a class="header" href="#writing-programs">Writing Programs</a></h1>
+<p>This document explains how to write or modify a Rust program for execution in ZisK.</p>
+<h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
+<h3 id="code-changes"><a class="header" href="#code-changes">Code changes</a></h3>
+<p>Writing a Rust program for ZisK is similar to writing a standard Rust program, with a few minor modifications. Follow these steps:</p>
+<ol>
+<li>
+<p>Modify <code>main.rs</code> file:</p>
+<p>Add the following code to mark the main function as the entry point for ZisK:</p>
+<pre><code class="language-rust">#![no_main]
+ziskos::entrypoint!(main);</code></pre>
+</li>
+<li>
+<p>Modify <code>Cargo.toml</code> file:</p>
+<p>Add the <code>ziskos</code> crate as a dependency:</p>
+<pre><code class="language-toml">[dependencies]
+ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
+</code></pre>
+</li>
+</ol>
+<p>Let's show these changes using the example program from the <a href="./quickstart.html">Quickstart</a> section.</p>
+<h3 id="example-program"><a class="header" href="#example-program">Example program</a></h3>
+<p><code>main.rs</code>:</p>
+<pre><code class="language-rust">// This example program takes a number `n` as input and computes the SHA-256 hash `n` times sequentially.
+
+// Mark the main function as the entry point for ZisK
+#![no_main]
+ziskos::entrypoint!(main);
+
+use sha2::{Digest, Sha256};
+use std::convert::TryInto;
+use ziskos::{read_input, set_output};
+use byteorder::ByteOrder;
+
+fn main() {
+    // Read the input data as a byte array from ziskos
+    let input: Vec&lt;u8&gt; = read_input();
+
+    // Get the 'n' value converting the input byte array into a u64 value
+    let n: u64 = u64::from_le_bytes(input.try_into().unwrap());
+
+    let mut hash = [0u8; 32];
+
+    // Compute SHA-256 hashing 'n' times
+    for _ in 0..n {
+        let mut hasher = Sha256::new();
+        hasher.update(hash);
+        let digest = &amp;hasher.finalize();
+        hash = Into::&lt;[u8; 32]&gt;::into(*digest);
+    }
+
+    // Split 'hash' value into chunks of 32 bits and write them to ziskos output
+    for i in 0..8 {
+        let val = byteorder::BigEndian::read_u32(&amp;mut hash[i * 4..i * 4 + 4]);
+        set_output(i, val);
+    }
+}</code></pre>
+<p><code>Cargo.toml</code>:</p>
+<pre><code class="language-toml">[package]
+name = "sha_hasher"
+version = "0.1.0"
+edition = "2021"
+default-run = "sha_hasher"
+
+[dependencies]
+byteorder = "1.5.0"
+sha2 = "0.10.8"
+ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
+</code></pre>
+<h3 id="inputoutput-data"><a class="header" href="#inputoutput-data">Input/Output Data</a></h3>
+<p>To provide input data for ZisK, you need to write that data in a binary file (e.g., <code>input.bin</code>).</p>
+<p>If your program requires complex input data, consider using a serialization mechanism (like <a href="https://crates.io/crates/bincode"><code>bincode</code></a> crate) to store it in <code>input.bin</code> file.</p>
+<p>In your program, use the <code>ziskos::read_input()</code> function to retrieve the input data from the <code>input.bin</code> file:</p>
+<pre><code class="language-rust">// Read the input data as a byte array from ziskos
+let input: Vec&lt;u8&gt; = read_input();</code></pre>
+<p>To write public output data, use the <code>ziskos::set_output()</code> function. Since the function accepts <code>u32</code> values, split the output data into 32-bit chunks if necessary and increase the <code>id</code> parameter of the function in each call:</p>
+<pre><code class="language-rust">// Split 'hash' value into chunks of 32 bits and write them to ziskos output
+for i in 0..8 {
+    let val = byteorder::BigEndian::read_u32(&amp;mut hash[i * 4..i * 4 + 4]);
+    set_output(i, val);
+}</code></pre>
+<h2 id="build"><a class="header" href="#build">Build</a></h2>
+<p>Before compiling your program for ZisK, you can test it on the native architecture just like any regular Rust program using the <code>cargo</code> command.</p>
+<p>Once your program is ready to run on ZisK, compile it into an ELF file (RISC-V architecture), using the <code>cargo-zisk</code> CLI tool:</p>
+<pre><code class="language-bash">cargo-zisk build
+</code></pre>
+<p>This command compiles the program using the <code>zisk</code> target. The resulting <code>sha_hasher</code> ELF file (without extension) is generated in the <code>./target/riscv64ima-zisk-zkvm-elf/debug</code> directory.</p>
+<p>For production, compile the ELF file with the <code>--release</code> flag, similar to how you compile Rust projects:</p>
+<pre><code class="language-bash">cargo-zisk build --release
+</code></pre>
+<p>In this case, the <code>sha_hasher</code> ELF file will be generated in the <code>./target/riscv64ima-zisk-zkvm-elf/release</code> directory.</p>
+<h2 id="execute"><a class="header" href="#execute">Execute</a></h2>
+<p>You can test your compiled program using the ZisK emulator (<code>ziskemu</code>) before generating a proof. Use the <code>-e</code> (<code>--elf</code>) flag to specify the location of the ELF file and the <code>-i</code> (<code>--inputs</code>) flag to specify the location of the input file:</p>
+<pre><code class="language-bash">cargo-zisk build --release
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin
+</code></pre>
+<p>Alternatively, you can build and execute the program in the ZisK emulator with a single command:</p>
+<pre><code class="language-bash">cargo-zisk run --release -i build/input.bin
+</code></pre>
+<p>If the program requires a large number of ZisK steps, you might encounter the following error:</p>
+<pre><code>Error during emulation: EmulationNoCompleted
+Error: Error executing Run command
+</code></pre>
+<p>To resolve this, you can increase the number of execution steps using the <code>-n</code> (<code>--max-steps</code>) flag. For example:</p>
+<pre><code class="language-bash">ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -n 10000000000
+</code></pre>
+<h2 id="metrics-and-statistics"><a class="header" href="#metrics-and-statistics">Metrics and Statistics</a></h2>
+<h3 id="performance-metrics"><a class="header" href="#performance-metrics">Performance Metrics</a></h3>
+<p>You can get performance metrics related to the program execution in ZisK using the <code>-m</code> (<code>--log-metrics</code>) flag in the <code>cargo-zisk run</code> command or in <code>ziskemu</code> tool:</p>
+<pre><code class="language-bash">cargo-zisk run --release -i build/input.bin -m
+</code></pre>
+<p>Or</p>
+<pre><code class="language-bash">ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -m
+</code></pre>
+<p>The output will include details such as execution time, throughput, and clock cycles per step:</p>
+<pre><code>process_rom() steps=85309 duration=0.0009 tp=89.8565 Msteps/s freq=3051.0000 33.9542 clocks/step
+98211882
+bd13089b
+6ccf1fca
+...
+</code></pre>
+<h3 id="execution-statistics"><a class="header" href="#execution-statistics">Execution Statistics</a></h3>
+<p>You can get statistics related to the program execution in Zisk using the <code>-x</code> (<code>--stats</code>) flag in the <code>cargo-zisk run</code> command or in <code>ziskemu</code> tool:</p>
+<pre><code class="language-bash">cargo-zisk run --release -i build/input.bin -x
+</code></pre>
+<p>Or</p>
+<pre><code class="language-bash">ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -x
+</code></pre>
+<p>The output will include details such as cost definitions, total cost, register reads/writes, opcode statistics, etc:</p>
+<pre><code>Cost definitions:
+    AREA_PER_SEC: 1000000 steps
+    COST_MEMA_R1: 0.00002 sec
+    COST_MEMA_R2: 0.00004 sec
+    COST_MEMA_W1: 0.00004 sec
+    COST_MEMA_W2: 0.00008 sec
+    COST_USUAL: 0.000008 sec
+    COST_STEP: 0.00005 sec
+
+Total Cost: 12.81 sec
+    Main Cost: 4.27 sec 85308 steps
+    Mem Cost: 2.22 sec 222052 steps
+    Mem Align: 0.05 sec 2701 steps
+    Opcodes: 6.24 sec 1270 steps (81182 ops)
+    Usual: 0.03 sec 4127 steps
+    Memory: 135563 a reads + 1625 na1 reads + 10 na2 reads + 84328 a writes + 524 na1 writes + 2 na2 writes = 137198 reads + 84854 writes = 222052 r/w
+
+Opcodes:
+    flag: 0.00 sec (0 steps/op) (89 ops)
+    copyb: 0.00 sec (0 steps/op) (10568 ops)
+    add: 1.12 sec (77 steps/op) (14569 ops)
+    ltu: 0.01 sec (77 steps/op) (101 ops)
+    ...
+    xor: 1.06 sec (77 steps/op) (13774 ops)
+    signextend_b: 0.03 sec (109 steps/op) (320 ops)
+    signextend_w: 0.03 sec (109 steps/op) (320 ops)
+
+98211882
+bd13089b
+6ccf1fca
+...
+</code></pre>
+<h2 id="prove"><a class="header" href="#prove">Prove</a></h2>
+<h3 id="program-setup"><a class="header" href="#program-setup">Program Setup</a></h3>
+<p>Before generating a proof (or verifying the constraints), you need to generate the program setup files. This must be done the first time after building the program ELF file, or any time it changes:</p>
+<pre><code class="language-bash">cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -k $HOME/.zisk/provingKey
+</code></pre>
+<p>In this command:</p>
+<ul>
+<li><code>-e</code> (<code>--elf</code>) specifies the ELF file location.</li>
+<li><code>-k</code> (<code>--proving-key</code>) specifies the directory containing the proving key. This is optional and defaults to <code>$HOME/.zisk/provingKey</code>.</li>
+</ul>
+<p>The program setup files will be generated in the <code>cache</code> directory located at <code>$HOME/.zisk</code>.</p>
+<p>To clean the <code>cache</code> directory content, use the following command:</p>
+<pre><code class="language-bash">cargo-zisk clean
+</code></pre>
+<h3 id="verify-constraints"><a class="header" href="#verify-constraints">Verify Constraints</a></h3>
+<p>Before generating a proof (which can take some time), you can verify that all constraints are satisfied:</p>
+<pre><code class="language-bash">cargo-zisk verify-constraints -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey
+</code></pre>
+<p>In this command:</p>
+<ul>
+<li><code>-e</code> (<code>--elf</code>) specifies the ELF file location.</li>
+<li><code>-i</code> (<code>--input</code>) specifies the input file location.</li>
+<li><code>-w</code> (<code>--witness</code>) specifies the location of the witness library. This is optional and defaults to <code>$HOME/.zisk/bin/libzisk_witness.so</code>.</li>
+<li><code>-k</code> (<code>--proving-key</code>) specifies the directory containing the proving key. This is optional and defaults to <code>$HOME/.zisk/provingKey</code>.</li>
+</ul>
+<p>If everything is correct, you will see an output similar to:</p>
+<pre><code>[INFO ] GlCstVfy: --&gt; Checking global constraints
+[INFO ] CstrVrfy: ··· ✓ All global constraints were successfully verified
+[INFO ] CstrVrfy: ··· ✓ All constraints were verified
+</code></pre>
+<h3 id="generate-proof"><a class="header" href="#generate-proof">Generate Proof</a></h3>
+<p>To generate a proof, run the following command:</p>
+<pre><code class="language-bash">cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
+</code></pre>
+<p>In this command:</p>
+<ul>
+<li><code>-e</code> (<code>--elf</code>) specifies the ELF file location.</li>
+<li><code>-i</code> (<code>--input</code>) specifies the input file location.</li>
+<li><code>-w</code> (<code>--witness</code>) specifies the location of the witness library. This is optional and defaults to <code>$HOME/.zisk/bin/libzisk_witness.so</code>.</li>
+<li><code>-k</code> (<code>--proving-key</code>) specifies the directory containing the proving key. This is optional and defaults to <code>$HOME/.zisk/provingKey</code>.</li>
+<li><code>-o</code> (<code>--output</code>) determines the output directory (in this example <code>proof</code>).</li>
+<li><code>-a</code> (<code>--aggregation</code>) indicates that a final aggregated proof (containing all generated sub-proofs) should be produced.</li>
+<li><code>-y</code> (<code>--verify-proofs</code>) instructs the tool to verify the proof immediately after it is generated (verification can also be performed later using the <code>cargo-zisk verify</code> command).</li>
+</ul>
+<p>If the process is successful, you should see a message similar to:</p>
+<pre><code>...
+[INFO ] ProofMan:     ✓ Vadcop Final proof was verified
+[INFO ]      stop &lt;&lt;&lt; GENERATING_VADCOP_PROOF 91706ms
+[INFO ] ProofMan: Proofs generated successfully
+</code></pre>
+<h3 id="concurrent-proof-generation"><a class="header" href="#concurrent-proof-generation">Concurrent Proof Generation</a></h3>
+<p>Zisk proofs can be generated using multiple processes concurrently to improve performance and scalability. The standard MPI (Message Passing Interface) approach is used to launch these processes, which can run either on the same server or across multiple servers.</p>
+<p>To execute a Zisk proof using multiple processes, use the following command:</p>
+<pre><code class="language-bash">mpirun --bind-to none -np &lt;num_processes&gt; -x OMP_NUM_THREADS=&lt;num_threads_per_process&gt; -x RAYON_NUM_THREADS=&lt;num_threads_per_process&gt; target/release/cargo-zisk &lt;zisk arguments&gt;
+</code></pre>
+<p>In this command:</p>
+<ul>
+<li><code>&lt;num_processes&gt;</code> specifies the number of processes to launch.</li>
+<li><code>&lt;num_threads_per_process&gt;</code> sets the number of threads used by each process via the <code>OMP_NUM_THREADS</code> and <code>RAYON_NUM_THREADS</code> environment variables.</li>
+<li><code>--bind-to none</code> prevents binding processes to specific cores, allowing the operating system to schedule them dynamically for better load balancing.</li>
+</ul>
+<p>Running a Zisk proof with multiple processes enables efficient workload distribution across multiple servers. <strong>On a single server with many cores, splitting execution into smaller subsets of cores generally improves performance by increasing concurrency</strong>. As a general rule, <code>&lt;num_processes&gt;</code> * <code>&lt;num_threads_per_process&gt;</code> should match the number of available CPU cores or double that if hyperthreading is enabled.</p>
+<p>The total memory requirement increases proportionally with the number of processes. If each process requires approximately 25GB of memory, running P processes will require roughly (25 * P)GB of memory. Ensure that the system has sufficient available memory to accommodate all running processes.</p>
+<h3 id="gpu-proof-generation"><a class="header" href="#gpu-proof-generation">GPU Proof Generation</a></h3>
+<p>Zisk proofs can also be generated using GPUs to significantly improve performance and scalability.
+Follow these steps to enable GPU support:</p>
+<ol>
+<li>
+<p>GPU support is only available for NVIDIA GPUs.</p>
+</li>
+<li>
+<p>Make sure the <a href="https://developer.nvidia.com/cuda-downloads">CUDA Toolkit</a> is installed.</p>
+</li>
+<li>
+<p>Build Zisk with GPU support enabled.
+GPU support must be enabled at compile time. Follow the instructions in the <strong>Build ZisK</strong> section under <strong>Option 2: Building from source</strong> in the <a href="./installation.html">Installation</a> guide, but replace the build command with:</p>
+<pre><code class="language-bash">cargo build --release --features gpu
+</code></pre>
+</li>
+<li>
+<p>Build Zisk on the target GPU server.
+It is recommended to compile Zisk directly on the server where it will be executed. The binary will be optimized for the local GPU architecture, which can lead to better runtime performance.</p>
+</li>
+</ol>
+<p>You can combine GPU-based execution with concurrent proof generation using multiple processes, as described in the <strong>Concurrent Proof Generation</strong> section.</p>
+<blockquote>
+<p><strong>Note:</strong> GPU memory is typically more limited than CPU memory. When combining GPU execution with concurrent proof generation, ensure that each process has sufficient memory available on the GPU to avoid out-of-memory errors.</p>
+</blockquote>
+<h3 id="verify-proof"><a class="header" href="#verify-proof">Verify Proof</a></h3>
+<p>To verify a generated proof, use the following command:</p>
+<pre><code class="language-bash">cargo-zisk verify -p ./proof/vadcop_final_proof.bin -s $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.starkinfo.json -e $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verifier.bin -k $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.json
+</code></pre>
+<p>In this command:</p>
+<ul>
+<li><code>-p</code> (<code>--proof</code>) specifies the final proof file generated with cargo-zisk prove.</li>
+<li><code>-u</code> (<code>--public-inputs</code>) provides the path to the public inputs associated with the proof.</li>
+<li>The remaining flags specify the files required for verification; they are optional, set by default to the files found in the <code>$HOME/.zisk</code> directory.</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../getting_started/quickstart.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../getting_started/precompiles.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../getting_started/quickstart.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../getting_started/precompiles.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

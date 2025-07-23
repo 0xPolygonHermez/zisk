@@ -1,0 +1,355 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Understanding I/O with ZisK - ZisK Documentation</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">ZisK Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="understanding-io-with-zisk"><a class="header" href="#understanding-io-with-zisk">Understanding I/O with ZisK</a></h1>
+<p>In the Quick Start section, we had a brief introduction to how to perform I/O operations with ZisK. Now we'll dive deeper into the fundamental concepts. Keep reading to learn more about:</p>
+<pre class="mermaid">graph TD
+    subgraph &quot;Unrestricted World - Data Preparation&quot;
+        APIs[External APIs]
+        DB[Databases] 
+        Files[File Systems]
+        Network[Network Resources]
+        User[User Input]
+        
+        Build[build.rs&lt;br/&gt;Data Preparation Script]
+        
+        APIs --&gt; Build
+        DB --&gt; Build
+        Files --&gt; Build
+        Network --&gt; Build
+        User --&gt; Build
+    end
+    
+    subgraph &quot;Bridge Layer&quot;
+        InputBin[input.bin&lt;br/&gt;Temporal Snapshot&lt;br/&gt;All Data Private by Default]
+    end
+    
+    subgraph &quot;Deterministic World - ZisK Execution&quot;
+        Main[main.rs&lt;br/&gt;ZisK Program]
+        ReadInput[read_input function&lt;br/&gt;Load All Data]
+        Processing[Private Processing&lt;br/&gt;Calculations &amp; Logic]
+        SetOutput[set_output function&lt;br/&gt;Selective Public Reveal]
+    end
+    
+    subgraph &quot;Public Outputs&quot;
+        Console[Console Output&lt;br/&gt;public 0: 420]
+        PublicsJSON[publics.json&lt;br/&gt;Verifiable Public Data]
+    end
+    
+    subgraph &quot;Dynamic Data Patterns&quot;
+        BuildTime[Build-time Refresh&lt;br/&gt;Recompile for Fresh Data]
+        External[External Data Staging&lt;br/&gt;Separate Collection Process]
+        EventDriven[Event-driven Triggers&lt;br/&gt;Monitor &amp; Auto-update]
+        Batching[Temporal Batching&lt;br/&gt;Fixed Interval Windows]
+    end
+    
+    Build --&gt; InputBin
+    InputBin --&gt; Main
+    Main --&gt; ReadInput
+    ReadInput --&gt; Processing
+    Processing --&gt; SetOutput
+    SetOutput --&gt; Console
+    SetOutput --&gt; PublicsJSON
+    
+    BuildTime -.-&gt; Build
+    External -.-&gt; InputBin
+    EventDriven -.-&gt; Build
+    Batching -.-&gt; Build
+</pre>
+<ul>
+<li>How ZisK's input/output model works at its core</li>
+<li>The distinction between public and private data</li>
+<li>Working with dynamic data streams at ZisK</li>
+</ul>
+<h2 id="setting-up-the-stage"><a class="header" href="#setting-up-the-stage">Setting up the Stage</a></h2>
+<h4 id="the-zkvm-io-challenge"><a class="header" href="#the-zkvm-io-challenge">The zkVM I/O Challenge</a></h4>
+<p>Zero-knowledge virtual machines operate under unique constraints that traditional programs don't face. The core challenge is maintaining deterministic execution while preserving privacy and enabling verification.</p>
+<p>When you run a regular program, you can fetch data, read files, or get user input at runtime. In a zkVM, this approach breaks down because:</p>
+<ul>
+<li>Verifiers must be able to reproduce the computation without re-executing it.</li>
+<li>The same inputs must always produce the same outputs.</li>
+<li>Some data must remain hidden while other data needs to be public.</li>
+</ul>
+<p>ZisK solves this through a carefully designed architecture that separates data preparation from execution.</p>
+<h2 id="zisks-data-model"><a class="header" href="#zisks-data-model">ZisK's Data Model</a></h2>
+<p>ZisK takes a fundamentally different approach to handling I/O, Instead of allowing direct access to files, networks, or user input during execution, ZisK uses a controlled I/O model. This approach ensures deterministic execution, maintains privacy by default, and enables verifiable computation without revealing sensitive data.</p>
+<p>The core concept is simple: ZisK handles I/O through a file-based communication pattern where you generate an <code>input.bin</code> file from <code>build.rs</code> and process that data in <code>main.rs</code> using ZisK's <code>read_input()</code> and <code>set_output()</code>  functions.</p>
+<p>This separation between data preparation (unrestricted) and data processing (verifiable) gives you complete control over what becomes public versus what remains private, while ensuring that the same inputs always produce the same verifiable outputs.</p>
+<p><em>Let's dive into the section of Handling Input and Making Data Public.</em></p>
+<h3 id="input-handling"><a class="header" href="#input-handling">Input Handling</a></h3>
+<p>If we look at the SHA example we worked with earlier, you'll notice that ZisK programs receive all their input through a single file called <code>input.bin</code>. Unlike traditional programs that can read files or make network requests during execution, this single-file approach is how ZisK handles all input data.</p>
+<p>Your <code>build.rs</code> script is where you prepare this input. Here you have full access to external resources - fetch APIs, read databases, process user input, whatever you need. You're essentially creating a <strong>snapshot</strong> of data that will be processed deterministically by the zkVM.</p>
+<pre><code class="language-rust">// Ref. build.rs from the SHA example - Here we prepare the data for Input.bin
+let secret_value: u64 = 42;
+file.write_all(&amp;secret_value.to_le_bytes())?;</code></pre>
+<p>Once your program runs inside ZisK, the <code>read_input()</code> function gives you access to everything you prepared. It returns the entire <code>input.bin</code> contents as bytes - all the data you wrote in <code>build.rs</code> is now available to work with .</p>
+<pre><code class="language-rust">// Ref. main.rs from SHA example - Here we read data from the input.bin file and load it into the main.rs 
+
+let input: Vec&lt;u8&gt; = read_input();
+let secret_value = u64::from_le_bytes(input[0..8].try_into().unwrap());</code></pre>
+<p>Here's the key insight, <strong>All input starts as private by default</strong>. ZisK doesn't distinguish between "public" and "private" input during the reading process. Instead, the <code>set_output()</code> function (which we'll explore next) is what determines what becomes public. By default, everything you input/work with remains private.</p>
+<p><em>Make sure your input data isn't redundant. Since all input must go into your <code>input.bin</code> file and gets processed by the zkVM, any unnecessary or duplicate data will make your file larger and slow down your computation. Keep your inputs lean and purposeful.</em></p>
+<h3 id="making-data-public"><a class="header" href="#making-data-public">Making Data Public</a></h3>
+<p>So far, everything you've done in your ZisK program has been completely private. Your input data, calculations, and intermediate values remain private. But when you need to prove something or share a result, you need a mechanism to selectively reveal information.</p>
+<p>The <code>set_output()</code> function serves this exact purpose. It's your <strong>only pathway</strong> to make data visible outside ZisK. Once you call this function, that specific piece of data becomes accessible to be  verifiable.</p>
+<pre><code class="language-rust">// So to see thin in the context of the syntax if we see in main.rs
+let result = secret_value * 10;  // This stays private
+set_output(0, result as u32);    // This becomes public</code></pre>
+<p>When you call <code>set_output()</code>, two things happen simultaneously. You'll see the value immediately displayed on your console as <code>public 0: 420</code>, When you write <code>set_output(0, 420)</code> in your code, ZisK immediately prints <code>public 0: 420</code> to the console, where "public" indicates this is a public output, "0" is the index you specified, and "420" is the actual value.</p>
+<p>This format gives you an immediate feedback about what values you're making public and shows you exactly how they'll be organized in the final <code>publics.json</code> file that gets created during proving.</p>
+<p>Multiple values can be made public by calling <code>set_output()</code> with different index parameters, where each index serves as a unique identifier to organize the public outputs.</p>
+<pre><code class="language-rust">set_output(0, timestamp as u32);     // When computation happened
+set_output(1, result as u32);        // The actual result
+set_output(2, status_flag as u32);   // Success/failure indicator</code></pre>
+<p>This approach gives you control over what information becomes public versus what stays private. Any data you don't explicitly pass to <code>set_output()</code> remains hidden from verifiers - they can only see the values you choose to reveal.</p>
+<h2 id="working-with-dynamic-data-streams-at-zisk"><a class="header" href="#working-with-dynamic-data-streams-at-zisk">Working with dynamic data streams at ZisK</a></h2>
+<h3 id="the-challenge-with-streaming-data"><a class="header" href="#the-challenge-with-streaming-data">The Challenge with Streaming Data</a></h3>
+<p>Okay so ZisK's I/O model is built around snapshots i.e. you create an <code>input.bin</code> file and your program processes it deterministically. But what happens when you need to work with continuously changing data, like live market feeds, real-time sensor data, or streaming blockchain events?</p>
+<p>Since ZisK requires deterministic inputs for proof generation, you can't simply fetch live data from within your program. Instead, you need formalized approaches for handling dynamic data streams while maintaining ZisK's deterministic properties.</p>
+<h3 id="bridging-static-and-dynamic-data-to-zisk"><a class="header" href="#bridging-static-and-dynamic-data-to-zisk">Bridging Static and Dynamic data to ZisK</a></h3>
+<p>The solution space is quite rich, and your choice depends on latency requirements and operational constraints.</p>
+<p>One popular approach could leverage Cargo's build system as your data acquisition layer. By repurposing <code>build.rs</code> to fetch fresh data during compilation, each build cycle captures a temporal snapshot. Your main ZisK program remains unchanged; it simply processes whatever data the build system has prepared.</p>
+<p>Alternatively, you might separate data collection from proof generation entirely. External processes continuously maintain staged data files, while ZisK programs consume these pre-prepared snapshots on demand. This decoupling provides flexibility in how and when data gets refreshed.</p>
+<p>For applications that can tolerate batching, accumulating streaming data over fixed intervals works well. So in this case you're creating discrete temporal windows that maintain deterministic properties while capturing real-world data evolution.</p>
+<p>Or maybe using proxy input generation, where external services or scheduled jobs maintain current data snapshots. The ZisK programs then consume these externally-managed files rather than handling data acquisition themselves.</p>
+<p>Event-driven approaches can also be effective: monitor data sources for changes and trigger recompilation automatically. This ensures proofs always reflect current data without manual intervention.</p>
+<p>The key insight is that all these patterns preserve ZisK's deterministic execution model while enabling different temporal guarantees. Your choice comes down to balancing latency requirements, operational complexity, and your broader system architecture.</p>
+<h2 id="wrapping-up-zisks-io-philosophy"><a class="header" href="#wrapping-up-zisks-io-philosophy">Wrapping Up: ZisK's I/O Philosophy</a></h2>
+<p>ZisK's approach to I/O represents a fundamental shift in how we think about data flow in computational systems. By separating data preparation from execution, you gain something powerful: the ability to work with any data source while maintaining the deterministic properties essential for zero-knowledge proofs.</p>
+<p>The core pattern we've explored is elegant in its simplicity. Your <code>build.rs</code> operates in the unrestricted world where you can fetch APIs, read databases, and process complex data sources. Your <code>main.rs</code> operates in the deterministic world where the same inputs always produce the same verifiable outputs. The <code>input.bin</code> file serves as the bridge between these two worlds.</p>
+<p>This architecture gives you complete control over privacy. Everything starts private by default, and only the data you explicitly pass to <code>set_output()</code> becomes visible to verifiers. This privacy-by-default approach means you can process sensitive information while selectively revealing just the results that matter.</p>
+<p>For dynamic data scenarios, the solutions we've discussed all maintain this core philosophy while adapting to real-world constraints. Whether you choose build-time refresh, external data staging, or event-driven approaches, the fundamental principle remains: capture temporal snapshots that ZisK can process deterministically.</p>
+<p>The beauty of this model is that it scales from simple proofs to complex, real-world applications without compromising on the security and verifiability properties that make zero-knowledge computation valuable. You're not just writing programs; you're creating verifiable computational artifacts that others can trust without needing to see your private data or re-execute your code.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../getting_started/architecture/execution_pipeline.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../developer/ziskof.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../getting_started/architecture/execution_pipeline.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../developer/ziskof.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

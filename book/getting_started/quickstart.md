@@ -2,6 +2,37 @@
 
 In this guide, you will learn how to install ZisK, create a simple program and run it using ZisK.
 
+-   Install the ZisK toolchain with `ziskup`
+-   Create a new project using `cargo-zisk sdk new`
+-   Build your program with `cargo-zisk build --release`
+-   Test execution with `ziskemu` or `cargo-zisk run`
+-   Generate program setup with `cargo-zisk rom-setup`
+-   Generate proof with `cargo-zisk prove`
+-   Verify proof with `cargo-zisk verify`
+
+## Concept Break
+
+**ZisK is a zkVM (Zero-Knowledge Virtual Machine) that generates zero-knowledge proofs of arbitrary program execution.**
+
+**The process:** You write a Rust program that compiles to a RISC-V ELF binary. This program reads input data and produces public outputs. ZisK then generates a cryptographic proof that demonstrates the program executed correctly and produced the claimed outputs from the given inputs.
+
+**What the proof guarantees:**
+
+-   The ELF program executed without errors
+-   The public outputs (stored in `publics.json`) are the genuine result of processing the inputs
+-   The computation followed the exact program logic
+
+**Verification:** Anyone with the proof and `publics.json` can verify the computation was performed correctly, without needing access to the original inputs or program execution details.
+
+**Key components:**
+
+-   **Rust program**: Your source code (`src/main.rs`)
+-   **ELF binary**: Compiled RISC-V executable (`target/riscv64ima-zisk-zkvm-elf/release/program_name`)
+-   **Input data**: Private inputs to your program (`input.bin`)
+-   **Public outputs**: Results stored in `publics.json`
+-   **Proof**: Cryptographic proof stored in `vadcop_final_proof.json`
+-   **Verification**: Process using proof + `publics.json` to validate correctness
+  
 ## Installation
 
 ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below).

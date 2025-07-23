@@ -1,0 +1,1910 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>ZisK Documentation</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">ZisK Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p>Welcome to the <a href="https://github.com/0xpolygonhermez">ZisK</a> Documentation</p>
+<p>ZisK is a high-performance zkVM (Zero-Knowledge Virtual Machine) designed to generate zero-knowledge proofs of arbitrary program execution. It enables developers to prove the correctness of a computation without revealing its internal state, making ZisK a powerful tool for privacy-preserving and verifiable computation.</p>
+<p>ZisK abstracts these complexities through an optimized toolstack that minimizes computational overhead, enabling any developer to harness zero-knowledge technology regardless of their cryptographic background. With Rust-based execution and planned multi-language support, ZisK makes privacy-preserving proofs as straightforward to implement as any other development tool, Without sacrificing performance or security.</p>
+<h2 id="why-zisk"><a class="header" href="#why-zisk">Why ZisK?</a></h2>
+<ol>
+<li><strong>Ultra-High Performance Architecture</strong> : Optimized low-latency proof generation engine designed for production-scale throughput.</li>
+<li><strong>Native Rust zkVM with Multi-Language Support</strong> : Rust-first virtual machine with planned expansion to additional programming languages.</li>
+<li><strong>Universal Program Compatibility</strong> : Zero recompilation workflow across different program types and execution environments.</li>
+<li><strong>Industry-Standard Protocol Support</strong> : Unified prover interface supporting JSON-RPC, gRPC, and command-line interactions.</li>
+<li><strong>Versatile Deployment Options</strong> : Seamless integration as standalone service, embedded library, or distributed infrastructure.</li>
+<li><strong>Trustless Decentralized Proof Architecture</strong> : Distributed proving network enabling verifiable computation without centralized dependencies.</li>
+<li><strong>Cost-Optimized Proof Generation</strong> : Economically efficient proving designed for real-world application deployment at scale.</li>
+<li><strong>Fully Open-Source Technology Stack</strong> : Complete transparency with battle-tested Polygon zkEVM and Plonky3 cryptographic foundations.</li>
+</ol>
+<p><strong>Ready to start building?</strong><br />
+Check out our <a href="./getting_started/installation.html">Getting Started</a> page.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="installation-guide"><a class="header" href="#installation-guide">Installation Guide</a></h1>
+<p>ZisK can be installed from prebuilt binaries (recommended) or by building the ZisK tools, toolchain and setup files from source.</p>
+<h2 id="system-requirements"><a class="header" href="#system-requirements">System Requirements</a></h2>
+<p>ZisK currently supports <strong>Linux x86_64</strong> and <strong>macOS</strong> platforms (see note below).</p>
+<blockquote>
+<p><strong>Note:</strong> Proof generation and verification on <strong>macOS</strong> are not yet supported. We’re actively working to add this functionality.</p>
+</blockquote>
+<h3 id="required-tools"><a class="header" href="#required-tools">Required Tools</a></h3>
+<p>Ensure the following tools are installed:</p>
+<ul>
+<li><a href="https://www.rust-lang.org/tools/install">Rust</a></li>
+<li><a href="https://git-scm.com/book/en/v2/Getting-Started-Installing-Git">Git</a></li>
+</ul>
+<h2 id="installing-dependencies"><a class="header" href="#installing-dependencies">Installing Dependencies</a></h2>
+<h3 id="ubuntu"><a class="header" href="#ubuntu">Ubuntu</a></h3>
+<p>Ubuntu 22.04 or higher is required.</p>
+<p>Install all required dependencies with:</p>
+<pre><code class="language-bash">sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common libclang-dev clang
+</code></pre>
+<p>ZisK uses shared memory to exchange data between processes. The system must be configured to allow enough locked memory per process:</p>
+<pre><code class="language-text">$ ulimit -l
+unlimited
+</code></pre>
+<p>A way to achieve it is to edit the file <code>/etc/systemd/system.conf</code> and add the line <code>DefaultLimitMEMLOCK=infinity</code>. Reboot for changes to take effect.</p>
+<h3 id="macos"><a class="header" href="#macos">macOS</a></h3>
+<p>macOS 14 or higher is required.</p>
+<p>You must have <a href="https://brew.sh/">Homebrew</a> installed.</p>
+<p>Install all required dependencies with:</p>
+<pre><code class="language-bash">brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
+</code></pre>
+<h2 id="installing-zisk"><a class="header" href="#installing-zisk">Installing ZisK</a></h2>
+<h3 id="option-1-prebuilt-binaries-recommended"><a class="header" href="#option-1-prebuilt-binaries-recommended">Option 1: Prebuilt Binaries (Recommended)</a></h3>
+<ol>
+<li>
+<p>To install ZisK using ziskup, run the following command in your terminal:</p>
+<pre><code class="language-bash">curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh  | bash
+</code></pre>
+</li>
+<li>
+<p>During the installation, you will be prompted to select a setup option. You can choose from the following:</p>
+<ol>
+<li><strong>Install proving key (default)</strong> – Required for generating and verifying proofs.</li>
+<li><strong>Install verify key</strong> – Needed only if you want to verify proofs.</li>
+<li><strong>None</strong> – Choose this if you only want to compile programs and execute them using the ZisK emulator.</li>
+</ol>
+</li>
+<li>
+<p>Verify the Rust toolchain: (which includes support for the <code>riscv64ima-zisk-zkvm</code> compilation target):</p>
+<pre><code class="language-bash">rustup toolchain list
+</code></pre>
+<p>The output should include an entry for <code>zisk</code>, similar to this:</p>
+<pre><code>stable-x86_64-unknown-linux-gnu (default)
+nightly-x86_64-unknown-linux-gnu
+zisk
+</code></pre>
+</li>
+<li>
+<p>Verify the <code>cargo-zisk</code> CLI tool:</p>
+<pre><code class="language-bash">cargo-zisk --version
+</code></pre>
+</li>
+</ol>
+<h4 id="updating-zisk"><a class="header" href="#updating-zisk">Updating ZisK</a></h4>
+<p>To update ZisK to the latest version, simply run:
+<code>bash     ziskup     </code></p>
+<p>You can use the flags <code>--provingkey</code>, <code>--verifykey</code> or <code>--nokey</code> to specify the installation setup and skip the selection prompt.</p>
+<h3 id="option-2-building-from-source"><a class="header" href="#option-2-building-from-source">Option 2: Building from Source</a></h3>
+<h4 id="build-zisk"><a class="header" href="#build-zisk">Build ZisK</a></h4>
+<ol>
+<li>
+<p>Clone the ZisK repository:</p>
+<pre><code class="language-bash">git clone https://github.com/0xPolygonHermez/zisk.git
+cd zisk
+</code></pre>
+</li>
+<li>
+<p>Build ZisK tools:</p>
+<pre><code class="language-bash">cargo build --release
+</code></pre>
+<p><strong>Note</strong>: If you encounter the following error during compilation:</p>
+<pre><code>--- stderr
+/usr/lib/x86_64-linux-gnu/openmpi/include/mpi.h:237:10: fatal error: 'stddef.h' file not found
+</code></pre>
+<p>Follow these steps to resolve it:</p>
+<ol>
+<li>Locate the <code>stddef.h</code> file:
+<pre><code class="language-bash">find /usr -name "stddef.h"
+</code></pre>
+</li>
+<li>Set the environment variables to include the directory where <code>stddef.h</code> is located (e.g.):
+<pre><code class="language-bash">export C_INCLUDE_PATH=/usr/lib/gcc/x86_64-linux-gnu/13/include
+export CPLUS_INCLUDE_PATH=$C_INCLUDE_PATH
+</code></pre>
+</li>
+<li>Try building again</li>
+</ol>
+</li>
+<li>
+<p>Copy the tools to <code>~/.zisk/bin</code> directory:</p>
+<pre><code class="language-bash">mkdir -p $HOME/.zisk/bin
+cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/libzisk_witness.so target/release/libziskclib.a precompiles/sha256f/src/sha256f_script.json $HOME/.zisk/bin
+</code></pre>
+</li>
+<li>
+<p>Copy required files to support <code>cargo-zisk rom-setup</code> command:</p>
+<pre><code class="language-bash">mkdir -p $HOME/.zisk/zisk/emulator-asm
+cp -r ./emulator-asm/src $HOME/.zisk/zisk/emulator-asm
+cp ./emulator-asm/Makefile $HOME/.zisk/zisk/emulator-asm
+cp -r ./lib-c $HOME/.zisk/zisk
+</code></pre>
+</li>
+<li>
+<p>Add <code>~/.zisk/bin</code> to your system PATH:
+For example, if you are using <code>bash</code>:</p>
+<pre><code class="language-bash">echo &gt;&gt;$HOME/.bashrc &amp;&amp; echo "export PATH=\"\$PATH:$HOME/.zisk/bin\"" &gt;&gt; $HOME/.bashrc
+source $HOME/.bashrc
+</code></pre>
+</li>
+<li>
+<p>Install the ZisK Rust toolchain:</p>
+<pre><code class="language-bash">cargo-zisk sdk install-toolchain
+</code></pre>
+<p><strong>Note</strong>: This command installs the ZisK Rust toolchain from prebuilt binaries. If you prefer to build the toolchain from source, follow these steps:</p>
+<ol>
+<li>
+<p>Ensure all <a href="https://github.com/rust-lang/rust/blob/master/INSTALL.md#dependencies">dependencies</a> required to build the Rust toolchain from source are installed.</p>
+</li>
+<li>
+<p>Build and install the Rust ZisK toolchain:</p>
+</li>
+</ol>
+<pre><code class="language-bash">cargo-zisk sdk build-toolchain
+</code></pre>
+</li>
+<li>
+<p>Verify the installation:</p>
+<pre><code class="language-bash">rustup toolchain list
+</code></pre>
+<p>Confirm that <code>zisk</code> appears in the list of installed toolchains.</p>
+</li>
+</ol>
+<h4 id="build-setup"><a class="header" href="#build-setup">Build Setup</a></h4>
+<p>The setup building process is highly intensive in terms of CPU and memory usage. You will need a machine with at least the following hardware requirements:</p>
+<ul>
+<li>32 CPUs</li>
+<li>512 GB of RAM</li>
+<li>100 GB of free disk space</li>
+</ul>
+<p>Please note that the process can be long, taking approximately 2–3 hours depending on the machine used.</p>
+<p><a href="https://nodejs.org/en/download">NodeJS</a> version 20.x or higher is required to build the setup files.</p>
+<ol>
+<li>
+<p>Clone the following repositories in the parent folder of the <code>zisk</code> folder created in the previous section:</p>
+<pre><code class="language-bash">git clone https://github.com/0xPolygonHermez/pil2-compiler.git
+git clone https://github.com/0xPolygonHermez/pil2-proofman.git
+git clone https://github.com/0xPolygonHermez/pil2-proofman-js
+</code></pre>
+</li>
+<li>
+<p>Install packages:</p>
+<pre><code class="language-bash">(cd pil2-compiler &amp;&amp; npm i)
+(cd pil2-proofman-js &amp;&amp; npm i)
+
+</code></pre>
+</li>
+<li>
+<p>All subsequent commands must be executed from the <code>zisk</code> folder created in the previous section:</p>
+<pre><code class="language-bash">cd ~/zisk
+</code></pre>
+</li>
+<li>
+<p>Adjust memory mapped areas and JavaScript heap size:</p>
+<pre><code class="language-bash">echo "vm.max_map_count=655300" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -w vm.max_map_count=655300
+export NODE_OPTIONS="--max-old-space-size=230000"
+</code></pre>
+</li>
+<li>
+<p>Compile ZisK PIL: (Note that this command may take 20-30 minutes to complete)</p>
+<pre><code class="language-bash">node --max-old-space-size=131072 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout
+</code></pre>
+<p>This command will create the <code>pil/zisk.pilout</code> file</p>
+</li>
+<li>
+<p>Generate fixed data:</p>
+<pre><code class="language-bash">cargo run --release --bin keccakf_fixed_gen
+cargo run --release --bin sha256f_fixed_gen
+mkdir -p build
+mv precompiles/keccakf/src/keccakf_fixed.bin build 
+mv precompiles/sha256f/src/sha256f_fixed.bin build
+</code></pre>
+<p>These commands generate the <code>keccakf_fixed.bin</code> and <code>sha256f_fixed.bin</code> files in the <code>build</code> directory.</p>
+</li>
+<li>
+<p>Generate setup data: (Note that this command may take 2–3 hours to complete):</p>
+<pre><code class="language-bash">node --max-old-space-size=131072 ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -i ./build/keccakf_fixed.bin ./build/sha256f_fixed.bin -r
+</code></pre>
+<p>This command generates the <code>provingKey</code> directory.</p>
+</li>
+<li>
+<p>Copy (or move) the <code>provingKey</code> directory to <code>$HOME/.zisk</code> directory:</p>
+<pre><code class="language-bash">cp -R build/provingKey $HOME/.zisk
+</code></pre>
+</li>
+<li>
+<p>Generate constant tree files:</p>
+<pre><code class="language-bash">cargo-zisk check-setup -a
+</code></pre>
+</li>
+</ol>
+<h2 id="uninstall-zisk"><a class="header" href="#uninstall-zisk">Uninstall Zisk</a></h2>
+<ol>
+<li>
+<p>Uninstall ZisK toolchain:</p>
+<pre><code class="language-bash">rustup uninstall zisk
+</code></pre>
+</li>
+<li>
+<p>Delete ZisK folder</p>
+<pre><code class="language-bash">rm -rf $HOME/.zisk
+</code></pre>
+</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="quickstart"><a class="header" href="#quickstart">Quickstart</a></h1>
+<p>In this guide, you will learn how to install ZisK, create a simple program and run it using ZisK.</p>
+<ul>
+<li>Install the ZisK toolchain with <code>ziskup</code></li>
+<li>Create a new project using <code>cargo-zisk sdk new</code></li>
+<li>Build your program with <code>cargo-zisk build --release</code></li>
+<li>Test execution with <code>ziskemu</code> or <code>cargo-zisk run</code></li>
+<li>Generate program setup with <code>cargo-zisk rom-setup</code></li>
+<li>Generate proof with <code>cargo-zisk prove</code></li>
+<li>Verify proof with <code>cargo-zisk verify</code></li>
+</ul>
+<h2 id="concept-break"><a class="header" href="#concept-break">Concept Break</a></h2>
+<p><strong>ZisK is a zkVM (Zero-Knowledge Virtual Machine) that generates zero-knowledge proofs of arbitrary program execution.</strong></p>
+<p><strong>The process:</strong> You write a Rust program that compiles to a RISC-V ELF binary. This program reads input data and produces public outputs. ZisK then generates a cryptographic proof that demonstrates the program executed correctly and produced the claimed outputs from the given inputs.</p>
+<p><strong>What the proof guarantees:</strong></p>
+<ul>
+<li>The ELF program executed without errors</li>
+<li>The public outputs (stored in <code>publics.json</code>) are the genuine result of processing the inputs</li>
+<li>The computation followed the exact program logic</li>
+</ul>
+<p><strong>Verification:</strong> Anyone with the proof and <code>publics.json</code> can verify the computation was performed correctly, without needing access to the original inputs or program execution details.</p>
+<p><strong>Key components:</strong></p>
+<ul>
+<li><strong>Rust program</strong>: Your source code (<code>src/main.rs</code>)</li>
+<li><strong>ELF binary</strong>: Compiled RISC-V executable (<code>target/riscv64ima-zisk-zkvm-elf/release/program_name</code>)</li>
+<li><strong>Input data</strong>: Private inputs to your program (<code>input.bin</code>)</li>
+<li><strong>Public outputs</strong>: Results stored in <code>publics.json</code></li>
+<li><strong>Proof</strong>: Cryptographic proof stored in <code>vadcop_final_proof.json</code></li>
+<li><strong>Verification</strong>: Process using proof + <code>publics.json</code> to validate correctness</li>
+</ul>
+<h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
+<p>ZisK currently supports <strong>Linux x86_64</strong> and <strong>macOS</strong> platforms (see note below).</p>
+<blockquote>
+<p><strong>Note:</strong> Proof generation and verification on <strong>macOS</strong> are not yet supported. We’re actively working to add this functionality.</p>
+</blockquote>
+<p><strong>Ubuntu 22.04 or higher</strong> is required.</p>
+<p><strong>macOS 14 or higher</strong> is required.</p>
+<ol>
+<li>
+<p>Make sure you have <a href="https://www.rust-lang.org/tools/install">Rust</a> installed.</p>
+</li>
+<li>
+<p>Install all required dependencies with:</p>
+<ul>
+<li><strong>Ubuntu</strong>:
+<pre><code class="language-bash">sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
+</code></pre>
+</li>
+<li><strong>macOS</strong>:
+<pre><code class="language-bash">brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
+</code></pre>
+</li>
+</ul>
+</li>
+<li>
+<p>To install ZisK using ziskup, run the following command in your terminal:</p>
+<pre><code class="language-bash">curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh | bash
+</code></pre>
+</li>
+</ol>
+<h2 id="create-a-project"><a class="header" href="#create-a-project">Create a Project</a></h2>
+<p>The first step is to generate a new example project using the <code>cargo-zisk sdk new &lt;name&gt;</code> command. This command creates a new directory named <code>&lt;name&gt;</code> in your current directory. For example:</p>
+<pre><code class="language-bash">cargo-zisk sdk new sha_hasher
+cd sha_hasher
+</code></pre>
+<p>This will create a project with the following structure:</p>
+<pre><code>.
+├── build.rs
+├── Cargo.toml
+├── .gitignore
+└── src
+    └── main.rs
+</code></pre>
+<p>The example program takes a number <code>n</code> as input and computes the SHA-256 hash <code>n</code> times.</p>
+<p>The <code>build.rs</code> file generates an <code>input.bin</code> file containing the value of <code>n</code> (e.g., 20). This file is used in <code>main.rs</code> as input to calculate the hash.</p>
+<p>You can run the program on your native architecture with the following command:</p>
+<pre><code class="language-bash">cargo run
+</code></pre>
+<p>The output will be:</p>
+<pre><code>public 0: 0x98211882
+public 1: 0xbd13089b
+public 2: 0x6ccf1fca
+public 3: 0x81f7f0e4
+public 4: 0xabf6352a
+public 5: 0x0c39c9b1
+public 6: 0x1f142cac
+public 7: 0x233f1280
+</code></pre>
+<h2 id="build"><a class="header" href="#build">Build</a></h2>
+<p>The next step is to build the program using the <code>cargo-zisk</code> command to generate an ELF file (RISC-V), which will be used later to generate the proof. Execute:</p>
+<pre><code class="language-bash">cargo-zisk build --release
+</code></pre>
+<p>This command builds the program using the <code>zkvm</code> target. The resulting <code>sha_hasher</code> ELF file (without extension) is generated in the <code>./target/riscv64ima-zisk-zkvm-elf/release</code> directory.</p>
+<h2 id="execute"><a class="header" href="#execute">Execute</a></h2>
+<p>Before generating a proof, you can test the program using the ZisK emulator to ensure its correctness. Specify the ELF file (using the <code>-e</code> or <code>--elf flag</code>) and the input file <code>input.bin</code> (using the <code>-i</code> or <code>--inputs</code> flag):</p>
+<pre><code class="language-bash">ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin
+</code></pre>
+<p>The output will be:</p>
+<pre><code>98211882
+bd13089b
+6ccf1fca
+81f7f0e4
+abf6352a
+0c39c9b1
+1f142cac
+233f1280
+</code></pre>
+<p>Alternatively, you can build and run the program with:</p>
+<pre><code class="language-bash">cargo-zisk run --release -i build/input.bin
+</code></pre>
+<h2 id="prove"><a class="header" href="#prove">Prove</a></h2>
+<p>Before generating a proof, you need to generate the program setup files. Execute:</p>
+<pre><code class="language-bash">cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher
+</code></pre>
+<p>Once the program setup is complete, you can generate and verify a proof using the <code>cargo-zisk prove</code> command by providing the ELF file (with the <code>-e</code> or <code>--elf</code> flag) and the input file (with the <code>-i</code> or <code>--input</code> flag).</p>
+<p>To generate and verify a proof for the previously built ELF and input files, execute:</p>
+<pre><code class="language-bash">cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -o proof -a -y
+</code></pre>
+<p>This command generates the proof in the <code>./proof</code> directory. If everything goes well, you will see a message similar to:</p>
+<pre><code>...
+[INFO ] ProofMan:     ✓ Vadcop Final proof was verified
+[INFO ]      stop &lt;&lt;&lt; GENERATING_VADCOP_PROOF 91706ms
+[INFO ] ProofMan: Proofs generated successfully
+</code></pre>
+<p><strong>Note</strong>: You can use concurrent proof generation and GPU support to reduce proving time. For more details, refer to the <a href="getting_started/./writing_programs.html">Writing Programs</a> guide.</p>
+<h2 id="verify-proof"><a class="header" href="#verify-proof">Verify Proof</a></h2>
+<p>To verify a generated proof, use the following command:</p>
+<pre><code class="language-bash">cargo-zisk verify -p ./proof/vadcop_final_proof.bin
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="writing-programs"><a class="header" href="#writing-programs">Writing Programs</a></h1>
+<p>This document explains how to write or modify a Rust program for execution in ZisK.</p>
+<h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
+<h3 id="code-changes"><a class="header" href="#code-changes">Code changes</a></h3>
+<p>Writing a Rust program for ZisK is similar to writing a standard Rust program, with a few minor modifications. Follow these steps:</p>
+<ol>
+<li>
+<p>Modify <code>main.rs</code> file:</p>
+<p>Add the following code to mark the main function as the entry point for ZisK:</p>
+<pre><code class="language-rust">#![no_main]
+ziskos::entrypoint!(main);</code></pre>
+</li>
+<li>
+<p>Modify <code>Cargo.toml</code> file:</p>
+<p>Add the <code>ziskos</code> crate as a dependency:</p>
+<pre><code class="language-toml">[dependencies]
+ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
+</code></pre>
+</li>
+</ol>
+<p>Let's show these changes using the example program from the <a href="getting_started/./quickstart.html">Quickstart</a> section.</p>
+<h3 id="example-program"><a class="header" href="#example-program">Example program</a></h3>
+<p><code>main.rs</code>:</p>
+<pre><code class="language-rust">// This example program takes a number `n` as input and computes the SHA-256 hash `n` times sequentially.
+
+// Mark the main function as the entry point for ZisK
+#![no_main]
+ziskos::entrypoint!(main);
+
+use sha2::{Digest, Sha256};
+use std::convert::TryInto;
+use ziskos::{read_input, set_output};
+use byteorder::ByteOrder;
+
+fn main() {
+    // Read the input data as a byte array from ziskos
+    let input: Vec&lt;u8&gt; = read_input();
+
+    // Get the 'n' value converting the input byte array into a u64 value
+    let n: u64 = u64::from_le_bytes(input.try_into().unwrap());
+
+    let mut hash = [0u8; 32];
+
+    // Compute SHA-256 hashing 'n' times
+    for _ in 0..n {
+        let mut hasher = Sha256::new();
+        hasher.update(hash);
+        let digest = &amp;hasher.finalize();
+        hash = Into::&lt;[u8; 32]&gt;::into(*digest);
+    }
+
+    // Split 'hash' value into chunks of 32 bits and write them to ziskos output
+    for i in 0..8 {
+        let val = byteorder::BigEndian::read_u32(&amp;mut hash[i * 4..i * 4 + 4]);
+        set_output(i, val);
+    }
+}</code></pre>
+<p><code>Cargo.toml</code>:</p>
+<pre><code class="language-toml">[package]
+name = "sha_hasher"
+version = "0.1.0"
+edition = "2021"
+default-run = "sha_hasher"
+
+[dependencies]
+byteorder = "1.5.0"
+sha2 = "0.10.8"
+ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
+</code></pre>
+<h3 id="inputoutput-data"><a class="header" href="#inputoutput-data">Input/Output Data</a></h3>
+<p>To provide input data for ZisK, you need to write that data in a binary file (e.g., <code>input.bin</code>).</p>
+<p>If your program requires complex input data, consider using a serialization mechanism (like <a href="https://crates.io/crates/bincode"><code>bincode</code></a> crate) to store it in <code>input.bin</code> file.</p>
+<p>In your program, use the <code>ziskos::read_input()</code> function to retrieve the input data from the <code>input.bin</code> file:</p>
+<pre><code class="language-rust">// Read the input data as a byte array from ziskos
+let input: Vec&lt;u8&gt; = read_input();</code></pre>
+<p>To write public output data, use the <code>ziskos::set_output()</code> function. Since the function accepts <code>u32</code> values, split the output data into 32-bit chunks if necessary and increase the <code>id</code> parameter of the function in each call:</p>
+<pre><code class="language-rust">// Split 'hash' value into chunks of 32 bits and write them to ziskos output
+for i in 0..8 {
+    let val = byteorder::BigEndian::read_u32(&amp;mut hash[i * 4..i * 4 + 4]);
+    set_output(i, val);
+}</code></pre>
+<h2 id="build-1"><a class="header" href="#build-1">Build</a></h2>
+<p>Before compiling your program for ZisK, you can test it on the native architecture just like any regular Rust program using the <code>cargo</code> command.</p>
+<p>Once your program is ready to run on ZisK, compile it into an ELF file (RISC-V architecture), using the <code>cargo-zisk</code> CLI tool:</p>
+<pre><code class="language-bash">cargo-zisk build
+</code></pre>
+<p>This command compiles the program using the <code>zisk</code> target. The resulting <code>sha_hasher</code> ELF file (without extension) is generated in the <code>./target/riscv64ima-zisk-zkvm-elf/debug</code> directory.</p>
+<p>For production, compile the ELF file with the <code>--release</code> flag, similar to how you compile Rust projects:</p>
+<pre><code class="language-bash">cargo-zisk build --release
+</code></pre>
+<p>In this case, the <code>sha_hasher</code> ELF file will be generated in the <code>./target/riscv64ima-zisk-zkvm-elf/release</code> directory.</p>
+<h2 id="execute-1"><a class="header" href="#execute-1">Execute</a></h2>
+<p>You can test your compiled program using the ZisK emulator (<code>ziskemu</code>) before generating a proof. Use the <code>-e</code> (<code>--elf</code>) flag to specify the location of the ELF file and the <code>-i</code> (<code>--inputs</code>) flag to specify the location of the input file:</p>
+<pre><code class="language-bash">cargo-zisk build --release
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin
+</code></pre>
+<p>Alternatively, you can build and execute the program in the ZisK emulator with a single command:</p>
+<pre><code class="language-bash">cargo-zisk run --release -i build/input.bin
+</code></pre>
+<p>If the program requires a large number of ZisK steps, you might encounter the following error:</p>
+<pre><code>Error during emulation: EmulationNoCompleted
+Error: Error executing Run command
+</code></pre>
+<p>To resolve this, you can increase the number of execution steps using the <code>-n</code> (<code>--max-steps</code>) flag. For example:</p>
+<pre><code class="language-bash">ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -n 10000000000
+</code></pre>
+<h2 id="metrics-and-statistics"><a class="header" href="#metrics-and-statistics">Metrics and Statistics</a></h2>
+<h3 id="performance-metrics"><a class="header" href="#performance-metrics">Performance Metrics</a></h3>
+<p>You can get performance metrics related to the program execution in ZisK using the <code>-m</code> (<code>--log-metrics</code>) flag in the <code>cargo-zisk run</code> command or in <code>ziskemu</code> tool:</p>
+<pre><code class="language-bash">cargo-zisk run --release -i build/input.bin -m
+</code></pre>
+<p>Or</p>
+<pre><code class="language-bash">ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -m
+</code></pre>
+<p>The output will include details such as execution time, throughput, and clock cycles per step:</p>
+<pre><code>process_rom() steps=85309 duration=0.0009 tp=89.8565 Msteps/s freq=3051.0000 33.9542 clocks/step
+98211882
+bd13089b
+6ccf1fca
+...
+</code></pre>
+<h3 id="execution-statistics"><a class="header" href="#execution-statistics">Execution Statistics</a></h3>
+<p>You can get statistics related to the program execution in Zisk using the <code>-x</code> (<code>--stats</code>) flag in the <code>cargo-zisk run</code> command or in <code>ziskemu</code> tool:</p>
+<pre><code class="language-bash">cargo-zisk run --release -i build/input.bin -x
+</code></pre>
+<p>Or</p>
+<pre><code class="language-bash">ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -x
+</code></pre>
+<p>The output will include details such as cost definitions, total cost, register reads/writes, opcode statistics, etc:</p>
+<pre><code>Cost definitions:
+    AREA_PER_SEC: 1000000 steps
+    COST_MEMA_R1: 0.00002 sec
+    COST_MEMA_R2: 0.00004 sec
+    COST_MEMA_W1: 0.00004 sec
+    COST_MEMA_W2: 0.00008 sec
+    COST_USUAL: 0.000008 sec
+    COST_STEP: 0.00005 sec
+
+Total Cost: 12.81 sec
+    Main Cost: 4.27 sec 85308 steps
+    Mem Cost: 2.22 sec 222052 steps
+    Mem Align: 0.05 sec 2701 steps
+    Opcodes: 6.24 sec 1270 steps (81182 ops)
+    Usual: 0.03 sec 4127 steps
+    Memory: 135563 a reads + 1625 na1 reads + 10 na2 reads + 84328 a writes + 524 na1 writes + 2 na2 writes = 137198 reads + 84854 writes = 222052 r/w
+
+Opcodes:
+    flag: 0.00 sec (0 steps/op) (89 ops)
+    copyb: 0.00 sec (0 steps/op) (10568 ops)
+    add: 1.12 sec (77 steps/op) (14569 ops)
+    ltu: 0.01 sec (77 steps/op) (101 ops)
+    ...
+    xor: 1.06 sec (77 steps/op) (13774 ops)
+    signextend_b: 0.03 sec (109 steps/op) (320 ops)
+    signextend_w: 0.03 sec (109 steps/op) (320 ops)
+
+98211882
+bd13089b
+6ccf1fca
+...
+</code></pre>
+<h2 id="prove-1"><a class="header" href="#prove-1">Prove</a></h2>
+<h3 id="program-setup"><a class="header" href="#program-setup">Program Setup</a></h3>
+<p>Before generating a proof (or verifying the constraints), you need to generate the program setup files. This must be done the first time after building the program ELF file, or any time it changes:</p>
+<pre><code class="language-bash">cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -k $HOME/.zisk/provingKey
+</code></pre>
+<p>In this command:</p>
+<ul>
+<li><code>-e</code> (<code>--elf</code>) specifies the ELF file location.</li>
+<li><code>-k</code> (<code>--proving-key</code>) specifies the directory containing the proving key. This is optional and defaults to <code>$HOME/.zisk/provingKey</code>.</li>
+</ul>
+<p>The program setup files will be generated in the <code>cache</code> directory located at <code>$HOME/.zisk</code>.</p>
+<p>To clean the <code>cache</code> directory content, use the following command:</p>
+<pre><code class="language-bash">cargo-zisk clean
+</code></pre>
+<h3 id="verify-constraints"><a class="header" href="#verify-constraints">Verify Constraints</a></h3>
+<p>Before generating a proof (which can take some time), you can verify that all constraints are satisfied:</p>
+<pre><code class="language-bash">cargo-zisk verify-constraints -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey
+</code></pre>
+<p>In this command:</p>
+<ul>
+<li><code>-e</code> (<code>--elf</code>) specifies the ELF file location.</li>
+<li><code>-i</code> (<code>--input</code>) specifies the input file location.</li>
+<li><code>-w</code> (<code>--witness</code>) specifies the location of the witness library. This is optional and defaults to <code>$HOME/.zisk/bin/libzisk_witness.so</code>.</li>
+<li><code>-k</code> (<code>--proving-key</code>) specifies the directory containing the proving key. This is optional and defaults to <code>$HOME/.zisk/provingKey</code>.</li>
+</ul>
+<p>If everything is correct, you will see an output similar to:</p>
+<pre><code>[INFO ] GlCstVfy: --&gt; Checking global constraints
+[INFO ] CstrVrfy: ··· ✓ All global constraints were successfully verified
+[INFO ] CstrVrfy: ··· ✓ All constraints were verified
+</code></pre>
+<h3 id="generate-proof"><a class="header" href="#generate-proof">Generate Proof</a></h3>
+<p>To generate a proof, run the following command:</p>
+<pre><code class="language-bash">cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -w $HOME/.zisk/bin/libzisk_witness.so -k $HOME/.zisk/provingKey -o proof -a -y
+</code></pre>
+<p>In this command:</p>
+<ul>
+<li><code>-e</code> (<code>--elf</code>) specifies the ELF file location.</li>
+<li><code>-i</code> (<code>--input</code>) specifies the input file location.</li>
+<li><code>-w</code> (<code>--witness</code>) specifies the location of the witness library. This is optional and defaults to <code>$HOME/.zisk/bin/libzisk_witness.so</code>.</li>
+<li><code>-k</code> (<code>--proving-key</code>) specifies the directory containing the proving key. This is optional and defaults to <code>$HOME/.zisk/provingKey</code>.</li>
+<li><code>-o</code> (<code>--output</code>) determines the output directory (in this example <code>proof</code>).</li>
+<li><code>-a</code> (<code>--aggregation</code>) indicates that a final aggregated proof (containing all generated sub-proofs) should be produced.</li>
+<li><code>-y</code> (<code>--verify-proofs</code>) instructs the tool to verify the proof immediately after it is generated (verification can also be performed later using the <code>cargo-zisk verify</code> command).</li>
+</ul>
+<p>If the process is successful, you should see a message similar to:</p>
+<pre><code>...
+[INFO ] ProofMan:     ✓ Vadcop Final proof was verified
+[INFO ]      stop &lt;&lt;&lt; GENERATING_VADCOP_PROOF 91706ms
+[INFO ] ProofMan: Proofs generated successfully
+</code></pre>
+<h3 id="concurrent-proof-generation"><a class="header" href="#concurrent-proof-generation">Concurrent Proof Generation</a></h3>
+<p>Zisk proofs can be generated using multiple processes concurrently to improve performance and scalability. The standard MPI (Message Passing Interface) approach is used to launch these processes, which can run either on the same server or across multiple servers.</p>
+<p>To execute a Zisk proof using multiple processes, use the following command:</p>
+<pre><code class="language-bash">mpirun --bind-to none -np &lt;num_processes&gt; -x OMP_NUM_THREADS=&lt;num_threads_per_process&gt; -x RAYON_NUM_THREADS=&lt;num_threads_per_process&gt; target/release/cargo-zisk &lt;zisk arguments&gt;
+</code></pre>
+<p>In this command:</p>
+<ul>
+<li><code>&lt;num_processes&gt;</code> specifies the number of processes to launch.</li>
+<li><code>&lt;num_threads_per_process&gt;</code> sets the number of threads used by each process via the <code>OMP_NUM_THREADS</code> and <code>RAYON_NUM_THREADS</code> environment variables.</li>
+<li><code>--bind-to none</code> prevents binding processes to specific cores, allowing the operating system to schedule them dynamically for better load balancing.</li>
+</ul>
+<p>Running a Zisk proof with multiple processes enables efficient workload distribution across multiple servers. <strong>On a single server with many cores, splitting execution into smaller subsets of cores generally improves performance by increasing concurrency</strong>. As a general rule, <code>&lt;num_processes&gt;</code> * <code>&lt;num_threads_per_process&gt;</code> should match the number of available CPU cores or double that if hyperthreading is enabled.</p>
+<p>The total memory requirement increases proportionally with the number of processes. If each process requires approximately 25GB of memory, running P processes will require roughly (25 * P)GB of memory. Ensure that the system has sufficient available memory to accommodate all running processes.</p>
+<h3 id="gpu-proof-generation"><a class="header" href="#gpu-proof-generation">GPU Proof Generation</a></h3>
+<p>Zisk proofs can also be generated using GPUs to significantly improve performance and scalability.
+Follow these steps to enable GPU support:</p>
+<ol>
+<li>
+<p>GPU support is only available for NVIDIA GPUs.</p>
+</li>
+<li>
+<p>Make sure the <a href="https://developer.nvidia.com/cuda-downloads">CUDA Toolkit</a> is installed.</p>
+</li>
+<li>
+<p>Build Zisk with GPU support enabled.
+GPU support must be enabled at compile time. Follow the instructions in the <strong>Build ZisK</strong> section under <strong>Option 2: Building from source</strong> in the <a href="getting_started/./installation.html">Installation</a> guide, but replace the build command with:</p>
+<pre><code class="language-bash">cargo build --release --features gpu
+</code></pre>
+</li>
+<li>
+<p>Build Zisk on the target GPU server.
+It is recommended to compile Zisk directly on the server where it will be executed. The binary will be optimized for the local GPU architecture, which can lead to better runtime performance.</p>
+</li>
+</ol>
+<p>You can combine GPU-based execution with concurrent proof generation using multiple processes, as described in the <strong>Concurrent Proof Generation</strong> section.</p>
+<blockquote>
+<p><strong>Note:</strong> GPU memory is typically more limited than CPU memory. When combining GPU execution with concurrent proof generation, ensure that each process has sufficient memory available on the GPU to avoid out-of-memory errors.</p>
+</blockquote>
+<h3 id="verify-proof-1"><a class="header" href="#verify-proof-1">Verify Proof</a></h3>
+<p>To verify a generated proof, use the following command:</p>
+<pre><code class="language-bash">cargo-zisk verify -p ./proof/vadcop_final_proof.bin -s $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.starkinfo.json -e $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verifier.bin -k $HOME/.zisk/provingKey/zisk/vadcop_final/vadcop_final.verkey.json
+</code></pre>
+<p>In this command:</p>
+<ul>
+<li><code>-p</code> (<code>--proof</code>) specifies the final proof file generated with cargo-zisk prove.</li>
+<li><code>-u</code> (<code>--public-inputs</code>) provides the path to the public inputs associated with the proof.</li>
+<li>The remaining flags specify the files required for verification; they are optional, set by default to the files found in the <code>$HOME/.zisk</code> directory.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="precompiles"><a class="header" href="#precompiles">Precompiles</a></h1>
+<p>Precompiles are built-in system functions within ZisK’s operating system that accelerate computationally expensive and frequently used operations such as the Keccak-f permutation and Secp256k1 addition and doubling.</p>
+<p>These precompiles improve proving efficiency by offloading intensive computations from ZisK programs to dedicated, pre-integrated sub-processors. ZisK manages precompiles as system calls using the RISC-V <code>ecall</code> instruction.</p>
+<h2 id="how-precompiles-work"><a class="header" href="#how-precompiles-work">How Precompiles Work</a></h2>
+<p>Precompiles are primarily used to patch third-party crates, replacing costly operations with system calls. This ensures that commonly used cryptographic primitives like Keccak hashing and elliptic curve operations can be efficiently executed within ZisK programs.</p>
+<p>Typically, precompiles are used to patch third-party crates that implement these operations and are then used as dependencies in the Zisk programs we write.</p>
+<p>You can see <a href="https://github.com/0xPolygonHermez/zisk-patch-tiny-keccak/tree/zisk">here</a> an example of the patched <code>tiny-keccak</code> crate.</p>
+<h3 id="available-precompiles-in-zisk"><a class="header" href="#available-precompiles-in-zisk">Available Precompiles in ZisK</a></h3>
+<p>Below is a summary of the precompiles currently available in ZisK:</p>
+<ul>
+<li><a href="https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/arith256_mod.rs">syscall_arith256_mod</a>: Modular multiplication followed by addition over 256-bit non-negative integers.</li>
+<li><a href="https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/arith256.rs">syscall_arith256</a>: Multiplication followed by addition over 256-bit non-negative integers.</li>
+<li><a href="https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/keccakf.rs">syscall_keccak_f</a>: Keccak-f[1600] permutation function from the <a href="https://keccak.team/files/Keccak-reference-3.0.pdf">Keccak</a> cryptographic sponge construction.</li>
+<li><a href="https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/sha256f.rs">syscall_sha256_f</a>: Extend and compress function of the <a href="https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf">SHA-256</a> cryptographic hash algorithm.</li>
+<li><a href="https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/secp256k1_add.rs">secp256k1_add</a>: Elliptic curve point addition over the <a href="https://en.bitcoin.it/wiki/Secp256k1">Secp256k1</a> curve.</li>
+<li><a href="https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/secp256k1_dbl.rs">secp256k1_dbl</a>: Elliptic curve point doubling over the <a href="https://en.bitcoin.it/wiki/Secp256k1">Secp256k1</a> curve.</li>
+<li><a href="https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/bn254_curve_add.rs">bn254_curve_add</a>: Elliptic curve point addition over the <a href="https://hackmd.io/kcEJAWISQ56eE6YpBnurgw">Bn254</a> curve.</li>
+<li><a href="https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/bn254_curve_dbl.rs">bn254_curve_dbl</a>: Elliptic curve point doubling over the <a href="https://hackmd.io/kcEJAWISQ56eE6YpBnurgw">Bn254</a> curve.</li>
+<li><a href="https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/bn254_complex_add.rs">bn254_complex_add</a>: Complex addition within the quadratic extension built over the base field of the <a href="https://hackmd.io/kcEJAWISQ56eE6YpBnurgw">Bn254</a> curve.</li>
+<li><a href="https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/bn254_complex_add.rs">bn254_complex_sub</a>: Complex subtraction within the quadratic extension built over the base field of the <a href="https://hackmd.io/kcEJAWISQ56eE6YpBnurgw">Bn254</a> curve.</li>
+<li><a href="https://github.com/0xPolygonHermez/zisk/tree/main/ziskos/entrypoint/src/syscalls/bn254_complex_add.rs">bn254_complex_mul</a>: Complex multiplication within the quadratic extension built over the base field of the <a href="https://hackmd.io/kcEJAWISQ56eE6YpBnurgw">Bn254</a> curve.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="overview"><a class="header" href="#overview">Overview</a></h1>
+<h2 id="how-zisk-works"><a class="header" href="#how-zisk-works">How ZisK Works</a></h2>
+<p>ZisK approaches zero-knowledge virtual machine design by treating proof generation not as an afterthought, but as an integral part of the execution process itself. Instead of the traditional "execute first, prove later" model, ZisK implements <strong>proof-native execution</strong> where every computational step simultaneously advances program execution and contributes to cryptographic proof generation.</p>
+<p><strong>What You'll Learn:</strong> This overview covers ZisK's unified execution and proving approach, the specialized RISC-V implementation, the modular state machine architecture, and the bus communication system. We'll walk through the execution pipeline from Rust code to verified proofs, showing how ZisK's purpose-built design improves efficiency and developer experience.</p>
+<p><img src="getting_started/architecture/../../Images/Screenshot%202025-07-23%20at%201.43.15%E2%80%AFPM.png" alt="ZisK Architecture Diagram" /></p>
+<h3 id="the-core-innovation-execution-and-proving-as-one-process"><a class="header" href="#the-core-innovation-execution-and-proving-as-one-process">The Core Innovation: Execution and Proving as One Process</a></h3>
+<p>Traditional zkVMs follow a linear pipeline: compile → execute → trace → prove → verify. This creates inefficiencies because the execution environment isn't optimized for proof generation, leading to expensive trace reconstruction and constraint satisfaction steps.</p>
+<p>ZisK wraps this pipeline into a unified process where:</p>
+<ul>
+<li><strong>Program execution</strong>  generates execution traces in real-time</li>
+<li><strong>Constraint satisfaction</strong>  happens during execution, not after</li>
+<li><strong>Witness generation</strong>  occurs incrementally as the program runs</li>
+<li><strong>Proof construction</strong>  begins immediately without waiting for execution completion</li>
+</ul>
+<p>This architectural unity means that by the time a program finishes executing, most of the cryptographic proof work is already complete.</p>
+<h3 id="risc-v-architecture-optimized-for-zero-knowledge"><a class="header" href="#risc-v-architecture-optimized-for-zero-knowledge">RISC-V Architecture: Optimized for Zero-Knowledge</a></h3>
+<p>ZisK implements the RISC-V 64-bit instruction set (<code>riscv64ima-zisk-zkvm-elf</code>) with specific optimizations for zero-knowledge proving:</p>
+<p><strong>Instruction Set Design:</strong></p>
+<ul>
+<li><strong>Reduced complexity</strong>: ~100 carefully selected instructions vs. 200+ in full RISC-V</li>
+<li><strong>Deterministic execution</strong>: Every instruction has predictable behavior and cycle counts</li>
+<li><strong>Constraint-friendly operations</strong>: Instructions chosen for efficient mathematical representation</li>
+<li><strong>Custom extensions</strong>: ZisK-specific instructions for I/O and proof hints</li>
+</ul>
+<p><strong>Memory Model:</strong>  ZisK's memory architecture balances RISC-V compatibility with proving requirements:</p>
+<pre><code>Memory Layout:
+├── ROM (Program Code): Immutable, verified as part of proof setup
+├── RAM (Runtime Data): Dynamic allocation with bounded growth
+├── Stack: Deterministic growth patterns for predictable constraints
+└── I/O Space: Specialized region for input/output operations
+</code></pre>
+<p>The key insight is that every memory access becomes part of the execution trace, so the memory layout is optimized to generate efficient constraint representations.</p>
+<h2 id="state-machine-architecture-specialized-processing-units"><a class="header" href="#state-machine-architecture-specialized-processing-units">State Machine Architecture: Specialized Processing Units</a></h2>
+<p>ZisK decomposes computation into specialized state machines, each optimized for specific mathematical domains. Rather than using a monolithic processor, ZisK recognizes that arithmetic, memory, and binary operations have fundamentally different constraint requirements. This specialization enables targeted optimizations and parallel processing that would be impossible in a general-purpose design:</p>
+<h3 id="core-state-machines"><a class="header" href="#core-state-machines">Core State Machines</a></h3>
+<p><strong>Main State Machine</strong>: Acts as the orchestrator, coordinating all other components and managing the global execution flow. It doesn't perform computations itself but ensures proper sequencing and data flow.</p>
+<p><strong>Arithmetic State Machine</strong>: Handles all mathematical operations with sub-machines for:</p>
+<ul>
+<li>Complete arithmetic operations (ArithFullSM)</li>
+<li>Lookup table optimizations (ArithTableSM)</li>
+<li>Range checking operations (ArithRangeTableSM)</li>
+</ul>
+<p><strong>Binary State Machine</strong>: Manages bitwise and logical operations through:</p>
+<ul>
+<li>Basic binary operations (AND, OR, XOR)</li>
+<li>Extended binary logic for complex bit manipulation</li>
+<li>Optimized binary addition with efficient constraint generation</li>
+</ul>
+<p><strong>Memory State Machine</strong>: Controls all memory access with specialized handling for:</p>
+<ul>
+<li>Core memory operations and access validation</li>
+<li>Unaligned memory access (crucial for RISC-V compatibility)</li>
+<li>Input data and ROM data with optimized access patterns</li>
+</ul>
+<p><strong>ROM State Machine</strong>: Manages program storage, instruction fetching, and maintains execution statistics for optimization.</p>
+<h3 id="why-this-architecture-works"><a class="header" href="#why-this-architecture-works">Why This Architecture Works</a></h3>
+<p>This decomposition provides several advantages:</p>
+<ul>
+<li><strong>Specialized optimization</strong>: Each domain can be optimized independently</li>
+<li><strong>Parallel execution</strong>: Independent operations can run simultaneously</li>
+<li><strong>Constraint efficiency</strong>: Each state machine generates constraints optimized for its operation type</li>
+<li><strong>Modularity</strong>: New computational domains can be added without affecting existing ones</li>
+</ul>
+<p>/Users/abix/Desktop/zisk/book/Images/Screenshot 2025-07-23 at 1.44.58 PM.png</p>
+<h2 id="bus-communication-system-the-nervous-system"><a class="header" href="#bus-communication-system-the-nervous-system">Bus Communication System: The Nervous System</a></h2>
+<p>The bus system connects all state machines through a specialized communication protocol designed specifically for proof generation. Unlike traditional computer buses that simply move data, ZisK's bus captures every communication as part of the execution trace, turning inter-component data flow into cryptographic evidence. This design ensures that all system interactions contribute to the overall proof while enabling efficient distributed operation across multiple machines.
+rust</p>
+<pre><code class="language-rust">// Every component implements the unified BusDevice interface
+pub trait BusDevice&lt;D&gt;: Any + Send + Sync {
+    fn process_data(&amp;mut self, bus_id: &amp;BusId, data: &amp;[D], 
+                   pending: &amp;mut VecDeque&lt;(BusId, Vec&lt;D&gt;)&gt;);
+    fn bus_id(&amp;self) -&gt; Vec&lt;BusId&gt;;
+}</code></pre>
+<p><strong>How Bus Communication Works:</strong></p>
+<ol>
+<li><strong>Operation Request</strong>: A state machine needs to communicate with another component</li>
+<li><strong>Bus Routing</strong>: The system routes data to the correct destination using BusId</li>
+<li><strong>Queue Management</strong>: Operations are queued and processed asynchronously</li>
+<li><strong>Trace Integration</strong>: Every communication becomes part of the execution trace</li>
+<li><strong>Constraint Generation</strong>: Bus operations contribute to the overall proof constraints</li>
+</ol>
+<p>This isn't just data movement—it's creating the mathematical evidence needed for zero-knowledge proofs.</p>
+<h2 id="execution-pipeline-from-code-to-proof"><a class="header" href="#execution-pipeline-from-code-to-proof">Execution Pipeline: From Code to Proof</a></h2>
+<h3 id="1-compilation-phase"><a class="header" href="#1-compilation-phase">1. Compilation Phase</a></h3>
+<p><code>cargo-zisk build</code> compiles Rust code to the specialized RISC-V target. This isn't standard compilation—the toolchain produces ELF binaries optimized for zero-knowledge proving with deterministic execution guarantees.</p>
+<ul>
+<li>Cross-compilation to <code>riscv64ima-zisk-zkvm-elf</code></li>
+<li>Integration with ZisK runtime libraries</li>
+<li>Optimization for deterministic execution patterns</li>
+</ul>
+<h3 id="2-rom-setup-phase"><a class="header" href="#2-rom-setup-phase">2. ROM Setup Phase</a></h3>
+<p><code>cargo-zisk rom-setup</code> analyzes the compiled program and prepares the cryptographic infrastructure. This one-time setup creates the mathematical framework needed to prove execution of this specific program.</p>
+<ul>
+<li>Extracts instruction sequences and program structure</li>
+<li>Generates program-specific PIL constraints</li>
+<li>Creates cryptographic commitments to the program code</li>
+<li>Pre-computes constant polynomials that don't change between executions</li>
+</ul>
+<h3 id="3-execution-and-proving-phase"><a class="header" href="#3-execution-and-proving-phase">3. Execution and Proving Phase</a></h3>
+<p><code>cargo-zisk prove</code> runs the program while simultaneously generating the proof. This is where ZisK's unified architecture shines—execution and proof generation happen together, not sequentially.</p>
+<ul>
+<li><strong>ZisK Emulator</strong> executes RISC-V instructions</li>
+<li><strong>State machines</strong> handle specialized computations</li>
+<li><strong>Bus system</strong> manages communication and trace generation</li>
+<li><strong>Constraint evaluation</strong> happens in real-time</li>
+<li><strong>STARK proof generation</strong> occurs during execution</li>
+</ul>
+<h3 id="4-verification-phase"><a class="header" href="#4-verification-phase">4. Verification Phase</a></h3>
+<p><code>cargo-zisk verify</code> validates the generated proof. The verification process is designed to be fast and efficient, enabling practical deployment even in resource-constrained environments.</p>
+<ul>
+<li>Efficient verification algorithm (logarithmic in execution length)</li>
+<li>Public input validation</li>
+<li>Cryptographic proof verification using Vadcop recursion</li>
+</ul>
+<h2 id="why-this-architecture-matters"><a class="header" href="#why-this-architecture-matters">Why This Architecture Matters</a></h2>
+<p>Traditional zkVMs are essentially retrofitted systems—taking existing virtual machine designs and adding zero-knowledge capabilities on top. This approach works but creates fundamental inefficiencies.</p>
+<p>ZisK's architecture emerges naturally from the mathematical requirements of zero-knowledge proofs. Every design decision—from the instruction set to the bus system to the state machine decomposition—is optimized for efficient proof generation.</p>
+<p>The result is a system that doesn't just generate zero-knowledge proofs—it does so efficiently, scalably, and with a developer experience that makes zkVM programming accessible to mainstream developers.</p>
+<p>This architectural coherence means that ZisK can achieve performance levels that are difficult or impossible for retrofitted systems, while providing a foudation for future innovations in verifiable computation.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="state-machine-architecture"><a class="header" href="#state-machine-architecture">State Machine Architecture</a></h1>
+<p>ZisK uses a modular state machine architecture that breaks program execution into specialized processing units. Rather than using a single monolithic processor, ZisK decomposes computation into domain-specific state machines that handle arithmetic, memory, binary operations, and program storage independently. This specialization enables targeted optimizations and parallel processing while maintaining the mathematical rigor required for zero-knowledge proof generation.</p>
+<h2 id="why-specialized-state-machines"><a class="header" href="#why-specialized-state-machines">Why Specialized State Machines?</a></h2>
+<p>Traditional virtual machines use general-purpose processors that handle all operations uniformly. ZisK recognizes that different types of computations have fundamentally different mathematical properties and constraint requirements. By creating dedicated state machines for each domain, ZisK can apply optimizations that would be impossible in a general-purpose design.</p>
+<p>Each state machine is designed specifically for <strong>witness computation</strong> - the process of generating mathematical evidence needed for zero-knowledge proofs. Every operation and state transition gets captured in a format that directly feeds into the constraint system.</p>
+<h2 id="core-interface-instance-trait"><a class="header" href="#core-interface-instance-trait">Core Interface: Instance Trait</a></h2>
+<p>Every state machine implements the <code>Instance</code> trait, which defines the standard interface for all computational units in ZisK.</p>
+<p><strong>File:</strong> <code>common/src/component/component_instance.rs</code></p>
+<p>rust</p>
+<pre><code class="language-rust">pub trait Instance&lt;F: PrimeField64&gt;: Send + Sync {
+    /// Computes the witness for the instance based on the proof context
+    fn compute_witness(
+        &amp;self,
+        _pctx: &amp;ProofCtx&lt;F&gt;,
+        _sctx: &amp;SetupCtx&lt;F&gt;,
+        _collectors: Vec&lt;(usize, Box&lt;dyn BusDevice&lt;PayloadType&gt;&gt;)&gt;,
+        trace_buffer: Vec&lt;F&gt;,
+    ) -&gt; Option&lt;AirInstance&lt;F&gt;&gt; { None }
+    
+    /// Retrieves the checkpoint associated with the instance
+    fn check_point(&amp;self) -&gt; CheckPoint;
+    
+    /// Retrieves the type of the instance
+    fn instance_type(&amp;self) -&gt; InstanceType;
+    
+    /// Builds an input collector for the instance
+    fn build_inputs_collector(
+        &amp;self,
+        chunk_id: ChunkId,
+    ) -&gt; Option&lt;Box&lt;dyn BusDevice&lt;PayloadType&gt;&gt;&gt; { None }
+    
+    fn debug(&amp;self, _pctx: &amp;ProofCtx&lt;F&gt;, _sctx: &amp;SetupCtx&lt;F&gt;) {}
+    fn reset(&amp;self) {}
+}</code></pre>
+<p><strong>Key methods explained:</strong></p>
+<p><strong><code>compute_witness()</code></strong> - Transforms the execution trace into an <code>AirInstance</code> - the algebraic representation used for proof generation. The <code>trace_buffer</code> contains field elements that capture every state transition.</p>
+<p><strong><code>check_point()</code></strong> - Returns the current execution checkpoint, enabling ZisK to pause, resume, or analyze execution at specific points. Critical for distributed proving where different machines handle different execution segments.</p>
+<p><strong><code>instance_type()</code></strong> - Identifies what kind of computation this instance handles, allowing the proving system to apply the correct constraint sets.</p>
+<p><strong><code>build_inputs_collector()</code></strong> - Creates a <code>BusDevice</code> that can collect inputs for this specific instance, integrating with the bus system.</p>
+<p><strong><code>reset()</code></strong> - Reinitializes the instance for fresh execution, essential for running multiple programs.</p>
+<h2 id="state-machine-construction"><a class="header" href="#state-machine-construction">State Machine Construction</a></h2>
+<p>State machines are built through a factory pattern that ensures proper initialization and configuration.</p>
+<p><strong>File:</strong> <code>common/src/component/component_builder.rs</code></p>
+<p>rust</p>
+<pre><code class="language-rust">pub trait ComponentBuilder&lt;F: PrimeField64&gt;: Send + Sync {
+    fn build_counter(&amp;self) -&gt; Option&lt;Box&lt;dyn BusDeviceMetrics&gt;&gt;;
+    fn build_planner(&amp;self) -&gt; Box&lt;dyn Planner&gt;;
+    fn configure_instances(&amp;self, pctx: &amp;ProofCtx&lt;F&gt;, plannings: &amp;[Plan]) {}
+    fn build_instance(&amp;self, ictx: InstanceCtx) -&gt; Box&lt;dyn Instance&lt;F&gt;&gt;;
+    fn build_inputs_generator(&amp;self) -&gt; Option&lt;Box&lt;dyn BusDevice&lt;PayloadType&gt;&gt;&gt; { None }
+}</code></pre>
+<p><strong>Construction process:</strong></p>
+<ol>
+<li><strong><code>build_counter()</code></strong> - Creates metrics collectors for performance monitoring</li>
+<li><strong><code>build_planner()</code></strong> - Generates execution plans for resource allocation</li>
+<li><strong><code>configure_instances()</code></strong> - Sets up instances based on execution context</li>
+<li><strong><code>build_instance()</code></strong> - Creates the instance with its specific context</li>
+<li><strong><code>build_inputs_generator()</code></strong> - Creates input generators for the instance</li>
+</ol>
+<h2 id="instance-context-and-coordination"><a class="header" href="#instance-context-and-coordination">Instance Context and Coordination</a></h2>
+<p><strong>File:</strong> <code>common/src/instance_context.rs</code></p>
+<p>rust</p>
+<pre><code class="language-rust">pub struct InstanceCtx {
+    /// Plan for the current instance
+    pub plan: Plan,
+    /// Global ID of the current instance
+    pub global_id: usize,
+}
+
+impl InstanceCtx {
+    pub fn new(global_id: usize, plan: Plan) -&gt; Self {
+        Self { plan, global_id }
+    }
+}</code></pre>
+<p>The <code>InstanceCtx</code> coordinates ZisK's distributed architecture:</p>
+<p><strong><code>plan</code></strong> - Contains the execution strategy: what operations to handle, resource allocation, and coordination with other instances.</p>
+<p><strong><code>global_id</code></strong> - Provides unique identification across the distributed system, enabling machine coordination and witness computation aggregation.</p>
+<h2 id="the-state-machine-types"><a class="header" href="#the-state-machine-types">The State Machine Types</a></h2>
+<h3 id="main-state-machine"><a class="header" href="#main-state-machine">Main State Machine</a></h3>
+<p><strong>File:</strong> <code>state-machines/main/src/main_sm.rs</code></p>
+<p>rust</p>
+<pre><code class="language-rust">pub struct MainSM {}
+
+pub struct MainInstance {
+    pub ictx: InstanceCtx,
+    pub is_last_segment: bool,
+}</code></pre>
+<p>The Main state machine coordinates overall execution without performing computations itself. It manages when and how other state machines operate. The <code>is_last_segment</code> flag triggers specialized cleanup and finalization logic for proof generation.</p>
+<h3 id="arithmetic-state-machine"><a class="header" href="#arithmetic-state-machine">Arithmetic State Machine</a></h3>
+<p><strong>File:</strong> <code>state-machines/arith/src/arith.rs</code></p>
+<p>rust</p>
+<pre><code class="language-rust">pub struct ArithSM {
+    arith_full_sm: Arc&lt;ArithFullSM&gt;,
+    arith_table_sm: Arc&lt;ArithTableSM&gt;,
+    arith_range_table_sm: Arc&lt;ArithRangeTableSM&gt;,
+}</code></pre>
+<p>Handles mathematical operations through specialized sub-machines:</p>
+<ul>
+<li><strong><code>ArithFullSM</code></strong> - Complete arithmetic operations</li>
+<li><strong><code>ArithTableSM</code></strong> - Lookup tables for efficient computation</li>
+<li><strong><code>ArithRangeTableSM</code></strong> - Range checking operations</li>
+</ul>
+<p>This decomposition allows independent optimization and parallel processing of different arithmetic operation types.</p>
+<h3 id="binary-state-machine"><a class="header" href="#binary-state-machine">Binary State Machine</a></h3>
+<p><strong>File:</strong> <code>state-machines/binary/src/binary.rs</code></p>
+<p>rust</p>
+<pre><code class="language-rust">pub struct BinarySM&lt;F: PrimeField64&gt; {
+    binary_basic_sm: Arc&lt;BinaryBasicSM&gt;,
+    binary_basic_table_sm: Arc&lt;BinaryBasicTableSM&gt;,
+    binary_extension_sm: Arc&lt;BinaryExtensionSM&lt;F&gt;&gt;,
+    binary_extension_table_sm: Arc&lt;BinaryExtensionTableSM&gt;,
+    binary_add_sm: Arc&lt;BinaryAddSM&lt;F&gt;&gt;,
+}</code></pre>
+<p>Manages bitwise and logical operations, which are expensive to prove in zkVMs. The multiple sub-machines handle:</p>
+<ul>
+<li><strong>Basic operations</strong> (AND, OR, XOR) with lookup tables</li>
+<li><strong>Extended operations</strong> for complex binary logic</li>
+<li><strong>Binary addition</strong> with optimized constraint generation</li>
+</ul>
+<h3 id="memory-state-machine"><a class="header" href="#memory-state-machine">Memory State Machine</a></h3>
+<p><strong>File:</strong> <code>state-machines/mem/src/mem.rs</code></p>
+<p>rust</p>
+<pre><code class="language-rust">pub struct Mem&lt;F: PrimeField64&gt; {
+    mem_sm: Arc&lt;MemSM&lt;F&gt;&gt;,
+    mem_align_sm: Arc&lt;MemAlignSM&lt;F&gt;&gt;,
+    mem_align_rom_sm: Arc&lt;MemAlignRomSM&gt;,
+    input_data_sm: Arc&lt;InputDataSM&lt;F&gt;&gt;,
+    rom_data_sm: Arc&lt;RomDataSM&lt;F&gt;&gt;,
+}</code></pre>
+<p>Handles all memory operations, proving that every access is legitimate. Specialized sub-machines include:</p>
+<ul>
+<li><strong><code>MemSM</code></strong> - Core memory operations and access validation</li>
+<li><strong><code>MemAlignSM</code></strong> - Unaligned memory accesses (crucial for RISC-V compatibility)</li>
+<li><strong><code>InputDataSM</code> / <code>RomDataSM</code></strong> - Specialized handling for input and read-only data</li>
+</ul>
+<h3 id="rom-state-machine"><a class="header" href="#rom-state-machine">ROM State Machine</a></h3>
+<p><strong>File:</strong> <code>state-machines/rom/src/rom.rs</code></p>
+<p>rust</p>
+<pre><code class="language-rust">pub struct RomSM {
+    zisk_rom: Arc&lt;ZiskRom&gt;,
+    bios_inst_count: Arc&lt;Vec&lt;AtomicU32&gt;&gt;,
+    prog_inst_count: Arc&lt;Vec&lt;AtomicU32&gt;&gt;,
+    asm_runner_handler: Mutex&lt;Option&lt;JoinHandle&lt;AsmRunnerRH&gt;&gt;&gt;,
+}</code></pre>
+<p>Manages program storage and instruction fetching. The atomic counters track instruction execution statistics for optimization and debugging. Can integrate with external assembly runners for specialized execution scenarios.</p>
+<h2 id="bus-system-integration"><a class="header" href="#bus-system-integration">Bus System Integration</a></h2>
+<p>State machines communicate through the bus system by implementing the <code>BusDevice</code> trait:</p>
+<p>rust</p>
+<pre><code class="language-rust">impl BusDevice&lt;u64&gt; for $InstanceName {
+    fn process_data(
+        &amp;mut self,
+        bus_id: &amp;BusId,
+        data: &amp;[u64],
+        _pending: &amp;mut VecDeque&lt;(BusId, Vec&lt;u64&gt;)&gt;,
+    ) { /* ... */ }
+    
+    fn bus_id(&amp;self) -&gt; Vec&lt;BusId&gt; { vec![self.bus_id] }
+    fn as_any(self: Box&lt;Self&gt;) -&gt; Box&lt;dyn std::any::Any&gt; { self }
+}</code></pre>
+<p>This integration makes state machine instances full participants in the communication infrastructure, enabling them to send and receive data through the bus system.</p>
+<h2 id="execution-lifecycle"><a class="header" href="#execution-lifecycle">Execution Lifecycle</a></h2>
+<h3 id="1-initialization"><a class="header" href="#1-initialization">1. Initialization</a></h3>
+<ul>
+<li><code>ComponentBuilder</code> creates instances with appropriate <code>InstanceCtx</code></li>
+<li>Each state machine registers its bus IDs</li>
+<li>Planners generate execution strategies</li>
+</ul>
+<h3 id="2-execution"><a class="header" href="#2-execution">2. Execution</a></h3>
+<ul>
+<li>Main state machine coordinates overall execution</li>
+<li>Specialized state machines handle domain-specific operations</li>
+<li>All communication flows through the bus system</li>
+<li>Continuous witness data collection</li>
+</ul>
+<h3 id="3-witness-generation"><a class="header" href="#3-witness-generation">3. Witness Generation</a></h3>
+<ul>
+<li>Each instance calls <code>compute_witness()</code> with its execution trace</li>
+<li>Trace buffers transform into <code>AirInstance</code> objects</li>
+<li>Mathematical constraints prove correctness</li>
+</ul>
+<h3 id="4-cleanup"><a class="header" href="#4-cleanup">4. Cleanup</a></h3>
+<ul>
+<li><code>reset()</code> methods prepare instances for next execution</li>
+<li>Resources get deallocated properly</li>
+<li>Metrics collection and reporting</li>
+</ul>
+<h2 id="architecture-benefits"><a class="header" href="#architecture-benefits">Architecture Benefits</a></h2>
+<p><strong>Specialized Optimization</strong>: Each state machine optimizes independently for its specific operation type, reducing overall proving time.</p>
+<p><strong>Parallel Processing</strong>: Independent operations can run simultaneously across different state machines.</p>
+<p><strong>Modular Design</strong>: New computational domains can be added without affecting existing components.</p>
+<p><strong>Distributed Execution</strong>: The instance system enables coordination across multiple machines while maintaining mathematical soundness.</p>
+<p><strong>Incremental Proving</strong>: The checkpoint system enables incremental proof generation for long-running computations.</p>
+<h2 id="system-architecture-diagram"><a class="header" href="#system-architecture-diagram">System Architecture Diagram</a></h2>
+<pre class="mermaid">graph TD
+    Main[Main State Machine] 
+    
+    Arith[Arithmetic State Machine]
+    Binary[Binary State Machine] 
+    Memory[Memory State Machine]
+    ROM[ROM State Machine]
+    
+    Bus((Bus System))
+    
+    Builder[Component Builder]
+    Context[Instance Context]
+    
+    Main --&gt; Arith
+    Main --&gt; Binary
+    Main --&gt; Memory
+    Main --&gt; ROM
+    
+    Arith &lt;--&gt; Bus
+    Binary &lt;--&gt; Bus
+    Memory &lt;--&gt; Bus
+    ROM &lt;--&gt; Bus
+    Main &lt;--&gt; Bus
+    
+    Builder -.-&gt; Main
+    Builder -.-&gt; Arith
+    Builder -.-&gt; Binary
+    Builder -.-&gt; Memory
+    Builder -.-&gt; ROM
+    
+    Context --&gt; Builder
+</pre>
+<h2 id="why-this-architecture-works-1"><a class="header" href="#why-this-architecture-works-1">Why This Architecture Works</a></h2>
+<p>ZisK's state machine architecture provides a purpose-built foundation for zero-knowledge proof generation. By decomposing computation into specialized domains, each state machine can generate constraints optimized for its operation type. The modular design enables parallel processing, distributed execution, and incremental optimizations that would be impossible in a monolithic system.</p>
+<p>This architecture ensures that ZisK can efficiently handle the mathematical requirements of zero-knowledge proofs while maintaining the flexibility needed for real-world applications.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="the-bus-system"><a class="header" href="#the-bus-system">The Bus System</a></h1>
+<p>ZisK's bus system connects all components and manages data flow between state machines. Unlike traditional computer buses that focus only on performance, ZisK's bus system captures every data transfer as part of the execution trace needed for zero-knowledge proof generation.</p>
+<h2 id="bus-design-principles"><a class="header" href="#bus-design-principles">Bus Design Principles</a></h2>
+<p>The bus serves dual purposes: it moves data between components and creates a comprehensive audit trail of all system interactions. Every data transfer gets captured and structured to feed directly into the mathematical constraints that power zero-knowledge proofs.</p>
+<p>This design ensures that all communication contributes to proof generation while enabling efficient distributed operation across multiple machines.</p>
+<h2 id="core-interface-busdevice-trait"><a class="header" href="#core-interface-busdevice-trait">Core Interface: BusDevice Trait</a></h2>
+<p>Every component in ZisK implements the <code>BusDevice</code> trait to participate in the communication system.</p>
+<p><strong>File:</strong> <code>common/src/bus/bus_device.rs</code></p>
+<pre><code class="language-rust">pub trait BusDevice&lt;D&gt;: Any + Send + Sync {
+    fn process_data(&amp;mut self, bus_id: &amp;BusId, data: &amp;[D], pending: &amp;mut VecDeque&lt;(BusId, Vec&lt;D&gt;)&gt;);
+    fn bus_id(&amp;self) -&gt; Vec&lt;BusId&gt;;
+    fn as_any(self: Box&lt;Self&gt;) -&gt; Box&lt;dyn Any&gt;;
+    fn on_close(&amp;mut self) {}
+}
+</code></pre>
+<p><strong>Method breakdown:</strong></p>
+<p><strong><code>process_data()</code></strong> - Handles incoming data for the device. When data arrives:</p>
+<ul>
+<li>Receives the source bus ID and data payload</li>
+<li>Processes data according to the device's specific logic</li>
+<li>Can queue additional operations in the <code>pending</code> queue for other devices</li>
+<li>Creates a chain of data flow captured in the execution trace</li>
+</ul>
+<p><strong><code>bus_id()</code></strong> - Returns all bus IDs this device responds to. Some devices handle multiple logical addresses or have different interfaces for different operation types.</p>
+<p><strong><code>as_any()</code></strong> - Enables runtime type casting, allowing the bus system to work with different device types while maintaining type safety.</p>
+<p><strong><code>on_close()</code></strong> - Cleanup hook for device shutdown, ensuring proper resource management.</p>
+<h2 id="device-identification-busid"><a class="header" href="#device-identification-busid">Device Identification: BusId</a></h2>
+<p><strong>File:</strong> <code>common/src/bus/bus_id.rs</code></p>
+<pre><code class="language-rust">#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BusId(pub usize);
+</code></pre>
+<p>Each <code>BusId</code> uniquely identifies a device or interface on the bus. The <code>usize</code> provides a flat address space that efficiently routes data to the correct component.</p>
+<p><strong>Zero-knowledge relevance:</strong> The bus ID becomes part of the execution trace. When the prover generates constraints, it must prove that data went to the correct destination. The simple, deterministic addressing scheme makes these proofs more efficient.</p>
+<h2 id="metrics-and-monitoring"><a class="header" href="#metrics-and-monitoring">Metrics and Monitoring</a></h2>
+<p><strong>File:</strong> <code>common/src/bus/bus_device_metrics.rs</code></p>
+<pre><code class="language-rust">pub trait BusDeviceMetrics: BusDevice&lt;u64&gt; + Metrics + std::any::Any {}
+</code></pre>
+<p>This trait combines core bus functionality with metrics collection. Devices implementing this provide insights into:</p>
+<ul>
+<li>Data throughput and latency</li>
+<li>Operation counts and patterns</li>
+<li>Performance bottlenecks</li>
+<li>Resource utilization</li>
+</ul>
+<p>These metrics are essential for understanding system performance across distributed environments.</p>
+<h2 id="specialized-data-handlers"><a class="header" href="#specialized-data-handlers">Specialized Data Handlers</a></h2>
+<p>The bus system provides specialized handlers for different data types rather than using a generic approach:</p>
+<h3 id="operation-data-handler"><a class="header" href="#operation-data-handler">Operation Data Handler</a></h3>
+<p><strong>File:</strong> <code>common/src/bus/data_bus_operation.rs</code></p>
+<p>Handles operation-specific communication:</p>
+<ul>
+<li>Instruction dispatch from main state machine to specialized processors</li>
+<li>Result collection from arithmetic and binary operations</li>
+<li>Control flow coordination between execution units</li>
+</ul>
+<h3 id="rom-data-handler"><a class="header" href="#rom-data-handler">ROM Data Handler</a></h3>
+<p><strong>File:</strong> <code>common/src/bus/data_bus_rom.rs</code></p>
+<p>Manages read-only memory interactions:</p>
+<ul>
+<li>Program instruction fetching</li>
+<li>Constant data access</li>
+<li>Program integrity verification during execution</li>
+</ul>
+<h3 id="memory-data-handler"><a class="header" href="#memory-data-handler">Memory Data Handler</a></h3>
+<p><strong>File:</strong> <code>common/src/bus/data_bus_mem.rs</code></p>
+<p>Handles dynamic memory operations:</p>
+<ul>
+<li>RAM read/write operations</li>
+<li>Memory alignment and access patterns</li>
+<li>Memory tracing for proof generation</li>
+</ul>
+<h2 id="data-flow-process"><a class="header" href="#data-flow-process">Data Flow Process</a></h2>
+<p>Here's how data moves through the system:</p>
+<ol>
+<li><strong>Initiation:</strong> A state machine needs to communicate with another component</li>
+<li><strong>Queuing:</strong> The operation gets queued using the appropriate data handler</li>
+<li><strong>Routing:</strong> The bus system examines the target <code>BusId</code> and routes data to the correct device</li>
+<li><strong>Processing:</strong> The target device's <code>process_data()</code> method handles the operation</li>
+<li><strong>Cascading:</strong> If the operation triggers additional work, new operations get added to the pending queue</li>
+<li><strong>Tracing:</strong> Every step gets recorded for the execution trace</li>
+</ol>
+<h2 id="zero-knowledge-optimization"><a class="header" href="#zero-knowledge-optimization">Zero-Knowledge Optimization</a></h2>
+<p>ZisK's bus system optimizes for <strong>verifiability</strong> rather than just speed:</p>
+<p><strong>Deterministic Ordering:</strong> The queue-based approach ensures operations happen in predictable order, crucial for generating consistent proofs.</p>
+<p><strong>Complete Traceability:</strong> Every data transfer creates execution trace entries. This comprehensive logging means the prover can demonstrate exactly what data moved where and when.</p>
+<p><strong>Modular Verification:</strong> Different data handlers can implement domain-specific verification logic. The arithmetic unit can prove its computations are correct, while the memory unit can prove accesses were legitimate.</p>
+<p><strong>Distributed Proof Generation:</strong> Clear device interfaces and identities enable different parts of the proof to be generated on different machines and then combined.</p>
+<h2 id="performance-characteristics"><a class="header" href="#performance-characteristics">Performance Characteristics</a></h2>
+<p><strong>Latency:</strong> The queue-based system introduces minimal overhead compared to direct function calls, but comprehensive tracing provides significant benefits for proof generation.</p>
+<p><strong>Throughput:</strong> The generic design allows batching operations and parallel processing where the dependency graph permits.</p>
+<p><strong>Scalability:</strong> New device types can be added without modifying existing components - they just need to implement the <code>BusDevice</code> trait and register appropriate bus IDs.</p>
+<h2 id="state-machine-integration"><a class="header" href="#state-machine-integration">State Machine Integration</a></h2>
+<p>The bus system enables the state machine architecture. Each state machine (Main, Arithmetic, Binary, Memory, ROM) implements the <code>BusDevice</code> trait and uses the bus for:</p>
+<ul>
+<li><strong>Coordination:</strong> The main state machine orchestrates other components via bus messages</li>
+<li><strong>Data Exchange:</strong> Arithmetic results flow back to the main processor through the bus</li>
+<li><strong>Resource Sharing:</strong> Multiple state machines access shared resources like memory through standardized interfaces</li>
+</ul>
+<h2 id="adding-new-components"><a class="header" href="#adding-new-components">Adding New Components</a></h2>
+<p>Adding a new component to ZisK involves:</p>
+<ol>
+<li><strong>Implement <code>BusDevice&lt;T&gt;</code></strong> for your component with appropriate data type <code>T</code></li>
+<li><strong>Choose unique <code>BusId</code>(s)</strong> for your component's interfaces</li>
+<li><strong>Register with the bus system</strong> during initialization</li>
+<li><strong>Handle incoming data</strong> in your <code>process_data()</code> implementation</li>
+<li><strong>Optionally implement metrics</strong> via <code>BusDeviceMetrics</code> for monitoring</li>
+</ol>
+<p>Existing components don't need to know about new devices - they send data to bus IDs, and the system handles routing automatically.</p>
+<h2 id="development-support"><a class="header" href="#development-support">Development Support</a></h2>
+<p>The module system in <code>common/src/bus/mod.rs</code> provides utilities for:</p>
+<ul>
+<li><strong>Bus timing analysis</strong> - Understanding data flow patterns and bottlenecks</li>
+<li><strong>Debug tracing</strong> - Following data through the system during development</li>
+<li><strong>Component lifecycle management</strong> - Proper initialization and cleanup</li>
+</ul>
+<p>This makes ZisK development more manageable than traditional zkVM architectures where component interactions are often implicit and hard to debug.</p>
+<h2 id="bus-system-architecture"><a class="header" href="#bus-system-architecture">Bus System Architecture</a></h2>
+<pre class="mermaid">graph TD
+    subgraph &quot;State Machines&quot;
+        Main[Main State Machine&lt;br/&gt;BusId: 0x01]
+        Arith[Arithmetic State Machine&lt;br/&gt;BusId: 0x02]
+        Binary[Binary State Machine&lt;br/&gt;BusId: 0x03]
+        Memory[Memory State Machine&lt;br/&gt;BusId: 0x04]
+        ROM[ROM State Machine&lt;br/&gt;BusId: 0x05]
+    end
+    
+    subgraph &quot;Bus &quot;
+        Bus[Bus System&lt;br/&gt;Routing &amp; Queuing]
+        Queue[Pending Operations&lt;br/&gt;VecDeque]
+        Router[BusId Router]
+    end
+    
+    subgraph &quot;Data Handlers&quot;
+        OpHandler[Operation Handler&lt;br/&gt;data_bus_operation.rs]
+        MemHandler[Memory Handler&lt;br/&gt;data_bus_mem.rs]
+        ROMHandler[ROM Handler&lt;br/&gt;data_bus_rom.rs]
+    end
+    
+    subgraph &quot;BusDevice Interface&quot;
+        Interface[&quot;process_data()&lt;br/&gt;bus_id()&lt;br/&gt;as_any()&lt;br/&gt;on_close()&quot;]
+    end
+    
+    Main &lt;--&gt; Bus
+    Arith &lt;--&gt; Bus
+    Binary &lt;--&gt; Bus
+    Memory &lt;--&gt; Bus
+    ROM &lt;--&gt; Bus
+    
+    Bus --&gt; Queue
+    Bus --&gt; Router
+    
+    Bus --&gt; OpHandler
+    Bus --&gt; MemHandler
+    Bus --&gt; ROMHandler
+    
+    Main -.-&gt; Interface
+    Arith -.-&gt; Interface
+    Binary -.-&gt; Interface
+    Memory -.-&gt; Interface
+    ROM -.-&gt; Interface
+
+</pre>
+<h2 id="architecture-benefits-1"><a class="header" href="#architecture-benefits-1">Architecture Benefits</a></h2>
+<p>ZisK's bus system treats communication as a first-class component that directly supports zero-knowledge proof generation requirements. This approach enables:</p>
+<ul>
+<li><strong>Modularity:</strong> Components can be developed and optimized independently</li>
+<li><strong>Distributed operation:</strong> Seamless scaling across multiple machines</li>
+<li><strong>Comprehensive traceability:</strong> Complete audit trail for proof generation</li>
+<li><strong>Performance optimization:</strong> Targeted optimizations while maintaining mathematical rigor</li>
+</ul>
+<p>The bus system provides the foundation for ZisK's modular, scalable, and verifiable architecture.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="execution-pipeline"><a class="header" href="#execution-pipeline">Execution Pipeline</a></h1>
+<p>ZisK's execution pipeline transforms Rust code into cryptographically verifiable proofs that the computation happened correctly. The process enables anyone to verify program execution without seeing the actual data or computation steps.</p>
+<h2 id="pipeline-overview"><a class="header" href="#pipeline-overview">Pipeline Overview</a></h2>
+<p>The pipeline consists of several phases, each building on the previous one. Here's what happens at each step and why it matters.
+</pre></p>
+<pre class="mermaid">graph TD
+    subgraph &quot;Development Phase&quot;
+        Code[Rust Source Code&lt;br/&gt;src/main.rs]
+        Create[cargo-zisk sdk new&lt;br/&gt;Project Scaffolding]
+        Build[cargo-zisk build&lt;br/&gt;RISC-V Compilation]
+    end
+    
+    subgraph &quot;Testing Phase&quot;
+        ELF[RISC-V ELF Binary&lt;br/&gt;riscv64ima-zisk-zkvm-elf]
+        Emulate[ziskemu&lt;br/&gt;Execution Testing]
+        Output[Program Output&lt;br/&gt;Verification]
+    end
+    
+    subgraph &quot;Proof Setup Phase&quot;
+        ROM[cargo-zisk rom-setup&lt;br/&gt;Constraint Generation]
+        PIL[PIL Constraints&lt;br/&gt;Mathematical Model]
+        Setup[Program Setup Files&lt;br/&gt;Proving Keys]
+    end
+    
+    subgraph &quot;Proof Generation Phase&quot;
+        Prove[cargo-zisk prove&lt;br/&gt;STARK Proof Generation]
+        Trace[Execution Trace&lt;br/&gt;Witness Data]
+        Proof[Zero-Knowledge Proof&lt;br/&gt;vadcop_final_proof.json]
+    end
+    
+    subgraph &quot;Verification Phase&quot;
+        Verify[cargo-zisk verify&lt;br/&gt;Proof Validation]
+        Result[Verification Result&lt;br/&gt;Valid/Invalid]
+    end
+    
+    Code --&gt; Create
+    Create --&gt; Build
+    Build --&gt; ELF
+    ELF --&gt; Emulate
+    Emulate --&gt; Output
+    ELF --&gt; ROM
+    ROM --&gt; PIL
+    PIL --&gt; Setup
+    Setup --&gt; Prove
+    Prove --&gt; Trace
+    Trace --&gt; Proof
+    Proof --&gt; Verify
+    Verify --&gt; Result
+    
+    classDef dev fill:#e3f2fd
+    classDef test fill:#f3e5f5
+    classDef setup fill:#e8f5e8
+    classDef prove fill:#fff3e0
+    classDef verify fill:#fce4ec
+    
+    class Code,Create,Build dev
+    class ELF,Emulate,Output test
+    class ROM,PIL,Setup setup
+    class Prove,Trace,Proof prove
+    class Verify,Result verify
+
+</pre>
+<pre>
+
+## 1. Project Creation & Setup
+
+ZisK provides a project scaffolding system that creates the correct structure for zero-knowledge programs.
+
+**Tool:** `cargo-zisk sdk new <project_name>`
+
+**Process:** This command generates a complete project structure with configuration files, build scripts, and example code. Running `cargo-zisk sdk new sha_hasher` creates a working SHA-256 hasher project you can immediately build and prove.
+
+**Output:**
+
+-   `src/main.rs` - Your program logic
+-   `build.rs` - Build configuration and input file generation
+-   `Cargo.toml` - Dependencies and target configuration
+-   Input files in the `build/` directory
+
+**Purpose:** The scaffolding configures your project for the RISC-V target architecture that ZisK's zkVM requires. Standard Rust projects won't compile to the right instruction set without this setup.
+
+## 2. Compilation: Rust → RISC-V
+
+High-level Rust code gets transformed into machine code that ZisK's virtual machine can understand and prove.
+
+**Tool:** `cargo-zisk build --release`
+
+**Process:** ZisK uses a specialized Rust toolchain that targets the RISC-V 64-bit instruction set (`riscv64ima-zisk-zkvm-elf`). The resulting binary must be deterministic and suitable for zero-knowledge proving.
+
+**Output:** An ELF binary at: `target/riscv64ima-zisk-zkvm-elf/release/<program_name>`
+
+**Key difference:** Unlike regular compilation, this process ensures the binary can execute inside ZisK's zkVM. The compiler includes special runtime libraries and follows strict rules about memory layout and instruction usage.
+
+## 3. Emulation & Testing
+
+Before generating expensive proofs, you need to verify your program works correctly. ZisK's emulator lets you test execution without cryptographic overhead.
+
+**Tool:** `ziskemu` or `cargo-zisk run`
+
+**Process:** The emulator creates a virtual RISC-V environment and executes your ELF binary exactly as it would run during proof generation. This catches bugs early and verifies outputs before proving.
+
+**Command examples:**
+
+-   Direct emulation: `ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin`
+-   Integrated workflow: `cargo-zisk run --release -i build/input.bin`
+
+**Output:** The actual program outputs, exactly as they would appear during proving. For a SHA hasher, you'd see the hash values printed out.
+
+**Background:** The emulator generates detailed execution traces (registers, memory operations, I/O) that mirror what happens during proof generation, but without the cryptographic work.
+
+## 4. ROM Setup: Preparing for Proof Generation
+
+Before ZisK can generate proofs for your program, it analyzes the program structure and creates specialized constraint files.
+
+**Tool:** `cargo-zisk rom-setup`
+
+**Process:** This step analyzes your compiled ELF binary and generates program-specific setup files that define the mathematical constraints your program must satisfy during execution.
+
+**Command:** `cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher`
+
+**What happens:** ZisK examines every instruction in your program and creates a mathematical representation (using PIL - Polynomial Identity Language) that describes what "correct execution" means for your specific code.
+
+**Purpose:** Zero-knowledge proofs work by proving that a computation satisfies mathematical constraints. This step transforms your program logic into those constraint equations.
+
+## 5. Proof Generation
+
+ZisK generates a mathematical proof that your program executed correctly with specific inputs, without revealing anything about the execution process itself.
+
+**Tool:** `cargo-zisk prove`
+
+**Process:** ZisK executes your program in its zkVM, captures every step of execution, and transforms this execution trace into a STARK (Scalable Transparent Argument of Knowledge) proof.
+
+**Command:**
+
+```bash
+cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher \
+                 -i build/input.bin \
+                 -o proof \
+                 -a -y
+
+```
+
+**Proof generation steps:**
+
+1.  **Execution:** Your program runs inside the zkVM with the provided inputs
+2.  **Trace generation:** Every instruction, memory access, and state change gets recorded
+3.  **Witness computation:** The execution trace gets transformed into mathematical witness data
+4.  **STARK proof generation:** Using the witness and your program's constraints, ZisK generates the final proof
+
+**Output:** A complete proof package in the specified directory (`./proof/`) containing:
+
+-   `vadcop_final_proof.json` - The actual zero-knowledge proof
+-   `publics.json` - Public inputs and outputs
+-   Various intermediate files
+
+**Performance notes:** This is the most computationally intensive step. ZisK supports GPU acceleration and concurrent proving to reduce the time required.
+
+## 6. Verification: Cryptographic Validation
+
+The final step proves that a given proof is mathematically valid and corresponds to the claimed computation.
+
+**Tool:** `cargo-zisk verify`
+
+**Process:** The verifier checks the proof against the public inputs and program commitments using ZisK's verification algorithm. This process is much faster than proof generation.
+
+**Command:**
+
+```bash
+cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json \
+                  -u ./proof/publics.json
+
+```
+
+**Verification checks:**
+
+-   The proof is mathematically sound
+-   The computation used the claimed program (via cryptographic program commitment)
+-   The public outputs match what the proof claims
+-   All constraints were satisfied during execution
+
+**Result:** If verification passes, you get confirmation that the proof is valid. Anyone can run this verification independently.
+
+## Complete Workflow Example
+
+Here's what a typical ZisK development session looks like:
+
+```bash
+# Create and enter project
+cargo-zisk sdk new my_program
+cd my_program
+
+# Test natively first
+cargo run
+
+# Build for zkVM
+cargo-zisk build --release
+
+# Test in emulator
+cargo-zisk run --release -i build/input.bin
+
+# Prepare for proving
+cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/my_program
+
+# Generate proof
+cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/my_program \
+                 -i build/input.bin -o proof -a -y
+
+# Verify the proof
+cargo-zisk verify -p ./proof/proofs/vadcop_final_proof.json \
+                  -u ./proof/publics.json
+
+```
+
+## Architecture Integration
+
+This pipeline integrates with ZisK's modular architecture. During proof generation, the various state machines (Main, Arithmetic, Binary, Memory, ROM) coordinate to handle different aspects of RISC-V instruction execution, while the PIL constraint system ensures mathematical soundness throughout the process.
+
+## Performance Characteristics
+
+**Compilation:** Fast, similar to regular Rust compilation **Emulation:** Very fast, useful for rapid iteration  
+**ROM Setup:** One-time cost per program, moderate duration **Proof Generation:** Most expensive step, benefits significantly from GPU acceleration **Verification:** Fast, suitable for real-time validation
+
+The pipeline is designed to frontload the expensive operations (ROM setup, proving) while keeping the verification step lightweight enough for practical deployment scenarios.
+
+## Installation
+
+ZisK currently supports **Linux x86_64** and **macOS** platforms.
+
+> **Note:** Proof generation and verification on **macOS** are not yet supported. We're actively working to add this functionality.
+
+**Requirements:**
+
+-   **Ubuntu 22.04 or higher**
+-   **macOS 14 or higher**
+
+1.  Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed.
+    
+2.  Install required dependencies:
+    
+
+**Ubuntu:**
+
+```bash
+sudo apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common
+
+```
+
+**macOS:**
+
+```bash
+brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi
+
+```
+
+3.  Install ZisK using ziskup:
+
+```bash
+curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh | bash
+
+```
+
+## Create a Project
+
+Generate a new example project using the `cargo-zisk sdk new <name>` command:
+
+```bash
+cargo-zisk sdk new sha_hasher
+cd sha_hasher
+
+```
+
+This creates a project with the following structure:
+
+```
+.
+├── build.rs
+├── Cargo.toml
+├── .gitignore
+└── src
+    └── main.rs
+
+```
+
+The example program takes a number `n` as input and computes the SHA-256 hash `n` times. The `build.rs` file generates an `input.bin` file containing the value of `n` (e.g., 20).
+
+You can run the program on your native architecture:
+
+```bash
+cargo run
+
+```
+
+Output:
+
+```
+public 0: 0x98211882
+public 1: 0xbd13089b
+public 2: 0x6ccf1fca
+public 3: 0x81f7f0e4
+public 4: 0xabf6352a
+public 5: 0x0c39c9b1
+public 6: 0x1f142cac
+public 7: 0x233f1280
+
+```
+
+## Build
+
+Build the program using `cargo-zisk` to generate a RISC-V ELF file:
+
+```bash
+cargo-zisk build --release
+
+```
+
+This builds the program using the `zkvm` target. The resulting `sha_hasher` ELF file is generated in the `./target/riscv64ima-zisk-zkvm-elf/release` directory.
+
+## Execute
+
+Test the program using the ZisK emulator before generating proofs:
+
+```bash
+ziskemu -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin
+
+```
+
+Output:
+
+```
+98211882
+bd13089b
+6ccf1fca
+81f7f0e4
+abf6352a
+0c39c9b1
+1f142cac
+233f1280
+
+```
+
+Alternatively, build and run in one command:
+
+```bash
+cargo-zisk run --release -i build/input.bin
+
+```
+
+## Prove
+
+Generate the program setup files:
+
+```bash
+cargo-zisk rom-setup -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher
+
+```
+
+Generate and verify a proof:
+
+```bash
+cargo-zisk prove -e target/riscv64ima-zisk-zkvm-elf/release/sha_hasher -i build/input.bin -o proof -a -y
+
+```
+
+This generates the proof in the `./proof` directory. Success looks like:
+
+```
+...
+[INFO ] ProofMan: ✓ Vadcop Final proof was verified
+[INFO ] stop <<< GENERATING_VADCOP_PROOF 91706ms
+[INFO ] ProofMan: Proofs generated successfully
+
+```
+
+**Note:** You can use concurrent proof generation and GPU support to reduce proving time.
+
+## Verify Proof
+
+Verify a generated proof:
+
+```bash
+cargo-zisk verify -p ./proof/vadcop_final_proof.bin
+
+```<div style="break-before: page; page-break-before: always;"></div><h1 id="understanding-io-with-zisk"><a class="header" href="#understanding-io-with-zisk">Understanding I/O with ZisK</a></h1>
+<p>In the Quick Start section, we had a brief introduction to how to perform I/O operations with ZisK. Now we'll dive deeper into the fundamental concepts. Keep reading to learn more about:</p>
+<pre class="mermaid">graph TD
+    subgraph &quot;Unrestricted World - Data Preparation&quot;
+        APIs[External APIs]
+        DB[Databases] 
+        Files[File Systems]
+        Network[Network Resources]
+        User[User Input]
+        
+        Build[build.rs&lt;br/&gt;Data Preparation Script]
+        
+        APIs --&gt; Build
+        DB --&gt; Build
+        Files --&gt; Build
+        Network --&gt; Build
+        User --&gt; Build
+    end
+    
+    subgraph &quot;Bridge Layer&quot;
+        InputBin[input.bin&lt;br/&gt;Temporal Snapshot&lt;br/&gt;All Data Private by Default]
+    end
+    
+    subgraph &quot;Deterministic World - ZisK Execution&quot;
+        Main[main.rs&lt;br/&gt;ZisK Program]
+        ReadInput[read_input function&lt;br/&gt;Load All Data]
+        Processing[Private Processing&lt;br/&gt;Calculations &amp; Logic]
+        SetOutput[set_output function&lt;br/&gt;Selective Public Reveal]
+    end
+    
+    subgraph &quot;Public Outputs&quot;
+        Console[Console Output&lt;br/&gt;public 0: 420]
+        PublicsJSON[publics.json&lt;br/&gt;Verifiable Public Data]
+    end
+    
+    subgraph &quot;Dynamic Data Patterns&quot;
+        BuildTime[Build-time Refresh&lt;br/&gt;Recompile for Fresh Data]
+        External[External Data Staging&lt;br/&gt;Separate Collection Process]
+        EventDriven[Event-driven Triggers&lt;br/&gt;Monitor &amp; Auto-update]
+        Batching[Temporal Batching&lt;br/&gt;Fixed Interval Windows]
+    end
+    
+    Build --&gt; InputBin
+    InputBin --&gt; Main
+    Main --&gt; ReadInput
+    ReadInput --&gt; Processing
+    Processing --&gt; SetOutput
+    SetOutput --&gt; Console
+    SetOutput --&gt; PublicsJSON
+    
+    BuildTime -.-&gt; Build
+    External -.-&gt; InputBin
+    EventDriven -.-&gt; Build
+    Batching -.-&gt; Build
+</pre>
+<ul>
+<li>How ZisK's input/output model works at its core</li>
+<li>The distinction between public and private data</li>
+<li>Working with dynamic data streams at ZisK</li>
+</ul>
+<h2 id="setting-up-the-stage"><a class="header" href="#setting-up-the-stage">Setting up the Stage</a></h2>
+<h4 id="the-zkvm-io-challenge"><a class="header" href="#the-zkvm-io-challenge">The zkVM I/O Challenge</a></h4>
+<p>Zero-knowledge virtual machines operate under unique constraints that traditional programs don't face. The core challenge is maintaining deterministic execution while preserving privacy and enabling verification.</p>
+<p>When you run a regular program, you can fetch data, read files, or get user input at runtime. In a zkVM, this approach breaks down because:</p>
+<ul>
+<li>Verifiers must be able to reproduce the computation without re-executing it.</li>
+<li>The same inputs must always produce the same outputs.</li>
+<li>Some data must remain hidden while other data needs to be public.</li>
+</ul>
+<p>ZisK solves this through a carefully designed architecture that separates data preparation from execution.</p>
+<h2 id="zisks-data-model"><a class="header" href="#zisks-data-model">ZisK's Data Model</a></h2>
+<p>ZisK takes a fundamentally different approach to handling I/O, Instead of allowing direct access to files, networks, or user input during execution, ZisK uses a controlled I/O model. This approach ensures deterministic execution, maintains privacy by default, and enables verifiable computation without revealing sensitive data.</p>
+<p>The core concept is simple: ZisK handles I/O through a file-based communication pattern where you generate an <code>input.bin</code> file from <code>build.rs</code> and process that data in <code>main.rs</code> using ZisK's <code>read_input()</code> and <code>set_output()</code>  functions.</p>
+<p>This separation between data preparation (unrestricted) and data processing (verifiable) gives you complete control over what becomes public versus what remains private, while ensuring that the same inputs always produce the same verifiable outputs.</p>
+<p><em>Let's dive into the section of Handling Input and Making Data Public.</em></p>
+<h3 id="input-handling"><a class="header" href="#input-handling">Input Handling</a></h3>
+<p>If we look at the SHA example we worked with earlier, you'll notice that ZisK programs receive all their input through a single file called <code>input.bin</code>. Unlike traditional programs that can read files or make network requests during execution, this single-file approach is how ZisK handles all input data.</p>
+<p>Your <code>build.rs</code> script is where you prepare this input. Here you have full access to external resources - fetch APIs, read databases, process user input, whatever you need. You're essentially creating a <strong>snapshot</strong> of data that will be processed deterministically by the zkVM.</p>
+<pre><code class="language-rust">// Ref. build.rs from the SHA example - Here we prepare the data for Input.bin
+let secret_value: u64 = 42;
+file.write_all(&amp;secret_value.to_le_bytes())?;</code></pre>
+<p>Once your program runs inside ZisK, the <code>read_input()</code> function gives you access to everything you prepared. It returns the entire <code>input.bin</code> contents as bytes - all the data you wrote in <code>build.rs</code> is now available to work with .</p>
+<pre><code class="language-rust">// Ref. main.rs from SHA example - Here we read data from the input.bin file and load it into the main.rs 
+
+let input: Vec&lt;u8&gt; = read_input();
+let secret_value = u64::from_le_bytes(input[0..8].try_into().unwrap());</code></pre>
+<p>Here's the key insight, <strong>All input starts as private by default</strong>. ZisK doesn't distinguish between "public" and "private" input during the reading process. Instead, the <code>set_output()</code> function (which we'll explore next) is what determines what becomes public. By default, everything you input/work with remains private.</p>
+<p><em>Make sure your input data isn't redundant. Since all input must go into your <code>input.bin</code> file and gets processed by the zkVM, any unnecessary or duplicate data will make your file larger and slow down your computation. Keep your inputs lean and purposeful.</em></p>
+<h3 id="making-data-public"><a class="header" href="#making-data-public">Making Data Public</a></h3>
+<p>So far, everything you've done in your ZisK program has been completely private. Your input data, calculations, and intermediate values remain private. But when you need to prove something or share a result, you need a mechanism to selectively reveal information.</p>
+<p>The <code>set_output()</code> function serves this exact purpose. It's your <strong>only pathway</strong> to make data visible outside ZisK. Once you call this function, that specific piece of data becomes accessible to be  verifiable.</p>
+<pre><code class="language-rust">// So to see thin in the context of the syntax if we see in main.rs
+let result = secret_value * 10;  // This stays private
+set_output(0, result as u32);    // This becomes public</code></pre>
+<p>When you call <code>set_output()</code>, two things happen simultaneously. You'll see the value immediately displayed on your console as <code>public 0: 420</code>, When you write <code>set_output(0, 420)</code> in your code, ZisK immediately prints <code>public 0: 420</code> to the console, where "public" indicates this is a public output, "0" is the index you specified, and "420" is the actual value.</p>
+<p>This format gives you an immediate feedback about what values you're making public and shows you exactly how they'll be organized in the final <code>publics.json</code> file that gets created during proving.</p>
+<p>Multiple values can be made public by calling <code>set_output()</code> with different index parameters, where each index serves as a unique identifier to organize the public outputs.</p>
+<pre><code class="language-rust">set_output(0, timestamp as u32);     // When computation happened
+set_output(1, result as u32);        // The actual result
+set_output(2, status_flag as u32);   // Success/failure indicator</code></pre>
+<p>This approach gives you control over what information becomes public versus what stays private. Any data you don't explicitly pass to <code>set_output()</code> remains hidden from verifiers - they can only see the values you choose to reveal.</p>
+<h2 id="working-with-dynamic-data-streams-at-zisk"><a class="header" href="#working-with-dynamic-data-streams-at-zisk">Working with dynamic data streams at ZisK</a></h2>
+<h3 id="the-challenge-with-streaming-data"><a class="header" href="#the-challenge-with-streaming-data">The Challenge with Streaming Data</a></h3>
+<p>Okay so ZisK's I/O model is built around snapshots i.e. you create an <code>input.bin</code> file and your program processes it deterministically. But what happens when you need to work with continuously changing data, like live market feeds, real-time sensor data, or streaming blockchain events?</p>
+<p>Since ZisK requires deterministic inputs for proof generation, you can't simply fetch live data from within your program. Instead, you need formalized approaches for handling dynamic data streams while maintaining ZisK's deterministic properties.</p>
+<h3 id="bridging-static-and-dynamic-data-to-zisk"><a class="header" href="#bridging-static-and-dynamic-data-to-zisk">Bridging Static and Dynamic data to ZisK</a></h3>
+<p>The solution space is quite rich, and your choice depends on latency requirements and operational constraints.</p>
+<p>One popular approach could leverage Cargo's build system as your data acquisition layer. By repurposing <code>build.rs</code> to fetch fresh data during compilation, each build cycle captures a temporal snapshot. Your main ZisK program remains unchanged; it simply processes whatever data the build system has prepared.</p>
+<p>Alternatively, you might separate data collection from proof generation entirely. External processes continuously maintain staged data files, while ZisK programs consume these pre-prepared snapshots on demand. This decoupling provides flexibility in how and when data gets refreshed.</p>
+<p>For applications that can tolerate batching, accumulating streaming data over fixed intervals works well. So in this case you're creating discrete temporal windows that maintain deterministic properties while capturing real-world data evolution.</p>
+<p>Or maybe using proxy input generation, where external services or scheduled jobs maintain current data snapshots. The ZisK programs then consume these externally-managed files rather than handling data acquisition themselves.</p>
+<p>Event-driven approaches can also be effective: monitor data sources for changes and trigger recompilation automatically. This ensures proofs always reflect current data without manual intervention.</p>
+<p>The key insight is that all these patterns preserve ZisK's deterministic execution model while enabling different temporal guarantees. Your choice comes down to balancing latency requirements, operational complexity, and your broader system architecture.</p>
+<h2 id="wrapping-up-zisks-io-philosophy"><a class="header" href="#wrapping-up-zisks-io-philosophy">Wrapping Up: ZisK's I/O Philosophy</a></h2>
+<p>ZisK's approach to I/O represents a fundamental shift in how we think about data flow in computational systems. By separating data preparation from execution, you gain something powerful: the ability to work with any data source while maintaining the deterministic properties essential for zero-knowledge proofs.</p>
+<p>The core pattern we've explored is elegant in its simplicity. Your <code>build.rs</code> operates in the unrestricted world where you can fetch APIs, read databases, and process complex data sources. Your <code>main.rs</code> operates in the deterministic world where the same inputs always produce the same verifiable outputs. The <code>input.bin</code> file serves as the bridge between these two worlds.</p>
+<p>This architecture gives you complete control over privacy. Everything starts private by default, and only the data you explicitly pass to <code>set_output()</code> becomes visible to verifiers. This privacy-by-default approach means you can process sensitive information while selectively revealing just the results that matter.</p>
+<p>For dynamic data scenarios, the solutions we've discussed all maintain this core philosophy while adapting to real-world constraints. Whether you choose build-time refresh, external data staging, or event-driven approaches, the fundamental principle remains: capture temporal snapshots that ZisK can process deterministically.</p>
+<p>The beauty of this model is that it scales from simple proofs to complex, real-world applications without compromising on the security and verifiability properties that make zero-knowledge computation valuable. You're not just writing programs; you're creating verifiable computational artifacts that others can trust without needing to see your private data or re-execute your code.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ziskof"><a class="header" href="#ziskof">Ziskof</a></h1>
+<h2 id="riscof-tests"><a class="header" href="#riscof-tests">Riscof tests</a></h2>
+<p>The following test generates the riscof test files, converts the corresponding .elf files into ZisK ROMs, and executes them providing the output in stdout for comparison against a reference RISCV implementation.  This process is not trivial and has been semi-automatized.</p>
+<p>First, compile the ZisK Emulator:</p>
+<pre><code class="language-sh">$ cargo clean
+$ cargo build --release
+</code></pre>
+<p>Second, download and run a docker image from the riscof repository to generate and run the riscof tests:</p>
+<pre><code class="language-sh">$ docker run --rm -v ./target/release/ziskemu:/program -v ./riscof/:/workspace/output/ -ti  hermeznetwork/ziskof:latest
+</code></pre>
+<p>The test can take a few minutes to complete.  Any error would be displayed in red.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+    </div>
+    </body>
+</html>
