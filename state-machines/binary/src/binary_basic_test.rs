@@ -56,7 +56,8 @@ mod tests {
 
         DataBusPlayer::play(&mut data_bus, &data);
 
-        let binary_counter = data_bus.devices.remove(0).1;
+        let mut devices = data_bus.into_devices(false);
+        let binary_counter = devices.remove(0).1.unwrap();
 
         let binary_planner =
             <BinarySM<F> as zisk_common::ComponentBuilder<F>>::build_planner(&binary_sm);
@@ -108,7 +109,7 @@ mod tests {
             OperationBusData::from_values(ADD_OP, ZiskOperationType::Binary as u64, 1, 2).into(),
         )];
 
-        let threads_samples = [1, 2, 4, 8, 16];
+        let threads_samples = [1, 1, 2, 4, 8, 16];
         let repetitions = 3;
 
         let mut results_ms = vec![];
