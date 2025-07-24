@@ -5,7 +5,7 @@
 #include <condition_variable>
 #include <mutex>
 
-// Agregar variables de sincronización eficiente
+// Add efficient synchronization variables
 static std::mutex chunk_mutex;
 static std::condition_variable chunk_cv;
 
