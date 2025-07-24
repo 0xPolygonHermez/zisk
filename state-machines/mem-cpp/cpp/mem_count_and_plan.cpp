@@ -194,10 +194,13 @@ void save_chunk(uint32_t chunk_id, MemCountersBusData *chunk_data, uint32_t chun
     snprintf(filename, sizeof(filename), "tmp/bus_data_asm/mem_count_data_%d.bin", chunk_id);
     int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
-    write(fd, chunk_data, sizeof(MemCountersBusData) * chunk_size);
-#pragma GCC diagnostic pop
+    ssize_t bytes_written = write(fd, chunk_data, sizeof(MemCountersBusData) * chunk_size);
+    if (bytes_written < 0) {
+        perror("Error writing to file");
+    } else if (static_cast<size_t>(bytes_written) != sizeof(MemCountersBusData) * chunk_size) {
+        fprintf(stderr, "Partial write: expected %zu bytes, but wrote %zd bytes\n",
+                sizeof(MemCountersBusData) * chunk_size, bytes_written);
+    }
     
     close(fd);
 }
