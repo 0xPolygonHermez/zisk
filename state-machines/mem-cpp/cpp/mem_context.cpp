@@ -60,7 +60,7 @@ void MemContext::add_chunk(MemCountersBusData *data, uint32_t count) {
         chunks_count.store(chunk_id + 1, std::memory_order_release);
     }
 
-    // Notificar a TODOS los threads esperando
+    // Notify ALL waiting threads
     chunk_cv.notify_all();
 }
 
