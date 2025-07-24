@@ -142,6 +142,15 @@ impl AsmRunnerMO {
 
                     data_ptr = unsafe { data_ptr.add(1) };
 
+                    // Add to executor stats
+                    #[cfg(feature = "stats")]
+                    _stats.lock().unwrap().add_stat(ExecutorStatsEnum::MemOpsChunkDone(
+                        ExecutorStatsDuration {
+                            start_time: Instant::now(),
+                            duration: Duration::from_nanos(1),
+                        },
+                    ));
+
                     mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
 
                     if chunk.end == 1 {
