@@ -37,7 +37,7 @@ const MemChunk *MemContext::get_chunk(uint32_t chunk_id, int64_t &elapsed_us) {
             return nullptr;
         }
         
-        // Wait eficiente: el thread se bloquea hasta ser notificado
+        // Efficient wait: the thread blocks until it is notified
         chunk_cv.wait_for(lock, std::chrono::microseconds(1000));
     }
     
