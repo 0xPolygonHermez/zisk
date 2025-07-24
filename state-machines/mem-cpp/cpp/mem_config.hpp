@@ -8,9 +8,9 @@
 // #define MEM_PLANNER_STATS
 
 #define MEM_CHECK_POINT_MAP
-#define SEGMENT_STATS
-#define CHUNK_STATS
-#define COUNT_CHUNK_STATS
+// #define SEGMENT_STATS
+// #define CHUNK_STATS
+// #define COUNT_CHUNK_STATS
 #define SEGMENT_LARGE_CHUNKS 512
 
 #define MEM_TYPES 3
