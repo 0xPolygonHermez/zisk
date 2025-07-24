@@ -18,10 +18,16 @@ void MemAlignCounter::execute() {
     uint64_t init = get_usec();
     const MemChunk *chunk;
     uint32_t chunk_id = 0;
-    uint64_t elapsed_us = 0;
+    int64_t elapsed_us = 0;
     while ((chunk = context->get_chunk(chunk_id, elapsed_us)) != nullptr) {
         execute_chunk(chunk_id, chunk->data, chunk->count);
+        #ifdef COUNT_CHUNK_STATS
+        #ifdef CHUNK_STATS
+        total_usleep += elapsed_us > 0 ? elapsed_us : 0;
+        #else
         total_usleep += elapsed_us;
+        #endif
+        #endif
         ++chunk_id;
     }
     elapsed_ms = ((get_usec() - init) / 1000);

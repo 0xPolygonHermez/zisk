@@ -7,12 +7,42 @@ MemCountAndPlan::MemCountAndPlan() {
     context = std::make_shared<MemContext>();
 }
 
+MemCountAndPlan::~MemCountAndPlan() {
+    // Free count_workers (major memory leak fix)
+    for (auto* worker : count_workers) {
+        delete worker;
+    }
+    count_workers.clear();
+    
+    // Wait for parallel thread if still running
+    if (parallel_execute && parallel_execute->joinable()) {
+        parallel_execute->join();
+    }
+}
+
 void MemCountAndPlan::clear() {
+    // Free count_workers if not already freed
+    for (auto* worker : count_workers) {
+        delete worker;
+    }
+    count_workers.clear();
+    
+    // Clear segments (they have their own cleanup)
+    for (int i = 0; i < MEM_TYPES; ++i) {
+        segments[i].clear();
+    }
+    
     context->clear();
 }
 void MemCountAndPlan::prepare() {
     uint64_t init = get_usec();
+    
+    // Clear existing workers to avoid memory leaks if prepare() called multiple times
+    for (auto* worker : count_workers) {
+        delete worker;
+    }
     count_workers.clear();
+    
     for (size_t i = 0; i < MAX_THREADS; ++i) {
         count_workers.push_back(new MemCounter(i, context));
     }
@@ -38,8 +68,8 @@ void MemCountAndPlan::execute(void) {
 
 void MemCountAndPlan::count_phase() {
     uint64_t init = t_init_us = get_usec();
-    context->init();
     std::vector<std::thread> threads;
+    context->init();
 
     for (int i = 0; i < MAX_THREADS; ++i) {
         threads.emplace_back([this, i](){count_workers[i]->execute();});
@@ -118,6 +148,12 @@ void MemCountAndPlan::stats() {
             count_workers[i]->get_first_chunk_us(),
             count_workers[i]->get_queue_full_times()/1000);
     }
+    #ifdef CHUNK_STATS
+    context->stats();
+    for (size_t i = 0; i < MAX_THREADS; ++i) {
+        count_workers[i]->stats();
+    }
+    #endif
     printf("\n> threads: %d\n", MAX_THREADS);
     printf("> address table: %ld MB\n", (ADDR_TABLE_SIZE * ADDR_TABLE_ELEMENT_SIZE * MAX_THREADS)>>20);
     printf("> memory slots: %ld MB (used: %ld MB)\n", (ADDR_SLOTS_SIZE * sizeof(uint32_t) * MAX_THREADS)>>20, (tot_used_slots * ADDR_SLOT_SIZE * sizeof(uint32_t))>> 20);
@@ -157,7 +193,12 @@ void save_chunk(uint32_t chunk_id, MemCountersBusData *chunk_data, uint32_t chun
     char filename[200];
     snprintf(filename, sizeof(filename), "tmp/bus_data_asm/mem_count_data_%d.bin", chunk_id);
     int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
     write(fd, chunk_data, sizeof(MemCountersBusData) * chunk_size);
+#pragma GCC diagnostic pop
+    
     close(fd);
 }
 

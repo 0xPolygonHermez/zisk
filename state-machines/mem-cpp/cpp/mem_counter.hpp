@@ -51,6 +51,10 @@ private:
     uint32_t queue_full;
     uint64_t first_chunk_us;
     const uint32_t addr_mask;
+#ifdef COUNT_CHUNK_STATS
+    uint64_t chunks_us[MAX_CHUNKS];
+    int64_t wait_chunks_us[MAX_CHUNKS];
+#endif
 public:
     MemCounter(const MemCounter&) = delete;
     MemCounter& operator=(const MemCounter&) = delete;
@@ -88,6 +92,7 @@ public:
     inline static uint32_t page_to_addr(uint8_t page);
     inline uint32_t get_used_slots(void) const;
     inline uint64_t get_first_chunk_us(void) const;
+    void stats();
 };
 
 uint32_t MemCounter::get_pos_value(uint32_t pos) const {
