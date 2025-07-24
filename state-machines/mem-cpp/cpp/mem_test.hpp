@@ -118,7 +118,7 @@ public:
             uint64_t current = get_usec();
             if (current < chunk_ready) {
                 uint64_t wait_time = chunk_ready - current;
-                // Optimización: busy wait for short delays
+                // Optimization: busy wait for short delays
                 if (wait_time < 100) {
                     // Busy wait for < 100μs (more accurate but consumes CPU)
                     while (get_usec() < chunk_ready) {
