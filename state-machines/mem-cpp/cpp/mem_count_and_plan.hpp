@@ -59,6 +59,7 @@ public:
     std::unique_ptr<MemAlignCounter> mem_align_counter;
 
     MemCountAndPlan();
+    ~MemCountAndPlan();
     void clear();
     void prepare();
     void add_chunk(MemCountersBusData *chunk_data, uint32_t chunk_size);
