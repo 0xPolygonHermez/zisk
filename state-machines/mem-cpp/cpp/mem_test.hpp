@@ -31,7 +31,11 @@ class MemTestChunk {
 public:
     std::shared_ptr<MemCountersBusData> chunk_data;
     uint32_t chunk_size;
-    MemTestChunk(MemCountersBusData *data, uint32_t size) : chunk_data(data), chunk_size(size) {}
+    MemTestChunk(MemCountersBusData *data, uint32_t size) 
+        : chunk_data(data, [](MemCountersBusData* p) { free(p); }), chunk_size(size) {}
+    ~MemTestChunk() {
+        // Memory is automatically freed by shared_ptr with custom deleter
+    }
 };
 
 class MemTest {
@@ -113,7 +117,17 @@ public:
             uint64_t chunk_ready = init + (uint64_t)(chunk_id+1) * TIME_US_BY_CHUNK;
             uint64_t current = get_usec();
             if (current < chunk_ready) {
-                usleep(chunk_ready - current);
+                uint64_t wait_time = chunk_ready - current;
+                // Optimization: busy wait for short delays
+                if (wait_time < 100) {
+                    // Busy wait for < 100μs (more accurate but consumes CPU)
+                    while (get_usec() < chunk_ready) {
+                        // Spin wait
+                    }
+                } else {
+                    // usleep for long delays (saves CPU)
+                    usleep(wait_time);
+                }
             }
             MemCountersBusData *data = chunk.chunk_data.get();
             uint32_t chunk_size = chunk.chunk_size;
@@ -126,7 +140,7 @@ public:
         }
         set_completed_mem_count_and_plan(cp);
         wait_mem_count_and_plan(cp);
-        // stats_mem_count_and_plan(cp);
+        stats_mem_count_and_plan(cp);
         destroy_mem_count_and_plan(cp);
     }
 };
