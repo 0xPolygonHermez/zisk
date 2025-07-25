@@ -7,12 +7,41 @@ MemCountAndPlan::MemCountAndPlan() {
     context = std::make_shared<MemContext>();
 }
 
+MemCountAndPlan::~MemCountAndPlan() {
+    clear();
+}
+
 void MemCountAndPlan::clear() {
+    // Clean up count_workers raw pointers
+    for (auto* worker : count_workers) {
+        delete worker;
+    }
+    count_workers.clear();
+    
+    // Wait for and clean up any background threads
+    if (parallel_execute && parallel_execute->joinable()) {
+        parallel_execute->join();
+    }
+    
+    // Join any remaining plan threads
+    for (auto& thread : plan_threads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+    plan_threads.clear();
+    
     context->clear();
 }
 void MemCountAndPlan::prepare() {
     uint init = get_usec();
+    
+    // Clean up existing count_workers before creating new ones
+    for (auto* worker : count_workers) {
+        delete worker;
+    }
     count_workers.clear();
+    
     for (size_t i = 0; i < MAX_THREADS; ++i) {
         count_workers.push_back(new MemCounter(i, context));
     }
