@@ -1,10 +1,5 @@
 use std::ops::{Index, IndexMut};
 
-/*
-      ----->
-    p ----->
-      ----->
-*/
 #[derive(Clone, Debug)]
 pub struct Pin {
     id: PinId,
@@ -15,6 +10,7 @@ pub struct Pin {
     pub bit: u8,      // 0 or 1
     pub connections_to_input_a: Vec<u64>,
     pub connections_to_input_b: Vec<u64>,
+    pub connections_to_input_c: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -65,6 +61,7 @@ impl Pin {
             bit: 0,
             connections_to_input_a: Vec::new(),
             connections_to_input_b: Vec::new(),
+            connections_to_input_c: Vec::new(),
         }
     }
 
@@ -79,5 +76,6 @@ impl Pin {
         self.bit = 0;
         self.connections_to_input_a.clear();
         self.connections_to_input_b.clear();
+        self.connections_to_input_c.clear();
     }
 }

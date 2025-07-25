@@ -4,12 +4,21 @@ use crate::{
     ServerConfig, ZiskBaseResponse, ZiskCmdResult, ZiskResponse, ZiskResultCode, ZiskService,
 };
 use colored::Colorize;
-use executor::{Stats, ZiskExecutionResult};
+use executor::ZiskExecutionResult;
 use fields::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::DebugInfo;
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
 use witness::WitnessLibrary;
+use zisk_common::ExecutorStats;
+
+#[cfg(feature = "stats")]
+use std::time::Duration;
+#[cfg(feature = "stats")]
+use std::time::Instant;
+#[cfg(feature = "stats")]
+use zisk_common::{ExecutorStatsDuration, ExecutorStatsEnum};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ZiskVerifyConstraintsRequest {
@@ -32,8 +41,10 @@ impl ZiskServiceVerifyConstraintsHandler {
     pub fn handle(
         config: Arc<ServerConfig>,
         request: ZiskVerifyConstraintsRequest,
-        proofman: Arc<ProofMan<Goldilocks>>,
+        // It is important to keep the witness_lib declaration before the proofman declaration
+        // to ensure that the witness library is dropped before the proofman.
         witness_lib: Arc<dyn WitnessLibrary<Goldilocks> + Send + Sync>,
+        proofman: Arc<ProofMan<Goldilocks>>,
         is_busy: Arc<std::sync::atomic::AtomicBool>,
         debug_info: Arc<DebugInfo>,
     ) -> (ZiskResponse, Option<JoinHandle<()>>) {
@@ -46,17 +57,17 @@ impl ZiskServiceVerifyConstraintsHandler {
                 let start = std::time::Instant::now();
 
                 proofman
-                    .verify_proof_constraints_from_lib(Some(request_input), &debug_info)
+                    .verify_proof_constraints_from_lib(Some(request_input), &debug_info, false)
                     .map_err(|e| anyhow::anyhow!("Error verifying proof: {}", e))
                     .expect("Failed to generate proof");
 
                 let elapsed = start.elapsed();
 
-                let result: (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
+                let result: (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) = *witness_lib
                     .get_execution_result()
                     .ok_or_else(|| anyhow::anyhow!("No execution result found"))
                     .expect("Failed to get execution result")
-                    .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
+                    .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>)>()
                     .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))
                     .expect("Failed to downcast execution result");
 
@@ -74,6 +85,17 @@ impl ZiskServiceVerifyConstraintsHandler {
 
                 is_busy.store(false, std::sync::atomic::Ordering::SeqCst);
                 ZiskService::print_waiting_message(&config);
+
+                // Store the stats in stats.json
+                #[cfg(feature = "stats")]
+                {
+                    let stats = result.1;
+                    stats.lock().unwrap().add_stat(ExecutorStatsEnum::End(ExecutorStatsDuration {
+                        start_time: Instant::now(),
+                        duration: Duration::new(0, 1),
+                    }));
+                    stats.lock().unwrap().store_stats();
+                }
             }
         });
 

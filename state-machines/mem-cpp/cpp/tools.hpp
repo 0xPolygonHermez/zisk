@@ -13,10 +13,11 @@
 #include "mem_types.hpp"
 
 inline uint64_t get_usec() {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
 }
+
 
 inline int32_t load_from_compact_file(const char *path, size_t chunk_id, MemCountersBusData** chunk) {
     char filename[256];

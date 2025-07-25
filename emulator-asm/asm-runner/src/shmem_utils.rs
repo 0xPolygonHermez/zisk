@@ -2,7 +2,7 @@ use libc::{
     c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
     PROT_WRITE, S_IRUSR, S_IWUSR,
 };
-use std::{ffi::CString, fmt::Debug, fs, io, mem::ManuallyDrop, os::raw::c_void, path::Path, ptr};
+use std::{ffi::CString, fmt::Debug, fs, io, os::raw::c_void, path::Path, ptr};
 
 use anyhow::Result;
 
@@ -18,7 +18,7 @@ pub struct AsmSharedMemory<H: AsmShmemHeader> {
     mapped_ptr: *mut c_void,
     mapped_size: usize,
     shmem_name: String,
-    header: ManuallyDrop<H>,
+    _phantom: std::marker::PhantomData<H>,
 }
 
 unsafe impl<H: AsmShmemHeader> Send for AsmSharedMemory<H> {}
@@ -82,11 +82,7 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
     //     Ok(())
     // }
 
-    pub fn open_and_map(
-        name: &str,
-        mode: AsmSharedMemoryMode,
-        _unlock_mapped_memory: bool,
-    ) -> Result<Self> {
+    pub fn open_and_map(name: &str, _unlock_mapped_memory: bool) -> Result<Self> {
         unsafe {
             if name.is_empty() {
                 return Err(anyhow::anyhow!("Shared memory name {name} cannot be empty"));
@@ -95,12 +91,8 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
             let c_name = CString::new(name)
                 .map_err(|_| anyhow::anyhow!("Shared memory name contains null byte"))?;
 
-            let oflag = match mode {
-                AsmSharedMemoryMode::ReadOnly => libc::O_RDONLY,
-                AsmSharedMemoryMode::ReadWrite => libc::O_RDWR,
-            };
-
-            let fd = shm_open(c_name.as_ptr(), oflag, S_IRUSR as c_uint | S_IWUSR as c_uint);
+            let fd =
+                shm_open(c_name.as_ptr(), libc::O_RDONLY, S_IRUSR as c_uint | S_IWUSR as c_uint);
             if fd == -1 {
                 let err = io::Error::last_os_error();
                 return Err(anyhow::anyhow!("shm_open('{name}') failed: {err}"));
@@ -117,11 +109,6 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
                 return Err(anyhow::anyhow!("shm_unlink('{name}') failed: {err}"));
             }
 
-            let prot = match mode {
-                AsmSharedMemoryMode::ReadOnly => PROT_READ,
-                AsmSharedMemoryMode::ReadWrite => PROT_READ | PROT_WRITE,
-            };
-
             #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
             let flags = MAP_SHARED;
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -132,7 +119,7 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
             }
 
             let size_header = size_of::<H>();
-            let mapped_ptr = mmap(ptr::null_mut(), size_header, prot, flags, fd, 0);
+            let mapped_ptr = mmap(ptr::null_mut(), size_header, PROT_READ, flags, fd, 0);
             if mapped_ptr == MAP_FAILED {
                 let err = io::Error::last_os_error();
                 close(fd);
@@ -163,7 +150,7 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
                 return Err(anyhow::anyhow!("munmap failed for '{name}': {err}"));
             }
 
-            let mapped_ptr = mmap(ptr::null_mut(), allocated_size, prot, flags, fd, 0);
+            let mapped_ptr = mmap(ptr::null_mut(), allocated_size, PROT_READ, flags, fd, 0);
 
             if mapped_ptr == MAP_FAILED {
                 let err = io::Error::last_os_error();
@@ -178,7 +165,7 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
                 mapped_ptr,
                 mapped_size: allocated_size,
                 shmem_name: name.to_string(),
-                header: ManuallyDrop::new(header),
+                _phantom: std::marker::PhantomData::<H>,
             })
         }
     }
@@ -222,33 +209,19 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         unsafe { self.mapped_ptr.add(size_of::<H>()) }
     }
 
-    pub fn header(&self) -> &H {
-        &self.header
+    pub fn shmem_input_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
+        format!("{}_{}_input", AsmServices::shmem_prefix(port, local_rank), asm_service.as_str())
     }
 
-    pub fn shmem_input_name(asm_service: AsmService, local_rank: i32) -> String {
-        format!("{}_{}_input", AsmServices::shmem_prefix(local_rank), asm_service.as_str())
+    pub fn shmem_output_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
+        format!("{}_{}_output", AsmServices::shmem_prefix(port, local_rank), asm_service.as_str())
     }
 
-    pub fn shmem_output_name(asm_service: AsmService, local_rank: i32) -> String {
-        format!("{}_{}_output", AsmServices::shmem_prefix(local_rank), asm_service.as_str())
-    }
-
-    pub fn shmem_chunk_done_name(asm_service: AsmService, local_rank: i32) -> String {
-        format!("/{}_{}_chunk_done", AsmServices::shmem_prefix(local_rank), asm_service.as_str())
-    }
-
-    pub fn create_shmem(
-        service: AsmService,
-        local_rank: i32,
-        unlock_mapped_memory: bool,
-    ) -> Result<AsmSharedMemory<H>> {
-        let shmem_output_name = Self::shmem_output_name(service, local_rank);
-
-        AsmSharedMemory::<H>::open_and_map(
-            &shmem_output_name,
-            AsmSharedMemoryMode::ReadOnly,
-            unlock_mapped_memory,
+    pub fn shmem_chunk_done_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
+        format!(
+            "/{}_{}_chunk_done",
+            AsmServices::shmem_prefix(port, local_rank),
+            asm_service.as_str()
         )
     }
 }
