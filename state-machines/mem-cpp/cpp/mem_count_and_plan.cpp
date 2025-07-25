@@ -8,24 +8,25 @@ MemCountAndPlan::MemCountAndPlan() {
 }
 
 MemCountAndPlan::~MemCountAndPlan() {
-    // Free count_workers (major memory leak fix)
+
+    // Call clear
+    clear();
+}
+
+void MemCountAndPlan::clear() {
+    // Wait for and clean up any background threads
+    if (parallel_execute && parallel_execute->joinable()) {
+        parallel_execute->join();
+    }
+
+    // Clean up count_workers raw pointers
     for (auto* worker : count_workers) {
         delete worker;
     }
     count_workers.clear();
     
-    // Wait for parallel thread if still running
-    if (parallel_execute && parallel_execute->joinable()) {
-        parallel_execute->join();
-    }
-}
-
-void MemCountAndPlan::clear() {
-    // Free count_workers if not already freed
-    for (auto* worker : count_workers) {
-        delete worker;
-    }
-    count_workers.clear();
+    // Clean up plan_workers
+    plan_threads.clear();
     
     // Clear segments (they have their own cleanup)
     for (int i = 0; i < MEM_TYPES; ++i) {
