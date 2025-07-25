@@ -1,10 +1,11 @@
 # Debug build flags
 ifeq ($(dbg),1)
-      CFLAGS = -g -D DEBUG -no-pie
-      ASMFLAGS = -g --noexecstack
+	# CFLAGS = -O0 -g -D DEBUG -no-pie -ggdb -fno-inline
+	CFLAGS = -g -D DEBUG -no-pie
+	ASMFLAGS = -g --noexecstack
 else
-      CFLAGS = -O3 -no-pie
-	  ASMFLAGS = --noexecstack
+	CFLAGS = -O3 -no-pie
+	ASMFLAGS = --noexecstack
 endif
 
 # Default EMU_PATH and OUT_PATH

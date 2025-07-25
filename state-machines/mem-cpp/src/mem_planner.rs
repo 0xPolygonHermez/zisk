@@ -17,6 +17,9 @@ pub struct MemPlanner {
     inner: *mut bindings::MemCountAndPlan,
 }
 
+unsafe impl Send for MemPlanner {}
+unsafe impl Sync for MemPlanner {}
+
 impl Default for MemPlanner {
     fn default() -> Self {
         Self::new()

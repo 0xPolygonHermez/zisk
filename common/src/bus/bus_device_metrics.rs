@@ -27,8 +27,8 @@ impl BusDevice<u64> for Box<dyn BusDeviceMetrics> {
         bus_id: &BusId,
         data: &[u64],
         pending: &mut VecDeque<(BusId, Vec<u64>)>,
-    ) {
-        (**self).process_data(bus_id, data, pending);
+    ) -> bool {
+        (**self).process_data(bus_id, data, pending)
     }
 
     fn bus_id(&self) -> Vec<BusId> {

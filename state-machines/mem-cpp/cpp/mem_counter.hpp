@@ -49,7 +49,12 @@ private:
     uint32_t free_slot;
     uint32_t elapsed_ms;
     uint32_t queue_full;
+    uint64_t first_chunk_us;
     const uint32_t addr_mask;
+#ifdef COUNT_CHUNK_STATS
+    uint64_t chunks_us[MAX_CHUNKS];
+    int64_t wait_chunks_us[MAX_CHUNKS];
+#endif
 public:
     MemCounter(const MemCounter&) = delete;
     MemCounter& operator=(const MemCounter&) = delete;
@@ -86,6 +91,8 @@ public:
     inline static uint32_t addr_to_page(uint32_t addr, uint32_t chunk_id = 0);
     inline static uint32_t page_to_addr(uint8_t page);
     inline uint32_t get_used_slots(void) const;
+    inline uint64_t get_first_chunk_us(void) const;
+    void stats();
 };
 
 uint32_t MemCounter::get_pos_value(uint32_t pos) const {
@@ -133,6 +140,10 @@ uint32_t MemCounter::get_initial_pos(uint32_t pos) const {
 
 uint32_t MemCounter::get_queue_full_times() const {
     return queue_full;
+}
+
+uint64_t MemCounter::get_first_chunk_us() const {
+    return first_chunk_us;
 }
 
 uint32_t MemCounter::get_next_pos(uint32_t pos) const {

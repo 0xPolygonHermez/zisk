@@ -7,12 +7,43 @@ MemCountAndPlan::MemCountAndPlan() {
     context = std::make_shared<MemContext>();
 }
 
+MemCountAndPlan::~MemCountAndPlan() {
+
+    // Call clear
+    clear();
+}
+
 void MemCountAndPlan::clear() {
+    // Wait for and clean up any background threads
+    if (parallel_execute && parallel_execute->joinable()) {
+        parallel_execute->join();
+    }
+
+    // Clean up count_workers raw pointers
+    for (auto* worker : count_workers) {
+        delete worker;
+    }
+    count_workers.clear();
+    
+    // Clean up plan_workers
+    plan_threads.clear();
+    
+    // Clear segments (they have their own cleanup)
+    for (int i = 0; i < MEM_TYPES; ++i) {
+        segments[i].clear();
+    }
+    
     context->clear();
 }
 void MemCountAndPlan::prepare() {
-    uint init = get_usec();
+    uint64_t init = get_usec();
+    
+    // Clear existing workers to avoid memory leaks if prepare() called multiple times
+    for (auto* worker : count_workers) {
+        delete worker;
+    }
     count_workers.clear();
+    
     for (size_t i = 0; i < MAX_THREADS; ++i) {
         count_workers.push_back(new MemCounter(i, context));
     }
@@ -39,6 +70,7 @@ void MemCountAndPlan::execute(void) {
 void MemCountAndPlan::count_phase() {
     uint64_t init = t_init_us = get_usec();
     std::vector<std::thread> threads;
+    context->init();
 
     for (int i = 0; i < MAX_THREADS; ++i) {
         threads.emplace_back([this, i](){count_workers[i]->execute();});
@@ -110,12 +142,19 @@ void MemCountAndPlan::stats() {
     for (size_t i = 0; i < MAX_THREADS; ++i) {
         uint32_t used_slots = count_workers[i]->get_used_slots();
         tot_used_slots += used_slots;
-        printf("Thread %ld: used slots %d/%d (%04.02f%%) T:%d ms S:%ld ms Q:%d\n",
+        printf("Thread %ld: used slots %d/%d (%04.02f%%) T(ms):%d S(ms):%ld C0(us):%ld Q:%d\n",
             i, used_slots, ADDR_SLOTS,
             ((double)used_slots*100.0)/(double)(ADDR_SLOTS), count_workers[i]->get_elapsed_ms(),
             count_workers[i]->tot_wait_us/1000,
+            count_workers[i]->get_first_chunk_us(),
             count_workers[i]->get_queue_full_times()/1000);
     }
+    #ifdef CHUNK_STATS
+    context->stats();
+    for (size_t i = 0; i < MAX_THREADS; ++i) {
+        count_workers[i]->stats();
+    }
+    #endif
     printf("\n> threads: %d\n", MAX_THREADS);
     printf("> address table: %ld MB\n", (ADDR_TABLE_SIZE * ADDR_TABLE_ELEMENT_SIZE * MAX_THREADS)>>20);
     printf("> memory slots: %ld MB (used: %ld MB)\n", (ADDR_SLOTS_SIZE * sizeof(uint32_t) * MAX_THREADS)>>20, (tot_used_slots * ADDR_SLOT_SIZE * sizeof(uint32_t))>> 20);
@@ -124,7 +163,9 @@ void MemCountAndPlan::stats() {
     for (uint32_t i = 0; i < plan_workers.size(); ++i) {
         plan_workers[i].stats();
     }
+    printf("prepare: %04.2f ms\n", t_prepare_us / 1000.0);
     printf("execution: %04.2f ms\n", (TIME_US_BY_CHUNK * context->size()) / 1000.0);
+    printf("completed: %04.2f ms\n", context->get_completed_us() / 1000.0);
     printf("count_phase: %04.2f ms\n", t_count_us / 1000.0);
     printf("plan_phase: %04.2f ms\n", t_plan_us / 1000.0);
 }
@@ -153,7 +194,15 @@ void save_chunk(uint32_t chunk_id, MemCountersBusData *chunk_data, uint32_t chun
     char filename[200];
     snprintf(filename, sizeof(filename), "tmp/bus_data_asm/mem_count_data_%d.bin", chunk_id);
     int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-    write(fd, chunk_data, sizeof(MemCountersBusData) * chunk_size);
+    
+    ssize_t bytes_written = write(fd, chunk_data, sizeof(MemCountersBusData) * chunk_size);
+    if (bytes_written < 0) {
+        perror("Error writing to file");
+    } else if (static_cast<size_t>(bytes_written) != sizeof(MemCountersBusData) * chunk_size) {
+        fprintf(stderr, "Partial write: expected %zu bytes, but wrote %zd bytes\n",
+                sizeof(MemCountersBusData) * chunk_size, bytes_written);
+    }
+    
     close(fd);
 }
 
@@ -211,6 +260,7 @@ void MemCountAndPlan::wait() {
 void MemCountAndPlan::detach_execute() {
     count_phase();
     plan_phase();
+    //stats();
     // printf("MemCountAndPlan count(ms):%ld plan(ms):%ld tot(ms):%ld\n", 
     //        t_count_us / 1000, t_plan_us / 1000, (t_count_us + t_plan_us) / 1000);
 }

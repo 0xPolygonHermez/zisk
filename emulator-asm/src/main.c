@@ -1641,6 +1641,67 @@ void client_run (void)
 
                 break;
             }
+            case RomHistogram:
+            {
+                gettimeofday(&start_time, NULL);
+
+                // Prepare message to send
+                request[0] = TYPE_RH_REQUEST;
+                request[1] = 1ULL << 32; // max_steps
+                request[2] = 0;
+                request[3] = 0;
+                request[4] = 0;
+
+                // Send data to server
+                result = send(socket_fd, request, sizeof(request), 0);
+                if (result < 0)
+                {
+                    printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+
+                // Read server response
+                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
+                if (bytes_received < 0)
+                {
+                    printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (bytes_received != sizeof(response))
+                {
+                    printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[0] != TYPE_RH_RESPONSE)
+                {
+                    printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                if (response[1] != 0)
+                {
+                    printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
+                    fflush(stdout);
+                    fflush(stderr);
+                    exit(-1);
+                }
+                
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                printf("client (RH)[%lu]: done in %lu us\n", i, duration);
+
+                // Pretend to spend some time processing the incoming data
+                usleep((1000000));
+
+                break;
+            }
             case MemOp:
             {
                 gettimeofday(&start_time, NULL);
@@ -2513,6 +2574,9 @@ void server_setup (void)
     if (call_chunk_done)
     {
         assert(strlen(sem_chunk_done_name) > 0);
+
+        sem_unlink(sem_chunk_done_name);
+
         sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT, 0666, 0);
         if (sem_chunk_done == SEM_FAILED)
         {
@@ -2529,6 +2593,9 @@ void server_setup (void)
     /*********************/
     
     assert(strlen(sem_shutdown_done_name) > 0);
+
+    sem_unlink(sem_shutdown_done_name);
+    
     sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT, 0666, 0);
     if (sem_shutdown_done == SEM_FAILED)
     {
@@ -2570,6 +2637,10 @@ void server_reset (void)
 
 void server_run (void)
 {
+    if ((gen_method == RomHistogram)) {
+        memset((void *)trace_address, 0, trace_size);
+    }
+
 #ifdef ASM_CALL_METRICS
     reset_asm_call_metrics();
 #endif

@@ -63,6 +63,10 @@ pub enum ClientCommand {
         #[clap(short = 'p')]
         prefix: String,
 
+        /// Use minimal memory
+        #[clap(long, default_value_t = false)]
+        minimal_memory: bool,
+
         /// Port of the server (by default DEFAULT_PORT)
         #[clap(long)]
         port: Option<u16>,
@@ -101,6 +105,7 @@ impl ZiskProveClient {
                 aggregation,
                 final_snark,
                 verify_proofs,
+                minimal_memory,
                 output_dir,
                 prefix,
                 verbose: _,
@@ -111,6 +116,7 @@ impl ZiskProveClient {
                     aggregation: *aggregation,
                     final_snark: *final_snark,
                     verify_proofs: *verify_proofs,
+                    minimal_memory: *minimal_memory,
                     folder: output_dir.clone(),
                     prefix: prefix.clone(),
                 },

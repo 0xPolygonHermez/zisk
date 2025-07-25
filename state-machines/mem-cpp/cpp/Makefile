@@ -2,6 +2,9 @@
 
 CXX := g++
 CXXFLAGS := -O3 -std=c++17 -mavx2 -march=native -Wall -Wextra -pthread -Iinclude -no-pie -fPIC
+# CXXFLAGS := -O3 -g -std=c++17 -mavx2 -march=native -Wall -Wextra -pthread
+# valgrind flags
+# CXXFLAGS := -O1 -g -std=c++17 -Wall -Wextra -pthread
 
 TARGET := libmemcpp.a
 

@@ -1,0 +1,328 @@
+require "std_constants.pil"
+require "std_lookup.pil"
+require "std_connection.pil"
+
+// Precompile in charge of performing the Keccak-f[1600] permutation.
+// For reference: https://keccak.team/files/Keccak-reference-3.0.pdf
+
+const int KECCAKF_OP = 0xF1;
+
+airtemplate Keccakf(const int N, const int chunks, const int bits, const int bits_last_chunk, const int RC, const int RB, const int mem_bits_in_parallel, const int operation_bus_id) {
+    // Keccak-f circuit size
+    const int CIRCUIT_SIZE = 155286;
+    println(`The size of the Keccak-f circuit is ${CIRCUIT_SIZE}`);
+
+    // Ensure that the keccak-f circuit fits
+    if (N < CIRCUIT_SIZE) {
+        error(`N must be at least ${CIRCUIT_SIZE} to fit the Keccak-f circuit, but received N=${N}`);
+    }
+
+    // Ensure that the keccak-f input fit in the prime field
+    const int CHUNKS_BITS = (chunks - 1) * bits + bits_last_chunk;
+    if (CHUNKS_BITS > log2(PRIME)) {
+        error(`The number of bits ${CHUNKS_BITS} is too large for the prime ${PRIME}`);
+    }
+
+    // Compute some stats
+    const int NUM_KECCAKF_PER_CIRCUIT = CHUNKS_BITS;
+    const int NUM_CIRCUITS = (N - 1) / CIRCUIT_SIZE;
+    const int NUM_KECCAKF = NUM_CIRCUITS * NUM_KECCAKF_PER_CIRCUIT;
+    const int NON_USABLE_ROWS = (N - 1) % CIRCUIT_SIZE;
+    println(`The number of Keccak-f per circuit is ${NUM_KECCAKF_PER_CIRCUIT > log2(PRIME) ? log2(PRIME)-1 : NUM_KECCAKF_PER_CIRCUIT}`);
+    println(`The number of circuits that fit for the given N is ${NUM_CIRCUITS} and the total number of Keccak-f is ${NUM_KECCAKF}`);
+    println(`The number of non-usable (padding) rows is ${NON_USABLE_ROWS}`);
+
+    const int P2_BITS = 2**bits;
+    const int P2_CHUNKS_BITS = 2**CHUNKS_BITS;
+    const int MASK_CHUNKS_BITS = P2_CHUNKS_BITS - 1;
+
+    col fixed L1 = [1,0...];
+
+    // Column specifying the circuit gates
+    #pragma fixed_external
+    col fixed GATE_OP;
+
+    // Columns specifying the circuit connections
+    #pragma fixed_external
+    col fixed CONN_A;
+    #pragma fixed_external
+    col fixed CONN_B;
+    #pragma fixed_external
+    col fixed CONN_C;
+
+    col witness free_in_a[chunks], free_in_b[chunks], free_in_c[chunks];
+
+    // --> Circuit gates constraints
+    if (bits != bits_last_chunk) {
+        for (int i = 0; i < chunks; i++) {
+            const int is_last_chunk = (i == chunks - 1) ? 1 : 0;
+            lookup_assumes(KECCAKF_TABLE_ID, [is_last_chunk, GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i]]);
+        }
+    } else {
+        for (int i = 0; i < chunks; i++) {
+            lookup_assumes(KECCAKF_TABLE_ID, [GATE_OP, free_in_a[i], free_in_b[i], free_in_c[i]]);
+        }
+    }
+
+    // --> Circuit connections constraints
+    // Start by reconstructing the input from the chunks
+    expr a = 0;
+    expr b = 0;
+    expr c = 0;
+    for (int i = 0; i < chunks; i++) {
+        const int shift = P2_BITS**i;
+        a += free_in_a[i] * shift;
+        b += free_in_b[i] * shift;
+        c += free_in_c[i] * shift;
+    }
+
+    // Enforce constants 0b00..000 and 0b11..111 at the first row for direct access
+    // This reduces the circuit connections
+    L1 * a === 0;
+    L1 * (b - MASK_CHUNKS_BITS) === 0;
+
+    const int CIRCUIT_ID = 0x190;
+    connection(opid: CIRCUIT_ID, cols: [a, b, c], CONN: [CONN_A, CONN_B, CONN_C]);
+
+    // --> Constraints to read inputs from memory and write outputs to memory
+
+    /*
+        We should take care of how we handle the memory access.
+
+        Circuit inputs are represented as a vector of bits, where each bit is
+        from a different Keccakf invocation. However, the Mem treats one
+        Keccakf invocation at a time, so we need to relate these two
+        representations. For that, we will use a bit decomposition and prove
+        that the bit decomposition is consistent with the Keccakf circuit.
+
+           ROW       BIT     BIT[0]    VAL[0]        BIT     BIT[1]    VAL[1]        BLOCK   TYPE  
+        |  1      |   1     |  X   |   0bX        |   2     |  X   |   0bX        |    1    | IN  | 
+        |  2      |   1     |  Y   |   0bYX       |   2     |  Y   |   0bYX       |    1    | IN  |       
+        |  ...    |   ...   | ...  |              |   ...   | ...  |              |   ...   |     | 
+        |  60     |   1     |  Z   |   0bZ...YX   |   2     |  Z   |   0bZ...YX   |    1    | IN  | 
+        -------------------------------------------------------------------------------------------
+        |  61     |   3     |  X   |   0bX        |   4     |  X   |   0bX        |    2    | IN  | 
+        |  62     |   3     |  Y   |   0bYX       |   4     |  Y   |   0bYX       |    2    | IN  |       
+        |  ...    |         | ...  |              |         | ...  |              |   ...   |     | 
+        |  120    |   3     |  Z   |   0bZ...YX   |   4     |  Z   |   0bZ...YX   |    2    | IN  | 
+        -------------------------------------------------------------------------------------------
+        |.........................................................................................|
+        -------------------------------------------------------------------------------------------
+        |  47.940 |   1599  |  X   |   0bX        |   1600  |  X   |   0bX        |   800   | IN  | 
+        |  47.941 |   1599  |  Y   |   0bYX       |   1600  |  Y   |   0bYX       |   800   | IN  |       
+        |  ...    |         | ...  |              |         | ...  |              |   ...   |     | 
+        |  48.000 |   1599  |  Z   |   0bZ...YX   |   1600  |  Z   |   0bZ...YX   |   800   | IN  |
+        -------------------------------------------------------------------------------------------
+        |  48.001 |   1     |  X   |   0bX        |   2     |  X   |   0bX        |    1    | OUT | 
+        |  48.002 |   1     |  Y   |   0bYX       |   2     |  Y   |   0bYX       |    1    | OUT |       
+        |  ...    |         | ...  |              |         | ...  |              |   ...   |     | 
+        |  48.060 |   1     |  Z   |   0bZ...YX   |   2     |  Z   |   0bZ...YX   |    1    | OUT | 
+        -------------------------------------------------------------------------------------------
+        |.........................................................................................|
+        -------------------------------------------------------------------------------------------
+        |  96.001 |   1599  |  X   |   0bX        |   1600  |  X   |   0bX        |   800   | OUT | 
+        |  96.002 |   1599  |  Y   |   0bYX       |   1600  |  Y   |   0bYX       |   800   | OUT |       
+        |  ...    |         | ...  |              |         | ...  |              |   ...   |     | 
+        |  96.000 |   1599  |  Z   |   0bZ...YX   |   1600  |  Z   |   0bZ...YX   |   800   | OUT |      
+        -------------------------------------------------------------------------------------------           
+    */
+
+    col witness bit[mem_bits_in_parallel];
+    col witness val[mem_bits_in_parallel];
+
+    // Ensure that bit[i] is a bit
+    for (int i = 0; i < mem_bits_in_parallel; i++) {
+        bit[i] * (1 - bit[i]) === 0; // (1)
+    }
+
+    // Parameters bits
+    const int MEM_BITS = RB * RC; // Minimal memory bits
+    const int INPUT_BITS = 1600;
+    const int OUTPUT_BITS = INPUT_BITS;
+    const int INPUT_OUTPUT_BITS = INPUT_BITS + OUTPUT_BITS;
+
+    // Number of memory accesses needed to handle the bits
+    const int IN_BLOCKS = INPUT_BITS / (RB * RC);
+    const int OUT_BLOCKS = OUTPUT_BITS / (RB * RC);
+    const int IN_OUT_BLOCKS = IN_BLOCKS + OUT_BLOCKS;
+
+    // Parameters size in the circuit
+    const int MEM_SIZE = MEM_BITS * NUM_KECCAKF_PER_CIRCUIT / mem_bits_in_parallel; // Minimal memory size
+    const int INPUT_SIZE = INPUT_BITS * NUM_KECCAKF_PER_CIRCUIT / mem_bits_in_parallel;
+    const int OUTPUT_SIZE = OUTPUT_BITS * NUM_KECCAKF_PER_CIRCUIT / mem_bits_in_parallel;
+    const int INPUT_OUTPUT_SIZE = INPUT_OUTPUT_BITS * NUM_KECCAKF_PER_CIRCUIT / mem_bits_in_parallel;
+    if (INPUT_OUTPUT_SIZE > CIRCUIT_SIZE) {
+        error(`The Keccak-f circuit size ${CIRCUIT_SIZE} is too small for the template configuration.`);  
+    }
+
+    // Instructions to add a latch:
+    //  - When there are circuits.
+    //  - Every NUM_KECCAKF_PER_CIRCUIT clocks.
+    //  - When there are still bits to process.
+    col fixed LATCH_NUM_KECCAKF  = [0,[0,[0:(NUM_KECCAKF_PER_CIRCUIT-1),1]:(INPUT_OUTPUT_BITS / mem_bits_in_parallel),
+                                       0:(CIRCUIT_SIZE - (INPUT_OUTPUT_SIZE+1))]:NUM_CIRCUITS,
+                                    0...];
+
+    // Instructions to add the factor:
+    //  - When there are circuits.
+    //  - Every clock, for the clock in the circuit, we add the factor 1 << clk.
+    //  - When there are still bits to process (i.e., we repeat the previous instruction KECCAKF_SIZE_BITS times).
+    col fixed FACTOR_NUM_KECCAKF;
+    if (NUM_KECCAKF_PER_CIRCUIT != 1) {
+        FACTOR_NUM_KECCAKF = [0,[[1,2..*..2**(NUM_KECCAKF_PER_CIRCUIT-1)]:(INPUT_OUTPUT_BITS / mem_bits_in_parallel), 
+                                  0:(CIRCUIT_SIZE - INPUT_OUTPUT_SIZE)]:NUM_CIRCUITS,
+                              0...];
+    } else {
+        FACTOR_NUM_KECCAKF = [0, [1:(INPUT_OUTPUT_BITS / mem_bits_in_parallel), 
+                                  0:(CIRCUIT_SIZE - INPUT_OUTPUT_SIZE)]:NUM_CIRCUITS, 
+                              0...];
+    }
+
+    // val[i] accumulates the bits
+    for (int i = 0; i < mem_bits_in_parallel; i++) {
+        val[i]' === val[i] * (1 - LATCH_NUM_KECCAKF) + bit[i] * FACTOR_NUM_KECCAKF; // (2)
+    }
+    // In each j-th latch, val[i] has accumulated the j-th bit of all the keccakf's 
+
+    // In each j-th latch, val[i] has to coincide with the a-th gate entry,
+    // whose positions where reserved for the inputs and outputs of the Keccakf circuit
+    for (int i = 0; i < mem_bits_in_parallel; i++) {
+        LATCH_NUM_KECCAKF * (val[i] - a'(i)) === 0; // (3)
+    }
+
+    // (1),(2) and (3) prove that the bit decomposition is correct
+
+    // Now that we have access to the Keccakf inputs/outputs at the bit level
+    // we can reconstruct them one Keccakf invocation at a time
+
+    // keccakf_val[i] accumulates RB bits of the j-th Keccakf invocation each clock
+    expr keccakf_val[RC];
+    // Initialize the keccakf_val
+    for (int i = 0; i < RC; i++) {
+        keccakf_val[i] = 0;
+    }
+    // Update the keccakf_val: the Keccakf works over words of 64 bits
+    // so it aligns perfectly with our memory of 64 bits
+    const int RB_OFFSET = RB / mem_bits_in_parallel;
+    for (int i = 0; i < RB; i++) {
+        const int keccakf_val_bit = i % mem_bits_in_parallel;
+        const int keccakf_val_idx = (i - keccakf_val_bit) / mem_bits_in_parallel;
+        for (int j = 0; j < RC; j++) {
+            keccakf_val[j] += bit[keccakf_val_bit]'(NUM_KECCAKF_PER_CIRCUIT*(RB_OFFSET * j + keccakf_val_idx)) * 2**i;
+        }
+    }
+    // keccakf_val[0] = bit[0]       + bit[1]·2       + bit[0]'(60)·2²   + bit[1]'(60)·2³   + ... + bit[0]'(900)·2³⁰  + bit[1]'(900)·2³¹
+    // keccakf_val[1] = bit[0]'(960) + bit[1]'(960)·2 + bit[0]'(1020)·2² + bit[1]'(1020)·2³ + ... + bit[0]'(1860)·2³⁰ + bit[1]'(1860)·2³¹
+
+    // Finally, we must address the rest mem values
+
+    // A single col is sufficient for storing the step and the address
+    col witness step_addr;
+
+    // MEMORY ACCESS MAP
+    // ======================================================
+    //   0  STEP      | R |  ADDR_STATE       |  state[0]
+    //   1  STEP      | R |  ADDR_STATE + 8   |  state[1]    
+    //   2  STEP      | R |  ADDR_STATE + 16  |  state[2]        
+    //   3  STEP      | R |  ADDR_STATE + 24  |  state[3]  
+    //  ... ...       |   |       ...         |    ...             
+    //  24  STEP      | R |  ADDR_STATE + 192 |  state[24]     
+    //  25  STEP + 1  | W |  ADDR_STATE       |  state[0]          
+    //  26  STEP + 1  | W |  ADDR_STATE + 8   |  state[1]       
+    //  27  STEP + 1  | W |  ADDR_STATE + 16  |  state[2]      
+    //  28  STEP + 1  | W |  ADDR_STATE + 24  |  state[3]
+    //  ... ...       |   |       ...         |    ...             
+    //  49  STEP      | W |  ADDR_STATE + 192 |  state[24]        
+    // ======================================================
+
+    const int STEP_MAIN = 0;
+    const int ADDR_STATE = STEP_MAIN + MEM_SIZE;
+
+    col fixed CLK_0 = [0, [1:NUM_KECCAKF_PER_CIRCUIT, 0:(CIRCUIT_SIZE-NUM_KECCAKF_PER_CIRCUIT)]:NUM_CIRCUITS, 0...];
+
+    const expr mem_addr = clock_map(step_addr, ADDR_STATE, start: 0,         end: IN_BLOCKS,     delta: 8, factor: MEM_SIZE) +
+                          clock_map(step_addr, ADDR_STATE, start: IN_BLOCKS, end: IN_OUT_BLOCKS, delta: 8, factor: MEM_SIZE);
+
+    const expr main_step = clock_map(step_addr, STEP_MAIN, start: 0, end: IN_OUT_BLOCKS, factor: MEM_SIZE);
+
+    const expr mem_value[2];
+    mem_value[0] = clock_set(keccakf_val[0], start: 0, end: IN_OUT_BLOCKS, factor: MEM_SIZE);
+    mem_value[1] = clock_set(keccakf_val[1], start: 0, end: IN_OUT_BLOCKS, factor: MEM_SIZE);
+
+    col witness in_use_clk_0;
+    in_use_clk_0 * (1 - in_use_clk_0) === 0; // binary
+    (1 - CLK_0) * in_use_clk_0 === 0; // it can only be active when CLK_0 is active
+
+    col witness in_use;
+    in_use * (1 - in_use) === 0; // binary
+    (1 - (CLK_0 + (IN_OUT_BLOCKS*MEM_SIZE)'CLK_0)) * (in_use - (MEM_SIZE)'in_use) === 0; // if activated, it must keep the
+                                                                                        // keep the same value during the circuit
+
+    // in_use is active iff in_use_clk_0 is active
+    CLK_0 * (in_use - in_use_clk_0) === 0;
+
+    const expr mem_sel = clock_set(in_use, start: 0, end: IN_OUT_BLOCKS, factor: MEM_SIZE);
+
+    const expr mem_is_write = clock_ref(CLK_0, start: 0, end: OUT_BLOCKS, offset: MEM_SIZE*IN_BLOCKS, factor: MEM_SIZE);
+
+    precompiled_mem_op(
+            is_write: mem_is_write,
+            sel: mem_sel,
+            main_step: main_step,
+            addr: mem_addr,
+            value: mem_value
+    );
+
+    // --> Constraints to make sure that this coprocessor is called from the main processor
+    lookup_proves(OPERATION_BUS_ID, [KECCAKF_OP, step_addr'(STEP_MAIN), 0, step_addr'(ADDR_STATE), 0, 0, 0, 0], mul: in_use_clk_0);
+
+    function clock_map(const expr mvcol, int pos, int start = 0, int end = -1, int delta = 0, int factor = 1): const expr {
+        expr res = 0;
+        if (end == -1) {
+            end = start + 1;
+        }
+        int offset = 0;
+        for (int index = start; index < end; index++) {
+            int _index = index*factor;
+            int iclock = (pos - _index) % air.CIRCUIT_SIZE;
+            if (offset != 0) {
+                res += (_index)'air.CLK_0 * (mvcol'(iclock) + offset);
+            } else {
+                res += (_index)'air.CLK_0 * mvcol'(iclock);
+            }
+            offset += delta;
+        }
+        return res;
+    }
+
+    function clock_set(const expr cl, int start = 0, int end = -1, int offset = 0, int delta = 0, int factor = 1): const expr {
+        expr res = 0;
+        if (end == -1) {
+            end = start;
+        }
+        for (int index = start; index < end; ++index) {
+            if (offset != 0) {
+                res += (index*factor)'air.CLK_0 * (cl + offset);
+            } else {
+                res += (index*factor)'air.CLK_0 * cl;
+            }
+            offset += delta;
+        }
+        return res;
+    }
+
+    function clock_ref(const expr cl, int start = 0, int end = -1, int offset = 0, int factor = 1): const expr {
+        expr res = 0;
+        if (end == -1) {
+            end = start;
+        }
+        for (int index = start; index < end; ++index) {
+            if (offset != 0) {
+                res += (offset + index*factor)'cl;
+            } else {
+                res += (index*factor)'cl;
+            }
+        }
+        return res;
+    }
+}

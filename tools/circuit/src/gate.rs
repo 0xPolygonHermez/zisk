@@ -3,7 +3,9 @@ use crate::{Pin, PinId, PinSource};
 /*
     a -----||-----\
            ||      |
-    b -----||  OP  )----- d
+           ||      )----- d
+    b -----||  OP  |
+           ||      )----- e
            ||      |
     c -----||-----/
 */
@@ -16,13 +18,14 @@ pub struct Gate {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum GateOperation {
     Unknown = 0,
-    Xor = 1,  // Xor(a,b) := a ^ b
-    Andp = 2, // Andp(a,b) := ¬a & b
-    Or = 3,   // Or(a,b) := a | b
-    And = 4,  // And(a,b) := a & b
-    Ch = 5,   // Ch(a,b,c) := (a & b) ^ (¬a & c)
-    Maj = 6,  // Maj(a,b,c) := (a & b) ^ (a & c) ^ (b & c)
-    Add = 7,  // Add(a,b,c) := a + b + c
+    Xor = 1,     // Xor(a,b) := a ^ b
+    Andp = 2,    // Andp(a,b) := ¬a & b
+    Or = 3,      // Or(a,b) := a | b
+    And = 4,     // And(a,b) := a & b
+    Ch = 5,      // Ch(a,b,c) := (a & b) ^ (¬a & c)
+    Maj = 6,     // Maj(a,b,c) := (a & b) ^ (a & c) ^ (b & c)
+    Add = 7,     // Add(a,b,c) := a + b + c
+    XorAndp = 8, // XorAndp(a,b,c) := a ^ (¬b & c)
 }
 
 impl Default for Gate {

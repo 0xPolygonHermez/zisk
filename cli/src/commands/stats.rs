@@ -6,20 +6,15 @@ use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
-use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
+use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU, ProofOptions};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    env, fs,
-    path::{Path, PathBuf},
-    thread,
-    time::Instant,
-};
-use zisk_common::ZiskLibInitFn;
+use std::sync::{Arc, Mutex};
+use std::{collections::HashMap, fs, path::PathBuf, thread, time::Instant};
+use zisk_common::{ExecutorStats, ZiskLibInitFn};
 use zisk_pil::*;
 
 use crate::{
@@ -106,11 +101,11 @@ pub struct ZiskStats {
     pub debug: Option<Option<String>>,
 
     // PRECOMPILES OPTIONS
-    /// Sha256f script path
-    pub sha256f_script: Option<PathBuf>,
-
     #[clap(long)]
     pub mpi_node: Option<usize>,
+
+    #[clap(long, default_value_t = false)]
+    pub minimal_memory: bool,
 }
 
 impl ZiskStats {
@@ -127,17 +122,6 @@ impl ZiskStats {
             Some(Some(debug_value)) => {
                 json_to_debug_instances_map(proving_key.clone(), debug_value.clone())
             }
-        };
-
-        let sha256f_script = if let Some(sha256f_path) = &self.sha256f_script {
-            sha256f_path.clone()
-        } else {
-            let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
-            let script_path = PathBuf::from(format!("{home_dir}/.zisk/bin/sha256f_script.json"));
-            if !script_path.exists() {
-                panic!("Sha256f script file not found at {script_path:?}");
-            }
-            script_path
         };
 
         let default_cache_path =
@@ -195,7 +179,7 @@ impl ZiskStats {
                 .map_err(|e| anyhow::anyhow!("Error generating elf hash: {}", e));
         }
 
-        self.print_command_info(&sha256f_script);
+        self.print_command_info();
 
         let mut custom_commits_map: HashMap<String, PathBuf> = HashMap::new();
         custom_commits_map.insert("rom".to_string(), rom_bin_path);
@@ -275,6 +259,13 @@ impl ZiskStats {
             .with_local_rank(local_rank)
             .with_unlock_mapped_memory(self.unlock_mapped_memory);
 
+        if self.asm.is_some() {
+            // Start ASM microservices
+            tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
+
+            asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
+        }
+
         match self.field {
             Field::Goldilocks => {
                 let library = unsafe {
@@ -287,7 +278,6 @@ impl ZiskStats {
                     self.elf.clone(),
                     self.asm.clone(),
                     asm_rom,
-                    sha256f_script,
                     self.chunk_size_bits,
                     Some(world_rank),
                     Some(local_rank),
@@ -298,24 +288,28 @@ impl ZiskStats {
 
                 proofman.register_witness(&mut *witness_lib, library);
 
-                if self.asm.is_some() {
-                    // Start ASM microservices
-                    tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
-
-                    asm_services
-                        .start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
-                }
-
                 proofman
-                    .compute_witness_from_lib(self.input.clone(), &debug_info)
+                    .compute_witness_from_lib(
+                        self.input.clone(),
+                        &debug_info,
+                        ProofOptions::new(
+                            false,
+                            false,
+                            false,
+                            false,
+                            self.minimal_memory,
+                            false,
+                            PathBuf::new(),
+                        ),
+                    )
                     .map_err(|e| anyhow::anyhow!("Error generating stats: {}", e))?;
             }
         };
 
-        let (_, stats): (ZiskExecutionResult, Vec<(usize, usize, Stats)>) = *witness_lib
+        let (_, stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) = *witness_lib
             .get_execution_result()
             .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
-            .downcast::<(ZiskExecutionResult, Vec<(usize, usize, Stats)>)>()
+            .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>)>()
             .map_err(|_| anyhow::anyhow!("Failed to downcast execution result"))?;
 
         if world_rank % 2 == 1 {
@@ -328,7 +322,7 @@ impl ZiskStats {
             "-".repeat(55)
         );
 
-        Self::print_stats(&stats);
+        stats.lock().unwrap().print_stats();
 
         if self.asm.is_some() {
             // Shut down ASM microservices
@@ -339,7 +333,7 @@ impl ZiskStats {
         Ok(())
     }
 
-    fn print_command_info(&self, sha256f_script: &Path) {
+    fn print_command_info(&self) {
         // Print Stats command info
         println!("{} Stats", format!("{: >12}", "Command").bright_green().bold());
         println!(
@@ -374,7 +368,6 @@ impl ZiskStats {
 
         let std_mode = if self.debug.is_some() { "Debug mode" } else { "Standard mode" };
         println!("{: >12} {}", "STD".bright_green().bold(), std_mode);
-        println!("{: >12} {}", "Sha256f".bright_green().bold(), sha256f_script.display());
         // println!("{}", format!("{: >12} {}", "Distributed".bright_green().bold(), "ON (nodes: 4, threads: 32)"));
 
         println!();
@@ -504,7 +497,6 @@ impl ZiskStats {
             val if val == KECCAKF_AIR_IDS[0] => "KECCAKF".to_string(),
             val if val == KECCAKF_TABLE_AIR_IDS[0] => "KECCAKF_TABLE".to_string(),
             val if val == SHA_256_F_AIR_IDS[0] => "SHA_256_F".to_string(),
-            val if val == SHA_256_F_TABLE_AIR_IDS[0] => "SHA_256_F_TABLE".to_string(),
             val if val == SPECIFIED_RANGES_AIR_IDS[0] => "SPECIFIED_RANGES".to_string(),
             _ => format!("Unknown air_id: {air_id}"),
         }
