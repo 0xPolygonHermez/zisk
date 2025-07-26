@@ -73,7 +73,7 @@ pub fn secp256k1_fp_sqrt(x: &[u64; 4], parity: u64) -> ([u64; 4], bool) {
 
 /// Given a 256-bit number `x`, uses the Euler's Criterion `x^{(p-1)/2} == -1 (mod p)` to assert it is not a quadratic residue.
 /// It assumes that `x` is a field element.
-fn secp256k1_fp_assert_nqr(x: &[u64; 4]) {
+pub fn secp256k1_fp_assert_nqr(x: &[u64; 4]) {
     // Note: (p-1)/2 = 2^255 - 2^32 + 2^31 - 2^9 + 2^4 + 2^3 - 1
 
     //                x^(2^255) · x^(2^31) · x^(2^4) · x^(2^3)
