@@ -311,7 +311,7 @@ impl ZiskProve {
             match self.field {
                 Field::Goldilocks => {
                     return proofman
-                        .verify_proof_constraints_from_lib(self.input.clone(), &debug_info)
+                        .verify_proof_constraints_from_lib(self.input.clone(), &debug_info, false)
                         .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e));
                 }
             };
@@ -326,6 +326,7 @@ impl ZiskProve {
                                 self.aggregation,
                                 self.final_snark,
                                 self.verify_proofs,
+                                self.minimal_memory,
                                 self.save_proofs,
                                 self.output_dir.clone(),
                             ),

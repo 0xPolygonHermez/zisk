@@ -211,8 +211,6 @@ impl ZiskVerifyConstraints {
             .with_local_rank(mpi_context.local_rank)
             .with_unlock_mapped_memory(self.unlock_mapped_memory);
 
-        let start = std::time::Instant::now();
-
         if self.asm.is_some() {
             // Start ASM microservices
             tracing::info!(">>> [{}] Starting ASM microservices.", mpi_context.world_rank,);
@@ -220,6 +218,7 @@ impl ZiskVerifyConstraints {
             asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
         }
 
+        let start;
         match self.field {
             Field::Goldilocks => {
                 let library = unsafe {
@@ -242,8 +241,9 @@ impl ZiskVerifyConstraints {
 
                 proofman.register_witness(&mut *witness_lib, library);
 
+                start = std::time::Instant::now();
                 proofman
-                    .verify_proof_constraints_from_lib(self.input.clone(), &debug_info)
+                    .verify_proof_constraints_from_lib(self.input.clone(), &debug_info, false)
                     .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
             }
         };

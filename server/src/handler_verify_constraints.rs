@@ -57,7 +57,7 @@ impl ZiskServiceVerifyConstraintsHandler {
                 let start = std::time::Instant::now();
 
                 proofman
-                    .verify_proof_constraints_from_lib(Some(request_input), &debug_info)
+                    .verify_proof_constraints_from_lib(Some(request_input), &debug_info, false)
                     .map_err(|e| anyhow::anyhow!("Error verifying proof: {}", e))
                     .expect("Failed to generate proof");
 
