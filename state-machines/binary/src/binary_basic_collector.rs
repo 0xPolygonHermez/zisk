@@ -2,9 +2,9 @@
 //!
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
-use std::{collections::VecDeque, mem::ManuallyDrop, sync::Arc};
+use std::{collections::VecDeque, mem::ManuallyDrop};
 
-use crate::{binary_basic::BinaryBasicSM, binary_basic_table::BinaryBasicTableSM, BinaryInput};
+use crate::{binary_basic::BinaryBasicSM, binary_basic_table::BinaryBasicLocalTable, BinaryInput};
 use fields::PrimeField64;
 use zisk_common::{
     BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID,
@@ -14,8 +14,8 @@ use zisk_pil::BinaryTraceRow;
 
 /// The `BinaryBasicCollector` struct represents an input collector for binary-related operations.
 pub struct BinaryBasicCollector<F: PrimeField64> {
-    /// Binary Basic Table State Machine.
-    binary_basic_table_sm: Arc<BinaryBasicTableSM>,
+    /// Local table for binary basic operations.
+    pub binary_basic_local_table: BinaryBasicLocalTable,
 
     /// The number of operations to collect.
     pub num_operations: usize,
@@ -46,13 +46,14 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
     /// # Returns
     /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
     pub fn new(
-        binary_basic_table_sm: Arc<BinaryBasicTableSM>,
         num_operations: usize,
         collect_skipper: CollectSkipper,
         with_adds: bool,
         rows: ManuallyDrop<Vec<BinaryTraceRow<F>>>,
     ) -> Self {
-        Self { binary_basic_table_sm, num_operations, collect_skipper, with_adds, idx: 0, rows }
+        let binary_basic_local_table = BinaryBasicLocalTable::new();
+        
+        Self { binary_basic_local_table, num_operations, collect_skipper, with_adds, idx: 0, rows }
     }
 }
 
@@ -100,7 +101,7 @@ impl<F: PrimeField64> BusDevice<u64> for BinaryBasicCollector<F> {
 
         BinaryBasicSM::process_slice(
             &binary_input,
-            &self.binary_basic_table_sm,
+            &mut self.binary_basic_local_table,
             &mut self.rows[self.idx],
         );
         self.idx += 1;

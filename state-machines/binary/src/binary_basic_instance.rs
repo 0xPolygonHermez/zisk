@@ -100,9 +100,24 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
         &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         _buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
+        let local_tables: Vec<_> = collectors
+            .into_iter()
+            .map(|(_, collector)| {
+                collector
+                    .as_any()
+                    .downcast::<BinaryBasicCollector<F>>()
+                    .unwrap()
+                    .binary_basic_local_table
+            })
+            .collect();
+
+        for local in local_tables {
+            self.binary_basic_table_sm.update_multiplicity_from_local_table(&local);
+        }
+
         let split_struct = self.trace_split.lock().unwrap().take().unwrap();
         Some(self.binary_basic_sm.compute_witness(split_struct))
     }
@@ -153,7 +168,6 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
 
         let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(BinaryBasicCollector::new(
-            self.binary_basic_table_sm.clone(),
             num_ops as usize,
             collect_skipper,
             self.with_adds,

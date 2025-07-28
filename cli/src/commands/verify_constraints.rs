@@ -243,7 +243,7 @@ impl ZiskVerifyConstraints {
                 proofman.register_witness(&mut *witness_lib, library);
 
                 proofman
-                    .verify_proof_constraints_from_lib(self.input.clone(), &debug_info, false)
+                    .verify_proof_constraints_from_lib(self.input.clone(), &debug_info)
                     .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
             }
         };

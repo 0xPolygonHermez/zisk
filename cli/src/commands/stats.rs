@@ -6,7 +6,7 @@ use executor::{Stats, ZiskExecutionResult};
 use fields::Goldilocks;
 use libloading::{Library, Symbol};
 use proofman::ProofMan;
-use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU, ProofOptions};
+use proofman_common::{json_to_debug_instances_map, DebugInfo, ParamsGPU};
 use rom_setup::{
     gen_elf_hash, get_elf_bin_file_path, get_elf_data_hash, get_rom_blowup_factor,
     DEFAULT_CACHE_PATH,
@@ -289,19 +289,7 @@ impl ZiskStats {
                 proofman.register_witness(&mut *witness_lib, library);
 
                 proofman
-                    .compute_witness_from_lib(
-                        self.input.clone(),
-                        &debug_info,
-                        ProofOptions::new(
-                            false,
-                            false,
-                            false,
-                            false,
-                            self.minimal_memory,
-                            false,
-                            PathBuf::new(),
-                        ),
-                    )
+                    .compute_witness_from_lib(self.input.clone(), &debug_info)
                     .map_err(|e| anyhow::anyhow!("Error generating stats: {}", e))?;
             }
         };

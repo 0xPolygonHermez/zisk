@@ -8,11 +8,13 @@ use std::sync::{
     Arc,
 };
 
-use zisk_common::create_atomic_vec;
+use zisk_common::{create_atomic_vec, LocalTable};
 use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8, P2_9};
 use zisk_pil::BinaryTableTrace;
 
 use crate::binary_constants::*;
+
+pub type BinaryBasicLocalTable = LocalTable<{ BinaryTableTrace::<usize>::NUM_ROWS }>;
 
 /// Represents operations supported by the Binary Basic Table.
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -64,11 +66,26 @@ impl BinaryBasicTableSM {
     ///
     /// # Arguments
     /// * `input` - A slice of `u64` values representing the input data.
+    #[inline(always)]
     pub fn update_multiplicity(&self, row: u64, value: u64) {
         if self.calculated.load(Ordering::Relaxed) {
             return;
         }
         self.multiplicity[row as usize].fetch_add(value, Ordering::Relaxed);
+    }
+
+    pub fn update_multiplicity_from_local_table(&self, local_table: &BinaryBasicLocalTable) {
+        if self.calculated.load(Ordering::Relaxed) {
+            return;
+        }
+        for (i, &value) in local_table.multiplicity.iter().enumerate() {
+            if value > 0 {
+                self.update_multiplicity(i as u64, value as u64);
+            }
+        }
+        for (row, value) in &local_table.multiplicity_vec {
+            self.update_multiplicity(*row, *value);
+        }
     }
 
     /// Detaches and returns the current multiplicity table.

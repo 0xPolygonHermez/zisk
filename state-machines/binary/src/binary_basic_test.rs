@@ -22,11 +22,14 @@ mod tests {
         OPERATION_BUS_ID,
     };
     use zisk_core::{zisk_ops::OpType, ZiskOperationType};
-    use zisk_pil::BinaryTrace;
+    use zisk_pil::{BinaryTrace, BinaryTraceRow};
+
+    use rayon::prelude::*;
 
     type F = Goldilocks;
 
-    static TEST_CTX: Lazy<(Arc<ProofCtx<F>>, Arc<SetupCtx<F>>)> = Lazy::new(|| {
+    type TestComplex = Lazy<(Arc<ProofCtx<F>>, Arc<SetupCtx<F>>)>;
+    static TEST_CTX: TestComplex = Lazy::new(|| {
         let pk_path =
             PathBuf::from_str("/home/xavi/dev/zisk/build/provingKey").expect("Invalid path");
         let pctx =
@@ -66,7 +69,7 @@ mod tests {
 
         let plans = binary_planner.plan(vec![(chunk, binary_counter)]);
 
-        println!("Plan: {:?}", plans);
+        println!("Plan: {plans:?}");
     }
 
     fn create_ictx(chunk: ChunkId, num_operations: u64) -> InstanceCtx {
@@ -97,24 +100,15 @@ mod tests {
         let chunk = ChunkId(0);
         let num_operations = 1u64 << 22;
 
-        let ictx = create_ictx(chunk, num_operations);
-
         let binary_basic_sm = BinaryBasicSM::new(BinaryBasicTableSM::new());
         let binary_basic_table_sm = BinaryBasicTableSM::new();
-        let binary_instance =
-            BinaryBasicInstance::new(binary_basic_sm, binary_basic_table_sm, ictx);
 
         let row = [(
             OPERATION_BUS_ID,
             OperationBusData::from_values(ADD_OP, ZiskOperationType::Binary as u64, 1, 2).into(),
         )];
 
-        let threads_samples = [1, 1, 2, 4, 8, 16];
-        let repetitions = 3;
-
         let mut results_ms = vec![];
-
-        let buffer_pool = Arc::new(MemoryHandler::new(1, 4_000_000_000));
 
         let collect_skipper = CollectSkipper::new(0);
         let collect_info = HashMap::from([(chunk, (num_operations, collect_skipper))]);
@@ -129,63 +123,96 @@ mod tests {
             let value = collect_info.get(key).unwrap();
             sizes[idx] = value.0 as usize;
         }
-        println!("Sizes: {:?}", sizes);
+        println!("Sizes: {sizes:?}");
 
-        for num_threads in threads_samples {
-            let mut collect_ms = 0;
-            let mut witness_ms = 0;
+        let num_threads = 64;
+        let num_instances = 20;
 
-            let pool = ThreadPoolBuilder::new().num_threads(num_threads).build().unwrap();
-            pool.install(|| {
-                for _ in 0..repetitions {
-                    let buffer = buffer_pool.take_buffer();
-                    let trace = BinaryTrace::new_from_vec(buffer);
+        let buffer_size = BinaryTrace::<usize>::NUM_ROWS
+            * BinaryTraceRow::<usize>::ROW_SIZE
+            * std::mem::size_of::<u64>();
+        println!("Buffer size: {buffer_size}");
+        let buffer_pool = Arc::new(MemoryHandler::new(num_instances, buffer_size));
 
-                    *binary_instance.trace_split.lock().unwrap() =
-                        Some(trace.to_split_struct(&sizes));
+        let pool = ThreadPoolBuilder::new().num_threads(num_threads).build().unwrap();
+        for i in 0..2 {
+            let results: Vec<Option<(u128, u128)>> = pool.install(|| {
+                (0..num_instances)
+                    .into_par_iter()
+                    .map(|_| {
+                        let ictx = create_ictx(chunk, num_operations);
+                        let binary_basic_sm = binary_basic_sm.clone();
+                        let binary_basic_table_sm = binary_basic_table_sm.clone();
+                        let binary_instance =
+                            BinaryBasicInstance::new(binary_basic_sm, binary_basic_table_sm, ictx);
 
-                    let binary_collector =
+                        let buffer = buffer_pool.take_buffer();
+                        let trace = BinaryTrace::new_from_vec(buffer);
+
+                        *binary_instance.trace_split.lock().unwrap() =
+                            Some(trace.to_split_struct(&sizes));
+
+                        let binary_collector =
                         <binary_basic_instance::BinaryBasicInstance<F> as zisk_common::Instance<
                             F,
                         >>::build_inputs_collector(&binary_instance, chunk)
                         .expect("Failed to build inputs collector");
 
-                    let mut data_bus = DataBus::<u64, _>::new();
-                    data_bus.connect_device(Some(0), Some(binary_collector));
+                        let mut data_bus = DataBus::<u64, _>::new();
+                        data_bus.connect_device(Some(0), Some(binary_collector));
 
-                    let timer_collect = std::time::Instant::now();
-                    DataBusPlayer::play_repeat(&mut data_bus, &row, num_operations as usize);
-                    collect_ms += timer_collect.elapsed().as_millis();
+                        let timer_collect = std::time::Instant::now();
+                        DataBusPlayer::play_repeat(&mut data_bus, &row, num_operations as usize);
+                        let collect_ms = timer_collect.elapsed().as_millis();
 
-                    let mut binary_collectors = data_bus.into_devices(false);
-                    let binary_collector = binary_collectors.remove(0).1.unwrap();
+                        let mut binary_collectors = data_bus.into_devices(false);
+                        let binary_collector = binary_collectors.remove(0).1.unwrap();
 
-                    let timer_witness = std::time::Instant::now();
-                    let result = binary_instance
-                        .compute_witness(
-                            pctx,
-                            sctx,
-                            vec![(0, binary_collector)],
-                            buffer_pool.as_ref(),
-                        )
-                        .expect("Failed to compute witness");
+                        let timer_witness = std::time::Instant::now();
+                        let result = binary_instance
+                            .compute_witness(
+                                pctx,
+                                sctx,
+                                vec![(0, binary_collector)],
+                                buffer_pool.as_ref(),
+                            )
+                            .expect("Failed to compute witness");
 
-                    buffer_pool.release_buffer(result.trace);
-                    witness_ms += timer_witness.elapsed().as_millis();
-                }
+                        let witness_ms = timer_witness.elapsed().as_millis();
+                        buffer_pool.release_buffer(result.trace);
+
+                        // First loop is for warmup, we only collect results from the second loop
+                        if i == 0 {
+                            None
+                        } else {
+                            Some((collect_ms, witness_ms))
+                        }
+                    })
+                    .collect()
             });
 
-            results_ms.push((num_threads, collect_ms / repetitions, witness_ms / repetitions));
+            // Flatten and collect results from this batch
+            for opt in results.into_iter().flatten() {
+                println!("Collect: {}, Witness: {}", opt.0, opt.1);
+                results_ms.push((i, opt.0, opt.1));
+            }
+
+            if i == 0 {
+                println!("Warmup completed, starting actual collection.");
+                println!();
+            }
         }
 
-        for values in results_ms {
-            println!(
-                "Threads: {}, Collect: {}ms, Witness: {}ms, Total: {}ms",
-                values.0,
-                values.1,
-                values.2,
-                values.1 + values.2
-            );
-        }
+        let num_values = results_ms.len() as u128;
+
+        let collect_total = results_ms.iter().map(|x| x.1).sum::<u128>();
+        let witness_total = results_ms.iter().map(|x| x.2).sum::<u128>();
+
+        println!(
+            "Collect: {}ms, Witness: {}ms, Total: {}ms",
+            collect_total / num_values,
+            witness_total / num_values,
+            (collect_total + witness_total) / num_values
+        );
     }
 }

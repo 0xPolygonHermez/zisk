@@ -71,7 +71,6 @@ impl ZiskServiceProveHandler {
                             request.aggregation,
                             request.final_snark,
                             request.verify_proofs,
-                            request.minimal_memory,
                             false,
                             request.folder.clone(),
                         ),

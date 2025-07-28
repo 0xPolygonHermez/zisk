@@ -30,7 +30,7 @@ impl DataBusPlayer {
     ) {
         for _ in 0..times {
             for (bus_id, payload) in data {
-                <DataBus<D, BD> as DataBusTrait<D, BD>>::write_to_bus(data_bus, *bus_id, &payload);
+                <DataBus<D, BD> as DataBusTrait<D, BD>>::write_to_bus(data_bus, *bus_id, payload);
             }
         }
     }
