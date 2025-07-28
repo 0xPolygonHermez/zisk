@@ -22,6 +22,7 @@
 #include "mem_types.hpp"
 #include "mem_context.hpp"
 #include "tools.hpp"
+#include "mem_stats.hpp"
 
 #ifdef USE_ADDR_COUNT_TABLE
 struct AddrCount {
@@ -55,6 +56,12 @@ private:
     uint64_t chunks_us[MAX_CHUNKS];
     int64_t wait_chunks_us[MAX_CHUNKS];
 #endif
+
+#ifdef MEM_STATS_ACTIVE
+public:
+    MemStats *mem_stats;
+#endif // MEM_STATS_ACTIVE
+
 public:
     MemCounter(const MemCounter&) = delete;
     MemCounter& operator=(const MemCounter&) = delete;

@@ -27,6 +27,10 @@ extern "C"
     const MemCheckPoint *get_mem_segment_check_points(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id, uint32_t &count);
     const MemAlignCheckPoint *get_mem_align_check_points(MemCountAndPlan *mcp, uint32_t &count);
 
+    // Additional functions for memory statistics
+    uint64_t get_mem_stats_len(MemCountAndPlan * mcp);
+    uint64_t get_mem_stats_ptr(MemCountAndPlan * mcp);
+
 #ifdef __cplusplus
 }
 #endif

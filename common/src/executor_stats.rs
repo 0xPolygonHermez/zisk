@@ -16,6 +16,16 @@ pub enum ExecutorStatsEnum {
     MemOpsChunkDone(ExecutorStatsDuration),
     MemOpsProcessChunks(ExecutorStatsDuration),
     MemOpsCollectPlans(ExecutorStatsDuration),
+    MemOpsCountPhase(ExecutorStatsDuration),
+    MemOpsPlanPhase(ExecutorStatsDuration),
+    MemOpsExecuteChunk0(ExecutorStatsDuration),
+    MemOpsExecuteChunk1(ExecutorStatsDuration),
+    MemOpsExecuteChunk2(ExecutorStatsDuration),
+    MemOpsExecuteChunk3(ExecutorStatsDuration),
+    MemOpsExecuteChunk4(ExecutorStatsDuration),
+    MemOpsExecuteChunk5(ExecutorStatsDuration),
+    MemOpsExecuteChunk6(ExecutorStatsDuration),
+    MemOpsExecuteChunk7(ExecutorStatsDuration),
     PlanGenerationMain(ExecutorStatsDuration),
     PlanGenerationSecondary(ExecutorStatsDuration),
     PlanGenerationMemOpWait(ExecutorStatsDuration),
@@ -108,6 +118,34 @@ impl ExecutorStats {
             ExecutorStatsEnum::MemOpsCollectPlans(_stat_duration) => {
                 "MEM_OPS_COLLECT_PLANS".to_string()
             }
+            ExecutorStatsEnum::MemOpsCountPhase(_stat_duration) => {
+                "MEM_OPS_COUNT_PHASE".to_string()
+            }
+            ExecutorStatsEnum::MemOpsPlanPhase(_stat_duration) => "MEM_OPS_PLAN_PHASE".to_string(),
+            ExecutorStatsEnum::MemOpsExecuteChunk0(_stat_duration) => {
+                "MEM_OPS_EXECUTE_CHUNK_0".to_string()
+            }
+            ExecutorStatsEnum::MemOpsExecuteChunk1(_stat_duration) => {
+                "MEM_OPS_EXECUTE_CHUNK_1".to_string()
+            }
+            ExecutorStatsEnum::MemOpsExecuteChunk2(_stat_duration) => {
+                "MEM_OPS_EXECUTE_CHUNK_2".to_string()
+            }
+            ExecutorStatsEnum::MemOpsExecuteChunk3(_stat_duration) => {
+                "MEM_OPS_EXECUTE_CHUNK_3".to_string()
+            }
+            ExecutorStatsEnum::MemOpsExecuteChunk4(_stat_duration) => {
+                "MEM_OPS_EXECUTE_CHUNK_4".to_string()
+            }
+            ExecutorStatsEnum::MemOpsExecuteChunk5(_stat_duration) => {
+                "MEM_OPS_EXECUTE_CHUNK_5".to_string()
+            }
+            ExecutorStatsEnum::MemOpsExecuteChunk6(_stat_duration) => {
+                "MEM_OPS_EXECUTE_CHUNK_6".to_string()
+            }
+            ExecutorStatsEnum::MemOpsExecuteChunk7(_stat_duration) => {
+                "MEM_OPS_EXECUTE_CHUNK_7".to_string()
+            }
             ExecutorStatsEnum::PlanGenerationMain(_stat_duration) => {
                 "PLAN_GENERATION_MAIN".to_string()
             }
@@ -157,6 +195,16 @@ impl ExecutorStats {
                 | ExecutorStatsEnum::MemOpsChunkDone(stat_duration)
                 | ExecutorStatsEnum::MemOpsProcessChunks(stat_duration)
                 | ExecutorStatsEnum::MemOpsCollectPlans(stat_duration)
+                | ExecutorStatsEnum::MemOpsCountPhase(stat_duration)
+                | ExecutorStatsEnum::MemOpsPlanPhase(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk0(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk1(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk2(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk3(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk4(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk5(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk6(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk7(stat_duration)
                 | ExecutorStatsEnum::PlanGenerationMain(stat_duration)
                 | ExecutorStatsEnum::PlanGenerationSecondary(stat_duration)
                 | ExecutorStatsEnum::PlanGenerationMemOpWait(stat_duration)
@@ -239,6 +287,16 @@ impl ExecutorStats {
                 | ExecutorStatsEnum::MemOpsChunkDone(stat_duration)
                 | ExecutorStatsEnum::MemOpsProcessChunks(stat_duration)
                 | ExecutorStatsEnum::MemOpsCollectPlans(stat_duration)
+                | ExecutorStatsEnum::MemOpsCountPhase(stat_duration)
+                | ExecutorStatsEnum::MemOpsPlanPhase(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk0(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk1(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk2(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk3(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk4(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk5(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk6(stat_duration)
+                | ExecutorStatsEnum::MemOpsExecuteChunk7(stat_duration)
                 | ExecutorStatsEnum::PlanGenerationMain(stat_duration)
                 | ExecutorStatsEnum::PlanGenerationSecondary(stat_duration)
                 | ExecutorStatsEnum::PlanGenerationMemOpWait(stat_duration)
