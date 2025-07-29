@@ -135,7 +135,6 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        // Precompute index and map lookup before acquiring the lock
         let chunk_plan = &self.collect_info[&chunk_id];
 
         let rows = {
