@@ -4,10 +4,7 @@
 
 use std::sync::Arc;
 
-use crate::{
-    binary_basic_table::BinaryBasicLocalTable, binary_constants::*, BinaryBasicTableOp,
-    BinaryBasicTableSM, BinaryInput,
-};
+use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
@@ -139,7 +136,7 @@ impl BinaryBasicSM {
     #[inline(always)]
     pub fn process_slice<F: PrimeField64>(
         input: &BinaryInput,
-        binary_table_sm: &mut BinaryBasicLocalTable,
+        binary_table_sm: &BinaryBasicTableSM,
         row: &mut BinaryTraceRow<F>,
     ) {
         // Execute the opcode

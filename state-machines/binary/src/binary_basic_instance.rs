@@ -7,13 +7,9 @@
 use crate::{binary_basic_table::BinaryBasicTableSM, BinaryBasicCollector, BinaryBasicSM};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
-    PayloadType,
+    BusDevice, CheckPoint, ChunkId, ChunkPlansMap, Instance, InstanceCtx, InstanceType, PayloadType,
 };
 
 use zisk_pil::{BinaryTrace, BinaryTraceSplit};
@@ -36,7 +32,7 @@ pub struct BinaryBasicInstance<F: PrimeField64> {
     with_adds: bool,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
+    collect_info: ChunkPlansMap,
 
     /// Split binary trace to share split data between collectors.
     pub trace_split: Mutex<Option<BinaryTraceSplit<F>>>,
@@ -68,7 +64,7 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let (with_adds, collect_info) = *meta
-            .downcast::<(bool, HashMap<ChunkId, (u64, CollectSkipper)>)>()
+            .downcast::<(bool, ChunkPlansMap)>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self {
@@ -100,24 +96,9 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
         &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         _buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
-        let local_tables: Vec<_> = collectors
-            .into_iter()
-            .map(|(_, collector)| {
-                collector
-                    .as_any()
-                    .downcast::<BinaryBasicCollector<F>>()
-                    .unwrap()
-                    .binary_basic_local_table
-            })
-            .collect();
-
-        for local in local_tables {
-            self.binary_basic_table_sm.update_multiplicity_from_local_table(&local);
-        }
-
         let split_struct = self.trace_split.lock().unwrap().take().unwrap();
         Some(self.binary_basic_sm.compute_witness(split_struct))
     }
@@ -149,8 +130,8 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
 
         // Step 2: Iterate in sorted key order
         for (idx, key) in keys.iter().enumerate() {
-            let value = self.collect_info.get(key).unwrap();
-            sizes[idx] = value.0 as usize;
+            let chunk_plan = self.collect_info.get(key).unwrap();
+            sizes[idx] = chunk_plan.num_ops as usize;
         }
 
         *self.trace_split.lock().unwrap() = Some(trace.to_split_struct(&sizes));
@@ -164,12 +145,19 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let rows = self.trace_split.lock().unwrap().as_mut().unwrap().chunks.remove(0);
+        // Precompute index and map lookup before acquiring the lock
+        let chunk_plan = &self.collect_info[&chunk_id];
 
-        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
+        let rows = {
+            let mut trace_split_guard = self.trace_split.lock().unwrap();
+            let trace_split = trace_split_guard.as_mut().unwrap();
+            std::mem::take(&mut trace_split.chunks[chunk_plan.idx as usize])
+        };
+
         Some(Box::new(BinaryBasicCollector::new(
-            num_ops as usize,
-            collect_skipper,
+            self.binary_basic_table_sm.clone(),
+            chunk_plan.num_ops as usize,
+            chunk_plan.skipper,
             self.with_adds,
             rows,
         )))

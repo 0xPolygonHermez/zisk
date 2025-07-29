@@ -8,13 +8,9 @@ use crate::{BinaryAddCollector, BinaryAddSM};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
-    PayloadType,
+    BusDevice, CheckPoint, ChunkId, ChunkPlansMap, Instance, InstanceCtx, InstanceType, PayloadType,
 };
 use zisk_pil::{BinaryAddTrace, BinaryAddTraceSplit};
 
@@ -30,7 +26,7 @@ pub struct BinaryAddInstance<F: PrimeField64> {
     std: Arc<Std<F>>,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
+    collect_info: ChunkPlansMap,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -65,7 +61,7 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let collect_info = *meta
-            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+            .downcast::<ChunkPlansMap>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { binary_add_sm, std, collect_info, ictx, trace_split: Mutex::new(None) }
@@ -124,8 +120,8 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
 
         // Step 2: Iterate in sorted key order
         for (idx, key) in keys.iter().enumerate() {
-            let value = self.collect_info.get(key).unwrap();
-            sizes[idx] = value.0 as usize;
+            let chunk_plan = self.collect_info.get(key).unwrap();
+            sizes[idx] = chunk_plan.num_ops as usize;
         }
 
         *self.trace_split.lock().unwrap() = Some(trace.to_split_struct(&sizes));
@@ -139,20 +135,19 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        assert_eq!(
-            self.ictx.plan.air_id,
-            BinaryAddTrace::<F>::AIR_ID,
-            "BinaryAddInstance: Unsupported air_id: {:?}",
-            self.ictx.plan.air_id
-        );
+        // Precompute index and map lookup before acquiring the lock
+        let chunk_plan = &self.collect_info[&chunk_id];
 
-        let rows = self.trace_split.lock().unwrap().as_mut().unwrap().chunks.remove(0);
+        let rows = {
+            let mut trace_split_guard = self.trace_split.lock().unwrap();
+            let trace_split = trace_split_guard.as_mut().unwrap();
+            std::mem::take(&mut trace_split.chunks[chunk_plan.idx as usize])
+        };
 
-        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(BinaryAddCollector::new(
             self.std.clone(),
-            num_ops as usize,
-            collect_skipper,
+            chunk_plan.num_ops as usize,
+            chunk_plan.skipper,
             rows,
         )))
     }

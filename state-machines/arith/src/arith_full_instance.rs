@@ -7,13 +7,10 @@
 use crate::ArithFullSM;
 use fields::PrimeField64;
 use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
-use std::{
-    collections::{HashMap, VecDeque},
-    sync::Arc,
-};
+use std::{collections::VecDeque, sync::Arc};
 use zisk_common::{
-    BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, OperationData, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusId, CheckPoint, ChunkId, ChunkPlansMap, CollectSkipper, ExtOperationData,
+    Instance, InstanceCtx, InstanceType, OperationData, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
@@ -28,7 +25,7 @@ pub struct ArithFullInstance {
     arith_full_sm: Arc<ArithFullSM>,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
+    collect_info: ChunkPlansMap,
 
     /// The instance context.
     ictx: InstanceCtx,
@@ -54,7 +51,7 @@ impl ArithFullInstance {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let collect_info = *meta
-            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+            .downcast::<ChunkPlansMap>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { arith_full_sm, collect_info, ictx }
@@ -115,8 +112,8 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
-        Some(Box::new(ArithInstanceCollector::new(num_ops, collect_skipper)))
+        let chunk_plan = &self.collect_info[&chunk_id];
+        Some(Box::new(ArithInstanceCollector::new(chunk_plan.num_ops, chunk_plan.skipper)))
     }
 }
 

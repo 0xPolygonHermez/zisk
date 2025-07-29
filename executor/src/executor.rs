@@ -1161,9 +1161,10 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                         InstanceType::Instance => {
                             if !self.collectors_by_instance.read().unwrap().contains_key(&global_id)
                             {
-                                let mut secn_instances = HashMap::new();
-                                secn_instances.insert(global_id, secn_instance);
-                                self.witness_collect_instances(secn_instances, buffer_pool);
+                                self.witness_collect_instances(
+                                    std::iter::once((global_id, secn_instance)).collect(),
+                                    buffer_pool,
+                                );
                             }
                             self.witness_secn_instance(
                                 &pctx,

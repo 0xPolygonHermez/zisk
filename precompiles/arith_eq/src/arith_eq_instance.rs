@@ -12,11 +12,11 @@ use crate::{
 use fields::PrimeField64;
 use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
 use std::collections::VecDeque;
-use std::{any::Any, collections::HashMap, sync::Arc};
+use std::{any::Any, sync::Arc};
 use zisk_common::ChunkId;
 use zisk_common::{
-    BusDevice, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, OperationBusData, PayloadType, OPERATION_BUS_ID,
+    BusDevice, BusId, CheckPoint, ChunkPlansMap, CollectSkipper, ExtOperationData, Instance,
+    InstanceCtx, InstanceType, OperationBusData, PayloadType, OPERATION_BUS_ID,
 };
 
 use zisk_core::ZiskOperationType;
@@ -31,7 +31,7 @@ pub struct ArithEqInstance<F: PrimeField64> {
     arith_eq_sm: Arc<ArithEqSM<F>>,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
+    collect_info: ChunkPlansMap,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -59,7 +59,7 @@ impl<F: PrimeField64> ArithEqInstance<F> {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let collect_info = *meta
-            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+            .downcast::<ChunkPlansMap>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { arith_eq_sm, collect_info, ictx }
@@ -110,8 +110,8 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
     }
 
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
-        Some(Box::new(ArithEqCollector::new(num_ops, collect_skipper)))
+        let chunk_plan = &self.collect_info[&chunk_id];
+        Some(Box::new(ArithEqCollector::new(chunk_plan.num_ops, chunk_plan.skipper)))
     }
 }
 

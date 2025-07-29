@@ -6,14 +6,10 @@
 use crate::{KeccakfInput, KeccakfSM};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
-use std::{
-    any::Any,
-    collections::{HashMap, VecDeque},
-    sync::Arc,
-};
+use std::{any::Any, collections::VecDeque, sync::Arc};
 use zisk_common::{
-    BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
-    InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusId, CheckPoint, ChunkId, ChunkPlansMap, CollectSkipper, ExtOperationData,
+    Instance, InstanceCtx, InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::KeccakfTrace;
@@ -27,7 +23,7 @@ pub struct KeccakfInstance<F: PrimeField64> {
     keccakf_sm: Arc<KeccakfSM<F>>,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
+    collect_info: ChunkPlansMap,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -55,7 +51,7 @@ impl<F: PrimeField64> KeccakfInstance<F> {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let collect_info = *meta
-            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+            .downcast::<ChunkPlansMap>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { keccakf_sm, collect_info, ictx }
@@ -113,8 +109,8 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
             self.ictx.plan.air_id
         );
 
-        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
-        Some(Box::new(KeccakfCollector::new(num_ops, collect_skipper)))
+        let chunk_plan = &self.collect_info[&chunk_id];
+        Some(Box::new(KeccakfCollector::new(chunk_plan.num_ops, chunk_plan.skipper)))
     }
 }
 
