@@ -13,6 +13,7 @@ pub enum ExecutorStatsEnum {
     AsmMtGeneration(ExecutorStatsDuration),
     AsmRomHistogram(ExecutorStatsDuration),
     AsmMemOps(ExecutorStatsDuration),
+    AsmWriteInput(ExecutorStatsDuration),
     MemOpsChunkDone(ExecutorStatsDuration),
     MemOpsProcessChunks(ExecutorStatsDuration),
     MemOpsCollectPlans(ExecutorStatsDuration),
@@ -111,6 +112,7 @@ impl ExecutorStats {
             ExecutorStatsEnum::AsmMtGeneration(_stat_duration) => "ASM_MT_GENERATION".to_string(),
             ExecutorStatsEnum::AsmRomHistogram(_stat_duration) => "ASM_ROM_HISTOGRAM".to_string(),
             ExecutorStatsEnum::AsmMemOps(_stat_duration) => "ASM_MEM_OPS".to_string(),
+            ExecutorStatsEnum::AsmWriteInput(_stat_duration) => "ASM_WRITE_INPUT".to_string(),
             ExecutorStatsEnum::MemOpsChunkDone(_stat_duration) => "MEM_OPS_CHUNK_DONE".to_string(),
             ExecutorStatsEnum::MemOpsProcessChunks(_stat_duration) => {
                 "MEM_OPS_PROCESS_CHUNKS".to_string()
@@ -192,6 +194,7 @@ impl ExecutorStats {
                 | ExecutorStatsEnum::AsmMtGeneration(stat_duration)
                 | ExecutorStatsEnum::AsmRomHistogram(stat_duration)
                 | ExecutorStatsEnum::AsmMemOps(stat_duration)
+                | ExecutorStatsEnum::AsmWriteInput(stat_duration)
                 | ExecutorStatsEnum::MemOpsChunkDone(stat_duration)
                 | ExecutorStatsEnum::MemOpsProcessChunks(stat_duration)
                 | ExecutorStatsEnum::MemOpsCollectPlans(stat_duration)
@@ -284,6 +287,7 @@ impl ExecutorStats {
                 | ExecutorStatsEnum::AsmMtGeneration(stat_duration)
                 | ExecutorStatsEnum::AsmRomHistogram(stat_duration)
                 | ExecutorStatsEnum::AsmMemOps(stat_duration)
+                | ExecutorStatsEnum::AsmWriteInput(stat_duration)
                 | ExecutorStatsEnum::MemOpsChunkDone(stat_duration)
                 | ExecutorStatsEnum::MemOpsProcessChunks(stat_duration)
                 | ExecutorStatsEnum::MemOpsCollectPlans(stat_duration)
