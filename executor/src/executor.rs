@@ -280,9 +280,9 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 let start_time = Instant::now();
 
                 let port = if let Some(base_port) = self.base_port {
-                    AsmServices::port_for(&service, base_port, self.local_rank)
+                    AsmServices::port_for(service, base_port, self.local_rank)
                 } else {
-                    AsmServices::default_port(&service, self.local_rank)
+                    AsmServices::default_port(service, self.local_rank)
                 };
 
                 let shmem_input_name = AsmSharedMemory::<AsmMTHeader>::shmem_input_name(

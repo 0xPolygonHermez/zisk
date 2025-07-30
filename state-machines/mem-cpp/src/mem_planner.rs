@@ -270,7 +270,7 @@ impl MemPlanner {
                     }))
                 }
                 _ => {
-                    panic!("Unknown memory stats ID: {}", id);
+                    panic!("Unknown memory stats ID: {id}");
                 }
             }
         }
