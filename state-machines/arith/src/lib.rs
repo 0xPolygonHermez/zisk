@@ -1,6 +1,7 @@
 mod arith;
 mod arith_bus_device;
 mod arith_full;
+mod arith_full_collector;
 mod arith_full_instance;
 mod arith_operation;
 mod arith_planner;
