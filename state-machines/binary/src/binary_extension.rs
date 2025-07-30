@@ -95,16 +95,17 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// A `BinaryExtensionTraceRow` representing the processed trace.
-    pub fn process_slice(
+    #[inline(always)]
+    pub fn process_input(
         input: &BinaryInput,
         binary_extension_table_sm: &BinaryExtensionTableSM,
-    ) -> BinaryExtensionTraceRow<F> {
+        row: &mut BinaryExtensionTraceRow<F>,
+    ) {
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
 
         // Create an empty trace
-        let mut row =
-            BinaryExtensionTraceRow::<F> { op: F::from_u8(input.op), ..Default::default() };
+        row.op = F::from_u8(input.op);
 
         // Set if the opcode is a shift operation
         let op_is_shift = Self::opcode_is_shift(opcode);
@@ -271,7 +272,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                     t_out[j][1] = (out >> 32) & 0xffffffff;
                 }
             }
-            _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", input.op),
+            _ => panic!("BinaryExtensionSM::process_input() found invalid opcode={}", input.op),
         }
 
         // Convert the trace output to field elements
@@ -292,9 +293,6 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             );
             binary_extension_table_sm.update_multiplicity(row, 1);
         }
-
-        // Return successfully
-        row
     }
 
     /// Computes the witness for the given set of operations.

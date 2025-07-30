@@ -134,7 +134,7 @@ impl BinaryBasicSM {
     /// # Returns
     /// A `BinaryTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice<F: PrimeField64>(
+    pub fn process_input<F: PrimeField64>(
         input: &BinaryInput,
         binary_table_sm: &BinaryBasicTableSM,
         row: &mut BinaryTraceRow<F>,
@@ -827,7 +827,7 @@ impl BinaryBasicSM {
                     binary_table_sm.update_multiplicity(row, 1);
                 }
             }
-            _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={opcode}"),
+            _ => panic!("BinaryBasicSM::process_input() found invalid opcode={opcode}"),
         }
 
         // Set cout

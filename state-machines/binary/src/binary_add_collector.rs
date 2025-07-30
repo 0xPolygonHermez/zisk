@@ -93,9 +93,8 @@ impl<F: PrimeField64> BusDevice<u64> for BinaryAddCollector<F> {
         }
 
         let input = [OperationBusData::get_a(&data), OperationBusData::get_b(&data)];
-        let (row, range_checks) = BinaryAddSM::<F>::process_slice(&input);
 
-        self.rows[self.idx] = row;
+        let range_checks = BinaryAddSM::<F>::process_input(&input, &mut self.rows[self.idx]);
 
         for range_check in range_checks {
             self.std.range_check(range_check as i64, 1, self.range_id);

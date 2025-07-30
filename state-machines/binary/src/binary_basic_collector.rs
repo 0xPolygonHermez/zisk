@@ -7,7 +7,7 @@ use std::{collections::VecDeque, mem::ManuallyDrop, sync::Arc};
 use crate::{binary_basic::BinaryBasicSM, binary_basic_table::BinaryBasicTableSM, BinaryInput};
 use fields::PrimeField64;
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 use zisk_pil::BinaryTraceRow;
@@ -79,14 +79,11 @@ impl<F: PrimeField64> BusDevice<u64> for BinaryBasicCollector<F> {
             return false;
         }
 
-        let data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-
-        let op_type = OperationBusData::get_op_type(&data);
-
-        if op_type as u32 != ZiskOperationType::Binary as u32 {
+        if data[OP_TYPE] as u32 != ZiskOperationType::Binary as u32 {
             return true;
         }
+
+        let data: ExtOperationData<u64> = data.try_into().expect("Failed to convert data");
 
         if !self.with_adds && OperationBusData::get_op(&data) == ZiskOp::Add.code() {
             return true;
@@ -98,7 +95,7 @@ impl<F: PrimeField64> BusDevice<u64> for BinaryBasicCollector<F> {
 
         let binary_input = BinaryInput::from(&data);
 
-        BinaryBasicSM::process_slice(
+        BinaryBasicSM::process_input(
             &binary_input,
             &self.binary_basic_table_sm,
             &mut self.rows[self.idx],

@@ -111,8 +111,12 @@ impl<F: PrimeField64> BusDevice<u64> for BinaryExtensionCollector<F> {
         }
 
         let binary_input = BinaryInput::from(&data);
-        self.rows[self.idx] =
-            BinaryExtensionSM::process_slice(&binary_input, &self.binary_extension_table_sm);
+
+        BinaryExtensionSM::process_input(
+            &binary_input,
+            &self.binary_extension_table_sm,
+            &mut self.rows[self.idx],
+        );
 
         let opcode = ZiskOp::try_from_code(binary_input.op).expect("Invalid ZiskOp opcode");
         let op_is_shift = BinaryExtensionSM::<F>::opcode_is_shift(opcode);

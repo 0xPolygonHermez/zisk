@@ -43,10 +43,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// # Returns
     /// A `BinaryAddTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice(input: &[u64; 2]) -> (BinaryAddTraceRow<F>, [u64; 4]) {
-        // Create an empty trace
-        let mut row: BinaryAddTraceRow<F> = Default::default();
-
+    pub fn process_input(input: &[u64; 2], row: &mut BinaryAddTraceRow<F>) -> [u64; 4] {
         // Execute the opcode
         let mut a = input[0];
         let mut b = input[1];
@@ -79,7 +76,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         row.multiplicity = F::ONE;
 
         // Return
-        (row, range_checks)
+        range_checks
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
