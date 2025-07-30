@@ -52,7 +52,7 @@ airgroup Zisk {
     BinaryExtensionTable();
 
     // Precompiles
-    ArithEq(N: 2**21, operation_bus_id: OPERATION_BUS_ID);
+    ArithEq(N: 2**20, operation_bus_id: OPERATION_BUS_ID);
     ArithEqLtTable();
 
     const int KECCAKF_CHUNKS = 9;
