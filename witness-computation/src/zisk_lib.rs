@@ -89,7 +89,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         // Step 3: Initialize the secondary state machines
         let std = Std::new(wcm.get_pctx(), wcm.get_sctx());
-        register_std(&wcm, &std);
+        register_std(wcm, &std);
 
         let rom_sm = RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone());
         let binary_sm = BinarySM::new(std.clone());
