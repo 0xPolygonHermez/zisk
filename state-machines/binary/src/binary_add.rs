@@ -8,7 +8,7 @@ use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
-use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow};
+use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow, BinaryAddTraceSplit};
 
 const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;
 
@@ -39,15 +39,11 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     ///
     /// # Arguments
     /// * `operation` - The operation data to process.
-    /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
     ///
     /// # Returns
     /// A `BinaryAddTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice(&self, input: &[u64; 2]) -> (BinaryAddTraceRow<F>, [u64; 4]) {
-        // Create an empty trace
-        let mut row: BinaryAddTraceRow<F> = Default::default();
-
+    pub fn process_input(input: &[u64; 2], row: &mut BinaryAddTraceRow<F>) -> [u64; 4] {
         // Execute the opcode
         let mut a = input[0];
         let mut b = input[1];
@@ -80,26 +76,24 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         row.multiplicity = F::ONE;
 
         // Return
-        (row, range_checks)
+        range_checks
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
     ///
     /// # Arguments
-    /// * `operations` - A slice of operations to process.
+    /// * `trace_split` - A `BinaryAddTraceSplit` containing the binary add trace data.
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(
-        &self,
-        inputs: &[Vec<[u64; 2]>],
-        trace_buffer: Vec<F>,
-    ) -> AirInstance<F> {
-        let mut add_trace = BinaryAddTrace::new_from_vec(trace_buffer);
+    pub fn compute_witness(&self, trace_split: BinaryAddTraceSplit<F>) -> AirInstance<F> {
+        let padding_size = trace_split.leftover_size();
 
-        let num_rows = add_trace.num_rows();
+        let mut trace = BinaryAddTrace::<F>::from_split_struct(trace_split);
 
-        let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
+        let num_rows = trace.num_rows();
+
+        let total_inputs = num_rows - padding_size;
         assert!(total_inputs <= num_rows);
 
         tracing::info!(
@@ -110,38 +104,15 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         );
 
         // Split the add_e_trace.buffer into slices matching each inner vector’s length.
-        let flat_inputs: Vec<_> = inputs.iter().flatten().collect();
-        let trace_rows = add_trace.row_slice_mut();
-        let mut range_checks: Vec<[u64; 4]> = vec![[0u64; 4]; flat_inputs.len()];
-
-        // Process each slice in parallel, and use the corresponding inner input from `inputs`.
-        flat_inputs
-            .into_par_iter()
-            .zip(trace_rows.par_iter_mut())
-            .zip(range_checks.par_iter_mut())
-            .for_each(|((input, trace_row), range_check)| {
-                let (row, checks) = self.process_slice(input);
-                *trace_row = row;
-                *range_check = checks;
-            });
-
-        let mut multiplicities = vec![0u32; 0xFFFF + 1];
-        for range_check in range_checks {
-            multiplicities[range_check[0] as usize] += 1;
-            multiplicities[range_check[1] as usize] += 1;
-            multiplicities[range_check[2] as usize] += 1;
-            multiplicities[range_check[3] as usize] += 1;
-        }
-        multiplicities[0] += 4 * (num_rows - total_inputs) as u32;
-
-        self.std.range_checks(multiplicities, self.range_id);
+        self.std.range_check(0, 4 * (num_rows - total_inputs) as u64, self.range_id);
 
         // Note: We can choose any operation that trivially satisfies the constraints on padding
         // rows
-        add_trace.row_slice_mut()[total_inputs..num_rows]
+        let padding_row = BinaryAddTraceRow::<F> { ..Default::default() };
+        trace.row_slice_mut()[total_inputs..num_rows]
             .par_iter_mut()
-            .for_each(|slot| *slot = BinaryAddTraceRow::<F> { ..Default::default() });
+            .for_each(|slot| *slot = padding_row);
 
-        AirInstance::new_from_trace(FromTrace::new(&mut add_trace))
+        AirInstance::new_from_trace(FromTrace::new(&mut trace))
     }
 }

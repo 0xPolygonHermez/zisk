@@ -34,7 +34,7 @@ impl ArithRangeTableSM {
         })
     }
 
-    pub fn process_slice(&self, inputs: &ArithRangeTableInputs) {
+    pub fn process_inputs(&self, inputs: &ArithRangeTableInputs) {
         if self.calculated.load(Ordering::Relaxed) {
             return;
         }

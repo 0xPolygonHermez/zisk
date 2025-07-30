@@ -27,7 +27,7 @@ pub struct KeccakfInstance {
     keccakf_sm: Arc<KeccakfSM>,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
+    collect_info: PlanSkipper,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -55,7 +55,7 @@ impl KeccakfInstance {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let collect_info = *meta
-            .downcast::<HashMap<ChunkId, (u64, CollectSkipper)>>()
+            .downcast::<PlanSkipper>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { keccakf_sm, collect_info, ictx }

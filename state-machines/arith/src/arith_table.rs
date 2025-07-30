@@ -39,7 +39,7 @@ impl ArithTableSM {
     /// # Arguments
     /// * `inputs` - A reference to `ArithTableInputs`, containing rows and their corresponding
     ///   values.
-    pub fn process_slice(&self, inputs: &ArithTableInputs) {
+    pub fn process_inputs(&self, inputs: &ArithTableInputs) {
         if self.calculated.load(Ordering::Relaxed) {
             return;
         }

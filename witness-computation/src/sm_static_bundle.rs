@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use std::sync::Arc;
 
 use data_bus::{DataBus, DataBusTrait};
@@ -6,7 +7,7 @@ use fields::PrimeField64;
 use precomp_arith_eq::ArithEqManager;
 use precomp_keccakf::KeccakfManager;
 use precomp_sha256f::Sha256fManager;
-use proofman_common::ProofCtx;
+use proofman_common::{BufferPool, ProofCtx};
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
@@ -134,15 +135,22 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
         &self,
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
         chunks_to_execute: Vec<Vec<usize>>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> Vec<Option<DataBus<u64, Box<dyn BusDevice<u64>>>>> {
-        chunks_to_execute
+        for secn_instance in secn_instances.values() {
+            secn_instance.pre_collect(buffer_pool);
+        }
+
+        let chunks_to_execute_with_some: Vec<usize> = chunks_to_execute
             .iter()
             .enumerate()
-            .map(|(chunk_id, global_idxs)| {
-                if global_idxs.is_empty() {
-                    return None;
-                }
+            .filter_map(|(idx, global_idxs)| if !global_idxs.is_empty() { Some(idx) } else { None })
+            .collect();
 
+        let results: Vec<_> = chunks_to_execute_with_some
+            .par_iter()
+            .map(|&chunk_id| {
+                let global_idxs = &chunks_to_execute[chunk_id];
                 let mut data_bus = DataBus::new();
 
                 let mut used = false;
@@ -178,11 +186,21 @@ impl<F: PrimeField64> SMBundle<F> for StaticSMBundle<F> {
                     add_generator!(sha256f_sm, Sha256fManager<F>);
                     add_generator!(arith_eq_sm, ArithEqManager<F>);
 
-                    Some(data_bus)
+                    (chunk_id, Some(data_bus))
                 } else {
-                    None
+                    (chunk_id, None)
                 }
             })
-            .collect()
+            .collect();
+
+        type DataBusResult = Option<DataBus<u64, Box<dyn BusDevice<u64>>>>;
+        let mut final_result: Vec<DataBusResult> =
+            (0..chunks_to_execute.len()).map(|_| None).collect();
+
+        for (chunk_id, data_bus) in results {
+            final_result[chunk_id] = data_bus;
+        }
+
+        final_result
     }
 }

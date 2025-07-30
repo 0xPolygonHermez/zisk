@@ -10,7 +10,7 @@ use proofman_common::{AirInstance, FromTrace};
 use rayon::prelude::*;
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::{BinaryTrace, BinaryTraceRow};
+use zisk_pil::{BinaryTrace, BinaryTraceRow, BinaryTraceSplit};
 
 const BYTES: usize = 8;
 const HALF_BYTES: usize = BYTES / 2;
@@ -134,13 +134,11 @@ impl BinaryBasicSM {
     /// # Returns
     /// A `BinaryTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice<F: PrimeField64>(
+    pub fn process_input<F: PrimeField64>(
         input: &BinaryInput,
         binary_table_sm: &BinaryBasicTableSM,
-    ) -> BinaryTraceRow<F> {
-        // Create an empty trace
-        let mut row: BinaryTraceRow<F> = Default::default();
-
+        row: &mut BinaryTraceRow<F>,
+    ) {
         // Execute the opcode
         let opcode = input.op;
         let a = input.a;
@@ -829,7 +827,7 @@ impl BinaryBasicSM {
                     binary_table_sm.update_multiplicity(row, 1);
                 }
             }
-            _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={opcode}"),
+            _ => panic!("BinaryBasicSM::process_input() found invalid opcode={opcode}"),
         }
 
         // Set cout
@@ -867,28 +865,25 @@ impl BinaryBasicSM {
 
         // TODO: Find duplicates of this trace and reuse them by increasing their multiplicity.
         row.multiplicity = F::ONE;
-
-        // Return
-        row
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
     ///
     /// # Arguments
-    /// * `operations` - A slice of operations to process.
+    /// * `trace_split` - A `BinaryTraceSplit` containing the binary trace data.
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<F: PrimeField64>(
         &self,
-        inputs: &[Vec<BinaryInput>],
-        trace_buffer: Vec<F>,
+        trace_split: BinaryTraceSplit<F>,
     ) -> AirInstance<F> {
-        let mut binary_trace = BinaryTrace::new_from_vec(trace_buffer);
+        let padding_size = trace_split.leftover_size();
 
-        let num_rows = binary_trace.num_rows();
+        let mut trace = BinaryTrace::<F>::from_split_struct(trace_split);
+        let num_rows = trace.num_rows();
 
-        let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
+        let total_inputs = num_rows - padding_size;
         assert!(total_inputs <= num_rows);
 
         tracing::info!(
@@ -898,32 +893,14 @@ impl BinaryBasicSM {
             total_inputs as f64 / num_rows as f64 * 100.0
         );
 
-        // Split the binary_e_trace.buffer into slices matching each inner vector’s length.
-        let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
-        let mut slices = Vec::with_capacity(inputs.len());
-        let mut rest = binary_trace.row_slice_mut();
-        for size in sizes {
-            let (head, tail) = rest.split_at_mut(size);
-            slices.push(head);
-            rest = tail;
-        }
-
-        // Process each slice in parallel, and use the corresponding inner input from `inputs`.
-        slices.into_par_iter().enumerate().for_each(|(i, slice)| {
-            slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
-                *trace_row = Self::process_slice(&inputs[i][j], &self.binary_basic_table_sm);
-            });
-        });
-
-        // Note: We can choose any operation that trivially satisfies the constraints on padding
-        // rows
+        // Fill padding rows in parallel
         let padding_row = BinaryTraceRow::<F> {
             m_op: F::from_u8(AND_OP),
             m_op_or_ext: F::from_u8(AND_OP),
             ..Default::default()
         };
 
-        binary_trace.row_slice_mut()[total_inputs..num_rows]
+        trace.row_slice_mut()[total_inputs..num_rows]
             .par_iter_mut()
             .for_each(|slot| *slot = padding_row);
 
@@ -941,6 +918,6 @@ impl BinaryBasicSM {
             self.binary_basic_table_sm.update_multiplicity(row, multiplicity);
         }
 
-        AirInstance::new_from_trace(FromTrace::new(&mut binary_trace))
+        AirInstance::new_from_trace(FromTrace::new(&mut trace))
     }
 }

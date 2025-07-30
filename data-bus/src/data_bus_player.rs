@@ -14,9 +14,24 @@ impl DataBusPlayer {
     /// # Arguments
     /// * `data_bus` - The `DataBus` to which the data is sent.
     /// * `data` - A vector of `(BusId, Payload)` tuples.
-    pub fn play<D, BD: BusDevice<D>>(data_bus: &mut DataBus<D, BD>, data: Vec<(BusId, Vec<D>)>) {
-        for (bus_id, payload) in data {
-            <DataBus<D, BD> as DataBusTrait<D, BD>>::write_to_bus(data_bus, bus_id, &payload);
+    pub fn play<D, BD: BusDevice<D>>(data_bus: &mut DataBus<D, BD>, data: &[(BusId, Vec<D>)]) {
+        Self::play_repeat(data_bus, data, 1);
+    }
+
+    /// Plays data on the `DataBus` from a provided data vector.
+    ///
+    /// # Arguments
+    /// * `data_bus` - The `DataBus` to which the data is sent.
+    /// * `data` - A vector of `(BusId, Payload)` tuples.
+    pub fn play_repeat<D, BD: BusDevice<D>>(
+        data_bus: &mut DataBus<D, BD>,
+        data: &[(BusId, Vec<D>)],
+        times: usize,
+    ) {
+        for _ in 0..times {
+            for (bus_id, payload) in data {
+                <DataBus<D, BD> as DataBusTrait<D, BD>>::write_to_bus(data_bus, *bus_id, payload);
+            }
         }
     }
 
@@ -36,7 +51,7 @@ impl DataBusPlayer {
         D::Err: std::fmt::Display,
     {
         let data = DataBusFileReader::read_from_file::<D>(file_path)?;
-        Self::play(data_bus, data);
+        Self::play(data_bus, &data);
         Ok(())
     }
 }

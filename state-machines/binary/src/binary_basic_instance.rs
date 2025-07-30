@@ -4,24 +4,26 @@
 //! It manages collected inputs and interacts with the `BinaryBasicSM` to compute witnesses for
 //! execution plans.
 
-use crate::{BinaryBasicCollector, BinaryBasicSM};
+use crate::{binary_basic_table::BinaryBasicTableSM, BinaryBasicCollector, BinaryBasicSM};
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
-use std::{collections::HashMap, sync::Arc};
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
+use std::sync::{Arc, Mutex};
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
-    PayloadType,
+    BusDevice, CheckPoint, ChunkId, ChunkPlansMap, Instance, InstanceCtx, InstanceType, PayloadType,
 };
 
-use zisk_pil::BinaryTrace;
+use zisk_pil::{BinaryTrace, BinaryTraceSplit};
 
 /// The `BinaryBasicInstance` struct represents an instance for binary-related witness computations.
 ///
 /// It encapsulates the `BinaryBasicSM` and its associated context, and it processes input data
 /// to compute witnesses for binary operations.
-pub struct BinaryBasicInstance {
+pub struct BinaryBasicInstance<F: PrimeField64> {
     /// Binary Basic state machine.
     binary_basic_sm: Arc<BinaryBasicSM>,
+
+    /// Binary Basic Table State Machine.
+    binary_basic_table_sm: Arc<BinaryBasicTableSM>,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -30,20 +32,28 @@ pub struct BinaryBasicInstance {
     with_adds: bool,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, CollectSkipper)>,
+    collect_info: ChunkPlansMap,
+
+    /// Split binary trace to share split data between collectors.
+    pub trace_split: Mutex<Option<BinaryTraceSplit<F>>>,
 }
 
-impl BinaryBasicInstance {
+impl<F: PrimeField64> BinaryBasicInstance<F> {
     /// Creates a new `BinaryBasicInstance`.
     ///
     /// # Arguments
-    /// * `binary_basic_sm` - An `Arc`-wrapped reference to the Binary Basic State Machine.
+    /// * `binary_basic_sm` - Binary Basic State Machine.
+    /// * `binary_basic_table_sm` - Binary Basic Table State Machine.
     /// * `ictx` - The `InstanceCtx` associated with this instance, containing the execution plan.
     ///
     /// # Returns
     /// A new `BinaryBasicInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(binary_basic_sm: Arc<BinaryBasicSM>, mut ictx: InstanceCtx) -> Self {
+    pub fn new(
+        binary_basic_sm: Arc<BinaryBasicSM>,
+        binary_basic_table_sm: Arc<BinaryBasicTableSM>,
+        mut ictx: InstanceCtx,
+    ) -> Self {
         assert_eq!(
             ictx.plan.air_id,
             BinaryTrace::<usize>::AIR_ID,
@@ -54,14 +64,21 @@ impl BinaryBasicInstance {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let (with_adds, collect_info) = *meta
-            .downcast::<(bool, HashMap<ChunkId, (u64, CollectSkipper)>)>()
+            .downcast::<(bool, ChunkPlansMap)>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
-        Self { binary_basic_sm, ictx, with_adds, collect_info }
+        Self {
+            binary_basic_sm,
+            binary_basic_table_sm,
+            ictx,
+            with_adds,
+            collect_info,
+            trace_split: Mutex::new(None),
+        }
     }
 }
 
-impl<F: PrimeField64> Instance<F> for BinaryBasicInstance {
+impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
     /// Computes the witness for the binary execution plan.
     ///
     /// This method leverages the `BinaryBasicSM` to generate an `AirInstance` using the collected
@@ -70,7 +87,8 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance {
     /// # Arguments
     /// * `_pctx` - The proof context, unused in this implementation.
     /// * `_sctx` - The setup context, unused in this implementation.
-    /// * `collectors` - A vector of input collectors to process and collect data for witness
+    /// * `_collectors` - A vector of input collectors to process and collect data for witness
+    /// * `_buffer_pool` - A buffer pool for managing memory buffers during computation.
     ///
     /// # Returns
     /// An `Option` containing the computed `AirInstance`.
@@ -78,17 +96,11 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance {
         &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        _buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
-        let inputs: Vec<_> = collectors
-            .into_iter()
-            .map(|(_, collector)| {
-                collector.as_any().downcast::<BinaryBasicCollector>().unwrap().inputs
-            })
-            .collect();
-
-        Some(self.binary_basic_sm.compute_witness(&inputs, trace_buffer))
+        let split_struct = self.trace_split.lock().unwrap().take().unwrap();
+        Some(self.binary_basic_sm.compute_witness(split_struct))
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -107,6 +119,24 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance {
         InstanceType::Instance
     }
 
+    fn pre_collect(&self, buffer_pool: &dyn proofman_common::BufferPool<F>) {
+        let buffer = buffer_pool.take_buffer();
+        let trace = BinaryTrace::new_from_vec(buffer);
+
+        let mut sizes = vec![0; self.collect_info.keys().len()];
+
+        let mut keys: Vec<_> = self.collect_info.keys().collect();
+        keys.sort();
+
+        // Step 2: Iterate in sorted key order
+        for (idx, key) in keys.iter().enumerate() {
+            let chunk_plan = self.collect_info.get(key).unwrap();
+            sizes[idx] = chunk_plan.num_ops as usize;
+        }
+
+        *self.trace_split.lock().unwrap() = Some(trace.to_split_struct(&sizes));
+    }
+
     /// Builds an input collector for the instance.
     ///
     /// # Arguments
@@ -115,7 +145,20 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, collect_skipper) = self.collect_info[&chunk_id];
-        Some(Box::new(BinaryBasicCollector::new(num_ops as usize, collect_skipper, self.with_adds)))
+        let chunk_plan = &self.collect_info[&chunk_id];
+
+        let rows = {
+            let mut trace_split_guard = self.trace_split.lock().unwrap();
+            let trace_split = trace_split_guard.as_mut().unwrap();
+            std::mem::take(&mut trace_split.chunks[chunk_plan.idx as usize])
+        };
+
+        Some(Box::new(BinaryBasicCollector::new(
+            self.binary_basic_table_sm.clone(),
+            chunk_plan.num_ops as usize,
+            chunk_plan.skipper,
+            self.with_adds,
+            rows,
+        )))
     }
 }

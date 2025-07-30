@@ -64,6 +64,7 @@ impl BinaryBasicTableSM {
     ///
     /// # Arguments
     /// * `input` - A slice of `u64` values representing the input data.
+    #[inline(always)]
     pub fn update_multiplicity(&self, row: u64, value: u64) {
         if self.calculated.load(Ordering::Relaxed) {
             return;

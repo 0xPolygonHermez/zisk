@@ -6,14 +6,14 @@
 
 use crate::{Sha256fInput, Sha256fSM};
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
 use std::collections::VecDeque;
-use std::{any::Any, collections::HashMap, sync::Arc};
-use zisk_common::ChunkId;
+use std::{any::Any, sync::Arc};
 use zisk_common::{
     BusDevice, BusId, CheckPoint, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
     InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
+use zisk_common::{ChunkId, ChunkPlansMap};
 use zisk_core::ZiskOperationType;
 use zisk_pil::Sha256fTrace;
 
@@ -61,8 +61,9 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        trace_buffer: Vec<F>,
+        buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
+        let trace_buffer = buffer_pool.take_buffer();
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<Sha256fCollector>().unwrap().inputs)
@@ -96,9 +97,9 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
         );
 
         let meta = self.ictx.plan.meta.as_ref().unwrap();
-        let collect_info = meta.downcast_ref::<HashMap<ChunkId, (u64, CollectSkipper)>>().unwrap();
-        let (num_ops, collect_skipper) = collect_info[&chunk_id];
-        Some(Box::new(Sha256fCollector::new(num_ops, collect_skipper)))
+        let collect_info = meta.downcast_ref::<ChunkPlansMap>().unwrap();
+        let chunk_plan = &collect_info[&chunk_id];
+        Some(Box::new(Sha256fCollector::new(chunk_plan.num_ops, chunk_plan.skipper)))
     }
 }
 

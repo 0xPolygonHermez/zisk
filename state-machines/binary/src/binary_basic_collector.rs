@@ -2,41 +2,61 @@
 //!
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, mem::ManuallyDrop, sync::Arc};
 
-use crate::BinaryInput;
+use crate::{binary_basic::BinaryBasicSM, binary_basic_table::BinaryBasicTableSM, BinaryInput};
+use fields::PrimeField64;
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
+use zisk_pil::BinaryTraceRow;
 
 /// The `BinaryBasicCollector` struct represents an input collector for binary-related operations.
-pub struct BinaryBasicCollector {
-    /// Collected inputs for witness computation.
-    pub inputs: Vec<BinaryInput>,
+pub struct BinaryBasicCollector<F: PrimeField64> {
+    /// Reference to the Binary Basic Table State Machine.
+    binary_basic_table_sm: Arc<BinaryBasicTableSM>,
 
+    /// The number of operations to collect.
     pub num_operations: usize,
+
+    /// Helper to skip instructions based on the plan's configuration.
     pub collect_skipper: CollectSkipper,
 
     /// Flag to indicate that this instance comute add operations
     with_adds: bool,
+
+    /// Current index in the rows vector.
+    idx: usize,
+
+    /// Binary trace slice rows.
+    rows: ManuallyDrop<Vec<BinaryTraceRow<F>>>,
 }
 
-impl BinaryBasicCollector {
+impl<F: PrimeField64> BinaryBasicCollector<F> {
     /// Creates a new `BinaryBasicCollector`.
     ///
     /// # Arguments
+    /// * `binary_basic_table_sm` - Binary Basic Table State Machine.
     /// * `num_operations` - The number of operations to collect.
     /// * `collect_skipper` - Helper to skip instructions based on the plan's configuration.
+    /// * `with_adds` - Flag to indicate that this instance computes add operations.
+    /// * `rows` - The binary trace slice rows.
     ///
     /// # Returns
     /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
-    pub fn new(num_operations: usize, collect_skipper: CollectSkipper, with_adds: bool) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper, with_adds }
+    pub fn new(
+        binary_basic_table_sm: Arc<BinaryBasicTableSM>,
+        num_operations: usize,
+        collect_skipper: CollectSkipper,
+        with_adds: bool,
+        rows: ManuallyDrop<Vec<BinaryTraceRow<F>>>,
+    ) -> Self {
+        Self { binary_basic_table_sm, num_operations, collect_skipper, with_adds, idx: 0, rows }
     }
 }
 
-impl BusDevice<u64> for BinaryBasicCollector {
+impl<F: PrimeField64> BusDevice<u64> for BinaryBasicCollector<F> {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -55,18 +75,15 @@ impl BusDevice<u64> for BinaryBasicCollector {
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
-        if self.inputs.len() >= self.num_operations {
+        if self.idx >= self.num_operations {
             return false;
         }
 
-        let data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-
-        let op_type = OperationBusData::get_op_type(&data);
-
-        if op_type as u32 != ZiskOperationType::Binary as u32 {
+        if data[OP_TYPE] as u32 != ZiskOperationType::Binary as u32 {
             return true;
         }
+
+        let data: ExtOperationData<u64> = data.try_into().expect("Failed to convert data");
 
         if !self.with_adds && OperationBusData::get_op(&data) == ZiskOp::Add.code() {
             return true;
@@ -76,9 +93,16 @@ impl BusDevice<u64> for BinaryBasicCollector {
             return true;
         }
 
-        self.inputs.push(BinaryInput::from(&data));
+        let binary_input = BinaryInput::from(&data);
 
-        self.inputs.len() < self.num_operations
+        BinaryBasicSM::process_input(
+            &binary_input,
+            &self.binary_basic_table_sm,
+            &mut self.rows[self.idx],
+        );
+        self.idx += 1;
+
+        self.idx < self.num_operations
     }
 
     /// Returns the bus IDs associated with this instance.

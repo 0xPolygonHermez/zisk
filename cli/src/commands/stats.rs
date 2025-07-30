@@ -266,6 +266,7 @@ impl ZiskStats {
             asm_services.start_asm_services(self.asm.as_ref().unwrap(), asm_runner_options)?;
         }
 
+        let start;
         match self.field {
             Field::Goldilocks => {
                 let library = unsafe {
@@ -288,6 +289,7 @@ impl ZiskStats {
 
                 proofman.register_witness(&mut *witness_lib, library);
 
+                start = Instant::now();
                 proofman
                     .compute_witness_from_lib(
                         self.input.clone(),
@@ -306,7 +308,9 @@ impl ZiskStats {
             }
         };
 
-        let (_, stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) = *witness_lib
+        let elapsed = start.elapsed();
+
+        let (result, stats): (ZiskExecutionResult, Arc<Mutex<ExecutorStats>>) = *witness_lib
             .get_execution_result()
             .ok_or_else(|| anyhow::anyhow!("No execution result found"))?
             .downcast::<(ZiskExecutionResult, Arc<Mutex<ExecutorStats>>)>()
@@ -320,6 +324,12 @@ impl ZiskStats {
             "{} {}",
             format!("--- STATS SUMMARY RANK {}/{}", world_rank, world_ranks),
             "-".repeat(55)
+        );
+        tracing::info!("    ► Statistics");
+        tracing::info!(
+            "      time: {} seconds, steps: {}",
+            elapsed.as_secs_f32(),
+            result.executed_steps
         );
 
         stats.lock().unwrap().print_stats();
