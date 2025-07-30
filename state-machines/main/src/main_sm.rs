@@ -65,9 +65,6 @@ impl MainSM {
         std: Arc<Std<F>>,
         trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
-        // Create the main trace buffer
-        let mut main_trace = MainTrace::new_from_vec(trace_buffer);
-
         let segment_id = main_instance.ictx.plan.segment_id.unwrap();
 
         // Determine the number of minimal traces per segment
@@ -82,7 +79,6 @@ impl MainSM {
         // Calculate total filled rows
         let filled_rows: usize =
             segment_min_traces.iter().map(|min_trace| min_trace.steps as usize).sum();
-
         tracing::info!(
             "··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
             segment_id,
@@ -93,7 +89,6 @@ impl MainSM {
 
         // Calculate final_step of instance, last mem slot of last row. The initial_step is 0 for the
         // first segment, for the rest is the final_step of the previous segment
-
         let last_row_previous_segment =
             if segment_id == 0 { 0 } else { (segment_id.as_usize() * num_rows) as u64 - 1 };
 
@@ -113,15 +108,26 @@ impl MainSM {
         // first mem_step register is used in the chunk and information about the last step
         // where the register is used. The register's last steps of one chunk are the initial
         // steps of the next chunk. In the end, we need to update with the correct values.
+        let sizes = segment_min_traces
+            .iter()
+            .map(|segment_min_traces| segment_min_traces.steps as usize)
+            .collect::<Vec<_>>();
 
-        let fill_trace_outputs = main_trace
-            .par_iter_mut_chunks(num_within)
+        // Create the main trace buffer
+        let main_trace = MainTrace::new_from_vec(trace_buffer);
+        let mut main_trace_split = main_trace.to_split_struct(&sizes);
+
+        let fill_trace_outputs = main_trace_split
+            .chunks
+            .par_iter_mut()
             .enumerate()
-            .take(segment_min_traces.len())
             .map(|(chunk_id, chunk)| {
                 let mut step_range_check = vec![0; max_range as usize];
+
                 let init_chunk_step = if chunk_id == 0 { initial_step } else { 0 };
+
                 let mut reg_trace = EmuRegTrace::from_init_step(init_chunk_step, chunk_id == 0);
+
                 let (pc, regs) = Self::fill_partial_trace(
                     zisk_rom,
                     chunk,
@@ -131,16 +137,21 @@ impl MainSM {
                     &mut step_range_check,
                     chunk_id == (end_idx - start_idx - 1),
                 );
+
                 (pc, regs, reg_trace, step_range_check)
             })
             .collect::<Vec<(u64, Vec<u64>, EmuRegTrace, Vec<u32>)>>();
+
+        // Reconstruct the main trace from the split structure
+        let mut main_trace = MainTrace::<F>::from_split_struct(main_trace_split);
+
         let last_result = fill_trace_outputs.last().unwrap();
         let next_pc = last_result.0;
 
-        let mut step_range_check: Vec<u32> = (0..max_range as usize)
-            .into_par_iter()
-            .map(|i| fill_trace_outputs.iter().map(|(_, _, _, local)| local[i]).sum())
-            .collect();
+        let mut step_range_check: Vec<u32> = vec![0; max_range as usize];
+        step_range_check.par_iter_mut().enumerate().for_each(|(i, out)| {
+            *out = fill_trace_outputs.iter().map(|(_, _, _, local)| local[i]).sum();
+        });
 
         // In the range checks are values too large to store in steps_range_check, but there
         // are only a few values that exceed this limit, for this reason, are stored in a vector
@@ -208,7 +219,7 @@ impl MainSM {
     /// The next program counter value after processing the minimal trace.
     fn fill_partial_trace<F: PrimeField64>(
         zisk_rom: &ZiskRom,
-        main_trace: &mut [MainTraceRow<F>],
+        rows: &mut [MainTraceRow<F>],
         min_trace: &EmuTrace,
         chunk_size: u64,
         reg_trace: &mut EmuRegTrace,
@@ -217,14 +228,16 @@ impl MainSM {
     ) -> (u64, Vec<u64>) {
         // Initialize the emulator with the start state of the emu trace
         let mut emu = Emu::from_emu_trace_start(zisk_rom, chunk_size, &min_trace.start_state);
+
         let mut mem_reads_index: usize = 0;
 
-        for trace in main_trace {
-            *trace = emu.step_slice_full_trace(
+        for row in rows.iter_mut() {
+            emu.step_slice_full_trace(
                 &min_trace.mem_reads,
                 &mut mem_reads_index,
                 reg_trace,
                 Some(step_range_check),
+                row,
             );
         }
 

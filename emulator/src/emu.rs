@@ -2183,7 +2183,8 @@ impl<'a> Emu<'a> {
         mem_reads_index: &mut usize,
         reg_trace: &mut EmuRegTrace,
         step_range_check: Option<&mut [u32]>,
-    ) -> EmuFullTraceStep<F> {
+        row: &mut EmuFullTraceStep<F>,
+    ) {
         if self.ctx.inst_ctx.pc == 0 {
             println!("PC=0 CRASH (step:{})", self.ctx.inst_ctx.step);
         }
@@ -2219,12 +2220,9 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.end = instruction.end;
 
         // Build and store the full trace
-        let full_trace_step =
-            Self::build_full_trace_step(instruction, &self.ctx.inst_ctx, reg_trace);
+        Self::build_full_trace_step(instruction, &self.ctx.inst_ctx, reg_trace, row);
 
         self.ctx.inst_ctx.step += 1;
-
-        full_trace_step
     }
 
     pub fn intermediate_value<F: PrimeField64>(value: u64) -> [F; 2] {
@@ -2236,7 +2234,8 @@ impl<'a> Emu<'a> {
         inst: &ZiskInst,
         inst_ctx: &InstContext,
         reg_trace: &EmuRegTrace,
-    ) -> EmuFullTraceStep<F> {
+        row: &mut EmuFullTraceStep<F>,
+    ) {
         // Calculate intermediate values
         let a = [inst_ctx.a & 0xFFFFFFFF, (inst_ctx.a >> 32) & 0xFFFFFFFF];
         let b = [inst_ctx.b & 0xFFFFFFFF, (inst_ctx.b >> 32) & 0xFFFFFFFF];
@@ -2279,7 +2278,7 @@ impl<'a> Emu<'a> {
             F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64))
         };
 
-        EmuFullTraceStep {
+        *row = EmuFullTraceStep {
             a: [F::from_u64(a[0]), F::from_u64(a[1])],
             b: [F::from_u64(b[0]), F::from_u64(b[1])],
             c: [F::from_u64(c[0]), F::from_u64(c[1])],
@@ -2343,7 +2342,7 @@ impl<'a> Emu<'a> {
                 F::from_u64(store_prev_value[0]),
                 F::from_u64(store_prev_value[1]),
             ],
-        }
+        };
     }
 
     /// Returns if the emulation ended

@@ -28,11 +28,15 @@ impl EmuRegTrace {
                 REGS_IN_MAIN],
         }
     }
+
+    #[inline(always)]
     pub fn clear_reg_step_ranges(&mut self) {
         self.reg_step_ranges = [0; 3];
         self.reg_prev_steps = [0; 3];
         self.store_reg_prev_value = 0;
     }
+
+    #[inline(always)]
     pub fn update_step_range_check(&self, step_range_check: &mut [u32]) {
         for range in self.reg_step_ranges.iter() {
             // 0 isn't a valid range value, 0 is used to mark as no range
