@@ -1,22 +1,40 @@
+use fields::PrimeField64;
 /// The `ArithInstanceCollector` struct represents an input collector for arithmetic state machines.
-use std::collections::VecDeque;
-use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationData, OPERATION_BUS_ID, OP_TYPE,
-};
+use std::{collections::VecDeque, mem::ManuallyDrop, sync::Arc};
+use zisk_common::{BusDevice, BusId, CollectSkipper, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::ZiskOperationType;
+use zisk_pil::ArithTraceRow;
 
-pub struct ArithCollector {
-    /// Collected inputs for witness computation.
-    pub inputs: Vec<OperationData<u64>>,
+use crate::{
+    arith_full::ArithFullSM, arith_operation::ArithOperation, arith_range_table::ArithRangeTableSM,
+    arith_range_table_helpers::ArithRangeTableInputs, arith_table::ArithTableSM,
+    arith_table_helpers::ArithTableInputs,
+};
+
+pub struct ArithCollector<F: PrimeField64> {
+    arith_table_sm: Arc<ArithTableSM>,
+    arith_range_table_sm: Arc<ArithRangeTableSM>,
+    arith_table_inputs: ArithTableInputs,
+    arith_range_table_inputs: ArithRangeTableInputs,
 
     /// The number of operations to collect.
-    num_operations: u64,
+    num_operations: usize,
 
     /// Helper to skip instructions based on the plan's configuration.
     collect_skipper: CollectSkipper,
+
+    /// Current index in the rows vector.
+    idx: usize,
+
+    /// Arithmetic operation instance used for processing inputs. Declared here to avoid
+    /// reallocation on each call.
+    aop: ArithOperation,
+
+    /// Binary trace slice rows.
+    rows: ManuallyDrop<Vec<ArithTraceRow<F>>>,
 }
 
-impl ArithCollector {
+impl<F: PrimeField64> ArithCollector<F> {
     /// Creates a new `ArithInstanceCollector`.
     ///
     /// # Arguments
@@ -26,12 +44,32 @@ impl ArithCollector {
     ///
     /// # Returns
     /// A new `ArithInstanceCollector` instance initialized with the provided parameters.
-    pub fn new(num_operations: u64, collect_skipper: CollectSkipper) -> Self {
-        Self { inputs: Vec::new(), num_operations, collect_skipper }
+    pub fn new(
+        arith_table_sm: Arc<ArithTableSM>,
+        arith_range_table_sm: Arc<ArithRangeTableSM>,
+        num_operations: usize,
+        collect_skipper: CollectSkipper,
+        rows: ManuallyDrop<Vec<ArithTraceRow<F>>>,
+    ) -> Self {
+        let arith_table_inputs = ArithTableInputs::new();
+        let arith_range_table_inputs = ArithRangeTableInputs::new();
+        let aop = ArithOperation::new();
+
+        Self {
+            arith_table_sm,
+            arith_range_table_sm,
+            arith_table_inputs,
+            arith_range_table_inputs,
+            num_operations,
+            collect_skipper,
+            idx: 0,
+            aop,
+            rows,
+        }
     }
 }
 
-impl BusDevice<u64> for ArithCollector {
+impl<F: PrimeField64> BusDevice<u64> for ArithCollector<F> {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
@@ -50,7 +88,7 @@ impl BusDevice<u64> for ArithCollector {
     ) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
-        if self.inputs.len() == self.num_operations as usize {
+        if self.idx >= self.num_operations {
             return false;
         }
 
@@ -62,13 +100,23 @@ impl BusDevice<u64> for ArithCollector {
             return true;
         }
 
-        let data: ExtOperationData<u64> = data.try_into().expect("Failed to convert data");
+        let data: [u64; 4] = data.try_into().expect("Slice must have length 4");
 
-        if let ExtOperationData::OperationData(data) = data {
-            self.inputs.push(data);
+        ArithFullSM::process_input(
+            &mut self.arith_range_table_inputs,
+            &mut self.arith_table_inputs,
+            &mut self.aop,
+            &data,
+            &mut self.rows[self.idx],
+        );
+        self.idx += 1;
+
+        if self.idx == self.num_operations {
+            self.arith_table_sm.process_inputs(&self.arith_table_inputs);
+            self.arith_range_table_sm.process_inputs(&self.arith_range_table_inputs);
         }
 
-        self.inputs.len() < self.num_operations as usize
+        self.idx < self.num_operations
     }
 
     /// Returns the bus IDs associated with this instance.

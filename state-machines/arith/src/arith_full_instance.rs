@@ -7,18 +7,18 @@
 use crate::{arith_full_collector::ArithCollector, ArithFullSM};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, BufferPool, ProofCtx, SetupCtx};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, ChunkPlansMap, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::ArithTrace;
+use zisk_pil::{ArithTrace, ArithTraceSplit};
 
 /// The `ArithFullInstance` struct represents an instance for arithmetic-related witness
 /// computations.
 ///
 /// It encapsulates the `ArithFullSM` and its associated context, and it processes input data
 /// to compute the witnesses for the arithmetic operations.
-pub struct ArithFullInstance {
+pub struct ArithFullInstance<F: PrimeField64> {
     /// Reference to the Arithmetic Full State Machine.
     arith_full_sm: Arc<ArithFullSM>,
 
@@ -27,9 +27,12 @@ pub struct ArithFullInstance {
 
     /// The instance context.
     ictx: InstanceCtx,
+
+    /// Split arith trace to share split data between collectors.
+    pub trace_split: Mutex<Option<ArithTraceSplit<F>>>,
 }
 
-impl ArithFullInstance {
+impl<F: PrimeField64> ArithFullInstance<F> {
     /// Creates a new `ArithFullInstance`.
     ///
     /// # Arguments
@@ -52,11 +55,11 @@ impl ArithFullInstance {
             .downcast::<ChunkPlansMap>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
-        Self { arith_full_sm, collect_info, ictx }
+        Self { arith_full_sm, collect_info, ictx, trace_split: Mutex::new(None) }
     }
 }
 
-impl<F: PrimeField64> Instance<F> for ArithFullInstance {
+impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
     /// Computes the witness for the arithmetic execution plan.
     ///
     /// This method leverages the `ArithFullSM` to generate an `AirInstance` using the collected
@@ -73,15 +76,11 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance {
         &self,
         _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
-        collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
-        buffer_pool: &dyn BufferPool<F>,
+        _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
+        _buffer_pool: &dyn BufferPool<F>,
     ) -> Option<AirInstance<F>> {
-        let inputs: Vec<_> = collectors
-            .into_iter()
-            .map(|(_, collector)| collector.as_any().downcast::<ArithCollector>().unwrap().inputs)
-            .collect();
-
-        Some(self.arith_full_sm.compute_witness(&inputs, buffer_pool.take_buffer()))
+        let split_struct = self.trace_split.lock().unwrap().take().unwrap();
+        Some(self.arith_full_sm.compute_witness(split_struct))
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -100,6 +99,24 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance {
         InstanceType::Instance
     }
 
+    fn pre_collect(&self, buffer_pool: &dyn proofman_common::BufferPool<F>) {
+        let buffer = buffer_pool.take_buffer();
+        let trace = ArithTrace::new_from_vec(buffer);
+
+        let mut sizes = vec![0; self.collect_info.keys().len()];
+
+        let mut keys: Vec<_> = self.collect_info.keys().collect();
+        keys.sort();
+
+        // Step 2: Iterate in sorted key order
+        for (idx, key) in keys.iter().enumerate() {
+            let chunk_plan = self.collect_info.get(key).unwrap();
+            sizes[idx] = chunk_plan.num_ops as usize;
+        }
+
+        *self.trace_split.lock().unwrap() = Some(trace.to_split_struct(&sizes));
+    }
+
     /// Builds an input collector for the instance.
     ///
     /// # Arguments
@@ -109,6 +126,19 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance {
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         let chunk_plan = &self.collect_info[&chunk_id];
-        Some(Box::new(ArithCollector::new(chunk_plan.num_ops, chunk_plan.skipper)))
+
+        let rows = {
+            let mut trace_split_guard = self.trace_split.lock().unwrap();
+            let trace_split = trace_split_guard.as_mut().unwrap();
+            std::mem::take(&mut trace_split.chunks[chunk_plan.idx as usize])
+        };
+
+        Some(Box::new(ArithCollector::new(
+            self.arith_full_sm.arith_table_sm.clone(),
+            self.arith_full_sm.arith_range_table_sm.clone(),
+            chunk_plan.num_ops as usize,
+            chunk_plan.skipper,
+            rows,
+        )))
     }
 }
