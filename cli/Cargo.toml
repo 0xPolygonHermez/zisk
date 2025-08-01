@@ -19,7 +19,14 @@ vergen = { version = "8", default-features = false, features = [
 ] }
 
 [dependencies]
-zisk-common = { path = "../common" }
+zisk-common = { workspace = true }
+executor = { workspace = true }
+rom-setup = { workspace = true }
+zisk-core = { workspace = true }
+zisk-pil = { workspace = true }
+asm-runner = { workspace = true }
+server = { workspace = true }
+
 colored = { workspace = true }
 fields = { workspace = true }
 proofman = { workspace = true }
@@ -31,14 +38,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 libloading = { workspace = true }
 
-executor = { path = "../executor" }
-rom-setup = { path = "../rom-setup" }
-zisk-core = { path = "../core" }
-zisk-pil = { path = "../pil" }
-asm-runner = { path = "../emulator-asm/asm-runner" }
-server = { path = "../server" }
 bytemuck = "1.23.1"
-
 clap = { version = "4.5.7", features = ["derive", "env"] }
 dirs = "6"
 rand = "0.9"

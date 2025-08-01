@@ -11,20 +11,20 @@ categories = { workspace = true }
 crate-type = ["dylib"]
 
 [dependencies]
-executor = { path = "../executor" }
-sm-arith = { path = "../state-machines/arith" }
-sm-binary = { path = "../state-machines/binary" }
-sm-main = { path = "../state-machines/main" }
-sm-mem = { path = "../state-machines/mem" }
-sm-rom = { path = "../state-machines/rom" }
-data-bus = { path = "../data-bus" }
-precomp-keccakf = { path = "../precompiles/keccakf" }
-precomp-sha256f = { path = "../precompiles/sha256f" }
-precomp-arith-eq = { path = "../precompiles/arith_eq" }
-zisk-pil = { path = "../pil" }
-ziskemu = { path = "../emulator" }
-zisk-core = { path = "../core" }
-zisk-common = { path = "../common" }
+executor = { workspace = true }
+sm-arith = { workspace = true }
+sm-binary = { workspace = true }
+sm-main = { workspace = true }
+sm-mem = { workspace = true }
+sm-rom = { workspace = true }
+data-bus = { workspace = true }
+precomp-keccakf = { workspace = true }
+precomp-sha256f = { workspace = true }
+precomp-arith-eq = { workspace = true }
+zisk-pil = { workspace = true }
+ziskemu = { workspace = true }
+zisk-core = { workspace = true }
+zisk-common = { workspace = true }
 
 proofman = { workspace = true }
 proofman-common = { workspace = true }

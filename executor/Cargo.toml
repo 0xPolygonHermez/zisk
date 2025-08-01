@@ -8,16 +8,16 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-sm-main = { path = "../state-machines/main" }
-sm-rom = { path = "../state-machines/rom" }
-rom-setup = { path = "../rom-setup" }
-zisk-pil = { path = "../pil" }
-ziskemu = { path = "../emulator" }
-zisk-core = { path = "../core" }
-zisk-common = { path = "../common" }
-data-bus = { path = "../data-bus" }
-asm-runner = { path = "../emulator-asm/asm-runner" }
-mem-planner-cpp = { path = "../state-machines/mem-cpp" }
+sm-main = { workspace = true }
+sm-rom = { workspace = true }
+rom-setup = { workspace = true }
+zisk-pil = { workspace = true }
+ziskemu = { workspace = true }
+zisk-core = { workspace = true }
+zisk-common = { workspace = true }
+data-bus = { workspace = true }
+asm-runner = { workspace = true }
+mem-planner-cpp = { workspace = true }
 
 proofman = { workspace = true }
 proofman-common = { workspace = true }
