@@ -275,20 +275,29 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     ) -> (MinimalTraces, DeviceMetricsList, NestedDeviceMetricsList, Option<JoinHandle<AsmRunnerMO>>)
     {
         if let Some(input_path) = input_data_path.as_ref() {
-            for service in AsmServices::SERVICES {
+            AsmServices::SERVICES.par_iter().for_each(|service| {
+                #[cfg(feature = "stats")]
+                let start_time = Instant::now();
+
                 let port = if let Some(base_port) = self.base_port {
-                    AsmServices::port_for(&service, base_port, self.local_rank)
+                    AsmServices::port_for(service, base_port, self.local_rank)
                 } else {
-                    AsmServices::default_port(&service, self.local_rank)
+                    AsmServices::default_port(service, self.local_rank)
                 };
 
                 let shmem_input_name = AsmSharedMemory::<AsmMTHeader>::shmem_input_name(
                     port,
-                    service,
+                    *service,
                     self.local_rank,
                 );
                 write_input(input_path, &shmem_input_name, self.unlock_mapped_memory);
-            }
+
+                // Add to executor stats
+                #[cfg(feature = "stats")]
+                self.stats.lock().unwrap().add_stat(ExecutorStatsEnum::AsmWriteInput(
+                    ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
+                ));
+            });
         }
 
         let chunk_size = self.chunk_size;

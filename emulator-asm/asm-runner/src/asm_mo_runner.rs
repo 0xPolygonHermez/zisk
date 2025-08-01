@@ -204,6 +204,14 @@ impl AsmRunnerMO {
             ExecutorStatsDuration { start_time, duration: start_time.elapsed() },
         ));
 
+        #[cfg(feature = "stats")]
+        {
+            let mem_stats = mem_planner.get_mem_stats();
+            for i in mem_stats {
+                _stats.lock().unwrap().add_stat(i);
+            }
+        }
+
         preloaded.handle_mo = Some(std::thread::spawn(move || {
             drop(mem_planner);
             MemPlanner::new()
