@@ -4486,7 +4486,7 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
                 *code += &format!(
-                    "\tcmp {}, 0 {}n",
+                    "\tcmp {}, 0 {}\n",
                     REG_B_W,
                     ctx.comment_str("RemuW: if b==0 then return a")
                 );
