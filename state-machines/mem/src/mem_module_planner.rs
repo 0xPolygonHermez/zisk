@@ -2,7 +2,6 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{MemCounters, MemCountersCursor, MemPlanCalculator};
 use mem_common::{MemModuleCheckPoint, MemModuleSegmentCheckPoint};
-use proofman_common::PreCalculate;
 use std::cmp::min;
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 pub struct MemModulePlanner {
@@ -244,7 +243,6 @@ impl MemPlanCalculator for MemModulePlanner {
                 Some(SegmentId(segment_id)),
                 InstanceType::Instance,
                 CheckPoint::Multiple(keys),
-                PreCalculate::Slow,
                 Some(Box::new(segment)),
             ));
         }

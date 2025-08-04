@@ -5,7 +5,6 @@ use crate::*;
 #[cfg(feature = "save_mem_bus_data")]
 use mem_common::save_plans;
 use mem_common::{MemAlignCheckPoint, MemModuleCheckPoint, MemModuleSegmentCheckPoint};
-use proofman_common::PreCalculate;
 
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
 use zisk_pil::{
@@ -111,7 +110,6 @@ impl MemPlanner {
                     Some(SegmentId(segment_id as usize)),
                     InstanceType::Instance,
                     CheckPoint::Multiple(chunks),
-                    PreCalculate::Slow,
                     Some(Box::new(segment)),
                 ));
             }
@@ -134,7 +132,6 @@ impl MemPlanner {
                         last_segment_id,
                         InstanceType::Instance,
                         CheckPoint::Multiple(std::mem::take(&mut chunks)),
-                        PreCalculate::Slow,
                         Some(Box::new(std::mem::take(&mut segment))),
                     ));
                 }
@@ -159,7 +156,6 @@ impl MemPlanner {
                 Some(last_segment_id.unwrap()),
                 InstanceType::Instance,
                 CheckPoint::Multiple(std::mem::take(&mut chunks)),
-                PreCalculate::Slow,
                 Some(Box::new(std::mem::take(&mut segment))),
             ));
         }
@@ -170,7 +166,6 @@ impl MemPlanner {
                 None,
                 InstanceType::Table,
                 CheckPoint::None,
-                PreCalculate::None,
                 None,
             ));
         }

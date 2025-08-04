@@ -447,9 +447,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.2.30"
+version = "1.2.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "deec109607ca693028562ed836a5f1c4b8bd77755c4e132fc5ce11b0b6211ae7"
+checksum = "c3a42d84bb6b69d3a8b3eaacf0d88f179e1929695e1ad012b6cf64d9caaa5fd2"
 dependencies = [
  "jobserver",
  "libc",
@@ -672,6 +672,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1137cd7e7fc0fb5d3c5a8678be38ec56e819125d8d7907411fe24ccb943faca8"
+dependencies = [
+ "crossbeam-channel",
+ "crossbeam-deque",
+ "crossbeam-epoch",
+ "crossbeam-queue",
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "crossbeam-channel"
 version = "0.5.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -695,6 +708,15 @@ name = "crossbeam-epoch"
 version = "0.9.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-queue"
+version = "0.3.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f58bbc28f91df819d0aa2a2c00cd19754769c2fad90579b3592b1c9ba7a3115"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -757,7 +779,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#6263d1ce2fbfbaa7acebe63fd32277bc6df7cab4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fnew_witness#29e30f43802e45e491c27e09f5af3b8caa119c60"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1007,6 +1029,7 @@ name = "executor"
 version = "0.10.0"
 dependencies = [
  "asm-runner",
+ "crossbeam",
  "data-bus",
  "fields",
  "itertools 0.14.0",
@@ -1046,7 +1069,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#6263d1ce2fbfbaa7acebe63fd32277bc6df7cab4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fnew_witness#29e30f43802e45e491c27e09f5af3b8caa119c60"
 dependencies = [
  "num-bigint",
  "paste",
@@ -1768,9 +1791,9 @@ dependencies = [
 
 [[package]]
 name = "libredox"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "360e552c93fa0e8152ab463bc4c4837fce76a225df11dfaeea66c313de5e61f7"
+checksum = "391290121bad3d37fbddad76d8f5d1c1c314cfc646d143d7e07a3086ddff0ce3"
 dependencies = [
  "bitflags 2.9.1",
  "libc",
@@ -2158,7 +2181,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pil-std-lib"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#6263d1ce2fbfbaa7acebe63fd32277bc6df7cab4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fnew_witness#29e30f43802e45e491c27e09f5af3b8caa119c60"
 dependencies = [
  "colored",
  "fields",
@@ -2415,7 +2438,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#6263d1ce2fbfbaa7acebe63fd32277bc6df7cab4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fnew_witness#29e30f43802e45e491c27e09f5af3b8caa119c60"
 dependencies = [
  "blake3",
  "bytemuck",
@@ -2446,7 +2469,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#6263d1ce2fbfbaa7acebe63fd32277bc6df7cab4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fnew_witness#29e30f43802e45e491c27e09f5af3b8caa119c60"
 dependencies = [
  "crossbeam-channel",
  "env",
@@ -2469,7 +2492,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#6263d1ce2fbfbaa7acebe63fd32277bc6df7cab4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fnew_witness#29e30f43802e45e491c27e09f5af3b8caa119c60"
 dependencies = [
  "fields",
  "proofman-common",
@@ -2481,7 +2504,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#6263d1ce2fbfbaa7acebe63fd32277bc6df7cab4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fnew_witness#29e30f43802e45e491c27e09f5af3b8caa119c60"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2492,7 +2515,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#6263d1ce2fbfbaa7acebe63fd32277bc6df7cab4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fnew_witness#29e30f43802e45e491c27e09f5af3b8caa119c60"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -2501,7 +2524,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#6263d1ce2fbfbaa7acebe63fd32277bc6df7cab4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fnew_witness#29e30f43802e45e491c27e09f5af3b8caa119c60"
 dependencies = [
  "colored",
  "fields",
@@ -2678,9 +2701,9 @@ dependencies = [
 
 [[package]]
 name = "redox_users"
-version = "0.5.0"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd6f9d3d47bdd2ad6945c5015a226ec6155d0bcdfd8f7cd29f86b71f8de99d2b"
+checksum = "a4e608c6638b9c18977b00b475ac1f28d14e84b27d8d42f70e0bf1e3dec127ac"
 dependencies = [
  "getrandom 0.2.16",
  "libredox",
@@ -3007,9 +3030,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.141"
+version = "1.0.142"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30b9eff21ebe718216c6ec64e1d9ac57087aad11efc64e32002bce4a0d4c03d3"
+checksum = "030fedb782600dcbd6f02d479bf0d817ac3bb40d644745b769d6a96bc3afc5a7"
 dependencies = [
  "indexmap",
  "itoa",
@@ -3098,9 +3121,9 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "signal-hook-registry"
-version = "1.4.5"
+version = "1.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9203b8055f63a2a00e2f593bb0510367fe707d7ff1e5c872de2f537b339e5410"
+checksum = "b2a4719bff48cee6b39d12c020eeb490953ad2443b7055bd0b21fca26bd8c28b"
 dependencies = [
  "libc",
 ]
@@ -3296,9 +3319,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "symbolic-common"
-version = "12.16.0"
+version = "12.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c5199e46f23c77c611aa2a383b2f72721dfee4fb2bf85979eea1e0f26ba6e35"
+checksum = "70f4d06896c59fabe3fe36d7bc003c975f0a0af67d380e14a95eaebffe4f8de5"
 dependencies = [
  "debugid",
  "memmap2",
@@ -3308,9 +3331,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "12.16.0"
+version = "12.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa3c03956e32254f74e461a330b9522a2689686d80481708fb2014780d8d3959"
+checksum = "bd3903bafe2ed4c3512ff4c6eb77cc22b6f43662f3b9f7e3fe4f152927f54ec8"
 dependencies = [
  "cpp_demangle",
  "rustc-demangle",
@@ -3509,9 +3532,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.47.0"
+version = "1.47.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43864ed400b6043a4757a25c7a64a8efde741aed79a056a2fb348a406701bb35"
+checksum = "89e49afdadebb872d3145a5638b59eb0691ea23e46ca484037cfab3b76b95038"
 dependencies = [
  "backtrace",
  "bytes",
@@ -3550,9 +3573,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.15"
+version = "0.7.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66a539a9ad6d5d281510d5bd368c973d636c02dbf8a67300bfb6b950696ad7df"
+checksum = "14307c986784f72ef81c89db7d9e28d6ac26d16213b109ea501696195e6e3ce5"
 dependencies = [
  "bytes",
  "futures-core",
@@ -3724,7 +3747,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#6263d1ce2fbfbaa7acebe63fd32277bc6df7cab4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fnew_witness#29e30f43802e45e491c27e09f5af3b8caa119c60"
 dependencies = [
  "proofman-starks-lib-c",
 ]
@@ -4347,7 +4370,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.10.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.11.0#6263d1ce2fbfbaa7acebe63fd32277bc6df7cab4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fnew_witness#29e30f43802e45e491c27e09f5af3b8caa119c60"
 dependencies = [
  "colored",
  "fields",

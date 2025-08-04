@@ -23,17 +23,18 @@ use asm_runner::{
     write_input, AsmMTHeader, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmServices, AsmSharedMemory,
     MinimalTraces, PreloadedMO, PreloadedMT, PreloadedRH, Task, TaskFactory,
 };
+use crossbeam::queue::SegQueue;
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use proofman_common::{create_pool, BufferPool, PreCalculate, ProofCtx, SetupCtx};
+use proofman_common::{create_pool, BufferPool, ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
+use rayon::prelude::*;
 use rom_setup::gen_elf_hash;
 use sm_rom::RomSM;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use witness::WitnessComponent;
 
-use rayon::prelude::*;
-
-use crate::{DataBusCollectorCollection, DummyCounter};
+use crate::DummyCounter;
 use data_bus::DataBusTrait;
 use sm_main::{MainInstance, MainPlanner, MainSM};
 use zisk_common::{
@@ -56,6 +57,9 @@ use std::{
 };
 #[cfg(feature = "stats")]
 use zisk_common::{ExecutorStatsAir, ExecutorStatsDuration, ExecutorStatsEnum};
+
+#[cfg(feature = "stats")]
+use crossbeam::atomic::AtomicCell;
 
 use zisk_common::EmuTrace;
 use zisk_core::ZiskRom;
@@ -108,7 +112,7 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     pub asm_rom_path: Option<PathBuf>,
 
     /// Planning information for main state machines.
-    pub min_traces: RwLock<MinimalTraces>,
+    pub min_traces: Arc<RwLock<MinimalTraces>>,
 
     /// Planning information for main state machines.
     pub main_planning: RwLock<Vec<Plan>>,
@@ -137,7 +141,7 @@ pub struct ZiskExecutor<F: PrimeField64, BD: SMBundle<F>> {
     /// Collectors by instance, storing statistics and collectors for each instance.
     #[allow(clippy::type_complexity)]
     collectors_by_instance:
-        RwLock<HashMap<usize, (Option<Stats>, Vec<(usize, Box<dyn BusDevice<u64>>)>)>>,
+        Arc<RwLock<HashMap<usize, (Option<Stats>, Vec<(usize, Box<dyn BusDevice<u64>>)>)>>>,
 
     /// Statistics collected during the execution, including time taken for collection and witness computation.
     stats: Arc<Mutex<ExecutorStats>>,
@@ -207,12 +211,12 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             asm_runner_path: asm_path,
             asm_rom_path,
             zisk_rom,
-            min_traces: RwLock::new(MinimalTraces::None),
+            min_traces: Arc::new(RwLock::new(MinimalTraces::None)),
             main_planning: RwLock::new(Vec::new()),
             secn_planning: RwLock::new(Vec::new()),
             main_instances: RwLock::new(HashMap::new()),
             secn_instances: RwLock::new(HashMap::new()),
-            collectors_by_instance: RwLock::new(HashMap::new()),
+            collectors_by_instance: Arc::new(RwLock::new(HashMap::new())),
             std,
             execution_result: Mutex::new(ZiskExecutionResult::default()),
             sm_bundle,
@@ -498,12 +502,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// * `main_planning` - Planning information for main state machines.
     fn assign_main_instances(&self, pctx: &ProofCtx<F>, main_planning: &mut [Plan]) {
         for plan in main_planning.iter_mut() {
-            plan.set_global_id(pctx.add_instance_assign(
-                plan.airgroup_id,
-                plan.air_id,
-                PreCalculate::None,
-                1,
-            ));
+            plan.set_global_id(pctx.add_instance_assign(plan.airgroup_id, plan.air_id, 1));
         }
     }
 
@@ -620,11 +619,11 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 {
                     // If this is the ROM instance, we need to add it to the proof context
                     // with the rank 0.
-                    pctx.add_instance_rank(plan.airgroup_id, plan.air_id, 0, PreCalculate::None, 1)
+                    pctx.add_instance_rank(plan.airgroup_id, plan.air_id, 0, 1)
                 } else {
                     match plan.instance_type {
                         InstanceType::Instance => {
-                            pctx.add_instance(plan.airgroup_id, plan.air_id, plan.pre_calculate, 1)
+                            pctx.add_instance(plan.airgroup_id, plan.air_id, 1)
                         }
                         InstanceType::Table => pctx.add_instance_all(plan.airgroup_id, plan.air_id),
                     }
@@ -757,10 +756,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 air_id,
                 collect: ExecutorStatsDuration {
                     start_time: stats.collect_start_time,
-                    duration: Duration::new(
-                        stats.collect_duration / 1000000,
-                        (stats.collect_duration % 1000000) as u32,
-                    ),
+                    duration: Duration::from_millis(stats.collect_duration),
                 },
                 witness: ExecutorStatsDuration {
                     start_time: witness_start_time,
@@ -779,10 +775,11 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// * `global_id` - Global ID of the secondary state machine instance.
     /// * `secn_instance` - Secondary state machine instance to compute witness for
     #[allow(clippy::borrowed_box)]
-    fn witness_collect_instances(&self, secn_instances: HashMap<usize, &Box<dyn Instance<F>>>) {
-        #[cfg(feature = "stats")]
-        let collect_start_time = std::time::Instant::now();
-
+    fn witness_collect_instances(
+        &self,
+        pctx: Arc<ProofCtx<F>>,
+        secn_instances: HashMap<usize, &Box<dyn Instance<F>>>,
+    ) {
         let min_traces = self.min_traces.read().unwrap();
 
         let min_traces = match &*min_traces {
@@ -792,47 +789,163 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         };
 
         // Group the instances by the chunk they need to process
-        let chunks_to_execute = self.chunks_to_execute(min_traces, &secn_instances);
+        let (chunks_to_execute, global_id_chunks) =
+            self.chunks_to_execute(min_traces, &secn_instances);
 
-        // Create data buses for each chunk
-        let mut data_buses =
-            self.sm_bundle.build_data_bus_collectors(&secn_instances, chunks_to_execute);
-
-        // Execute collect process for each chunk
-        data_buses.par_iter_mut().enumerate().for_each(|(chunk_id, data_bus)| {
-            if let Some(data_bus) = data_bus {
-                ZiskEmulator::process_emu_traces::<F, _, _>(
-                    &self.zisk_rom,
-                    min_traces,
-                    chunk_id,
-                    data_bus,
-                    self.chunk_size,
-                );
-            }
-        });
-
-        // Close the data buses and get for each instance its collectors
-        let mut collectors_by_instance = self.close_data_bus_collectors(data_buses);
+        let global_ids: Vec<usize> = secn_instances.keys().copied().collect();
 
         #[cfg(feature = "stats")]
-        let collect_duration = collect_start_time.elapsed().as_millis() as u64;
+        let collect_start_times: Vec<Arc<AtomicCell<Option<Instant>>>> =
+            global_ids.iter().map(|_| Arc::new(AtomicCell::new(None))).collect();
 
-        for global_idx in secn_instances.keys() {
-            let collector = collectors_by_instance.remove(global_idx).unwrap_or_default();
+        #[cfg(feature = "stats")]
+        let chunks_to_execute_clone = chunks_to_execute.clone();
+
+        // Pre-allocate lock-free queues for each global_id
+        #[allow(clippy::type_complexity)]
+        let collectors_queues: Vec<Arc<SegQueue<(usize, Box<dyn BusDevice<u64>>)>>> =
+            global_ids.iter().map(|_| Arc::new(SegQueue::new())).collect();
+
+        let global_ids_map: HashMap<usize, usize> =
+            global_ids.iter().enumerate().map(|(idx, &id)| (id, idx)).collect();
+
+        // Create data buses for each chunk
+        let data_buses = self
+            .sm_bundle
+            .build_data_bus_collectors(&secn_instances, chunks_to_execute)
+            .into_iter()
+            .map(|db| Arc::new(Mutex::new(db)))
+            .collect::<Vec<_>>();
+
+        let n_chunks_left: Vec<Arc<AtomicUsize>> = global_ids
+            .iter()
+            .map(|global_id| Arc::new(AtomicUsize::new(global_id_chunks[global_id].len())))
+            .collect();
+
+        let next_chunk = Arc::new(AtomicUsize::new(0));
+        let n_threads = rayon::current_num_threads();
+
+        let mut handles = Vec::with_capacity(n_threads);
+        for _ in 0..n_threads {
+            let next_chunk = Arc::clone(&next_chunk);
+            let min_traces_lock = Arc::clone(&self.min_traces);
+            let data_buses = data_buses.clone();
+            let zisk_rom = self.zisk_rom.clone();
+            let collectors_queues = collectors_queues.clone();
+            let n_chunks_left = n_chunks_left.clone();
+            let global_ids_map = global_ids_map.clone();
+            let global_id_chunks = global_id_chunks.clone();
+            let collectors_by_instance = self.collectors_by_instance.clone();
+            let chunk_size = self.chunk_size;
+
+            let pctx_clone = pctx.clone();
 
             #[cfg(feature = "stats")]
-            let stats = Some(Stats {
-                collect_start_time,
-                collect_duration,
-                witness_start_time: Instant::now(),
-                witness_duration: 0,
-                num_chunks: collector.len(),
-            });
+            let chunks_to_execute = chunks_to_execute_clone.clone();
 
-            #[cfg(not(feature = "stats"))]
-            let stats = None;
+            #[cfg(feature = "stats")]
+            let collect_start_times = collect_start_times.clone();
 
-            self.collectors_by_instance.write().unwrap().insert(*global_idx, (stats, collector));
+            handles.push(std::thread::spawn(move || {
+                let guard = min_traces_lock.read().unwrap();
+                let min_traces = match &*guard {
+                    MinimalTraces::EmuTrace(v) => v,
+                    MinimalTraces::AsmEmuTrace(a) => &a.vec_chunks,
+                    _ => unreachable!(),
+                };
+                loop {
+                    let chunk_id = next_chunk.fetch_add(1, Ordering::SeqCst);
+                    if chunk_id >= data_buses.len() {
+                        break;
+                    }
+
+                    if let Some(mut data_bus) = data_buses[chunk_id].lock().unwrap().take() {
+                        #[cfg(feature = "stats")]
+                        {
+                            for global_id in chunks_to_execute[chunk_id].iter() {
+                                let start_time_cell =
+                                    &collect_start_times[global_ids_map[global_id]];
+                                if start_time_cell.load().is_none() {
+                                    start_time_cell.store(Some(Instant::now()));
+                                }
+                            }
+                        }
+
+                        ZiskEmulator::process_emu_traces::<F, _, _>(
+                            &zisk_rom,
+                            min_traces,
+                            chunk_id,
+                            &mut data_bus,
+                            chunk_size,
+                        );
+
+                        for (global_id, collector) in data_bus.into_devices(false) {
+                            if let Some(global_id) = global_id {
+                                let global_id_idx = global_ids_map
+                                    .get(&global_id)
+                                    .expect("Global ID not found in map");
+
+                                collectors_queues[*global_id_idx]
+                                    .push((chunk_id, collector.unwrap()));
+
+                                if n_chunks_left[*global_id_idx].fetch_sub(1, Ordering::SeqCst) == 1
+                                {
+                                    let mut collectors = Vec::new();
+                                    while let Some((chunk_id, collector)) =
+                                        collectors_queues[*global_id_idx].pop()
+                                    {
+                                        collectors.push((chunk_id, collector));
+                                    }
+
+                                    // Sort collectors by chunk_id based on the order in global_id_chunks
+                                    let chunk_order = &global_id_chunks[&global_id];
+                                    collectors.sort_by_key(|(chunk_id, _)| {
+                                        chunk_order.iter().position(|&id| id == *chunk_id).unwrap()
+                                    });
+
+                                    #[cfg(feature = "stats")]
+                                    {
+                                        let collect_start_time = collect_start_times
+                                            [*global_id_idx]
+                                            .load()
+                                            .expect("Collect start time was not set");
+                                        let collect_duration =
+                                            collect_start_time.elapsed().as_millis() as u64;
+
+                                        let stats = Some(Stats {
+                                            collect_start_time,
+                                            collect_duration,
+                                            witness_start_time: Instant::now(),
+                                            witness_duration: 0,
+                                            num_chunks: global_id_chunks[&global_id].len(),
+                                        });
+
+                                        collectors_by_instance
+                                            .write()
+                                            .unwrap()
+                                            .insert(global_id, (stats, collectors));
+                                    }
+
+                                    #[cfg(not(feature = "stats"))]
+                                    {
+                                        let stats = None;
+                                        collectors_by_instance
+                                            .write()
+                                            .unwrap()
+                                            .insert(global_id, (stats, collectors));
+                                    }
+
+                                    pctx_clone.set_witness_ready(global_id);
+                                }
+                            }
+                        }
+                    }
+                }
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
         }
     }
 
@@ -898,55 +1011,30 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         &self,
         min_traces: &[EmuTrace],
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
-    ) -> Vec<Vec<usize>> {
+    ) -> (Vec<Vec<usize>>, HashMap<usize, Vec<usize>>) {
         let mut chunks_to_execute = vec![Vec::new(); min_traces.len()];
+        let mut global_id_chunks: HashMap<usize, Vec<usize>> = HashMap::new();
         secn_instances.iter().for_each(|(global_idx, secn_instance)| {
             match secn_instance.check_point() {
                 CheckPoint::None => {}
                 CheckPoint::Single(chunk_id) => {
                     chunks_to_execute[chunk_id.as_usize()].push(*global_idx);
+                    global_id_chunks.entry(*global_idx).or_default().push(chunk_id.as_usize());
                 }
                 CheckPoint::Multiple(chunk_ids) => {
                     chunk_ids.iter().for_each(|&chunk_id| {
                         chunks_to_execute[chunk_id.as_usize()].push(*global_idx);
+                        global_id_chunks.entry(*global_idx).or_default().push(chunk_id.as_usize());
                     });
                 }
             }
         });
-        chunks_to_execute
-    }
 
-    /// Closes a data bus used for managing collectors and returns the first instance.
-    ///
-    /// # Arguments
-    /// * `secn_instances` - A vector of secondary state machine instances.
-    /// * `data_buses` - A vector of data buses with attached collectors.
-    ///
-    /// # Returns
-    /// A vector of tuples containing the global ID, secondary state machine instance, and a vector
-    /// of collectors for each instance.
-    #[allow(clippy::type_complexity)]
-    fn close_data_bus_collectors(
-        &self,
-        mut data_buses: DataBusCollectorCollection,
-    ) -> HashMap<usize, Vec<(usize, Box<dyn BusDevice<u64>>)>> {
-        let mut collectors_by_instance: HashMap<usize, Vec<(usize, Box<dyn BusDevice<u64>>)>> =
-            HashMap::new();
-
-        for (chunk_id, data_bus) in data_buses.iter_mut().enumerate() {
-            if let Some(data_bus) = data_bus.take() {
-                for (global_id, collector) in data_bus.into_devices(false) {
-                    if let Some(global_id) = global_id {
-                        collectors_by_instance
-                            .entry(global_id)
-                            .or_default()
-                            .push((chunk_id, collector.unwrap()));
-                    }
-                }
-            }
+        for chunk_ids in global_id_chunks.values_mut() {
+            chunk_ids.sort();
         }
 
-        collectors_by_instance
+        (chunks_to_execute, global_id_chunks)
     }
 
     fn reset(&self) {
@@ -1150,11 +1238,32 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
 
                     match secn_instance.instance_type() {
                         InstanceType::Instance => {
-                            if !self.collectors_by_instance.read().unwrap().contains_key(&global_id)
+                            if air_id == ROM_AIR_IDS[0] && self.asm_runner_path.is_some() {
+                                #[cfg(feature = "stats")]
+                                let stats = Some(Stats {
+                                    collect_start_time: Instant::now(),
+                                    collect_duration: 0,
+                                    witness_start_time: Instant::now(),
+                                    witness_duration: 0,
+                                    num_chunks: 0,
+                                });
+
+                                #[cfg(not(feature = "stats"))]
+                                let stats = None;
+
+                                self.collectors_by_instance
+                                    .write()
+                                    .unwrap()
+                                    .insert(global_id, (stats, Vec::new()));
+                            } else if !self
+                                .collectors_by_instance
+                                .read()
+                                .unwrap()
+                                .contains_key(&global_id)
                             {
                                 let mut secn_instances = HashMap::new();
                                 secn_instances.insert(global_id, secn_instance);
-                                self.witness_collect_instances(secn_instances);
+                                self.witness_collect_instances(pctx.clone(), secn_instances);
                             }
                             self.witness_secn_instance(
                                 &pctx,
@@ -1198,28 +1307,32 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
         if stage != 1 {
             return;
         }
+        let secn_instances_guard = self.secn_instances.read().unwrap();
+
+        let mut secn_instances = HashMap::new();
+        for &global_id in global_ids {
+            let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
+            if MAIN_AIR_IDS.contains(&air_id)
+                || (air_id == ROM_AIR_IDS[0] && self.asm_runner_path.is_some())
+            {
+                pctx.set_witness_ready(global_id);
+            } else {
+                let secn_instance = &secn_instances_guard[&global_id];
+
+                if secn_instance.instance_type() == InstanceType::Instance
+                    && !self.collectors_by_instance.read().unwrap().contains_key(&global_id)
+                {
+                    secn_instances.insert(global_id, secn_instance);
+                } else {
+                    pctx.set_witness_ready(global_id);
+                }
+            }
+        }
 
         let pool = create_pool(n_cores);
         pool.install(|| {
-            let secn_instances_guard = self.secn_instances.read().unwrap();
-
-            let mut secn_instances = HashMap::new();
-            for &global_id in global_ids {
-                let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id);
-
-                if !MAIN_AIR_IDS.contains(&air_id) {
-                    let secn_instance = &secn_instances_guard[&global_id];
-
-                    if secn_instance.instance_type() == InstanceType::Instance
-                        && !self.collectors_by_instance.read().unwrap().contains_key(&global_id)
-                    {
-                        secn_instances.insert(global_id, secn_instance);
-                    }
-                }
-            }
-
             if !secn_instances.is_empty() {
-                self.witness_collect_instances(secn_instances);
+                self.witness_collect_instances(pctx.clone(), secn_instances);
             }
         });
 
