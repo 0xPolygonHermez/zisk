@@ -19,7 +19,7 @@ use zisk_pil::*;
 
 use crate::{
     commands::{
-        cli_fail_if_macos, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
+        get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
     },
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
@@ -110,8 +110,6 @@ pub struct ZiskStats {
 
 impl ZiskStats {
     pub fn run(&mut self) -> Result<()> {
-        cli_fail_if_macos()?;
-
         print_banner();
 
         let proving_key = get_proving_key(self.proving_key.as_ref());

@@ -37,8 +37,11 @@ pub fn rom_full_setup(
     tracing::info!("Computing ELF hash");
     let elf_hash = get_elf_data_hash(elf)?;
 
-    tracing::info!("Computing assembly setup");
-    crate::generate_assembly(elf, &elf_hash, zisk_path, output_path.as_path(), verbose)?;
+    #[cfg(not(target_os = "macos"))]
+    {
+        tracing::info!("Computing assembly setup");
+        crate::generate_assembly(elf, &elf_hash, zisk_path, output_path.as_path(), verbose)?;
+    }
 
     tracing::info!("Computing merkle root");
     crate::rom_merkle_setup(elf, &elf_hash, output_path.as_path(), proving_key, false)?;

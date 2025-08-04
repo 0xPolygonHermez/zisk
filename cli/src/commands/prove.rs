@@ -1,6 +1,6 @@
 use crate::{
     commands::{
-        cli_fail_if_macos, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
+        get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
     },
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
@@ -132,7 +132,6 @@ pub struct ZiskProve {
 
 impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
-        cli_fail_if_macos()?;
 
         print_banner();
 

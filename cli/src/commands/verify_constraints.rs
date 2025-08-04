@@ -1,6 +1,6 @@
 use crate::{
     commands::{
-        cli_fail_if_gpu_mode, cli_fail_if_macos, get_proving_key, get_witness_computation_lib,
+        cli_fail_if_gpu_mode, get_proving_key, get_witness_computation_lib,
         initialize_mpi, Field,
     },
     ux::print_banner,
@@ -93,7 +93,6 @@ pub struct ZiskVerifyConstraints {
 
 impl ZiskVerifyConstraints {
     pub fn run(&mut self) -> Result<()> {
-        cli_fail_if_macos()?;
         cli_fail_if_gpu_mode()?;
 
         print_banner();
