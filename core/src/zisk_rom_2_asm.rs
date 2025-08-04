@@ -4381,6 +4381,7 @@ impl ZiskRom2Asm {
 
                 // Check underflow:
                 // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a
+                *code += &format!("pc_{:x}_rem_check_underflow:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, 0x8000000000000000 {}\n",
                     REG_VALUE,
@@ -4504,7 +4505,7 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
                 *code += &format!(
-                    "\tcmp {}, 0 {}n",
+                    "\tcmp {}, 0 {}\n",
                     REG_B_W,
                     ctx.comment_str("RemuW: if b==0 then return a")
                 );
@@ -4568,6 +4569,7 @@ impl ZiskRom2Asm {
                 *code += &format!("\tje pc_{:x}_divw_done\n", ctx.pc);
 
                 // Divide
+                *code += &format!("pc_{:x}_divw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
                     REG_VALUE_W,
@@ -4620,6 +4622,7 @@ impl ZiskRom2Asm {
                 *code += &format!("\tje pc_{:x}_remw_done\n", ctx.pc);
 
                 // Divide
+                *code += &format!("pc_{:x}_remw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
                     REG_VALUE_W,
