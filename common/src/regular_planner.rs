@@ -8,7 +8,6 @@ use crate::{
     BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner,
     RegularCounters,
 };
-use proofman_common::PreCalculate;
 use zisk_core::ZiskOperationType;
 
 use super::plan;
@@ -170,7 +169,6 @@ impl Planner for RegularPlanner {
                         None,
                         InstanceType::Instance,
                         check_point,
-                        PreCalculate::Fast,
                         Some(converted),
                     )
                 })
@@ -187,7 +185,6 @@ impl Planner for RegularPlanner {
                     None,
                     InstanceType::Table,
                     CheckPoint::None,
-                    PreCalculate::None,
                     None,
                 ));
             }

@@ -7,7 +7,6 @@ use std::any::Any;
 
 use asm_runner::MinimalTraces;
 use fields::PrimeField;
-use proofman_common::PreCalculate;
 use zisk_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan, SegmentId};
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 
@@ -70,7 +69,6 @@ impl MainPlanner {
                     Some(SegmentId(segment_id)),
                     InstanceType::Instance,
                     CheckPoint::Single(ChunkId(segment_id)),
-                    PreCalculate::None,
                     Some(Box::new(segment_id == num_instances - 1) as Box<dyn Any>),
                 )
             })

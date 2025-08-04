@@ -14,7 +14,7 @@ use rom_setup::{
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::{collections::HashMap, fs, path::PathBuf, thread, time::Instant};
-use zisk_common::{ExecutorStats, ZiskLibInitFn};
+use zisk_common::{ExecutorStats, ExecutorStatsEnum, ZiskLibInitFn};
 use zisk_pil::*;
 
 use crate::{
@@ -318,6 +318,8 @@ impl ZiskStats {
             "-".repeat(55)
         );
 
+        Self::print_stats(&stats);
+
         stats.lock().unwrap().print_stats();
 
         if self.asm.is_some() {
@@ -373,8 +375,20 @@ impl ZiskStats {
     ///
     /// # Arguments
     /// * `stats_mutex` - A reference to the Mutex holding the stats vector.
-    pub fn print_stats(stats: &[(usize, usize, Stats)]) {
-        println!("    Number of airs: {}", stats.len());
+    pub fn print_stats(executor_stats: &Mutex<ExecutorStats>) {
+        let air_stats: Vec<zisk_common::ExecutorStatsAir> = {
+            let stats_guard = executor_stats.lock().unwrap();
+            stats_guard
+                .stats
+                .iter()
+                .filter_map(|s| match s {
+                    ExecutorStatsEnum::Air(air_stat) => Some(air_stat.clone()),
+                    _ => None,
+                })
+                .collect()
+        };
+
+        println!("    Number of airs: {}", air_stats.len());
         println!();
         println!("    Stats by Air:");
         println!(
@@ -384,29 +398,33 @@ impl ZiskStats {
         println!("    {}", "-".repeat(70));
 
         // Sort individual stats by (airgroup_id, air_id)
-        let mut sorted_stats = stats.to_vec();
-        sorted_stats.sort_by_key(|(airgroup_id, air_id, _)| (*airgroup_id, *air_id));
+        let mut sorted_stats = air_stats.to_vec();
+        sorted_stats.sort_by_key(|stat| (stat.airgroup_id, stat.air_id));
 
         let mut total_collect_time = 0;
         let mut total_witness_time = 0;
-        for (airgroup_id, air_id, stats) in sorted_stats.iter() {
+        for stat in sorted_stats.iter() {
+            let collect_ms = stat.collect.duration.as_millis() as u64;
+            let witness_ms = stat.witness.duration.as_millis() as u64;
+
             println!(
                 "    {:<8} {:<25} {:<8} {:<12} {:<12}",
-                air_id,
-                Self::air_name(*airgroup_id, *air_id),
-                stats.num_chunks,
-                stats.collect_duration,
-                stats.witness_duration,
+                stat.air_id,
+                Self::air_name(stat.airgroup_id, stat.air_id),
+                stat.num_chunks,
+                collect_ms,
+                witness_ms,
             );
             // Accumulate total times
-            total_collect_time += stats.collect_duration;
-            total_witness_time += stats.witness_duration;
+            total_collect_time += collect_ms;
+            total_witness_time += witness_ms;
         }
 
         // Group stats
-        let mut grouped: HashMap<(usize, usize), Vec<Stats>> = HashMap::new();
-        for (airgroup_id, air_id, stats) in stats.iter() {
-            grouped.entry((*airgroup_id, *air_id)).or_default().push(stats.clone());
+        let mut grouped: HashMap<(usize, usize), Vec<&zisk_common::ExecutorStatsAir>> =
+            HashMap::new();
+        for stat in air_stats.iter() {
+            grouped.entry((stat.airgroup_id, stat.air_id)).or_default().push(stat);
         }
 
         println!();
@@ -432,13 +450,16 @@ impl ZiskStats {
             let (mut n_min, mut n_max, mut n_sum) = (usize::MAX, 0, 0usize);
 
             for e in &entries {
-                c_min = c_min.min(e.collect_duration);
-                c_max = c_max.max(e.collect_duration);
-                c_sum += e.collect_duration;
+                let collect_ms = e.collect.duration.as_millis() as u64;
+                let witness_ms = e.witness.duration.as_millis() as u64;
 
-                w_min = w_min.min(e.witness_duration);
-                w_max = w_max.max(e.witness_duration);
-                w_sum += e.witness_duration;
+                c_min = c_min.min(collect_ms);
+                c_max = c_max.max(collect_ms);
+                c_sum += collect_ms;
+
+                w_min = w_min.min(witness_ms);
+                w_max = w_max.max(witness_ms);
+                w_sum += witness_ms;
 
                 n_min = n_min.min(e.num_chunks);
                 n_max = n_max.max(e.num_chunks);

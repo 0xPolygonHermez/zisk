@@ -7,7 +7,6 @@
 use std::any::Any;
 
 use crate::ArithCounterInputGen;
-use proofman_common::PreCalculate;
 use zisk_common::{
     plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics,
     Plan, Planner, TableInfo,
@@ -98,7 +97,6 @@ impl Planner for ArithPlanner {
                         None,
                         InstanceType::Instance,
                         check_point,
-                        PreCalculate::Fast,
                         Some(converted),
                     )
                 })
@@ -115,7 +113,6 @@ impl Planner for ArithPlanner {
                     None,
                     InstanceType::Table,
                     CheckPoint::None,
-                    PreCalculate::None,
                     None,
                 ));
             }
