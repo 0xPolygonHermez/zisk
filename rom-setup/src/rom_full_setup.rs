@@ -37,6 +37,7 @@ pub fn rom_full_setup(
     tracing::info!("Computing ELF hash");
     let elf_hash = get_elf_data_hash(elf)?;
 
+    // Assembly setup is not needed on macOS due to the lack of support for assembly generation.
     #[cfg(not(target_os = "macos"))]
     {
         tracing::info!("Computing assembly setup");
