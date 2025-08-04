@@ -36,7 +36,6 @@ pub struct ZiskRomSetup {
 
 impl ZiskRomSetup {
     pub fn run(&self) -> Result<()> {
-
         initialize_logger(proofman_common::VerboseMode::Info, None);
 
         tracing::info!(

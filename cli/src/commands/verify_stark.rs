@@ -41,7 +41,6 @@ pub struct ZiskVerify {
 
 impl ZiskVerify {
     pub fn run(&self) -> Result<()> {
-
         initialize_logger(self.verbose.into(), None);
 
         tracing::info!(

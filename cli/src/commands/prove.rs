@@ -1,7 +1,5 @@
 use crate::{
-    commands::{
-        get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
-    },
+    commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -132,7 +130,6 @@ pub struct ZiskProve {
 
 impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
-
         print_banner();
 
         let mpi_context = initialize_mpi()?;

@@ -18,9 +18,7 @@ use zisk_common::{ExecutorStats, ZiskLibInitFn};
 use zisk_pil::*;
 
 use crate::{
-    commands::{
-        get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
-    },
+    commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };

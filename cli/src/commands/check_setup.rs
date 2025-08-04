@@ -30,7 +30,6 @@ pub struct ZiskCheckSetup {
 
 impl ZiskCheckSetup {
     pub fn run(&self) -> Result<()> {
-
         println!("{} CheckSetup", format!("{: >12}", "Command").bright_green().bold());
         println!();
 
