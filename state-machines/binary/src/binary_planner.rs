@@ -7,7 +7,6 @@
 use std::any::Any;
 
 use crate::BinaryCounter;
-use proofman_common::PreCalculate;
 use zisk_common::{
     plan_with_frops, BusDeviceMetrics, ChunkId, InstFropsCount, InstanceType, Metrics, Plan,
     Planner,
@@ -65,7 +64,6 @@ impl BinaryPlanner {
                     None,
                     InstanceType::Instance,
                     check_point,
-                    PreCalculate::Fast,
                     Some(converted),
                 )
             })
@@ -103,7 +101,6 @@ impl BinaryPlanner {
                     None,
                     InstanceType::Instance,
                     check_point,
-                    PreCalculate::Fast,
                     Some(converted),
                 )
             })
@@ -132,7 +129,6 @@ impl BinaryPlanner {
                     None,
                     InstanceType::Instance,
                     check_point,
-                    PreCalculate::Fast,
                     Some(converted),
                 )
             })
