@@ -1,7 +1,6 @@
 #!/bin/bash
 
 source ./utils.sh
-source "$HOME/.bashrc"
 
 main () {
     current_step=1
