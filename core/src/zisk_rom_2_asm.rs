@@ -4256,11 +4256,11 @@ impl ZiskRom2Asm {
                     ctx.comment_str("Div: if b == 0 return f's")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_div_check_underflow {}\n",
+                    "\tje pc_{:x}_div_by_zero {}\n",
                     ctx.pc,
-                    ctx.comment_str("Div: if b is not zero, divide")
+                    ctx.comment_str("Div: if b is zero, jump")
                 );
-                *unusual_code += &format!("pc_{:x}_div_check_underflow:\n", ctx.pc);
+                *unusual_code += &format!("pc_{:x}_div_by_zero:\n", ctx.pc);
                 *unusual_code += &format!(
                     "\tmov {}, 0xffffffffffffffff {}\n",
                     REG_C,
