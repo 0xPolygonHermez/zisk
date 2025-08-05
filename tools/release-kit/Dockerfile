@@ -15,7 +15,6 @@ RUN groupadd --gid 1000 ziskuser \
 
 # Patch install_deps.sh to source utils.sh from /tmp, then run it as ziskuser
 RUN chmod +x /tmp/install_deps.sh \
- #&& sed -i 's|source ./utils.sh|source /tmp/utils.sh|' /tmp/install_deps.sh \
  && cd /tmp/ \
  && sudo -u ziskuser ./install_deps.sh \
  && rm -f ./utils.sh ./install_deps.sh

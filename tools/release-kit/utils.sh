@@ -29,7 +29,7 @@ info() {
 }
 
 warn() {
-    echo "${BOLD}${GREEN}🚨  $1${RESET}"
+    echo "${BOLD}${YELLOW}🚨  $1${RESET}"
 }
 
 err() {
@@ -100,13 +100,13 @@ get_var_list() {
     local raw="${!var_name}"
     local item
 
-    # si no está definida o vacía, devolvemos nada
+    # if not defined or empty, return nothing
     [[ -z "${raw//[[:space:]]/}" ]] && return 0
 
-    # separa por coma, recorta espacios y emite cada línea
+    # separate by comma, trim spaces and emit each line
     IFS=',' read -ra parts <<< "$raw"
     for item in "${parts[@]}"; do
-        # eliminar espacios alrededor
+        # remove surrounding whitespace
         item="${item#"${item%%[![:space:]]*}"}"
         item="${item%"${item##*[![:space:]]}"}"
         printf '%s\n' "$item"

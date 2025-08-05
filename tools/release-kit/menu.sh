@@ -77,7 +77,7 @@ while true; do
         exit
         ;;
         *)
-        info "Invalid selection. Please enter a number between 1 and 11."
+        info "Invalid selection. Please enter a number between 1 and 12."
         ;;
     esac
 

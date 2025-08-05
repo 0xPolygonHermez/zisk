@@ -7,10 +7,10 @@ main() {
     INPUTS_PATH="eth-client/inputs"
     test_elf "${ELF_FILE}" "${INPUTS_PATH}" "BLOCK_INPUTS" "BLOCK_INPUTS_DISTRIBUTED" "Ethereum blocks" || return 1
 
-    # DIR="./ruta/del/directorio"
+    # DIR="./path"
 
     # if [[ ! -d "$DIR" ]]; then
-    # echo "El directorio '$DIR' no existe"
+    # echo "Directory '$DIR' does not exist"
     # exit 1
     # fi
 
