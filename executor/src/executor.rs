@@ -910,6 +910,22 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             .map(|global_id| Arc::new(AtomicUsize::new(global_id_chunks[global_id].len())))
             .collect();
 
+        for global_id in global_ids.iter() {
+            #[cfg(not(feature = "stats"))]
+            let stats = None;
+
+            #[cfg(feature = "stats")]
+            let stats = Some(Stats {
+                collect_start_time: Instant::now(),
+                collect_duration: 0,
+                witness_start_time: Instant::now(),
+                witness_duration: 0,
+                num_chunks: global_id_chunks[global_id].len(),
+            });
+
+            self.collectors_by_instance.write().unwrap().insert(*global_id, (stats, Vec::new()));
+        }
+
         let next_chunk = Arc::new(AtomicUsize::new(0));
         let n_threads = rayon::current_num_threads();
 
