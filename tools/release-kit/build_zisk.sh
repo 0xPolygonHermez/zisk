@@ -38,7 +38,7 @@ main() {
         # Clone ZisK repository
         ensure git clone https://github.com/0xPolygonHermez/zisk.git || return 1
         ensure cd zisk
-	# If the ZISK_BRANCH environment variable is defined and not empty, check out that branch
+        # Check out the branch
         info "Checking out branch '$ZISK_BRANCH'..."
         ensure git checkout "$ZISK_BRANCH" || return 1
     else
