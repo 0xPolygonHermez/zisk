@@ -113,9 +113,13 @@ main() {
     ensure cp ./emulator-asm/Makefile "$HOME/.zisk/zisk/emulator-asm" || return 1
     ensure cp -r ./lib-c $HOME/.zisk/zisk || return 1
     step "Adding ~/.zisk/bin to PATH..."
-    echo 'export PATH="$PATH:$HOME/.zisk/bin"' >> "$HOME/.bashrc"
-    # export PATH="$PATH:$HOME/.zisk/bin"
-    source "$HOME/.bashrc"
+
+    # Add export line to .bashrc if it doesn't exist
+    EXPORT_PATH='export PATH="$PATH:$HOME/.zisk/bin"'
+    grep -Fxq "$EXPORT_PATH" "$HOME/.bashrc" || echo "$EXPORT_PATH" >> "$HOME/.bashrc"
+
+    # Ensure the PATH is updated in the current session
+    eval "$EXPORT_PATH"
 
     step "Installing ZisK Rust toolchain..."
     ensure cargo-zisk sdk install-toolchain || return 1

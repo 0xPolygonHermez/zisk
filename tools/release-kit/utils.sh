@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Export PATH to include ZisK binaries
+export PATH="$PATH:$HOME/.zisk/bin"
+
 # Colors
 BOLD=$(tput bold)
 GREEN=$(tput setaf 2)
