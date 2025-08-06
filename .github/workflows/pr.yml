@@ -50,17 +50,17 @@ jobs:
     steps:
       - name: Run docker zisk-test-env
         run: |
-          docker run --rm --shm-size=32g \
+          docker run --rm  --shm-size=32g \
             -e ZISK_GHA=1 \
-            -e ZISK_BRANCH="${{ github.head_ref }}" \
+            -e ZISK_BRANCH=pre-develop-0.11.0 \
             -e DISTRIBUTED_PROCESSES=2 \
-            -e DISTRIBUTED_THREADS=64 \ 
+            -e DISTRIBUTED_THREADS=64 \
             -e PROVE_FLAGS="-a -y" \
             ziskvm/zisk-test-env:latest \
             /bin/bash -c "set -e && \
               source \$HOME/scripts/build_zisk.sh && \
               source \$HOME/scripts/install_setup_public.sh && \
-              source \$HOME/scripts/test_sha_hasher.sh"       
+              source \$HOME/scripts/test_sha_hasher.sh"     
           
   lint:
     name: Formatting & Clippy
