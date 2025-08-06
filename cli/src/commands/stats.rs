@@ -207,20 +207,6 @@ impl ZiskStats {
             let world = mpi_context.universe.world();
             world_ranks = world.size() as usize;
 
-            if let Some(mpi_node) = self.mpi_node {
-                let m2 = mpi_node as i32 * 2;
-                if mpi_context.world_rank < m2 || mpi_context.world_rank >= m2 + 2 {
-                    world.split_shared(mpi_context.world_rank);
-                    world.barrier();
-                    println!(
-                        "{}: {}",
-                        format!("Rank {}", mpi_context.world_rank).bright_yellow().bold(),
-                        "Exiting stats command.".bright_yellow()
-                    );
-                    return Ok(());
-                }
-            }
-
             proofman = ProofMan::<Goldilocks>::new(
                 proving_key,
                 custom_commits_map,
@@ -232,6 +218,34 @@ impl ZiskStats {
                 Some(mpi_context.universe),
             )
             .expect("Failed to initialize proofman");
+
+            let mut is_active = true;
+
+            if let Some(mpi_node) = self.mpi_node {
+                if local_rank != mpi_node as i32 {
+                    is_active = false;
+                }
+            }
+
+            // All processes must participate in these calls:
+            let color = if is_active {
+                mpi::topology::Color::with_value(1)
+            } else {
+                mpi::topology::Color::undefined()
+            };
+            let _sub_comm = world.split_by_color(color);
+
+            world.split_shared(world_rank);
+
+            if !is_active {
+                println!(
+                    "{}: {}",
+                    format!("Rank {}", local_rank).bright_yellow().bold(),
+                    "Inactive rank, skipping computation.".bright_yellow()
+                );
+
+                return Ok(());
+            }
         }
 
         #[cfg(not(distributed))]
