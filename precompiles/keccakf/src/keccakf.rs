@@ -8,7 +8,7 @@ use circuit::{Gate, GateOperation, PinId};
 use precompiles_helpers::keccakf_topology;
 use proofman_common::{AirInstance, FromTrace, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_pil::{KeccakfFixed, KeccakfTableTrace, KeccakfTrace, KeccakfTraceRow};
+use zisk_pil::{KeccakfFixed, KeccakfTrace, KeccakfTraceRow};
 
 use crate::KeccakfInput;
 
@@ -478,7 +478,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
             }
 
             // Update the multiplicity table for the circuit
-            let mut multiplicity = vec![0; KeccakfTableTrace::<usize>::NUM_ROWS];
             for (k, row) in par_trace.iter().enumerate().take(self.circuit_size) {
                 let a = &row.free_in_a;
                 let b = &row.free_in_b;
@@ -496,10 +495,9 @@ impl<F: PrimeField64> KeccakfSM<F> {
                     let c_val = F::as_canonical_u64(&c[j]);
                     let table_row =
                         KeccakfTableSM::calculate_table_row(&gate_op_val, a_val, b_val, c_val);
-                    multiplicity[table_row] += 1;
+                    self.keccakf_table_sm.update_input(table_row, 1);
                 }
             }
-            self.keccakf_table_sm.update_multiplicities(&multiplicity);
         });
 
         fn update_bit_val<F: PrimeField64>(

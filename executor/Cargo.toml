@@ -28,6 +28,7 @@ tracing = { workspace = true }
 itertools = { workspace = true }
 rayon = { workspace = true }
 pil-std-lib = { workspace = true }
+crossbeam = "0.8.4"
 
 [features]
 default = []

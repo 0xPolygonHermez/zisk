@@ -8,7 +8,6 @@ use std::any::Any;
 
 use crate::KeccakfCounterInputGen;
 
-use proofman_common::PreCalculate;
 use zisk_common::{
     plan, BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceInfo, InstanceType, Metrics,
     Plan, Planner, TableInfo,
@@ -111,8 +110,8 @@ impl Planner for KeccakfPlanner {
                         None,
                         InstanceType::Instance,
                         check_point,
-                        PreCalculate::Fast,
                         Some(converted),
+                        8,
                     )
                 })
                 .collect();
@@ -128,8 +127,8 @@ impl Planner for KeccakfPlanner {
                     None,
                     InstanceType::Table,
                     CheckPoint::None,
-                    PreCalculate::None,
                     None,
+                    1,
                 ));
             }
         }

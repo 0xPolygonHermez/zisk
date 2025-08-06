@@ -46,6 +46,9 @@ pub struct RomInstance {
     /// Optional handle for the ROM assembly runner thread.
     handle_rh: Mutex<Option<JoinHandle<AsmRunnerRH>>>,
 
+    /// Cached result from the assembly runner thread.
+    asm_result: Mutex<Option<AsmRunnerRH>>,
+
     calculated: AtomicBool,
 }
 
@@ -72,12 +75,13 @@ impl RomInstance {
             prog_inst_count: Mutex::new(prog_inst_count),
             counter_stats: Mutex::new(None),
             handle_rh: Mutex::new(handle_rh),
+            asm_result: Mutex::new(None),
             calculated: AtomicBool::new(false),
         }
     }
 
     pub fn is_asm_execution(&self) -> bool {
-        self.handle_rh.lock().unwrap().is_some()
+        self.handle_rh.lock().unwrap().is_some() || self.asm_result.lock().unwrap().is_some()
     }
 }
 
@@ -104,8 +108,18 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
     ) -> Option<AirInstance<F>> {
         // Case 1: Use ROM assembly output
         if self.is_asm_execution() {
-            let handle_rh = self.handle_rh.lock().unwrap().take().unwrap();
-            let result_rh = handle_rh.join().expect("Error during Rom Histogram thread execution");
+            // Check if we already have the result cached
+            if self.asm_result.lock().unwrap().is_none() {
+                // Join the thread and cache the result
+                let handle_rh = self.handle_rh.lock().unwrap().take().unwrap();
+                let result_rh =
+                    handle_rh.join().expect("Error during Rom Histogram thread execution");
+                *self.asm_result.lock().unwrap() = Some(result_rh);
+            }
+
+            // Use the cached result
+            let asm_result = self.asm_result.lock().unwrap();
+            let result_rh = asm_result.as_ref().unwrap();
 
             *self.bios_inst_count.lock().unwrap() =
                 Arc::new(create_atomic_vec(result_rh.asm_rowh_output.bios_inst_count.len()));
@@ -151,6 +165,7 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
 
     fn reset(&self) {
         *self.counter_stats.lock().unwrap() = None;
+        *self.asm_result.lock().unwrap() = None;
         self.calculated.store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
