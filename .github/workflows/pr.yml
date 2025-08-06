@@ -53,6 +53,9 @@ jobs:
           docker run --rm --shm-size=32g \
             -e ZISK_GHA=1 \
             -e ZISK_BRANCH="${{ github.head_ref }}" \
+            -e DISTRIBUTED_PROCESSES=2 \
+            -e DISTRIBUTED_THREADS=64 \ 
+            -e PROVE_FLAGS="-a -y" \
             ziskvm/zisk-test-env:latest \
             /bin/bash -c "set -e && \
               source \$HOME/scripts/build_zisk.sh && \
