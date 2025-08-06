@@ -1,16 +1,19 @@
-name: PR
+name: Build and Test ZisK
 
 on:
   push:
     branches: [develop]
   pull_request:
     branches:
-      - "**"
+      - develop
+      - main
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:    
   merge_group:
 
 jobs:
-  test-x86_64:
-    name: Test on x86_64
+  cargo-test-x86_64:
+    name: Cargo tests on x86_64
     runs-on: ubuntu-latest
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
@@ -41,6 +44,21 @@ jobs:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
 
+  test-x86_64:
+    name: Build and test ZisK on x86_64
+    runs-on: self-hosted
+    steps:
+      - name: Run docker zisk-test-env
+        run: |
+          docker run --rm --shm-size=32g \
+            -e ZISK_GHA=1 \
+            -e ZISK_BRANCH="${{ github.head_ref }}" \
+            ziskvm/zisk-test-env:latest \
+            /bin/bash -c "set -e && \
+              source \$HOME/scripts/build_zisk.sh && \
+              source \$HOME/scripts/install_setup_public.sh && \
+              source \$HOME/scripts/test_sha_hasher.sh"       
+          
   lint:
     name: Formatting & Clippy
     runs-on: ubuntu-latest
