@@ -1,0 +1,42 @@
+name: Test ELF Assembly
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+jobs:
+  test-elf-regressions:
+    name: Test ELF Regressions
+    runs-on: ubuntu-latest
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgmp-dev libgmpxx4ldbl
+      
+      - name: Build zisk tools
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --bin cargo-zisk --bin ziskemu
+      
+      - name: Build assembly tests
+        working-directory: elf-regressions
+        run: ./scripts/build.sh --clean
+      
+      - name: Test with rom-setup
+        working-directory: elf-regressions
+        run: ./scripts/test.sh rom-setup all
+      
+      - name: Test with emulator  
+        working-directory: elf-regressions
+        run: ./scripts/test.sh emu all
