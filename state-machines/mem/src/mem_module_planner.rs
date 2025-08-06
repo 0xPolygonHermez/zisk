@@ -244,6 +244,7 @@ impl MemPlanCalculator for MemModulePlanner {
                 InstanceType::Instance,
                 CheckPoint::Multiple(keys),
                 Some(Box::new(segment)),
+                8,
             ));
         }
         plans

@@ -114,6 +114,7 @@ impl MemPlanner {
                     InstanceType::Instance,
                     CheckPoint::Multiple(chunks),
                     Some(Box::new(segment)),
+                    4,
                 ));
             }
         }
@@ -135,6 +136,7 @@ impl MemPlanner {
                         InstanceType::Instance,
                         CheckPoint::Multiple(std::mem::take(&mut chunks)),
                         Some(Box::new(std::mem::take(&mut segment))),
+                        4,
                     ));
                 }
                 last_segment_id = Some(current_segment_id);
@@ -159,6 +161,7 @@ impl MemPlanner {
                 InstanceType::Instance,
                 CheckPoint::Multiple(std::mem::take(&mut chunks)),
                 Some(Box::new(std::mem::take(&mut segment))),
+                4,
             ));
         }
 

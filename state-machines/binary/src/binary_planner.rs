@@ -58,6 +58,7 @@ impl BinaryPlanner {
                     InstanceType::Instance,
                     check_point,
                     Some(converted),
+                    4,
                 )
             })
             .collect();
@@ -93,6 +94,7 @@ impl BinaryPlanner {
                     InstanceType::Instance,
                     check_point,
                     Some(converted),
+                    4,
                 )
             })
             .collect();
@@ -119,6 +121,7 @@ impl BinaryPlanner {
                     InstanceType::Instance,
                     check_point,
                     Some(converted),
+                    4,
                 )
             })
             .collect()
