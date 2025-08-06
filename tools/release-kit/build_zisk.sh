@@ -32,6 +32,14 @@ main() {
     fi
 
     step  "Cloning ZisK repository..."
+    # If ZISK_GHA is set to 1, then ZISK_BRANCH must be defined
+    if [[ "$ZISK_GHA" == "1" ]]; then
+        if [[ -z "$ZISK_BRANCH" ]]; then
+            err "ZISK_GHA is set to 1, but ZISK_BRANCH is not defined. Aborting."
+            return 1
+        fi
+    fi
+
     if [[ -n "$ZISK_BRANCH" ]]; then
         # Remove existing directory if it exists
         rm -rf zisk

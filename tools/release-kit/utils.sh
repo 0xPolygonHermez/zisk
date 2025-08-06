@@ -48,6 +48,13 @@ success() {
 
 # load_env: Load environment variables from .env file
 load_env() {
+    # If running in GHA and .env doesn't exist, skip loading
+    if [[ "$ZISK_GHA" == "1" && ! -f ".env" ]]; then
+        info "ZISK_GHA=1 and no .env file found. Skipping load"
+        return 0
+    fi
+
+    # In all other cases, .env must exist
     if [[ ! -f ".env" ]]; then
         echo "❌ No .env file found."
         return 1
