@@ -112,6 +112,7 @@ impl<'a> MemAlignPlanner<'a> {
             InstanceType::Instance,
             CheckPoint::Multiple(chunks),
             Some(Box::new(check_points)),
+            4,
         );
         self.instances.push(instance);
     }

@@ -570,7 +570,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
     /// * `main_planning` - Planning information for main state machines.
     fn assign_main_instances(&self, pctx: &ProofCtx<F>, main_planning: &mut [Plan]) {
         for plan in main_planning.iter_mut() {
-            plan.set_global_id(pctx.add_instance_assign(plan.airgroup_id, plan.air_id, 1));
+            plan.set_global_id(pctx.add_instance_assign(plan.airgroup_id, plan.air_id, 4));
         }
     }
 
@@ -682,17 +682,16 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                 // If the node has rank 0 and the plan targets the ROM instance,
                 // we need to add it to the proof context using a special method.
                 // This method allows us to mark it as an instance to be computed by node 0.
-                let global_id =
-                    if plan.airgroup_id == ZISK_AIRGROUP_ID && plan.air_id == ROM_AIR_IDS[0] {
-                        // If this is the ROM instance, we need to add it to the proof context
-                        // with the rank 0.
-                        pctx.add_instance_rank(plan.airgroup_id, plan.air_id, 0, 1)
-                    } else {
-                        match plan.instance_type {
-                            InstanceType::Instance => {
-                                pctx.add_instance(plan.airgroup_id, plan.air_id, 1)
-                            }
-                            InstanceType::Table => pctx.add_table(plan.airgroup_id, plan.air_id),
+                let global_id = if plan.airgroup_id == ZISK_AIRGROUP_ID
+                    && plan.air_id == ROM_AIR_IDS[0]
+                {
+                    // If this is the ROM instance, we need to add it to the proof context
+                    // with the rank 0.
+                    pctx.add_instance_rank(plan.airgroup_id, plan.air_id, 0, plan.n_threads_witness)
+                } else {
+                    match plan.instance_type {
+                        InstanceType::Instance => {
+                            pctx.add_instance(plan.airgroup_id, plan.air_id, plan.n_threads_witness)
                         }
                     };
 

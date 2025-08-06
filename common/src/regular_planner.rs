@@ -170,6 +170,7 @@ impl Planner for RegularPlanner {
                         InstanceType::Instance,
                         check_point,
                         Some(converted),
+                        4,
                     )
                 })
                 .collect();
@@ -186,6 +187,7 @@ impl Planner for RegularPlanner {
                     InstanceType::Table,
                     CheckPoint::None,
                     None,
+                    1,
                 ));
             }
         }
