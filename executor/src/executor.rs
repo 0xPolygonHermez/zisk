@@ -855,6 +855,50 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         }
     }
 
+    fn order_chunks(
+        &self,
+        chunks_to_execute: &[Vec<usize>],
+        global_id_chunks: &HashMap<usize, Vec<usize>>,
+    ) -> Vec<usize> {
+        let mut ordered_chunks = Vec::new();
+        let mut already_selected_chunks = vec![false; chunks_to_execute.len()];
+
+        let mut n_global_ids_incompleted = global_id_chunks.len();
+        let mut n_chunks_by_global_id: HashMap<usize, usize> =
+            global_id_chunks.iter().map(|(global_id, chunks)| (*global_id, chunks.len())).collect();
+
+        while n_global_ids_incompleted > 0 {
+            let selected_global_id = n_chunks_by_global_id
+                .iter()
+                .filter(|(_, &count)| count > 0)
+                .min_by_key(|(_, &count)| count)
+                .map(|(&global_id, _)| global_id);
+
+            if let Some(global_id) = selected_global_id {
+                for chunk_id in global_id_chunks[&global_id].iter() {
+                    if already_selected_chunks[*chunk_id] {
+                        continue;
+                    }
+                    ordered_chunks.push(*chunk_id);
+                    already_selected_chunks[*chunk_id] = true;
+                    for global_idx in chunks_to_execute[*chunk_id].iter() {
+                        if let Some(count) = n_chunks_by_global_id.get_mut(global_idx) {
+                            *count -= 1;
+                            if *count == 0 {
+                                n_chunks_by_global_id.remove(global_idx);
+                                n_global_ids_incompleted -= 1;
+                            }
+                        }
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
+        ordered_chunks
+    }
+
     /// Expands for a secondary state machines instance.
     ///
     /// # Arguments
@@ -880,6 +924,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
         let (chunks_to_execute, global_id_chunks) =
             self.chunks_to_execute(min_traces, &secn_instances);
 
+        let ordered_chunks = self.order_chunks(&chunks_to_execute, &global_id_chunks);
         let global_ids: Vec<usize> = secn_instances.keys().copied().collect();
 
         #[cfg(feature = "stats")]
@@ -940,6 +985,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
             let global_ids_map = global_ids_map.clone();
             let global_id_chunks = global_id_chunks.clone();
             let collectors_by_instance = self.collectors_by_instance.clone();
+            let ordered_chunks_clone = ordered_chunks.clone();
             let chunk_size = self.chunk_size;
 
             let pctx_clone = pctx.clone();
@@ -958,10 +1004,11 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                     _ => unreachable!(),
                 };
                 loop {
-                    let chunk_id = next_chunk.fetch_add(1, Ordering::SeqCst);
-                    if chunk_id >= data_buses.len() {
+                    let next_chunk_id = next_chunk.fetch_add(1, Ordering::SeqCst);
+                    if next_chunk_id >= ordered_chunks_clone.len() {
                         break;
                     }
+                    let chunk_id = ordered_chunks_clone[next_chunk_id];
 
                     if let Some(mut data_bus) = data_buses[chunk_id].lock().unwrap().take() {
                         #[cfg(feature = "stats")]
