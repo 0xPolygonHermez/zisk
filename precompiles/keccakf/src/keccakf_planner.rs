@@ -111,6 +111,7 @@ impl Planner for KeccakfPlanner {
                         InstanceType::Instance,
                         check_point,
                         Some(converted),
+                        8,
                     )
                 })
                 .collect();
@@ -127,6 +128,7 @@ impl Planner for KeccakfPlanner {
                     InstanceType::Table,
                     CheckPoint::None,
                     None,
+                    1,
                 ));
             }
         }

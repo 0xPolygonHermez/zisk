@@ -44,21 +44,21 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/new_witness" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/new_witness" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/new_witness" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/new_witness" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/new_witness" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/new_witness" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/new_witness" }
+# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/new_witness" }
+# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/new_witness" }
+# proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/new_witness" }
+# proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/new_witness" }
+# pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/new_witness" }
+# witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/new_witness" }
+# fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/new_witness" }
 # Local development
-# proofman = { path = "../pil2-proofman/proofman" }
-# proofman-common = { path = "../pil2-proofman/common" }
-# proofman-macros = { path = "../pil2-proofman/macros" }
-# proofman-util = { path = "../pil2-proofman/util" }
-# pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
-# witness = { path = "../pil2-proofman/witness" }
-# fields = { path = "../pil2-proofman/fields" }
+proofman = { path = "../pil2-proofman/proofman" }
+proofman-common = { path = "../pil2-proofman/common" }
+proofman-macros = { path = "../pil2-proofman/macros" }
+proofman-util = { path = "../pil2-proofman/util" }
+pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
+witness = { path = "../pil2-proofman/witness" }
+fields = { path = "../pil2-proofman/fields" }
 
 rayon = "1.10"
 num-bigint = "0.4"

@@ -89,6 +89,8 @@ pub struct Plan {
     pub meta: Option<Box<dyn Any>>,
 
     pub global_id: Option<usize>,
+
+    pub n_threads_witness: usize,
 }
 
 impl Plan {
@@ -112,8 +114,9 @@ impl Plan {
         instance_type: InstanceType,
         check_point: CheckPoint,
         meta: Option<Box<dyn Any>>,
+        n_threads_witness: usize,
     ) -> Self {
-        Plan { airgroup_id, air_id, segment_id, instance_type, check_point, meta, global_id: None }
+        Plan { airgroup_id, air_id, segment_id, instance_type, check_point, meta, global_id: None, n_threads_witness }
     }
 
     pub fn set_global_id(&mut self, global_id: usize) {
