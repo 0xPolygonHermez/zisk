@@ -8,7 +8,6 @@ use std::{fs::File, path::PathBuf};
 use bytemuck::cast_slice;
 use proofman::verify_final_proof;
 
-use crate::commands::cli_fail_if_macos;
 use crate::ZISK_VERSION_MESSAGE;
 
 use super::{get_default_stark_info, get_default_verifier_bin, get_default_verkey};
@@ -42,8 +41,6 @@ pub struct ZiskVerify {
 
 impl ZiskVerify {
     pub fn run(&self) -> Result<()> {
-        cli_fail_if_macos()?;
-
         initialize_logger(self.verbose.into(), None);
 
         tracing::info!(
