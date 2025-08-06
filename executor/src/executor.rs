@@ -998,7 +998,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> ZiskExecutor<F, BD> {
                                             .insert(global_id, (stats, collectors));
                                     }
 
-                                    pctx_clone.set_witness_ready(global_id);
+                                    pctx_clone.set_witness_ready(global_id, true);
                                 }
                             }
                         }
@@ -1378,7 +1378,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
             if MAIN_AIR_IDS.contains(&air_id)
                 || (air_id == ROM_AIR_IDS[0] && self.asm_runner_path.is_some())
             {
-                pctx.set_witness_ready(global_id);
+                pctx.set_witness_ready(global_id, false);
             } else {
                 let secn_instance = &secn_instances_guard[&global_id];
 
@@ -1387,7 +1387,7 @@ impl<F: PrimeField64, BD: SMBundle<F>> WitnessComponent<F> for ZiskExecutor<F, B
                 {
                     secn_instances.insert(global_id, secn_instance);
                 } else {
-                    pctx.set_witness_ready(global_id);
+                    pctx.set_witness_ready(global_id, true);
                 }
             }
         }
