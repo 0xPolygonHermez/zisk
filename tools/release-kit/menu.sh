@@ -2,7 +2,7 @@
 
 source ./utils.sh
 
-WORK_DIR=$(pwd)
+current_dir=$(pwd)
 
 # Loop until user chooses to exit
 while true; do
@@ -83,8 +83,8 @@ while true; do
 
     echo
 
-    cd "$WORK_DIR" || {
-        err "Failed to change directory to $WORK_DIR"
+    cd "$current_dir" || {
+        err "Failed to change directory to $current_dir"
         exit 1
     }
 done

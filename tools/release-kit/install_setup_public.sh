@@ -12,7 +12,7 @@ main () {
     if [[ "$ZISK_GHA" == "1" ]]; then
         info "Executing install_setup_public.sh script"
         
-        # If ZISK_GHA is set, skip loading .env file as env variables are already set from docker run command
+        # If ZISK_GHA is set, skip loading .env file as env variables are already set from command line
         step "Skipping loading .env file since ZISK_GHA is set to 1. Defining SETUP_VERSION from cargo-zisk version"
         
         ZISK_VERSION=$(echo "$(ensure cargo-zisk --version)" | awk '{print $2}')

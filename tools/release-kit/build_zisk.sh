@@ -23,7 +23,7 @@ main() {
             return 1
         fi
         info "Executing build_zisk.sh script"
-        # If ZISK_GHA is set, skip loading .env file as env variables are already set from docker run command
+        # If ZISK_GHA is set, skip loading .env file as env variables are already set from docker command line
         step "Skipping loading .env file since ZISK_GHA is set to 1"
     else
         step "Loading environment variables..."
