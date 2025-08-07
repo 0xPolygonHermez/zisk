@@ -54,19 +54,9 @@ pub async fn url_exists(client: &Client, url: &str) -> bool {
 
 #[allow(unreachable_code)]
 pub fn is_supported_target() -> bool {
-    #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-    return true;
+    let target = get_target();
 
-    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
-    return true;
-
-    #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
-    return true;
-
-    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
-    return true;
-
-    false
+    return target == "x86_64-unknown-linux-gnu" || target == "aarch64-apple-darwin";
 }
 
 pub async fn get_toolchain_download_url(client: &Client, target: String) -> String {

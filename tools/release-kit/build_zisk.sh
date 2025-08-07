@@ -96,7 +96,6 @@ main() {
         BUILD_FEATURES="--features gpu"
         warn "Building with GPU support..."
     fi
-    info "cargo build --release --target ${TARGET} ${BUILD_FEATURES}"
     if ! (cargo build --release --target ${TARGET} ${BUILD_FEATURES}); then
         warn "Build failed. Trying to fix missing stddef.h..."
 
