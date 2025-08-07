@@ -81,7 +81,7 @@ jobs:
       - name: Build ZisK
         run: |
           cd "$GITHUB_WORKSPACE/tools/release-kit"
-          cat ./build_zisk.sh
+          ./build_zisk.sh
 
       - name: Test sha_hasher
         run: |

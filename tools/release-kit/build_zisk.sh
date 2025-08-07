@@ -79,7 +79,7 @@ main() {
         done
     fi
 
-    step  "Building ZisK tools..."
+    step  "Building ZisK tools 2..."
     ensure cargo clean || return 1
     ensure cargo update || return 1
     BUILD_FEATURES=""
@@ -102,7 +102,7 @@ main() {
         export CPLUS_INCLUDE_PATH=$C_INCLUDE_PATH
 
         info  "Retrying build..."
-        ensure cargo build --release ${BUILD_FEATURES} || return 1
+        ensure cargo build --release --target aarch64-apple-darwin ${BUILD_FEATURES} || return 1
     fi
 
     step "Copying binaries to ${ZISK_BIN_DIR}..."
