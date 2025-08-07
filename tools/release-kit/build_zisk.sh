@@ -25,6 +25,8 @@ main() {
         return 1
     fi
 
+    ls "${current_dir}"
+    
     # If ZISK_GHA is set to 1, then ZISK_BRANCH must be defined
     if [[ "$ZISK_GHA" == "1" ]]; then
         if [[ -z "$ZISK_BRANCH" ]]; then
