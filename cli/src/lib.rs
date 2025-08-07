@@ -56,9 +56,12 @@ pub async fn url_exists(client: &Client, url: &str) -> bool {
 pub fn is_supported_target() -> bool {
     println!("target_arch: {}", std::env::consts::ARCH);
     println!("target_os: {}", std::env::consts::OS);
-        
+
     #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-    return true;
+    {
+        println!("Supported target: x86_64-linux");
+        return true;
+    }
 
     #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
     return true;
