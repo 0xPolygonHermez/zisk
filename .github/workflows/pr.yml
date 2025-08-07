@@ -84,9 +84,11 @@ jobs:
           ./build_zisk.sh
 
       - name: Test sha_hasher
-        run: | 
-          cd tools/release-kit
-          ./test_sha_hasher.sh  
+        working-directory: tools/release-kit
+        run: ./test_sha_hasher.sh
+        env:
+          ZISK_GHA: 1
+          ZISK_BRANCH: feature/scripts-gha
 
   lint:
     name: Formatting & Clippy
