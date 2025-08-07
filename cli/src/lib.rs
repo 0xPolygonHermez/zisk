@@ -56,8 +56,10 @@ pub async fn url_exists(client: &Client, url: &str) -> bool {
 pub fn is_supported_target() -> bool {
     let target = get_target();
 
-    println!("Detected target: {}", target);
-    return target == "x86_64-unknown-linux-gnu" || target == "aarch64-apple-darwin";
+    println!("Detected target: {}, {}", target, target == "aarch64-apple-darwin");
+    let res = target == "x86_64-unknown-linux-gnu" || target == "aarch64-apple-darwin";
+    println!("Is supported target: {}", res);
+    res
 }
 
 pub async fn get_toolchain_download_url(client: &Client, target: String) -> String {
