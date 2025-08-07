@@ -43,7 +43,21 @@ install_cuda() {
 
 main() {
     current_step=1
-    total_steps=4
+
+    # Check if --gpu argument was passed
+    INSTALL_GPU=false
+    for arg in "$@"; do
+        if [[ "$arg" == "--gpu" ]]; then
+            INSTALL_GPU=true
+            break
+        fi
+    done
+
+    if [[ "$INSTALL_GPU" == true ]]; then
+        total_steps=4
+    else
+        total_steps=3
+    fi
 
     step "Installing package dependencies..."
 
@@ -65,8 +79,12 @@ main() {
     export PATH="${HOME}/.cargo/bin:$PATH"
     source "${HOME}/.cargo/env"
 
-    step "Installing CUDA..."
-    install_cuda 12-1 || return 1
+    if [[ "$INSTALL_GPU" == true ]]; then
+        step "Installing CUDA..."
+        install_cuda 12-1 || return 1
+    else
+        warn "skipping CUDA installation (no --gpu flag passed)"
+    fi
 
     step "Installing nano editor..."
     sudo apt-get update
@@ -75,4 +93,4 @@ main() {
     echo
 }
 
-main
+main "$@"

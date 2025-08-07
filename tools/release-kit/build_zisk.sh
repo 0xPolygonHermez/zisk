@@ -4,13 +4,25 @@ source ./utils.sh
 
 main() {
     current_step=1
-    total_steps=10
-
-    step "Loading environment variables..."
-    load_env || return 1
-    confirm_continue || return 1
+    total_steps=9
 
     source $HOME/.cargo/env
+
+    # If ZISK_GHA is set to 1, then ZISK_BRANCH must be defined
+    if [[ "$ZISK_GHA" == "1" ]]; then
+        if [[ -z "$ZISK_BRANCH" ]]; then
+            err "ZISK_GHA is set to 1, but ZISK_BRANCH is not defined. Aborting"
+            return 1
+        fi
+        info "Executing build_zisk.sh script"
+        # If ZISK_GHA is set, skip loading .env file as env variables are already set from docker run command
+        step "Skipping loading .env file since ZISK_GHA is set to 1"
+    else
+        step "Loading environment variables..."
+        # Load environment variables from .env file
+        load_env || return 1
+        confirm_continue || return 1
+    fi
 
     mkdir -p "${HOME}/work"
     cd "${HOME}/work"
@@ -25,21 +37,9 @@ main() {
         info "Checking out branch '$PIL2_PROOFMAN_BRANCH' for pil2-proofman..."
         ensure git checkout "$PIL2_PROOFMAN_BRANCH" || return 1
         cd ..
-    else
-        info "Skipping cloning pil2-proofman repository. Pulling existing repository"
-        ensure cd pil2-proofman
-        ensure git pull
     fi
 
     step  "Cloning ZisK repository..."
-    # If ZISK_GHA is set to 1, then ZISK_BRANCH must be defined
-    if [[ "$ZISK_GHA" == "1" ]]; then
-        if [[ -z "$ZISK_BRANCH" ]]; then
-            err "ZISK_GHA is set to 1, but ZISK_BRANCH is not defined. Aborting."
-            return 1
-        fi
-    fi
-
     if [[ -n "$ZISK_BRANCH" ]]; then
         # Remove existing directory if it exists
         rm -rf zisk
@@ -49,14 +49,10 @@ main() {
         # Check out the branch
         info "Checking out branch '$ZISK_BRANCH'..."
         ensure git checkout "$ZISK_BRANCH" || return 1
-    else
-        info "Skipping cloning zisk repository. Pulling existing repository"
-        ensure cd zisk
-        ensure git pull || return 1
     fi
 
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
-        step "Update ZisK cargo dependencies to use local pil2-proofman repo..."
+        info "Update ZisK cargo dependencies to use local pil2-proofman repo..."
         # Dependencies to be replaced
         declare -A replacements=(
         ["proofman"]='{ path = "../pil2-proofman/proofman" }'
@@ -138,7 +134,9 @@ main() {
         return 1
     }
 
-    cd ..
+    cd $HOME/scripts
+
+    success "ZisK build completed successfully!"
 }
 
 main || return 1

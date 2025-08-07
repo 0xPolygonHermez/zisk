@@ -11,9 +11,17 @@ main() {
 
     is_proving_key_installed || return 1
     
-    step "Loading environment variables..."    
-    load_env || return 1
-    confirm_continue || return 1
+    # If ZISK_GHA is set to 1, then ZISK_BRANCH must be defined
+    if [[ "$ZISK_GHA" == "1" ]]; then
+        info "Executing test_sha_hasher.sh script"
+        # If ZISK_GHA is set, skip loading .env file as env variables are already set from docker run command
+        step "Skipping loading .env file since ZISK_GHA is set to 1"
+    else
+        step "Loading environment variables..."
+        # Load environment variables from .env file
+        load_env || return 1
+        confirm_continue || return 1
+    fi    
 
     mkdir -p "${HOME}/work"
     cd "${HOME}/work" 
@@ -65,8 +73,15 @@ main() {
         fi
     fi
 
-    step "Generating proof..."  
-    ensure cargo-zisk prove -e "$ELF_PATH" -i "$INPUT_BIN" -o proof $PROVE_FLAGS 2>&1 | tee prove_output.log || return 1
+    step "Generating proof..."
+    MPI_CMD=""
+    # If ZISK_GHA is set, use mpirun command for distributed proving to prove it faster and reduce GHA time
+    if [[ "$ZISK_GHA" == "1" ]]; then
+        # Build mpi command
+        info "Using mpirun for distributed proving"
+        MPI_CMD="mpirun --allow-run-as-root --bind-to none -np $DISTRIBUTED_PROCESSES -x OMP_NUM_THREADS=$DISTRIBUTED_THREADS -x RAYON_NUM_THREADS=$DISTRIBUTED_THREADS"
+    fi
+    ensure $MPI_CMD cargo-zisk prove -e "$ELF_PATH" -i "$INPUT_BIN" -o proof $PROVE_FLAGS 2>&1 | tee prove_output.log || return 1
     if ! grep -F "Vadcop Final proof was verified" prove_output.log; then
         err "prove program failed"
         return 1
@@ -79,7 +94,7 @@ main() {
         return 1
     fi          
 
-    cd ..
+    cd "$HOME/scripts"
 
     success "Program $PROJECT_NAME has been successfully proved!"
 }

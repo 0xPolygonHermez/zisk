@@ -4,11 +4,19 @@
 export PATH="$PATH:$HOME/.zisk/bin"
 
 # Colors
-BOLD=$(tput bold)
-GREEN=$(tput setaf 2)
-RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
-RESET=$(tput sgr0)
+if [ -t 1 ]; then
+    BOLD=$(tput bold)
+    GREEN=$(tput setaf 2)
+    RED=$(tput setaf 1)
+    YELLOW=$(tput setaf 3)
+    RESET=$(tput sgr0)
+else 
+    BOLD=""
+    GREEN=""
+    RED=""
+    YELLOW=""
+    RESET=""
+fi
 
 # Helper to ensure a command runs successfully
 # If it fails, it prints an error message and waits for user input
@@ -48,15 +56,9 @@ success() {
 
 # load_env: Load environment variables from .env file
 load_env() {
-    # If running in GHA and .env doesn't exist, skip loading
-    if [[ "$ZISK_GHA" == "1" && ! -f ".env" ]]; then
-        info "ZISK_GHA=1 and no .env file found. Skipping load"
-        return 0
-    fi
-
-    # In all other cases, .env must exist
+    # Check if .env file exists
     if [[ ! -f ".env" ]]; then
-        echo "❌ No .env file found."
+        echo "❌ No .env file found"
         return 1
     fi
 
