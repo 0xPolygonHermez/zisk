@@ -18,7 +18,7 @@ main() {
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         TARGET="x86_64-unknown-linux-gnu"
-    else if [[ "${PLATFORM}" == "macos" ]]; then
+    elif [[ "${PLATFORM}" == "macos" ]]; then
         TARGET="aarch64-apple-darwin"
     else
         err "Unsupported platform: ${PLATFORM}"
