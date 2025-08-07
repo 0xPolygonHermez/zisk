@@ -25,8 +25,6 @@ main() {
         return 1
     fi
 
-    ls "${current_dir}"
-
     # If ZISK_GHA is set to 1, then ZISK_BRANCH must be defined
     if [[ "$ZISK_GHA" == "1" ]]; then
         if [[ -z "$ZISK_BRANCH" ]]; then
@@ -45,7 +43,6 @@ main() {
 
     mkdir -p "${HOME}/workspace"
     cd "${HOME}/workspace"
-    pwd
 
     step "Cloning pil2-proofman repository..."
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
@@ -62,7 +59,6 @@ main() {
     step  "Cloning ZisK repository..."
     if [[ -n "$ZISK_BRANCH" ]]; then
         # Remove existing directory if it exists
-        pwd
         rm -rf zisk
         # Clone ZisK repository
         ensure git clone https://github.com/0xPolygonHermez/zisk.git || return 1
@@ -92,7 +88,7 @@ main() {
         done
     fi
 
-    step  "Building ZisK tools 2..."
+    step  "Building ZisK tools..."
     ensure cargo clean || return 1
     ensure cargo update || return 1
     BUILD_FEATURES=""
@@ -159,18 +155,15 @@ main() {
         echo "$EXPORT_LINE" >> "$PROFILE"
     fi
 
-    ls "${current_dir}"
     step "Installing ZisK Rust toolchain..."
     ensure cargo-zisk sdk install-toolchain || return 1
 
-    ls "${current_dir}"
     step "Verifying toolchain installation..."
     rustup toolchain list | grep zisk || {
         err "ZisK toolchain not found."
         return 1
     }
 
-    ls "${current_dir}"
     cd "$current_dir"
 
     success "ZisK build completed successfully!"
