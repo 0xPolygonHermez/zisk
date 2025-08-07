@@ -314,6 +314,7 @@ impl ZiskProve {
         } else {
             match self.field {
                 Field::Goldilocks => {
+                    proofman.set_barrier();
                     (proof_id, vadcop_final_proof) = proofman
                         .generate_proof_from_lib(
                             self.input.clone(),
