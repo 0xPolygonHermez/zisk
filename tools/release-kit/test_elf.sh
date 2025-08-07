@@ -83,7 +83,9 @@ test_elf() {
 
     current_dir=$(pwd)
 
-    is_proving_key_installed || return 1
+    if [[ "${PLATFORM}" == "linux" ]]; then
+        is_proving_key_installed || return 1
+    fi
 
     # If ZISK_GHA is set to 1, then ZISK_BRANCH must be defined
     if [[ "$ZISK_GHA" == "1" ]]; then

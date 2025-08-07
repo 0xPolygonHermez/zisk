@@ -12,7 +12,10 @@ main() {
     total_steps=10
 
     get_platform || return 1
-    is_proving_key_installed || return 1
+    
+    if [[ "${PLATFORM}" == "linux" ]]; then
+        is_proving_key_installed || return 1
+    fi   
     
     # If ZISK_GHA is set to 1, then ZISK_BRANCH must be defined
     if [[ "$ZISK_GHA" == "1" ]]; then
