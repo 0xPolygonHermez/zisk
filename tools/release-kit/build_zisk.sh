@@ -155,15 +155,18 @@ main() {
         echo "$EXPORT_LINE" >> "$PROFILE"
     fi
 
+    ls "${current_dir}"
     step "Installing ZisK Rust toolchain..."
     ensure cargo-zisk sdk install-toolchain || return 1
 
+    ls "${current_dir}"
     step "Verifying toolchain installation..."
     rustup toolchain list | grep zisk || {
         err "ZisK toolchain not found."
         return 1
     }
 
+    ls "${current_dir}"
     cd "$current_dir"
 
     success "ZisK build completed successfully!"
