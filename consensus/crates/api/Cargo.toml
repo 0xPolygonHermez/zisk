@@ -1,0 +1,23 @@
+[package]
+name = "consensus-api"
+description = "gRPC API layer for Consensus Network"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+consensus-config = { workspace = true }
+consensus-comm = { workspace = true }
+
+tonic = { workspace = true }
+tonic-prost = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+
+[build-dependencies]
+tonic-prost-build = { workspace = true }

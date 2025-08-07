@@ -1,0 +1,14 @@
+# Development overrides
+# Copy this to local.toml and customize as needed
+
+[service]
+name = "consensus-network-dev"
+
+[server]
+port = 8081
+
+[logging]
+level = "trace"
+
+[comm]
+max_peers = 5
