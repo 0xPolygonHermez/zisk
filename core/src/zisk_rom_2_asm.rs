@@ -90,6 +90,9 @@ pub struct ZiskAsmContext {
     address_is_constant: bool,   // true if address is a constant value
     address_constant_value: u64, // address constant value, only valid if address_is_constant==true
 
+    // This is the address of the entrypoint. It is typically 0x80000000
+    min_program_pc: u64,
+
     // Force in which register a or b must be stored
     store_a_in_c: bool,
     store_a_in_a: bool,
@@ -393,6 +396,7 @@ impl ZiskRom2Asm {
             comments,
             boc: "/* ".to_string(),
             eoc: " */".to_string(),
+            min_program_pc: rom.min_program_pc,
             ..Default::default()
         };
 
@@ -3280,6 +3284,16 @@ impl ZiskRom2Asm {
         *code += ".section .rodata\n";
         *code += ".align 64\n";
 
+        // Ensure the minimum program address label exists (it might not be in sorted_pc_list)
+        //
+        // This handles edge cases where the program's declared start address doesn't contain
+        // an actual instruction, which can happen when the linker adds alignment padding at
+        // the section start as an example.
+        if rom.min_program_pc >= ROM_ADDR && !rom.sorted_pc_list.contains(&rom.min_program_pc) {
+            *code +=
+                &format!("map_pc_{:x}: \t.quad pc_{:x}\n", rom.min_program_pc, rom.min_program_pc);
+        }
+
         // Init previous key to the first ROM entry
         let mut previous_key: u64 = ROM_ENTRY;
         for key in &rom.sorted_pc_list {
@@ -6051,18 +6065,24 @@ impl ZiskRom2Asm {
     fn jumpt_to_dynamic_pc(ctx: &mut ZiskAsmContext, code: &mut String) {
         *code += &ctx.full_line_comment("jump to dynamic pc".to_string());
         *code += &format!(
-            "\tmov {}, 0x80000000 {}\n",
+            "\tmov {}, 0x{:x} {}\n",
             REG_ADDRESS,
+            ctx.min_program_pc,
             ctx.comment_str("is pc a low address?")
         );
         *code += &format!("\tcmp {REG_PC}, {REG_ADDRESS}\n");
         *code += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
-        *code +=
-            &format!("\tsub {}, {} {}\n", REG_PC, REG_ADDRESS, ctx.comment_str("pc -= 0x80000000"));
         *code += &format!(
-            "\tlea {}, [map_pc_80000000] {}\n",
+            "\tsub {}, {} {}\n",
+            REG_PC,
             REG_ADDRESS,
-            ctx.comment_str("address = map[0x80000000]")
+            ctx.comment_str(&format!("pc -= 0x{:x}", ctx.min_program_pc))
+        );
+        *code += &format!(
+            "\tlea {}, [map_pc_{:x}] {}\n",
+            REG_ADDRESS,
+            ctx.min_program_pc,
+            ctx.comment_str(&format!("address = map[0x{:x}]", ctx.min_program_pc))
         );
         *code += &format!(
             "\tmov {}, [{} + {}*{}] {}\n",
