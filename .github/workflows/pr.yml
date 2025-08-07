@@ -80,15 +80,13 @@ jobs:
 
       - name: Build ZisK
         run: |
-          cd tools/release-kit
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./build_zisk.sh
 
       - name: Test sha_hasher
-        working-directory: tools/release-kit
-        run: ./test_sha_hasher.sh
-        env:
-          ZISK_GHA: 1
-          ZISK_BRANCH: feature/scripts-gha
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          ./test_sha_hasher.sh
 
   lint:
     name: Formatting & Clippy
