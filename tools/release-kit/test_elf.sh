@@ -118,14 +118,14 @@ test_elf() {
     total_steps=$(( 2 + num_inputs * 3 + num_dist_inputs ))
 
     # Create directories for proof results
-    PROOF_RESULTS_DIR="${HOME}/work/proof-results"
+    PROOF_RESULTS_DIR="${HOME}/workspace/proof-results"
     rm -rf "${PROOF_RESULTS_DIR}"
     mkdir -p "${PROOF_RESULTS_DIR}"
     mkdir -p "${PROOF_RESULTS_DIR}/non-distributed"
     mkdir -p "${PROOF_RESULTS_DIR}/distributed"
 
     # Change to the working directory
-    cd "${HOME}/work" || return 1
+    cd "${HOME}/workspace" || return 1
 
     # Build mpi command
     MPI_CMD="mpirun --allow-run-as-root --bind-to none -np $DISTRIBUTED_PROCESSES -x OMP_NUM_THREADS=$DISTRIBUTED_THREADS -x RAYON_NUM_THREADS=$DISTRIBUTED_THREADS"

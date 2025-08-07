@@ -43,8 +43,8 @@ main() {
         confirm_continue || return 1
     fi
 
-    mkdir -p "${HOME}/work"
-    cd "${HOME}/work"
+    mkdir -p "${HOME}/workspace"
+    cd "${HOME}/workspace"
     pwd
 
     step "Cloning pil2-proofman repository..."

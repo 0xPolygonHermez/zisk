@@ -12,7 +12,7 @@ main() {
     total_steps=10
 
     get_platform || return 1
-    
+
     if [[ "${PLATFORM}" == "linux" ]]; then
         is_proving_key_installed || return 1
     fi   
@@ -29,8 +29,8 @@ main() {
         confirm_continue || return 1
     fi    
 
-    mkdir -p "${HOME}/work"
-    cd "${HOME}/work" 
+    mkdir -p "${HOME}/workspace"
+    cd "${HOME}/workspace" 
 
     step "Deleting shared memory..."
     rm -rf /dev/shm/ZISK*
