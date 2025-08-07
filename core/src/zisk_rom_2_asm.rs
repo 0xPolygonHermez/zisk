@@ -3284,11 +3284,12 @@ impl ZiskRom2Asm {
         *code += ".section .rodata\n";
         *code += ".align 64\n";
 
-        // Ensure the minimum program address label exists (it might not be in sorted_pc_list)
+        // Safety check: Ensure the minimum program address label exists
         //
-        // This handles edge cases where the program's declared start address doesn't contain
-        // an actual instruction, which can happen when the linker adds alignment padding at
-        // the section start as an example.
+        // This is defensive programming for rare cases where min_program_pc has no valid
+        // instruction (non-NOP padding, data in text section).
+        // In practice with NOP padding, this check never triggers and the entrypoint
+        // is the min_program_pc
         if rom.min_program_pc >= ROM_ADDR && !rom.sorted_pc_list.contains(&rom.min_program_pc) {
             *code +=
                 &format!("map_pc_{:x}: \t.quad pc_{:x}\n", rom.min_program_pc, rom.min_program_pc);
