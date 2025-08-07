@@ -118,9 +118,9 @@ main() {
         return 1
     fi
 
-    ensure cp target/release/cargo-zisk "${ZISK_BIN_DIR}" || return 1
-    ensure cp target/release/ziskemu    "${ZISK_BIN_DIR}" || return 1
-    ensure cp target/release/riscv2zisk "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/aarch64-apple-darwin/release/cargo-zisk "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/aarch64-apple-darwin/release/ziskemu    "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/aarch64-apple-darwin/release/riscv2zisk "${ZISK_BIN_DIR}" || return 1
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         ensure cp target/release/libzisk_witness.so "${ZISK_BIN_DIR}" || return 1
