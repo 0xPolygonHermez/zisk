@@ -50,9 +50,10 @@ jobs:
     steps:
       - name: Run docker zisk-test-env
         run: |
-          docker run --rm  --shm-size=32g \
+          docker run --rm --shm-size=32g \
             -e ZISK_GHA=1 \
             -e ZISK_BRANCH=pre-develop-0.11.0 \
+            -e BLOCK_INPUTS_DISTRIBUTED=21429063_9_1.bin \
             -e DISTRIBUTED_PROCESSES=2 \
             -e DISTRIBUTED_THREADS=64 \
             -e PROVE_FLAGS="-a -y" \
@@ -60,8 +61,25 @@ jobs:
             /bin/bash -c "set -e && \
               source \$HOME/scripts/build_zisk.sh && \
               source \$HOME/scripts/install_setup_public.sh && \
-              source \$HOME/scripts/test_sha_hasher.sh"     
+              source \$HOME/scripts/test_sha_hasher.sh && \
+              source \$HOME/scripts/test_eth_block.sh"    
           
+  test-macos:
+    name: Build and test ZisK on macOS
+    runs-on: macos-14
+    env:
+      ZISK_GHA: "1"
+      ZISK_BRANCH: "feature/scripts-gha"    
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Build ZisK
+        run: source ./tools/release-kit/build_zisk.sh
+
+      - name: Test sha_hasher
+        run: source ./tools/release-kit/test_sha_hasher.sh  
+
   lint:
     name: Formatting & Clippy
     runs-on: ubuntu-latest
