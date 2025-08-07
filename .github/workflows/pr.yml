@@ -77,14 +77,14 @@ jobs:
 
       - name: Build ZisK
         run: |
-          cd "$GITHUB_WORKSPACE/zisk/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
           echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
           ls -al "$GITHUB_WORKSPACE"
           ./build_zisk.sh
 
       - name: Test sha_hasher
         run: |
-          cd "$GITHUB_WORKSPACE/zisk/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
           echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
           ls -al "$GITHUB_WORKSPACE"          
           ./test_sha_hasher.sh
