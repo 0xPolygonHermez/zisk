@@ -54,6 +54,10 @@ success() {
     echo "${BOLD}${GREEN}✅ $1${RESET}"
 }
 
+tolower() {
+  echo "$1" | awk '{print tolower($0)}'
+}
+
 # load_env: Load environment variables from .env file
 load_env() {
     # Check if .env file exists
@@ -145,4 +149,36 @@ verify_files_exist() {
         fi
     done
     return 0
+}
+
+# get_shell_and_profile: Sets PROFILE and PREF_SHELL based on the current shell
+get_shell_and_profile() {
+  case "${SHELL}" in
+    */zsh)
+      PROFILE=${ZDOTDIR:-${HOME}}/.zshenv
+      PREF_SHELL="zsh"
+      ;;
+    */bash)
+      PROFILE=${HOME}/.bashrc
+      PREF_SHELL="bash"
+      ;;
+    */fish)
+      PROFILE=${HOME}/.config/fish/config.fish
+      PREF_SHELL="fish"
+      ;;
+    */ash)
+      PROFILE=${HOME}/.profile
+      PREF_SHELL="ash"
+      ;;
+    *)
+      err "could not detect shell"
+      return 1
+      ;;
+  esac
+}
+
+# get_platform: Sets PLATFORM based on the current system
+get_platform() {
+    uname_s=$(uname -s)
+    PLATFORM=$(tolower "${ZISKUP_PLATFORM:-${uname_s}}")    
 }

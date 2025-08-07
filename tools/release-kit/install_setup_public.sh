@@ -3,6 +3,8 @@
 source ./utils.sh
 
 main () {
+    current_dir=$(pwd)
+
     current_step=1
     total_steps=5
 
@@ -39,7 +41,7 @@ main () {
     step "Deleting downloaded public proving key..."
     rm -rf "zisk-provingkey-${SETUP_VERSION}.tar.gz"
 
-    cd "$HOME/scripts"
+    cd "$current_dir"
 
     success "Public proving key version ${SETUP_VERSION} installed successfully!"
 }

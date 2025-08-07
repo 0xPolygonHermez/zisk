@@ -6,6 +6,8 @@ PROJECT_NAME="sha_hasher"
 EXPECTED_OUTPUT="98211882|bd13089b|6ccf1fca|81f7f0e4|abf6352a|0c39c9b1|1f142cac|233f1280"
 
 main() {
+    current_dir=$(pwd)
+
     current_step=1
     total_steps=10
 
@@ -94,7 +96,7 @@ main() {
         return 1
     fi          
 
-    cd "$HOME/scripts"
+    cd "$current_dir"
 
     success "Program $PROJECT_NAME has been successfully proved!"
 }

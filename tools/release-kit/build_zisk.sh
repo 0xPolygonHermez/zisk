@@ -3,10 +3,18 @@
 source ./utils.sh
 
 main() {
+    current_dir=$(pwd)
+
     current_step=1
     total_steps=9
 
     source $HOME/.cargo/env
+
+    ZISK_DIR="$HOME/.zisk"
+    ZISK_BIN_DIR="$ZISK_DIR/bin"
+
+    get_platform || return 1
+    get_shell_and_profile || return 1
 
     # If ZISK_GHA is set to 1, then ZISK_BRANCH must be defined
     if [[ "$ZISK_GHA" == "1" ]]; then
@@ -96,10 +104,8 @@ main() {
         ensure cargo build --release ${BUILD_FEATURES} || return 1
     fi
 
-    step "Copying binaries to ${HOME}/.zisk/bin..."
-    mkdir -p "$HOME/.zisk/bin"
-    ensure cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk \
-        target/release/libzisk_witness.so target/release/libziskclib.a "$HOME/.zisk/bin" || return 1
+    step "Copying binaries to ${ZISK_BIN_DIR}..."
+    mkdir -p "${ZISK_BIN_DIR}"
 
     if [[ -f "precompiles/sha256f/src/sha256f_script.json" ]]; then
         err "sha256f_script.json file found. This should exist only if building version 0.9.0"
@@ -111,19 +117,34 @@ main() {
         return 1
     fi
 
+    ensure cp target/release/cargo-zisk "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/release/ziskemu    "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/release/riscv2zisk "${ZISK_BIN_DIR}" || return 1
+
+    if [[ "${PLATFORM}" == "linux" ]]; then
+        ensure cp target/release/libzisk_witness.so "${ZISK_BIN_DIR}" || return 1
+        ensure cp ziskup/ziskup                     "${ZISK_BIN_DIR}" || return 1
+        ensure cp target/release/libziskclib.a      "${ZISK_BIN_DIR}" || return 1
+    fi
+
     step "Copying emulator-asm files..."
-    mkdir -p "$HOME/.zisk/zisk/emulator-asm"
-    ensure cp -r ./emulator-asm/src "$HOME/.zisk/zisk/emulator-asm" || return 1
-    ensure cp ./emulator-asm/Makefile "$HOME/.zisk/zisk/emulator-asm" || return 1
-    ensure cp -r ./lib-c $HOME/.zisk/zisk || return 1
-    step "Adding ~/.zisk/bin to PATH..."
+    if [[ "${PLATFORM}" == "linux" ]]; then
+        mkdir -p "${ZISK_DIR}/zisk/emulator-asm"
+        ensure cp -r ./emulator-asm/src "${ZISK_DIR}/zisk/emulator-asm" || return 1
+        ensure cp ./emulator-asm/Makefile "${ZISK_DIR}/zisk/emulator-asm" || return 1
+        ensure cp -r ./lib-c "${ZISK_DIR}/zisk" || return 1
+    fi
 
-    # Add export line to .bashrc if it doesn't exist
-    EXPORT_PATH='export PATH="$PATH:$HOME/.zisk/bin"'
-    grep -Fxq "$EXPORT_PATH" "$HOME/.bashrc" || echo "$EXPORT_PATH" >> "$HOME/.bashrc"
-
+    step "Adding ${ZISK_BIN_DIR} to PATH..."
+    EXPORT_PATH="export PATH=\"$PATH:$ZISK_BIN_DIR\""
     # Ensure the PATH is updated in the current session
     eval "$EXPORT_PATH"
+
+    EXPORT_LINE="export PATH=\"\$PATH:$ZISK_BIN_DIR\""
+    # Ensure the PATH is updated in the shell profile
+    if ! grep -Fxq "$EXPORT_LINE" "$PROFILE"; then
+        echo "$EXPORT_LINE" >> "$PROFILE"
+    fi
 
     step "Installing ZisK Rust toolchain..."
     ensure cargo-zisk sdk install-toolchain || return 1
@@ -134,7 +155,7 @@ main() {
         return 1
     }
 
-    cd $HOME/scripts
+    cd "$current_dir"
 
     success "ZisK build completed successfully!"
 }
