@@ -16,6 +16,15 @@ main() {
     get_platform || return 1
     get_shell_and_profile || return 1
 
+    if [[ "${PLATFORM}" == "linux" ]]; then
+        TARGET="x86_64-unknown-linux-gnu"
+    else if [[ "${PLATFORM}" == "macos" ]]; then
+        TARGET="aarch64-apple-darwin"
+    else
+        err "Unsupported platform: ${PLATFORM}"
+        return 1
+    fi
+
     # If ZISK_GHA is set to 1, then ZISK_BRANCH must be defined
     if [[ "$ZISK_GHA" == "1" ]]; then
         if [[ -z "$ZISK_BRANCH" ]]; then
@@ -87,8 +96,8 @@ main() {
         BUILD_FEATURES="--features gpu"
         warn "Building with GPU support..."
     fi
-    info "cargo build --release --target aarch64-apple-darwin ${BUILD_FEATURES}"
-    if ! (cargo build --release --target aarch64-apple-darwin ${BUILD_FEATURES}); then
+    info "cargo build --release --target ${TARGET} ${BUILD_FEATURES}"
+    if ! (cargo build --release --target ${TARGET} ${BUILD_FEATURES}); then
         warn "Build failed. Trying to fix missing stddef.h..."
 
         stddef_path=$(find /usr -name "stddef.h" 2>/dev/null | head -n 1)
@@ -102,7 +111,7 @@ main() {
         export CPLUS_INCLUDE_PATH=$C_INCLUDE_PATH
 
         info  "Retrying build..."
-        ensure cargo build --release --target aarch64-apple-darwin ${BUILD_FEATURES} || return 1
+        ensure cargo build --release --target ${TARGET} ${BUILD_FEATURES} || return 1
     fi
 
     step "Copying binaries to ${ZISK_BIN_DIR}..."
@@ -118,14 +127,14 @@ main() {
         return 1
     fi
 
-    ensure cp target/aarch64-apple-darwin/release/cargo-zisk "${ZISK_BIN_DIR}" || return 1
-    ensure cp target/aarch64-apple-darwin/release/ziskemu    "${ZISK_BIN_DIR}" || return 1
-    ensure cp target/aarch64-apple-darwin/release/riscv2zisk "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/cargo-zisk "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/ziskemu    "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/riscv2zisk "${ZISK_BIN_DIR}" || return 1
 
     if [[ "${PLATFORM}" == "linux" ]]; then
-        ensure cp target/release/libzisk_witness.so "${ZISK_BIN_DIR}" || return 1
+        ensure cp target/${TARGET}/release/libzisk_witness.so "${ZISK_BIN_DIR}" || return 1
         ensure cp ziskup/ziskup                     "${ZISK_BIN_DIR}" || return 1
-        ensure cp target/release/libziskclib.a      "${ZISK_BIN_DIR}" || return 1
+        ensure cp target/${TARGET}/release/libziskclib.a      "${ZISK_BIN_DIR}" || return 1
     fi
 
     step "Copying emulator-asm files..."
