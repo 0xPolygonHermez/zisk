@@ -75,10 +75,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build ZisK
-        run: source ./tools/release-kit/build_zisk.sh
+        run: |
+          cd tools/release-kit
+          source ./build_zisk.sh
 
       - name: Test sha_hasher
-        run: source ./tools/release-kit/test_sha_hasher.sh  
+        run: | 
+          cd tools/release-kit
+          source ./test_sha_hasher.sh  
 
   lint:
     name: Formatting & Clippy
