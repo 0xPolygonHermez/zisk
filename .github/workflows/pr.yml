@@ -69,7 +69,8 @@ jobs:
     runs-on: macos-14
     env:
       ZISK_GHA: "1"
-      ZISK_BRANCH: "feature/scripts-gha"    
+      ZISK_BRANCH: "feature/scripts-gha"
+      TERM: xterm
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
