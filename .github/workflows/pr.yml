@@ -74,8 +74,6 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
-        with:
-          path: zisk
 
       - name: Build ZisK
         run: |
