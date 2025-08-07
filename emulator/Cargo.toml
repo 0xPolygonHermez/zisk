@@ -16,13 +16,13 @@ name = "ziskemu"
 path = "src/bin/ziskemu.rs"
 
 [dependencies]
-zisk-common = { path = "../common" }
-zisk-core = { path = "../core" }
-zisk-pil = { path = "../pil" }
-riscv = { path = "../riscv" }
-data-bus = { path = "../data-bus" }
+zisk-common = { workspace = true }
+zisk-core = { workspace = true }
+zisk-pil = { workspace = true }
+riscv = { workspace = true }
+data-bus = { workspace = true }
 rayon = { workspace = true }
-sm-mem = { path = "../state-machines/mem" }
+sm-mem = { workspace = true }
 
 fields = { workspace=true }
 clap = { version = "4.5.9", features = ["derive", "env"] }

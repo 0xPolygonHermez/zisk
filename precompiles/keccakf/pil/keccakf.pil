@@ -8,6 +8,7 @@ require "std_connection.pil"
 const int KECCAKF_OP = 0xF1;
 
 airtemplate Keccakf(const int N, const int chunks, const int bits, const int RC, const int RB, const int mem_bits_in_parallel, const int operation_bus_id) {
+    
     #pragma extern_fixed_file "../src/keccakf_fixed.bin"
     
     // Keccak-f circuit size

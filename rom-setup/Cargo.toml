@@ -8,15 +8,15 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
+sm-rom = { workspace = true }
+zisk-core = { workspace = true }
+zisk-pil = { workspace = true }
+
 tracing = { workspace = true }
 fields = { workspace = true }
 proofman-common = { workspace = true }
 colored = { workspace = true }
 anyhow = { workspace = true }
-
-sm-rom = { path = "../state-machines/rom" }
-zisk-core = { path = "../core" }
-zisk-pil = { path = "../pil" }
 
 blake3 = "1.3.1"
 

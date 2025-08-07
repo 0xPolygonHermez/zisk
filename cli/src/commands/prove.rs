@@ -1,7 +1,5 @@
 use crate::{
-    commands::{
-        cli_fail_if_macos, get_proving_key, get_witness_computation_lib, initialize_mpi, Field,
-    },
+    commands::{get_proving_key, get_witness_computation_lib, initialize_mpi, Field},
     ux::print_banner,
     ZISK_VERSION_MESSAGE,
 };
@@ -132,8 +130,6 @@ pub struct ZiskProve {
 
 impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
-        cli_fail_if_macos()?;
-
         print_banner();
 
         let mpi_context = initialize_mpi()?;
@@ -318,6 +314,7 @@ impl ZiskProve {
         } else {
             match self.field {
                 Field::Goldilocks => {
+                    proofman.set_barrier();
                     (proof_id, vadcop_final_proof) = proofman
                         .generate_proof_from_lib(
                             self.input.clone(),

@@ -10,10 +10,10 @@ categories = { workspace = true }
 build = "build.rs"
 
 [dependencies]
-zisk-common = { path = "../common" }
-executor = { path = "../executor" }
-zisk-witness = { path = "../witness-computation" }
-asm-runner = { path = "../emulator-asm/asm-runner" }
+zisk-common = { workspace = true }
+executor = { workspace = true }
+zisk-witness = { workspace = true }
+asm-runner = { workspace = true }
 
 proofman = { workspace = true }
 proofman-common = { workspace = true }

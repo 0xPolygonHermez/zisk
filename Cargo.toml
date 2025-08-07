@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.10.0"
+version = "0.11.0"
 edition = "2021"
 license = "Apache-2.0 or MIT"
 keywords = ["zisk", "zkvm", "zero-knowledge"]
@@ -44,14 +44,45 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.10.0" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.10.0" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.10.0" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.10.0" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.10.0" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.10.0" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.10.0" }
-# Local development
+# Internal crates
+cargo-zisk = { path = "cli" }
+zisk-common = { path = "common" }
+zisk-core = { path = "core" }
+data-bus = { path = "data-bus" }
+ziskemu = { path = "emulator" }
+asm-runner = { path = "emulator-asm/asm-runner" }
+executor = { path = "executor" }
+lib-c = { path = "lib-c" }
+zisk-pil = { path = "pil" }
+precomp-arith-eq = { path = "precompiles/arith_eq" }
+precompiles-common = { path = "precompiles/common" }
+precompiles-helpers = { path = "precompiles/helpers" }
+precomp-keccakf = { path = "precompiles/keccakf" }
+precomp-sha256f = { path = "precompiles/sha256f" }
+riscv = { path = "riscv" }
+rom-setup = { path = "rom-setup" }
+server = { path = "server" }
+sm-arith = { path = "state-machines/arith" }
+sm-binary = { path = "state-machines/binary" }
+sm-main = { path = "state-machines/main" }
+sm-mem = { path = "state-machines/mem" }
+mem-common = { path = "state-machines/mem-common" }
+mem-planner-cpp = { path = "state-machines/mem-cpp" }
+sm-rom = { path = "state-machines/rom" }
+zisk-witness = { path = "witness-computation" }
+ziskclib = { path = "ziskclib" }
+ziskos = { path = "ziskos/entrypoint" }
+circuit = { path = "tools/circuit" }
+
+# Proofman
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.11.0" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.11.0" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.11.0" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.11.0" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.11.0" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.11.0" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.11.0" }
+# Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
 # proofman-common = { path = "../pil2-proofman/common" }
 # proofman-macros = { path = "../pil2-proofman/macros" }
@@ -60,6 +91,7 @@ fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "
 # witness = { path = "../pil2-proofman/witness" }
 # fields = { path = "../pil2-proofman/fields" }
 
+# External dependencies
 rayon = "1.10"
 num-bigint = "0.4"
 num-traits = "0.2"

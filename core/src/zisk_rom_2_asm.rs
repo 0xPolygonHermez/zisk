@@ -87,6 +87,9 @@ pub struct ZiskAsmContext {
     b: ZiskAsmRegister,
     c: ZiskAsmRegister,
 
+    address_is_constant: bool,   // true if address is a constant value
+    address_constant_value: u64, // address constant value, only valid if address_is_constant==true
+
     // Force in which register a or b must be stored
     store_a_in_c: bool,
     store_a_in_a: bool,
@@ -780,6 +783,7 @@ impl ZiskRom2Asm {
             ctx.store_a_in_a = false;
             ctx.store_b_in_c = false;
             ctx.store_b_in_b = false;
+            ctx.address_is_constant = false;
 
             // Store opcode in main trace
             if ctx.chunk_player_mem_reads_collect_main() {
@@ -952,6 +956,10 @@ impl ZiskRom2Asm {
                                 ctx.mem_sp,
                                 ctx.comment_str("address += sp")
                             );
+                            ctx.address_is_constant = false;
+                        } else {
+                            ctx.address_is_constant = true;
+                            ctx.address_constant_value = instruction.a_offset_imm0;
                         }
                     }
 
@@ -1315,6 +1323,10 @@ impl ZiskRom2Asm {
                                 ctx.mem_sp,
                                 ctx.comment_str("address += sp")
                             );
+                            ctx.address_is_constant = false;
+                        } else {
+                            ctx.address_is_constant = true;
+                            ctx.address_constant_value = instruction.b_offset_imm0;
                         }
                     }
 
@@ -2381,6 +2393,10 @@ impl ZiskRom2Asm {
                                 ctx.mem_sp,
                                 ctx.comment_str("address += sp")
                             );
+                            ctx.address_is_constant = false;
+                        } else {
+                            ctx.address_is_constant = true;
+                            ctx.address_constant_value = instruction.store_offset as u64;
                         }
                     }
 
@@ -2527,6 +2543,8 @@ impl ZiskRom2Asm {
                     } else {
                         0
                     };
+                    ctx.address_is_constant = address_is_constant;
+                    ctx.address_constant_value = address_constant_value;
                     let address_is_aligned =
                         address_is_constant && ((address_constant_value & 0x7) == 0);
 
@@ -4238,11 +4256,11 @@ impl ZiskRom2Asm {
                     ctx.comment_str("Div: if b == 0 return f's")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_div_check_underflow {}\n",
+                    "\tje pc_{:x}_div_by_zero {}\n",
                     ctx.pc,
-                    ctx.comment_str("Div: if b is not zero, divide")
+                    ctx.comment_str("Div: if b is zero, jump")
                 );
-                *unusual_code += &format!("pc_{:x}_div_check_underflow:\n", ctx.pc);
+                *unusual_code += &format!("pc_{:x}_div_by_zero:\n", ctx.pc);
                 *unusual_code += &format!(
                     "\tmov {}, 0xffffffffffffffff {}\n",
                     REG_C,
@@ -4363,6 +4381,7 @@ impl ZiskRom2Asm {
 
                 // Check underflow:
                 // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a
+                *code += &format!("pc_{:x}_rem_check_underflow:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, 0x8000000000000000 {}\n",
                     REG_VALUE,
@@ -4486,7 +4505,7 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
                 *code += &format!(
-                    "\tcmp {}, 0 {}n",
+                    "\tcmp {}, 0 {}\n",
                     REG_B_W,
                     ctx.comment_str("RemuW: if b==0 then return a")
                 );
@@ -4550,6 +4569,7 @@ impl ZiskRom2Asm {
                 *code += &format!("\tje pc_{:x}_divw_done\n", ctx.pc);
 
                 // Divide
+                *code += &format!("pc_{:x}_divw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
                     REG_VALUE_W,
@@ -4602,6 +4622,7 @@ impl ZiskRom2Asm {
                 *code += &format!("\tje pc_{:x}_remw_done\n", ctx.pc);
 
                 // Divide
+                *code += &format!("pc_{:x}_remw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
                     REG_VALUE_W,
@@ -6392,18 +6413,27 @@ impl ZiskRom2Asm {
     fn a_src_mem_op(ctx: &mut ZiskAsmContext, code: &mut String) {
         // Calculate the trace value on top of the address
         const WIDTH: u64 = 8;
-        *code += &format!(
-            "\tmov {}, {} {}\n",
-            REG_AUX,
-            WIDTH << 32,
-            ctx.comment_str("aux = mem op mask")
-        );
-        *code += &format!(
-            "\tor {}, {} {}\n",
-            REG_ADDRESS,
-            REG_AUX,
-            ctx.comment_str("address |= mem op mask")
-        );
+        if ctx.address_is_constant {
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                REG_ADDRESS,
+                (WIDTH << 32) | ctx.address_constant_value,
+                ctx.comment_str("aux = constant mem op")
+            );
+        } else {
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                REG_AUX,
+                WIDTH << 32,
+                ctx.comment_str("aux = mem op mask")
+            );
+            *code += &format!(
+                "\tor {}, {} {}\n",
+                REG_ADDRESS,
+                REG_AUX,
+                ctx.comment_str("address |= mem op mask")
+            );
+        }
 
         // Copy read data into mem_reads_address and increment it
         *code += &format!(
@@ -6421,18 +6451,28 @@ impl ZiskRom2Asm {
     fn b_src_mem_op(ctx: &mut ZiskAsmContext, code: &mut String) {
         // Calculate the trace value on top of the address
         const WIDTH: u64 = 8;
-        *code += &format!(
-            "\tmov {}, {} {}\n",
-            REG_AUX,
-            WIDTH << 32,
-            ctx.comment_str("aux = mem op mask")
-        );
-        *code += &format!(
-            "\tor {}, {} {}\n",
-            REG_ADDRESS,
-            REG_AUX,
-            ctx.comment_str("address |= mem op mask")
-        );
+        if ctx.address_is_constant {
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                REG_ADDRESS,
+                (WIDTH << 32) | ctx.address_constant_value,
+                ctx.comment_str("aux = constant mem op")
+            );
+        } else {
+            // Calculate the trace value on top of the address
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                REG_AUX,
+                WIDTH << 32,
+                ctx.comment_str("aux = mem op mask")
+            );
+            *code += &format!(
+                "\tor {}, {} {}\n",
+                REG_ADDRESS,
+                REG_AUX,
+                ctx.comment_str("address |= mem op mask")
+            );
+        }
 
         // Copy read data into mem_reads_address and increment it
         *code += &format!(
@@ -6453,19 +6493,28 @@ impl ZiskRom2Asm {
         reg_address: &str,
         width: u64,
     ) {
-        // Calculate the trace value on top of the address
-        *code += &format!(
-            "\tmov {}, {} {}\n",
-            REG_AUX,
-            width << 32,
-            ctx.comment_str("aux = mem op mask")
-        );
-        *code += &format!(
-            "\tor {}, {} {}\n",
-            reg_address,
-            REG_AUX,
-            ctx.comment_str("address |= mem op mask")
-        );
+        if ctx.address_is_constant {
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                reg_address,
+                (width << 32) + ctx.address_constant_value,
+                ctx.comment_str("aux = constant mem op")
+            );
+        } else {
+            // Calculate the trace value on top of the address
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                REG_AUX,
+                width << 32,
+                ctx.comment_str("aux = mem op mask")
+            );
+            *code += &format!(
+                "\tor {}, {} {}\n",
+                reg_address,
+                REG_AUX,
+                ctx.comment_str("address |= mem op mask")
+            );
+        }
 
         // Copy read data into mem_reads_address and increment it
         *code += &format!(
@@ -6484,18 +6533,27 @@ impl ZiskRom2Asm {
         // Calculate the trace value on top of the address
         const WRITE: u64 = 1;
         const WIDTH: u64 = 8;
-        *code += &format!(
-            "\tmov {}, {} {}\n",
-            REG_AUX,
-            (WRITE << 48) + (WIDTH << 32),
-            ctx.comment_str("aux = mem op mask")
-        );
-        *code += &format!(
-            "\tor {}, {} {}\n",
-            REG_ADDRESS,
-            REG_AUX,
-            ctx.comment_str("address |= mem op mask")
-        );
+        if ctx.address_is_constant {
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                REG_ADDRESS,
+                (WRITE << 48) + (WIDTH << 32) + ctx.address_constant_value,
+                ctx.comment_str("aux = constant mem op")
+            );
+        } else {
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                REG_AUX,
+                (WRITE << 48) + (WIDTH << 32),
+                ctx.comment_str("aux = mem op mask")
+            );
+            *code += &format!(
+                "\tor {}, {} {}\n",
+                REG_ADDRESS,
+                REG_AUX,
+                ctx.comment_str("address |= mem op mask")
+            );
+        }
 
         // Copy read data into mem_reads_address and increment it
         *code += &format!(
@@ -6512,18 +6570,27 @@ impl ZiskRom2Asm {
 
     fn c_store_ind_mem_op(ctx: &mut ZiskAsmContext, code: &mut String, width: u64) {
         // Calculate the trace value on top of the address
-        *code += &format!(
-            "\tmov {}, {} {}\n",
-            REG_AUX,
-            (1u64 << 48) | (width << 32),
-            ctx.comment_str("aux = mem op mask")
-        );
-        *code += &format!(
-            "\tor {}, {} {}\n",
-            REG_ADDRESS,
-            REG_AUX,
-            ctx.comment_str("address |= mem op mask")
-        );
+        if ctx.address_is_constant {
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                REG_ADDRESS,
+                (1u64 << 48) | (width << 32) | ctx.address_constant_value,
+                ctx.comment_str("aux = constant mem op")
+            );
+        } else {
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                REG_AUX,
+                (1u64 << 48) | (width << 32),
+                ctx.comment_str("aux = mem op mask")
+            );
+            *code += &format!(
+                "\tor {}, {} {}\n",
+                REG_ADDRESS,
+                REG_AUX,
+                ctx.comment_str("address |= mem op mask")
+            );
+        }
 
         // Copy read data into mem_reads_address and increment it
         *code += &format!(
@@ -6559,7 +6626,7 @@ impl ZiskRom2Asm {
 
         // Calculate the mask
         *code += &format!(
-            "\tmov {}, {} {}\n",
+            "\tmov {}, 0x{:x} {}\n",
             REG_AUX,
             mem_op_mask,
             ctx.comment_str("aux = mem op mask + offset")
@@ -6637,7 +6704,7 @@ impl ZiskRom2Asm {
                 if j == 0 {
                     // Load the mask + offset
                     *code += &format!(
-                        "\tmov {}, {} {}\n",
+                        "\tmov {}, 0x{:x} {}\n",
                         REG_AUX,
                         mem_op_mask + 8 * i,
                         ctx.comment_str("aux = mem op mask + offset")
@@ -6675,7 +6742,7 @@ impl ZiskRom2Asm {
                     for l in 0..load_size[load_size_index] {
                         // Load the mask + offset
                         *code += &format!(
-                            "\tmov {}, {} {}\n",
+                            "\tmov {}, 0x{:x} {}\n",
                             REG_AUX,
                             mem_op_mask + 8 * l,
                             ctx.comment_str("aux = mem op mask + offset")
@@ -6751,7 +6818,7 @@ impl ZiskRom2Asm {
             for l in 0..load_size {
                 // Load the mask + offset
                 *code += &format!(
-                    "\tmov {}, {} {}\n",
+                    "\tmov {}, 0x{:x} {}\n",
                     REG_AUX,
                     mem_op_mask + 8 * l,
                     ctx.comment_str("aux = mem op mask + offset")
@@ -6901,7 +6968,7 @@ impl ZiskRom2Asm {
                 ctx.comment_str("chunk.start.step = value = step")
             );
             *code += &format!(
-                "\tmov [{}], {} {}\n",
+                "\tmov {}, {} {}\n",
                 ctx.mem_chunk_start_step,
                 REG_VALUE,
                 ctx.comment_str("chunk.start.step = value = step")
