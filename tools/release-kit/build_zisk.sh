@@ -87,7 +87,8 @@ main() {
         BUILD_FEATURES="--features gpu"
         warn "Building with GPU support..."
     fi
-    if ! (cargo build --release ${BUILD_FEATURES}); then
+    echo "cargo build --release --target aarch64-apple-darwin ${BUILD_FEATURES}"
+    if ! (cargo build --release --target aarch64-apple-darwin ${BUILD_FEATURES}); then
         warn "Build failed. Trying to fix missing stddef.h..."
 
         stddef_path=$(find /usr -name "stddef.h" 2>/dev/null | head -n 1)
