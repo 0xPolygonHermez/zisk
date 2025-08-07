@@ -1,0 +1,27 @@
+[package]
+name = "consensus-client"
+description = "Command-line client for Consensus Network"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "consensus-client"
+path = "src/main.rs"
+
+[dependencies]
+consensus-api = { workspace = true }
+consensus-core = { workspace = true }
+
+tonic = { workspace = true }
+tonic-prost = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+prost-types = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+uuid = { workspace = true }
+num_cpus = "1.16"

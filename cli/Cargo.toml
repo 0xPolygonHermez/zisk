@@ -39,7 +39,7 @@ anyhow = { workspace = true }
 libloading = { workspace = true }
 
 bytemuck = "1.23.1"
-clap = { version = "4.5.7", features = ["derive", "env"] }
+clap = { workspace = true }
 dirs = "6"
 rand = "0.9"
 target-lexicon = "0.13"
@@ -50,7 +50,7 @@ reqwest = { version = "0.12.4", features = [
 ], default-features = false }
 tokio = { version = "1", features = ["full"] }
 indicatif = "0.17.8"
-futures = "0.3.30"
+futures = { workspace = true }
 yansi = "1.0.1"
 
 # Distributed mode (mpi) is only supported on Linux x86_64

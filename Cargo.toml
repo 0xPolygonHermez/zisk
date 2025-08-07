@@ -33,6 +33,12 @@ members = [
     "common",
     "tools/circuit",
     "server",
+    "consensus/crates/api",
+    "consensus/crates/client",
+    "consensus/crates/comm",
+    "consensus/crates/config",
+    "consensus/crates/core",
+    "consensus/crates/server",
 ]
 
 resolver = "2"
@@ -74,6 +80,15 @@ ziskclib = { path = "ziskclib" }
 ziskos = { path = "ziskos/entrypoint" }
 circuit = { path = "tools/circuit" }
 
+# Consensus crates
+consensus-api = { path = "consensus/crates/api" }
+consensus-client = { path = "consensus/crates/client" }
+consensus-comm = { path = "consensus/crates/comm" }
+consensus-config = { path = "consensus/crates/config" }
+consensus-core = { path = "consensus/crates/core" }
+consensus-server = { path = "consensus/crates/server" }
+
+
 # Proofman
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-vt-wip" }
 proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/server-vt-wip" }
@@ -101,12 +116,35 @@ ark-ff = "0.5.0"
 ark-std = "0.5.0"
 ark-secp256k1 = "0.5"
 ark-bn254 = "0.5.0"
-sysinfo = "0.35.1"
+sysinfo = "0.36"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 anyhow = "1.0"
 libloading = "0.8"
 named-sem = "0.2.2"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tracing-subscriber = { version = "0.3", features = [
+    "fmt",
+    "env-filter",
+    "json",
+] }
 mpi = { version = "0.8.0" }
+clap = { version = "4", features = ["derive", "env"] }
+futures = { version = "0.3" }
+thiserror = { version = "2" }
+bytes = "1.0"
+
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+futures-util = "0.3"
+uuid = { version = "1.0", features = ["serde", "v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# gRPC dependencies
+tonic = "0.14"
+tonic-prost = "0.14"
+tonic-build = "0.14"
+tonic-prost-build = "0.14"
+# Protocol Buffers support - match tonic's prost version
+prost = "0.14"
+prost-types = "0.14"
