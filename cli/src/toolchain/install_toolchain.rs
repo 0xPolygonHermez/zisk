@@ -93,7 +93,7 @@ impl InstallToolchainCmd {
                     rt.block_on(url_exists(&client, toolchain_download_url.as_str()));
                 if !artifact_exists {
                     return Err(anyhow::anyhow!(
-                        "Unsupported architecture. Please build the toolchain from source."
+                        "Toolchain download URL not found"
                     ));
                 }
 

@@ -14,7 +14,9 @@ use std::{
     fs::File,
     io::Write,
     process::{Command, Stdio},
+    time::Duration,
 };
+use tokio::time::sleep;
 
 pub const RUSTUP_TOOLCHAIN_NAME: &str = "zisk";
 
@@ -47,19 +49,36 @@ impl CommandExecutor for Command {
             .map(|_| ())
     }
 }
+
 pub async fn url_exists(client: &Client, url: &str) -> bool {
-    let res = client.head(url).send().await;
-    res.is_ok()
+    let max_retries = 3;
+    let delay = Duration::from_secs(3);
+
+    for attempt in 1..=max_retries {
+        match client.head(url).send().await {
+            Ok(response) => return response.status().is_success(),
+            Err(_) => {
+                if attempt == max_retries {
+                    return false;
+                } else {
+                    sleep(delay).await;
+                }
+            }
+        }
+    }
+
+    false
 }
 
 #[allow(unreachable_code)]
 pub fn is_supported_target() -> bool {
-    let target = get_target();
+    #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
+    return true;
 
-    println!("Detected target: {}, {}", target, target == "aarch64-apple-darwin");
-    let res = target == "x86_64-unknown-linux-gnu" || target == "aarch64-apple-darwin";
-    println!("Is supported target: {}", res);
-    res
+    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+    return true;
+
+    false
 }
 
 pub async fn get_toolchain_download_url(client: &Client, target: String) -> String {
