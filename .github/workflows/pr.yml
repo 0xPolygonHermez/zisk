@@ -1,16 +1,19 @@
-name: PR
+name: Test ZisK
 
 on:
   push:
     branches: [develop]
   pull_request:
     branches:
-      - "**"
+      - develop
+      - main
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:    
   merge_group:
 
 jobs:
-  test-x86_64:
-    name: Test on x86_64
+  cargo-tests:
+    name: Cargo tests
     runs-on: ubuntu-latest
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
@@ -40,6 +43,47 @@ jobs:
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
+
+  test-x86_64:
+    name: Test ZisK on x86_64
+    runs-on: self-hosted
+    steps:
+      - name: Run docker zisk-test-env
+        run: |
+          docker run --rm --shm-size=32g \
+            -e ZISK_GHA=1 \
+            -e ZISK_BRANCH=pre-develop-0.11.0 \
+            -e BLOCK_INPUTS_DISTRIBUTED=21429063_9_1.bin \
+            -e DISTRIBUTED_PROCESSES=2 \
+            -e DISTRIBUTED_THREADS=64 \
+            -e PROVE_FLAGS="-a -y" \
+            ziskvm/zisk-test-env:latest \
+            /bin/bash -c "set -e && \
+              source \$HOME/scripts/build_zisk.sh && \
+              source \$HOME/scripts/install_setup_public.sh && \
+              source \$HOME/scripts/test_sha_hasher.sh && \
+              source \$HOME/scripts/test_eth_block.sh"    
+          
+  test-macos:
+    name: Test ZisK on macOS
+    runs-on: macos-14
+    env:
+      ZISK_GHA: "1"
+      ZISK_BRANCH: "feature/scripts-gha"
+      TERM: xterm
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Build ZisK
+        run: |
+          cd tools/release-kit
+          ./build_zisk.sh
+
+      - name: Test sha_hasher
+        run: | 
+          cd tools/release-kit
+          ./test_sha_hasher.sh  
 
   lint:
     name: Formatting & Clippy
