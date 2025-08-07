@@ -78,12 +78,12 @@ jobs:
       - name: Build ZisK
         run: |
           cd tools/release-kit
-          source ./build_zisk.sh
+          ./build_zisk.sh
 
       - name: Test sha_hasher
         run: | 
           cd tools/release-kit
-          source ./test_sha_hasher.sh  
+          ./test_sha_hasher.sh  
 
   lint:
     name: Formatting & Clippy
