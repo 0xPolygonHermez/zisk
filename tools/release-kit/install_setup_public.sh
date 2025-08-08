@@ -13,37 +13,42 @@ main () {
         info "Executing install_setup_public.sh script"
         
         # If ZISK_GHA is set, skip loading .env file as env variables are already set from command line
-        step "Skipping loading .env file since ZISK_GHA is set to 1. Defining SETUP_VERSION from cargo-zisk version"
+        step "Skipping loading .env file since ZISK_GHA is set to 1"
         
-        ZISK_VERSION=$(echo "$(ensure cargo-zisk --version)" | awk '{print $2}')
-        info "Installed ZisK version ${ZISK_VERSION}"
+        # Extract ZISK_SETUP_FILE from Cargo.toml
+        ZISK_SETUP_FILE=$(grep -oP '(?<=gha_zisk_setup = ")[^"]+' Cargo.toml)
 
-        IFS='.' read -r major minor patch <<< "${ZISK_VERSION}"
-        SETUP_VERSION="pre-${major}.${minor}.0"
-        info "Using SETUP_VERSION: ${SETUP_VERSION}"
+        if [[ -z "$ZISK_SETUP_FILE" ]]; then
+            err "ZISK_GHA is set to 1, but ZISK_SETUP_FILE is not defined in Cargo.toml. Aborting"
+            return 1
+        fi
+
+        info "Using setup file: ${ZISK_SETUP_FILE}"
     else
         step "Loading environment variables..."
         # Load environment variables from .env file
         load_env || return 1
         confirm_continue || return 1
+
+        ZISK_SETUP_FILE="zisk-provingkey-${SETUP_VERSION}.tar.gz"
     fi   
 
-    step  "Downloading public proving key version ${SETUP_VERSION}..."
-    ensure curl -L -#o "zisk-provingkey-${SETUP_VERSION}.tar.gz" "https://storage.googleapis.com/zisk-setup/zisk-provingkey-${SETUP_VERSION}.tar.gz" || return 1
+    step  "Downloading public proving key ${ZISK_SETUP_FILE}..."
+    ensure curl -L -#o "${ZISK_SETUP_FILE}" "https://storage.googleapis.com/zisk-setup/${ZISK_SETUP_FILE}" || return 1
 
-    step "Installing public proving key version ${SETUP_VERSION}..."
+    step "Installing public proving ${ZISK_SETUP_FILE}..."
     rm -rf "$HOME/.zisk/provingKey/"
-    ensure tar --overwrite -xf "zisk-provingkey-${SETUP_VERSION}.tar.gz" -C "$HOME/.zisk" || return 1
+    ensure tar --overwrite -xf "${ZISK_SETUP_FILE}" -C "$HOME/.zisk" || return 1
 
     step "Generating constant tree files..."
     ensure cargo-zisk check-setup -a || return 1
 
     step "Deleting downloaded public proving key..."
-    rm -rf "zisk-provingkey-${SETUP_VERSION}.tar.gz"
+    rm -rf "${ZISK_SETUP_FILE}"
 
     cd "$current_dir"
 
-    success "Public proving key version ${SETUP_VERSION} installed successfully!"
+    success "Public proving key ${ZISK_SETUP_FILE} installed successfully!"
 }
 
 main || return 1

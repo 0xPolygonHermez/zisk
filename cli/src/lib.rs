@@ -61,7 +61,7 @@ pub async fn url_exists(client: &Client, url: &str) -> bool {
                 if attempt == max_retries {
                     return false;
                 } else {
-                    sleep(delay).await;
+                    sleep(delay * attempt).await;
                 }
             }
         }
