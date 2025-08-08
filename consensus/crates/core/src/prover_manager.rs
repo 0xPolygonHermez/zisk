@@ -1,59 +1,70 @@
-use crate::{Error, Result};
-use consensus_api::{
-    coordinator_message, prover_message, CoordinatorMessage, ProverCapabilities, ProverMessage,
-};
-
+use crate::{BlockId, Error, JobId, ProverCapabilities, ProverId, Result};
 use chrono::{DateTime, Utc};
-use std::{collections::HashMap, fmt::Display, sync::Arc};
+use consensus_api::{coordinator_message, prover_message, CoordinatorMessage, ProverMessage};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{error, info, warn};
-use uuid::Uuid;
 
-/// Job ID wrapper for type safety
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct JobId(pub String);
-
-impl Default for JobId {
-    fn default() -> Self {
-        Self::new()
-    }
+#[derive(Debug, Clone)]
+pub struct Job {
+    pub job_id: JobId,
+    pub state: JobState,
+    pub block: BlockContext,
+    pub num_provers: u32,
+    pub provers: Vec<ProverId>,
+    pub results: HashMap<JobPhase, HashMap<ProverId, JobResult>>,
+    pub global_challenge: Option<Vec<u64>>,
 }
 
-impl JobId {
-    pub fn new() -> Self {
-        Self(Uuid::new_v4().to_string())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    pub fn as_string(&self) -> String {
-        self.0.clone()
-    }
+#[derive(Debug, Clone)]
+pub enum JobState {
+    Idle,
+    Running(JobPhase),
+    Completed,
+    Failed,
+    Cancelled,
 }
 
-impl From<String> for JobId {
-    fn from(id: String) -> Self {
-        Self(id)
-    }
+#[derive(Debug, Clone)]
+pub struct JobResult {
+    success: bool,
+    data: Vec<u64>,
 }
 
-impl From<JobId> for String {
-    fn from(job_id: JobId) -> Self {
-        job_id.0
-    }
+#[derive(Debug, Clone)]
+pub struct BlockContext {
+    pub block_id: BlockId,
+    pub input_path: PathBuf,
 }
 
-impl Display for JobId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "JobId({})", self.0)
-    }
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum JobPhase {
+    Phase1,
+    Phase2,
+    PhaseAggregation,
+}
+
+/// Information about a connected prover - business logic only, no transport layer
+#[derive(Debug)]
+pub struct ProverConnection {
+    pub prover_id: ProverId,
+    pub state: ProverState,
+    pub capabilities: ProverCapabilities,
+    pub connected_at: DateTime<Utc>,
+    pub last_heartbeat: DateTime<Utc>,
+    pub message_sender: mpsc::Sender<CoordinatorMessage>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProverState {
+    Disconnected,
+    Idle,
+    Computing(JobPhase),
 }
 
 /// Configuration for the coordinator functionality
 #[derive(Debug, Clone)]
-pub struct CoordinatorConfig {
+pub struct ProverManagerConfig {
     pub max_provers_per_job: u32,
     pub max_total_provers: u32,
     pub max_concurrent_connections: u32,
@@ -62,7 +73,7 @@ pub struct CoordinatorConfig {
     pub phase2_timeout_seconds: u64,
 }
 
-impl CoordinatorConfig {
+impl ProverManagerConfig {
     /// Create from consensus_config::CoordinatorConfig
     pub fn from_config(config: &consensus_config::ProverManagerConfig) -> Self {
         Self {
@@ -76,7 +87,7 @@ impl CoordinatorConfig {
     }
 }
 
-impl Default for CoordinatorConfig {
+impl Default for ProverManagerConfig {
     fn default() -> Self {
         Self {
             max_provers_per_job: 10,
@@ -89,98 +100,16 @@ impl Default for CoordinatorConfig {
     }
 }
 
-/// Result types for coordinator operations
-#[derive(Debug, Clone)]
-pub struct ProverRegistrationResult {
-    pub accepted: bool,
-    pub message: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct JobStartResult {
-    pub job_id: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct Phase1Result {
-    pub job_id: String,
-    pub prover_id: String,
-    pub rank_id: u32,
-    pub result_data: Vec<u64>,
-    pub success: bool,
-    pub error_message: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct FinalProofResult {
-    pub job_id: String,
-    pub prover_id: String,
-    pub rank_id: u32,
-    pub proof_data: Vec<u64>,
-    pub success: bool,
-    pub error_message: Option<String>,
-}
-
-/// Status of a connected prover
-#[derive(Debug, Clone)]
-pub enum ProverStatus {
-    Idle,
-    Working { job_id: JobId, rank_id: u32 },
-    Error { message: String },
-}
-
-/// Information about a connected prover - business logic only, no transport layer
-#[derive(Debug)]
-pub struct ProverConnection {
-    pub id: String,
-    pub capabilities: ProverCapabilities,
-    pub status: ProverStatus,
-    pub connected_at: DateTime<Utc>,
-    pub last_heartbeat: DateTime<Utc>,
-    pub message_sender: mpsc::Sender<CoordinatorMessage>,
-}
-
-/// Job assignment for coordination
-#[derive(Debug, Clone)]
-pub struct Job {
-    pub job_id: JobId,
-    pub block_id: u64,
-    pub required_provers: usize,
-    pub assigned_provers: Vec<String>,
-    pub status: JobStatus,
-    pub phase1_results: HashMap<String, ProvePhase1Result>, // prover_id -> result
-}
-
-/// Phase1 result data for internal tracking
-#[derive(Debug, Clone)]
-pub struct ProvePhase1Result {
-    pub prover_id: String,
-    pub rank_id: u32,
-    pub result_data: Vec<u64>,
-    pub success: bool,
-    pub error_message: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub enum JobStatus {
-    Pending,
-    InProgress,
-    Phase1Complete,
-    Phase2InProgress,
-    Completed,
-    Failed { reason: String },
-}
-
-/// Centralized prover manager for handling multiple provers
+/// Prover manager for handling multiple provers
 #[derive(Debug)]
 pub struct ProverManager {
-    provers: Arc<RwLock<HashMap<String, ProverConnection>>>,
+    provers: Arc<RwLock<HashMap<ProverId, ProverConnection>>>,
     jobs: Arc<RwLock<HashMap<JobId, Job>>>,
-    config: CoordinatorConfig,
+    config: ProverManagerConfig,
 }
 
 impl ProverManager {
-    pub fn new(config: CoordinatorConfig) -> Self {
+    pub fn new(config: ProverManagerConfig) -> Self {
         Self {
             provers: Arc::new(RwLock::new(HashMap::new())),
             jobs: Arc::new(RwLock::new(HashMap::new())),
@@ -188,79 +117,100 @@ impl ProverManager {
         }
     }
 
+    pub async fn num_provers(&self) -> usize {
+        self.provers.read().await.len()
+    }
+
+    /// Get list of available provers
+    pub async fn get_available_provers(&self) -> Vec<ProverId> {
+        self.provers
+            .read()
+            .await
+            .values()
+            .filter(|p| matches!(p.state, ProverState::Idle))
+            .map(|p| p.prover_id.clone())
+            .collect()
+    }
+
+    /// Get the coordinator configuration
+    pub fn config(&self) -> &ProverManagerConfig {
+        &self.config
+    }
+
     /// Register a new prover connection - business logic only
     pub async fn register_prover(
         &self,
-        prover_id: String,
-        capabilities: ProverCapabilities,
+        prover_id: ProverId,
+        capabilities: impl Into<ProverCapabilities>,
         message_sender: mpsc::Sender<CoordinatorMessage>,
-    ) -> Result<ProverRegistrationResult> {
+    ) -> Result<ProverId> {
         // Check if we've reached the maximum number of total provers
-        let provers_guard = self.provers.read().await;
-        let current_count = provers_guard.len();
-        drop(provers_guard);
-
-        if current_count >= self.config.max_total_provers as usize {
-            return Ok(ProverRegistrationResult {
-                accepted: false,
-                message: format!(
-                    "Maximum number of provers reached: {}/{}",
-                    current_count, self.config.max_total_provers
-                ),
-            });
+        let num_provers = self.num_provers().await;
+        if num_provers >= self.config.max_total_provers as usize {
+            return Err(Error::InvalidRequest(format!(
+                "Maximum number of provers reached: {}/{}",
+                num_provers, self.config.max_total_provers
+            )));
         }
 
         let now = Utc::now();
         let connection = ProverConnection {
-            id: prover_id.clone(),
-            capabilities,
-            status: ProverStatus::Idle,
+            prover_id: prover_id.clone(),
+            capabilities: capabilities.into(),
+            state: ProverState::Idle,
             connected_at: now,
             last_heartbeat: now,
             message_sender,
         };
 
-        let mut provers = self.provers.write().await;
-        provers.insert(prover_id.clone(), connection);
-        info!("Registered prover: {} (total: {})", prover_id, provers.len());
+        self.provers.write().await.insert(prover_id.clone(), connection);
 
-        Ok(ProverRegistrationResult {
-            accepted: true,
-            message: "Successfully registered".to_string(),
-        })
+        info!("Registered prover: {} (total: {})", prover_id, self.num_provers().await);
+
+        Ok(prover_id)
     }
 
-    /// Remove a prover connection
-    pub async fn disconnect_prover(&self, prover_id: &str) -> Result<()> {
+    async fn mark_provers_with_state(
+        &self,
+        prover_ids: &[ProverId],
+        state: ProverState,
+    ) -> Result<()> {
         let mut provers = self.provers.write().await;
-        if let Some(prover) = provers.remove(prover_id) {
-            info!(
-                "Removed prover: {} (remaining: {}, was in state: {:?})",
-                prover_id,
-                provers.len(),
-                prover.status
-            );
-            // TODO: Handle job reassignment if prover was working
-        } else {
-            warn!("Attempted to remove prover {} but it was not found", prover_id);
+        for prover_id in prover_ids {
+            if let Some(prover) = provers.get_mut(prover_id) {
+                prover.state = state.clone();
+            } else {
+                return Err(Error::InvalidRequest(format!("Prover {prover_id} not found")));
+            }
         }
+
         Ok(())
     }
 
-    /// Get list of available provers
-    pub async fn get_available_provers(&self) -> Vec<String> {
-        let provers = self.provers.read().await;
-        provers
-            .values()
-            .filter(|p| matches!(p.status, ProverStatus::Idle))
-            .map(|p| p.id.clone())
-            .collect()
+    /// Remove a prover connection
+    pub async fn disconnect_prover(&self, prover_id: &ProverId) -> Result<()> {
+        let mut provers = self.provers.write().await;
+        match provers.remove(prover_id) {
+            Some(prover) => {
+                info!(
+                    "Removed prover: {} (remaining: {}, was in state: {:?})",
+                    prover_id,
+                    provers.len(),
+                    prover.state
+                );
+                // TODO: Handle job reassignment if prover was working ?
+            }
+            None => {
+                warn!("Attempted to remove prover {prover_id} but it was not found");
+            }
+        }
+        Ok(())
     }
 
     /// Start a proof job with the specified request
     pub async fn start_proof(
         &self,
-        block_id: u64,
+        block_id: String,
         num_provers: u32,
         input_path: String,
     ) -> Result<JobId> {
@@ -277,54 +227,49 @@ impl ProverManager {
             )));
         }
 
-        // Create job with a generated ID
-        let job_id = JobId::new();
-        let job = Job {
-            job_id: job_id.clone(),
-            block_id,
-            required_provers: num_provers as usize,
-            assigned_provers: Vec::new(),
-            status: JobStatus::Pending,
-            phase1_results: HashMap::new(),
-        };
-
         let available_provers = self.get_available_provers().await;
 
-        if available_provers.len() < job.required_provers {
+        if available_provers.len() < num_provers as usize {
             return Err(Error::InvalidRequest(format!(
                 "Not enough provers available: need {}, have {}",
-                job.required_provers,
+                num_provers,
                 available_provers.len()
             )));
         }
 
         // Select only the required number of provers (not all of them)
-        let selected_provers: Vec<String> =
-            available_provers.into_iter().take(job.required_provers).collect();
+        let selected_provers: Vec<ProverId> =
+            available_provers.into_iter().take(num_provers as usize).collect();
 
-        // Update job with assigned provers
-        let mut jobs = self.jobs.write().await;
-        let mut updated_job = job;
-        updated_job.assigned_provers = selected_provers.clone();
-        updated_job.status = JobStatus::InProgress;
-        jobs.insert(updated_job.job_id.clone(), updated_job.clone());
+        // Create job
+        let job_id = JobId::new();
+        let block_id = BlockId::from(block_id);
+        let job = Job {
+            job_id: job_id.clone(),
+            state: JobState::Running(JobPhase::Phase1),
+            block: BlockContext {
+                block_id: block_id.clone(),
+                input_path: PathBuf::from(input_path.clone()),
+            },
+            num_provers,
+            provers: selected_provers.clone(),
+            results: HashMap::new(),
+            global_challenge: None,
+        };
+
+        self.jobs.write().await.insert(job_id.clone(), job);
 
         // Send messages to selected provers
         let mut provers = self.provers.write().await;
         for (rank, prover_id) in selected_provers.iter().enumerate() {
             if let Some(prover) = provers.get_mut(prover_id) {
-                prover.status = ProverStatus::Working {
-                    job_id: updated_job.job_id.clone(),
-                    rank_id: rank as u32,
-                };
-
                 let message = CoordinatorMessage {
                     payload: Some(coordinator_message::Payload::ProvePhase1(
                         consensus_api::ProvePhase1 {
-                            job_id: updated_job.job_id.as_string(),
-                            block_id: updated_job.block_id,
+                            job_id: job_id.clone().into(),
+                            block_id: block_id.clone().into(),
                             rank_id: rank as u32,
-                            total_provers: updated_job.required_provers as u32,
+                            total_provers: num_provers,
                         },
                     )),
                 };
@@ -332,42 +277,39 @@ impl ProverManager {
                 // Send message through the prover's channel (bounded channels require async send)
                 match prover.message_sender.try_send(message) {
                     Ok(()) => {
-                        info!("Sent ProvePhase1 message to prover {} (rank {})", prover_id, rank);
+                        prover.state = ProverState::Computing(JobPhase::Phase1);
                     }
                     Err(mpsc::error::TrySendError::Full(_)) => {
-                        warn!("Message buffer full for prover {}, dropping message", prover_id);
                         // TODO: Handle backpressure - maybe queue for retry or mark prover as slow
+                        // TODO: Make unbounded channel
+                        return Err(Error::Internal(format!(
+                            "Message buffer full for prover {prover_id}, dropping message"
+                        )));
                     }
                     Err(mpsc::error::TrySendError::Closed(_)) => {
-                        error!("Channel closed for prover {}", prover_id);
                         // TODO: Handle closed channel - maybe reassign job
+                        return Err(Error::Internal(format!(
+                            "Channel closed for prover {prover_id}, dropping message"
+                        )));
                     }
                 }
             }
         }
 
         info!(
-            "Assigned job {} to {} provers with input path: {}",
-            updated_job.job_id,
-            selected_provers.len(),
-            input_path
+            "Assigned new job {} to {} provers with input path: {}",
+            job_id, num_provers, input_path
         );
 
         Ok(job_id)
     }
 
-    /// Get all connected prover IDs for broadcasting - transport layer handles actual sending
-    pub async fn get_all_prover_ids(&self) -> Vec<String> {
-        let provers = self.provers.read().await;
-        provers.keys().cloned().collect()
-    }
-
     /// Handle incoming message from a prover
     pub async fn handle_prover_message(
         &self,
-        prover_id: &str,
+        prover_id: &ProverId,
         message: ProverMessage,
-    ) -> Result<Option<CoordinatorMessage>> {
+    ) -> Result<()> {
         // Update last heartbeat
         if let Some(prover) = self.provers.write().await.get_mut(prover_id) {
             prover.last_heartbeat = Utc::now();
@@ -386,9 +328,10 @@ impl ProverManager {
                     let job_id = JobId::from(phase1_result.job_id.clone());
 
                     // Store the Phase1 result and check if we can proceed to Phase2
-                    if let Err(e) = self.handle_phase1_result(&job_id, phase1_result).await {
+                    self.handle_phase1_result(&job_id, phase1_result).await.map_err(|e| {
                         error!("Failed to handle Phase1 result: {}", e);
-                    }
+                        e
+                    })?;
                 }
                 prover_message::Payload::FinalProof(final_proof) => {
                     info!("Final proof from prover {}: {}", prover_id, final_proof.success);
@@ -398,17 +341,18 @@ impl ProverManager {
 
                     if final_proof.success {
                         // Mark job as complete and free provers
-                        if let Err(e) = self.complete_job(&job_id).await {
+                        self.complete_job(&job_id).await.map_err(|e| {
                             error!("Failed to complete job {}: {}", job_id, e);
-                        }
+                            e
+                        })?;
                     } else {
                         // Mark job as failed and free provers
-                        if let Err(e) = self
-                            .fail_job(&job_id, "Final proof generation failed".to_string())
+                        self.fail_job(&job_id, "Final proof generation failed".to_string())
                             .await
-                        {
+                            .map_err(|e| {
                             error!("Failed to mark job {} as failed: {}", job_id, e);
-                        }
+                            e
+                        })?;
                     }
                 }
                 prover_message::Payload::Error(prover_error) => {
@@ -417,14 +361,16 @@ impl ProverManager {
                     // If the error includes a job_id, we should fail that job
                     if !prover_error.job_id.is_empty() {
                         let job_id = JobId::from(prover_error.job_id.clone());
-                        if let Err(e) =
-                            self.fail_job(&job_id, prover_error.error_message.clone()).await
-                        {
-                            error!(
-                                "Failed to mark job {} as failed after prover error: {}",
-                                job_id, e
-                            );
-                        }
+
+                        self.fail_job(&job_id, prover_error.error_message.clone()).await.map_err(
+                            |e| {
+                                error!(
+                                    "Failed to mark job {} as failed after prover error: {}",
+                                    job_id, e
+                                );
+                                e
+                            },
+                        )?;
                     }
                 }
                 prover_message::Payload::HeartbeatAck(_) => {
@@ -436,101 +382,46 @@ impl ProverManager {
             }
         }
 
-        Ok(None)
-    }
-
-    /// Access to provers for direct manipulation (used by ConsensusService)
-    pub fn provers(&self) -> &Arc<RwLock<HashMap<String, ProverConnection>>> {
-        &self.provers
-    }
-
-    /// Get the coordinator configuration
-    pub fn config(&self) -> &CoordinatorConfig {
-        &self.config
-    }
-
-    /// Get current prover count
-    pub async fn get_prover_count(&self) -> usize {
-        self.provers.read().await.len()
+        Ok(())
     }
 
     /// Complete a job and reset all assigned provers back to Idle status
-    pub async fn complete_job(&self, job_id: &JobId) -> Result<()> {
+    async fn complete_job(&self, job_id: &JobId) -> Result<()> {
         let mut jobs = self.jobs.write().await;
+        let job = jobs
+            .get_mut(job_id)
+            .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
 
-        if let Some(job) = jobs.get(job_id) {
-            let prover_ids = job.assigned_provers.clone();
+        job.state = JobState::Completed;
 
-            // Remove the job from tracking
-            jobs.remove(job_id);
-            drop(jobs); // Release the jobs lock early
+        // Reset prover statuses back to Idle
+        self.mark_provers_with_state(&job.provers, ProverState::Idle).await?;
 
-            // Reset prover statuses back to Idle
-            let mut provers = self.provers.write().await;
-            for prover_id in &prover_ids {
-                if let Some(prover) = provers.get_mut(prover_id) {
-                    if matches!(prover.status, ProverStatus::Working { job_id: ref working_job_id, .. } if working_job_id == job_id)
-                    {
-                        prover.status = ProverStatus::Idle;
-                        info!(
-                            "Reset prover {} back to Idle after completing job {}",
-                            prover_id, job_id
-                        );
-                    }
-                }
-            }
+        info!("Completed job {} and freed {} provers", job_id, job.provers.len());
 
-            info!("Completed job {} and freed {} provers", job_id, prover_ids.len());
-            Ok(())
-        } else {
-            warn!("Attempted to complete job {job_id} but it was not found");
-            Err(Error::InvalidRequest(format!("Job {job_id} not found")))
-        }
-    }
-
-    /// Get all provers assigned to a specific job
-    pub async fn get_job_provers(&self, job_id: &JobId) -> Option<Vec<String>> {
-        let jobs = self.jobs.read().await;
-        jobs.get(job_id).map(|job| job.assigned_provers.clone())
+        Ok(())
     }
 
     /// Mark a job as failed and reset prover statuses
     pub async fn fail_job(&self, job_id: &JobId, reason: String) -> Result<()> {
         let mut jobs = self.jobs.write().await;
+        let job = jobs
+            .get_mut(job_id)
+            .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
 
-        if let Some(job) = jobs.get_mut(job_id) {
-            let prover_ids = job.assigned_provers.clone();
+        job.state = JobState::Failed;
 
-            // Update job status to failed
-            job.status = JobStatus::Failed { reason: reason.clone() };
-            drop(jobs); // Release the jobs lock early
+        // Reset prover statuses back to Idle
+        self.mark_provers_with_state(&job.provers, ProverState::Idle).await?;
 
-            // Reset prover statuses back to Idle
-            let mut provers = self.provers.write().await;
-            for prover_id in &prover_ids {
-                if let Some(prover) = provers.get_mut(prover_id) {
-                    if matches!(prover.status, ProverStatus::Working { job_id: ref working_job_id, .. } if working_job_id == job_id)
-                    {
-                        prover.status = ProverStatus::Idle;
-                        info!(
-                            "Reset prover {} back to Idle after job {} failed",
-                            prover_id, job_id
-                        );
-                    }
-                }
-            }
+        error!(
+            "Failed job {} (reason: {}) and freed {} provers",
+            job_id,
+            reason,
+            job.provers.len()
+        );
 
-            error!(
-                "Failed job {} (reason: {}) and freed {} provers",
-                job_id,
-                reason,
-                prover_ids.len()
-            );
-            Ok(())
-        } else {
-            warn!("Attempted to fail job {job_id} but it was not found");
-            Err(Error::InvalidRequest(format!("Job {job_id} not found")))
-        }
+        Ok(())
     }
 
     /// Handle Phase1 result and check if we can proceed to Phase2
@@ -541,105 +432,95 @@ impl ProverManager {
     ) -> Result<()> {
         let mut jobs = self.jobs.write().await;
 
-        if let Some(job) = jobs.get_mut(job_id) {
-            // Store the Phase1 result
-            let internal_result = ProvePhase1Result {
-                prover_id: phase1_result.prover_id.clone(),
-                rank_id: phase1_result.rank_id,
-                result_data: phase1_result.result_data,
-                success: phase1_result.success,
-                error_message: if phase1_result.error_message.is_empty() {
-                    None
-                } else {
-                    Some(phase1_result.error_message)
-                },
-            };
+        let job = jobs
+            .get_mut(job_id)
+            .ok_or_else(|| Error::InvalidRequest(format!("Job {job_id} not found")))?;
 
-            job.phase1_results.insert(phase1_result.prover_id.clone(), internal_result);
+        let prover_id = ProverId::from(phase1_result.prover_id);
 
-            info!("Stored Phase1 result for prover {} in job {}.", phase1_result.prover_id, job_id,);
+        let phase1_results = job.results.entry(JobPhase::Phase1).or_default();
+        phase1_results.insert(
+            prover_id.clone(),
+            JobResult { success: phase1_result.success, data: phase1_result.result_data },
+        );
 
-            // Check if we have all Phase1 results
-            if job.phase1_results.len() == job.required_provers {
-                // Check if all results are successful
-                let all_successful = job.phase1_results.values().all(|result| result.success);
+        info!("Stored Phase1 result for prover {prover_id} in job {job_id}.");
 
-                if all_successful {
-                    info!("All Phase1 results successful for job {}. Starting Phase2", job_id);
-                    job.status = JobStatus::Phase1Complete;
-
-                    // Get the assigned provers and release the jobs lock
-                    let assigned_provers = job.assigned_provers.clone();
-                    let job_id_clone = job.job_id.clone();
-                    drop(jobs); // Release jobs lock early
-
-                    // Start Phase2 for all provers
-                    if let Err(e) = self.start_phase2(&job_id_clone, &assigned_provers).await {
-                        error!("Failed to start Phase2 for job {}: {}", job_id_clone, e);
-                        // Mark job as failed
-                        if let Err(fail_err) = self
-                            .fail_job(&job_id_clone, format!("Failed to start Phase2: {e}"))
-                            .await
-                        {
-                            error!("Failed to mark job {} as failed: {}", job_id_clone, fail_err);
-                        }
-                    }
-                } else {
-                    // Some Phase1 results failed
-                    let failed_provers: Vec<String> =
-                        job.phase1_results
-                            .iter()
-                            .filter_map(|(prover_id, result)| {
-                                if !result.success {
-                                    Some(prover_id.clone())
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-
-                    warn!("Phase1 failed for provers {:?} in job {}", failed_provers, job_id);
-                    let reason = format!("Phase1 failed for provers: {failed_provers:?}");
-
-                    // Release jobs lock before calling fail_job
-                    let job_id_clone = job.job_id.clone();
-                    drop(jobs);
-
-                    if let Err(e) = self.fail_job(&job_id_clone, reason).await {
-                        error!("Failed to mark job {} as failed: {}", job_id_clone, e);
-                    }
-                }
-            }
-
-            Ok(())
-        } else {
-            warn!("Received Phase1 result for unknown job: {job_id}");
-            Err(Error::InvalidRequest(format!("Job {job_id} not found")))
+        if phase1_results.len() < job.num_provers as usize {
+            return Ok(());
         }
+
+        // Check if all results are successful
+        let all_successful = phase1_results.values().all(|result| result.success);
+
+        if all_successful {
+            // Generate global challenge for Phase2 (this would typically be derived from Phase1 results)
+            let global_challenge = self.generate_global_challenge(job_id).await?;
+            job.global_challenge = Some(global_challenge.clone());
+            job.state = JobState::Running(JobPhase::Phase2);
+
+            // Get the assigned provers and release the jobs lock
+            let assigned_provers = job.provers.clone();
+            let job_id = job.job_id.clone();
+            drop(jobs); // Release jobs lock early
+
+            // Start Phase2 for all provers
+            if let Err(e) = self.start_phase2(&job_id, &assigned_provers, global_challenge).await {
+                error!("Failed to start Phase2 for job {}: {}", job_id, e);
+                self.fail_job(&job_id, format!("Failed to start Phase2: {e}")).await.map_err(
+                    |e| {
+                        error!("Failed to mark job {} as failed: {}", job_id, e);
+                        e
+                    },
+                )?;
+            }
+        } else {
+            // Some Phase1 results failed
+            let failed_provers: Vec<ProverId> = phase1_results
+                .iter()
+                .filter_map(
+                    |(prover_id, result)| {
+                        if !result.success {
+                            Some(prover_id.clone())
+                        } else {
+                            None
+                        }
+                    },
+                )
+                .collect();
+
+            warn!("Phase1 failed for provers {:?} in job {}", failed_provers, job_id);
+            let reason = format!("Phase1 failed for provers: {failed_provers:?}");
+
+            // Release jobs lock before calling fail_job
+            let job_id = job.job_id.clone();
+            drop(jobs);
+
+            self.fail_job(&job_id, reason).await.map_err(|e| {
+                error!("Failed to mark job {} as failed: {}", job_id, e);
+                e
+            })?;
+        }
+
+        Ok(())
     }
 
     /// Start Phase2 for all provers that completed Phase1
-    async fn start_phase2(&self, job_id: &JobId, assigned_provers: &[String]) -> Result<()> {
-        info!("Starting Phase2 for job {} with {} provers", job_id, assigned_provers.len());
-
-        // Update job status to Phase2InProgress
-        {
-            let mut jobs = self.jobs.write().await;
-            if let Some(job) = jobs.get_mut(job_id) {
-                job.status = JobStatus::Phase2InProgress;
-            }
-        }
-
-        // Generate global challenge for Phase2 (this would typically be derived from Phase1 results)
-        let global_challenge = self.generate_global_challenge(job_id).await?;
-
+    async fn start_phase2(
+        &self,
+        job_id: &JobId,
+        assigned_provers: &[ProverId],
+        global_challenge: Vec<u64>,
+    ) -> Result<()> {
         // Update prover statuses and send Phase2 messages
         let mut provers = self.provers.write().await;
         for prover_id in assigned_provers {
             if let Some(prover) = provers.get_mut(prover_id) {
                 // Prover should still be in Working status from Phase1
-                if matches!(prover.status, ProverStatus::Working { job_id: ref working_job_id, .. } if working_job_id == job_id)
-                {
+                if prover.state == ProverState::Computing(JobPhase::Phase1) {
+                    prover.state = ProverState::Computing(JobPhase::Phase2);
+
+                    // Create the Phase2 message
                     let message = CoordinatorMessage {
                         payload: Some(coordinator_message::Payload::ProvePhase2(
                             consensus_api::ProvePhase2 {
@@ -672,9 +553,15 @@ impl ProverManager {
                     }
                 } else {
                     warn!("Prover {} is not in working state for job {}", prover_id, job_id);
+                    return Err(Error::InvalidRequest(format!(
+                        "Prover {prover_id} is not in computing state for job {job_id}",
+                    )));
                 }
             } else {
                 warn!("Prover {} not found when starting Phase2", prover_id);
+                return Err(Error::InvalidRequest(format!(
+                    "Prover {prover_id} not found when starting Phase2"
+                )));
             }
         }
 

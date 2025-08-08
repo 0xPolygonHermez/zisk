@@ -12,7 +12,7 @@ pub async fn handle(server_url: String, input_path: String, num_provers: u32) ->
     let mut client = ConsensusApiClient::new(channel);
 
     let start_proof_request = StartProofRequest {
-        block_id: 0, // Placeholder block ID
+        block_id: "0x1234567890abcdef".into(), // Placeholder block ID
         num_provers,
         input_path,
     };
