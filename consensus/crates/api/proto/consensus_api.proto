@@ -54,7 +54,7 @@ message JobStatusRequest {
 message SystemStatusRequest {}
 
 message StartProofRequest {
-  uint64 block_id = 1;
+  string block_id = 1;
   uint32 num_provers = 2;
   string input_path = 3;
 }
@@ -99,7 +99,7 @@ message JobStatusResponse {
 
 message JobStatus {
   string job_id = 1;
-  uint64 block_id = 2;
+  string block_id = 2;
   string phase = 3;
   string status = 4;
   repeated string assigned_provers = 5;
@@ -198,7 +198,7 @@ message ProverRegisterResponse {
 
 message ProvePhase1 {
   string job_id = 1;
-  uint64 block_id = 2;
+  string block_id = 2;
   uint32 rank_id = 3;
   uint32 total_provers = 4;
 }

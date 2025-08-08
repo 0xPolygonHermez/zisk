@@ -3,8 +3,9 @@ use async_stream::stream;
 use consensus_api::{consensus_api_server::*, *};
 use consensus_comm::CommManager;
 use consensus_config::Config;
-use consensus_core::CoordinatorConfig;
+use consensus_core::ProverId;
 use consensus_core::ProverManager;
+use consensus_core::ProverManagerConfig;
 
 use chrono::{DateTime, Utc};
 use futures_util::{Stream, StreamExt};
@@ -47,7 +48,7 @@ impl ConsensusService {
         let comm_manager = Arc::new(CommManager::new(config.comm.clone()).await?);
 
         // Create ProverManager with configuration from config
-        let prover_manager_config = CoordinatorConfig::from_config(&config.prover_manager);
+        let prover_manager_config = ProverManagerConfig::from_config(&config.prover_manager);
         let prover_manager = Arc::new(ProverManager::new(prover_manager_config));
 
         Ok(Self {
@@ -84,52 +85,30 @@ impl ConsensusService {
 
     /// Handle registration directly in stream context (static version to avoid lifetime issues)
     async fn handle_stream_registration(
-        prover_manager: &Arc<ProverManager>,
-        reg_req: ProverRegisterRequest,
-        outbound_sender: mpsc::Sender<CoordinatorMessage>,
-    ) -> Result<String, Status> {
-        let prover_id = reg_req.prover_id;
-        let capabilities = reg_req.capabilities.unwrap_or_default();
+        prover_manager: &ProverManager,
+        req: ProverRegisterRequest,
+        msg_sender: mpsc::Sender<CoordinatorMessage>,
+    ) -> Result<ProverId, Status> {
+        let capabilities = req.capabilities.unwrap_or_default();
 
-        // Register prover
-        let result = prover_manager
-            .register_prover(prover_id.clone(), capabilities, outbound_sender)
+        Ok(prover_manager
+            .register_prover(ProverId::from(req.prover_id), capabilities, msg_sender)
             .await
-            .map_err(|e| Status::internal(format!("Registration failed: {e}")))?;
-
-        if !result.accepted {
-            return Err(Status::permission_denied(format!(
-                "Registration rejected: {}",
-                result.message
-            )));
-        }
-
-        Ok(prover_id)
+            .map_err(|e| Status::internal(format!("Registration failed: {e}")))?)
     }
 
     /// Handle reconnection directly in stream context (static version to avoid lifetime issues)
     async fn handle_stream_reconnection(
         prover_manager: &Arc<ProverManager>,
-        reconnect_req: ProverReconnectRequest,
-        outbound_sender: mpsc::Sender<CoordinatorMessage>,
-    ) -> Result<String, Status> {
-        let prover_id = reconnect_req.prover_id;
-        let capabilities = reconnect_req.capabilities.unwrap_or_default();
+        req: ProverReconnectRequest,
+        msg_sender: mpsc::Sender<CoordinatorMessage>,
+    ) -> Result<ProverId, Status> {
+        let capabilities = req.capabilities.unwrap_or_default();
 
-        // Register prover (reconnection uses same logic)
-        let result = prover_manager
-            .register_prover(prover_id.clone(), capabilities, outbound_sender)
+        Ok(prover_manager
+            .register_prover(ProverId::from(req.prover_id), capabilities, msg_sender)
             .await
-            .map_err(|e| Status::internal(format!("Reconnection failed: {e}")))?;
-
-        if !result.accepted {
-            return Err(Status::permission_denied(format!(
-                "Reconnection rejected: {}",
-                result.message
-            )));
-        }
-
-        Ok(prover_id)
+            .map_err(|e| Status::internal(format!("Reconnection failed: {e}")))?)
     }
 }
 
@@ -273,7 +252,7 @@ impl ConsensusApi for ConsensusService {
         self.validate_admin_request(&request)?;
 
         // Get actual system status from ProverManager
-        let total_provers = self.prover_manager.get_prover_count().await;
+        let total_provers = self.prover_manager.num_provers().await;
         let available_provers = self.prover_manager.get_available_provers().await;
         let idle_provers = available_provers.len();
         let busy_provers = total_provers.saturating_sub(idle_provers);
@@ -366,21 +345,21 @@ impl ConsensusApi for ConsensusService {
 
             // Clean registration handling - wait for prover to introduce itself
             let prover_id = match in_stream.next().await {
-                Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Register(reg_req)) })) => {
-                    match Self::handle_stream_registration(&prover_manager, reg_req, outbound_sender).await {
-                        Ok(id) => {
+                Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Register(req)) })) => {
+                    match Self::handle_stream_registration(&prover_manager, req, outbound_sender).await {
+                        Ok(prover_id) => {
                             // Send success response
                             yield Ok(CoordinatorMessage {
                                 payload: Some(coordinator_message::Payload::RegisterResponse(
                                     ProverRegisterResponse {
-                                        prover_id: id.clone(),
+                                        prover_id: prover_id.as_string(),
                                         accepted: true,
                                         message: "Registration successful".to_string(),
                                         registered_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
                                     }
                                 ))
                             });
-                            id
+                            prover_id
                         }
                         Err(status) => {
                             active_connections.fetch_sub(1, Ordering::SeqCst);
@@ -389,22 +368,21 @@ impl ConsensusApi for ConsensusService {
                         }
                     }
                 }
-                Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Reconnect(reconnect_req)) })) => {
-                    match Self::handle_stream_reconnection(&prover_manager, reconnect_req, outbound_sender).await {
-                        Ok(id) => {
+                Some(Ok(ProverMessage { payload: Some(prover_message::Payload::Reconnect(req)) })) => {
+                    match Self::handle_stream_reconnection(&prover_manager, req, outbound_sender).await {
+                        Ok(prover_id) => {
                             // Send success response
-                            let response = CoordinatorMessage {
+                            yield Ok(CoordinatorMessage {
                                 payload: Some(coordinator_message::Payload::RegisterResponse(
                                     ProverRegisterResponse {
-                                        prover_id: id.clone(),
+                                        prover_id: prover_id.as_string(),
                                         accepted: true,
                                         message: "Reconnection successful".to_string(),
                                         registered_at: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
                                     }
                                 ))
-                            };
-                            yield Ok(response);
-                            id
+                            });
+                            prover_id
                         }
                         Err(status) => {
                             // Cleanup and return error
