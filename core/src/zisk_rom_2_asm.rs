@@ -90,6 +90,9 @@ pub struct ZiskAsmContext {
     address_is_constant: bool,   // true if address is a constant value
     address_constant_value: u64, // address constant value, only valid if address_is_constant==true
 
+    // This is the address of the entrypoint.
+    min_program_pc: u64,
+
     // Force in which register a or b must be stored
     store_a_in_c: bool,
     store_a_in_a: bool,
@@ -393,6 +396,7 @@ impl ZiskRom2Asm {
             comments,
             boc: "/* ".to_string(),
             eoc: " */".to_string(),
+            min_program_pc: rom.min_program_pc,
             ..Default::default()
         };
 
@@ -3152,11 +3156,11 @@ impl ZiskRom2Asm {
                     || ctx.chunk_player_mem_reads_collect_main()
                 {
                     *code += "\tjz execute_end\n";
-                    Self::set_pc(&mut ctx, instruction, code, "nz");
+                    Self::set_pc(&mut ctx, instruction, code, "nz", rom);
                 } else {
                     *code += &format!("\tjz pc_{:x}_step_zero\n", ctx.pc);
                     unusual_code += &format!("pc_{:x}_step_zero:\n", ctx.pc);
-                    Self::set_pc(&mut ctx, instruction, &mut unusual_code, "z");
+                    Self::set_pc(&mut ctx, instruction, &mut unusual_code, "z", rom);
                     unusual_code += "\tcall chunk_end_and_start\n";
                     unusual_code += &format!(
                         "\tmov {}, {} {}\n",
@@ -3171,7 +3175,7 @@ impl ZiskRom2Asm {
                     );
                     unusual_code += "\tjae execute_end\n";
                     unusual_code += &format!("\tjmp pc_{:x}_step_done\n", ctx.pc);
-                    Self::set_pc(&mut ctx, instruction, code, "nz");
+                    Self::set_pc(&mut ctx, instruction, code, "nz", rom);
                     *code += &format!("pc_{:x}_step_done:\n", ctx.pc);
                 }
             }
@@ -3179,7 +3183,7 @@ impl ZiskRom2Asm {
                 if instruction.end {
                     *code += &format!("\tmov {}, 1 {}\n", ctx.mem_end, ctx.comment_str("end = 1"));
                 }
-                Self::set_pc(&mut ctx, instruction, code, "nz");
+                Self::set_pc(&mut ctx, instruction, code, "nz", rom);
             }
 
             // Used only to get logs of step
@@ -3279,6 +3283,17 @@ impl ZiskRom2Asm {
         *code += "\n";
         *code += ".section .rodata\n";
         *code += ".align 64\n";
+
+        // Safety check: Ensure the minimum program address label exists
+        //
+        // This is defensive programming for rare cases where min_program_pc has no valid
+        // instruction (non-NOP padding, data in text section).
+        // In practice with NOP padding, this check never triggers and the entrypoint
+        // is the min_program_pc
+        if rom.min_program_pc >= ROM_ADDR && !rom.sorted_pc_list.contains(&rom.min_program_pc) {
+            *code +=
+                &format!("map_pc_{:x}: \t.quad pc_{:x}\n", rom.min_program_pc, rom.min_program_pc);
+        }
 
         // Init previous key to the first ROM entry
         let mut previous_key: u64 = ROM_ENTRY;
@@ -4368,7 +4383,7 @@ impl ZiskRom2Asm {
                 *code += &format!(
                     "\tjne pc_{:x}_rem_check_underflow {}\n",
                     ctx.pc,
-                    ctx.comment_str("Rem: if b is not zero, divide")
+                    ctx.comment_str("Rem: if b is not zero, check underflow")
                 );
                 *code += &format!(
                     "\tmov {}, {} {}\n",
@@ -4380,6 +4395,7 @@ impl ZiskRom2Asm {
                 *code += &format!("\tje pc_{:x}_rem_done\n", ctx.pc);
 
                 // Check underflow:
+                *code += &format!("pc_{:x}_rem_check_underflow:\n", ctx.pc);
                 // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a
                 *code += &format!(
                     "\tmov {}, 0x8000000000000000 {}\n",
@@ -4504,7 +4520,7 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
                 *code += &format!(
-                    "\tcmp {}, 0 {}n",
+                    "\tcmp {}, 0 {}\n",
                     REG_B_W,
                     ctx.comment_str("RemuW: if b==0 then return a")
                 );
@@ -4568,6 +4584,7 @@ impl ZiskRom2Asm {
                 *code += &format!("\tje pc_{:x}_divw_done\n", ctx.pc);
 
                 // Divide
+                *code += &format!("pc_{:x}_divw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
                     REG_VALUE_W,
@@ -5954,7 +5971,13 @@ impl ZiskRom2Asm {
     /* SET PC */
     /**********/
 
-    fn set_pc(ctx: &mut ZiskAsmContext, instruction: &ZiskInst, code: &mut String, id: &str) {
+    fn set_pc(
+        ctx: &mut ZiskAsmContext,
+        instruction: &ZiskInst,
+        code: &mut String,
+        id: &str,
+        rom: &ZiskRom,
+    ) {
         ctx.jump_to_dynamic_pc = false;
         ctx.jump_to_static_pc = String::new();
         if instruction.set_pc {
@@ -5967,8 +5990,13 @@ impl ZiskRom2Asm {
                     new_pc,
                     ctx.comment_str("pc = c(const) + jmp_offset1")
                 );
-                ctx.jump_to_static_pc =
-                    format!("\tjmp pc_{:x} {}\n", new_pc, ctx.comment_str("jump to static pc"));
+                // Check if target address exists in ROM before generating static jump
+                if rom.sorted_pc_list.binary_search(&new_pc).is_ok() {
+                    ctx.jump_to_static_pc =
+                        format!("\tjmp pc_{:x} {}\n", new_pc, ctx.comment_str("jump to static pc"));
+                } else {
+                    ctx.jump_to_dynamic_pc = true;
+                }
             } else {
                 *code += &format!(
                     "\tmov {}, {} {}\n",
@@ -5995,8 +6023,16 @@ impl ZiskRom2Asm {
                     new_pc,
                     ctx.comment_str("flag=0: pc+=jmp_offset2")
                 );
-                ctx.jump_to_static_pc =
-                    format!("\tjmp pc_{:x} {}\n", new_pc, ctx.comment_str("jump to pc+offset2"));
+                // Check if target address exists in ROM before generating static jump
+                if rom.sorted_pc_list.binary_search(&new_pc).is_ok() {
+                    ctx.jump_to_static_pc = format!(
+                        "\tjmp pc_{:x} {}\n",
+                        new_pc,
+                        ctx.comment_str("jump to pc+offset2")
+                    );
+                } else {
+                    ctx.jump_to_dynamic_pc = true;
+                }
             } else if id == "z" {
                 *code += &format!(
                     "\tmov {}, 0x{:x} {}\n",
@@ -6014,8 +6050,16 @@ impl ZiskRom2Asm {
                     new_pc,
                     ctx.comment_str("flag=1: pc+=jmp_offset1")
                 );
-                ctx.jump_to_static_pc =
-                    format!("\tjmp pc_{:x} {}\n", new_pc, ctx.comment_str("jump to pc+offset1"));
+                // Check if target address exists in ROM before generating static jump
+                if rom.sorted_pc_list.binary_search(&new_pc).is_ok() {
+                    ctx.jump_to_static_pc = format!(
+                        "\tjmp pc_{:x} {}\n",
+                        new_pc,
+                        ctx.comment_str("jump to pc+offset1")
+                    );
+                } else {
+                    ctx.jump_to_dynamic_pc = true;
+                }
             } else if id == "z" {
                 *code += &format!(
                     "\tmov {}, 0x{:x} {}\n",
@@ -6051,18 +6095,24 @@ impl ZiskRom2Asm {
     fn jumpt_to_dynamic_pc(ctx: &mut ZiskAsmContext, code: &mut String) {
         *code += &ctx.full_line_comment("jump to dynamic pc".to_string());
         *code += &format!(
-            "\tmov {}, 0x80000000 {}\n",
+            "\tmov {}, 0x{:x} {}\n",
             REG_ADDRESS,
+            ctx.min_program_pc,
             ctx.comment_str("is pc a low address?")
         );
         *code += &format!("\tcmp {REG_PC}, {REG_ADDRESS}\n");
         *code += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
-        *code +=
-            &format!("\tsub {}, {} {}\n", REG_PC, REG_ADDRESS, ctx.comment_str("pc -= 0x80000000"));
         *code += &format!(
-            "\tlea {}, [map_pc_80000000] {}\n",
+            "\tsub {}, {} {}\n",
+            REG_PC,
             REG_ADDRESS,
-            ctx.comment_str("address = map[0x80000000]")
+            ctx.comment_str(&format!("pc -= 0x{:x}", ctx.min_program_pc))
+        );
+        *code += &format!(
+            "\tlea {}, [map_pc_{:x}] {}\n",
+            REG_ADDRESS,
+            ctx.min_program_pc,
+            ctx.comment_str(&format!("address = map[0x{:x}]", ctx.min_program_pc))
         );
         *code += &format!(
             "\tmov {}, [{} + {}*{}] {}\n",

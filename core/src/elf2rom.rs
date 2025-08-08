@@ -87,6 +87,7 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
 fn optimize_instruction_lookup(rom: &mut ZiskRom) -> Result<(), Box<dyn Error>> {
     // 1. Find the address ranges for each instruction category
     let mut max_rom_entry = 0;
+    let mut min_rom_instructions = u64::MAX;
     let mut max_rom_instructions = 0;
     let mut min_rom_na_unstructions = u64::MAX;
     let mut max_rom_na_unstructions = 0;
@@ -131,6 +132,7 @@ fn optimize_instruction_lookup(rom: &mut ZiskRom) -> Result<(), Box<dyn Error>> 
                 max_rom_na_unstructions = std::cmp::max(max_rom_na_unstructions, addr);
             } else {
                 // Aligned instruction in main area
+                min_rom_instructions = min_rom_instructions.min(addr);
                 max_rom_instructions = max_rom_instructions.max(addr);
             }
         } else {
@@ -139,10 +141,15 @@ fn optimize_instruction_lookup(rom: &mut ZiskRom) -> Result<(), Box<dyn Error>> 
     }
     rom.max_bios_pc = max_rom_entry;
     rom.max_program_pc = max_rom_instructions;
+    rom.min_program_pc =
+        if min_rom_instructions == u64::MAX { ROM_ADDR } else { min_rom_instructions };
 
     let num_rom_entry = if max_rom_entry > 0 { (max_rom_entry - ROM_ENTRY) / 4 + 1 } else { 0 };
-    let num_rom_instructions =
-        if max_rom_instructions > 0 { (max_rom_instructions - ROM_ADDR) / 4 + 1 } else { 0 };
+    let num_rom_instructions = if max_rom_instructions > 0 {
+        (max_rom_instructions - rom.min_program_pc) / 4 + 1
+    } else {
+        0
+    };
     let num_rom_na_instructions = if u64::MAX == min_rom_na_unstructions {
         0 // No non-aligned instructions found
     } else {
@@ -175,7 +182,8 @@ fn optimize_instruction_lookup(rom: &mut ZiskRom) -> Result<(), Box<dyn Error>> 
                 instruction.1.i.clone();
         } else {
             // Main ROM: divide by 4 for index (using shift for efficiency)
-            rom.rom_instructions[((addr - ROM_ADDR) >> 2) as usize] = instruction.1.i.clone();
+            rom.rom_instructions[((addr - rom.min_program_pc) >> 2) as usize] =
+                instruction.1.i.clone();
         }
     }
 
