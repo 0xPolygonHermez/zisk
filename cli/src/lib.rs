@@ -51,7 +51,7 @@ impl CommandExecutor for Command {
 }
 
 pub async fn url_exists(client: &Client, url: &str) -> bool {
-    let max_retries = 3;
+    let max_retries = 5;
     let delay = Duration::from_secs(3);
 
     for attempt in 1..=max_retries {
