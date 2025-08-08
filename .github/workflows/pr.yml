@@ -81,6 +81,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:        
+          path: $HOME/workspace   
 
       - name: Move repository to $HOME/workspace/zisk
         run: |
@@ -126,12 +128,8 @@ jobs:
 
       - name: Checkout sources
         uses: actions/checkout@v4
-
-      - name: Move repository to $HOME/workspace/zisk
-        run: |
-          mkdir -p $HOME/workspace
-          rm -rf $HOME/workspace/zisk
-          mv $GITHUB_WORKSPACE $HOME/workspace/zisk
+        with:        
+          path: $HOME/workspace        
 
       - name: Build ZisK
         run: |
