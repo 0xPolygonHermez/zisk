@@ -78,28 +78,23 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
-          sudo -u ziskuser ./install_deps.sh
+          sudo -u ziskuser bash -c "cd $GITHUB_WORKSPACE/tools/release-kit && ./install_deps.sh"
 
       - name: Build ZisK
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
-          sudo -u ziskuser ./build_zisk.sh
+          sudo -u ziskuser bash -c "cd $GITHUB_WORKSPACE/tools/release-kit && ./build_zisk.sh"
 
       - name: Install setup
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
-          sudo -u ziskuser ./install_setup_public.sh
+          sudo -u ziskuser bash -c "cd $GITHUB_WORKSPACE/tools/release-kit && ./install_setup_public.sh"
   
       - name: Test sha_hasher
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
-          sudo -u ziskuser ./test_sha_hasher.sh
+          sudo -u ziskuser bash -c "cd $GITHUB_WORKSPACE/tools/release-kit && ./test_sha_hasher.sh"
 
       - name: Test Ethereum block
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
-          sudo -u ziskuser ./test_eth_block.sh
+          sudo -u ziskuser bash -c "cd $GITHUB_WORKSPACE/tools/release-kit && ./test_eth_block.sh"
 
   test-macos:
     name: Test on macOS

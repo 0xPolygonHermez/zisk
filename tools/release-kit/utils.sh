@@ -192,8 +192,8 @@ get_shell_and_profile() {
       PREF_SHELL="ash"
       ;;
     *)
-      err "could not detect shell"
-      return 1
+      err "shell ${SHELL} is not supported"
+      exit 1
       ;;
   esac
 }
