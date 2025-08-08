@@ -149,7 +149,30 @@ main() {
     fi
 
     step "Installing ZisK Rust toolchain..."
-    ensure cargo-zisk sdk install-toolchain || return 1
+    # Maximum number of attempts
+    MAX_ATTEMPTS=3
+    # Initialize attempt counter
+    attempt=1
+
+    # Try installing sdk up to 3 times (we do this because sometimes this fails on macOS github actions)
+    while [ $attempt -le $MAX_ATTEMPTS ]; do
+        if cargo-zisk sdk install-toolchain; then
+            # If installation is successful, break out of the loop
+            info "ZisK toolchain installed successfully"
+            break
+        else
+            # If installation fails, show warning and wait before retrying
+            if [ $attempt -lt $MAX_ATTEMPTS ]; then
+                warn "ZisK toolchain installation failed. Retrying in 5 seconds... (Attempt $attempt of $MAX_ATTEMPTS)"
+                sleep 5
+            else
+                # If all attempts fail, show an error and return failure
+                err "ZisK toolchain installation failed after $MAX_ATTEMPTS attempts"
+                return 1
+            fi
+        fi
+        ((attempt++))
+    done
 
     step "Verifying toolchain installation..."
     rustup toolchain list | grep zisk || {
