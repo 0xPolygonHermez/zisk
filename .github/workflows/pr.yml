@@ -86,27 +86,27 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          cd "$HOME/workspace/zisk/tools/release-kit"
           ./install_deps.sh
 
       - name: Build ZisK
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          cd "$HOME/workspace/zisk/tools/release-kit"
           ./build_zisk.sh
 
       - name: Install setup
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          cd "$HOME/workspace/zisk/tools/release-kit"
           ./install_setup_public.sh
   
       - name: Test sha_hasher
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          cd "$HOME/workspace/zisk/tools/release-kit"
           ./test_sha_hasher.sh
 
       - name: Test Ethereum block
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          cd "$HOME/workspace/zisk/tools/release-kit"
           ./test_eth_block.sh
 
   test-macos:
@@ -124,12 +124,12 @@ jobs:
 
       - name: Build ZisK
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          cd "$HOME/workspace/zisk/tools/release-kit"
           ./build_zisk.sh
 
       - name: Test sha_hasher
         run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          cd "$HOME/workspace/zisk/tools/release-kit"
           ./test_sha_hasher.sh
 
   lint:
