@@ -15,6 +15,8 @@ use std::{
     io::Write,
     process::{Command, Stdio},
 };
+use std::time::Duration;
+use tokio::time::sleep;
 
 pub const RUSTUP_TOOLCHAIN_NAME: &str = "zisk";
 
@@ -49,8 +51,32 @@ impl CommandExecutor for Command {
 }
 
 pub async fn url_exists(client: &Client, url: &str) -> bool {
-    let res = client.head(url).send().await;
-    res.is_ok()
+    let max_retries = 3;
+    let delay = Duration::from_secs(1);
+
+    println!("Checking if URL exists: {}", url);
+    
+    for attempt in 1..=max_retries {
+        match client.head(url).send().await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    return true;
+                } else {
+                    println!("Attempt {} failed with status: {}", attempt, response.status());
+                }
+            }
+            Err(err) => {
+                println!("Attempt {} failed with error: {}", attempt, err);
+                if attempt == max_retries {
+                    return false;
+                }
+            }
+        }
+
+        sleep(delay).await;
+    }
+
+    false
 }
 
 #[allow(unreachable_code)]
