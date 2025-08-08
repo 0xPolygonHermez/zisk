@@ -85,6 +85,7 @@ jobs:
       - name: Move repository to $HOME/workspace/zisk
         run: |
           mkdir -p $HOME/workspace
+          rm -rf $HOME/workspace/zisk
           mv $GITHUB_WORKSPACE $HOME/workspace/zisk
 
       - name: Install dependencies
@@ -129,11 +130,12 @@ jobs:
       - name: Move repository to $HOME/workspace/zisk
         run: |
           mkdir -p $HOME/workspace
+          rm -rf $HOME/workspace/zisk
           mv $GITHUB_WORKSPACE $HOME/workspace/zisk
 
       - name: Build ZisK
         run: |
-          cd "$GITHUB_WO$HOME/workspace/zisk/tools/release-kit"
+          cd "$HOME/workspace/zisk/tools/release-kit"
           ./build_zisk.sh
 
       - name: Test sha_hasher
