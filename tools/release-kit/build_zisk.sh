@@ -150,11 +150,11 @@ main() {
 
     step "Installing ZisK Rust toolchain..."
     # Maximum number of attempts
-    MAX_ATTEMPTS=5
+    MAX_ATTEMPTS=12
     # Initialize attempt counter
     attempt=1
 
-    # Try installing sdk up to 3 times (we do this because sometimes this fails on macOS github actions)
+    # Try installing sdk up to MAX_ATTEMPTS times (we do this because sometimes this fails on macOS github actions)
     while [ $attempt -le $MAX_ATTEMPTS ]; do
         if cargo-zisk sdk install-toolchain; then
             # If installation is successful, break out of the loop
