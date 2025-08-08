@@ -72,7 +72,7 @@ jobs:
       options: --memory=128g --cpus=128 --shm-size=64g
     env:
       ZISK_GHA: "1"
-      ZISK_REPO_DIR: "$GITHUB_WORKSPACE"
+      ZISK_REPO_DIR: ${{ github.workspace }}
       BLOCK_INPUTS_DISTRIBUTED: "21429063_9_1.bin"
       DISTRIBUTED_PROCESSES: "2"
       DISTRIBUTED_THREADS: "64"
@@ -112,7 +112,7 @@ jobs:
     runs-on: macos-14
     env:
       ZISK_GHA: "1"
-      ZISK_REPO_DIR: "$GITHUB_WORKSPACE"
+      ZISK_REPO_DIR: ${{ github.workspace }}
       TERM: xterm
     steps:
       - name: Check Rust version

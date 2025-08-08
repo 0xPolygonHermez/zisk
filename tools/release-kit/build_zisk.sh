@@ -41,7 +41,7 @@ main() {
         cd ..
     fi
 
-    step  "Setting up ZisK repository..."
+    step "Setting up ZisK repository..."
     if [[ -n "${ZISK_REPO_DIR}" ]]; then
         info "Using ZisK repository defined in ZISK_REPO_DIR variable: ${ZISK_REPO_DIR}"
         ensure cd "${ZISK_REPO_DIR}"
