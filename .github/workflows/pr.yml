@@ -62,38 +62,58 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Setup ziskuser
+      - name: Setup ziskuser environment
         run: |
-          # Create ziskuser
+          # Create user and group
           groupadd -g 1000 ziskuser
           useradd -u 1000 -g ziskuser -m ziskuser
-
-          # Configure permissions for the workspace
+          
+          # Set permissions
           chown -R ziskuser:ziskuser "$GITHUB_WORKSPACE"
-
-          # Install basic dependencies as root
+          
+          # Install requirements
           apt-get update
           apt-get install -y sudo bash
           echo "ziskuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
       - name: Install dependencies
-        run: sudo -u ziskuser bash -c "cd $GITHUB_WORKSPACE/tools/release-kit && ./install_deps.sh"
+        run: |
+          exec sudo -u ziskuser bash -c '
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          ./install_deps.sh
+          '
         shell: bash {0}
 
       - name: Build ZisK
-        run: sudo -u ziskuser bash -c "cd $GITHUB_WORKSPACE/tools/release-kit && ./build_zisk.sh"
+        run: |
+          exec sudo -u ziskuser bash -c '
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          ./build_zisk.sh
+          '
         shell: bash {0}
 
       - name: Install setup
-        run: sudo -u ziskuser bash -c "cd $GITHUB_WORKSPACE/tools/release-kit && ./install_setup_public.sh"
+        run: |
+          exec sudo -u ziskuser bash -c '
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          ./install_setup_public.sh
+          '
         shell: bash {0}
   
       - name: Test sha_hasher
-        run: sudo -u ziskuser bash -c "cd $GITHUB_WORKSPACE/tools/release-kit && ./test_sha_hasher.sh"
+        run: |
+          exec sudo -u ziskuser bash -c '
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          ./test_sha_hasher.sh
+          '
         shell: bash {0}
 
       - name: Test Ethereum block
-        run: sudo -u ziskuser bash -c "cd $GITHUB_WORKSPACE/tools/release-kit && ./test_eth_block.sh"
+        run: |
+          exec sudo -u ziskuser bash -c '
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          ./test_eth_block.sh
+          '
         shell: bash {0}
 
   test-macos:
