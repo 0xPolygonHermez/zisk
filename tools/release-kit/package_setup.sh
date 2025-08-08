@@ -12,8 +12,8 @@ main() {
     load_env || return 1
     confirm_continue || return 1
 
-    mkdir -p "${HOME}/workspace"
-    cd "${HOME}/workspace"
+    mkdir -p "${WORKSPACE_DIR}"
+    cd "${WORKSPACE_DIR}"
 
     step "Compress proving key..."
     cd zisk/build
@@ -32,10 +32,10 @@ main() {
     cd ../..
 
     step "Move files to output folder..."
-    ensure mv "${HOME}/workspace/zisk/build/zisk-provingkey-${SETUP_VERSION}.tar.gz" "${OUTPUT_DIR}" || return 1
-    ensure mv "${HOME}/workspace/zisk/build/zisk-verifykey-${SETUP_VERSION}.tar.gz" "${OUTPUT_DIR}" || return 1
-    ensure mv "${HOME}/workspace/zisk/build/zisk-provingkey-${SETUP_VERSION}.tar.gz.md5" "${OUTPUT_DIR}" || return 1
-    ensure mv "${HOME}/workspace/zisk/build/zisk-verifykey-${SETUP_VERSION}.tar.gz.md5" "${OUTPUT_DIR}" || return 1
+    ensure mv "${DEFAULT_ZISK_REPO_DIR}/build/zisk-provingkey-${SETUP_VERSION}.tar.gz" "${OUTPUT_DIR}" || return 1
+    ensure mv "${DEFAULT_ZISK_REPO_DIR}/build/zisk-verifykey-${SETUP_VERSION}.tar.gz" "${OUTPUT_DIR}" || return 1
+    ensure mv "${DEFAULT_ZISK_REPO_DIR}/build/zisk-provingkey-${SETUP_VERSION}.tar.gz.md5" "${OUTPUT_DIR}" || return 1
+    ensure mv "${DEFAULT_ZISK_REPO_DIR}/build/zisk-verifykey-${SETUP_VERSION}.tar.gz.md5" "${OUTPUT_DIR}" || return 1
 }
 
 main || return 1

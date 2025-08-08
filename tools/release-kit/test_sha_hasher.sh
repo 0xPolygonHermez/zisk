@@ -27,8 +27,8 @@ main() {
         confirm_continue || return 1
     fi    
 
-    mkdir -p "${HOME}/workspace"
-    cd "${HOME}/workspace" 
+    mkdir -p "${WORKSPACE_DIR}"
+    cd "${WORKSPACE_DIR}"
 
     step "Deleting shared memory..."
     rm -rf /dev/shm/ZISK*

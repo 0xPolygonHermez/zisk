@@ -46,8 +46,8 @@ main() {
         info "Using ZisK repository defined in ZISK_REPO_DIR variable: ${ZISK_REPO_DIR}"
         ensure cd "${ZISK_REPO_DIR}"
     else
-        mkdir -p "${HOME}/workspace"
-        cd "${HOME}/workspace"
+        mkdir -p "${WORKSPACE_DIR}"
+        cd "${WORKSPACE_DIR}"
         if [[ -n "$ZISK_BRANCH" ]]; then
             info "Cloning ZisK repository..."
             # Remove existing directory if it exists
@@ -62,6 +62,7 @@ main() {
             info "Skipping cloning ZisK repository as ZISK_BRANCH is not defined"
             ensure cd zisk
         fi
+        ZISK_REPO_DIR="${DEFAULT_ZISK_REPO_DIR}"
     fi
 
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then

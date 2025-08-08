@@ -10,8 +10,8 @@ main() {
     load_env || return 1
     confirm_continue || return 1
 
-    mkdir -p "${HOME}/workspace"
-    cd "${HOME}/workspace"
+    mkdir -p "${WORKSPACE_DIR}"
+    cd "${WORKSPACE_DIR}"
 
     step  "Cloning pil2-compiler, pil2-proofman and pil2-proofman-js repos..."
 

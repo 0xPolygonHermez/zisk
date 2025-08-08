@@ -185,13 +185,13 @@ get_platform() {
 
 # get_var_from_cargo_toml: Extracts a variable value from Cargo.toml
 get_var_from_cargo_toml() {
-    # Parameter: the variable name to search for
-    local var_name=$1
+    local zisk_repo_dir=$1
+    local var_name=$2
     
     # Check if Cargo.toml exists
-    if [ -f "${HOME}/workspace/zisk/Cargo.toml" ]; then
+    if [ -f "${zisk_repo_dir}/Cargo.toml" ]; then
         # Extract the value of the variable from Cargo.toml
-        local value=$(grep -oP "(?<=${var_name} = \")[^\"]+" "${HOME}/workspace/zisk/Cargo.toml")
+        local value=$(grep -oP "(?<=${var_name} = \")[^\"]+" "${zisk_repo_dir}/Cargo.toml")
 
         # If the value is found, return it, else return an error message
         if [ -n "$value" ]; then
@@ -202,7 +202,7 @@ get_var_from_cargo_toml() {
         fi
     else
         # If the file doesn't exist, return an error message
-        err "Cargo.toml not found at ${HOME}/workspace/zisk/Cargo.toml"
+        err "Cargo.toml not found at ${zisk_repo_dir}/Cargo.toml"
         return 1
     fi
 }
@@ -217,3 +217,5 @@ source "$PROFILE"
 # Define ZisK directories
 ZISK_DIR="$HOME/.zisk"
 ZISK_BIN_DIR="$ZISK_DIR/bin"
+WORKSPACE_DIR="${HOME}/workspace"
+DEFAULT_ZISK_REPO_DIR="${WORKSPACE_DIR}/zisk"

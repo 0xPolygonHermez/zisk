@@ -14,9 +14,14 @@ main () {
         
         # If ZISK_GHA is set, skip loading .env file as env variables are already set from command line
         step "Skipping loading .env file since ZISK_GHA is set to 1"
-        
+
+        # If ZISK_REPO_DIR is not set, use default
+        if [[ -z "${ZISK_REPO_DIR}" ]]; then
+            ZISK_REPO_DIR="${DEFAULT_ZISK_REPO_DIR}"
+        fi
+
         # Get the setup file from the Cargo.toml
-        ZISK_SETUP_FILE=$(get_var_from_cargo_toml "gha_zisk_setup") || return 1
+        ZISK_SETUP_FILE=$(get_var_from_cargo_toml "${ZISK_REPO_DIR}" "gha_zisk_setup") || return 1
 
         info "Using setup file: ${ZISK_SETUP_FILE}"
     else
@@ -25,7 +30,7 @@ main () {
         # Load environment variables from .env file
         load_env || return 1
         confirm_continue || return 1
-        
+
         # Build the setup file name
         ZISK_SETUP_FILE="zisk-provingkey-${SETUP_VERSION}.tar.gz"
     fi   
