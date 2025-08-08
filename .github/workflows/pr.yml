@@ -112,7 +112,7 @@ jobs:
     runs-on: macos-14
     env:
       ZISK_GHA: "1"
-      ZISK_BRANCH: "feature/scripts-gha"
+      ZISK_BRANCH: "pre-develop-0.11.0"
       TERM: xterm
     steps:
       - name: Check Rust version
