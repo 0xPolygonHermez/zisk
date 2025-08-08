@@ -155,7 +155,7 @@ main() {
 
     step "Installing ZisK Rust toolchain..."
     # Maximum number of attempts
-    MAX_ATTEMPTS=3
+    MAX_ATTEMPTS=5
     # Initialize attempt counter
     attempt=1
 

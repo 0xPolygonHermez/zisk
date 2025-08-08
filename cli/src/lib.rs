@@ -51,23 +51,8 @@ impl CommandExecutor for Command {
 }
 
 pub async fn url_exists(client: &Client, url: &str) -> bool {
-    let max_retries = 5;
-    let delay = Duration::from_secs(3);
-
-    for attempt in 1..=max_retries {
-        match client.head(url).send().await {
-            Ok(response) => return response.status().is_success(),
-            Err(_) => {
-                if attempt == max_retries {
-                    return false;
-                } else {
-                    sleep(delay * attempt).await;
-                }
-            }
-        }
-    }
-
-    false
+    let res = client.head(url).send().await;
+    res.is_ok()
 }
 
 #[allow(unreachable_code)]
