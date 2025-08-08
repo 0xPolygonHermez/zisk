@@ -63,21 +63,7 @@ pub fn riscv_interpreter(code: &[u32]) -> Vec<RiscvInstruction> {
 
         // Get the RVD info data for this opcode
         if !rvd.opcodes.contains_key(&opcode) {
-            // Replace invalid opcodes with illegal CSR write instruction
-            // csrrw x0, 0xC00, x0 - attempts to write to read-only cycle CSR
-            // This will trap as illegal instruction if ever executed
-            let i = RiscvInstruction {
-                rvinst: 0xC0001073,
-                inst: "csrrw".to_string(),
-                t: "I".to_string(),
-                rd: 0,
-                rs1: 0,
-                imm: 0xC00,
-                funct3: 1,
-                ..Default::default()
-            };
-            insts.push(i);
-            continue;
+            panic!("Invalid opcode={opcode}=0x{opcode:x} s={s}");
         }
         let inf = &rvd.opcodes[&opcode];
 
