@@ -44,26 +44,69 @@ jobs:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
 
+  # test-x86_64:
+  #   name: Test on x86_64
+  #   runs-on: self-hosted
+  #   steps:
+  #     - name: Run docker zisk-test-env
+  #       run: |
+  #         docker run --rm --shm-size=32g \
+  #           -e ZISK_GHA=1 \
+  #           -e ZISK_BRANCH=pre-develop-0.11.0 \
+  #           -e BLOCK_INPUTS_DISTRIBUTED=21429063_9_1.bin \
+  #           -e DISTRIBUTED_PROCESSES=2 \
+  #           -e DISTRIBUTED_THREADS=64 \
+  #           -e PROVE_FLAGS="-a -y" \
+  #           ziskvm/zisk-test-env:latest \
+  #           /bin/bash -c "set -e && \
+  #             source \$HOME/scripts/build_zisk.sh && \
+  #             source \$HOME/scripts/install_setup_public.sh && \
+  #             source \$HOME/scripts/test_sha_hasher.sh && \
+  #             source \$HOME/scripts/test_eth_block.sh"    
+
   test-x86_64:
     name: Test on x86_64
     runs-on: self-hosted
+    container:
+      image: ubuntu:22.04
+      options: --memory=128g --cpus=128
+    env:
+      ZISK_GHA: "1"
+      ZISK_BRANCH: "pre.develop-0.11.0"
+      BLOCK_INPUTS_DISTRIBUTED: "21429063_9_1.bin"
+      DISTRIBUTED_PROCESSES: "2"
+      DISTRIBUTED_THREADS: "64"
+      PROVE_FLAGS: "-a -y"      
+      TERM: xterm  
     steps:
-      - name: Run docker zisk-test-env
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
         run: |
-          docker run --rm --shm-size=32g \
-            -e ZISK_GHA=1 \
-            -e ZISK_BRANCH=pre-develop-0.11.0 \
-            -e BLOCK_INPUTS_DISTRIBUTED=21429063_9_1.bin \
-            -e DISTRIBUTED_PROCESSES=2 \
-            -e DISTRIBUTED_THREADS=64 \
-            -e PROVE_FLAGS="-a -y" \
-            ziskvm/zisk-test-env:latest \
-            /bin/bash -c "set -e && \
-              source \$HOME/scripts/build_zisk.sh && \
-              source \$HOME/scripts/install_setup_public.sh && \
-              source \$HOME/scripts/test_sha_hasher.sh && \
-              source \$HOME/scripts/test_eth_block.sh"    
-          
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          ./install_deps.sh
+
+      - name: Build ZisK
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          ./build_zisk.sh
+
+      - name: Install setup
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          ./install_setup_public.sh
+  
+      - name: Test sha_hasher
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          ./test_sha_hasher.sh
+
+      - name: Test Ethereum block
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          ./test_eth_block.sh
+
   test-macos:
     name: Test on macOS
     runs-on: macos-14
