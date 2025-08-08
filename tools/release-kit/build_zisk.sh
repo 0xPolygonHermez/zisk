@@ -13,7 +13,7 @@ main() {
 
     get_platform || return 1
     get_shell_and_profile || return 1
-    source $PROFILE
+    source $HOME/.cargo/env
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         TARGET="x86_64-unknown-linux-gnu"

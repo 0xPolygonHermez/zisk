@@ -89,9 +89,8 @@ main() {
     step "Installing nano editor..."
     ensure apt-get install -y nano || return 1
 
-    get_shell_and_profile || return 1
-    echo $PROFILE
-    cat $PROFILE
+    echo $PATH
+    cat "$HOME/.cargo/env"
 }
 
 main "$@"
