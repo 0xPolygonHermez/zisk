@@ -11,10 +11,6 @@ main() {
     ZISK_DIR="$HOME/.zisk"
     ZISK_BIN_DIR="$ZISK_DIR/bin"
 
-    get_platform || return 1
-    get_shell_and_profile || return 1
-    source $HOME/.cargo/env
-
     if [[ "${PLATFORM}" == "linux" ]]; then
         TARGET="x86_64-unknown-linux-gnu"
     elif [[ "${PLATFORM}" == "darwin" ]]; then
@@ -32,7 +28,7 @@ main() {
         fi
         info "Executing build_zisk.sh script"
         # If ZISK_GHA is set, skip loading .env file as env variables are already set from docker command line
-        step "Skipping loading .env file since ZISK_GHA is set to 1. ${GHA_ZISK_SETUP}"
+        step "Skipping loading .env file since ZISK_GHA is set to 1. GHA_ZISK_SETUP=${GHA_ZISK_SETUP}"
     else
         step "Loading environment variables..."
         # Load environment variables from .env file

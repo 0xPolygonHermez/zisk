@@ -182,3 +182,10 @@ get_platform() {
     uname_s=$(uname -s)
     PLATFORM=$(tolower "${ZISKUP_PLATFORM:-${uname_s}}")    
 }
+
+# Sets PLATFORM based on the current system
+get_platform || return 1
+# Sets PROFILE and PREF_SHELL based on the current shell
+get_shell_and_profile || return 1
+# Ensure the cargo environment is sourced
+source $HOME/.cargo/env

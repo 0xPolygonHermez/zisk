@@ -75,6 +75,8 @@ main() {
     ensure apt-get install -y nodejs || return 1
 
     step "Installing Rust..."
+    # Create the profile file if it doesn't exist
+    touch $PROFILE
     ensure curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y || return 1
     export PATH="${HOME}/.cargo/bin:$PATH"
     source "${HOME}/.cargo/env"
@@ -89,8 +91,7 @@ main() {
     step "Installing nano editor..."
     ensure apt-get install -y nano || return 1
 
-    echo $PATH
-    cat "$HOME/.cargo/env"
+    cat $PROFILE
 }
 
 main "$@"
