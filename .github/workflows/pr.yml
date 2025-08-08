@@ -81,32 +81,35 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
-        with:
-          path: $HOME/workspace
+
+      - name: Move repository to $HOME/workspace/zisk
+        run: |
+          mkdir -p $HOME/workspace
+          mv $GITHUB_WORKSPACE $HOME/workspace/zisk
 
       - name: Install dependencies
         run: |
-          cd "$HOME/workspace/zisk/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./install_deps.sh
 
       - name: Build ZisK
         run: |
-          cd "$HOME/workspace/zisk/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./build_zisk.sh
 
       - name: Install setup
         run: |
-          cd "$HOME/workspace/zisk/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./install_setup_public.sh
   
       - name: Test sha_hasher
         run: |
-          cd "$HOME/workspace/zisk/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./test_sha_hasher.sh
 
       - name: Test Ethereum block
         run: |
-          cd "$HOME/workspace/zisk/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./test_eth_block.sh
 
   test-macos:
@@ -117,19 +120,25 @@ jobs:
       ZISK_BRANCH: ${{ github.head_ref }}
       TERM: xterm
     steps:
+      - name: Check Rust version
+        run: rustc --version
+
       - name: Checkout sources
         uses: actions/checkout@v4
-        with:
-          path: $HOME/workspace        
+
+      - name: Move repository to $HOME/workspace/zisk
+        run: |
+          mkdir -p $HOME/workspace
+          mv $GITHUB_WORKSPACE $HOME/workspace/zisk
 
       - name: Build ZisK
         run: |
-          cd "$HOME/workspace/zisk/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./build_zisk.sh
 
       - name: Test sha_hasher
         run: |
-          cd "$HOME/workspace/zisk/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./test_sha_hasher.sh
 
   lint:
