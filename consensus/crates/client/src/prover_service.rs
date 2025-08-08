@@ -55,21 +55,21 @@ pub enum ProverState {
 #[derive(Debug, Clone)]
 pub struct JobContext {
     pub job_id: String,
-    pub block_id: u64,
+    pub block_id: String,
     pub rank_id: u32,
     pub total_provers: u32,
     pub phase: String,
 }
 
 /// Main prover client that connects to the coordinator
-pub struct ProverClient {
+pub struct ProverService {
     config: ProverConfig,
     state: ProverState,
     current_job: Option<JobContext>,
     current_computation: Option<JoinHandle<()>>,
 }
 
-impl ProverClient {
+impl ProverService {
     pub fn new(config: ProverConfig) -> Self {
         Self {
             config,
@@ -328,7 +328,7 @@ impl ProverClient {
 
                     self.current_job = Some(JobContext {
                         job_id: phase1.job_id.clone(),
-                        block_id: phase1.block_id,
+                        block_id: phase1.block_id.clone(),
                         rank_id: phase1.rank_id,
                         total_provers: phase1.total_provers,
                         phase: "phase1".to_string(),
@@ -442,7 +442,7 @@ impl ProverClient {
 // Computation task functions (run in separate tokio tasks)
 async fn compute_phase1_task(
     job_id: String,
-    block_id: u64,
+    block_id: String,
     rank_id: u32,
     total_provers: u32,
 ) -> Result<Vec<u64>> {
@@ -453,11 +453,7 @@ async fn compute_phase1_task(
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     // Generate some dummy data based on rank_id and block_id
-    let result = vec![
-        block_id + rank_id as u64,
-        (block_id * 2) ^ (rank_id as u64),
-        block_id.wrapping_mul(rank_id as u64 + 1),
-    ];
+    let result = vec![rank_id as u64, rank_id as u64 * 2, rank_id as u64 + 1];
 
     info!("Phase 1 computation completed for job {}", job_id);
     Ok(result)

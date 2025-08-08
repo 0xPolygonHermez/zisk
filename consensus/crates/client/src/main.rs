@@ -1,9 +1,9 @@
-mod worker_service;
+mod prover_service;
 
 use anyhow::Result;
 use clap::Parser;
+use prover_service::{ProverConfig, ProverService};
 use tracing::{error, info};
-use worker_service::{ProverClient, ProverConfig};
 
 #[derive(Parser)]
 #[command(name = "consensus-client")]
@@ -53,7 +53,7 @@ async fn main() -> Result<()> {
         config.capabilities.cpu_cores_num, config.capabilities.gpu_num
     );
 
-    let mut client = ProverClient::new(config);
+    let mut client = ProverService::new(config);
 
     if let Err(e) = client.run().await {
         error!("Prover client error: {}", e);
