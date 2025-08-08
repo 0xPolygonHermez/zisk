@@ -71,7 +71,7 @@ main() {
         sudo ca-certificates gnupg lsb-release wget libclang-dev clang || return 1
 
     step "Installing Node.js 20.x..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | -E bash
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash
     ensure apt-get install -y nodejs || return 1
 
     step "Installing Rust..."

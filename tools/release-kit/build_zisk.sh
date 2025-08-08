@@ -8,9 +8,6 @@ main() {
     current_step=1
     total_steps=9
 
-    ZISK_DIR="$HOME/.zisk"
-    ZISK_BIN_DIR="$ZISK_DIR/bin"
-
     if [[ "${PLATFORM}" == "linux" ]]; then
         TARGET="x86_64-unknown-linux-gnu"
     elif [[ "${PLATFORM}" == "darwin" ]]; then

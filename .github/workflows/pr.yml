@@ -69,7 +69,7 @@ jobs:
     runs-on: self-hosted
     container:
       image: ubuntu:22.04
-      options: --memory=128g --cpus=128
+      options: --memory=128g --cpus=128 --shm-size=64g
     env:
       ZISK_GHA: "1"
       ZISK_BRANCH: "pre-develop-0.11.0"

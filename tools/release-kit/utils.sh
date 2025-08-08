@@ -187,5 +187,7 @@ get_platform() {
 get_platform || return 1
 # Sets PROFILE and PREF_SHELL based on the current shell
 get_shell_and_profile || return 1
-# Ensure the cargo environment is sourced
-source $HOME/.cargo/env
+
+# Define ZisK directories
+ZISK_DIR="$HOME/.zisk"
+ZISK_BIN_DIR="$ZISK_DIR/bin"
