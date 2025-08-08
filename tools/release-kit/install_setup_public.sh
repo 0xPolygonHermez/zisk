@@ -8,7 +8,7 @@ main () {
     current_step=1
     total_steps=5
 
-    # If ZISK_GHA is set to 1, then SETUP_VERSION must be defined
+    # If ZISK_GHA is set to 1 we get the setup file from the Cargo.toml
     if [[ "$ZISK_GHA" == "1" ]]; then
         info "Executing install_setup_public.sh script"
         
@@ -20,11 +20,13 @@ main () {
 
         info "Using setup file: ${ZISK_SETUP_FILE}"
     else
+        # We get the setup version from the .env file
         step "Loading environment variables..."
         # Load environment variables from .env file
         load_env || return 1
         confirm_continue || return 1
-
+        
+        # Build the setup file name
         ZISK_SETUP_FILE="zisk-provingkey-${SETUP_VERSION}.tar.gz"
     fi   
 

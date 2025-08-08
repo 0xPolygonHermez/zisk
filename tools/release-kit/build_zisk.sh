@@ -17,15 +17,8 @@ main() {
         return 1
     fi
 
-    # If ZISK_GHA is set to 1, then ZISK_BRANCH must be defined
+    # If ZISK_GHA is set to 1 then skip loading .env file
     if [[ "$ZISK_GHA" == "1" ]]; then
-        # Check if ZISK_BRANCH is defined in the Cargo.toml and use it overridden ZISK_BRANCH value
-        GHA_ZISK_BRANCH=$(get_var_from_cargo_toml "gha_zisk_branch")
-        if [[ -n "$GHA_ZISK_BRANCH" ]]; then
-            info "Using GHA ZisK branch from Cargo.toml: $GHA_ZISK_BRANCH"
-            ZISK_BRANCH="$GHA_ZISK_BRANCH"
-        fi
-
         info "Executing build_zisk.sh script"
         # If ZISK_GHA is set, skip loading .env file as env variables are already set from docker command line
         step "Skipping loading .env file since ZISK_GHA is set to 1"
@@ -35,9 +28,6 @@ main() {
         load_env || return 1
         confirm_continue || return 1
     fi
-
-    mkdir -p "${HOME}/workspace"
-    cd "${HOME}/workspace"
 
     step "Cloning pil2-proofman repository..."
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
@@ -51,16 +41,27 @@ main() {
         cd ..
     fi
 
-    step  "Cloning ZisK repository..."
-    if [[ -n "$ZISK_BRANCH" ]]; then
-        # Remove existing directory if it exists
-        rm -rf zisk
-        # Clone ZisK repository
-        ensure git clone https://github.com/0xPolygonHermez/zisk.git || return 1
-        ensure cd zisk
-        # Check out the branch
-        info "Checking out branch '$ZISK_BRANCH'..."
-        ensure git checkout "$ZISK_BRANCH" || return 1
+    step  "Setting up ZisK repository..."
+    if [[ -n "${ZISK_REPO_DIR}" ]]; then
+        info "Using ZisK repository defined in ZISK_REPO_DIR variable: ${ZISK_REPO_DIR}"
+        ensure cd "${ZISK_REPO_DIR}"
+    else
+        mkdir -p "${HOME}/workspace"
+        cd "${HOME}/workspace"
+        if [[ -n "$ZISK_BRANCH" ]]; then
+            info "Cloning ZisK repository..."
+            # Remove existing directory if it exists
+            rm -rf zisk
+            # Clone ZisK repository
+            ensure git clone https://github.com/0xPolygonHermez/zisk.git || return 1
+            ensure cd zisk
+            # Check out the branch
+            info "Checking out branch '$ZISK_BRANCH'..."
+            ensure git checkout "$ZISK_BRANCH" || return 1
+        else
+            info "Skipping cloning ZisK repository as ZISK_BRANCH is not defined"
+            ensure cd zisk
+        fi
     fi
 
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then

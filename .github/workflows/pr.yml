@@ -72,7 +72,7 @@ jobs:
       options: --memory=128g --cpus=128 --shm-size=64g
     env:
       ZISK_GHA: "1"
-      ZISK_BRANCH: ${{ github.head_ref }}
+      ZISK_REPO_DIR: "$GITHUB_WORKSPACE"
       BLOCK_INPUTS_DISTRIBUTED: "21429063_9_1.bin"
       DISTRIBUTED_PROCESSES: "2"
       DISTRIBUTED_THREADS: "64"
@@ -81,71 +81,55 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
-        with:        
-          path: $HOME/workspace   
-
-      - name: Move repository to $HOME/workspace/zisk
-        run: |
-          mkdir -p $HOME/workspace
-          rm -rf $HOME/workspace/zisk
-          mv $GITHUB_WORKSPACE $HOME/workspace/zisk
 
       - name: Install dependencies
         run: |
-          cd "$HOME/workspace/zisk/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./install_deps.sh
 
       - name: Build ZisK
         run: |
-          cd "$HOME/workspace/zisk/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./build_zisk.sh
 
       - name: Install setup
         run: |
-          cd "$HOME/workspace/zisk/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./install_setup_public.sh
   
       - name: Test sha_hasher
         run: |
-          cd "$HOME/workspace/zisk/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./test_sha_hasher.sh
 
       - name: Test Ethereum block
         run: |
-          cd "$HOME/workspace/zisk/tools/release-kit"
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./test_eth_block.sh
 
-test-macos:
-  name: Test on macOS
-  runs-on: macos-14
-  env:
-    ZISK_GHA: "1"
-    ZISK_BRANCH: ${{ github.head_ref }}
-    TERM: xterm
-  steps:
-    - name: Check Rust version
-      run: rustc --version
+  test-macos:
+    name: Test on macOS
+    runs-on: macos-14
+    env:
+      ZISK_GHA: "1"
+      ZISK_REPO_DIR: "$GITHUB_WORKSPACE"
+      TERM: xterm
+    steps:
+      - name: Check Rust version
+        run: rustc --version
 
-    - name: Checkout sources
-      uses: actions/checkout@v4
-      with:
-        path: /Users/runner/workspace
+      - name: Checkout sources
+        uses: actions/checkout@v4
 
-    # New step to list the contents of the workspace for debugging
-    - name: List workspace contents
-      run: |
-        echo "Listing contents of /Users/runner/workspace"
-        ls -R /Users/runner/workspace
+      - name: Build ZisK
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          ./build_zisk.sh
 
-    - name: Build ZisK
-      run: |
-        cd "/Users/runner/workspace/zisk/tools/release-kit"
-        ./build_zisk.sh
-
-    - name: Test sha_hasher
-      run: |
-        cd "/Users/runner/workspace/zisk/tools/release-kit"
-        ./test_sha_hasher.sh
+      - name: Test sha_hasher
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/release-kit"
+          ./test_sha_hasher.sh
 
   lint:
     name: Formatting & Clippy
