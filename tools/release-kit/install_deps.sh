@@ -91,6 +91,7 @@ main() {
 
     get_shell_and_profile || return 1
     echo $PROFILE
+    cat $PROFILE
 }
 
 main "$@"
