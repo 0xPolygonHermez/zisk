@@ -187,6 +187,8 @@ get_platform() {
 get_platform || return 1
 # Sets PROFILE and PREF_SHELL based on the current shell
 get_shell_and_profile || return 1
+# Ensure profile is loaded
+source "$PROFILE"
 
 # Define ZisK directories
 ZISK_DIR="$HOME/.zisk"

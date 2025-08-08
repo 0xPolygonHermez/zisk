@@ -90,8 +90,6 @@ main() {
 
     step "Installing nano editor..."
     ensure apt-get install -y nano || return 1
-
-    cat $PROFILE
 }
 
 main "$@"
