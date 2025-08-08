@@ -115,36 +115,37 @@ jobs:
           cd "$HOME/workspace/zisk/tools/release-kit"
           ./test_eth_block.sh
 
-  test-macos:
-    name: Test on macOS
-    runs-on: macos-14
-    env:
-      ZISK_GHA: "1"
-      ZISK_BRANCH: ${{ github.head_ref }}
-      TERM: xterm
-    steps:
-      - name: Check Rust version
-        run: rustc --version
+test-macos:
+  name: Test on macOS
+  runs-on: macos-14
+  env:
+    ZISK_GHA: "1"
+    ZISK_BRANCH: ${{ github.head_ref }}
+    TERM: xterm
+  steps:
+    - name: Check Rust version
+      run: rustc --version
 
-      - name: Checkout sources
-        uses: actions/checkout@v4
-        with:        
-          path: $HOME/workspace        
+    - name: Checkout sources
+      uses: actions/checkout@v4
+      with:
+        path: /Users/runner/workspace
 
-      - name: List workspace contents
-        run: |
-          echo "Listing contents of $HOME/workspace"
-          ls -R $HOME/workspace
+    # New step to list the contents of the workspace for debugging
+    - name: List workspace contents
+      run: |
+        echo "Listing contents of /Users/runner/workspace"
+        ls -R /Users/runner/workspace
 
-      - name: Build ZisK
-        run: |
-          cd "$HOME/workspace/zisk/tools/release-kit"
-          ./build_zisk.sh
+    - name: Build ZisK
+      run: |
+        cd "/Users/runner/workspace/zisk/tools/release-kit"
+        ./build_zisk.sh
 
-      - name: Test sha_hasher
-        run: |
-          cd "$HOME/workspace/zisk/tools/release-kit"
-          ./test_sha_hasher.sh
+    - name: Test sha_hasher
+      run: |
+        cd "/Users/runner/workspace/zisk/tools/release-kit"
+        ./test_sha_hasher.sh
 
   lint:
     name: Formatting & Clippy
