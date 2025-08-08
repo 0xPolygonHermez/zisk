@@ -115,6 +115,9 @@ jobs:
       ZISK_BRANCH: "feature/scripts-gha"
       TERM: xterm
     steps:
+      - name: Check Rust version
+        run: rustc --version
+
       - name: Checkout sources
         uses: actions/checkout@v4
 

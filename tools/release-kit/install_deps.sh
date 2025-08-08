@@ -89,7 +89,8 @@ main() {
     step "Installing nano editor..."
     ensure apt-get install -y nano || return 1
 
-    echo
+    get_shell_and_profile || return 1
+    echo $PROFILE
 }
 
 main "$@"
