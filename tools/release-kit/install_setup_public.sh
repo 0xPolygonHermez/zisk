@@ -24,6 +24,8 @@ main () {
 
         # Get the setup file from the Cargo.toml
         ZISK_SETUP_FILE=$(get_var_from_cargo_toml "${ZISK_REPO_DIR}" "gha_zisk_setup") || return 1
+
+        # TODO: If ZISK_SETUP_FILE is not set, define it using version from cargo-zisk
     else
         # We build the setup file name from the SETUP_VERSION variable
         ZISK_SETUP_FILE="zisk-provingkey-${SETUP_VERSION}.tar.gz"

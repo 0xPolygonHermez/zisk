@@ -64,15 +64,15 @@ main() {
     apt-get update
     apt-get install -y apt-utils dialog libterm-readline-perl-perl
 
-    ensure apt-get install -y \
+    ensure sudo apt-get install -y \
         curl git xz-utils jq build-essential qemu-system libomp-dev libgmp-dev \
         nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev \
         libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common \
         sudo ca-certificates gnupg lsb-release wget libclang-dev clang || return 1
 
     step "Installing Node.js 20.x..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash
-    ensure apt-get install -y nodejs || return 1
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash
+    ensure sudo apt-get install -y nodejs || return 1
 
     step "Installing Rust..."
     # Create the profile file if it doesn't exist
@@ -89,7 +89,7 @@ main() {
     fi
 
     step "Installing nano editor..."
-    ensure apt-get install -y nano || return 1
+    ensure sudo apt-get install -y nano || return 1
 }
 
 main "$@"

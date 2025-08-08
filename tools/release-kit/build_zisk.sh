@@ -24,6 +24,9 @@ main() {
     load_env || return 1
     confirm_continue || return 1
 
+    mkdir -p "${WORKSPACE_DIR}"
+    ensure cd "${WORKSPACE_DIR}" || return 1
+
     step "Cloning pil2-proofman repository..."
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
         # Remove existing directory if it exists
@@ -41,8 +44,6 @@ main() {
         info "Using ZisK repository defined in ZISK_REPO_DIR variable: ${ZISK_REPO_DIR}"
         ensure cd "${ZISK_REPO_DIR}"
     else
-        mkdir -p "${WORKSPACE_DIR}"
-        cd "${WORKSPACE_DIR}"
         if [[ -n "$ZISK_BRANCH" ]]; then
             info "Cloning ZisK repository..."
             # Remove existing directory if it exists
@@ -62,20 +63,29 @@ main() {
 
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
         info "Update ZisK cargo dependencies to use local pil2-proofman repo..."
+
+        PIL2_PROOFMAN_DIR="${WORKSPACE_DIR}/pil2-proofman"
+
         # Dependencies to be replaced
         declare -A replacements=(
-        ["proofman"]='{ path = "../pil2-proofman/proofman" }'
-        ["proofman-common"]='{ path = "../pil2-proofman/common" }'
-        ["proofman-macros"]='{ path = "../pil2-proofman/macros" }'
-        ["proofman-util"]='{ path = "../pil2-proofman/util" }'
-        ["pil-std-lib"]='{ path = "../pil2-proofman/pil2-components/lib/std/rs" }'
-        ["witness"]='{ path = "../pil2-proofman/witness" }'
-        ["fields"]='{ path = "../pil2-proofman/fields" }'
+            ["proofman"]="{ path = \"${PIL2_PROOFMAN_DIR}/proofman\" }"
+            ["proofman-common"]="{ path = \"${PIL2_PROOFMAN_DIR}/common\" }"
+            ["proofman-macros"]="{ path = \"${PIL2_PROOFMAN_DIR}/macros\" }"
+            ["proofman-util"]="{ path = \"${PIL2_PROOFMAN_DIR}/util\" }"
+            ["pil-std-lib"]="{ path = \"${PIL2_PROOFMAN_DIR}/pil2-components/lib/std/rs\" }"
+            ["witness"]="{ path = \"${PIL2_PROOFMAN_DIR}/witness\" }"
+            ["fields"]="{ path = \"${PIL2_PROOFMAN_DIR}/fields\" }"
         )
+
         # Iterate over the replacements and update the Cargo.toml file
         for crate in "${!replacements[@]}"; do
+            # Define the pattern for the crate dependency
             pattern="^$crate = \\{ git = \\\"https://github.com/0xPolygonHermez/pil2-proofman.git\\\", (tag|branch) = \\\".*\\\" *\\}"
+
+            # Properly concatenate crate name with the replacement
             replacement="$crate = ${replacements[$crate]}"
+
+            # Perform the replacement using sed
             sed -i -E "s~$pattern~$replacement~" Cargo.toml
         done
     fi

@@ -49,7 +49,7 @@ jobs:
     runs-on: self-hosted
     container:
       image: ubuntu:22.04
-      options: --memory=128g --cpus=128 --shm-size=64g
+      options: --memory=128g --cpus=128 --shm-size=64g --user root
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}
@@ -62,30 +62,42 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
+      - name: Setup ziskuser
+        run: |
+          # Create ziskuser
+          groupadd -g 1000 ziskuser
+          useradd -u 1000 -g ziskuser -m ziskuser
+
+          # Configure permissions for the workspace
+          chown -R ziskuser:ziskuser "$GITHUB_WORKSPACE"
+
+          # Allow ziskuser to run sudo commands without a password
+          echo "ziskuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
       - name: Install dependencies
         run: |
           cd "$GITHUB_WORKSPACE/tools/release-kit"
-          ./install_deps.sh
+          sudo -u ziskuser ./install_deps.sh
 
       - name: Build ZisK
         run: |
           cd "$GITHUB_WORKSPACE/tools/release-kit"
-          ./build_zisk.sh
+          sudo -u ziskuser ./build_zisk.sh
 
       - name: Install setup
         run: |
           cd "$GITHUB_WORKSPACE/tools/release-kit"
-          ./install_setup_public.sh
+          sudo -u ziskuser ./install_setup_public.sh
   
       - name: Test sha_hasher
         run: |
           cd "$GITHUB_WORKSPACE/tools/release-kit"
-          ./test_sha_hasher.sh
+          sudo -u ziskuser ./test_sha_hasher.sh
 
       - name: Test Ethereum block
         run: |
           cd "$GITHUB_WORKSPACE/tools/release-kit"
-          ./test_eth_block.sh
+          sudo -u ziskuser ./test_eth_block.sh
 
   test-macos:
     name: Test on macOS
