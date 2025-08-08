@@ -183,6 +183,30 @@ get_platform() {
     PLATFORM=$(tolower "${ZISKUP_PLATFORM:-${uname_s}}")    
 }
 
+# get_var_from_cargo_toml: Extracts a variable value from Cargo.toml
+get_var_from_cargo_toml() {
+    # Parameter: the variable name to search for
+    local var_name=$1
+    
+    # Check if Cargo.toml exists
+    if [ -f "${HOME}/workspace/zisk/Cargo.toml" ]; then
+        # Extract the value of the variable from Cargo.toml
+        local value=$(grep -oP "(?<=${var_name} = \")[^\"]+" "${HOME}/workspace/zisk/Cargo.toml")
+
+        # If the value is found, return it, else return an error message
+        if [ -n "$value" ]; then
+            echo "$value"
+        else
+            err "variable '$var_name' not found in Cargo.toml"
+            return 1
+        fi
+    else
+        # If the file doesn't exist, return an error message
+        err "Cargo.toml not found at ${HOME}/workspace/zisk/Cargo.toml"
+        return 1
+    fi
+}
+
 # Sets PLATFORM based on the current system
 get_platform || return 1
 # Sets PROFILE and PREF_SHELL based on the current shell

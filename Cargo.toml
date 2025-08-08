@@ -8,6 +8,7 @@ categories = ["cryptography"]
 
 [workspace.package.metadata]
 gha_zisk_setup = "zisk-provingkey-pre-0.11.0.tar.gz"
+gha_zisk_branch = "feature/scripts-gha"
 
 [workspace]
 members = [

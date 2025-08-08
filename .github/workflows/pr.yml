@@ -72,7 +72,7 @@ jobs:
       options: --memory=128g --cpus=128 --shm-size=64g
     env:
       ZISK_GHA: "1"
-      ZISK_BRANCH: "pre-develop-0.11.0"
+      ZISK_BRANCH: ${{ github.head_ref }}
       BLOCK_INPUTS_DISTRIBUTED: "21429063_9_1.bin"
       DISTRIBUTED_PROCESSES: "2"
       DISTRIBUTED_THREADS: "64"
@@ -81,6 +81,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          path: $HOME/workspace
 
       - name: Install dependencies
         run: |
@@ -112,14 +114,13 @@ jobs:
     runs-on: macos-14
     env:
       ZISK_GHA: "1"
-      ZISK_BRANCH: "pre-develop-0.11.0"
+      ZISK_BRANCH: ${{ github.head_ref }}
       TERM: xterm
     steps:
-      - name: Check Rust version
-        run: rustc --version
-
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          path: $HOME/workspace        
 
       - name: Build ZisK
         run: |

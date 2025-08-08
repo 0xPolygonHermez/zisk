@@ -19,13 +19,16 @@ main() {
 
     # If ZISK_GHA is set to 1, then ZISK_BRANCH must be defined
     if [[ "$ZISK_GHA" == "1" ]]; then
-        if [[ -z "$ZISK_BRANCH" ]]; then
-            err "ZISK_GHA is set to 1, but ZISK_BRANCH is not defined. Aborting"
-            return 1
+        # Check if ZISK_BRANCH is defined in the Cargo.toml and use it overridden ZISK_BRANCH value
+        GHA_ZISK_BRANCH=$(get_var_from_cargo_toml "gha_zisk_branch")
+        if [[ -n "$GHA_ZISK_BRANCH" ]]; then
+            info "Using GHA ZisK branch from Cargo.toml: $GHA_ZISK_BRANCH"
+            ZISK_BRANCH="$GHA_ZISK_BRANCH"
         fi
+
         info "Executing build_zisk.sh script"
         # If ZISK_GHA is set, skip loading .env file as env variables are already set from docker command line
-        step "Skipping loading .env file since ZISK_GHA is set to 1. GHA_ZISK_SETUP=${GHA_ZISK_SETUP}"
+        step "Skipping loading .env file since ZISK_GHA is set to 1"
     else
         step "Loading environment variables..."
         # Load environment variables from .env file

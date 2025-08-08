@@ -15,13 +15,8 @@ main () {
         # If ZISK_GHA is set, skip loading .env file as env variables are already set from command line
         step "Skipping loading .env file since ZISK_GHA is set to 1"
         
-        # Extract ZISK_SETUP_FILE from Cargo.toml
-        ZISK_SETUP_FILE=$(grep -oP '(?<=gha_zisk_setup = ")[^"]+' ${HOME}/workspace/zisk/Cargo.toml)
-
-        if [[ -z "$ZISK_SETUP_FILE" ]]; then
-            err "ZISK_GHA is set to 1, but ZISK_SETUP_FILE is not defined in Cargo.toml. Aborting"
-            return 1
-        fi
+        # Get the setup file from the Cargo.toml
+        ZISK_SETUP_FILE=$(get_var_from_cargo_toml "gha_zisk_setup") || return 1
 
         info "Using setup file: ${ZISK_SETUP_FILE}"
     else
