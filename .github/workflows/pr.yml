@@ -76,6 +76,10 @@ jobs:
           apt-get install -y sudo
           echo "ziskuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
+      - name: Install bash
+        run: |
+          sudo -u ziskuser apt-get install -y bash
+
       - name: Install dependencies
         run: |
           sudo -u ziskuser bash -c "cd $GITHUB_WORKSPACE/tools/release-kit && ./install_deps.sh"
