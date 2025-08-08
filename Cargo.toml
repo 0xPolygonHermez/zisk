@@ -6,6 +6,9 @@ keywords = ["zisk", "zkvm", "zero-knowledge"]
 repository = "https://github.com/0xPolygonHermez/zisk"
 categories = ["cryptography"]
 
+[workspace.package.metadata]
+gha_zisk_setup = "zisk-provingkey-pre-0.11.0.tar.gz"
+
 [workspace]
 members = [
     "cli",

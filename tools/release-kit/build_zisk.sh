@@ -8,7 +8,7 @@ main() {
     current_step=1
     total_steps=9
 
-    source $HOME/.cargo/env
+    source $PROFILE
 
     ZISK_DIR="$HOME/.zisk"
     ZISK_BIN_DIR="$ZISK_DIR/bin"
@@ -33,7 +33,7 @@ main() {
         fi
         info "Executing build_zisk.sh script"
         # If ZISK_GHA is set, skip loading .env file as env variables are already set from docker command line
-        step "Skipping loading .env file since ZISK_GHA is set to 1"
+        step "Skipping loading .env file since ZISK_GHA is set to 1. ${GHA_ZISK_SETUP}"
     else
         step "Loading environment variables..."
         # Load environment variables from .env file
@@ -153,6 +153,7 @@ main() {
     # Ensure the PATH is updated in the shell profile
     if ! grep -Fxq "$EXPORT_LINE" "$PROFILE"; then
         echo "$EXPORT_LINE" >> "$PROFILE"
+        info "Added $EXPORT_LINE to $PROFILE"
     fi
 
     step "Installing ZisK Rust toolchain..."

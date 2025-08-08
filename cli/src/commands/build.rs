@@ -45,7 +45,7 @@ impl ZiskBuild {
         command.stderr(Stdio::inherit());
 
         // Execute the command
-        let status = command.status().context("Failed to execute cargo run command")?;
+        let status = command.status().context("Failed to execute cargo build command")?;
         if !status.success() {
             return Err(anyhow!("Cargo run command failed with status {}", status));
         }

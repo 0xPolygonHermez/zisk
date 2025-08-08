@@ -11,6 +11,8 @@ main() {
     current_step=1
     total_steps=10
 
+    source $PROFILE
+
     get_platform || return 1
 
     if [[ "${PLATFORM}" == "linux" ]]; then
