@@ -164,7 +164,7 @@ main() {
             # If installation fails, show warning and wait before retrying
             if [ $attempt -lt $MAX_ATTEMPTS ]; then
                 warn "ZisK toolchain installation failed. Retrying in 5 seconds... (Attempt $attempt of $MAX_ATTEMPTS)"
-                sleep 5
+                sleep 10
             else
                 # If all attempts fail, show an error and return failure
                 err "ZisK toolchain installation failed after $MAX_ATTEMPTS attempts"
