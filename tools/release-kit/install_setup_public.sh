@@ -8,13 +8,15 @@ main () {
     current_step=1
     total_steps=5
 
-    # If ZISK_GHA is set to 1 we get the setup file from the Cargo.toml
-    if [[ "$ZISK_GHA" == "1" ]]; then
-        info "Executing install_setup_public.sh script"
-        
-        # If ZISK_GHA is set, skip loading .env file as env variables are already set from command line
-        step "Skipping loading .env file since ZISK_GHA is set to 1"
+    info "Executing install_setup_public.sh script"
 
+    step "Loading environment variables..."
+    # Load environment variables from .env file
+    load_env || return 1
+    confirm_continue || return 1
+
+    # If ZISK_GHA is set to 1 we get the setup file from the Cargo.toml
+    if [[ "$ZISK_GHA" == "1" ]]; then        
         # If ZISK_REPO_DIR is not set, use default
         if [[ -z "${ZISK_REPO_DIR}" ]]; then
             ZISK_REPO_DIR="${DEFAULT_ZISK_REPO_DIR}"
@@ -22,18 +24,12 @@ main () {
 
         # Get the setup file from the Cargo.toml
         ZISK_SETUP_FILE=$(get_var_from_cargo_toml "${ZISK_REPO_DIR}" "gha_zisk_setup") || return 1
-
-        info "Using setup file: ${ZISK_SETUP_FILE}"
     else
-        # We get the setup version from the .env file
-        step "Loading environment variables..."
-        # Load environment variables from .env file
-        load_env || return 1
-        confirm_continue || return 1
-
-        # Build the setup file name
+        # We build the setup file name from the SETUP_VERSION variable
         ZISK_SETUP_FILE="zisk-provingkey-${SETUP_VERSION}.tar.gz"
     fi   
+
+    info "Using setup file: ${ZISK_SETUP_FILE}"
 
     step  "Downloading public proving key ${ZISK_SETUP_FILE}..."
     ensure curl -L -#o "${ZISK_SETUP_FILE}" "https://storage.googleapis.com/zisk-setup/${ZISK_SETUP_FILE}" || return 1
@@ -53,4 +49,4 @@ main () {
     success "Public proving key ${ZISK_SETUP_FILE} installed successfully!"
 }
 
-main || return 1
+main

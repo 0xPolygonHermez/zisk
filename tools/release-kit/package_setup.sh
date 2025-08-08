@@ -38,4 +38,4 @@ main() {
     ensure mv "${DEFAULT_ZISK_REPO_DIR}/build/zisk-verifykey-${SETUP_VERSION}.tar.gz.md5" "${OUTPUT_DIR}" || return 1
 }
 
-main || return 1
+main

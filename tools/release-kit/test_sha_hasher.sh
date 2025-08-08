@@ -10,22 +10,17 @@ main() {
 
     current_step=1
     total_steps=10
-   
+
+    info "Executing test_sha_hasher.sh script"
+
     if [[ "${PLATFORM}" == "linux" ]]; then
         is_proving_key_installed || return 1
     fi   
-    
-    # If ZISK_GHA is set to 1, then ZISK_BRANCH must be defined
-    if [[ "$ZISK_GHA" == "1" ]]; then
-        info "Executing test_sha_hasher.sh script"
-        # If ZISK_GHA is set, skip loading .env file as env variables are already set from command line
-        step "Skipping loading .env file since ZISK_GHA is set to 1"
-    else
-        step "Loading environment variables..."
-        # Load environment variables from .env file
-        load_env || return 1
-        confirm_continue || return 1
-    fi    
+
+    step "Loading environment variables..."
+    # Load environment variables from .env file
+    load_env || return 1
+    confirm_continue || return 1
 
     mkdir -p "${WORKSPACE_DIR}"
     cd "${WORKSPACE_DIR}"
@@ -105,4 +100,4 @@ main() {
     success "Program $PROJECT_NAME has been successfully proved!"
 }
 
-main || return 1
+main

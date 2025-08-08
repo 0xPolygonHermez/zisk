@@ -89,4 +89,4 @@ main() {
     cd ..
 }
 
-main || return 1
+main

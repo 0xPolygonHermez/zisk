@@ -58,36 +58,57 @@ tolower() {
   echo "$1" | awk '{print tolower($0)}'
 }
 
-# load_env: Load environment variables from .env file
+# load_env: Load environment variables from .env file, without overwriting existing ones
 load_env() {
-    # Check if .env file exists
-    if [[ ! -f ".env" ]]; then
-        echo "❌ No .env file found"
-        return 1
+    # If ZISK_GHA is set to 1, skip loading .env file
+    if [[ -z "$ZISK_GHA" || "$ZISK_GHA" != "1" ]]; then
+        # Check if .env file exists
+        if [[ ! -f ".env" ]]; then
+            info "Skipping loading .env file as it does not exist"
+            return 0
+        fi
+
+        info "📦 Loading environment variables from .env"
+
+        # Loop through each line in the .env file
+        while IFS='=' read -r key value; do
+            # Skip comments and empty lines
+            if [[ -z "$key" || "$key" =~ ^# ]]; then
+                continue
+            fi
+
+            # Check if the variable is already defined
+            if [[ -z "${!key}" ]]; then
+                # If not defined, set the value from the .env file
+                export "$key=$value"
+            else
+                info "Variable '$key' is already defined with value '${!key}', skipping..."
+            fi
+        done < .env
+
+        echo
+        info "🔍 Environment variables:"
+        # List variables that were set
+        grep -vE '^\s*#' .env | grep -vE '^\s*$' | while IFS='=' read -r key _; do
+            echo "  - ${key} = ${!key}"
+        done
+        echo
+    else
+        info "Skipping loading .env file since ZISK_GHA is set to 1"
     fi
-
-    info "📦 Loading environment variables from .env"
-
-    set -a  # export all variables loaded by `source`
-    source .env
-    set +a
-
-    echo
-    info "🔍 Loaded environment variables:"
-    grep -vE '^\s*#' .env | grep -vE '^\s*$' | while IFS='=' read -r key _; do
-        echo "  - ${key} = ${!key}"
-    done
-    echo
 }
 
 # confirm_continue: Ask the user for confirmation to continue
 confirm_continue() {
-    read -p "Do you want to continue? [Y/n] " answer
-    answer=${answer:-y}
+    # If ZISK_GHA is set to 1, skip confirmation
+    if [[ -z "$ZISK_GHA" || "$ZISK_GHA" != "1" ]]; then
+        read -p "Do you want to continue? [Y/n] " answer
+        answer=${answer:-y}
 
-    if [[ "$answer" != [Yy]* ]]; then
-        echo "Aborted."
-        return 1
+        if [[ "$answer" != [Yy]* ]]; then
+            echo "Aborted."
+            return 1
+        fi
     fi
 }
 

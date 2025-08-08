@@ -17,17 +17,12 @@ main() {
         return 1
     fi
 
-    # If ZISK_GHA is set to 1 then skip loading .env file
-    if [[ "$ZISK_GHA" == "1" ]]; then
-        info "Executing build_zisk.sh script"
-        # If ZISK_GHA is set, skip loading .env file as env variables are already set from docker command line
-        step "Skipping loading .env file since ZISK_GHA is set to 1"
-    else
-        step "Loading environment variables..."
-        # Load environment variables from .env file
-        load_env || return 1
-        confirm_continue || return 1
-    fi
+    info "Executing build_zisk.sh script"
+
+    step "Loading environment variables..."
+    # Load environment variables from .env file
+    load_env || return 1
+    confirm_continue || return 1
 
     step "Cloning pil2-proofman repository..."
     if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
@@ -190,4 +185,4 @@ main() {
     success "ZisK build completed successfully!"
 }
 
-main || return 1
+main

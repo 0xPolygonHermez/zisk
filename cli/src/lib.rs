@@ -14,9 +14,7 @@ use std::{
     fs::File,
     io::Write,
     process::{Command, Stdio},
-    time::Duration,
 };
-use tokio::time::sleep;
 
 pub const RUSTUP_TOOLCHAIN_NAME: &str = "zisk";
 
