@@ -77,44 +77,34 @@ jobs:
           echo "ziskuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
       - name: Install dependencies
-        run: |
-          exec sudo -u ziskuser bash -c '
+        run: sudo -u ziskuser env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" bash -c '
           cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./install_deps.sh
           '
-        shell: bash {0}
 
       - name: Build ZisK
-        run: |
-          exec sudo -u ziskuser bash -c '
+        run: sudo -u ziskuser env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" bash -c '
           cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./build_zisk.sh
           '
-        shell: bash {0}
 
       - name: Install setup
-        run: |
-          exec sudo -u ziskuser bash -c '
+        run: sudo -u ziskuser env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" bash -c '
           cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./install_setup_public.sh
           '
-        shell: bash {0}
   
       - name: Test sha_hasher
-        run: |
-          exec sudo -u ziskuser bash -c '
+        run: sudo -u ziskuser env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" bash -c '
           cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./test_sha_hasher.sh
           '
-        shell: bash {0}
 
       - name: Test Ethereum block
-        run: |
-          exec sudo -u ziskuser bash -c '
+        run: sudo -u ziskuser env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" bash -c '
           cd "$GITHUB_WORKSPACE/tools/release-kit"
           ./test_eth_block.sh
           '
-        shell: bash {0}
 
   test-macos:
     name: Test on macOS
