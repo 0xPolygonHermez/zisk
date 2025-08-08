@@ -1,7 +1,7 @@
 //! ELF file extraction utilities for separating ELF parsing from ZiskRom population
 
 use elf::{
-    abi::{SHF_ALLOC, SHF_EXECINSTR, SHF_WRITE, SHT_PROGBITS},
+    abi::{SHF_ALLOC, SHF_EXECINSTR, SHF_WRITE, SHT_NOBITS, SHT_PROGBITS},
     endian::AnyEndian,
     ElfBytes,
 };
@@ -57,22 +57,11 @@ pub fn collect_elf_payload(elf_path: &Path) -> Result<ElfPayload, Box<dyn Error>
     // Process all section headers
     if let Some(shdrs) = elf.section_headers() {
         for sh in shdrs {
-            // Must have bytes in the file (PROGBITS)
-            //
-            // All of the sections we care about are PROGBITS.
-            //
-            // Examples of things this skips are: .bss and any notes
-            if sh.sh_type != SHT_PROGBITS {
-                continue;
-            }
-
             // Must be allocated at runtime
             //
             // Essentially all sections that we need to load into memory when the program is loaded.
             //
-            // Note: .bss is included in this, but since it is not SHT_PROGBITS, it is never processed.
-            //
-            // Exampple of things this skips are the .debug_* related sections.
+            // Example of things this skips are the .debug_* related sections.
             if (sh.sh_flags & SHF_ALLOC as u64) == 0 {
                 continue;
             }
@@ -82,12 +71,26 @@ pub fn collect_elf_payload(elf_path: &Path) -> Result<ElfPayload, Box<dyn Error>
                 continue;
             }
 
-            // Grab the section data and word-align it
-            let (raw, _) = elf.section_data(&sh)?;
-            let mut data = raw.to_vec();
-            while data.len() % 4 != 0 {
-                data.pop();
-            }
+            // Handle different section types
+            let data = if sh.sh_type == SHT_PROGBITS {
+                let (raw, _) = elf.section_data(&sh)?;
+                let mut data = raw.to_vec();
+                // Word-align by trimming
+                while data.len() % 4 != 0 {
+                    data.pop();
+                }
+                data
+            } else if sh.sh_type == SHT_NOBITS {
+                // BSS sections - uninitialized data, should be zero-filled
+                // Create a zero-filled vector of the appropriate size
+                let size = sh.sh_size as usize;
+                // Align size to 4 bytes
+                let aligned_size = (size + 3) & !3;
+                vec![0u8; aligned_size]
+            } else {
+                // Skip other section types (notes, etc.)
+                continue;
+            };
 
             // Categorize the section based on its flags
             let is_exec = (sh.sh_flags & SHF_EXECINSTR as u64) != 0;
@@ -101,6 +104,15 @@ pub fn collect_elf_payload(elf_path: &Path) -> Result<ElfPayload, Box<dyn Error>
             } else if is_write && in_ram {
                 // Read-write data that needs to be copied to RAM
                 out.rw.push(DataSection { addr: sh.sh_addr, data });
+            } else if is_write {
+                // Writable data outside RAM is an error - it cannot be properly initialized
+                let section_type = if sh.sh_type == SHT_NOBITS { "BSS" } else { "data" };
+                let end_addr = sh.sh_addr + data.len() as u64;
+                return Err(format!(
+                    "ELF contains writable {} section at 0x{:08x}-0x{:08x} outside RAM bounds (0x{:08x}-0x{:08x}). \
+                    Writable sections must be placed in RAM. Consider adjusting your linker script.",
+                    section_type, sh.sh_addr, end_addr, RAM_START_ADDR, RAM_END_ADDR
+                ).into());
             } else {
                 // Read-only data (constants, strings, etc.)
                 out.ro.push(DataSection { addr: sh.sh_addr, data });
