@@ -131,6 +131,11 @@ jobs:
         with:        
           path: $HOME/workspace        
 
+      - name: List workspace contents
+        run: |
+          echo "Listing contents of $HOME/workspace"
+          ls -R $HOME/workspace
+
       - name: Build ZisK
         run: |
           cd "$HOME/workspace/zisk/tools/release-kit"
