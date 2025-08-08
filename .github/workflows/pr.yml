@@ -78,7 +78,7 @@ jobs:
 
       - name: Install bash
         run: |
-          sudo -u ziskuser apt-get install -y bash
+          sudo apt-get install -y bash
 
       - name: Install dependencies
         run: |
