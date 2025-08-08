@@ -83,6 +83,7 @@ test_elf() {
 
     current_dir=$(pwd)
 
+    get_shell_and_profile || return 1
     source $PROFILE
 
     export ELF_FILE="$elf_file"

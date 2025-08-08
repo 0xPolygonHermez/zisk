@@ -11,10 +11,10 @@ main() {
     current_step=1
     total_steps=10
 
-    source $PROFILE
-
     get_platform || return 1
-
+    get_shell_and_profile || return 1
+    source $PROFILE
+    
     if [[ "${PLATFORM}" == "linux" ]]; then
         is_proving_key_installed || return 1
     fi   

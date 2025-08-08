@@ -8,13 +8,12 @@ main() {
     current_step=1
     total_steps=9
 
-    source $PROFILE
-
     ZISK_DIR="$HOME/.zisk"
     ZISK_BIN_DIR="$ZISK_DIR/bin"
 
     get_platform || return 1
     get_shell_and_profile || return 1
+    source $PROFILE
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         TARGET="x86_64-unknown-linux-gnu"
