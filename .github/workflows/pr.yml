@@ -71,7 +71,9 @@ jobs:
           # Configure permissions for the workspace
           chown -R ziskuser:ziskuser "$GITHUB_WORKSPACE"
 
-          # Allow ziskuser to run sudo commands without a password
+          # Install basic dependencies as root
+          apt-get update
+          apt-get install -y sudo
           echo "ziskuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
       - name: Install dependencies
