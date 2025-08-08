@@ -72,7 +72,7 @@ jobs:
       options: --memory=128g --cpus=128
     env:
       ZISK_GHA: "1"
-      ZISK_BRANCH: "pre.develop-0.11.0"
+      ZISK_BRANCH: "pre-develop-0.11.0"
       BLOCK_INPUTS_DISTRIBUTED: "21429063_9_1.bin"
       DISTRIBUTED_PROCESSES: "2"
       DISTRIBUTED_THREADS: "64"
