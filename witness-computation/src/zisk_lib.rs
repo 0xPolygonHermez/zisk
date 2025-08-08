@@ -79,7 +79,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
     ///
     /// # Panics
     /// Panics if the `Riscv2zisk` conversion fails or if required paths cannot be resolved.
-    fn register_witness(&mut self, wcm: Arc<WitnessManager<F>>) {
+    fn register_witness(&mut self, wcm: &WitnessManager<F>) {
         // Step 1: Create an instance of the RISCV -> ZisK program converter
         let rv2zk = Riscv2zisk::new(self.elf_path.display().to_string());
 
@@ -89,7 +89,7 @@ impl<F: PrimeField64> WitnessLibrary<F> for WitnessLib<F> {
 
         // Step 3: Initialize the secondary state machines
         let std = Std::new(wcm.get_pctx(), wcm.get_sctx());
-        register_std(&wcm, &std);
+        register_std(wcm, &std);
 
         let rom_sm = RomSM::new(zisk_rom.clone(), self.asm_rom_path.clone());
         let binary_sm = BinarySM::new(std.clone());

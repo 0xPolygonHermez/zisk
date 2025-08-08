@@ -75,4 +75,15 @@ jobs:
 
       - name: Run Docker container
         run: |
-          docker run --rm -v ./target/release/ziskemu:/program hermeznetwork/ziskof:latest
+           docker run --rm --entrypoint bash -v ./target/release/ziskemu:/program hermeznetwork/ziskof:latest --login -c " \
+                  apt-get update && \
+                  apt-get install -y \
+                    libopenmpi-dev openmpi-bin openmpi-common \
+                    gcc-riscv64-unknown-elf \
+                    libsodium23 libomp5 && \
+                  export LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/local/lib && \
+                  ldconfig && \
+                  riscof run --config=config.ini \
+                    --suite=riscv-arch-test/riscv-test-suite/ \
+                    --env=riscv-arch-test/riscv-test-suite/env \
+                    --work-dir=/workspace/output/riscof_work/"

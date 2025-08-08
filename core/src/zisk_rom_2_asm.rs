@@ -4271,11 +4271,11 @@ impl ZiskRom2Asm {
                     ctx.comment_str("Div: if b == 0 return f's")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_div_check_underflow {}\n",
+                    "\tje pc_{:x}_div_by_zero {}\n",
                     ctx.pc,
-                    ctx.comment_str("Div: if b is not zero, divide")
+                    ctx.comment_str("Div: if b is zero, jump")
                 );
-                *unusual_code += &format!("pc_{:x}_div_check_underflow:\n", ctx.pc);
+                *unusual_code += &format!("pc_{:x}_div_by_zero:\n", ctx.pc);
                 *unusual_code += &format!(
                     "\tmov {}, 0xffffffffffffffff {}\n",
                     REG_C,
@@ -4397,6 +4397,7 @@ impl ZiskRom2Asm {
                 // Check underflow:
                 *code += &format!("pc_{:x}_rem_check_underflow:\n", ctx.pc);
                 // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a
+                *code += &format!("pc_{:x}_rem_check_underflow:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, 0x8000000000000000 {}\n",
                     REG_VALUE,
@@ -4637,6 +4638,7 @@ impl ZiskRom2Asm {
                 *code += &format!("\tje pc_{:x}_remw_done\n", ctx.pc);
 
                 // Divide
+                *code += &format!("pc_{:x}_remw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
                     REG_VALUE_W,

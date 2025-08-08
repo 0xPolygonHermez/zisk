@@ -33,6 +33,13 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
+if [$DEBUG -eq 1 ]; then
+    echo "Debug mode enabled";
+    set -x;  # Enable debugging output
+else
+    set +x;  # Disable debugging output
+fi
+
 ELF_FILES=`find $DIR -type f -name my.elf |sort`
 
 # List files with their corresponding index
@@ -89,7 +96,7 @@ do
 
     # Transpile the ELF RISC-V file to Zisk, and then generate assembly file emu.asm
     cargo build --bin=riscv2zisk
-    ./target/debug/riscv2zisk $ELF_FILE none none none emulator-asm/src/emu.asm
+    ./target/debug/riscv2zisk $ELF_FILE emulator-asm/src/emu.asm --gen=1
 
     # Compile the assembly emulator derived from this ELF file
     cd emulator-asm
@@ -97,12 +104,24 @@ do
 
     # Execute it and save output
     touch empty_input.bin
-    build/ziskemuasm empty_input.bin 2>&1|tee output
+    build/ziskemuasm -s --gen=1 -o --silent 2>&1|tee output &
+
+    # Store the PID of the background process
+    BG_PID=$!
+    echo "Sleeping for 10 seconds to let the emulator server initialize..."
+    sleep 10
+    build/ziskemuasm -c -i empty_input.bin --gen=1 --shutdown
+    echo "Sleeping for 5 seconds to let the emulator server complete..."
+    sleep 5
+
+    #echo "Killing the background process..."
+    #kill $BG_PID
 
     # Compare output vs reference
-    echo "Calling diff of output vs reference"
     ELF_FILE_DIRECTORY=${ELF_FILE%%my.elf}
-    if diff output ../$ELF_FILE_DIRECTORY../ref/Reference-sail_c_simulator.signature; then
+    REFERENCE_FILE="../${ELF_FILE_DIRECTORY}../ref/Reference-sail_c_simulator.signature"
+    echo "Calling diff of ./output vs reference=$REFERENCE_FILE"
+    if diff output $REFERENCE_FILE; then
         DIFF_PASSED_COUNTER=$((DIFF_PASSED_COUNTER+1))
         echo "After processing file ${ELF_FILE}..."
         echo "DIFF PASSED total passed=${DIFF_PASSED_COUNTER} total failed=${DIFF_FAILED_COUNTER}"

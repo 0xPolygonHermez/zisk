@@ -17,7 +17,10 @@ fn main() {
 
     // Check program arguments length
     if args.len() < 3 || args.len() > 4 {
-        eprintln!("Error parsing arguments: invalid number of arguments.  Usage: riscv2zisk <elf_riscv_file> [<i86-64_asm_file>] <generation_method>");
+        eprintln!("Error parsing arguments: invalid number of arguments={}.  Usage: riscv2zisk <elf_riscv_file> [<i86-64_asm_file>] <generation_method>", args.len());
+        for (i, arg) in args.iter().enumerate() {
+            eprintln!("Argument {i}: {arg}");
+        }
         process::exit(1);
     }
 
