@@ -1,3 +1,5 @@
+use std::{ffi::os_str::Display, fmt};
+
 use serde::{Deserialize, Serialize};
 
 /// Prover ID wrapper for type safety
@@ -42,15 +44,20 @@ impl std::fmt::Display for ProverId {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProverCapabilities {
-    pub cpu_cores_num: u32,
-    pub gpu_num: u32,
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ComputeCapacity {
+    pub compute_units: u32,
 }
 
-// Conversion from protobuf ProverCapabilities to core ProverCapabilities
-impl From<consensus_api::ProverCapabilities> for ProverCapabilities {
-    fn from(proto_caps: consensus_api::ProverCapabilities) -> Self {
-        Self { cpu_cores_num: proto_caps.cpu_cores_num, gpu_num: proto_caps.gpu_num }
+// Conversion from protobuf ComputeCapacity to core ComputeCapacity
+impl From<consensus_api::ComputeCapacity> for ComputeCapacity {
+    fn from(proto_caps: consensus_api::ComputeCapacity) -> Self {
+        Self { compute_units: proto_caps.compute_units }
+    }
+}
+
+impl fmt::Display for ComputeCapacity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} CU", self.compute_units)
     }
 }
