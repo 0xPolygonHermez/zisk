@@ -62,10 +62,10 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          cd "$GITHUB_WORKSPACE/tools/release-kit"
-          ./install_deps.sh
+      # - name: Install dependencies
+      #   run: |
+      #     cd "$GITHUB_WORKSPACE/tools/release-kit"
+      #     ./install_deps.sh
 
       - name: Build ZisK
         run: |
