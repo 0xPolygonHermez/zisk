@@ -1,38 +1,18 @@
 //! Reads RISC-V data from and ELF file and converts it to a ZiskRom
 
 use crate::{
-    add_end_jmp, is_elf_file,
+    add_end_jmp,
+    elf_extraction::{collect_elf_payload, merge_adjacent_ro_sections},
     riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
-    AsmGenerationMethod, RoData, ZiskInst, ZiskRom, ZiskRom2Asm, RAM_ADDR, RAM_SIZE, ROM_ADDR,
-    ROM_ADDR_MAX, ROM_ENTRY,
-};
-use elf::{
-    abi::{SHF_EXECINSTR, SHF_WRITE, SHT_PROGBITS},
-    endian::AnyEndian,
-    ElfBytes,
+    AsmGenerationMethod, RoData, ZiskInst, ZiskRom, ZiskRom2Asm, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
 };
 use rayon::prelude::*;
 use std::{error::Error, path::Path};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
-    // Get all data from the ELF file copied to a memory buffer
-    let elf_file_path = std::path::PathBuf::from(elf_file);
-    let file_data = std::fs::read(elf_file_path)?;
-
-    match is_elf_file(&file_data) {
-        Ok(is_file) => {
-            if !is_file {
-                panic!("ROM file is not a valid ELF file");
-            }
-        }
-        Err(_) => {
-            panic!("Error reading ROM file");
-        }
-    }
-
-    // Parse the ELF data
-    let elf_bytes = ElfBytes::<AnyEndian>::minimal_parse(file_data.as_slice())?;
+    // Extract all relevant sections from the ELF file
+    let payload = collect_elf_payload(elf_file)?;
 
     // Create an empty ZiskRom instance
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
@@ -40,85 +20,72 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
     // Add the end instruction, jumping over it
     add_end_jmp(&mut rom);
 
-    // Iterate on the available section headers of the ELF parsed data
-    if let Some(section_headers) = elf_bytes.section_headers() {
-        for section_header in section_headers {
-            // Consider only the section headers that contain program data
-            if section_header.sh_type == SHT_PROGBITS {
-                // Get the section header address
-                let addr = section_header.sh_addr;
-
-                // Ignore sections with address = 0, as per ELF spec
-                if addr == 0 {
-                    continue;
-                }
-
-                // Get the section data
-                let (data_u8, _) = elf_bytes.section_data(&section_header)?;
-                let mut data = data_u8.to_vec();
-
-                // Remove extra bytes if length is not 4-bytes aligned
-                while data.len() % 4 != 0 {
-                    data.pop();
-                }
-
-                // If this is a code section, add it to program
-                if (section_header.sh_flags & SHF_EXECINSTR as u64) != 0 {
-                    add_zisk_code(&mut rom, addr, &data);
-                }
-
-                // Add init data as a read/write memory section, initialized by code
-                // If the data is a writable memory section, add it to the ROM memory using Zisk
-                // copy instructions
-                if (section_header.sh_flags & SHF_WRITE as u64) != 0
-                    && addr >= RAM_ADDR
-                    && addr + data.len() as u64 <= RAM_ADDR + RAM_SIZE
-                {
-                    //println! {"elf2rom() new RW from={:x} length={:x}={}", addr, data.len(),
-                    //data.len()};
-                    add_zisk_init_data(&mut rom, addr, &data, true);
-                }
-                // Add read-only data memory section
-                else {
-                    // Search for an existing RO section previous to this one
-                    let mut found = false;
-                    for rd in rom.ro_data.iter_mut() {
-                        // Section data should be previous to this one
-                        if (rd.from + rd.length as u64) == addr {
-                            rd.length += data.len();
-                            rd.data.extend(data.clone());
-                            found = true;
-                            //println! {"elf2rom() adding RO from={:x} length={:x}={}", rd.from,
-                            // rd.length, rd.length};
-                            break;
-                        }
-                    }
-
-                    // If not found, create a new RO section
-                    if !found {
-                        //println! {"elf2rom() new RO from={:x} length={:x}={}", addr, data.len(),
-                        // data.len()};
-                        rom.ro_data.push(RoData::new(addr, data.len(), data));
-                    }
-                }
-            }
-        }
+    // 1. Add executable code sections
+    for section in &payload.exec {
+        add_zisk_code(&mut rom, section.addr, &section.data);
     }
 
-    // Add RO data initialization code insctructions
-    let ro_data_len = rom.ro_data.len();
-    for i in 0..ro_data_len {
-        let addr = rom.ro_data[i].from;
-        let mut data = Vec::new();
-        data.extend(rom.ro_data[i].data.as_slice());
-        add_zisk_init_data(&mut rom, addr, &data, true);
+    // 2. Add read-write data sections (will be copied to RAM)
+    for section in &payload.rw {
+        add_zisk_init_data(&mut rom, section.addr, &section.data, true);
     }
 
-    add_entry_exit_jmp(&mut rom, elf_bytes.ehdr.e_entry);
+    // 3. Add read-only data sections
+    // Merge adjacent read-only sections for efficiency
+    let merged_ro = merge_adjacent_ro_sections(&payload.ro);
+    for section in &merged_ro {
+        rom.ro_data.push(RoData::new(section.addr, section.data.len(), section.data.clone()));
+    }
+
+    // Add RO data initialization code instructions
+    for section in &merged_ro {
+        add_zisk_init_data(&mut rom, section.addr, &section.data, true);
+    }
+
+    // Add entry and exit jump instructions
+    add_entry_exit_jmp(&mut rom, payload.entry_point);
 
     // Preprocess the ROM (experimental)
     // Split the ROM instructions based on their address in order to get a better performance when
     // searching for the corresponding intruction to the pc program address
+    optimize_instruction_lookup(&mut rom)?;
+
+    //println! {"elf2rom() got rom.insts.len={}", rom.insts.len()};
+
+    Ok(rom)
+}
+
+/// Optimizes instruction lookup by organizing instructions into direct-access arrays.
+///
+/// ## Problem it solves:
+///
+/// Instead of using a HashMap for every instruction fetch (key is the `pc`),
+/// this creates three separate arrays where instructions can be accessed by direct
+/// index/PC calculations.
+///
+/// Instructions are split into three categories:
+///
+/// 1. Entry/BIOS instructions:
+///    - Address range: `[ROM_ENTRY, ROM_ADDR)`
+///    - 4-byte aligned instructions in the startup/BIOS area
+///    - Accessed via: `array[(addr - ROM_ENTRY) / 4]`
+///
+/// 2. Main program instructions:
+///    - Address range: `[ROM_ADDR, ROM_ADDR_MAX)`
+///    - 4-byte aligned instructions in the main ROM area
+///    - Accessed via: `array[(addr - ROM_ADDR) / 4]`
+///
+/// 3. Non-aligned instructions:
+///    - Any instruction NOT on a 4-byte boundary
+///    - TODO: previous comment says there should only be one -- what is it?
+///    - Accessed via: `array[addr - min_na_addr]`
+///
+/// There are two places where this optimization is used:
+///     - When building traces for proof generation, we iterate through all instructions in address order
+///     - When running the emulator, each iteration of emulator need to fetch an instruction based on the `pc`
+///       Using an array vs a hashmap here will be faster due to instructions being next to each other and array cache locality.
+fn optimize_instruction_lookup(rom: &mut ZiskRom) -> Result<(), Box<dyn Error>> {
+    // 1. Find the address ranges for each instruction category
     let mut max_rom_entry = 0;
     let mut max_rom_instructions = 0;
     let mut min_rom_na_unstructions = u64::MAX;
@@ -127,6 +94,7 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
     // Prepare sorted pc list
     rom.sorted_pc_list.reserve(rom.insts.len());
 
+    // Scan all instructions to categorize them and find ranges
     for instruction in &rom.insts {
         let addr = *instruction.0;
 
@@ -136,23 +104,33 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
         if addr < ROM_ENTRY {
             return Err(format!("Address out of range: {addr}").into());
         } else if addr < ROM_ADDR {
+            // Entry/BIOS area
             if addr % 4 != 0 {
+                // Non-aligned instruction in entry area
+                //
                 // When an address is not 4 bytes aligned, it is considered a
                 // na_rom_instructions We are supposed to have only one non
                 // aligned instructions in > ROM_ADDRESS
+                // TODO: Where is this only one claim checked?
                 min_rom_na_unstructions = std::cmp::min(min_rom_na_unstructions, addr);
                 max_rom_na_unstructions = std::cmp::max(max_rom_na_unstructions, addr);
             } else {
+                // Aligned instruction in entry area
                 max_rom_entry = std::cmp::max(max_rom_entry, addr);
             }
         } else if addr < ROM_ADDR_MAX {
+            // Main ROM area
             if addr % 4 != 0 {
+                // Non-aligned instruction in main area
+                //
                 // When an address is not 4 bytes aligned, it is considered a
                 // na_rom_instructions We are supposed to have only one non
                 // aligned instructions in > ROM_ADDRESS
+                // TODO: Where is this only one claim checked?
                 min_rom_na_unstructions = std::cmp::min(min_rom_na_unstructions, addr);
                 max_rom_na_unstructions = std::cmp::max(max_rom_na_unstructions, addr);
             } else {
+                // Aligned instruction in main area
                 max_rom_instructions = max_rom_instructions.max(addr);
             }
         } else {
@@ -162,10 +140,11 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
     rom.max_bios_pc = max_rom_entry;
     rom.max_program_pc = max_rom_instructions;
 
-    let num_rom_entry = (max_rom_entry - ROM_ENTRY) / 4 + 1;
-    let num_rom_instructions = (max_rom_instructions - ROM_ADDR) / 4 + 1;
+    let num_rom_entry = if max_rom_entry > 0 { (max_rom_entry - ROM_ENTRY) / 4 + 1 } else { 0 };
+    let num_rom_instructions =
+        if max_rom_instructions > 0 { (max_rom_instructions - ROM_ADDR) / 4 + 1 } else { 0 };
     let num_rom_na_instructions = if u64::MAX == min_rom_na_unstructions {
-        0
+        0 // No non-aligned instructions found
     } else {
         max_rom_na_unstructions - min_rom_na_unstructions + 1
     };
@@ -182,31 +161,38 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
     // Sort pc list
     rom.sorted_pc_list.sort();
 
+    // 2. Populate the arrays with instructions at their calculated indices
     for instruction in &rom.insts {
         let addr = *instruction.0;
 
         if addr % 4 != 0 {
+            // Non-aligned: store at offset from minimum non-aligned address
             rom.rom_na_instructions[(addr - min_rom_na_unstructions) as usize] =
                 instruction.1.i.clone();
         } else if addr < ROM_ADDR {
+            // Entry/BIOS area: divide by 4 for index (using shift for efficiency)
             rom.rom_entry_instructions[((addr - ROM_ENTRY) >> 2) as usize] =
                 instruction.1.i.clone();
         } else {
+            // Main ROM: divide by 4 for index (using shift for efficiency)
             rom.rom_instructions[((addr - ROM_ADDR) >> 2) as usize] = instruction.1.i.clone();
         }
     }
 
-    // Link every instruction with the position they occupy in the sorted pc list
+    // 3. Link every instruction with the position they occupy in the sorted pc list
+    //
+    // The index is stored in two places because instructions exist in:
+    // - rom.insts: The original HashMap for random access by PC
+    // - rom.*_instructions arrays: The optimized arrays for fast indexed access
     for i in 0..rom.sorted_pc_list.len() {
         let pc = rom.sorted_pc_list[i];
         rom.insts.get_mut(&pc).unwrap().i.sorted_pc_list_index = i;
+
         let inst = rom.get_mut_instruction(pc);
         inst.sorted_pc_list_index = i;
     }
 
-    //println! {"elf2rom() got rom.insts.len={}", rom.insts.len()};
-
-    Ok(rom)
+    Ok(())
 }
 
 /// Executes the ELF file data transpilation process into a Zisk ROM, and saves the result into a
@@ -222,4 +208,254 @@ pub fn elf2romfile(
     ZiskRom2Asm::save_to_asm_file(&rom, asm_file, generation_method, log_output, comments);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ZiskInstBuilder, ZiskRom};
+
+    // Helper to create a test instruction with a given opcode
+    fn create_test_inst_builder(addr: u64, op: u8) -> ZiskInstBuilder {
+        let mut builder = ZiskInstBuilder::new(addr);
+        builder.i.op = op;
+        builder
+    }
+
+    #[test]
+    fn test_optimize_empty_rom() {
+        let mut rom = ZiskRom::default();
+        rom.next_init_inst_addr = ROM_ENTRY;
+
+        assert!(optimize_instruction_lookup(&mut rom).is_ok());
+        assert_eq!(rom.sorted_pc_list.len(), 0);
+        assert_eq!(rom.rom_entry_instructions.len(), 0);
+        assert_eq!(rom.rom_instructions.len(), 0);
+        assert_eq!(rom.rom_na_instructions.len(), 0);
+    }
+
+    #[test]
+    fn test_optimize_entry_instructions_only() {
+        let mut rom = ZiskRom::default();
+        rom.next_init_inst_addr = ROM_ENTRY;
+
+        // Add some entry area instructions, but none in main area
+        let entry_base = ROM_ENTRY;
+        rom.insts.insert(entry_base, create_test_inst_builder(entry_base, 1));
+        rom.insts.insert(entry_base + 4, create_test_inst_builder(entry_base + 4, 2));
+        rom.insts.insert(entry_base + 8, create_test_inst_builder(entry_base + 8, 3));
+
+        assert!(optimize_instruction_lookup(&mut rom).is_ok());
+
+        // Check arrays are correctly sized
+        assert_eq!(rom.rom_entry_instructions.len(), 3);
+        assert_eq!(rom.rom_instructions.len(), 0);
+        assert_eq!(rom.rom_na_instructions.len(), 0);
+
+        // Check sorted PC list
+        assert_eq!(rom.sorted_pc_list, vec![entry_base, entry_base + 4, entry_base + 8]);
+
+        // Verify instructions are at correct indices
+        assert_eq!(rom.rom_entry_instructions[0].op, 1);
+        assert_eq!(rom.rom_entry_instructions[1].op, 2);
+        assert_eq!(rom.rom_entry_instructions[2].op, 3);
+
+        // Check max values
+        assert_eq!(rom.max_bios_pc, entry_base + 8);
+        assert_eq!(rom.max_program_pc, 0);
+    }
+
+    #[test]
+    fn test_optimize_main_rom_instructions() {
+        let mut rom = ZiskRom::default();
+        rom.next_init_inst_addr = ROM_ENTRY;
+
+        // Add main ROM area instructions, but none in BIOS area
+        rom.insts.insert(ROM_ADDR, create_test_inst_builder(ROM_ADDR, 10));
+        rom.insts.insert(ROM_ADDR + 4, create_test_inst_builder(ROM_ADDR + 4, 11));
+        rom.insts.insert(ROM_ADDR + 12, create_test_inst_builder(ROM_ADDR + 12, 12)); // Gap in addresses
+
+        assert!(optimize_instruction_lookup(&mut rom).is_ok());
+
+        // Check arrays
+        assert_eq!(rom.rom_entry_instructions.len(), 0);
+        assert_eq!(rom.rom_instructions.len(), 4); // Includes the gap at ROM_ADDR + 8
+        assert_eq!(rom.rom_na_instructions.len(), 0);
+
+        // Check instructions are at correct indices
+        assert_eq!(rom.rom_instructions[0].op, 10); // (ROM_ADDR - ROM_ADDR) / 4 = 0
+        assert_eq!(rom.rom_instructions[1].op, 11); // (ROM_ADDR + 4 - ROM_ADDR) / 4 = 1
+        assert_eq!(rom.rom_instructions[3].op, 12); // (ROM_ADDR + 12 - ROM_ADDR) / 4 = 3
+
+        assert_eq!(rom.max_program_pc, ROM_ADDR + 12);
+    }
+
+    #[test]
+    fn test_optimize_non_aligned_instructions() {
+        let mut rom = ZiskRom::default();
+        rom.next_init_inst_addr = ROM_ENTRY;
+
+        // Add non-aligned instructions (not on 4-byte boundary)
+        rom.insts.insert(ROM_ADDR + 1, create_test_inst_builder(ROM_ADDR + 1, 20));
+        rom.insts.insert(ROM_ADDR + 5, create_test_inst_builder(ROM_ADDR + 5, 21));
+        rom.insts.insert(ROM_ADDR + 7, create_test_inst_builder(ROM_ADDR + 7, 22));
+
+        assert!(optimize_instruction_lookup(&mut rom).is_ok());
+
+        // Check arrays
+        assert_eq!(rom.rom_entry_instructions.len(), 0);
+        assert_eq!(rom.rom_instructions.len(), 0);
+        // Since the smallest non-aligned instruction adress(`offset_rom_na_unstructions`) is ROM_ADDR+1
+        // This will be the gap between each non-aligned instruction.
+
+        // The memory layout will look like the following:
+        /*
+            Address         | Array Index | Content
+            ----------------|-------------|----------
+            0x80001001      | 0           | Instruction (op=20)
+            0x80001002      | 1           | Empty
+            0x80001003      | 2           | Empty
+            0x80001004      | 3           | Empty
+            0x80001005      | 4           | Instruction (op=21)
+            0x80001006      | 5           | Empty
+            0x80001007      | 6           | Instruction (op=22)
+        */
+        assert_eq!(rom.rom_na_instructions.len(), 7); // ROM_ADDR+7 - (ROM_ADDR+1) + 1
+
+        // Check offset is set correctly
+        assert_eq!(rom.offset_rom_na_unstructions, ROM_ADDR + 1);
+
+        // Check instructions are at correct indices
+        assert_eq!(rom.rom_na_instructions[0].op, 20); // ROM_ADDR+1 - offset = 0
+        assert_eq!(rom.rom_na_instructions[4].op, 21); // ROM_ADDR+5 - offset = 4
+        assert_eq!(rom.rom_na_instructions[6].op, 22); // ROM_ADDR+7 - offset = 6
+    }
+
+    #[test]
+    fn test_optimize_mixed_instructions() {
+        let mut rom = ZiskRom::default();
+        rom.next_init_inst_addr = ROM_ENTRY;
+
+        // Mix of all three types
+        rom.insts.insert(ROM_ENTRY + 4, create_test_inst_builder(ROM_ENTRY + 4, 1));
+        rom.insts.insert(ROM_ADDR, create_test_inst_builder(ROM_ADDR, 2));
+        rom.insts.insert(ROM_ADDR + 3, create_test_inst_builder(ROM_ADDR + 3, 3));
+
+        assert!(optimize_instruction_lookup(&mut rom).is_ok());
+
+        // All three arrays should have content
+        assert!(rom.rom_entry_instructions.len() > 0);
+        assert!(rom.rom_instructions.len() > 0);
+        assert!(rom.rom_na_instructions.len() > 0);
+
+        // Check sorted list has all PCs
+        assert_eq!(rom.sorted_pc_list.len(), 3);
+        assert_eq!(rom.sorted_pc_list, vec![ROM_ENTRY + 4, ROM_ADDR, ROM_ADDR + 3]);
+    }
+
+    #[test]
+    fn test_optimize_sorted_pc_indices() {
+        let mut rom = ZiskRom::default();
+        rom.next_init_inst_addr = ROM_ENTRY;
+
+        // Add instructions out of order
+        rom.insts.insert(ROM_ADDR + 8, create_test_inst_builder(ROM_ADDR + 8, 3));
+        rom.insts.insert(ROM_ADDR, create_test_inst_builder(ROM_ADDR, 1));
+        rom.insts.insert(ROM_ADDR + 4, create_test_inst_builder(ROM_ADDR + 4, 2));
+
+        assert!(optimize_instruction_lookup(&mut rom).is_ok());
+
+        // Check sorted order
+        assert_eq!(rom.sorted_pc_list, vec![ROM_ADDR, ROM_ADDR + 4, ROM_ADDR + 8]);
+
+        // Verify each instruction knows its position in sorted list
+        assert_eq!(rom.insts.get(&ROM_ADDR).unwrap().i.sorted_pc_list_index, 0);
+        assert_eq!(rom.insts.get(&(ROM_ADDR + 4)).unwrap().i.sorted_pc_list_index, 1);
+        assert_eq!(rom.insts.get(&(ROM_ADDR + 8)).unwrap().i.sorted_pc_list_index, 2);
+
+        // Also check in the arrays
+        assert_eq!(rom.rom_instructions[0].sorted_pc_list_index, 0);
+        assert_eq!(rom.rom_instructions[1].sorted_pc_list_index, 1);
+        assert_eq!(rom.rom_instructions[2].sorted_pc_list_index, 2);
+    }
+
+    #[test]
+    fn test_optimize_sorted_pc_indices_with_gaps() {
+        let mut rom = ZiskRom::default();
+        rom.next_init_inst_addr = ROM_ENTRY;
+
+        rom.insts.insert(ROM_ADDR, create_test_inst_builder(ROM_ADDR, 10));
+        rom.insts.insert(ROM_ADDR + 4, create_test_inst_builder(ROM_ADDR + 4, 11));
+        rom.insts.insert(ROM_ADDR + 12, create_test_inst_builder(ROM_ADDR + 12, 12));
+        rom.insts.insert(ROM_ADDR + 100, create_test_inst_builder(ROM_ADDR + 100, 13));
+
+        assert!(optimize_instruction_lookup(&mut rom).is_ok());
+
+        // Check sorted list has 4 instructions (no gaps in sorted list)
+        assert_eq!(rom.sorted_pc_list.len(), 4);
+        assert_eq!(rom.sorted_pc_list, vec![ROM_ADDR, ROM_ADDR + 4, ROM_ADDR + 12, ROM_ADDR + 100]);
+
+        // Array has space for all addresses including gaps
+        // Array size = (100 - 0) / 4 + 1 = 26 slots
+        assert_eq!(rom.rom_instructions.len(), 26);
+
+        // rom_instructions[0] is at ROM_ADDR
+        assert_eq!(rom.rom_instructions[0].op, 10);
+        assert_eq!(rom.rom_instructions[0].sorted_pc_list_index, 0);
+
+        // rom_instructions[1] is at ROM_ADDR + 4
+        assert_eq!(rom.rom_instructions[1].op, 11);
+        assert_eq!(rom.rom_instructions[1].sorted_pc_list_index, 1);
+
+        // rom_instructions[3] is at ROM_ADDR + 12
+        assert_eq!(rom.rom_instructions[3].op, 12);
+        assert_eq!(rom.rom_instructions[3].sorted_pc_list_index, 2);
+
+        // rom_instructions[25] is at ROM_ADDR + 100
+        assert_eq!(rom.rom_instructions[25].op, 13);
+        assert_eq!(rom.rom_instructions[25].sorted_pc_list_index, 3);
+    }
+
+    #[test]
+    fn test_optimize_address_below_rom_entry_err() {
+        let mut rom = ZiskRom::default();
+        rom.next_init_inst_addr = ROM_ENTRY;
+
+        // Add instruction below ROM_ENTRY
+        rom.insts.insert(ROM_ENTRY - 4, create_test_inst_builder(ROM_ENTRY - 4, 1));
+        assert!(optimize_instruction_lookup(&mut rom).is_err());
+    }
+
+    #[test]
+    fn test_optimize_address_above_rom_max_err() {
+        let mut rom = ZiskRom::default();
+        rom.next_init_inst_addr = ROM_ENTRY;
+
+        // Add instruction above ROM_ADDR_MAX.
+        rom.insts.insert(ROM_ADDR_MAX + 4, create_test_inst_builder(ROM_ADDR_MAX + 4, 1));
+        assert!(optimize_instruction_lookup(&mut rom).is_err());
+    }
+
+    #[test]
+    fn test_basic_optimize_preserves_instruction_data() {
+        let mut rom = ZiskRom::default();
+        rom.next_init_inst_addr = ROM_ENTRY;
+
+        let mut builder = ZiskInstBuilder::new(ROM_ADDR);
+        builder.i.op = 42;
+        builder.i.a_src = 1;
+        builder.i.b_src = 2;
+        builder.i.store = 3;
+
+        rom.insts.insert(ROM_ADDR, builder);
+
+        assert!(optimize_instruction_lookup(&mut rom).is_ok());
+
+        // Verify all fields are preserved
+        let stored = &rom.rom_instructions[0];
+        assert_eq!(stored.op, 42);
+        assert_eq!(stored.a_src, 1);
+        assert_eq!(stored.b_src, 2);
+        assert_eq!(stored.store, 3);
+    }
 }
