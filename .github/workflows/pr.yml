@@ -47,6 +47,9 @@ jobs:
   test-x86_64:
     name: Test on x86_64
     runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash {0}    
     container:
       image: ziskvm/zisk-test-env:latest
       options: --memory=128g --cpus=128 --shm-size=64g --user root
