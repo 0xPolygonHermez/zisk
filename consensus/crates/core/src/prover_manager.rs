@@ -1,4 +1,4 @@
-use crate::{BlockId, Error, JobId, ProverCapabilities, ProverId, Result};
+use crate::{BlockId, ComputeCapacity, Error, JobId, ProverId, Result};
 use chrono::{DateTime, Utc};
 use consensus_api::{coordinator_message, prover_message, CoordinatorMessage, ProverMessage};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
@@ -10,8 +10,9 @@ pub struct Job {
     pub job_id: JobId,
     pub state: JobState,
     pub block: BlockContext,
-    pub num_provers: u32,
+    pub computed_units: u32,
     pub provers: Vec<ProverId>,
+    pub partitions: Vec<Vec<u32>>,
     pub results: HashMap<JobPhase, HashMap<ProverId, JobResult>>,
     pub global_challenge: Option<Vec<u64>>,
 }
@@ -49,7 +50,7 @@ pub enum JobPhase {
 pub struct ProverConnection {
     pub prover_id: ProverId,
     pub state: ProverState,
-    pub capabilities: ProverCapabilities,
+    pub compute_capacity: ComputeCapacity,
     pub connected_at: DateTime<Utc>,
     pub last_heartbeat: DateTime<Utc>,
     pub message_sender: mpsc::Sender<CoordinatorMessage>,
@@ -121,15 +122,22 @@ impl ProverManager {
         self.provers.read().await.len()
     }
 
-    /// Get list of available provers
-    pub async fn get_available_provers(&self) -> Vec<ProverId> {
-        self.provers
+    pub async fn compute_capacity(&self) -> ComputeCapacity {
+        let provers = self.provers.read().await;
+        let total_capacity: u32 = provers.values().map(|p| p.compute_capacity.compute_units).sum();
+        ComputeCapacity { compute_units: total_capacity }
+    }
+
+    pub async fn get_available_compute_capacity(&self) -> ComputeCapacity {
+        let total_capacity: u32 = self
+            .provers
             .read()
             .await
             .values()
             .filter(|p| matches!(p.state, ProverState::Idle))
-            .map(|p| p.prover_id.clone())
-            .collect()
+            .map(|p| p.compute_capacity.compute_units)
+            .sum();
+        ComputeCapacity { compute_units: total_capacity }
     }
 
     /// Get the coordinator configuration
@@ -141,7 +149,7 @@ impl ProverManager {
     pub async fn register_prover(
         &self,
         prover_id: ProverId,
-        capabilities: impl Into<ProverCapabilities>,
+        compute_capacity: impl Into<ComputeCapacity>,
         message_sender: mpsc::Sender<CoordinatorMessage>,
     ) -> Result<ProverId> {
         // Check if we've reached the maximum number of total provers
@@ -156,7 +164,7 @@ impl ProverManager {
         let now = Utc::now();
         let connection = ProverConnection {
             prover_id: prover_id.clone(),
-            capabilities: capabilities.into(),
+            compute_capacity: compute_capacity.into(),
             state: ProverState::Idle,
             connected_at: now,
             last_heartbeat: now,
@@ -211,35 +219,26 @@ impl ProverManager {
     pub async fn start_proof(
         &self,
         block_id: String,
-        num_provers: u32,
+        require_compute_capacity: ComputeCapacity,
         input_path: String,
     ) -> Result<JobId> {
+        let available_compute_capacity = self.get_available_compute_capacity().await;
+
+        if require_compute_capacity < available_compute_capacity {
+            return Err(Error::InvalidRequest(format!(
+                "Not enough compute capacity available: need {}, have {}",
+                require_compute_capacity, available_compute_capacity
+            )));
+        }
+
         info!(
-            "Starting proof for block {} with {} provers, input: {}",
-            block_id, num_provers, input_path
+            "Starting proof for block {} using {} with input path: {}",
+            block_id, require_compute_capacity, input_path
         );
 
-        // Validate prover count using configuration
-        let max_provers_per_job = self.config().max_provers_per_job;
-        if num_provers > max_provers_per_job {
-            return Err(Error::InvalidRequest(format!(
-                "Requested {num_provers} provers exceeds maximum of {max_provers_per_job}"
-            )));
-        }
-
-        let available_provers = self.get_available_provers().await;
-
-        if available_provers.len() < num_provers as usize {
-            return Err(Error::InvalidRequest(format!(
-                "Not enough provers available: need {}, have {}",
-                num_provers,
-                available_provers.len()
-            )));
-        }
-
         // Select only the required number of provers (not all of them)
-        let selected_provers: Vec<ProverId> =
-            available_provers.into_iter().take(num_provers as usize).collect();
+        let (selected_provers, partitions) =
+            self.partition_and_allocate_by_capacity(require_compute_capacity.clone()).await;
 
         // Create job
         let job_id = JobId::new();
@@ -251,8 +250,9 @@ impl ProverManager {
                 block_id: block_id.clone(),
                 input_path: PathBuf::from(input_path.clone()),
             },
-            num_provers,
+            computed_units: require_compute_capacity.compute_units,
             provers: selected_provers.clone(),
+            partitions: partitions.clone(),
             results: HashMap::new(),
             global_challenge: None,
         };
@@ -261,44 +261,45 @@ impl ProverManager {
 
         // Send messages to selected provers
         let mut provers = self.provers.write().await;
+        let provers_len = selected_provers.len() as u32;
         for (rank, prover_id) in selected_provers.iter().enumerate() {
-            if let Some(prover) = provers.get_mut(prover_id) {
-                let message = CoordinatorMessage {
-                    payload: Some(coordinator_message::Payload::ProvePhase1(
-                        consensus_api::ProvePhase1 {
-                            job_id: job_id.clone().into(),
-                            block_id: block_id.clone().into(),
-                            rank_id: rank as u32,
-                            total_provers: num_provers,
-                        },
-                    )),
-                };
+            let prover = provers.get_mut(prover_id).unwrap();
 
-                // Send message through the prover's channel (bounded channels require async send)
-                match prover.message_sender.try_send(message) {
-                    Ok(()) => {
-                        prover.state = ProverState::Computing(JobPhase::Phase1);
-                    }
-                    Err(mpsc::error::TrySendError::Full(_)) => {
-                        // TODO: Handle backpressure - maybe queue for retry or mark prover as slow
-                        // TODO: Make unbounded channel
-                        return Err(Error::Internal(format!(
-                            "Message buffer full for prover {prover_id}, dropping message"
-                        )));
-                    }
-                    Err(mpsc::error::TrySendError::Closed(_)) => {
-                        // TODO: Handle closed channel - maybe reassign job
-                        return Err(Error::Internal(format!(
-                            "Channel closed for prover {prover_id}, dropping message"
-                        )));
-                    }
+            let message = CoordinatorMessage {
+                payload: Some(coordinator_message::Payload::ProvePhase1(
+                    consensus_api::ProvePhase1 {
+                        job_id: job_id.clone().into(),
+                        block_id: block_id.clone().into(),
+                        rank_id: rank as u32,
+                        total_provers: provers_len,
+                    },
+                )),
+            };
+
+            // Send message through the prover's channel (bounded channels require async send)
+            match prover.message_sender.try_send(message) {
+                Ok(()) => {
+                    prover.state = ProverState::Computing(JobPhase::Phase1);
+                }
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    // TODO: Handle backpressure - maybe queue for retry or mark prover as slow
+                    // TODO: Make unbounded channel
+                    return Err(Error::Internal(format!(
+                        "Message buffer full for prover {prover_id}, dropping message"
+                    )));
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    // TODO: Handle closed channel - maybe reassign job
+                    return Err(Error::Internal(format!(
+                        "Channel closed for prover {prover_id}, dropping message"
+                    )));
                 }
             }
         }
 
         info!(
             "Assigned new job {} to {} provers with input path: {}",
-            job_id, num_provers, input_path
+            job_id, provers_len, input_path
         );
 
         Ok(job_id)
@@ -446,7 +447,7 @@ impl ProverManager {
 
         info!("Stored Phase1 result for prover {prover_id} in job {job_id}.");
 
-        if phase1_results.len() < job.num_provers as usize {
+        if phase1_results.len() < job.computed_units as usize {
             return Ok(());
         }
 
@@ -585,5 +586,33 @@ impl ProverManager {
         // 3. Return the challenge data
 
         Ok(vec![42, 1337, 12345]) // Placeholder challenge
+    }
+
+    async fn partition_and_allocate_by_capacity(
+        &self,
+        require_compute_capacity: ComputeCapacity,
+    ) -> (Vec<ProverId>, Vec<Vec<u32>>) {
+        let mut selected_provers = Vec::new();
+        let mut partitions = Vec::new();
+        let mut accumulated = 0;
+
+        for (prover_id, prover_connection) in self.provers.write().await.iter() {
+            selected_provers.push(prover_id.clone());
+
+            // Compute new partition with its current prover allocation
+            let prover_allocation: Vec<u32> = (accumulated
+                ..accumulated + prover_connection.compute_capacity.compute_units)
+                .collect();
+
+            partitions.push(prover_allocation);
+
+            accumulated += prover_connection.compute_capacity.compute_units;
+
+            if accumulated >= require_compute_capacity.compute_units {
+                break;
+            }
+        }
+
+        (selected_provers, partitions)
     }
 }

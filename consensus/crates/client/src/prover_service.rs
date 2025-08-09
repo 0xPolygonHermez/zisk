@@ -15,20 +15,17 @@ pub struct ProverConfig {
     pub server_address: String,
     pub reconnect_interval_seconds: u64,
     pub heartbeat_timeout_seconds: u64,
-    pub capabilities: ProverCapabilities,
+    pub compute_capacity: ComputeCapacity,
 }
 
-impl Default for ProverConfig {
-    fn default() -> Self {
+impl ProverConfig {
+    fn new(compute_capacity: ComputeCapacity) -> Self {
         Self {
             prover_id: uuid::Uuid::new_v4().to_string(),
             server_address: "http://127.0.0.1:8080".to_string(),
             reconnect_interval_seconds: 5,
             heartbeat_timeout_seconds: 10,
-            capabilities: ProverCapabilities {
-                cpu_cores_num: num_cpus::get() as u32,
-                gpu_num: 0, // TODO: Detect GPU count
-            },
+            compute_capacity,
         }
     }
 }
@@ -127,7 +124,7 @@ impl ProverService {
             ProverMessage {
                 payload: Some(prover_message::Payload::Reconnect(ProverReconnectRequest {
                     prover_id: self.config.prover_id.clone(),
-                    capabilities: Some(self.config.capabilities),
+                    compute_capacity: Some(self.config.compute_capacity),
                     last_known_job_id: job.job_id.clone(),
                     last_known_phase: job.phase.clone(),
                     last_known_rank_id: job.rank_id,
@@ -137,7 +134,7 @@ impl ProverService {
             ProverMessage {
                 payload: Some(prover_message::Payload::Register(ProverRegisterRequest {
                     prover_id: self.config.prover_id.clone(),
-                    capabilities: Some(self.config.capabilities),
+                    compute_capacity: Some(self.config.compute_capacity),
                 })),
             }
         };

@@ -40,18 +40,12 @@ async fn main() -> Result<()> {
         server_address: cli.url,
         reconnect_interval_seconds: 5,
         heartbeat_timeout_seconds: 30,
-        capabilities: consensus_api::ProverCapabilities {
-            cpu_cores_num: 0, //cli.cpu_cores,
-            gpu_num: 0,       //cli.gpu_count,
-        },
+        compute_capacity: consensus_api::ComputeCapacity { compute_units: 0 },
     };
 
     info!("Prover ID: {}", config.prover_id);
     info!("Server: {}", config.server_address);
-    info!(
-        "Capabilities: {} CPU cores, {} GPUs",
-        config.capabilities.cpu_cores_num, config.capabilities.gpu_num
-    );
+    info!("Compute Capacity: {} units", config.compute_capacity.compute_units);
 
     let mut client = ProverService::new(config);
 

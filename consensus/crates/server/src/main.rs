@@ -32,9 +32,9 @@ enum ConsensusServerCommands {
         #[arg(long, help = "Path to the input file for block proving")]
         input: String,
 
-        /// Number of provers needed to generate the block proof
-        #[arg(long, help = "Number of provers needed to generate the block proof")]
-        provers: usize,
+        /// Compute capacity needed to generate the block proof
+        #[arg(long, help = "Compute capacity needed to generate the block proof")]
+        compute_capacity: usize,
     },
 }
 
@@ -51,9 +51,9 @@ async fn main() -> Result<()> {
             // Server mode
             handler_server::handle(port).await
         }
-        ConsensusServerCommands::ProveBlock { url, input, provers } => {
+        ConsensusServerCommands::ProveBlock { url, input, compute_capacity } => {
             // Initialize basic tracing for the prove-block command
-            handler_prove_block::handle(url, input, provers as u32).await
+            handler_prove_block::handle(url, input, compute_capacity as u32).await
         }
     }
 }

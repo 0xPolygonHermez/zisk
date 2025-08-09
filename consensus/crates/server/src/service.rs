@@ -3,9 +3,7 @@ use async_stream::stream;
 use consensus_api::{consensus_api_server::*, *};
 use consensus_comm::CommManager;
 use consensus_config::Config;
-use consensus_core::ProverId;
-use consensus_core::ProverManager;
-use consensus_core::ProverManagerConfig;
+use consensus_core::{ComputeCapacity, ProverId, ProverManager, ProverManagerConfig};
 
 use chrono::{DateTime, Utc};
 use futures_util::{Stream, StreamExt};
@@ -34,7 +32,6 @@ pub struct ServiceInfo {
     pub build_time: String,
     pub commit_hash: String,
     pub environment: String,
-    pub capabilities: Vec<String>,
     pub api_version: String,
 }
 
@@ -89,10 +86,10 @@ impl ConsensusService {
         req: ProverRegisterRequest,
         msg_sender: mpsc::Sender<CoordinatorMessage>,
     ) -> Result<ProverId, Status> {
-        let capabilities = req.capabilities.unwrap_or_default();
+        let compute_capacity = req.compute_capacity.unwrap_or_default();
 
         Ok(prover_manager
-            .register_prover(ProverId::from(req.prover_id), capabilities, msg_sender)
+            .register_prover(ProverId::from(req.prover_id), compute_capacity, msg_sender)
             .await
             .map_err(|e| Status::internal(format!("Registration failed: {e}")))?)
     }
@@ -103,10 +100,10 @@ impl ConsensusService {
         req: ProverReconnectRequest,
         msg_sender: mpsc::Sender<CoordinatorMessage>,
     ) -> Result<ProverId, Status> {
-        let capabilities = req.capabilities.unwrap_or_default();
+        let compute_capacity = req.compute_capacity.unwrap_or_default();
 
         Ok(prover_manager
-            .register_prover(ProverId::from(req.prover_id), capabilities, msg_sender)
+            .register_prover(ProverId::from(req.prover_id), compute_capacity, msg_sender)
             .await
             .map_err(|e| Status::internal(format!("Reconnection failed: {e}")))?)
     }
@@ -253,12 +250,13 @@ impl ConsensusApi for ConsensusService {
 
         // Get actual system status from ProverManager
         let total_provers = self.prover_manager.num_provers().await;
-        let available_provers = self.prover_manager.get_available_provers().await;
-        let idle_provers = available_provers.len();
+        let total_capacity = self.prover_manager.compute_capacity().await;
+        let idle_provers = self.prover_manager.num_provers().await;
         let busy_provers = total_provers.saturating_sub(idle_provers);
 
         let system_status = consensus_api::SystemStatus {
             total_provers: total_provers as u32,
+            compute_capacity: total_capacity.compute_units,
             idle_provers: idle_provers as u32,
             busy_provers: busy_provers as u32,
             active_jobs: 0,                // TODO: Implement actual job counting
@@ -290,7 +288,11 @@ impl ConsensusApi for ConsensusService {
         // Assign job through ProverManager - messages are sent directly
         let response = match self
             .prover_manager
-            .start_proof(req.block_id, req.num_provers, req.input_path)
+            .start_proof(
+                req.block_id,
+                ComputeCapacity { compute_units: req.compute_units },
+                req.input_path,
+            )
             .await
         {
             Ok(job_id) => {
