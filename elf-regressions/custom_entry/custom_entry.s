@@ -2,12 +2,15 @@
 # Program headers occupy 0x80000000-0x80000FFF (4096 bytes)
 # "Actual" code starts at 0x80001000
 
-.section .header
+.section .header, "a"
     # Program header/metadata starting at 0x80000000
     .word 0xDEADBEEF   # Magic number at 0x80000000
     .word 0x00000001   # Version
     .word 0x80001000   # Entry point address (where _start is)
     .word 0x00000100   # Program size
+    
+    # Fill rest of the page with zeros
+    .fill 0x1000 - 16, 1, 0
 
 .section .text.init
 .global _start

@@ -60,7 +60,7 @@ OPTIONS:
     -r, --rom-setup     Run rom-setup on the ELF (default)
     -e, --emulator      Run ziskemu on the ELF
     -v, --verbose       Enable verbose output
-    -s, --steps NUM     Maximum steps for emulator (default: 1000000)
+    -s, --steps NUM     Maximum steps for emulator (no default, uses ziskemu's default)
     -o, --output DIR    Output directory for rom-setup (default: /tmp)
     -l, --list          List all available tests
     -h, --help          Show this help message
@@ -83,7 +83,7 @@ list_tests() {
     echo
     for elf in "${ELF_OUTPUT_DIR}"/*.elf; do
         if [[ -f "$elf" ]]; then
-            basename "$elf" | sed 's/_[^_]*\.elf$//' | sed 's/^/  - /'
+            basename "$elf" .elf | sed 's/^/  - /'
         fi
     done | sort -u
 }
@@ -91,25 +91,18 @@ list_tests() {
 # Find ELF file for test
 find_elf() {
     local test_name="$1"
-    local elf_pattern="${ELF_OUTPUT_DIR}/${test_name}_*.elf"
-    local elf_files=( $elf_pattern )
     
-    if [[ ${#elf_files[@]} -eq 0 ]] || [[ ! -f "${elf_files[0]}" ]]; then
-        log_error "No ELF file found for test: ${test_name}"
-        log_warn "Looking for: ${elf_pattern}"
-        log_warn "Run ./build.sh first to compile the tests"
-        return 1
+    # Check for exact match with .elf extension
+    local exact_elf="${ELF_OUTPUT_DIR}/${test_name}.elf"
+    if [[ -f "$exact_elf" ]]; then
+        echo "$exact_elf"
+        return 0
     fi
     
-    if [[ ${#elf_files[@]} -gt 1 ]]; then
-        log_warn "Multiple ELF files found for ${test_name}:"
-        for elf in "${elf_files[@]}"; do
-            echo "  - $(basename "$elf")"
-        done
-        log_info "Using: $(basename "${elf_files[0]}")"
-    fi
-    
-    echo "${elf_files[0]}"
+    log_error "No ELF file found for test: ${test_name}"
+    log_warn "Looking for: ${exact_elf}"
+    log_warn "Run ./build.sh first to compile the tests"
+    return 1
 }
 
 # Run rom-setup
@@ -152,9 +145,15 @@ run_emulator() {
     local verbose="$3"
     
     log_info "Running ziskemu on: $(basename "$elf")"
-    log_info "Max steps: ${steps}"
     
-    local cmd="${ZISKEMU} -e ${elf} -n ${steps}"
+    local cmd="${ZISKEMU} -e ${elf}"
+    
+    # Only add steps if provided
+    if [[ -n "$steps" ]]; then
+        log_info "Max steps: ${steps}"
+        cmd="${cmd} -n ${steps}"
+    fi
+    
     if [[ "$verbose" == "true" ]]; then
         cmd="${cmd} -v"
     fi
@@ -172,7 +171,7 @@ main() {
     # Default values
     local mode="rom-setup"
     local verbose="false"
-    local steps="1000000"
+    local steps=""
     local output_dir="/tmp"
     local test_name=""
     
@@ -237,7 +236,7 @@ main() {
         
         for elf in "${ELF_OUTPUT_DIR}"/*.elf; do
             if [[ -f "$elf" ]]; then
-                local test_name=$(basename "$elf" | sed 's/_[^_]*\.elf$//')
+                local test_name=$(basename "$elf" .elf)
                 
                 echo -e "${BLUE}════════════════════════════════════════${NC}"
                 echo -e "${BLUE}Testing: ${test_name}${NC}"

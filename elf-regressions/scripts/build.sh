@@ -180,6 +180,39 @@ compile_assembly_file() {
     return 1
 }
 
+# Copy prebuilt ELF files to output directory
+copy_prebuilt_elfs() {
+    local prebuilt_dir="${PROJECT_DIR}/prebuilt-elfs"
+    local copied_count=0
+    
+    if [[ -d "$prebuilt_dir" ]]; then
+        log_info "Copying prebuilt ELF files..."
+        
+        # Find all .elf files in prebuilt directory using a for loop
+        for elf_file in "$prebuilt_dir"/*.elf; do
+            # Check if the glob actually matched files
+            if [[ ! -f "$elf_file" ]]; then
+                continue
+            fi
+            
+            local elf_basename
+            elf_basename="$(basename "$elf_file")"
+            local dest_file="${OUTPUT_DIR}/${elf_basename}"
+            
+            if cp "$elf_file" "$dest_file" 2>/dev/null; then
+                log_success "Copied: $elf_basename"
+                copied_count=$((copied_count + 1))
+            else
+                log_failure "Failed to copy: $elf_basename"
+            fi
+        done
+        
+        if [[ $copied_count -gt 0 ]]; then
+            log_info "Copied $copied_count prebuilt ELF files"
+        fi
+    fi
+}
+
 # Process a directory containing assembly files
 process_directory() {
     local dir="$1"
@@ -276,6 +309,9 @@ main() {
     
     build_docker_image
     prepare_output_directory
+    
+    # Copy prebuilt ELF files first
+    copy_prebuilt_elfs
     
     if process_all_directories; then
         show_results

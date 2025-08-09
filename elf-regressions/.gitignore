@@ -1,6 +1,9 @@
 # Compiled ELF files
 elf-output/
+
+# Ignore all .elf files except those in prebuilt-elfs
 *.elf
+!prebuilt-elfs/*.elf
 
 # Object files
 *.o
