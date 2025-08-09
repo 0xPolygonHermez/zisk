@@ -18,6 +18,10 @@ crates/
 
 ## Command Line Client
 
+cargo run --bin consensus-server server --port 50051
+cargo run --bin consensus-client -- --url http://127.0.0.1:50051
+cargo run --bin consensus-server prove-block --url htp://127.0.0.1:50051 --input xxx.txt --provers 1
+
 The project includes a powerful CLI client for interacting with the server:
 
 ```bash

@@ -55,7 +55,7 @@ message SystemStatusRequest {}
 
 message StartProofRequest {
   string block_id = 1;
-  uint32 num_provers = 2;
+  uint32 compute_units = 2;
   string input_path = 3;
 }
 
@@ -122,7 +122,7 @@ message ProverStatus {
   string prover_id = 1;
   string state = 2;
   string current_job_id = 3;
-  ProverCapabilities capabilities = 4;
+  ComputeCapacity allocated_capacity = 4;
   uint64 last_heartbeat = 5;
   uint32 jobs_completed = 6;
 }
@@ -136,13 +136,14 @@ message SystemStatusResponse {
 
 message SystemStatus {
   uint32 total_provers = 1;
-  uint32 idle_provers = 2;
-  uint32 busy_provers = 3;
-  uint32 active_jobs = 4;
-  uint32 pending_jobs = 5;
-  uint32 completed_jobs_last_minute = 6;
-  double job_completion_rate = 7;
-  double prover_utilization = 8;
+  uint32 compute_capacity = 2;
+  uint32 idle_provers = 3;
+  uint32 busy_provers = 4;
+  uint32 active_jobs = 5;
+  uint32 pending_jobs = 6;
+  uint32 completed_jobs_last_minute = 7;
+  double job_completion_rate = 8;
+  double prover_utilization = 9;
 }
 
 message StartProofResponse {
@@ -222,12 +223,11 @@ message ProverError {
 
 message ProverRegisterRequest {
   string prover_id = 1;
-  ProverCapabilities capabilities = 2;
+  ComputeCapacity compute_capacity = 2; // Maximum compute capacity of a node/cluster
 }
 
-message ProverCapabilities {
-  uint32 cpu_cores_num = 1;
-  uint32 gpu_num = 2;
+message ComputeCapacity {
+  uint32 compute_units = 1;
 }
 
 message ProvePhase1Result {
@@ -255,7 +255,7 @@ message JobCancelled {
 
 message ProverReconnectRequest {
   string prover_id = 1;
-  ProverCapabilities capabilities = 2;
+  ComputeCapacity compute_capacity = 2;
   string last_known_job_id = 3;
   string last_known_phase = 4; // "phase1", "phase2", "completed", "none"
   uint32 last_known_rank_id = 5;

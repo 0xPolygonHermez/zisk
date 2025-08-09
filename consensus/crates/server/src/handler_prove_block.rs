@@ -4,7 +4,7 @@ use tonic::transport::Channel;
 use tracing::info;
 
 /// Handle the prove-block subcommand - makes RPC request to coordinator
-pub async fn handle(server_url: String, input_path: String, num_provers: u32) -> Result<()> {
+pub async fn handle(server_url: String, input_path: String, compute_capacity: u32) -> Result<()> {
     // Connect to the gRPC server
     info!("Connecting to Consensus Network gRPC service on {}", server_url);
 
@@ -13,12 +13,15 @@ pub async fn handle(server_url: String, input_path: String, num_provers: u32) ->
 
     let start_proof_request = StartProofRequest {
         block_id: "0x1234567890abcdef".into(), // Placeholder block ID
-        num_provers,
+        compute_units: compute_capacity,
         input_path,
     };
 
     // Make the RPC call
-    info!("Sending StartProof request for {} provers", num_provers);
+    info!(
+        "Sending StartProof request for block id: {} with {} compute units",
+        start_proof_request.block_id, start_proof_request.compute_units
+    );
     let response = client.start_proof(start_proof_request).await?;
 
     match response.into_inner().result {
