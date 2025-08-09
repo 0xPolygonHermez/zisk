@@ -114,6 +114,10 @@ pub struct ZiskRom {
     /// List of instruction program counter (address) in incremental order:
     /// 0x1000, 0x1004, ..., 0x80000000, 0x80000004, ...
     pub sorted_pc_list: Vec<u64>,
+
+    /// Minimum rom instruction PC (first program instruction address)
+    /// This is typically 0x80000000 but can be different (e.g., 0x80001000 with Go's internal linker)
+    pub min_program_pc: u64,
 }
 
 /// ZisK ROM implementation

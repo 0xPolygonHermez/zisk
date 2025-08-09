@@ -120,6 +120,7 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
     // Split the ROM instructions based on their address in order to get a better performance when
     // searching for the corresponding intruction to the pc program address
     let mut max_rom_entry = 0;
+    let mut min_rom_instructions = u64::MAX;
     let mut max_rom_instructions = 0;
     let mut min_rom_na_unstructions = u64::MAX;
     let mut max_rom_na_unstructions = 0;
@@ -153,6 +154,7 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
                 min_rom_na_unstructions = std::cmp::min(min_rom_na_unstructions, addr);
                 max_rom_na_unstructions = std::cmp::max(max_rom_na_unstructions, addr);
             } else {
+                min_rom_instructions = min_rom_instructions.min(addr);
                 max_rom_instructions = max_rom_instructions.max(addr);
             }
         } else {
@@ -161,6 +163,11 @@ pub fn elf2rom(elf_file: &Path) -> Result<ZiskRom, Box<dyn Error>> {
     }
     rom.max_bios_pc = max_rom_entry;
     rom.max_program_pc = max_rom_instructions;
+    rom.min_program_pc = if min_rom_instructions == u64::MAX { 
+        ROM_ADDR 
+    } else { 
+        min_rom_instructions 
+    };
 
     let num_rom_entry = (max_rom_entry - ROM_ENTRY) / 4 + 1;
     let num_rom_instructions = (max_rom_instructions - ROM_ADDR) / 4 + 1;
