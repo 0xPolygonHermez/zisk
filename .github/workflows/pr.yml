@@ -52,7 +52,7 @@ jobs:
         shell: bash {0}    
     container:
       image: ziskvm/zisk-test-env:latest
-      options: --memory=128g --cpus=128 --shm-size=64g --user root
+      options: --memory=128g --cpus=128 --shm-size=64g --user ziskuser
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}
