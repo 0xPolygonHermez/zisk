@@ -2,6 +2,7 @@ mod prover_service;
 
 use anyhow::Result;
 use clap::Parser;
+use consensus_core::ProverId;
 use prover_service::{ProverConfig, ProverService};
 use tracing::{error, info};
 
@@ -35,8 +36,10 @@ async fn main() -> Result<()> {
 
     info!("Starting prover client");
 
+    let prover_id = cli.prover_id.map(ProverId::from).unwrap_or_else(ProverId::new);
+
     let config = ProverConfig {
-        prover_id: cli.prover_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        prover_id,
         server_address: cli.url,
         reconnect_interval_seconds: 5,
         heartbeat_timeout_seconds: 30,

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Job ID wrapper for type safety
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct JobId(pub String);
+pub struct JobId(String);
 
 impl Default for JobId {
     fn default() -> Self {

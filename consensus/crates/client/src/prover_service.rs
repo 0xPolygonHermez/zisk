@@ -1,17 +1,18 @@
 use anyhow::{anyhow, Result};
 use consensus_api::*;
-use std::time::Duration;
+use consensus_core::{BlockContext, BlockId, JobId, JobPhase, ProverId, ProverState};
+use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Request;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 /// Configuration for the prover client
 #[derive(Debug, Clone)]
 pub struct ProverConfig {
-    pub prover_id: String,
+    pub prover_id: ProverId,
     pub server_address: String,
     pub reconnect_interval_seconds: u64,
     pub heartbeat_timeout_seconds: u64,
@@ -21,7 +22,7 @@ pub struct ProverConfig {
 impl ProverConfig {
     fn new(compute_capacity: ComputeCapacity) -> Self {
         Self {
-            prover_id: uuid::Uuid::new_v4().to_string(),
+            prover_id: ProverId::new(),
             server_address: "http://127.0.0.1:8080".to_string(),
             reconnect_interval_seconds: 5,
             heartbeat_timeout_seconds: 10,
@@ -33,29 +34,20 @@ impl ProverConfig {
 /// Result from computation tasks
 #[derive(Debug)]
 pub enum ComputationResult {
-    Phase1 { job_id: String, rank_id: u32, result: Result<Vec<u64>> },
-    Phase2 { job_id: String, rank_id: u32, result: Result<Vec<u64>> },
-}
-
-/// Prover state tracking
-#[derive(Debug, Clone, PartialEq)]
-pub enum ProverState {
-    Disconnected,
-    Connecting,
-    Idle,
-    ComputingPhase1,
-    ComputingPhase2,
-    Error,
+    Phase1 { job_id: JobId, success: bool, result: Result<Vec<u64>> },
+    Phase2 { job_id: JobId, success: bool, result: Result<Vec<u64>> },
 }
 
 /// Current job context
 #[derive(Debug, Clone)]
 pub struct JobContext {
-    pub job_id: String,
-    pub block_id: String,
+    pub job_id: JobId,
+    pub block: BlockContext,
     pub rank_id: u32,
     pub total_provers: u32,
-    pub phase: String,
+    pub allocation: Vec<u32>, // Prover allocation for this job, vector of all computed units assigned
+    pub total_compute_units: u32, // Total compute units for the whole job
+    pub phase: JobPhase,
 }
 
 /// Main prover client that connects to the coordinator
@@ -123,17 +115,17 @@ impl ProverService {
         let register_message = if let Some(job) = &self.current_job {
             ProverMessage {
                 payload: Some(prover_message::Payload::Reconnect(ProverReconnectRequest {
-                    prover_id: self.config.prover_id.clone(),
+                    prover_id: self.config.prover_id.as_string(),
                     compute_capacity: Some(self.config.compute_capacity),
-                    last_known_job_id: job.job_id.clone(),
-                    last_known_phase: job.phase.clone(),
+                    last_known_job_id: job.job_id.as_string(),
+                    last_known_phase: job.phase.as_string(),
                     last_known_rank_id: job.rank_id,
                 })),
             }
         } else {
             ProverMessage {
                 payload: Some(prover_message::Payload::Register(ProverRegisterRequest {
-                    prover_id: self.config.prover_id.clone(),
+                    prover_id: self.config.prover_id.as_string(),
                     compute_capacity: Some(self.config.compute_capacity),
                 })),
             }
@@ -177,7 +169,7 @@ impl ProverService {
 
                 // Send periodic heartbeat
                 _ = heartbeat_interval.tick() => {
-                    if matches!(self.state, ProverState::Idle | ProverState::ComputingPhase1 | ProverState::ComputingPhase2) {
+                    if matches!(self.state, ProverState::Idle | ProverState::Computing(_)) {
                         if let Err(e) = self.send_heartbeat_ack(&message_sender).await {
                             error!("Error sending heartbeat: {}", e);
                             break;
@@ -204,17 +196,17 @@ impl ProverService {
 
     async fn send_phase1_result(
         &mut self,
-        job_id: String,
-        rank_id: u32,
+        job_id: JobId,
+        success: bool,
         result: Result<Vec<u64>>,
         message_sender: &mpsc::UnboundedSender<ProverMessage>,
     ) -> Result<()> {
         let message = match result {
             Ok(data) => ProverMessage {
                 payload: Some(prover_message::Payload::Phase1Result(ProvePhase1Result {
-                    job_id,
-                    prover_id: self.config.prover_id.clone(),
-                    rank_id,
+                    job_id: job_id.as_string(),
+                    prover_id: self.config.prover_id.as_string(),
+                    rank_id: 0, // TODO!!!
                     result_data: data,
                     success: true,
                     error_message: String::new(),
@@ -222,9 +214,9 @@ impl ProverService {
             },
             Err(e) => ProverMessage {
                 payload: Some(prover_message::Payload::Phase1Result(ProvePhase1Result {
-                    job_id,
-                    prover_id: self.config.prover_id.clone(),
-                    rank_id,
+                    job_id: job_id.as_string(),
+                    prover_id: self.config.prover_id.as_string(),
+                    rank_id: 0, // TODO!!!
                     result_data: vec![],
                     success: false,
                     error_message: e.to_string(),
@@ -238,17 +230,17 @@ impl ProverService {
 
     async fn send_final_proof(
         &mut self,
-        job_id: String,
-        rank_id: u32,
+        job_id: JobId,
+        success: bool,
         result: Result<Vec<u64>>,
         message_sender: &mpsc::UnboundedSender<ProverMessage>,
     ) -> Result<()> {
         let message = match result {
             Ok(data) => ProverMessage {
                 payload: Some(prover_message::Payload::FinalProof(FinalProof {
-                    job_id: job_id.clone(),
-                    prover_id: self.config.prover_id.clone(),
-                    rank_id,
+                    job_id: job_id.as_string(),
+                    prover_id: self.config.prover_id.as_string(),
+                    rank_id: 0, // TODO!!!
                     proof_data: data,
                     success: true,
                     error_message: String::new(),
@@ -256,9 +248,9 @@ impl ProverService {
             },
             Err(e) => ProverMessage {
                 payload: Some(prover_message::Payload::FinalProof(FinalProof {
-                    job_id: job_id.clone(),
-                    prover_id: self.config.prover_id.clone(),
-                    rank_id,
+                    job_id: job_id.as_string(),
+                    prover_id: self.config.prover_id.as_string(),
+                    rank_id: 0, // TODO!!!
                     proof_data: vec![],
                     success: false,
                     error_message: e.to_string(),
@@ -277,7 +269,7 @@ impl ProverService {
         let message = ProverMessage {
             payload: Some(prover_message::Payload::HeartbeatAck(HeartbeatAck {
                 timestamp: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
-                prover_id: self.config.prover_id.clone(),
+                prover_id: self.config.prover_id.as_string(),
             })),
         };
 
@@ -295,7 +287,7 @@ impl ProverService {
     }
 
     pub fn get_prover_id(&self) -> &str {
-        &self.config.prover_id
+        self.config.prover_id.as_str()
     }
 
     async fn handle_coordinator_message(
@@ -324,17 +316,22 @@ impl ProverService {
                     }
 
                     self.current_job = Some(JobContext {
-                        job_id: phase1.job_id.clone(),
-                        block_id: phase1.block_id.clone(),
+                        job_id: JobId::from(phase1.job_id.clone()),
+                        block: BlockContext {
+                            block_id: BlockId::from(phase1.block_id.clone()),
+                            input_path: PathBuf::from(phase1.input_path.clone()),
+                        },
                         rank_id: phase1.rank_id,
                         total_provers: phase1.total_provers,
-                        phase: "phase1".to_string(),
+                        allocation: vec![],     // TODO!!!
+                        total_compute_units: 0, // TODO!!!
+                        phase: JobPhase::Phase1,
                     });
 
-                    self.state = ProverState::ComputingPhase1;
+                    self.state = ProverState::Computing(JobPhase::Phase1);
 
                     // Start computation in background task
-                    let job_id = phase1.job_id;
+                    let job_id = self.current_job.as_ref().unwrap().job_id.clone();
                     let block_id = phase1.block_id;
                     let rank_id = phase1.rank_id;
                     let total_provers = phase1.total_provers;
@@ -344,49 +341,52 @@ impl ProverService {
                         let result =
                             compute_phase1_task(job_id.clone(), block_id, rank_id, total_provers)
                                 .await;
-                        let _ = tx.send(ComputationResult::Phase1 { job_id, rank_id, result });
+                        let _ =
+                            tx.send(ComputationResult::Phase1 { job_id, success: true, result });
                     }));
                 }
                 coordinator_message::Payload::ProvePhase2(phase2) => {
+                    assert!(
+                        self.current_job.is_some(),
+                        "Phase 2 received without current job context"
+                    );
+
                     info!("Starting Phase 2 for job {}", phase2.job_id);
+                    let job = self.current_job.as_mut().unwrap();
 
-                    if let Some(ref mut job) = self.current_job {
-                        if job.job_id == phase2.job_id {
-                            // Cancel any existing computation
-                            if let Some(handle) = self.current_computation.take() {
-                                handle.abort();
-                            }
+                    let job_id = JobId::from(phase2.job_id.clone());
+                    assert!(
+                        job.job_id == job_id,
+                        "Phase 2 job ID mismatch: expected {}, got {}",
+                        job.job_id,
+                        phase2.job_id
+                    );
 
-                            job.phase = "phase2".to_string();
-                            self.state = ProverState::ComputingPhase2;
-
-                            let job_id = phase2.job_id;
-                            let rank_id = job.rank_id;
-                            let global_challenge = phase2.global_challenge;
-                            let tx = computation_tx.clone();
-
-                            self.current_computation = Some(tokio::spawn(async move {
-                                let result =
-                                    compute_phase2_task(job_id.clone(), rank_id, global_challenge)
-                                        .await;
-                                let _ =
-                                    tx.send(ComputationResult::Phase2 { job_id, rank_id, result });
-                            }));
-                        } else {
-                            warn!(
-                                "Received Phase 2 for different job {} (current: {:?})",
-                                phase2.job_id, job.job_id
-                            );
-                        }
-                    } else {
-                        warn!("Received Phase 2 but no current job context");
+                    // Cancel any existing computation
+                    if let Some(handle) = self.current_computation.take() {
+                        handle.abort();
                     }
+
+                    job.phase = JobPhase::Phase2;
+                    self.state = ProverState::Computing(JobPhase::Phase2);
+
+                    let rank_id = job.rank_id;
+                    let global_challenge = phase2.global_challenge;
+                    let tx = computation_tx.clone();
+
+                    self.current_computation = Some(tokio::spawn(async move {
+                        let result =
+                            compute_phase2_task(job_id.clone(), rank_id, global_challenge).await;
+                        let _ =
+                            tx.send(ComputationResult::Phase2 { job_id, success: true, result });
+                    }));
                 }
                 coordinator_message::Payload::JobCancelled(cancelled) => {
                     info!("Job {} cancelled: {}", cancelled.job_id, cancelled.reason);
 
                     if let Some(ref job) = self.current_job {
-                        if job.job_id == cancelled.job_id {
+                        let cancelled_job_id = JobId::from(cancelled.job_id.clone());
+                        if job.job_id == cancelled_job_id {
                             // Cancel computation
                             if let Some(handle) = self.current_computation.take() {
                                 handle.abort();
@@ -420,13 +420,13 @@ impl ProverService {
         message_sender: &mpsc::UnboundedSender<ProverMessage>,
     ) -> Result<()> {
         match result {
-            ComputationResult::Phase1 { job_id, rank_id, result } => {
-                self.send_phase1_result(job_id, rank_id, result, message_sender).await?;
+            ComputationResult::Phase1 { job_id, success, result } => {
+                self.send_phase1_result(job_id, success, result, message_sender).await?;
                 self.current_computation = None;
                 self.state = ProverState::Idle;
             }
-            ComputationResult::Phase2 { job_id, rank_id, result } => {
-                self.send_final_proof(job_id, rank_id, result, message_sender).await?;
+            ComputationResult::Phase2 { job_id, success, result } => {
+                self.send_final_proof(job_id, success, result, message_sender).await?;
                 self.current_computation = None;
                 self.current_job = None;
                 self.state = ProverState::Idle;
@@ -438,7 +438,7 @@ impl ProverService {
 
 // Computation task functions (run in separate tokio tasks)
 async fn compute_phase1_task(
-    job_id: String,
+    job_id: JobId,
     block_id: String,
     rank_id: u32,
     total_provers: u32,
@@ -457,7 +457,7 @@ async fn compute_phase1_task(
 }
 
 async fn compute_phase2_task(
-    job_id: String,
+    job_id: JobId,
     rank_id: u32,
     global_challenge: Vec<u64>,
 ) -> Result<Vec<u64>> {

@@ -1,10 +1,8 @@
-use std::{ffi::os_str::Display, fmt};
-
 use serde::{Deserialize, Serialize};
 
 /// Prover ID wrapper for type safety
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct ProverId(pub String);
+pub struct ProverId(String);
 
 impl Default for ProverId {
     fn default() -> Self {
@@ -56,8 +54,8 @@ impl From<consensus_api::ComputeCapacity> for ComputeCapacity {
     }
 }
 
-impl fmt::Display for ComputeCapacity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Display for ComputeCapacity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} CU", self.compute_units)
     }
 }

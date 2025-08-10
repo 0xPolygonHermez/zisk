@@ -88,10 +88,10 @@ impl ConsensusService {
     ) -> Result<ProverId, Status> {
         let compute_capacity = req.compute_capacity.unwrap_or_default();
 
-        Ok(prover_manager
+        prover_manager
             .register_prover(ProverId::from(req.prover_id), compute_capacity, msg_sender)
             .await
-            .map_err(|e| Status::internal(format!("Registration failed: {e}")))?)
+            .map_err(|e| Status::internal(format!("Registration failed: {e}")))
     }
 
     /// Handle reconnection directly in stream context (static version to avoid lifetime issues)
@@ -102,10 +102,10 @@ impl ConsensusService {
     ) -> Result<ProverId, Status> {
         let compute_capacity = req.compute_capacity.unwrap_or_default();
 
-        Ok(prover_manager
+        prover_manager
             .register_prover(ProverId::from(req.prover_id), compute_capacity, msg_sender)
             .await
-            .map_err(|e| Status::internal(format!("Reconnection failed: {e}")))?)
+            .map_err(|e| Status::internal(format!("Reconnection failed: {e}")))
     }
 }
 
@@ -124,7 +124,7 @@ impl ConsensusApi for ConsensusService {
         let uptime_seconds = (Utc::now() - self.start_time_utc).num_seconds() as u64;
 
         let metrics =
-            Metrics { active_connections: self.active_connections.load(Ordering::SeqCst) as u32 };
+            Metrics { active_connections: self.active_connections.load(Ordering::SeqCst) };
 
         let response = StatusInfoResponse {
             service_name: "Consensus Service".to_string(),
