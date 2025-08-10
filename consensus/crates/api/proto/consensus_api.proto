@@ -200,8 +200,9 @@ message ProverRegisterResponse {
 message ProvePhase1 {
   string job_id = 1;
   string block_id = 2;
-  uint32 rank_id = 3;
-  uint32 total_provers = 4;
+  string input_path = 3;
+  uint32 rank_id = 4;
+  uint32 total_provers = 5;
 }
 
 message ProvePhase2 {

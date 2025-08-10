@@ -10,7 +10,7 @@ pub struct Job {
     pub job_id: JobId,
     pub state: JobState,
     pub block: BlockContext,
-    pub computed_units: u32,
+    pub compute_units: u32,
     pub provers: Vec<ProverId>,
     pub partitions: Vec<Vec<u32>>,
     pub results: HashMap<JobPhase, HashMap<ProverId, JobResult>>,
@@ -45,6 +45,16 @@ pub enum JobPhase {
     PhaseAggregation,
 }
 
+impl JobPhase {
+    pub fn as_string(&self) -> String {
+        match self {
+            JobPhase::Phase1 => "Phase1".to_string(),
+            JobPhase::Phase2 => "Phase2".to_string(),
+            JobPhase::PhaseAggregation => "PhaseAggregation".to_string(),
+        }
+    }
+}
+
 /// Information about a connected prover - business logic only, no transport layer
 #[derive(Debug)]
 pub struct ProverConnection {
@@ -59,8 +69,10 @@ pub struct ProverConnection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProverState {
     Disconnected,
+    Connecting,
     Idle,
     Computing(JobPhase),
+    Error,
 }
 
 /// Configuration for the coordinator functionality
@@ -224,6 +236,12 @@ impl ProverManager {
     ) -> Result<JobId> {
         let available_compute_capacity = self.get_available_compute_capacity().await;
 
+        if require_compute_capacity.compute_units == 0 {
+            return Err(Error::InvalidRequest(
+                "Compute capacity must be greater than 0".to_string(),
+            ));
+        }
+
         if require_compute_capacity < available_compute_capacity {
             return Err(Error::InvalidRequest(format!(
                 "Not enough compute capacity available: need {}, have {}",
@@ -250,7 +268,7 @@ impl ProverManager {
                 block_id: block_id.clone(),
                 input_path: PathBuf::from(input_path.clone()),
             },
-            computed_units: require_compute_capacity.compute_units,
+            compute_units: require_compute_capacity.compute_units,
             provers: selected_provers.clone(),
             partitions: partitions.clone(),
             results: HashMap::new(),
@@ -270,6 +288,7 @@ impl ProverManager {
                     consensus_api::ProvePhase1 {
                         job_id: job_id.clone().into(),
                         block_id: block_id.clone().into(),
+                        input_path: input_path.clone(),
                         rank_id: rank as u32,
                         total_provers: provers_len,
                     },
@@ -447,7 +466,7 @@ impl ProverManager {
 
         info!("Stored Phase1 result for prover {prover_id} in job {job_id}.");
 
-        if phase1_results.len() < job.computed_units as usize {
+        if phase1_results.len() < self.num_provers().await {
             return Ok(());
         }
 

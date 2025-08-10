@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Block ID wrapper for type safety
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct BlockId(pub String);
+pub struct BlockId(String);
 
 impl Default for BlockId {
     fn default() -> Self {
