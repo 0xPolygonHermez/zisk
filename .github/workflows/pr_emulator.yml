@@ -26,48 +26,33 @@ jobs:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       C_INCLUDE_PATH: /usr/lib/gcc/x86_64-linux-gnu/13/include
       CPLUS_INCLUDE_PATH: /usr/lib/gcc/x86_64-linux-gnu/13/include
+      ZISK_GHA: "1"
+      ZISK_REPO_DIR: ${{ github.workspace }}
+      TERM: xterm        
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install rust
-        uses: actions-rs/toolchain@v1
-        with:
-          components: rustfmt, clippy
-          toolchain: stable
-          default: true
-          override: true
-
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y openmpi-bin openmpi-common libopenmpi-dev
-          
-      - name: Run cargo check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
+          # ZisK dependencies
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./install_deps.sh
+          # Riscof dependencies
+          apt-get install -y gcc-riscv64-unknown-elf libsodium23 libomp5
 
-      - name: Build project
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release -p ziskemu # --all-features
-        env:
-          RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
-          RUST_BACKTRACE: 1
+      - name: Build ZisK
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./build_zisk.sh          
 
       - name: Run tests
         run: |
-          cp target/release/ziskemu /program \
-          apt-get update && \
-          apt-get install -y \
-            libopenmpi-dev openmpi-bin openmpi-common \
-            gcc-riscv64-unknown-elf \
-            libsodium23 libomp5 && \
-          export LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/local/lib && \
-          ldconfig && \
+          cp "$GITHUB_WORKSPACE/target/x86_64-unknown-linux-gnu/release/ziskemu" /program
+          export LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/local/lib
+          ldconfig
+          cd /workspace
           riscof run --config=config.ini \
             --suite=riscv-arch-test/riscv-test-suite/ \
             --env=riscv-arch-test/riscv-test-suite/env \
-            --work-dir=/workspace/output/riscof_work/"
+            --work-dir=/workspace/output/riscof_work/
