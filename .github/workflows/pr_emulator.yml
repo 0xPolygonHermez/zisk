@@ -26,6 +26,9 @@ jobs:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       C_INCLUDE_PATH: /usr/lib/gcc/x86_64-linux-gnu/13/include
       CPLUS_INCLUDE_PATH: /usr/lib/gcc/x86_64-linux-gnu/13/include
+      ZISK_GHA: "1"
+      ZISK_REPO_DIR: ${{ github.workspace }}
+      TERM: xterm        
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
