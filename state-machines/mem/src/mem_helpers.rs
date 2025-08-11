@@ -1,6 +1,6 @@
 use crate::{
-    MEMORY_LOAD_OP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS,
-    MEM_STEPS_BY_MAIN_STEP, MEM_STEP_BASE, RAM_W_ADDR_INIT,
+    MEMORY_LOAD_OP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS, MEM_STEPS_BY_MAIN_STEP,
+    MEM_STEP_BASE, RAM_W_ADDR_INIT,
 };
 use zisk_common::ChunkId;
 use zisk_core::RAM_ADDR;
@@ -196,4 +196,3 @@ impl MemHelpers {
         self.max_distance_between_chunks(from_chunk, to_chunk)
     }
 }
-
