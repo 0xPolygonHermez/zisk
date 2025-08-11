@@ -24,7 +24,8 @@ pub struct InstallToolchainCmd {}
 impl InstallToolchainCmd {
     pub fn run(&self) -> Result<()> {
         // Setup client.
-        let client = Client::builder().user_agent("Mozilla/5.0")
+        let client = Client::builder()
+            .user_agent("Mozilla/5.0")
             .timeout(std::time::Duration::from_secs(60))
             .build()?;
 
@@ -98,7 +99,10 @@ impl InstallToolchainCmd {
                 let artifact_exists =
                     rt.block_on(url_exists(&client, toolchain_download_url.as_str()));
                 if !artifact_exists {
-                    return Err(anyhow::anyhow!("Error checking if toolchain download URL exists, URL: {}", toolchain_download_url));
+                    return Err(anyhow::anyhow!(
+                        "Error checking if toolchain download URL exists, URL: {}",
+                        toolchain_download_url
+                    ));
                 }
 
                 let mut file = fs::File::create(&toolchain_archive_path)?;
