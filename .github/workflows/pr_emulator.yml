@@ -30,18 +30,10 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install rust
-        uses: actions-rs/toolchain@v1
-        with:
-          components: rustfmt, clippy
-          toolchain: stable
-          default: true
-          override: true
-
       - name: Install dependencies
         run: |
-          apt-get update
-          apt-get install -y libopenmpi-dev openmpi-bin openmpi-common gcc-riscv64-unknown-elf libsodium23 libomp5
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./install_deps.sh
           
       - name: Run cargo check
         uses: actions-rs/cargo@v1
