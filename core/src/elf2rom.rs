@@ -232,8 +232,7 @@ mod tests {
 
     #[test]
     fn test_optimize_empty_rom() {
-        let mut rom = ZiskRom::default();
-        rom.next_init_inst_addr = ROM_ENTRY;
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
         assert!(optimize_instruction_lookup(&mut rom).is_ok());
         assert_eq!(rom.sorted_pc_list.len(), 0);
@@ -244,8 +243,7 @@ mod tests {
 
     #[test]
     fn test_optimize_entry_instructions_only() {
-        let mut rom = ZiskRom::default();
-        rom.next_init_inst_addr = ROM_ENTRY;
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
         // Add some entry area instructions, but none in main area
         let entry_base = ROM_ENTRY;
@@ -275,8 +273,7 @@ mod tests {
 
     #[test]
     fn test_optimize_main_rom_instructions() {
-        let mut rom = ZiskRom::default();
-        rom.next_init_inst_addr = ROM_ENTRY;
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
         // Add main ROM area instructions, but none in BIOS area
         rom.insts.insert(ROM_ADDR, create_test_inst_builder(ROM_ADDR, 10));
@@ -300,8 +297,7 @@ mod tests {
 
     #[test]
     fn test_optimize_non_aligned_instructions() {
-        let mut rom = ZiskRom::default();
-        rom.next_init_inst_addr = ROM_ENTRY;
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
         // Add non-aligned instructions (not on 4-byte boundary)
         rom.insts.insert(ROM_ADDR + 1, create_test_inst_builder(ROM_ADDR + 1, 20));
@@ -341,8 +337,7 @@ mod tests {
 
     #[test]
     fn test_optimize_mixed_instructions() {
-        let mut rom = ZiskRom::default();
-        rom.next_init_inst_addr = ROM_ENTRY;
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
         // Mix of all three types
         rom.insts.insert(ROM_ENTRY + 4, create_test_inst_builder(ROM_ENTRY + 4, 1));
@@ -352,9 +347,9 @@ mod tests {
         assert!(optimize_instruction_lookup(&mut rom).is_ok());
 
         // All three arrays should have content
-        assert!(rom.rom_entry_instructions.len() > 0);
-        assert!(rom.rom_instructions.len() > 0);
-        assert!(rom.rom_na_instructions.len() > 0);
+        assert!(!rom.rom_entry_instructions.is_empty());
+        assert!(!rom.rom_instructions.is_empty());
+        assert!(!rom.rom_na_instructions.is_empty());
 
         // Check sorted list has all PCs
         assert_eq!(rom.sorted_pc_list.len(), 3);
@@ -363,8 +358,7 @@ mod tests {
 
     #[test]
     fn test_optimize_sorted_pc_indices() {
-        let mut rom = ZiskRom::default();
-        rom.next_init_inst_addr = ROM_ENTRY;
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
         // Add instructions out of order
         rom.insts.insert(ROM_ADDR + 8, create_test_inst_builder(ROM_ADDR + 8, 3));
@@ -389,8 +383,7 @@ mod tests {
 
     #[test]
     fn test_optimize_sorted_pc_indices_with_gaps() {
-        let mut rom = ZiskRom::default();
-        rom.next_init_inst_addr = ROM_ENTRY;
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
         rom.insts.insert(ROM_ADDR, create_test_inst_builder(ROM_ADDR, 10));
         rom.insts.insert(ROM_ADDR + 4, create_test_inst_builder(ROM_ADDR + 4, 11));
@@ -426,8 +419,7 @@ mod tests {
 
     #[test]
     fn test_optimize_address_below_rom_entry_err() {
-        let mut rom = ZiskRom::default();
-        rom.next_init_inst_addr = ROM_ENTRY;
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
         // Add instruction below ROM_ENTRY
         rom.insts.insert(ROM_ENTRY - 4, create_test_inst_builder(ROM_ENTRY - 4, 1));
@@ -436,8 +428,7 @@ mod tests {
 
     #[test]
     fn test_optimize_address_above_rom_max_err() {
-        let mut rom = ZiskRom::default();
-        rom.next_init_inst_addr = ROM_ENTRY;
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
         // Add instruction above ROM_ADDR_MAX.
         rom.insts.insert(ROM_ADDR_MAX + 4, create_test_inst_builder(ROM_ADDR_MAX + 4, 1));
@@ -446,8 +437,7 @@ mod tests {
 
     #[test]
     fn test_basic_optimize_preserves_instruction_data() {
-        let mut rom = ZiskRom::default();
-        rom.next_init_inst_addr = ROM_ENTRY;
+        let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
         let mut builder = ZiskInstBuilder::new(ROM_ADDR);
         builder.i.op = 42;
